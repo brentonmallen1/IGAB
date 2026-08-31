@@ -46,10 +46,7 @@ export function ReceiptScanTab({
   const handled = useRef(false)
 
   // Poll the job while watching
-  const { data: job } = useAIJob(
-    budgetId,
-    stage.kind === 'watching' ? stage.jobId : null
-  )
+  const { data: job } = useAIJob(budgetId, stage.kind === 'watching' ? stage.jobId : null)
 
   // Object URL for preview thumbnail
   const previewUrl = useMemo(
@@ -139,11 +136,7 @@ export function ReceiptScanTab({
         <div className="receipt-scan__empty">
           <Sparkles size={20} />
           <p>Receipt scanning requires a configured Ollama server.</p>
-          <Link
-            to="/settings"
-            className="receipt-scan__link"
-            onClick={onClose}
-          >
+          <Link to="/settings" className="receipt-scan__link" onClick={onClose}>
             Configure AI in Settings
           </Link>
         </div>
@@ -158,11 +151,7 @@ export function ReceiptScanTab({
         <div className="receipt-scan__error">
           <AlertTriangle size={20} />
           <p>{stage.message}</p>
-          <Link
-            to="/ai-activity"
-            className="receipt-scan__link"
-            onClick={onClose}
-          >
+          <Link to="/ai-activity" className="receipt-scan__link" onClick={onClose}>
             View AI activity
           </Link>
         </div>
@@ -185,11 +174,7 @@ export function ReceiptScanTab({
       <div className="receipt-scan">
         <div className="receipt-scan__progress">
           {previewUrl && (
-            <img
-              src={previewUrl}
-              alt="Receipt preview"
-              className="receipt-scan__progress-thumb"
-            />
+            <img src={previewUrl} alt="Receipt preview" className="receipt-scan__progress-thumb" />
           )}
           <div className="receipt-scan__progress-status">
             <Loader2 size={20} className="spin" />
@@ -199,14 +184,10 @@ export function ReceiptScanTab({
             </span>
           </div>
           <p className="receipt-scan__progress-note">
-            You can close this window — the scan keeps running and the
-            transaction will arrive for review.
+            You can close this window — the scan keeps running and the transaction will arrive for
+            review.
           </p>
-          <Link
-            to="/ai-activity"
-            className="receipt-scan__link"
-            onClick={onClose}
-          >
+          <Link to="/ai-activity" className="receipt-scan__link" onClick={onClose}>
             View AI activity
           </Link>
         </div>
@@ -226,11 +207,7 @@ export function ReceiptScanTab({
               <span className="receipt-scan__preview-name">{stage.file.name}</span>
             </div>
           ) : (
-            <img
-              src={previewUrl!}
-              alt="Receipt preview"
-              className="receipt-scan__preview-img"
-            />
+            <img src={previewUrl!} alt="Receipt preview" className="receipt-scan__preview-img" />
           )}
           <button
             type="button"

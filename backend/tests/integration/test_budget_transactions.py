@@ -269,9 +269,9 @@ async def test_month_reconciles_with_income_vs_expense(api_client, db_session):
         start_date=month_start.isoformat(),
         end_date=TODAY.isoformat(),
     )
-    assert abs(Decimal(outflow["total_amount"])) == Decimal(
-        str(this_month["expenses"])
-    ) + Decimal(str(this_month["savings"])) + Decimal(str(this_month["debt_principal"]))
+    assert abs(Decimal(outflow["total_amount"])) == Decimal(str(this_month["expenses"])) + Decimal(
+        str(this_month["savings"])
+    ) + Decimal(str(this_month["debt_principal"]))
 
 
 async def test_pending_excluded_iff_posted_only(api_client, db_session):

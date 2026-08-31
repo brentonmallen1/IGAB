@@ -42,7 +42,9 @@ export function MainLayout() {
 
   return (
     <div className="main-layout">
-      <a href="#main-content" className="skip-link">Skip to main content</a>
+      <a href="#main-content" className="skip-link">
+        Skip to main content
+      </a>
       <Sidebar />
       <div className="main-layout__content">
         <OfflineBanner />

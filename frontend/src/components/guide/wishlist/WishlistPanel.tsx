@@ -86,10 +86,7 @@ export function WishlistPanel() {
     () => splitProjects(data?.projects ?? []),
     [data]
   )
-  const projectsById = useMemo(
-    () => new Map((data?.projects ?? []).map((p) => [p.id, p])),
-    [data]
-  )
+  const projectsById = useMemo(() => new Map((data?.projects ?? []).map((p) => [p.id, p])), [data])
   const due = useMemo(() => (data?.items ?? []).filter((w) => w.review_due), [data])
 
   if (overview && !enabled) {
@@ -98,8 +95,8 @@ export function WishlistPanel() {
         <h2 className="guide-wishlist__title">Wishlist</h2>
         <p className="guide-wishlist__lede">
           The wishlist is switched off for this budget. Turn it on in{' '}
-          <Link to="/settings">Settings</Link> and the Wishlist group in your budget comes back
-          with it — any money in those envelopes never moved.
+          <Link to="/settings">Settings</Link> and the Wishlist group in your budget comes back with
+          it — any money in those envelopes never moved.
         </p>
       </section>
     )
@@ -169,7 +166,11 @@ export function WishlistPanel() {
           {due.length > 0 && (
             <p className="guide-wishlist__line">
               {due.length} {due.length === 1 ? 'wish is' : 'wishes are'} due for a review ·{' '}
-              <button type="button" className="guide-link-button" onClick={() => setReviewOpen(true)}>
+              <button
+                type="button"
+                className="guide-link-button"
+                onClick={() => setReviewOpen(true)}
+              >
                 Review
               </button>
             </p>
@@ -235,119 +236,136 @@ export function WishlistPanel() {
         </div>
 
         <div className="guide-wishlist__body">
-        {settingsOpen && (
-          <form
-            className="guide-wishlist__settings"
-            onSubmit={(e) => {
-              e.preventDefault()
-              const form = new FormData(e.currentTarget)
-              setSettings.mutate({
-                cooling_days: Number(form.get('cooling_days')),
-                review_after_days: Number(form.get('review_after_days')),
-              })
-              setSettingsOpen(false)
-            }}
-          >
-            <label className="tool__field tool__field--inline">
-              <span>Cooling-off for new wishes, days</span>
-              <input name="cooling_days" inputMode="numeric" defaultValue={data.settings.cooling_days} />
-            </label>
-            <label className="tool__field tool__field--inline">
-              <span>Ask "still want it?" after, days</span>
-              <input name="review_after_days" inputMode="numeric" defaultValue={data.settings.review_after_days} />
-            </label>
-            <button type="submit" className="guide-link-button">
-              Save
-            </button>
-          </form>
-        )}
+          {settingsOpen && (
+            <form
+              className="guide-wishlist__settings"
+              onSubmit={(e) => {
+                e.preventDefault()
+                const form = new FormData(e.currentTarget)
+                setSettings.mutate({
+                  cooling_days: Number(form.get('cooling_days')),
+                  review_after_days: Number(form.get('review_after_days')),
+                })
+                setSettingsOpen(false)
+              }}
+            >
+              <label className="tool__field tool__field--inline">
+                <span>Cooling-off for new wishes, days</span>
+                <input
+                  name="cooling_days"
+                  inputMode="numeric"
+                  defaultValue={data.settings.cooling_days}
+                />
+              </label>
+              <label className="tool__field tool__field--inline">
+                <span>Ask "still want it?" after, days</span>
+                <input
+                  name="review_after_days"
+                  inputMode="numeric"
+                  defaultValue={data.settings.review_after_days}
+                />
+              </label>
+              <button type="submit" className="guide-link-button">
+                Save
+              </button>
+            </form>
+          )}
 
-        {data.items.length === 0 ? (
-          <p className="guide-wishlist__empty">
-            Nothing on the list yet. Add something you want — and give it an envelope, so the budget
-            can tell you when.
-          </p>
-        ) : view === 'flat' ? (
-          <div className="guide-wishlist__list">{rest.map((w) => card(w))}</div>
-        ) : (
-          <div className="guide-wishlist__list">
-            {groupByProject(filtered, activeProjects).map((section) => (
-              <WishlistProjectSection
-                key={section.project?.id ?? 'loose'}
-                project={section.project}
-                count={section.items.length}
-                onEdit={section.project ? () => setEditingProject(section.project) : undefined}
-                onDelete={section.project ? () => removeProject.mutate(section.project!.id) : undefined}
-              >
-                {section.items.length ? (
-                  section.items.map((w) => card(w))
-                ) : (
-                  <p className="guide-wishlist__empty">Nothing on it yet.</p>
-                )}
-              </WishlistProjectSection>
-            ))}
-          </div>
-        )}
-
-        {data.drains && (
-          <section className="wish-drains">
-            <h3 className="wish-drains__title">What pulled from your wants</h3>
-            {data.drains.moves.length === 0 ? (
-              <p className="wish-drains__empty">Nothing left your wants this month.</p>
-            ) : (
-              <>
-                <p className="wish-drains__total">
-                  {fmt.formatMoney(Number(data.drains.total))} moved out of wish envelopes this month.
-                </p>
-                <ul className="wish-drains__list">
-                  {data.drains.moves.map((m) => (
-                    <li key={m.move_id} className="wish-drains__row">
-                      <span className="wish-drains__date">{fmt.formatDate(m.date.slice(0, 10))}</span>
-                      <span className="wish-drains__amount tabular">{fmt.formatMoney(Number(m.amount))}</span>
-                      <span className="wish-drains__path">
-                        {m.from_name} → {m.to_name}
-                      </span>
-                      {m.affected.map((a) => (
-                        <span key={a.item_id} className="wish-drains__impact">
-                          {a.name}: {impactLabel(a.months_further) ?? 'no pace to measure by'}
-                        </span>
-                      ))}
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-          </section>
-        )}
-
-        {(data.history.length > 0 || completeProjects.length > 0) && (
-          <Collapsible
-            title="History"
-            count={data.history.length + completeProjects.length}
-            isOpen={historyOpen}
-            onToggle={() => setHistoryOpen((o) => !o)}
-            className="guide-wishlist__history"
-          >
-            {completeProjects.map((p) => (
-              <p key={p.id} className="guide-wishlist__history-row">
-                <strong>{p.name}</strong> — complete
-              </p>
-            ))}
-            {data.history.map((w) => (
-              <p key={w.id} className="guide-wishlist__history-row">
-                <strong>{w.name}</strong> · {fmt.formatMoney(Number(w.cost))} ·{' '}
-                {w.status === 'done' ? `done ${w.done_at ? fmt.formatDate(w.done_at) : ''}` : 'dropped'}
-                <button
-                  type="button"
-                  className="guide-link-button"
-                  onClick={() => update.mutate({ id: w.id, status: 'open' })}
+          {data.items.length === 0 ? (
+            <p className="guide-wishlist__empty">
+              Nothing on the list yet. Add something you want — and give it an envelope, so the
+              budget can tell you when.
+            </p>
+          ) : view === 'flat' ? (
+            <div className="guide-wishlist__list">{rest.map((w) => card(w))}</div>
+          ) : (
+            <div className="guide-wishlist__list">
+              {groupByProject(filtered, activeProjects).map((section) => (
+                <WishlistProjectSection
+                  key={section.project?.id ?? 'loose'}
+                  project={section.project}
+                  count={section.items.length}
+                  onEdit={section.project ? () => setEditingProject(section.project) : undefined}
+                  onDelete={
+                    section.project ? () => removeProject.mutate(section.project!.id) : undefined
+                  }
                 >
-                  Reopen
-                </button>
-              </p>
-            ))}
-          </Collapsible>
-        )}
+                  {section.items.length ? (
+                    section.items.map((w) => card(w))
+                  ) : (
+                    <p className="guide-wishlist__empty">Nothing on it yet.</p>
+                  )}
+                </WishlistProjectSection>
+              ))}
+            </div>
+          )}
+
+          {data.drains && (
+            <section className="wish-drains">
+              <h3 className="wish-drains__title">What pulled from your wants</h3>
+              {data.drains.moves.length === 0 ? (
+                <p className="wish-drains__empty">Nothing left your wants this month.</p>
+              ) : (
+                <>
+                  <p className="wish-drains__total">
+                    {fmt.formatMoney(Number(data.drains.total))} moved out of wish envelopes this
+                    month.
+                  </p>
+                  <ul className="wish-drains__list">
+                    {data.drains.moves.map((m) => (
+                      <li key={m.move_id} className="wish-drains__row">
+                        <span className="wish-drains__date">
+                          {fmt.formatDate(m.date.slice(0, 10))}
+                        </span>
+                        <span className="wish-drains__amount tabular">
+                          {fmt.formatMoney(Number(m.amount))}
+                        </span>
+                        <span className="wish-drains__path">
+                          {m.from_name} → {m.to_name}
+                        </span>
+                        {m.affected.map((a) => (
+                          <span key={a.item_id} className="wish-drains__impact">
+                            {a.name}: {impactLabel(a.months_further) ?? 'no pace to measure by'}
+                          </span>
+                        ))}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </section>
+          )}
+
+          {(data.history.length > 0 || completeProjects.length > 0) && (
+            <Collapsible
+              title="History"
+              count={data.history.length + completeProjects.length}
+              isOpen={historyOpen}
+              onToggle={() => setHistoryOpen((o) => !o)}
+              className="guide-wishlist__history"
+            >
+              {completeProjects.map((p) => (
+                <p key={p.id} className="guide-wishlist__history-row">
+                  <strong>{p.name}</strong> — complete
+                </p>
+              ))}
+              {data.history.map((w) => (
+                <p key={w.id} className="guide-wishlist__history-row">
+                  <strong>{w.name}</strong> · {fmt.formatMoney(Number(w.cost))} ·{' '}
+                  {w.status === 'done'
+                    ? `done ${w.done_at ? fmt.formatDate(w.done_at) : ''}`
+                    : 'dropped'}
+                  <button
+                    type="button"
+                    className="guide-link-button"
+                    onClick={() => update.mutate({ id: w.id, status: 'open' })}
+                  >
+                    Reopen
+                  </button>
+                </p>
+              ))}
+            </Collapsible>
+          )}
         </div>
       </Surface>
 
@@ -370,7 +388,11 @@ export function WishlistPanel() {
       )}
       {adding === 'project' && <ProjectForm budgetId={budgetId} onClose={() => setAdding(null)} />}
       {editingProject && (
-        <ProjectForm budgetId={budgetId} project={editingProject} onClose={() => setEditingProject(null)} />
+        <ProjectForm
+          budgetId={budgetId}
+          project={editingProject}
+          onClose={() => setEditingProject(null)}
+        />
       )}
       {reviewOpen && (
         <ReviewDialog
@@ -381,9 +403,16 @@ export function WishlistPanel() {
         />
       )}
       {noteOpen && (
-        <GuideDialog title={FUN_NOTE.title} onClose={() => setNoteOpen(false)} historyKey="wishlist-fun">
+        <GuideDialog
+          title={FUN_NOTE.title}
+          onClose={() => setNoteOpen(false)}
+          historyKey="wishlist-fun"
+        >
           {FUN_NOTE.paragraphs.map((text, i) => (
-            <p key={i} className={`dialog__body ${i === FUN_NOTE.paragraphs.length - 1 ? 'dialog__body--muted' : ''}`}>
+            <p
+              key={i}
+              className={`dialog__body ${i === FUN_NOTE.paragraphs.length - 1 ? 'dialog__body--muted' : ''}`}
+            >
               {text}
             </p>
           ))}

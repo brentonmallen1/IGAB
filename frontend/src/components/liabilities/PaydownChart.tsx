@@ -94,7 +94,11 @@ export function PaydownChart({ amortization, mode, isMobile = false }: Props) {
         <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
         <XAxis dataKey="month" tick={{ fontSize: 11 }} minTickGap={40} />
         <YAxis tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11 }} width={85} />
-        <Tooltip content={<ChartTooltip showTotal={false} />} offset={16} isAnimationActive={false} />
+        <Tooltip
+          content={<ChartTooltip showTotal={false} />}
+          offset={16}
+          isAnimationActive={false}
+        />
         <Legend />
         <Area
           type="monotone"

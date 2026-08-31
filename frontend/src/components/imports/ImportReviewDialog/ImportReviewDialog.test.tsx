@@ -47,7 +47,12 @@ const tags = [
   { id: 't-travel', name: 'Travel', system_key: null, color_slot: 'blue' },
 ]
 const suggestions = [
-  { category_id: 'prime', system_key: 'subscription', matched_on: 'Amazon Prime', applied_on_import: false },
+  {
+    category_id: 'prime',
+    system_key: 'subscription',
+    matched_on: 'Amazon Prime',
+    applied_on_import: false,
+  },
   { category_id: 'rent', system_key: 'essential', matched_on: 'Rent', applied_on_import: false },
 ]
 
@@ -217,7 +222,9 @@ describe('the tag step', () => {
     await user.click(screen.getByRole('button', { name: /Accounts/ }))
     await user.click(screen.getByRole('button', { name: /Save and close/ }))
 
-    await waitFor(() => expect(bulkSet).toHaveBeenCalledWith([{ category_id: 'prime', tag_ids: [] }]))
+    await waitFor(() =>
+      expect(bulkSet).toHaveBeenCalledWith([{ category_id: 'prime', tag_ids: [] }])
+    )
   })
 
   it('reaches the categories the import never touched', async () => {
@@ -289,9 +296,7 @@ describe('adding a tag the hints never thought of', () => {
     await user.click(screen.getByRole('button', { name: /Accounts/ }))
     await user.click(screen.getByRole('button', { name: /Save and close/ }))
     await waitFor(() =>
-      expect(bulkSet).toHaveBeenCalledWith([
-        { category_id: 'odds', tag_ids: ['t-ess', 't-sub'] },
-      ])
+      expect(bulkSet).toHaveBeenCalledWith([{ category_id: 'odds', tag_ids: ['t-ess', 't-sub'] }])
     )
   })
 

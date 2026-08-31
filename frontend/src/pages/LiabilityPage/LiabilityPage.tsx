@@ -70,7 +70,11 @@ export function LiabilityPage() {
 
   if (!budgetId || !liabilityId) return null
   if (isLoading) {
-    return <div className="liability-page"><div className="liability-page__empty">Loading…</div></div>
+    return (
+      <div className="liability-page">
+        <div className="liability-page__empty">Loading…</div>
+      </div>
+    )
   }
   if (!liability) {
     return (
@@ -202,9 +206,8 @@ export function LiabilityPage() {
       {liability.balance_source === 'manual_fallback' && (
         <div className="liability-page__hint liability-page__hint--warning">
           <span>
-            The linked account's register is empty, so the balance shown is your last manual
-            entry. Add an opening balance so payments and payoff dates track from real
-            transactions.
+            The linked account's register is empty, so the balance shown is your last manual entry.
+            Add an opening balance so payments and payoff dates track from real transactions.
           </span>
           <button
             className="liability-page__action"
@@ -218,8 +221,9 @@ export function LiabilityPage() {
         </div>
       )}
 
-      {liability.promo_projection && liability.promo_end_date && (
-        liability.promo_projection.clears_before_promo ? (
+      {liability.promo_projection &&
+        liability.promo_end_date &&
+        (liability.promo_projection.clears_before_promo ? (
           <div className="liability-page__hint liability-page__hint--success">
             <span>
               On pace to clear this before the promo ends ({formatMonth(liability.promo_end_date)})
@@ -243,23 +247,22 @@ export function LiabilityPage() {
               .
             </span>
           </div>
-        )
-      )}
+        ))}
 
       {liability.implied_never_pays_off === true && (
         <div className="liability-page__hint liability-page__hint--warning">
           <span>
             The {formatMoney(Number(liability.minimum_payment))} minimum payment couldn't have
-            amortized the original {formatMoney(Number(liability.original_principal ?? 0))} loan
-            at {Number(liability.interest_rate)}% — if your real payment includes escrow or
-            insurance, enter just the principal + interest portion for accurate projections.
+            amortized the original {formatMoney(Number(liability.original_principal ?? 0))} loan at{' '}
+            {Number(liability.interest_rate)}% — if your real payment includes escrow or insurance,
+            enter just the principal + interest portion for accurate projections.
           </span>
         </div>
       )}
 
       <div className="liability-page__metrics">
         <MetricCard
-              variant="raised"
+          variant="raised"
           label="Current Balance"
           value={formatMoney(Number(liability.current_balance))}
           accent
@@ -267,13 +270,15 @@ export function LiabilityPage() {
         {/* 0% is a real rate here — promo cards have one — so an unset rate
             has to read differently from zero, not as Number(null). */}
         <MetricCard
-              variant="raised"
+          variant="raised"
           label="Interest Rate"
-          value={liability.interest_rate === null ? 'Not set' : `${Number(liability.interest_rate)}%`}
+          value={
+            liability.interest_rate === null ? 'Not set' : `${Number(liability.interest_rate)}%`
+          }
           sub={liability.interest_rate === null ? 'Add it for a payoff date' : undefined}
         />
         <MetricCard
-              variant="raised"
+          variant="raised"
           label="Interest Remaining"
           value={
             !amortization
@@ -291,7 +296,7 @@ export function LiabilityPage() {
           }
         />
         <MetricCard
-              variant="raised"
+          variant="raised"
           label="Months Remaining"
           value={monthsRemaining === null ? '—' : String(monthsRemaining)}
           sub="At minimum payment"
@@ -330,8 +335,7 @@ export function LiabilityPage() {
                     Math.max(
                       0,
                       (1 -
-                        Number(liability.current_balance) /
-                          Number(liability.original_principal)) *
+                        Number(liability.current_balance) / Number(liability.original_principal)) *
                         100
                     )
                   )}%`,
@@ -354,7 +358,10 @@ export function LiabilityPage() {
                 autoFocus
                 aria-label="Category to track payments from"
               />
-              <button className="liability-page__hint-dismiss" onClick={() => setShowLinkPicker(false)}>
+              <button
+                className="liability-page__hint-dismiss"
+                onClick={() => setShowLinkPicker(false)}
+              >
                 Cancel
               </button>
             </div>
@@ -386,37 +393,37 @@ export function LiabilityPage() {
         as="section"
         className="liability-page__section"
         header={
-            <div className="liability-page__section-header">
-              <h2>Paydown</h2>
-              <div className="liability-page__chart-controls">
-                <div className="liability-page__toggle">
-                  <button
-                    className={chartMode === 'now' ? 'active' : ''}
-                    onClick={() => setChartMode('now')}
-                  >
-                    Now
-                  </button>
-                  <button
-                    className={chartMode === 'beginning' ? 'active' : ''}
-                    onClick={() => setChartMode('beginning')}
-                  >
-                    Beginning
-                  </button>
-                </div>
-                <label className="liability-page__whatif">
-                  <span>Extra monthly:</span>
-                  <input
-                    type="number"
-                    min="0"
-                    step="10"
-                    inputMode="decimal"
-                    placeholder="0"
-                    value={extraInput}
-                    onChange={(e) => setExtraInput(e.target.value)}
-                  />
-                </label>
+          <div className="liability-page__section-header">
+            <h2>Paydown</h2>
+            <div className="liability-page__chart-controls">
+              <div className="liability-page__toggle">
+                <button
+                  className={chartMode === 'now' ? 'active' : ''}
+                  onClick={() => setChartMode('now')}
+                >
+                  Now
+                </button>
+                <button
+                  className={chartMode === 'beginning' ? 'active' : ''}
+                  onClick={() => setChartMode('beginning')}
+                >
+                  Beginning
+                </button>
               </div>
+              <label className="liability-page__whatif">
+                <span>Extra monthly:</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="10"
+                  inputMode="decimal"
+                  placeholder="0"
+                  value={extraInput}
+                  onChange={(e) => setExtraInput(e.target.value)}
+                />
+              </label>
             </div>
+          </div>
         }
       >
         <div className="liability-page__section-body">
@@ -439,8 +446,8 @@ export function LiabilityPage() {
               // missing rather than render an almost-empty chart.
               <div className="liability-page__empty">
                 <p>
-                  A paydown curve needs the APR and minimum payment — they decide how much of
-                  each payment is interest, and therefore when this is gone.
+                  A paydown curve needs the APR and minimum payment — they decide how much of each
+                  payment is interest, and therefore when this is gone.
                 </p>
                 <button
                   type="button"
@@ -464,10 +471,10 @@ export function LiabilityPage() {
         as="section"
         className="liability-page__section"
         header={
-            <div className="liability-page__section-header">
-              <h2>Amortization schedule</h2>
-              <span className="liability-page__section-sub">At the minimum payment</span>
-            </div>
+          <div className="liability-page__section-header">
+            <h2>Amortization schedule</h2>
+            <span className="liability-page__section-sub">At the minimum payment</span>
+          </div>
         }
       >
         <div className="liability-page__section-body">
@@ -524,7 +531,11 @@ export function LiabilityPage() {
             </label>
             <label>
               <span>As of (optional — defaults to today)</span>
-              <input type="date" value={balanceDate} onChange={(e) => setBalanceDate(e.target.value)} />
+              <input
+                type="date"
+                value={balanceDate}
+                onChange={(e) => setBalanceDate(e.target.value)}
+              />
             </label>
             <div className="liability-page__balance-actions">
               <button type="button" onClick={() => setShowBalanceForm(false)}>

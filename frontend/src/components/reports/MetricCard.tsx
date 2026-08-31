@@ -17,7 +17,15 @@ interface Props {
   variant?: Extract<SurfaceVariant, 'raised' | 'sunken'>
 }
 
-export function MetricCard({ label, value, delta, sub, accent, warning, variant = 'sunken' }: Props) {
+export function MetricCard({
+  label,
+  value,
+  delta,
+  sub,
+  accent,
+  warning,
+  variant = 'sunken',
+}: Props) {
   const deltaSign = delta && delta.value > 0 ? 'pos' : delta && delta.value < 0 ? 'neg' : 'neutral'
 
   const classes = ['metric-card']
@@ -30,7 +38,8 @@ export function MetricCard({ label, value, delta, sub, accent, warning, variant 
       <div className="metric-card__value">{value}</div>
       {delta !== undefined && (
         <div className={`metric-card__delta metric-card__delta--${deltaSign}`}>
-          {delta.value > 0 ? '+' : ''}{delta.value.toFixed(1)}%
+          {delta.value > 0 ? '+' : ''}
+          {delta.value.toFixed(1)}%
           {delta.label && <span className="metric-card__delta-label"> {delta.label}</span>}
         </div>
       )}

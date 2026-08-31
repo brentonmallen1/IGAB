@@ -54,8 +54,7 @@ const confirmAsync = vi.hoisted(() => vi.fn(() => Promise.resolve(true)))
 vi.mock('../../stores/confirmStore', () => ({ confirmAsync }))
 
 vi.mock('../../stores/appStore', () => ({
-  useAppStore: (sel: (s: { currentBudgetId: string }) => unknown) =>
-    sel({ currentBudgetId: 'b1' }),
+  useAppStore: (sel: (s: { currentBudgetId: string }) => unknown) => sel({ currentBudgetId: 'b1' }),
 }))
 
 function account(over: Partial<Account> = {}): Account {

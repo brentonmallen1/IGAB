@@ -1,7 +1,13 @@
 import { useRef, useState } from 'react'
 import {
-  Area, AreaChart, CartesianGrid, Legend,
-  ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Area,
+  AreaChart,
+  CartesianGrid,
+  Legend,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
 } from 'recharts'
 import { useAccountCompositionReport } from '../../../api/reports'
 import { useAccountTypes } from '../../../api/accountTypes'
@@ -15,7 +21,9 @@ import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ReportRangeButtons } from './rangeButtons'
 
-interface Props { budgetId: string }
+interface Props {
+  budgetId: string
+}
 
 export function AccountCompositionReport({ budgetId }: Props) {
   const chartHeight = useChartHeight(340)
@@ -43,15 +51,18 @@ export function AccountCompositionReport({ budgetId }: Props) {
       <div className="report-section__header">
         <h2 className="report-section__title">Account Composition</h2>
         <ReportInfoButton title="Account Composition">
-          <p>Shows how your balance is distributed across <strong>account types</strong> — checking, savings, investments, loans, and any custom types — over time, across all accounts.</p>
-          <p>Balances keep their sign: asset balances stack above zero, debt balances below. A growing asset area relative to debt is a healthy trend.</p>
+          <p>
+            Shows how your balance is distributed across <strong>account types</strong> — checking,
+            savings, investments, loans, and any custom types — over time, across all accounts.
+          </p>
+          <p>
+            Balances keep their sign: asset balances stack above zero, debt balances below. A
+            growing asset area relative to debt is a healthy trend.
+          </p>
           <ReportScopeNote scope="all-accounts" />
         </ReportInfoButton>
         <div className="flex-row ms-auto">
-          <ReportRangeButtons
-            months={months}
-            onChange={setMonths}
-          />
+          <ReportRangeButtons months={months} onChange={setMonths} />
           <ReportExportButton
             reportId="account-composition"
             getRows={() =>
@@ -67,31 +78,35 @@ export function AccountCompositionReport({ budgetId }: Props) {
       <p className="report-section__subtitle">Assets stack positive, debts negative.</p>
 
       <div ref={captureRef} className="report-capture">
-      {chartData.length === 0 ? (
-        <div className="reports-empty">No account data available.</div>
-      ) : (
-        <ResponsiveContainer width="100%" height={chartHeight}>
-          <AreaChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
-            <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
-            <YAxis tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} width={90} />
-            <Tooltip content={<ChartTooltip showTotal />} offset={16} isAnimationActive={false} />
-            <Legend />
-            {typeKeys.map((k, i) => (
-              <Area
-                key={k}
-                type="monotone"
-                dataKey={labelFor(k)}
-                stroke={CHART_COLORS[i % CHART_COLORS.length]}
-                fill={CHART_COLORS[i % CHART_COLORS.length]}
-                fillOpacity={0.15}
-                strokeWidth={2}
-                stackId="1"
+        {chartData.length === 0 ? (
+          <div className="reports-empty">No account data available.</div>
+        ) : (
+          <ResponsiveContainer width="100%" height={chartHeight}>
+            <AreaChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
+              <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
+              <YAxis
+                tickFormatter={(v) => formatMoney(v)}
+                tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
+                width={90}
               />
-            ))}
-          </AreaChart>
-        </ResponsiveContainer>
-      )}
+              <Tooltip content={<ChartTooltip showTotal />} offset={16} isAnimationActive={false} />
+              <Legend />
+              {typeKeys.map((k, i) => (
+                <Area
+                  key={k}
+                  type="monotone"
+                  dataKey={labelFor(k)}
+                  stroke={CHART_COLORS[i % CHART_COLORS.length]}
+                  fill={CHART_COLORS[i % CHART_COLORS.length]}
+                  fillOpacity={0.15}
+                  strokeWidth={2}
+                  stackId="1"
+                />
+              ))}
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
       </div>
     </div>
   )

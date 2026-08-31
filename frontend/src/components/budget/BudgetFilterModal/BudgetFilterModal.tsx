@@ -83,7 +83,11 @@ export function BudgetFilterModal({ budgetId, filterId, onClose }: Props) {
     if (!trimmed) return
     const categoryIds = Array.from(selectedIds)
     if (isEdit && existingFilter) {
-      await updateFilter.mutateAsync({ id: existingFilter.id, name: trimmed, category_ids: categoryIds })
+      await updateFilter.mutateAsync({
+        id: existingFilter.id,
+        name: trimmed,
+        category_ids: categoryIds,
+      })
     } else {
       const created = await createFilter.mutateAsync({ name: trimmed, category_ids: categoryIds })
       setActiveFilter(created.id)
@@ -105,10 +109,25 @@ export function BudgetFilterModal({ budgetId, filterId, onClose }: Props) {
       className="filter-modal-overlay"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <form ref={trapRef} tabIndex={-1} className="filter-modal" onSubmit={handleSubmit} role="dialog" aria-modal aria-labelledby="filter-modal-title">
+      <form
+        ref={trapRef}
+        tabIndex={-1}
+        className="filter-modal"
+        onSubmit={handleSubmit}
+        role="dialog"
+        aria-modal
+        aria-labelledby="filter-modal-title"
+      >
         <div className="filter-modal__header">
-          <span id="filter-modal-title" className="filter-modal__title">{isEdit ? 'Edit Filter' : 'New Filter'}</span>
-          <button type="button" className="filter-modal__close" onClick={onClose} aria-label="Close">
+          <span id="filter-modal-title" className="filter-modal__title">
+            {isEdit ? 'Edit Filter' : 'New Filter'}
+          </span>
+          <button
+            type="button"
+            className="filter-modal__close"
+            onClick={onClose}
+            aria-label="Close"
+          >
             <X size={18} />
           </button>
         </div>

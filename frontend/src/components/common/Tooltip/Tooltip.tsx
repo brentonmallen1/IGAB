@@ -94,7 +94,8 @@ export function Tooltip({ content, children, block = false, className }: Props) 
       onBlur={hide}
     >
       {children}
-      {anchor && content != null &&
+      {anchor &&
+        content != null &&
         createPortal(
           <span
             ref={popupRef}
@@ -104,7 +105,7 @@ export function Tooltip({ content, children, block = false, className }: Props) 
           >
             {content}
           </span>,
-          document.body,
+          document.body
         )}
     </span>
   )

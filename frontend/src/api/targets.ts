@@ -27,7 +27,7 @@ export function useTarget(categoryId: string | null) {
     queryKey: [ROOT.target, categoryId],
     queryFn: async () => {
       const { data } = await apiClient.get<CategoryTarget | null>(
-        `/categories/${categoryId}/target`,
+        `/categories/${categoryId}/target`
       )
       return data
     },

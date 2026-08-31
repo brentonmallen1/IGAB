@@ -45,9 +45,7 @@ export function useFocusTrap<T extends HTMLElement>(
       allowOutsideClick: true,
       fallbackFocus: el,
       returnFocusOnDeactivate: true,
-      ...(initialFocusRef.current !== undefined
-        ? { initialFocus: initialFocusRef.current }
-        : {}),
+      ...(initialFocusRef.current !== undefined ? { initialFocus: initialFocusRef.current } : {}),
     })
     trap.activate()
     const onKeyDown = (e: KeyboardEvent) => {

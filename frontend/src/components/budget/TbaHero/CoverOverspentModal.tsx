@@ -28,9 +28,7 @@ export function CoverOverspentModal({ budgetId, month, onClose }: Props) {
   // attributes it exactly), never re-derived here — the split is a running walk
   // per (category, card) the client has no way to reproduce.
   const { data: budgetMonth } = useBudgetMonth(budgetId, month)
-  const riddenByCard = (budgetMonth?.cards ?? []).filter(
-    (c) => Number(c.overspent_this_month) > 0
-  )
+  const riddenByCard = (budgetMonth?.cards ?? []).filter((c) => Number(c.overspent_this_month) > 0)
 
   const canApply = preview != null && preview.items.length > 0 && Number(preview.total_addition) > 0
 
@@ -60,11 +58,22 @@ export function CoverOverspentModal({ budgetId, month, onClose }: Props) {
   return (
     <div
       className="cover-modal-overlay"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
     >
-      <div ref={trapRef} tabIndex={-1} className="cover-modal" role="dialog" aria-modal aria-labelledby="cover-modal-title">
+      <div
+        ref={trapRef}
+        tabIndex={-1}
+        className="cover-modal"
+        role="dialog"
+        aria-modal
+        aria-labelledby="cover-modal-title"
+      >
         <div className="cover-modal__header">
-          <span id="cover-modal-title" className="cover-modal__title">Cover overspending</span>
+          <span id="cover-modal-title" className="cover-modal__title">
+            Cover overspending
+          </span>
           <button className="cover-modal__close" onClick={onClose} aria-label="Close">
             <X size={18} />
           </button>
@@ -91,8 +100,8 @@ export function CoverOverspentModal({ budgetId, month, onClose }: Props) {
           ) : (
             <>
               <p className="cover-modal__description">
-                Ready to Assign ({formatMoney(preview.tba_before)}) will cover overspent
-                categories — in full when it stretches, proportionally when it doesn't.
+                Ready to Assign ({formatMoney(preview.tba_before)}) will cover overspent categories
+                — in full when it stretches, proportionally when it doesn't.
               </p>
               {/* The grid's red is larger than this table, on purpose. Saying so
                   here is cheaper than letting someone find the gap and stop
@@ -100,9 +109,10 @@ export function CoverOverspentModal({ budgetId, month, onClose }: Props) {
               {Number(preview.total_overspent_credit) > 0 && (
                 <>
                   <p className="cover-modal__on-cards">
-                    A further {formatMoney(preview.total_overspent_credit)} was spent on a card. That
-                    rides on the card as debt, never charges Ready to Assign, and is not listed here
-                    — assigning cash to it would not retire it. Pay it down by assigning to the card.
+                    A further {formatMoney(preview.total_overspent_credit)} was spent on a card.
+                    That rides on the card as debt, never charges Ready to Assign, and is not listed
+                    here — assigning cash to it would not retire it. Pay it down by assigning to the
+                    card.
                   </p>
                   {/* Only worth naming with more than one card: with a single
                       card this list restates the sentence above it. Cards are
@@ -124,9 +134,15 @@ export function CoverOverspentModal({ budgetId, month, onClose }: Props) {
                 <thead>
                   <tr>
                     <th scope="col">Category</th>
-                    <th scope="col" className="cover-modal__col-num">Overspent</th>
-                    <th scope="col" className="cover-modal__col-num">Covering</th>
-                    <th scope="col" className="cover-modal__col-num">Remaining</th>
+                    <th scope="col" className="cover-modal__col-num">
+                      Overspent
+                    </th>
+                    <th scope="col" className="cover-modal__col-num">
+                      Covering
+                    </th>
+                    <th scope="col" className="cover-modal__col-num">
+                      Remaining
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -162,7 +178,9 @@ export function CoverOverspentModal({ budgetId, month, onClose }: Props) {
           <div className="cover-modal__footer">
             <div className="cover-modal__tba-summary">
               <span className="cover-modal__tba-label">TBA after:</span>
-              <span className={`cover-modal__tba-value ${Number(preview.tba_after) >= 0 ? 'positive' : 'negative'}`}>
+              <span
+                className={`cover-modal__tba-value ${Number(preview.tba_after) >= 0 ? 'positive' : 'negative'}`}
+              >
                 {formatMoney(preview.tba_after)}
               </span>
             </div>

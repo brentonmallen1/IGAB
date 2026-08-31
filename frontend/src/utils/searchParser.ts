@@ -169,8 +169,7 @@ function matchDateTokens(tokens: string[], i: number, now: Date): DateTokenMatch
   if (lower in MONTH_NAMES) {
     const month = MONTH_NAMES[lower]
     const yearToken = tokens[i + 1]?.match(/^\d{4}$/) ? Number(tokens[i + 1]) : null
-    const year =
-      yearToken ?? (month > now.getMonth() ? now.getFullYear() - 1 : now.getFullYear())
+    const year = yearToken ?? (month > now.getMonth() ? now.getFullYear() - 1 : now.getFullYear())
     return {
       startDate: toIsoDate(new Date(year, month, 1)),
       endDate: toIsoDate(new Date(year, month + 1, 0)),
@@ -194,7 +193,11 @@ function parseExplicitDay(s: string, now: Date): Date | null {
 
   const us = s.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2}|\d{4}))?$/)
   if (us) {
-    const year = us[3] ? (us[3].length === 2 ? 2000 + Number(us[3]) : Number(us[3])) : now.getFullYear()
+    const year = us[3]
+      ? us[3].length === 2
+        ? 2000 + Number(us[3])
+        : Number(us[3])
+      : now.getFullYear()
     return validDate(year, Number(us[1]) - 1, Number(us[2]))
   }
   return null
@@ -211,8 +214,18 @@ interface DateSpan {
 }
 
 const MONTH_LABELS = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
 ]
 
 /**
@@ -265,7 +278,11 @@ function resolveDateSpan(text: string, now: Date): DateSpan | null {
     // The most recent occurrence, matching how a bare month name reads
     // everywhere else: a month later than this one means last year.
     const y = m > now.getMonth() ? now.getFullYear() - 1 : now.getFullYear()
-    return { start: new Date(y, m, 1), end: new Date(y, m + 1, 0), label: `${MONTH_LABELS[m]} ${y}` }
+    return {
+      start: new Date(y, m, 1),
+      end: new Date(y, m + 1, 0),
+      label: `${MONTH_LABELS[m]} ${y}`,
+    }
   }
 
   return null
@@ -534,8 +551,10 @@ function parseSegment(
       else if (amountExpr?.startsWith('<')) result.amountMax = parseFloat(amountExpr.slice(1))
       else {
         const range = amountExpr?.match(/^([\d.]+)-([\d.]+)$/)
-        if (range) { result.amountMin = parseFloat(range[1]); result.amountMax = parseFloat(range[2]) }
-        else {
+        if (range) {
+          result.amountMin = parseFloat(range[1])
+          result.amountMax = parseFloat(range[2])
+        } else {
           // Bare value is an exact amount — a zero-width range.
           // A TRAILING dot is accepted ("12." → 12): it is a half-typed
           // amount, and rejecting it blanked the register mid-keystroke,
@@ -546,8 +565,10 @@ function parseSegment(
           const exact = amountExpr?.match(/^\$?([\d,]+\.?\d*|[\d,]*\.\d+)$/)
           if (exact) {
             const value = parseFloat(exact[1].replace(/,/g, ''))
-            if (!isNaN(value)) { result.amountMin = value; result.amountMax = value }
-            else recognised = false
+            if (!isNaN(value)) {
+              result.amountMin = value
+              result.amountMax = value
+            } else recognised = false
           } else recognised = false
         }
       }
@@ -810,24 +831,40 @@ export const SEARCH_SUGGESTIONS = [
   { syntax: 'is: inflow ', description: 'Money in (positive amounts)' },
   { syntax: 'is: outflow ', description: 'Money out (negative amounts)' },
   { syntax: 'is: transfer ', description: 'Transfers between accounts' },
-  { syntax: 'is: unpaired ', description: "Transfers whose other side never arrived" },
+  { syntax: 'is: unpaired ', description: 'Transfers whose other side never arrived' },
   { syntax: 'has: attachment ', description: 'Transactions with an image attached' },
   { syntax: 'NOT has: attachment ', description: 'Transactions without an image' },
   { syntax: 'category:', description: 'Filter by category name' },
   { syntax: 'payee:', description: 'Filter by payee name' },
-  { syntax: 'amount: ', description: 'Exact amount or range (amount: 12.34, amount: 10-20) — typing 12.34 alone works too' },
+  {
+    syntax: 'amount: ',
+    description:
+      'Exact amount or range (amount: 12.34, amount: 10-20) — typing 12.34 alone works too',
+  },
   { syntax: 'amount:>', description: 'Amount greater than (e.g. amount:>100)' },
   { syntax: 'amount:<', description: 'Amount less than (e.g. amount:<50)' },
   { syntax: 'date: ', description: 'A day, month or year (date: 3/15, date: 2025-03, date: 2025)' },
   { syntax: 'date: 2025-03', description: 'A whole month — or a whole year with date: 2025' },
-  { syntax: 'date: march..june', description: 'A range between any two spans (also 3/1-3/15, 2024-2025)' },
+  {
+    syntax: 'date: march..june',
+    description: 'A range between any two spans (also 3/1-3/15, 2024-2025)',
+  },
   { syntax: 'date:>', description: 'On or after a day, month or year (e.g. date:>2025-03)' },
   { syntax: 'date:<', description: 'On or before a day, month or year (e.g. date:<3/15)' },
   { syntax: 'today ', description: 'Dated today (also: yesterday, last week, last month)' },
   { syntax: 'last month ', description: 'Dated in the previous calendar month' },
-  { syntax: 'march ', description: 'Dated in a month (add a year: march 2025, or a range: jan-mar)' },
-  { syntax: 'OR', description: 'Combine filters with OR logic (e.g. is: unapproved OR is: uncategorized)' },
-  { syntax: 'NOT is: pending ', description: 'Exclude pending transactions (global, works with OR)' },
+  {
+    syntax: 'march ',
+    description: 'Dated in a month (add a year: march 2025, or a range: jan-mar)',
+  },
+  {
+    syntax: 'OR',
+    description: 'Combine filters with OR logic (e.g. is: unapproved OR is: uncategorized)',
+  },
+  {
+    syntax: 'NOT is: pending ',
+    description: 'Exclude pending transactions (global, works with OR)',
+  },
   { syntax: 'NOT is: transfer ', description: 'Exclude transfers' },
 ]
 

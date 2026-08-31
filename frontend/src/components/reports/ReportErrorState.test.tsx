@@ -49,16 +49,12 @@ describe('ReportErrorState', () => {
   })
 
   it('shows the server message when there is one worth showing', () => {
-    render(
-      <ReportErrorState onRetry={vi.fn()} error={httpError(422, 'Unknown group by')} />
-    )
+    render(<ReportErrorState onRetry={vi.fn()} error={httpError(422, 'Unknown group by')} />)
     expect(screen.getByText('Unknown group by')).toBeInTheDocument()
   })
 
   it('swallows FastAPI boilerplate rather than repeating it', () => {
-    render(
-      <ReportErrorState onRetry={vi.fn()} error={httpError(500, 'Internal Server Error')} />
-    )
+    render(<ReportErrorState onRetry={vi.fn()} error={httpError(500, 'Internal Server Error')} />)
     expect(screen.queryByText('Internal Server Error')).not.toBeInTheDocument()
   })
 

@@ -44,11 +44,12 @@ export function DeleteCategoryModal({ budgetId, target, month, onClose, onDelete
   const [mode, setMode] = useState<'move' | 'uncategorize'>('move')
   const { formatMoney } = useFormatters()
 
-  const { data: preview, isLoading, isError, refetch } = useCategoryDeletePreview(
-    budgetId,
-    target,
-    month
-  )
+  const {
+    data: preview,
+    isLoading,
+    isError,
+    refetch,
+  } = useCategoryDeletePreview(budgetId, target, month)
   const { data: categories = [] } = useCategories(budgetId)
   const { data: groups = [] } = useCategoryGroups(budgetId)
   const deleteCategories = useDeleteCategories(budgetId)
@@ -216,9 +217,8 @@ export function DeleteCategoryModal({ budgetId, target, month, onClose, onDelete
                   <span>
                     <strong>Move them to another category</strong>
                     <em>
-                      Keeps this spending in reports, under the category you pick — and the
-                      money that covered it moves too, so that category&rsquo;s balance is not
-                      affected.
+                      Keeps this spending in reports, under the category you pick — and the money
+                      that covered it moves too, so that category&rsquo;s balance is not affected.
                     </em>
                   </span>
                 </label>

@@ -65,7 +65,9 @@
   border-radius: var(--border-radius-sm);
   text-transform: none;
   letter-spacing: 0;
-  transition: color 0.15s, background-color 0.15s;
+  transition:
+    color 0.15s,
+    background-color 0.15s;
 }
 
 .budget-table__header-btn:hover {

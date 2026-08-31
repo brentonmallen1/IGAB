@@ -88,8 +88,12 @@ export function useCreateCategoryGroup(budgetId: string) {
 export function useCreateCategory(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: { category_group_id: string; name: string; subtitle?: string; note?: string }) =>
-      apiClient.post<Category>(`/${budgetId}/categories`, data).then((r) => r.data),
+    mutationFn: (data: {
+      category_group_id: string
+      name: string
+      subtitle?: string
+      note?: string
+    }) => apiClient.post<Category>(`/${budgetId}/categories`, data).then((r) => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: [ROOT.categories, budgetId] })
     },
@@ -144,7 +148,9 @@ export function useReorderCategoryGroups(budgetId: string) {
       apiClient.post(`/${budgetId}/category-groups/reorder`, { group_ids: groupIds }),
     onMutate: async (groupIds) => {
       await qc.cancelQueries({ queryKey: key })
-      const previous: CachedLists<CategoryGroup> = qc.getQueriesData<CategoryGroup[]>({ queryKey: key })
+      const previous: CachedLists<CategoryGroup> = qc.getQueriesData<CategoryGroup[]>({
+        queryKey: key,
+      })
       qc.setQueriesData<CategoryGroup[]>({ queryKey: key }, (cached) =>
         cached ? reorderMembers(cached, () => true, groupIds) : cached
       )
@@ -174,7 +180,9 @@ export function useReorderCategories(budgetId: string) {
       await qc.cancelQueries({ queryKey: key })
       const previous: CachedLists<Category> = qc.getQueriesData<Category[]>({ queryKey: key })
       qc.setQueriesData<Category[]>({ queryKey: key }, (cached) =>
-        cached ? reorderMembers(cached, (c) => c.category_group_id === groupId, categoryIds) : cached
+        cached
+          ? reorderMembers(cached, (c) => c.category_group_id === groupId, categoryIds)
+          : cached
       )
       return { previous }
     },
@@ -264,10 +272,9 @@ export function useArchivedCategories(budgetId: string | null, month: string, en
   return useQuery({
     queryKey: [ROOT.archivedCategories, budgetId, month],
     queryFn: async () => {
-      const { data } = await apiClient.get<ArchivedCategory[]>(
-        `/${budgetId}/categories/archived`,
-        { params: { month } }
-      )
+      const { data } = await apiClient.get<ArchivedCategory[]>(`/${budgetId}/categories/archived`, {
+        params: { month },
+      })
       return data
     },
     enabled: !!budgetId && enabled,
@@ -311,10 +318,10 @@ function useArchiveMutation(budgetId: string, path: 'archive' | 'unarchive', don
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async ({ ids, month }: { ids: string[]; month: string }) => {
-      const { data } = await apiClient.post<ArchivePreview>(
-        `/${budgetId}/categories/${path}`,
-        { category_ids: ids, month }
-      )
+      const { data } = await apiClient.post<ArchivePreview>(`/${budgetId}/categories/${path}`, {
+        category_ids: ids,
+        month,
+      })
       return data
     },
     onSuccess: async () => {
@@ -373,8 +380,7 @@ export function useUnarchiveCategoryGroup(budgetId: string) {
 /** What the delete dialog is about to act on: a selection of categories, or a
  *  whole group (which cascades over the categories inside it). */
 export type DeleteTarget =
-  | { kind: 'categories'; ids: string[]; name: string }
-  | { kind: 'group'; id: string; name: string }
+  { kind: 'categories'; ids: string[]; name: string } | { kind: 'group'; id: string; name: string }
 
 /** The one definition of the delete-preview fetch — the modal's query and the
  *  flow hook's skip-the-dialog prefetch both use it, so they cannot disagree

@@ -5,7 +5,6 @@ movement, two rows that nothing links. The assertions are on Ready to Assign,
 because that is where each of them was found.
 """
 
-import uuid
 from datetime import date
 from decimal import Decimal
 
@@ -60,9 +59,7 @@ async def _two_unpaired_legs(session, budget, checking, partner, envelope, amoun
     out = await create_transaction(
         session, budget, checking, amount=Decimal(f"-{amount}"), txn_date=MOVED, category=envelope
     )
-    inn = await create_transaction(
-        session, budget, partner, amount=Decimal(amount), txn_date=MOVED
-    )
+    inn = await create_transaction(session, budget, partner, amount=Decimal(amount), txn_date=MOVED)
     return out, inn
 
 
@@ -175,9 +172,7 @@ class TestLinkedLegsLookHandMade:
         )
         out, inn = await _two_unpaired_legs(db_session, budget, checking, savings, envelope)
         services = make_services(db_session)
-        await services.transactions.link_legs(
-            budget.id, out, inn, clear_categories=[out.id]
-        )
+        await services.transactions.link_legs(budget.id, out, inn, clear_categories=[out.id])
         await db_session.refresh(out)
         await db_session.refresh(inn)
         assert out.transfer_id == inn.id and inn.transfer_id == out.id

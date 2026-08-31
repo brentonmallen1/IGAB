@@ -10,8 +10,11 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { AmountInput } from './AmountInput'
 
-function Harness({ initial = '', baseCents = null as number | null, onKeyDown = undefined as
-  ((e: React.KeyboardEvent<HTMLInputElement>) => void) | undefined }) {
+function Harness({
+  initial = '',
+  baseCents = null as number | null,
+  onKeyDown = undefined as ((e: React.KeyboardEvent<HTMLInputElement>) => void) | undefined,
+}) {
   const [value, setValue] = useState(initial)
   return (
     <AmountInput

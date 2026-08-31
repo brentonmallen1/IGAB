@@ -9,11 +9,6 @@ These are the served-field checklist from test_offbudget_categories.py, applied
 to `is_assignable` and `is_categorizable`.
 """
 
-import uuid
-from decimal import Decimal
-
-import pytest
-
 from igab.api.v1.schemas.category import CategoryResponse
 from igab.repositories.category_repo import CategoryGroupRepository, CategoryRepository
 
@@ -23,7 +18,6 @@ from .factories import (
     create_category,
     create_category_group,
     create_user,
-    make_services,
 )
 
 
@@ -119,9 +113,7 @@ class TestEveryPathCarriesTheFlags:
             assert category.is_assignable is not None
             assert category.is_categorizable is not None
 
-    async def test_every_mutating_endpoint_returns_a_serializable_row(
-        self, db_session, api_client
-    ):
+    async def test_every_mutating_endpoint_returns_a_serializable_row(self, db_session, api_client):
         """The check that matters: the endpoints build their response from
         get_with_tags, not from get, and that method had to learn the
         expressions too. The fields are required, so a path that drops one
@@ -177,7 +169,6 @@ class TestTheServedFlagIsTheOnlyRule:
     async def test_the_assign_endpoint_acts_on_exactly_the_assignable_set(self, db_session):
         """What a picker offers and what Fill/Assign touches must be one set."""
         budget = await _budget(db_session)
-        services = make_services(db_session)
         everyday = await create_category_group(db_session, budget, "Everyday")
         income = await _system_group(db_session, budget)
         hidden_group = await create_category_group(db_session, budget, "Archive")

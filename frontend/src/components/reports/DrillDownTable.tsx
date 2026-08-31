@@ -29,9 +29,19 @@ export function DrillDownTable({ rows, total, onRowClick, amountLabel = 'Amount'
           <tr>
             <th scope="col">Name</th>
             {rows.some((r) => r.subName) && <th scope="col">Group</th>}
-            <th scope="col" className="ddt__num">{amountLabel}</th>
-            {rows.some((r) => r.pct !== undefined) && <th scope="col" className="ddt__num">%</th>}
-            {rows.some((r) => r.extra) && <th scope="col" className="ddt__num">Extra</th>}
+            <th scope="col" className="ddt__num">
+              {amountLabel}
+            </th>
+            {rows.some((r) => r.pct !== undefined) && (
+              <th scope="col" className="ddt__num">
+                %
+              </th>
+            )}
+            {rows.some((r) => r.extra) && (
+              <th scope="col" className="ddt__num">
+                Extra
+              </th>
+            )}
           </tr>
         </thead>
         <tbody>

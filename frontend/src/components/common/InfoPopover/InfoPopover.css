@@ -15,7 +15,9 @@
   color: var(--text-muted);
   cursor: pointer;
   padding: 0;
-  transition: color 0.12s, border-color 0.12s;
+  transition:
+    color 0.12s,
+    border-color 0.12s;
   flex-shrink: 0;
 }
 

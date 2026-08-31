@@ -140,8 +140,7 @@ export function MultiMonthSheet({ budgetId }: Props) {
       group: g,
       cats: categories.filter(
         (c) =>
-          c.category_group_id === g.id &&
-          (query === '' || c.name.toLowerCase().includes(query))
+          c.category_group_id === g.id && (query === '' || c.name.toLowerCase().includes(query))
       ),
     }))
     .filter(({ cats }) => cats.length > 0)
@@ -234,7 +233,9 @@ export function MultiMonthSheet({ budgetId }: Props) {
                 return (
                   <th scope="colgroup" colSpan={3} key={m} className="mm-sheet__month-header">
                     <span className="mm-sheet__month-name">{formatMonth(m)}</span>
-                    <span className={`mm-sheet__month-tba tabular ${data ? moneyClass(Number(data.to_be_assigned)) : ''}`}>
+                    <span
+                      className={`mm-sheet__month-tba tabular ${data ? moneyClass(Number(data.to_be_assigned)) : ''}`}
+                    >
                       {data ? `${formatMoney(Number(data.to_be_assigned))} to assign` : '…'}
                     </span>
                   </th>
@@ -242,12 +243,20 @@ export function MultiMonthSheet({ budgetId }: Props) {
               })}
             </tr>
             <tr className="mm-sheet__label-row">
-              <th scope="col" className="mm-sheet__cat-header">Category</th>
+              <th scope="col" className="mm-sheet__cat-header">
+                Category
+              </th>
               {months.map((m) => (
                 <Fragment key={m}>
-                  <th scope="col" className="mm-sheet__col-label mm-sheet__col-label--first">Assigned</th>
-                  <th scope="col" className="mm-sheet__col-label">Activity</th>
-                  <th scope="col" className="mm-sheet__col-label">Available</th>
+                  <th scope="col" className="mm-sheet__col-label mm-sheet__col-label--first">
+                    Assigned
+                  </th>
+                  <th scope="col" className="mm-sheet__col-label">
+                    Activity
+                  </th>
+                  <th scope="col" className="mm-sheet__col-label">
+                    Available
+                  </th>
                 </Fragment>
               ))}
             </tr>
@@ -256,7 +265,9 @@ export function MultiMonthSheet({ budgetId }: Props) {
             {visibleGroups.map(({ group, cats }) => (
               <Fragment key={group.id}>
                 <tr className="mm-sheet__group-row">
-                  <th scope="row" className="mm-sheet__group-name">{group.name}</th>
+                  <th scope="row" className="mm-sheet__group-name">
+                    {group.name}
+                  </th>
                   {months.map((m, i) => {
                     const s = subtotal(cats, i)
                     return (

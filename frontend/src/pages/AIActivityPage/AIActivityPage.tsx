@@ -143,8 +143,7 @@ function JobRow({ job, budgetId }: { job: AIJob; budgetId: string }) {
       await reprocess.mutateAsync(job.id)
       toast.success('Reprocessing with current model — check back shortly')
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data
-        ?.detail
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
       toast.error(detail ?? 'Reprocess failed')
     }
   }
@@ -192,9 +191,7 @@ function JobRow({ job, budgetId }: { job: AIJob; budgetId: string }) {
             {job.kind === 'receipt' ? 'Receipt scan' : 'Text entry'}
           </span>
           {job.model && <span className="ai-activity__model">{job.model}</span>}
-          <span className="ai-activity__time">
-            {formatDateTime(job.created_at)}
-          </span>
+          <span className="ai-activity__time">{formatDateTime(job.created_at)}</span>
           {/* From the first attempt, not only retries: a job that failed once
               and is waiting out its backoff looked idle, which read as
               "it doesn't retry". */}
@@ -214,16 +211,16 @@ function JobRow({ job, budgetId }: { job: AIJob; budgetId: string }) {
           )}
         </div>
         {typeof reason === 'string' && reason && (
-          <div className="ai-activity__reason" title="The model's stated reason for its category choice">
+          <div
+            className="ai-activity__reason"
+            title="The model's stated reason for its category choice"
+          >
             {reason}
           </div>
         )}
         {job.error && (
           <div className="ai-activity__error">
-            <button
-              className="ai-activity__error-toggle"
-              onClick={() => setErrorOpen((v) => !v)}
-            >
+            <button className="ai-activity__error-toggle" onClick={() => setErrorOpen((v) => !v)}>
               {errorOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
               Error details
             </button>
@@ -258,10 +255,7 @@ function JobRow({ job, budgetId }: { job: AIJob; budgetId: string }) {
             point: "is this a structured-output issue or something else". */}
         {typeof job.result?.raw_response === 'string' && job.result.raw_response !== '' && (
           <div className="ai-activity__response">
-            <button
-              className="ai-activity__response-toggle"
-              onClick={() => setRawOpen((v) => !v)}
-            >
+            <button className="ai-activity__response-toggle" onClick={() => setRawOpen((v) => !v)}>
               {rawOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
               Raw response
             </button>
@@ -340,10 +334,7 @@ function JobRow({ job, budgetId }: { job: AIJob; budgetId: string }) {
       </div>
 
       {viewerOpen && viewerAttachment && (
-        <AttachmentLightbox
-          attachment={viewerAttachment}
-          onClose={() => setViewerOpen(false)}
-        />
+        <AttachmentLightbox attachment={viewerAttachment} onClose={() => setViewerOpen(false)} />
       )}
     </div>
   )
@@ -362,7 +353,6 @@ export function AIActivityPage() {
 
   const jobs = useMemo(() => data?.jobs ?? [], [data])
   const total = data?.total_count ?? 0
-
 
   return (
     <div className="ai-activity page-fill">
@@ -389,15 +379,17 @@ export function AIActivityPage() {
       </div>
 
       <p className="ai-activity__desc">
-        Every receipt scan and AI text entry is logged here — the permanent record of what
-        the AI created, so nothing lands in your budget unseen.
+        Every receipt scan and AI text entry is logged here — the permanent record of what the AI
+        created, so nothing lands in your budget unseen.
       </p>
 
       {isLoading ? (
         <div className="ai-activity__empty">Loading…</div>
       ) : jobs.length === 0 ? (
         <div className="ai-activity__empty">
-          {statusFilter ? 'No jobs with this status.' : 'No AI activity yet. Scan a receipt from the mobile quick-add to get started.'}
+          {statusFilter
+            ? 'No jobs with this status.'
+            : 'No AI activity yet. Scan a receipt from the mobile quick-add to get started.'}
         </div>
       ) : (
         <div className="ai-activity__list scroll-fill">
@@ -409,7 +401,10 @@ export function AIActivityPage() {
 
       {total > PAGE_SIZE && (
         <div className="ai-activity__pager">
-          <button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}>
+          <button
+            disabled={offset === 0}
+            onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
+          >
             Newer
           </button>
           <span>

@@ -517,11 +517,7 @@ export interface CategoryHistory {
 }
 
 export type AutoAssignAction =
-  | 'last_month_assigned'
-  | 'last_month_spent'
-  | 'average_assigned'
-  | 'average_spent'
-  | 'reset'
+  'last_month_assigned' | 'last_month_spent' | 'average_assigned' | 'average_spent' | 'reset'
 
 /** Bulk strategies offered by the TBA hero's Assign dropdown */
 export type AssignStrategy =

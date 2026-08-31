@@ -14,7 +14,14 @@ interface Props {
 }
 
 /** Desktop positioning + dismiss wrapper around MoveMoneyForm (mobile uses a BottomSheet). */
-export function MoveMoneyPopover({ budgetId, month, category, available, position, onClose }: Props) {
+export function MoveMoneyPopover({
+  budgetId,
+  month,
+  category,
+  available,
+  position,
+  onClose,
+}: Props) {
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {

@@ -46,7 +46,6 @@ async def _savings_category(session, budget, name: str, *, tagged: bool = True):
     return category
 
 
-
 async def _contribute(session, budget, from_account, to_account, category, amount, when):
     """A retirement contribution as IGAB actually records one.
 
@@ -57,8 +56,13 @@ async def _contribute(session, budget, from_account, to_account, category, amoun
     """
     inflow = await create_transaction(session, budget, to_account, amount, when)
     outflow = await create_transaction(
-        session, budget, from_account, f"-{amount}", when,
-        category=category, transfer_id=inflow.id,
+        session,
+        budget,
+        from_account,
+        f"-{amount}",
+        when,
+        category=category,
+        transfer_id=inflow.id,
     )
     inflow.transfer_id = outflow.id
     await session.flush()
@@ -156,7 +160,12 @@ class TestEssentialExpenses:
         cat = await create_category(db_session, budget, group, "Rent")
         for offset in (5, 35, 65):
             await create_transaction(
-                db_session, budget, account, "-1200.00", TODAY - timedelta(days=offset), category=cat
+                db_session,
+                budget,
+                account,
+                "-1200.00",
+                TODAY - timedelta(days=offset),
+                category=cat,
             )
 
         found = await GuideDetection(db_session).essential_expenses(budget.id)
@@ -238,13 +247,17 @@ class TestDebtBands:
     async def test_high_interest_counts_debts_at_ten_or_above(self, db_session):
         budget = await _budget(db_session)
         card = await create_liability(
-            db_session, budget, "Visa",
+            db_session,
+            budget,
+            "Visa",
             liability_type="credit_card",
             interest_rate=Decimal("22.9000"),
             manual_balance=Decimal("3410.00"),
         )
         await create_liability(
-            db_session, budget, "Car",
+            db_session,
+            budget,
+            "Car",
             liability_type="auto",
             interest_rate=Decimal("6.4000"),
             manual_balance=Decimal("14200.00"),
@@ -260,8 +273,11 @@ class TestDebtBands:
         # The source chart says "10% or higher", so the boundary is inclusive.
         budget = await _budget(db_session)
         await create_liability(
-            db_session, budget, "Store card",
-            interest_rate=Decimal("10.0000"), manual_balance=Decimal("500.00"),
+            db_session,
+            budget,
+            "Store card",
+            interest_rate=Decimal("10.0000"),
+            manual_balance=Decimal("500.00"),
         )
         found = await GuideDetection(db_session).high_interest_debt(budget.id)
         assert found.value == Decimal("500.00")
@@ -271,8 +287,12 @@ class TestDebtBands:
         # rate is cheap would drop a 26% card out of the roadmap's key step.
         budget = await _budget(db_session)
         await create_liability(
-            db_session, budget, "Unknown card",
-            interest_rate=None, minimum_payment=None, manual_balance=Decimal("900.00"),
+            db_session,
+            budget,
+            "Unknown card",
+            interest_rate=None,
+            minimum_payment=None,
+            manual_balance=Decimal("900.00"),
         )
 
         found = await GuideDetection(db_session).high_interest_debt(budget.id)
@@ -284,15 +304,25 @@ class TestDebtBands:
     async def test_moderate_band_is_four_up_to_but_excluding_ten(self, db_session):
         budget = await _budget(db_session)
         car = await create_liability(
-            db_session, budget, "Car", liability_type="auto",
-            interest_rate=Decimal("6.4000"), manual_balance=Decimal("14200.00"),
+            db_session,
+            budget,
+            "Car",
+            liability_type="auto",
+            interest_rate=Decimal("6.4000"),
+            manual_balance=Decimal("14200.00"),
         )
         await create_liability(
-            db_session, budget, "Cheap", interest_rate=Decimal("3.0000"),
+            db_session,
+            budget,
+            "Cheap",
+            interest_rate=Decimal("3.0000"),
             manual_balance=Decimal("100.00"),
         )
         await create_liability(
-            db_session, budget, "Pricey", interest_rate=Decimal("10.0000"),
+            db_session,
+            budget,
+            "Pricey",
+            interest_rate=Decimal("10.0000"),
             manual_balance=Decimal("100.00"),
         )
 
@@ -303,8 +333,12 @@ class TestDebtBands:
     async def test_moderate_band_leaves_out_an_unmanaged_mortgage(self, db_session):
         budget = await _budget(db_session)
         await create_liability(
-            db_session, budget, "Mortgage", liability_type="mortgage",
-            interest_rate=Decimal("5.5000"), manual_balance=Decimal("250000.00"),
+            db_session,
+            budget,
+            "Mortgage",
+            liability_type="mortgage",
+            interest_rate=Decimal("5.5000"),
+            manual_balance=Decimal("250000.00"),
         )
 
         found = await GuideDetection(db_session).moderate_interest_debt(budget.id)
@@ -321,7 +355,9 @@ class TestDebtBands:
         )
         await create_transaction(db_session, budget, account, "-250000.00", TODAY)
         await create_liability(
-            db_session, budget, "Home loan",
+            db_session,
+            budget,
+            "Home loan",
             liability_type=None,
             linked_account_id=account.id,
             interest_rate=Decimal("5.5000"),
@@ -337,8 +373,11 @@ class TestDebtBands:
         )
         await create_transaction(db_session, budget, account, "-1200.00", TODAY)
         lia = await create_liability(
-            db_session, budget, "Visa",
-            liability_type=None, linked_account_id=account.id,
+            db_session,
+            budget,
+            "Visa",
+            liability_type=None,
+            linked_account_id=account.id,
             interest_rate=Decimal("22.9000"),
         )
 
@@ -349,8 +388,11 @@ class TestDebtBands:
     async def test_a_cleared_debt_is_not_counted(self, db_session):
         budget = await _budget(db_session)
         await create_liability(
-            db_session, budget, "Paid off",
-            interest_rate=Decimal("19.0000"), manual_balance=Decimal("0"),
+            db_session,
+            budget,
+            "Paid off",
+            interest_rate=Decimal("19.0000"),
+            manual_balance=Decimal("0"),
         )
         found = await GuideDetection(db_session).high_interest_debt(budget.id)
         assert found.met is False
@@ -373,12 +415,13 @@ class TestDebtBands:
             db_session, budget, "Visa", account_type="credit_card", on_budget=True
         )
         await create_transaction(db_session, budget, account, "-1200.00", TODAY)
-        await create_transaction(
-            db_session, budget, account, "-300.00", TODAY, cleared="pending"
-        )
+        await create_transaction(db_session, budget, account, "-300.00", TODAY, cleared="pending")
         await create_liability(
-            db_session, budget, "Visa",
-            liability_type=None, linked_account_id=account.id,
+            db_session,
+            budget,
+            "Visa",
+            liability_type=None,
+            linked_account_id=account.id,
             interest_rate=Decimal("22.9000"),
         )
 
@@ -393,8 +436,11 @@ class TestDebtBands:
         )
         await create_transaction(db_session, budget, account, "50.00", TODAY)
         await create_liability(
-            db_session, budget, "Visa",
-            liability_type=None, linked_account_id=account.id,
+            db_session,
+            budget,
+            "Visa",
+            liability_type=None,
+            linked_account_id=account.id,
             interest_rate=Decimal("22.9000"),
         )
 
@@ -411,9 +457,13 @@ class TestDebtBands:
             db_session, budget, "Store card", account_type="credit_card", on_budget=True
         )
         await create_liability(
-            db_session, budget, "Store card",
-            liability_type=None, linked_account_id=account.id,
-            interest_rate=Decimal("26.0000"), manual_balance=Decimal("890.00"),
+            db_session,
+            budget,
+            "Store card",
+            liability_type=None,
+            linked_account_id=account.id,
+            interest_rate=Decimal("26.0000"),
+            manual_balance=Decimal("890.00"),
         )
 
         found = await GuideDetection(db_session).high_interest_debt(budget.id)
@@ -426,12 +476,13 @@ class TestDebtBands:
         )
         await create_transaction(db_session, budget, account, "-1200.00", TODAY)
         await create_transaction(db_session, budget, account, "25.00", TODAY)
-        await create_transaction(
-            db_session, budget, account, "-300.00", TODAY, cleared="pending"
-        )
+        await create_transaction(db_session, budget, account, "-300.00", TODAY, cleared="pending")
         lia = await create_liability(
-            db_session, budget, "Visa",
-            liability_type=None, linked_account_id=account.id,
+            db_session,
+            budget,
+            "Visa",
+            liability_type=None,
+            linked_account_id=account.id,
             interest_rate=Decimal("22.9000"),
         )
 
@@ -477,7 +528,9 @@ class TestRetirementContributions:
         )
         group = await create_category_group(db_session, budget, "Saving")
         cat = await create_category(db_session, budget, group, "Retirement")
-        await create_transaction(db_session, budget, checking, "50000.00", TODAY - timedelta(days=30))
+        await create_transaction(
+            db_session, budget, checking, "50000.00", TODAY - timedelta(days=30)
+        )
         await _contribute(
             db_session, budget, checking, retirement, cat, "6000.00", TODAY - timedelta(days=20)
         )
@@ -497,7 +550,9 @@ class TestRetirementContributions:
         )
         group = await create_category_group(db_session, budget, "Saving")
         cat = await create_category(db_session, budget, group, "Retirement")
-        await create_transaction(db_session, budget, checking, "50000.00", TODAY - timedelta(days=30))
+        await create_transaction(
+            db_session, budget, checking, "50000.00", TODAY - timedelta(days=30)
+        )
         await _contribute(
             db_session, budget, checking, retirement, cat, "6000.00", TODAY - timedelta(days=400)
         )

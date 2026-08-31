@@ -55,8 +55,8 @@ export function ToolsPanel() {
       </Surface>
 
       <p className="guide-tools__note">
-        Plain arithmetic you can check, nothing more — no projected market returns, no tax
-        modeling, no advice. Nothing you type here is saved.
+        Plain arithmetic you can check, nothing more — no projected market returns, no tax modeling,
+        no advice. Nothing you type here is saved.
       </p>
     </section>
   )

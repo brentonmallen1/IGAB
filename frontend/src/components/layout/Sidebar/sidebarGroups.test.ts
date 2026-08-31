@@ -149,11 +149,10 @@ describe('buildLiabilityRows', () => {
     const orphanTracker = liab({ linked_account_id: 'missing-acct', current_balance: 1000 })
     const unmanaged = liab({ current_balance: 855 })
 
-    const rows = buildLiabilityRows([linkedAccount, bareAccount], [
-      carTracker,
-      orphanTracker,
-      unmanaged,
-    ])
+    const rows = buildLiabilityRows(
+      [linkedAccount, bareAccount],
+      [carTracker, orphanTracker, unmanaged]
+    )
     expect(rows).toHaveLength(4)
     expect(liabilityHeaderTotal(rows)).toBe(-9480 - 420 - 1000 - 855)
   })
@@ -307,7 +306,11 @@ describe('buildLiabilityRows with a companion on every liability account', () =>
       classification: 'liability',
       balance: -420,
     })
-    const companion = liab({ name: 'Sapphire Visa', linked_account_id: 'visa', current_balance: 420 })
+    const companion = liab({
+      name: 'Sapphire Visa',
+      linked_account_id: 'visa',
+      current_balance: 420,
+    })
     const { offBudgetLiabilityAccounts } = partitionAccounts([visa])
 
     const rows = buildLiabilityRows(offBudgetLiabilityAccounts, [companion], new Set(['visa']))
@@ -487,9 +490,9 @@ describe('isRowActive', () => {
     // Both tables are UUIDs, but nothing stops them colliding in a fixture —
     // and a row must answer to its own kind of page only.
     expect(isRowActive(accountTarget('same'), null, onLiability('same'))).toBe(false)
-    expect(
-      isRowActive({ kind: 'liability', liabilityId: 'same' }, null, onAccount('same'))
-    ).toBe(false)
+    expect(isRowActive({ kind: 'liability', liabilityId: 'same' }, null, onAccount('same'))).toBe(
+      false
+    )
   })
 
   it('lights nothing when the URL names no account or liability', () => {

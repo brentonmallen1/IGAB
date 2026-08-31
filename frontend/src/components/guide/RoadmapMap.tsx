@@ -142,9 +142,7 @@ export function RoadmapMap() {
       detailOpen={expandedDetails.includes(selectedNode.node.id)}
       onToggleDetail={() => toggleDetail(selectedNode.node.id)}
       signal={selectedNode.node.signal ? guide.signals.get(selectedNode.node.signal) : undefined}
-      concept={
-        selectedNode.node.signal ? guide.concepts.get(selectedNode.node.signal) : undefined
-      }
+      concept={selectedNode.node.signal ? guide.concepts.get(selectedNode.node.signal) : undefined}
       onCorrectSignal={
         selectedNode.node.signal
           ? () => {
@@ -279,9 +277,7 @@ export function RoadmapMap() {
                   {first && (
                     <span className="flow-node__step">
                       Step {n.stage.step}
-                      {leds.get(n.stage.id) && (
-                        <StepLed reason={leds.get(n.stage.id)!.title} />
-                      )}
+                      {leds.get(n.stage.id) && <StepLed reason={leds.get(n.stage.id)!.title} />}
                       <MarkGlyph mark={guide.progress[n.stage.id]} />
                     </span>
                   )}
@@ -386,7 +382,13 @@ function EdgeLabel({ edge, a, b }: { edge: FlowEdge; a: Pt; b: Pt }) {
   const sameRow = a.y === b.y
   const right = bMidX > aMidX
   // Sit just clear of the box the arrow leaves, on the side it leaves from.
-  const x = sameRow ? (right ? a.x + NODE_W + 6 : b.x + NODE_W + 6) : right ? a.x + NODE_W + 8 : aMidX + 8
+  const x = sameRow
+    ? right
+      ? a.x + NODE_W + 6
+      : b.x + NODE_W + 6
+    : right
+      ? a.x + NODE_W + 8
+      : aMidX + 8
   const y = sameRow ? a.y + NODE_H / 2 - 8 : right ? a.y + NODE_H / 2 - 8 : a.y + NODE_H + 14
   return (
     <text className="flow__wire-label" x={x} y={y}>

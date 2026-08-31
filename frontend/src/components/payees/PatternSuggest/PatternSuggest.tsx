@@ -1,5 +1,11 @@
 import { Check, X } from 'lucide-react'
-import { claimedNames, compilePattern, matchSpan, testPattern, type ClaimablePayee } from '../../../utils/payeeRegex'
+import {
+  claimedNames,
+  compilePattern,
+  matchSpan,
+  testPattern,
+  type ClaimablePayee,
+} from '../../../utils/payeeRegex'
 import type { PatternCandidate } from './patternCandidates'
 import './PatternSuggest.css'
 

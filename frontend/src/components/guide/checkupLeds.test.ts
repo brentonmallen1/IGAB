@@ -1,7 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import { ROADMAP } from '../../content/roadmap'
 import type { CheckupFinding, FindingKind } from '../../api/guide'
-import { FINDING_STAGES, FINDINGS_SHOWN, ledStages, splitFindings, stagesForFinding } from './checkupLeds'
+import {
+  FINDING_STAGES,
+  FINDINGS_SHOWN,
+  ledStages,
+  splitFindings,
+  stagesForFinding,
+} from './checkupLeds'
 
 function finding(kind: FindingKind, concept_key: string | null = null, rank = 1): CheckupFinding {
   return { kind, rank, concept_key, title: kind, detail: '', value: null, target: null, names: [] }

@@ -5,7 +5,12 @@ import { useBudgetViews } from '../../../api/budgetViews'
 import { categoryOptions } from './categoryOptions'
 import { usePayees } from '../../../api/payees'
 import { useAccounts } from '../../../api/accounts'
-import { resolveGroupBy, useReportStore, TAB_FILTER_SUPPORT, type GroupBy } from '../../../stores/reportStore'
+import {
+  resolveGroupBy,
+  useReportStore,
+  TAB_FILTER_SUPPORT,
+  type GroupBy,
+} from '../../../stores/reportStore'
 import { DateRangePicker } from './DateRangePicker'
 import { MultiSelectCombobox } from './MultiSelectCombobox'
 import type { MultiSelectOption } from './MultiSelectCombobox'
@@ -163,7 +168,12 @@ export function ReportFiltersBar({ budgetId }: Props) {
             />
           )}
           {hasFilters && (
-            <button className="rfb__reset" onClick={resetFilters} type="button" title="Reset filters">
+            <button
+              className="rfb__reset"
+              onClick={resetFilters}
+              type="button"
+              title="Reset filters"
+            >
               <RotateCcw size={13} />
               Reset
             </button>

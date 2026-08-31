@@ -51,8 +51,18 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
   { id: 'guide', label: 'Guide', needsBudget: true },
   { id: 'mobile', label: 'Mobile' },
   { id: 'accounts', label: 'Accounts', needsBudget: true },
-  { id: 'integrity', label: 'Data Integrity', needsBudget: true, keywords: 'health verify audit check' },
-  { id: 'budget-backups', label: 'Budget Backups', needsBudget: true, keywords: 'snapshot export duplicate restore download' },
+  {
+    id: 'integrity',
+    label: 'Data Integrity',
+    needsBudget: true,
+    keywords: 'health verify audit check',
+  },
+  {
+    id: 'budget-backups',
+    label: 'Budget Backups',
+    needsBudget: true,
+    keywords: 'snapshot export duplicate restore download',
+  },
   { id: 'data', label: 'Backups', adminOnly: true, keywords: 'export restore dump download' },
   { id: 'updates', label: 'Updates' },
   { id: 'simplefin', label: 'SimpleFIN' },
@@ -82,7 +92,7 @@ export function visibleSettingsSections({
   sfWarn,
 }: SectionVisibility): VisibleSection[] {
   return SETTINGS_SECTIONS.filter(
-    (section) => (!section.needsBudget || !!budgetId) && (!section.adminOnly || isAdmin),
+    (section) => (!section.needsBudget || !!budgetId) && (!section.adminOnly || isAdmin)
   ).map((section) => ({
     id: section.id,
     label: section.label,

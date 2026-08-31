@@ -91,9 +91,7 @@ async def test_categorized_offbudget_transfer_in_spending_reports(db_session):
     )
 
     # Paying down a tracked mortgage is debt principal, not spending.
-    categories, _ = await reports.spending_by_category(
-        budget.id, TODAY - timedelta(days=30), TODAY
-    )
+    categories, _ = await reports.spending_by_category(budget.id, TODAY - timedelta(days=30), TODAY)
     assert "Housing" not in {c["name"] for c in categories}, (
         "a mortgage payment is not spending — this is the skew derkus reported"
     )

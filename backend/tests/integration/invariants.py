@@ -244,8 +244,7 @@ async def assert_card_reserve_identity(session: AsyncSession, budget_id: uuid.UU
     summary = await budget_service_from(session).get_budget_summary(budget_id, today_utc())
     broken = [c for c in summary.cards if c.reserve_discrepancy != Decimal("0")]
     assert not broken, "card reserve identity broken: " + "; ".join(
-        f"{c.name}: set_aside={c.set_aside} balance={c.balance} "
-        f"unexplained={c.reserve_discrepancy}"
+        f"{c.name}: set_aside={c.set_aside} balance={c.balance} unexplained={c.reserve_discrepancy}"
         for c in broken
     )
 
@@ -325,4 +324,3 @@ async def assert_no_cross_budget_references(session: AsyncSession, budget_id: uu
         f"one of these is reading another budget's data, and nothing in the "
         f"schema would have said so."
     )
-

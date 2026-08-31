@@ -66,7 +66,9 @@ function useUndoToast(
                   // Extract error message from API response if available
                   let msg = 'Could not undo'
                   if (err && typeof err === 'object' && 'response' in err) {
-                    const resp = (err as { response?: { data?: { detail?: { message?: string } | string } } }).response
+                    const resp = (
+                      err as { response?: { data?: { detail?: { message?: string } | string } } }
+                    ).response
                     const detail = resp?.data?.detail
                     if (typeof detail === 'string') msg = detail
                     else if (detail?.message) msg = detail.message

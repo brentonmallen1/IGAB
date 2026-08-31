@@ -64,12 +64,14 @@ jobs:
         working-directory: backend
         run: uv sync --frozen --all-groups
 
-      # Mirrors `just lint-backend`.
+      # Mirrors `just lint-backend`. src/ AND tests/: leaving tests out is how
+      # 110 of them drifted out of format and collected 141 lint errors while
+      # this job stayed green.
       - name: Lint (ruff)
         working-directory: backend
         run: |
-          uv run ruff check src/
-          uv run ruff format --check src/
+          uv run ruff check src/ tests/
+          uv run ruff format --check src/ tests/
 
       # Mirrors `just typecheck-backend`.
       - name: Type check (ty)
@@ -102,6 +104,14 @@ jobs:
       - name: Install dependencies
         working-directory: frontend
         run: npm ci
+
+      # The formatter is a gate, not a suggestion. With no config and no
+      # dependency, `npx prettier` resolved its own defaults and rewrote 472
+      # files into a style nothing here uses; nothing in this job noticed,
+      # because neither tsc nor eslint has an opinion about quotes.
+      - name: Format (prettier)
+        working-directory: frontend
+        run: npm run format:check
 
       - name: Type check
         working-directory: frontend

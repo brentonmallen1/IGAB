@@ -92,7 +92,6 @@ export function useSuggestCategory(budgetId: string) {
   })
 }
 
-
 /** Candidate match patterns for a set of raw names, most specific first.
  *  Empty when the model produced nothing that matches every name. */
 export function useSuggestRegex(budgetId: string) {
@@ -104,15 +103,13 @@ export function useSuggestRegex(budgetId: string) {
   })
 }
 
-
 export function useSpendingInsights(budgetId: string | null, month?: string) {
   return useQuery({
     queryKey: [ROOT.aiInsights, budgetId, month],
     queryFn: async () => {
-      const { data } = await apiClient.get<{ insights: string }>(
-        `/${budgetId}/ai/insights`,
-        { params: month ? { month } : undefined },
-      )
+      const { data } = await apiClient.get<{ insights: string }>(`/${budgetId}/ai/insights`, {
+        params: month ? { month } : undefined,
+      })
       return data.insights
     },
     enabled: !!budgetId,

@@ -233,8 +233,10 @@ async def test_cash_flow_sankey_includes_split_children(db_session):
 
     sankey = await reports.cash_flow_sankey(budget.id, START, TODAY, mode="spent")
     link_values = {(link["source"], link["target"]): link["value"] for link in sankey["links"]}
-    assert link_values.get((f"g_{groceries.category_group_id}", f"c_{groceries.category_group_id}_{groceries.id}")) == Decimal(
-        "60.0"
-    )
-    assert link_values.get((f"g_{gas.category_group_id}", f"c_{gas.category_group_id}_{gas.id}")) == Decimal("40.0")
+    assert link_values.get(
+        (f"g_{groceries.category_group_id}", f"c_{groceries.category_group_id}_{groceries.id}")
+    ) == Decimal("60.0")
+    assert link_values.get(
+        (f"g_{gas.category_group_id}", f"c_{gas.category_group_id}_{gas.id}")
+    ) == Decimal("40.0")
     assert sankey["total_expense"] == Decimal("100.0")

@@ -24,9 +24,11 @@
   cursor: pointer;
 }
 
-.pattern-chip:hover { border-color: var(--color-accent); }
+.pattern-chip:hover {
+  border-color: var(--color-accent);
+}
 
-.pattern-chip[aria-pressed='true'] {
+.pattern-chip[aria-pressed="true"] {
   border-color: var(--color-accent);
   background: color-mix(in srgb, var(--color-accent) 10%, var(--bg-secondary));
 }
@@ -53,7 +55,9 @@
 
 /* A pattern that would also claim other payees: said in the warning colour,
    because on import the longest matching pattern wins. */
-.pattern-chip__claims { color: var(--color-warning); }
+.pattern-chip__claims {
+  color: var(--color-warning);
+}
 
 .pattern-preview {
   list-style: none;
@@ -76,8 +80,12 @@
   min-width: 0;
 }
 
-.pattern-preview__row--match { color: var(--color-success); }
-.pattern-preview__row--miss { color: var(--text-muted); }
+.pattern-preview__row--match {
+  color: var(--color-success);
+}
+.pattern-preview__row--miss {
+  color: var(--text-muted);
+}
 
 .pattern-preview__name {
   color: var(--text-primary);
@@ -86,7 +94,9 @@
   white-space: nowrap;
 }
 
-.pattern-preview__row--miss .pattern-preview__name { color: var(--text-muted); }
+.pattern-preview__row--miss .pattern-preview__name {
+  color: var(--text-muted);
+}
 
 /* The captured part: a light accent wash, never a colour change of the text
    itself, so the name stays readable in every theme. */

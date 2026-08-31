@@ -286,7 +286,6 @@
   margin: 0;
 }
 
-
 /* ── What Ready to pay is made of ────────────────────────────────────────────
    A card's reserve is a running total of five flows and the surface showed
    only the total, so every question the model raised needed a developer to
@@ -304,7 +303,9 @@
   border: none;
   border-radius: var(--border-radius-sm);
   cursor: pointer;
-  transition: color var(--transition-fast), background-color var(--transition-fast);
+  transition:
+    color var(--transition-fast),
+    background-color var(--transition-fast);
 }
 
 .credit-cards__legs-btn:hover {

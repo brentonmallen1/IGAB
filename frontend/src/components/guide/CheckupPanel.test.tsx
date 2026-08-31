@@ -32,7 +32,16 @@ function finding(
   concept_key: string | null = null,
   value: string | null = null
 ): CheckupFinding {
-  return { kind, rank, concept_key, title: `Finding ${kind}`, detail: '', value, target: null, names: [] }
+  return {
+    kind,
+    rank,
+    concept_key,
+    title: `Finding ${kind}`,
+    detail: '',
+    value,
+    target: null,
+    names: [],
+  }
 }
 
 function checkup(findings: CheckupFinding[]): Checkup {

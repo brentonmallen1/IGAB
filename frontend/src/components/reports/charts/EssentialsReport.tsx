@@ -45,14 +45,14 @@ export function EssentialsReport({ budgetId }: Props) {
           <h2 className="report-section__title">Essentials</h2>
           <ReportInfoButton title="Essentials">
             <p>
-              Spending in categories and payees tagged <strong>Essential</strong> — the
-              things you could not cut in an emergency. The headline is the last 90 days
-              averaged per month, the same figure the Guide’s emergency-fund target uses;
-              the table averages the last {months} complete months.
+              Spending in categories and payees tagged <strong>Essential</strong> — the things you
+              could not cut in an emergency. The headline is the last 90 days averaged per month,
+              the same figure the Guide’s emergency-fund target uses; the table averages the last{' '}
+              {months} complete months.
             </p>
             <p>
-              A reserve is that monthly figure times the months you want covered. The
-              roadmap suggests {rangeLow}–{rangeHigh} months once expensive debt is gone.
+              A reserve is that monthly figure times the months you want covered. The roadmap
+              suggests {rangeLow}–{rangeHigh} months once expensive debt is gone.
             </p>
           </ReportInfoButton>
           <div className="flex-row ms-auto">
@@ -73,7 +73,10 @@ export function EssentialsReport({ budgetId }: Props) {
               reportId="essentials"
               getRows={() => [
                 { metric: 'essentials_90d', value: Number(data.essentials_90d) },
-                ...data.reserve.map((r) => ({ metric: `reserve_${r.months}mo`, value: Number(r.amount) })),
+                ...data.reserve.map((r) => ({
+                  metric: `reserve_${r.months}mo`,
+                  value: Number(r.amount),
+                })),
                 ...data.categories.map((c) => ({
                   metric: `avg_${c.name}`,
                   value: Number(c.monthly_average),
@@ -88,10 +91,10 @@ export function EssentialsReport({ budgetId }: Props) {
         {!data.tagged ? (
           <div className="essentials-report__empty">
             <p>
-              Nothing is tagged <strong>Essential</strong> yet. Tag a category in its
-              inspector on the Budget page, or a payee on the Payees page, and this report
-              — the Overview card and the Guide’s emergency-fund target with it — narrows to
-              what a lean month actually costs.
+              Nothing is tagged <strong>Essential</strong> yet. Tag a category in its inspector on
+              the Budget page, or a payee on the Payees page, and this report — the Overview card
+              and the Guide’s emergency-fund target with it — narrows to what a lean month actually
+              costs.
             </p>
           </div>
         ) : (
@@ -125,12 +128,18 @@ export function EssentialsReport({ budgetId }: Props) {
                 <thead>
                   <tr>
                     <th scope="col">Category</th>
-                    <th scope="col" className="essentials-report__num">Avg / month</th>
+                    <th scope="col" className="essentials-report__num">
+                      Avg / month
+                    </th>
                     <th scope="col" className="essentials-report__bar-col">
                       <span className="visually-hidden">Share</span>
                     </th>
-                    <th scope="col" className="essentials-report__num">Total</th>
-                    <th scope="col" className="essentials-report__num">Months</th>
+                    <th scope="col" className="essentials-report__num">
+                      Total
+                    </th>
+                    <th scope="col" className="essentials-report__num">
+                      Months
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -151,10 +160,15 @@ export function EssentialsReport({ budgetId }: Props) {
                             className="essentials-report__bar"
                             title={`${c.name}: ${formatMoney(avg)} per month over ${months} months`}
                           >
-                            <div className="essentials-report__bar-fill" style={{ width: `${width}%` }} />
+                            <div
+                              className="essentials-report__bar-fill"
+                              style={{ width: `${width}%` }}
+                            />
                           </div>
                         </td>
-                        <td className="essentials-report__num tabular">{formatMoney(Number(c.total))}</td>
+                        <td className="essentials-report__num tabular">
+                          {formatMoney(Number(c.total))}
+                        </td>
                         <td className="essentials-report__num tabular">
                           {c.months_with_spend}/{months}
                         </td>
@@ -189,9 +203,14 @@ export function EssentialsReport({ budgetId }: Props) {
                     title={`${formatMonth(m.month)}: ${formatMoney(total)}`}
                   >
                     <div className="essentials-report__month-bar">
-                      <div className="essentials-report__month-fill" style={{ height: `${height}%` }} />
+                      <div
+                        className="essentials-report__month-fill"
+                        style={{ height: `${height}%` }}
+                      />
                     </div>
-                    <span className="essentials-report__month-label">{formatMonth(m.month).slice(0, 3)}</span>
+                    <span className="essentials-report__month-label">
+                      {formatMonth(m.month).slice(0, 3)}
+                    </span>
                   </div>
                 )
               })}

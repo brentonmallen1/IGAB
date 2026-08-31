@@ -1,11 +1,6 @@
 import { useMemo } from 'react'
 import { useAppStore } from '../../stores/appStore'
-import {
-  useGuideOverview,
-  useGuideSignals,
-  type ConceptInfo,
-  type Signal,
-} from '../../api/guide'
+import { useGuideOverview, useGuideSignals, type ConceptInfo, type Signal } from '../../api/guide'
 import type { SignalKey } from '../../content/roadmap'
 
 /**

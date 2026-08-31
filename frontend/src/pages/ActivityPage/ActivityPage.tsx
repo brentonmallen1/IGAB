@@ -168,9 +168,7 @@ export function ActivityPage() {
                     isOpen={isOpen}
                     formatDateTime={formatDateTime}
                     onToggle={() => toggleExpanded(group.batchId!)}
-                    onUndo={() =>
-                      handleUndoBatch(group.batchId!, summarizeBatch(group.changes))
-                    }
+                    onUndo={() => handleUndoBatch(group.batchId!, summarizeBatch(group.changes))}
                     isUndoing={undoBatch.isPending}
                   />
                 )}

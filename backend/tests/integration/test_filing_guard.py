@@ -129,9 +129,7 @@ class TestTheReadSideDoesNot:
         """Archiving is not deleting. The row keeps its category, and every
         report still counts it — `category_filters.SPENT_ENVELOPE`."""
         services, budget, checking, _group, cat = await _world(db_session)
-        txn = await create_transaction(
-            db_session, budget, checking, "-40.00", TODAY, category=cat
-        )
+        txn = await create_transaction(db_session, budget, checking, "-40.00", TODAY, category=cat)
         await _archive(db_session, cat)
 
         again = await TransactionRepository(db_session).get(txn.id)
@@ -141,9 +139,7 @@ class TestTheReadSideDoesNot:
         """Only the category is guarded. Fixing a typo in the memo of a row
         that predates the archive must not be collateral damage."""
         services, budget, checking, _group, cat = await _world(db_session)
-        txn = await create_transaction(
-            db_session, budget, checking, "-40.00", TODAY, category=cat
-        )
+        txn = await create_transaction(db_session, budget, checking, "-40.00", TODAY, category=cat)
         await _archive(db_session, cat)
 
         updated = await services.transactions.update(
@@ -200,9 +196,7 @@ class TestTheGuardReachesWhatTheServerResolves:
         )
         assert created.category_id == cat.id
 
-    async def test_a_payee_default_pointing_at_an_archived_envelope_is_not_used(
-        self, db_session
-    ):
+    async def test_a_payee_default_pointing_at_an_archived_envelope_is_not_used(self, db_session):
         """The default is a stored pointer, so it outlives what it points at —
         no transaction history is needed to reach this path."""
         services, budget, checking, _group, cat = await _world(db_session)

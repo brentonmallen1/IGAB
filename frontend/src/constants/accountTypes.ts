@@ -68,7 +68,7 @@ export const BUILTIN_ACCOUNT_TYPES: AccountTypeOption[] = [
     default_on_budget: false,
     description:
       'A car, truck, or other vehicle loan. Off budget. Money you send here counts ' +
-      'as paying down debt rather than spending. Track the vehicle\'s value ' +
+      "as paying down debt rather than spending. Track the vehicle's value " +
       'separately as an Other Asset if you want it in net worth.',
   },
   {
@@ -99,9 +99,9 @@ export const BUILTIN_ACCOUNT_TYPES: AccountTypeOption[] = [
     default_on_budget: false,
     description:
       'Brokerage, retirement (401k, IRA), HSA, or similar. Off budget: it grows ' +
-      'your net worth but isn\'t spendable envelope money. Money you move here ' +
+      "your net worth but isn't spendable envelope money. Money you move here " +
       'counts as saving rather than spending. Growth inside the account — ' +
-      'dividends, market movement — is not counted as saving, because you didn\'t ' +
+      "dividends, market movement — is not counted as saving, because you didn't " +
       'put it there.',
   },
   {
@@ -120,7 +120,7 @@ export const BUILTIN_ACCOUNT_TYPES: AccountTypeOption[] = [
     classification: 'liability',
     default_on_budget: false,
     description:
-      'Anything else you owe that counts against net worth but isn\'t budgeted ' +
+      "Anything else you owe that counts against net worth but isn't budgeted " +
       'transaction by transaction. Money you send here counts as paying down debt ' +
       'rather than spending.',
   },
@@ -131,10 +131,7 @@ const BUILTIN_LABELS = new Map(BUILTIN_ACCOUNT_TYPES.map((t) => [t.key, t.label]
 /** Display label for a type key: the registry row's label when available,
  * else the built-in label, else the key title-cased (custom types are only
  * unknown while the registry query is still loading). */
-export function accountTypeLabel(
-  key: string,
-  registry?: { key: string; label: string }[]
-): string {
+export function accountTypeLabel(key: string, registry?: { key: string; label: string }[]): string {
   const fromRegistry = registry?.find((t) => t.key === key)?.label
   if (fromRegistry) return fromRegistry
   const builtin = BUILTIN_LABELS.get(key)

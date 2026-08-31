@@ -88,12 +88,18 @@ describe('PositionStrip', () => {
     arrange(EMPTY_FUND)
     render(<PositionStrip />)
     expect(screen.getAllByRole('listitem')).toHaveLength(ROADMAP.length)
-    expect(screen.getByRole('button', { name: /You’re on Step 1 — Build a starter emergency fund/ })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /You’re on Step 1 — Build a starter emergency fund/ })
+    ).toBeInTheDocument()
     expect(screen.getByText(/No emergency fund yet/)).toBeInTheDocument()
-    expect(screen.getByText(new RegExp(`1 of ${ROADMAP.length} stages behind you`))).toBeInTheDocument()
+    expect(
+      screen.getByText(new RegExp(`1 of ${ROADMAP.length} stages behind you`))
+    ).toBeInTheDocument()
     const foundation = ROADMAP[0]
     expect(
-      screen.getByRole('button', { name: `Step ${foundation.step} — ${foundation.title}: looks done` })
+      screen.getByRole('button', {
+        name: `Step ${foundation.step} — ${foundation.title}: looks done`,
+      })
     ).toBeInTheDocument()
     expect(screen.getByRole('button', { current: 'step' })).toHaveAccessibleName(/you are here/)
   })
@@ -112,6 +118,8 @@ describe('PositionStrip', () => {
     arrange({ progress })
     render(<PositionStrip />)
     expect(screen.getByText(/Nothing left the roadmap can see/)).toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: /you marked this done/ })).toHaveLength(ROADMAP.length)
+    expect(screen.getAllByRole('button', { name: /you marked this done/ })).toHaveLength(
+      ROADMAP.length
+    )
   })
 })

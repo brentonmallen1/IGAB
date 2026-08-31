@@ -52,7 +52,8 @@ export interface Wish {
   reach: WishReach | null
 }
 
-export type ProjectState = 'now' | 'months' | 'no_rate' | 'unlinked' | 'mixed' | 'complete' | 'empty'
+export type ProjectState =
+  'now' | 'months' | 'no_rate' | 'unlinked' | 'mixed' | 'complete' | 'empty'
 
 export interface ProjectSummary {
   item_count: number
@@ -200,7 +201,8 @@ export function useCreateWish(budgetId: string) {
 export function useUpdateWish(budgetId: string) {
   return useWishlistMutation<{ id: string } & WishUpdate, Wish>(
     budgetId,
-    ({ id, ...body }) => apiClient.patch<Wish>(`/${budgetId}/wishlist/${id}`, body).then((r) => r.data),
+    ({ id, ...body }) =>
+      apiClient.patch<Wish>(`/${budgetId}/wishlist/${id}`, body).then((r) => r.data),
     'Could not save the wish'
   )
 }
@@ -224,7 +226,8 @@ export function useAffirmWish(budgetId: string) {
 export function useReorderWishes(budgetId: string) {
   return useWishlistMutation<string[], void>(
     budgetId,
-    (item_ids) => apiClient.post(`/${budgetId}/wishlist/reorder`, { item_ids }).then(() => undefined),
+    (item_ids) =>
+      apiClient.post(`/${budgetId}/wishlist/reorder`, { item_ids }).then(() => undefined),
     'Could not reorder'
   )
 }
@@ -232,7 +235,8 @@ export function useReorderWishes(budgetId: string) {
 export function useCreateProject(budgetId: string) {
   return useWishlistMutation<ProjectCreate, WishlistProject>(
     budgetId,
-    (body) => apiClient.post<WishlistProject>(`/${budgetId}/wishlist/projects`, body).then((r) => r.data),
+    (body) =>
+      apiClient.post<WishlistProject>(`/${budgetId}/wishlist/projects`, body).then((r) => r.data),
     'Could not add the project',
     true
   )
@@ -242,7 +246,9 @@ export function useUpdateProject(budgetId: string) {
   return useWishlistMutation<{ id: string } & ProjectUpdate, WishlistProject>(
     budgetId,
     ({ id, ...body }) =>
-      apiClient.patch<WishlistProject>(`/${budgetId}/wishlist/projects/${id}`, body).then((r) => r.data),
+      apiClient
+        .patch<WishlistProject>(`/${budgetId}/wishlist/projects/${id}`, body)
+        .then((r) => r.data),
     'Could not save the project'
   )
 }
@@ -259,7 +265,9 @@ export function useReorderProjects(budgetId: string) {
   return useWishlistMutation<string[], void>(
     budgetId,
     (project_ids) =>
-      apiClient.post(`/${budgetId}/wishlist/projects/reorder`, { project_ids }).then(() => undefined),
+      apiClient
+        .post(`/${budgetId}/wishlist/projects/reorder`, { project_ids })
+        .then(() => undefined),
     'Could not reorder'
   )
 }

@@ -12,7 +12,9 @@ import { ReportNotes, IncludeSavingsToggle, emptySpendingMessage } from '../Repo
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import './SpendingTreemap.css'
 
-interface Props { budgetId: string }
+interface Props {
+  budgetId: string
+}
 
 interface TreeNode {
   name: string
@@ -36,7 +38,15 @@ export function SpendingTreemapReport({ budgetId }: Props) {
   const catIds = filters.categoryIds.length > 0 ? filters.categoryIds : undefined
   const acctIds = filters.accountIds.length > 0 ? filters.accountIds : undefined
   const [includeSavings, setIncludeSavings] = useState(false)
-  const { data, isLoading, isError, error, refetch } = useSpendingGroupedReport(budgetId, filters.startDate, filters.endDate, catIds, acctIds, includeSavings, filters.viewId)
+  const { data, isLoading, isError, error, refetch } = useSpendingGroupedReport(
+    budgetId,
+    filters.startDate,
+    filters.endDate,
+    catIds,
+    acctIds,
+    includeSavings,
+    filters.viewId
+  )
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
   const captureRef = useRef<HTMLDivElement>(null)
 
@@ -57,12 +67,20 @@ export function SpendingTreemapReport({ budgetId }: Props) {
   const grandTotal = Number(data?.total ?? 0)
 
   const groups = useMemo(() => {
-    const map = new Map<string, { name: string; total: number; colorIdx: number; children: TreeNode[] }>()
+    const map = new Map<
+      string,
+      { name: string; total: number; colorIdx: number; children: TreeNode[] }
+    >()
     let colorIdx = 0
     for (const item of items) {
       const gid = item.parent_id ?? '__none__'
       if (!map.has(gid)) {
-        map.set(gid, { name: item.parent_name ?? 'Other', total: 0, colorIdx: colorIdx++, children: [] })
+        map.set(gid, {
+          name: item.parent_name ?? 'Other',
+          total: 0,
+          colorIdx: colorIdx++,
+          children: [],
+        })
       }
       const g = map.get(gid)!
       g.total += Number(item.total)
@@ -124,8 +142,15 @@ export function SpendingTreemapReport({ budgetId }: Props) {
       <div className="report-section__header">
         <h2 className="report-section__title">Spending Treemap</h2>
         <ReportInfoButton title="Spending Treemap">
-          <p>Each rectangle represents a spending bucket — <strong>size is proportional to amount spent</strong>.</p>
-          <p><strong>Group</strong> mode: shows category groups only. <strong>Category</strong> mode: shows all categories flat, colored by group. Use the global <em>Group by</em> filter to switch. In Group mode you can click a tile to drill into its categories.</p>
+          <p>
+            Each rectangle represents a spending bucket —{' '}
+            <strong>size is proportional to amount spent</strong>.
+          </p>
+          <p>
+            <strong>Group</strong> mode: shows category groups only. <strong>Category</strong> mode:
+            shows all categories flat, colored by group. Use the global <em>Group by</em> filter to
+            switch. In Group mode you can click a tile to drill into its categories.
+          </p>
           <p>Clicking a category tile opens the list of transactions behind it below the chart.</p>
           <ReportScopeNote scope="on-budget-filterable" />
           <SpendingClassNote />
@@ -172,86 +197,121 @@ export function SpendingTreemapReport({ budgetId }: Props) {
       <ReportNotes report={data} toggleAvailable={!includeSavings} />
 
       {visibleItems.length === 0 ? (
-        <div className="reports-empty">
-          {emptySpendingMessage(data?.view_hidden_categories)}
-        </div>
+        <div className="reports-empty">{emptySpendingMessage(data?.view_hidden_categories)}</div>
       ) : (
         <div ref={captureRef} className="report-capture">
-        <ResponsiveContainer width="100%" height={chartHeight}>
-          <Treemap
-            data={visibleItems}
-            dataKey="size"
-            aspectRatio={4 / 3}
-            stroke="var(--bg-primary)"
-            isAnimationActive={false}
-            content={<TreemapContent />}
-            onClick={(node) => {
-              if (groupBy !== 'category' && !selectedGroup) {
-                const gid = [...groups.entries()].find(([, g]) => g.name === node.name)?.[0]
-                if (gid) setSelectedGroup(gid)
-                return
-              }
-              // Category tiles (flat mode, or drilled into a group) open the
-              // transaction panel below the chart
-              const item = visibleItems.find((i) => i.name === node.name)
-              if (item?.id) {
-                setDrillDown({
-                  kind: 'category',
-                  label: item.name,
-                  scope: 'leaf',
-                  direction: 'outflow',
-                  categoryIds: [item.id],
-                  // Same classes the tiles were sized from.
-                  activityClasses: spendingDrillClasses(includeSavings),
-                  startDate: filters.startDate,
-                  endDate: filters.endDate,
-                })
-              }
-            }}
-          >
-            <Tooltip
-              offset={16}
+          <ResponsiveContainer width="100%" height={chartHeight}>
+            <Treemap
+              data={visibleItems}
+              dataKey="size"
+              aspectRatio={4 / 3}
+              stroke="var(--bg-primary)"
               isAnimationActive={false}
-              content={({ active, payload }) => {
-                if (!active || !payload?.length) return null
-                const p = payload[0]?.payload
-                return (
-                  <div className="chart-tooltip">
-                    <div className="chart-tooltip__label">{p?.name}</div>
-                    <div className="chart-tooltip__row">
-                      <span className="chart-tooltip__name">Amount</span>
-                      <span className="chart-tooltip__value">{formatMoney(p?.size ?? 0)}</span>
-                    </div>
-                    <div className="chart-tooltip__row">
-                      <span className="chart-tooltip__name">Share</span>
-                      <span className="chart-tooltip__value">{(p?.pct ?? 0).toFixed(1)}%</span>
-                    </div>
-                  </div>
-                )
+              content={<TreemapContent />}
+              onClick={(node) => {
+                if (groupBy !== 'category' && !selectedGroup) {
+                  const gid = [...groups.entries()].find(([, g]) => g.name === node.name)?.[0]
+                  if (gid) setSelectedGroup(gid)
+                  return
+                }
+                // Category tiles (flat mode, or drilled into a group) open the
+                // transaction panel below the chart
+                const item = visibleItems.find((i) => i.name === node.name)
+                if (item?.id) {
+                  setDrillDown({
+                    kind: 'category',
+                    label: item.name,
+                    scope: 'leaf',
+                    direction: 'outflow',
+                    categoryIds: [item.id],
+                    // Same classes the tiles were sized from.
+                    activityClasses: spendingDrillClasses(includeSavings),
+                    startDate: filters.startDate,
+                    endDate: filters.endDate,
+                  })
+                }
               }}
-            />
-          </Treemap>
-        </ResponsiveContainer>
+            >
+              <Tooltip
+                offset={16}
+                isAnimationActive={false}
+                content={({ active, payload }) => {
+                  if (!active || !payload?.length) return null
+                  const p = payload[0]?.payload
+                  return (
+                    <div className="chart-tooltip">
+                      <div className="chart-tooltip__label">{p?.name}</div>
+                      <div className="chart-tooltip__row">
+                        <span className="chart-tooltip__name">Amount</span>
+                        <span className="chart-tooltip__value">{formatMoney(p?.size ?? 0)}</span>
+                      </div>
+                      <div className="chart-tooltip__row">
+                        <span className="chart-tooltip__name">Share</span>
+                        <span className="chart-tooltip__value">{(p?.pct ?? 0).toFixed(1)}%</span>
+                      </div>
+                    </div>
+                  )
+                }}
+              />
+            </Treemap>
+          </ResponsiveContainer>
         </div>
       )}
     </div>
   )
 }
 
-function TreemapContent(props: { x?: number; y?: number; width?: number; height?: number; name?: string; size?: number; fill?: string }) {
+function TreemapContent(props: {
+  x?: number
+  y?: number
+  width?: number
+  height?: number
+  name?: string
+  size?: number
+  fill?: string
+}) {
   const { formatMoney } = useFormatters()
-  const { x = 0, y = 0, width = 0, height = 0, name = '', size = 0, fill = 'var(--chart-1)' } = props
-  if (width < 30 || height < 20) return <g><rect x={x} y={y} width={width} height={height} fill={fill} /></g>
+  const {
+    x = 0,
+    y = 0,
+    width = 0,
+    height = 0,
+    name = '',
+    size = 0,
+    fill = 'var(--chart-1)',
+  } = props
+  if (width < 30 || height < 20)
+    return (
+      <g>
+        <rect x={x} y={y} width={width} height={height} fill={fill} />
+      </g>
+    )
   return (
     <g>
       <rect x={x} y={y} width={width} height={height} fill={fill} fillOpacity={0.85} rx={3} />
       {height > 30 && (
-        <text x={x + width / 2} y={y + height / 2 - 6} textAnchor="middle" fontSize={Math.min(12, width / 7)} fill="var(--heatmap-cell-text)" fontWeight={600}>
-          {name.length > Math.floor(width / 7) ? name.slice(0, Math.floor(width / 7) - 1) + '…' : name}
+        <text
+          x={x + width / 2}
+          y={y + height / 2 - 6}
+          textAnchor="middle"
+          fontSize={Math.min(12, width / 7)}
+          fill="var(--heatmap-cell-text)"
+          fontWeight={600}
+        >
+          {name.length > Math.floor(width / 7)
+            ? name.slice(0, Math.floor(width / 7) - 1) + '…'
+            : name}
         </text>
       )}
       {height > 48 && (
-        <text x={x + width / 2} y={y + height / 2 + 10} textAnchor="middle" fontSize={10} fill="var(--heatmap-cell-text)" fillOpacity={0.75}>
+        <text
+          x={x + width / 2}
+          y={y + height / 2 + 10}
+          textAnchor="middle"
+          fontSize={10}
+          fill="var(--heatmap-cell-text)"
+          fillOpacity={0.75}
+        >
           {formatMoney(size)}
         </text>
       )}

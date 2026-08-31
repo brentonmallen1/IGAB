@@ -32,7 +32,11 @@ export function DeleteWishDialog({ budgetId, wishName, envelope, onClose }: Prop
   if (phase === 'deleting') return <>{modal}</>
 
   return (
-    <GuideDialog title="Delete the envelope too?" onClose={onClose} historyKey="wishlist-delete-envelope">
+    <GuideDialog
+      title="Delete the envelope too?"
+      onClose={onClose}
+      historyKey="wishlist-delete-envelope"
+    >
       <div className="dialog__body wish-review">
         <p className="wish-review__done">
           <strong>{wishName}</strong> is off the list. Its envelope <strong>{envelope.name}</strong>{' '}
@@ -49,7 +53,11 @@ export function DeleteWishDialog({ budgetId, wishName, envelope, onClose }: Prop
             className="guide-link-button"
             onClick={() => {
               setPhase('deleting')
-              void requestDelete({ kind: 'categories', ids: [envelope.category_id], name: envelope.name })
+              void requestDelete({
+                kind: 'categories',
+                ids: [envelope.category_id],
+                name: envelope.name,
+              })
             }}
           >
             Delete the envelope

@@ -129,13 +129,9 @@ async def test_overlapping_paydays_share_offset_days(db_session):
         db_session, budget, checking, "2000.00", TODAY - timedelta(days=18), payee=employer
     )
     # T-18: offset 7 of payday 1 AND offset 0 of payday 2
-    await create_transaction(
-        db_session, budget, checking, "-60.00", TODAY - timedelta(days=18)
-    )
+    await create_transaction(db_session, budget, checking, "-60.00", TODAY - timedelta(days=18))
     # T-11: outside payday 1's window (offsets 0-13), offset 7 of payday 2
-    await create_transaction(
-        db_session, budget, checking, "-55.00", TODAY - timedelta(days=11)
-    )
+    await create_transaction(db_session, budget, checking, "-55.00", TODAY - timedelta(days=11))
 
     data = await ReportService(db_session).payday_effect(budget.id, window=14, months=12)
 
@@ -153,9 +149,7 @@ async def test_no_income_events_returns_zeroed_shape(db_session):
     budget = await create_budget(db_session, user)
     checking = await create_account(db_session, budget, "Checking")
     # Inflow below the $200 floor: never an income event
-    await create_transaction(
-        db_session, budget, checking, "50.00", TODAY - timedelta(days=10)
-    )
+    await create_transaction(db_session, budget, checking, "50.00", TODAY - timedelta(days=10))
 
     data = await ReportService(db_session).payday_effect(budget.id, window=14, months=12)
 

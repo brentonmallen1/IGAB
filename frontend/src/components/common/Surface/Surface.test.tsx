@@ -65,7 +65,9 @@ describe('Surface', () => {
         body
       </Surface>
     )
-    expect(screen.getByTestId('s').querySelector('.surface__header h2')).toHaveTextContent('Paydown')
+    expect(screen.getByTestId('s').querySelector('.surface__header h2')).toHaveTextContent(
+      'Paydown'
+    )
     expect(screen.getByTestId('s').querySelector('.surface__title')).toBeNull()
   })
 

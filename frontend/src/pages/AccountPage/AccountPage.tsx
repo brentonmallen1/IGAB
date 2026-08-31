@@ -21,11 +21,7 @@ import { LiabilitySettingsModal } from '../../components/liabilities/LiabilitySe
 import { MatchReviewModal } from '../../components/simplefin/MatchReviewModal'
 import { useAccounts } from '../../api/accounts'
 import { useLiabilities } from '../../api/liabilities'
-import {
-  useSimpleFINConnections,
-  useSyncSimpleFIN,
-  usePendingMatches,
-} from '../../api/simplefin'
+import { useSimpleFINConnections, useSyncSimpleFIN, usePendingMatches } from '../../api/simplefin'
 import { useAppStore } from '../../stores/appStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useFormatters } from '../../hooks/useFormatters'
@@ -51,10 +47,13 @@ export function AccountPage() {
 
   const clearHighlight = useCallback(() => {
     if (highlightId) {
-      setSearchParams((prev) => {
-        prev.delete('highlight')
-        return prev
-      }, { replace: true })
+      setSearchParams(
+        (prev) => {
+          prev.delete('highlight')
+          return prev
+        },
+        { replace: true }
+      )
     }
   }, [highlightId, setSearchParams])
   const { data: accounts } = useAccounts(budgetId)
@@ -218,7 +217,7 @@ export function AccountPage() {
                 Bank reports {formatMoney(Number(account.simplefin_balance))} — differs from the
                 cleared balance by{' '}
                 {formatMoney(
-                  Math.abs(Number(account.simplefin_balance) - Number(account.cleared_balance)),
+                  Math.abs(Number(account.simplefin_balance) - Number(account.cleared_balance))
                 )}
                 . Reconcile to bring them together.
               </div>
@@ -273,7 +272,11 @@ export function AccountPage() {
       )}
 
       {!isReconcilingHere && budgetId && (
-        <PendingReviewBanner budgetId={budgetId} accountId={accountId ?? undefined} onView={setTransactionSearch} />
+        <PendingReviewBanner
+          budgetId={budgetId}
+          accountId={accountId ?? undefined}
+          onView={setTransactionSearch}
+        />
       )}
 
       {pendingMatches.length > 0 && (
@@ -292,7 +295,11 @@ export function AccountPage() {
       )}
 
       {showMatchModal && pendingMatches.length > 0 && (
-        <MatchReviewModal matches={pendingMatches} budgetId={budgetId} onClose={() => setShowMatchModal(false)} />
+        <MatchReviewModal
+          matches={pendingMatches}
+          budgetId={budgetId}
+          onClose={() => setShowMatchModal(false)}
+        />
       )}
 
       <div className="account-page__body">

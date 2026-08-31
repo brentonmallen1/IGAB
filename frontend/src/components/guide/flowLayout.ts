@@ -228,8 +228,12 @@ export function buildFlow(collapsedStages: StageId[] = []): FlowResult {
    * reads as a mistake. */
   function nextSpine(fromSeq: number): string | null {
     const candidates = [
-      ...nodes.filter((n) => n.seq > fromSeq && n.depth === 0).map((n) => ({ seq: n.seq, id: n.node.id })),
-      ...collapsed.filter((c) => c.seq > fromSeq).map((c) => ({ seq: c.seq, id: `stage:${c.stage.id}` })),
+      ...nodes
+        .filter((n) => n.seq > fromSeq && n.depth === 0)
+        .map((n) => ({ seq: n.seq, id: n.node.id })),
+      ...collapsed
+        .filter((c) => c.seq > fromSeq)
+        .map((c) => ({ seq: c.seq, id: `stage:${c.stage.id}` })),
     ].sort((a, b) => a.seq - b.seq)
     return candidates[0]?.id ?? null
   }
@@ -244,7 +248,9 @@ export function buildFlow(collapsedStages: StageId[] = []): FlowResult {
         // the same place). One arrow, both labels — two overlapping arrows
         // would just look like a rendering fault.
         if (!target) continue
-        const existing = edges.find((e) => e.from === node.id && e.to === target && e.kind === 'branch')
+        const existing = edges.find(
+          (e) => e.from === node.id && e.to === target && e.kind === 'branch'
+        )
         if (existing) {
           existing.label = `${existing.label} / ${b.answer}`
           continue
@@ -258,7 +264,8 @@ export function buildFlow(collapsedStages: StageId[] = []): FlowResult {
     // there is no ordering between them and the chart should not imply one.
     const forks = optionsOf.get(node.id)
     if (forks?.length) {
-      for (const id of forks) if (byId.has(id)) edges.push({ from: node.id, to: id, kind: 'branch' })
+      for (const id of forks)
+        if (byId.has(id)) edges.push({ from: node.id, to: id, kind: 'branch' })
       continue
     }
 

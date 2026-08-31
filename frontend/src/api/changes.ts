@@ -47,10 +47,9 @@ export function useChanges(budgetId: string | null, limit = 50, offset = 0) {
   return useQuery({
     queryKey: [...changesKeys.budget(budgetId ?? ''), { limit, offset }],
     queryFn: async () => {
-      const { data } = await apiClient.get<ChangesResponse>(
-        `/${budgetId}/changes`,
-        { params: { limit, offset } }
-      )
+      const { data } = await apiClient.get<ChangesResponse>(`/${budgetId}/changes`, {
+        params: { limit, offset },
+      })
       return data
     },
     enabled: !!budgetId,
@@ -81,10 +80,7 @@ export function useUndoChange(budgetId: string) {
       qc.invalidateQueries({ queryKey: changesKeys.budget(budgetId) })
     },
     onError: (error: unknown) => {
-      const message =
-        error instanceof Error
-          ? error.message
-          : 'Could not undo this change'
+      const message = error instanceof Error ? error.message : 'Could not undo this change'
       toast.error(message)
     },
   })
@@ -112,10 +108,7 @@ export function useUndoBatch(budgetId: string) {
       qc.invalidateQueries({ queryKey: changesKeys.budget(budgetId) })
     },
     onError: (error: unknown) => {
-      const message =
-        error instanceof Error
-          ? error.message
-          : 'Could not undo this batch'
+      const message = error instanceof Error ? error.message : 'Could not undo this batch'
       toast.error(message)
     },
   })

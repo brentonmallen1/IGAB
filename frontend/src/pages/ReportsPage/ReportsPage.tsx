@@ -108,29 +108,52 @@ export function ReportsPage() {
 
   function renderReport() {
     switch (activeTab) {
-      case 'overview': return <OverviewReport budgetId={budgetId!} />
-      case 'net-worth': return <NetWorthReport budgetId={budgetId!} />
-      case 'account-composition': return <AccountCompositionReport budgetId={budgetId!} />
-      case 'liabilities': return <LiabilitiesReport budgetId={budgetId!} />
-      case 'savings': return <SavingsReport budgetId={budgetId!} />
-      case 'savings-rate': return <SavingsRateReport budgetId={budgetId!} />
-      case 'essentials': return <EssentialsReport budgetId={budgetId!} />
-      case 'income-expense': return <IncomeExpenseReport budgetId={budgetId!} />
-      case 'burn-rate': return <BurnRateReport budgetId={budgetId!} />
-      case 'cash-flow': return <CashFlowSankeyReport budgetId={budgetId!} />
-      case 'projection': return <CashProjectionReport budgetId={budgetId!} />
-      case 'budget-actual': return <BudgetActualReport budgetId={budgetId!} />
-      case 'variance': return <VarianceReport budgetId={budgetId!} />
-      case 'volatility': return <VolatilityReport budgetId={budgetId!} />
-      case 'pareto': return <ParetoReport budgetId={budgetId!} />
-      case 'treemap': return <SpendingTreemapReport budgetId={budgetId!} />
-      case 'seasonality': return <SeasonalityReport budgetId={budgetId!} />
-      case 'subscriptions': return <SubscriptionsReport budgetId={budgetId!} />
-      case 'plan-reality': return <PlanVsRealityReport budgetId={budgetId!} />
-      case 'anomalies': return <AnomaliesReport budgetId={budgetId!} />
-      case 'payees': return <PayeeReport budgetId={budgetId!} />
-      case 'day-patterns': return <DayPatternsReport budgetId={budgetId!} />
-      case 'timeline': return <TimelineReport budgetId={budgetId!} />
+      case 'overview':
+        return <OverviewReport budgetId={budgetId!} />
+      case 'net-worth':
+        return <NetWorthReport budgetId={budgetId!} />
+      case 'account-composition':
+        return <AccountCompositionReport budgetId={budgetId!} />
+      case 'liabilities':
+        return <LiabilitiesReport budgetId={budgetId!} />
+      case 'savings':
+        return <SavingsReport budgetId={budgetId!} />
+      case 'savings-rate':
+        return <SavingsRateReport budgetId={budgetId!} />
+      case 'essentials':
+        return <EssentialsReport budgetId={budgetId!} />
+      case 'income-expense':
+        return <IncomeExpenseReport budgetId={budgetId!} />
+      case 'burn-rate':
+        return <BurnRateReport budgetId={budgetId!} />
+      case 'cash-flow':
+        return <CashFlowSankeyReport budgetId={budgetId!} />
+      case 'projection':
+        return <CashProjectionReport budgetId={budgetId!} />
+      case 'budget-actual':
+        return <BudgetActualReport budgetId={budgetId!} />
+      case 'variance':
+        return <VarianceReport budgetId={budgetId!} />
+      case 'volatility':
+        return <VolatilityReport budgetId={budgetId!} />
+      case 'pareto':
+        return <ParetoReport budgetId={budgetId!} />
+      case 'treemap':
+        return <SpendingTreemapReport budgetId={budgetId!} />
+      case 'seasonality':
+        return <SeasonalityReport budgetId={budgetId!} />
+      case 'subscriptions':
+        return <SubscriptionsReport budgetId={budgetId!} />
+      case 'plan-reality':
+        return <PlanVsRealityReport budgetId={budgetId!} />
+      case 'anomalies':
+        return <AnomaliesReport budgetId={budgetId!} />
+      case 'payees':
+        return <PayeeReport budgetId={budgetId!} />
+      case 'day-patterns':
+        return <DayPatternsReport budgetId={budgetId!} />
+      case 'timeline':
+        return <TimelineReport budgetId={budgetId!} />
     }
   }
 
@@ -148,7 +171,10 @@ export function ReportsPage() {
               type="button"
             >
               <span>{activeGroupLabel}</span>
-              <ChevronDown size={16} className={`reports-nav__dropdown-icon ${dropdownOpen ? 'reports-nav__dropdown-icon--open' : ''}`} />
+              <ChevronDown
+                size={16}
+                className={`reports-nav__dropdown-icon ${dropdownOpen ? 'reports-nav__dropdown-icon--open' : ''}`}
+              />
             </button>
             {dropdownOpen && (
               <ul className="reports-nav__dropdown-menu" role="listbox">

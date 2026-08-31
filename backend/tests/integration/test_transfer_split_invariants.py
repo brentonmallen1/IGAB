@@ -226,9 +226,7 @@ async def test_uncategorize_via_explicit_null(db_session):
     services, budget, checking, parent, children, groceries, gas = await _split(db_session)
     child = children[0]
 
-    await services.transactions.update(
-        budget.id, child.id, TransactionUpdate(category_id=None)
-    )
+    await services.transactions.update(budget.id, child.id, TransactionUpdate(category_id=None))
     await db_session.refresh(child)
     assert child.category_id is None
 

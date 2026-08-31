@@ -25,7 +25,9 @@
   color: var(--text-secondary);
   font-size: var(--font-size-sm);
   cursor: pointer;
-  transition: color var(--transition-fast), border-color var(--transition-fast);
+  transition:
+    color var(--transition-fast),
+    border-color var(--transition-fast);
 }
 
 .assign-dropdown__tab:hover {
@@ -63,7 +65,9 @@
   font-weight: 500;
   text-align: left;
   cursor: pointer;
-  transition: background var(--transition-fast), border-color var(--transition-fast);
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast);
 }
 
 .assign-dropdown__row:hover:not(:disabled),

@@ -46,7 +46,9 @@
   padding: var(--spacing-sm);
   border-radius: var(--border-radius-sm);
   opacity: 0.7;
-  transition: opacity 0.15s, background 0.15s;
+  transition:
+    opacity 0.15s,
+    background 0.15s;
   display: flex;
   align-items: center;
 }
@@ -92,7 +94,9 @@
   padding: var(--spacing-sm);
   border-radius: var(--border-radius-sm);
   opacity: 0.7;
-  transition: opacity 0.15s, background 0.15s;
+  transition:
+    opacity 0.15s,
+    background 0.15s;
 }
 
 .lightbox-nav:hover {

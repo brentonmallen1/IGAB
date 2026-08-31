@@ -75,10 +75,7 @@ export function SidebarAccountRow({
         {leadingIcon}
         <span className="sidebar__account-label">{name}</span>
         {badgeCount > 0 && (
-          <span
-            className="sidebar__uncategorized-badge"
-            title={`${badgeCount} uncategorized`}
-          >
+          <span className="sidebar__uncategorized-badge" title={`${badgeCount} uncategorized`}>
             {badgeCount}
           </span>
         )}

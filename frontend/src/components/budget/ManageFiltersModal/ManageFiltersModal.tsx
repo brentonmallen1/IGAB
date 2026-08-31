@@ -55,10 +55,22 @@ export function ManageFiltersModal({ budgetId, onClose }: Props) {
       className="manage-filters-overlay"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div ref={trapRef} tabIndex={-1} className="manage-filters-modal" role="dialog" aria-modal aria-label="Manage filters">
+      <div
+        ref={trapRef}
+        tabIndex={-1}
+        className="manage-filters-modal"
+        role="dialog"
+        aria-modal
+        aria-label="Manage filters"
+      >
         <div className="manage-filters-modal__header">
           <span className="manage-filters-modal__title">Manage Filters</span>
-          <button type="button" className="manage-filters-modal__close" onClick={onClose} aria-label="Close">
+          <button
+            type="button"
+            className="manage-filters-modal__close"
+            onClick={onClose}
+            aria-label="Close"
+          >
             <X size={18} />
           </button>
         </div>
@@ -67,7 +79,9 @@ export function ManageFiltersModal({ budgetId, onClose }: Props) {
           <section className="manage-filters-modal__section">
             <div className="manage-filters-modal__section-header">
               <span>Quick Filters</span>
-              <span className="manage-filters-modal__section-hint">Drag or use arrows to reorder</span>
+              <span className="manage-filters-modal__section-hint">
+                Drag or use arrows to reorder
+              </span>
             </div>
             <div className="manage-filters-modal__list">
               {quickFilterOrder.map((filter, index) => (
@@ -87,7 +101,9 @@ export function ManageFiltersModal({ budgetId, onClose }: Props) {
                   onDragEnd={drag.end}
                 >
                   <GripVertical size={14} className="manage-filters-modal__grip" />
-                  <span className={`manage-filters-modal__filter-badge manage-filters-modal__filter-badge--${QUICK_FILTER_VARIANTS[filter]}`}>
+                  <span
+                    className={`manage-filters-modal__filter-badge manage-filters-modal__filter-badge--${QUICK_FILTER_VARIANTS[filter]}`}
+                  >
                     {QUICK_FILTER_LABELS[filter]}
                   </span>
                   <span
@@ -141,7 +157,7 @@ export function ManageFiltersModal({ budgetId, onClose }: Props) {
                 New Filter
               </button>
             </div>
-            {(!filters || filters.length === 0) ? (
+            {!filters || filters.length === 0 ? (
               <p className="manage-filters-modal__empty">
                 No custom filters yet. Create one to filter categories by a saved set.
               </p>

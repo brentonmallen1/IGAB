@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  buildVolatilityChartRows,
-  coefficientOfVariation,
-  filterVolatile,
-} from './volatilityData'
+import { buildVolatilityChartRows, coefficientOfVariation, filterVolatile } from './volatilityData'
 
 const cat = (over: Partial<Parameters<typeof buildVolatilityChartRows>[0][number]> = {}) => ({
   category_id: 'c1',

@@ -1,7 +1,33 @@
 import type { DateFormat, TimeFormat } from '../types'
 
-const MONTH_NAMES_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-const MONTH_NAMES_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+const MONTH_NAMES_SHORT = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+]
+const MONTH_NAMES_LONG = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+]
 
 /** Get the first day of the current month as "YYYY-MM-01" */
 export function currentMonthStart(): string {
@@ -80,7 +106,11 @@ export function formatDateTimeWithOptions(
 }
 
 /** Format time with configurable format */
-export function formatTimeWithOptions(hour: number, minute: number, timeFormat: TimeFormat): string {
+export function formatTimeWithOptions(
+  hour: number,
+  minute: number,
+  timeFormat: TimeFormat
+): string {
   const minStr = minute.toString().padStart(2, '0')
   if (timeFormat === '24h') {
     return `${hour.toString().padStart(2, '0')}:${minStr}`

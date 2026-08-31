@@ -57,7 +57,8 @@ export function CategoryGroupRow({
   const budgetRowMode = useUIStore((s) => s.budgetRowMode)
   const anySelected = selectedCategoryIds.size > 0
   const categoryIds = useMemo(() => categories.map((c) => c.id), [categories])
-  const allGroupSelected = categoryIds.length > 0 && categoryIds.every((id) => selectedCategoryIds.has(id))
+  const allGroupSelected =
+    categoryIds.length > 0 && categoryIds.every((id) => selectedCategoryIds.has(id))
   const someGroupSelected = categoryIds.some((id) => selectedCategoryIds.has(id))
   const isExpanded = !collapsedGroups.has(group.id)
   const canEditGroup = !group.is_system && !readOnlyGroup
@@ -86,9 +87,18 @@ export function CategoryGroupRow({
   const categoryDrag = useDragReorder(categories.length, moveCategory)
   const categoriesReorderable = canReorderCategories && categories.length > 1
 
-  const groupAssigned = categories.reduce((sum, cat) => sum + Number(balanceMap.get(cat.id)?.assigned ?? 0), 0)
-  const groupActivity = categories.reduce((sum, cat) => sum + Number(balanceMap.get(cat.id)?.activity ?? 0), 0)
-  const groupAvailable = categories.reduce((sum, cat) => sum + Number(balanceMap.get(cat.id)?.available ?? 0), 0)
+  const groupAssigned = categories.reduce(
+    (sum, cat) => sum + Number(balanceMap.get(cat.id)?.assigned ?? 0),
+    0
+  )
+  const groupActivity = categories.reduce(
+    (sum, cat) => sum + Number(balanceMap.get(cat.id)?.activity ?? 0),
+    0
+  )
+  const groupAvailable = categories.reduce(
+    (sum, cat) => sum + Number(balanceMap.get(cat.id)?.available ?? 0),
+    0
+  )
 
   function startRename() {
     setRenameValue(group.name)
@@ -103,7 +113,10 @@ export function CategoryGroupRow({
   }
 
   function handleRenameKey(e: React.KeyboardEvent) {
-    if (e.key === 'Enter') { e.preventDefault(); commitRename() }
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      commitRename()
+    }
     if (e.key === 'Escape') setIsRenaming(false)
   }
 
@@ -138,12 +151,20 @@ export function CategoryGroupRow({
   }
 
   function handleAddCatKey(e: React.KeyboardEvent) {
-    if (e.key === 'Enter') { e.preventDefault(); commitAddCategory() }
-    if (e.key === 'Escape') { setIsAddingCategory(false); setNewCatName('') }
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      commitAddCategory()
+    }
+    if (e.key === 'Escape') {
+      setIsAddingCategory(false)
+      setNewCatName('')
+    }
   }
 
   return (
-    <div className={`category-group-row ${budgetRowMode === 'compressed' ? 'category-group-row--compressed' : ''}`}>
+    <div
+      className={`category-group-row ${budgetRowMode === 'compressed' ? 'category-group-row--compressed' : ''}`}
+    >
       <div
         className={
           'category-group-row__header drag-handle-host' +
@@ -189,11 +210,15 @@ export function CategoryGroupRow({
           {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </button>
 
-        <div className={`category-group-row__checkbox ${anySelected ? 'category-group-row__checkbox--visible' : ''}`}>
+        <div
+          className={`category-group-row__checkbox ${anySelected ? 'category-group-row__checkbox--visible' : ''}`}
+        >
           <input
             type="checkbox"
             checked={allGroupSelected}
-            ref={(el) => { if (el) el.indeterminate = someGroupSelected && !allGroupSelected }}
+            ref={(el) => {
+              if (el) el.indeterminate = someGroupSelected && !allGroupSelected
+            }}
             onChange={() => selectGroupCategories(categoryIds)}
             onClick={(e) => e.stopPropagation()}
             aria-label={`Select all in ${group.name}`}
@@ -221,12 +246,22 @@ export function CategoryGroupRow({
         {!isRenaming && (
           <div className="category-group-row__actions">
             {canRenameOrDelete && (
-              <button className="category-group-row__action-btn" onClick={startRename} aria-label={`Rename group ${group.name}`} title="Rename">
+              <button
+                className="category-group-row__action-btn"
+                onClick={startRename}
+                aria-label={`Rename group ${group.name}`}
+                title="Rename"
+              >
                 <Pencil size={12} />
               </button>
             )}
             {canEditGroup && (
-              <button className="category-group-row__action-btn" onClick={handleArchive} aria-label={`Archive group ${group.name}`} title="Archive group">
+              <button
+                className="category-group-row__action-btn"
+                onClick={handleArchive}
+                aria-label={`Archive group ${group.name}`}
+                title="Archive group"
+              >
                 <Archive size={12} />
               </button>
             )}
@@ -241,7 +276,12 @@ export function CategoryGroupRow({
               </button>
             )}
             {!readOnlyGroup && (
-              <button className="category-group-row__action-btn" onClick={startAddCategory} aria-label={`Add category to ${group.name}`} title="Add category">
+              <button
+                className="category-group-row__action-btn"
+                onClick={startAddCategory}
+                aria-label={`Add category to ${group.name}`}
+                title="Add category"
+              >
                 <Plus size={12} />
               </button>
             )}

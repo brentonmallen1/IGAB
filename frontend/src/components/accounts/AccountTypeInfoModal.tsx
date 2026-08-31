@@ -30,10 +30,7 @@ export function AccountTypeInfoModal({ onClose, types, context }: Props) {
   const rows = types && types.length > 0 ? types : BUILTIN_ACCOUNT_TYPES
 
   return (
-    <div
-      className="type-info-overlay"
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-    >
+    <div className="type-info-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div
         ref={trapRef}
         tabIndex={-1}
@@ -56,26 +53,26 @@ export function AccountTypeInfoModal({ onClose, types, context }: Props) {
             <div className="type-info__concept">
               <div className="type-info__concept-title">On budget = envelopes</div>
               <p>
-                An on-budget account's balance funds To Be Assigned, and spending from it
-                needs a category. Your day-to-day money belongs here.
+                An on-budget account's balance funds To Be Assigned, and spending from it needs a
+                category. Your day-to-day money belongs here.
               </p>
             </div>
             <div className="type-info__concept">
               <div className="type-info__concept-title">Off budget = net worth only</div>
               <p>
                 Off-budget (tracking) accounts count toward net worth but stay out of your
-                envelopes. Moving money to one is spending as far as the budget is concerned —
-                give that transfer a category. Spending and income reports count on-budget
-                accounts by default; each report's info panel says exactly what it includes.
+                envelopes. Moving money to one is spending as far as the budget is concerned — give
+                that transfer a category. Spending and income reports count on-budget accounts by
+                default; each report's info panel says exactly what it includes.
               </p>
             </div>
             <div className="type-info__concept">
               <div className="type-info__concept-title">Loans &amp; payoff tracking</div>
               <p>
-                Pick Mortgage, Auto Loan, Student Loan, Credit Card or Loan and the payoff
-                tracking comes with the account — no second record to create. Fill in the APR
-                and minimum payment on the account page for projections, an amortization
-                schedule and interest math. Until then you still get a working ledger.
+                Pick Mortgage, Auto Loan, Student Loan, Credit Card or Loan and the payoff tracking
+                comes with the account — no second record to create. Fill in the APR and minimum
+                payment on the account page for projections, an amortization schedule and interest
+                math. Until then you still get a working ledger.
               </p>
             </div>
           </div>
@@ -88,34 +85,31 @@ export function AccountTypeInfoModal({ onClose, types, context }: Props) {
                   Imported &amp; closed — the safe choice for a dormant account
                 </div>
                 <p>
-                  Everything imports. Every transaction counts toward net worth, reports
-                  and history, and transfers to it still pair up. The account is only
-                  hidden from the account pickers and report filters, and you can reopen
-                  it whenever you like.
+                  Everything imports. Every transaction counts toward net worth, reports and
+                  history, and transfers to it still pair up. The account is only hidden from the
+                  account pickers and report filters, and you can reopen it whenever you like.
                 </p>
                 <p>
-                  This is what you want for an account that went quiet years ago — you
-                  get the tidy list without paying for it in lost history.
+                  This is what you want for an account that went quiet years ago — you get the tidy
+                  list without paying for it in lost history.
                 </p>
               </div>
               <div className="type-info__concept">
                 <div className="type-info__concept-title">Left out — its history goes too</div>
                 <p>
-                  The account and every transaction in it are never created. Your other
-                  accounts' balances stay correct, but net worth over time has a hole
-                  where that account should have been.
+                  The account and every transaction in it are never created. Your other accounts'
+                  balances stay correct, but net worth over time has a hole where that account
+                  should have been.
                 </p>
                 <p>
-                  It also breaks transfers. A transfer from an account you keep to one
-                  you leave out has nothing to pair with, so it arrives unlinked and
-                  reads as real income or spending in your reports. That is what the
-                  "transfers couldn't be matched" warning after an import is telling
-                  you — and leaving accounts out is what causes it.
+                  It also breaks transfers. A transfer from an account you keep to one you leave out
+                  has nothing to pair with, so it arrives unlinked and reads as real income or
+                  spending in your reports. That is what the "transfers couldn't be matched" warning
+                  after an import is telling you — and leaving accounts out is what causes it.
                 </p>
                 <p>
-                  YNAB exports include accounts you closed years ago. Those are worth
-                  importing anyway: they carry the history that makes past months add
-                  up.
+                  YNAB exports include accounts you closed years ago. Those are worth importing
+                  anyway: they carry the history that makes past months add up.
                 </p>
               </div>
             </div>
@@ -126,9 +120,7 @@ export function AccountTypeInfoModal({ onClose, types, context }: Props) {
               <div key={t.key} className="type-info__row">
                 <div className="type-info__row-head">
                   <span className="type-info__label">{t.label}</span>
-                  <span
-                    className={`type-info__chip type-info__chip--${t.classification}`}
-                  >
+                  <span className={`type-info__chip type-info__chip--${t.classification}`}>
                     {t.classification}
                   </span>
                   <span className="type-info__chip">
@@ -136,7 +128,8 @@ export function AccountTypeInfoModal({ onClose, types, context }: Props) {
                   </span>
                 </div>
                 <p className="type-info__desc">
-                  {t.description || `Custom type — counts as ${t.classification === 'liability' ? 'a liability' : 'an asset'} in net worth.`}
+                  {t.description ||
+                    `Custom type — counts as ${t.classification === 'liability' ? 'a liability' : 'an asset'} in net worth.`}
                 </p>
               </div>
             ))}

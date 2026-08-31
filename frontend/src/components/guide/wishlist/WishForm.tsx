@@ -49,7 +49,11 @@ export function WishForm({ budgetId, wish, projects, defaultCoolingDays, onClose
   const { data: groups } = useCategoryGroups(budgetId)
   // `is_assignable` — see ProjectForm: a wish names a category to save into.
   const sections = useMemo(
-    () => groupedCategorySections((categories ?? []).filter((c) => c.is_assignable), groups ?? []),
+    () =>
+      groupedCategorySections(
+        (categories ?? []).filter((c) => c.is_assignable),
+        groups ?? []
+      ),
     [categories, groups]
   )
   const create = useCreateWish(budgetId)
@@ -103,11 +107,20 @@ export function WishForm({ budgetId, wish, projects, defaultCoolingDays, onClose
   }
 
   return (
-    <GuideDialog title={editing ? 'Edit wish' : 'Add a wish'} onClose={onClose} historyKey="wishlist-form">
+    <GuideDialog
+      title={editing ? 'Edit wish' : 'Add a wish'}
+      onClose={onClose}
+      historyKey="wishlist-form"
+    >
       <form className="dialog__body wish-form" onSubmit={submit}>
         <label className="tool__field">
           <span>What</span>
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="A bike, a trip, a better chair…" autoFocus />
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="A bike, a trip, a better chair…"
+            autoFocus
+          />
         </label>
         <div className="tool__grid">
           <label className="tool__field">
@@ -138,7 +151,12 @@ export function WishForm({ budgetId, wish, projects, defaultCoolingDays, onClose
             <>
               {!editing && (
                 <label className="wish-form__radio">
-                  <input type="radio" name="funding" checked={mode === 'own'} onChange={() => setMode('own')} />
+                  <input
+                    type="radio"
+                    name="funding"
+                    checked={mode === 'own'}
+                    onChange={() => setMode('own')}
+                  />
                   <span>
                     <strong>An envelope of its own</strong> in the Wishlist group, with a goal of
                     the cost — it shows on the Budget page like any other.
@@ -146,14 +164,24 @@ export function WishForm({ budgetId, wish, projects, defaultCoolingDays, onClose
                 </label>
               )}
               <label className="wish-form__radio">
-                <input type="radio" name="funding" checked={mode === 'existing'} onChange={() => setMode('existing')} />
+                <input
+                  type="radio"
+                  name="funding"
+                  checked={mode === 'existing'}
+                  onChange={() => setMode('existing')}
+                />
                 <span>
-                  <strong>An existing category</strong> — several wishes on one envelope queue up
-                  by priority.
+                  <strong>An existing category</strong> — several wishes on one envelope queue up by
+                  priority.
                 </span>
               </label>
               <label className="wish-form__radio">
-                <input type="radio" name="funding" checked={mode === 'none'} onChange={() => setMode('none')} />
+                <input
+                  type="radio"
+                  name="funding"
+                  checked={mode === 'none'}
+                  onChange={() => setMode('none')}
+                />
                 <span>
                   <strong>Not yet</strong> — decide later.
                 </span>
@@ -180,7 +208,11 @@ export function WishForm({ budgetId, wish, projects, defaultCoolingDays, onClose
         {!editing && (
           <label className="tool__field tool__field--inline">
             <span>Cooling-off, days</span>
-            <input inputMode="numeric" value={coolingDays} onChange={(e) => setCoolingDays(e.target.value)} />
+            <input
+              inputMode="numeric"
+              value={coolingDays}
+              onChange={(e) => setCoolingDays(e.target.value)}
+            />
           </label>
         )}
         <label className="tool__field">

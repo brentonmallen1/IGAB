@@ -103,35 +103,40 @@ export function InfoPopover({ title, label = 'More information', width, children
       >
         <Info size={15} />
       </button>
-      {open && pos && createPortal(
-        <div
-          ref={panelRef}
-          className="info-pop__panel"
-          style={{
-            top: pos.top,
-            bottom: pos.bottom,
-            left: pos.left,
-            width: pos.width,
-            maxHeight: pos.maxHeight,
-          }}
-          role="dialog"
-          aria-label={title}
-        >
-          <div className="info-pop__header">
-            <span className="info-pop__title">{title}</span>
-            <button
-              className="info-pop__close"
-              onClick={() => { setOpen(false); triggerRef.current?.focus() }}
-              type="button"
-              aria-label="Close"
-            >
-              <X size={13} />
-            </button>
-          </div>
-          <div className="info-pop__body">{children}</div>
-        </div>,
-        document.body
-      )}
+      {open &&
+        pos &&
+        createPortal(
+          <div
+            ref={panelRef}
+            className="info-pop__panel"
+            style={{
+              top: pos.top,
+              bottom: pos.bottom,
+              left: pos.left,
+              width: pos.width,
+              maxHeight: pos.maxHeight,
+            }}
+            role="dialog"
+            aria-label={title}
+          >
+            <div className="info-pop__header">
+              <span className="info-pop__title">{title}</span>
+              <button
+                className="info-pop__close"
+                onClick={() => {
+                  setOpen(false)
+                  triggerRef.current?.focus()
+                }}
+                type="button"
+                aria-label="Close"
+              >
+                <X size={13} />
+              </button>
+            </div>
+            <div className="info-pop__body">{children}</div>
+          </div>,
+          document.body
+        )}
     </div>
   )
 }

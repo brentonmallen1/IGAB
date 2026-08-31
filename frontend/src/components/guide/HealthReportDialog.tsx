@@ -72,8 +72,8 @@ export function HealthReportDialog({
 
         {findings.length === 0 ? (
           <p className="guide-report__clean">
-            Nothing stood out. Everything the roadmap measures is within its target — worth a
-            look again next month.
+            Nothing stood out. Everything the roadmap measures is within its target — worth a look
+            again next month.
           </p>
         ) : (
           <ol className="guide-report__list">
@@ -94,11 +94,7 @@ export function HealthReportDialog({
                     <NameChips names={f.names} limit={4} label={`${f.title}: what this counts`} />
                     <div className="guide-report__links">
                       {stageDef && (
-                        <button
-                          type="button"
-                          className="guide-link-button"
-                          onClick={() => goTo(f)}
-                        >
+                        <button type="button" className="guide-link-button" onClick={() => goTo(f)}>
                           Step {stageDef.step} — {stageDef.title}
                           <ArrowRight size={11} aria-hidden />
                         </button>

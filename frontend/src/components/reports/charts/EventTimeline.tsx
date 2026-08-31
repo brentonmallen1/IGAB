@@ -20,8 +20,9 @@ const TONE_BY_CLASS: Record<string, string> = {
   transfer_internal: 'neutral',
 }
 
-
-interface Props { budgetId: string }
+interface Props {
+  budgetId: string
+}
 
 const LIMITS = [25, 50, 100] as const
 
@@ -31,15 +32,19 @@ export function TimelineReport({ budgetId }: Props) {
   const [limit, setLimit] = useState<25 | 50 | 100>(25)
   const catIds = filters.categoryIds.length > 0 ? filters.categoryIds : undefined
   const acctIds = filters.accountIds.length > 0 ? filters.accountIds : undefined
-  const { data, isLoading, isError, error, refetch } = useTimelineReport(budgetId, filters.startDate, filters.endDate, limit, catIds, acctIds)
+  const { data, isLoading, isError, error, refetch } = useTimelineReport(
+    budgetId,
+    filters.startDate,
+    filters.endDate,
+    limit,
+    catIds,
+    acctIds
+  )
   const { data: payees } = usePayees(budgetId)
   const captureRef = useRef<HTMLDivElement>(null)
 
   // Timeline rows carry names only — resolve back to ids for the drill-down
-  const payeeIdByName = useMemo(
-    () => new Map((payees ?? []).map((p) => [p.name, p.id])),
-    [payees],
-  )
+  const payeeIdByName = useMemo(() => new Map((payees ?? []).map((p) => [p.name, p.id])), [payees])
 
   if (isLoading) return <div className="report-loading">Loading…</div>
   if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
@@ -48,8 +53,12 @@ export function TimelineReport({ budgetId }: Props) {
     const payeeId = payeeIdByName.get(payeeName)
     if (!payeeId) return
     setDrillDown({
-      kind: 'payee', label: payeeName, scope: 'parent',
-      payeeIds: [payeeId], startDate: filters.startDate, endDate: filters.endDate,
+      kind: 'payee',
+      label: payeeName,
+      scope: 'parent',
+      payeeIds: [payeeId],
+      startDate: filters.startDate,
+      endDate: filters.endDate,
     })
   }
 
@@ -67,8 +76,17 @@ export function TimelineReport({ budgetId }: Props) {
       <div className="report-section__header">
         <h2 className="report-section__title">Event Timeline</h2>
         <ReportInfoButton title="Event Timeline">
-          <p>Your largest transactions displayed chronologically. The <strong>dot size</strong> reflects the transaction's magnitude relative to the largest in the set — bigger dot = larger amount.</p>
-          <p><strong>Red dots</strong> are spending; <strong>green dots</strong> are income. Money moved into savings or used to pay down a tracked debt gets its own colour and a label — it left your budget, but it isn't spending. Transactions alternate left/right for readability. Hover any dot for full details.</p>
+          <p>
+            Your largest transactions displayed chronologically. The <strong>dot size</strong>{' '}
+            reflects the transaction's magnitude relative to the largest in the set — bigger dot =
+            larger amount.
+          </p>
+          <p>
+            <strong>Red dots</strong> are spending; <strong>green dots</strong> are income. Money
+            moved into savings or used to pay down a tracked debt gets its own colour and a label —
+            it left your budget, but it isn't spending. Transactions alternate left/right for
+            readability. Hover any dot for full details.
+          </p>
           <ReportScopeNote scope="on-budget-filterable" />
         </ReportInfoButton>
         <p className="report-section__subtitle">
@@ -103,56 +121,56 @@ export function TimelineReport({ budgetId }: Props) {
       </div>
 
       <div ref={captureRef} className="report-capture">
-      {transactions.length > 0 && (
-        <div className="report-metrics">
-          <MetricCard label="Largest Transaction" value={formatMoney(largestAmt)} />
-          <MetricCard label="Shown" value={`${transactions.length} transactions`} />
-        </div>
-      )}
+        {transactions.length > 0 && (
+          <div className="report-metrics">
+            <MetricCard label="Largest Transaction" value={formatMoney(largestAmt)} />
+            <MetricCard label="Shown" value={`${transactions.length} transactions`} />
+          </div>
+        )}
 
-      {transactions.length === 0 ? (
-        <div className="reports-empty">No transactions for this period.</div>
-      ) : (
-        <div className="timeline">
-          <div className="timeline__track" />
-          {transactions.map((tx, i) => {
-            const amt = Number(tx.amount)
-            // By class, not by sign. A transfer into savings is negative but is
-            // not an expense, and drawing it red said otherwise.
-            const tone = TONE_BY_CLASS[tx.activity_class] ?? (amt < 0 ? 'expense' : 'income')
-            const size = dotSize(amt)
-            const side = i % 2 === 0 ? 'left' : 'right'
-            return (
-              <div key={tx.id} className={`timeline__event timeline__event--${side}`}>
-                <div
-                  className={`timeline__dot timeline__dot--${tone}`}
-                  style={{ width: size, height: size }}
-                  title={`${tx.date} · ${tx.payee_name ?? 'Unknown'} · ${formatMoney(Math.abs(amt))}`}
-                />
-                <div
-                  className={`timeline__card timeline__card--${side} ${tx.payee_name && payeeIdByName.has(tx.payee_name) ? 'timeline__card--clickable' : ''}`}
-                  onClick={tx.payee_name ? () => drillTo(tx.payee_name!) : undefined}
-                >
-                  <div className="timeline__date">{tx.date}</div>
-                  <div className="timeline__payee">{tx.payee_name ?? 'Unknown Payee'}</div>
-                  {tx.category_name && (
-                    <div className="timeline__category">{tx.category_name}</div>
-                  )}
-                  <div className={`timeline__amount timeline__amount--${tone}`}>
-                    {formatMoney(Math.abs(amt))}
-                    {/* Label served with the row, so a class added later
-                        cannot silently lose its chip here. */}
-                    {tx.activity_class !== 'spending' && (
-                      <span className="timeline__class">{tx.activity_label}</span>
+        {transactions.length === 0 ? (
+          <div className="reports-empty">No transactions for this period.</div>
+        ) : (
+          <div className="timeline">
+            <div className="timeline__track" />
+            {transactions.map((tx, i) => {
+              const amt = Number(tx.amount)
+              // By class, not by sign. A transfer into savings is negative but is
+              // not an expense, and drawing it red said otherwise.
+              const tone = TONE_BY_CLASS[tx.activity_class] ?? (amt < 0 ? 'expense' : 'income')
+              const size = dotSize(amt)
+              const side = i % 2 === 0 ? 'left' : 'right'
+              return (
+                <div key={tx.id} className={`timeline__event timeline__event--${side}`}>
+                  <div
+                    className={`timeline__dot timeline__dot--${tone}`}
+                    style={{ width: size, height: size }}
+                    title={`${tx.date} · ${tx.payee_name ?? 'Unknown'} · ${formatMoney(Math.abs(amt))}`}
+                  />
+                  <div
+                    className={`timeline__card timeline__card--${side} ${tx.payee_name && payeeIdByName.has(tx.payee_name) ? 'timeline__card--clickable' : ''}`}
+                    onClick={tx.payee_name ? () => drillTo(tx.payee_name!) : undefined}
+                  >
+                    <div className="timeline__date">{tx.date}</div>
+                    <div className="timeline__payee">{tx.payee_name ?? 'Unknown Payee'}</div>
+                    {tx.category_name && (
+                      <div className="timeline__category">{tx.category_name}</div>
                     )}
+                    <div className={`timeline__amount timeline__amount--${tone}`}>
+                      {formatMoney(Math.abs(amt))}
+                      {/* Label served with the row, so a class added later
+                        cannot silently lose its chip here. */}
+                      {tx.activity_class !== 'spending' && (
+                        <span className="timeline__class">{tx.activity_label}</span>
+                      )}
+                    </div>
+                    {tx.memo && <div className="timeline__memo">{tx.memo}</div>}
                   </div>
-                  {tx.memo && <div className="timeline__memo">{tx.memo}</div>}
                 </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
+              )
+            })}
+          </div>
+        )}
       </div>
     </div>
   )

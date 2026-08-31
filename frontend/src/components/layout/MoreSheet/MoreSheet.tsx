@@ -1,6 +1,23 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { UserCircle2, Users, CalendarClock, Upload, Settings, ChevronDown, ChevronLeft, LogOut, Moon, Palette, Landmark, Compass, Sparkles, Sun, Eye, EyeOff } from 'lucide-react'
+import {
+  UserCircle2,
+  Users,
+  CalendarClock,
+  Upload,
+  Settings,
+  ChevronDown,
+  ChevronLeft,
+  LogOut,
+  Moon,
+  Palette,
+  Landmark,
+  Compass,
+  Sparkles,
+  Sun,
+  Eye,
+  EyeOff,
+} from 'lucide-react'
 import { BottomSheet } from '../../common/BottomSheet/BottomSheet'
 import { PALETTES, getPaletteForTheme, isLightTheme } from '../../../stores/appStore'
 import { useUpdateStatus } from '../../../api/system'
@@ -97,7 +114,11 @@ export function MoreSheet() {
             />
           )}
         </button>
-        <button className="more-sheet__item press-scale" onClick={togglePrivacyMode} aria-pressed={privacyMode}>
+        <button
+          className="more-sheet__item press-scale"
+          onClick={togglePrivacyMode}
+          aria-pressed={privacyMode}
+        >
           {privacyMode ? <EyeOff size={18} /> : <Eye size={18} />}
           <span>{privacyMode ? 'Show amounts' : 'Hide amounts'}</span>
         </button>

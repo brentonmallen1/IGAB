@@ -57,9 +57,7 @@ async def generate_sample(session, budget) -> "SampleBudgetGenerator":
 
 
 async def _transactions(session, budget_id) -> list[Transaction]:
-    result = await session.execute(
-        select(Transaction).where(Transaction.budget_id == budget_id)
-    )
+    result = await session.execute(select(Transaction).where(Transaction.budget_id == budget_id))
     return list(result.scalars().all())
 
 
@@ -151,7 +149,7 @@ async def test_generation_covers_every_entity_kind(db_session):
             assert await liability_repo.get_by_linked_account(account.id) is not None, account.name
 
     car_loan_acct = next(a for a in accounts if a.name == "Car Loan")
-    managed = next(l for l in liabilities if l.linked_account_id == car_loan_acct.id)
+    managed = next(li for li in liabilities if li.linked_account_id == car_loan_acct.id)
     assert managed.name == "Car Loan"
     # Nothing stored: it reads "Auto Loan" off the account, which is now typed
     # specifically enough to say so.
@@ -160,13 +158,13 @@ async def test_generation_covers_every_entity_kind(db_session):
     # The specced terms survive: the companion pass fills gaps, never overwrites
     assert managed.interest_rate == Decimal("6.25")
 
-    visa = next(l for l in liabilities if l.linked_account_id == visa_account.id)
+    visa = next(li for li in liabilities if li.linked_account_id == visa_account.id)
     assert visa.interest_rate is None and visa.minimum_payment is None
     # Nothing stored: a managed liability reads its kind off its account, so a
     # companion storing one would be the duplicate field this model removed.
     assert visa.liability_type is None
 
-    unmanaged = next(l for l in liabilities if l.linked_account_id is None)
+    unmanaged = next(li for li in liabilities if li.linked_account_id is None)
     assert unmanaged.name == "Dental Payment Plan"
     assert unmanaged.liability_type == "medical"
     assert unmanaged.manual_balance == Decimal("855.00")
@@ -236,9 +234,7 @@ async def test_integrity_all_green(db_session):
     await generate_sample(db_session, budget)
 
     report = await IntegrityService(db_session).run(budget.id)
-    assert report.all_passed, [
-        (c.name, c.details) for c in report.checks if not c.passed
-    ]
+    assert report.all_passed, [(c.name, c.details) for c in report.checks if not c.passed]
 
 
 async def test_same_anchor_runs_are_identical(db_session):
@@ -253,8 +249,7 @@ async def test_same_anchor_runs_are_identical(db_session):
         payees = await PayeeRepository(db_session).get_all(budget_id)
         payee_names = {p.id: p.name for p in payees}
         return sorted(
-            (t.date, t.amount, payee_names.get(t.payee_id), t.cleared, t.is_split)
-            for t in txns
+            (t.date, t.amount, payee_names.get(t.payee_id), t.cleared, t.is_split) for t in txns
         )
 
     assert await signature(budget_a.id) == await signature(budget_b.id)
@@ -276,9 +271,7 @@ async def test_endpoint_creates_and_auto_suffixes(api_client):
 
 async def test_endpoint_result_is_demo_ready_today(api_client, db_session):
     """The endpoint path (anchor = today) also lands on the exact targets."""
-    response = await api_client.post(
-        "/api/v1/budgets/create-sample", json={"name": "Tour"}
-    )
+    response = await api_client.post("/api/v1/budgets/create-sample", json={"name": "Tour"})
     assert response.status_code == 201
     budget_id = uuid.UUID(response.json()["budget"]["id"])
 

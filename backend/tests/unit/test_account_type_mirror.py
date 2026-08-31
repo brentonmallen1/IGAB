@@ -13,7 +13,6 @@ none of the guidance that made the choice consequential, while the post-import
 panel showed the new wording for the same type.
 """
 
-import json
 import re
 from pathlib import Path
 
@@ -21,9 +20,7 @@ import pytest
 
 from igab.domain.account_types import BUILTIN_ACCOUNT_TYPES
 
-MIRROR = (
-    Path(__file__).resolve().parents[3] / "frontend" / "src" / "constants" / "accountTypes.ts"
-)
+MIRROR = Path(__file__).resolve().parents[3] / "frontend" / "src" / "constants" / "accountTypes.ts"
 
 #: The api container mounts only `backend/`, so `just test-backend` cannot see
 #: the mirror. `just ci` — and therefore GitHub CI, which gates merges — runs
@@ -33,6 +30,30 @@ MIRROR = (
 needs_frontend_tree = pytest.mark.skipif(
     not MIRROR.exists(), reason="frontend tree not mounted (Docker); enforced by `just ci`"
 )
+
+
+#: A TS string literal, in either quote style. Prettier writes a string
+#: containing an apostrophe with double quotes rather than escaping it, so a
+#: single-quote-only pattern silently read half of "the vehicle's value" and
+#: reported the mirror as drifted. The formatter is allowed to pick; this has
+#: to read whatever it picked.
+_STRING = re.compile(
+    r"'((?:[^'\\]|\\.)*)'"  # single-quoted
+    r'|"((?:[^"\\]|\\.)*)"'  # double-quoted
+)
+
+
+def _strings(text: str) -> list[str]:
+    return [
+        (m.group(1) if m.group(1) is not None else m.group(2))
+        .replace("\\'", "'")
+        .replace('\\"', '"')
+        for m in _STRING.finditer(text)
+    ]
+
+
+def _field(block: str, name: str) -> str:
+    return _strings(re.search(rf"{name}:\s*(.*)", block).group(1))[0]
 
 
 def _parse_mirror() -> dict[str, dict]:
@@ -45,14 +66,14 @@ def _parse_mirror() -> dict[str, dict]:
     body = source[source.index("BUILTIN_ACCOUNT_TYPES") : source.rindex("\n]")]
     entries: dict[str, dict] = {}
     for block in re.findall(r"\{(.*?)\n  \}", body, re.S):
-        key = re.search(r"key:\s*'([^']*)'", block).group(1)
-        label = re.search(r"label:\s*'([^']*)'", block).group(1)
-        classification = re.search(r"classification:\s*'([^']*)'", block).group(1)
+        key = _field(block, "key")
+        label = _field(block, "label")
+        classification = _field(block, "classification")
         on_budget = re.search(r"default_on_budget:\s*(true|false)", block).group(1)
-        # Description may be a single quoted string or several joined by `+`,
-        # and is the last field, so it may end the block without a newline.
+        # Description may be one string literal or several joined by `+`, and
+        # is the last field, so it may end the block without a newline.
         raw = block[block.index("description:") :]
-        description = "".join(re.findall(r"'((?:[^'\\]|\\.)*)'", raw)).replace("\\'", "'")
+        description = "".join(_strings(raw))
         entries[key] = {
             "label": label,
             "classification": classification,

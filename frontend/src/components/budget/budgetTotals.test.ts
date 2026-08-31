@@ -11,9 +11,9 @@ function bal(assigned: number, activity: number, available: number): CategoryBal
     available,
     target_status: null,
     needed_this_month: null,
-  is_card_payment: false,
-  repaid_uncovered_debt: 0,
-  credit_overspent: 0,
+    is_card_payment: false,
+    repaid_uncovered_debt: 0,
+    credit_overspent: 0,
   }
 }
 

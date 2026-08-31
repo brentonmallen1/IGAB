@@ -197,6 +197,6 @@ class TestInflectedForms:
 
     @pytest.mark.parametrize("name", ["Discovery Fund", "Discovery Channel Savings"])
     def test_the_stem_rule_does_not_resurrect_false_positives(self, name):
-        """"discover" (the card) must still not fire on "Discovery" — the
+        """ "discover" (the card) must still not fire on "Discovery" — the
         reason token matching was introduced in the first place."""
         assert suggest_account_type(name)[0] != "credit_card"

@@ -430,7 +430,9 @@
   flex-shrink: 0;
   border-radius: var(--border-radius-sm);
   color: var(--text-muted);
-  transition: background-color var(--transition-fast), color var(--transition-fast);
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .payees-wizard__peek-btn:hover,

@@ -25,7 +25,8 @@ export function AddAccountModal({ onClose, initialTypeKey }: Props) {
   const [name, setName] = useState('')
   const [accountType, setAccountType] = useState(initialTypeKey ?? 'checking')
   const [onBudget, setOnBudget] = useState(
-    () => typeOptions.find((t) => t.key === (initialTypeKey ?? 'checking'))?.default_on_budget ?? true
+    () =>
+      typeOptions.find((t) => t.key === (initialTypeKey ?? 'checking'))?.default_on_budget ?? true
   )
   const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -67,9 +68,18 @@ export function AddAccountModal({ onClose, initialTypeKey }: Props) {
 
   return (
     <div className="acct-modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div ref={trapRef} tabIndex={-1} className="acct-modal" role="dialog" aria-modal="true" aria-labelledby="add-acct-title">
+      <div
+        ref={trapRef}
+        tabIndex={-1}
+        className="acct-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="add-acct-title"
+      >
         <div className="acct-modal__header">
-          <span id="add-acct-title" className="acct-modal__title">New Account</span>
+          <span id="add-acct-title" className="acct-modal__title">
+            New Account
+          </span>
           <button className="acct-modal__close" onClick={onClose} aria-label="Close">
             <X size={16} />
           </button>
@@ -136,7 +146,11 @@ export function AddAccountModal({ onClose, initialTypeKey }: Props) {
 
           <div className="acct-modal__footer">
             {error && <span className="acct-modal__save-error">{error}</span>}
-            <button type="button" className="acct-modal__btn acct-modal__btn--cancel" onClick={onClose}>
+            <button
+              type="button"
+              className="acct-modal__btn acct-modal__btn--cancel"
+              onClick={onClose}
+            >
               Cancel
             </button>
             <button

@@ -178,12 +178,19 @@ export const CategoryRow = memo(function CategoryRow({
   }
 
   function handleRenameKey(e: React.KeyboardEvent) {
-    if (e.key === 'Enter') { e.preventDefault(); commitRename() }
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      commitRename()
+    }
     if (e.key === 'Escape') setIsRenaming(false)
   }
 
   function handleCheckboxChange(e: React.ChangeEvent<HTMLInputElement>) {
-    toggleCategorySelection(category.id, e.nativeEvent instanceof MouseEvent ? (e.nativeEvent as MouseEvent).shiftKey : false, orderedIds)
+    toggleCategorySelection(
+      category.id,
+      e.nativeEvent instanceof MouseEvent ? (e.nativeEvent as MouseEvent).shiftKey : false,
+      orderedIds
+    )
   }
 
   function handleRowClick(e: React.MouseEvent) {
@@ -302,7 +309,9 @@ export const CategoryRow = memo(function CategoryRow({
             onMoveDown={() => reorder.moveBy(index, 1)}
           />
         )}
-        <div className={`category-row__checkbox ${anySelected ? 'category-row__checkbox--visible' : ''}`}>
+        <div
+          className={`category-row__checkbox ${anySelected ? 'category-row__checkbox--visible' : ''}`}
+        >
           <input
             type="checkbox"
             checked={isSelected}
@@ -361,7 +370,10 @@ export const CategoryRow = memo(function CategoryRow({
                   className="category-row__target-expired"
                   title="Target date has passed — click to update"
                   aria-label={`${category.name} target expired — click to update`}
-                  onClick={(e) => { e.stopPropagation(); setShowTargetEditor(true) }}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setShowTargetEditor(true)
+                  }}
                 >
                   expired
                 </button>
@@ -371,7 +383,10 @@ export const CategoryRow = memo(function CategoryRow({
                     className={`category-row__target-led category-row__target-led--${targetStatus}`}
                     title={getTargetTooltip(targetStatus, monthlyNeeded ?? undefined, formatMoney)}
                     aria-label={`${category.name}: ${getTargetTooltip(targetStatus, monthlyNeeded ?? undefined, formatMoney)}`}
-                    onClick={(e) => { e.stopPropagation(); setShowTargetEditor(true) }}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setShowTargetEditor(true)
+                    }}
                   />
                 ) : (
                   <TargetBadge
@@ -381,7 +396,11 @@ export const CategoryRow = memo(function CategoryRow({
                   />
                 )
               ) : null}
-              <div className="category-row__actions" role="group" aria-label={`${category.name} actions`}>
+              <div
+                className="category-row__actions"
+                role="group"
+                aria-label={`${category.name} actions`}
+              >
                 <button
                   className="category-row__action-btn"
                   onClick={() => setShowAddTxn(true)}
@@ -390,7 +409,12 @@ export const CategoryRow = memo(function CategoryRow({
                 >
                   <Plus size={13} />
                 </button>
-                <button className="category-row__action-btn" onClick={startRename} title="Rename" aria-label={`Rename ${category.name}`}>
+                <button
+                  className="category-row__action-btn"
+                  onClick={startRename}
+                  title="Rename"
+                  aria-label={`Rename ${category.name}`}
+                >
                   <Pencil size={13} />
                 </button>
               </div>
@@ -438,7 +462,9 @@ export const CategoryRow = memo(function CategoryRow({
             {activity === 0 ? (
               <span className="category-row__zero">—</span>
             ) : (
-              <span className={activity < 0 ? 'negative' : 'positive'}>{formatMoney(activity)}</span>
+              <span className={activity < 0 ? 'negative' : 'positive'}>
+                {formatMoney(activity)}
+              </span>
             )}
           </button>
         </div>
@@ -492,7 +518,6 @@ export const CategoryRow = memo(function CategoryRow({
             onClose={() => setMovePopoverPos(null)}
           />
         )}
-
       </div>
 
       {isMobile && (
@@ -513,44 +538,49 @@ export const CategoryRow = memo(function CategoryRow({
         </BottomSheet>
       )}
 
-      {targetProgress !== null && targetStatus !== null && budgetRowMode === 'expanded' && (() => {
-        const pct = Math.round(targetProgress * 100)
-        // Only the wording differs: a balance goal says "save more", a funding
-        // target says "need this month". The amount is the same server number.
-        const isBalanceGoal = targetMeasuresBalance(target!)
-        const pctInside = targetProgress > 0.22
+      {targetProgress !== null &&
+        targetStatus !== null &&
+        budgetRowMode === 'expanded' &&
+        (() => {
+          const pct = Math.round(targetProgress * 100)
+          // Only the wording differs: a balance goal says "save more", a funding
+          // target says "need this month". The amount is the same server number.
+          const isBalanceGoal = targetMeasuresBalance(target!)
+          const pctInside = targetProgress > 0.22
 
-        return (
-          <div className="target-pill-row">
-            <div className="target-pill-wrap">
-              <div className={`target-pill-track target-pill-track--${targetStatus}`}>
-                <div
-                  className={`target-pill-fill target-pill-fill--${targetStatus}`}
-                  style={{ '--fill-scale': targetProgress } as React.CSSProperties}
-                />
-                <span
-                  className={`target-pill-pct ${pctInside ? 'target-pill-pct--inside' : 'target-pill-pct--outside'}`}
-                  style={pctInside ? { left: `${targetProgress * 100}%` } : undefined}
-                >
-                  {pct}%
-                </span>
+          return (
+            <div className="target-pill-row">
+              <div className="target-pill-wrap">
+                <div className={`target-pill-track target-pill-track--${targetStatus}`}>
+                  <div
+                    className={`target-pill-fill target-pill-fill--${targetStatus}`}
+                    style={{ '--fill-scale': targetProgress } as React.CSSProperties}
+                  />
+                  <span
+                    className={`target-pill-pct ${pctInside ? 'target-pill-pct--inside' : 'target-pill-pct--outside'}`}
+                    style={pctInside ? { left: `${targetProgress * 100}%` } : undefined}
+                  >
+                    {pct}%
+                  </span>
+                </div>
+              </div>
+              <div className="target-pill-stats">
+                {targetStatus === 'funded' ? (
+                  <span className="target-pill-stat target-pill-stat--funded">Funded</span>
+                ) : amountRemaining > 0 ? (
+                  <span className="target-pill-stat">
+                    {isBalanceGoal
+                      ? `Save ${formatMoney(amountRemaining)} more`
+                      : `Need ${formatMoney(amountRemaining)} this month`}
+                  </span>
+                ) : null}
+                {monthlyNeeded !== null && monthlyNeeded > 0 && (
+                  <span className="target-pill-stat">{formatMoney(monthlyNeeded)}/mo to goal</span>
+                )}
               </div>
             </div>
-            <div className="target-pill-stats">
-              {targetStatus === 'funded' ? (
-                <span className="target-pill-stat target-pill-stat--funded">Funded</span>
-              ) : amountRemaining > 0 ? (
-                <span className="target-pill-stat">
-                  {isBalanceGoal ? `Save ${formatMoney(amountRemaining)} more` : `Need ${formatMoney(amountRemaining)} this month`}
-                </span>
-              ) : null}
-              {monthlyNeeded !== null && monthlyNeeded > 0 && (
-                <span className="target-pill-stat">{formatMoney(monthlyNeeded)}/mo to goal</span>
-              )}
-            </div>
-          </div>
-        )
-      })()}
+          )
+        })()}
     </>
   )
 })

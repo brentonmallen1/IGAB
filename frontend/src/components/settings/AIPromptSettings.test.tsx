@@ -13,7 +13,12 @@ vi.mock('../../api/settings', () => ({
 beforeEach(() => {
   vi.mocked(useSettings).mockReturnValue({
     data: [
-      { key: 'ai_prompt_suggest_regex', value: 'names: {names}', is_overridden: false, placeholders: ['{names}'] },
+      {
+        key: 'ai_prompt_suggest_regex',
+        value: 'names: {names}',
+        is_overridden: false,
+        placeholders: ['{names}'],
+      },
       { key: 'ai_prompt_receipt_gate', value: 'gate', is_overridden: true, placeholders: [] },
     ],
   } as never)

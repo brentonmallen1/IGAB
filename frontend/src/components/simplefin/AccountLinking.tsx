@@ -59,16 +59,20 @@ export function AccountLinking({ account, connectionId }: Props) {
                   }
                 }}
               >
-                <option value="">
-                  {link.isPending ? 'Linking…' : 'Select account…'}
-                </option>
+                <option value="">{link.isPending ? 'Linking…' : 'Select account…'}</option>
                 {remoteAccounts.map((ra) => (
                   <option key={ra.id} value={ra.id}>
                     {ra.name ?? ra.id}
                   </option>
                 ))}
               </select>
-              <button className="acc-linking__btn" onClick={() => { setOpen(false); setLinkError(null) }}>
+              <button
+                className="acc-linking__btn"
+                onClick={() => {
+                  setOpen(false)
+                  setLinkError(null)
+                }}
+              >
                 Cancel
               </button>
               {linkError && <span className="acc-linking__error">{linkError}</span>}

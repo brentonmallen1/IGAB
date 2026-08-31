@@ -16,8 +16,14 @@ beforeAll(() => {
       return idx == null ? 0 : Number(idx) * ROW
     },
   })
-  Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, get: () => ROW })
-  Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => VIEW })
+  Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+    configurable: true,
+    get: () => ROW,
+  })
+  Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+    configurable: true,
+    get: () => VIEW,
+  })
 })
 afterAll(() => {
   for (const k of ['offsetTop', 'offsetHeight', 'clientHeight']) {
@@ -63,13 +69,19 @@ describe('Combobox highlight scrolling', () => {
   })
 })
 
-
 describe('Combobox Tab', () => {
   function setupTab(extra: Partial<React.ComponentProps<typeof Combobox>> = {}) {
     const onChange = vi.fn()
     const onBlurClose = vi.fn()
     const utils = render(
-      <Combobox value={null} options={OPTIONS} onChange={onChange} onBlurClose={onBlurClose} autoFocus {...extra} />
+      <Combobox
+        value={null}
+        options={OPTIONS}
+        onChange={onChange}
+        onBlurClose={onBlurClose}
+        autoFocus
+        {...extra}
+      />
     )
     const input = utils.container.querySelector('input')!
     return { ...utils, input, onChange, onBlurClose }

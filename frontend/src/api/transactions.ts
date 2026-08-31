@@ -22,7 +22,9 @@ function reportBulkFailures(result: BulkActionResult, actionLabel: string) {
   if (result.failed.length === 0) return
   const first = result.failed[0].reason
   const more = result.failed.length > 1 ? ` (+${result.failed.length - 1} more)` : ''
-  toast.error(`${result.failed.length} of ${result.failed.length + result.updated.length} not ${actionLabel}: ${first}${more}`)
+  toast.error(
+    `${result.failed.length} of ${result.failed.length + result.updated.length} not ${actionLabel}: ${first}${more}`
+  )
 }
 
 const PAGE_SIZE = 100
@@ -66,7 +68,10 @@ export function transactionFilterParams(filters: TransactionFilters): Record<str
   return params
 }
 
-export function useInfiniteTransactions(accountId: string | null, filters: TransactionFilters = {}) {
+export function useInfiniteTransactions(
+  accountId: string | null,
+  filters: TransactionFilters = {}
+) {
   const filtered = hasActiveFilters(filters)
   const limit = filtered ? FILTERED_LIMIT : PAGE_SIZE
 
@@ -75,7 +80,9 @@ export function useInfiniteTransactions(accountId: string | null, filters: Trans
     queryFn: async ({ pageParam }) => {
       const params: Record<string, unknown> = { limit, offset: pageParam }
       Object.assign(params, transactionFilterParams(filters))
-      const { data } = await apiClient.get<Transaction[]>(`/accounts/${accountId}/transactions`, { params })
+      const { data } = await apiClient.get<Transaction[]>(`/accounts/${accountId}/transactions`, {
+        params,
+      })
       return data
     },
     getNextPageParam: (lastPage, allPages) => {
@@ -92,7 +99,7 @@ export function useInfiniteTransactions(accountId: string | null, filters: Trans
  * Same filter semantics and register ordering as the per-account listing. */
 export function useInfiniteBudgetTransactions(
   budgetId: string | null,
-  filters: TransactionFilters = {},
+  filters: TransactionFilters = {}
 ) {
   const filtered = hasActiveFilters(filters)
   const limit = filtered ? FILTERED_LIMIT : PAGE_SIZE
@@ -104,7 +111,7 @@ export function useInfiniteBudgetTransactions(
       Object.assign(params, transactionFilterParams(filters))
       const { data } = await apiClient.get<BudgetTransactionsResponse>(
         `/${budgetId}/transactions`,
-        { params },
+        { params }
       )
       return data.transactions
     },
@@ -138,7 +145,7 @@ export interface BudgetTransactionParams {
  * so panel totals reconcile with the report aggregates being drilled into. */
 export function useBudgetTransactions(
   budgetId: string | null,
-  params: BudgetTransactionParams | null,
+  params: BudgetTransactionParams | null
 ) {
   return useQuery({
     queryKey: [ROOT.budgetTransactions, budgetId, params],
@@ -157,11 +164,10 @@ export function useBudgetTransactions(
       if (params!.categoryIds?.length) p.category_ids = params!.categoryIds.join(',')
       if (params!.payeeIds?.length) p.payee_ids = params!.payeeIds.join(',')
       if (params!.accountIds?.length) p.account_ids = params!.accountIds.join(',')
-      if (params!.activityClasses?.length)
-        p.activity_classes = params!.activityClasses.join(',')
+      if (params!.activityClasses?.length) p.activity_classes = params!.activityClasses.join(',')
       const { data } = await apiClient.get<BudgetTransactionsResponse>(
         `/${budgetId}/transactions`,
-        { params: p },
+        { params: p }
       )
       return data
     },
@@ -178,7 +184,7 @@ export function useBudgetTransactions(
 export function useTransactionsPeek(
   budgetId: string | null,
   scope: { categoryId?: string | null; accountId?: string | null },
-  limit: number,
+  limit: number
 ) {
   const { categoryId = null, accountId = null } = scope
   return useQuery({
@@ -190,7 +196,7 @@ export function useTransactionsPeek(
       if (accountId) params.account_ids = accountId
       const { data } = await apiClient.get<BudgetTransactionsResponse>(
         `/${budgetId}/transactions`,
-        { params },
+        { params }
       )
       return data
     },
@@ -204,14 +210,14 @@ export function useTransactionsPeek(
 export function usePayeeTransactions(
   budgetId: string | null,
   payeeId: string | null,
-  limit: number,
+  limit: number
 ) {
   return useQuery({
     queryKey: [ROOT.payeeTransactions, budgetId, payeeId, limit],
     queryFn: async () => {
       const { data } = await apiClient.get<BudgetTransactionsResponse>(
         `/${budgetId}/transactions`,
-        { params: { payee_ids: payeeId, limit } },
+        { params: { payee_ids: payeeId, limit } }
       )
       return data
     },
@@ -253,7 +259,8 @@ export function useUpdateTransaction(budgetId: string) {
         .then((r) => r.data),
     // A link/retarget/break writes the OTHER account's row too, so the
     // register goes wide rather than narrowing to `txn.account_id`.
-    onSuccess: (txn) => invalidateAfterTransactionChange(qc, { budgetId, transactionIds: [txn.id] }),
+    onSuccess: (txn) =>
+      invalidateAfterTransactionChange(qc, { budgetId, transactionIds: [txn.id] }),
   })
 }
 
@@ -298,7 +305,11 @@ export function useTransactionSplits(transactionId: string | null, enabled = tru
   })
 }
 
-function invalidateAfterSplitChange(qc: ReturnType<typeof useQueryClient>, budgetId: string, txn: { id: string; account_id: string }) {
+function invalidateAfterSplitChange(
+  qc: ReturnType<typeof useQueryClient>,
+  budgetId: string,
+  txn: { id: string; account_id: string }
+) {
   return invalidateAfterTransactionChange(qc, {
     budgetId,
     accountId: txn.account_id,
@@ -314,7 +325,7 @@ export function useConvertToSplit(budgetId: string) {
         .post<Transaction>(
           `/transactions/${id}/split`,
           { splits },
-          { params: { budget_id: budgetId } },
+          { params: { budget_id: budgetId } }
         )
         .then((r) => r.data),
     onSuccess: (txn) => invalidateAfterSplitChange(qc, budgetId, txn),
@@ -332,11 +343,12 @@ export function useReplaceSplits(budgetId: string) {
         .put<Transaction[]>(
           `/transactions/${id}/splits`,
           { splits },
-          { params: { budget_id: budgetId } },
+          { params: { budget_id: budgetId } }
         )
         .then((r) => ({ id, lines: r.data })),
     onSuccess: ({ id, lines }) => {
-      if (lines[0]) invalidateAfterSplitChange(qc, budgetId, { id, account_id: lines[0].account_id })
+      if (lines[0])
+        invalidateAfterSplitChange(qc, budgetId, { id, account_id: lines[0].account_id })
       else qc.invalidateQueries({ queryKey: [ROOT.transactionSplits, id] })
     },
   })
@@ -346,10 +358,9 @@ export function useDeleteTransaction(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async ({ id, accountId }: { id: string; accountId: string }) => {
-      const { data } = await apiClient.delete<{ batch_id: string }>(
-        `/transactions/${id}`,
-        { params: { budget_id: budgetId } }
-      )
+      const { data } = await apiClient.delete<{ batch_id: string }>(`/transactions/${id}`, {
+        params: { budget_id: budgetId },
+      })
       return { accountId, batchId: data.batch_id }
     },
     // The server refuses some deletes (a reconciled row, the far side of a
@@ -368,11 +379,21 @@ export function useDeleteTransaction(budgetId: string) {
 export function useBulkUpdateCleared(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ transactionIds, cleared, accountId }: { transactionIds: string[]; cleared: string; accountId: string | null }) =>
-      apiClient.patch<BulkActionResult>(`/${budgetId}/transactions/bulk-cleared`, {
-        transaction_ids: transactionIds,
-        cleared,
-      }).then((r) => ({ accountId, result: r.data })),
+    mutationFn: ({
+      transactionIds,
+      cleared,
+      accountId,
+    }: {
+      transactionIds: string[]
+      cleared: string
+      accountId: string | null
+    }) =>
+      apiClient
+        .patch<BulkActionResult>(`/${budgetId}/transactions/bulk-cleared`, {
+          transaction_ids: transactionIds,
+          cleared,
+        })
+        .then((r) => ({ accountId, result: r.data })),
     onSuccess: ({ accountId, result }) => {
       reportBulkFailures(result, 'updated')
       // Null account = all-accounts register: rows span accounts, so the
@@ -385,11 +406,21 @@ export function useBulkUpdateCleared(budgetId: string) {
 export function useBulkCategorize(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ transactionIds, categoryId, accountId }: { transactionIds: string[]; categoryId: string; accountId: string | null }) =>
-      apiClient.patch<BulkActionResult>(`/${budgetId}/transactions/bulk-categorize`, {
-        transaction_ids: transactionIds,
-        category_id: categoryId,
-      }).then((r) => ({ accountId, result: r.data })),
+    mutationFn: ({
+      transactionIds,
+      categoryId,
+      accountId,
+    }: {
+      transactionIds: string[]
+      categoryId: string
+      accountId: string | null
+    }) =>
+      apiClient
+        .patch<BulkActionResult>(`/${budgetId}/transactions/bulk-categorize`, {
+          transaction_ids: transactionIds,
+          category_id: categoryId,
+        })
+        .then((r) => ({ accountId, result: r.data })),
     onSuccess: ({ accountId, result }, { transactionIds }) => {
       reportBulkFailures(result, 'categorized')
       return invalidateAfterTransactionChange(qc, { budgetId, accountId, transactionIds })
@@ -400,7 +431,13 @@ export function useBulkCategorize(budgetId: string) {
 export function useBulkDeleteTransactions(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async ({ transactionIds, accountId }: { transactionIds: string[]; accountId: string | null }) => {
+    mutationFn: async ({
+      transactionIds,
+      accountId,
+    }: {
+      transactionIds: string[]
+      accountId: string | null
+    }) => {
       const { data } = await apiClient.post<BulkActionResult>(
         `/${budgetId}/transactions/bulk-delete`,
         { transaction_ids: transactionIds }
@@ -411,7 +448,9 @@ export function useBulkDeleteTransactions(budgetId: string) {
       reportBulkFailures(result, 'deleted')
       // Refetch, not invalidate: the deleted rows have to leave the register
       // on the spot.
-      qc.refetchQueries({ queryKey: accountId ? [ROOT.transactions, accountId] : [ROOT.transactions] })
+      qc.refetchQueries({
+        queryKey: accountId ? [ROOT.transactions, accountId] : [ROOT.transactions],
+      })
       return invalidateAfterTransactionChange(qc, { budgetId, accountId })
     },
   })
@@ -479,8 +518,17 @@ export function usePendingReviewCountForAccount(accountId: string | null) {
 export function useBulkApprove(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ transactionIds, accountId }: { transactionIds: string[]; accountId: string | null }) =>
-      apiClient.patch<BulkActionResult>(`/${budgetId}/transactions/bulk-approve`, { transaction_ids: transactionIds })
+    mutationFn: ({
+      transactionIds,
+      accountId,
+    }: {
+      transactionIds: string[]
+      accountId: string | null
+    }) =>
+      apiClient
+        .patch<BulkActionResult>(`/${budgetId}/transactions/bulk-approve`, {
+          transaction_ids: transactionIds,
+        })
         .then((r) => ({ accountId, result: r.data })),
     onSuccess: ({ accountId, result }, { transactionIds }) => {
       reportBulkFailures(result, 'approved')
@@ -492,7 +540,13 @@ export function useBulkApprove(budgetId: string) {
 export function useMergeTransactions(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ transactionIds, survivorId }: { transactionIds: string[]; survivorId?: string }) =>
+    mutationFn: ({
+      transactionIds,
+      survivorId,
+    }: {
+      transactionIds: string[]
+      survivorId?: string
+    }) =>
       apiClient
         .post<Transaction>(`/${budgetId}/transactions/merge`, {
           transaction_ids: transactionIds,
@@ -515,7 +569,7 @@ export function useSimilarTransactions(
   accountId: string | null,
   amount: number | null,
   txnDate: string | null,
-  excludeId: string | null,
+  excludeId: string | null
 ) {
   return useQuery({
     queryKey: [ROOT.similarTransactions, accountId, amount, txnDate, excludeId],
@@ -524,7 +578,7 @@ export function useSimilarTransactions(
       if (excludeId) params.exclude_id = excludeId
       const { data } = await apiClient.get<SimilarTransaction[]>(
         `/accounts/${accountId}/transactions/similar`,
-        { params },
+        { params }
       )
       return data
     },
@@ -559,7 +613,7 @@ export function useTransactionClassification(transactionId: string | null) {
     queryKey: [ROOT.transactionClassification, transactionId],
     queryFn: async () => {
       const { data } = await apiClient.get<TransactionClassification>(
-        `/transactions/${transactionId}/classification`,
+        `/transactions/${transactionId}/classification`
       )
       return data
     },

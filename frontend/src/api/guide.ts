@@ -102,8 +102,7 @@ export function useGuideOverview(budgetId: string | null) {
 export function useGuideSignals(budgetId: string | null, enabled = true) {
   return useQuery({
     queryKey: [ROOT.guideSignals, budgetId],
-    queryFn: () =>
-      apiClient.get<SignalsResponse>(`/${budgetId}/guide/signals`).then((r) => r.data),
+    queryFn: () => apiClient.get<SignalsResponse>(`/${budgetId}/guide/signals`).then((r) => r.data),
     enabled: !!budgetId && enabled,
     // Signals are derived from the whole budget, so almost any edit could move
     // them. Short and refetched on demand rather than aggressively live.
@@ -157,9 +156,7 @@ export function fetchWishlistRetirePreview(budgetId: string) {
 export function useSetGuidePreferences(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (
-      changes: Partial<GuidePreferences> & { release_wishlist_money?: boolean }
-    ) =>
+    mutationFn: (changes: Partial<GuidePreferences> & { release_wishlist_money?: boolean }) =>
       apiClient
         .put<GuidePreferences>(`/${budgetId}/guide/preferences`, changes)
         .then((r) => r.data),
@@ -257,13 +254,11 @@ export function useGuideCheckup(budgetId: string | null, enabled = true) {
 export function useRunHealthReport(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: () =>
-      apiClient.post<Checkup>(`/${budgetId}/guide/checkup/run`).then((r) => r.data),
+    mutationFn: () => apiClient.post<Checkup>(`/${budgetId}/guide/checkup/run`).then((r) => r.data),
     // The run returns the same payload the GET would, freshly stamped.
     onSuccess: (checkup) => qc.setQueryData([ROOT.guideCheckup, budgetId], checkup),
   })
 }
-
 
 // ── scenario calculators ─────────────────────────────────────────────────────
 // Inputs are documents the user typed (or edited from a seed), so these are
@@ -396,9 +391,7 @@ function useScenario<Req, Res>(kind: string, budgetId: string | null, body: Req 
   return useQuery({
     queryKey: [ROOT.guideScenario, kind, budgetId, body],
     queryFn: () =>
-      apiClient
-        .post<Res>(`/${budgetId}/guide/scenarios/${kind}`, body)
-        .then((r) => r.data),
+      apiClient.post<Res>(`/${budgetId}/guide/scenarios/${kind}`, body).then((r) => r.data),
     enabled: !!budgetId && body !== null,
     placeholderData: keepPreviousData,
     staleTime: 60_000,
@@ -417,9 +410,6 @@ export function useLoanCompare(budgetId: string | null, body: LoanCompareRequest
   return useScenario<LoanCompareRequest, LoanCompareResponse>('loan-compare', budgetId, body)
 }
 
-export function useEmergencyFundPlan(
-  budgetId: string | null,
-  body: EmergencyFundRequest | null
-) {
+export function useEmergencyFundPlan(budgetId: string | null, body: EmergencyFundRequest | null) {
   return useScenario<EmergencyFundRequest, EmergencyFundResponse>('emergency-fund', budgetId, body)
 }

@@ -37,7 +37,14 @@ function wish(over: Partial<Wish>): Wish {
     cost: '1800',
     priority: 0,
     status: 'open',
-    funding: { mode: 'own', category_id: 'c', category_name: 'Bike', inherited: false, owns_envelope: true, target_date: null },
+    funding: {
+      mode: 'own',
+      category_id: 'c',
+      category_name: 'Bike',
+      inherited: false,
+      owns_envelope: true,
+      target_date: null,
+    },
     cooling_until: null,
     cooling: false,
     last_affirmed_at: null,
@@ -78,13 +85,21 @@ beforeEach(() => {
   useAppStore.setState({ currentBudgetId: 'b1' })
   useGuideStore.setState({ wishlistView: 'flat', wishlistSort: 'reach' })
   vi.mocked(useGuideOverview).mockReturnValue({
-    data: { concepts: [], thresholds: {}, preferences: { personalization: true, checkup: true, wishlist: true }, progress: {} },
+    data: {
+      concepts: [],
+      thresholds: {},
+      preferences: { personalization: true, checkup: true, wishlist: true },
+      progress: {},
+    },
   } as never)
 })
 
 describe('WishlistPanel', () => {
   it('shows the served counts, not recomputed ones', () => {
-    vi.mocked(wishlistApi.useWishlist).mockReturnValue({ data: payload({ items: [wish({})] }), isLoading: false } as never)
+    vi.mocked(wishlistApi.useWishlist).mockReturnValue({
+      data: payload({ items: [wish({})] }),
+      isLoading: false,
+    } as never)
     renderPanel()
     expect(screen.getByText('Added over 3 months ago and still wanted: 2 of 5')).toBeInTheDocument()
   })
@@ -101,7 +116,10 @@ describe('WishlistPanel', () => {
 
   it('the hero holds exactly three, by priority', () => {
     const items = [0, 1, 2, 3, 4].map((p) => wish({ name: `W${p}`, priority: p }))
-    vi.mocked(wishlistApi.useWishlist).mockReturnValue({ data: payload({ items }), isLoading: false } as never)
+    vi.mocked(wishlistApi.useWishlist).mockReturnValue({
+      data: payload({ items }),
+      isLoading: false,
+    } as never)
     const { container } = renderPanel()
     const hero = container.querySelector('.guide-wishlist__hero')!
     expect(within(hero as HTMLElement).getAllByRole('article')).toHaveLength(3)
@@ -110,7 +128,10 @@ describe('WishlistPanel', () => {
 
   it('history is collapsed by default', () => {
     vi.mocked(wishlistApi.useWishlist).mockReturnValue({
-      data: payload({ items: [wish({})], history: [wish({ name: 'Old', status: 'done', reach: null })] }),
+      data: payload({
+        items: [wish({})],
+        history: [wish({ name: 'Old', status: 'done', reach: null })],
+      }),
       isLoading: false,
     } as never)
     renderPanel()
@@ -127,8 +148,14 @@ describe('WishlistPanel', () => {
           total: '60',
           moves: [
             {
-              move_id: 'm1', month: '2026-08-01', date: '2026-08-12T09:30:00Z', amount: '60',
-              from_category_id: 'c', from_name: 'Bike', to_category_id: 'd', to_name: 'Dining Out',
+              move_id: 'm1',
+              month: '2026-08-01',
+              date: '2026-08-12T09:30:00Z',
+              amount: '60',
+              from_category_id: 'c',
+              from_name: 'Bike',
+              to_category_id: 'd',
+              to_name: 'Dining Out',
               affected: [{ item_id: 'w', name: 'Bike', months_further: '0.6' }],
             },
           ],
@@ -152,9 +179,17 @@ describe('WishlistPanel', () => {
 
   it('reads as switched off when the preference is off', () => {
     vi.mocked(useGuideOverview).mockReturnValue({
-      data: { concepts: [], thresholds: {}, preferences: { personalization: true, checkup: true, wishlist: false }, progress: {} },
+      data: {
+        concepts: [],
+        thresholds: {},
+        preferences: { personalization: true, checkup: true, wishlist: false },
+        progress: {},
+      },
     } as never)
-    vi.mocked(wishlistApi.useWishlist).mockReturnValue({ data: undefined, isLoading: false } as never)
+    vi.mocked(wishlistApi.useWishlist).mockReturnValue({
+      data: undefined,
+      isLoading: false,
+    } as never)
     renderPanel()
     expect(screen.getByText(/switched off/)).toBeInTheDocument()
   })

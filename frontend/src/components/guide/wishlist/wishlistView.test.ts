@@ -1,6 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import type { Wish, WishlistProject, WishReach } from '../../../api/wishlist'
-import { filterWishes, groupByProject, HERO_COUNT, sortWishes, splitHero, splitProjects } from './wishlistView'
+import {
+  filterWishes,
+  groupByProject,
+  HERO_COUNT,
+  sortWishes,
+  splitHero,
+  splitProjects,
+} from './wishlistView'
 
 function reach(state: WishReach['state'], months: number | null = null): WishReach {
   return { state, months, date: null, ahead_cost: '0', progress: '0' }
@@ -16,7 +23,14 @@ function wish(over: Partial<Wish>): Wish {
     cost: '100',
     priority: 0,
     status: 'open',
-    funding: { mode: 'none', category_id: null, category_name: null, inherited: false, owns_envelope: false, target_date: null },
+    funding: {
+      mode: 'none',
+      category_id: null,
+      category_name: null,
+      inherited: false,
+      owns_envelope: false,
+      target_date: null,
+    },
     cooling_until: null,
     cooling: false,
     last_affirmed_at: null,
@@ -36,7 +50,15 @@ function project(over: Partial<WishlistProject>): WishlistProject {
     category_name: null,
     notes: null,
     sort_order: 0,
-    summary: { item_count: 0, open_count: 0, total_cost: '0', affordable_now: 0, funded_by: null, state: 'empty', complete: false },
+    summary: {
+      item_count: 0,
+      open_count: 0,
+      total_cost: '0',
+      affordable_now: 0,
+      funded_by: null,
+      state: 'empty',
+      complete: false,
+    },
     ...over,
   }
 }
@@ -50,7 +72,13 @@ describe('sortWishes', () => {
       wish({ name: 'soon', reach: reach('months', 2) }),
       wish({ name: 'now', reach: reach('now', 0) }),
     ]
-    expect(sortWishes(items, 'reach').map((w) => w.name)).toEqual(['now', 'soon', 'later', 'norate', 'unlinked'])
+    expect(sortWishes(items, 'reach').map((w) => w.name)).toEqual([
+      'now',
+      'soon',
+      'later',
+      'norate',
+      'unlinked',
+    ])
   })
 
   it('other sorts', () => {
@@ -97,7 +125,10 @@ describe('filterWishes and groupByProject', () => {
   })
 
   it('complete projects go to history', () => {
-    const done = project({ name: 'Done', summary: { ...trip.summary, complete: true, state: 'complete' } })
+    const done = project({
+      name: 'Done',
+      summary: { ...trip.summary, complete: true, state: 'complete' },
+    })
     const { active, complete } = splitProjects([trip, done])
     expect(active.map((p) => p.name)).toEqual(['Japan'])
     expect(complete.map((p) => p.name)).toEqual(['Done'])

@@ -83,7 +83,12 @@ export function SplitTransactionEditor({ transaction: txn, categories, categoryG
         <span className="split-editor__title">
           Split <strong>{formatMoney(Math.abs(totalAmount))}</strong>
         </span>
-        <button className="split-editor__close" onClick={stopSplitEditing} aria-label="Cancel split" title="Cancel">
+        <button
+          className="split-editor__close"
+          onClick={stopSplitEditing}
+          aria-label="Cancel split"
+          title="Cancel"
+        >
           <X size={14} />
         </button>
       </div>
@@ -142,14 +147,16 @@ export function SplitTransactionEditor({ transaction: txn, categories, categoryG
           Add split
         </button>
 
-        <div className={`split-editor__remaining ${remainingCents === 0 ? 'split-editor__remaining--done' : ''}`}>
-          {remainingCents === 0
-            ? 'Fully assigned'
-            : `Remaining: ${formatMoney(remaining)}`}
+        <div
+          className={`split-editor__remaining ${remainingCents === 0 ? 'split-editor__remaining--done' : ''}`}
+        >
+          {remainingCents === 0 ? 'Fully assigned' : `Remaining: ${formatMoney(remaining)}`}
         </div>
 
         <div className="split-editor__actions">
-          <button className="split-editor__cancel" onClick={stopSplitEditing}>Cancel</button>
+          <button className="split-editor__cancel" onClick={stopSplitEditing}>
+            Cancel
+          </button>
           <button
             className="split-editor__save"
             onClick={handleSave}

@@ -45,9 +45,7 @@ async def _submit(api_client, budget, account, **extra):
 
 
 class TestSubmitReceipt:
-    async def test_submit_queues_job_and_stages_file(
-        self, api_client, db_session, attachments_dir
-    ):
+    async def test_submit_queues_job_and_stages_file(self, api_client, db_session, attachments_dir):
         budget, account = await _setup(api_client, db_session)
         resp = await _submit(api_client, budget, account)
         assert resp.status_code == 202, resp.text
@@ -144,9 +142,7 @@ class TestDuplicateReceipts:
         from igab.repositories.attachment_repo import AttachmentRepository
         from igab.services.attachment_service import AttachmentService
 
-        txn = await create_transaction(
-            db_session, budget, account, "-42.50", date(2026, 8, 2)
-        )
+        txn = await create_transaction(db_session, budget, account, "-42.50", date(2026, 8, 2))
         svc = AttachmentService(AttachmentRepository(db_session))
         await svc.upload(txn, content, "receipt.jpg", "image/jpeg")
         return txn
@@ -177,9 +173,7 @@ class TestDuplicateReceipts:
 
         from igab.db.models import TransactionAttachment
 
-        row = (
-            await db_session.execute(select(TransactionAttachment))
-        ).scalars().first()
+        row = (await db_session.execute(select(TransactionAttachment))).scalars().first()
         assert row.content_hash == hashlib.sha256(tiny_jpeg()).hexdigest()
 
     async def test_a_different_receipt_still_goes_through(
@@ -223,36 +217,56 @@ class TestAINeedsReviewCount:
         assert resp.status_code == 200, resp.text
         return resp.json()
 
-    async def test_counts_unapproved_ai_transactions(
-        self, api_client, db_session, attachments_dir
-    ):
+    async def test_counts_unapproved_ai_transactions(self, api_client, db_session, attachments_dir):
         budget, account = await _setup(api_client, db_session)
         await create_transaction(
-            db_session, budget, account, "-12.50", date(2026, 8, 2),
-            approved=False, created_via="ai_receipt", cleared="uncleared",
+            db_session,
+            budget,
+            account,
+            "-12.50",
+            date(2026, 8, 2),
+            approved=False,
+            created_via="ai_receipt",
+            cleared="uncleared",
         )
         await create_transaction(
-            db_session, budget, account, "-4.00", date(2026, 8, 2),
-            approved=False, created_via="ai_nl", cleared="uncleared",
+            db_session,
+            budget,
+            account,
+            "-4.00",
+            date(2026, 8, 2),
+            approved=False,
+            created_via="ai_nl",
+            cleared="uncleared",
         )
         body = await self._count(api_client, budget)
         assert body["needs_review"] == 2
         # No jobs were queued — the two counts are independent on purpose.
         assert body["count"] == 0
 
-    async def test_excludes_approved_and_non_ai_rows(
-        self, api_client, db_session, attachments_dir
-    ):
+    async def test_excludes_approved_and_non_ai_rows(self, api_client, db_session, attachments_dir):
         budget, account = await _setup(api_client, db_session)
         # Approved AI row — already dealt with.
         await create_transaction(
-            db_session, budget, account, "-1.00", date(2026, 8, 2),
-            approved=True, created_via="ai_receipt", cleared="uncleared",
+            db_session,
+            budget,
+            account,
+            "-1.00",
+            date(2026, 8, 2),
+            approved=True,
+            created_via="ai_receipt",
+            cleared="uncleared",
         )
         # Unapproved, but from a bank import rather than the AI.
         await create_transaction(
-            db_session, budget, account, "-2.00", date(2026, 8, 2),
-            approved=False, created_via=None, cleared="uncleared",
+            db_session,
+            budget,
+            account,
+            "-2.00",
+            date(2026, 8, 2),
+            approved=False,
+            created_via=None,
+            cleared="uncleared",
         )
         assert (await self._count(api_client, budget))["needs_review"] == 0
 
@@ -263,21 +277,45 @@ class TestAINeedsReviewCount:
         common = dict(approved=False, created_via="ai_receipt")
         # Pending rows aren't actionable yet.
         await create_transaction(
-            db_session, budget, account, "-1.00", date(2026, 8, 2),
-            cleared="pending", **common,
+            db_session,
+            budget,
+            account,
+            "-1.00",
+            date(2026, 8, 2),
+            cleared="pending",
+            **common,
         )
         await create_transaction(
-            db_session, budget, account, "-2.00", date(2026, 8, 2),
-            cleared="uncleared", is_deleted=True, **common,
+            db_session,
+            budget,
+            account,
+            "-2.00",
+            date(2026, 8, 2),
+            cleared="uncleared",
+            is_deleted=True,
+            **common,
         )
         parent = await create_transaction(
-            db_session, budget, account, "-9.00", date(2026, 8, 2),
-            cleared="uncleared", is_split=True, approved=True, created_via="ai_receipt",
+            db_session,
+            budget,
+            account,
+            "-9.00",
+            date(2026, 8, 2),
+            cleared="uncleared",
+            is_split=True,
+            approved=True,
+            created_via="ai_receipt",
         )
         # A split child would otherwise double-count against its parent.
         await create_transaction(
-            db_session, budget, account, "-9.00", date(2026, 8, 2),
-            cleared="uncleared", parent_transaction_id=parent.id, **common,
+            db_session,
+            budget,
+            account,
+            "-9.00",
+            date(2026, 8, 2),
+            cleared="uncleared",
+            parent_transaction_id=parent.id,
+            **common,
         )
         assert (await self._count(api_client, budget))["needs_review"] == 0
 
@@ -286,8 +324,14 @@ class TestAINeedsReviewCount:
         other_budget = await create_budget(db_session, api_client.test_user)
         other_account = await create_account(db_session, other_budget, "Other")
         await create_transaction(
-            db_session, other_budget, other_account, "-5.00", date(2026, 8, 2),
-            approved=False, created_via="ai_receipt", cleared="uncleared",
+            db_session,
+            other_budget,
+            other_account,
+            "-5.00",
+            date(2026, 8, 2),
+            approved=False,
+            created_via="ai_receipt",
+            cleared="uncleared",
         )
         assert (await self._count(api_client, budget))["needs_review"] == 0
         assert (await self._count(api_client, other_budget))["needs_review"] == 1
@@ -343,9 +387,7 @@ class TestJobListingAndLifecycle:
         assert body["attempts"] == 0
         assert body["error"] is None
 
-    async def test_delete_removes_job_and_staging(
-        self, api_client, db_session, attachments_dir
-    ):
+    async def test_delete_removes_job_and_staging(self, api_client, db_session, attachments_dir):
         budget, account = await _setup(api_client, db_session)
         body = (await _submit(api_client, budget, account)).json()
         job = await db_session.get(AIJob, uuid.UUID(body["id"]))
@@ -430,9 +472,7 @@ class TestHasAttachmentFilter:
         from igab.db.models import TransactionAttachment
 
         budget, account = await _setup(api_client, db_session)
-        with_att = await create_transaction(
-            db_session, budget, account, "-10.00", date(2026, 8, 1)
-        )
+        with_att = await create_transaction(db_session, budget, account, "-10.00", date(2026, 8, 1))
         without_att = await create_transaction(
             db_session, budget, account, "-20.00", date(2026, 8, 1)
         )
@@ -469,9 +509,7 @@ class TestHasAttachmentFilter:
         from igab.db.models import TransactionAttachment
 
         budget, account = await _setup(api_client, db_session)
-        with_att = await create_transaction(
-            db_session, budget, account, "-10.00", date(2026, 8, 1)
-        )
+        with_att = await create_transaction(db_session, budget, account, "-10.00", date(2026, 8, 1))
         await create_transaction(db_session, budget, account, "-20.00", date(2026, 8, 1))
         db_session.add(
             TransactionAttachment(
@@ -486,9 +524,7 @@ class TestHasAttachmentFilter:
         await db_session.flush()
 
         rows = (
-            await api_client.get(
-                f"/api/v1/accounts/{account.id}/transactions?has_attachment=true"
-            )
+            await api_client.get(f"/api/v1/accounts/{account.id}/transactions?has_attachment=true")
         ).json()
         assert [r["id"] for r in rows] == [str(with_att.id)]
 
@@ -504,9 +540,7 @@ class TestPDFAttachments:
         doc.close()
         return data
 
-    async def test_upload_and_serve_pdf_attachment(
-        self, api_client, db_session, attachments_dir
-    ):
+    async def test_upload_and_serve_pdf_attachment(self, api_client, db_session, attachments_dir):
         from datetime import date
 
         budget, account = await _setup(api_client, db_session)
@@ -552,9 +586,7 @@ class TestPDFAttachments:
 
 
 class TestAttachmentPathStability:
-    async def test_date_edit_does_not_orphan_file(
-        self, api_client, db_session, attachments_dir
-    ):
+    async def test_date_edit_does_not_orphan_file(self, api_client, db_session, attachments_dir):
         """The pre-existing path bug: files were located by re-deriving the
         path from txn.date. With storage_path recorded at upload, editing the
         date must not break downloads."""

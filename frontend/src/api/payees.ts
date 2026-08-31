@@ -59,8 +59,16 @@ export function useCreatePayee(budgetId: string) {
 export function useUpdatePayee(budgetId: string | null) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, ...body }: { id: string; name?: string; default_category_id?: string; mapping_samples?: string[]; match_pattern?: string | null }) =>
-      apiClient.patch<Payee>(`/payees/${id}`, body).then((r) => r.data),
+    mutationFn: ({
+      id,
+      ...body
+    }: {
+      id: string
+      name?: string
+      default_category_id?: string
+      mapping_samples?: string[]
+      match_pattern?: string | null
+    }) => apiClient.patch<Payee>(`/payees/${id}`, body).then((r) => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: [ROOT.payees, budgetId] }),
   })
 }
@@ -80,10 +88,9 @@ export function useMergePayee(budgetId: string | null) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async ({ sourceId, targetId }: { sourceId: string; targetId: string }) => {
-      const { data } = await apiClient.post<{ change_id: string }>(
-        `/payees/${sourceId}/merge`,
-        { target_id: targetId }
-      )
+      const { data } = await apiClient.post<{ change_id: string }>(`/payees/${sourceId}/merge`, {
+        target_id: targetId,
+      })
       return data
     },
     onSuccess: () => {
@@ -108,9 +115,12 @@ export function useFetchPayeeDuplicates(budgetId: string | null) {
   return useMutation({
     mutationFn: async (threshold: number) => {
       if (!budgetId) throw new Error('No budget selected')
-      const { data } = await apiClient.get<DuplicatePayeeGroup[]>(`/${budgetId}/payees/duplicates`, {
-        params: { threshold },
-      })
+      const { data } = await apiClient.get<DuplicatePayeeGroup[]>(
+        `/${budgetId}/payees/duplicates`,
+        {
+          params: { threshold },
+        }
+      )
       return data
     },
   })

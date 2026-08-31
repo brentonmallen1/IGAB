@@ -1,7 +1,14 @@
 import { useRef, useState } from 'react'
 import {
-  Bar, CartesianGrid, ComposedChart, Legend, Line,
-  ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Bar,
+  CartesianGrid,
+  ComposedChart,
+  Legend,
+  Line,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
 } from 'recharts'
 import { useSavingsRateReport } from '../../../api/reports'
 import { useChartHeight } from '../../../hooks/useChartHeight'
@@ -14,7 +21,9 @@ import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ReportRangeButtons } from './rangeButtons'
 
-interface Props { budgetId: string }
+interface Props {
+  budgetId: string
+}
 
 const pct = (v: number | null) => (v === null ? '—' : `${(v * 100).toFixed(1)}%`)
 
@@ -44,7 +53,7 @@ export function SavingsRateReport({ budgetId }: Props) {
   }))
 
   const hasAnything = rows.some(
-    (m) => Number(m.income) !== 0 || Number(m.savings) !== 0 || Number(m.debt_principal) !== 0,
+    (m) => Number(m.income) !== 0 || Number(m.savings) !== 0 || Number(m.debt_principal) !== 0
   )
 
   return (
@@ -54,33 +63,28 @@ export function SavingsRateReport({ budgetId }: Props) {
         <ReportInfoButton title="Savings Rate">
           <p>How much of what came in you kept, month by month.</p>
           <p>
-            <strong>Savings rate</strong> = money moved into savings ÷ income.
-            With <em>“include debt payments”</em> on, money used to pay down a
-            tracked debt counts too — both build what you own rather than
-            consuming it.
+            <strong>Savings rate</strong> = money moved into savings ÷ income. With{' '}
+            <em>“include debt payments”</em> on, money used to pay down a tracked debt counts too —
+            both build what you own rather than consuming it.
           </p>
           <p>
-            Growth <em>inside</em> a tracked account — dividends, market
-            movement — is deliberately <strong>not</strong> counted. It changes
-            your net worth, but you didn’t save it, and counting it would make
-            this number climb in a good market while you did nothing.
+            Growth <em>inside</em> a tracked account — dividends, market movement — is deliberately{' '}
+            <strong>not</strong> counted. It changes your net worth, but you didn’t save it, and
+            counting it would make this number climb in a good market while you did nothing.
           </p>
           <p>
-            A month with no income shows a gap rather than 0%: having no income
-            recorded isn’t the same as saving none of it.
+            A month with no income shows a gap rather than 0%: having no income recorded isn’t the
+            same as saving none of it.
           </p>
           <ReportScopeNote scope="on-budget" />
         </ReportInfoButton>
         <p className="report-section__subtitle">Share of income kept</p>
         <div className="flex-row ms-auto">
-          <ReportRangeButtons
-            months={months}
-            onChange={setMonths}
-          />
+          <ReportRangeButtons months={months} onChange={setMonths} />
           <button
             className={`report-btn ${withDebt ? 'report-btn--active' : ''}`}
             aria-pressed={withDebt}
-          onClick={() => setWithDebt((v) => !v)}
+            onClick={() => setWithDebt((v) => !v)}
             type="button"
             title="Count money used to pay down a tracked debt as saving"
           >
@@ -113,14 +117,17 @@ export function SavingsRateReport({ budgetId }: Props) {
             />
             <MetricCard label="Income" value={formatMoney(Number(summary.income))} />
             <MetricCard label="Saved" value={formatMoney(Number(summary.savings))} />
-            <MetricCard label="Debt Paid Down" value={formatMoney(Number(summary.debt_principal))} />
+            <MetricCard
+              label="Debt Paid Down"
+              value={formatMoney(Number(summary.debt_principal))}
+            />
           </div>
         )}
 
         {!hasAnything ? (
           <div className="reports-empty">
-            No income or savings recorded yet. Once money comes in and some of it
-            moves to a savings or investment account, the rate appears here.
+            No income or savings recorded yet. Once money comes in and some of it moves to a savings
+            or investment account, the rate appears here.
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={chartHeight}>
@@ -140,7 +147,11 @@ export function SavingsRateReport({ budgetId }: Props) {
                 tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
                 width={50}
               />
-              <Tooltip content={<ChartTooltip showTotal={false} />} offset={16} isAnimationActive={false} />
+              <Tooltip
+                content={<ChartTooltip showTotal={false} />}
+                offset={16}
+                isAnimationActive={false}
+              />
               <Legend />
               <Bar yAxisId="money" dataKey="Saved" stackId="kept" fill={COLOR_POSITIVE} />
               <Bar yAxisId="money" dataKey="Debt Paid" stackId="kept" fill={COLOR_NEUTRAL} />

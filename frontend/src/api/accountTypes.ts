@@ -43,9 +43,7 @@ export function useCreateAccountType(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (data: AccountTypeCreate) =>
-      apiClient
-        .post<AccountTypeInfo>(`/${budgetId}/account-types`, data)
-        .then((r) => r.data),
+      apiClient.post<AccountTypeInfo>(`/${budgetId}/account-types`, data).then((r) => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: [ROOT.accountTypes, budgetId] }),
   })
 }

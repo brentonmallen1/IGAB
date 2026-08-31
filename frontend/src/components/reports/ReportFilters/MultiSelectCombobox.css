@@ -143,7 +143,9 @@
 
 .msc__group-header--clickable {
   cursor: pointer;
-  transition: background 0.1s, color 0.1s;
+  transition:
+    background 0.1s,
+    color 0.1s;
 }
 
 .msc__group-header--clickable:hover {

@@ -81,7 +81,9 @@ async def _history_setup(db_session):
     await create_transaction(
         db_session, budget, checking, "-80.00", date(2026, 6, 12), category=dining
     )
-    await services.budgets.set_assignment(budget.id, groceries.id, date(2026, 5, 1), Decimal("100.00"))
+    await services.budgets.set_assignment(
+        budget.id, groceries.id, date(2026, 5, 1), Decimal("100.00")
+    )
     await services.budgets.set_assignment(budget.id, groceries.id, PREV_MONTH, Decimal("300.00"))
     await services.budgets.set_assignment(budget.id, groceries.id, MONTH, Decimal("100.00"))
     await services.budgets.set_assignment(budget.id, dining.id, PREV_MONTH, Decimal("120.00"))
@@ -190,9 +192,7 @@ async def test_set_strategy_returns_money_when_below_current(db_session):
     # Audit trail: X→TBA 150, TBA→Y 100
     moves = await services.budgets.get_move_history(budget.id, MONTH)
     assert len(moves) == 2
-    directions = {
-        (m.from_category_id, m.to_category_id): m.amount for m in moves
-    }
+    directions = {(m.from_category_id, m.to_category_id): m.amount for m in moves}
     assert directions[(x.id, None)] == Decimal("150.00")
     assert directions[(None, y.id)] == Decimal("100.00")
     await assert_financial_invariants(db_session, budget.id)
@@ -556,7 +556,11 @@ async def test_ownership_404_on_all_routes(api_client, db_session):
     other_budget = await create_budget(db_session, stranger)
 
     for method, url, kwargs in [
-        ("get", f"/api/v1/{other_budget.id}/assign/strategies", {"params": {"month": "2026-07-01"}}),
+        (
+            "get",
+            f"/api/v1/{other_budget.id}/assign/strategies",
+            {"params": {"month": "2026-07-01"}},
+        ),
         (
             "get",
             f"/api/v1/{other_budget.id}/assign/preview",

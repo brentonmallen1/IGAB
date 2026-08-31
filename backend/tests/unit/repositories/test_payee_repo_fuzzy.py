@@ -89,14 +89,18 @@ class TestFuzzyMatchMappingSamples:
 
     @pytest.mark.asyncio
     async def test_mapping_sample_matches_raw_bank_name(self) -> None:
-        payroll = make_payee("Company Payroll", mapping_samples=["NORTHWIND PAYSERV", "NORTHWIND PAYROLL"])
+        payroll = make_payee(
+            "Company Payroll", mapping_samples=["NORTHWIND PAYSERV", "NORTHWIND PAYROLL"]
+        )
         repo = make_repo(payroll)
         result = await repo.find_best_match(BUDGET_ID, "NORTHWIND PAYSERV PAYROLL 260415 DOE")
         assert result is payroll
 
     @pytest.mark.asyncio
     async def test_second_mapping_sample_also_matches(self) -> None:
-        payroll = make_payee("Company Payroll", mapping_samples=["NORTHWIND PAYSERV", "NORTHWIND PAYROLL"])
+        payroll = make_payee(
+            "Company Payroll", mapping_samples=["NORTHWIND PAYSERV", "NORTHWIND PAYROLL"]
+        )
         repo = make_repo(payroll)
         result = await repo.find_best_match(BUDGET_ID, "NORTHWIND PAYROLL DIRECT DEPOSIT")
         assert result is payroll

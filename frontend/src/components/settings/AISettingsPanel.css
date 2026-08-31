@@ -52,7 +52,7 @@
 }
 
 .ai-panel__toggle-slider::before {
-  content: '';
+  content: "";
   position: absolute;
   height: 16px;
   width: 16px;
@@ -107,7 +107,9 @@
   border-radius: var(--border-radius-sm);
   text-align: left;
   cursor: pointer;
-  transition: border-color var(--transition-fast), background var(--transition-fast);
+  transition:
+    border-color var(--transition-fast),
+    background var(--transition-fast);
 }
 
 .ai-panel__model:hover {
@@ -163,4 +165,3 @@
   font-size: var(--font-size-sm);
   color: var(--text-muted);
 }
-

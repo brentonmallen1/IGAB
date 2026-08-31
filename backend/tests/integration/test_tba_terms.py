@@ -31,9 +31,13 @@ async def _budget(db_session):
     inflow = await create_category(db_session, budget, income_group, "Inflow")
     bills = await create_category_group(db_session, budget, "Bills")
     rent = await create_category(db_session, budget, bills, "Rent")
-    await create_transaction(db_session, budget, checking, "3000.00", date(2026, 8, 2), category=inflow)
+    await create_transaction(
+        db_session, budget, checking, "3000.00", date(2026, 8, 2), category=inflow
+    )
     await create_budget_assignment(db_session, budget, rent, AUG, "1200.00")
-    await create_transaction(db_session, budget, checking, "-1200.00", date(2026, 8, 5), category=rent)
+    await create_transaction(
+        db_session, budget, checking, "-1200.00", date(2026, 8, 5), category=rent
+    )
     return services, budget, checking, inflow, rent
 
 
@@ -46,7 +50,9 @@ async def test_closing_an_account_with_a_balance_leaves_ready_to_assign_unchange
     dormant account, and each one closed used to take its balance with it."""
     services, budget, checking, inflow, _ = await _budget(db_session)
     dormant = await create_account(db_session, budget, "Old Savings")
-    await create_transaction(db_session, budget, dormant, "900.00", date(2025, 1, 15), category=inflow)
+    await create_transaction(
+        db_session, budget, dormant, "900.00", date(2025, 1, 15), category=inflow
+    )
     assert await _tba(services, budget, AUG) == D("2700.00")
 
     await services.account_repo.update(dormant.id, is_closed=True)
@@ -75,7 +81,9 @@ async def test_ready_to_assign_agrees_across_months_when_next_months_spending_is
     deduction exists for, now that the balance term is bounded too."""
     services, budget, checking, _, rent = await _budget(db_session)
     await create_budget_assignment(db_session, budget, rent, SEP, "1200.00")
-    await create_transaction(db_session, budget, checking, "-1200.00", date(2026, 9, 5), category=rent)
+    await create_transaction(
+        db_session, budget, checking, "-1200.00", date(2026, 9, 5), category=rent
+    )
     assert await _tba(services, budget, AUG) == D("600.00")
     assert await _tba(services, budget, SEP) == D("600.00")
 
@@ -106,7 +114,9 @@ async def test_a_categorized_row_on_a_tracking_account_moves_nothing(db_session)
 
     # Written directly (an import or a pre-rule sync would have) — the
     # service refuses to create this row now.
-    await create_transaction(db_session, budget, brokerage, "-450.00", date(2026, 8, 9), category=rent)
+    await create_transaction(
+        db_session, budget, brokerage, "-450.00", date(2026, 8, 9), category=rent
+    )
     await db_session.flush()
 
     assert await _tba(services, budget, AUG) == before_tba

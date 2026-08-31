@@ -98,8 +98,12 @@
   justify-content: flex-end;
 }
 
-.positive { color: var(--color-positive); }
-.negative { color: var(--color-negative); }
+.positive {
+  color: var(--color-positive);
+}
+.negative {
+  color: var(--color-negative);
+}
 
 @media (max-width: 768px) {
   .sched-page {
@@ -115,10 +119,10 @@
   .sched-table__row {
     grid-template-columns: 1fr auto;
     grid-template-areas:
-      'payee amount'
-      'account freq'
-      'date auto'
-      'actions actions';
+      "payee amount"
+      "account freq"
+      "date auto"
+      "actions actions";
     row-gap: var(--spacing-xs);
     padding: var(--spacing-md);
   }
@@ -160,7 +164,7 @@
   }
 
   .sched-cell--auto::before {
-    content: 'Auto: ';
+    content: "Auto: ";
   }
 
   .sched-table__actions {

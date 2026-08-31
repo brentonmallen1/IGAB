@@ -41,7 +41,8 @@ export function AvailableBreakdown({ balances, prevBalances }: Props) {
         <div className="inspector-breakdown__row">
           <span>Assigned This Month</span>
           <span className={`tabular ${totalAssigned > 0 ? 'positive' : ''}`}>
-            {totalAssigned > 0 ? '+' : ''}{formatMoney(totalAssigned)}
+            {totalAssigned > 0 ? '+' : ''}
+            {formatMoney(totalAssigned)}
           </span>
         </div>
         <div className="inspector-breakdown__row">
@@ -52,7 +53,9 @@ export function AvailableBreakdown({ balances, prevBalances }: Props) {
         </div>
         <div className="inspector-breakdown__total">
           <span>Available</span>
-          <span className={`tabular ${totalAvailable < 0 ? 'negative' : totalAvailable > 0 ? 'positive' : 'zero'}`}>
+          <span
+            className={`tabular ${totalAvailable < 0 ? 'negative' : totalAvailable > 0 ? 'positive' : 'zero'}`}
+          >
             {formatMoney(totalAvailable)}
           </span>
         </div>

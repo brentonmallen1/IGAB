@@ -74,8 +74,7 @@ export async function fetchBackupStatus(): Promise<BackupStatus> {
 export function useRunBackup() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: () =>
-      apiClient.post<{ job_id: string }>('/backups/run').then((r) => r.data),
+    mutationFn: () => apiClient.post<{ job_id: string }>('/backups/run').then((r) => r.data),
     onSuccess: () => {
       // Seed queued=true ourselves: a refetch right now races the agent's
       // ~10s command poll and can come back with the OLD state, which both

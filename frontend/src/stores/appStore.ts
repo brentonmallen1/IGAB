@@ -3,7 +3,47 @@ import { persist } from 'zustand/middleware'
 import { PERSIST_KEYS } from './persistKeys'
 import { syncThemeColorMeta } from '../utils/themeColor'
 
-export type Theme = 'dark' | 'light' | 'gruvbox-dark' | 'gruvbox-light' | 'catppuccin-mocha' | 'catppuccin-latte' | 'rose-pine' | 'rose-pine-moon' | 'rose-pine-dawn' | 'rose-pine-moon-dawn' | 'nord' | 'nord-light' | 'nord-aurora' | 'nord-aurora-light' | 'nineties-dark' | 'nineties-light' | 'eighties-dark' | 'eighties-light' | 'eighties-pop-dark' | 'eighties-pop-light' | 'synthwave-dark' | 'synthwave-light' | 'cozy-dark' | 'cozy-light' | 'vapor-dark' | 'vapor-light' | 'kodachrome-dark' | 'kodachrome-light' | 'phosphor-dark' | 'phosphor-light' | 'blueprint-dark' | 'blueprint-light' | 'desert-dark' | 'desert-light' | 'bauhaus-dark' | 'bauhaus-light' | 'paper-dark' | 'paper-light' | 'eink-dark' | 'eink-light'
+export type Theme =
+  | 'dark'
+  | 'light'
+  | 'gruvbox-dark'
+  | 'gruvbox-light'
+  | 'catppuccin-mocha'
+  | 'catppuccin-latte'
+  | 'rose-pine'
+  | 'rose-pine-moon'
+  | 'rose-pine-dawn'
+  | 'rose-pine-moon-dawn'
+  | 'nord'
+  | 'nord-light'
+  | 'nord-aurora'
+  | 'nord-aurora-light'
+  | 'nineties-dark'
+  | 'nineties-light'
+  | 'eighties-dark'
+  | 'eighties-light'
+  | 'eighties-pop-dark'
+  | 'eighties-pop-light'
+  | 'synthwave-dark'
+  | 'synthwave-light'
+  | 'cozy-dark'
+  | 'cozy-light'
+  | 'vapor-dark'
+  | 'vapor-light'
+  | 'kodachrome-dark'
+  | 'kodachrome-light'
+  | 'phosphor-dark'
+  | 'phosphor-light'
+  | 'blueprint-dark'
+  | 'blueprint-light'
+  | 'desert-dark'
+  | 'desert-light'
+  | 'bauhaus-dark'
+  | 'bauhaus-light'
+  | 'paper-dark'
+  | 'paper-light'
+  | 'eink-dark'
+  | 'eink-light'
 
 export interface Palette {
   id: string
@@ -17,7 +57,12 @@ export const PALETTES: Palette[] = [
   { id: 'gruvbox', label: 'Gruvbox', dark: 'gruvbox-dark', light: 'gruvbox-light' },
   { id: 'catppuccin', label: 'Catppuccin', dark: 'catppuccin-mocha', light: 'catppuccin-latte' },
   { id: 'rose-pine', label: 'Rosé Pine', dark: 'rose-pine', light: 'rose-pine-dawn' },
-  { id: 'rose-pine-moon', label: 'Rosé Pine Moon', dark: 'rose-pine-moon', light: 'rose-pine-moon-dawn' },
+  {
+    id: 'rose-pine-moon',
+    label: 'Rosé Pine Moon',
+    dark: 'rose-pine-moon',
+    light: 'rose-pine-moon-dawn',
+  },
   { id: 'nord', label: 'Nord', dark: 'nord', light: 'nord-light' },
   { id: 'nord-aurora', label: 'Nord Aurora', dark: 'nord-aurora', light: 'nord-aurora-light' },
   { id: 'nineties', label: "90's", dark: 'nineties-dark', light: 'nineties-light' },

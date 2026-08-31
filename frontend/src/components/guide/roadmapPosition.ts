@@ -1,4 +1,10 @@
-import { ROADMAP, type RoadmapNode, type RoadmapStage, type SignalKey, type StageId } from '../../content/roadmap'
+import {
+  ROADMAP,
+  type RoadmapNode,
+  type RoadmapStage,
+  type SignalKey,
+  type StageId,
+} from '../../content/roadmap'
 import type { CheckupFinding, Signal } from '../../api/guide'
 import type { RoadmapView } from '../../stores/guideStore'
 import { stageAnswered, stagePath } from './journeyPath'

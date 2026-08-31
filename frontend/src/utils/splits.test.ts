@@ -17,7 +17,10 @@ const leg = (amount: string, categoryId: string | null = 'c1') => ({ amount, cat
 describe('agreement with the backend predicate', () => {
   for (const c of cases.cases) {
     it(`${c.total} = [${c.legs.join(' + ')}] → ${c.balances} (${c.note})`, () => {
-      const result = checkSplit(toCents(c.total), c.legs.map((a) => leg(a)))
+      const result = checkSplit(
+        toCents(c.total),
+        c.legs.map((a) => leg(a))
+      )
       expect(result.isValid).toBe(c.balances)
     })
   }

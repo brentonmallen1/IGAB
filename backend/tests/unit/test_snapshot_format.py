@@ -242,7 +242,9 @@ class TestManifestSerialization:
 class TestCompatibility:
     def test_a_matching_file_is_accepted_with_nothing_to_say(self):
         result = check_compatibility(
-            _manifest(), METADATA, current_revision="dddd0004",
+            _manifest(),
+            METADATA,
+            current_revision="dddd0004",
             revision_history=_revision_history(),
         )
         assert result.ok
@@ -308,31 +310,39 @@ class TestRevisions:
         """Refusing here would make last month's backup unrestorable, which is
         the entire point of having one."""
         result = check_compatibility(
-            _manifest(alembic_revision="dddd0004"), METADATA,
-            current_revision="eeee0005", revision_history=_revision_history(),
+            _manifest(alembic_revision="dddd0004"),
+            METADATA,
+            current_revision="eeee0005",
+            revision_history=_revision_history(),
         )
         assert result.ok
         assert any("dddd0004" in w for w in result.warnings)
 
     def test_a_file_older_than_the_meaning_change_is_refused(self):
         result = check_compatibility(
-            _manifest(alembic_revision="aaaa0001"), METADATA,
-            current_revision="dddd0004", revision_history=_revision_history(),
+            _manifest(alembic_revision="aaaa0001"),
+            METADATA,
+            current_revision="dddd0004",
+            revision_history=_revision_history(),
         )
         assert not result.ok
         assert MIN_SUPPORTED_REVISION in result.refusals[0]
 
     def test_the_meaning_change_itself_is_supported(self):
         result = check_compatibility(
-            _manifest(alembic_revision=MIN_SUPPORTED_REVISION), METADATA,
-            current_revision="dddd0004", revision_history=_revision_history(),
+            _manifest(alembic_revision=MIN_SUPPORTED_REVISION),
+            METADATA,
+            current_revision="dddd0004",
+            revision_history=_revision_history(),
         )
         assert result.ok
 
     def test_an_unknown_revision_warns_rather_than_refusing(self):
         result = check_compatibility(
-            _manifest(alembic_revision="zzzz9999"), METADATA,
-            current_revision="dddd0004", revision_history=_revision_history(),
+            _manifest(alembic_revision="zzzz9999"),
+            METADATA,
+            current_revision="dddd0004",
+            revision_history=_revision_history(),
         )
         assert result.ok
         assert any("zzzz9999" in w for w in result.warnings)

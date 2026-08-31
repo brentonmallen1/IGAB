@@ -125,6 +125,7 @@ async def test_import_rejects_unknown_account_type(api_client, db_session):
     leftover = await db_session.execute(select(Budget).where(Budget.name == "Yacht club"))
     assert leftover.scalar_one_or_none() is None
 
+
 async def test_budget_creation_flow_preview_and_mapped_import(api_client, db_session):
     """The BudgetSelectorPage flow: preview (no budget yet) → import with
     mapping creates the budget with correctly-typed accounts."""
@@ -155,9 +156,7 @@ async def test_budget_creation_flow_preview_and_mapped_import(api_client, db_ses
     assert body["import_result"]["transactions"] == 4
 
     account_repo = AccountRepository(db_session)
-    accounts = {
-        a.name: a for a in await account_repo.get_all(uuid.UUID(body["budget"]["id"]))
-    }
+    accounts = {a.name: a for a in await account_repo.get_all(uuid.UUID(body["budget"]["id"]))}
     assert accounts["Home Mortgage"].on_budget is False
     assert accounts["Vanguard Brokerage"].account_type == "investment"
     # Unmapped account falls back to on-budget checking
@@ -165,9 +164,7 @@ async def test_budget_creation_flow_preview_and_mapped_import(api_client, db_ses
     assert accounts["Checking"].on_budget is True
 
 
-async def test_budget_creation_rejects_bad_mapping_without_creating_budget(
-    api_client, db_session
-):
+async def test_budget_creation_rejects_bad_mapping_without_creating_budget(api_client, db_session):
     from sqlalchemy import select
 
     from igab.db.models import Budget
@@ -228,7 +225,9 @@ async def test_budget_creation_flow_respects_skip(api_client, db_session):
     BudgetSelectorPage actually uses."""
     from igab.repositories.account_repo import AccountRepository
 
-    mapping = '{"Vanguard Brokerage": {"account_type": "investment", "on_budget": false, "skip": true}}'
+    mapping = (
+        '{"Vanguard Brokerage": {"account_type": "investment", "on_budget": false, "skip": true}}'
+    )
     resp = await api_client.post(
         "/api/v1/budgets/import-ynab",
         files={"file": ("export.zip", _ynab_zip(), "application/zip")},

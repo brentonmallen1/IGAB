@@ -18,7 +18,6 @@ from .factories import (
     create_category,
     create_category_group,
     create_transaction,
-    create_user,
 )
 
 JUL = date(2026, 7, 1)
@@ -33,10 +32,16 @@ async def _budget(db_session, user):
     bills = await create_category_group(db_session, budget, "Bills")
     rent = await create_category(db_session, budget, bills, "Rent")
     # Two months of income, one month of budgeting.
-    await create_transaction(db_session, budget, checking, "3000.00", date(2026, 7, 2), category=inflow)
-    await create_transaction(db_session, budget, checking, "3100.00", date(2026, 8, 3), category=inflow)
+    await create_transaction(
+        db_session, budget, checking, "3000.00", date(2026, 7, 2), category=inflow
+    )
+    await create_transaction(
+        db_session, budget, checking, "3100.00", date(2026, 8, 3), category=inflow
+    )
     await create_budget_assignment(db_session, budget, rent, AUG, "1200.00")
-    await create_transaction(db_session, budget, checking, "-1200.00", date(2026, 8, 5), category=rent)
+    await create_transaction(
+        db_session, budget, checking, "-1200.00", date(2026, 8, 5), category=rent
+    )
     return budget, inflow, rent
 
 

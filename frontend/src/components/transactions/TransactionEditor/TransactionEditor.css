@@ -1,4 +1,3 @@
-
 .txn-editor {
   background-color: var(--bg-primary);
   border: 1px solid var(--border-color);
@@ -124,7 +123,9 @@
   color: var(--text-secondary);
   font-size: var(--font-size-sm);
   cursor: pointer;
-  transition: color var(--transition-fast), border-color var(--transition-fast);
+  transition:
+    color var(--transition-fast),
+    border-color var(--transition-fast);
 }
 
 .txn-editor__tab:hover {
@@ -228,7 +229,9 @@
   padding: 6px 10px;
   width: 100%;
   outline: none;
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
 }
 
 .txn-editor__input:focus,
@@ -320,7 +323,7 @@
 }
 
 .txn-editor__toggle-slider::before {
-  content: '';
+  content: "";
   position: absolute;
   height: 14px;
   width: 14px;
@@ -691,7 +694,7 @@
   .txn-editor__ai-btn::after,
   .txn-editor__similar-toggle::after,
   .txn-editor__ai-banner-action::after {
-    content: '';
+    content: "";
     position: absolute;
     top: 50%;
     left: 50%;

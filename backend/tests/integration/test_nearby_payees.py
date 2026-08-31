@@ -30,26 +30,55 @@ async def _seed(db_session, user):
 
     # Grocery: two visits ~55.6 m and ~111.2 m north of home
     await create_transaction(
-        db_session, budget, account, "-20.00", date(2026, 7, 1),
-        payee=grocery, latitude=HOME_LAT + 0.0005, longitude=HOME_LNG,
+        db_session,
+        budget,
+        account,
+        "-20.00",
+        date(2026, 7, 1),
+        payee=grocery,
+        latitude=HOME_LAT + 0.0005,
+        longitude=HOME_LNG,
     )
     await create_transaction(
-        db_session, budget, account, "-35.00", date(2026, 7, 15),
-        payee=grocery, latitude=HOME_LAT + 0.001, longitude=HOME_LNG,
+        db_session,
+        budget,
+        account,
+        "-35.00",
+        date(2026, 7, 15),
+        payee=grocery,
+        latitude=HOME_LAT + 0.001,
+        longitude=HOME_LNG,
     )
     # Coffee: one visit ~333.6 m north
     await create_transaction(
-        db_session, budget, account, "-4.50", date(2026, 7, 10),
-        payee=coffee, latitude=HOME_LAT + 0.003, longitude=HOME_LNG,
+        db_session,
+        budget,
+        account,
+        "-4.50",
+        date(2026, 7, 10),
+        payee=coffee,
+        latitude=HOME_LAT + 0.003,
+        longitude=HOME_LNG,
     )
     # Hardware: ~2224 m away — outside a 500 m radius
     await create_transaction(
-        db_session, budget, account, "-60.00", date(2026, 7, 5),
-        payee=farmall, latitude=HOME_LAT + 0.02, longitude=HOME_LNG,
+        db_session,
+        budget,
+        account,
+        "-60.00",
+        date(2026, 7, 5),
+        payee=farmall,
+        latitude=HOME_LAT + 0.02,
+        longitude=HOME_LNG,
     )
     # Unlocated visit contributes nothing
     await create_transaction(
-        db_session, budget, account, "-15.00", date(2026, 7, 8), payee=unlocated,
+        db_session,
+        budget,
+        account,
+        "-15.00",
+        date(2026, 7, 8),
+        payee=unlocated,
     )
     return budget, account
 
@@ -99,14 +128,10 @@ async def test_nearby_radius_excludes_and_limit_truncates(api_client, db_session
 async def test_nearby_validates_coordinates(api_client, db_session):
     budget = await create_budget(db_session, api_client.test_user)
 
-    resp = await api_client.get(
-        f"/api/v1/{budget.id}/payees/nearby", params={"lat": 91, "lng": 0}
-    )
+    resp = await api_client.get(f"/api/v1/{budget.id}/payees/nearby", params={"lat": 91, "lng": 0})
     assert resp.status_code == 422
 
-    resp = await api_client.get(
-        f"/api/v1/{budget.id}/payees/nearby", params={"lat": 0, "lng": 181}
-    )
+    resp = await api_client.get(f"/api/v1/{budget.id}/payees/nearby", params={"lat": 0, "lng": 181})
     assert resp.status_code == 422
 
 

@@ -1,5 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
-import { AlignJustify, AlignLeft, ArrowUpDown, ChevronDown, Layers, ListFilter, Plus, Search, Settings2, X } from 'lucide-react'
+import {
+  AlignJustify,
+  AlignLeft,
+  ArrowUpDown,
+  ChevronDown,
+  Layers,
+  ListFilter,
+  Plus,
+  Search,
+  Settings2,
+  X,
+} from 'lucide-react'
 import { useBudgetFilters } from '../../../api/budgetFilters'
 import { useBudgetViews } from '../../../api/budgetViews'
 import { useUIStore, QUICK_FILTER_LABELS, QUICK_FILTER_VARIANTS } from '../../../stores/uiStore'
@@ -134,8 +145,12 @@ export function BudgetFilterBar({ budgetId, categoryBalances }: Props) {
             <select
               className="budget-filter-bar__view-select"
               value={activeViewId ?? ''}
-              onPointerDown={() => { viaPointer.current = true }}
-              onKeyDown={() => { viaPointer.current = false }}
+              onPointerDown={() => {
+                viaPointer.current = true
+              }}
+              onKeyDown={() => {
+                viaPointer.current = false
+              }}
               onChange={(e) => {
                 setActiveView(e.target.value || null)
                 // A select keeps focus after a click, and browsers count that
@@ -172,11 +187,12 @@ export function BudgetFilterBar({ budgetId, categoryBalances }: Props) {
         const count = counts[filter]
         if (count === 0) return null
         const variant = QUICK_FILTER_VARIANTS[filter]
-        const label = filter === 'overspent'
-          ? `${count} Overspent`
-          : filter === 'underfunded'
-          ? `${count} Underfunded`
-          : QUICK_FILTER_LABELS[filter]
+        const label =
+          filter === 'overspent'
+            ? `${count} Overspent`
+            : filter === 'underfunded'
+              ? `${count} Underfunded`
+              : QUICK_FILTER_LABELS[filter]
         return (
           <button
             key={filter}
@@ -189,11 +205,7 @@ export function BudgetFilterBar({ budgetId, categoryBalances }: Props) {
       })}
 
       {blocked && (
-        <span
-          className="budget-filter-bar__reorder-note"
-          role="status"
-          title={blocked.detail}
-        >
+        <span className="budget-filter-bar__reorder-note" role="status" title={blocked.detail}>
           <ArrowUpDown size={12} aria-hidden="true" />
           <span className="budget-filter-bar__reorder-note-text">{blocked.short}</span>
           <span className="sr-only">. {blocked.detail}</span>
@@ -202,8 +214,8 @@ export function BudgetFilterBar({ budgetId, categoryBalances }: Props) {
 
       {showRenameNotice && (
         <span className="budget-filter-bar__notice" role="status">
-          Your saved <strong>views</strong> are now called <strong>filters</strong> — same
-          saved category sets, clearer name. Nothing was lost.
+          Your saved <strong>views</strong> are now called <strong>filters</strong> — same saved
+          category sets, clearer name. Nothing was lost.
           <button
             type="button"
             className="budget-filter-bar__notice-close"
@@ -259,7 +271,9 @@ export function BudgetFilterBar({ budgetId, categoryBalances }: Props) {
         <button
           className="budget-filter-bar__menu-btn"
           onClick={toggleBudgetRowMode}
-          title={budgetRowMode === 'expanded' ? 'Switch to compact rows' : 'Switch to expanded rows'}
+          title={
+            budgetRowMode === 'expanded' ? 'Switch to compact rows' : 'Switch to expanded rows'
+          }
           aria-label="Compact rows"
           aria-pressed={budgetRowMode !== 'expanded'}
         >
@@ -276,25 +290,27 @@ export function BudgetFilterBar({ budgetId, categoryBalances }: Props) {
         >
           <ListFilter size={14} />
         </button>
-        {menuOpen && menuAnchorRef.current && (() => {
-          const rect = menuAnchorRef.current.getBoundingClientRect()
-          return (
-            <ContextMenu
-              items={[
-                { id: 'new', label: 'New Filter', icon: Plus },
-                { id: 'manage', label: 'Manage Filters', icon: Settings2 },
-                // Views are a different axis from filters, so they sit below a
-                // rule rather than reading as two more filter actions.
-                { id: 'sep', label: '', separator: true },
-                { id: 'new-view', label: 'New View', icon: Layers },
-                { id: 'manage-views', label: 'Manage Views', icon: Settings2 },
-              ]}
-              onSelect={handleMenuSelect}
-              onClose={() => setMenuOpen(false)}
-              position={{ x: rect.right, y: rect.bottom + 4, alignRight: true }}
-            />
-          )
-        })()}
+        {menuOpen &&
+          menuAnchorRef.current &&
+          (() => {
+            const rect = menuAnchorRef.current.getBoundingClientRect()
+            return (
+              <ContextMenu
+                items={[
+                  { id: 'new', label: 'New Filter', icon: Plus },
+                  { id: 'manage', label: 'Manage Filters', icon: Settings2 },
+                  // Views are a different axis from filters, so they sit below a
+                  // rule rather than reading as two more filter actions.
+                  { id: 'sep', label: '', separator: true },
+                  { id: 'new-view', label: 'New View', icon: Layers },
+                  { id: 'manage-views', label: 'Manage Views', icon: Settings2 },
+                ]}
+                onSelect={handleMenuSelect}
+                onClose={() => setMenuOpen(false)}
+                position={{ x: rect.right, y: rect.bottom + 4, alignRight: true }}
+              />
+            )
+          })()}
       </div>
     </div>
   )

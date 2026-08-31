@@ -71,9 +71,7 @@ class TestCategoryClassification:
     async def test_an_ordinary_category_gets_no_badge(self, api_client, db_session):
         budget, checking, _, group, _ = await _world(db_session, api_client.test_user)
         groceries = await create_category(db_session, budget, group, "Groceries")
-        await create_transaction(
-            db_session, budget, checking, "-80.00", TODAY, category=groceries
-        )
+        await create_transaction(db_session, budget, checking, "-80.00", TODAY, category=groceries)
 
         body = await _get(api_client, groceries.id)
 

@@ -53,19 +53,19 @@ describe('invalidateAfterImport', () => {
     const qc = new QueryClient()
     const spy = vi.spyOn(qc, 'invalidateQueries')
     await invalidateAfterImport(qc, 'b1')
-    expect(spy.mock.calls.some((c) => {
-      const key = c[0]!.queryKey as unknown[]
-      return key[0] === 'budgetMonth' && key[1] === 'b1'
-    })).toBe(true)
+    expect(
+      spy.mock.calls.some((c) => {
+        const key = c[0]!.queryKey as unknown[]
+        return key[0] === 'budgetMonth' && key[1] === 'b1'
+      })
+    ).toBe(true)
   })
 
   it('reaches the budgets list even when its query is inactive', async () => {
     const qc = new QueryClient()
     const spy = vi.spyOn(qc, 'invalidateQueries')
     await invalidateAfterImport(qc, null)
-    const budgetsCall = spy.mock.calls.find(
-      (c) => (c[0]!.queryKey as unknown[])[0] === 'budgets'
-    )
+    const budgetsCall = spy.mock.calls.find((c) => (c[0]!.queryKey as unknown[])[0] === 'budgets')
     // Plain invalidation only refetches ACTIVE queries; right after an import
     // the user is navigating, so the selector's query is often not mounted.
     expect(budgetsCall![0]).toMatchObject({ refetchType: 'all' })

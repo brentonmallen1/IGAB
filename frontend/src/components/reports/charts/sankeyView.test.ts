@@ -61,16 +61,18 @@ describe('buildSankeyView', () => {
   it('level 3 shows the category fan-out to payees', () => {
     const view = buildSankeyView(report(), 'g_1', 'c_1', null, undefined)
     expect(view.sankeyData.nodes.map((n) => n.name)).toEqual([
-      'Income', 'Everyday', 'Groceries', 'MegaMart', 'CornerStore',
+      'Income',
+      'Everyday',
+      'Groceries',
+      'MegaMart',
+      'CornerStore',
     ])
     expect(view.sankeyData.links.map((l) => l.value)).toEqual([400, 300, 250, 50])
   })
 
   it('drops zero-value links', () => {
     const data = report()
-    data.links = data.links.map((l) =>
-      l.target === 'g_2' ? { ...l, value: 0 } : l,
-    )
+    data.links = data.links.map((l) => (l.target === 'g_2' ? { ...l, value: 0 } : l))
     const view = buildSankeyView(data, null, null, null, undefined)
     expect(view.sankeyData.links).toEqual([{ source: 0, target: 1, value: 400 }])
   })

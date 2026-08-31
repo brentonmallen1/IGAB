@@ -57,9 +57,7 @@ def make_service_with_balance(account: MockAccount, balance: Decimal) -> BudgetS
         category_repo=MagicMock(get_all=AsyncMock(return_value=[])),
         category_group_repo=MagicMock(get_all=AsyncMock(return_value=[])),
         assignment_repo=MagicMock(sum_after_month=AsyncMock(return_value=Decimal("0"))),
-        transaction_repo=MagicMock(
-            sum_all_categories_by_month=AsyncMock(return_value={})
-        ),
+        transaction_repo=MagicMock(sum_all_categories_by_month=AsyncMock(return_value={})),
     )
 
 

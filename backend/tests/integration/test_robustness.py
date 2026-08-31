@@ -60,7 +60,7 @@ async def test_csv_import_endpoint_exact_amounts(api_client, db_session):
     csv = (
         "Date,Payee,Amount,Memo\n"
         "2026-07-01,Coffee,-0.10,\n"
-        "2026-07-02,Store,\"$1,234.56\",\n"
+        '2026-07-02,Store,"$1,234.56",\n'
         "2026-07-03,Refund,(25.00),\n"
         "2026-07-04,Broken,12,34\n"  # unquoted comma splits columns; amount '12'
     )

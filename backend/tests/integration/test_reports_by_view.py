@@ -45,7 +45,9 @@ async def _world(db_session, owner=None):
     # A car payment: a categorised transfer to a tracked loan. Classifies as
     # debt_principal, so spending reports leave it out — the class-excluded
     # note is what keeps that from reading as data loss.
-    loan = await create_account(db_session, budget, "Car Loan", account_type="loan", on_budget=False)
+    loan = await create_account(
+        db_session, budget, "Car Loan", account_type="loan", on_budget=False
+    )
     car = await create_category(db_session, budget, bills, "Car Payment")
     to_loan = await create_payee(
         db_session, budget, "Transfer : Car Loan", transfer_account_id=loan.id
@@ -242,16 +244,14 @@ class TestViewArrangement:
         user = await create_user(db_session)
         budget, c = await _world(db_session)
         other = await create_budget(db_session, user, "Other")
-        foreign = await BudgetViewRepository(db_session).create(
-            budget_id=other.id, name="Theirs"
-        )
+        foreign = await BudgetViewRepository(db_session).create(budget_id=other.id, name="Theirs")
 
         by_name, _ = await _grouped(db_session, budget, view_id=foreign.id)
         assert set(by_name) == {"Monthly Bills", "Everyday"}
 
 
 class TestClassExcludedNote:
-    """"I selected Car Payment and it isn't here" — the report must say the
+    """ "I selected Car Payment and it isn't here" — the report must say the
     money is debt payment, not pretend the category is empty."""
 
     async def test_selecting_an_excluded_category_names_what_is_missing(self, db_session):
@@ -280,9 +280,7 @@ class TestClassExcludedNote:
         repo = BudgetViewRepository(db_session)
         view = await repo.create(budget_id=budget.id, name="With Car")
         groups = await repo.set_groups(view.id, ["Need"])
-        await repo.set_placements(
-            view.id, [{"category_id": c["car"].id, "group_id": groups[0].id}]
-        )
+        await repo.set_placements(view.id, [{"category_id": c["car"].id, "group_id": groups[0].id}])
         _, _, notes = await ReportService(db_session).spending_grouped(
             budget.id, START, TODAY, view_id=view.id
         )
@@ -371,9 +369,7 @@ class TestDayPatternsCarriesTheSameNote:
         assert result["class_excluded"] is not None
         assert result["class_excluded"][0]["total"] == Decimal("275.00")
 
-    async def test_the_partition_matches_what_the_where_clause_used_to_keep(
-        self, db_session
-    ):
+    async def test_the_partition_matches_what_the_where_clause_used_to_keep(self, db_session):
         """Filtering by class moved from the WHERE into Python. The unfiltered
         totals must be exactly what they were before that move."""
         budget, _ = await _world(db_session)
@@ -477,18 +473,14 @@ class TestThroughTheApi:
 
     async def test_hide_unassigned_responds(self, api_client, db_session):
         budget, c = await _world(db_session, api_client.test_user)
-        view = await self._view(
-            db_session, budget, c, place_all=False, hide_unassigned=True
-        )
+        view = await self._view(db_session, budget, c, place_all=False, hide_unassigned=True)
 
         resp = await self._get(api_client, budget, view_id=str(view.id))
 
         assert resp.status_code == 200
         assert {g["parent_name"] for g in resp.json()["groups"]} == {"Need"}
 
-    async def test_the_default_arrangement_still_returns_group_uuids(
-        self, api_client, db_session
-    ):
+    async def test_the_default_arrangement_still_returns_group_uuids(self, api_client, db_session):
         """Widening `parent_id` to a string must not change what the ordinary
         path emits — the client keys off it either way."""
         budget, c = await _world(db_session, api_client.test_user)
@@ -502,9 +494,7 @@ class TestThroughTheApi:
 
     async def test_the_response_carries_what_the_view_hid(self, api_client, db_session):
         budget, c = await _world(db_session, api_client.test_user)
-        view = await self._view(
-            db_session, budget, c, place_all=False, hide_unassigned=True
-        )
+        view = await self._view(db_session, budget, c, place_all=False, hide_unassigned=True)
 
         body = (await self._get(api_client, budget, view_id=str(view.id))).json()
 
@@ -523,9 +513,7 @@ class TestThroughTheApi:
         budget, c = await _world(db_session, api_client.test_user)
 
         body = (
-            await self._get(
-                api_client, budget, category_ids=f"{c['car'].id},{c['rent'].id}"
-            )
+            await self._get(api_client, budget, category_ids=f"{c['car'].id},{c['rent'].id}")
         ).json()
 
         assert body["class_excluded"] == [
@@ -537,16 +525,12 @@ class TestThroughTheApi:
             }
         ]
 
-    async def test_class_excluded_is_empty_without_selection_or_view(
-        self, api_client, db_session
-    ):
+    async def test_class_excluded_is_empty_without_selection_or_view(self, api_client, db_session):
         budget, _ = await _world(db_session, api_client.test_user)
         body = (await self._get(api_client, budget)).json()
         assert body["class_excluded"] == []
 
-    async def test_a_stale_view_id_falls_back_rather_than_erroring(
-        self, api_client, db_session
-    ):
+    async def test_a_stale_view_id_falls_back_rather_than_erroring(self, api_client, db_session):
         budget, _ = await _world(db_session, api_client.test_user)
 
         resp = await self._get(api_client, budget, view_id=str(uuid.uuid4()))

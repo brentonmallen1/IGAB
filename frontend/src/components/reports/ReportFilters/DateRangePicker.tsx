@@ -115,7 +115,7 @@ export function DateRangePicker({ startDate, endDate, onChange }: Props) {
           </button>
         ))}
         <button
-          className={`drp__preset drp__preset--custom ${showCustom || (!active) ? 'drp__preset--active' : ''}`}
+          className={`drp__preset drp__preset--custom ${showCustom || !active ? 'drp__preset--active' : ''}`}
           onClick={() => setShowCustom((v) => !v)}
           type="button"
         >

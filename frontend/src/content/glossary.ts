@@ -93,7 +93,8 @@ export const GLOSSARY: GlossaryEntry[] = [
     aliases: ['archive', 'archived category', 'hidden category', 'hide a category'],
     short: 'A category you have finished with, kept for its history but out of the budget.',
     body: 'Archiving takes an envelope off the budget without losing anything: its past spending still counts in every report, and every transaction stays filed where it was. What it stops is new use — nothing can be budgeted into it or filed to it. Deleting is the other choice, and it is the one that gives up the grouping of that spending.',
-    inIgab: 'See archived, at the top of the Budget page, lists them with their history and anything still in them. An envelope has to be emptied before it can be archived, because an archived one is not drawn on the budget and money left in it would be out of reach. Hiding a category in a saved view is a different thing entirely — that only changes what that one view shows.',
+    inIgab:
+      'See archived, at the top of the Budget page, lists them with their history and anything still in them. An envelope has to be emptied before it can be archived, because an archived one is not drawn on the budget and money left in it would be out of reach. Hiding a category in a saved view is a different thing entirely — that only changes what that one view shows.',
     related: ['zero-based-budgeting', 'to-be-assigned'],
   },
   {
@@ -102,7 +103,8 @@ export const GLOSSARY: GlossaryEntry[] = [
     aliases: ['zero based', 'envelope budgeting', 'envelopes'],
     short: 'Give every incoming pound or dollar a job until none is unassigned.',
     body: 'Rather than tracking spending against a forecast, you assign all the money you actually have to specific categories. When nothing is left unassigned, the budget balances — not because you spent nothing, but because every amount has a purpose.',
-    inIgab: 'The Budget page is this. Money arrives in To Be Assigned, and you distribute it into categories until To Be Assigned reaches zero.',
+    inIgab:
+      'The Budget page is this. Money arrives in To Be Assigned, and you distribute it into categories until To Be Assigned reaches zero.',
     related: ['to-be-assigned', 'target', 'sinking-fund'],
   },
   {
@@ -111,7 +113,8 @@ export const GLOSSARY: GlossaryEntry[] = [
     aliases: ['tba', 'ready to assign', 'unassigned'],
     short: 'Money you have received but have not yet given a job.',
     body: 'Income lands here first. From there you move it into categories. A positive balance means there is money still waiting on a decision; a negative one means you have assigned more than you actually have.',
-    inIgab: 'Shown at the top of the Budget page, with a drawer for assigning it and for covering overspent categories.',
+    inIgab:
+      'Shown at the top of the Budget page, with a drawer for assigning it and for covering overspent categories.',
     related: ['zero-based-budgeting', 'target'],
   },
   {
@@ -120,7 +123,8 @@ export const GLOSSARY: GlossaryEntry[] = [
     aliases: ['goal', 'category target'],
     short: 'The amount a category needs, and by when.',
     body: 'A target turns an intention into something the budget can check. It can mean a monthly amount, a balance to reach by a date, or a sum needed for spending in the month.',
-    inIgab: 'Set on any category. The budget then shows whether that category is funded, underfunded or overfunded for the month.',
+    inIgab:
+      'Set on any category. The budget then shows whether that category is funded, underfunded or overfunded for the month.',
     related: ['sinking-fund', 'zero-based-budgeting'],
   },
   {
@@ -138,7 +142,8 @@ export const GLOSSARY: GlossaryEntry[] = [
     aliases: ['essentials', 'lean month', 'bare-bones budget'],
     short: 'What a month costs if you cut everything you could do without.',
     body: 'Housing, groceries, utilities, transport to work, insurance, minimum debt payments, medical needs — the spending that continues whatever else stops. It is the figure an emergency fund is measured against: three months of essentials, not three months of everything.',
-    inIgab: 'Tag the categories and payees you could not do without as Essential. The Essentials report, the Overview card and the Guide’s emergency-fund target all read that one figure, and the checkup states your emergency fund in months of it.',
+    inIgab:
+      'Tag the categories and payees you could not do without as Essential. The Essentials report, the Overview card and the Guide’s emergency-fund target all read that one figure, and the checkup states your emergency fund in months of it.',
     related: ['emergency-fund', 'target'],
   },
   {
@@ -147,7 +152,8 @@ export const GLOSSARY: GlossaryEntry[] = [
     aliases: ['waiting period', '30-day rule'],
     short: 'A deliberate wait between wanting something and buying it.',
     body: 'Most impulse purchases do not survive a month on a list. A cooling-off period is that month, made explicit: the wish sits, the envelope fills or does not, and at the end you decide with the urgency gone. The friction is the feature — an impulse that survives it was never an impulse.',
-    inIgab: 'Every wish on the Guide’s wishlist gets one (30 days by default, adjustable per wish and per budget). Until it passes, the wish reads "cooling off until <date>" and the Done button keeps quiet.',
+    inIgab:
+      'Every wish on the Guide’s wishlist gets one (30 days by default, adjustable per wish and per budget). Until it passes, the wish reads "cooling off until <date>" and the Done button keeps quiet.',
     related: ['sinking-fund', 'target'],
   },
   {
@@ -180,7 +186,8 @@ export const GLOSSARY: GlossaryEntry[] = [
     term: 'Principal',
     short: 'The amount you actually owe, separate from the interest charged on it.',
     body: 'A loan payment is usually split between interest and principal. Only the principal portion reduces the debt; the interest portion is the cost of having borrowed. Early in a long loan, most of each payment goes to interest.',
-    inIgab: 'Money moved to a tracked debt account counts as paying down debt rather than as spending, so it stays out of your spending reports.',
+    inIgab:
+      'Money moved to a tracked debt account counts as paying down debt rather than as spending, so it stays out of your spending reports.',
     related: ['apr', 'minimum-payment', 'amortization'],
   },
   {
@@ -212,7 +219,8 @@ export const GLOSSARY: GlossaryEntry[] = [
     id: 'avalanche',
     term: 'Avalanche method',
     aliases: ['debt avalanche', 'highest interest first'],
-    short: 'Pay minimums on everything, then put every spare pound or dollar at the highest interest rate.',
+    short:
+      'Pay minimums on everything, then put every spare pound or dollar at the highest interest rate.',
     body: 'Mathematically this costs the least in total interest and usually clears all debt soonest. Its weakness is motivational: if your highest-rate debt is also your largest, it can be a long time before anything visibly disappears.',
     related: ['snowball', 'high-interest-debt', 'apr'],
   },
@@ -220,7 +228,8 @@ export const GLOSSARY: GlossaryEntry[] = [
     id: 'snowball',
     term: 'Snowball method',
     aliases: ['debt snowball', 'smallest balance first'],
-    short: 'Pay minimums on everything, then put every spare pound or dollar at the smallest balance.',
+    short:
+      'Pay minimums on everything, then put every spare pound or dollar at the smallest balance.',
     body: 'This costs slightly more in interest than avalanche, but clears individual debts sooner. Each debt that closes frees up its payment and gives visible proof of progress, which measurably helps people keep going. The method you actually stick with beats the one that is optimal on paper.',
     related: ['avalanche', 'high-interest-debt'],
   },
@@ -247,7 +256,8 @@ export const GLOSSARY: GlossaryEntry[] = [
     aliases: ['401k', '403b', 'workplace retirement plan'],
     short: 'A retirement account offered through an employer, funded straight from payroll.',
     body: 'Contributions come out before the money reaches your bank account, which removes the monthly decision entirely. Employer matching, where offered, is attached to these plans. Contribution limits are set annually and change most years.',
-    inIgab: 'Usually tracked as an off-budget Investment account: it counts toward net worth, but is not spendable envelope money.',
+    inIgab:
+      'Usually tracked as an off-budget Investment account: it counts toward net worth, but is not spendable envelope money.',
     related: ['employer-match', 'ira', 'taxable-account'],
     region: 'us',
   },
@@ -310,7 +320,8 @@ export const GLOSSARY: GlossaryEntry[] = [
     term: 'Savings rate',
     short: 'The share of your income that you save rather than spend.',
     body: 'The single most useful summary of whether a budget is working over time. The roadmap targets 15% of pre-tax income for retirement specifically, which is a narrower measure than your overall savings rate.',
-    inIgab: 'Computed in the Savings Rate report, on-budget only, so investment growth is never counted as money you saved.',
+    inIgab:
+      'Computed in the Savings Rate report, on-budget only, so investment growth is never counted as money you saved.',
     related: ['compounding', 'emergency-fund'],
   },
   {
@@ -326,16 +337,19 @@ export const GLOSSARY: GlossaryEntry[] = [
     aliases: ['authorization hold', 'auth hold', 'pending transaction'],
     short: 'The bank reports a hold that has not posted yet. Provisional, and not counted.',
     body: 'When you pay by card the bank first records an authorization for an estimated amount; the final charge posts days later and can differ (a tip, a fuel hold). Until it posts, nothing has actually moved.',
-    inIgab: 'Rows the bank sync brings in as pending show a clock and are left out of every balance. When the same record posts, the row clears in place; if the posted amount differs from something you entered yourself, it is offered for review rather than changed silently.',
+    inIgab:
+      'Rows the bank sync brings in as pending show a clock and are left out of every balance. When the same record posts, the row clears in place; if the posted amount differs from something you entered yourself, it is offered for review rather than changed silently.',
     related: ['uncleared', 'cleared', 'reconciled'],
   },
   {
     id: 'uncleared',
     term: 'Uncleared',
     aliases: ['unconfirmed'],
-    short: 'You entered it and the money has moved in your ledger; the bank has not confirmed it yet.',
+    short:
+      'You entered it and the money has moved in your ledger; the bank has not confirmed it yet.',
     body: 'An uncleared transaction is a real one you recorded before the bank did. It counts toward your balance because you know you spent it; it simply has not been matched to a bank record yet.',
-    inIgab: 'The empty circle in the register. Clicking it marks the row cleared by hand; a bank sync that finds the matching record clears it for you.',
+    inIgab:
+      'The empty circle in the register. Clicking it marks the row cleared by hand; a bank sync that finds the matching record clears it for you.',
     related: ['pending', 'cleared', 'reconciled'],
   },
   {
@@ -343,16 +357,19 @@ export const GLOSSARY: GlossaryEntry[] = [
     term: 'Cleared',
     short: 'The bank agrees this transaction happened, at this amount.',
     body: 'Cleared means confirmed: either the bank record matched, or you ticked it yourself while checking against a statement. Cleared rows are what a reconciliation compares to the bank balance.',
-    inIgab: 'The filled check in the register. The cleared balance shown on an account is the sum of these rows.',
+    inIgab:
+      'The filled check in the register. The cleared balance shown on an account is the sum of these rows.',
     related: ['uncleared', 'reconciled', 'pending'],
   },
   {
     id: 'reconciled',
     term: 'Reconciled',
     aliases: ['locked'],
-    short: 'Checked against a bank statement and locked. The money cannot change; the bookkeeping can.',
+    short:
+      'Checked against a bank statement and locked. The money cannot change; the bookkeeping can.',
     body: 'Reconciling an account is agreeing that its cleared balance equals what the bank says on a date. Every cleared transaction up to that date is then locked, so the agreement stays true.',
-    inIgab: 'The lock in the register. A reconciled row keeps its amount, date and account fixed, but you can still edit its category, payee, memo and split lines through Edit… in the row menu; Unlock returns it to cleared.',
+    inIgab:
+      'The lock in the register. A reconciled row keeps its amount, date and account fixed, but you can still edit its category, payee, memo and split lines through Edit… in the row menu; Unlock returns it to cleared.',
     related: ['cleared', 'uncleared', 'pending'],
   },
   {
@@ -360,7 +377,7 @@ export const GLOSSARY: GlossaryEntry[] = [
     term: 'Ready to pay',
     aliases: ['set aside', 'set-aside', 'card payment reserve'],
     short: "Cash reserved to pay a credit card — the card's own envelope.",
-    body: 'When you spend on a card from a funded category, the budgeted cash does not vanish — it moves into a reserve for that card, so the payment is already covered before the bill exists. Assigning money to the card adds to the reserve; payments drain it. Spending a category could not cover adds nothing here — it becomes the card\'s uncovered debt instead.',
+    body: "When you spend on a card from a funded category, the budgeted cash does not vanish — it moves into a reserve for that card, so the payment is already covered before the bill exists. Assigning money to the card adds to the reserve; payments drain it. Spending a category could not cover adds nothing here — it becomes the card's uncovered debt instead.",
     inIgab:
       'The "Ready to pay" column of the Credit cards section on the budget page. The Assigned cell beside it edits the card\'s own envelope, undo included.',
     related: ['uncovered', 'credit-overspending', 'card-payment', 'to-be-assigned'],
@@ -372,7 +389,7 @@ export const GLOSSARY: GlossaryEntry[] = [
     short: 'What a card is owed beyond the cash reserved to pay it.',
     body: 'Uncovered debt is card balance with no reserve behind it: overspending that rode onto the card, an old carried balance, or a purchase someone still owes you for. It is information, not an alarm — nothing leaves your budget until you choose to assign money to the card, and assigning lowers Uncovered dollar for dollar.',
     inIgab:
-      'The last column of the Credit cards section; the collapsed header still shows the total. The number is a door — it opens the card\'s transactions.',
+      "The last column of the Credit cards section; the collapsed header still shows the total. The number is a door — it opens the card's transactions.",
     related: ['ready-to-pay', 'carried-balance', 'credit-overspending', 'refused-card-inflow'],
   },
   {
@@ -381,7 +398,7 @@ export const GLOSSARY: GlossaryEntry[] = [
     short: 'Overspending a category on a credit card — it becomes card debt, not a budget charge.',
     body: 'When a category ends a month negative and the spending was on a card, the shortfall rides onto the card as uncovered debt instead of coming out of To Be Assigned. The category resets to zero at the month boundary; the debt stays visible on the card until money is assigned to it. Cash overspending is different — real money left, so it settles from To Be Assigned.',
     inIgab:
-      'A red category funded by card swipes turns into the card\'s Uncovered at month end. Cover Overspent handles only the cash kind, on purpose.',
+      "A red category funded by card swipes turns into the card's Uncovered at month end. Cover Overspent handles only the cash kind, on purpose.",
     related: ['uncovered', 'ready-to-pay', 'to-be-assigned'],
   },
   {
@@ -397,10 +414,11 @@ export const GLOSSARY: GlossaryEntry[] = [
   {
     id: 'card-payment',
     term: 'Card payment',
-    short: "A transfer from a cash account to a card — the only move that spends the card's reserve.",
+    short:
+      "A transfer from a cash account to a card — the only move that spends the card's reserve.",
     body: 'Record a payment as a transfer from checking or savings to the card. That drains Ready to pay and lowers the balance together, and To Be Assigned never moves. A plain deposit typed onto the card lowers the balance without touching the reserve — right when someone else paid the card company, wrong for your own payment.',
     inIgab:
-      'Enter it as a transfer between the two accounts. A synced payment is paired for you when both accounts are connected and the two sides are unmistakable — same amount, a few days apart, nothing else it could be. When they are not, the Accounts page lists the pair so you can confirm it; until then the payment is not counted against the card\'s reserve.',
+      "Enter it as a transfer between the two accounts. A synced payment is paired for you when both accounts are connected and the two sides are unmistakable — same amount, a few days apart, nothing else it could be. When they are not, the Accounts page lists the pair so you can confirm it; until then the payment is not counted against the card's reserve.",
     related: ['ready-to-pay', 'uncovered', 'cleared', 'refused-card-inflow'],
   },
   {

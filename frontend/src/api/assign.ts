@@ -64,7 +64,11 @@ export function useAssignStrategyTotals(budgetId: string | null, month: string, 
   })
 }
 
-export function useAssignPreview(budgetId: string | null, month: string, strategy: AssignStrategy | null) {
+export function useAssignPreview(
+  budgetId: string | null,
+  month: string,
+  strategy: AssignStrategy | null
+) {
   return useQuery({
     queryKey: [ROOT.assignPreview, budgetId, month, strategy],
     queryFn: () =>
@@ -82,9 +86,7 @@ export function useAssignApply(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (data: { month: string; strategy: AssignStrategy }) =>
-      apiClient
-        .post<AssignApplyResponse>(`/${budgetId}/assign/apply`, data)
-        .then((r) => r.data),
+      apiClient.post<AssignApplyResponse>(`/${budgetId}/assign/apply`, data).then((r) => r.data),
     onSuccess: (_, { month }) => {
       qc.invalidateQueries({ queryKey: [ROOT.budgetMonth, budgetId] })
       qc.invalidateQueries({ queryKey: [ROOT.budgetMoves, budgetId, month] })

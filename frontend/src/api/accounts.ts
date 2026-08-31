@@ -85,7 +85,6 @@ export function useScanDuplicates() {
   })
 }
 
-
 /** One thing about this budget's accounts that is probably wrong. */
 export interface HygieneFinding {
   /** Stable key, so the UI routes the fix without parsing prose. */

@@ -68,8 +68,13 @@ class TestTheRate:
 
         await create_transaction(db_session, w["budget"], w["checking"], "4000.00", THIS_MONTH)
         await create_transaction(
-            db_session, w["budget"], w["checking"], "-1000.00", THIS_MONTH,
-            category=cat_inv, payee=payee,
+            db_session,
+            w["budget"],
+            w["checking"],
+            "-1000.00",
+            THIS_MONTH,
+            category=cat_inv,
+            payee=payee,
         )
         await create_transaction(
             db_session, w["budget"], w["checking"], "-500.00", THIS_MONTH, category=cat_food
@@ -89,8 +94,13 @@ class TestTheRate:
 
         await create_transaction(db_session, w["budget"], w["checking"], "1000.00", THIS_MONTH)
         await create_transaction(
-            db_session, w["budget"], w["checking"], "-250.00", THIS_MONTH,
-            category=cat, payee=payee,
+            db_session,
+            w["budget"],
+            w["checking"],
+            "-250.00",
+            THIS_MONTH,
+            category=cat,
+            payee=payee,
         )
 
         month = (await _rate(db_session, w["budget"]))["months"][-1]
@@ -152,8 +162,13 @@ class TestEdgeCases:
         payee = await _transfer_payee(db_session, w["budget"], w["brokerage"])
         await create_transaction(db_session, w["budget"], w["checking"], "1000.00", THIS_MONTH)
         await create_transaction(
-            db_session, w["budget"], w["checking"], "-1500.00", THIS_MONTH,
-            category=cat, payee=payee,
+            db_session,
+            w["budget"],
+            w["checking"],
+            "-1500.00",
+            THIS_MONTH,
+            category=cat,
+            payee=payee,
         )
         month = (await _rate(db_session, w["budget"]))["months"][-1]
         assert month["savings_rate"] == 1.5
@@ -171,9 +186,7 @@ class TestEdgeCases:
 
     async def test_internal_transfer_touches_nothing(self, db_session):
         w = await _world(db_session)
-        savings_acct = await create_account(
-            db_session, w["budget"], "Savings", on_budget=True
-        )
+        savings_acct = await create_account(db_session, w["budget"], "Savings", on_budget=True)
         payee = await _transfer_payee(db_session, w["budget"], savings_acct)
         await create_transaction(db_session, w["budget"], w["checking"], "1000.00", THIS_MONTH)
         await create_transaction(

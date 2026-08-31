@@ -44,15 +44,9 @@ class TestExplicitAccountScopeBeatsTheClassFilter:
         )
         group = await create_category_group(db_session, budget, "Everyday")
         fees = await create_category(db_session, budget, group, "Fees")
-        await create_transaction(
-            db_session, budget, brokerage, "-50.00", TODAY, category=fees
-        )
-        await create_transaction(
-            db_session, budget, loan, "-30.00", TODAY, category=fees
-        )
-        await create_transaction(
-            db_session, budget, checking, "-90.00", TODAY, category=fees
-        )
+        await create_transaction(db_session, budget, brokerage, "-50.00", TODAY, category=fees)
+        await create_transaction(db_session, budget, loan, "-30.00", TODAY, category=fees)
+        await create_transaction(db_session, budget, checking, "-90.00", TODAY, category=fees)
         await db_session.flush()
         return budget, checking, brokerage, loan
 
@@ -119,12 +113,22 @@ class TestSplitLegsClassifyIndividually:
             db_session, budget, checking, "-300.00", TODAY, payee=shop, is_split=True
         )
         await create_transaction(
-            db_session, budget, checking, "-100.00", TODAY,
-            category=groceries, parent_transaction_id=parent.id,
+            db_session,
+            budget,
+            checking,
+            "-100.00",
+            TODAY,
+            category=groceries,
+            parent_transaction_id=parent.id,
         )
         await create_transaction(
-            db_session, budget, checking, "-200.00", TODAY,
-            category=fund, parent_transaction_id=parent.id,
+            db_session,
+            budget,
+            checking,
+            "-200.00",
+            TODAY,
+            category=fund,
+            parent_transaction_id=parent.id,
         )
         await db_session.flush()
         return budget
@@ -167,8 +171,13 @@ class TestSplitLegsClassifyIndividually:
         )
         for cat, amt in ((a, "-50.00"), (b, "-25.00")):
             await create_transaction(
-                db_session, budget, checking, amt, TODAY,
-                category=cat, parent_transaction_id=parent.id,
+                db_session,
+                budget,
+                checking,
+                amt,
+                TODAY,
+                category=cat,
+                parent_transaction_id=parent.id,
             )
         await db_session.flush()
 

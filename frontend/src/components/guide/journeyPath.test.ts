@@ -110,6 +110,7 @@ function firstAnswers(stage: RoadmapStage): Record<string, string> {
 /** Answer every decision with its last branch. */
 function secondAnswers(stage: RoadmapStage): Record<string, string> {
   const out: Record<string, string> = {}
-  for (const n of stage.nodes) if (n.branches?.length) out[n.id] = n.branches[n.branches.length - 1].answer
+  for (const n of stage.nodes)
+    if (n.branches?.length) out[n.id] = n.branches[n.branches.length - 1].answer
   return out
 }

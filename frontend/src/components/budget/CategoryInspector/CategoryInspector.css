@@ -21,7 +21,9 @@
   width: 100%;
   height: 100%;
   color: var(--text-muted);
-  transition: color var(--transition-fast), background-color var(--transition-fast);
+  transition:
+    color var(--transition-fast),
+    background-color var(--transition-fast);
   padding: var(--spacing-xs) 0;
 }
 
@@ -50,7 +52,9 @@
   flex-shrink: 0;
   border-radius: var(--border-radius-sm);
   color: var(--text-muted);
-  transition: color var(--transition-fast), background-color var(--transition-fast);
+  transition:
+    color var(--transition-fast),
+    background-color var(--transition-fast);
 }
 
 .category-inspector__expand-btn svg {
@@ -126,7 +130,9 @@
   height: 20px;
   border-radius: var(--border-radius-sm);
   color: var(--text-muted);
-  transition: color var(--transition-fast), background-color var(--transition-fast);
+  transition:
+    color var(--transition-fast),
+    background-color var(--transition-fast);
 }
 
 .inspector-icon-btn:hover {
@@ -254,7 +260,9 @@
   border: 1px solid var(--border-color);
   color: var(--text-secondary);
   background-color: var(--bg-primary);
-  transition: background-color var(--transition-fast), color var(--transition-fast);
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast);
   cursor: pointer;
 }
 
@@ -538,7 +546,9 @@
   border-radius: var(--border-radius-sm);
   padding: 2px 7px;
   cursor: pointer;
-  transition: background-color var(--transition-fast), color var(--transition-fast);
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .past-target-row__btn:hover {

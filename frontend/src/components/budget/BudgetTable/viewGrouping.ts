@@ -49,8 +49,7 @@ export function groupByView(
 
   for (const list of byGroup.values()) {
     list.sort(
-      (a, b) =>
-        (placementBy.get(a.id)?.sort_order ?? 0) - (placementBy.get(b.id)?.sort_order ?? 0)
+      (a, b) => (placementBy.get(a.id)?.sort_order ?? 0) - (placementBy.get(b.id)?.sort_order ?? 0)
     )
   }
 

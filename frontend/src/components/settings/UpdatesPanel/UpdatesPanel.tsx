@@ -13,8 +13,7 @@ export function UpdatesPanel() {
   const { data: status } = useUpdateStatus()
   const qc = useQueryClient()
 
-  const enabled =
-    settings?.find((s) => s.key === 'update_check_enabled')?.value === 'true'
+  const enabled = settings?.find((s) => s.key === 'update_check_enabled')?.value === 'true'
 
   function toggle(next: boolean) {
     updateSetting.mutate(
@@ -29,9 +28,8 @@ export function UpdatesPanel() {
         <div>
           <div className="settings-row__label">Check for updates</div>
           <div className="settings-row__desc">
-            Compares this install against the latest GitHub release (checked at
-            most every 6 hours). Off by default — nothing is sent until you
-            enable it.
+            Compares this install against the latest GitHub release (checked at most every 6 hours).
+            Off by default — nothing is sent until you enable it.
           </div>
         </div>
         <input
@@ -46,9 +44,7 @@ export function UpdatesPanel() {
         <div>
           <div className="settings-row__label">Running version</div>
         </div>
-        <span className="updates-panel__version tabular">
-          {status?.current_version ?? '…'}
-        </span>
+        <span className="updates-panel__version tabular">{status?.current_version ?? '…'}</span>
       </div>
 
       {status?.enabled && status.update_available && (

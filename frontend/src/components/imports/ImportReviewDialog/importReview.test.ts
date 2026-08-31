@@ -46,7 +46,7 @@ function summary(over: Partial<YnabImportResult> = {}): YnabImportResult {
     tagged_categories: [],
     credit_card_payment_assignments_skipped: 0,
     credit_card_payment_reserves_skipped: '0',
-  tracking_account_categories_stripped: 0,
+    tracking_account_categories_stripped: 0,
     parity: null,
     errors: [],
     ...over,
@@ -94,7 +94,12 @@ describe('buildRows', () => {
     // had not applied.
     const cat = category()
     const suggestions = [
-      { category_id: 'c1', system_key: 'subscription', matched_on: 'Amazon Prime', applied_on_import: false },
+      {
+        category_id: 'c1',
+        system_key: 'subscription',
+        matched_on: 'Amazon Prime',
+        applied_on_import: false,
+      },
     ]
     const before = buildRows([cat], suggestions, [], KEY_BY_ID, {})
     expect(before[0].suggestions).toHaveLength(1)
@@ -113,7 +118,12 @@ describe('filterRows', () => {
   const rows = buildRows(
     [decided, proposed, untouched],
     [
-      { category_id: 'proposed', system_key: 'essential', matched_on: 'Rent', applied_on_import: false },
+      {
+        category_id: 'proposed',
+        system_key: 'essential',
+        matched_on: 'Rent',
+        applied_on_import: false,
+      },
     ],
     [{ category_id: 'decided', system_key: 'savings', matched_on: 'Savings' }],
     KEY_BY_ID,
@@ -182,7 +192,9 @@ describe('repairableTransferLegs', () => {
     // Saying "1,117 unmatched" when 200 are unmatchable by design is how a
     // number becomes a chore nobody finishes.
     expect(
-      repairableTransferLegs(summary({ transfer_legs_unpaired: 1117, transfer_legs_in_splits: 200 }))
+      repairableTransferLegs(
+        summary({ transfer_legs_unpaired: 1117, transfer_legs_in_splits: 200 })
+      )
     ).toBe(917)
   })
 

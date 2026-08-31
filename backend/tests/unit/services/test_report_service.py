@@ -16,6 +16,7 @@ from igab.services.report_service import ReportService, _subtract_months
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
+
 def D(s: str) -> Decimal:
     return Decimal(s)
 
@@ -69,12 +70,13 @@ APR = date(2026, 4, 1)
 
 # ─── spending_by_category ─────────────────────────────────────────────────────
 
+
 class TestSpendingByCategory:
     async def test_basic_aggregation(self):
         rows = [
             row(id=CAT_A, name="Groceries", group_name="Food", amount=D("-60.00")),
             row(id=CAT_A, name="Groceries", group_name="Food", amount=D("-40.00")),
-            row(id=CAT_B, name="Gas",       group_name="Transport", amount=D("-25.00")),
+            row(id=CAT_B, name="Gas", group_name="Transport", amount=D("-25.00")),
         ]
         svc = ReportService(make_session(mock_result(rows)))
         cats, total = await svc.spending_by_category(BUDGET, JAN, APR)
@@ -119,6 +121,7 @@ class TestSpendingByCategory:
 
 
 # ─── income_vs_expense ────────────────────────────────────────────────────────
+
 
 class TestIncomeVsExpense:
     """The service now groups by activity class in SQL, so the mocked rows are
@@ -244,8 +247,11 @@ class TestIncomeVsExpense:
 class TestBudgetVsActual:
     def _assignment(self, cat_id, month, assigned, cat_name="Groceries", group_name="Food"):
         return row(
-            category_id=cat_id, month=month, assigned=assigned,
-            category_name=cat_name, group_name=group_name,
+            category_id=cat_id,
+            month=month,
+            assigned=assigned,
+            category_name=cat_name,
+            group_name=group_name,
         )
 
     def _spend(self, cat_id, amount):
@@ -253,7 +259,7 @@ class TestBudgetVsActual:
 
     async def test_basic_variance(self):
         assigns = [self._assignment(CAT_A, JAN, D("500.00"))]
-        spends  = [self._spend(CAT_A, D("-420.00"))]
+        spends = [self._spend(CAT_A, D("-420.00"))]
 
         svc = ReportService(make_session(mock_result(assigns), mock_result(spends)))
         result = await svc.budget_vs_actual(BUDGET, JAN, JAN)
@@ -266,7 +272,7 @@ class TestBudgetVsActual:
 
     async def test_overspend_shows_negative_variance(self):
         assigns = [self._assignment(CAT_A, JAN, D("200.00"))]
-        spends  = [self._spend(CAT_A, D("-350.00"))]
+        spends = [self._spend(CAT_A, D("-350.00"))]
 
         svc = ReportService(make_session(mock_result(assigns), mock_result(spends)))
         result = await svc.budget_vs_actual(BUDGET, JAN, JAN)
@@ -298,13 +304,14 @@ class TestBudgetVsActual:
     async def test_variance_pct_zero_when_no_assignment(self):
         """Category with spending but no assignment gets 0% variance_pct."""
         assigns = []
-        spends  = [self._spend(CAT_A, D("-100.00"))]
+        spends = [self._spend(CAT_A, D("-100.00"))]
         svc = ReportService(make_session(mock_result(assigns), mock_result(spends)))
         result = await svc.budget_vs_actual(BUDGET, JAN, JAN)
         assert result["categories"][0]["variance_pct"] == 0.0
 
 
 # ─── cumulative_variance ──────────────────────────────────────────────────────
+
 
 class TestCumulativeVariance:
     async def test_cumulative_carries_forward(self):
@@ -353,12 +360,34 @@ class TestCumulativeVariance:
 
 # ─── spending_grouped ─────────────────────────────────────────────────────────
 
+
 class TestSpendingGrouped:
     async def test_basic_grouping(self):
         rows = [
-            row(id=CAT_A, name="Groceries", group_id=GRP_1, group_name="Food", amount=D("-100.00"), cls="spending"),
-            row(id=CAT_A, name="Groceries", group_id=GRP_1, group_name="Food", amount=D("-50.00"), cls="spending"),
-            row(id=CAT_B, name="Gas", group_id=GRP_2, group_name="Transport", amount=D("-75.00"), cls="spending"),
+            row(
+                id=CAT_A,
+                name="Groceries",
+                group_id=GRP_1,
+                group_name="Food",
+                amount=D("-100.00"),
+                cls="spending",
+            ),
+            row(
+                id=CAT_A,
+                name="Groceries",
+                group_id=GRP_1,
+                group_name="Food",
+                amount=D("-50.00"),
+                cls="spending",
+            ),
+            row(
+                id=CAT_B,
+                name="Gas",
+                group_id=GRP_2,
+                group_name="Transport",
+                amount=D("-75.00"),
+                cls="spending",
+            ),
         ]
         svc = ReportService(make_session(mock_result(rows)))
         items, total, _ = await svc.spending_grouped(BUDGET, JAN, APR)
@@ -372,8 +401,22 @@ class TestSpendingGrouped:
 
     async def test_percentages(self):
         rows = [
-            row(id=CAT_A, name="X", group_id=GRP_1, group_name="G1", amount=D("-300.00"), cls="spending"),
-            row(id=CAT_B, name="Y", group_id=GRP_1, group_name="G1", amount=D("-100.00"), cls="spending"),
+            row(
+                id=CAT_A,
+                name="X",
+                group_id=GRP_1,
+                group_name="G1",
+                amount=D("-300.00"),
+                cls="spending",
+            ),
+            row(
+                id=CAT_B,
+                name="Y",
+                group_id=GRP_1,
+                group_name="G1",
+                amount=D("-100.00"),
+                cls="spending",
+            ),
         ]
         svc = ReportService(make_session(mock_result(rows)))
         items, total, _ = await svc.spending_grouped(BUDGET, JAN, APR)
@@ -391,6 +434,7 @@ class TestSpendingGrouped:
 
 
 # ─── day_patterns ─────────────────────────────────────────────────────────────
+
 
 def spend_row(**kwargs):
     """A day-patterns row. The class filter moved out of the WHERE and into a
@@ -486,6 +530,7 @@ class TestDayPatterns:
 
 # ─── payee_analysis ───────────────────────────────────────────────────────────
 
+
 class TestPayeeAnalysis:
     def _txn(self, txn_date, amount, payee_id=None, payee_name="Amazon", cat_name="Shopping"):
         return row(
@@ -520,7 +565,7 @@ class TestPayeeAnalysis:
         rows = [
             self._txn(date(2026, 1, 10), D("-100.00")),
             self._txn(date(2026, 1, 20), D("-50.00")),
-            self._txn(date(2026, 2, 5),  D("-75.00")),
+            self._txn(date(2026, 2, 5), D("-75.00")),
         ]
         svc = ReportService(make_session(mock_result(rows)))
         payees, _ = await svc.payee_analysis(BUDGET, JAN, APR)
@@ -560,6 +605,7 @@ class TestPayeeAnalysis:
 
 # ─── burn_rate ────────────────────────────────────────────────────────────────
 
+
 class TestBurnRate:
     # The rolling windows end at the CURRENT MONTH'S last day, so anchor test
     # dates to month_end (dates relative to today drift out of the window as
@@ -598,6 +644,7 @@ class TestBurnRate:
 
 
 # ─── net_worth_history ────────────────────────────────────────────────────────
+
 
 class TestNetWorthHistory:
     def _account(self, acct_id, acct_type, name="Account", classification="asset"):
@@ -767,6 +814,7 @@ class TestNetWorthHistory:
 
 # ─── category_volatility ──────────────────────────────────────────────────────
 
+
 class TestCategoryVolatility:
     async def test_statistical_output(self):
         with patch("igab.services.report_service.date") as mock_date:
@@ -775,8 +823,11 @@ class TestCategoryVolatility:
 
             def vrow(d, amt):
                 return row(
-                    date=d, amount=amt, category_id=CAT_A,
-                    category_name="Groceries", group_name="Food",
+                    date=d,
+                    amount=amt,
+                    category_id=CAT_A,
+                    category_name="Groceries",
+                    group_name="Food",
                 )
 
             rows = [
@@ -805,6 +856,7 @@ class TestCategoryVolatility:
 
 
 # ─── seasonality ──────────────────────────────────────────────────────────────
+
 
 class TestSeasonality:
     async def test_cells_and_categories(self):
@@ -839,6 +891,7 @@ class TestSeasonality:
 
 
 # ─── large_transactions ───────────────────────────────────────────────────────
+
 
 class TestLargeTransactions:
     async def test_returns_correct_fields(self):
@@ -891,6 +944,7 @@ class TestLargeTransactions:
 
 # ─── account_composition ──────────────────────────────────────────────────────
 
+
 class TestAccountComposition:
     async def test_groups_by_account_type(self):
         # account_composition delegates to net_worth_history and reshapes
@@ -901,15 +955,31 @@ class TestAccountComposition:
                 "total_liabilities": D("2000"),
                 "net_worth": D("8000"),
                 "accounts": [
-                    {"account_type": "checking", "balance": D("6000"),
-                     "account_id": str(ACCT_1), "account_name": "Bank"},
-                    {"account_type": "savings", "balance": D("4000"),
-                     "account_id": str(ACCT_2), "account_name": "Savings"},
-                    {"account_type": "credit_card", "balance": D("-2000"),
-                     "account_id": str(uuid.uuid4()), "account_name": "Visa"},
+                    {
+                        "account_type": "checking",
+                        "balance": D("6000"),
+                        "account_id": str(ACCT_1),
+                        "account_name": "Bank",
+                    },
+                    {
+                        "account_type": "savings",
+                        "balance": D("4000"),
+                        "account_id": str(ACCT_2),
+                        "account_name": "Savings",
+                    },
+                    {
+                        "account_type": "credit_card",
+                        "balance": D("-2000"),
+                        "account_id": str(uuid.uuid4()),
+                        "account_name": "Visa",
+                    },
                     # Custom types must appear as their own series
-                    {"account_type": "pension", "balance": D("9000"),
-                     "account_id": str(uuid.uuid4()), "account_name": "Work Pension"},
+                    {
+                        "account_type": "pension",
+                        "balance": D("9000"),
+                        "account_id": str(uuid.uuid4()),
+                        "account_name": "Work Pension",
+                    },
                 ],
             }
         ]

@@ -147,12 +147,22 @@ async def build_full_budget(session: AsyncSession, owner: User) -> FullBudget:
     )
     parent = await create_transaction(session, budget, checking, "-90.00", TODAY, is_split=True)
     await create_transaction(
-        session, budget, checking, "-40.00", TODAY,
-        category=category, parent_transaction_id=parent.id,
+        session,
+        budget,
+        checking,
+        "-40.00",
+        TODAY,
+        category=category,
+        parent_transaction_id=parent.id,
     )
     await create_transaction(
-        session, budget, checking, "-50.00", TODAY,
-        category=category, parent_transaction_id=parent.id,
+        session,
+        budget,
+        checking,
+        "-50.00",
+        TODAY,
+        category=category,
+        parent_transaction_id=parent.id,
     )
     leg_out = await create_transaction(session, budget, checking, "-200.00", TODAY)
     leg_in = await create_transaction(
@@ -161,15 +171,26 @@ async def build_full_budget(session: AsyncSession, owner: User) -> FullBudget:
     leg_out.transfer_id = leg_in.id
     manual = await create_transaction(session, budget, checking, "-15.00", TODAY)
     synced = await create_transaction(
-        session, budget, checking, "-15.00", TODAY,
-        sync_id=f"sync-{budget.id}", sync_source="simplefin",
+        session,
+        budget,
+        checking,
+        "-15.00",
+        TODAY,
+        sync_id=f"sync-{budget.id}",
+        sync_source="simplefin",
     )
     synced.linked_transaction_id = manual.id
 
     await create_budget_assignment(session, budget, category, MONTH, "100.00")
     scheduled = await create_scheduled_transaction(
-        session, budget, checking, "-20.00", "monthly", TODAY + timedelta(days=10),
-        category=category, payee=payee,
+        session,
+        budget,
+        checking,
+        "-20.00",
+        "monthly",
+        TODAY + timedelta(days=10),
+        category=category,
+        payee=payee,
     )
 
     # The two id columns with no foreign key to declare them. Both are carried
@@ -286,9 +307,7 @@ async def build_full_budget(session: AsyncSession, owner: User) -> FullBudget:
                 as_of=TODAY,
             ),
             GuideBinding(budget_id=budget.id, concept_key="will", mode="dismissed"),
-            GuideBinding(
-                budget_id=budget.id, concept_key="insurance", mode="answer", answer=True
-            ),
+            GuideBinding(budget_id=budget.id, concept_key="insurance", mode="answer", answer=True),
             # A derived cache, but a budget-owned row like any other: a delete
             # must take it, and a restore must not leave a stale one
             # describing a budget that no longer looks like that.
@@ -345,8 +364,15 @@ async def build_full_budget(session: AsyncSession, owner: User) -> FullBudget:
         view_id=view.id,
         liability_ids=[managed.id, unmanaged.id, deleted_liability.id],
         transaction_ids=[
-            plain.id, parent.id, leg_out.id, leg_in.id, manual.id, synced.id,
-            imported.id, from_schedule.id, deleted_txn.id,
+            plain.id,
+            parent.id,
+            leg_out.id,
+            leg_in.id,
+            manual.id,
+            synced.id,
+            imported.id,
+            from_schedule.id,
+            deleted_txn.id,
         ],
         scheduled_id=scheduled.id,
         import_batch_id=batch.id,

@@ -8,7 +8,7 @@ export function useCategoryHistory(budgetId: string | null, categoryId: string |
     queryKey: [ROOT.categoryHistory, budgetId, categoryId],
     queryFn: async () => {
       const { data } = await apiClient.get<CategoryHistory>(
-        `/${budgetId}/categories/${categoryId}/history`,
+        `/${budgetId}/categories/${categoryId}/history`
       )
       return data
     },
@@ -23,7 +23,7 @@ export function useCategoryHistoryBatch(budgetId: string | null, categoryIds: st
     queryFn: async () => {
       const { data } = await apiClient.post<CategoryHistory[]>(
         `/${budgetId}/categories/history/batch`,
-        { category_ids: categoryIds },
+        { category_ids: categoryIds }
       )
       return data
     },
@@ -35,13 +35,7 @@ export function useCategoryHistoryBatch(budgetId: string | null, categoryIds: st
 export function useAutoAssign(budgetId: string, month: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({
-      categoryIds,
-      action,
-    }: {
-      categoryIds: string[]
-      action: AutoAssignAction
-    }) =>
+    mutationFn: ({ categoryIds, action }: { categoryIds: string[]; action: AutoAssignAction }) =>
       apiClient
         .post(`/${budgetId}/categories/auto-assign`, { category_ids: categoryIds, action, month })
         .then((r) => r.data),

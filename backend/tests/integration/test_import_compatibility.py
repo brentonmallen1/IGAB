@@ -69,9 +69,7 @@ def _one(directory: Path) -> Path:
 
 class TestFrozenExportsStillImport:
     @pytest.mark.parametrize("version", VERSIONS)
-    async def test_it_imports_and_means_what_it_meant(
-        self, api_client, db_session, version
-    ):
+    async def test_it_imports_and_means_what_it_meant(self, api_client, db_session, version):
         """The numbers are the contract. `expected/<version>.json` is what the
         file produced when it was written, to the cent, month by month."""
         body = _one(EXPORTS / version).read_bytes()

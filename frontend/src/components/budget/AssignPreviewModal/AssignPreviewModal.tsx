@@ -31,8 +31,7 @@ export function AssignPreviewModal({ budgetId, month, strategy, onClose }: Props
   const tbaAfter = Number(preview?.tba_after ?? 0)
   const toAssign = Number(preview?.to_assign ?? 0)
   const toReturn = Number(preview?.to_return ?? 0)
-  const hasChanges =
-    (preview?.items.some((i) => Number(i.delta) !== 0) ?? false)
+  const hasChanges = preview?.items.some((i) => Number(i.delta) !== 0) ?? false
 
   async function handleApply() {
     if (!preview) return
@@ -88,9 +87,15 @@ export function AssignPreviewModal({ budgetId, month, strategy, onClose }: Props
                 <thead>
                   <tr>
                     <th scope="col">Category</th>
-                    <th scope="col" className="assign-preview-modal__col-num">Current</th>
-                    <th scope="col" className="assign-preview-modal__col-num">Change</th>
-                    <th scope="col" className="assign-preview-modal__col-num">New Total</th>
+                    <th scope="col" className="assign-preview-modal__col-num">
+                      Current
+                    </th>
+                    <th scope="col" className="assign-preview-modal__col-num">
+                      Change
+                    </th>
+                    <th scope="col" className="assign-preview-modal__col-num">
+                      New Total
+                    </th>
                   </tr>
                 </thead>
                 <tbody>

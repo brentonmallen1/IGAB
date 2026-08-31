@@ -128,7 +128,15 @@ describe.each(ALL_REPORTS)('%s report', (_name, Report) => {
 describe('view-hidden note on the spending charts', () => {
   const hiddenData = {
     groups: [
-      { id: 'c1', name: 'Dining Out', parent_id: 'g1', parent_name: 'group c', total: 205, count: 3, pct: 100 },
+      {
+        id: 'c1',
+        name: 'Dining Out',
+        parent_id: 'g1',
+        parent_name: 'group c',
+        total: 205,
+        count: 3,
+        pct: 100,
+      },
     ],
     total: 205,
     view_hidden_categories: 31,
@@ -156,22 +164,33 @@ describe('view-hidden note on the spending charts', () => {
   it.each([
     ['Pareto', ParetoReport],
     ['Treemap', SpendingTreemapReport],
-  ] as const)('%s explains an all-hidden empty state instead of claiming no data', (_name, Report) => {
-    setQuery({
-      data: { groups: [], total: 0, view_hidden_categories: 34, view_hidden_total: '15025.45' },
-    })
-    renderReport(<Report budgetId="b1" />)
-    expect(
-      screen.getByText('Everything with spending in this window is hidden by the current view.')
-    ).toBeInTheDocument()
-    expect(screen.queryByText('No spending data for this period.')).not.toBeInTheDocument()
-  })
+  ] as const)(
+    '%s explains an all-hidden empty state instead of claiming no data',
+    (_name, Report) => {
+      setQuery({
+        data: { groups: [], total: 0, view_hidden_categories: 34, view_hidden_total: '15025.45' },
+      })
+      renderReport(<Report budgetId="b1" />)
+      expect(
+        screen.getByText('Everything with spending in this window is hidden by the current view.')
+      ).toBeInTheDocument()
+      expect(screen.queryByText('No spending data for this period.')).not.toBeInTheDocument()
+    }
+  )
 })
 
 describe('class-excluded note on the spending charts', () => {
   const dataWithExcluded = {
     groups: [
-      { id: 'c1', name: 'Dining Out', parent_id: 'g1', parent_name: 'Bills', total: 205, count: 3, pct: 100 },
+      {
+        id: 'c1',
+        name: 'Dining Out',
+        parent_id: 'g1',
+        parent_name: 'Bills',
+        total: 205,
+        count: 3,
+        pct: 100,
+      },
     ],
     total: 205,
     view_hidden_categories: 0,
@@ -212,7 +231,15 @@ describe('treemap group-by fallback', () => {
       setQuery({
         data: {
           groups: [
-            { id: 'c1', name: 'Dining', parent_id: 'g1', parent_name: 'Everyday', total: 205, count: 3, pct: 100 },
+            {
+              id: 'c1',
+              name: 'Dining',
+              parent_id: 'g1',
+              parent_name: 'Everyday',
+              total: 205,
+              count: 3,
+              pct: 100,
+            },
           ],
           total: 205,
           view_hidden_categories: 0,
@@ -224,7 +251,9 @@ describe('treemap group-by fallback', () => {
       // The breadcrumb only exists in group mode; before the resolver the
       // payee mode landed here by accident with Payee still highlighted.
       expect(screen.getByText('All Groups')).toBeInTheDocument()
-      expect(screen.getByText('Click a group to drill down into its categories.')).toBeInTheDocument()
+      expect(
+        screen.getByText('Click a group to drill down into its categories.')
+      ).toBeInTheDocument()
     } finally {
       useReportStore.getState().setFilters({ groupBy: 'category' })
     }
@@ -244,9 +273,7 @@ describe('OverviewReport metric cards', () => {
         income_this_month: '4000',
         expenses_this_month: '3000',
         expenses_prev_month: '2500',
-        top_categories: [
-          { id: 'c1', name: 'Groceries', group_name: 'Everyday', total: '300' },
-        ],
+        top_categories: [{ id: 'c1', name: 'Groceries', group_name: 'Everyday', total: '300' }],
       },
     })
     renderReport(<OverviewReport budgetId="b1" />)
@@ -323,10 +350,42 @@ describe('ParetoReport insight', () => {
     setQuery({
       data: {
         groups: [
-          { id: 'c1', name: 'Rent', total: '500', count: 1, pct: 50, parent_id: 'g1', parent_name: 'Home' },
-          { id: 'c2', name: 'Groceries', total: '300', count: 5, pct: 30, parent_id: 'g2', parent_name: 'Everyday' },
-          { id: 'c3', name: 'Gas', total: '150', count: 3, pct: 15, parent_id: 'g2', parent_name: 'Everyday' },
-          { id: 'c4', name: 'Fun', total: '50', count: 2, pct: 5, parent_id: 'g2', parent_name: 'Everyday' },
+          {
+            id: 'c1',
+            name: 'Rent',
+            total: '500',
+            count: 1,
+            pct: 50,
+            parent_id: 'g1',
+            parent_name: 'Home',
+          },
+          {
+            id: 'c2',
+            name: 'Groceries',
+            total: '300',
+            count: 5,
+            pct: 30,
+            parent_id: 'g2',
+            parent_name: 'Everyday',
+          },
+          {
+            id: 'c3',
+            name: 'Gas',
+            total: '150',
+            count: 3,
+            pct: 15,
+            parent_id: 'g2',
+            parent_name: 'Everyday',
+          },
+          {
+            id: 'c4',
+            name: 'Fun',
+            total: '50',
+            count: 2,
+            pct: 5,
+            parent_id: 'g2',
+            parent_name: 'Everyday',
+          },
         ],
         total: '1000',
       },

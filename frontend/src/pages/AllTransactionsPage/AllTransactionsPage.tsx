@@ -35,10 +35,13 @@ export function AllTransactionsPage() {
 
   const clearHighlight = useCallback(() => {
     if (highlightId) {
-      setSearchParams((prev) => {
-        prev.delete('highlight')
-        return prev
-      }, { replace: true })
+      setSearchParams(
+        (prev) => {
+          prev.delete('highlight')
+          return prev
+        },
+        { replace: true }
+      )
     }
   }, [highlightId, setSearchParams])
 
@@ -51,8 +54,8 @@ export function AllTransactionsPage() {
       <div className="all-txns-page__header">
         <div className="all-txns-page__name">All Transactions</div>
         <span className="all-txns-page__hint">
-          Every account in this budget — filter with <code>account:</code>,{' '}
-          <code>category:</code>, or <code>payee:</code>
+          Every account in this budget — filter with <code>account:</code>, <code>category:</code>,
+          or <code>payee:</code>
         </span>
       </div>
       <div className="all-txns-page__body">

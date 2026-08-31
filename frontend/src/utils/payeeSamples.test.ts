@@ -13,9 +13,8 @@ describe('dedupeSamples', () => {
 
 describe('samplesFromLines', () => {
   it('reads one sample per line and keeps a comma inside a line', () => {
-    expect(samplesFromLines('NORTHWIND PAYROLL\r\n\n  NORTHWIND … DOE, JANE \nnorthwind payroll')).toEqual([
-      'NORTHWIND PAYROLL',
-      'NORTHWIND … DOE, JANE',
-    ])
+    expect(
+      samplesFromLines('NORTHWIND PAYROLL\r\n\n  NORTHWIND … DOE, JANE \nnorthwind payroll')
+    ).toEqual(['NORTHWIND PAYROLL', 'NORTHWIND … DOE, JANE'])
   })
 })

@@ -151,11 +151,7 @@ class TestTheIdsThatHaveNoForeignKey:
             .all()
         )
         copy_batches = set(
-            (
-                await db_session.execute(
-                    select(batches.c.id).where(batches.c.budget_id == copy_id)
-                )
-            )
+            (await db_session.execute(select(batches.c.id).where(batches.c.budget_id == copy_id)))
             .scalars()
             .all()
         )
@@ -171,14 +167,18 @@ class TestTheIdsThatHaveNoForeignKey:
         bindings = _table("guide_bindings")
         categories = _table("categories")
         bound = (
-            await db_session.execute(
-                select(bindings.c.entity_id).where(
-                    bindings.c.budget_id == copy_id,
-                    bindings.c.entity_type == "category",
-                    bindings.c.entity_id.is_not(None),
+            (
+                await db_session.execute(
+                    select(bindings.c.entity_id).where(
+                        bindings.c.budget_id == copy_id,
+                        bindings.c.entity_type == "category",
+                        bindings.c.entity_id.is_not(None),
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert bound
         assert source.category_id not in bound
 
@@ -296,9 +296,7 @@ class TestNaming:
 
 
 class TestNothingIsWrittenWhenTheFileIsRefused:
-    async def test_a_newer_format_version_leaves_the_database_alone(
-        self, api_client, db_session
-    ):
+    async def test_a_newer_format_version_leaves_the_database_alone(self, api_client, db_session):
         source = await build_full_budget(db_session, api_client.test_user)
         body = _rewrite_manifest(await _export(api_client, source.id), format_version=99)
         before = (await db_session.execute(select(func.count()).select_from(Budget))).scalar_one()
@@ -308,9 +306,7 @@ class TestNothingIsWrittenWhenTheFileIsRefused:
         after = (await db_session.execute(select(func.count()).select_from(Budget))).scalar_one()
         assert after == before
 
-    async def test_a_member_the_manifest_does_not_declare_is_refused(
-        self, api_client, db_session
-    ):
+    async def test_a_member_the_manifest_does_not_declare_is_refused(self, api_client, db_session):
         """A file assembled by something other than this app: the extra rows
         would be silently ignored by a loader that reads only the manifest."""
         source = await build_full_budget(db_session, api_client.test_user)
@@ -342,10 +338,14 @@ class TestSeeding:
         _, result = await _duplicate(api_client, db_session)
         types = _table("account_types")
         keys = (
-            await db_session.execute(
-                select(types.c.key).where(types.c.budget_id == UUID(result["budget_id"]))
+            (
+                await db_session.execute(
+                    select(types.c.key).where(types.c.budget_id == UUID(result["budget_id"]))
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert "crypto_wallet" in keys
 
     async def test_seeding_after_the_rows_does_not_duplicate_the_builtins(
@@ -384,9 +384,7 @@ async def _by_name(session, summary, budget_id) -> dict[tuple[str, str], tuple]:
     rows = (
         await session.execute(
             select(categories.c.id, categories.c.name, groups.c.name)
-            .select_from(
-                categories.join(groups, categories.c.category_group_id == groups.c.id)
-            )
+            .select_from(categories.join(groups, categories.c.category_group_id == groups.c.id))
             .where(categories.c.budget_id == budget_id)
         )
     ).all()
@@ -434,4 +432,3 @@ def _rebuild(body: bytes, edit) -> bytes:
         for item in source.namelist():
             target.writestr(item, edit(item, source.read(item)))
     return out.getvalue()
-

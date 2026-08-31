@@ -25,7 +25,9 @@ from igab.api.v1.schemas.transaction import PendingReviewCount
 from igab.repositories.transaction_repo import TransactionRepository
 
 
-def _make_repo_with_count_result(both: int, unapproved_only: int, uncategorized_only: int) -> TransactionRepository:
+def _make_repo_with_count_result(
+    both: int, unapproved_only: int, uncategorized_only: int
+) -> TransactionRepository:
     """Build a repo whose session returns a pre-set aggregation row."""
     session = AsyncMock()
 
@@ -56,11 +58,13 @@ def _make_filter_repo() -> TransactionRepository:
 
 def _captured_sql(repo: TransactionRepository) -> str:
     from sqlalchemy.dialects import sqlite
+
     stmt = repo.session.execute.call_args[0][0]
     return str(stmt.compile(dialect=sqlite.dialect(), compile_kwargs={"literal_binds": True}))
 
 
 # ─── Invariant helpers ────────────────────────────────────────────────────────
+
 
 def assert_count_invariants(counts: dict[str, Any]) -> None:
     """Assert all structural invariants hold for a count result dict."""
@@ -79,7 +83,8 @@ def assert_count_invariants(counts: dict[str, Any]) -> None:
         f"unapproved ({unapproved}) != unapproved_only ({unapproved_only}) + both ({both})"
     )
     assert uncategorized == uncategorized_only + both, (
-        f"uncategorized ({uncategorized}) != uncategorized_only ({uncategorized_only}) + both ({both})"
+        f"uncategorized ({uncategorized}) != "
+        f"uncategorized_only ({uncategorized_only}) + both ({both})"
     )
     # Inclusion-exclusion: unique count = A + B - (A∩B)
     assert total == unapproved + uncategorized - both, (
@@ -92,6 +97,7 @@ def assert_count_invariants(counts: dict[str, Any]) -> None:
 
 
 # ─── Repository count result tests ───────────────────────────────────────────
+
 
 class TestCountPendingReviewResult:
     """Verify _count_pending_review returns the correct derived fields."""
@@ -137,7 +143,7 @@ class TestCountPendingReviewResult:
         """Transactions that are unapproved AND have no category."""
         repo = _make_repo_with_count_result(both=17, unapproved_only=0, uncategorized_only=0)
         result = await repo._count_pending_review(True)  # type: ignore[arg-type]
-        assert result["total"] == 17        # each transaction counted once
+        assert result["total"] == 17  # each transaction counted once
         assert result["unapproved"] == 17
         assert result["uncategorized"] == 17
         assert result["both"] == 17
@@ -179,7 +185,7 @@ class TestCountPendingReviewResult:
     async def test_all_three_buckets_nonzero(self) -> None:
         repo = _make_repo_with_count_result(both=5, unapproved_only=20, uncategorized_only=10)
         result = await repo._count_pending_review(True)  # type: ignore[arg-type]
-        assert result["total"] == 35       # 20 + 10 + 5
+        assert result["total"] == 35  # 20 + 10 + 5
         assert result["unapproved"] == 25  # 20 + 5
         assert result["uncategorized"] == 15  # 10 + 5
         assert_count_invariants(result)
@@ -187,7 +193,9 @@ class TestCountPendingReviewResult:
     @pytest.mark.asyncio
     async def test_null_db_values_treated_as_zero(self) -> None:
         """If the DB returns NULL for a sum (empty table), treat as 0."""
-        repo = _make_repo_with_count_result(both=None, unapproved_only=None, uncategorized_only=None)  # type: ignore[arg-type]
+        repo = _make_repo_with_count_result(
+            both=None, unapproved_only=None, uncategorized_only=None
+        )  # type: ignore[arg-type]
         result = await repo._count_pending_review(True)  # type: ignore[arg-type]
         assert result["total"] == 0
         assert result["unapproved"] == 0
@@ -196,6 +204,7 @@ class TestCountPendingReviewResult:
 
 
 # ─── Schema serialization tests ───────────────────────────────────────────────
+
 
 class TestPendingReviewCountSchema:
     """
@@ -290,11 +299,12 @@ class TestPendingReviewCountSchema:
     def test_schema_defaults_allow_missing_breakdown_fields(self) -> None:
         """Fields have defaults so existing callers that omit them don't break."""
         schema = PendingReviewCount(unapproved=5, uncategorized=3)
-        assert schema.total == 0   # default
-        assert schema.both == 0    # default
+        assert schema.total == 0  # default
+        assert schema.both == 0  # default
 
 
 # ─── SQL structure: needs_category excludes transfers ─────────────────────────
+
 
 class TestCountQueryStructure:
     """Verify the SQL emitted by _count_pending_review has the correct structure."""

@@ -208,7 +208,8 @@ export function AISettingsPanel() {
                 <div className="settings-row__label">Model</div>
                 <div className="settings-row__desc">
                   {ollamaModel || 'Select a model'}
-                  {models?.find((m) => sameOllamaModel(m.name, ollamaModel))?.capabilities?.length ? (
+                  {models?.find((m) => sameOllamaModel(m.name, ollamaModel))?.capabilities
+                    ?.length ? (
                     <span className="ai-panel__caps">
                       {models
                         .find((m) => sameOllamaModel(m.name, ollamaModel))
@@ -264,8 +265,8 @@ export function AISettingsPanel() {
               <div>
                 <div className="settings-row__label">Activity log retention</div>
                 <div className="settings-row__desc">
-                  Finished entries older than this are cleaned up nightly. 0 keeps
-                  them forever. Transactions and receipt images are never touched.
+                  Finished entries older than this are cleaned up nightly. 0 keeps them forever.
+                  Transactions and receipt images are never touched.
                 </div>
               </div>
               <div className="ai-panel__actions">

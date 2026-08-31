@@ -65,13 +65,7 @@ export function BottomSheet({ open, ...rest }: BottomSheetProps) {
 
   if (!open && !closing) return null
 
-  return (
-    <BottomSheetPanel
-      {...rest}
-      closing={!open}
-      onExited={() => setClosing(false)}
-    />
-  )
+  return <BottomSheetPanel {...rest} closing={!open} onExited={() => setClosing(false)} />
 }
 
 function BottomSheetPanel({

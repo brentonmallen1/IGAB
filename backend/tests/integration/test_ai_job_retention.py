@@ -90,9 +90,7 @@ class TestRetentionCleanup:
 
     async def test_zero_retention_keeps_everything(self, api_client, db_session):
         budget, _ = await _setup(api_client, db_session)
-        await SettingsService(SettingsRepository(db_session)).set(
-            "ai_activity_retention_days", "0"
-        )
+        await SettingsService(SettingsRepository(db_session)).set("ai_activity_retention_days", "0")
         old_done = await make_job(
             db_session, budget, status="done", finished_at=NOW - timedelta(days=400)
         )
@@ -104,9 +102,7 @@ class TestRetentionCleanup:
 
     async def test_custom_retention_window(self, api_client, db_session):
         budget, _ = await _setup(api_client, db_session)
-        await SettingsService(SettingsRepository(db_session)).set(
-            "ai_activity_retention_days", "7"
-        )
+        await SettingsService(SettingsRepository(db_session)).set("ai_activity_retention_days", "7")
         too_old = await make_job(
             db_session, budget, status="done", finished_at=NOW - timedelta(days=10)
         )

@@ -2,7 +2,16 @@ import { useRef, useState } from 'react'
 import { Surface } from '../../components/common/Surface'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { ChevronDown, ChevronUp, HelpCircle, LogOut, MoreHorizontal, Pencil, Trash2, Users } from 'lucide-react'
+import {
+  ChevronDown,
+  ChevronUp,
+  HelpCircle,
+  LogOut,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+  Users,
+} from 'lucide-react'
 import {
   useBudgets,
   useCreateBudget,
@@ -214,7 +223,9 @@ export function BudgetSelectorPage() {
       navigate('/budget')
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      setSampleError(detail ?? (err instanceof Error ? err.message : 'Failed to create sample budget'))
+      setSampleError(
+        detail ?? (err instanceof Error ? err.message : 'Failed to create sample budget')
+      )
     }
   }
 
@@ -286,9 +297,7 @@ export function BudgetSelectorPage() {
         <div className="budget-selector__logo">IGAB</div>
         <div className="budget-selector__tagline">I've Got A Budget</div>
         {me && (
-          <div className="budget-selector__whoami">
-            Signed in as {me.display_name || me.email}
-          </div>
+          <div className="budget-selector__whoami">Signed in as {me.display_name || me.email}</div>
         )}
         <button className="budget-selector__logout" onClick={logout} title="Sign out">
           <LogOut size={15} />
@@ -297,24 +306,27 @@ export function BudgetSelectorPage() {
       </div>
 
       <div className="budget-selector__body">
-
         {/* Existing budgets — the focal point */}
         <div className="budget-selector__main">
           <div className="section-label budget-selector__section-title">
             Your Budgets
-            {budgets.length > 1 && (
-              <span className="budget-selector__count">{budgets.length}</span>
-            )}
+            {budgets.length > 1 && <span className="budget-selector__count">{budgets.length}</span>}
           </div>
           {isLoading ? (
             <div className="budget-selector__empty">Loading…</div>
           ) : budgets.length === 0 ? (
-            <div className="budget-selector__empty">No budgets yet — create one to get started.</div>
+            <div className="budget-selector__empty">
+              No budgets yet — create one to get started.
+            </div>
           ) : (
             <div className="budget-list">
               {budgets.map((b) =>
                 renamingId === b.id ? (
-                  <form key={b.id} className="budget-card surface budget-card--renaming" onSubmit={saveRename}>
+                  <form
+                    key={b.id}
+                    className="budget-card surface budget-card--renaming"
+                    onSubmit={saveRename}
+                  >
                     <input
                       className="budget-card__rename-input"
                       value={renameValue}
@@ -322,10 +334,18 @@ export function BudgetSelectorPage() {
                       autoFocus
                     />
                     <div className="budget-card__actions">
-                      <button type="submit" className="budget-card__save-btn" disabled={renameBudget.isPending}>
+                      <button
+                        type="submit"
+                        className="budget-card__save-btn"
+                        disabled={renameBudget.isPending}
+                      >
                         Save
                       </button>
-                      <button type="button" className="budget-card__menu-btn" onClick={() => setRenamingId(null)}>
+                      <button
+                        type="button"
+                        className="budget-card__menu-btn"
+                        onClick={() => setRenamingId(null)}
+                      >
                         Cancel
                       </button>
                     </div>
@@ -404,315 +424,322 @@ export function BudgetSelectorPage() {
         </div>
 
         <div className="budget-selector__actions">
+          <div className="section-label budget-selector__section-title">Add a Budget</div>
 
-        <div className="section-label budget-selector__section-title">Add a Budget</div>
-
-        {/* Create new budget */}
-        <SelectorSection
-          title="Create New Budget"
-          subtitle="Start fresh with an empty budget"
-          open={createOpen}
-          onToggle={() => setCreateToggled(!createOpen)}
-        >
-          <form className="selector-card__body" onSubmit={handleCreate}>
-            <div className="selector-field">
-              <label className="selector-field__label">Budget name</label>
-              <input
-                className="selector-field__input"
-                type="text"
-                placeholder="e.g. My Budget 2026"
-                value={createName}
-                onChange={(e) => setCreateName(e.target.value)}
-                required
-              />
-            </div>
-            <div className="selector-card__footer">
-              <button
-                type="submit"
-                className="selector-btn"
-                disabled={createBudget.isPending || !createName.trim()}
-              >
-                {createBudget.isPending ? 'Creating…' : 'Create Budget'}
-              </button>
-              {createError && (
-                <div className="selector-result selector-result--error">{createError}</div>
-              )}
-            </div>
-          </form>
-        </SelectorSection>
-
-        {/* Import from YNAB — or from IGAB's own export, which is written in
-            the same shape on purpose, so this reader takes both. */}
-        <SelectorSection
-          title="Import from YNAB or an IGAB export"
-          subtitle="Creates a new budget from an export ZIP — YNAB's, or one IGAB wrote"
-          open={importOpen}
-          onToggle={() => setImportOpen((v) => !v)}
-        >
-          <form
-            className="selector-card__body"
-            onSubmit={previewAccounts ? handleImport : handlePreview}
+          {/* Create new budget */}
+          <SelectorSection
+            title="Create New Budget"
+            subtitle="Start fresh with an empty budget"
+            open={createOpen}
+            onToggle={() => setCreateToggled(!createOpen)}
           >
-            <div className="selector-field">
-              <label className="selector-field__label">Budget name</label>
-              <input
-                className="selector-field__input"
-                type="text"
-                placeholder="e.g. Household 2020"
-                value={importName}
-                onChange={(e) => setImportName(e.target.value)}
-                required
-              />
-            </div>
-            <div className="selector-field">
-              <label className="selector-field__label">Export file (.zip)</label>
-              <input
-                ref={importFileRef}
-                type="file"
-                className="selector-field__input"
-                accept=".zip,application/zip"
-                required
-                onChange={resetImportPreview}
-              />
-            </div>
-
-            {previewAccounts && (
+            <form className="selector-card__body" onSubmit={handleCreate}>
               <div className="selector-field">
-                <div className="ynab-mapping__heading">
-                  <span className="selector-field__label" id="ynab-accounts-label">
-                    Accounts
-                  </span>
-                  <button
-                    type="button"
-                    className="ynab-mapping__type-help"
-                    onClick={() => setShowTypeInfo(true)}
-                  >
-                    <HelpCircle size={12} /> What do these types mean?
-                  </button>
-                </div>
-                <p className="ynab-mapping__guidance">
-                  Uncheck an account to leave it out — its transactions don't come with
-                  it, and transfers to it won't match up. Need a type that isn't listed?
-                  You can add custom ones after the import.
-                </p>
-                {!previewAccounts.some((a) => a.needs_review) && (
-                  <p className="ynab-mapping__note">
-                    An IGAB export carries the real account types, so there is nothing to guess
-                    here. A YNAB export does not, and the types below would be read from account
-                    names instead.
-                  </p>
+                <label className="selector-field__label">Budget name</label>
+                <input
+                  className="selector-field__input"
+                  type="text"
+                  placeholder="e.g. My Budget 2026"
+                  value={createName}
+                  onChange={(e) => setCreateName(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="selector-card__footer">
+                <button
+                  type="submit"
+                  className="selector-btn"
+                  disabled={createBudget.isPending || !createName.trim()}
+                >
+                  {createBudget.isPending ? 'Creating…' : 'Create Budget'}
+                </button>
+                {createError && (
+                  <div className="selector-result selector-result--error">{createError}</div>
                 )}
-                {previewAccounts.some((a) => a.needs_review) && (
-                  <p className="ynab-mapping__review-note">
-                    We couldn't tell what{' '}
-                    {previewAccounts.filter((a) => a.needs_review).length} of these are from
-                    their names — they're marked <strong>Check</strong> below. The balance is
-                    the clue: a large one usually means something you own (a house, a car, a
-                    brokerage), which belongs <em>off</em> budget. An account left on budget
-                    by mistake throws off every total.
-                  </p>
-                )}
-                {dormantCount > 0 && (
-                  <p className="ynab-mapping__note">
-                    {dormantCount} of these {dormantCount === 1 ? 'has' : 'have'} seen no activity
-                    in over a year.{' '}
+              </div>
+            </form>
+          </SelectorSection>
+
+          {/* Import from YNAB — or from IGAB's own export, which is written in
+            the same shape on purpose, so this reader takes both. */}
+          <SelectorSection
+            title="Import from YNAB or an IGAB export"
+            subtitle="Creates a new budget from an export ZIP — YNAB's, or one IGAB wrote"
+            open={importOpen}
+            onToggle={() => setImportOpen((v) => !v)}
+          >
+            <form
+              className="selector-card__body"
+              onSubmit={previewAccounts ? handleImport : handlePreview}
+            >
+              <div className="selector-field">
+                <label className="selector-field__label">Budget name</label>
+                <input
+                  className="selector-field__input"
+                  type="text"
+                  placeholder="e.g. Household 2020"
+                  value={importName}
+                  onChange={(e) => setImportName(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="selector-field">
+                <label className="selector-field__label">Export file (.zip)</label>
+                <input
+                  ref={importFileRef}
+                  type="file"
+                  className="selector-field__input"
+                  accept=".zip,application/zip"
+                  required
+                  onChange={resetImportPreview}
+                />
+              </div>
+
+              {previewAccounts && (
+                <div className="selector-field">
+                  <div className="ynab-mapping__heading">
+                    <span className="selector-field__label" id="ynab-accounts-label">
+                      Accounts
+                    </span>
                     <button
                       type="button"
-                      className="ynab-mapping__note-action"
-                      onClick={closeDormantAccounts}
+                      className="ynab-mapping__type-help"
+                      onClick={() => setShowTypeInfo(true)}
                     >
-                      Import &amp; close {dormantCount === 1 ? 'it' : 'them'}
-                    </button>{' '}
-                    to keep every transaction while leaving them out of your account pickers.
+                      <HelpCircle size={12} /> What do these types mean?
+                    </button>
+                  </div>
+                  <p className="ynab-mapping__guidance">
+                    Uncheck an account to leave it out — its transactions don't come with it, and
+                    transfers to it won't match up. Need a type that isn't listed? You can add
+                    custom ones after the import.
                   </p>
-                )}
-                <Surface variant="sunken" className="ynab-mapping" role="group" aria-labelledby="ynab-accounts-label">
-                  {groupAccounts(previewAccounts).map((section) => (
-                    <div key={section.label ?? `solo-${section.accounts[0].name}`}>
-                      {section.label && (
-                        <p className="ynab-mapping__family">
-                          <span className="ynab-mapping__family-name">{section.label}</span>
-                          <span className="ynab-mapping__family-hint">
-                            related — often an institution's accounts, or something you own and
-                            the debt against it. Compare their balances.
-                          </span>
-                        </p>
-                      )}
-                      {section.accounts.map((a) => {
-                    const choice = accountChoices[a.name]
-                    const disposition = dispositionOf(choice)
-                    const skipped = disposition === 'skip'
-                    const typeKey = choice?.account_type ?? a.suggested_type
-                    const warning = skipped
-                      ? null
-                      : classificationWarning(
-                          ACCOUNT_TYPE_OPTIONS.find((o) => o.key === a.suggested_type)
-                            ?.classification,
-                          ACCOUNT_TYPE_OPTIONS.find((o) => o.key === typeKey)?.classification
-                        )
-                    const lastSeen = activityLabel(a.last_activity)
-                    return (
-                      <div
-                        key={a.name}
-                        className={`ynab-mapping__row ${skipped ? 'ynab-mapping__row--skipped' : ''} ${
-                          a.needs_review && !skipped ? 'ynab-mapping__row--review' : ''
-                        }`}
+                  {!previewAccounts.some((a) => a.needs_review) && (
+                    <p className="ynab-mapping__note">
+                      An IGAB export carries the real account types, so there is nothing to guess
+                      here. A YNAB export does not, and the types below would be read from account
+                      names instead.
+                    </p>
+                  )}
+                  {previewAccounts.some((a) => a.needs_review) && (
+                    <p className="ynab-mapping__review-note">
+                      We couldn't tell what {previewAccounts.filter((a) => a.needs_review).length}{' '}
+                      of these are from their names — they're marked <strong>Check</strong> below.
+                      The balance is the clue: a large one usually means something you own (a house,
+                      a car, a brokerage), which belongs <em>off</em> budget. An account left on
+                      budget by mistake throws off every total.
+                    </p>
+                  )}
+                  {dormantCount > 0 && (
+                    <p className="ynab-mapping__note">
+                      {dormantCount} of these {dormantCount === 1 ? 'has' : 'have'} seen no activity
+                      in over a year.{' '}
+                      <button
+                        type="button"
+                        className="ynab-mapping__note-action"
+                        onClick={closeDormantAccounts}
                       >
-                        <select
-                          className="selector-field__input ynab-mapping__disposition"
-                          value={disposition}
-                          onChange={(e) =>
-                            updateChoice(
-                              a.name,
-                              choiceForDisposition(e.target.value as Disposition)
-                            )
-                          }
-                          aria-label={`What to do with ${a.name}`}
-                        >
-                          <option value="import">Import</option>
-                          <option value="close">Import &amp; close</option>
-                          <option value="skip">Leave out</option>
-                        </select>
-                        <div className="ynab-mapping__name">
-                          {a.name}
-                          {a.needs_review && !skipped && (
-                            <span
-                              className="ynab-mapping__review"
-                              title="We couldn't identify this account from its name — confirm the type and whether it belongs on budget"
+                        Import &amp; close {dormantCount === 1 ? 'it' : 'them'}
+                      </button>{' '}
+                      to keep every transaction while leaving them out of your account pickers.
+                    </p>
+                  )}
+                  <Surface
+                    variant="sunken"
+                    className="ynab-mapping"
+                    role="group"
+                    aria-labelledby="ynab-accounts-label"
+                  >
+                    {groupAccounts(previewAccounts).map((section) => (
+                      <div key={section.label ?? `solo-${section.accounts[0].name}`}>
+                        {section.label && (
+                          <p className="ynab-mapping__family">
+                            <span className="ynab-mapping__family-name">{section.label}</span>
+                            <span className="ynab-mapping__family-hint">
+                              related — often an institution's accounts, or something you own and
+                              the debt against it. Compare their balances.
+                            </span>
+                          </p>
+                        )}
+                        {section.accounts.map((a) => {
+                          const choice = accountChoices[a.name]
+                          const disposition = dispositionOf(choice)
+                          const skipped = disposition === 'skip'
+                          const typeKey = choice?.account_type ?? a.suggested_type
+                          const warning = skipped
+                            ? null
+                            : classificationWarning(
+                                ACCOUNT_TYPE_OPTIONS.find((o) => o.key === a.suggested_type)
+                                  ?.classification,
+                                ACCOUNT_TYPE_OPTIONS.find((o) => o.key === typeKey)?.classification
+                              )
+                          const lastSeen = activityLabel(a.last_activity)
+                          return (
+                            <div
+                              key={a.name}
+                              className={`ynab-mapping__row ${skipped ? 'ynab-mapping__row--skipped' : ''} ${
+                                a.needs_review && !skipped ? 'ynab-mapping__row--review' : ''
+                              }`}
                             >
-                              Check
-                            </span>
-                          )}
-                          <span className="ynab-mapping__count">
-                            {a.transaction_count} txns
-                            <span className="ynab-mapping__balance">
-                              {formatMoney(Number(a.implied_balance))}
-                            </span>
-                            {lastSeen && (
-                              <span className="ynab-mapping__activity">last activity {lastSeen}</span>
-                            )}
-                          </span>
-                        </div>
-                        <select
-                          className="selector-field__input ynab-mapping__type"
-                          value={typeKey}
-                          onChange={(e) => {
-                            // Picking a type resets the on-budget checkbox to
-                            // that type's default; still user-overridable.
-                            const picked = ACCOUNT_TYPE_OPTIONS.find(
-                              (o) => o.key === e.target.value
-                            )
-                            updateChoice(a.name, {
-                              account_type: e.target.value,
-                              on_budget: picked?.default_on_budget ?? true,
-                            })
-                          }}
-                          disabled={skipped}
-                        >
-                          {ACCOUNT_TYPE_OPTIONS.map((o) => (
-                            <option key={o.key} value={o.key}>{o.label}</option>
-                          ))}
-                        </select>
-                        <label className="ynab-mapping__budget-toggle">
-                          <input
-                            type="checkbox"
-                            checked={choice?.on_budget ?? a.suggested_on_budget}
-                            onChange={(e) => updateChoice(a.name, { on_budget: e.target.checked })}
-                            disabled={skipped}
-                          />
-                          On budget
-                        </label>
-                        {warning && <p className="ynab-mapping__warn">{warning}</p>}
+                              <select
+                                className="selector-field__input ynab-mapping__disposition"
+                                value={disposition}
+                                onChange={(e) =>
+                                  updateChoice(
+                                    a.name,
+                                    choiceForDisposition(e.target.value as Disposition)
+                                  )
+                                }
+                                aria-label={`What to do with ${a.name}`}
+                              >
+                                <option value="import">Import</option>
+                                <option value="close">Import &amp; close</option>
+                                <option value="skip">Leave out</option>
+                              </select>
+                              <div className="ynab-mapping__name">
+                                {a.name}
+                                {a.needs_review && !skipped && (
+                                  <span
+                                    className="ynab-mapping__review"
+                                    title="We couldn't identify this account from its name — confirm the type and whether it belongs on budget"
+                                  >
+                                    Check
+                                  </span>
+                                )}
+                                <span className="ynab-mapping__count">
+                                  {a.transaction_count} txns
+                                  <span className="ynab-mapping__balance">
+                                    {formatMoney(Number(a.implied_balance))}
+                                  </span>
+                                  {lastSeen && (
+                                    <span className="ynab-mapping__activity">
+                                      last activity {lastSeen}
+                                    </span>
+                                  )}
+                                </span>
+                              </div>
+                              <select
+                                className="selector-field__input ynab-mapping__type"
+                                value={typeKey}
+                                onChange={(e) => {
+                                  // Picking a type resets the on-budget checkbox to
+                                  // that type's default; still user-overridable.
+                                  const picked = ACCOUNT_TYPE_OPTIONS.find(
+                                    (o) => o.key === e.target.value
+                                  )
+                                  updateChoice(a.name, {
+                                    account_type: e.target.value,
+                                    on_budget: picked?.default_on_budget ?? true,
+                                  })
+                                }}
+                                disabled={skipped}
+                              >
+                                {ACCOUNT_TYPE_OPTIONS.map((o) => (
+                                  <option key={o.key} value={o.key}>
+                                    {o.label}
+                                  </option>
+                                ))}
+                              </select>
+                              <label className="ynab-mapping__budget-toggle">
+                                <input
+                                  type="checkbox"
+                                  checked={choice?.on_budget ?? a.suggested_on_budget}
+                                  onChange={(e) =>
+                                    updateChoice(a.name, { on_budget: e.target.checked })
+                                  }
+                                  disabled={skipped}
+                                />
+                                On budget
+                              </label>
+                              {warning && <p className="ynab-mapping__warn">{warning}</p>}
+                            </div>
+                          )
+                        })}
                       </div>
-                    )
-                  })}
-                    </div>
-                  ))}
-                </Surface>
+                    ))}
+                  </Surface>
+                </div>
+              )}
+
+              <div className="selector-card__footer">
+                <button
+                  type="submit"
+                  className="selector-btn"
+                  disabled={previewYnab.isPending || importYnab.isPending || !importName.trim()}
+                >
+                  {previewAccounts
+                    ? importYnab.isPending
+                      ? 'Importing…'
+                      : 'Import Budget'
+                    : previewYnab.isPending
+                      ? 'Reading export…'
+                      : 'Review Accounts'}
+                </button>
+                {importError && (
+                  <div className="selector-result selector-result--error">{importError}</div>
+                )}
               </div>
-            )}
+            </form>
+          </SelectorSection>
 
-            <div className="selector-card__footer">
-              <button
-                type="submit"
-                className="selector-btn"
-                disabled={previewYnab.isPending || importYnab.isPending || !importName.trim()}
-              >
-                {previewAccounts
-                  ? importYnab.isPending
-                    ? 'Importing…'
-                    : 'Import Budget'
-                  : previewYnab.isPending
-                    ? 'Reading export…'
-                    : 'Review Accounts'}
-              </button>
-              {importError && (
-                <div className="selector-result selector-result--error">{importError}</div>
-              )}
+          {/* Sample budget */}
+          <SelectorSection
+            title="Try a Sample Budget"
+            subtitle="Explore IGAB with realistic, ready-made demo data"
+            open={sampleOpen}
+            onToggle={() => setSampleOpen((v) => !v)}
+            dashed
+          >
+            <div className="selector-card__body">
+              <div className="sample-tier">
+                <label
+                  className={`sample-tier__option ${sampleTier === 'starter' ? 'sample-tier__option--active' : ''}`}
+                >
+                  <input
+                    type="radio"
+                    name="sample-tier"
+                    checked={sampleTier === 'starter'}
+                    onChange={() => setSampleTier('starter')}
+                  />
+                  <span>
+                    <strong>Quick demo</strong>
+                    <small>5 accounts · about a year of history</small>
+                  </span>
+                </label>
+                <label
+                  className={`sample-tier__option ${sampleTier === 'full' ? 'sample-tier__option--active' : ''}`}
+                >
+                  <input
+                    type="radio"
+                    name="sample-tier"
+                    checked={sampleTier === 'full'}
+                    onChange={() => setSampleTier('full')}
+                  />
+                  <span>
+                    <strong>Full household</strong>
+                    <small>
+                      16 accounts, 2½ years, thousands of transactions — mortgage, investments,
+                      hidden categories, a 0%-promo loan
+                    </small>
+                  </span>
+                </label>
+              </div>
+              <div className="selector-card__footer">
+                <button
+                  type="button"
+                  className="selector-btn selector-btn--secondary"
+                  onClick={handleCreateSample}
+                  disabled={createSample.isPending}
+                >
+                  {createSample.isPending ? 'Generating…' : 'Generate Sample Budget'}
+                </button>
+                {sampleError && (
+                  <div className="selector-result selector-result--error">{sampleError}</div>
+                )}
+              </div>
             </div>
-          </form>
-        </SelectorSection>
-
-        {/* Sample budget */}
-        <SelectorSection
-          title="Try a Sample Budget"
-          subtitle="Explore IGAB with realistic, ready-made demo data"
-          open={sampleOpen}
-          onToggle={() => setSampleOpen((v) => !v)}
-          dashed
-        >
-          <div className="selector-card__body">
-            <div className="sample-tier">
-              <label
-                className={`sample-tier__option ${sampleTier === 'starter' ? 'sample-tier__option--active' : ''}`}
-              >
-                <input
-                  type="radio"
-                  name="sample-tier"
-                  checked={sampleTier === 'starter'}
-                  onChange={() => setSampleTier('starter')}
-                />
-                <span>
-                  <strong>Quick demo</strong>
-                  <small>5 accounts · about a year of history</small>
-                </span>
-              </label>
-              <label
-                className={`sample-tier__option ${sampleTier === 'full' ? 'sample-tier__option--active' : ''}`}
-              >
-                <input
-                  type="radio"
-                  name="sample-tier"
-                  checked={sampleTier === 'full'}
-                  onChange={() => setSampleTier('full')}
-                />
-                <span>
-                  <strong>Full household</strong>
-                  <small>
-                    16 accounts, 2½ years, thousands of transactions — mortgage, investments,
-                    hidden categories, a 0%-promo loan
-                  </small>
-                </span>
-              </label>
-            </div>
-            <div className="selector-card__footer">
-              <button
-                type="button"
-                className="selector-btn selector-btn--secondary"
-                onClick={handleCreateSample}
-                disabled={createSample.isPending}
-              >
-                {createSample.isPending ? 'Generating…' : 'Generate Sample Budget'}
-              </button>
-              {sampleError && (
-                <div className="selector-result selector-result--error">{sampleError}</div>
-              )}
-            </div>
-          </div>
-        </SelectorSection>
-
+          </SelectorSection>
         </div>
-
       </div>
       {showTypeInfo && (
         <AccountTypeInfoModal context="import" onClose={() => setShowTypeInfo(false)} />

@@ -61,7 +61,9 @@ export function ReviewDialog({ budgetId, due, reviewDays, onClose }: Props) {
                 type="button"
                 className="guide-link-button"
                 disabled={pending}
-                onClick={() => update.mutate({ id: current.id, status: 'dropped' }, { onSuccess: next })}
+                onClick={() =>
+                  update.mutate({ id: current.id, status: 'dropped' }, { onSuccess: next })
+                }
               >
                 Drop it
               </button>
@@ -69,7 +71,9 @@ export function ReviewDialog({ budgetId, due, reviewDays, onClose }: Props) {
                 type="button"
                 className="guide-link-button"
                 disabled={pending}
-                onClick={() => update.mutate({ id: current.id, status: 'done' }, { onSuccess: next })}
+                onClick={() =>
+                  update.mutate({ id: current.id, status: 'done' }, { onSuccess: next })
+                }
               >
                 Done — got it
               </button>
@@ -77,9 +81,7 @@ export function ReviewDialog({ budgetId, due, reviewDays, onClose }: Props) {
           </>
         ) : (
           <>
-            <p className="wish-review__done">
-              That’s everyone. Next review in {reviewDays} days.
-            </p>
+            <p className="wish-review__done">That’s everyone. Next review in {reviewDays} days.</p>
             <div className="wish-review__actions">
               <button type="button" className="guide-checkup__run" onClick={onClose}>
                 Close

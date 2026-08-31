@@ -22,7 +22,6 @@ from .factories import (
     create_category,
     create_category_group,
     create_transaction,
-    create_user,
     make_services,
 )
 
@@ -47,9 +46,7 @@ async def _set_target(db_session, category, target_type, amount, target_date=Non
     from igab.repositories.target_repo import TargetRepository
 
     svc = TargetService(TargetRepository(db_session))
-    return await svc.upsert(
-        category.id, target_type, Decimal(amount), target_date=target_date
-    )
+    return await svc.upsert(category.id, target_type, Decimal(amount), target_date=target_date)
 
 
 class TestTheFieldsAreServed:
@@ -179,9 +176,7 @@ class TestOverspentCountMatchesItsAmount:
     disagree, and Cover Overspent then acted on a category the count denied.
     """
 
-    async def test_the_count_and_the_amount_cover_the_same_categories(
-        self, db_session, api_client
-    ):
+    async def test_the_count_and_the_amount_cover_the_same_categories(self, db_session, api_client):
         services, budget, group, account = await _setup(db_session, api_client.test_user)
         for i, spend in enumerate(["-50.00", "-30.00"]):
             category = await create_category(db_session, budget, group, f"Over{i}")

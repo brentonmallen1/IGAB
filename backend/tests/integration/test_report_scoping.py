@@ -33,9 +33,7 @@ async def _setup(db_session, owner):
 
     # On-budget cash flow
     await create_transaction(db_session, budget, checking, "1000.00", IN_MONTH)  # paycheck
-    await create_transaction(
-        db_session, budget, checking, "-100.00", IN_MONTH, category=groceries
-    )
+    await create_transaction(db_session, budget, checking, "-100.00", IN_MONTH, category=groceries)
     # Categorized spending transfer to the brokerage: the categorized leg sits
     # on the on-budget side and counts as an expense
     leg_out = await create_transaction(
@@ -55,9 +53,7 @@ async def _setup(db_session, owner):
 async def test_income_expense_excludes_off_budget_activity(api_client, db_session):
     budget, _, _ = await _setup(db_session, api_client.test_user)
 
-    resp = await api_client.get(
-        f"/api/v1/{budget.id}/reports/income-expense", params={"months": 1}
-    )
+    resp = await api_client.get(f"/api/v1/{budget.id}/reports/income-expense", params={"months": 1})
     assert resp.status_code == 200
     month = resp.json()["months"][-1]
     # 1000 paycheck only — the 800 market gain is not income

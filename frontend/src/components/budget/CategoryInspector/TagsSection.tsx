@@ -1,33 +1,34 @@
-import { useTags, useSetCategoryTags, useCreateTag } from '../../../api/tags';
-import { TagChip } from '../../common/TagChip';
-import { TagPicker, type TagOption } from '../../common/TagPicker';
-import type { Category } from '../../../types';
+import { useTags, useSetCategoryTags, useCreateTag } from '../../../api/tags'
+import { TagChip } from '../../common/TagChip'
+import { TagPicker, type TagOption } from '../../common/TagPicker'
+import type { Category } from '../../../types'
 
 interface TagsSectionProps {
-  category: Category;
-  budgetId: string;
+  category: Category
+  budgetId: string
 }
 
 export function TagsSection({ category, budgetId }: TagsSectionProps) {
-  const { data: allTags } = useTags(budgetId);
-  const setTags = useSetCategoryTags(budgetId);
-  const createTag = useCreateTag(budgetId);
+  const { data: allTags } = useTags(budgetId)
+  const setTags = useSetCategoryTags(budgetId)
+  const createTag = useCreateTag(budgetId)
 
-  const selectedTagIds = category.tags?.map((t) => t.id) ?? [];
+  const selectedTagIds = category.tags?.map((t) => t.id) ?? []
 
-  const tagOptions: TagOption[] = allTags?.map((t) => ({
-    id: t.id,
-    name: t.name,
-    color_slot: t.color_slot,
-  })) ?? [];
+  const tagOptions: TagOption[] =
+    allTags?.map((t) => ({
+      id: t.id,
+      name: t.name,
+      color_slot: t.color_slot,
+    })) ?? []
 
   function handleChange(tagIds: string[]) {
-    setTags.mutate({ categoryId: category.id, tagIds });
+    setTags.mutate({ categoryId: category.id, tagIds })
   }
 
   async function handleCreate(name: string): Promise<TagOption> {
-    const tag = await createTag.mutateAsync({ name });
-    return { id: tag.id, name: tag.name, color_slot: tag.color_slot };
+    const tag = await createTag.mutateAsync({ name })
+    return { id: tag.id, name: tag.name, color_slot: tag.color_slot }
   }
 
   return (
@@ -61,5 +62,5 @@ export function TagsSection({ category, budgetId }: TagsSectionProps) {
         </div>
       </div>
     </div>
-  );
+  )
 }

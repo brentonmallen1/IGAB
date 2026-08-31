@@ -804,7 +804,9 @@ class TestSyncFlow:
 
     @pytest.mark.asyncio
     async def test_sync_stamps_sync_id_while_preserving_import_id(self) -> None:
-        """When matching a YNAB-imported transaction (has import_id), stamps sync_id but preserves import_id."""
+        """When matching a YNAB-imported transaction (has import_id), stamps sync_id but
+        preserves import_id.
+        """
         svc = self._make_svc()
         conn = make_connection()
         account = make_account(first_sync_complete=True)
@@ -842,7 +844,9 @@ class TestSyncFlow:
 
     @pytest.mark.asyncio
     async def test_find_existing_match_advances_pending_to_cleared_when_posted(self) -> None:
-        """A fuzzy-matched pending transaction advances to cleared when SimpleFIN shows it posted."""
+        """A fuzzy-matched pending transaction advances to cleared when SimpleFIN shows it
+        posted.
+        """
         svc = self._make_svc()
         conn = make_connection()
         account = make_account(first_sync_complete=True)
@@ -876,7 +880,9 @@ class TestSyncFlow:
 
     @pytest.mark.asyncio
     async def test_find_existing_match_advances_uncleared_to_cleared_when_posted(self) -> None:
-        """A fuzzy-matched uncleared transaction advances to cleared when SimpleFIN shows it posted."""
+        """A fuzzy-matched uncleared transaction advances to cleared when SimpleFIN shows
+        it posted.
+        """
         svc = self._make_svc()
         conn = make_connection()
         account = make_account(first_sync_complete=True)
@@ -906,7 +912,9 @@ class TestSyncFlow:
 
     @pytest.mark.asyncio
     async def test_find_existing_match_no_clear_advance_when_not_posted(self) -> None:
-        """Cleared state is NOT advanced when the SimpleFIN transaction is still pending (not posted)."""
+        """Cleared state is NOT advanced when the SimpleFIN transaction is still pending
+        (not posted).
+        """
         svc = self._make_svc()
         conn = make_connection()
         account = make_account(first_sync_complete=True)
@@ -974,7 +982,9 @@ class TestSyncFlow:
 
     @pytest.mark.asyncio
     async def test_exact_sync_id_match_skips_entirely(self) -> None:
-        """A row already carrying this sync_id is skipped: provenance may refresh, nothing else moves."""
+        """A row already carrying this sync_id is skipped: provenance may refresh, nothing
+        else moves.
+        """
         svc = self._make_svc()
         conn = make_connection()
         account = make_account(first_sync_complete=True)

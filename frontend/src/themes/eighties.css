@@ -17,9 +17,9 @@
   --color-accent: #39bf9e;
   --color-accent-hover: #3cc9a6;
   --accent-color: var(--color-accent);
-  --color-positive: #A1D4B1;
+  --color-positive: #a1d4b1;
   --color-negative: #ff8566;
-  --color-warning: #F1A512;
+  --color-warning: #f1a512;
   --color-info: #39bf9e;
 
   /* Borders and inputs */
@@ -48,23 +48,23 @@
   --sidebar-text-muted: #6d837b;
 
   /* Tag color slots — 80s palette */
-  --tag-red: #DD4111;
-  --tag-orange: #F1A512;
+  --tag-red: #dd4111;
+  --tag-orange: #f1a512;
   --tag-yellow: #f5d060;
-  --tag-green: #A1D4B1;
-  --tag-teal: #2BAF90;
+  --tag-green: #a1d4b1;
+  --tag-teal: #2baf90;
   --tag-blue: #4a90c8;
-  --tag-purple: #8C0027;
+  --tag-purple: #8c0027;
   --tag-pink: #c84080;
 
   /* Chart palette — validated for dark background */
-  --chart-1: #2BAF90;
-  --chart-2: #F1A512;
-  --chart-3: #A1D4B1;
-  --chart-4: #DD4111;
+  --chart-1: #2baf90;
+  --chart-2: #f1a512;
+  --chart-3: #a1d4b1;
+  --chart-4: #dd4111;
   --chart-5: #4a90c8;
   --chart-6: #c84080;
-  --chart-7: #8C0027;
+  --chart-7: #8c0027;
   --chart-8: #f5d060;
 
   /* Aliases */

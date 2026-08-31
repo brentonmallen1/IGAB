@@ -29,7 +29,10 @@ export function isPdfAttachment(a: Pick<Attachment, 'content_type'>): boolean {
 
 const blobCache = new Map<string, string>()
 
-export async function fetchAttachmentBlob(attachmentId: string, thumbnail = false): Promise<string> {
+export async function fetchAttachmentBlob(
+  attachmentId: string,
+  thumbnail = false
+): Promise<string> {
   const cacheKey = `${attachmentId}-${thumbnail}`
   if (blobCache.has(cacheKey)) return blobCache.get(cacheKey)!
 
@@ -142,8 +145,7 @@ export function useUploadAttachment(transactionId: string) {
 export function useDeleteAttachment(transactionId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (attachmentId: string) =>
-      apiClient.delete(`/attachments/${attachmentId}`),
+    mutationFn: (attachmentId: string) => apiClient.delete(`/attachments/${attachmentId}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: [ROOT.attachments, transactionId] })
       qc.invalidateQueries({ queryKey: [ROOT.attachmentCheck] })
@@ -187,9 +189,7 @@ export async function uploadFilesToTransaction(
 export async function confirmDeleteTransaction(transactionId: string): Promise<boolean> {
   let detail: string | undefined
   try {
-    const { data } = await apiClient.get<Attachment[]>(
-      `/transactions/${transactionId}/attachments`
-    )
+    const { data } = await apiClient.get<Attachment[]>(`/transactions/${transactionId}/attachments`)
     if (data.length === 1) {
       detail = 'The attached receipt image will be deleted with it.'
     } else if (data.length > 1) {

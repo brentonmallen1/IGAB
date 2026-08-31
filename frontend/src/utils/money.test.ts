@@ -62,9 +62,7 @@ describe('parseAmountInput', () => {
     expect(toCents(parseAmountInput('1.005'))).toBe(100)
     expect(toCents(parseAmountInput('10.999'))).toBe(1100)
     // The classic 999.99 - 999.89 case stays exact when done in cents
-    expect(
-      toCents(parseAmountInput('999.99')) - toCents(parseAmountInput('999.89'))
-    ).toBe(10)
+    expect(toCents(parseAmountInput('999.99')) - toCents(parseAmountInput('999.89'))).toBe(10)
   })
 })
 

@@ -1,5 +1,14 @@
 import { useState, useRef } from 'react'
-import { Tag, CheckCircle, Trash2, MoreHorizontal, ThumbsUp, GitMerge, Paperclip, Pencil } from 'lucide-react'
+import {
+  Tag,
+  CheckCircle,
+  Trash2,
+  MoreHorizontal,
+  ThumbsUp,
+  GitMerge,
+  Paperclip,
+  Pencil,
+} from 'lucide-react'
 import { ContextMenu, type ContextMenuItem } from '../../common/ContextMenu/ContextMenu'
 import { Combobox, type ComboboxOption } from '../../common/Combobox/Combobox'
 import { FloatingSelectionBar } from '../../common/FloatingSelectionBar/FloatingSelectionBar'
@@ -62,17 +71,27 @@ export function SelectionActionBar({
 
   function handleMoreAction(id: string) {
     switch (id) {
-      case 'mark_cleared': onSetCleared('cleared'); break
-      case 'mark_uncleared': onSetCleared('uncleared'); break
-      case 'duplicate': onDuplicate(); break
-      case 'delete': onDelete(); break
+      case 'mark_cleared':
+        onSetCleared('cleared')
+        break
+      case 'mark_uncleared':
+        onSetCleared('uncleared')
+        break
+      case 'duplicate':
+        onDuplicate()
+        break
+      case 'delete':
+        onDelete()
+        break
     }
   }
 
   return (
     <FloatingSelectionBar
       label={`${selectedCount} Transaction${selectedCount !== 1 ? 's' : ''}`}
-      sublabel={<span className={`sab__total sab__total--${totalClass}`}>{formatMoney(selectedTotal)}</span>}
+      sublabel={
+        <span className={`sab__total sab__total--${totalClass}`}>{formatMoney(selectedTotal)}</span>
+      }
       onClose={onClear}
     >
       {onEdit && selectedCount === 1 && (
@@ -89,7 +108,10 @@ export function SelectionActionBar({
               value={null}
               options={categoryOptions}
               onChange={(id) => {
-                if (id) { onCategorize(id); setShowCategoryPicker(false) }
+                if (id) {
+                  onCategorize(id)
+                  setShowCategoryPicker(false)
+                }
               }}
               placeholder="Choose category…"
               autoFocus
@@ -132,11 +154,7 @@ export function SelectionActionBar({
 
       <FloatingSelectionBar.Divider />
 
-      <button
-        ref={moreRef}
-        className="fsb__btn"
-        onClick={handleMoreClick}
-      >
+      <button ref={moreRef} className="fsb__btn" onClick={handleMoreClick}>
         <MoreHorizontal size={14} />
         More
       </button>

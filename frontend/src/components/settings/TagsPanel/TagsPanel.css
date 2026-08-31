@@ -46,7 +46,9 @@
   color: var(--text-secondary);
   font-size: var(--font-size-xs);
   cursor: pointer;
-  transition: background var(--transition-fast), color var(--transition-fast);
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .tags-panel__btn:hover {
@@ -112,11 +114,13 @@
   border: none;
   border-radius: 50%;
   cursor: pointer;
-  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+  transition:
+    transform var(--transition-fast),
+    box-shadow var(--transition-fast);
 }
 
 .tags-panel__color-btn::before {
-  content: '';
+  content: "";
   position: absolute;
   inset: -12px;
 }
@@ -132,18 +136,36 @@
 /* Deliberately --bg-secondary, not --focus-ring's --bg-primary: the swatch
    sits on a raised panel, and selected must stay distinguishable from focused. */
 .tags-panel__color-btn--selected {
-  box-shadow: 0 0 0 2px var(--bg-secondary), 0 0 0 4px var(--color-accent),
+  box-shadow:
+    0 0 0 2px var(--bg-secondary),
+    0 0 0 4px var(--color-accent),
     var(--glow-accent);
 }
 
-.tags-panel__color-btn--red { background-color: var(--tag-red); }
-.tags-panel__color-btn--orange { background-color: var(--tag-orange); }
-.tags-panel__color-btn--yellow { background-color: var(--tag-yellow); }
-.tags-panel__color-btn--green { background-color: var(--tag-green); }
-.tags-panel__color-btn--teal { background-color: var(--tag-teal); }
-.tags-panel__color-btn--blue { background-color: var(--tag-blue); }
-.tags-panel__color-btn--purple { background-color: var(--tag-purple); }
-.tags-panel__color-btn--pink { background-color: var(--tag-pink); }
+.tags-panel__color-btn--red {
+  background-color: var(--tag-red);
+}
+.tags-panel__color-btn--orange {
+  background-color: var(--tag-orange);
+}
+.tags-panel__color-btn--yellow {
+  background-color: var(--tag-yellow);
+}
+.tags-panel__color-btn--green {
+  background-color: var(--tag-green);
+}
+.tags-panel__color-btn--teal {
+  background-color: var(--tag-teal);
+}
+.tags-panel__color-btn--blue {
+  background-color: var(--tag-blue);
+}
+.tags-panel__color-btn--purple {
+  background-color: var(--tag-purple);
+}
+.tags-panel__color-btn--pink {
+  background-color: var(--tag-pink);
+}
 
 .tags-panel__add-form {
   display: flex;

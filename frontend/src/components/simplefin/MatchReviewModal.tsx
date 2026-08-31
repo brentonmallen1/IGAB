@@ -1,5 +1,13 @@
 import { useState } from 'react'
-import { X, Link2, ChevronLeft, ChevronRight, RefreshCw, ArrowRight, AlertTriangle } from 'lucide-react'
+import {
+  X,
+  Link2,
+  ChevronLeft,
+  ChevronRight,
+  RefreshCw,
+  ArrowRight,
+  AlertTriangle,
+} from 'lucide-react'
 import { useAcceptMatch, useRejectMatch } from '../../api/simplefin'
 import { usePayees } from '../../api/payees'
 import { useCategories } from '../../api/categories'
@@ -11,14 +19,20 @@ import { useTransaction } from '../../api/transactions'
 
 function ConfidenceBar({ score }: { score: number }) {
   const pct = Math.round(score * 100)
-  const color = pct >= 90 ? 'var(--color-success)' : pct >= 70 ? 'var(--color-warning)' : 'var(--color-danger)'
+  const color =
+    pct >= 90 ? 'var(--color-success)' : pct >= 70 ? 'var(--color-warning)' : 'var(--color-danger)'
   return (
     <div className="match-modal__confidence">
       <span className="match-modal__confidence-label">Match confidence</span>
       <div className="match-modal__confidence-bar">
-        <div className="match-modal__confidence-fill" style={{ transform: `scaleX(${score})`, background: color }} />
+        <div
+          className="match-modal__confidence-fill"
+          style={{ transform: `scaleX(${score})`, background: color }}
+        />
       </div>
-      <span className="match-modal__confidence-pct" style={{ color }}>{pct}%</span>
+      <span className="match-modal__confidence-pct" style={{ color }}>
+        {pct}%
+      </span>
     </div>
   )
 }
@@ -69,7 +83,9 @@ function TxnDetail({
         )}
         <div className="match-modal__txn-row">
           <span className="match-modal__txn-key">Status</span>
-          <span className={`match-modal__cleared match-modal__cleared--${txn.cleared}`}>{txn.cleared}</span>
+          <span className={`match-modal__cleared match-modal__cleared--${txn.cleared}`}>
+            {txn.cleared}
+          </span>
         </div>
         {txn.import_description && (
           <div className="match-modal__txn-row">
@@ -103,7 +119,12 @@ function MergedPreview({
   formatMoney: (amount: number) => string
   formatDate: (dateStr: string) => string
 }) {
-  const CLEARED_RANK: Record<string, number> = { reconciled: 3, cleared: 2, uncleared: 1, pending: 0 }
+  const CLEARED_RANK: Record<string, number> = {
+    reconciled: 3,
+    cleared: 2,
+    uncleared: 1,
+    pending: 0,
+  }
   const mergedCleared =
     (CLEARED_RANK[manualTxn.cleared] ?? 0) >= (CLEARED_RANK[syncedTxn.cleared] ?? 0)
       ? manualTxn.cleared
@@ -114,8 +135,7 @@ function MergedPreview({
   // the one thing the bank overrides — a bank-sourced row's posted amount
   // replaces the user's on accept (backend domain/bank_posting.py; the
   // server decides, this only previews it).
-  const bankPostedDate =
-    manualTxn.bank_posted_date ?? syncedTxn.bank_posted_date ?? syncedTxn.date
+  const bankPostedDate = manualTxn.bank_posted_date ?? syncedTxn.bank_posted_date ?? syncedTxn.date
   const syncedIsBank = syncedTxn.has_sync_source || !!syncedTxn.sync_source
   const mergedAmount = syncedIsBank ? syncedTxn.amount : manualTxn.amount
   const payeeName = manualTxn.payee_id
@@ -123,9 +143,7 @@ function MergedPreview({
     : syncedTxn.payee_id
       ? (payeeMap.get(syncedTxn.payee_id) ?? '—')
       : '—'
-  const categoryName = manualTxn.category_id
-    ? categoryMap.get(manualTxn.category_id)
-    : null
+  const categoryName = manualTxn.category_id ? categoryMap.get(manualTxn.category_id) : null
   const outflow = mergedAmount < 0 ? Math.abs(mergedAmount) : 0
   const inflow = mergedAmount >= 0 ? mergedAmount : 0
 
@@ -163,7 +181,9 @@ function MergedPreview({
       )}
       <div className="match-modal__merged-row">
         <span className="match-modal__txn-key">Status</span>
-        <span className={`match-modal__cleared match-modal__cleared--${mergedCleared}`}>{mergedCleared}</span>
+        <span className={`match-modal__cleared match-modal__cleared--${mergedCleared}`}>
+          {mergedCleared}
+        </span>
       </div>
       {manualTxn.memo && (
         <div className="match-modal__merged-row">
@@ -253,9 +273,9 @@ function MatchCard({
             <div className="match-modal__callout" role="note">
               <AlertTriangle size={13} aria-hidden />
               <span>
-                Bank posted <strong>{formatMoney(Math.abs(syncedTxn.amount))}</strong>, your entry says{' '}
-                <strong>{formatMoney(Math.abs(manualTxn.amount))}</strong> — accepting updates your
-                entry to the bank's amount and keeps the original in its bank record.
+                Bank posted <strong>{formatMoney(Math.abs(syncedTxn.amount))}</strong>, your entry
+                says <strong>{formatMoney(Math.abs(manualTxn.amount))}</strong> — accepting updates
+                your entry to the bank's amount and keeps the original in its bank record.
               </span>
             </div>
           )}
@@ -327,7 +347,15 @@ export function MatchReviewModal({ matches, budgetId, onClose, initialMatchId }:
 
   return (
     <div className="match-modal-overlay" onClick={onClose}>
-      <div ref={trapRef} tabIndex={-1} className="match-modal" role="dialog" aria-modal aria-labelledby="match-modal-title" onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={trapRef}
+        tabIndex={-1}
+        className="match-modal"
+        role="dialog"
+        aria-modal
+        aria-labelledby="match-modal-title"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="match-modal__header">
           <span id="match-modal-title" className="match-modal__title">
             <Link2 size={14} />
@@ -335,7 +363,9 @@ export function MatchReviewModal({ matches, budgetId, onClose, initialMatchId }:
           </span>
           <div className="match-modal__header-right">
             {pending.length > 1 && (
-              <span className="match-modal__counter">{idx + 1} / {pending.length}</span>
+              <span className="match-modal__counter">
+                {idx + 1} / {pending.length}
+              </span>
             )}
             <button className="match-modal__close" onClick={onClose} aria-label="Close">
               <X size={14} />

@@ -70,9 +70,7 @@ def _ts_interface_fields(name: str) -> set[str]:
     the check quietly pass forever.
     """
     source = TS_TYPES.read_text()
-    match = re.search(
-        rf"^export interface {re.escape(name)} \{{(.*?)^\}}", source, re.S | re.M
-    )
+    match = re.search(rf"^export interface {re.escape(name)} \{{(.*?)^\}}", source, re.S | re.M)
     if match is None:
         raise AssertionError(
             f"No `export interface {name}` in {TS_TYPES}. If it was renamed, update CONTRACT."
@@ -88,9 +86,7 @@ def _ts_interface_fields(name: str) -> set[str]:
 )
 def test_required_fields_exist_in_typescript(model: type[BaseModel], ts_name: str):
     declared = _ts_interface_fields(ts_name)
-    required = {
-        name for name, field in model.model_fields.items() if field.is_required()
-    }
+    required = {name for name, field in model.model_fields.items() if field.is_required()}
     missing = sorted(required - declared - AUDIT_FIELDS)
     assert not missing, (
         f"{model.__name__} requires {missing}, which `interface {ts_name}` does not declare. "

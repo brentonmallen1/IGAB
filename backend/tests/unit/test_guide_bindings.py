@@ -68,19 +68,25 @@ class TestDismissed:
 
 class TestAnswer:
     def test_stored_answer_is_used(self):
-        r = resolve("employer_match", [Row(concept_key="employer_match", mode="answer", answer=True)])
+        r = resolve(
+            "employer_match", [Row(concept_key="employer_match", mode="answer", answer=True)]
+        )
         assert r.source == "answer"
         assert r.answer is True
         assert r.runs_detection is False
 
     def test_a_no_is_not_mistaken_for_unanswered(self):
-        r = resolve("employer_match", [Row(concept_key="employer_match", mode="answer", answer=False)])
+        r = resolve(
+            "employer_match", [Row(concept_key="employer_match", mode="answer", answer=False)]
+        )
         assert r.source == "answer"
         assert r.answer is False
 
     def test_answer_row_with_no_answer_falls_back(self):
         # A stale row from an edited concept must not assert anything.
-        r = resolve("employer_match", [Row(concept_key="employer_match", mode="answer", answer=None)])
+        r = resolve(
+            "employer_match", [Row(concept_key="employer_match", mode="answer", answer=None)]
+        )
         assert r.source == "auto"
         assert r.answer is None
 
@@ -88,10 +94,13 @@ class TestAnswer:
 class TestManual:
     def test_manual_entities_are_collected_by_type(self):
         cat, acct = uuid4(), uuid4()
-        r = resolve("emergency_fund", [
-            manual("category", cat),
-            manual("account", acct),
-        ])
+        r = resolve(
+            "emergency_fund",
+            [
+                manual("category", cat),
+                manual("account", acct),
+            ],
+        )
         assert r.source == "manual"
         assert r.entities == {"category": (cat,), "account": (acct,)}
         # Pointing the app at a category does not mean "stop measuring", it
@@ -138,10 +147,13 @@ class TestExternal:
         assert r.runs_detection is True
 
     def test_newest_as_of_wins(self):
-        r = resolve("emergency_fund", [
-            external("1000", as_of=date(2026, 1, 1)),
-            external("2000", as_of=date(2026, 8, 1)),
-        ])
+        r = resolve(
+            "emergency_fund",
+            [
+                external("1000", as_of=date(2026, 1, 1)),
+                external("2000", as_of=date(2026, 8, 1)),
+            ],
+        )
         assert r.external_as_of == date(2026, 8, 1)
 
     def test_as_of_survives_rows_without_one(self):
@@ -161,10 +173,18 @@ class TestCombined:
         assert r.runs_detection is True
 
     def test_answer_beats_manual_and_external(self):
-        r = resolve("employer_match", [
-            Row(concept_key="employer_match", mode="answer", answer=True),
-            Row(concept_key="employer_match", mode="manual", entity_type="account", entity_id=uuid4()),
-        ])
+        r = resolve(
+            "employer_match",
+            [
+                Row(concept_key="employer_match", mode="answer", answer=True),
+                Row(
+                    concept_key="employer_match",
+                    mode="manual",
+                    entity_type="account",
+                    entity_id=uuid4(),
+                ),
+            ],
+        )
         assert r.source == "answer"
 
 

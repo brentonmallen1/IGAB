@@ -58,9 +58,7 @@ class TestUserEndpoints:
         env_admin = await create_user(db_session, email="root@test.local", is_admin=True)
         monkeypatch.setattr(app_settings, "ADMIN_EMAIL", "root@test.local")
 
-        deact = await api_client.patch(
-            f"/api/v1/users/{env_admin.id}", json={"is_active": False}
-        )
+        deact = await api_client.patch(f"/api/v1/users/{env_admin.id}", json={"is_active": False})
         assert deact.status_code == 400
         reset = await api_client.patch(
             f"/api/v1/users/{env_admin.id}", json={"password": "newpassword"}
@@ -87,15 +85,11 @@ class TestGlobalSurfaceGates:
         with as_user(plain):
             reads = await api_client.get("/api/v1/settings")
             assert reads.status_code == 200
-            write = await api_client.put(
-                "/api/v1/settings/ollama_model", json={"value": "gemma4"}
-            )
+            write = await api_client.put("/api/v1/settings/ollama_model", json={"value": "gemma4"})
             assert write.status_code == 403
             run = await api_client.post("/api/v1/backups/run")
             assert run.status_code == 403
-            restore = await api_client.post(
-                "/api/v1/backups/restore", json={"filename": "x.dump"}
-            )
+            restore = await api_client.post("/api/v1/backups/restore", json={"filename": "x.dump"})
             assert restore.status_code == 403
 
     async def test_admin_can_still_write_settings(self, db_session, api_client):

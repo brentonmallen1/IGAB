@@ -22,7 +22,9 @@
   cursor: pointer;
 }
 
-.import-review__step:hover { color: var(--text-primary); }
+.import-review__step:hover {
+  color: var(--text-primary);
+}
 
 .import-review__step--on {
   background: var(--surface-sunken);
@@ -48,7 +50,9 @@
 
 /* ── blocks ─────────────────────────────────────────────────────────────── */
 
-.import-review__block { padding: var(--spacing-md); }
+.import-review__block {
+  padding: var(--spacing-md);
+}
 
 .import-review__stats,
 .import-review__parity {
@@ -57,7 +61,11 @@
   gap: var(--spacing-lg);
 }
 
-.import-review__stat { display: flex; flex-direction: column; gap: 1px; }
+.import-review__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
 
 .import-review__stat-v {
   font-size: var(--font-size-lg);
@@ -81,11 +89,15 @@
   color: var(--text-secondary);
 }
 
-.import-review__verdict--ok { color: var(--color-success); }
+.import-review__verdict--ok {
+  color: var(--color-success);
+}
 
 /* The export contradicts itself, so nothing below it is a verdict on the
    import. Warning rather than danger: the budget imported fine. */
-.import-review__verdict--warn { color: var(--color-warning); }
+.import-review__verdict--warn {
+  color: var(--color-warning);
+}
 
 .import-review__notes,
 .import-review__diffs,
@@ -100,7 +112,10 @@
   line-height: 1.55;
 }
 
-.import-review__diffs { list-style: none; padding-left: 0; }
+.import-review__diffs {
+  list-style: none;
+  padding-left: 0;
+}
 
 .import-review__diffs li {
   display: flex;
@@ -108,7 +123,9 @@
   gap: var(--spacing-md);
 }
 
-.import-review__diff-n { color: var(--text-primary); }
+.import-review__diff-n {
+  color: var(--text-primary);
+}
 
 .import-review__errors {
   list-style: none;
@@ -120,7 +137,11 @@
 
 /* ── the tag list ───────────────────────────────────────────────────────── */
 
-.import-review__filters { display: flex; flex-wrap: wrap; gap: var(--spacing-xs); }
+.import-review__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+}
 
 .import-review__chip {
   padding: 3px var(--spacing-sm);
@@ -132,7 +153,9 @@
   cursor: pointer;
 }
 
-.import-review__chip:hover { color: var(--text-primary); }
+.import-review__chip:hover {
+  color: var(--text-primary);
+}
 
 .import-review__chip--on {
   border-color: var(--color-accent);
@@ -145,7 +168,9 @@
   color: var(--text-muted);
 }
 
-.import-review__bulk .dialog__link { margin-left: var(--spacing-xs); }
+.import-review__bulk .dialog__link {
+  margin-left: var(--spacing-xs);
+}
 
 .import-review__rows {
   padding: 0;
@@ -164,9 +189,16 @@
 
 /* Rules between rows, not around them: a border on every row makes a list of
    boxes, and the eye stops reading it as one list. */
-.import-review__row + .import-review__row { border-top: 1px solid var(--edge); }
+.import-review__row + .import-review__row {
+  border-top: 1px solid var(--edge);
+}
 
-.import-review__cat { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.import-review__cat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
 
 .import-review__cat-n {
   display: flex;
@@ -209,9 +241,14 @@
   cursor: pointer;
 }
 
-.import-review__offer:hover { border-color: var(--color-accent); color: var(--text-primary); }
+.import-review__offer:hover {
+  border-color: var(--color-accent);
+  color: var(--text-primary);
+}
 
-.import-review__offer input { margin: 0; }
+.import-review__offer input {
+  margin: 0;
+}
 
 .import-review__empty {
   margin: 0;
@@ -239,7 +276,9 @@
   min-height: var(--tap-min, 32px);
 }
 
-.import-review__btn:hover:not(:disabled) { color: var(--text-primary); }
+.import-review__btn:hover:not(:disabled) {
+  color: var(--text-primary);
+}
 
 .import-review__btn--primary {
   border-color: transparent;
@@ -247,7 +286,10 @@
   color: var(--bg-primary);
 }
 
-.import-review__btn:disabled { opacity: 0.6; cursor: default; }
+.import-review__btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
 
 /* ── footer ─────────────────────────────────────────────────────────────── */
 
@@ -258,10 +300,19 @@
 }
 
 @media (max-width: 768px) {
-  .import-review__row { grid-template-columns: 1fr; gap: var(--spacing-xs); }
-  .import-review__rows { max-height: none; }
-  .import-review__rail { overflow-x: auto; }
-  .import-review__step { white-space: nowrap; }
+  .import-review__row {
+    grid-template-columns: 1fr;
+    gap: var(--spacing-xs);
+  }
+  .import-review__rows {
+    max-height: none;
+  }
+  .import-review__rail {
+    overflow-x: auto;
+  }
+  .import-review__step {
+    white-space: nowrap;
+  }
 }
 
 .import-review__reopen {

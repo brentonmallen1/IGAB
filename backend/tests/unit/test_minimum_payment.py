@@ -38,9 +38,7 @@ class TestAFixedRule:
     def test_billed_covers_the_months_interest_too(self):
         """Clearing a $12 balance that charged $0.50 costs $12.50 — clamping
         to the balance alone would leave the interest unpaid forever."""
-        assert fixed(Decimal("35.00")).billed(Decimal("12.00"), Decimal("0.50")) == Decimal(
-            "12.50"
-        )
+        assert fixed(Decimal("35.00")).billed(Decimal("12.00"), Decimal("0.50")) == Decimal("12.50")
 
     def test_a_cleared_balance_asks_for_nothing(self):
         assert fixed(Decimal("35.00")).due(Decimal("0")) == Decimal("0")

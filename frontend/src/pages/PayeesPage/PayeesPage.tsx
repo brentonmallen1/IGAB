@@ -3,7 +3,14 @@ import { useSearchParams } from 'react-router-dom'
 import { ChevronDown, ChevronUp, GitMerge, Regex, Sparkles, Tag } from 'lucide-react'
 import { useAppStore } from '../../stores/appStore'
 import { useUIStore } from '../../stores/uiStore'
-import { usePayees, useUpdatePayee, useDeletePayee, useMergePayee, useFetchPayeeDuplicates, type PayeeWithCount } from '../../api/payees'
+import {
+  usePayees,
+  useUpdatePayee,
+  useDeletePayee,
+  useMergePayee,
+  useFetchPayeeDuplicates,
+  type PayeeWithCount,
+} from '../../api/payees'
 import { usePayeeTransactions } from '../../api/transactions'
 import { useFormatters } from '../../hooks/useFormatters'
 import { useTags, useBulkAddPayeeTags, useCreateTag, useSetPayeeTags } from '../../api/tags'
@@ -13,8 +20,14 @@ import type { MergeConfig } from '../../components/payees/PayeeMergeModal/PayeeM
 import { FloatingSelectionBar } from '../../components/common/FloatingSelectionBar/FloatingSelectionBar'
 import { suggestPayeeRegex, testPattern } from '../../utils/payeeRegex'
 import { dedupeSamples, samplesFromLines } from '../../utils/payeeSamples'
-import { PatternCandidates, PatternMatchPreview } from '../../components/payees/PatternSuggest/PatternSuggest'
-import { NO_PATTERN_MESSAGE, patternCandidates } from '../../components/payees/PatternSuggest/patternCandidates'
+import {
+  PatternCandidates,
+  PatternMatchPreview,
+} from '../../components/payees/PatternSuggest/PatternSuggest'
+import {
+  NO_PATTERN_MESSAGE,
+  patternCandidates,
+} from '../../components/payees/PatternSuggest/patternCandidates'
 import { TagChip } from '../../components/common/TagChip'
 import { TagPicker, type TagOption } from '../../components/common/TagPicker'
 import './PayeesPage.css'
@@ -36,7 +49,8 @@ function PayeeTransactionPeek({ budgetId, payeeId }: { budgetId: string; payeeId
 
   if (isLoading) return <div className="payees-peek payees-peek--muted">Loading…</div>
   const txns = data?.transactions ?? []
-  if (txns.length === 0) return <div className="payees-peek payees-peek--muted">No transactions.</div>
+  if (txns.length === 0)
+    return <div className="payees-peek payees-peek--muted">No transactions.</div>
   return (
     <div className="payees-peek">
       {txns.map((t) => (
@@ -69,12 +83,8 @@ export function PayeesPage() {
   const setPayeeTags = useSetPayeeTags(budgetId)
   const createTag = useCreateTag(budgetId)
 
-  const {
-    selectedPayeeIds,
-    togglePayeeSelection,
-    selectAllPayees,
-    clearPayeeSelection,
-  } = useUIStore()
+  const { selectedPayeeIds, togglePayeeSelection, selectAllPayees, clearPayeeSelection } =
+    useUIStore()
 
   const [searchParams] = useSearchParams()
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -103,7 +113,8 @@ export function PayeesPage() {
     return payees
       .filter((p) => {
         if (p.transfer_account_id) return false
-        const searchTarget = `${p.name} ${p.mapping_samples.join(' ')} ${p.match_pattern || ''}`.toLowerCase()
+        const searchTarget =
+          `${p.name} ${p.mapping_samples.join(' ')} ${p.match_pattern || ''}`.toLowerCase()
         return searchTarget.includes(term)
       })
       .sort((a, b) => {
@@ -129,7 +140,6 @@ export function PayeesPage() {
       </div>
     )
   }
-
 
   const totalPayees = payees.filter((p) => !p.transfer_account_id).length
   const filteredIds = filtered.map((p) => p.id)
@@ -244,10 +254,12 @@ export function PayeesPage() {
     const threshold = sensitivityThresholds[sensitivity]
     const result = await fetchDuplicates.mutateAsync(threshold)
     if (result && result.length > 0) {
-      openWizard(result.map((g) => ({
-        label: `${g.similarity}% similar`,
-        payees: g.payees,
-      })))
+      openWizard(
+        result.map((g) => ({
+          label: `${g.similarity}% similar`,
+          payees: g.payees,
+        }))
+      )
     } else {
       toast.success('No duplicate payees found.')
     }
@@ -280,7 +292,9 @@ export function PayeesPage() {
     // still possible, otherwise the group is done.
     const leftover = currentGroup.payees.filter((p) => !wizardChecked.has(p.id))
     const remaining = wizardGroups
-      .map((g, i) => (i !== wizardIdx ? g : leftover.length >= 2 ? { ...g, payees: leftover } : null))
+      .map((g, i) =>
+        i !== wizardIdx ? g : leftover.length >= 2 ? { ...g, payees: leftover } : null
+      )
       .filter((g): g is WizardGroup => g !== null)
     setWizardGroups(remaining)
     if (remaining.length === 0) {
@@ -362,44 +376,51 @@ export function PayeesPage() {
       </div>
 
       {showCleanupModal && (
-        <div className="payees-wizard-overlay" onClick={(e) => e.target === e.currentTarget && setShowCleanupModal(false)}>
+        <div
+          className="payees-wizard-overlay"
+          onClick={(e) => e.target === e.currentTarget && setShowCleanupModal(false)}
+        >
           <div className="payees-wizard">
             <div className="payees-wizard__header">
               <span>Payee Cleanup</span>
-              <button className="payees-wizard__close" onClick={() => setShowCleanupModal(false)}>×</button>
+              <button className="payees-wizard__close" onClick={() => setShowCleanupModal(false)}>
+                ×
+              </button>
             </div>
             <div className="payees-wizard__body">
               <p className="payees-wizard__label">Find similar payees to merge</p>
               <p className="payees-wizard__sub">
-                Names are compared with the bank's store numbers, reference codes and dates
-                set aside, so postings that differ only there read as one payee.
+                Names are compared with the bank's store numbers, reference codes and dates set
+                aside, so postings that differ only there read as one payee.
               </p>
-                  <p className="payees-wizard__sub" style={{ marginTop: 'var(--spacing-md)' }}>
-                    Sensitivity:
-                  </p>
-                  <div className="payees-wizard__options">
-                    <button
-                      className={`payees-wizard__option ${sensitivity === 'strict' ? 'payees-wizard__option--selected' : ''}`}
-                      onClick={() => setSensitivity('strict')}
-                    >
-                      <strong>Strict</strong> — Only very similar names
-                    </button>
-                    <button
-                      className={`payees-wizard__option ${sensitivity === 'balanced' ? 'payees-wizard__option--selected' : ''}`}
-                      onClick={() => setSensitivity('balanced')}
-                    >
-                      <strong>Balanced</strong> — Recommended
-                    </button>
-                    <button
-                      className={`payees-wizard__option ${sensitivity === 'loose' ? 'payees-wizard__option--selected' : ''}`}
-                      onClick={() => setSensitivity('loose')}
-                    >
-                      <strong>Loose</strong> — More suggestions, some may be wrong
-                    </button>
-                  </div>
+              <p className="payees-wizard__sub" style={{ marginTop: 'var(--spacing-md)' }}>
+                Sensitivity:
+              </p>
+              <div className="payees-wizard__options">
+                <button
+                  className={`payees-wizard__option ${sensitivity === 'strict' ? 'payees-wizard__option--selected' : ''}`}
+                  onClick={() => setSensitivity('strict')}
+                >
+                  <strong>Strict</strong> — Only very similar names
+                </button>
+                <button
+                  className={`payees-wizard__option ${sensitivity === 'balanced' ? 'payees-wizard__option--selected' : ''}`}
+                  onClick={() => setSensitivity('balanced')}
+                >
+                  <strong>Balanced</strong> — Recommended
+                </button>
+                <button
+                  className={`payees-wizard__option ${sensitivity === 'loose' ? 'payees-wizard__option--selected' : ''}`}
+                  onClick={() => setSensitivity('loose')}
+                >
+                  <strong>Loose</strong> — More suggestions, some may be wrong
+                </button>
+              </div>
             </div>
             <div className="payees-wizard__footer">
-              <button className="payees-btn" onClick={() => setShowCleanupModal(false)}>Cancel</button>
+              <button className="payees-btn" onClick={() => setShowCleanupModal(false)}>
+                Cancel
+              </button>
               <button
                 className="payees-btn payees-btn--primary"
                 onClick={runCleanup}
@@ -413,11 +434,18 @@ export function PayeesPage() {
       )}
 
       {showWizard && currentGroup && (
-        <div className="payees-wizard-overlay" onClick={(e) => e.target === e.currentTarget && setShowWizard(false)}>
+        <div
+          className="payees-wizard-overlay"
+          onClick={(e) => e.target === e.currentTarget && setShowWizard(false)}
+        >
           <div className="payees-wizard">
             <div className="payees-wizard__header">
-              <span>Cleanup Wizard ({wizardIdx + 1} / {wizardGroups.length})</span>
-              <button className="payees-wizard__close" onClick={() => setShowWizard(false)}>×</button>
+              <span>
+                Cleanup Wizard ({wizardIdx + 1} / {wizardGroups.length})
+              </span>
+              <button className="payees-wizard__close" onClick={() => setShowWizard(false)}>
+                ×
+              </button>
             </div>
             <div className="payees-wizard__body">
               <p className="payees-wizard__label">
@@ -452,7 +480,9 @@ export function PayeesPage() {
                         <span>
                           <strong>"{p.name}"</strong>
                           {p.transaction_count !== undefined && (
-                            <span className="payees-wizard__option-count">({p.transaction_count} txns)</span>
+                            <span className="payees-wizard__option-count">
+                              ({p.transaction_count} txns)
+                            </span>
                           )}
                         </span>
                         <button
@@ -482,7 +512,9 @@ export function PayeesPage() {
               <button className="payees-btn" onClick={prevWizard} disabled={wizardIdx === 0}>
                 Back
               </button>
-              <button className="payees-btn" onClick={nextWizard}>Skip</button>
+              <button className="payees-btn" onClick={nextWizard}>
+                Skip
+              </button>
               <button
                 className="payees-btn payees-btn--primary"
                 onClick={startWizardMerge}
@@ -547,7 +579,9 @@ export function PayeesPage() {
               style={{ justifyContent: 'flex-end' }}
             >
               Transactions
-              {sortColumn === 'transactions' && <SortIcon size={12} className="payees-table__sort-icon" />}
+              {sortColumn === 'transactions' && (
+                <SortIcon size={12} className="payees-table__sort-icon" />
+              )}
             </span>
             <span></span>
           </div>
@@ -556,7 +590,9 @@ export function PayeesPage() {
             const editing = editingId === p.id
             // What a pattern here is meant to claim — the name as typed plus
             // the recorded bank-name samples — and the payees it must not.
-            const editNames = editing ? [editName.trim() || p.name, ...samplesFromLines(editMappings)] : []
+            const editNames = editing
+              ? [editName.trim() || p.name, ...samplesFromLines(editMappings)]
+              : []
             const editOthers = editing
               ? payees.filter((x) => x.id !== p.id && !x.transfer_account_id)
               : []
@@ -573,7 +609,13 @@ export function PayeesPage() {
                     type="checkbox"
                     className="payees-checkbox"
                     checked={isSelected}
-                    onChange={(e) => togglePayeeSelection(p.id, (e.nativeEvent as MouseEvent).shiftKey, allOrderedIds)}
+                    onChange={(e) =>
+                      togglePayeeSelection(
+                        p.id,
+                        (e.nativeEvent as MouseEvent).shiftKey,
+                        allOrderedIds
+                      )
+                    }
                     aria-label={`Select ${p.name}`}
                   />
                 </div>
@@ -599,7 +641,9 @@ export function PayeesPage() {
                         onKeyDown={(e) => {
                           if (e.key === 'Escape') setEditingId(null)
                         }}
-                        placeholder={'Match samples (optional), one per line:\nNORTHWIND PAYSERV PAYROLL 250915 …'}
+                        placeholder={
+                          'Match samples (optional), one per line:\nNORTHWIND PAYSERV PAYROLL 250915 …'
+                        }
                         aria-label="Match samples, one per line"
                       />
                       <span className="payees-edit-hint">
@@ -627,7 +671,9 @@ export function PayeesPage() {
                                 if (patterns.length === 0) {
                                   toast.error(NO_PATTERN_MESSAGE)
                                 } else {
-                                  setEditPattern((current) => (current.trim() ? current : patterns[0]))
+                                  setEditPattern((current) =>
+                                    current.trim() ? current : patterns[0]
+                                  )
                                 }
                               })
                             }}
@@ -651,10 +697,16 @@ export function PayeesPage() {
                       />
                       <PatternMatchPreview pattern={editPattern.trim()} names={editNames} />
                       <div className="payees-edit-btns">
-                        <button className="payees-btn payees-btn--sm payees-btn--primary" onClick={() => saveEdit(p.id)}>
+                        <button
+                          className="payees-btn payees-btn--sm payees-btn--primary"
+                          onClick={() => saveEdit(p.id)}
+                        >
                           Save
                         </button>
-                        <button className="payees-btn payees-btn--sm" onClick={() => setEditingId(null)}>
+                        <button
+                          className="payees-btn payees-btn--sm"
+                          onClick={() => setEditingId(null)}
+                        >
                           Cancel
                         </button>
                       </div>
@@ -663,7 +715,9 @@ export function PayeesPage() {
                     <div className="payees-table__name-cell">
                       <span
                         className="payees-table__name-text"
-                        onDoubleClick={() => startEdit(p.id, p.name, p.mapping_samples, p.match_pattern)}
+                        onDoubleClick={() =>
+                          startEdit(p.id, p.name, p.mapping_samples, p.match_pattern)
+                        }
                         title="Double-click to rename"
                       >
                         {p.name}
@@ -677,7 +731,10 @@ export function PayeesPage() {
                         </span>
                       )}
                       {p.match_pattern && (
-                        <span className="payees-table__pattern" title={`Match pattern: ${p.match_pattern}`}>
+                        <span
+                          className="payees-table__pattern"
+                          title={`Match pattern: ${p.match_pattern}`}
+                        >
                           <Regex size={11} aria-hidden />
                           {p.match_pattern}
                         </span>
@@ -697,7 +754,9 @@ export function PayeesPage() {
                           onRemove={() =>
                             setPayeeTags.mutate({
                               payeeId: p.id,
-                              tagIds: (p.tags ?? []).filter((t) => t.id !== tag.id).map((t) => t.id),
+                              tagIds: (p.tags ?? [])
+                                .filter((t) => t.id !== tag.id)
+                                .map((t) => t.id),
                             })
                           }
                         />
@@ -715,10 +774,21 @@ export function PayeesPage() {
                   ) : p.tags && p.tags.length > 0 ? (
                     <div className="payees-table__tags-list">
                       {p.tags.slice(0, 2).map((tag) => (
-                        <TagChip key={tag.id} name={tag.name} colorSlot={tag.color_slot} size="sm" />
+                        <TagChip
+                          key={tag.id}
+                          name={tag.name}
+                          colorSlot={tag.color_slot}
+                          size="sm"
+                        />
                       ))}
                       {p.tags.length > 2 && (
-                        <span className="payees-table__tags-overflow" title={p.tags.slice(2).map(t => t.name).join(', ')}>
+                        <span
+                          className="payees-table__tags-overflow"
+                          title={p.tags
+                            .slice(2)
+                            .map((t) => t.name)
+                            .join(', ')}
+                        >
                           +{p.tags.length - 2}
                         </span>
                       )}
@@ -760,9 +830,7 @@ export function PayeesPage() {
           onClose={clearPayeeSelection}
         >
           <div className="payees-bulk-tag-wrapper">
-            <FloatingSelectionBar.Button
-              onClick={() => setShowBulkTagPicker(!showBulkTagPicker)}
-            >
+            <FloatingSelectionBar.Button onClick={() => setShowBulkTagPicker(!showBulkTagPicker)}>
               <Tag size={14} />
               Tag
             </FloatingSelectionBar.Button>
@@ -782,7 +850,11 @@ export function PayeesPage() {
           <FloatingSelectionBar.Button
             onClick={() => setShowMergeModal(true)}
             disabled={selectedCount < 2}
-            title={selectedCount < 2 ? 'Select at least 2 payees to merge' : `Merge ${selectedCount} payees`}
+            title={
+              selectedCount < 2
+                ? 'Select at least 2 payees to merge'
+                : `Merge ${selectedCount} payees`
+            }
           >
             <GitMerge size={14} />
             Merge

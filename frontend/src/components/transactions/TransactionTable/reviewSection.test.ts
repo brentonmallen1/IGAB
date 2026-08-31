@@ -122,9 +122,9 @@ describe('counting the same population the badge counts', () => {
   })
 
   it('ignores a split child, because the badge counts parent rows', () => {
-    expect(
-      countsAsPendingReview(txn({ parent_transaction_id: 'p1', needs_category: true }))
-    ).toBe(false)
+    expect(countsAsPendingReview(txn({ parent_transaction_id: 'p1', needs_category: true }))).toBe(
+      false
+    )
   })
 
   it('does not count an unpaired transfer leg as work', () => {

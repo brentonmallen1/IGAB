@@ -49,8 +49,10 @@ def _is_red(pixel: tuple[int, int, int]) -> bool:
 async def test_rotate_90_clockwise_swaps_dimensions_and_orientation(service, tmp_path):
     txn = _fake_txn()
     attachment = await service.upload(
-        txn=txn, file_content=_png_bytes((64, 48)),
-        original_filename="r.png", content_type="image/png",
+        txn=txn,
+        file_content=_png_bytes((64, 48)),
+        original_filename="r.png",
+        content_type="image/png",
     )
 
     updated = await service.rotate(attachment, txn, 90)
@@ -69,8 +71,10 @@ async def test_rotate_90_clockwise_swaps_dimensions_and_orientation(service, tmp
 async def test_rotate_180_keeps_dimensions_moves_corner(service, tmp_path):
     txn = _fake_txn()
     attachment = await service.upload(
-        txn=txn, file_content=_png_bytes((64, 48)),
-        original_filename="r.png", content_type="image/png",
+        txn=txn,
+        file_content=_png_bytes((64, 48)),
+        original_filename="r.png",
+        content_type="image/png",
     )
 
     updated = await service.rotate(attachment, txn, 180)
@@ -84,8 +88,10 @@ async def test_rotate_180_keeps_dimensions_moves_corner(service, tmp_path):
 async def test_rotate_regenerates_thumbnail_with_new_orientation(service, tmp_path):
     txn = _fake_txn()
     attachment = await service.upload(
-        txn=txn, file_content=_png_bytes((64, 48)),
-        original_filename="r.png", content_type="image/png",
+        txn=txn,
+        file_content=_png_bytes((64, 48)),
+        original_filename="r.png",
+        content_type="image/png",
     )
 
     await service.rotate(attachment, txn, 90)
@@ -101,8 +107,10 @@ async def test_rotate_regenerates_thumbnail_with_new_orientation(service, tmp_pa
 async def test_rotate_updates_repo_media_metadata(service, tmp_path):
     txn = _fake_txn()
     attachment = await service.upload(
-        txn=txn, file_content=_png_bytes((64, 48)),
-        original_filename="r.png", content_type="image/png",
+        txn=txn,
+        file_content=_png_bytes((64, 48)),
+        original_filename="r.png",
+        content_type="image/png",
     )
 
     await service.rotate(attachment, txn, 90)
@@ -117,8 +125,10 @@ async def test_rotate_updates_repo_media_metadata(service, tmp_path):
 async def test_rotate_rejects_pdf(service):
     txn = _fake_txn()
     attachment = SimpleNamespace(
-        id=uuid.uuid4(), content_type="application/pdf",
-        storage_path="x.pdf", filename="x.pdf",
+        id=uuid.uuid4(),
+        content_type="application/pdf",
+        storage_path="x.pdf",
+        filename="x.pdf",
     )
 
     with pytest.raises(ValueError, match="PDF"):
@@ -128,8 +138,10 @@ async def test_rotate_rejects_pdf(service):
 async def test_rotate_rejects_invalid_degrees(service, tmp_path):
     txn = _fake_txn()
     attachment = await service.upload(
-        txn=txn, file_content=_png_bytes(),
-        original_filename="r.png", content_type="image/png",
+        txn=txn,
+        file_content=_png_bytes(),
+        original_filename="r.png",
+        content_type="image/png",
     )
 
     with pytest.raises(ValueError, match="90, 180, or 270"):
@@ -139,8 +151,10 @@ async def test_rotate_rejects_invalid_degrees(service, tmp_path):
 async def test_rotate_missing_file_raises(service):
     txn = _fake_txn()
     attachment = SimpleNamespace(
-        id=uuid.uuid4(), content_type="image/webp",
-        storage_path="gone/nope.webp", filename="nope.webp",
+        id=uuid.uuid4(),
+        content_type="image/webp",
+        storage_path="gone/nope.webp",
+        filename="nope.webp",
     )
 
     with pytest.raises(FileNotFoundError):

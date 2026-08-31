@@ -28,7 +28,9 @@
   text-decoration: none;
   padding: var(--spacing-xs) var(--spacing-sm);
   border-radius: var(--border-radius-sm);
-  transition: background-color var(--transition-fast), color var(--transition-fast);
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast);
   cursor: pointer;
   border: none;
   background: none;
@@ -393,7 +395,6 @@
     gap: var(--spacing-sm);
   }
 }
-
 
 /* Local time hint next to UTC sync hour */
 .settings-row__local-time {

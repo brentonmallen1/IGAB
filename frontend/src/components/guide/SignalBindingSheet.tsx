@@ -85,9 +85,7 @@ export function SignalBindingSheet({
   return (
     <GuideDialog title={concept.label} onClose={onClose} historyKey="guide-binding">
       <p className="dialog__body">{concept.prompt}</p>
-      {concept.caveat && (
-        <p className="dialog__body dialog__body--muted">{concept.caveat}</p>
-      )}
+      {concept.caveat && <p className="dialog__body dialog__body--muted">{concept.caveat}</p>}
 
       {answered ? (
         <div className="binding__answers">
@@ -159,8 +157,8 @@ export function SignalBindingSheet({
                     />
                   </label>
                   <p className="binding__caveat">
-                    We will show this as something you told us, dated today. It never counts
-                    towards net worth or any report — those come from your transactions only.
+                    We will show this as something you told us, dated today. It never counts towards
+                    net worth or any report — those come from your transactions only.
                   </p>
                 </div>
               )}

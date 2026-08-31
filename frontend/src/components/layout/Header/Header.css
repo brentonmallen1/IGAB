@@ -31,7 +31,9 @@
   height: 28px;
   border-radius: var(--border-radius-sm);
   color: var(--text-secondary);
-  transition: background-color var(--transition-fast), color var(--transition-fast);
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .header__month-btn:hover {
@@ -55,7 +57,9 @@
   height: 26px;
   border-radius: var(--border-radius-sm);
   color: var(--color-accent);
-  transition: background-color var(--transition-fast), color var(--transition-fast);
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .header__today-btn:hover {
@@ -82,7 +86,9 @@
   border-radius: var(--border-radius-sm);
   color: var(--text-muted);
   font-size: var(--font-size-sm);
-  transition: border-color var(--transition-fast), color var(--transition-fast);
+  transition:
+    border-color var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .header__palette-btn:hover {
@@ -97,7 +103,6 @@
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-
 
 .header__theme-picker {
   position: relative;
@@ -114,7 +119,9 @@
   height: 32px;
   border-radius: var(--border-radius-sm);
   color: var(--text-secondary);
-  transition: background-color var(--transition-fast), color var(--transition-fast);
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .header__icon-btn:hover:not(:disabled) {
@@ -147,7 +154,7 @@
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
-  box-shadow: var(--shadow-md, 0 4px 16px rgba(0,0,0,0.2));
+  box-shadow: var(--shadow-md, 0 4px 16px rgba(0, 0, 0, 0.2));
   min-width: 160px;
   z-index: var(--z-dropdown);
   overflow: hidden;

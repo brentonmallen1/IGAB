@@ -30,10 +30,7 @@ export function getCurrencySymbol(code: string): string {
   return CURRENCY_SYMBOLS[code] ?? `${code} `
 }
 
-function formatNumberWithSeparators(
-  absAmount: number,
-  numberFormat: NumberFormat
-): string {
+function formatNumberWithSeparators(absAmount: number, numberFormat: NumberFormat): string {
   const [thousands, decimal] = SEPARATORS[numberFormat]
   const [intPart, decPart] = absAmount.toFixed(2).split('.')
   const formattedInt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, thousands)
@@ -53,21 +50,14 @@ export function formatMoneyWithOptions(
 }
 
 /** Format amount without currency symbol, with configurable format */
-export function formatAmountWithOptions(
-  amount: number,
-  numberFormat: NumberFormat
-): string {
+export function formatAmountWithOptions(amount: number, numberFormat: NumberFormat): string {
   const sign = amount < 0 ? '-' : ''
   const formatted = formatNumberWithSeparators(Math.abs(amount), numberFormat)
   return `${sign}${formatted}`
 }
 
 /** Format a number as currency string (e.g. 1234.56 → "$1,234.56") - legacy API */
-export function formatMoney(
-  amount: number,
-  currencyCode = 'USD',
-  locale = 'en-US'
-): string {
+export function formatMoney(amount: number, currencyCode = 'USD', locale = 'en-US'): string {
   return new Intl.NumberFormat(locale, {
     style: 'currency',
     currency: currencyCode,

@@ -7,11 +7,7 @@
  * describe block exists to keep it that way.
  */
 import { describe, expect, it } from 'vitest'
-import {
-  UNGROUPED_LABEL,
-  flatCategoryOptions,
-  groupedCategorySections,
-} from './categoryPickers'
+import { UNGROUPED_LABEL, flatCategoryOptions, groupedCategorySections } from './categoryPickers'
 import type { Category, CategoryGroup } from '../types'
 import { makeCategory } from '../test-utils/factories'
 
@@ -20,7 +16,14 @@ function cat(id: string, group: string, over: Partial<Category> = {}): Category 
 }
 
 function group(id: string, name: string): CategoryGroup {
-  return { id, budget_id: 'b1', name, sort_order: 0, is_archived: false, is_system: false } as CategoryGroup
+  return {
+    id,
+    budget_id: 'b1',
+    name,
+    sort_order: 0,
+    is_archived: false,
+    is_system: false,
+  } as CategoryGroup
 }
 
 describe('grouping into sections', () => {
@@ -36,7 +39,10 @@ describe('grouping into sections', () => {
   })
 
   it('drops groups with nothing in them', () => {
-    const sections = groupedCategorySections([cat('a', 'g1')], [group('g1', 'Bills'), group('g2', 'Fun')])
+    const sections = groupedCategorySections(
+      [cat('a', 'g1')],
+      [group('g1', 'Bills'), group('g2', 'Fun')]
+    )
     expect(sections).toHaveLength(1)
   })
 
@@ -44,13 +50,19 @@ describe('grouping into sections', () => {
     // The bug: the group list is filtered by is_archived and the category list
     // is not, so a hidden group's categories silently disappeared from the
     // picker while staying live in the data.
-    const sections = groupedCategorySections([cat('a', 'g1'), cat('orphan', 'hidden-g')], [group('g1', 'Bills')])
+    const sections = groupedCategorySections(
+      [cat('a', 'g1'), cat('orphan', 'hidden-g')],
+      [group('g1', 'Bills')]
+    )
     expect(sections.map((s) => s.group.name)).toEqual(['Bills', UNGROUPED_LABEL])
     expect(sections[1].cats.map((c) => c.id)).toEqual(['orphan'])
   })
 
   it('sorts the fallback last', () => {
-    const sections = groupedCategorySections([cat('orphan', 'gone'), cat('a', 'g1')], [group('g1', 'Bills')])
+    const sections = groupedCategorySections(
+      [cat('orphan', 'gone'), cat('a', 'g1')],
+      [group('g1', 'Bills')]
+    )
     expect(sections[sections.length - 1].group.name).toBe(UNGROUPED_LABEL)
   })
 

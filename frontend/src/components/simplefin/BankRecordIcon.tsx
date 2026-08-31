@@ -21,7 +21,8 @@ export function BankRecordIcon({ transaction }: { transaction: Transaction }) {
   // `created_via` is the origin stamp (backend Transaction.created_via);
   // null is unknown — rows older than the stamp — and reads as the bank's.
   const enteredByUser =
-    transaction.created_via != null && transaction.created_via !== 'sync' &&
+    transaction.created_via != null &&
+    transaction.created_via !== 'sync' &&
     transaction.created_via !== 'import'
   const bankPayee = transaction.bank_payee ?? transaction.import_description
   const lines = [

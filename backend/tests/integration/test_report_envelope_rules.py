@@ -136,13 +136,14 @@ class TestTheDeliberateDivergence:
     rows an older delete path would have left behind."""
 
     async def test_the_rules_differ_by_exactly_the_category_liveness_term(self):
+        from sqlalchemy import and_, not_
+
         from igab.repositories.category_filters import (
             BUDGETED_ENVELOPE,
             IN_SYSTEM_GROUP,
             LIVE_CATEGORY,
             SPENT_ENVELOPE,
         )
-        from sqlalchemy import and_, not_
 
         assert str(SPENT_ENVELOPE) == str(not_(IN_SYSTEM_GROUP))
         assert str(BUDGETED_ENVELOPE) == str(and_(LIVE_CATEGORY, not_(IN_SYSTEM_GROUP)))

@@ -54,9 +54,8 @@ export function CategoryInspector({ budgetId, forceOpen = false }: Props) {
   const selectedCategories = categories?.filter((c) => selectedCategoryIds.has(c.id)) ?? []
   const allCategoryIds = categories?.map((c) => c.id) ?? []
 
-  const selectedBalances = budgetMonth?.category_balances.filter((b) =>
-    selectedCategoryIds.has(b.category_id)
-  ) ?? []
+  const selectedBalances =
+    budgetMonth?.category_balances.filter((b) => selectedCategoryIds.has(b.category_id)) ?? []
   const prevBalances = prevBudgetMonth?.category_balances.filter((b) =>
     selectedCategoryIds.has(b.category_id)
   )
@@ -65,7 +64,9 @@ export function CategoryInspector({ budgetId, forceOpen = false }: Props) {
   const singleCategory = isSingle ? selectedCategories[0] : null
 
   const allArchived =
-    count > 0 && selectedCategories.length === count && selectedCategories.every((c) => c.is_archived)
+    count > 0 &&
+    selectedCategories.length === count &&
+    selectedCategories.every((c) => c.is_archived)
 
   async function handleArchiveSelected() {
     // Routed through the archive endpoint rather than flipping the flag: it
@@ -95,14 +96,17 @@ export function CategoryInspector({ budgetId, forceOpen = false }: Props) {
     })
   }
 
-  const headerTitle = count === 0
-    ? formatMonthLabel(month)
-    : isSingle
-      ? (singleCategory?.name ?? 'Category')
-      : `${count} categories selected`
+  const headerTitle =
+    count === 0
+      ? formatMonthLabel(month)
+      : isSingle
+        ? (singleCategory?.name ?? 'Category')
+        : `${count} categories selected`
 
   return (
-    <div className={`category-inspector ${categoryInspectorOpen || forceOpen ? '' : 'category-inspector--collapsed'}`}>
+    <div
+      className={`category-inspector ${categoryInspectorOpen || forceOpen ? '' : 'category-inspector--collapsed'}`}
+    >
       {!categoryInspectorOpen && !forceOpen ? (
         <button
           className="category-inspector__expand-btn"
@@ -128,7 +132,9 @@ export function CategoryInspector({ budgetId, forceOpen = false }: Props) {
               >
                 <ChevronRight size={14} />
               </button>
-              <span className="category-inspector__title" title={headerTitle}>{headerTitle}</span>
+              <span className="category-inspector__title" title={headerTitle}>
+                {headerTitle}
+              </span>
               {count > 0 && (
                 <button
                   className="category-inspector__close-btn"
@@ -144,7 +150,11 @@ export function CategoryInspector({ budgetId, forceOpen = false }: Props) {
 
           <div className="category-inspector__body">
             {count === 0 ? (
-              <MonthSummary budgetId={budgetId} allCategoryIds={allCategoryIds} categories={categories ?? []} />
+              <MonthSummary
+                budgetId={budgetId}
+                allCategoryIds={allCategoryIds}
+                categories={categories ?? []}
+              />
             ) : (
               <>
                 <AvailableBreakdown balances={selectedBalances} prevBalances={prevBalances} />
@@ -153,9 +163,7 @@ export function CategoryInspector({ budgetId, forceOpen = false }: Props) {
                   <ClassificationSection categoryId={singleCategory.id} />
                 )}
 
-                {isSingle && singleCategory && (
-                  <TargetSection categoryId={singleCategory.id} />
-                )}
+                {isSingle && singleCategory && <TargetSection categoryId={singleCategory.id} />}
                 {!isSingle && (
                   <div className="inspector-section">
                     <div className="inspector-section__title">Target</div>

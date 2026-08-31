@@ -2,7 +2,10 @@ import { useState } from 'react'
 import { Sparkles, X } from 'lucide-react'
 import { useAIStatus } from '../../api/ai'
 import { NLEntryForm } from './NLEntryForm'
-import { TransactionEditor, type EditorDraft } from '../transactions/TransactionEditor/TransactionEditor'
+import {
+  TransactionEditor,
+  type EditorDraft,
+} from '../transactions/TransactionEditor/TransactionEditor'
 import './NLQuickEntry.css'
 
 interface Props {

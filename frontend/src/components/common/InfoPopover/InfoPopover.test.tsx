@@ -17,8 +17,15 @@ const TRIGGER_LEFT = 120
 
 function mockTriggerRect(left = TRIGGER_LEFT) {
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
-    left, right: left + 22, top: 40, bottom: 62, width: 22, height: 22,
-    x: left, y: 40, toJSON: () => ({}),
+    left,
+    right: left + 22,
+    top: 40,
+    bottom: 62,
+    width: 22,
+    height: 22,
+    x: left,
+    y: 40,
+    toJSON: () => ({}),
   } as DOMRect)
 }
 
@@ -110,8 +117,7 @@ describe('InfoSection', () => {
   it('exposes each topic as a heading, not just styled text', () => {
     mockTriggerRect()
     openWithSections()
-    expect(screen.getAllByRole('heading').map((h) => h.textContent))
-      .toEqual(['Filters', 'Dates'])
+    expect(screen.getAllByRole('heading').map((h) => h.textContent)).toEqual(['Filters', 'Dates'])
   })
 
   it('keeps a section title with the content it introduces', () => {

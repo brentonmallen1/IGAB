@@ -56,9 +56,7 @@ beforeEach(() => {
 describe('BudgetViewModal', () => {
   it('does not mount the form over a view that has not loaded yet', () => {
     viewsState.current = undefined
-    const { container } = render(
-      <BudgetViewModal budgetId="b1" viewId="v1" onClose={() => {}} />
-    )
+    const { container } = render(<BudgetViewModal budgetId="b1" viewId="v1" onClose={() => {}} />)
     expect(container).toBeEmptyDOMElement()
   })
 

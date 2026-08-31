@@ -120,9 +120,13 @@ export function useSetAssignment(budgetId: string) {
       month: string
       amount: number
     }) =>
-      apiClient.patch(`/categories/${categoryId}/assignment`, { amount }, {
-        params: { month, budget_id: budgetId },
-      }),
+      apiClient.patch(
+        `/categories/${categoryId}/assignment`,
+        { amount },
+        {
+          params: { month, budget_id: budgetId },
+        }
+      ),
     // Optimistic: the row and month totals update instantly; the server
     // refetch below reconciles cross-month ripple effects.
     onMutate: async ({ categoryId, month, amount }) => {

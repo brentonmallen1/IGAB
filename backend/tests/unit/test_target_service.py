@@ -180,8 +180,12 @@ class TestMonthlyPace:
         self.today = date(2026, 8, 26)
 
     def test_monthly_and_weekly_are_their_amount(self):
-        assert self.svc.monthly_pace(make_target("monthly_funding", "100"), Decimal("0"), self.today) == Decimal("100")
-        assert self.svc.monthly_pace(make_target("weekly_funding", "25"), Decimal("0"), self.today) == Decimal("25")
+        assert self.svc.monthly_pace(
+            make_target("monthly_funding", "100"), Decimal("0"), self.today
+        ) == Decimal("100")
+        assert self.svc.monthly_pace(
+            make_target("weekly_funding", "25"), Decimal("0"), self.today
+        ) == Decimal("25")
 
     def test_dated_needed_for_spending_matches_needed_gross(self):
         t = make_target("needed_for_spending", "600", date(2027, 2, 1))
@@ -198,7 +202,10 @@ class TestMonthlyPace:
         assert self.svc.needed_gross(t, Decimal("0"), self.today) == Decimal("1200")
 
     def test_an_undated_savings_goal_has_no_pace(self):
-        assert self.svc.monthly_pace(make_target("savings_balance", "1200"), Decimal("0"), self.today) is None
+        assert (
+            self.svc.monthly_pace(make_target("savings_balance", "1200"), Decimal("0"), self.today)
+            is None
+        )
 
     def test_a_past_due_savings_goal_is_the_whole_shortfall(self):
         t = make_target("savings_balance", "1200", date(2026, 1, 1))

@@ -36,15 +36,16 @@
   /* Shadows — real depth, plus a magenta bloom. Unlike Phosphor, which
      replaces the drop shadow outright, Synthwave layers: this canvas is dark
      enough that overlays still need genuine occlusion. */
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4),
-    0 0 6px color-mix(in srgb, var(--color-accent) 10%, transparent);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5),
-    0 0 14px color-mix(in srgb, var(--color-accent) 12%, transparent);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.6),
-    0 0 24px color-mix(in srgb, var(--color-accent) 14%, transparent);
+  --shadow-sm:
+    0 1px 3px rgba(0, 0, 0, 0.4), 0 0 6px color-mix(in srgb, var(--color-accent) 10%, transparent);
+  --shadow-md:
+    0 4px 12px rgba(0, 0, 0, 0.5), 0 0 14px color-mix(in srgb, var(--color-accent) 12%, transparent);
+  --shadow-lg:
+    0 8px 24px rgba(0, 0, 0, 0.6), 0 0 24px color-mix(in srgb, var(--color-accent) 14%, transparent);
 
   /* Focus blooms too — base's ring, plus falloff */
-  --focus-ring: 0 0 0 2px var(--bg-primary), 0 0 0 4px var(--color-accent),
+  --focus-ring:
+    0 0 0 2px var(--bg-primary), 0 0 0 4px var(--color-accent),
     0 0 12px color-mix(in srgb, var(--color-accent) 40%, transparent);
 
   /* Neon bloom — see the --glow-* block in base.css for the contract.
@@ -56,16 +57,20 @@
      layer is a fraction of it, so a short consumer (a 10px bar track) narrows
      the whole curve coherently instead of keeping a wide mid layer. */
   --glow-fall: 14px;
-  --glow-accent: 0 0 1px color-mix(in srgb, var(--color-accent) 70%, transparent),
+  --glow-accent:
+    0 0 1px color-mix(in srgb, var(--color-accent) 70%, transparent),
     0 0 calc(var(--glow-fall) * 0.3) color-mix(in srgb, var(--color-accent) 38%, transparent),
     0 0 var(--glow-fall) color-mix(in srgb, var(--color-accent) 12%, transparent);
-  --glow-positive: 0 0 1px color-mix(in srgb, var(--color-positive) 70%, transparent),
+  --glow-positive:
+    0 0 1px color-mix(in srgb, var(--color-positive) 70%, transparent),
     0 0 calc(var(--glow-fall) * 0.3) color-mix(in srgb, var(--color-positive) 38%, transparent),
     0 0 var(--glow-fall) color-mix(in srgb, var(--color-positive) 12%, transparent);
-  --glow-negative: 0 0 1px color-mix(in srgb, var(--color-negative) 70%, transparent),
+  --glow-negative:
+    0 0 1px color-mix(in srgb, var(--color-negative) 70%, transparent),
     0 0 calc(var(--glow-fall) * 0.3) color-mix(in srgb, var(--color-negative) 38%, transparent),
     0 0 var(--glow-fall) color-mix(in srgb, var(--color-negative) 12%, transparent);
-  --glow-warning: 0 0 1px color-mix(in srgb, var(--color-warning) 70%, transparent),
+  --glow-warning:
+    0 0 1px color-mix(in srgb, var(--color-warning) 70%, transparent),
     0 0 calc(var(--glow-fall) * 0.3) color-mix(in srgb, var(--color-warning) 38%, transparent),
     0 0 var(--glow-fall) color-mix(in srgb, var(--color-warning) 12%, transparent);
   --glow-text-positive: 0 0 6px color-mix(in srgb, var(--color-positive) 30%, transparent);
@@ -140,14 +145,17 @@
   --row-selected-bg: rgba(176, 0, 130, 0.12);
 
   /* Shadows — same layered recipe as the dark variant, damped. */
-  --shadow-sm: 0 1px 3px rgba(42, 37, 48, 0.1),
-    0 0 5px color-mix(in srgb, var(--color-accent) 7%, transparent);
-  --shadow-md: 0 4px 12px rgba(42, 37, 48, 0.15),
+  --shadow-sm:
+    0 1px 3px rgba(42, 37, 48, 0.1), 0 0 5px color-mix(in srgb, var(--color-accent) 7%, transparent);
+  --shadow-md:
+    0 4px 12px rgba(42, 37, 48, 0.15),
     0 0 10px color-mix(in srgb, var(--color-accent) 8%, transparent);
-  --shadow-lg: 0 8px 24px rgba(42, 37, 48, 0.2),
+  --shadow-lg:
+    0 8px 24px rgba(42, 37, 48, 0.2),
     0 0 18px color-mix(in srgb, var(--color-accent) 9%, transparent);
 
-  --focus-ring: 0 0 0 2px var(--bg-primary), 0 0 0 4px var(--color-accent),
+  --focus-ring:
+    0 0 0 2px var(--bg-primary), 0 0 0 4px var(--color-accent),
     0 0 8px color-mix(in srgb, var(--color-accent) 25%, transparent);
 
   /* Neon bloom — the dark recipe at x0.55 radius and x0.55 alpha. A wide bloom
@@ -155,16 +163,20 @@
      light. The sidebar stays dark in this variant, so its update dot and the
      add button still bloom against a dark ground. */
   --glow-fall: 8px;
-  --glow-accent: 0 0 1px color-mix(in srgb, var(--color-accent) 42%, transparent),
+  --glow-accent:
+    0 0 1px color-mix(in srgb, var(--color-accent) 42%, transparent),
     0 0 calc(var(--glow-fall) * 0.3) color-mix(in srgb, var(--color-accent) 22%, transparent),
     0 0 var(--glow-fall) color-mix(in srgb, var(--color-accent) 8%, transparent);
-  --glow-positive: 0 0 1px color-mix(in srgb, var(--color-positive) 42%, transparent),
+  --glow-positive:
+    0 0 1px color-mix(in srgb, var(--color-positive) 42%, transparent),
     0 0 calc(var(--glow-fall) * 0.3) color-mix(in srgb, var(--color-positive) 22%, transparent),
     0 0 var(--glow-fall) color-mix(in srgb, var(--color-positive) 8%, transparent);
-  --glow-negative: 0 0 1px color-mix(in srgb, var(--color-negative) 42%, transparent),
+  --glow-negative:
+    0 0 1px color-mix(in srgb, var(--color-negative) 42%, transparent),
     0 0 calc(var(--glow-fall) * 0.3) color-mix(in srgb, var(--color-negative) 22%, transparent),
     0 0 var(--glow-fall) color-mix(in srgb, var(--color-negative) 8%, transparent);
-  --glow-warning: 0 0 1px color-mix(in srgb, var(--color-warning) 42%, transparent),
+  --glow-warning:
+    0 0 1px color-mix(in srgb, var(--color-warning) 42%, transparent),
     0 0 calc(var(--glow-fall) * 0.3) color-mix(in srgb, var(--color-warning) 22%, transparent),
     0 0 var(--glow-fall) color-mix(in srgb, var(--color-warning) 8%, transparent);
   --glow-text-positive: 0 0 4px color-mix(in srgb, var(--color-positive) 18%, transparent);

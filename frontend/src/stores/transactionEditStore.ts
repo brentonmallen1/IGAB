@@ -69,7 +69,7 @@ export const useTransactionEditStore = create<TransactionEditState>((set, get) =
     set({
       splitEditing: {
         ...splitEditing,
-        splits: splitEditing.splits.map((s) => s.tempId === tempId ? { ...s, ...data } : s),
+        splits: splitEditing.splits.map((s) => (s.tempId === tempId ? { ...s, ...data } : s)),
       },
     })
   },
@@ -80,7 +80,10 @@ export const useTransactionEditStore = create<TransactionEditState>((set, get) =
     set({
       splitEditing: {
         ...splitEditing,
-        splits: [...splitEditing.splits, { tempId: randomUUID(), amount: '', categoryId: null, memo: '' }],
+        splits: [
+          ...splitEditing.splits,
+          { tempId: randomUUID(), amount: '', categoryId: null, memo: '' },
+        ],
       },
     })
   },

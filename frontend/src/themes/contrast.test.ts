@@ -133,7 +133,10 @@ function resolve(theme: string, value: string | undefined, depth = 0): RGBA | nu
 
   const rgbMatch = v.match(/^rgba?\(([^)]*)\)$/)
   if (rgbMatch) {
-    const parts = rgbMatch[1].split(/[,\s/]+/).filter(Boolean).map(Number)
+    const parts = rgbMatch[1]
+      .split(/[,\s/]+/)
+      .filter(Boolean)
+      .map(Number)
     if (parts.length < 3 || parts.some(Number.isNaN)) return null
     return [parts[0], parts[1], parts[2], parts.length > 3 ? parts[3] : 1]
   }
@@ -247,7 +250,13 @@ function checksFor(theme: string): Check[] {
   // body and semantic text, on every surface it can land on.
   // --color-accent-hover is here because it is used as a text colour too,
   // not only as a fill (TransactionRow, CategoryInspector).
-  for (const fg of ['text-primary', 'text-secondary', 'text-muted', ...SEMANTIC, 'color-accent-hover']) {
+  for (const fg of [
+    'text-primary',
+    'text-secondary',
+    'text-muted',
+    ...SEMANTIC,
+    'color-accent-hover',
+  ]) {
     for (const surface of SURFACES) {
       add(`${fg} on ${surface}`, token(theme, fg), token(theme, surface), AA_TEXT)
     }
@@ -390,12 +399,28 @@ function surfaceChecksFor(theme: string): Check[] {
   const strong = token(theme, 'edge-strong')
   if (!canvas || !raised || !overlay || !edge || !strong) return out
   const mode = luminance(canvas) < 0.5 ? 'dark' : 'light'
-  out.push({ label: `${mode}: canvas -> raised step`, ratio: contrast(canvas, raised), min: SURFACE_STEP_MIN[mode] })
+  out.push({
+    label: `${mode}: canvas -> raised step`,
+    ratio: contrast(canvas, raised),
+    min: SURFACE_STEP_MIN[mode],
+  })
   if (mode === 'dark') {
-    out.push({ label: 'dark: raised -> overlay step', ratio: contrast(raised, overlay), min: OVERLAY_STEP_MIN.dark })
+    out.push({
+      label: 'dark: raised -> overlay step',
+      ratio: contrast(raised, overlay),
+      min: OVERLAY_STEP_MIN.dark,
+    })
   }
-  out.push({ label: `${mode}: hairline (--edge) on raised`, ratio: contrast(edge, raised), min: EDGE_MIN[mode] })
-  out.push({ label: `${mode}: strong edge on canvas`, ratio: contrast(strong, canvas), min: EDGE_STRONG_MIN[mode] })
+  out.push({
+    label: `${mode}: hairline (--edge) on raised`,
+    ratio: contrast(edge, raised),
+    min: EDGE_MIN[mode],
+  })
+  out.push({
+    label: `${mode}: strong edge on canvas`,
+    ratio: contrast(strong, canvas),
+    min: EDGE_STRONG_MIN[mode],
+  })
   return out
 }
 

@@ -166,9 +166,7 @@ class TestKeepingSnapshots:
         assert deleted.status_code == 204
         assert (await api_client.get(f"/api/v1/budgets/{full.id}/snapshots")).json() == []
 
-    async def test_the_list_is_this_budgets_only(
-        self, api_client, db_session, snapshot_store
-    ):
+    async def test_the_list_is_this_budgets_only(self, api_client, db_session, snapshot_store):
         """The whole point. The global backups list could never do this."""
         mine = await build_full_budget(db_session, api_client.test_user)
         theirs = await build_full_budget(db_session, api_client.test_user)
@@ -228,9 +226,7 @@ class TestInspect:
         assert result["budget_name"] == full.budget.name
         assert result["row_counts"]["transactions"] > 0
 
-    async def test_a_newer_format_is_refused_and_nothing_is_written(
-        self, api_client, db_session
-    ):
+    async def test_a_newer_format_is_refused_and_nothing_is_written(self, api_client, db_session):
         full = await build_full_budget(db_session, api_client.test_user)
         before = await row_counts(db_session, full.id)
         body = _rewritten_manifest(await _download(api_client, full.id), format_version=99)

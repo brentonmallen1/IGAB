@@ -71,7 +71,11 @@ function PromptCard({ taskKey, label, usage }: { taskKey: string; label: string;
 
   return (
     <div className="ai-prompt-card">
-      <button className="ai-prompt-card__header" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+      <button
+        className="ai-prompt-card__header"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+      >
         {open ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
         <span className="ai-prompt-card__heading">
           <span className="ai-prompt-card__label">{label}</span>
@@ -103,7 +107,11 @@ function PromptCard({ taskKey, label, usage }: { taskKey: string; label: string;
               className="settings-btn settings-btn--secondary"
               onClick={() => void handleRevert()}
               disabled={(!isOverridden && !dirty) || resetSetting.isPending}
-              title={isOverridden ? 'Delete your override and use the shipped prompt' : 'Discard unsaved edits'}
+              title={
+                isOverridden
+                  ? 'Delete your override and use the shipped prompt'
+                  : 'Discard unsaved edits'
+              }
             >
               <RotateCcw size={12} />
               {isOverridden ? 'Revert to default' : 'Discard changes'}
@@ -134,9 +142,8 @@ export function AIPromptSettings() {
         <div>
           <div className="settings-row__label">Prompts</div>
           <div className="settings-row__desc">
-            Tune what the model is asked for each task; each card says where that task
-            runs. Broken placeholders fall back to the default prompt rather than breaking
-            the feature.
+            Tune what the model is asked for each task; each card says where that task runs. Broken
+            placeholders fall back to the default prompt rather than breaking the feature.
           </div>
         </div>
       </div>

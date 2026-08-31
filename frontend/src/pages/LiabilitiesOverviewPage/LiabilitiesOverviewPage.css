@@ -72,7 +72,9 @@
   padding: var(--spacing-md);
   text-align: left;
   cursor: pointer;
-  transition: border-color var(--transition-fast), background var(--transition-fast);
+  transition:
+    border-color var(--transition-fast),
+    background var(--transition-fast);
 }
 
 .liability-card:hover {
@@ -195,7 +197,9 @@
   font-size: var(--font-size-xs);
   font-weight: 500;
   cursor: pointer;
-  transition: background var(--transition-fast), color var(--transition-fast);
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .liability-suggestion__track:hover {

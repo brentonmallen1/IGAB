@@ -72,18 +72,18 @@ export function SavingsReport({ budgetId }: Props) {
             <strong>Long-term expense</strong>.
           </p>
           <p>
-            The chart shows cumulative balances over time. <strong>Total Balance</strong> is the
-            sum of all savings category balances. <strong>Avg Monthly Inflow</strong> shows how
-            much you&apos;re typically adding.
+            The chart shows cumulative balances over time. <strong>Total Balance</strong> is the sum
+            of all savings category balances. <strong>Avg Monthly Inflow</strong> shows how much
+            you&apos;re typically adding.
           </p>
           <p>
-            To track a category, open it on the Budget page and add the{' '}
-            <strong>Savings</strong> tag in the panel that opens.
+            To track a category, open it on the Budget page and add the <strong>Savings</strong> tag
+            in the panel that opens.
           </p>
           <p>
             <strong>What pulled from savings</strong> lists money moved <em>out</em> of these
-            categories in the window — to another category or back to To Be Assigned — as
-            the audit trail records it. It states the move, nothing about why.
+            categories in the window — to another category or back to To Be Assigned — as the audit
+            trail records it. It states the move, nothing about why.
           </p>
           <ReportScopeNote scope="categories" />
         </ReportInfoButton>
@@ -126,8 +126,8 @@ export function SavingsReport({ budgetId }: Props) {
             <strong>Long-term expense</strong> — not your savings accounts.
           </p>
           <p style={{ fontSize: 'var(--font-size-xs)', marginTop: 8 }}>
-            Open a category on the Budget page and add the tag in the panel that
-            opens; it will show up here.
+            Open a category on the Budget page and add the tag in the panel that opens; it will show
+            up here.
           </p>
           <button
             type="button"
@@ -141,10 +141,7 @@ export function SavingsReport({ budgetId }: Props) {
       ) : (
         <div ref={captureRef} className="report-capture">
           <div className="report-metrics">
-            <MetricCard
-              label="Total Balance"
-              value={formatMoney(summary?.total_balance ?? 0)}
-            />
+            <MetricCard label="Total Balance" value={formatMoney(summary?.total_balance ?? 0)} />
             <MetricCard
               label="Avg Monthly Inflow"
               value={formatMoney(summary?.avg_monthly_inflow ?? 0)}
@@ -211,10 +208,18 @@ export function SavingsReport({ budgetId }: Props) {
             <caption className="sr-only">Savings category balances</caption>
             <thead>
               <tr>
-                <th scope="col" style={{ textAlign: 'left' }}>Category</th>
-                <th scope="col" style={{ textAlign: 'left' }}>Group</th>
-                <th scope="col" style={{ textAlign: 'right' }}>Balance</th>
-                <th scope="col" style={{ textAlign: 'right' }}>Inflow</th>
+                <th scope="col" style={{ textAlign: 'left' }}>
+                  Category
+                </th>
+                <th scope="col" style={{ textAlign: 'left' }}>
+                  Group
+                </th>
+                <th scope="col" style={{ textAlign: 'right' }}>
+                  Balance
+                </th>
+                <th scope="col" style={{ textAlign: 'right' }}>
+                  Inflow
+                </th>
               </tr>
             </thead>
             <tbody>

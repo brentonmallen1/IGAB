@@ -13,7 +13,6 @@ from .factories import (
     create_budget,
     create_category,
     create_category_group,
-    create_user,
 )
 
 
@@ -186,7 +185,11 @@ class TestBulkWrite:
 
         r = await api_client.put(
             f"/api/v1/{budget.id}/categories/tags",
-            json={"updates": [{"category_id": str(made["Groceries"].id), "tag_ids": [str(wishlist.id)]}]},
+            json={
+                "updates": [
+                    {"category_id": str(made["Groceries"].id), "tag_ids": [str(wishlist.id)]}
+                ]
+            },
         )
         assert r.status_code == 400
         assert "wishlist" in r.json()["detail"].lower()

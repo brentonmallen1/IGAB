@@ -52,9 +52,7 @@ export function CategoryCombobox({
 
   const options: ComboboxOption[] = [
     ...(topOptions ?? []),
-    ...groups.flatMap((g) =>
-      g.cats.map((c) => ({ id: c.id, label: c.name, group: g.group.name }))
-    ),
+    ...groups.flatMap((g) => g.cats.map((c) => ({ id: c.id, label: c.name, group: g.group.name }))),
   ]
 
   if (isMobile) {
@@ -70,9 +68,7 @@ export function CategoryCombobox({
           aria-haspopup="dialog"
         >
           <span
-            className={
-              selected ? 'category-combobox__value' : 'category-combobox__placeholder'
-            }
+            className={selected ? 'category-combobox__value' : 'category-combobox__placeholder'}
           >
             {selected?.label ?? noneLabel}
           </span>

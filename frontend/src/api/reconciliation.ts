@@ -21,13 +21,13 @@ export interface ReconciliationSnapshot {
 
 export function useReconciliationStatus(
   accountId: string | null,
-  options?: { refetchInterval?: number },
+  options?: { refetchInterval?: number }
 ) {
   return useQuery({
     queryKey: [ROOT.reconcileStatus, accountId],
     queryFn: async () => {
       const { data } = await apiClient.get<ReconciliationStatus>(
-        `/accounts/${accountId}/reconcile/status`,
+        `/accounts/${accountId}/reconcile/status`
       )
       return data
     },
@@ -79,7 +79,7 @@ export function useReconciliationHistory(accountId: string | null) {
     queryKey: [ROOT.reconcileHistory, accountId],
     queryFn: async () => {
       const { data } = await apiClient.get<ReconciliationSnapshot[]>(
-        `/accounts/${accountId}/reconcile/history`,
+        `/accounts/${accountId}/reconcile/history`
       )
       return data
     },

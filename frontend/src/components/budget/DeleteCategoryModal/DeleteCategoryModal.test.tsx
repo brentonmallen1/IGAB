@@ -25,13 +25,17 @@ let previewFailed = false
  *  this and not on the delete preview's `blocked_by`: the two refuse on
  *  different grounds, so reading the delete's answer offered the button on an
  *  envelope the archive would then refuse over its balance. */
-let archivePreview: { may_archive: boolean; blocked_by_balance: string[]; blocked_by_link: string[]; blocked_by_schedule: string[] }
+let archivePreview: {
+  may_archive: boolean
+  blocked_by_balance: string[]
+  blocked_by_link: string[]
+  blocked_by_schedule: string[]
+}
 const refetchSpy = vi.hoisted(() => vi.fn())
 
 vi.mock('../../../api/categories', async () => {
-  const actual = await vi.importActual<typeof import('../../../api/categories')>(
-    '../../../api/categories'
-  )
+  const actual =
+    await vi.importActual<typeof import('../../../api/categories')>('../../../api/categories')
   return {
     ...actual,
     useCategoryDeletePreview: () => ({
@@ -193,7 +197,9 @@ describe('DeleteCategoryModal', () => {
 
   it('refuses outright when the category is load-bearing, and says why', () => {
     renderModal({
-      blocked_by: ["'Visa Payment' is the payment category for Visa. Delete or unlink that account first."],
+      blocked_by: [
+        "'Visa Payment' is the payment category for Visa. Delete or unlink that account first.",
+      ],
     })
     expect(screen.getByRole('alert')).toHaveTextContent(/payment category for Visa/)
     expect(screen.getByRole('button', { name: 'Delete' })).toBeDisabled()

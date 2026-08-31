@@ -106,7 +106,9 @@ describe('PayoffPill', () => {
       />
     )
 
-    expect(screen.getByText(/average \$3,000(\.00)?\/mo, of which ~\$1,619(\.00)? was interest/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/average \$3,000(\.00)?\/mo, of which ~\$1,619(\.00)? was interest/)
+    ).toBeInTheDocument()
     expect(screen.queryByText(/won't pay this off/i)).not.toBeInTheDocument()
   })
 

@@ -73,8 +73,8 @@ export function SubscriptionsReport({ budgetId }: Props) {
             payee. The tag is a reserved system tag and cannot be deleted.
           </p>
           <p>
-            <strong>Monthly (effective)</strong> spreads each subscription's cost over the
-            months since its first charge — a quarterly $30 subscription reads as $10/mo.{' '}
+            <strong>Monthly (effective)</strong> spreads each subscription's cost over the months
+            since its first charge — a quarterly $30 subscription reads as $10/mo.{' '}
             <strong>Per Charge</strong> is the typical amount of a single charge.{' '}
             <strong>Annual</strong> projects the yearly cost from the effective monthly total.
           </p>
@@ -185,12 +185,24 @@ export function SubscriptionsReport({ budgetId }: Props) {
             <caption className="sr-only">Recurring charges by payee</caption>
             <thead>
               <tr>
-                <th scope="col" style={{ textAlign: 'left' }}>Payee</th>
-                <th scope="col" style={{ textAlign: 'right' }}>Per Charge</th>
-                <th scope="col" style={{ textAlign: 'right' }}>Monthly (effective)</th>
-                <th scope="col" style={{ textAlign: 'right' }}>Total</th>
-                <th scope="col" style={{ textAlign: 'right' }}>Charges</th>
-                <th scope="col" style={{ textAlign: 'right' }}>Last Charge</th>
+                <th scope="col" style={{ textAlign: 'left' }}>
+                  Payee
+                </th>
+                <th scope="col" style={{ textAlign: 'right' }}>
+                  Per Charge
+                </th>
+                <th scope="col" style={{ textAlign: 'right' }}>
+                  Monthly (effective)
+                </th>
+                <th scope="col" style={{ textAlign: 'right' }}>
+                  Total
+                </th>
+                <th scope="col" style={{ textAlign: 'right' }}>
+                  Charges
+                </th>
+                <th scope="col" style={{ textAlign: 'right' }}>
+                  Last Charge
+                </th>
               </tr>
             </thead>
             <tbody>

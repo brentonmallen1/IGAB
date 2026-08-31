@@ -36,5 +36,10 @@
   border-top: 1px solid var(--edge);
 }
 
-.report-drains__date { color: var(--text-muted); }
-.report-drains__amount { color: var(--color-warning); font-weight: 500; }
+.report-drains__date {
+  color: var(--text-muted);
+}
+.report-drains__amount {
+  color: var(--color-warning);
+  font-weight: 500;
+}

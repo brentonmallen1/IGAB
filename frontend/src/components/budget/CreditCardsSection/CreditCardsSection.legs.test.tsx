@@ -68,9 +68,7 @@ describe('the Ready to pay breakdown', () => {
 
   it('names each leg that moved and the total they reach', async () => {
     render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
-    await userEvent.click(
-      screen.getByLabelText('What makes up Ready to pay for Sapphire Visa')
-    )
+    await userEvent.click(screen.getByLabelText('What makes up Ready to pay for Sapphire Visa'))
 
     expect(screen.getByText('Assigned to this card')).toBeInTheDocument()
     expect(screen.getByText('Set aside by funded spending')).toBeInTheDocument()
@@ -82,9 +80,7 @@ describe('the Ready to pay breakdown', () => {
 
   it('leaves a leg out when it never moved', async () => {
     render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
-    await userEvent.click(
-      screen.getByLabelText('What makes up Ready to pay for Sapphire Visa')
-    )
+    await userEvent.click(screen.getByLabelText('What makes up Ready to pay for Sapphire Visa'))
     expect(screen.queryByText('Refunds beyond what was reserved')).toBeNull()
   })
 
@@ -94,9 +90,7 @@ describe('the Ready to pay breakdown', () => {
       category_balances: [],
     } as unknown as BudgetMonth
     render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
-    await userEvent.click(
-      screen.getByLabelText('What makes up Ready to pay for Sapphire Visa')
-    )
+    await userEvent.click(screen.getByLabelText('What makes up Ready to pay for Sapphire Visa'))
     expect(screen.getByText(/rode onto this card without being funded/)).toBeInTheDocument()
     expect(screen.getByText(/outside the total above/)).toBeInTheDocument()
   })
@@ -109,9 +103,7 @@ describe('the Ready to pay breakdown', () => {
       category_balances: [],
     } as unknown as BudgetMonth
     render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
-    await userEvent.click(
-      screen.getByLabelText('What makes up Ready to pay for Sapphire Visa')
-    )
+    await userEvent.click(screen.getByLabelText('What makes up Ready to pay for Sapphire Visa'))
     expect(totalRow()?.textContent).toContain('999')
     expect(totalRow()?.textContent).not.toContain('115')
   })

@@ -239,7 +239,6 @@ async def test_prior_month_overspend_not_double_covered(db_session):
 
 
 async def test_months_endpoint_total_overspent_matches_preview(api_client, db_session):
-    services = make_services(db_session)
     budget = await create_budget(db_session, api_client.test_user)
     checking = await create_account(db_session, budget, "Checking")
     income_group = await create_category_group(db_session, budget, "Income", is_system=True)
@@ -288,9 +287,7 @@ async def test_months_endpoint_total_overspent_matches_preview(api_client, db_se
         f"/api/v1/{budget.id}/cover-overspent/apply",
         json={
             "month": "2026-07-01",
-            "items": [
-                {"category_id": str(dining.id), "proposed_addition": "45.50"}
-            ],
+            "items": [{"category_id": str(dining.id), "proposed_addition": "45.50"}],
         },
     )
     assert resp.status_code == 400, "re-applying a consumed preview must be rejected"

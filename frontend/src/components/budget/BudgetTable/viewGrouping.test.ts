@@ -9,7 +9,10 @@ function cat(id: string, name: string, group = 'real-group'): Category {
   return makeCategory({ id, name, category_group_id: group })
 }
 
-function view(groups: [string, string][], placements: Partial<BudgetView['placements'][0]>[]): BudgetView {
+function view(
+  groups: [string, string][],
+  placements: Partial<BudgetView['placements'][0]>[]
+): BudgetView {
   return {
     id: 'v1',
     budget_id: BUDGET,
@@ -32,7 +35,11 @@ describe('groupByView', () => {
   it('puts categories under the view groups, not their own', () => {
     const cats = [cat('c1', 'Rent'), cat('c2', 'Dining'), cat('c3', 'Roth')]
     const v = view(
-      [['need', 'Need'], ['want', 'Want'], ['save', 'Save']],
+      [
+        ['need', 'Need'],
+        ['want', 'Want'],
+        ['save', 'Save'],
+      ],
       [
         { category_id: 'c1', group_id: 'need' },
         { category_id: 'c2', group_id: 'want' },
@@ -104,7 +111,13 @@ describe('groupByView', () => {
 
   it('orders groups by their own sort order', () => {
     const v: BudgetView = {
-      ...view([['a', 'Alpha'], ['b', 'Beta']], []),
+      ...view(
+        [
+          ['a', 'Alpha'],
+          ['b', 'Beta'],
+        ],
+        []
+      ),
       groups: [
         { id: 'b', name: 'Beta', sort_order: 0 },
         { id: 'a', name: 'Alpha', sort_order: 1 },

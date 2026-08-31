@@ -75,9 +75,7 @@ export function useBudgetSnapshots(budgetId: string | null) {
     queryKey: [ROOT.budgetSnapshots, budgetId],
     enabled: !!budgetId,
     queryFn: async () => {
-      const { data } = await apiClient.get<BudgetSnapshotFile[]>(
-        `/budgets/${budgetId}/snapshots`,
-      )
+      const { data } = await apiClient.get<BudgetSnapshotFile[]>(`/budgets/${budgetId}/snapshots`)
       return data
     },
   })
@@ -117,10 +115,7 @@ export function downloadBudgetExport(budgetId: string, budgetName: string): Prom
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
-  return downloadAuthed(
-    `/budgets/${budgetId}/export?format=ynab`,
-    `${slug || 'budget'}-export.zip`,
-  )
+  return downloadAuthed(`/budgets/${budgetId}/export?format=ynab`, `${slug || 'budget'}-export.zip`)
 }
 
 /** Export now and hand the file straight to the browser. */
@@ -144,7 +139,7 @@ function asForm(file: File, fields: Record<string, string> = {}): FormData {
 export async function inspectSnapshot(file: File): Promise<SnapshotInspection> {
   const { data } = await apiClient.post<SnapshotInspection>(
     '/budgets/snapshot/inspect',
-    asForm(file),
+    asForm(file)
   )
   return data
 }
@@ -155,7 +150,7 @@ export function useImportSnapshot() {
     mutationFn: async ({ file, name }: { file: File; name?: string }) => {
       const { data } = await apiClient.post<SnapshotImportResult>(
         '/budgets/import-snapshot',
-        asForm(file, name ? { name } : {}),
+        asForm(file, name ? { name } : {})
       )
       return data
     },
@@ -181,7 +176,7 @@ export function useRestoreSnapshot(budgetId: string | null) {
     }) => {
       const { data } = await apiClient.post<SnapshotImportResult>(
         `/budgets/${budgetId}/snapshot/restore`,
-        asForm(file, { confirm_name: confirmName, pre_snapshot: String(preSnapshot) }),
+        asForm(file, { confirm_name: confirmName, pre_snapshot: String(preSnapshot) })
       )
       return data
     },

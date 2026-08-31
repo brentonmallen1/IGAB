@@ -54,7 +54,12 @@ export function invalidateAfterImport(qc: QueryClient, budgetId: string | null):
     [ROOT.budgetFilters],
     [ROOT.budgetViews],
     [ROOT.scheduledTransactions],
-    ...(budgetId ? [['guide', budgetId], ['wishlist', budgetId]] : [['guide'], ['wishlist']]),
+    ...(budgetId
+      ? [
+          ['guide', budgetId],
+          ['wishlist', budgetId],
+        ]
+      : [['guide'], ['wishlist']]),
     ...(budgetId ? [['budgetMonth', budgetId]] : [['budgetMonth']]),
   ]
   return Promise.all([

@@ -14,14 +14,29 @@ function liability(over: Partial<Liability>): Liability {
 }
 
 function row(over: Partial<PlannerRow>): PlannerRow {
-  return { key: 'r', name: 'Visa', balance: '3410', rate: '22.9', minimum: '85', fromLiability: false, ...over }
+  return {
+    key: 'r',
+    name: 'Visa',
+    balance: '3410',
+    rate: '22.9',
+    minimum: '85',
+    fromLiability: false,
+    ...over,
+  }
 }
 
 describe('seedRows', () => {
   it('offers liabilities with a rate and a minimum, as strings', () => {
     const { rows, excluded } = seedRows([liability({})])
     expect(rows).toEqual([
-      { key: 'l1', name: 'Visa', balance: '3410', rate: '22.9', minimum: '85', fromLiability: true },
+      {
+        key: 'l1',
+        name: 'Visa',
+        balance: '3410',
+        rate: '22.9',
+        minimum: '85',
+        fromLiability: true,
+      },
     ])
     expect(excluded).toEqual([])
   })
@@ -48,7 +63,9 @@ describe('rowsToRequest', () => {
     const { body, errors } = rowsToRequest([row({ balance: '1,234.56', rate: '22.9' })], '100')
     expect(errors).toEqual({})
     expect(body).toEqual({
-      debts: [{ key: 'r', name: 'Visa', balance: '1234.56', annual_rate: '22.9', minimum_payment: '85' }],
+      debts: [
+        { key: 'r', name: 'Visa', balance: '1234.56', annual_rate: '22.9', minimum_payment: '85' },
+      ],
       extra: '100',
     })
   })

@@ -14,7 +14,11 @@ import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { SettingsPage } from './SettingsPage'
 import { useAppStore } from '../../stores/appStore'
-import { fetchWishlistRetirePreview, useGuideOverview, useSetGuidePreferences } from '../../api/guide'
+import {
+  fetchWishlistRetirePreview,
+  useGuideOverview,
+  useSetGuidePreferences,
+} from '../../api/guide'
 import { confirmAsync } from '../../stores/confirmStore'
 
 vi.mock('../../api/guide', async (importOriginal) => ({

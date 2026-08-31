@@ -175,20 +175,26 @@ class TestWeeklyFundingNeeded:
 class TestNeededNeverNegative:
     """calculate_needed() must always return >= 0 regardless of input."""
 
-    @pytest.mark.parametrize("target_type", [
-        "monthly_funding",
-        "savings_balance",
-        "weekly_funding",
-    ])
+    @pytest.mark.parametrize(
+        "target_type",
+        [
+            "monthly_funding",
+            "savings_balance",
+            "weekly_funding",
+        ],
+    )
     def test_always_non_negative_for_overfunded(self, svc, target_type):
         target = make_target(target_type, "100")
         result = svc.calculate_needed(target, D("200"), D("200"))
         assert result >= D("0"), f"calculate_needed returned negative for {target_type}"
 
-    @pytest.mark.parametrize("target_type", [
-        "monthly_funding",
-        "weekly_funding",
-    ])
+    @pytest.mark.parametrize(
+        "target_type",
+        [
+            "monthly_funding",
+            "weekly_funding",
+        ],
+    )
     def test_zero_target_amount_returns_zero(self, svc, target_type):
         target = make_target(target_type, "0")
         result = svc.calculate_needed(target, D("0"), D("0"))

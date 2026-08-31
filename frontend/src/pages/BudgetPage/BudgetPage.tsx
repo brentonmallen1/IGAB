@@ -50,7 +50,8 @@ export function BudgetPage() {
   const activeFilterId = useUIStore((s) => s.activeFilterId)
   const activeQuickFilter = useUIStore((s) => s.activeQuickFilter)
   const categorySearch = useUIStore((s) => s.categorySearch)
-  const canReorder = !activeViewId && !activeFilterId && !activeQuickFilter && !categorySearch.trim()
+  const canReorder =
+    !activeViewId && !activeFilterId && !activeQuickFilter && !categorySearch.trim()
   const isMobile = useIsMobile()
   const swipeHandlers = useSwipeNavigation(
     () => setSelectedMonth(addMonths(month, -1)),
@@ -95,7 +96,9 @@ export function BudgetPage() {
 
   async function handleMoveToGroup(groupId: string) {
     const ids = Array.from(selectedCategoryIds)
-    await Promise.all(ids.map((id) => updateCategory.mutateAsync({ id, category_group_id: groupId })))
+    await Promise.all(
+      ids.map((id) => updateCategory.mutateAsync({ id, category_group_id: groupId }))
+    )
     clearCategorySelection()
   }
 
@@ -163,9 +166,7 @@ export function BudgetPage() {
         >
           <BudgetTable />
         </div>
-        {selectedCategoryIds.size > 0 && !isMobile && (
-          <CategoryInspector budgetId={budgetId} />
-        )}
+        {selectedCategoryIds.size > 0 && !isMobile && <CategoryInspector budgetId={budgetId} />}
       </div>
 
       {isMobile && (
@@ -184,32 +185,33 @@ export function BudgetPage() {
           historyKey="inspector"
         >
           <CategoryInspector budgetId={budgetId} forceOpen />
-          {selectedCategoryIds.size === 1 && (() => {
-            const selected = categories.find((c) => selectedCategoryIds.has(c.id))
-            if (!selected) return null
-            // Siblings in server order — the same list the grid draws.
-            const siblings = categories
-              .filter((c) => c.category_group_id === selected.category_group_id)
-              .map((c) => c.id)
-            const at = siblings.indexOf(selected.id)
-            const moveBy = (delta: -1 | 1) =>
-              reorderCategories.mutate({
-                groupId: selected.category_group_id,
-                categoryIds: [...moveItem(siblings, at, at + delta)],
-              })
-            return (
-              <CategoryMobileActions
-                budgetId={budgetId}
-                category={selected}
-                onDone={() => {
-                  closeMobileInspector()
-                  clearCategorySelection()
-                }}
-                onMoveUp={canReorder && at > 0 ? () => moveBy(-1) : undefined}
-                onMoveDown={canReorder && at < siblings.length - 1 ? () => moveBy(1) : undefined}
-              />
-            )
-          })()}
+          {selectedCategoryIds.size === 1 &&
+            (() => {
+              const selected = categories.find((c) => selectedCategoryIds.has(c.id))
+              if (!selected) return null
+              // Siblings in server order — the same list the grid draws.
+              const siblings = categories
+                .filter((c) => c.category_group_id === selected.category_group_id)
+                .map((c) => c.id)
+              const at = siblings.indexOf(selected.id)
+              const moveBy = (delta: -1 | 1) =>
+                reorderCategories.mutate({
+                  groupId: selected.category_group_id,
+                  categoryIds: [...moveItem(siblings, at, at + delta)],
+                })
+              return (
+                <CategoryMobileActions
+                  budgetId={budgetId}
+                  category={selected}
+                  onDone={() => {
+                    closeMobileInspector()
+                    clearCategorySelection()
+                  }}
+                  onMoveUp={canReorder && at > 0 ? () => moveBy(-1) : undefined}
+                  onMoveDown={canReorder && at < siblings.length - 1 ? () => moveBy(1) : undefined}
+                />
+              )
+            })()}
         </BottomSheet>
       )}
 
@@ -239,7 +241,10 @@ export function BudgetPage() {
           {moveMenuOpen && (
             <ContextMenu
               items={groupMenuItems}
-              onSelect={(id) => { handleMoveToGroup(id); setMoveMenuOpen(false) }}
+              onSelect={(id) => {
+                handleMoveToGroup(id)
+                setMoveMenuOpen(false)
+              }}
               onClose={() => setMoveMenuOpen(false)}
               position={{ x: moveMenuPos.x, y: moveMenuPos.y - 160 }}
             />
@@ -257,11 +262,7 @@ export function BudgetPage() {
         />
       )}
       {activeModal?.kind === 'view' && (
-        <BudgetViewModal
-          budgetId={budgetId}
-          viewId={activeModal.editingId}
-          onClose={closeModal}
-        />
+        <BudgetViewModal budgetId={budgetId} viewId={activeModal.editingId} onClose={closeModal} />
       )}
       {activeModal?.kind === 'manage-views' && (
         <ManageViewsModal budgetId={budgetId} onClose={closeModal} />

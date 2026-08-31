@@ -21,7 +21,7 @@ export function useScheduledTransactions(budgetId: string | null) {
     queryKey: [ROOT.scheduledTransactions, budgetId],
     queryFn: async () => {
       const { data } = await apiClient.get<ScheduledTransaction[]>(
-        `/${budgetId}/scheduled-transactions`,
+        `/${budgetId}/scheduled-transactions`
       )
       return data
     },
@@ -30,7 +30,10 @@ export function useScheduledTransactions(budgetId: string | null) {
   })
 }
 
-export function useScheduledTransactionsByAccount(budgetId: string | null, accountId: string | null) {
+export function useScheduledTransactionsByAccount(
+  budgetId: string | null,
+  accountId: string | null
+) {
   const query = useScheduledTransactions(budgetId)
   return {
     ...query,
@@ -83,7 +86,11 @@ export function useEnterScheduledTransaction(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) =>
-      apiClient.post(`/scheduled-transactions/${id}/enter`, {}, { params: { budget_id: budgetId } }),
+      apiClient.post(
+        `/scheduled-transactions/${id}/enter`,
+        {},
+        { params: { budget_id: budgetId } }
+      ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: [ROOT.scheduledTransactions, budgetId] })
       qc.invalidateQueries({ queryKey: [ROOT.transactions] })

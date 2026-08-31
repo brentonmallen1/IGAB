@@ -28,7 +28,9 @@ export function dispositionOf(choice: YnabAccountTypeChoice | undefined): Dispos
 /** Both flags are always written, so switching away from a disposition clears
  *  the one it set. Leaving `close` behind on a row switched back to `import`
  *  would close an account the user just said to keep open. */
-export function choiceForDisposition(d: Disposition): Pick<YnabAccountTypeChoice, 'skip' | 'close'> {
+export function choiceForDisposition(
+  d: Disposition
+): Pick<YnabAccountTypeChoice, 'skip' | 'close'> {
   return { skip: d === 'skip', close: d === 'close' }
 }
 

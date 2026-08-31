@@ -16,10 +16,29 @@ const update = vi.fn()
 
 function wish(name: string): Wish {
   return {
-    id: name, project_id: null, name, url: null, notes: null, cost: '100', priority: 0, status: 'open',
-    funding: { mode: 'none', category_id: null, category_name: null, inherited: false, owns_envelope: false, target_date: null },
-    cooling_until: null, cooling: false, last_affirmed_at: null, review_due: true, done_at: null,
-    created_at: '2026-01-01T00:00:00Z', reach: null,
+    id: name,
+    project_id: null,
+    name,
+    url: null,
+    notes: null,
+    cost: '100',
+    priority: 0,
+    status: 'open',
+    funding: {
+      mode: 'none',
+      category_id: null,
+      category_name: null,
+      inherited: false,
+      owns_envelope: false,
+      target_date: null,
+    },
+    cooling_until: null,
+    cooling: false,
+    last_affirmed_at: null,
+    review_due: true,
+    done_at: null,
+    created_at: '2026-01-01T00:00:00Z',
+    reach: null,
   }
 }
 

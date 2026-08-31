@@ -15,7 +15,8 @@ interface Props {
   showTotal?: boolean
 }
 
-const defaultFormatter = (value: number) => `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+const defaultFormatter = (value: number) =>
+  `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 export function ChartTooltip({
   active,

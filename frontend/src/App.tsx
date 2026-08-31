@@ -12,22 +12,64 @@ import { useAppStore } from './stores/appStore'
 
 // Pages are split per-route so the initial bundle stays lean — ReportsPage in
 // particular pulls in recharts, which nothing else needs at first paint.
-const LoginPage = lazy(() => import('./pages/LoginPage/LoginPage').then((m) => ({ default: m.LoginPage })))
-const BudgetPage = lazy(() => import('./pages/BudgetPage/BudgetPage').then((m) => ({ default: m.BudgetPage })))
-const BudgetSelectorPage = lazy(() => import('./pages/BudgetSelectorPage/BudgetSelectorPage').then((m) => ({ default: m.BudgetSelectorPage })))
-const AccountPage = lazy(() => import('./pages/AccountPage/AccountPage').then((m) => ({ default: m.AccountPage })))
-const AllTransactionsPage = lazy(() => import('./pages/AllTransactionsPage/AllTransactionsPage').then((m) => ({ default: m.AllTransactionsPage })))
-const SettingsPage = lazy(() => import('./pages/SettingsPage/SettingsPage').then((m) => ({ default: m.SettingsPage })))
-const ImportPage = lazy(() => import('./pages/ImportPage/ImportPage').then((m) => ({ default: m.ImportPage })))
-const ReportsPage = lazy(() => import('./pages/ReportsPage/ReportsPage').then((m) => ({ default: m.ReportsPage })))
-const ScheduledTransactionsPage = lazy(() => import('./pages/ScheduledTransactionsPage/ScheduledTransactionsPage').then((m) => ({ default: m.ScheduledTransactionsPage })))
-const PayeesPage = lazy(() => import('./pages/PayeesPage/PayeesPage').then((m) => ({ default: m.PayeesPage })))
-const AccountsOverviewPage = lazy(() => import('./pages/AccountsOverviewPage/AccountsOverviewPage').then((m) => ({ default: m.AccountsOverviewPage })))
-const AIActivityPage = lazy(() => import('./pages/AIActivityPage/AIActivityPage').then((m) => ({ default: m.AIActivityPage })))
-const ActivityPage = lazy(() => import('./pages/ActivityPage/ActivityPage').then((m) => ({ default: m.ActivityPage })))
-const LiabilitiesOverviewPage = lazy(() => import('./pages/LiabilitiesOverviewPage/LiabilitiesOverviewPage').then((m) => ({ default: m.LiabilitiesOverviewPage })))
-const GuidePage = lazy(() => import('./pages/GuidePage/GuidePage').then((m) => ({ default: m.GuidePage })))
-const LiabilityPage = lazy(() => import('./pages/LiabilityPage/LiabilityPage').then((m) => ({ default: m.LiabilityPage })))
+const LoginPage = lazy(() =>
+  import('./pages/LoginPage/LoginPage').then((m) => ({ default: m.LoginPage }))
+)
+const BudgetPage = lazy(() =>
+  import('./pages/BudgetPage/BudgetPage').then((m) => ({ default: m.BudgetPage }))
+)
+const BudgetSelectorPage = lazy(() =>
+  import('./pages/BudgetSelectorPage/BudgetSelectorPage').then((m) => ({
+    default: m.BudgetSelectorPage,
+  }))
+)
+const AccountPage = lazy(() =>
+  import('./pages/AccountPage/AccountPage').then((m) => ({ default: m.AccountPage }))
+)
+const AllTransactionsPage = lazy(() =>
+  import('./pages/AllTransactionsPage/AllTransactionsPage').then((m) => ({
+    default: m.AllTransactionsPage,
+  }))
+)
+const SettingsPage = lazy(() =>
+  import('./pages/SettingsPage/SettingsPage').then((m) => ({ default: m.SettingsPage }))
+)
+const ImportPage = lazy(() =>
+  import('./pages/ImportPage/ImportPage').then((m) => ({ default: m.ImportPage }))
+)
+const ReportsPage = lazy(() =>
+  import('./pages/ReportsPage/ReportsPage').then((m) => ({ default: m.ReportsPage }))
+)
+const ScheduledTransactionsPage = lazy(() =>
+  import('./pages/ScheduledTransactionsPage/ScheduledTransactionsPage').then((m) => ({
+    default: m.ScheduledTransactionsPage,
+  }))
+)
+const PayeesPage = lazy(() =>
+  import('./pages/PayeesPage/PayeesPage').then((m) => ({ default: m.PayeesPage }))
+)
+const AccountsOverviewPage = lazy(() =>
+  import('./pages/AccountsOverviewPage/AccountsOverviewPage').then((m) => ({
+    default: m.AccountsOverviewPage,
+  }))
+)
+const AIActivityPage = lazy(() =>
+  import('./pages/AIActivityPage/AIActivityPage').then((m) => ({ default: m.AIActivityPage }))
+)
+const ActivityPage = lazy(() =>
+  import('./pages/ActivityPage/ActivityPage').then((m) => ({ default: m.ActivityPage }))
+)
+const LiabilitiesOverviewPage = lazy(() =>
+  import('./pages/LiabilitiesOverviewPage/LiabilitiesOverviewPage').then((m) => ({
+    default: m.LiabilitiesOverviewPage,
+  }))
+)
+const GuidePage = lazy(() =>
+  import('./pages/GuidePage/GuidePage').then((m) => ({ default: m.GuidePage }))
+)
+const LiabilityPage = lazy(() =>
+  import('./pages/LiabilityPage/LiabilityPage').then((m) => ({ default: m.LiabilityPage }))
+)
 
 const queryClient = new QueryClient({
   defaultOptions: {

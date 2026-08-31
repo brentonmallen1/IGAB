@@ -16,7 +16,9 @@
   cursor: pointer;
   color: var(--text-muted);
   font-size: var(--font-size-sm);
-  transition: border-color 0.15s, background 0.15s;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
 }
 
 .receipt-scan__drop-zone:hover {
@@ -105,7 +107,9 @@
   font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s, opacity 0.15s;
+  transition:
+    background 0.15s,
+    opacity 0.15s;
 }
 
 .receipt-scan__submit:hover:not(:disabled) {
@@ -180,4 +184,3 @@
 .receipt-scan__link:hover {
   text-decoration: underline;
 }
-

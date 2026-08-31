@@ -37,7 +37,10 @@
   font-size: var(--font-size-base);
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.12s, border-color 0.12s, transform 0.1s;
+  transition:
+    background 0.12s,
+    border-color 0.12s,
+    transform 0.1s;
   min-width: 160px;
 }
 
@@ -81,7 +84,9 @@
   font-weight: 500;
   cursor: pointer;
   border-radius: calc(var(--border-radius) - 2px);
-  transition: background 0.1s, color 0.1s;
+  transition:
+    background 0.1s,
+    color 0.1s;
 }
 
 .reports-nav__dropdown-item:hover {
@@ -131,7 +136,9 @@
   font-size: var(--font-size-sm);
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.12s, color 0.12s;
+  transition:
+    background 0.12s,
+    color 0.12s;
 }
 
 .reports-nav__tab:hover {
@@ -275,7 +282,9 @@
   color: var(--text-primary);
   font-size: var(--font-size-sm);
   cursor: pointer;
-  transition: background 0.12s, border-color 0.12s;
+  transition:
+    background 0.12s,
+    border-color 0.12s;
 }
 
 .report-error__retry:hover {
@@ -503,7 +512,9 @@
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
   cursor: pointer;
-  transition: background 0.12s, border-color 0.12s;
+  transition:
+    background 0.12s,
+    border-color 0.12s;
   text-align: left;
   width: 100%;
 }

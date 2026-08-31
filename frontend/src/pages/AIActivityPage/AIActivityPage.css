@@ -168,11 +168,15 @@
 }
 
 @keyframes ai-activity-spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ai-activity__spin { animation: none; }
+  .ai-activity__spin {
+    animation: none;
+  }
 }
 
 .ai-activity__reason {

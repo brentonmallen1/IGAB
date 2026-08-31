@@ -36,10 +36,7 @@ export function UpdateToast() {
       () => (
         <div className="update-toast">
           <span className="update-toast__text">A new version of IGAB is ready.</span>
-          <button
-            className="update-toast__button"
-            onClick={() => updateServiceWorker(true)}
-          >
+          <button className="update-toast__button" onClick={() => updateServiceWorker(true)}>
             <RefreshCw size={13} />
             Update
           </button>

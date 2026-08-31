@@ -37,11 +37,14 @@ export function WishCard({
 }: Props) {
   const fmt = useFormatters()
   const cooling = coolingLabel(wish, fmt)
-  const progress = wish.reach && wish.reach.state !== 'unlinked' ? Number(wish.reach.progress) : null
+  const progress =
+    wish.reach && wish.reach.state !== 'unlinked' ? Number(wish.reach.progress) : null
   const pct = progress === null ? 0 : Math.round(Math.min(1, Math.max(0, progress)) * 100)
 
   return (
-    <article className={`wish ${hero ? 'wish--hero surface' : ''} ${wish.cooling ? 'wish--cooling' : ''}`}>
+    <article
+      className={`wish ${hero ? 'wish--hero surface' : ''} ${wish.cooling ? 'wish--cooling' : ''}`}
+    >
       <div className="wish__head">
         <h4 className="wish__name">
           {wish.url ? (
@@ -100,10 +103,22 @@ export function WishCard({
         </button>
         {(onMoveUp || onMoveDown) && (
           <span className="wish__move">
-            <button type="button" className="tool__icon-button" onClick={onMoveUp} disabled={!onMoveUp} aria-label={`Move ${wish.name} up`}>
+            <button
+              type="button"
+              className="tool__icon-button"
+              onClick={onMoveUp}
+              disabled={!onMoveUp}
+              aria-label={`Move ${wish.name} up`}
+            >
               <ArrowUp size={13} />
             </button>
-            <button type="button" className="tool__icon-button" onClick={onMoveDown} disabled={!onMoveDown} aria-label={`Move ${wish.name} down`}>
+            <button
+              type="button"
+              className="tool__icon-button"
+              onClick={onMoveDown}
+              disabled={!onMoveDown}
+              aria-label={`Move ${wish.name} down`}
+            >
               <ArrowDown size={13} />
             </button>
           </span>

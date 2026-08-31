@@ -275,5 +275,7 @@ class TestSystemGroupsMayBeOmitted:
         )
         assert resp.status_code == 204
         db_session.expunge_all()
-        everyone = await CategoryGroupRepository(db_session).get_all(budget.id, include_archived=True)
+        everyone = await CategoryGroupRepository(db_session).get_all(
+            budget.id, include_archived=True
+        )
         assert [g.name for g in everyone] == ["Income", "Wants", "Bills"]

@@ -1,7 +1,16 @@
 import { useMemo, useRef, useState } from 'react'
 import {
-  Bar, Cell, ComposedChart, CartesianGrid, Legend, Line,
-  ResponsiveContainer, Tooltip, XAxis, YAxis, ReferenceLine,
+  Bar,
+  Cell,
+  ComposedChart,
+  CartesianGrid,
+  Legend,
+  Line,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+  ReferenceLine,
 } from 'recharts'
 import { spendingDrillClasses, useReportStore, type GroupBy } from '../../../stores/reportStore'
 import { useSpendingGroupedReport, usePayeeAnalysisReport } from '../../../api/reports'
@@ -11,13 +20,21 @@ import { DrillDownTable } from '../DrillDownTable'
 import { MetricCard } from '../MetricCard'
 import { ReportErrorState } from '../ReportErrorState'
 import { CHART_COLORS, COLOR_NEGATIVE, chartColor } from './chartColors'
-import { buildParetoItems, cumulativePercents, paretoAdherence, paretoInsight, shareOfTotal } from './paretoData'
+import {
+  buildParetoItems,
+  cumulativePercents,
+  paretoAdherence,
+  paretoInsight,
+  shareOfTotal,
+} from './paretoData'
 import { ReportInfoButton, ReportScopeNote, SpendingClassNote } from '../ReportInfoButton'
 import { ReportNotes, IncludeSavingsToggle, emptySpendingMessage } from '../ReportNotes'
 import { LogScaleToggle, logAxisProps } from './logScale'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 
-interface Props { budgetId: string }
+interface Props {
+  budgetId: string
+}
 
 const GROUP_LABELS: Record<GroupBy, string> = {
   category: 'Category',
@@ -49,7 +66,11 @@ function ParetoTooltip({
   return (
     <div className="chart-tooltip">
       <div className="chart-tooltip__label">{entry?.fullName ?? label}</div>
-      {entry?.group && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>{entry.group}</div>}
+      {entry?.group && (
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>
+          {entry.group}
+        </div>
+      )}
       {payload.map((p) => (
         <div key={p.name} className="chart-tooltip__row">
           <span className="chart-tooltip__name">{p.name}</span>
@@ -78,8 +99,23 @@ export function ParetoReport({ budgetId }: Props) {
   // Both queries always fetched — hooks must be unconditional
   // Only meaningful for category/group views, not the payee view
   const withSavings = includeSavings && groupBy !== 'payee'
-  const spendingQ = useSpendingGroupedReport(budgetId, filters.startDate, filters.endDate, catIds, acctIds, withSavings, filters.viewId)
-  const payeeQ = usePayeeAnalysisReport(budgetId, filters.startDate, filters.endDate, 25, payeeIds, acctIds)
+  const spendingQ = useSpendingGroupedReport(
+    budgetId,
+    filters.startDate,
+    filters.endDate,
+    catIds,
+    acctIds,
+    withSavings,
+    filters.viewId
+  )
+  const payeeQ = usePayeeAnalysisReport(
+    budgetId,
+    filters.startDate,
+    filters.endDate,
+    25,
+    payeeIds,
+    acctIds
+  )
 
   const spendingItems = useMemo(() => spendingQ.data?.groups ?? [], [spendingQ.data])
   const payeeItems = useMemo(() => payeeQ.data?.payees ?? [], [payeeQ.data])
@@ -96,7 +132,7 @@ export function ParetoReport({ budgetId }: Props) {
 
   const { sorted, grandTotal } = useMemo(
     () => buildParetoItems(groupBy, spendingItems, payeeItems, spendingQ.data?.total),
-    [groupBy, spendingItems, payeeItems, spendingQ.data],
+    [groupBy, spendingItems, payeeItems, spendingQ.data]
   )
 
   // Group id → member category ids, for expanding a group drill client-side
@@ -112,7 +148,8 @@ export function ParetoReport({ budgetId }: Props) {
   // All hooks above — safe to conditionally return now
   const activeQ = groupBy === 'payee' ? payeeQ : spendingQ
   if (activeQ.isLoading) return <div className="report-loading">Loading…</div>
-  if (activeQ.isError) return <ReportErrorState error={activeQ.error} onRetry={() => activeQ.refetch()} />
+  if (activeQ.isError)
+    return <ReportErrorState error={activeQ.error} onRetry={() => activeQ.refetch()} />
 
   function drillTo(id: string, name: string) {
     const window = { startDate: filters.startDate, endDate: filters.endDate }
@@ -121,20 +158,35 @@ export function ParetoReport({ budgetId }: Props) {
     const activityClasses = spendingDrillClasses(includeSavings)
     if (groupBy === 'payee') {
       setDrillDown({
-        kind: 'payee', label: name, scope: 'leaf', direction: 'outflow',
-        payeeIds: [id], activityClasses, ...window,
+        kind: 'payee',
+        label: name,
+        scope: 'leaf',
+        direction: 'outflow',
+        payeeIds: [id],
+        activityClasses,
+        ...window,
       })
     } else if (groupBy === 'group') {
       const memberIds = groupMembers.get(id) ?? []
       if (memberIds.length === 0) return
       setDrillDown({
-        kind: 'category-group', label: name, scope: 'leaf', direction: 'outflow',
-        categoryIds: memberIds, activityClasses, ...window,
+        kind: 'category-group',
+        label: name,
+        scope: 'leaf',
+        direction: 'outflow',
+        categoryIds: memberIds,
+        activityClasses,
+        ...window,
       })
     } else {
       setDrillDown({
-        kind: 'category', label: name, scope: 'leaf', direction: 'outflow',
-        categoryIds: [id], activityClasses, ...window,
+        kind: 'category',
+        label: name,
+        scope: 'leaf',
+        direction: 'outflow',
+        categoryIds: [id],
+        activityClasses,
+        ...window,
       })
     }
   }
@@ -147,9 +199,10 @@ export function ParetoReport({ budgetId }: Props) {
     group: item.groupName,
     Amount: item.total,
     'Cumulative %': cumulativePcts[i],
-    color: groupBy === 'group'
-      ? chartColor(i)
-      : (groupColorMap.get(item.groupKey ?? '__none__') ?? CHART_COLORS[0]),
+    color:
+      groupBy === 'group'
+        ? chartColor(i)
+        : (groupColorMap.get(item.groupKey ?? '__none__') ?? CHART_COLORS[0]),
   }))
 
   const { idx80, pct80coverage } = paretoInsight(cumulativePcts, sorted.length)
@@ -168,9 +221,19 @@ export function ParetoReport({ budgetId }: Props) {
       <div className="report-section__header">
         <h2 className="report-section__title">Pareto Analysis (80/20 Rule)</h2>
         <ReportInfoButton title="Pareto Analysis">
-          <p>The <strong>80/20 rule</strong>: roughly 80% of your spending comes from 20% of your categories. This chart shows where spending concentrates.</p>
-          <p><strong>Bars</strong> show individual amounts (colored by category group). The <strong>orange line</strong> is the running cumulative percentage. The <strong>red dashed line</strong> marks 80%.</p>
-          <p>Switch the <strong>Group by</strong> filter in the toolbar to see the pattern at the category group, category, or payee level.</p>
+          <p>
+            The <strong>80/20 rule</strong>: roughly 80% of your spending comes from 20% of your
+            categories. This chart shows where spending concentrates.
+          </p>
+          <p>
+            <strong>Bars</strong> show individual amounts (colored by category group). The{' '}
+            <strong>orange line</strong> is the running cumulative percentage. The{' '}
+            <strong>red dashed line</strong> marks 80%.
+          </p>
+          <p>
+            Switch the <strong>Group by</strong> filter in the toolbar to see the pattern at the
+            category group, category, or payee level.
+          </p>
           <p>Click a bar or a table row to see the transactions behind it.</p>
           <ReportScopeNote scope="on-budget-filterable" />
           <SpendingClassNote />
@@ -204,63 +267,102 @@ export function ParetoReport({ budgetId }: Props) {
       )}
 
       <div ref={captureRef} className="report-capture">
-      {grandTotal > 0 && (
-        <div className="report-metrics">
-          <MetricCard label="Total Spending" value={formatMoney(grandTotal)} />
-          {idx80 >= 0 && (
-            <MetricCard
-              label="80% of Spend"
-              value={`${idx80 + 1} ${idx80 === 0 ? GROUP_LABELS[groupBy].toLowerCase() : GROUP_PLURALS[groupBy]}`}
-              sub={adherence ? adherence.message : `${pct80coverage}% of all ${GROUP_PLURALS[groupBy]}`}
-              warning={adherence ? !adherence.adherent : false}
-            />
-          )}
-        </div>
-      )}
+        {grandTotal > 0 && (
+          <div className="report-metrics">
+            <MetricCard label="Total Spending" value={formatMoney(grandTotal)} />
+            {idx80 >= 0 && (
+              <MetricCard
+                label="80% of Spend"
+                value={`${idx80 + 1} ${idx80 === 0 ? GROUP_LABELS[groupBy].toLowerCase() : GROUP_PLURALS[groupBy]}`}
+                sub={
+                  adherence
+                    ? adherence.message
+                    : `${pct80coverage}% of all ${GROUP_PLURALS[groupBy]}`
+                }
+                warning={adherence ? !adherence.adherent : false}
+              />
+            )}
+          </div>
+        )}
 
-      {chartData.length === 0 ? (
-        <div className="reports-empty">
-          {emptySpendingMessage(
-            groupBy === 'payee' ? 0 : spendingQ.data?.view_hidden_categories
-          )}
-        </div>
-      ) : (
-        <>
-          <ResponsiveContainer width="100%" height={chartHeight}>
-            <ComposedChart data={chartData} margin={{ top: 8, right: 50, left: 0, bottom: 60 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
-              <XAxis dataKey="name" tick={{ fontSize: 10, fill: 'var(--text-muted)' }} angle={-40} textAnchor="end" interval={0} height={70} />
-              <YAxis yAxisId="left" tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} width={90} {...logAxisProps(logScale)} />
-              <YAxis yAxisId="right" orientation="right" domain={[0, 100]} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} width={50} />
-              <Tooltip content={<ParetoTooltip chartData={chartData} formatMoney={formatMoney} />} offset={16} isAnimationActive={false} />
-              <Legend verticalAlign="top" />
-              <ReferenceLine yAxisId="right" y={80} stroke={COLOR_NEGATIVE} strokeDasharray="6 3" label={{ value: '80%', position: 'right', fontSize: 11 }} />
-              <Bar
-                yAxisId="left"
-                dataKey="Amount"
-                radius={[2, 2, 0, 0]}
-                cursor="pointer"
-                onClick={(data) => {
-                  const d = data as { fullName?: string; payload?: { fullName?: string } }
-                  const full = d.fullName ?? d.payload?.fullName
-                  const item = sorted.find((s) => s.name === full)
-                  if (item) drillTo(item.id, item.name)
-                }}
-              >
-                {chartData.map((entry, i) => (
-                  <Cell key={i} fill={entry.color} fillOpacity={0.85} />
-                ))}
-              </Bar>
-              <Line yAxisId="right" type="monotone" dataKey="Cumulative %" stroke={CHART_COLORS[1]} strokeWidth={2} dot={{ r: 3 }} />
-            </ComposedChart>
-          </ResponsiveContainer>
-          <DrillDownTable
-            rows={tableRows}
-            total={grandTotal}
-            onRowClick={(row) => drillTo(row.id, row.name)}
-          />
-        </>
-      )}
+        {chartData.length === 0 ? (
+          <div className="reports-empty">
+            {emptySpendingMessage(groupBy === 'payee' ? 0 : spendingQ.data?.view_hidden_categories)}
+          </div>
+        ) : (
+          <>
+            <ResponsiveContainer width="100%" height={chartHeight}>
+              <ComposedChart data={chartData} margin={{ top: 8, right: 50, left: 0, bottom: 60 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
+                <XAxis
+                  dataKey="name"
+                  tick={{ fontSize: 10, fill: 'var(--text-muted)' }}
+                  angle={-40}
+                  textAnchor="end"
+                  interval={0}
+                  height={70}
+                />
+                <YAxis
+                  yAxisId="left"
+                  tickFormatter={(v) => formatMoney(v)}
+                  tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
+                  width={90}
+                  {...logAxisProps(logScale)}
+                />
+                <YAxis
+                  yAxisId="right"
+                  orientation="right"
+                  domain={[0, 100]}
+                  tickFormatter={(v) => `${v}%`}
+                  tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
+                  width={50}
+                />
+                <Tooltip
+                  content={<ParetoTooltip chartData={chartData} formatMoney={formatMoney} />}
+                  offset={16}
+                  isAnimationActive={false}
+                />
+                <Legend verticalAlign="top" />
+                <ReferenceLine
+                  yAxisId="right"
+                  y={80}
+                  stroke={COLOR_NEGATIVE}
+                  strokeDasharray="6 3"
+                  label={{ value: '80%', position: 'right', fontSize: 11 }}
+                />
+                <Bar
+                  yAxisId="left"
+                  dataKey="Amount"
+                  radius={[2, 2, 0, 0]}
+                  cursor="pointer"
+                  onClick={(data) => {
+                    const d = data as { fullName?: string; payload?: { fullName?: string } }
+                    const full = d.fullName ?? d.payload?.fullName
+                    const item = sorted.find((s) => s.name === full)
+                    if (item) drillTo(item.id, item.name)
+                  }}
+                >
+                  {chartData.map((entry, i) => (
+                    <Cell key={i} fill={entry.color} fillOpacity={0.85} />
+                  ))}
+                </Bar>
+                <Line
+                  yAxisId="right"
+                  type="monotone"
+                  dataKey="Cumulative %"
+                  stroke={CHART_COLORS[1]}
+                  strokeWidth={2}
+                  dot={{ r: 3 }}
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+            <DrillDownTable
+              rows={tableRows}
+              total={grandTotal}
+              onRowClick={(row) => drillTo(row.id, row.name)}
+            />
+          </>
+        )}
       </div>
     </div>
   )

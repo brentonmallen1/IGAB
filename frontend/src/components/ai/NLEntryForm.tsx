@@ -89,8 +89,7 @@ export function NLEntryForm({ budgetId, onDraft, onNavigate, autoFocus = true }:
       const result = await parse.mutateAsync(trimmed)
       onDraft(draftToEditorDraft(result.draft, result.job_id))
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data
-        ?.detail
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
       toast.error(detail ?? 'Could not parse that — try rephrasing')
     }
   }

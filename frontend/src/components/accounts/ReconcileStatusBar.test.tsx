@@ -14,9 +14,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ReconcileStatusBar } from './ReconcileStatusBar'
 
-const createAdjustment = vi.hoisted(() =>
-  vi.fn((_amount: number) => Promise.resolve({ id: 't1' }))
-)
+const createAdjustment = vi.hoisted(() => vi.fn((_amount: number) => Promise.resolve({ id: 't1' })))
 const finishReconciliation = vi.hoisted(() =>
   vi.fn((_params: { statement_balance: number; adjustment_transaction_id: string | null }) =>
     Promise.resolve({})

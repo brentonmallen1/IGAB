@@ -128,9 +128,8 @@ function RecipientSettingRow() {
       <div>
         <div className="settings-row__label">Encryption key</div>
         <div className="settings-row__desc">
-          Optional age public key (age1…). New backups are encrypted to it; encrypted
-          backups can only be restored from the CLI with your private key — keep that
-          key off this server.
+          Optional age public key (age1…). New backups are encrypted to it; encrypted backups can
+          only be restored from the CLI with your private key — keep that key off this server.
         </div>
         {error && <div className="bkp-field-error">{error}</div>}
       </div>
@@ -182,8 +181,8 @@ function RestoreModal({ file, onConfirm, onCancel, isPending, error }: RestoreMo
         <div className="bkp-modal__body">
           <p>
             This replaces <strong>all current data</strong> with the contents of{' '}
-            <code>{file.name}</code> from {formatDateTime(file.modified_at)}.
-            Anything entered since that backup will be lost.
+            <code>{file.name}</code> from {formatDateTime(file.modified_at)}. Anything entered since
+            that backup will be lost.
           </p>
           <p>The app will briefly go offline and restart once the restore finishes.</p>
           <label className="bkp-modal__prebackup">
@@ -193,8 +192,8 @@ function RestoreModal({ file, onConfirm, onCancel, isPending, error }: RestoreMo
               onChange={(e) => setPreBackup(e.target.checked)}
             />
             <span>
-              Back up current data first (recommended) — saved as a{' '}
-              <em>pre-restore</em> backup you can return to
+              Back up current data first (recommended) — saved as a <em>pre-restore</em> backup you
+              can return to
             </span>
           </label>
           {error && <div className="bkp-field-error">{error}</div>}
@@ -316,8 +315,7 @@ export function BackupsPanel() {
       setRestoreTarget(null)
       setRestoring(true)
     } catch (e: unknown) {
-      const detail =
-        (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail
       setRestoreError(detail ?? 'Could not start the restore')
     }
   }
@@ -359,9 +357,7 @@ export function BackupsPanel() {
       {/* While queued/running, the previous job's result reads as if THIS
           click already finished — suppress it until the new job reports. */}
       {job && !queued && !jobRunning && job.state !== 'running' && job.action === 'backup' && (
-        <div
-          className={`bkp-job-note ${job.state === 'error' ? 'bkp-job-note--error' : ''}`}
-        >
+        <div className={`bkp-job-note ${job.state === 'error' ? 'bkp-job-note--error' : ''}`}>
           Last manual backup: {job.state === 'done' ? 'completed' : `failed — ${job.detail}`}
           {job.finished_at ? ` (${formatDateTime(job.finished_at)})` : ''}
         </div>
@@ -444,9 +440,7 @@ export function BackupsPanel() {
                       <button
                         className="settings-btn settings-btn--secondary bkp-download-btn"
                         onClick={() =>
-                          downloadBackupFile(f.name).catch(() =>
-                            toast.error('Download failed.'),
-                          )
+                          downloadBackupFile(f.name).catch(() => toast.error('Download failed.'))
                         }
                         aria-label={`Download ${f.name}`}
                         title="Download"

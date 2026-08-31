@@ -65,9 +65,7 @@ async def test_payee_auto_categorizes_from_most_recent_transaction(db_session):
     # Explicit fallback default, but no transaction history yet. Distinct dates
     # keep "most recent" unambiguous (created_at is constant within one txn).
     day1, day2, day3 = date(2026, 7, 10), date(2026, 7, 15), date(2026, 7, 20)
-    payee = await create_payee(
-        db_session, budget, "Corner Market", default_category_id=dining.id
-    )
+    payee = await create_payee(db_session, budget, "Corner Market", default_category_id=dining.id)
 
     # No history: an uncategorized transaction falls back to default_category_id.
     first = await services.transactions.create(

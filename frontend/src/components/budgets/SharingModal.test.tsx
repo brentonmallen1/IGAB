@@ -18,8 +18,22 @@ vi.mock('../../api/budgetMembers', () => ({
 vi.mock('../../api/users', () => ({
   useUsers: () => ({
     data: [
-      { id: 'me', email: 'me@home.local', display_name: null, is_admin: true, is_active: true, is_env_admin: false },
-      { id: 'other', email: 'other@home.local', display_name: 'Other', is_admin: false, is_active: true, is_env_admin: false },
+      {
+        id: 'me',
+        email: 'me@home.local',
+        display_name: null,
+        is_admin: true,
+        is_active: true,
+        is_env_admin: false,
+      },
+      {
+        id: 'other',
+        email: 'other@home.local',
+        display_name: 'Other',
+        is_admin: false,
+        is_active: true,
+        is_env_admin: false,
+      },
     ],
   }),
 }))

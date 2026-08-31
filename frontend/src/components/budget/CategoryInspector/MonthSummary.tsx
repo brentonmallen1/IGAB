@@ -17,7 +17,13 @@ interface Props {
   categories: Category[]
 }
 
-function PastTargetRow({ target, categoryName, onEdit, formatMoney, formatDate }: {
+function PastTargetRow({
+  target,
+  categoryName,
+  onEdit,
+  formatMoney,
+  formatDate,
+}: {
   target: CategoryTarget
   categoryName: string
   onEdit: () => void
@@ -30,7 +36,8 @@ function PastTargetRow({ target, categoryName, onEdit, formatMoney, formatDate }
       <div className="past-target-row__info">
         <span className="past-target-row__name">{categoryName}</span>
         <span className="past-target-row__meta">
-          {formatMoney(Number(target.target_amount))} · {target.target_date ? formatDate(target.target_date) : ''}
+          {formatMoney(Number(target.target_amount))} ·{' '}
+          {target.target_date ? formatDate(target.target_date) : ''}
         </span>
       </div>
       <div className="past-target-row__actions">
@@ -61,14 +68,16 @@ export function MonthSummary({ budgetId, allCategoryIds, categories }: Props) {
   const [autoAssignOpen, setAutoAssignOpen] = useState(true)
   const [futureOpen, setFutureOpen] = useState(false)
   const [pastTargetsOpen, setPastTargetsOpen] = useState(false)
-  const [editingTarget, setEditingTarget] = useState<{ categoryId: string; categoryName: string; target: CategoryTarget } | null>(null)
+  const [editingTarget, setEditingTarget] = useState<{
+    categoryId: string
+    categoryName: string
+    target: CategoryTarget
+  } | null>(null)
 
   const todayStr = today()
   const categoryMap = new Map(categories.map((c) => [c.id, c]))
 
-  const pastTargets = (allTargets ?? []).filter(
-    (t) => t.target_date && t.target_date < todayStr
-  )
+  const pastTargets = (allTargets ?? []).filter((t) => t.target_date && t.target_date < todayStr)
 
   // Get just the month name from the full month string
   const monthLabel = formatMonth(month).split(' ')[settings.dateFormat === 'ymd' ? 1 : 0]
@@ -91,7 +100,11 @@ export function MonthSummary({ budgetId, allCategoryIds, categories }: Props) {
   }
 
   const autoActions: { action: AutoAssignAction; label: string; value: number }[] = [
-    { action: 'last_month_assigned', label: 'Assigned Last Month', value: aggregate('last_month_assigned') },
+    {
+      action: 'last_month_assigned',
+      label: 'Assigned Last Month',
+      value: aggregate('last_month_assigned'),
+    },
     { action: 'last_month_spent', label: 'Spent Last Month', value: aggregate('last_month_spent') },
     { action: 'average_assigned', label: 'Average Assigned', value: aggregate('average_assigned') },
     { action: 'average_spent', label: 'Average Spent', value: aggregate('average_spent') },
@@ -103,10 +116,7 @@ export function MonthSummary({ budgetId, allCategoryIds, categories }: Props) {
     <div className="month-summary">
       {/* Monthly Summary */}
       <div className="month-summary__section">
-        <button
-          className="month-summary__section-header"
-          onClick={() => setSummaryOpen((v) => !v)}
-        >
+        <button className="month-summary__section-header" onClick={() => setSummaryOpen((v) => !v)}>
           <span>{monthLabel}'s Summary</span>
           <ChevronDown
             size={14}
@@ -123,7 +133,8 @@ export function MonthSummary({ budgetId, allCategoryIds, categories }: Props) {
               <div className="inspector-breakdown__row">
                 <span>Assigned in {monthLabel}</span>
                 <span className={`tabular ${totalAssigned > 0 ? 'positive' : ''}`}>
-                  {totalAssigned > 0 ? '+' : ''}{formatMoney(totalAssigned)}
+                  {totalAssigned > 0 ? '+' : ''}
+                  {formatMoney(totalAssigned)}
                 </span>
               </div>
               <div className="inspector-breakdown__row">
@@ -134,7 +145,9 @@ export function MonthSummary({ budgetId, allCategoryIds, categories }: Props) {
               </div>
               <div className="inspector-breakdown__total">
                 <span>Available</span>
-                <span className={`tabular ${totalAvailable < 0 ? 'negative' : totalAvailable > 0 ? 'positive' : 'zero'}`}>
+                <span
+                  className={`tabular ${totalAvailable < 0 ? 'negative' : totalAvailable > 0 ? 'positive' : 'zero'}`}
+                >
                   {formatMoney(totalAvailable)}
                 </span>
               </div>
@@ -188,10 +201,7 @@ export function MonthSummary({ budgetId, allCategoryIds, categories }: Props) {
 
       {/* Assigned in Future Months */}
       <div className="month-summary__section">
-        <button
-          className="month-summary__section-header"
-          onClick={() => setFutureOpen((v) => !v)}
-        >
+        <button className="month-summary__section-header" onClick={() => setFutureOpen((v) => !v)}>
           <span>Assigned in Future Months</span>
           <div className="month-summary__section-header-right">
             <span className="tabular month-summary__future-amount">{formatMoney(0)}</span>
@@ -232,7 +242,9 @@ export function MonthSummary({ budgetId, allCategoryIds, categories }: Props) {
                     key={t.id}
                     target={t}
                     categoryName={cat.name}
-                    onEdit={() => setEditingTarget({ categoryId: cat.id, categoryName: cat.name, target: t })}
+                    onEdit={() =>
+                      setEditingTarget({ categoryId: cat.id, categoryName: cat.name, target: t })
+                    }
                     formatMoney={formatMoney}
                     formatDate={formatDate}
                   />

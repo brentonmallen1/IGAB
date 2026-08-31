@@ -69,9 +69,7 @@ class TestARestorePutsTheBudgetBack:
         account_id = full.account_ids[0]
         accounts = _table("accounts")
         account = (
-            await db_session.execute(
-                select(accounts).where(accounts.c.id == account_id)
-            )
+            await db_session.execute(select(accounts).where(accounts.c.id == account_id))
         ).one()
         for amount in ("-1.00", "-2.00", "-3.00", "-4.00", "-5.00", "-6.00"):
             await create_transaction(
@@ -240,9 +238,7 @@ class TestARestorePutsTheBudgetBack:
         assert row[0] == "acct-fictional-1"
         assert row[1] is True
 
-    async def test_the_restored_budget_is_still_sound(
-        self, api_client, db_session, snapshot_store
-    ):
+    async def test_the_restored_budget_is_still_sound(self, api_client, db_session, snapshot_store):
         full = await build_full_budget(db_session, api_client.test_user)
         body = await _export(api_client, full.id)
         await _restore(api_client, full.id, body, confirm=full.budget.name)
@@ -298,9 +294,7 @@ class TestTheConfirmation:
 
 
 class TestTheSafetyCopy:
-    async def test_a_copy_is_kept_before_the_restore(
-        self, api_client, db_session, snapshot_store
-    ):
+    async def test_a_copy_is_kept_before_the_restore(self, api_client, db_session, snapshot_store):
         full = await build_full_budget(db_session, api_client.test_user)
         body = await _export(api_client, full.id)
         assert budget_snapshot.list_snapshots(full.id) == []
@@ -386,10 +380,14 @@ class TestAForeignSnapshot:
         await _restore(api_client, target.id, body, confirm=target.budget.name)
 
         links = (
-            await db_session.execute(
-                select(accounts.c.simplefin_account_id).where(accounts.c.budget_id == target.id)
+            (
+                await db_session.execute(
+                    select(accounts.c.simplefin_account_id).where(accounts.c.budget_id == target.id)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert all(link is None for link in links)
 
 

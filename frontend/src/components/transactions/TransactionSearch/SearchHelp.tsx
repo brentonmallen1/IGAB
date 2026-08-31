@@ -21,21 +21,19 @@ export function SearchHelp() {
   return (
     <InfoPopover title="Searching transactions" label="How to search transactions" width={420}>
       <p>
-        Type words to search <strong>payees and memos</strong>. A number on its
-        own also matches that <strong>amount</strong> — <code>12.34</code> finds
-        anything for $12.34, in or out.
+        Type words to search <strong>payees and memos</strong>. A number on its own also matches
+        that <strong>amount</strong> — <code>12.34</code> finds anything for $12.34, in or out.
       </p>
 
       <InfoSection title="Filters">
         <p>
-          A keyword and a colon. Every filter you add <strong>narrows</strong>{' '}
-          the results.
+          A keyword and a colon. Every filter you add <strong>narrows</strong> the results.
         </p>
         <dl className="info-pop__terms">
           <dt>is:</dt>
           <dd>
-            a state — <code>uncategorized</code>, <code>unapproved</code>,{' '}
-            <code>cleared</code>, <code>transfer</code>
+            a state — <code>uncategorized</code>, <code>unapproved</code>, <code>cleared</code>,{' '}
+            <code>transfer</code>
           </dd>
 
           <dt>has:</dt>
@@ -45,8 +43,7 @@ export function SearchHelp() {
 
           <dt>category:</dt>
           <dd>
-            a category name — quote names with spaces:{' '}
-            <code>category:"Dining Out"</code>
+            a category name — quote names with spaces: <code>category:"Dining Out"</code>
           </dd>
 
           <dt>payee:</dt>
@@ -57,8 +54,7 @@ export function SearchHelp() {
 
           <dt>amount:</dt>
           <dd>
-            one value or a range — <code>12.34</code>, <code>&gt;100</code>,{' '}
-            <code>10-50</code>
+            one value or a range — <code>12.34</code>, <code>&gt;100</code>, <code>10-50</code>
           </dd>
 
           <dt>date:</dt>
@@ -68,28 +64,24 @@ export function SearchHelp() {
 
       <InfoSection title="Dates">
         <p>
-          Dates take whichever span you mean: <code>date: 2025</code>,{' '}
-          <code>date: 2025-03</code>, <code>date: march 2025</code>,{' '}
-          <code>date: 3/15</code>. Ranges and bounds use the same words —{' '}
-          <code>date: march..june</code>, <code>date:&gt;2025-03</code>. Words
-          like <code>today</code>, <code>last month</code> and{' '}
-          <code>jan-mar</code> work on their own.
+          Dates take whichever span you mean: <code>date: 2025</code>, <code>date: 2025-03</code>,{' '}
+          <code>date: march 2025</code>, <code>date: 3/15</code>. Ranges and bounds use the same
+          words — <code>date: march..june</code>, <code>date:&gt;2025-03</code>. Words like{' '}
+          <code>today</code>, <code>last month</code> and <code>jan-mar</code> work on their own.
         </p>
       </InfoSection>
 
       <InfoSection title="Combining">
         <p>
-          Use <code>OR</code> to widen instead of narrow, and <code>NOT</code>{' '}
-          to exclude: <code>is: uncategorized OR is: unapproved</code>,{' '}
-          <code>NOT is: transfer</code>.
+          Use <code>OR</code> to widen instead of narrow, and <code>NOT</code> to exclude:{' '}
+          <code>is: uncategorized OR is: unapproved</code>, <code>NOT is: transfer</code>.
         </p>
       </InfoSection>
 
       <p className="info-pop__note">
-        Each filter becomes a chip above the list — remove one to drop just
-        that part. A chip outlined in <strong>warning colour</strong> is a part
-        we could not read: it was ignored, so those results are wider than they
-        look.
+        Each filter becomes a chip above the list — remove one to drop just that part. A chip
+        outlined in <strong>warning colour</strong> is a part we could not read: it was ignored, so
+        those results are wider than they look.
       </p>
     </InfoPopover>
   )

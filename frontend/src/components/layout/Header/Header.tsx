@@ -1,7 +1,23 @@
 import { useState, useRef, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
-import { CalendarDays, ChevronLeft, ChevronRight, Eye, EyeOff, Moon, Palette, Search, Sun } from 'lucide-react'
-import { useAppStore, PALETTES, getPaletteForTheme, hasBothModes, isLightTheme } from '../../../stores/appStore'
+import {
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  EyeOff,
+  Moon,
+  Palette,
+  Search,
+  Sun,
+} from 'lucide-react'
+import {
+  useAppStore,
+  PALETTES,
+  getPaletteForTheme,
+  hasBothModes,
+  isLightTheme,
+} from '../../../stores/appStore'
 import { useUIStore } from '../../../stores/uiStore'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { AIActivityBadge } from '../../ai/AIActivityBadge'

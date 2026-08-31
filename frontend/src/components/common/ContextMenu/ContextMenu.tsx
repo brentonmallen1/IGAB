@@ -42,9 +42,7 @@ export function ContextMenu({ items, onSelect, onClose, position, className = ''
   }, [onClose])
 
   const menuHeight = 280 // conservative estimate; real height not known until paint
-  const clampedY = position
-    ? Math.min(position.y, window.innerHeight - menuHeight)
-    : 0
+  const clampedY = position ? Math.min(position.y, window.innerHeight - menuHeight) : 0
   const style = position
     ? position.alignRight
       ? { position: 'fixed' as const, top: clampedY, right: window.innerWidth - position.x }
@@ -62,7 +60,12 @@ export function ContextMenu({ items, onSelect, onClose, position, className = ''
           <button
             key={item.id}
             className={`context-menu__item ${item.danger ? 'context-menu__item--danger' : ''} ${item.disabled ? 'context-menu__item--disabled' : ''}`}
-            onClick={() => { if (!item.disabled) { onSelect(item.id); onClose() } }}
+            onClick={() => {
+              if (!item.disabled) {
+                onSelect(item.id)
+                onClose()
+              }
+            }}
             disabled={item.disabled}
             role="menuitem"
           >
@@ -72,9 +75,7 @@ export function ContextMenu({ items, onSelect, onClose, position, className = ''
               </span>
             )}
             <span className="context-menu__label">{item.label}</span>
-            {item.shortcut && (
-              <span className="context-menu__shortcut">{item.shortcut}</span>
-            )}
+            {item.shortcut && <span className="context-menu__shortcut">{item.shortcut}</span>}
           </button>
         )
       })}

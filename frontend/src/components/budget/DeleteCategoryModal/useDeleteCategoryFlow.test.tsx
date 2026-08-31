@@ -19,9 +19,8 @@ const showUndo = vi.hoisted(() => vi.fn())
 let previewResult: () => Promise<CategoryDeletePreview>
 
 vi.mock('../../../api/categories', async () => {
-  const actual = await vi.importActual<typeof import('../../../api/categories')>(
-    '../../../api/categories'
-  )
+  const actual =
+    await vi.importActual<typeof import('../../../api/categories')>('../../../api/categories')
   return {
     ...actual,
     deletePreviewOptions: () => ({
@@ -63,9 +62,7 @@ function Harness() {
   const { requestDelete, modal } = useDeleteCategoryFlow('b1')
   return (
     <>
-      <button
-        onClick={() => requestDelete({ kind: 'categories', ids: ['c1'], name: 'Empty' })}
-      >
+      <button onClick={() => requestDelete({ kind: 'categories', ids: ['c1'], name: 'Empty' })}>
         go
       </button>
       {modal}
@@ -111,9 +108,7 @@ describe('useDeleteCategoryFlow', () => {
     // The dialog is where the blocking reason is explained; a one-click 400
     // toast is not an explanation.
     previewResult = () =>
-      Promise.resolve(
-        preview({ blocked_by: ["'Visa Payment' is the payment category for Visa."] })
-      )
+      Promise.resolve(preview({ blocked_by: ["'Visa Payment' is the payment category for Visa."] }))
     renderFlow()
     await userEvent.click(screen.getByText('go'))
 

@@ -6,7 +6,12 @@ import { useAIStatus, useSuggestRegex } from '../../../api/ai'
 import { useAppStore } from '../../../stores/appStore'
 import { useFocusTrap } from '../../../hooks/useFocusTrap'
 import { Combobox } from '../../common/Combobox/Combobox'
-import { claimedNames, suggestPayeeRegex, testPattern, unionPatterns } from '../../../utils/payeeRegex'
+import {
+  claimedNames,
+  suggestPayeeRegex,
+  testPattern,
+  unionPatterns,
+} from '../../../utils/payeeRegex'
 import { dedupeSamples } from '../../../utils/payeeSamples'
 import { PatternCandidates, PatternMatchPreview } from '../PatternSuggest/PatternSuggest'
 import { NO_PATTERN_MESSAGE, patternCandidates } from '../PatternSuggest/patternCandidates'
@@ -79,8 +84,7 @@ export function PayeeMergeModal({ payees, allPayees, onConfirm, onCancel, isPend
   // bank-name samples (including the external target's, when one is chosen).
   // Feeds the suggestion, the live match preview, and conflict checks.
   const rawNames = useMemo(() => {
-    const pool =
-      mode === 'external' && effectiveTarget ? [...payees, effectiveTarget] : payees
+    const pool = mode === 'external' && effectiveTarget ? [...payees, effectiveTarget] : payees
     const names = pool.flatMap((p) => [p.name, ...p.mapping_samples])
     return [...new Set(names.filter(Boolean))]
   }, [payees, mode, effectiveTarget])
@@ -145,7 +149,7 @@ export function PayeeMergeModal({ payees, allPayees, onConfirm, onCancel, isPend
   const sources = mode === 'external' ? payees : payees.filter((p) => p.id !== targetId)
   const reassignedCount = sources.reduce((sum, p) => sum + p.transaction_count, 0)
   const survivingName =
-    mode === 'custom' ? (customName.trim() || '…') : (effectiveTarget?.name ?? '…')
+    mode === 'custom' ? customName.trim() || '…' : (effectiveTarget?.name ?? '…')
 
   // Names the surviving payee absorbs into its fuzzy match list — in custom
   // mode the renamed payee's old name becomes a sample too.
@@ -217,7 +221,14 @@ export function PayeeMergeModal({ payees, allPayees, onConfirm, onCancel, isPend
 
   return (
     <div className="pmerge-overlay" onClick={(e) => e.target === e.currentTarget && onCancel()}>
-      <div ref={trapRef} tabIndex={-1} className="pmerge-modal" role="dialog" aria-modal aria-labelledby="pmerge-title">
+      <div
+        ref={trapRef}
+        tabIndex={-1}
+        className="pmerge-modal"
+        role="dialog"
+        aria-modal
+        aria-labelledby="pmerge-title"
+      >
         <div className="pmerge-modal__header">
           <span id="pmerge-title" className="pmerge-modal__title">
             <GitMerge size={14} />
@@ -234,21 +245,29 @@ export function PayeeMergeModal({ payees, allPayees, onConfirm, onCancel, isPend
             {/* Only the candidate names scroll; the "existing payee" and
                 "custom name" choices stay in reach however many were selected. */}
             <div className="pmerge-options__names scroll-list">
-            {sorted.map((p) => (
-              <label key={p.id} className={`pmerge-option ${mode === 'member' && targetId === p.id ? 'pmerge-option--selected' : ''}`}>
-                <input
-                  type="radio"
-                  name="target"
-                  value={p.id}
-                  checked={mode === 'member' && targetId === p.id}
-                  onChange={() => { setTargetId(p.id); setMode('member') }}
-                />
-                <span className="pmerge-option__name">{p.name}</span>
-                <span className="pmerge-option__count">{p.transaction_count} txn</span>
-              </label>
-            ))}
+              {sorted.map((p) => (
+                <label
+                  key={p.id}
+                  className={`pmerge-option ${mode === 'member' && targetId === p.id ? 'pmerge-option--selected' : ''}`}
+                >
+                  <input
+                    type="radio"
+                    name="target"
+                    value={p.id}
+                    checked={mode === 'member' && targetId === p.id}
+                    onChange={() => {
+                      setTargetId(p.id)
+                      setMode('member')
+                    }}
+                  />
+                  <span className="pmerge-option__name">{p.name}</span>
+                  <span className="pmerge-option__count">{p.transaction_count} txn</span>
+                </label>
+              ))}
             </div>
-            <label className={`pmerge-option pmerge-option--custom ${mode === 'external' ? 'pmerge-option--selected' : ''}`}>
+            <label
+              className={`pmerge-option pmerge-option--custom ${mode === 'external' ? 'pmerge-option--selected' : ''}`}
+            >
               <input
                 type="radio"
                 name="target"
@@ -267,10 +286,14 @@ export function PayeeMergeModal({ payees, allPayees, onConfirm, onCancel, isPend
                   aria-label="Merge into an existing payee"
                 />
               ) : (
-                <span className="pmerge-option__name pmerge-option__name--placeholder">Merge into an existing payee…</span>
+                <span className="pmerge-option__name pmerge-option__name--placeholder">
+                  Merge into an existing payee…
+                </span>
               )}
             </label>
-            <label className={`pmerge-option pmerge-option--custom ${mode === 'custom' ? 'pmerge-option--selected' : ''}`}>
+            <label
+              className={`pmerge-option pmerge-option--custom ${mode === 'custom' ? 'pmerge-option--selected' : ''}`}
+            >
               <input
                 type="radio"
                 name="target"
@@ -289,7 +312,9 @@ export function PayeeMergeModal({ payees, allPayees, onConfirm, onCancel, isPend
                   onClick={(e) => e.stopPropagation()}
                 />
               ) : (
-                <span className="pmerge-option__name pmerge-option__name--placeholder">Enter a custom name…</span>
+                <span className="pmerge-option__name pmerge-option__name--placeholder">
+                  Enter a custom name…
+                </span>
               )}
             </label>
           </div>
@@ -329,7 +354,11 @@ export function PayeeMergeModal({ payees, allPayees, onConfirm, onCancel, isPend
                 <strong>{effectiveTarget?.name}</strong> already has a pattern:{' '}
                 <code className="pmerge-existing-pattern">{existingPattern}</code>
               </p>
-              <div className="pmerge-pattern-actions" role="radiogroup" aria-label="Pattern reconciliation">
+              <div
+                className="pmerge-pattern-actions"
+                role="radiogroup"
+                aria-label="Pattern reconciliation"
+              >
                 <label className="pmerge-pattern-action">
                   <input
                     type="radio"
@@ -339,7 +368,9 @@ export function PayeeMergeModal({ payees, allPayees, onConfirm, onCancel, isPend
                   />
                   <span>Keep</span>
                 </label>
-                <label className={`pmerge-pattern-action ${!existingPatternValid ? 'pmerge-pattern-action--disabled' : ''}`}>
+                <label
+                  className={`pmerge-pattern-action ${!existingPatternValid ? 'pmerge-pattern-action--disabled' : ''}`}
+                >
                   <input
                     type="radio"
                     name="pattern-action"
@@ -367,8 +398,8 @@ export function PayeeMergeModal({ payees, allPayees, onConfirm, onCancel, isPend
               )}
               {patternAction === 'extend' && (
                 <p className="pmerge-hint">
-                  The new pattern is combined with the existing one — names matching either
-                  will map to the surviving payee.
+                  The new pattern is combined with the existing one — names matching either will map
+                  to the surviving payee.
                 </p>
               )}
             </>
@@ -399,7 +430,11 @@ export function PayeeMergeModal({ payees, allPayees, onConfirm, onCancel, isPend
                     onChange={(e) => setPattern(e.target.value)}
                     placeholder={'e.g. ^ACH DEPOSIT PAYROLL'}
                     spellCheck={false}
-                    aria-label={patternAction === 'extend' && hasExistingPattern ? 'Pattern to add' : 'Match pattern'}
+                    aria-label={
+                      patternAction === 'extend' && hasExistingPattern
+                        ? 'Pattern to add'
+                        : 'Match pattern'
+                    }
                     aria-invalid={patternInvalid}
                   />
                   {aiAvailable && (
@@ -475,7 +510,8 @@ export function PayeeMergeModal({ payees, allPayees, onConfirm, onCancel, isPend
               </span>
             )}
             <span className="pmerge-summary__detail">
-              {sources.length} payee{sources.length !== 1 ? 's' : ''} absorbed · {reassignedCount} transaction{reassignedCount !== 1 ? 's' : ''} reassigned
+              {sources.length} payee{sources.length !== 1 ? 's' : ''} absorbed · {reassignedCount}{' '}
+              transaction{reassignedCount !== 1 ? 's' : ''} reassigned
             </span>
           </div>
         </div>

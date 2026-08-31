@@ -12,7 +12,6 @@ cries wolf gets dismissed once and never read again.
 
 from datetime import date, timedelta
 from decimal import Decimal
-from decimal import Decimal
 
 from igab.db.models import Liability
 from igab.services.account_hygiene import AccountHygieneService
@@ -343,9 +342,7 @@ class TestMoneyInAnArchivedEnvelope:
         checking = await create_account(db_session, budget, "Redwood Checking")
         income_group = await create_category_group(db_session, budget, "Income", is_system=True)
         inflow = await create_category(db_session, budget, income_group, "Inflow")
-        await create_transaction(
-            db_session, budget, checking, "500.00", RECENT, category=inflow
-        )
+        await create_transaction(db_session, budget, checking, "500.00", RECENT, category=inflow)
         group = await create_category_group(db_session, budget, "Everyday")
         cat = await create_category(db_session, budget, group, "Gym")
         await db_session.flush()
@@ -376,9 +373,7 @@ class TestMoneyInAnArchivedEnvelope:
         checking = await create_account(db_session, budget, "Redwood Checking")
         income_group = await create_category_group(db_session, budget, "Income", is_system=True)
         inflow = await create_category(db_session, budget, income_group, "Inflow")
-        await create_transaction(
-            db_session, budget, checking, "500.00", RECENT, category=inflow
-        )
+        await create_transaction(db_session, budget, checking, "500.00", RECENT, category=inflow)
         group = await create_category_group(db_session, budget, "Everyday")
         cat = await create_category(db_session, budget, group, "Gym")
         await db_session.flush()

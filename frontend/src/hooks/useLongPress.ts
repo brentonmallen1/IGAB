@@ -9,11 +9,7 @@ const MOVE_CANCEL_PX = 10
  * click that follows); a normal tap falls through to onClick. Movement beyond
  * a small threshold cancels the press so scrolling never triggers it.
  */
-export function useLongPress(
-  onLongPress: () => void,
-  onClick?: (e: MouseEvent) => void,
-  ms = 500
-) {
+export function useLongPress(onLongPress: () => void, onClick?: (e: MouseEvent) => void, ms = 500) {
   const timerRef = useRef<number | null>(null)
   const triggeredRef = useRef(false)
   const startPosRef = useRef<{ x: number; y: number } | null>(null)

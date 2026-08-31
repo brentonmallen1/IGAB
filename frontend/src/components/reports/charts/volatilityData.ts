@@ -29,11 +29,10 @@ export function filterVolatile<T extends VolatilityCategoryLike>(categories: T[]
 
 export function buildVolatilityChartRows(
   categories: VolatilityCategoryLike[],
-  topN = 20,
+  topN = 20
 ): VolatilityChartRow[] {
   return categories.slice(0, topN).map((c) => ({
-    name:
-      c.category_name.length > 16 ? c.category_name.slice(0, 14) + '…' : c.category_name,
+    name: c.category_name.length > 16 ? c.category_name.slice(0, 14) + '…' : c.category_name,
     Mean: Number(c.mean),
     errorY: [Number(c.mean) - Number(c.min_val), Number(c.max_val) - Number(c.mean)],
     StdDev: Number(c.std_dev),

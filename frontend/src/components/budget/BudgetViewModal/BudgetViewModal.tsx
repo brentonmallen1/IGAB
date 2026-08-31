@@ -95,12 +95,11 @@ function ViewEditor({
 
   const nameRef = useRef<HTMLInputElement>(null)
   const trapRef = useFocusTrap<HTMLFormElement>(onClose)
-  useEffect(() => { nameRef.current?.focus() }, [])
+  useEffect(() => {
+    nameRef.current?.focus()
+  }, [])
 
-  const groupNameById = useMemo(
-    () => new Map(groups.map((g) => [g.id, g.name])),
-    [groups]
-  )
+  const groupNameById = useMemo(() => new Map(groups.map((g) => [g.id, g.name])), [groups])
 
   // With no groups every category is unassigned; hiding them all would save a
   // view that renders an empty budget page. The toggle is disabled then, and
@@ -233,7 +232,10 @@ function ViewEditor({
   const isPending = createView.isPending || updateView.isPending
 
   return (
-    <div className="view-editor-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div
+      className="view-editor-overlay"
+      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    >
       <form
         ref={trapRef}
         tabIndex={-1}
@@ -253,10 +255,9 @@ function ViewEditor({
         </div>
 
         <p className="view-editor__hint">
-          A view is a different way to arrange the same categories — group them by
-          need and want, or however you think. It doesn’t change your budget’s own
-          groups, so you can switch back any time. Anything you don’t place shows
-          under <strong>Unassigned</strong>.
+          A view is a different way to arrange the same categories — group them by need and want, or
+          however you think. It doesn’t change your budget’s own groups, so you can switch back any
+          time. Anything you don’t place shows under <strong>Unassigned</strong>.
         </p>
 
         <input
@@ -335,8 +336,14 @@ function ViewEditor({
                   if (!renameGroup(g, e.target.value)) e.target.value = g
                 }}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur() }
-                  if (e.key === 'Escape') { e.currentTarget.value = g; e.currentTarget.blur() }
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    e.currentTarget.blur()
+                  }
+                  if (e.key === 'Escape') {
+                    e.currentTarget.value = g
+                    e.currentTarget.blur()
+                  }
                 }}
                 aria-label={`Rename group ${g}`}
                 maxLength={100}
@@ -357,7 +364,10 @@ function ViewEditor({
               value={newGroup}
               onChange={(e) => setNewGroup(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') { e.preventDefault(); addGroup() }
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  addGroup()
+                }
               }}
               placeholder="Add a group…"
               maxLength={100}
@@ -399,7 +409,9 @@ function ViewEditor({
                 >
                   <option value="">Unassigned</option>
                   {groupNames.map((g) => (
-                    <option key={g} value={g}>{g}</option>
+                    <option key={g} value={g}>
+                      {g}
+                    </option>
                   ))}
                 </select>
                 <label
@@ -427,7 +439,11 @@ function ViewEditor({
 
         <div className="view-editor__footer">
           {isEdit ? (
-            <button type="button" className="view-editor__btn view-editor__btn--danger" onClick={handleDelete}>
+            <button
+              type="button"
+              className="view-editor__btn view-editor__btn--danger"
+              onClick={handleDelete}
+            >
               Delete
             </button>
           ) : (
@@ -437,7 +453,11 @@ function ViewEditor({
             <button type="button" className="view-editor__btn" onClick={onClose}>
               Cancel
             </button>
-            <button type="submit" className="view-editor__btn view-editor__btn--primary" disabled={isPending}>
+            <button
+              type="submit"
+              className="view-editor__btn view-editor__btn--primary"
+              disabled={isPending}
+            >
               {isEdit ? 'Save' : 'Create'}
             </button>
           </div>

@@ -3,13 +3,7 @@ import { apiClient } from './client'
 import { ROOT } from './queryKeys'
 
 export type LiabilityType =
-  | 'mortgage'
-  | 'auto'
-  | 'student'
-  | 'personal'
-  | 'credit_card'
-  | 'medical'
-  | 'other'
+  'mortgage' | 'auto' | 'student' | 'personal' | 'credit_card' | 'medical' | 'other'
 
 export type MinimumPaymentKind = 'fixed' | 'percent_of_balance'
 
@@ -238,13 +232,7 @@ export function useLiabilityAmortization(
 export function useLinkCategoryLiability(budgetId: string | null) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({
-      categoryId,
-      liabilityId,
-    }: {
-      categoryId: string
-      liabilityId: string | null
-    }) =>
+    mutationFn: ({ categoryId, liabilityId }: { categoryId: string; liabilityId: string | null }) =>
       apiClient.put(`/${budgetId}/categories/${categoryId}/link-liability`, {
         liability_id: liabilityId,
       }),

@@ -68,9 +68,7 @@ async def test_split_children_count_in_category_activity(db_session):
     await services.budgets.set_assignment(budget.id, groceries.id, MONTH, Decimal("600.00"))
     await services.budgets.set_assignment(budget.id, gas.id, MONTH, Decimal("100.00"))
 
-    header, splits = _split(
-        checking.id, "-100.00", [("-60.00", groceries.id), ("-40.00", gas.id)]
-    )
+    header, splits = _split(checking.id, "-100.00", [("-60.00", groceries.id), ("-40.00", gas.id)])
     await services.transactions.create_split(budget.id, header, splits)
 
     summary = await services.budgets.get_budget_summary(budget.id, MONTH)
@@ -118,9 +116,7 @@ async def test_mixed_sign_split(db_session):
     services, budget, checking, income_cat, groceries, gas = await _budget_with_categories(
         db_session
     )
-    header, splits = _split(
-        checking.id, "-50.00", [("-60.00", groceries.id), ("10.00", gas.id)]
-    )
+    header, splits = _split(checking.id, "-50.00", [("-60.00", groceries.id), ("10.00", gas.id)])
     await services.transactions.create_split(budget.id, header, splits)
 
     summary = await services.budgets.get_budget_summary(budget.id, MONTH)
@@ -146,9 +142,7 @@ async def test_zero_amount_transaction_and_split_child(db_session):
             cleared="cleared",
         ),
     )
-    header, splits = _split(
-        checking.id, "-70.00", [("-70.00", groceries.id), ("0.00", gas.id)]
-    )
+    header, splits = _split(checking.id, "-70.00", [("-70.00", groceries.id), ("0.00", gas.id)])
     await services.transactions.create_split(budget.id, header, splits)
 
     summary = await services.budgets.get_budget_summary(budget.id, MONTH)
@@ -174,9 +168,7 @@ async def test_overspending_via_split_rolls_over_floored(db_session):
     )
     await services.budgets.set_assignment(budget.id, groceries.id, MONTH, Decimal("600.00"))
 
-    header, splits = _split(
-        checking.id, "-700.00", [("-700.00", groceries.id), ("0.00", gas.id)]
-    )
+    header, splits = _split(checking.id, "-700.00", [("-700.00", groceries.id), ("0.00", gas.id)])
     await services.transactions.create_split(budget.id, header, splits)
 
     july = await services.budgets.get_budget_summary(budget.id, MONTH)

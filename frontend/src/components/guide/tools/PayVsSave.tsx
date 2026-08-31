@@ -56,8 +56,15 @@ export function PayVsSave() {
     [settledKey]
   )
   const { data } = usePayVsSave(budgetId, settledBody)
-  const invalid = (k: string) => (parsed.bad.includes(k) && (fields[k] ?? '').trim() ? 'is-invalid' : '')
-  const fields: Record<string, string> = { balance, annual_rate: rate, minimum_payment: minimum, extra, savings_apy: apy }
+  const invalid = (k: string) =>
+    parsed.bad.includes(k) && (fields[k] ?? '').trim() ? 'is-invalid' : ''
+  const fields: Record<string, string> = {
+    balance,
+    annual_rate: rate,
+    minimum_payment: minimum,
+    extra,
+    savings_apy: apy,
+  }
 
   return (
     <div className="tool">
@@ -77,23 +84,48 @@ export function PayVsSave() {
         )}
         <label className="tool__field">
           <span>Balance</span>
-          <input inputMode="decimal" value={balance} onChange={(e) => setBalance(e.target.value)} className={invalid('balance')} />
+          <input
+            inputMode="decimal"
+            value={balance}
+            onChange={(e) => setBalance(e.target.value)}
+            className={invalid('balance')}
+          />
         </label>
         <label className="tool__field">
           <span>APR %</span>
-          <input inputMode="decimal" value={rate} onChange={(e) => setRate(e.target.value)} className={invalid('annual_rate')} />
+          <input
+            inputMode="decimal"
+            value={rate}
+            onChange={(e) => setRate(e.target.value)}
+            className={invalid('annual_rate')}
+          />
         </label>
         <label className="tool__field">
           <span>Minimum / mo</span>
-          <input inputMode="decimal" value={minimum} onChange={(e) => setMinimum(e.target.value)} className={invalid('minimum_payment')} />
+          <input
+            inputMode="decimal"
+            value={minimum}
+            onChange={(e) => setMinimum(e.target.value)}
+            className={invalid('minimum_payment')}
+          />
         </label>
         <label className="tool__field">
           <span>Extra / mo</span>
-          <input inputMode="decimal" value={extra} onChange={(e) => setExtra(e.target.value)} className={invalid('extra')} />
+          <input
+            inputMode="decimal"
+            value={extra}
+            onChange={(e) => setExtra(e.target.value)}
+            className={invalid('extra')}
+          />
         </label>
         <label className="tool__field">
           <span>Savings rate you can get today, %</span>
-          <input inputMode="decimal" value={apy} onChange={(e) => setApy(e.target.value)} className={invalid('savings_apy')} />
+          <input
+            inputMode="decimal"
+            value={apy}
+            onChange={(e) => setApy(e.target.value)}
+            className={invalid('savings_apy')}
+          />
         </label>
       </div>
 
@@ -102,26 +134,32 @@ export function PayVsSave() {
           <p className="tool__summary">
             {data.favours === 'pay' && (
               <>
-                Over the {data.horizon_months} months the minimum alone takes, paying the extra avoids{' '}
-                <strong>{formatMoney(Number(data.debt_interest_saved))}</strong> in interest; saving it
-                would earn {formatMoney(Number(data.savings_interest_earned))}. <strong>Paying down wins.</strong>
+                Over the {data.horizon_months} months the minimum alone takes, paying the extra
+                avoids <strong>{formatMoney(Number(data.debt_interest_saved))}</strong> in interest;
+                saving it would earn {formatMoney(Number(data.savings_interest_earned))}.{' '}
+                <strong>Paying down wins.</strong>
               </>
             )}
             {data.favours === 'save' && (
               <>
                 Over {data.horizon_months} months, saving the extra earns{' '}
-                <strong>{formatMoney(Number(data.savings_interest_earned))}</strong>; paying it down avoids{' '}
-                {formatMoney(Number(data.debt_interest_saved))}. <strong>Saving comes out ahead.</strong>
+                <strong>{formatMoney(Number(data.savings_interest_earned))}</strong>; paying it down
+                avoids {formatMoney(Number(data.debt_interest_saved))}.{' '}
+                <strong>Saving comes out ahead.</strong>
               </>
             )}
-            {data.favours === 'even' && <>The two come out even over {data.horizon_months} months.</>}
+            {data.favours === 'even' && (
+              <>The two come out even over {data.horizon_months} months.</>
+            )}
           </p>
           <div className="tool__cards">
             <div className="tool__card">
               <h3 className="tool__card-title">Pay it down</h3>
               <dl className="tool__facts">
                 <dt>Paid off</dt>
-                <dd>{data.pay_payoff_date ? formatDate(data.pay_payoff_date) : 'never at this pace'}</dd>
+                <dd>
+                  {data.pay_payoff_date ? formatDate(data.pay_payoff_date) : 'never at this pace'}
+                </dd>
                 <dt>Sooner by</dt>
                 <dd>
                   {data.baseline_never_pays_off
@@ -146,8 +184,9 @@ export function PayVsSave() {
           </div>
           {data.breakeven_apy !== null && (
             <p className="tool__aside">
-              Break-even: a savings rate of about <strong>{Number(data.breakeven_apy).toFixed(2)}%</strong>{' '}
-              would earn what paying down avoids. Below that, pay the debt.
+              Break-even: a savings rate of about{' '}
+              <strong>{Number(data.breakeven_apy).toFixed(2)}%</strong> would earn what paying down
+              avoids. Below that, pay the debt.
             </p>
           )}
         </div>

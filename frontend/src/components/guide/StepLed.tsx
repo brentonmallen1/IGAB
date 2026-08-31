@@ -11,11 +11,6 @@
  */
 export function StepLed({ reason }: { reason: string }) {
   return (
-    <span
-      className="guide-led"
-      role="img"
-      aria-label={`Worth a look: ${reason}`}
-      title={reason}
-    />
+    <span className="guide-led" role="img" aria-label={`Worth a look: ${reason}`} title={reason} />
   )
 }

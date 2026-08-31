@@ -13,7 +13,10 @@
   padding: 4px 10px;
   border-radius: var(--border-radius-md);
   border: 1px solid transparent;
-  transition: color var(--transition-fast), background-color var(--transition-fast), border-color var(--transition-fast);
+  transition:
+    color var(--transition-fast),
+    background-color var(--transition-fast),
+    border-color var(--transition-fast);
   white-space: nowrap;
 }
 
@@ -135,7 +138,9 @@
   height: 26px;
   color: var(--text-muted);
   border-radius: var(--border-radius-sm);
-  transition: color var(--transition-fast), background-color var(--transition-fast);
+  transition:
+    color var(--transition-fast),
+    background-color var(--transition-fast);
 }
 
 .budget-filter-bar__menu-btn:hover {
@@ -250,7 +255,9 @@
   font-weight: 500;
   white-space: nowrap;
   cursor: pointer;
-  transition: color var(--transition-fast), background-color var(--transition-fast),
+  transition:
+    color var(--transition-fast),
+    background-color var(--transition-fast),
     border-color var(--transition-fast);
 }
 

@@ -57,7 +57,9 @@
   cursor: pointer;
   color: var(--text-muted);
   font-size: var(--font-size-sm);
-  transition: border-color 0.15s, background 0.15s;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
 }
 
 .attachment-panel__drop-zone:hover {
@@ -118,8 +120,13 @@
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 0.5; }
-  50% { opacity: 0.8; }
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 0.8;
+  }
 }
 
 .attachment-thumb:hover img {

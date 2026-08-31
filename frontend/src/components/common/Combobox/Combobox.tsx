@@ -67,9 +67,7 @@ export function Combobox({
 
   const dropdownPos = useAnchoredPosition(triggerRef, open, { width: 'trigger' })
 
-  const filtered = options.filter((o) =>
-    o.label.toLowerCase().includes(query.toLowerCase())
-  )
+  const filtered = options.filter((o) => o.label.toLowerCase().includes(query.toLowerCase()))
 
   const grouped = filtered.reduce<{ group: string; items: ComboboxOption[] }[]>((acc, opt) => {
     const g = opt.group ?? ''
@@ -235,78 +233,77 @@ export function Combobox({
     if (!v) onChange(null)
   }
 
-  const dropdown = open && dropdownPos ? createPortal(
-    <div
-      ref={dropdownRef}
-      className="combobox__dropdown"
-      style={{
-        position: 'fixed',
-        top: dropdownPos.top,
-        bottom: dropdownPos.bottom,
-        left: dropdownPos.left,
-        width: dropdownPos.width,
-        maxHeight: dropdownPos.maxHeight,
-        zIndex: 'var(--z-dropdown)',
-      }}
-    >
-      {onCreateNew && (
-        <div className="combobox__dropdown-header">
-          <button
-            className="combobox__create-btn"
-            onMouseDown={(e) => { e.preventDefault(); handleCreateNew() }}
-            type="button"
+  const dropdown =
+    open && dropdownPos
+      ? createPortal(
+          <div
+            ref={dropdownRef}
+            className="combobox__dropdown"
+            style={{
+              position: 'fixed',
+              top: dropdownPos.top,
+              bottom: dropdownPos.bottom,
+              left: dropdownPos.left,
+              width: dropdownPos.width,
+              maxHeight: dropdownPos.maxHeight,
+              zIndex: 'var(--z-dropdown)',
+            }}
           >
-            <Plus size={12} />
-            {query.trim() ? `Create "${query}"` : createLabel}
-          </button>
-        </div>
-      )}
+            {onCreateNew && (
+              <div className="combobox__dropdown-header">
+                <button
+                  className="combobox__create-btn"
+                  onMouseDown={(e) => {
+                    e.preventDefault()
+                    handleCreateNew()
+                  }}
+                  type="button"
+                >
+                  <Plus size={12} />
+                  {query.trim() ? `Create "${query}"` : createLabel}
+                </button>
+              </div>
+            )}
 
-      <ul
-        ref={listRef}
-        className="combobox__list"
-        role="listbox"
-      >
-        {grouped.length === 0 && (
-          <li className="combobox__empty">No results</li>
-        )}
+            <ul ref={listRef} className="combobox__list" role="listbox">
+              {grouped.length === 0 && <li className="combobox__empty">No results</li>}
 
-        {grouped.map(({ group, items }) => (
-          <li key={group || '__ungrouped'} className="combobox__group">
-            {group && <div className="combobox__group-header">{group}</div>}
-            <ul>
-              {items.map((opt) => {
-                const idx = filtered.indexOf(opt)
-                return (
-                  <li
-                    key={opt.id}
-                    data-option-index={idx}
-                    className={`combobox__option ${idx === highlightedIndex ? 'combobox__option--highlighted' : ''} ${opt.id === value ? 'combobox__option--selected' : ''}`}
-                    onMouseDown={(e) => { e.preventDefault(); selectOption(opt) }}
-                    onMouseEnter={() => {
-                      highlightSource.current = 'pointer'
-                      setHighlightedIndex(idx)
-                    }}
-                    role="option"
-                    aria-selected={opt.id === value}
-                  >
-                    {opt.label}
-                  </li>
-                )
-              })}
+              {grouped.map(({ group, items }) => (
+                <li key={group || '__ungrouped'} className="combobox__group">
+                  {group && <div className="combobox__group-header">{group}</div>}
+                  <ul>
+                    {items.map((opt) => {
+                      const idx = filtered.indexOf(opt)
+                      return (
+                        <li
+                          key={opt.id}
+                          data-option-index={idx}
+                          className={`combobox__option ${idx === highlightedIndex ? 'combobox__option--highlighted' : ''} ${opt.id === value ? 'combobox__option--selected' : ''}`}
+                          onMouseDown={(e) => {
+                            e.preventDefault()
+                            selectOption(opt)
+                          }}
+                          onMouseEnter={() => {
+                            highlightSource.current = 'pointer'
+                            setHighlightedIndex(idx)
+                          }}
+                          role="option"
+                          aria-selected={opt.id === value}
+                        >
+                          {opt.label}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </li>
+              ))}
             </ul>
-          </li>
-        ))}
-      </ul>
 
-      {footerSlot && (
-        <div className="combobox__dropdown-footer">
-          {footerSlot}
-        </div>
-      )}
-    </div>,
-    document.body
-  ) : null
+            {footerSlot && <div className="combobox__dropdown-footer">{footerSlot}</div>}
+          </div>,
+          document.body
+        )
+      : null
 
   return (
     <div ref={triggerRef} className={`combobox ${className} ${open ? 'combobox--open' : ''}`}>

@@ -30,7 +30,12 @@ interface Props {
 export function FloatingSelectionBar({ label, sublabel, onClose, children }: Props) {
   return (
     <div className="fsb">
-      <button className="fsb__close" onClick={onClose} title="Clear selection" aria-label="Clear selection">
+      <button
+        className="fsb__close"
+        onClick={onClose}
+        title="Clear selection"
+        aria-label="Clear selection"
+      >
         <X size={14} />
       </button>
       <span className="fsb__label">{label}</span>

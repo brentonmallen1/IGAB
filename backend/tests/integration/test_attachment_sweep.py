@@ -40,10 +40,7 @@ async def _add_attachment(
     the layout AttachmentService.upload produces."""
     filename = f"{uuid.uuid4()}.webp"
     rel_dir = (
-        Path(str(txn.date.year))
-        / f"{txn.date.month:02d}"
-        / f"{txn.date.day:02d}"
-        / str(txn.id)
+        Path(str(txn.date.year)) / f"{txn.date.month:02d}" / f"{txn.date.day:02d}" / str(txn.id)
     )
     abs_dir = attachments_dir / rel_dir
     abs_dir.mkdir(parents=True, exist_ok=True)
@@ -212,9 +209,7 @@ class TestSweepOrphanedFiles:
         assert staged.parent.exists()
 
     async def test_missing_base_dir_is_noop(self, db_session, attachments_dir, monkeypatch):
-        monkeypatch.setattr(
-            igab.config.settings, "ATTACHMENTS_DIR", str(attachments_dir / "nope")
-        )
+        monkeypatch.setattr(igab.config.settings, "ATTACHMENTS_DIR", str(attachments_dir / "nope"))
         assert await sweep_orphaned_attachment_files(db_session) == 0
 
     async def test_mixed_orphaned_and_referenced(self, db_session, attachments_dir):

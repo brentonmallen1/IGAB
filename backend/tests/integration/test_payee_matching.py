@@ -162,7 +162,14 @@ async def test_patch_normalizes_and_clears_mapping_samples(api_client, db_sessio
     # Trimmed, unique ignoring case, and a comma inside a name stays inside it.
     resp = await api_client.patch(
         f"/api/v1/payees/{payee.id}",
-        json={"mapping_samples": [" NORTHWIND PAYROLL ", "northwind payroll", "", "NORTHWIND … DOE, JANE"]},
+        json={
+            "mapping_samples": [
+                " NORTHWIND PAYROLL ",
+                "northwind payroll",
+                "",
+                "NORTHWIND … DOE, JANE",
+            ]
+        },
     )
     assert resp.status_code == 200
     assert resp.json()["mapping_samples"] == ["NORTHWIND PAYROLL", "NORTHWIND … DOE, JANE"]

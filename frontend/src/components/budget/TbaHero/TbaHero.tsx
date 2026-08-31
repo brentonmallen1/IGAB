@@ -69,7 +69,12 @@ export function TbaHero({ budgetId, month }: Props) {
   }
 
   const history = (
-    <TbaDrawer budgetId={budgetId} month={month} open={drawerOpen} assignedInFuture={assignedInFuture} />
+    <TbaDrawer
+      budgetId={budgetId}
+      month={month}
+      open={drawerOpen}
+      assignedInFuture={assignedInFuture}
+    />
   )
 
   return (
@@ -163,13 +168,22 @@ export function TbaHero({ budgetId, month }: Props) {
 
       {drawerOpen && !isMobile && (
         <Modal onClose={() => setDrawerOpen(false)} historyKey="tba-history">
-          <div className="tba-history-modal" role="dialog" aria-modal aria-labelledby="tba-history-title">
+          <div
+            className="tba-history-modal"
+            role="dialog"
+            aria-modal
+            aria-labelledby="tba-history-title"
+          >
             <div className="tba-history-modal__header">
               <span id="tba-history-title" className="tba-history-modal__title">
                 <History size={14} />
                 Money moved this month
               </span>
-              <button className="tba-history-modal__close" onClick={() => setDrawerOpen(false)} aria-label="Close">
+              <button
+                className="tba-history-modal__close"
+                onClick={() => setDrawerOpen(false)}
+                aria-label="Close"
+              >
                 <X size={16} />
               </button>
             </div>
@@ -230,7 +244,11 @@ export function TbaHero({ budgetId, month }: Props) {
         />
       )}
       {showCover && (
-        <CoverOverspentModal budgetId={budgetId} month={month} onClose={() => setShowCover(false)} />
+        <CoverOverspentModal
+          budgetId={budgetId}
+          month={month}
+          onClose={() => setShowCover(false)}
+        />
       )}
     </div>
   )
