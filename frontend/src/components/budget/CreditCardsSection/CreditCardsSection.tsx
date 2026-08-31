@@ -1,13 +1,24 @@
 import { useState } from 'react'
-import { ChevronDown, ChevronRight, CreditCard, Crosshair, Info } from 'lucide-react'
+import {
+  AlertCircle,
+  ChevronDown,
+  ChevronRight,
+  CreditCard,
+  Crosshair,
+  Info,
+  TrendingDown,
+} from 'lucide-react'
 import { useBudgetMonth, useSetAssignment } from '../../../api/budgets'
+import { useLiabilities } from '../../../api/liabilities'
 import { useTarget } from '../../../api/targets'
 import { TargetEditor } from '../TargetEditor'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { useUIStore } from '../../../stores/uiStore'
 import { parseAssignmentCommit } from '../../../utils/amountExpression'
+import { debtMovement, reserveNote, rideMonths } from './cardRow'
 import { Dialog } from '../../common/Dialog/Dialog'
 import { Surface } from '../../common/Surface'
+import { Link } from 'react-router-dom'
 import { TransactionsPeekModal } from '../TransactionsPeekModal/TransactionsPeekModal'
 import type { CardStatus } from '../../../types'
 import './CreditCardsSection.css'
@@ -44,10 +55,13 @@ import './CreditCardsSection.css'
 function ReserveLegs({
   card,
   formatMoney,
+  formatMonth,
 }: {
   card: CardStatus
   formatMoney: (n: number) => string
+  formatMonth: (m: string) => string
 }) {
+  const rides = rideMonths(card)
   const legs = [
     { label: 'Assigned to this card', value: card.assigned, sign: '+' },
     { label: 'Set aside by funded spending', value: card.reserved, sign: '+' },
@@ -77,11 +91,60 @@ function ReserveLegs({
           <dd className="tabular">{formatMoney(card.set_aside)}</dd>
         </div>
       </dl>
+      {/* This month, from the card's own ledger. The legs above are lifetime
+        totals, so nothing here can be worked out from them — and the debt
+        falling is the one thing a paydown does that the strip never said. */}
+      {(card.charged_this_month !== 0 || card.paid_this_month !== 0) && (
+        <dl className="credit-cards__legs-list credit-cards__legs-month">
+          <div className="credit-cards__leg credit-cards__leg--heading">
+            <dt>This month</dt>
+          </div>
+          <div className="credit-cards__leg">
+            <dt>Charged</dt>
+            <dd className="tabular">{formatMoney(card.charged_this_month)}</dd>
+          </div>
+          <div className="credit-cards__leg">
+            <dt>Paid to the card</dt>
+            <dd className="tabular">{formatMoney(card.paid_this_month)}</dd>
+          </div>
+          <div className="credit-cards__leg credit-cards__leg--total">
+            <dt>{card.debt_change_this_month >= 0 ? 'Debt down' : 'Debt up'}</dt>
+            <dd className="tabular">{formatMoney(Math.abs(card.debt_change_this_month))}</dd>
+          </div>
+        </dl>
+      )}
       {card.riding !== 0 && (
-        <p className="credit-cards__legs-note">
-          {formatMoney(card.riding)} of spending rode onto this card without being funded. It is
-          outside the total above — assigning to the card is what retires it.
-        </p>
+        <div className="credit-cards__legs-note">
+          <p>
+            {formatMoney(card.riding)} of spending rode onto this card when a month ended short. It
+            sits outside the total above.
+          </p>
+          {rides.shown.length > 0 && (
+            <ul className="credit-cards__ride-months">
+              {rides.shown.map((m) => (
+                <li key={m.month}>
+                  <span>{formatMonth(m.month)}</span>
+                  <span className="tabular">{formatMoney(m.amount)}</span>
+                </li>
+              ))}
+              {rides.elided > 0 && (
+                <li className="credit-cards__ride-more">
+                  and {rides.elided} earlier {rides.elided === 1 ? 'month' : 'months'}
+                </li>
+              )}
+            </ul>
+          )}
+          {/* Both ways out, and which is cheaper. The old note named only the
+            assignment — the expensive one — and the free remedy went
+            unmentioned: the walk is recomputed from scratch every request, so
+            raising a past month's assignment retires that month's ride
+            retroactively. Funding the FOLLOWING month does not reach back. */}
+          <p>
+            Fund an envelope in the month it ended short and that ride disappears — a backdated
+            assignment is re-walked and retires it. If that month has no room to spare, assign to
+            the card instead to cover it now.
+          </p>
+        </div>
       )}
     </div>
   )
@@ -90,7 +153,7 @@ function ReserveLegs({
 export function CreditCardsSection({ budgetId, month }: { budgetId: string; month: string }) {
   const { data: budgetMonth } = useBudgetMonth(budgetId, month)
   const setAssignment = useSetAssignment(budgetId)
-  const { formatMoney } = useFormatters()
+  const { formatMoney, formatMonth } = useFormatters()
   const collapsed = useUIStore((s) => s.creditCardsCollapsed)
   const toggleCollapsed = useUIStore((s) => s.toggleCreditCardsCollapsed)
   const [editing, setEditing] = useState<string | null>(null)
@@ -99,6 +162,7 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
   const [peek, setPeek] = useState<{ accountId: string; accountName: string } | null>(null)
   const [targetFor, setTargetFor] = useState<{ categoryId: string; name: string } | null>(null)
   const [legsFor, setLegsFor] = useState<string | null>(null)
+  const { data: liabilities = [] } = useLiabilities(budgetId)
 
   const cards = budgetMonth?.cards ?? []
   if (cards.length === 0) return null
@@ -113,6 +177,13 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
     budgetMonth?.category_balances.map((b) => [b.category_id, b.needed_this_month]) ?? []
   )
   const totalUncovered = cards.reduce((sum, c) => sum + Number(c.uncovered), 0)
+  // The payoff projection already exists on the Liability page — baseline
+  // against the minimum payment versus the pace you are actually paying. The
+  // strip never linked to it, so the one place that says "you are ahead" was
+  // two navigations away from the place that says how much you owe.
+  const liabilityByAccount = new Map(
+    liabilities.filter((l) => l.linked_account_id).map((l) => [l.linked_account_id as string, l.id])
+  )
 
   function commit(categoryId: string, assigned: number) {
     // The same rule the grid's cell uses: empty commits zero, a leading
@@ -191,6 +262,9 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
                 ? (neededByCategory.get(card.category_id) ?? null)
                 : null
               const legsOpen = legsFor === card.account_id
+              const note = reserveNote(card, formatMoney)
+              const movement = debtMovement(card, formatMoney)
+              const liabilityId = liabilityByAccount.get(card.account_id)
               return (
                 <div className="credit-cards__group" key={card.account_id}>
                   <div className="credit-cards__row" role="row">
@@ -198,6 +272,16 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
                       <CreditCard size={13} aria-hidden />
                       {card.name}
                       {card.is_closed && <span className="credit-cards__closed-tag">Closed</span>}
+                      {liabilityId && (
+                        <Link
+                          to={`/liabilities/${liabilityId}`}
+                          className="credit-cards__payoff-btn"
+                          title={`Payoff projection for ${card.name}`}
+                          aria-label={`Payoff projection for ${card.name}`}
+                        >
+                          <TrendingDown size={12} aria-hidden />
+                        </Link>
+                      )}
                       {card.category_id && (
                         <button
                           type="button"
@@ -217,6 +301,11 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
                     </span>
                     <span className="credit-cards__col--num tabular" role="cell">
                       {formatMoney(card.balance)}
+                      {movement && (
+                        <span className="credit-cards__movement" title={movement.title}>
+                          {movement.label}
+                        </span>
+                      )}
                     </span>
                     <span className="credit-cards__col--num" role="cell">
                       {card.category_id && editing === card.account_id ? (
@@ -272,9 +361,6 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
                         }
                       >
                         {formatMoney(card.set_aside)}
-                        {Number(card.set_aside) < 0 && (
-                          <span className="credit-cards__hint"> overpaid</span>
-                        )}
                       </button>
                       {/* Every question this model raised was answered by
                         decomposing this number into the flows behind it, and
@@ -289,6 +375,24 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
                       >
                         {legsOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
                       </button>
+                      {/* Which way this card is unusual, from the served
+                        position — never from the sign of the number above.
+                        A zero `reserve_discrepancy` says the identity's
+                        bounds hold, not that the figure is sensible. */}
+                      {note && (
+                        <span className="credit-cards__note" title={note.title}>
+                          {note.label}
+                        </span>
+                      )}
+                      {card.reserve_discrepancy !== 0 && (
+                        <span
+                          className="credit-cards__drift"
+                          title={`${formatMoney(card.reserve_discrepancy)} of this reserve is not explained by assignments, payments or unclaimed rows. The integrity check has the detail.`}
+                        >
+                          <AlertCircle size={11} aria-hidden />
+                          does not add up
+                        </span>
+                      )}
                     </span>
                     <span
                       className="credit-cards__col--num tabular credit-cards__uncovered"
@@ -297,7 +401,9 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
                       {card.uncovered !== 0 ? formatMoney(card.uncovered) : '—'}
                     </span>
                   </div>
-                  {legsOpen && <ReserveLegs card={card} formatMoney={formatMoney} />}
+                  {legsOpen && (
+                    <ReserveLegs card={card} formatMoney={formatMoney} formatMonth={formatMonth} />
+                  )}
                 </div>
               )
             })}

@@ -188,11 +188,83 @@
   color: var(--text-secondary);
 }
 
-/* "overpaid" beside a negative Ready to pay — the bare minus sign read as
-   "negative money set aside", which parses as nothing. */
+/* One class used to carry two unrelated meanings, and two more were coming.
+   Each note under a number gets its own name instead:
+     __hint      what the paydown target still wants (Assigned)
+     __note      which way the reserve is unusual (Ready to pay)
+     __movement  how far the debt moved this month (Balance)
+     __drift     a reserve that does not add up (Ready to pay)
+   All quiet by design — the numbers carry the meaning, and Uncovered's
+   deliberately un-alarmed treatment sets the register for the whole row. */
 .credit-cards__hint {
   font-size: var(--font-size-xs);
   color: var(--text-muted);
+}
+
+.credit-cards__note,
+.credit-cards__movement {
+  display: block;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The one place colour is earned on this row: a reserve the model itself
+   cannot account for is not a normal state, unlike everything else here. */
+.credit-cards__drift {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+  font-size: var(--font-size-xs);
+  color: var(--color-warning);
+}
+
+/* The month block under the lifetime legs — separated, not merged: one is a
+   running total since the budget began, the other is what just happened. */
+.credit-cards__legs-month {
+  margin-top: var(--spacing-sm);
+  padding-top: var(--spacing-sm);
+  border-top: 1px solid var(--edge);
+}
+
+.credit-cards__leg--heading dt {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.credit-cards__ride-months {
+  margin: var(--spacing-xs) 0;
+  padding: 0;
+  list-style: none;
+}
+
+.credit-cards__ride-months li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  color: var(--text-secondary);
+}
+
+.credit-cards__ride-more {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* The payoff projection lives on the Liability page; this is the door. Quiet
+   until hovered, like the target button beside it. */
+.credit-cards__payoff-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  color: var(--text-muted);
+  opacity: 0;
+  flex-shrink: 0;
+}
+
+.credit-cards__row:hover .credit-cards__payoff-btn,
+.credit-cards__payoff-btn:focus-visible {
+  opacity: 1;
 }
 
 /* The worked example: a sunken well, per the Dialog's own rule that inset

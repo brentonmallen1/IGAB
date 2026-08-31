@@ -22,6 +22,9 @@ vi.mock('../../../api/budgets', () => ({
   useSetAssignment: () => ({ mutate: vi.fn(), isPending: false }),
 }))
 vi.mock('../../../api/targets', () => ({ useTarget: () => ({ data: null }) }))
+// No liability rows: the payoff link stays out, so this file keeps testing the
+// breakdown rather than needing a router around it.
+vi.mock('../../../api/liabilities', () => ({ useLiabilities: () => ({ data: [] }) }))
 vi.mock('../TargetEditor', () => ({ TargetEditor: () => null }))
 vi.mock('../TransactionsPeekModal/TransactionsPeekModal', () => ({
   TransactionsPeekModal: () => null,
@@ -101,8 +104,46 @@ describe('the Ready to pay breakdown', () => {
     } as unknown as BudgetMonth
     render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
     await userEvent.click(screen.getByLabelText('What makes up Ready to pay for Sapphire Visa'))
-    expect(screen.getByText(/rode onto this card without being funded/)).toBeInTheDocument()
-    expect(screen.getByText(/outside the total above/)).toBeInTheDocument()
+    expect(screen.getByText(/rode onto this card when a month ended short/)).toBeInTheDocument()
+    expect(screen.getByText(/sits outside the total above/)).toBeInTheDocument()
+  })
+
+  it('names the months that rode, and back-funding before assigning', async () => {
+    // The old note offered only "assign to the card" — the expensive remedy.
+    // Funding the month that ended short retires the ride outright, because
+    // the walk is recomputed from scratch on every request, and nothing said
+    // so. The month is the actionable half, so the panel has to name it.
+    month.current = {
+      cards: [
+        card({
+          riding: 30,
+          uncovered: 30,
+          rode_by_month: [
+            { month: '2026-07-01', amount: 20 },
+            { month: '2026-06-01', amount: 10 },
+          ],
+        }),
+      ],
+      category_balances: [],
+    } as unknown as BudgetMonth
+    render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
+    await userEvent.click(screen.getByLabelText('What makes up Ready to pay for Sapphire Visa'))
+    expect(screen.getByText(/Fund an envelope in the month it ended short/)).toBeInTheDocument()
+    expect(screen.getByText(/assign to the card instead/)).toBeInTheDocument()
+    // Largest first: that is the month worth back-funding before the others.
+    const listed = document.querySelectorAll('.credit-cards__ride-months li span:first-child')
+    expect([...listed].map((n) => n.textContent)).toEqual(['July 2026', 'June 2026'])
+  })
+
+  it('shows the month the debt moved, separately from the lifetime legs', async () => {
+    month.current = {
+      cards: [card({ charged_this_month: 412, paid_this_month: 640, debt_change_this_month: 228 })],
+      category_balances: [],
+    } as unknown as BudgetMonth
+    render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
+    await userEvent.click(screen.getByLabelText('What makes up Ready to pay for Sapphire Visa'))
+    expect(screen.getByText('This month')).toBeInTheDocument()
+    expect(screen.getByText('Debt down')).toBeInTheDocument()
   })
 
   it('renders the served total rather than a sum of its own', async () => {
