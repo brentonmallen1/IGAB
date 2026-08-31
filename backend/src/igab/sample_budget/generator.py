@@ -24,7 +24,7 @@ from decimal import ROUND_DOWN, Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, BudgetAssignment, Category, CategoryGroup, Payee
-from igab.domain.cards import card_funding, set_aside_through, synthetic_activity
+from igab.domain.cards import card_funding, card_reserve
 from igab.domain.carryover import available_at, available_through
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import (
@@ -611,7 +611,12 @@ class SampleBudgetGenerator:
         assigned_by_cat: dict[uuid.UUID, dict[date, Decimal]] = {}
         activity_by_cat: dict[uuid.UUID, dict[date, Decimal]] = {}
         credit_outflows: dict[uuid.UUID, dict[uuid.UUID, dict[date, Decimal]]] = {}
-        card_assigned: dict[uuid.UUID, dict[date, Decimal]] = {}
+        # card -> its payment category, and that category's assignments. They
+        # go into `card_funding` (which needs them to retire riding debt) but
+        # NOT into `assigned_by_cat`, whose loop below is the envelope term and
+        # would count a card's reserve a second time.
+        card_categories: dict[uuid.UUID, uuid.UUID] = {}
+        card_category_assigned: dict[uuid.UUID, dict[date, Decimal]] = {}
         for group_spec in spec.groups:
             if group_spec.name == spec.income_group:
                 continue
@@ -623,7 +628,8 @@ class SampleBudgetGenerator:
                 if cat_spec.linked_account:
                     # A card's set-aside envelope — simulated below from
                     # funded credit and payments, not from the spec loop.
-                    card_assigned[self._accounts[cat_spec.linked_account].id] = asg
+                    card_categories[self._accounts[cat_spec.linked_account].id] = category.id
+                    card_category_assigned[category.id] = asg
                     continue
                 inserted_activity = activity_by_month(inserted, category.id)
                 assigned_by_cat[category.id] = asg
@@ -643,7 +649,12 @@ class SampleBudgetGenerator:
                     if net:
                         credit_outflows.setdefault(category.id, {})[card_id] = net
 
-        funding = card_funding(assigned_by_cat, activity_by_cat, credit_outflows)
+        funding = card_funding(
+            assigned_by_cat | card_category_assigned,
+            activity_by_cat,
+            credit_outflows,
+            card_categories,
+        )
         # The envelope term of the identity, read the way the budget page reads
         # it: out of `card_funding`'s adjusted series for any category a card
         # inflow corrected, and the ordinary simulation for the rest. Summing
@@ -680,11 +691,8 @@ class SampleBudgetGenerator:
                 per = payments.setdefault(leg["account_id"], {})
                 per[key] = per.get(key, _ZERO) + leg["amount"]
         for card_id in card_ids:
-            synthetic = synthetic_activity(
-                funding.funded_by_card.get(card_id, {}), payments.get(card_id, {})
-            )
-            available_total += set_aside_through(
-                card_assigned.get(card_id, {}), synthetic, current_month
+            available_total += card_reserve(funding, card_id, payments.get(card_id, {})).set_aside(
+                current_month
             )
         uncovered_current = sum(
             (

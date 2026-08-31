@@ -273,5 +273,5 @@ class TestTheCardReserveIdentity:
         # no residual, no outside credit — the shape the old code produced on
         # every refund that posted before its purchase.
         assert reserve_discrepancy(
-            Decimal("100"), zero, zero, zero, zero, zero
+            Decimal("100"), zero, zero, zero, zero, zero, zero
         ) == Decimal("100")

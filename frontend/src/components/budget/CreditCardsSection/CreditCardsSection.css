@@ -121,7 +121,11 @@
   background-color: var(--row-hover-bg);
 }
 
-.credit-cards__row:last-child {
+.credit-cards__group:last-child .credit-cards__row:not(:has(+ .credit-cards__legs)) {
+  border-bottom: none;
+}
+
+.credit-cards__group:last-child .credit-cards__legs {
   border-bottom: none;
 }
 
@@ -280,4 +284,79 @@
 
 .credit-cards__info dd {
   margin: 0;
+}
+
+
+/* ── What Ready to pay is made of ────────────────────────────────────────────
+   A card's reserve is a running total of five flows and the surface showed
+   only the total, so every question the model raised needed a developer to
+   answer. Disclosure, not a permanent column: the total is the affordance and
+   this is the "why". Restrained on purpose — no colour, tabular numerals, the
+   hint type scale; the numbers carry the meaning. */
+.credit-cards__legs-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: var(--spacing-xs);
+  padding: 2px;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  border-radius: var(--border-radius-sm);
+  cursor: pointer;
+  transition: color var(--transition-fast), background-color var(--transition-fast);
+}
+
+.credit-cards__legs-btn:hover {
+  color: var(--text-primary);
+  background-color: var(--row-hover-bg);
+}
+
+.credit-cards__legs {
+  padding: var(--spacing-sm) var(--spacing-md) var(--spacing-sm) var(--spacing-lg);
+  background-color: var(--surface-sunken);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.credit-cards__legs-list {
+  max-width: 420px;
+  margin: 0;
+}
+
+.credit-cards__leg {
+  display: flex;
+  gap: var(--spacing-md);
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 2px 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.credit-cards__leg dt,
+.credit-cards__leg dd {
+  margin: 0;
+}
+
+.credit-cards__leg--empty {
+  color: var(--text-muted);
+}
+
+/* The total the five legs add up to. A rule rather than a weight change:
+   this is arithmetic, and arithmetic is what a rule under a column means. */
+.credit-cards__leg--total {
+  margin-top: 2px;
+  padding-top: var(--spacing-xs);
+  color: var(--text-primary);
+  border-top: 1px solid var(--edge);
+}
+
+/* Riding debt sits OUTSIDE the five legs — that separation is the whole model,
+   so the note says so rather than letting the reader assume it nets in. */
+.credit-cards__legs-note {
+  max-width: 420px;
+  margin: var(--spacing-xs) 0 0;
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
+  color: var(--text-muted);
 }

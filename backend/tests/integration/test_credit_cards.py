@@ -12,7 +12,6 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
-
 from sqlalchemy import select
 
 from igab.db.models import Category, CategoryGroup
@@ -48,7 +47,9 @@ async def _setup(db_session):
     inflow = await create_category(db_session, budget, income_group, "Inflow")
     everyday = await create_category_group(db_session, budget, "Everyday")
     groceries = await create_category(db_session, budget, everyday, "Groceries")
-    await create_transaction(db_session, budget, checking, "1000.00", date(2026, 7, 2), category=inflow)
+    await create_transaction(
+        db_session, budget, checking, "1000.00", date(2026, 7, 2), category=inflow
+    )
     await db_session.flush()
     return services, budget, checking, visa, linked, groceries
 
@@ -74,7 +75,9 @@ class TestTheIdentity:
         await create_budget_assignment(db_session, budget, groceries, JUL, "150.00")
         before = (await _summary(services, budget, JUL)).to_be_assigned
 
-        await create_transaction(db_session, budget, visa, "-150.00", date(2026, 7, 9), category=groceries)
+        await create_transaction(
+            db_session, budget, visa, "-150.00", date(2026, 7, 9), category=groceries
+        )
         await db_session.flush()
 
         s = await _summary(services, budget, JUL)
@@ -86,7 +89,9 @@ class TestTheIdentity:
     async def test_credit_overspending_is_uncovered_debt_not_a_charge(self, db_session):
         services, budget, _, visa, _, groceries = await _setup(db_session)
         await create_budget_assignment(db_session, budget, groceries, JUL, "100.00")
-        await create_transaction(db_session, budget, visa, "-150.00", date(2026, 7, 9), category=groceries)
+        await create_transaction(
+            db_session, budget, visa, "-150.00", date(2026, 7, 9), category=groceries
+        )
         await db_session.flush()
 
         july = await _summary(services, budget, JUL)
@@ -117,7 +122,9 @@ class TestTheIdentity:
     async def test_assigning_to_the_card_covers_the_debt(self, db_session):
         services, budget, _, visa, linked, groceries = await _setup(db_session)
         await create_budget_assignment(db_session, budget, groceries, JUL, "100.00")
-        await create_transaction(db_session, budget, visa, "-150.00", date(2026, 7, 9), category=groceries)
+        await create_transaction(
+            db_session, budget, visa, "-150.00", date(2026, 7, 9), category=groceries
+        )
         await create_budget_assignment(db_session, budget, linked, AUG, "50.00")
         await db_session.flush()
 
@@ -129,7 +136,9 @@ class TestTheIdentity:
     async def test_a_payment_moves_reserved_cash_without_touching_the_figure(self, db_session):
         services, budget, checking, visa, _, groceries = await _setup(db_session)
         await create_budget_assignment(db_session, budget, groceries, JUL, "150.00")
-        await create_transaction(db_session, budget, visa, "-150.00", date(2026, 7, 9), category=groceries)
+        await create_transaction(
+            db_session, budget, visa, "-150.00", date(2026, 7, 9), category=groceries
+        )
         # The payment pair, service-created so the legs link properly.
         from igab.services.transaction_service import TransactionCreate
 
@@ -155,7 +164,9 @@ class TestTheIdentity:
         await create_transaction(
             db_session, budget, checking, "-80.00", date(2026, 7, 8), category=groceries
         )
-        await create_transaction(db_session, budget, visa, "-70.00", date(2026, 7, 9), category=groceries)
+        await create_transaction(
+            db_session, budget, visa, "-70.00", date(2026, 7, 9), category=groceries
+        )
         await db_session.flush()
 
         # Overspent 50 with 70 on the card: all 50 rides as card debt.
@@ -172,8 +183,12 @@ class TestTheIdentity:
         in the envelope forever and Ready to Assign 150 lower for good."""
         services, budget, _, visa, _, groceries = await _setup(db_session)
         await create_budget_assignment(db_session, budget, groceries, JUL, "150.00")
-        await create_transaction(db_session, budget, visa, "-150.00", date(2026, 7, 9), category=groceries)
-        await create_transaction(db_session, budget, visa, "150.00", date(2026, 8, 9), category=groceries)
+        await create_transaction(
+            db_session, budget, visa, "-150.00", date(2026, 7, 9), category=groceries
+        )
+        await create_transaction(
+            db_session, budget, visa, "150.00", date(2026, 8, 9), category=groceries
+        )
         await db_session.flush()
 
         august = await _summary(services, budget, AUG)
@@ -189,8 +204,12 @@ class TestTheIdentity:
         through the balance. Nothing is left on either side."""
         services, budget, _, visa, _, groceries = await _setup(db_session)
         await create_budget_assignment(db_session, budget, groceries, JUL, "100.00")
-        await create_transaction(db_session, budget, visa, "-150.00", date(2026, 7, 9), category=groceries)
-        await create_transaction(db_session, budget, visa, "150.00", date(2026, 8, 9), category=groceries)
+        await create_transaction(
+            db_session, budget, visa, "-150.00", date(2026, 7, 9), category=groceries
+        )
+        await create_transaction(
+            db_session, budget, visa, "150.00", date(2026, 8, 9), category=groceries
+        )
         await db_session.flush()
 
         august = await _summary(services, budget, AUG)
@@ -204,7 +223,9 @@ class TestTheIdentity:
         overpaid month."""
         services, budget, checking, visa, linked, groceries = await _setup(db_session)
         await create_budget_assignment(db_session, budget, groceries, JUL, "100.00")
-        await create_transaction(db_session, budget, visa, "-150.00", date(2026, 7, 9), category=groceries)
+        await create_transaction(
+            db_session, budget, visa, "-150.00", date(2026, 7, 9), category=groceries
+        )
         from igab.services.transaction_service import TransactionCreate
 
         await services.transactions.create(
@@ -233,7 +254,9 @@ class TestTheIdentity:
         no row; anything left → the row stays, tagged."""
         services, budget, checking, visa, _, groceries = await _setup(db_session)
         await create_budget_assignment(db_session, budget, groceries, JUL, "150.00")
-        await create_transaction(db_session, budget, visa, "-150.00", date(2026, 7, 9), category=groceries)
+        await create_transaction(
+            db_session, budget, visa, "-150.00", date(2026, 7, 9), category=groceries
+        )
         from igab.services.transaction_service import TransactionCreate
 
         await services.transactions.create(
@@ -256,7 +279,9 @@ class TestTheIdentity:
     async def test_a_closed_card_with_debt_keeps_its_row_tagged(self, db_session):
         services, budget, _, visa, _, groceries = await _setup(db_session)
         await create_budget_assignment(db_session, budget, groceries, JUL, "100.00")
-        await create_transaction(db_session, budget, visa, "-150.00", date(2026, 7, 9), category=groceries)
+        await create_transaction(
+            db_session, budget, visa, "-150.00", date(2026, 7, 9), category=groceries
+        )
         await services.account_repo.update(visa.id, is_closed=True)
         await db_session.flush()
 
@@ -293,7 +318,9 @@ class TestTheIdentity:
     async def test_card_envelopes_stay_out_of_cover_overspent(self, db_session):
         services, budget, checking, visa, linked, groceries = await _setup(db_session)
         await create_budget_assignment(db_session, budget, groceries, JUL, "100.00")
-        await create_transaction(db_session, budget, visa, "-150.00", date(2026, 7, 9), category=groceries)
+        await create_transaction(
+            db_session, budget, visa, "-150.00", date(2026, 7, 9), category=groceries
+        )
         # Overpay the card so its envelope runs negative — a cards-section
         # state, not overspending Cover Overspent may act on.
         from igab.services.transaction_service import TransactionCreate
@@ -342,7 +369,9 @@ class TestTheIdentity:
         await create_transaction(
             db_session, budget, checking, "-130.00", date(2026, 7, 8), category=groceries
         )
-        await create_transaction(db_session, budget, visa, "-20.00", date(2026, 7, 9), category=groceries)
+        await create_transaction(
+            db_session, budget, visa, "-20.00", date(2026, 7, 9), category=groceries
+        )
         await db_session.flush()
 
         s = await _summary(services, budget, JUL)
@@ -690,9 +719,7 @@ class TestTheRefusedRepayment:
         await db_session.flush()
 
         before = await _summary(services, budget, AUG)
-        row_before = next(
-            b for b in before.category_balances if b.category_id == groceries.id
-        )
+        row_before = next(b for b in before.category_balances if b.category_id == groceries.id)
         assert row_before.available == D("0.00")
 
         await create_transaction(
@@ -712,12 +739,9 @@ class TestTheRefusedRepayment:
         # to Assign settles at the cash that is actually left.
         september = await _summary(services, budget, SEP)
         assert september.to_be_assigned == D("900.00")
-        assert (
-            next(
-                b for b in september.category_balances if b.category_id == groceries.id
-            ).available
-            == D("0.00")
-        )
+        assert next(
+            b for b in september.category_balances if b.category_id == groceries.id
+        ).available == D("0.00")
         # Under the rejected reading the envelope would still have held 100 here
         # — the repayment having been left in it and offset by a term on the
         # figure — so the spend would have been covered, nothing written off,
@@ -829,7 +853,7 @@ class TestTheThreeTermsPartitionCardInflows:
             )
         await db_session.flush()
 
-        credits = await TransactionRepository(db_session).sum_unbudgeted_card_credits(budget.id, SEP)
+        credits = await TransactionRepository(db_session).sum_unclaimed_card_rows(budget.id, SEP)
         assert credits.get(visa.id, {}) == {}
         await assert_card_reserve_identity(db_session, budget.id)
 
@@ -843,7 +867,7 @@ class TestTheThreeTermsPartitionCardInflows:
         await create_transaction(db_session, budget, visa, "25.00", date(2026, 8, 9))
         await db_session.flush()
 
-        credits = await TransactionRepository(db_session).sum_unbudgeted_card_credits(budget.id, SEP)
+        credits = await TransactionRepository(db_session).sum_unclaimed_card_rows(budget.id, SEP)
         assert credits[visa.id] == {AUG: D("25.00")}
 
     async def test_a_card_credit_filed_as_income_is_an_outside_credit(self, db_session):
@@ -869,7 +893,7 @@ class TestTheThreeTermsPartitionCardInflows:
         )
         await db_session.flush()
 
-        credits = await TransactionRepository(db_session).sum_unbudgeted_card_credits(budget.id, SEP)
+        credits = await TransactionRepository(db_session).sum_unclaimed_card_rows(budget.id, SEP)
         assert credits[visa.id] == {AUG: D("50.00")}
         card = (await _summary(services, budget, AUG)).cards[0]
         assert card.balance == D("-150.00")
@@ -891,7 +915,7 @@ class TestTheThreeTermsPartitionCardInflows:
         )
         await db_session.flush()
 
-        credits = await TransactionRepository(db_session).sum_unbudgeted_card_credits(budget.id, SEP)
+        credits = await TransactionRepository(db_session).sum_unclaimed_card_rows(budget.id, SEP)
         assert credits[visa.id] == {AUG: D("30.00")}
         await assert_card_reserve_identity(db_session, budget.id)
 
@@ -918,3 +942,230 @@ class TestTheThreeTermsPartitionCardInflows:
         assert (card.balance, card.set_aside) == (D("-100.00"), D("0.00"))
         assert card.reserve_discrepancy == D("0")
         await assert_card_reserve_identity(db_session, budget.id)
+
+
+class TestAnAssignmentRetiresRidingDebt:
+    """ "Two Ledgers, One Debt", end to end through the service.
+
+    In YNAB, credit overspending debits the Credit Card Payments category and
+    the assignment covering it credits the same category — one ledger, net
+    zero. Here the debt deliberately rides on the card, outside the reserve;
+    the assignment covering it used to land inside the reserve and nothing
+    ever reconciled the two, so on a card always paid in full the reserve
+    converged on what the card owed plus every dollar ever assigned to it.
+
+    Nothing in this suite exercised that before: the fixtures never combined a
+    card-payment assignment with riding debt, so `assert_card_reserve_identity`
+    passed either way.
+    """
+
+    async def test_a_refund_after_a_covering_assignment_returns_money_to_the_envelope(
+        self, db_session
+    ):
+        """The headline. Assigning to the card in August covers July's ride;
+        September's refund must then hand the money back to Groceries rather
+        than disappearing into a discharge that credits nobody."""
+        services, budget, checking, visa, linked, groceries = await _setup(db_session)
+        # July: 100 spent on the card with nothing assigned — 100 rides.
+        await create_transaction(
+            db_session, budget, visa, "-100.00", date(2026, 7, 10), category=groceries
+        )
+        # August: 100 assigned to the card's own envelope, covering it.
+        await create_budget_assignment(db_session, budget, linked, AUG, "100.00")
+        # September: the goods go back.
+        await create_transaction(
+            db_session, budget, visa, "100.00", date(2026, 9, 5), category=groceries
+        )
+        await db_session.flush()
+
+        summary = await _summary(services, budget, SEP)
+        card = next(c for c in summary.cards if c.account_id == visa.id)
+        assert card.balance == D("0"), "the card is settled"
+        # The assignment was spent covering the debt, so nothing is left
+        # reserved against a card that owes nothing.
+        assert card.set_aside == D("0")
+        assert card.uncovered == D("0")
+        # And Groceries got its refund, instead of the walk netting it away.
+        groceries_row = next(b for b in summary.category_balances if b.category_id == groceries.id)
+        assert groceries_row.available == D("100")
+        assert card.reserve_discrepancy == D("0")
+
+    async def test_a_covered_ride_stops_a_refund_becoming_a_cash_write_off(self, db_session):
+        """The Ready-to-Assign pin, and why this is not cosmetic.
+
+        A stale ride sends the refund down the `discharged` path, where it is
+        netted out of the envelope's activity. If the envelope also spent cash
+        that month it ends negative — and a negative month with no card outflow
+        left to carry it is written off at the boundary as CASH overspending,
+        which Ready to Assign pays for and which never comes back.
+
+        The discharged/released split is otherwise neutral to the envelope
+        total, so the boundary floor is the whole mechanism by which the defect
+        reached Ready to Assign.
+        """
+        services, budget, checking, visa, linked, groceries = await _setup(db_session)
+        await create_transaction(
+            db_session, budget, visa, "-100.00", date(2026, 7, 10), category=groceries
+        )
+        await create_budget_assignment(db_session, budget, linked, AUG, "100.00")
+        # September: 30 of cash spending, and the 100 refund on the card.
+        await create_transaction(
+            db_session, budget, checking, "-30.00", date(2026, 9, 3), category=groceries
+        )
+        await create_transaction(
+            db_session, budget, visa, "100.00", date(2026, 9, 5), category=groceries
+        )
+        await db_session.flush()
+
+        sep = await _summary(services, budget, SEP)
+        groceries_row = next(b for b in sep.category_balances if b.category_id == groceries.id)
+        # 100 back, 30 spent: the envelope is 70 up and nothing is overspent.
+        assert groceries_row.available == D("70")
+        assert sep.total_overspent == D("0"), "no cash write-off to absorb"
+
+        # October: the boundary has passed. Ready to Assign is unharmed.
+        octo = await _summary(services, budget, OCT)
+        assert octo.total_overspent == D("0")
+        card = next(c for c in octo.cards if c.account_id == visa.id)
+        assert card.reserve_discrepancy == D("0")
+
+    async def test_an_assignment_covering_this_months_ride_leaves_the_red_alone(self, db_session):
+        """Step 5 runs after the charges, so an assignment made in the month a
+        category overspends covers that month's ride. The category still shows
+        its red and `uncovered_current` still subtracts it — retracting the
+        ride would charge Ready to Assign twice for one shortfall."""
+        services, budget, checking, visa, linked, groceries = await _setup(db_session)
+        await create_transaction(
+            db_session, budget, visa, "-100.00", date(2026, 7, 10), category=groceries
+        )
+        await create_budget_assignment(db_session, budget, linked, JUL, "100.00")
+        await db_session.flush()
+
+        summary = await _summary(services, budget, JUL)
+        card = next(c for c in summary.cards if c.account_id == visa.id)
+        assert card.set_aside == D("100")
+        assert card.uncovered == D("0"), "the assignment covers what is owed"
+        groceries_row = next(b for b in summary.category_balances if b.category_id == groceries.id)
+        assert groceries_row.available == D("-100"), "the envelope is still red this month"
+        assert card.reserve_discrepancy == D("0")
+
+    async def test_an_assignment_parked_on_a_settled_card_is_named_as_over_reserve(
+        self, db_session
+    ):
+        """The defect's own shape, now caught rather than excused.
+
+        Charge, pay in full, assign — and the assignment sits on a card that
+        owes nothing. T1 used to accept the assignment as the explanation for
+        the reserve it caused, so the further the reserve drifted the more
+        thoroughly the check was satisfied. It is still a legitimate state to
+        be in (pre-funding a card), which is why it is reported rather than
+        refused: what changed is that an assignment which has already retired a
+        ride no longer explains anything.
+        """
+        services, budget, checking, visa, linked, groceries = await _setup(db_session)
+        await create_transaction(
+            db_session, budget, visa, "-100.00", date(2026, 7, 10), category=groceries
+        )
+        await create_budget_assignment(db_session, budget, groceries, JUL, "100.00")
+        # Pay the card off from cash — a real transfer, because
+        # `CARD_PAYMENT_FROM_CASH` is a transfer leg whose counterpart is cash.
+        from igab.services.transaction_service import TransactionCreate
+
+        await db_session.flush()
+        await services.transactions.create(
+            budget.id,
+            TransactionCreate(
+                account_id=checking.id,
+                date=date(2026, 8, 1),
+                amount=D("-100.00"),
+                transfer_account_id=visa.id,
+            ),
+        )
+        await create_budget_assignment(db_session, budget, linked, SEP, "250.00")
+        await db_session.flush()
+
+        summary = await _summary(services, budget, SEP)
+        card = next(c for c in summary.cards if c.account_id == visa.id)
+        # Nothing rode (the spending was funded), so nothing was covered and
+        # the assignment still explains the reserve standing on the card.
+        assert card.set_aside == D("250")
+        assert card.reserve_discrepancy == D("0")
+
+
+class TestTheFiveLegs:
+    """A card's reserve is a running total of five things and the surface used
+    to show only the total. Every question this model raised — the refused
+    repayment, the unreleased reservation, the assignment that never left —
+    was answered by decomposing one number into the flows that produced it,
+    and a user could not do that."""
+
+    async def test_the_five_legs_reconstruct_the_set_aside(self, db_session):
+        services, budget, checking, visa, linked, groceries = await _setup(db_session)
+        await create_budget_assignment(db_session, budget, groceries, JUL, "100.00")
+        await create_transaction(
+            db_session, budget, visa, "-150.00", date(2026, 7, 9), category=groceries
+        )
+        await create_budget_assignment(db_session, budget, linked, JUL, "40.00")
+        # A partial refund, and a payment.
+        await create_transaction(
+            db_session, budget, visa, "30.00", date(2026, 8, 4), category=groceries
+        )
+        from igab.services.transaction_service import TransactionCreate
+
+        await db_session.flush()
+        await services.transactions.create(
+            budget.id,
+            TransactionCreate(
+                account_id=checking.id,
+                date=date(2026, 8, 20),
+                amount=D("-25.00"),
+                transfer_account_id=visa.id,
+            ),
+        )
+        await db_session.flush()
+
+        card = next(c for c in (await _summary(services, budget, AUG)).cards)
+        assert (
+            card.assigned + card.reserved - card.released - card.residual - card.payments
+            == card.set_aside
+        ), (
+            f"legs do not reconstruct the reserve: assigned={card.assigned} "
+            f"reserved={card.reserved} released={card.released} "
+            f"residual={card.residual} payments={card.payments} "
+            f"set_aside={card.set_aside}"
+        )
+        # And each leg says something. Note what the decomposition shows that
+        # the total cannot: 150 was spent with 100 funded, so 50 rode. July's
+        # 40 assignment to the card covered 40 of it, leaving 10 riding — so
+        # August's 30 refund discharges that 10 and releases only the other 20.
+        # Before assignments entered the walk the ride would still have been
+        # 50, the whole 30 would have discharged, and Groceries would have got
+        # nothing back.
+        assert card.assigned == D("40")
+        assert card.reserved == D("100")
+        assert card.payments == D("25")
+        assert card.released == D("20")
+        assert card.residual == D("0")
+
+    async def test_every_card_row_carries_the_legs_over_the_api(self, api_client, db_session):
+        """Required, not optional, on the response schema: a path that forgets
+        must raise rather than serve a reserve made of zeros."""
+        # The budget has to belong to the authenticated client's user, or the
+        # route answers 404 before it ever serializes a card.
+        budget = await create_budget(db_session, api_client.test_user)
+        visa = await create_account(db_session, budget, "Visa", account_type="credit_card")
+        await ensure_payment_category(db_session, visa)
+        everyday = await create_category_group(db_session, budget, "Everyday")
+        groceries = await create_category(db_session, budget, everyday, "Groceries")
+        await create_transaction(
+            db_session, budget, visa, "-60.00", date(2026, 7, 9), category=groceries
+        )
+        await db_session.flush()
+
+        resp = await api_client.get(f"/api/v1/{budget.id}/months/2026-07-01")
+        assert resp.status_code == 200
+        cards = resp.json()["cards"]
+        assert cards, "no card row served"
+        for card in cards:
+            for leg in ("assigned", "reserved", "released", "residual", "payments", "riding"):
+                assert leg in card, f"{leg} missing from the served card row"

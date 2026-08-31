@@ -267,6 +267,23 @@ export interface CardStatus {
    *  in domain/cards.py, and the integrity check reads the same field, so the
    *  page and the check cannot disagree about one card. */
   reserve_discrepancy: number
+  /** The five legs `set_aside` is the running total of, each through the
+   *  viewed month:
+   *
+   *      assigned + reserved − released − residual − payments === set_aside
+   *
+   *  Home is `CardReserve` in domain/cards.py. **Render these; never sum
+   *  them.** `set_aside` is already served, and a client-side second opinion
+   *  about what a reserve is made of is exactly the shape of the defect that
+   *  put them here ("Two Ledgers, One Debt"). */
+  assigned: number
+  reserved: number
+  released: number
+  residual: number
+  payments: number
+  /** What is riding uncovered on this card, lifetime — distinct from
+   *  `uncovered`, which is what the card OWES beyond its reserve. */
+  riding: number
 }
 
 export interface BudgetMonth {

@@ -323,7 +323,7 @@ class TestCardRowsFiledAsIncome:
     async def test_a_card_inflow_filed_to_income_is_not(self, db_session):
         """The other side of the same misfiling, and not this check's job: a
         credit filed to income is money arriving, not a charge. It is named by
-        `txn_filters.UNBUDGETED_CARD_CREDIT` instead, which is what stops the
+        `txn_filters.UNCLAIMED_CARD_ROW` instead, which is what stops the
         card reserve identity reporting it as drift."""
         budget, card, income, _ = await self._world_with_a_card(db_session)
         await create_transaction(db_session, budget, card, "50.00", RECENT, category=income)

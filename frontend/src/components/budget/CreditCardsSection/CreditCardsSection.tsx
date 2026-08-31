@@ -9,6 +9,7 @@ import { parseAssignmentCommit } from '../../../utils/amountExpression'
 import { Dialog } from '../../common/Dialog/Dialog'
 import { Surface } from '../../common/Surface'
 import { TransactionsPeekModal } from '../TransactionsPeekModal/TransactionsPeekModal'
+import type { CardStatus } from '../../../types'
 import './CreditCardsSection.css'
 
 /**
@@ -29,6 +30,63 @@ import './CreditCardsSection.css'
  * same mutation the grid uses — money to a card is an ordinary assignment,
  * undo included.
  */
+/**
+ * The five legs a card's Ready to pay is the running total of, plus what is
+ * still riding on the card uncovered.
+ *
+ * Served, never summed here: `set_aside` already comes from the server, and a
+ * client-side second opinion about what a reserve is made of is the exact
+ * shape of the defect that put this panel here — an assignment that landed in
+ * the reserve while the debt it covered rode outside it, so the reserve
+ * converged on what the card owed plus every dollar ever assigned to it
+ * ("Two Ledgers, One Debt").
+ */
+function ReserveLegs({
+  card,
+  formatMoney,
+}: {
+  card: CardStatus
+  formatMoney: (n: number) => string
+}) {
+  const legs = [
+    { label: 'Assigned to this card', value: card.assigned, sign: '+' },
+    { label: 'Set aside by funded spending', value: card.reserved, sign: '+' },
+    { label: 'Released by refunds', value: card.released, sign: '−' },
+    { label: 'Refunds beyond what was reserved', value: card.residual, sign: '−' },
+    { label: 'Paid to the card', value: card.payments, sign: '−' },
+  ].filter((leg) => leg.value !== 0)
+
+  return (
+    <div className="credit-cards__legs">
+      <dl className="credit-cards__legs-list">
+        {legs.length === 0 && (
+          <div className="credit-cards__leg credit-cards__leg--empty">
+            <dt>Nothing has moved through this card yet.</dt>
+          </div>
+        )}
+        {legs.map((leg) => (
+          <div className="credit-cards__leg" key={leg.label}>
+            <dt>{leg.label}</dt>
+            <dd className="tabular">
+              {leg.sign} {formatMoney(Math.abs(leg.value))}
+            </dd>
+          </div>
+        ))}
+        <div className="credit-cards__leg credit-cards__leg--total">
+          <dt>Ready to pay</dt>
+          <dd className="tabular">{formatMoney(card.set_aside)}</dd>
+        </div>
+      </dl>
+      {card.riding !== 0 && (
+        <p className="credit-cards__legs-note">
+          {formatMoney(card.riding)} of spending rode onto this card without being funded. It is
+          outside the total above — assigning to the card is what retires it.
+        </p>
+      )}
+    </div>
+  )
+}
+
 export function CreditCardsSection({ budgetId, month }: { budgetId: string; month: string }) {
   const { data: budgetMonth } = useBudgetMonth(budgetId, month)
   const setAssignment = useSetAssignment(budgetId)
@@ -40,6 +98,7 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
   const [infoOpen, setInfoOpen] = useState(false)
   const [peek, setPeek] = useState<{ accountId: string; accountName: string } | null>(null)
   const [targetFor, setTargetFor] = useState<{ categoryId: string; name: string } | null>(null)
+  const [legsFor, setLegsFor] = useState<string | null>(null)
 
   const cards = budgetMonth?.cards ?? []
   if (cards.length === 0) return null
@@ -131,8 +190,10 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
               const needed = card.category_id
                 ? (neededByCategory.get(card.category_id) ?? null)
                 : null
+              const legsOpen = legsFor === card.account_id
               return (
-                <div className="credit-cards__row" role="row" key={card.account_id}>
+                <div className="credit-cards__group" key={card.account_id}>
+                <div className="credit-cards__row" role="row">
                   <span className="credit-cards__col--name" role="cell">
                     <CreditCard size={13} aria-hidden />
                     {card.name}
@@ -215,6 +276,19 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
                         <span className="credit-cards__hint"> overpaid</span>
                       )}
                     </button>
+                    {/* Every question this model raised was answered by
+                        decomposing this number into the flows behind it, and
+                        the surface showed only the total. */}
+                    <button
+                      type="button"
+                      className="credit-cards__legs-btn"
+                      aria-expanded={legsOpen}
+                      title={legsOpen ? 'Hide what makes this up' : 'What makes this up'}
+                      aria-label={`What makes up Ready to pay for ${card.name}`}
+                      onClick={() => setLegsFor(legsOpen ? null : card.account_id)}
+                    >
+                      {legsOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+                    </button>
                   </span>
                   <span
                     className="credit-cards__col--num tabular credit-cards__uncovered"
@@ -222,6 +296,8 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
                   >
                     {card.uncovered !== 0 ? formatMoney(card.uncovered) : '—'}
                   </span>
+                </div>
+                {legsOpen && <ReserveLegs card={card} formatMoney={formatMoney} />}
                 </div>
               )
             })}

@@ -387,7 +387,7 @@ COUNTERPART_IS_CASH = (
 #: card's set-aside envelope (`sum_card_payments_by_month`).
 #:
 #: Shape-free on purpose — the caller adds its own row shape — because
-#: `UNBUDGETED_CARD_CREDIT` below is defined as the negation of this. Written
+#: `UNCLAIMED_CARD_ROW` below is defined as the negation of this. Written
 #: out twice, the two stop being complements: the first spelling required
 #: `NON_TRANSFER` on the credit side while this side required a *cash*
 #: counterpart, so a card paid off from an off-budget account, or a card→card
@@ -414,8 +414,8 @@ def row_category(predicate):
     )
 
 
-#: A card inflow the budget has no claim on: **the complement**, written as
-#: one, of the two sums that DO claim card inflows —
+#: A card row the budget has no claim on: **the complement**, written as
+#: one, of the two sums that DO claim card rows —
 #:
 #: - not a payment from the budget's cash — `CARD_PAYMENT_FROM_CASH` above,
 #:   the same expression `sum_card_payments_by_month` selects on;
@@ -435,9 +435,22 @@ def row_category(predicate):
 #:
 #: What is left is a partner paying the card themselves, a promotional credit,
 #: a bank adjustment, a balance transfer from another card, a rebate the user
-#: called income. It reduces what is owed and touches no envelope, which is
-#: correct — and is exactly why the reserve identity has to name it rather than
-#: read it as drift (`domain/cards.py reserve_discrepancy`, bounds T1 and T3).
+#: called income — and, in the other direction, a charge that has arrived from
+#: bank sync and not been filed yet, or a cash advance. It moves what is owed
+#: and touches no envelope, which is correct — and is exactly why the reserve
+#: identity has to name it rather than read it as drift
+#: (`domain/cards.py reserve_discrepancy`, bounds T1 and T3).
+#:
+#: **Both signs, and the sum is a signed net.** This carried `amount > 0`
+#: until 2026-08-30, so it claimed only the credits. An unfiled *charge*
+#: reached no term at all — and any budget with live bank sync grows those
+#: continuously, by construction. Worse, the half-claim made the check lie:
+#: T1's left side moves by the NET of these rows and its allowance by the
+#: POSITIVE half, so on a real card the bound cleared by a margin equal, to
+#: the cent, to the rows it could not see. It passed by exactly the amount it
+#: was failing to count, and only because the sign happened to fall that way
+#: ("Two Ledgers, One Debt"). A complement is a complement in both
+#: directions or it is a third spelling waiting to drift.
 #:
 #: **Shape: LEAF, matching `sum_credit_outflows_by_category`**, because the
 #: question this asks — did a category claim this money? — is answered on the
@@ -446,12 +459,11 @@ def row_category(predicate):
 #: legs' release: the same money in two terms, widening T1 and T3 by its own
 #: amount and hiding real drift of that size. Mixing the two shapes is the
 #: trap this module's docstring opens with.
-UNBUDGETED_CARD_CREDIT = and_(
+UNCLAIMED_CARD_ROW = and_(
     NOT_DELETED,
     LEAF,
     POSTED,
     ON_CARD_ACCOUNT,
-    Transaction.amount > 0,
     not_(row_category(SPENDABLE)),
     not_(CARD_PAYMENT_FROM_CASH),
 )

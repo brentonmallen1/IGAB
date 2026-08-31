@@ -699,6 +699,12 @@ async def get_budget_month(
                 is_closed=c.is_closed,
                 overspent_this_month=c.overspent_this_month,
                 reserve_discrepancy=c.reserve_discrepancy,
+                assigned=c.assigned,
+                reserved=c.reserved,
+                released=c.released,
+                residual=c.residual,
+                payments=c.payments,
+                riding=c.riding,
             )
             for c in summary.cards
         ],
