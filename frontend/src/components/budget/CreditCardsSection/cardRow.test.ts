@@ -130,8 +130,9 @@ describe('debtMovement', () => {
   })
 
   it('reads a rising balance as debt going down', () => {
-    // The whole point of the phrasing: -5692 -> -5464 is the balance going UP
-    // and the debt going DOWN, and only one of those is what a person means.
+    // The whole point of the phrasing: a balance moving from -900 to -672 is
+    // going UP while the debt goes DOWN, and only one of those is what a
+    // person means by "the card got better".
     const note = debtMovement(
       card({ debt_change_this_month: 228, charged_this_month: 412, paid_this_month: 640 }),
       money
