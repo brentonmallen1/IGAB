@@ -550,6 +550,59 @@ def card_reserve[C, K](
     )
 
 
+@dataclass(frozen=True)
+class CardPosition:
+    """Where one card stands: the four terms the reserve identity is written in.
+
+    One home for the arithmetic that turns a (set_aside, balance) pair into
+    words. These four used to be local expressions inside
+    `reserve_discrepancy`, and `uncovered` was spelled a SECOND time inline in
+    `budget_service.get_budget_summary` — two spellings of one rule, and the
+    surface needed a third to tell an overpayment from a negative reserve.
+
+    The four are not independent: at most one of `over_reserved` and
+    `short_reserved` is non-zero, and `uncovered` and `card_credit` cannot both
+    be. That is the point — naming them separately is what lets a caller say
+    WHICH way a card is unusual instead of only that it is.
+    """
+
+    #: Owed beyond the reserve. The inner floor is load-bearing: a negative
+    #: set-aside reserves nothing, so it cannot reduce what the card owes.
+    uncovered: Decimal
+    #: Reserve standing beyond the debt. Money assigned to a card that never
+    #: had a ride to retire accumulates here for the life of the budget.
+    over_reserved: Decimal
+    #: The card's envelope is in the red — payments or inflows ran past
+    #: everything reserved. NOT an overpayment unless `card_credit` is also
+    #: non-zero; the card can owe a full balance while this is large.
+    short_reserved: Decimal
+    #: The card holds your money: it owes nothing and then some. This is the
+    #: only state the word "overpaid" was ever true of.
+    card_credit: Decimal
+
+
+def card_position(set_aside: Decimal, balance: Decimal) -> CardPosition:
+    """The four terms, from a reserve and a balance. `balance` is signed as the
+    ledger holds it — negative is owed.
+
+    Split from `reserve_discrepancy` so a surface can ask where a card stands
+    without asking whether anything is wrong. Those are different questions and
+    conflating them hid two real cards for years: a reserve several times its
+    balance and a reserve below zero on a card owing thousands both satisfy the
+    discrepancy check's bounds, because those bounds are ALLOWANCES — T1
+    excuses an over-reserve explained by assignments, T2 excuses a negative one
+    explained by payments or residual. A zero discrepancy means the identity
+    holds, never that the number on screen is sensible.
+    """
+    owed = -balance
+    return CardPosition(
+        uncovered=max(ZERO, owed - max(ZERO, set_aside)),
+        over_reserved=max(ZERO, set_aside - max(ZERO, owed)),
+        short_reserved=max(ZERO, -set_aside),
+        card_credit=max(ZERO, -owed),
+    )
+
+
 def _allowance(*terms: Decimal) -> Decimal:
     """Capacity to explain a gap, from terms that are each allowed to be zero
     but never negative.
@@ -578,15 +631,21 @@ def reserve_discrepancy(
     """0 when a card's reserve identity holds with all three bounds met;
     otherwise the largest amount by which one of them does not.
 
-    With `owed = -balance` and every term below floored at zero:
-
-        uncovered      = max(0, owed - max(0, set_aside))
-        over_reserved  = max(0, set_aside - max(0, owed))
-        short_reserved = max(0, -set_aside)
-        card_credit    = max(0, -owed)
+    The four terms are `card_position` — one implementation, read here and by
+    the surface, so nothing gets a second opinion about what an over-reserve
+    is. With `owed = -balance`:
 
         set_aside + uncovered == owed + over_reserved - short_reserved
                                  + card_credit
+
+    **A zero here is not a clean bill of health.** Every bound below is an
+    allowance, so a card whose reserve has travelled a long way from its
+    balance for an accepted reason reports nothing. That is deliberate — but
+    it means the surface must read `card_position` directly rather than
+    treating silence here as "the number is sensible". Two real cards, one
+    over-reserved several times over by assignments that never retired a ride
+    and one below zero on a balance it still owed, sat inside these bounds for
+    years.
 
     The equation is an algebraic identity given those definitions, so it
     catches nothing on its own. **The content is the three bounds**, and each
@@ -638,13 +697,10 @@ def reserve_discrepancy(
     are the YNAB oracle (`integrations/ynab/parity.py`) and the closed-form
     test.
     """
-    owed = -balance
-    over_reserved = max(ZERO, set_aside - max(ZERO, owed))
-    short_reserved = max(ZERO, -set_aside)
-    card_credit = max(ZERO, -owed)
+    pos = card_position(set_aside, balance)
     worst = max(
-        over_reserved - _allowance(assigned - covered, unclaimed_rows),
-        short_reserved - _allowance(payments, residual_releases),
-        card_credit - _allowance(short_reserved, unclaimed_rows),
+        pos.over_reserved - _allowance(assigned - covered, unclaimed_rows),
+        pos.short_reserved - _allowance(payments, residual_releases),
+        pos.card_credit - _allowance(pos.short_reserved, unclaimed_rows),
     )
     return worst if worst > ZERO else ZERO

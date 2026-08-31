@@ -284,6 +284,37 @@ export interface CardStatus {
   /** What is riding uncovered on this card, lifetime — distinct from
    *  `uncovered`, which is what the card OWES beyond its reserve. */
   riding: number
+  /** The rest of `card_position` (domain/cards.py), beside `uncovered`.
+   *
+   *  **A zero `reserve_discrepancy` does not mean this card looks sensible.**
+   *  That check's bounds are allowances: an over-reserve explained by
+   *  assignments and a negative reserve explained by residual both report
+   *  nothing, and a real budget produced one of each — a reserve several times
+   *  its balance, and a reserve below zero on a card still owing thousands.
+   *  Read these to say which way a card is unusual. */
+  over_reserved: number
+  short_reserved: number
+  /** The card owes nothing and holds your money. The ONLY state "overpaid" is
+   *  true of — a negative `set_aside` alone is not it, and printing the word
+   *  on the sign alone is the defect these fields exist to end. */
+  card_credit: number
+  /** The viewed month off the card's own ledger. Every leg above is a lifetime
+   *  total, so a month cannot be derived from them here.
+   *  `debt_change_this_month` is signed: positive means the debt shrank. */
+  charged_this_month: number
+  paid_this_month: number
+  debt_change_this_month: number
+  /** Which months put riding debt on this card, earliest first. The month is
+   *  the actionable half: funding an envelope in the month it ended short
+   *  retires the ride — the walk is recomputed every request, so a backdated
+   *  assignment works — while funding it the month after does not reach back. */
+  rode_by_month: RodeMonth[]
+}
+
+/** One month that put riding debt on a card. */
+export interface RodeMonth {
+  month: string
+  amount: number
 }
 
 export interface BudgetMonth {

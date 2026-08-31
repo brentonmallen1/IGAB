@@ -19,6 +19,7 @@ from igab.domain.cards import (
     CardReserve,
     allocate_capped,
     card_funding,
+    card_position,
     card_reserve,
     credit_floored_by_month,
     release_split,
@@ -367,6 +368,70 @@ def discrepancy(
     return reserve_discrepancy(
         D(set_aside), D(balance), D(assigned), D(covered), D(payments), D(residual), D(unclaimed)
     )
+
+
+class TestCardPosition:
+    """Where a card stands, separately from whether anything is wrong with it.
+
+    Every case here reports `reserve_discrepancy == 0` when given a reason —
+    which is exactly why the surface reads this instead. Amounts are invented
+    and rescaled; only the ratios carry the lesson.
+    """
+
+    def test_a_healthy_card_is_simply_uncovered_up_to_what_it_owes(self):
+        pos = card_position(D("60"), D("-100"))
+        assert (pos.uncovered, pos.over_reserved) == (D("40"), D("0"))
+        assert (pos.short_reserved, pos.card_credit) == (D("0"), D("0"))
+
+    def test_a_reserve_covering_the_whole_balance_leaves_nothing_uncovered(self):
+        pos = card_position(D("100"), D("-100"))
+        assert pos.uncovered == pos.over_reserved == D("0")
+
+    def test_a_reserve_beyond_the_debt_is_over_reserved_not_uncovered(self):
+        # The over-reserved card, rescaled 5:1 — assignments that never had a
+        # ride to retire, accumulating for the life of the budget.
+        pos = card_position(D("500"), D("-100"))
+        assert pos.over_reserved == D("400")
+        assert pos.uncovered == D("0")
+
+    def test_a_negative_reserve_on_a_card_that_still_owes_is_not_a_credit(self):
+        # The below-zero card: the word "overpaid" was printed for this, and
+        # `card_credit` — the only state it was ever true of — is zero.
+        pos = card_position(D("-20"), D("-500"))
+        assert pos.short_reserved == D("20")
+        assert pos.card_credit == D("0")
+
+    def test_a_negative_reserve_reserves_nothing_so_the_whole_balance_is_uncovered(self):
+        # The inner floor. Without it the negative would SUBTRACT from what the
+        # card owes and under-report the debt.
+        pos = card_position(D("-20"), D("-500"))
+        assert pos.uncovered == D("500")
+
+    def test_a_card_that_owes_nothing_and_holds_money_is_a_credit_balance(self):
+        pos = card_position(D("-50"), D("50"))
+        assert pos.card_credit == D("50")
+        assert pos.uncovered == D("0")
+
+    def test_uncovered_never_goes_negative(self):
+        assert card_position(D("500"), D("-100")).uncovered == D("0")
+
+    def test_over_and_short_are_never_both_set(self):
+        for set_aside, balance in [("500", "-100"), ("-20", "-500"), ("60", "-100")]:
+            pos = card_position(D(set_aside), D(balance))
+            assert not (pos.over_reserved and pos.short_reserved)
+
+    def test_the_two_drifted_shapes_report_a_position_where_the_check_is_silent(self):
+        """The correction that put this class here. Both cards satisfy every
+        bound — T1 excuses an over-reserve explained by assignments, T2 a
+        negative one explained by residual — so a surface keyed on the
+        discrepancy shows nothing on the two rows that most needed it."""
+        over = card_position(D("500"), D("-100"))
+        assert discrepancy("500", "-100", assigned="400") == D("0")
+        assert over.over_reserved == D("400")
+
+        short = card_position(D("-20"), D("-500"))
+        assert discrepancy("-20", "-500", residual="20") == D("0")
+        assert short.short_reserved == D("20")
 
 
 class TestReserveDiscrepancy:

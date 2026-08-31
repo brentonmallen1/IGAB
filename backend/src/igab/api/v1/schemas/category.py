@@ -379,6 +379,21 @@ class CategoryResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class RodeMonth(BaseModel):
+    """One month that put riding debt on a card, and how much.
+
+    A month, not just a total, because the two remedies differ by it: an
+    assignment to the card covers a ride from any month, while funding the
+    envelope only retires the ride if it lands in the month that ended short.
+    The walk is recomputed from scratch on every request, so a backdated
+    assignment does retire it — which is the cheaper fix, and the one nothing
+    in the app used to name.
+    """
+
+    month: datetime.date
+    amount: Decimal
+
+
 class CardStatusOut(BaseModel):
     """One card in the budget's cards section.
 
@@ -434,6 +449,30 @@ class CardStatusOut(BaseModel):
     #: `uncovered`, which is what the card OWES beyond its reserve: a card can
     #: carry a ride while owing less than it has reserved.
     riding: Decimal
+    #: The rest of `card_position` beside `uncovered`. A zero
+    #: `reserve_discrepancy` means the identity's BOUNDS hold, not that the
+    #: reserve is anywhere near the balance — they are allowances, and they
+    #: excused both shapes a real budget produced: a reserve several times its
+    #: balance, and a reserve below zero on a card still owing thousands. The
+    #: row reads these to say which way a card is unusual where the check has
+    #: nothing to say. Required, all three.
+    over_reserved: Decimal
+    short_reserved: Decimal
+    #: The card owes nothing and holds your money — the only state "overpaid"
+    #: was ever true of. A negative `set_aside` alone is NOT it, and printing
+    #: the word on the sign alone is the defect this field exists to end.
+    card_credit: Decimal
+    #: The viewed month off the card's own ledger. `charged_this_month` and
+    #: `paid_this_month` are magnitudes; `debt_change_this_month` is signed,
+    #: positive when the debt shrank. Required — every leg above is a lifetime
+    #: total, so a client cannot derive a month from them.
+    charged_this_month: Decimal
+    paid_this_month: Decimal
+    debt_change_this_month: Decimal
+    #: Which months put riding debt on this card, earliest first. The month is
+    #: the actionable half: funding an envelope in the month it ended short
+    #: retires the ride, funding it the month after does not reach back.
+    rode_by_month: list[RodeMonth]
 
 
 class BudgetMonthResponse(BaseModel):
