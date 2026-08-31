@@ -39,6 +39,7 @@ import { formatDateWithOptions, formatTimeWithOptions } from '../../utils/dates'
 import { SyncSchedule } from '../../components/settings/SyncSchedule/SyncSchedule'
 import { useFormatters } from '../../hooks/useFormatters'
 import { parseApiDecimal } from '../../utils/money'
+import { wishlistToggleOutcome } from './wishlistToggle'
 import { useUIStore } from '../../stores/uiStore'
 import { changePassword, useCurrentUser, useLogout } from '../../api/auth'
 import { UsersPanel } from '../../components/settings/UsersPanel/UsersPanel'
@@ -177,36 +178,18 @@ export function SettingsPage() {
   // Both default on; the server is the source of truth once it answers.
   const guidePrefs = guideOverview.data?.preferences ?? { personalization: true, checkup: true, wishlist: true }
 
+  // The decision lives in `wishlistToggle.ts` so it can be tested without
+  // mounting this page; what is left here is the wiring it needs.
   async function handleWishlistToggle(next: boolean) {
     if (!budgetId) return
-    if (next) {
-      setGuidePrefs.mutate({ wishlist: true })
-      return
-    }
-    // Archiving the Wishlist group takes every envelope under it off the
-    // budget, so anything saved in one would be unreachable. The figure comes
-    // from the server — the same preview the endpoint refuses on — rather than
-    // being added up here, and the money moves only after this is confirmed.
-    let preview
-    try {
-      preview = await fetchWishlistRetirePreview(budgetId)
-    } catch {
-      toast.error('Could not check what turning the wishlist off would move')
-      return
-    }
-    if (!preview.is_empty) {
-      const ok = await confirmAsync({
-        title: 'Turn off the wishlist?',
-        message:
-          `Your wishlist holds ${formatMoney(parseApiDecimal(preview.available))} in ` +
-          `${preview.envelopes.join(', ')}. Turning it off returns that to Ready to Assign ` +
-          'and archives the envelopes — their history is kept, and turning the wishlist ' +
-          'back on brings them back empty.',
-        confirmLabel: 'Turn off and return the money',
-      })
-      if (!ok) return
-    }
-    setGuidePrefs.mutate({ wishlist: false, release_wishlist_money: !preview.is_empty })
+    const outcome = await wishlistToggleOutcome(next, {
+      fetchPreview: () => fetchWishlistRetirePreview(budgetId),
+      confirm: confirmAsync,
+      formatMoney: (amount) => formatMoney(parseApiDecimal(amount)),
+      onPreviewFailed: () =>
+        toast.error('Could not check what turning the wishlist off would move'),
+    })
+    if (outcome) setGuidePrefs.mutate(outcome)
   }
 
   // The list itself lives in settingsSections.ts, because the command palette
