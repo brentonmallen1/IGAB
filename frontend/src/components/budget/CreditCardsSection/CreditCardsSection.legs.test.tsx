@@ -159,3 +159,76 @@ describe('the Ready to pay breakdown', () => {
     expect(totalRow()?.textContent).not.toContain('115')
   })
 })
+
+/** The decision lives in cardRow.ts and is tested there. These pin that the
+ *  row actually draws it — a correct decision rendered nowhere is the same
+ *  defect from the user's side. */
+describe('what the row says about a reserve', () => {
+  it('does not call a card overpaid while it still owes money', async () => {
+    // The screenshot: -220 reserved against a card owing 5,400, with the whole
+    // balance uncovered one column to the right. Rescaled and invented.
+    month.current = {
+      cards: [
+        card({
+          balance: -5400,
+          set_aside: -220,
+          uncovered: 5400,
+          short_reserved: 220,
+          over_reserved: 0,
+          payments: 220,
+        }),
+      ],
+      category_balances: [],
+    } as unknown as BudgetMonth
+    render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
+    expect(screen.queryByText(/overpaid/i)).not.toBeInTheDocument()
+    expect(screen.getByText('ahead of budget')).toBeInTheDocument()
+  })
+
+  it('keeps the word for the one state it is true of', async () => {
+    month.current = {
+      cards: [
+        card({
+          balance: 50,
+          set_aside: -50,
+          uncovered: 0,
+          short_reserved: 50,
+          card_credit: 50,
+          over_reserved: 0,
+        }),
+      ],
+      category_balances: [],
+    } as unknown as BudgetMonth
+    render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
+    expect(screen.getByText('credit balance')).toBeInTheDocument()
+  })
+
+  it('reports an over-reserve the discrepancy check is silent about', async () => {
+    // reserve_discrepancy is 0 by design here — T1 excuses an over-reserve
+    // explained by assignments — so a row keyed on it would say nothing.
+    month.current = {
+      cards: [
+        card({
+          balance: -1500,
+          set_aside: 7400,
+          over_reserved: 5900,
+          assigned: 5900,
+          reserve_discrepancy: 0,
+        }),
+      ],
+      category_balances: [],
+    } as unknown as BudgetMonth
+    render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
+    expect(screen.getByText(/spare$/)).toBeInTheDocument()
+    expect(screen.queryByText(/does not add up/)).not.toBeInTheDocument()
+  })
+
+  it('shows the debt moving, framed as debt rather than as the balance', async () => {
+    month.current = {
+      cards: [card({ debt_change_this_month: 228, charged_this_month: 412, paid_this_month: 640 })],
+      category_balances: [],
+    } as unknown as BudgetMonth
+    render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
+    expect(screen.getByText(/down .* this month/)).toBeInTheDocument()
+  })
+})
