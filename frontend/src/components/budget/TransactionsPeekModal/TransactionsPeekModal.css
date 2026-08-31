@@ -251,3 +251,21 @@
     min-height: var(--tap-min);
   }
 }
+
+/* The running balance: the bridge between a list of rows and the figure the
+   account page reports. Quieter than the amount beside it — the amount is
+   what happened, this is only where it left things. */
+.category-txns__running {
+  text-align: right;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* Without this the column makes the confusion worse, not better: a balance
+   that reconciles perfectly invites the assumption that Ready to pay is the
+   same kind of number, and it is not. */
+.category-txns__running-note {
+  margin: 0 0 var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}

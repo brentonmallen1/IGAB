@@ -188,6 +188,12 @@ class BudgetTransactionListResponse(BaseModel):
     transactions: list[TransactionResponse]
     total_count: int
     total_amount: Decimal
+    #: Transaction id → the account's balance as of that row. Populated only
+    #: when `running_balance` was asked for on a single-account listing, and
+    #: empty otherwise — a running total across accounts is not a balance of
+    #: anything. A pending row has no entry: it has not moved the balance, and
+    #: a zero there would read as one that had.
+    running_balances: dict[str, Decimal] = {}
 
 
 class BulkClearedUpdate(BaseModel):

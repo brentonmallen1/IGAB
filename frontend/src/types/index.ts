@@ -350,6 +350,13 @@ export interface BudgetTransactionsResponse {
   total_count: number
   /** Decimal serialized as string; totals cover the full filter match, not just the page */
   total_amount: string
+  /** Transaction id → the account's balance as of that row. Present only when
+   *  `running_balance` was asked for on a single-account listing; `{}`
+   *  otherwise. A pending row has no entry — it has not moved the balance, and
+   *  a zero would read as one that had. Served rather than accumulated here:
+   *  the server owns the row order, and a running total in a different order
+   *  is nonsense that reads as arithmetic. */
+  running_balances: Record<string, string>
 }
 
 export interface Transaction {
