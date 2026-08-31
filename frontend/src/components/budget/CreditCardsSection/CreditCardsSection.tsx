@@ -142,10 +142,21 @@ function ReserveLegs({
               ))}
               {rides.elided > 0 && (
                 <li className="credit-cards__ride-more">
-                  and {rides.elided} earlier {rides.elided === 1 ? 'month' : 'months'}
+                  and {rides.elided} smaller {rides.elided === 1 ? 'month' : 'months'}
                 </li>
               )}
             </ul>
+          )}
+          {/* The list is what went ON; the total above is what is still there.
+            Once an assignment has retired part of it the two disagree, and
+            there is no month to attribute the remainder to — the walk records
+            a retirement against the assignment's month, not the month that
+            rode. Saying so beats pointing at a month already settled. */}
+          {rides.retired > 0 && (
+            <p>
+              {formatMoney(rides.retired)} of that has since been covered by assignments to this
+              card, so some of these months are already settled.
+            </p>
           )}
           {/* Both ways out, and which is cheaper. The old note named only the
             assignment — the expensive one — and the free remedy went

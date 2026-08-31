@@ -304,10 +304,16 @@ export interface CardStatus {
   charged_this_month: number
   paid_this_month: number
   debt_change_this_month: number
-  /** Which months put riding debt on this card, earliest first. The month is
+  /** Which months put riding debt on this card, chronological. The month is
    *  the actionable half: funding an envelope in the month it ended short
    *  retires the ride — the walk is recomputed every request, so a backdated
-   *  assignment works — while funding it the month after does not reach back. */
+   *  assignment works — while funding it the month after does not reach back.
+   *
+   *  **Gross, where `riding` is net.** Retirement is recorded against the
+   *  month of the assignment that did it, not the month that rode, so once
+   *  anything has been covered there is no month attribution for what
+   *  remains. `rideMonths` names the difference rather than implying every
+   *  month here is still owed. */
   rode_by_month: RodeMonth[]
 }
 

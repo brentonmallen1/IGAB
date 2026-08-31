@@ -138,15 +138,31 @@ export function unexplainedInflow(card: CardStatus): number {
 export interface RideMonths {
   shown: CardStatus['rode_by_month']
   elided: number
+  /** Gross total that ever rode, less what is still riding — money an
+   *  assignment has already retired. Zero when nothing has been covered. */
+  retired: number
 }
 
 /**
  * The months that put riding debt on this card, largest first, capped.
  *
- * `elided` is returned rather than dropped: a truncated list that does not say
- * it was truncated reads as the whole story.
+ * Largest first because the list is capped and the copy tells the reader to
+ * fund one of these months: eliding the biggest would point them at the
+ * smallest win. `elided` is returned rather than dropped — a truncated list
+ * that does not say it was truncated reads as the whole story.
+ *
+ * **`rode_by_month` is gross and `riding` is net**, so they disagree once an
+ * assignment has retired part of the ride. There is no month attribution for
+ * what remains: the walk records retirement against the month of the
+ * assignment, not the month that rode. `retired` is that difference, and the
+ * panel says it — otherwise the list points at months already settled.
  */
 export function rideMonths(card: CardStatus, limit = 3): RideMonths {
   const all = [...card.rode_by_month].sort((a, b) => b.amount - a.amount)
-  return { shown: all.slice(0, limit), elided: Math.max(0, all.length - limit) }
+  const gross = all.reduce((sum, m) => sum + m.amount, 0)
+  return {
+    shown: all.slice(0, limit),
+    elided: Math.max(0, all.length - limit),
+    retired: Math.max(0, Math.round((gross - card.riding) * 100) / 100),
+  }
 }

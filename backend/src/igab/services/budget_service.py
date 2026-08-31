@@ -208,6 +208,14 @@ class CardStatus:
     #: while funding it the following month does not reach back.
     #: `overspent_this_month` above is this series' entry for the viewed
     #: month, not a second computation.
+    #:
+    #: **Gross, and `riding` is net.** These are the months debt went ON;
+    #: an assignment that later retired some of it is recorded against the
+    #: month of the ASSIGNMENT (`covered_by_card`), not against the month
+    #: that rode, so there is no month attribution for what remains. The two
+    #: therefore disagree once anything has been covered, and the surface has
+    #: to say so rather than point at a month that is already settled.
+    #: Chronological here; the surface orders and caps for display.
     rode_by_month: list[tuple[date, Decimal]] = field(default_factory=list)
 
 

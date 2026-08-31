@@ -469,9 +469,13 @@ class CardStatusOut(BaseModel):
     charged_this_month: Decimal
     paid_this_month: Decimal
     debt_change_this_month: Decimal
-    #: Which months put riding debt on this card, earliest first. The month is
+    #: Which months put riding debt on this card, chronological. The month is
     #: the actionable half: funding an envelope in the month it ended short
     #: retires the ride, funding it the month after does not reach back.
+    #: GROSS — `riding` is net of anything an assignment has since retired,
+    #: and retirement is recorded against the assignment's month, not the
+    #: month that rode. The client orders and caps for display, and names the
+    #: difference rather than implying every month listed is still owed.
     rode_by_month: list[RodeMonth]
 
 

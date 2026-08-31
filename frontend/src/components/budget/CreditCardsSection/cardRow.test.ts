@@ -165,6 +165,21 @@ describe('rideMonths', () => {
   it('elides nothing when everything fits', () => {
     expect(rideMonths(card({ rode_by_month: months(2) })).elided).toBe(0)
   })
+
+  it('reports nothing retired when the list matches what is still riding', () => {
+    expect(rideMonths(card({ rode_by_month: months(3), riding: 60 })).retired).toBe(0)
+  })
+
+  it('names what an assignment has already retired', () => {
+    // The list is GROSS — the months debt went on — while `riding` is net.
+    // Retirement is recorded against the assignment's month, not the month
+    // that rode, so without this the panel points at settled months.
+    expect(rideMonths(card({ rode_by_month: months(3), riding: 20 })).retired).toBe(40)
+  })
+
+  it('never reports a negative retirement', () => {
+    expect(rideMonths(card({ rode_by_month: months(1), riding: 999 })).retired).toBe(0)
+  })
 })
 
 describe('unexplainedInflow', () => {

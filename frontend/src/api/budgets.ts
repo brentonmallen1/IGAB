@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 import { invalidateAfterImport } from './invalidateAfterImport'
 import { confirmAsync } from '../stores/confirmStore'
+import { parseApiDecimal } from '../utils/money'
 import type { Budget, BudgetMonth } from '../types'
 import type { YnabImportResult } from './imports'
 import { ROOT } from './queryKeys'
@@ -18,9 +19,60 @@ export async function fetchBudgets(): Promise<Budget[]> {
   return data
 }
 
+/** Every Decimal field on a card row, as the server names them. */
+const CARD_DECIMALS = [
+  'balance',
+  'set_aside',
+  'uncovered',
+  'overspent_this_month',
+  'reserve_discrepancy',
+  'assigned',
+  'reserved',
+  'released',
+  'residual',
+  'payments',
+  'riding',
+  'over_reserved',
+  'short_reserved',
+  'card_credit',
+  'charged_this_month',
+  'paid_this_month',
+  'debt_change_this_month',
+] as const
+
+/**
+ * Make `CardStatus`'s declared types true.
+ *
+ * FastAPI serializes `Decimal` as a JSON **string**, so every one of these
+ * arrives as `"0.00"` while `types/index.ts` calls it `number`. `tsc` cannot
+ * see the difference, and the damage is silent rather than loud: `"0.00" !== 0`
+ * is true, so `uncovered !== 0 ? formatMoney(...) : '—'` drew `$0.00` on every
+ * settled card instead of a dash; `a + b` concatenates; and `>=` compares
+ * lexicographically, so `"9.00" >= "10.00"`.
+ *
+ * Parsed once here rather than wrapped in `Number()` at each use site — the
+ * rest of the app does the latter in ~40 places, which is how the miss above
+ * survived. `parseApiDecimal` is the one parser for a canonical server string.
+ */
+function parseCardDecimals(month: BudgetMonth): BudgetMonth {
+  if (!month?.cards) return month
+  return {
+    ...month,
+    cards: month.cards.map((card) => {
+      const parsed = { ...card }
+      for (const key of CARD_DECIMALS) parsed[key] = parseApiDecimal(card[key])
+      parsed.rode_by_month = (card.rode_by_month ?? []).map((r) => ({
+        ...r,
+        amount: parseApiDecimal(r.amount),
+      }))
+      return parsed
+    }),
+  }
+}
+
 export async function fetchBudgetMonth(budgetId: string, month: string): Promise<BudgetMonth> {
   const { data } = await apiClient.get<BudgetMonth>(`/${budgetId}/months/${month}`)
-  return data
+  return parseCardDecimals(data)
 }
 
 export function useBudgets() {
