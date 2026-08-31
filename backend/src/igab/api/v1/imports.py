@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from igab.api.route import CommitRoute
 from igab.db.models import Budget, ChangeLog, new_uuid
 from igab.db.session import get_session
 from igab.dependencies import (
@@ -33,7 +34,7 @@ from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.change_log import snapshot
 
-router = APIRouter()
+router = APIRouter(route_class=CommitRoute)
 
 
 class ImportSummaryOut(BaseModel):

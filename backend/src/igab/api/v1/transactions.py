@@ -6,6 +6,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 
+from igab.api.route import CommitRoute
 from igab.api.v1.schemas.transaction import (
     BudgetTransactionListResponse,
     BulkActionResult,
@@ -76,7 +77,7 @@ from igab.services.transaction_service import (
 )
 from igab.utils.geo import bounding_box, haversine_m
 
-router = APIRouter()
+router = APIRouter(route_class=CommitRoute)
 
 
 # ─── Transactions ─────────────────────────────────────────────────────────────

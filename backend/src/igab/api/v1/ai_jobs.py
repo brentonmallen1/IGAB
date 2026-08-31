@@ -6,6 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
+from igab.api.route import CommitRoute
 from igab.api.v1.attachments import ALLOWED_CONTENT_TYPES, MAX_FILE_SIZE
 from igab.api.v1.schemas.ai_job import (
     ActiveCountResponse,
@@ -38,7 +39,7 @@ from igab.services.settings_service import SettingsService
 from igab.services.transaction_service import TransactionService
 from igab.tasks.ai_worker import ai_worker, cleanup_staging, staging_dir
 
-router = APIRouter()
+router = APIRouter(route_class=CommitRoute)
 
 
 async def _get_owned_job(repo: AIJobRepository, job_id: uuid.UUID, budget_id: uuid.UUID) -> AIJob:
@@ -181,7 +182,13 @@ async def submit_receipt(
         },
     )
     # Commit before waking the worker — it reads from its own session and
-    # must see the row (get_session would otherwise commit after we return).
+    # must see the row. `CommitRoute` commits too, but only once this handler
+    # returns, and `notify()` happens inside it. This one stays.
+    #
+    # It was also the first sighting of the wider defect: the original comment
+    # here read "get_session would otherwise commit after we return", which is
+    # true of every mutating route in the app, not just this one. See
+    # `igab.api.route`.
     await session.commit()
     ai_worker.notify()
     return AIJobResponse.from_job(job)

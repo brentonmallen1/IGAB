@@ -5,6 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, update
 
+from igab.api.route import CommitRoute
 from igab.api.v1.schemas.account_type import (
     AccountTypeCreate,
     AccountTypeResponse,
@@ -15,7 +16,7 @@ from igab.dependencies import BudgetAccess, CurrentUser, get_account_type_repo
 from igab.domain.exceptions import NotFoundError
 from igab.repositories.account_type_repo import AccountTypeRepository
 
-router = APIRouter()
+router = APIRouter(route_class=CommitRoute)
 
 AccountTypeRepoDep = Annotated[AccountTypeRepository, Depends(get_account_type_repo)]
 

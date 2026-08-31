@@ -2,6 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from igab.api.route import CommitRoute
 from igab.api.v1.schemas.budget_filter import (
     BudgetFilterCreate,
     BudgetFilterResponse,
@@ -11,7 +12,7 @@ from igab.dependencies import BudgetAccess, CurrentUser, FilterAccess, get_budge
 from igab.domain.exceptions import NotFoundError
 from igab.repositories.budget_filter_repo import BudgetFilterRepository
 
-router = APIRouter()
+router = APIRouter(route_class=CommitRoute)
 
 
 @router.get("/{budget_id}/filters", response_model=list[BudgetFilterResponse])

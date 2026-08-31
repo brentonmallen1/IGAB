@@ -3,6 +3,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
+from igab.api.route import CommitRoute
 from igab.api.v1.schemas.ai import (
     AIStatusResponse,
     InsightsResponse,
@@ -16,7 +17,7 @@ from igab.api.v1.schemas.ai import (
 from igab.dependencies import BudgetAccess, CurrentUser, get_ai_service
 from igab.services.ai_service import AIService
 
-router = APIRouter()
+router = APIRouter(route_class=CommitRoute)
 
 
 @router.get("/ai/status", response_model=AIStatusResponse)

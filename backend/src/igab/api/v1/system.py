@@ -2,12 +2,13 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
+from igab.api.route import CommitRoute
 from igab.api.v1.schemas.settings import UpdateStatusResponse
 from igab.dependencies import CurrentUser, get_settings_service
 from igab.services import update_service
 from igab.services.settings_service import SettingsService
 
-router = APIRouter()
+router = APIRouter(route_class=CommitRoute)
 
 
 @router.get("/system/update-status", response_model=UpdateStatusResponse)

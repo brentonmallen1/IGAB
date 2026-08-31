@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from igab.api.route import CommitRoute
 from igab.api.v1 import (
     account_types,
     accounts,
@@ -30,7 +31,7 @@ from igab.api.v1 import (
     wishlist,
 )
 
-api_router = APIRouter()
+api_router = APIRouter(route_class=CommitRoute)
 
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(users.router, tags=["users"])

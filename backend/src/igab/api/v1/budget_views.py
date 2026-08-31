@@ -2,6 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from igab.api.route import CommitRoute
 from igab.api.v1.schemas.budget_view import (
     BudgetViewCreate,
     BudgetViewResponse,
@@ -11,7 +12,7 @@ from igab.dependencies import BudgetAccess, CurrentUser, ViewAccess, get_budget_
 from igab.domain.exceptions import NotFoundError
 from igab.repositories.budget_view_repo import BudgetViewRepository
 
-router = APIRouter()
+router = APIRouter(route_class=CommitRoute)
 
 
 ViewRepo = Annotated[BudgetViewRepository, Depends(get_budget_view_repo)]

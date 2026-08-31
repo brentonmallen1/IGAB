@@ -4,6 +4,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+from igab.api.route import CommitRoute
 from igab.api.v1.schemas.category import CategoryResponse
 from igab.api.v1.schemas.liability import (
     AmortizationMonthOut,
@@ -33,7 +34,7 @@ from igab.services.amortization import AmortizationResult, amortization_schedule
 from igab.services.liability_service import LIABILITY_CLASSIFICATION, LiabilityService
 from igab.utils.clock import today_utc
 
-router = APIRouter()
+router = APIRouter(route_class=CommitRoute)
 
 
 async def _get_owned_liability(

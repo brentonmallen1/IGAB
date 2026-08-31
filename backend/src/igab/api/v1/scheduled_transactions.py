@@ -2,6 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from igab.api.route import CommitRoute
 from igab.api.v1.schemas.scheduled_transaction import (
     ScheduledTransactionCreate,
     ScheduledTransactionResponse,
@@ -20,7 +21,7 @@ from igab.services.scheduled_transaction_service import (
     ScheduledTransactionService,
 )
 
-router = APIRouter()
+router = APIRouter(route_class=CommitRoute)
 
 
 @router.get(

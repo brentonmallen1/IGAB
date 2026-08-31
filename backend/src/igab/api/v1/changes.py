@@ -3,6 +3,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+from igab.api.route import CommitRoute
 from igab.api.v1.schemas.change import ChangeListResponse, ChangeOut, UndoResult
 from igab.dependencies import (
     BudgetAccess,
@@ -14,7 +15,7 @@ from igab.domain.exceptions import NotFoundError, UndoConflict
 from igab.repositories.change_log_repo import ChangeLogRepository
 from igab.services.undo_service import UndoService
 
-router = APIRouter()
+router = APIRouter(route_class=CommitRoute)
 
 
 @router.get("/{budget_id}/changes", response_model=ChangeListResponse)

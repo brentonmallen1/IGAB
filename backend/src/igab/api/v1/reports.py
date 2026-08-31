@@ -5,6 +5,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Response
 
+from igab.api.route import CommitRoute
 from igab.api.v1.schemas.report import (
     AccountCompositionPoint,
     AccountCompositionResponse,
@@ -77,7 +78,7 @@ def _spending_classes(include_savings: bool) -> list[ActivityClass] | None:
     return [ActivityClass.SPENDING, ActivityClass.SAVINGS, ActivityClass.DEBT_PRINCIPAL]
 
 
-router = APIRouter()
+router = APIRouter(route_class=CommitRoute)
 
 
 @router.get("/{budget_id}/reports/spending", response_model=SpendingReportResponse)

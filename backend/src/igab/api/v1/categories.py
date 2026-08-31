@@ -6,6 +6,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 
+from igab.api.route import CommitRoute
 from igab.api.v1.schemas.category import (
     ArchivedCategoryResponse,
     AssignApplyRequest,
@@ -96,7 +97,7 @@ from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match
 from igab.services.ownership import require_in_budget
 from igab.services.target_service import TargetService
 
-router = APIRouter()
+router = APIRouter(route_class=CommitRoute)
 
 
 # ─── Category Groups ──────────────────────────────────────────────────────────

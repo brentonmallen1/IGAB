@@ -4,6 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 
+from igab.api.route import CommitRoute
 from igab.api.v1.schemas.attachment import AttachmentResponse, AttachmentRotateRequest
 from igab.dependencies import (
     AttachmentAccess,
@@ -17,7 +18,7 @@ from igab.repositories.attachment_repo import AttachmentRepository
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.attachment_service import AttachmentService
 
-router = APIRouter()
+router = APIRouter(route_class=CommitRoute)
 
 ALLOWED_CONTENT_TYPES = {
     "image/jpeg",
