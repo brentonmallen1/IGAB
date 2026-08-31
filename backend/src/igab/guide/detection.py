@@ -47,6 +47,7 @@ from igab.repositories.txn_filters import (
     POSTED,
 )
 from igab.services.budget_service import BudgetService
+from igab.services.category_service import CategoryService
 from igab.services.liability_service import LiabilityService
 
 TWO_PLACES = Decimal("0.01")
@@ -103,6 +104,23 @@ def budget_service_from(session: AsyncSession) -> BudgetService:
         BudgetAssignmentRepository(session),
         TransactionRepository(session),
         snapshot_repo=SnapshotRepository(session),
+    )
+
+
+def category_service_from(session: AsyncSession, budget_service: BudgetService) -> CategoryService:
+    """The budget page's category service, built the way the DI layer builds it.
+
+    The Guide needs it to retire the Wishlist group — archiving a group is a
+    money operation, and doing it with a column write is what let the switch
+    strand a wish envelope's balance.
+    """
+    return CategoryService(
+        session,
+        CategoryRepository(session),
+        CategoryGroupRepository(session),
+        budget_service,
+        TransactionRepository(session),
+        BudgetAssignmentRepository(session),
     )
 
 

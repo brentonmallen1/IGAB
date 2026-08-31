@@ -3,7 +3,11 @@ import { useLocation } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { useAppStore, THEMES, FONT_SCALES, type Theme, type FontScale } from '../../stores/appStore'
 import { useAccounts, useCreateAccount, useUpdateAccount, useDeleteAccount } from '../../api/accounts'
-import { useGuideOverview, useSetGuidePreferences } from '../../api/guide'
+import {
+  fetchWishlistRetirePreview,
+  useGuideOverview,
+  useSetGuidePreferences,
+} from '../../api/guide'
 import { useLiabilities } from '../../api/liabilities'
 import { confirmAccountDeletion } from '../../utils/confirmAccountDeletion'
 import { useBudgets, useUpdateBudget } from '../../api/budgets'
@@ -34,6 +38,8 @@ import { formatMoneyWithOptions } from '../../utils/money'
 import { formatDateWithOptions, formatTimeWithOptions } from '../../utils/dates'
 import { SyncSchedule } from '../../components/settings/SyncSchedule/SyncSchedule'
 import { useFormatters } from '../../hooks/useFormatters'
+import { parseApiDecimal } from '../../utils/money'
+import { wishlistToggleOutcome } from './wishlistToggle'
 import { useUIStore } from '../../stores/uiStore'
 import { changePassword, useCurrentUser, useLogout } from '../../api/auth'
 import { UsersPanel } from '../../components/settings/UsersPanel/UsersPanel'
@@ -171,6 +177,20 @@ export function SettingsPage() {
   const setGuidePrefs = useSetGuidePreferences(budgetId ?? '')
   // Both default on; the server is the source of truth once it answers.
   const guidePrefs = guideOverview.data?.preferences ?? { personalization: true, checkup: true, wishlist: true }
+
+  // The decision lives in `wishlistToggle.ts` so it can be tested without
+  // mounting this page; what is left here is the wiring it needs.
+  async function handleWishlistToggle(next: boolean) {
+    if (!budgetId) return
+    const outcome = await wishlistToggleOutcome(next, {
+      fetchPreview: () => fetchWishlistRetirePreview(budgetId),
+      confirm: confirmAsync,
+      formatMoney: (amount) => formatMoney(parseApiDecimal(amount)),
+      onPreviewFailed: () =>
+        toast.error('Could not check what turning the wishlist off would move'),
+    })
+    if (outcome) setGuidePrefs.mutate(outcome)
+  }
 
   // The list itself lives in settingsSections.ts, because the command palette
   // builds a row per section from the same array and the same gates.
@@ -460,15 +480,15 @@ export function SettingsPage() {
                 <div className="settings-row__label">Wishlist</div>
                 <div className="settings-row__desc">
                   Keep a wishlist — a Wishlist group in your budget and the Wishlist tab in
-                  the Guide. Off hides both; any money in those envelopes stays exactly where
-                  it is.
+                  the Guide. Turning it off archives those envelopes and returns anything
+                  saved in them to Ready to Assign; it asks first, and says how much.
                 </div>
               </div>
               <input
                 type="checkbox"
                 checked={guidePrefs.wishlist}
                 disabled={setGuidePrefs.isPending}
-                onChange={(e) => setGuidePrefs.mutate({ wishlist: e.target.checked })}
+                onChange={(e) => void handleWishlistToggle(e.target.checked)}
               />
             </div>
           </div>

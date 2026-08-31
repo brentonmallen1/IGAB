@@ -26,8 +26,10 @@ from igab.api.v1.schemas.guide import (
     PreferencesUpdate,
     SignalsResponse,
     StepUpdate,
+    WishlistRetirePreview,
 )
 from igab.dependencies import BudgetAccess, CurrentUser, get_guide_service
+from igab.domain.exceptions import InvariantViolation
 from igab.guide.concepts import CONCEPT_KEYS
 from igab.guide.scenarios import LoanCandidate
 from igab.guide.service import GuideService
@@ -119,7 +121,30 @@ async def set_guide_preferences(
     payload: PreferencesUpdate,
 ) -> PreferencesResponse:
     changes = payload.model_dump(exclude_none=True)
-    return PreferencesResponse(**await service.set_preferences(budget_id, changes))
+    release = bool(changes.pop("release_wishlist_money", False))
+    try:
+        return PreferencesResponse(
+            **await service.set_preferences(budget_id, changes, release_wishlist_money=release)
+        )
+    except InvariantViolation as e:
+        # Turning the Wishlist off with money in it: the message carries the
+        # figure, so the dialog can state it rather than guessing.
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+
+
+@router.get("/{budget_id}/guide/wishlist/retire-preview", response_model=WishlistRetirePreview)
+async def wishlist_retire_preview(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    service: GuideServiceDep,
+) -> WishlistRetirePreview:
+    """What turning the Wishlist off would move, before the switch is flipped."""
+    preview = await service.preview_wishlist_retire(budget_id)
+    return WishlistRetirePreview(
+        envelopes=preview.blocked_by_balance,
+        available=preview.available,
+        is_empty=not preview.blocked_by_balance,
+    )
 
 
 @router.put("/{budget_id}/guide/progress/{stage_id}", status_code=status.HTTP_204_NO_CONTENT)
