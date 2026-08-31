@@ -57,9 +57,9 @@ export function VolatilityReport({ budgetId }: Props) {
     id: c.category_id,
     name: c.category_name,
     subName: c.category_group_name,
-    amount: -Number(c.mean),
-    pct: coefficientOfVariation(Number(c.mean), Number(c.std_dev)),
-    extra: `σ ${formatMoney(Number(c.std_dev))}`,
+    amount: -c.mean,
+    pct: coefficientOfVariation(c.mean, c.std_dev),
+    extra: `σ ${formatMoney(c.std_dev)}`,
   }))
 
   return (
@@ -90,10 +90,10 @@ export function VolatilityReport({ budgetId }: Props) {
               categories.map((c) => ({
                 category: c.category_name,
                 group: c.category_group_name,
-                mean: Number(c.mean),
-                std_dev: Number(c.std_dev),
-                min: Number(c.min_val),
-                max: Number(c.max_val),
+                mean: c.mean,
+                std_dev: c.std_dev,
+                min: c.min_val,
+                max: c.max_val,
                 months: c.months_included,
               }))
             }

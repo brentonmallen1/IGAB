@@ -1,11 +1,11 @@
-from pydantic import BaseModel
+from igab.api.v1.schemas.base import ApiModel
 
 
-class SettingUpdate(BaseModel):
+class SettingUpdate(ApiModel):
     value: str
 
 
-class SettingResponse(BaseModel):
+class SettingResponse(ApiModel):
     key: str
     value: str | None
     # Whether a stored override exists (vs env/default). None on legacy paths.
@@ -16,7 +16,7 @@ class SettingResponse(BaseModel):
     placeholders: list[str] | None = None
 
 
-class UpdateStatusResponse(BaseModel):
+class UpdateStatusResponse(ApiModel):
     enabled: bool
     current_version: str
     latest_version: str | None = None

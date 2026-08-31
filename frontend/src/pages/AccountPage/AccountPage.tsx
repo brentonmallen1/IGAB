@@ -121,8 +121,8 @@ export function AccountPage() {
     )
   }
 
-  const clearedClass = Number(account.cleared_balance) < 0 ? 'negative' : 'positive'
-  const workingClass = Number(account.balance) < 0 ? 'negative' : 'positive'
+  const clearedClass = account.cleared_balance < 0 ? 'negative' : 'positive'
+  const workingClass = account.balance < 0 ? 'negative' : 'positive'
   const isConnected = account.simplefin_account_id && account.simplefin_sync_enabled
 
   return (
@@ -182,7 +182,7 @@ export function AccountPage() {
           <div className="account-page__balances">
             <div className="account-page__balance-item">
               <span className={`account-page__balance-value ${clearedClass}`}>
-                {formatMoney(Number(account.cleared_balance))}
+                {formatMoney(account.cleared_balance)}
               </span>
               <span className="account-page__balance-label">
                 <CheckCircle size={10} />
@@ -192,7 +192,7 @@ export function AccountPage() {
             <span className="account-page__balance-op">+</span>
             <div className="account-page__balance-item">
               <span className="account-page__balance-value">
-                {formatMoney(Number(account.uncleared_balance))}
+                {formatMoney(account.uncleared_balance)}
               </span>
               <span className="account-page__balance-label">
                 <CircleDot size={10} />
@@ -202,7 +202,7 @@ export function AccountPage() {
             <span className="account-page__balance-op">=</span>
             <div className="account-page__balance-item account-page__balance-item--working">
               <span className={`account-page__balance-value ${workingClass}`}>
-                {formatMoney(Number(account.balance))}
+                {formatMoney(account.balance)}
               </span>
               <span className="account-page__balance-label">Working Balance</span>
             </div>
@@ -212,14 +212,12 @@ export function AccountPage() {
               state and needs no line — and it names the fix rather than
               adjusting anything itself: drift is Reconcile's job. */}
           {account.simplefin_balance !== null &&
-            Number(account.simplefin_balance) !== Number(account.cleared_balance) && (
+            account.simplefin_balance !== account.cleared_balance && (
               <div className="account-page__bank-reports">
-                Bank reports {formatMoney(Number(account.simplefin_balance))} — differs from the
-                cleared balance by{' '}
-                {formatMoney(
-                  Math.abs(Number(account.simplefin_balance) - Number(account.cleared_balance))
-                )}
-                . Reconcile to bring them together.
+                Bank reports {formatMoney(account.simplefin_balance)} — differs from the cleared
+                balance by{' '}
+                {formatMoney(Math.abs(account.simplefin_balance - account.cleared_balance))}.
+                Reconcile to bring them together.
               </div>
             )}
         </div>

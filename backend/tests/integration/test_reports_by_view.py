@@ -23,6 +23,7 @@ from .factories import (
     create_payee,
     create_transaction,
     create_user,
+    money,
 )
 
 TODAY = date.today()
@@ -395,7 +396,7 @@ class TestDayPatternsCarriesTheSameNote:
                 "activity_class": "debt_principal",
                 "label": "Debt payment",
                 "categories": 1,
-                "total": "275.00",
+                "total": 275.0,
             }
         ]
 
@@ -449,7 +450,7 @@ class TestThroughTheApi:
         body = resp.json()
         by_parent = {g["parent_name"] for g in body["groups"]}
         assert by_parent == {"Need", "Unassigned"}
-        assert Decimal(body["total"]) == Decimal("1500.00")
+        assert money(body["total"]) == Decimal("1500.00")
 
     async def test_the_unassigned_bucket_shares_one_rollup_key(self, api_client, db_session):
         """The client groups on `parent_id`, so both unplaced categories have
@@ -499,7 +500,7 @@ class TestThroughTheApi:
         body = (await self._get(api_client, budget, view_id=str(view.id))).json()
 
         assert body["view_hidden_categories"] == 2
-        assert Decimal(body["view_hidden_total"]) == Decimal("300.00")
+        assert money(body["view_hidden_total"]) == Decimal("300.00")
 
     async def test_without_a_view_the_hidden_fields_are_zero(self, api_client, db_session):
         budget, _ = await _world(db_session, api_client.test_user)
@@ -507,7 +508,7 @@ class TestThroughTheApi:
         body = (await self._get(api_client, budget)).json()
 
         assert body["view_hidden_categories"] == 0
-        assert Decimal(body["view_hidden_total"]) == Decimal("0")
+        assert money(body["view_hidden_total"]) == Decimal("0")
 
     async def test_class_excluded_reaches_the_client(self, api_client, db_session):
         budget, c = await _world(db_session, api_client.test_user)
@@ -521,7 +522,7 @@ class TestThroughTheApi:
                 "activity_class": "debt_principal",
                 "label": "Debt payment",
                 "categories": 1,
-                "total": "275.00",
+                "total": 275.0,
             }
         ]
 

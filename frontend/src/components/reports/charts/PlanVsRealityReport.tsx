@@ -19,7 +19,7 @@ interface Props {
 /** A month is "active" when the plan or reality was non-zero — same rule the
  * backend uses for months_active/months_over. */
 function isActive(cell: PlanRealityCell): boolean {
-  return Number(cell.assigned) !== 0 || Number(cell.spent) !== 0
+  return cell.assigned !== 0 || cell.spent !== 0
 }
 
 function cellLabel(variance: number): string {
@@ -63,10 +63,7 @@ export function PlanVsRealityReport({ budgetId }: Props) {
   let categories = data?.categories ?? []
   if (chronicOnly) categories = categories.filter((c) => c.chronic)
 
-  const maxOver = Math.max(
-    ...categories.flatMap((c) => c.monthly.map((m) => -Number(m.variance))),
-    1
-  )
+  const maxOver = Math.max(...categories.flatMap((c) => c.monthly.map((m) => -m.variance)), 1)
 
   return (
     <div className="report-section surface">
@@ -112,10 +109,10 @@ export function PlanVsRealityReport({ budgetId }: Props) {
                   group: c.category_group_name,
                 }
                 for (const cell of c.monthly) {
-                  row[cell.month.slice(0, 7)] = Number(cell.variance)
+                  row[cell.month.slice(0, 7)] = cell.variance
                 }
-                row.total_assigned = Number(c.total_assigned)
-                row.total_spent = Number(c.total_spent)
+                row.total_assigned = c.total_assigned
+                row.total_spent = c.total_spent
                 row.months_over = c.months_over
                 row.chronic = c.chronic
                 return row
@@ -129,8 +126,8 @@ export function PlanVsRealityReport({ budgetId }: Props) {
       <div ref={captureRef} className="report-capture">
         {data && (
           <div className="report-metrics">
-            <MetricCard label="Total Assigned" value={formatMoney(Number(data.total_assigned))} />
-            <MetricCard label="Total Spent" value={formatMoney(Number(data.total_spent))} />
+            <MetricCard label="Total Assigned" value={formatMoney(data.total_assigned)} />
+            <MetricCard label="Total Spent" value={formatMoney(data.total_spent)} />
             <MetricCard label="Chronically Over" value={String(data.chronic_count)} />
           </div>
         )}
@@ -184,7 +181,7 @@ export function PlanVsRealityReport({ budgetId }: Props) {
                       {cat.chronic && <span className="plan-reality__badge">Chronic</span>}
                     </td>
                     {cat.monthly.map((cell) => {
-                      const v = Number(cell.variance)
+                      const v = cell.variance
                       const active = isActive(cell)
                       const ym = cell.month.slice(0, 7)
                       return (
@@ -197,7 +194,7 @@ export function PlanVsRealityReport({ budgetId }: Props) {
                             active && v >= 0 ? 'plan-reality__cell--under' : '',
                           ].join(' ')}
                           style={active ? overspendStyle(v, maxOver) : undefined}
-                          title={`${cat.category_name} · ${ym} — assigned ${formatMoney(Number(cell.assigned))}, spent ${formatMoney(Number(cell.spent))}`}
+                          title={`${cat.category_name} · ${ym} — assigned ${formatMoney(cell.assigned)}, spent ${formatMoney(cell.spent)}`}
                           onClick={
                             active
                               ? () =>

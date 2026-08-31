@@ -12,6 +12,7 @@ from .factories import (
     create_category,
     create_category_group,
     create_transaction,
+    money,
 )
 
 TODAY = date.today()
@@ -98,7 +99,7 @@ class TestTheGroup:
         ).json()
         assert Decimal(month["to_be_assigned"]) == Decimal("850.00")
         row = next(b for b in month["category_balances"] if b["category_id"] == cat_id)
-        assert Decimal(row["available"]) == Decimal("150.00")
+        assert money(row["available"]) == Decimal("150.00")
 
 
 class TestOwnEnvelope:
@@ -151,7 +152,7 @@ class TestOwnEnvelope:
         )
         assert r.status_code in (200, 201)
         body = (await api_client.get(_url(budget))).json()
-        assert Decimal(body["items"][0]["cost"]) == Decimal("2000.00")
+        assert money(body["items"][0]["cost"]) == Decimal("2000.00")
 
     async def test_delete_offers_the_envelope_only_when_owned(self, db_session, api_client):
         budget = await _budget(db_session, api_client)
@@ -633,7 +634,7 @@ class TestTurningTheWishlistOffDoesNotStrandMoney:
         body = r.json()
         assert body["is_empty"] is False
         assert body["envelopes"] == ["Bike"]
-        assert Decimal(body["available"]) == Decimal("150.00")
+        assert money(body["available"]) == Decimal("150.00")
 
     async def test_confirming_returns_the_money_to_ready_to_assign(self, db_session, api_client):
         budget = await _budget(db_session, api_client)

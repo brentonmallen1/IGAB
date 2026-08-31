@@ -53,6 +53,7 @@ from igab.api.v1.schemas.category import (
     MoveMoneyRequest,
     RecentPayeeResponse,
     RepairOrphansResponse,
+    RodeMonth,
 )
 from igab.db.models import CategoryGroup, Transaction
 from igab.dependencies import (
@@ -705,6 +706,13 @@ async def get_budget_month(
                 residual=c.residual,
                 payments=c.payments,
                 riding=c.riding,
+                over_reserved=c.over_reserved,
+                short_reserved=c.short_reserved,
+                card_credit=c.card_credit,
+                charged_this_month=c.charged_this_month,
+                paid_this_month=c.paid_this_month,
+                debt_change_this_month=c.debt_change_this_month,
+                rode_by_month=[RodeMonth(month=m, amount=v) for m, v in c.rode_by_month],
             )
             for c in summary.cards
         ],

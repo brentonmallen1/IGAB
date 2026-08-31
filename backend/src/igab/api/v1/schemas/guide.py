@@ -3,10 +3,12 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import Field, model_validator
+
+from igab.api.v1.schemas.base import ApiModel
 
 
-class ConceptInfo(BaseModel):
+class ConceptInfo(ApiModel):
     """A concept the roadmap can ask about, and how it may be corrected."""
 
     key: str
@@ -21,7 +23,7 @@ class ConceptInfo(BaseModel):
     aliases: list[str]
 
 
-class SignalResponse(BaseModel):
+class SignalResponse(ApiModel):
     key: str
     #: False when the user asked us to leave this concept alone.
     tracked: bool
@@ -52,23 +54,23 @@ class SignalResponse(BaseModel):
     note: str | None = None
 
 
-class SignalsResponse(BaseModel):
+class SignalsResponse(ApiModel):
     personalization: bool
     concepts: list[SignalResponse]
 
 
-class CandidateOption(BaseModel):
+class CandidateOption(ApiModel):
     id: str
     name: str
     detail: str | None = None
 
 
-class CandidatesResponse(BaseModel):
+class CandidatesResponse(ApiModel):
     concept_key: str
     options: dict[str, list[CandidateOption]]
 
 
-class BindingUpdate(BaseModel):
+class BindingUpdate(ApiModel):
     """One concept's whole answer — the endpoint replaces rather than merges."""
 
     #: 'auto' resets to the app's own guess and deletes every stored row.
@@ -93,7 +95,7 @@ class BindingUpdate(BaseModel):
         return self
 
 
-class PreferencesUpdate(BaseModel):
+class PreferencesUpdate(ApiModel):
     personalization: bool | None = None
     checkup: bool | None = None
     wishlist: bool | None = None
@@ -104,7 +106,7 @@ class PreferencesUpdate(BaseModel):
     release_wishlist_money: bool = False
 
 
-class WishlistRetirePreview(BaseModel):
+class WishlistRetirePreview(ApiModel):
     """What turning the Wishlist off would return to Ready to Assign.
 
     Served rather than summed on the client from the month's balances: the
@@ -120,18 +122,18 @@ class WishlistRetirePreview(BaseModel):
     is_empty: bool
 
 
-class PreferencesResponse(BaseModel):
+class PreferencesResponse(ApiModel):
     personalization: bool
     checkup: bool
     wishlist: bool
 
 
-class StepUpdate(BaseModel):
+class StepUpdate(ApiModel):
     #: null clears the mark and returns the step to undecided.
     state: str | None = Field(default=None, pattern="^(done|skipped)$")
 
 
-class GuideOverview(BaseModel):
+class GuideOverview(ApiModel):
     """Everything the Guide needs to render, in one round trip."""
 
     concepts: list[ConceptInfo]
@@ -140,7 +142,7 @@ class GuideOverview(BaseModel):
     progress: dict[str, str]
 
 
-class CheckupMetric(BaseModel):
+class CheckupMetric(ApiModel):
     """One row of the checkup: a figure against the target the roadmap states."""
 
     key: str
@@ -162,7 +164,7 @@ class CheckupMetric(BaseModel):
     money_target: Decimal | None = None
 
 
-class CheckupFinding(BaseModel):
+class CheckupFinding(ApiModel):
     kind: str
     rank: int
     concept_key: str | None = None
@@ -173,7 +175,7 @@ class CheckupFinding(BaseModel):
     names: list[str] = Field(default_factory=list)
 
 
-class CheckupResponse(BaseModel):
+class CheckupResponse(ApiModel):
     """Metrics, and every finding that fired, most severe first.
 
     All findings are returned: the roadmap's step markers need every kind, and
@@ -196,7 +198,7 @@ class CheckupResponse(BaseModel):
 Money = Decimal
 
 
-class CascadeDebtIn(BaseModel):
+class CascadeDebtIn(ApiModel):
     key: str = Field(min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=120)
     balance: Money = Field(ge=0)
@@ -204,7 +206,7 @@ class CascadeDebtIn(BaseModel):
     minimum_payment: Money = Field(ge=0)
 
 
-class PayoffPlanRequest(BaseModel):
+class PayoffPlanRequest(ApiModel):
     debts: list[CascadeDebtIn] = Field(min_length=1, max_length=50)
     extra: Money = Field(default=Decimal("0"), ge=0)
 
@@ -216,7 +218,7 @@ class PayoffPlanRequest(BaseModel):
         return self
 
 
-class CascadeDebtOut(BaseModel):
+class CascadeDebtOut(ApiModel):
     key: str
     name: str
     order: int
@@ -227,7 +229,7 @@ class CascadeDebtOut(BaseModel):
     total_principal: Decimal
 
 
-class CascadeMonthOut(BaseModel):
+class CascadeMonthOut(ApiModel):
     month_index: int
     date: date
     payment: Decimal
@@ -237,7 +239,7 @@ class CascadeMonthOut(BaseModel):
     balances: dict[str, Decimal]
 
 
-class CascadeOut(BaseModel):
+class CascadeOut(ApiModel):
     order: str
     debts: list[CascadeDebtOut]
     months: list[CascadeMonthOut]
@@ -247,7 +249,7 @@ class CascadeOut(BaseModel):
     total_paid: Decimal
 
 
-class PayoffPlanResponse(BaseModel):
+class PayoffPlanResponse(ApiModel):
     as_of: date
     extra: Decimal
     avalanche: CascadeOut
@@ -256,7 +258,7 @@ class PayoffPlanResponse(BaseModel):
     minimums_only: CascadeOut
 
 
-class PayVsSaveRequest(BaseModel):
+class PayVsSaveRequest(ApiModel):
     balance: Money = Field(ge=0)
     annual_rate: Decimal = Field(ge=0, le=100)
     minimum_payment: Money = Field(ge=0)
@@ -265,7 +267,7 @@ class PayVsSaveRequest(BaseModel):
     savings_apy: Decimal = Field(ge=0, le=100)
 
 
-class PayVsSaveResponse(BaseModel):
+class PayVsSaveResponse(ApiModel):
     horizon_months: int
     baseline_total_interest: Decimal
     baseline_never_pays_off: bool
@@ -282,7 +284,7 @@ class PayVsSaveResponse(BaseModel):
     favours: Literal["pay", "save", "even"]
 
 
-class LoanIn(BaseModel):
+class LoanIn(ApiModel):
     name: str = Field(min_length=1, max_length=120)
     principal: Money = Field(ge=0)
     annual_rate: Decimal = Field(ge=0, le=100)
@@ -297,11 +299,11 @@ class LoanIn(BaseModel):
         return self
 
 
-class LoanCompareRequest(BaseModel):
+class LoanCompareRequest(ApiModel):
     loans: list[LoanIn] = Field(min_length=1, max_length=10)
 
 
-class LoanOutcomeOut(BaseModel):
+class LoanOutcomeOut(ApiModel):
     name: str
     payment: Decimal
     months: int
@@ -311,17 +313,17 @@ class LoanOutcomeOut(BaseModel):
     total_cost: Decimal
 
 
-class LoanCompareResponse(BaseModel):
+class LoanCompareResponse(ApiModel):
     loans: list[LoanOutcomeOut]
     cheapest: str | None
 
 
-class EmergencyFundRequest(BaseModel):
+class EmergencyFundRequest(ApiModel):
     months: int = Field(ge=1, le=12)
     monthly_contribution: Money = Field(default=Decimal("0"), ge=0)
 
 
-class EmergencyFundResponse(BaseModel):
+class EmergencyFundResponse(ApiModel):
     """Sized from the roadmap's own essentials and emergency-fund figures."""
 
     months: int

@@ -4,7 +4,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any, Literal
 
-from sqlalchemy import func, select, update
+from sqlalchemy import case, func, select, update
 
 from igab.db.models import (
     Account,
@@ -199,6 +199,47 @@ class AccountRepository(BaseRepository[Account]):
             .group_by(Transaction.account_id)
         )
         return {account_id: Decimal(str(total)) for account_id, total in result.all()}
+
+    async def card_month_flows(
+        self, budget_id: uuid.UUID, month_start: date, month_end: date
+    ) -> dict[uuid.UUID, tuple[Decimal, Decimal]]:
+        """Each card's charges and inflows inside one month, as `(charges,
+        inflows)` — charges negative, inflows positive, so the pair sums to the
+        month's move in the balance.
+
+        Same predicates and same upper bound as `card_balances`, one month wide
+        instead of open-ended: the two have to agree about which rows count, or
+        a month's net would not reconcile against the balances either side of
+        it. Cards with no rows that month simply do not appear.
+
+        Deliberately the card's own ledger, not the reserve's legs. `payments`
+        is paired transfers from cash; `inflows` here is every credit — refunds,
+        rewards, someone else paying the bill, and a payment whose transfer leg
+        was never paired. The gap between the two is the diagnostic.
+        """
+        charges = func.sum(case((Transaction.amount < 0, Transaction.amount), else_=0))
+        inflows = func.sum(case((Transaction.amount > 0, Transaction.amount), else_=0))
+        result = await self.session.execute(
+            select(
+                Transaction.account_id,
+                func.coalesce(charges, 0),
+                func.coalesce(inflows, 0),
+            )
+            .select_from(Transaction)
+            .join(Account, Account.id == Transaction.account_id)
+            .where(
+                Account.budget_id == budget_id,
+                CARD_ACCOUNT,
+                BALANCE_ROW,
+                Transaction.date >= month_start,
+                not_future(month_end),
+            )
+            .group_by(Transaction.account_id)
+        )
+        return {
+            account_id: (Decimal(str(charged)), Decimal(str(received)))
+            for account_id, charged, received in result.all()
+        }
 
     async def soft_delete(
         self, id: uuid.UUID, *, liability_disposition: LiabilityDisposition = "keep"

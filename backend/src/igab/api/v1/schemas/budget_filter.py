@@ -1,22 +1,23 @@
 import datetime
 import uuid
 
-from pydantic import BaseModel, model_validator
+from pydantic import model_validator
 
+from igab.api.v1.schemas.base import ApiModel
 from igab.db.models import BudgetFilter
 
 
-class BudgetFilterCreate(BaseModel):
+class BudgetFilterCreate(ApiModel):
     name: str
     category_ids: list[uuid.UUID] = []
 
 
-class BudgetFilterUpdate(BaseModel):
+class BudgetFilterUpdate(ApiModel):
     name: str | None = None
     category_ids: list[uuid.UUID] | None = None
 
 
-class BudgetFilterResponse(BaseModel):
+class BudgetFilterResponse(ApiModel):
     id: uuid.UUID
     budget_id: uuid.UUID
     name: str

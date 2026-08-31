@@ -2,7 +2,9 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, Field
+from pydantic import Field
+
+from igab.api.v1.schemas.base import ApiModel
 
 # The registry key of an account type — built-in or user-defined. Existence is
 # validated per budget at the endpoint (account_type_service.resolve_type);
@@ -10,7 +12,7 @@ from pydantic import BaseModel, Field
 AccountTypeKey = Field(pattern=r"^[a-z0-9_]{1,30}$")
 
 
-class AccountCreate(BaseModel):
+class AccountCreate(ApiModel):
     name: str
     account_type: str = AccountTypeKey
     # None = use the type's default_on_budget
@@ -19,7 +21,7 @@ class AccountCreate(BaseModel):
     sort_order: int = 0
 
 
-class AccountUpdate(BaseModel):
+class AccountUpdate(ApiModel):
     name: str | None = None
     #: The day this account joined the budget — see `Account.budget_start_date`.
     #: Omitted leaves it alone; an explicit null clears it back to "treat all
@@ -33,7 +35,7 @@ class AccountUpdate(BaseModel):
     sort_order: int | None = None
 
 
-class AccountResponse(BaseModel):
+class AccountResponse(ApiModel):
     id: uuid.UUID
     budget_id: uuid.UUID
     name: str

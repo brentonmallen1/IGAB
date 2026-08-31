@@ -59,9 +59,9 @@ export function extractPrevTotals(prevData: CashFlowReport): PrevTotals {
   const nodeType = new Map(prevData.nodes.map((n) => [n.id, n.type]))
   for (const link of prevData.links) {
     if (link.source === '__budget__') {
-      groups.set(link.target, Number(link.value))
+      groups.set(link.target, link.value)
     } else if (nodeType.get(link.source) === 'category_group') {
-      cats.set(link.target, Number(link.value))
+      cats.set(link.target, link.value)
     }
   }
   return { groups, cats }
@@ -91,7 +91,7 @@ export function buildSankeyView(
   const groupTotals = new Map<string, number>()
   for (const link of data.links) {
     if (link.source === '__budget__') {
-      groupTotals.set(link.target, Number(link.value))
+      groupTotals.set(link.target, link.value)
     }
   }
 
@@ -99,7 +99,7 @@ export function buildSankeyView(
   for (const link of data.links) {
     const sourceNode = data.nodes.find((n) => n.id === link.source)
     if (sourceNode?.type === 'category_group') {
-      catTotals.set(link.target, Number(link.value))
+      catTotals.set(link.target, link.value)
     }
   }
 
@@ -128,7 +128,7 @@ export function buildSankeyView(
 
       payees.forEach((payee, i) => {
         nodes.push({ id: `payee_${i}`, name: payee.name, type: 'payee' })
-        links.push({ source: 2, target: 3 + i, value: Number(payee.total) })
+        links.push({ source: 2, target: 3 + i, value: payee.total })
       })
     }
   } else if (selectedGroupId) {
@@ -162,12 +162,7 @@ export function buildSankeyView(
   // Attach previous-window values for the compare overlay. null = new node.
   if (prevTotals) {
     const prevPayees = selectedCategoryId
-      ? new Map(
-          (prevData?.category_payees[selectedCategoryId] ?? []).map((p) => [
-            p.name,
-            Number(p.total),
-          ])
-        )
+      ? new Map((prevData?.category_payees[selectedCategoryId] ?? []).map((p) => [p.name, p.total]))
       : null
     // The synthetic Income node's value is the sum of visible outflows, not
     // income — its delta lives on the metric cards instead

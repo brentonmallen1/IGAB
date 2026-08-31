@@ -22,6 +22,7 @@ from .factories import (
     create_transaction,
     create_user,
     make_services,
+    money,
 )
 
 TODAY = date.today()
@@ -108,7 +109,7 @@ async def test_json_exports_same_rows_with_iso_dates(db_session):
     assert [r["id"] for r in data] == [str(parent.id), str(pending.id), str(cleared.id)]
     assert data[0]["date"] == (TODAY - timedelta(days=1)).isoformat()
     # Amounts serialize as exact decimal strings, not floats
-    assert Decimal(data[0]["amount"]) == Decimal("-100.00")
+    assert money(data[0]["amount"]) == Decimal("-100.00")
     assert data[1]["cleared"] == "pending"
 
 

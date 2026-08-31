@@ -2,16 +2,17 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, field_validator
+from pydantic import field_validator
 
+from igab.api.v1.schemas.base import ApiModel
 from igab.integrations.simplefin.limits import GLOBAL_DAILY_LIMIT
 
 
-class SimpleFINSetupRequest(BaseModel):
+class SimpleFINSetupRequest(ApiModel):
     setup_token: str
 
 
-class SimpleFINConfigResponse(BaseModel):
+class SimpleFINConfigResponse(ApiModel):
     """Whether this server can store bank credentials at all.
 
     The client cannot work this out — the encryption key is server-side env —
@@ -29,7 +30,7 @@ class SimpleFINConfigResponse(BaseModel):
     generate_key_command: str
 
 
-class SimpleFINUpdateRequest(BaseModel):
+class SimpleFINUpdateRequest(ApiModel):
     sync_enabled: bool | None = None
     #: UTC hours (0-23) to sync at; an empty list is "never". Omitted means
     #: "leave the schedule alone" — the route drops None fields.
@@ -58,7 +59,7 @@ class SimpleFINUpdateRequest(BaseModel):
         return unique
 
 
-class SimpleFINConnectionResponse(BaseModel):
+class SimpleFINConnectionResponse(ApiModel):
     id: uuid.UUID
     user_id: uuid.UUID
     last_sync_at: datetime | None
@@ -74,12 +75,12 @@ class SimpleFINConnectionResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class LinkSimpleFINRequest(BaseModel):
+class LinkSimpleFINRequest(ApiModel):
     simplefin_account_id: str
     simplefin_account_name: str | None = None
 
 
-class SyncResult(BaseModel):
+class SyncResult(ApiModel):
     imported: int
     skipped: int
     matched: int = 0
@@ -97,7 +98,7 @@ class SyncResult(BaseModel):
     account_remaining: int | None = None
 
 
-class ConnectionSyncOutcome(BaseModel):
+class ConnectionSyncOutcome(ApiModel):
     """What one connection did during a sync-all."""
 
     connection_id: uuid.UUID
@@ -106,7 +107,7 @@ class ConnectionSyncOutcome(BaseModel):
     error: str | None = None
 
 
-class SyncAllResult(BaseModel):
+class SyncAllResult(ApiModel):
     """Every connection's sync, totalled.
 
     One failing connection does not stop the others, so the totals and the
@@ -124,7 +125,7 @@ class SyncAllResult(BaseModel):
     connections: list[ConnectionSyncOutcome] = []
 
 
-class RateLimitStatus(BaseModel):
+class RateLimitStatus(ApiModel):
     global_used: int
     global_remaining: int
     account_used: int
@@ -134,7 +135,7 @@ class RateLimitStatus(BaseModel):
     resets_at: str
 
 
-class AccountSyncStatusResponse(BaseModel):
+class AccountSyncStatusResponse(ApiModel):
     account_id: uuid.UUID
     simplefin_account_id: str | None
     simplefin_sync_enabled: bool
@@ -145,7 +146,7 @@ class AccountSyncStatusResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class TransactionMatchResponse(BaseModel):
+class TransactionMatchResponse(ApiModel):
     id: uuid.UUID
     synced_transaction_id: uuid.UUID
     manual_transaction_id: uuid.UUID

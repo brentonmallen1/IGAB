@@ -31,13 +31,13 @@ export function AssignPreviewModal({ budgetId, month, strategy, onClose }: Props
   const tbaAfter = Number(preview?.tba_after ?? 0)
   const toAssign = Number(preview?.to_assign ?? 0)
   const toReturn = Number(preview?.to_return ?? 0)
-  const hasChanges = preview?.items.some((i) => Number(i.delta) !== 0) ?? false
+  const hasChanges = preview?.items.some((i) => i.delta !== 0) ?? false
 
   async function handleApply() {
     if (!preview) return
     const result = await apply.mutateAsync({ month, strategy })
-    const assigned = Number(result.to_assign)
-    const returned = Number(result.to_return)
+    const assigned = result.to_assign
+    const returned = result.to_return
     const parts = []
     if (assigned > 0) parts.push(`${formatMoney(assigned)} assigned`)
     if (returned > 0) parts.push(`${formatMoney(returned)} returned to TBA`)
@@ -100,12 +100,12 @@ export function AssignPreviewModal({ budgetId, month, strategy, onClose }: Props
                 </thead>
                 <tbody>
                   {preview.items.map((item) => {
-                    const delta = Number(item.delta)
+                    const delta = item.delta
                     return (
                       <tr key={item.category_id}>
                         <td>{item.category_name}</td>
                         <td className="assign-preview-modal__col-num">
-                          {formatMoney(Number(item.current_assigned))}
+                          {formatMoney(item.current_assigned)}
                         </td>
                         <td
                           className={`assign-preview-modal__col-num ${
@@ -120,7 +120,7 @@ export function AssignPreviewModal({ budgetId, month, strategy, onClose }: Props
                           {formatMoney(delta)}
                         </td>
                         <td className="assign-preview-modal__col-num">
-                          {formatMoney(Number(item.new_assigned))}
+                          {formatMoney(item.new_assigned)}
                         </td>
                       </tr>
                     )
@@ -142,7 +142,7 @@ export function AssignPreviewModal({ budgetId, month, strategy, onClose }: Props
             <div className="assign-preview-modal__tba-summary">
               <span className="assign-preview-modal__tba-label">TBA:</span>
               <span className="assign-preview-modal__tba-value">
-                {formatMoney(Number(preview.tba_before))}
+                {formatMoney(preview.tba_before)}
               </span>
               <span className="assign-preview-modal__tba-arrow">→</span>
               <span

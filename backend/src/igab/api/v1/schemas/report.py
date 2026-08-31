@@ -2,12 +2,12 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel
+from igab.api.v1.schemas.base import ApiModel
 
 # ─── Existing ─────────────────────────────────────────────────────────────────
 
 
-class SpendingCategory(BaseModel):
+class SpendingCategory(ApiModel):
     id: uuid.UUID
     name: str
     group_name: str
@@ -15,12 +15,12 @@ class SpendingCategory(BaseModel):
     pct: float
 
 
-class SpendingReportResponse(BaseModel):
+class SpendingReportResponse(ApiModel):
     categories: list[SpendingCategory]
     total: Decimal
 
 
-class IncomeExpenseMonth(BaseModel):
+class IncomeExpenseMonth(ApiModel):
     month: date
     income: Decimal
     #: Money spent. Saving and debt principal are reported separately — both
@@ -32,21 +32,21 @@ class IncomeExpenseMonth(BaseModel):
     net: Decimal
 
 
-class IncomeExpenseResponse(BaseModel):
+class IncomeExpenseResponse(ApiModel):
     months: list[IncomeExpenseMonth]
 
 
 # ─── Dashboard ────────────────────────────────────────────────────────────────
 
 
-class TopCategory(BaseModel):
+class TopCategory(ApiModel):
     id: uuid.UUID
     name: str
     group_name: str
     total: Decimal
 
 
-class DashboardMetrics(BaseModel):
+class DashboardMetrics(ApiModel):
     to_be_assigned: Decimal = Decimal("0")
     net_worth: Decimal
     net_worth_prev: Decimal
@@ -70,7 +70,7 @@ class DashboardMetrics(BaseModel):
 # ─── Net Worth ────────────────────────────────────────────────────────────────
 
 
-class AccountSnapshot(BaseModel):
+class AccountSnapshot(ApiModel):
     account_id: uuid.UUID
     account_name: str
     account_type: str
@@ -79,7 +79,7 @@ class AccountSnapshot(BaseModel):
     balance: Decimal
 
 
-class NetWorthPoint(BaseModel):
+class NetWorthPoint(ApiModel):
     date: date
     total_assets: Decimal
     total_liabilities: Decimal
@@ -90,7 +90,7 @@ class NetWorthPoint(BaseModel):
     accounts: list[AccountSnapshot]
 
 
-class NetWorthResponse(BaseModel):
+class NetWorthResponse(ApiModel):
     points: list[NetWorthPoint]
     unmanaged_liability_total: Decimal = Decimal("0")
 
@@ -98,34 +98,34 @@ class NetWorthResponse(BaseModel):
 # ─── Account Composition ──────────────────────────────────────────────────────
 
 
-class AccountCompositionPoint(BaseModel):
+class AccountCompositionPoint(ApiModel):
     date: date
     # Balance per account-type key present in the budget (custom types
     # included) — the type set is per-budget, so it can't be a fixed schema
     balances: dict[str, Decimal]
 
 
-class AccountCompositionResponse(BaseModel):
+class AccountCompositionResponse(ApiModel):
     points: list[AccountCompositionPoint]
 
 
 # ─── Burn Rate ────────────────────────────────────────────────────────────────
 
 
-class BurnRatePoint(BaseModel):
+class BurnRatePoint(ApiModel):
     date: date
     rolling_30: Decimal
     rolling_90: Decimal
 
 
-class BurnRateResponse(BaseModel):
+class BurnRateResponse(ApiModel):
     points: list[BurnRatePoint]
 
 
 # ─── Cash Flow (Sankey) ───────────────────────────────────────────────────────
 
 
-class SankeyNode(BaseModel):
+class SankeyNode(ApiModel):
     id: str
     name: str
     type: str
@@ -137,18 +137,18 @@ class SankeyNode(BaseModel):
     entity_id: str | None = None
 
 
-class SankeyLink(BaseModel):
+class SankeyLink(ApiModel):
     source: str
     target: str
     value: Decimal
 
 
-class CategoryPayee(BaseModel):
+class CategoryPayee(ApiModel):
     name: str
     total: Decimal
 
 
-class CashFlowResponse(BaseModel):
+class CashFlowResponse(ApiModel):
     nodes: list[SankeyNode]
     links: list[SankeyLink]
     total_income: Decimal
@@ -167,7 +167,7 @@ class CashFlowResponse(BaseModel):
 # ─── Budget vs Actual ─────────────────────────────────────────────────────────
 
 
-class BudgetActualItem(BaseModel):
+class BudgetActualItem(ApiModel):
     category_id: uuid.UUID
     category_name: str
     category_group_name: str
@@ -177,7 +177,7 @@ class BudgetActualItem(BaseModel):
     variance_pct: float
 
 
-class BudgetActualResponse(BaseModel):
+class BudgetActualResponse(ApiModel):
     categories: list[BudgetActualItem]
     total_assigned: Decimal
     total_spent: Decimal
@@ -186,14 +186,14 @@ class BudgetActualResponse(BaseModel):
 # ─── Plan vs Reality ──────────────────────────────────────────────────────────
 
 
-class PlanRealityCell(BaseModel):
+class PlanRealityCell(ApiModel):
     month: date
     assigned: Decimal
     spent: Decimal
     variance: Decimal
 
 
-class PlanRealityCategory(BaseModel):
+class PlanRealityCategory(ApiModel):
     category_id: uuid.UUID
     category_name: str
     category_group_name: str
@@ -206,7 +206,7 @@ class PlanRealityCategory(BaseModel):
     chronic: bool
 
 
-class PlanRealityResponse(BaseModel):
+class PlanRealityResponse(ApiModel):
     months: list[date]
     categories: list[PlanRealityCategory]
     total_assigned: Decimal
@@ -217,7 +217,7 @@ class PlanRealityResponse(BaseModel):
 # ─── Variance ─────────────────────────────────────────────────────────────────
 
 
-class VariancePoint(BaseModel):
+class VariancePoint(ApiModel):
     month: date
     budget_assigned: Decimal
     actual_spent: Decimal
@@ -225,14 +225,14 @@ class VariancePoint(BaseModel):
     cumulative_variance: Decimal
 
 
-class VarianceResponse(BaseModel):
+class VarianceResponse(ApiModel):
     points: list[VariancePoint]
 
 
 # ─── Volatility ───────────────────────────────────────────────────────────────
 
 
-class VolatilityItem(BaseModel):
+class VolatilityItem(ApiModel):
     category_id: uuid.UUID
     category_name: str
     category_group_name: str
@@ -245,14 +245,14 @@ class VolatilityItem(BaseModel):
     months_included: int
 
 
-class VolatilityResponse(BaseModel):
+class VolatilityResponse(ApiModel):
     categories: list[VolatilityItem]
 
 
 # ─── Spending Grouped (Pareto + Treemap) ──────────────────────────────────────
 
 
-class SpendingGroupItem(BaseModel):
+class SpendingGroupItem(ApiModel):
     id: uuid.UUID
     name: str
     #: Opaque rollup key, not a foreign key: a category-group id normally, a
@@ -266,7 +266,7 @@ class SpendingGroupItem(BaseModel):
     pct: float
 
 
-class SpendingClassExcluded(BaseModel):
+class SpendingClassExcluded(ApiModel):
     """Activity in the user's current scope that a spending report will not
     count — savings or debt payments in categories they selected or a view
     shows. Absence without this reads as a bug: "I picked Car Payment and it
@@ -278,7 +278,7 @@ class SpendingClassExcluded(BaseModel):
     total: Decimal
 
 
-class SpendingGroupedResponse(BaseModel):
+class SpendingGroupedResponse(ApiModel):
     groups: list[SpendingGroupItem]
     total: Decimal
     #: What the active view kept out of this report: categories hidden by the
@@ -299,14 +299,14 @@ class SpendingGroupedResponse(BaseModel):
 # ─── Seasonality ─────────────────────────────────────────────────────────────
 
 
-class SeasonalityCell(BaseModel):
+class SeasonalityCell(ApiModel):
     category_id: uuid.UUID
     category_name: str
     month: date
     total: Decimal
 
 
-class SeasonalityResponse(BaseModel):
+class SeasonalityResponse(ApiModel):
     cells: list[SeasonalityCell]
     months: list[date]
     categories: list[dict]
@@ -315,7 +315,7 @@ class SeasonalityResponse(BaseModel):
 # ─── Essentials ───────────────────────────────────────────────────────────────
 
 
-class EssentialsCategory(BaseModel):
+class EssentialsCategory(ApiModel):
     #: None for payee-tagged rows with no category.
     category_id: uuid.UUID | None
     name: str
@@ -325,17 +325,17 @@ class EssentialsCategory(BaseModel):
     months_with_spend: int
 
 
-class EssentialsMonth(BaseModel):
+class EssentialsMonth(ApiModel):
     month: date
     total: Decimal
 
 
-class ReserveTarget(BaseModel):
+class ReserveTarget(ApiModel):
     months: int
     amount: Decimal
 
 
-class EssentialsReportResponse(BaseModel):
+class EssentialsReportResponse(ApiModel):
     """What a lean month costs, from what the household tagged Essential.
 
     `essentials_90d` is the Guide's figure (rolling 90 days ÷ 3) and what the
@@ -361,17 +361,17 @@ class EssentialsReportResponse(BaseModel):
 # ─── Payee Analysis ───────────────────────────────────────────────────────────
 
 
-class PayeeTrend(BaseModel):
+class PayeeTrend(ApiModel):
     month: date
     total: Decimal
 
 
-class PayeeTopCategory(BaseModel):
+class PayeeTopCategory(ApiModel):
     category_name: str
     total: Decimal
 
 
-class PayeeSpending(BaseModel):
+class PayeeSpending(ApiModel):
     payee_id: uuid.UUID
     payee_name: str
     total: Decimal
@@ -382,7 +382,7 @@ class PayeeSpending(BaseModel):
     is_recurring: bool
 
 
-class PayeeAnalysisResponse(BaseModel):
+class PayeeAnalysisResponse(ApiModel):
     payees: list[PayeeSpending]
     total: Decimal
 
@@ -390,7 +390,7 @@ class PayeeAnalysisResponse(BaseModel):
 # ─── Day Patterns ─────────────────────────────────────────────────────────────
 
 
-class DayPatternItem(BaseModel):
+class DayPatternItem(ApiModel):
     day_of_week: int
     day_name: str
     total: Decimal
@@ -398,7 +398,7 @@ class DayPatternItem(BaseModel):
     avg_transaction: Decimal
 
 
-class DayPatternsResponse(BaseModel):
+class DayPatternsResponse(ApiModel):
     days: list[DayPatternItem]
     #: Present only when the user selected categories. Filtering to a category
     #: whose activity is all savings or debt payments otherwise draws an empty
@@ -409,7 +409,7 @@ class DayPatternsResponse(BaseModel):
 # ─── Large Transactions (Timeline) ────────────────────────────────────────────
 
 
-class TimelineTransaction(BaseModel):
+class TimelineTransaction(ApiModel):
     id: uuid.UUID
     date: date
     amount: Decimal
@@ -427,14 +427,14 @@ class TimelineTransaction(BaseModel):
     activity_label: str = "Spending"
 
 
-class TimelineResponse(BaseModel):
+class TimelineResponse(ApiModel):
     transactions: list[TimelineTransaction]
 
 
 # ─── Liabilities Report ──────────────────────────────────────────────────────
 
 
-class LiabilitiesReportItem(BaseModel):
+class LiabilitiesReportItem(ApiModel):
     liability_id: uuid.UUID
     name: str
     liability_type: str
@@ -449,13 +449,13 @@ class LiabilitiesReportItem(BaseModel):
     terms_complete: bool
 
 
-class LiabilitiesBalancePoint(BaseModel):
+class LiabilitiesBalancePoint(ApiModel):
     date: date
     per_liability: dict[str, Decimal]  # keyed by liability id
     total: Decimal
 
 
-class LiabilitiesReportResponse(BaseModel):
+class LiabilitiesReportResponse(ApiModel):
     items: list[LiabilitiesReportItem]
     total_balance: Decimal
     # Sums only the rows whose terms are known; liabilities_missing_terms says
@@ -468,7 +468,7 @@ class LiabilitiesReportResponse(BaseModel):
 # ─── Subscriptions Report ────────────────────────────────────────────────────
 
 
-class SubscriptionPayee(BaseModel):
+class SubscriptionPayee(ApiModel):
     payee_id: uuid.UUID
     payee_name: str
     monthly_amounts: list[Decimal]  # amounts per month in the period
@@ -479,13 +479,13 @@ class SubscriptionPayee(BaseModel):
     transaction_count: int
 
 
-class SubscriptionsSummary(BaseModel):
+class SubscriptionsSummary(ApiModel):
     total_monthly: Decimal  # average monthly total across all subscriptions
     total_annual: Decimal  # projected annual cost
     active_count: int  # number of subscription payees
 
 
-class SubscriptionsReportResponse(BaseModel):
+class SubscriptionsReportResponse(ApiModel):
     subscriptions: list[SubscriptionPayee]
     summary: SubscriptionsSummary
     months: list[date]  # month labels for the period
@@ -494,7 +494,7 @@ class SubscriptionsReportResponse(BaseModel):
 # ─── Savings Report ──────────────────────────────────────────────────────────
 
 
-class SavingsCategory(BaseModel):
+class SavingsCategory(ApiModel):
     category_id: uuid.UUID
     category_name: str
     group_name: str
@@ -504,14 +504,14 @@ class SavingsCategory(BaseModel):
     total_inflow: Decimal  # total assigned/deposited in the period
 
 
-class SavingsSummary(BaseModel):
+class SavingsSummary(ApiModel):
     total_balance: Decimal  # sum of current balances
     total_inflow: Decimal  # sum of inflows in the period
     avg_monthly_inflow: Decimal
     category_count: int
 
 
-class ReportDrainMove(BaseModel):
+class ReportDrainMove(ApiModel):
     move_id: uuid.UUID
     month: date
     date: datetime
@@ -522,14 +522,14 @@ class ReportDrainMove(BaseModel):
     to_name: str
 
 
-class ReportDrains(BaseModel):
+class ReportDrains(ApiModel):
     """Money moved out of the report's envelopes in its window."""
 
     total: Decimal
     moves: list[ReportDrainMove]
 
 
-class SavingsReportResponse(BaseModel):
+class SavingsReportResponse(ApiModel):
     categories: list[SavingsCategory]
     summary: SavingsSummary
     months: list[date]
@@ -539,7 +539,7 @@ class SavingsReportResponse(BaseModel):
 # ─── Savings Rate Report ─────────────────────────────────────────────────────
 
 
-class SavingsRateMonth(BaseModel):
+class SavingsRateMonth(ApiModel):
     month: date
     income: Decimal
     spending: Decimal
@@ -551,7 +551,7 @@ class SavingsRateMonth(BaseModel):
     savings_rate_with_debt: float | None
 
 
-class SavingsRateSummary(BaseModel):
+class SavingsRateSummary(ApiModel):
     income: Decimal
     spending: Decimal
     savings: Decimal
@@ -560,7 +560,7 @@ class SavingsRateSummary(BaseModel):
     savings_rate_with_debt: float | None
 
 
-class SavingsRateResponse(BaseModel):
+class SavingsRateResponse(ApiModel):
     months: list[SavingsRateMonth]
     summary: SavingsRateSummary
 
@@ -568,7 +568,7 @@ class SavingsRateResponse(BaseModel):
 # ─── Anomaly Detection Report ────────────────────────────────────────────────
 
 
-class AnomalyItem(BaseModel):
+class AnomalyItem(ApiModel):
     category_id: uuid.UUID
     category_name: str
     group_name: str
@@ -580,19 +580,19 @@ class AnomalyItem(BaseModel):
     history: list[Decimal]  # trailing 12 months for sparkline
 
 
-class AnomalyReportResponse(BaseModel):
+class AnomalyReportResponse(ApiModel):
     anomalies: list[AnomalyItem]
 
 
 # ─── Payday Effect Report ────────────────────────────────────────────────────
 
 
-class PaydayEffectDay(BaseModel):
+class PaydayEffectDay(ApiModel):
     offset: int  # 0 = payday, 1 = day after, etc.
     avg_spend: Decimal
 
 
-class PaydayEffectResponse(BaseModel):
+class PaydayEffectResponse(ApiModel):
     days: list[PaydayEffectDay]
     baseline_daily: Decimal  # average daily spend outside the window
     event_count: int  # number of income events used
@@ -601,7 +601,7 @@ class PaydayEffectResponse(BaseModel):
 # ─── Cash Projection Report ──────────────────────────────────────────────────
 
 
-class CashProjectionPoint(BaseModel):
+class CashProjectionPoint(ApiModel):
     date: date
     p10: Decimal
     p25: Decimal
@@ -611,14 +611,14 @@ class CashProjectionPoint(BaseModel):
     deterministic: Decimal  # projection with only scheduled/subscription events
 
 
-class CashProjectionEvent(BaseModel):
+class CashProjectionEvent(ApiModel):
     date: date
     payee: str
     amount: Decimal
     source: str  # 'scheduled' or 'subscription'
 
 
-class CashProjectionResponse(BaseModel):
+class CashProjectionResponse(ApiModel):
     start_balance: Decimal
     points: list[CashProjectionPoint]
     events: list[CashProjectionEvent]

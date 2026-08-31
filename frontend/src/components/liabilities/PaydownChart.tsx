@@ -43,15 +43,15 @@ export function PaydownChart({ amortization, mode, isMobile = false }: Props) {
 
   if (mode === 'beginning') {
     for (const p of amortization.history) {
-      points.push({ month: p.date.slice(0, 7), Balance: Number(p.balance) })
+      points.push({ month: p.date.slice(0, 7), Balance: p.balance })
     }
   }
 
   // Join the solid and dashed curves at today
   points.push({
     month: todayMonth,
-    ...(mode === 'beginning' ? { Balance: Number(amortization.current_balance) } : {}),
-    Projected: Number(amortization.current_balance),
+    ...(mode === 'beginning' ? { Balance: amortization.current_balance } : {}),
+    Projected: amortization.current_balance,
     'Principal paid': 0,
     'Interest paid': 0,
   })
@@ -61,16 +61,16 @@ export function PaydownChart({ amortization, mode, isMobile = false }: Props) {
   const extraByMonth = new Map(
     (amortization.extra_schedule ?? []).map((m: AmortizationMonth) => [
       m.date.slice(0, 7),
-      Number(m.balance),
+      m.balance,
     ])
   )
   for (const m of amortization.baseline_schedule) {
-    cumPrincipal += Number(m.principal_paid)
-    cumInterest += Number(m.interest_paid)
+    cumPrincipal += m.principal_paid
+    cumInterest += m.interest_paid
     const month = m.date.slice(0, 7)
     points.push({
       month,
-      Projected: Number(m.balance),
+      Projected: m.balance,
       'Principal paid': cumPrincipal,
       'Interest paid': cumInterest,
       ...(extraByMonth.has(month) ? { 'With extra': extraByMonth.get(month) } : {}),
@@ -81,7 +81,7 @@ export function PaydownChart({ amortization, mode, isMobile = false }: Props) {
   for (const m of amortization.extra_schedule ?? []) {
     const month = m.date.slice(0, 7)
     if (!points.some((p) => p.month === month)) {
-      points.push({ month, 'With extra': Number(m.balance) })
+      points.push({ month, 'With extra': m.balance })
     }
   }
 

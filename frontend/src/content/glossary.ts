@@ -377,9 +377,9 @@ export const GLOSSARY: GlossaryEntry[] = [
     term: 'Ready to pay',
     aliases: ['set aside', 'set-aside', 'card payment reserve'],
     short: "Cash reserved to pay a credit card — the card's own envelope.",
-    body: "When you spend on a card from a funded category, the budgeted cash does not vanish — it moves into a reserve for that card, so the payment is already covered before the bill exists. Assigning money to the card adds to the reserve; payments drain it. Spending a category could not cover adds nothing here — it becomes the card's uncovered debt instead.",
+    body: "When you spend on a card from a funded category, the budgeted cash does not vanish — it moves into a reserve for that card, so the payment is already covered before the bill exists. Assigning money to the card adds to the reserve; payments drain it. Spending a category could not cover adds nothing here — it becomes the card's uncovered debt instead. It is the card's envelope, not a measurement of the card, so it can sit above what the card owes or below zero.",
     inIgab:
-      'The "Ready to pay" column of the Credit cards section on the budget page. The Assigned cell beside it edits the card\'s own envelope, undo included.',
+      'The "Ready to pay" column of the Credit cards section on the budget page. Below zero usually means you paid more than an envelope set aside — assign that much to the card to settle up; it is only a credit balance when the card owes nothing. Above the balance means assignments no debt needed, and releasing them is safe.',
     related: ['uncovered', 'credit-overspending', 'card-payment', 'to-be-assigned'],
   },
   {

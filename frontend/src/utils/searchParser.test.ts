@@ -384,6 +384,100 @@ describe('account filter', () => {
   })
 })
 
+// Names with spaces are the normal case for cards and most categories, and
+// every test above uses a single word — which is why the quoted form went
+// unfixed. The budget page's peek modal is the only producer of these queries
+// and it emits the compact `prefix:"two words"` spelling.
+describe('quoted multi-word values', () => {
+  const CATS = new Map([
+    ['cat-1', 'Dining Out'],
+    ['cat-2', 'Groceries'],
+  ])
+  const PAYEES = new Map([
+    ['p-1', 'Corner Market'],
+    ['p-2', 'Amazon'],
+  ])
+  const ACCTS = new Map([
+    ['a-1', 'Sapphire Visa'],
+    ['a-2', 'Checking'],
+  ])
+
+  it('keeps a quoted phrase together after account:', () => {
+    // The bug: this split into `account:"Sapphire` and `Visa"`. The first
+    // resolved the account by accident, the orphan became a text filter, and
+    // the register asked for both and returned nothing.
+    const result = parseTransactionSearch('account:"Sapphire Visa"', CATS, PAYEES, ACCTS)
+    expect(result.accountIds).toEqual(['a-1'])
+    expect(result.text).toBeUndefined()
+  })
+
+  it('keeps a quoted phrase together after category:', () => {
+    const result = parseTransactionSearch('category:"Dining Out"', CATS, PAYEES, ACCTS)
+    expect(result.categoryIds).toEqual(['cat-1'])
+    expect(result.text).toBeUndefined()
+  })
+
+  it('keeps a quoted phrase together after payee:', () => {
+    const result = parseTransactionSearch('payee:"Corner Market"', CATS, PAYEES, ACCTS)
+    expect(result.payeeIds).toEqual(['p-1'])
+    expect(result.text).toBeUndefined()
+  })
+
+  it('accepts the spaced spelling too', () => {
+    // This form already worked — the tokenizer handled a LEADING quote.
+    const result = parseTransactionSearch('account: "Sapphire Visa"', CATS, PAYEES, ACCTS)
+    expect(result.accountIds).toEqual(['a-1'])
+    expect(result.text).toBeUndefined()
+  })
+
+  it('parses a quoted phrase alongside other tokens', () => {
+    const result = parseTransactionSearch(
+      'category:"Dining Out" is:uncategorized',
+      CATS,
+      PAYEES,
+      ACCTS
+    )
+    expect(result.categoryIds).toEqual(['cat-1'])
+    expect(result.uncategorized).toBe(true)
+    expect(result.text).toBeUndefined()
+  })
+
+  it('runs an unterminated quote to the end, as the leading-quote form does', () => {
+    // Mid-typing. Stopping at the space would resolve the account and leave
+    // `Visa` as text, which is the defect in miniature.
+    const result = parseTransactionSearch('account:"Sapphire Visa', CATS, PAYEES, ACCTS)
+    expect(result.accountIds).toEqual(['a-1'])
+    expect(result.text).toBeUndefined()
+  })
+
+  it('parses exactly what the peek modal emits, with nothing left over', () => {
+    // TransactionsPeekModal.openInTransactions is the only producer: an
+    // account scope emits one token, a category scope narrowed to an account
+    // emits both. No leftover `text` is the whole assertion.
+    const account = parseTransactionSearch('account:"Sapphire Visa"', CATS, PAYEES, ACCTS)
+    expect(account.accountIds).toEqual(['a-1'])
+    expect(account.text).toBeUndefined()
+
+    const category = parseTransactionSearch(
+      'category:"Dining Out" account:"Sapphire Visa"',
+      CATS,
+      PAYEES,
+      ACCTS
+    )
+    expect(category.categoryIds).toEqual(['cat-1'])
+    expect(category.accountIds).toEqual(['a-1'])
+    expect(category.text).toBeUndefined()
+  })
+
+  it('draws one chip for a quoted phrase, and removing it clears the query', () => {
+    // Chips index into tokenize()'s output, so a phrase that used to be two
+    // tokens is now one — both the parse and the remove path must agree.
+    const chips = describeSearchChips('account:"Sapphire Visa"', CATS, PAYEES, ACCTS, NOW)
+    expect(chips.map((c) => c.label)).toEqual(['Account: sapphire visa'])
+    expect(removeSearchChip('account:"Sapphire Visa"', chips[0])).toBe('')
+  })
+})
+
 // ─── OR keyword parsing ────────────────────────────────────────────────────────
 
 describe('OR keyword', () => {

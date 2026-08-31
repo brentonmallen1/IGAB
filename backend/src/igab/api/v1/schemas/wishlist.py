@@ -3,12 +3,14 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import Field, model_validator
+
+from igab.api.v1.schemas.base import ApiModel
 
 Money = Decimal
 
 
-class FundingIn(BaseModel):
+class FundingIn(ApiModel):
     """Where a wish's money lives.
 
     `own` makes a category of its own in the Wishlist group with a savings
@@ -27,7 +29,7 @@ class FundingIn(BaseModel):
         return self
 
 
-class WishCreate(BaseModel):
+class WishCreate(ApiModel):
     name: str = Field(min_length=1, max_length=200)
     cost: Money = Field(default=Decimal("0"), ge=0)
     url: str | None = Field(default=None, max_length=2000)
@@ -38,7 +40,7 @@ class WishCreate(BaseModel):
     funding: FundingIn = Field(default_factory=FundingIn)
 
 
-class WishUpdate(BaseModel):
+class WishUpdate(ApiModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
     cost: Money | None = Field(default=None, ge=0)
     url: str | None = Field(default=None, max_length=2000)
@@ -51,7 +53,7 @@ class WishUpdate(BaseModel):
     funding: FundingIn | None = None
 
 
-class FundingOut(BaseModel):
+class FundingOut(ApiModel):
     mode: Literal["own", "existing", "none"]
     category_id: uuid.UUID | None
     category_name: str | None
@@ -60,7 +62,7 @@ class FundingOut(BaseModel):
     target_date: date | None
 
 
-class ReachOut(BaseModel):
+class ReachOut(ApiModel):
     state: Literal["now", "months", "no_rate", "unlinked"]
     months: int | None
     date: date | None
@@ -68,7 +70,7 @@ class ReachOut(BaseModel):
     progress: Decimal
 
 
-class WishOut(BaseModel):
+class WishOut(ApiModel):
     id: uuid.UUID
     project_id: uuid.UUID | None
     name: str
@@ -87,7 +89,7 @@ class WishOut(BaseModel):
     reach: ReachOut | None
 
 
-class ProjectSummaryOut(BaseModel):
+class ProjectSummaryOut(ApiModel):
     item_count: int
     open_count: int
     total_cost: Decimal
@@ -97,7 +99,7 @@ class ProjectSummaryOut(BaseModel):
     complete: bool
 
 
-class ProjectOut(BaseModel):
+class ProjectOut(ApiModel):
     id: uuid.UUID
     name: str
     category_id: uuid.UUID | None
@@ -107,50 +109,50 @@ class ProjectOut(BaseModel):
     summary: ProjectSummaryOut
 
 
-class ProjectCreate(BaseModel):
+class ProjectCreate(ApiModel):
     name: str = Field(min_length=1, max_length=120)
     category_id: uuid.UUID | None = None
     notes: str | None = Field(default=None, max_length=2000)
 
 
-class ProjectUpdate(BaseModel):
+class ProjectUpdate(ApiModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
     category_id: uuid.UUID | None = None
     notes: str | None = Field(default=None, max_length=2000)
 
 
-class WishReorder(BaseModel):
+class WishReorder(ApiModel):
     item_ids: list[uuid.UUID]
 
 
-class ProjectReorder(BaseModel):
+class ProjectReorder(ApiModel):
     project_ids: list[uuid.UUID]
 
 
-class WishlistSettingsOut(BaseModel):
+class WishlistSettingsOut(ApiModel):
     cooling_days: int
     review_after_days: int
 
 
-class WishlistSettingsUpdate(BaseModel):
+class WishlistSettingsUpdate(ApiModel):
     cooling_days: int | None = Field(default=None, ge=0, le=365)
     review_after_days: int | None = Field(default=None, ge=7, le=365)
 
 
-class EnvelopeOut(BaseModel):
+class EnvelopeOut(ApiModel):
     category_id: uuid.UUID
     name: str
     available: Decimal
 
 
-class DeleteWishResponse(BaseModel):
+class DeleteWishResponse(ApiModel):
     """The envelope the wish owned, if any, so the client can offer to
     delete it too through the ordinary category-delete flow."""
 
     envelope: EnvelopeOut | None
 
 
-class DrainMoveOut(BaseModel):
+class DrainMoveOut(ApiModel):
     move_id: uuid.UUID
     month: date
     date: datetime
@@ -162,26 +164,26 @@ class DrainMoveOut(BaseModel):
     affected: list["DrainAffectedOut"]
 
 
-class DrainAffectedOut(BaseModel):
+class DrainAffectedOut(ApiModel):
     item_id: uuid.UUID
     name: str
     months_further: Decimal | None
 
 
-class DrainsOut(BaseModel):
+class DrainsOut(ApiModel):
     month: date
     total: Decimal
     moves: list[DrainMoveOut]
 
 
-class StillWantedOut(BaseModel):
+class StillWantedOut(ApiModel):
     count: int
     of: int
     #: The window, in months — served so the client's copy has one source.
     months: int
 
 
-class WishlistResponse(BaseModel):
+class WishlistResponse(ApiModel):
     enabled: bool
     items: list[WishOut]
     history: list[WishOut]

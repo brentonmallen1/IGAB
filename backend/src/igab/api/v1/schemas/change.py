@@ -2,10 +2,10 @@ import datetime
 import uuid
 from typing import Any
 
-from pydantic import BaseModel
+from igab.api.v1.schemas.base import ApiModel
 
 
-class ChangeOut(BaseModel):
+class ChangeOut(ApiModel):
     id: uuid.UUID
     entity_type: str
     entity_id: uuid.UUID
@@ -23,10 +23,10 @@ class ChangeOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class ChangeListResponse(BaseModel):
+class ChangeListResponse(ApiModel):
     changes: list[ChangeOut]
     total: int
 
 
-class UndoResult(BaseModel):
+class UndoResult(ApiModel):
     undone_change_ids: list[uuid.UUID]

@@ -415,7 +415,7 @@ export function CommandPalette() {
                   </span>
                   {t.memo && <span className="palette__txn-memo">{t.memo}</span>}
                   <span className="palette__txn-meta">
-                    {formatDate(t.date)} · {formatMoney(Number(t.amount))}
+                    {formatDate(t.date)} · {formatMoney(t.amount)}
                   </span>
                 </Command.Item>
               ))}

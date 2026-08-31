@@ -9,6 +9,7 @@ from .factories import (
     create_budget,
     create_transaction,
     create_transfer,
+    money,
 )
 
 TODAY = date.today()
@@ -57,7 +58,7 @@ async def test_manual_fallback_until_register_has_transactions(api_client, db_se
     body = linked.json()
     assert body["mode"] == "managed"
     assert body["balance_source"] == "manual_fallback"
-    assert Decimal(body["current_balance"]) == Decimal("180000.00")
+    assert money(body["current_balance"]) == Decimal("180000.00")
     # No "Paid off" lie: the baseline schedule runs on the fallback balance
     assert body["baseline_never_pays_off"] is False
 
@@ -65,7 +66,7 @@ async def test_manual_fallback_until_register_has_transactions(api_client, db_se
     await create_transaction(db_session, budget, loan, "-175000.00", TODAY - timedelta(days=3))
     body = await _get_liability(api_client, budget.id, liability_id)
     assert body["balance_source"] == "ledger"
-    assert Decimal(body["current_balance"]) == Decimal("175000.00")
+    assert money(body["current_balance"]) == Decimal("175000.00")
 
 
 async def test_implied_term_for_realistic_mortgage(api_client, db_session):
@@ -88,7 +89,7 @@ async def test_implied_term_for_realistic_mortgage(api_client, db_session):
     assert body["implied_term_months"] is not None
     assert 350 <= body["implied_term_months"] <= 372
     # This month's interest at the current balance: 280000 × 6.5% / 12
-    assert Decimal(body["monthly_interest_now"]) == Decimal("1516.67")
+    assert money(body["monthly_interest_now"]) == Decimal("1516.67")
 
 
 async def test_pi_mismatch_flags_implied_never_pays_off(api_client, db_session):
@@ -194,7 +195,7 @@ async def test_average_recent_payment_from_ledger(api_client, db_session):
     assert resp.status_code == 201
     body = resp.json()
     assert body["has_live_projection"] is True
-    assert Decimal(body["average_recent_payment"]) == Decimal("275.00")
+    assert money(body["average_recent_payment"]) == Decimal("275.00")
     # 6450 owed × 6% / 12
-    assert Decimal(body["monthly_interest_now"]) == Decimal("32.25")
+    assert money(body["monthly_interest_now"]) == Decimal("32.25")
     assert body["balance_source"] == "ledger"

@@ -52,7 +52,7 @@ export function PayeeReport({ budgetId }: Props) {
     name: p.payee_name.length > 18 ? p.payee_name.slice(0, 16) + '…' : p.payee_name,
     fullName: p.payee_name,
     payeeId: p.payee_id,
-    Amount: Number(p.total),
+    Amount: p.total,
     Visits: p.count,
     isRecurring: p.is_recurring,
   }))
@@ -73,11 +73,11 @@ export function PayeeReport({ budgetId }: Props) {
     id: p.payee_id,
     name: p.payee_name,
     subName: p.is_recurring ? 'Recurring' : `${p.count} transactions`,
-    amount: -Number(p.total),
+    amount: -p.total,
     pct: p.pct,
   }))
 
-  const grandTotal = payees.reduce((s, p) => s + Number(p.total), 0)
+  const grandTotal = payees.reduce((s, p) => s + p.total, 0)
 
   return (
     <div className="report-section surface">
@@ -121,7 +121,7 @@ export function PayeeReport({ budgetId }: Props) {
             getRows={() =>
               payees.map((p) => ({
                 payee: p.payee_name,
-                total: Number(p.total),
+                total: p.total,
                 count: p.count,
                 pct: p.pct,
                 recurring: p.is_recurring,

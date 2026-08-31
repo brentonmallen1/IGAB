@@ -1167,5 +1167,139 @@ class TestTheFiveLegs:
         cards = resp.json()["cards"]
         assert cards, "no card row served"
         for card in cards:
-            for leg in ("assigned", "reserved", "released", "residual", "payments", "riding"):
+            for leg in (
+                "assigned",
+                "reserved",
+                "released",
+                "residual",
+                "payments",
+                "riding",
+                # The position, beside `uncovered`. Required on the schema, so
+                # a path that forgets one 500s rather than serving a row the
+                # surface then reads as all-zeros and calls healthy.
+                "over_reserved",
+                "short_reserved",
+                "card_credit",
+                # The viewed month off the card's own ledger.
+                "charged_this_month",
+                "paid_this_month",
+                "debt_change_this_month",
+                "rode_by_month",
+            ):
                 assert leg in card, f"{leg} missing from the served card row"
+
+
+class TestTheMonthAndThePosition:
+    """What the row needs to explain itself, served and walked end to end.
+
+    Amounts here are invented and rescaled from the budget that raised the
+    question — the ratios carry the lesson, the digits are nobody's.
+    """
+
+    async def test_a_payment_past_the_reserve_is_not_an_overpayment(self, db_session):
+        """The screenshot, walked. A card owing a full balance, a payment
+        larger than anything an envelope reserved, and the word "overpaid" on
+        the row. `card_credit` — the only state that word is true of — is
+        zero."""
+        services, budget, checking, visa, _, groceries = await _setup(db_session)
+        await create_budget_assignment(db_session, budget, groceries, JUL, "100.00")
+        # A carried balance the budget never funded, plus a funded charge.
+        await create_transaction(db_session, budget, visa, "-400.00", date(2026, 7, 1))
+        await create_transaction(
+            db_session, budget, visa, "-100.00", date(2026, 7, 9), category=groceries
+        )
+        from igab.services.transaction_service import TransactionCreate
+
+        await db_session.flush()
+        before = (await _summary(services, budget, JUL)).cards[0]
+        await services.transactions.create(
+            budget.id,
+            TransactionCreate(
+                account_id=checking.id,
+                date=date(2026, 7, 25),
+                amount=D("-160.00"),
+                transfer_account_id=visa.id,
+            ),
+        )
+        await db_session.flush()
+        after = (await _summary(services, budget, JUL)).cards[0]
+
+        assert after.set_aside == D("-60.00")
+        assert after.short_reserved == D("60.00")
+        # Nothing was overpaid: the card still owes 340.
+        assert after.card_credit == D("0")
+        assert after.balance == D("-340.00")
+        # Uncovered fell by 60, not by the whole 160 — and that is the sharp
+        # version of what the row now says. The first 100 of the payment
+        # drained the reserve standing behind a FUNDED charge, which was never
+        # uncovered; only the 60 beyond it attacked debt nobody was covering.
+        # So `short_reserved` is exactly the part of the payment that went to
+        # the balance, which is the number the row's note quotes.
+        assert before.uncovered - after.uncovered == after.short_reserved == D("60.00")
+
+    async def test_the_month_says_the_debt_shrank(self, db_session):
+        """The signal the strip never carried. Charged less than paid, so the
+        debt fell — and the balance RISING is what that looks like raw, which
+        is why the row phrases it as debt."""
+        services, budget, checking, visa, _, groceries = await _setup(db_session)
+        await create_budget_assignment(db_session, budget, groceries, JUL, "500.00")
+        await create_transaction(db_session, budget, visa, "-1000.00", date(2026, 6, 20))
+        await create_transaction(
+            db_session, budget, visa, "-120.00", date(2026, 7, 9), category=groceries
+        )
+        from igab.services.transaction_service import TransactionCreate
+
+        await db_session.flush()
+        await services.transactions.create(
+            budget.id,
+            TransactionCreate(
+                account_id=checking.id,
+                date=date(2026, 7, 25),
+                amount=D("-300.00"),
+                transfer_account_id=visa.id,
+            ),
+        )
+        await db_session.flush()
+
+        card = (await _summary(services, budget, JUL)).cards[0]
+        assert card.charged_this_month == D("120.00")
+        assert card.paid_this_month == D("300.00")
+        assert card.debt_change_this_month == D("180.00")
+        # June's charge is outside the window, so the month figures do not see
+        # it while the lifetime legs and the balance do.
+        assert card.balance == D("-820.00")
+
+    async def test_an_over_reserve_the_discrepancy_check_excuses_still_reports_a_position(
+        self, db_session
+    ):
+        """The correction that reshaped this work. Assignments to a card with
+        no ride to retire accumulate for the life of the budget, and T1
+        excuses exactly that — so `reserve_discrepancy` is silent on the card
+        that has drifted furthest. `over_reserved` is what the row reads."""
+        services, budget, _, visa, linked, groceries = await _setup(db_session)
+        await create_budget_assignment(db_session, budget, groceries, JUL, "100.00")
+        await create_transaction(
+            db_session, budget, visa, "-100.00", date(2026, 7, 9), category=groceries
+        )
+        # Money put on the card ahead of any debt — the roadmap's own advice.
+        await create_budget_assignment(db_session, budget, linked, JUL, "400.00")
+        await db_session.flush()
+
+        card = (await _summary(services, budget, JUL)).cards[0]
+        assert card.reserve_discrepancy == D("0")
+        assert card.set_aside == D("500.00")
+        assert card.over_reserved == D("400.00")
+
+    async def test_the_month_that_ended_short_is_named(self, db_session):
+        """The remedy needs the month: funding an envelope in the month it
+        ended short retires the ride, funding it the month after does not."""
+        services, budget, _, visa, _, groceries = await _setup(db_session)
+        await create_budget_assignment(db_session, budget, groceries, JUL, "40.00")
+        await create_transaction(
+            db_session, budget, visa, "-100.00", date(2026, 7, 28), category=groceries
+        )
+        await db_session.flush()
+
+        card = (await _summary(services, budget, AUG)).cards[0]
+        assert card.rode_by_month == [(JUL, D("60.00"))]
+        assert card.riding == D("60.00")

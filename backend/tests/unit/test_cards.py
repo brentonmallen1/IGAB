@@ -19,6 +19,7 @@ from igab.domain.cards import (
     CardReserve,
     allocate_capped,
     card_funding,
+    card_position,
     card_reserve,
     credit_floored_by_month,
     release_split,
@@ -367,6 +368,70 @@ def discrepancy(
     return reserve_discrepancy(
         D(set_aside), D(balance), D(assigned), D(covered), D(payments), D(residual), D(unclaimed)
     )
+
+
+class TestCardPosition:
+    """Where a card stands, separately from whether anything is wrong with it.
+
+    Every case here reports `reserve_discrepancy == 0` when given a reason —
+    which is exactly why the surface reads this instead. Amounts are invented
+    and rescaled; only the ratios carry the lesson.
+    """
+
+    def test_a_healthy_card_is_simply_uncovered_up_to_what_it_owes(self):
+        pos = card_position(D("60"), D("-100"))
+        assert (pos.uncovered, pos.over_reserved) == (D("40"), D("0"))
+        assert (pos.short_reserved, pos.card_credit) == (D("0"), D("0"))
+
+    def test_a_reserve_covering_the_whole_balance_leaves_nothing_uncovered(self):
+        pos = card_position(D("100"), D("-100"))
+        assert pos.uncovered == pos.over_reserved == D("0")
+
+    def test_a_reserve_beyond_the_debt_is_over_reserved_not_uncovered(self):
+        # The over-reserved card, rescaled 5:1 — assignments that never had a
+        # ride to retire, accumulating for the life of the budget.
+        pos = card_position(D("500"), D("-100"))
+        assert pos.over_reserved == D("400")
+        assert pos.uncovered == D("0")
+
+    def test_a_negative_reserve_on_a_card_that_still_owes_is_not_a_credit(self):
+        # The below-zero card: the word "overpaid" was printed for this, and
+        # `card_credit` — the only state it was ever true of — is zero.
+        pos = card_position(D("-20"), D("-500"))
+        assert pos.short_reserved == D("20")
+        assert pos.card_credit == D("0")
+
+    def test_a_negative_reserve_reserves_nothing_so_the_whole_balance_is_uncovered(self):
+        # The inner floor. Without it the negative would SUBTRACT from what the
+        # card owes and under-report the debt.
+        pos = card_position(D("-20"), D("-500"))
+        assert pos.uncovered == D("500")
+
+    def test_a_card_that_owes_nothing_and_holds_money_is_a_credit_balance(self):
+        pos = card_position(D("-50"), D("50"))
+        assert pos.card_credit == D("50")
+        assert pos.uncovered == D("0")
+
+    def test_uncovered_never_goes_negative(self):
+        assert card_position(D("500"), D("-100")).uncovered == D("0")
+
+    def test_over_and_short_are_never_both_set(self):
+        for set_aside, balance in [("500", "-100"), ("-20", "-500"), ("60", "-100")]:
+            pos = card_position(D(set_aside), D(balance))
+            assert not (pos.over_reserved and pos.short_reserved)
+
+    def test_the_two_drifted_shapes_report_a_position_where_the_check_is_silent(self):
+        """The correction that put this class here. Both cards satisfy every
+        bound — T1 excuses an over-reserve explained by assignments, T2 a
+        negative one explained by residual — so a surface keyed on the
+        discrepancy shows nothing on the two rows that most needed it."""
+        over = card_position(D("500"), D("-100"))
+        assert discrepancy("500", "-100", assigned="400") == D("0")
+        assert over.over_reserved == D("400")
+
+        short = card_position(D("-20"), D("-500"))
+        assert discrepancy("-20", "-500", residual="20") == D("0")
+        assert short.short_reserved == D("20")
 
 
 class TestReserveDiscrepancy:
@@ -871,3 +936,67 @@ class TestT1NoLongerExcusesTheDriftItCaused:
         equal, to the cent, to the rows it could not see."""
         # A net-negative unclaimed total (an unfiled charge) buys no capacity.
         assert discrepancy("100", "0", unclaimed="-30") == D("100")
+
+
+class TestTheStatementCycleTrap:
+    """A due date does not sit inside a calendar month, and one consequence of
+    that is real while the obvious one is not.
+
+    The obvious worry — envelopes zeroing out at a month end, so a statement
+    paid the next month reads as an overpayment — is not what happens. Nothing
+    zeroes: `reserved` and `ridden` are running state and `set_aside` sums from
+    the budget's first day, so the funded lag nets to zero
+    (`test_a_payment_landing_after_the_spending_it_covers` above pins it).
+
+    What does bite is the month-end FLOOR. A charge late in a month the
+    envelope could not cover is converted to riding debt at the boundary, and
+    next month's payment then runs past the reserve. The asymmetry in the
+    remedy is the part worth pinning, because it is invisible and permanent
+    in one direction and free in the other.
+    """
+
+    def walk(self, spending, outflows, payments=None):
+        cf = card_funding(
+            {"groceries": spending},
+            {"groceries": {m: -v for m, v in outflows.items()}},
+            {"groceries": {VISA: outflows}},
+            {},
+        )
+        return cf, card_reserve(cf, VISA, payments or {})
+
+    def test_a_late_month_charge_the_envelope_could_not_cover_rides(self):
+        # 500 charged in January against 200 funded: 300 rides, 200 reserves.
+        cf, reserve = self.walk({JAN: D("200")}, {JAN: D("500")})
+        assert sum_through(cf.floored_by_card[VISA], JAN) == D("300")
+        assert reserve.set_aside(JAN) == D("200")
+
+    def test_paying_that_statement_next_month_drives_the_reserve_negative(self):
+        # And the row shows it as a card still owing, not as an overpayment:
+        # `card_credit` is zero, which is the whole point of `card_position`.
+        _, reserve = self.walk({JAN: D("200")}, {JAN: D("500")}, payments={FEB: D("500")})
+        assert reserve.set_aside(FEB) == D("-300")
+        assert card_position(reserve.set_aside(FEB), D("0")).card_credit == D("0")
+
+    def test_funding_the_following_month_does_not_reach_back(self):
+        """The trap. Funding Groceries in February is the natural move when the
+        statement arrives, and it retires none of January's ride."""
+        cf, reserve = self.walk(
+            {JAN: D("200"), FEB: D("300")}, {JAN: D("500")}, payments={FEB: D("500")}
+        )
+        assert sum_through(cf.floored_by_card[VISA], FEB) == D("300")
+        assert reserve.set_aside(FEB) == D("-300")
+
+    def test_funding_the_month_that_ended_short_retires_the_ride_outright(self):
+        """The free remedy, and the reason it works: the walk is recomputed
+        from scratch on every request, so a backdated assignment is simply part
+        of the history the next walk sees. Nothing in the app said so."""
+        cf, reserve = self.walk({JAN: D("500")}, {JAN: D("500")}, payments={FEB: D("500")})
+        assert VISA not in cf.floored_by_card
+        assert reserve.set_aside(FEB) == D("0")
+
+    def test_the_funded_lag_across_the_boundary_costs_nothing(self):
+        # The reassurance the info dialog now gives, as an assertion: charge in
+        # January, pay in February, and the reserve nets to zero.
+        _, reserve = self.walk({JAN: D("500")}, {JAN: D("500")}, payments={FEB: D("500")})
+        assert reserve.set_aside(JAN) == D("500")
+        assert reserve.set_aside(FEB) == D("0")

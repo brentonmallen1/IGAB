@@ -23,19 +23,19 @@ export function PayoffPill({ liability }: Props) {
   // row a month), the modelled figure otherwise — labelled as such.
   const interestLine =
     liability.recent_interest_average !== null
-      ? `of which ~${formatMoney(Number(liability.recent_interest_average))} was interest`
+      ? `of which ~${formatMoney(liability.recent_interest_average)} was interest`
       : liability.monthly_interest_now !== null
-        ? `this month's interest is ~${formatMoney(Number(liability.monthly_interest_now))}`
+        ? `this month's interest is ~${formatMoney(liability.monthly_interest_now)}`
         : null
   // Payments are transfers into the account. A deposit typed straight onto
   // the loan is left out, and that has to be said rather than silently
   // shown as a lower pace.
   const uncounted =
-    Number(liability.uncounted_deposits) > 0
-      ? `${formatMoney(Number(liability.uncounted_deposits))} of plain deposits on this account were not counted as payments — record payments as transfers from the paying account so they are.`
+    liability.uncounted_deposits > 0
+      ? `${formatMoney(liability.uncounted_deposits)} of plain deposits on this account were not counted as payments — record payments as transfers from the paying account so they are.`
       : null
 
-  if (Number(liability.current_balance) === 0) {
+  if (liability.current_balance === 0) {
     return (
       <div className="payoff-pill payoff-pill--paid">
         <CheckCircle2 size={18} />
@@ -50,7 +50,7 @@ export function PayoffPill({ liability }: Props) {
   if (!liability.terms_complete) {
     const paying =
       liability.average_recent_payment !== null
-        ? formatMoney(Number(liability.average_recent_payment))
+        ? formatMoney(liability.average_recent_payment)
         : null
     return (
       <div className="payoff-pill">
@@ -83,7 +83,7 @@ export function PayoffPill({ liability }: Props) {
   if (liveNever) {
     const avg =
       liability.average_recent_payment !== null
-        ? formatMoney(Number(liability.average_recent_payment))
+        ? formatMoney(liability.average_recent_payment)
         : null
     return (
       <div className="payoff-pill payoff-pill--warning">
@@ -132,7 +132,7 @@ export function PayoffPill({ liability }: Props) {
           </div>
           <div className="payoff-pill__sub">
             {liability.average_recent_payment !== null
-              ? `Recent payments average ${formatMoney(Number(liability.average_recent_payment))}/mo${interestLine ? `, ${interestLine}` : ''}`
+              ? `Recent payments average ${formatMoney(liability.average_recent_payment)}/mo${interestLine ? `, ${interestLine}` : ''}`
               : 'Based on your recent payments'}
             {baselineNever
               ? ` · the ${minimum} minimum alone wouldn't cover interest`

@@ -8,6 +8,7 @@ from igab.db.models import BudgetMove, Category
 from igab.domain.cards import (
     CardFunding,
     card_funding,
+    card_position,
     card_reserve,
     reserve_discrepancy,
 )
@@ -179,6 +180,43 @@ class CardStatus:
     #: what an inflow discharged, less what an assignment covered. Distinct
     #: from `uncovered`, which is what the card OWES beyond its reserve.
     riding: Decimal = Decimal("0")
+    #: The rest of `card_position`, beside `uncovered` above. A zero
+    #: `reserve_discrepancy` means the identity's BOUNDS hold, not that the
+    #: reserve is anywhere near the balance — the bounds are allowances, and
+    #: they excuse both of the shapes a real budget produced: a reserve
+    #: several times its balance (assignments that never had a ride to retire)
+    #: and a reserve below zero on a card still owing thousands (years of
+    #: residual). Both reported nothing. These say WHICH way a card is
+    #: unusual, so the row can explain itself where the check is silent.
+    over_reserved: Decimal = Decimal("0")
+    short_reserved: Decimal = Decimal("0")
+    #: The card owes nothing and holds your money — the only state the word
+    #: "overpaid" was ever true of. `short_reserved` alone is not it.
+    card_credit: Decimal = Decimal("0")
+    #: This month, from the card's own ledger rather than the reserve's legs.
+    #: `paid_this_month` is paired transfers from cash (the `payments` leg's
+    #: own month); `debt_change_this_month` is the net move of the BALANCE,
+    #: every row included. They differ by refunds, interest, and payments
+    #: whose transfer leg was never paired — a gap worth showing, not hiding.
+    charged_this_month: Decimal = Decimal("0")
+    paid_this_month: Decimal = Decimal("0")
+    #: Signed: positive means the debt shrank this month.
+    debt_change_this_month: Decimal = Decimal("0")
+    #: Which months put riding debt on this card, and how much. The remedy
+    #: needs the month: funding an envelope in the month it ended short
+    #: retires the ride (the walk is recomputed from scratch every request),
+    #: while funding it the following month does not reach back.
+    #: `overspent_this_month` above is this series' entry for the viewed
+    #: month, not a second computation.
+    #:
+    #: **Gross, and `riding` is net.** These are the months debt went ON;
+    #: an assignment that later retired some of it is recorded against the
+    #: month of the ASSIGNMENT (`covered_by_card`), not against the month
+    #: that rode, so there is no month attribution for what remains. The two
+    #: therefore disagree once anything has been covered, and the surface has
+    #: to say so rather than point at a month that is already settled.
+    #: Chronological here; the surface orders and caps for display.
+    rode_by_month: list[tuple[date, Decimal]] = field(default_factory=list)
 
 
 @dataclass
@@ -547,6 +585,14 @@ class BudgetService:
                 budget_id, month_end_date
             )
             owed_by_card = await self.account_repo.card_balances(budget_id, month_end_date)
+            # The card's own ledger for the viewed month, beside the reserve's
+            # legs: what a person charged, and how far the debt actually moved.
+            # Every leg above is a lifetime `sum_through`, so nothing here is
+            # derivable client-side — and the debt moving DOWN is the one thing
+            # a paydown does that the strip never said.
+            month_flows = await self.account_repo.card_month_flows(
+                budget_id, month_start, month_end_date
+            )
             for account in card_accounts:
                 linked = linked_by_account.get(account.id)
                 # One assembler for all five legs. Composing a reserve at the
@@ -572,7 +618,10 @@ class BudgetService:
                         is_card_payment=True,
                     )
                 balance = owed_by_card.get(account.id, zero)
-                uncovered = max(zero, -balance - max(zero, set_aside))
+                # One implementation of "where does this card stand", shared
+                # with `reserve_discrepancy`. It used to be spelled again here.
+                position = card_position(set_aside, balance)
+                charged, received = month_flows.get(account.id, (zero, zero))
                 if account.is_closed and balance == zero and set_aside == zero:
                     # Settled and closed: nothing owed, nothing reserved,
                     # nothing to act on. The arithmetic above still ran — the
@@ -588,11 +637,20 @@ class BudgetService:
                         category_id=linked.id if linked else None,
                         balance=balance,
                         set_aside=set_aside,
-                        # Owed beyond the reserve. An overpaid envelope
-                        # (negative set-aside — a credit balance on the card)
+                        # Owed beyond the reserve. A negative set-aside
                         # reserves nothing, so it is floored before
-                        # subtracting.
-                        uncovered=uncovered,
+                        # subtracting — see `card_position`.
+                        uncovered=position.uncovered,
+                        # The other three terms of the same position. Served
+                        # because a zero `reserve_discrepancy` means the
+                        # identity's bounds hold, NOT that the number on
+                        # screen is sensible: an over-reserve explained by
+                        # assignments and a negative reserve explained by
+                        # residual both report nothing there. The surface
+                        # reads these to say WHICH way a card is unusual.
+                        over_reserved=position.over_reserved,
+                        short_reserved=position.short_reserved,
+                        card_credit=position.card_credit,
                         is_closed=account.is_closed,
                         overspent_this_month=funding.floored_by_card.get(account.id, {}).get(
                             month_start, zero
@@ -603,6 +661,17 @@ class BudgetService:
                         residual=sum_through(reserve.residual, month_start),
                         payments=sum_through(reserve.payments, month_start),
                         riding=sum_through(funding.riding_by_card.get(account.id, {}), month_start),
+                        charged_this_month=-charged,
+                        paid_this_month=reserve.payments.get(month_start, zero),
+                        debt_change_this_month=charged + received,
+                        # Sorted so the panel can name the earliest month that
+                        # still has debt riding on it — that is the one whose
+                        # envelope is worth back-funding first.
+                        rode_by_month=sorted(
+                            (m, v)
+                            for m, v in funding.floored_by_card.get(account.id, {}).items()
+                            if m <= month_start and v != zero
+                        ),
                         # Every defect this model has had was visible here, and
                         # the invariant that would have caught them excused
                         # exactly the histories that produce them. Computed

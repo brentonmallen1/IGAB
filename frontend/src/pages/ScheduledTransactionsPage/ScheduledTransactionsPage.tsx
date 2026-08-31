@@ -96,11 +96,9 @@ export function ScheduledTransactionsPage() {
             >
               <span className="sched-cell--account">{accountName(s.account_id)}</span>
               <span className="sched-cell--payee">{payeeName(s)}</span>
-              <span
-                className={`sched-cell--amount ${Number(s.amount) < 0 ? 'negative' : 'positive'}`}
-              >
-                {formatMoney(Math.abs(Number(s.amount)))}
-                {Number(s.amount) < 0 ? ' out' : ' in'}
+              <span className={`sched-cell--amount ${s.amount < 0 ? 'negative' : 'positive'}`}>
+                {formatMoney(Math.abs(s.amount))}
+                {s.amount < 0 ? ' out' : ' in'}
               </span>
               <span className="sched-cell--freq">{FREQ_LABELS[s.frequency] ?? s.frequency}</span>
               <span className="sched-cell--date">{s.next_occurrence_date}</span>

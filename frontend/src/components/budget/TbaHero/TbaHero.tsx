@@ -208,7 +208,7 @@ export function TbaHero({ budgetId, month }: Props) {
           anchorRef={assignRef}
           budgetId={budgetId}
           month={month}
-          tba={Number(tba)}
+          tba={tba}
           overspentCount={overspentCount}
           onPickStrategy={handlePickStrategy}
           onCoverOverspent={handleCoverFromDropdown}
@@ -226,7 +226,7 @@ export function TbaHero({ budgetId, month }: Props) {
           <AssignDropdownContent
             budgetId={budgetId}
             month={month}
-            tba={Number(tba)}
+            tba={tba}
             overspentCount={overspentCount}
             onPickStrategy={handlePickStrategy}
             onCoverOverspent={handleCoverFromDropdown}

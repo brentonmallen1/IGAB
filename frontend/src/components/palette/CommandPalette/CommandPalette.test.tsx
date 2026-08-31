@@ -47,7 +47,7 @@ const TXN = {
   id: '3a1f0000-0000-4000-8000-00000000c2ab',
   account_id: 'acc-1',
   date: '2026-08-20',
-  amount: '-12.34',
+  amount: -12.34,
   payee_id: 'p-1',
   memo: null,
 }

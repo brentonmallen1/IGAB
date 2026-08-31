@@ -23,7 +23,7 @@ export function PayVsSave() {
   const { formatMoney, formatDate } = useFormatters()
 
   const usable = (liabilities ?? []).filter(
-    (l) => l.interest_rate !== null && l.minimum_payment !== null && Number(l.current_balance) > 0
+    (l) => l.interest_rate !== null && l.minimum_payment !== null && l.current_balance > 0
   )
 
   function prefill(id: string) {

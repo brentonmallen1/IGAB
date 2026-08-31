@@ -22,6 +22,9 @@ vi.mock('../../../api/budgets', () => ({
   useSetAssignment: () => ({ mutate: vi.fn(), isPending: false }),
 }))
 vi.mock('../../../api/targets', () => ({ useTarget: () => ({ data: null }) }))
+// No liability rows: the payoff link stays out, so this file keeps testing the
+// breakdown rather than needing a router around it.
+vi.mock('../../../api/liabilities', () => ({ useLiabilities: () => ({ data: [] }) }))
 vi.mock('../TargetEditor', () => ({ TargetEditor: () => null }))
 vi.mock('../TransactionsPeekModal/TransactionsPeekModal', () => ({
   TransactionsPeekModal: () => null,
@@ -46,6 +49,16 @@ function card(over: Partial<CardStatus> = {}): CardStatus {
     residual: 0,
     payments: 5,
     riding: 0,
+    // Kept coherent with balance/set_aside above rather than zeroed: 115
+    // reserved against 60 owed IS over-reserved by 55, and a fixture that
+    // said otherwise would let the row contradict itself unnoticed.
+    over_reserved: 55,
+    short_reserved: 0,
+    card_credit: 0,
+    charged_this_month: 0,
+    paid_this_month: 0,
+    debt_change_this_month: 0,
+    rode_by_month: [],
     ...over,
   }
 }
@@ -91,8 +104,46 @@ describe('the Ready to pay breakdown', () => {
     } as unknown as BudgetMonth
     render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
     await userEvent.click(screen.getByLabelText('What makes up Ready to pay for Sapphire Visa'))
-    expect(screen.getByText(/rode onto this card without being funded/)).toBeInTheDocument()
-    expect(screen.getByText(/outside the total above/)).toBeInTheDocument()
+    expect(screen.getByText(/rode onto this card when a month ended short/)).toBeInTheDocument()
+    expect(screen.getByText(/sits outside the total above/)).toBeInTheDocument()
+  })
+
+  it('names the months that rode, and back-funding before assigning', async () => {
+    // The old note offered only "assign to the card" — the expensive remedy.
+    // Funding the month that ended short retires the ride outright, because
+    // the walk is recomputed from scratch on every request, and nothing said
+    // so. The month is the actionable half, so the panel has to name it.
+    month.current = {
+      cards: [
+        card({
+          riding: 30,
+          uncovered: 30,
+          rode_by_month: [
+            { month: '2026-07-01', amount: 20 },
+            { month: '2026-06-01', amount: 10 },
+          ],
+        }),
+      ],
+      category_balances: [],
+    } as unknown as BudgetMonth
+    render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
+    await userEvent.click(screen.getByLabelText('What makes up Ready to pay for Sapphire Visa'))
+    expect(screen.getByText(/Fund an envelope in the month it ended short/)).toBeInTheDocument()
+    expect(screen.getByText(/assign to the card instead/)).toBeInTheDocument()
+    // Largest first: that is the month worth back-funding before the others.
+    const listed = document.querySelectorAll('.credit-cards__ride-months li span:first-child')
+    expect([...listed].map((n) => n.textContent)).toEqual(['July 2026', 'June 2026'])
+  })
+
+  it('shows the month the debt moved, separately from the lifetime legs', async () => {
+    month.current = {
+      cards: [card({ charged_this_month: 412, paid_this_month: 640, debt_change_this_month: 228 })],
+      category_balances: [],
+    } as unknown as BudgetMonth
+    render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
+    await userEvent.click(screen.getByLabelText('What makes up Ready to pay for Sapphire Visa'))
+    expect(screen.getByText('This month')).toBeInTheDocument()
+    expect(screen.getByText('Debt down')).toBeInTheDocument()
   })
 
   it('renders the served total rather than a sum of its own', async () => {
@@ -106,5 +157,78 @@ describe('the Ready to pay breakdown', () => {
     await userEvent.click(screen.getByLabelText('What makes up Ready to pay for Sapphire Visa'))
     expect(totalRow()?.textContent).toContain('999')
     expect(totalRow()?.textContent).not.toContain('115')
+  })
+})
+
+/** The decision lives in cardRow.ts and is tested there. These pin that the
+ *  row actually draws it — a correct decision rendered nowhere is the same
+ *  defect from the user's side. */
+describe('what the row says about a reserve', () => {
+  it('does not call a card overpaid while it still owes money', async () => {
+    // The screenshot: -220 reserved against a card owing 5,400, with the whole
+    // balance uncovered one column to the right. Rescaled and invented.
+    month.current = {
+      cards: [
+        card({
+          balance: -5400,
+          set_aside: -220,
+          uncovered: 5400,
+          short_reserved: 220,
+          over_reserved: 0,
+          payments: 220,
+        }),
+      ],
+      category_balances: [],
+    } as unknown as BudgetMonth
+    render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
+    expect(screen.queryByText(/overpaid/i)).not.toBeInTheDocument()
+    expect(screen.getByText('ahead of budget')).toBeInTheDocument()
+  })
+
+  it('keeps the word for the one state it is true of', async () => {
+    month.current = {
+      cards: [
+        card({
+          balance: 50,
+          set_aside: -50,
+          uncovered: 0,
+          short_reserved: 50,
+          card_credit: 50,
+          over_reserved: 0,
+        }),
+      ],
+      category_balances: [],
+    } as unknown as BudgetMonth
+    render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
+    expect(screen.getByText('credit balance')).toBeInTheDocument()
+  })
+
+  it('reports an over-reserve the discrepancy check is silent about', async () => {
+    // reserve_discrepancy is 0 by design here — T1 excuses an over-reserve
+    // explained by assignments — so a row keyed on it would say nothing.
+    month.current = {
+      cards: [
+        card({
+          balance: -1500,
+          set_aside: 7400,
+          over_reserved: 5900,
+          assigned: 5900,
+          reserve_discrepancy: 0,
+        }),
+      ],
+      category_balances: [],
+    } as unknown as BudgetMonth
+    render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
+    expect(screen.getByText(/spare$/)).toBeInTheDocument()
+    expect(screen.queryByText(/does not add up/)).not.toBeInTheDocument()
+  })
+
+  it('shows the debt moving, framed as debt rather than as the balance', async () => {
+    month.current = {
+      cards: [card({ debt_change_this_month: 228, charged_this_month: 412, paid_this_month: 640 })],
+      category_balances: [],
+    } as unknown as BudgetMonth
+    render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
+    expect(screen.getByText(/^down /)).toBeInTheDocument()
   })
 })

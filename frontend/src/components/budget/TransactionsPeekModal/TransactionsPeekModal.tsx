@@ -67,6 +67,9 @@ export function TransactionsPeekModal({ budgetId, scope, onClose, onAddTransacti
 
   const transactions = data?.transactions ?? []
   const totalCount = data?.total_count ?? 0
+  // Served per row, never accumulated here. Empty for a category scope.
+  const running = data?.running_balances ?? {}
+  const showRunning = scope.kind === 'account' && Object.keys(running).length > 0
 
   function describePayee(t: Transaction): string {
     const display = transactionDisplayPayee(t, payeeName, accountName)
@@ -148,39 +151,63 @@ export function TransactionsPeekModal({ budgetId, scope, onClose, onAddTransacti
                   : 'No transactions in this category yet.'}
             </div>
           ) : (
-            <table className="category-txns__table">
-              <thead>
-                <tr>
-                  <th scope="col">Date</th>
-                  <th scope="col">Payee</th>
-                  {scope.kind === 'category' && <th scope="col">Account</th>}
-                  <th scope="col" className="category-txns__amount-col">
-                    Amount
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {transactions.map((t) => (
-                  <tr key={t.id} onClick={() => openInRegister(t)} title="Open in account register">
-                    <td className="category-txns__date">{formatDate(t.date)}</td>
-                    <td className="category-txns__payee">
-                      <span className="category-txns__payee-name">{describePayee(t)}</span>
-                      {t.memo && <span className="category-txns__memo">{t.memo}</span>}
-                    </td>
-                    {scope.kind === 'category' && (
-                      <td className="category-txns__account">
-                        {accountName.get(t.account_id) ?? '—'}
-                      </td>
+            <>
+              {showRunning && (
+                <p className="category-txns__running-note">
+                  Balance runs down to what this account holds. On a card, Ready to pay is the
+                  envelope beside it — not a total of these rows.
+                </p>
+              )}
+              <table className="category-txns__table">
+                <thead>
+                  <tr>
+                    <th scope="col">Date</th>
+                    <th scope="col">Payee</th>
+                    {scope.kind === 'category' && <th scope="col">Account</th>}
+                    <th scope="col" className="category-txns__amount-col">
+                      Amount
+                    </th>
+                    {showRunning && (
+                      <th scope="col" className="category-txns__amount-col">
+                        Balance
+                      </th>
                     )}
-                    <td
-                      className={`category-txns__amount tabular ${Number(t.amount) < 0 ? 'negative' : 'positive'}`}
-                    >
-                      {formatMoney(Number(t.amount))}
-                    </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {transactions.map((t) => (
+                    <tr
+                      key={t.id}
+                      onClick={() => openInRegister(t)}
+                      title="Open in account register"
+                    >
+                      <td className="category-txns__date">{formatDate(t.date)}</td>
+                      <td className="category-txns__payee">
+                        <span className="category-txns__payee-name">{describePayee(t)}</span>
+                        {t.memo && <span className="category-txns__memo">{t.memo}</span>}
+                      </td>
+                      {scope.kind === 'category' && (
+                        <td className="category-txns__account">
+                          {accountName.get(t.account_id) ?? '—'}
+                        </td>
+                      )}
+                      <td
+                        className={`category-txns__amount tabular ${t.amount < 0 ? 'negative' : 'positive'}`}
+                      >
+                        {formatMoney(t.amount)}
+                      </td>
+                      {showRunning && (
+                        <td className="category-txns__running tabular">
+                          {/* A pending row has no entry: it has not moved the
+                          balance, and a zero here would say it had. */}
+                          {running[t.id] === undefined ? '—' : formatMoney(running[t.id])}
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
           )}
         </div>
 

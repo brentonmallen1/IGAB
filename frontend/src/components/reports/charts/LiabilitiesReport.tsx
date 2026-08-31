@@ -55,19 +55,17 @@ export function LiabilitiesReport({ budgetId }: Props) {
     const value = (row: (typeof rows)[number]) => {
       switch (sortKey) {
         case 'balance':
-          return Number(row.current_balance)
+          return row.current_balance
         // Unknown sorts to one end rather than mixing in with real zeros —
         // a 0% promo card and a card with no APR entered are different things.
         case 'rate':
-          return row.interest_rate === null ? -Infinity : Number(row.interest_rate)
+          return row.interest_rate === null ? -Infinity : row.interest_rate
         case 'baseline':
           return row.baseline_payoff_date ?? '9999'
         case 'live':
           return row.live_payoff_date ?? '9999'
         case 'interest':
-          return row.total_interest_remaining === null
-            ? -Infinity
-            : Number(row.total_interest_remaining)
+          return row.total_interest_remaining === null ? -Infinity : row.total_interest_remaining
       }
     }
     rows.sort((a, b) => {
@@ -159,12 +157,12 @@ export function LiabilitiesReport({ budgetId }: Props) {
                 name: i.name,
                 type: i.liability_type,
                 mode: i.mode,
-                balance: Number(i.current_balance),
-                interest_rate: i.interest_rate === null ? '' : Number(i.interest_rate),
+                balance: i.current_balance,
+                interest_rate: i.interest_rate === null ? '' : i.interest_rate,
                 baseline_payoff: i.baseline_payoff_date ?? '',
                 live_payoff: i.live_payoff_date ?? '',
                 interest_remaining:
-                  i.total_interest_remaining === null ? '' : Number(i.total_interest_remaining),
+                  i.total_interest_remaining === null ? '' : i.total_interest_remaining,
               }))
             }
             captureRef={captureRef}
@@ -186,7 +184,7 @@ export function LiabilitiesReport({ budgetId }: Props) {
                   account type — so the two figures differ on purpose. */}
               <MetricCard
                 label="Total Liabilities"
-                value={formatMoney(Number(data!.total_balance))}
+                value={formatMoney(data!.total_balance)}
                 sub="Every debt, cards included"
                 accent
               />
@@ -194,7 +192,7 @@ export function LiabilitiesReport({ budgetId }: Props) {
                   is partial rather than let it read as the whole figure. */}
               <MetricCard
                 label="Interest Remaining"
-                value={formatMoney(Number(data!.total_interest_remaining))}
+                value={formatMoney(data!.total_interest_remaining)}
                 sub={
                   data!.liabilities_missing_terms > 0
                     ? `At minimum payments · excludes ${data!.liabilities_missing_terms} without terms`
@@ -284,9 +282,9 @@ export function LiabilitiesReport({ budgetId }: Props) {
                           {item.mode === 'managed' ? 'from account' : 'manual'}
                         </span>
                       </td>
-                      <td className="num">{formatMoney(Number(item.current_balance))}</td>
+                      <td className="num">{formatMoney(item.current_balance)}</td>
                       <td className="num">
-                        {item.interest_rate === null ? '—' : `${Number(item.interest_rate)}%`}
+                        {item.interest_rate === null ? '—' : `${item.interest_rate}%`}
                       </td>
                       <td>
                         {item.baseline_payoff_date ? formatMonth(item.baseline_payoff_date) : '—'}
@@ -305,7 +303,7 @@ export function LiabilitiesReport({ budgetId }: Props) {
                       <td className="num">
                         {item.total_interest_remaining === null
                           ? '—'
-                          : formatMoney(Number(item.total_interest_remaining))}
+                          : formatMoney(item.total_interest_remaining)}
                       </td>
                     </tr>
                   ))}

@@ -569,9 +569,9 @@ export function SettingsPage() {
                     </div>
                     <div className="settings-account-item__actions">
                       <span
-                        className={`settings-account-item__balance ${Number(acc.balance) < 0 ? 'negative' : ''}`}
+                        className={`settings-account-item__balance ${acc.balance < 0 ? 'negative' : ''}`}
                       >
-                        {formatMoney(Number(acc.balance))}
+                        {formatMoney(acc.balance)}
                       </span>
                       <button
                         className="settings-btn settings-btn--secondary"

@@ -3,15 +3,16 @@ import re
 import uuid
 from decimal import Decimal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 
+from igab.api.v1.schemas.base import ApiModel
 from igab.api.v1.schemas.tag import TagOutSimple
 from igab.domain.enums import UserClearedStatus
 from igab.domain.money import Money
 from igab.domain.payee_names import dedupe_samples
 
 
-class SplitCreate(BaseModel):
+class SplitCreate(ApiModel):
     amount: Money
     category_id: uuid.UUID | None = None
     payee_id: uuid.UUID | None = None
@@ -21,18 +22,18 @@ class SplitCreate(BaseModel):
     id: uuid.UUID | None = None
 
 
-class ConvertToSplitRequest(BaseModel):
+class ConvertToSplitRequest(ApiModel):
     splits: list[SplitCreate]
 
 
-class ReplaceSplitsRequest(BaseModel):
+class ReplaceSplitsRequest(ApiModel):
     """The split's lines as they should be: named lines are updated, unnamed
     ones created, missing ones removed. They must sum to the parent."""
 
     splits: list[SplitCreate]
 
 
-class TransactionCreate(BaseModel):
+class TransactionCreate(ApiModel):
     account_id: uuid.UUID
     date: datetime.date
     amount: Money
@@ -59,7 +60,7 @@ class TransactionCreate(BaseModel):
         return self
 
 
-class TransactionUpdate(BaseModel):
+class TransactionUpdate(ApiModel):
     """PATCH body: omitted fields are untouched; an explicit null clears the
     nullable fields (category_id, payee_id, memo, latitude/longitude)."""
 
@@ -110,7 +111,7 @@ class TransactionUpdate(BaseModel):
         return self
 
 
-class TransactionClassification(BaseModel):
+class TransactionClassification(ApiModel):
     """Why a transaction counts the way it does in reports."""
 
     activity_class: str
@@ -122,7 +123,7 @@ class TransactionClassification(BaseModel):
     explanation: str
 
 
-class TransactionResponse(BaseModel):
+class TransactionResponse(ApiModel):
     id: uuid.UUID
     budget_id: uuid.UUID
     account_id: uuid.UUID
@@ -182,51 +183,57 @@ class TransactionResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class BudgetTransactionListResponse(BaseModel):
+class BudgetTransactionListResponse(ApiModel):
     """Paged drill-down listing; totals cover the full filter match, not just the page."""
 
     transactions: list[TransactionResponse]
     total_count: int
     total_amount: Decimal
+    #: Transaction id → the account's balance as of that row. Populated only
+    #: when `running_balance` was asked for on a single-account listing, and
+    #: empty otherwise — a running total across accounts is not a balance of
+    #: anything. A pending row has no entry: it has not moved the balance, and
+    #: a zero there would read as one that had.
+    running_balances: dict[str, Decimal] = {}
 
 
-class BulkClearedUpdate(BaseModel):
+class BulkClearedUpdate(ApiModel):
     transaction_ids: list[uuid.UUID]
     cleared: UserClearedStatus
 
 
-class BulkCategorize(BaseModel):
+class BulkCategorize(ApiModel):
     transaction_ids: list[uuid.UUID]
     category_id: uuid.UUID
 
 
-class BulkDelete(BaseModel):
+class BulkDelete(ApiModel):
     transaction_ids: list[uuid.UUID]
 
 
-class BulkApprove(BaseModel):
+class BulkApprove(ApiModel):
     transaction_ids: list[uuid.UUID]
 
 
-class BulkItemFailure(BaseModel):
+class BulkItemFailure(ApiModel):
     id: uuid.UUID
     reason: str
 
 
-class BulkActionResult(BaseModel):
+class BulkActionResult(ApiModel):
     updated: list[uuid.UUID]
     failed: list[BulkItemFailure]
     # Change-log batch covering the whole bulk action, for undo
     batch_id: uuid.UUID | None = None
 
 
-class DeleteTransactionResult(BaseModel):
+class DeleteTransactionResult(ApiModel):
     """Returned by transaction delete so the UI can offer toast-undo."""
 
     batch_id: uuid.UUID
 
 
-class PendingReviewCount(BaseModel):
+class PendingReviewCount(ApiModel):
     unapproved: int
     uncategorized: int
     unapproved_only: int = 0
@@ -235,12 +242,12 @@ class PendingReviewCount(BaseModel):
     total: int = 0
 
 
-class MergeTransactionsRequest(BaseModel):
+class MergeTransactionsRequest(ApiModel):
     transaction_ids: list[uuid.UUID]
     survivor_id: uuid.UUID | None = None
 
 
-class SimilarTransactionResponse(BaseModel):
+class SimilarTransactionResponse(ApiModel):
     id: uuid.UUID
     date: datetime.date
     amount: Decimal
@@ -252,11 +259,11 @@ class SimilarTransactionResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class PayeeCreate(BaseModel):
+class PayeeCreate(ApiModel):
     name: str
 
 
-class PayeeUpdate(BaseModel):
+class PayeeUpdate(ApiModel):
     name: str | None = None
     default_category_id: uuid.UUID | None = None
     mapping_samples: list[str] | None = None
@@ -284,7 +291,7 @@ class PayeeUpdate(BaseModel):
         return v
 
 
-class PayeeResponse(BaseModel):
+class PayeeResponse(ApiModel):
     id: uuid.UUID
     budget_id: uuid.UUID
     name: str
@@ -302,17 +309,17 @@ class PayeeWithCount(PayeeResponse):
     last_used: datetime.date | None = None
 
 
-class PayeeMergeRequest(BaseModel):
+class PayeeMergeRequest(ApiModel):
     target_id: uuid.UUID
 
 
-class PayeeMergeResult(BaseModel):
+class PayeeMergeResult(ApiModel):
     """Returned by payee merge so the UI can offer toast-undo."""
 
     change_id: uuid.UUID
 
 
-class NearbyPayeeResponse(BaseModel):
+class NearbyPayeeResponse(ApiModel):
     """A payee the user has transacted with near the given point."""
 
     id: uuid.UUID
@@ -323,13 +330,13 @@ class NearbyPayeeResponse(BaseModel):
     last_date: datetime.date
 
 
-class DuplicatePayeeEntry(BaseModel):
+class DuplicatePayeeEntry(ApiModel):
     id: uuid.UUID
     name: str
     transaction_count: int
 
 
-class DuplicatePayeeGroup(BaseModel):
+class DuplicatePayeeGroup(ApiModel):
     """A group of payees that appear to be duplicates based on fuzzy matching."""
 
     payees: list[DuplicatePayeeEntry]

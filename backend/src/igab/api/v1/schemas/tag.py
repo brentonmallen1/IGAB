@@ -1,22 +1,22 @@
 import uuid
 from typing import Literal
 
-from pydantic import BaseModel
+from igab.api.v1.schemas.base import ApiModel
 
 TagColorSlot = Literal["red", "orange", "yellow", "green", "teal", "blue", "purple", "pink"]
 
 
-class TagCreate(BaseModel):
+class TagCreate(ApiModel):
     name: str
     color_slot: TagColorSlot | None = None
 
 
-class TagUpdate(BaseModel):
+class TagUpdate(ApiModel):
     name: str | None = None
     color_slot: TagColorSlot | None = None
 
 
-class TagOut(BaseModel):
+class TagOut(ApiModel):
     id: uuid.UUID
     name: str
     system_key: str | None
@@ -27,7 +27,7 @@ class TagOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class TagOutSimple(BaseModel):
+class TagOutSimple(ApiModel):
     id: uuid.UUID
     name: str
     system_key: str | None
@@ -36,11 +36,11 @@ class TagOutSimple(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class SetTagsRequest(BaseModel):
+class SetTagsRequest(ApiModel):
     tag_ids: list[uuid.UUID]
 
 
-class TagSuggestionOut(BaseModel):
+class TagSuggestionOut(ApiModel):
     """A system tag this category's names point at, which it does not carry.
 
     Served rather than computed on the client because the server already
@@ -58,12 +58,12 @@ class TagSuggestionOut(BaseModel):
     applied_on_import: bool
 
 
-class CategoryTagsUpdate(BaseModel):
+class CategoryTagsUpdate(ApiModel):
     category_id: uuid.UUID
     #: The category's FULL intended tag set. `set_category_tags` is a replace,
     #: so a partial list silently drops the tags it omits.
     tag_ids: list[uuid.UUID]
 
 
-class BulkSetCategoryTagsRequest(BaseModel):
+class BulkSetCategoryTagsRequest(ApiModel):
     updates: list[CategoryTagsUpdate]

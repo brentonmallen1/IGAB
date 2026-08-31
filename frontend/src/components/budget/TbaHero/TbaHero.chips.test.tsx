@@ -36,8 +36,8 @@ import { TbaHero } from './TbaHero'
 beforeEach(() => {
   month.current = {
     to_be_assigned: 0,
-    total_overspent_cash: '120.00',
-    total_overspent_credit: '45.00',
+    total_overspent_cash: 120.0,
+    total_overspent_credit: 45.0,
     overspent_count_cash: 1,
   } as unknown as BudgetMonth
 })

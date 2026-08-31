@@ -46,16 +46,16 @@ export function AmortizationTable({ schedule }: Props) {
               <td data-label="#">{m.month_index}</td>
               <td data-label="Month">{formatMonth(m.date)}</td>
               <td data-label="Payment" className="amort-table__num">
-                {formatMoney(Number(m.payment))}
+                {formatMoney(m.payment)}
               </td>
               <td data-label="Principal" className="amort-table__num">
-                {formatMoney(Number(m.principal_paid))}
+                {formatMoney(m.principal_paid)}
               </td>
               <td data-label="Interest" className="amort-table__num amort-table__interest">
-                {formatMoney(Number(m.interest_paid))}
+                {formatMoney(m.interest_paid)}
               </td>
               <td data-label="Balance" className="amort-table__num">
-                {formatMoney(Number(m.balance))}
+                {formatMoney(m.balance)}
               </td>
             </tr>
           ))}

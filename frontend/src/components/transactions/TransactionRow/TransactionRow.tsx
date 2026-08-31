@@ -198,9 +198,9 @@ export const TransactionRow = memo(function TransactionRow({
   const moreRef = useRef<HTMLButtonElement>(null)
   const eyeRef = useRef<HTMLButtonElement>(null)
 
-  const isOutflow = Number(txn.amount) < 0
-  const outflow = isOutflow ? Math.abs(Number(txn.amount)) : 0
-  const inflow = !isOutflow ? Number(txn.amount) : 0
+  const isOutflow = txn.amount < 0
+  const outflow = isOutflow ? Math.abs(txn.amount) : 0
+  const inflow = !isOutflow ? txn.amount : 0
 
   const payeeName = transactionDisplayPayee(txn, payeeMap, accountMap)
 

@@ -28,6 +28,8 @@ from tests.integration.factories import (
     make_services,
 )
 
+from .factories import money
+
 JAN = date(2026, 1, 1)
 
 
@@ -1140,8 +1142,8 @@ async def test_list_changes_pagination_and_order(api_client, db_session):
     assert body["total"] == 5
     assert len(body["changes"]) == 2
     # newest first
-    assert Decimal(body["changes"][0]["after"]["amount"]) == Decimal("-5.00")
-    assert Decimal(body["changes"][1]["after"]["amount"]) == Decimal("-4.00")
+    assert money(body["changes"][0]["after"]["amount"]) == Decimal("-5.00")
+    assert money(body["changes"][1]["after"]["amount"]) == Decimal("-4.00")
 
     resp = await api_client.get(f"/api/v1/{budget.id}/changes", params={"limit": 2, "offset": 4})
     assert len(resp.json()["changes"]) == 1

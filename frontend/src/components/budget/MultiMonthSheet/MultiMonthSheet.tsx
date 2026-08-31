@@ -155,7 +155,7 @@ export function MultiMonthSheet({ budgetId }: Props) {
         const b = map.get(c.id)
         if (!b) continue
         assigned += Number(b.assigned)
-        activity += Number(b.activity)
+        activity += b.activity
         available += Number(b.available)
       }
     }
@@ -234,9 +234,9 @@ export function MultiMonthSheet({ budgetId }: Props) {
                   <th scope="colgroup" colSpan={3} key={m} className="mm-sheet__month-header">
                     <span className="mm-sheet__month-name">{formatMonth(m)}</span>
                     <span
-                      className={`mm-sheet__month-tba tabular ${data ? moneyClass(Number(data.to_be_assigned)) : ''}`}
+                      className={`mm-sheet__month-tba tabular ${data ? moneyClass(data.to_be_assigned) : ''}`}
                     >
-                      {data ? `${formatMoney(Number(data.to_be_assigned))} to assign` : '…'}
+                      {data ? `${formatMoney(data.to_be_assigned)} to assign` : '…'}
                     </span>
                   </th>
                 )

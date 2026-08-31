@@ -77,11 +77,9 @@ export function BudgetActualReport({ budgetId }: Props) {
   if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
 
   let categories = data?.categories ?? []
-  if (showOverspent) categories = categories.filter((c) => Number(c.spent) > Number(c.assigned))
+  if (showOverspent) categories = categories.filter((c) => c.spent > c.assigned)
   if (sortBy === 'overspent') {
-    categories = [...categories].sort(
-      (a, b) => Number(b.spent) - Number(b.assigned) - (Number(a.spent) - Number(a.assigned))
-    )
+    categories = [...categories].sort((a, b) => b.spent - b.assigned - (a.spent - a.assigned))
   }
 
   const chartData = categories.slice(0, 20).map((c) => ({
@@ -89,9 +87,9 @@ export function BudgetActualReport({ budgetId }: Props) {
     fullName: c.category_name,
     categoryId: c.category_id,
     group: c.category_group_name,
-    Assigned: Number(c.assigned),
-    Spent: Number(c.spent),
-    overspent: Number(c.spent) > Number(c.assigned),
+    Assigned: c.assigned,
+    Spent: c.spent,
+    overspent: c.spent > c.assigned,
   }))
 
   function drillTo(categoryId: string, name: string) {
@@ -121,9 +119,9 @@ export function BudgetActualReport({ budgetId }: Props) {
     id: c.category_id,
     name: c.category_name,
     subName: c.category_group_name,
-    amount: -Number(c.spent),
-    pct: Number(c.variance_pct),
-    extra: `Assigned: ${formatMoney(Number(c.assigned))}`,
+    amount: -c.spent,
+    pct: c.variance_pct,
+    extra: `Assigned: ${formatMoney(c.assigned)}`,
   }))
 
   return (
@@ -167,10 +165,10 @@ export function BudgetActualReport({ budgetId }: Props) {
               categories.map((c) => ({
                 category: c.category_name,
                 group: c.category_group_name,
-                assigned: Number(c.assigned),
-                spent: Number(c.spent),
-                variance: Number(c.assigned) - Number(c.spent),
-                variance_pct: Number(c.variance_pct),
+                assigned: c.assigned,
+                spent: c.spent,
+                variance: c.assigned - c.spent,
+                variance_pct: c.variance_pct,
               }))
             }
             captureRef={captureRef}
@@ -182,11 +180,11 @@ export function BudgetActualReport({ budgetId }: Props) {
       <div ref={captureRef} className="report-capture">
         {data && (
           <div className="report-metrics">
-            <MetricCard label="Total Assigned" value={formatMoney(Number(data.total_assigned))} />
-            <MetricCard label="Total Spent" value={formatMoney(Number(data.total_spent))} />
+            <MetricCard label="Total Assigned" value={formatMoney(data.total_assigned)} />
+            <MetricCard label="Total Spent" value={formatMoney(data.total_spent)} />
             <MetricCard
               label="Variance"
-              value={formatMoney(Number(data.total_assigned) - Number(data.total_spent))}
+              value={formatMoney(data.total_assigned - data.total_spent)}
             />
           </div>
         )}

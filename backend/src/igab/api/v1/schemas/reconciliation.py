@@ -2,27 +2,26 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel
-
+from igab.api.v1.schemas.base import ApiModel
 from igab.domain.money import Money
 
 
-class ReconcileFinishRequest(BaseModel):
+class ReconcileFinishRequest(ApiModel):
     statement_balance: Money
     adjustment_transaction_id: uuid.UUID | None = None
 
 
-class ReconcileAdjustmentRequest(BaseModel):
+class ReconcileAdjustmentRequest(ApiModel):
     adjustment_amount: Money
 
 
-class ReconciliationStatusResponse(BaseModel):
+class ReconciliationStatusResponse(ApiModel):
     cleared_balance: Decimal
     uncleared_count: int
     pending_count: int = 0
 
 
-class ReconciliationSnapshotResponse(BaseModel):
+class ReconciliationSnapshotResponse(ApiModel):
     id: uuid.UUID
     account_id: uuid.UUID
     reconciled_at: datetime

@@ -1,32 +1,32 @@
-from pydantic import BaseModel
+from igab.api.v1.schemas.base import ApiModel
 
 
-class SuggestCategoryRequest(BaseModel):
+class SuggestCategoryRequest(ApiModel):
     payee_name: str
     amount: float
     memo: str | None = None
 
 
-class SuggestCategoryResponse(BaseModel):
+class SuggestCategoryResponse(ApiModel):
     category_id: str | None
     category_name: str | None
     confidence: float
 
 
-class SuggestRegexRequest(BaseModel):
+class SuggestRegexRequest(ApiModel):
     names: list[str]
 
 
-class SuggestRegexResponse(BaseModel):
+class SuggestRegexResponse(ApiModel):
     #: Most specific first; empty when the model produced nothing usable.
     patterns: list[str]
 
 
-class InsightsResponse(BaseModel):
+class InsightsResponse(ApiModel):
     insights: str
 
 
-class AIStatusResponse(BaseModel):
+class AIStatusResponse(ApiModel):
     enabled: bool
     available: bool
     host: str | None
@@ -43,11 +43,11 @@ class AIStatusResponse(BaseModel):
     receipt_model_vision: bool | None = None
 
 
-class OllamaModelInfo(BaseModel):
+class OllamaModelInfo(ApiModel):
     name: str
     size: int
     capabilities: list[str]
 
 
-class OllamaModelsResponse(BaseModel):
+class OllamaModelsResponse(ApiModel):
     models: list[OllamaModelInfo]

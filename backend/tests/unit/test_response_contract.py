@@ -18,6 +18,7 @@ client ever sees it. Keep doing that; this test only notices when someone adds
 a field and forgets the other file.
 """
 
+import inspect
 import re
 from pathlib import Path
 
@@ -99,3 +100,88 @@ def test_the_types_file_is_where_we_think_it_is():
     # Guards the whole suite: a moved file would make every check above pass by
     # never finding anything to disagree with.
     assert TS_TYPES.is_file(), TS_TYPES
+
+
+def test_every_schema_inherits_the_api_base():
+    """Money crosses the wire as a JSON number, and one `BaseModel` reintroduces
+    a string for its whole model.
+
+    That is not a loud failure. `tsc` cannot tell `"0.00"` from `0`, so the
+    client keeps compiling and starts misbehaving quietly: `"0.00" !== 0` drew
+    "$0.00" where the code said "—", `+` concatenated into NaN, and `>=`
+    compared lexicographically. The workaround had reached 444 `Number(...)`
+    wrappings before anyone noticed, which is what a missing mechanism looks
+    like — invisible exactly where it was forgotten.
+    """
+    import importlib
+    import pkgutil
+
+    import igab.api.v1.schemas as pkg
+    from igab.api.v1.schemas.base import ApiModel
+
+    offenders = []
+    for mod_info in pkgutil.iter_modules(pkg.__path__):
+        mod = importlib.import_module(f"{pkg.__name__}.{mod_info.name}")
+        for name, obj in vars(mod).items():
+            if (
+                inspect.isclass(obj)
+                and issubclass(obj, BaseModel)
+                and obj.__module__ == mod.__name__
+                and obj is not ApiModel
+                and not issubclass(obj, ApiModel)
+            ):
+                offenders.append(f"{mod_info.name}.{name}")
+
+    assert not offenders, (
+        f"These schemas inherit BaseModel rather than ApiModel, so their Decimal "
+        f"fields serialize as strings while the TypeScript calls them number: "
+        f"{sorted(offenders)}. Inherit `ApiModel` from schemas/base.py."
+    )
+
+
+def _ts_field_types(name: str) -> dict[str, str]:
+    """Field name → its declared TypeScript type, for one interface."""
+    match = re.search(rf"export interface {name} \{{(.*?)\n\}}", TS_TYPES.read_text(), re.S)
+    assert match, f"No `export interface {name}` in {TS_TYPES}."
+    body = re.sub(r"//[^\n]*", "", re.sub(r"/\*.*?\*/", "", match.group(1), flags=re.S))
+    return {
+        m.group(1): m.group(2).strip().rstrip(",")
+        for m in re.finditer(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\??\s*:\s*([^\n]+)$", body, re.M)
+    }
+
+
+@pytest.mark.parametrize(
+    ("model", "ts_name"), list(CONTRACT.items()), ids=[m.__name__ for m in CONTRACT]
+)
+def test_decimal_fields_are_numbers_in_typescript(model: type[BaseModel], ts_name: str):
+    """A `Decimal` field must be `number` on the client, and now is one on the
+    wire too (`schemas/base.py`).
+
+    This is the half that was missing. The name check above passes whether the
+    client says `number` or `string`, and the server was sending a string while
+    every interface said `number` — a disagreement no compiler could see, which
+    is how it survived long enough to grow 444 `Number(...)` wrappings and
+    reach the screen as "$0.00" where the code said "—".
+    """
+    declared = _ts_field_types(ts_name)
+    wrong = {
+        field: declared[field]
+        for field, info in model.model_fields.items()
+        if field in declared
+        and _mentions_decimal(info.annotation)
+        and "number" not in declared[field]
+    }
+    assert not wrong, (
+        f"{model.__name__} serializes these as JSON numbers, but `interface {ts_name}` "
+        f"declares them otherwise: {wrong}. A string here compiles and then misbehaves "
+        f'quietly — "0.00" !== 0, "9" >= "10", and + concatenates.'
+    )
+
+
+def _mentions_decimal(annotation: object) -> bool:
+    from decimal import Decimal
+    from typing import get_args
+
+    if annotation is Decimal:
+        return True
+    return any(_mentions_decimal(a) for a in get_args(annotation))

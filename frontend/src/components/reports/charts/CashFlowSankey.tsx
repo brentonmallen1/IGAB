@@ -157,7 +157,7 @@ function SankeyTooltip({
           {items.slice(0, 8).map((item) => (
             <div key={item.name} className="chart-tooltip__row">
               <span className="chart-tooltip__name">{item.name}</span>
-              <span className="chart-tooltip__value">{formatMoney(Number(item.total))}</span>
+              <span className="chart-tooltip__value">{formatMoney(item.total)}</span>
             </div>
           ))}
         </>
@@ -360,10 +360,10 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
             const rows: Record<string, unknown>[] = data.links.map((l) => ({
               source: nodeName.get(l.source) ?? l.source,
               target: nodeName.get(l.target) ?? l.target,
-              value: Number(l.value),
+              value: l.value,
             }))
-            rows.push({ source: 'TOTAL', target: 'income', value: Number(data.total_income) })
-            rows.push({ source: 'TOTAL', target: 'expenses', value: Number(data.total_expense) })
+            rows.push({ source: 'TOTAL', target: 'income', value: data.total_income })
+            rows.push({ source: 'TOTAL', target: 'expenses', value: data.total_expense })
             return rows
           }}
           captureRef={captureRef}
@@ -402,14 +402,10 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
           <div className="report-metrics">
             <MetricCard
               label="Total Income"
-              value={formatMoney(Number(data.total_income))}
+              value={formatMoney(data.total_income)}
               sub={
                 compare && prevData
-                  ? formatDelta(
-                      Number(data.total_income),
-                      Number(prevData.total_income),
-                      formatMoney
-                    )
+                  ? formatDelta(data.total_income, prevData.total_income, formatMoney)
                   : undefined
               }
             />
@@ -443,12 +439,12 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
               budget did leave, however it is branched. */}
             <MetricCard
               label="Net"
-              value={formatMoney(Number(data.total_income) - Number(data.total_expense))}
+              value={formatMoney(data.total_income - data.total_expense)}
               sub={
                 compare && prevData
                   ? formatDelta(
-                      Number(data.total_income) - Number(data.total_expense),
-                      Number(prevData.total_income) - Number(prevData.total_expense),
+                      data.total_income - data.total_expense,
+                      prevData.total_income - prevData.total_expense,
                       formatMoney
                     )
                   : undefined

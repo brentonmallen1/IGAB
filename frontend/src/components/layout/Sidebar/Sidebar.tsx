@@ -397,7 +397,7 @@ export function Sidebar() {
                         <SidebarAccountRow
                           key={acc.id}
                           name={acc.name}
-                          balance={Number(acc.balance)}
+                          balance={acc.balance}
                           kind={accountKind(acc)}
                           badgeCount={acc.uncategorized_count}
                           onClick={() => handleAccountClick(acc)}
@@ -448,7 +448,7 @@ export function Sidebar() {
                 <SidebarAccountRow
                   key={acc.id}
                   name={acc.name}
-                  balance={Number(acc.balance)}
+                  balance={acc.balance}
                   kind={accountKind(acc)}
                   onClick={() => handleAccountClick(acc)}
                   isActive={isRowActive(accountTarget(acc.id), null, sidebarLocation)}
@@ -546,7 +546,7 @@ export function Sidebar() {
                   className={`sidebar__account-mini ${active ? 'sidebar__account-mini--active' : ''}`}
                   aria-current={active ? 'page' : undefined}
                   onClick={() => handleAccountClick(acc)}
-                  title={`${acc.name}\n${formatMoney(Number(acc.balance))}`}
+                  title={`${acc.name}\n${formatMoney(acc.balance)}`}
                 >
                   <span className="sidebar__account-mini-letter">
                     {acc.name.charAt(0).toUpperCase()}

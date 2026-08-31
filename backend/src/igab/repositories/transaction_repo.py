@@ -35,6 +35,7 @@ from igab.domain.activity_class import ACTIVITY_CLASS, apply_class_joins
 from igab.repositories.base import BaseRepository
 from igab.repositories.category_filters import IS_CATEGORIZABLE
 from igab.repositories.txn_filters import (
+    BALANCE_ROW,
     BANK_UNLINKED,
     CARD_PAYMENT_FROM_CASH,
     CASH_FLOW_ROW,
@@ -515,6 +516,41 @@ class TransactionRepository(BaseRepository[Transaction]):
             .order_by(Transaction.created_at, Transaction.id)
         )
         return list(result.scalars().all())
+
+    async def running_balances(
+        self, account_id: uuid.UUID, txn_ids: Sequence[uuid.UUID]
+    ) -> dict[uuid.UUID, Decimal]:
+        """The account's balance as of each of `txn_ids`, for a register column.
+
+        A window over the account's WHOLE ledger, then narrowed to the page —
+        not a cumulative sum of the rows on screen. That matters twice over: a
+        page is a window onto the newest rows, so summing it would start from
+        an arbitrary point, and any filter would silently make every figure
+        wrong while still looking like a balance.
+
+        Ordered by the exact inverse of the register's own tiebreak
+        (`list_for_budget`, date/created_at/id), because a running total in a
+        different order than the rows are drawn in is nonsense that reads as
+        arithmetic.
+
+        `BALANCE_ROW` excludes pending rows, so they are absent rather than
+        zero: a row the bank has not posted has not moved the balance, and
+        saying so is the honest answer.
+        """
+        if not txn_ids:
+            return {}
+        running = func.sum(Transaction.amount).over(
+            order_by=(Transaction.date, Transaction.created_at, Transaction.id)
+        )
+        ledger = (
+            select(Transaction.id.label("id"), running.label("running"))
+            .where(Transaction.account_id == account_id, BALANCE_ROW)
+            .subquery()
+        )
+        result = await self.session.execute(
+            select(ledger.c.id, ledger.c.running).where(ledger.c.id.in_(txn_ids))
+        )
+        return {row_id: Decimal(str(total)) for row_id, total in result.all()}
 
     async def sum_by_category_by_month(
         self,

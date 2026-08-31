@@ -35,7 +35,7 @@ export function AssignAutoTab({
   // The cash part: what this row would actually fund. Credit-funded red rode
   // onto a card and no assignment retires it, so offering to cover it would
   // name a number the dialog then refuses to act on.
-  const overspent = Number(totals.total_overspent_cash)
+  const overspent = totals.total_overspent_cash
   const underfundedNeeded = Number(byStrategy.get('underfunded')?.total_needed ?? 0)
   // Overspending and underfunding measure different things: a category with
   // no target is never "underfunded" however overspent it is. When the two
@@ -45,13 +45,13 @@ export function AssignAutoTab({
   function renderRow(strategy: AssignStrategy) {
     const row = byStrategy.get(strategy)
     if (!row) return null
-    const totalAmount = Number(row.total_amount)
-    const totalNeeded = row.total_needed === null ? null : Number(row.total_needed)
+    const totalAmount = row.total_amount
+    const totalNeeded = row.total_needed === null ? null : row.total_needed
     const isUnderfunded = strategy === 'underfunded'
     const disabled = isUnderfunded
       ? totalNeeded === null || totalNeeded === 0
       : row.affected_count === 0
-    const clamped = isUnderfunded && totalNeeded !== null && totalNeeded > Number(row.to_assign)
+    const clamped = isUnderfunded && totalNeeded !== null && totalNeeded > row.to_assign
 
     return (
       <button

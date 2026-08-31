@@ -3,8 +3,7 @@ import uuid
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel
-
+from igab.api.v1.schemas.base import ApiModel
 from igab.domain.money import Money
 
 LiabilityType = Literal[
@@ -12,7 +11,7 @@ LiabilityType = Literal[
 ]
 
 
-class LiabilityCreate(BaseModel):
+class LiabilityCreate(ApiModel):
     name: str
     #: Ignored when linked_account_id is set — a managed liability's kind is
     #: its account's type. Required for an unmanaged one, which has no account
@@ -40,7 +39,7 @@ class LiabilityCreate(BaseModel):
     term_months: int | None = None
 
 
-class LiabilityUpdate(BaseModel):
+class LiabilityUpdate(ApiModel):
     name: str | None = None
     liability_type: LiabilityType | None = None
     interest_rate: Decimal | None = None
@@ -58,7 +57,7 @@ class LiabilityUpdate(BaseModel):
     term_months: int | None = None
 
 
-class LiabilityOut(BaseModel):
+class LiabilityOut(ApiModel):
     id: uuid.UUID
     budget_id: uuid.UUID
     name: str
@@ -128,7 +127,7 @@ class LiabilityOut(BaseModel):
     updated_at: datetime.datetime
 
 
-class PromoProjectionOut(BaseModel):
+class PromoProjectionOut(ApiModel):
     """Where the balance stands when the promo window closes."""
 
     months_until_promo_end: int
@@ -140,12 +139,12 @@ class PromoProjectionOut(BaseModel):
     deferred_interest_estimate: Decimal | None
 
 
-class LiabilityBalanceSnapshotCreate(BaseModel):
+class LiabilityBalanceSnapshotCreate(ApiModel):
     balance: Money
     date: datetime.date | None = None  # default: today
 
 
-class LiabilityBalanceSnapshotOut(BaseModel):
+class LiabilityBalanceSnapshotOut(ApiModel):
     id: uuid.UUID
     liability_id: uuid.UUID
     date: datetime.date
@@ -155,11 +154,11 @@ class LiabilityBalanceSnapshotOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class LinkLiabilityRequest(BaseModel):
+class LinkLiabilityRequest(ApiModel):
     liability_id: uuid.UUID | None  # null unlinks
 
 
-class AmortizationMonthOut(BaseModel):
+class AmortizationMonthOut(ApiModel):
     month_index: int
     date: datetime.date
     payment: Decimal
@@ -168,12 +167,12 @@ class AmortizationMonthOut(BaseModel):
     balance: Decimal
 
 
-class BalancePointOut(BaseModel):
+class BalancePointOut(ApiModel):
     date: datetime.date
     balance: Decimal
 
 
-class AmortizationResponse(BaseModel):
+class AmortizationResponse(ApiModel):
     current_balance: Decimal
     # terms_complete=false returns an empty schedule and null totals rather
     # than an error: the page renders a "terms not set" state, and a 4xx would

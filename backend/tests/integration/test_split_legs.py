@@ -260,7 +260,10 @@ async def test_endpoint_round_trip_get_then_put(api_client, db_session):
     )
     assert got.status_code == 200, got.text
     lines = got.json()
-    assert sorted(line["amount"] for line in lines) == ["-40.0000", "-60.0000"]
+    # Numbers, so this sorts numerically. The old spelling compared money
+    # STRINGS, where "-40" sorts before "-60" — the same lexicographic trap
+    # the wire format was springing on the client.
+    assert sorted(line["amount"] for line in lines) == [-60.0, -40.0]
     assert all(isinstance(line["needs_category"], bool) for line in lines)
 
     put = await api_client.put(
@@ -278,5 +281,5 @@ async def test_endpoint_round_trip_get_then_put(api_client, db_session):
     body = put.json()
     assert len(body) == 3
     kept = next(line for line in body if line["id"] == lines[0]["id"])
-    assert kept["category_id"] == str(cat.id) and kept["amount"] == "-60.0000"
-    assert any(line["memo"] == "tip" and line["amount"] == "-15.0000" for line in body)
+    assert kept["category_id"] == str(cat.id) and kept["amount"] == -60.0
+    assert any(line["memo"] == "tip" and line["amount"] == -15.0 for line in body)

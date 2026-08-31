@@ -126,7 +126,7 @@ export function LiabilityPage() {
       await createTransaction.mutateAsync({
         account_id: liability.linked_account_id,
         date: liability.origination_date ?? new Date().toISOString().slice(0, 10),
-        amount: -Number(liability.current_balance),
+        amount: -liability.current_balance,
         payee_name: 'Starting Balance',
         memo: `Opening balance for ${liability.name}`,
         cleared: 'cleared',
@@ -216,7 +216,7 @@ export function LiabilityPage() {
           >
             {createTransaction.isPending
               ? 'Adding…'
-              : `Add ${formatMoney(-Number(liability.current_balance))} opening balance`}
+              : `Add ${formatMoney(-liability.current_balance)} opening balance`}
           </button>
         </div>
       )}
@@ -242,7 +242,7 @@ export function LiabilityPage() {
               )}{' '}
               would remain
               {liability.promo_projection.deferred_interest_estimate !== null
-                ? ` and ~${formatMoney(Number(liability.promo_projection.deferred_interest_estimate))} of deferred interest could be charged retroactively`
+                ? ` and ~${formatMoney(liability.promo_projection.deferred_interest_estimate)} of deferred interest could be charged retroactively`
                 : ` and the ${Number(liability.interest_rate)}% rate starts`}
               .
             </span>
@@ -264,7 +264,7 @@ export function LiabilityPage() {
         <MetricCard
           variant="raised"
           label="Current Balance"
-          value={formatMoney(Number(liability.current_balance))}
+          value={formatMoney(liability.current_balance)}
           accent
         />
         {/* 0% is a real rate here — promo cards have one — so an unset rate
@@ -272,9 +272,7 @@ export function LiabilityPage() {
         <MetricCard
           variant="raised"
           label="Interest Rate"
-          value={
-            liability.interest_rate === null ? 'Not set' : `${Number(liability.interest_rate)}%`
-          }
+          value={liability.interest_rate === null ? 'Not set' : `${liability.interest_rate}%`}
           sub={liability.interest_rate === null ? 'Add it for a payoff date' : undefined}
         />
         <MetricCard
@@ -305,7 +303,7 @@ export function LiabilityPage() {
 
       {liability.origination_date !== null &&
         liability.original_principal !== null &&
-        Number(liability.original_principal) > 0 && (
+        liability.original_principal > 0 && (
           <div className="liability-page__progress">
             <div className="liability-page__progress-labels">
               <span>
@@ -317,13 +315,8 @@ export function LiabilityPage() {
                   : ''}
               </span>
               <span>
-                {formatMoney(
-                  Math.max(
-                    0,
-                    Number(liability.original_principal) - Number(liability.current_balance)
-                  )
-                )}{' '}
-                of {formatMoney(Number(liability.original_principal))} paid down
+                {formatMoney(Math.max(0, liability.original_principal - liability.current_balance))}{' '}
+                of {formatMoney(liability.original_principal)} paid down
               </span>
             </div>
             <div className="liability-page__progress-track">
@@ -334,9 +327,7 @@ export function LiabilityPage() {
                     100,
                     Math.max(
                       0,
-                      (1 -
-                        Number(liability.current_balance) / Number(liability.original_principal)) *
-                        100
+                      (1 - liability.current_balance / liability.original_principal) * 100
                     )
                   )}%`,
                 }}
@@ -434,11 +425,11 @@ export function LiabilityPage() {
                 ? `paid off ${whatIfSavings.monthsSooner} month${whatIfSavings.monthsSooner === 1 ? '' : 's'} sooner`
                 : 'actually pays off'}
               {' · '}
-              {formatMoney(Number(whatIfSavings.interestSaved))} interest saved
+              {formatMoney(whatIfSavings.interestSaved)} interest saved
             </div>
           )}
           {amortization ? (
-            Number(liability.current_balance) === 0 ? (
+            liability.current_balance === 0 ? (
               <div className="liability-page__empty">Nothing left to pay down.</div>
             ) : !amortization.terms_complete ? (
               // The curve past today IS the projection. Without terms there is

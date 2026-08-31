@@ -83,13 +83,13 @@ export function SpendingTreemapReport({ budgetId }: Props) {
         })
       }
       const g = map.get(gid)!
-      g.total += Number(item.total)
+      g.total += item.total
       g.children.push({
         name: item.name,
         id: item.id,
         parent_id: item.parent_id,
         parent_name: item.parent_name,
-        size: Number(item.total),
+        size: item.total,
         pct: item.pct,
         fill: chartColor(colorIdx),
       })
@@ -110,7 +110,7 @@ export function SpendingTreemapReport({ budgetId }: Props) {
           id: item.id,
           parent_id: item.parent_id,
           parent_name: item.parent_name,
-          size: Number(item.total),
+          size: item.total,
           pct: item.pct,
           fill: chartColor(colorIdx),
         }
@@ -176,7 +176,7 @@ export function SpendingTreemapReport({ budgetId }: Props) {
               items.map((item) => ({
                 category: item.name,
                 group: item.parent_name ?? '',
-                total: Number(item.total),
+                total: item.total,
                 pct: item.pct,
                 count: item.count,
               }))

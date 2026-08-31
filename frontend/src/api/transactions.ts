@@ -194,6 +194,9 @@ export function useTransactionsPeek(
         ? { category_ids: categoryId, scope: 'leaf', limit }
         : { scope: 'parent', limit }
       if (accountId) params.account_ids = accountId
+      // Only the account scope: a running total across accounts is not a
+      // balance of anything, and the server refuses it there anyway.
+      if (accountId && !categoryId) params.running_balance = true
       const { data } = await apiClient.get<BudgetTransactionsResponse>(
         `/${budgetId}/transactions`,
         { params }

@@ -813,7 +813,21 @@ function tokenize(query: string): string[] {
       i++
     } else {
       let j = i
-      while (j < query.length && query[j] !== ' ') j++
+      // A quote after a prefix — `category:"Dining Out"` — is the form the
+      // budget page's peek modal emits, and only a LEADING quote was handled
+      // above. Stopping at the space split it into `category:"Dining` and
+      // `Out"`: the first resolved the category by accident (`includes`) and
+      // the orphan fell through to free text, so the register asked for the
+      // right category AND a text match on `Out"` and returned nothing.
+      // An unterminated quote runs to the end of the query, matching what the
+      // leading-quote branch above already does.
+      while (j < query.length && query[j] !== ' ') {
+        if (query[j] === '"') {
+          j++
+          while (j < query.length && query[j] !== '"') j++
+        }
+        j++
+      }
       tokens.push(query.slice(i, j))
       i = j
     }

@@ -65,17 +65,17 @@ export function IncomeExpenseReport({ budgetId }: Props) {
 
   const chartData = (data?.months ?? []).map((m) => ({
     month: m.month.slice(0, 7),
-    Income: Number(m.income),
-    Expenses: Number(m.expenses),
-    Saved: Number(m.savings) + Number(m.debt_principal),
-    Net: Number(m.net),
+    Income: m.income,
+    Expenses: m.expenses,
+    Saved: m.savings + m.debt_principal,
+    Net: m.net,
   }))
 
   const tableRows = (data?.months ?? []).map((m) => ({
     id: m.month,
     name: m.month.slice(0, 7),
-    amount: -Number(m.expenses),
-    extra: `Net: ${formatMoney(Number(m.net))}`,
+    amount: -m.expenses,
+    extra: `Net: ${formatMoney(m.net)}`,
   }))
 
   return (
@@ -105,11 +105,11 @@ export function IncomeExpenseReport({ budgetId }: Props) {
             getRows={() =>
               (data?.months ?? []).map((m) => ({
                 month: m.month.slice(0, 7),
-                income: Number(m.income),
-                expenses: Number(m.expenses),
-                savings: Number(m.savings),
-                debt_principal: Number(m.debt_principal),
-                net: Number(m.net),
+                income: m.income,
+                expenses: m.expenses,
+                savings: m.savings,
+                debt_principal: m.debt_principal,
+                net: m.net,
               }))
             }
             captureRef={captureRef}

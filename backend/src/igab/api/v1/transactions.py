@@ -168,6 +168,10 @@ async def list_budget_transactions(
     order: Literal["date", "register"] = "date",
     limit: int = Query(200, le=5000),
     offset: int = 0,
+    #: Ask for the account's balance as of each returned row. Honoured only
+    #: for a listing scoped to exactly ONE account: a running total across
+    #: accounts is not a balance of anything.
+    running_balance: bool = False,
 ) -> BudgetTransactionListResponse:
     """Budget-wide transaction listing for report drill-downs and the
     all-accounts register.
@@ -207,10 +211,26 @@ async def list_budget_transactions(
         limit=limit,
         offset=offset,
     )
+    accounts = _parse_uuid_list(account_ids)
+    running: dict[str, Decimal] = {}
+    if running_balance and accounts and len(accounts) == 1:
+        # Keyed by row rather than accumulated by the client: the server owns
+        # the order the rows are drawn in, and a running total computed in a
+        # different order is nonsense that reads as arithmetic. It is a window
+        # over the account's whole ledger, so it stays correct under any
+        # filter — the figures simply stop differing by the row amounts, the
+        # way a filtered bank statement does.
+        running = {
+            str(row_id): total
+            for row_id, total in (
+                await txn_repo.running_balances(accounts[0], [t.id for t in txns])
+            ).items()
+        }
     return BudgetTransactionListResponse(
         transactions=[TransactionResponse.model_validate(t) for t in txns],
         total_count=total_count,
         total_amount=total_amount,
+        running_balances=running,
     )
 
 

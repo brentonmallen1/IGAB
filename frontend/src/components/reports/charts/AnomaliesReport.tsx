@@ -141,8 +141,8 @@ export function AnomaliesReport({ budgetId }: Props) {
             <div key={monthLabel} className="anomalies-group">
               <h3 className="anomalies-group__label">{monthLabel}</h3>
               {items.map((a) => {
-                const actual = Number(a.actual)
-                const baseline = Number(a.baseline_mean)
+                const actual = a.actual
+                const baseline = a.baseline_mean
                 const pctChange = getPercentChange(actual, baseline)
 
                 return (
@@ -169,7 +169,7 @@ export function AnomaliesReport({ budgetId }: Props) {
                     </div>
                     <div className="anomaly-card__sparkline">
                       <ResponsiveContainer width={100} height={24}>
-                        <LineChart data={a.history.map((v, i) => ({ i, v: Number(v) }))}>
+                        <LineChart data={a.history.map((v, i) => ({ i, v: v }))}>
                           <Line
                             type="monotone"
                             dataKey="v"

@@ -149,7 +149,7 @@ export function buildLiabilityRows(
     rows.push({
       key: `acct-${acc.id}`,
       name: acc.name,
-      balance: tracker ? -Number(tracker.current_balance) : Number(acc.balance),
+      balance: tracker ? -tracker.current_balance : acc.balance,
       target: tracker
         ? { kind: 'liability', liabilityId: tracker.id }
         : { kind: 'account', accountId: acc.id },
@@ -164,7 +164,7 @@ export function buildLiabilityRows(
     rows.push({
       key: `liab-${liability.id}`,
       name: liability.name,
-      balance: -Number(liability.current_balance),
+      balance: -liability.current_balance,
       target: { kind: 'liability', liabilityId: liability.id },
       registerAccountId: null,
       icon: liability.linked_account_id ? 'managed' : 'manual',
@@ -186,7 +186,7 @@ export function liabilityHeaderTotal(rows: LiabilityRow[]): number {
  * hand-written copies of this reduce is how a header stops agreeing with the
  * rows beneath it. */
 export function accountsTotal(accounts: Account[]): number {
-  return accounts.reduce((sum, a) => sum + Number(a.balance), 0)
+  return accounts.reduce((sum, a) => sum + a.balance, 0)
 }
 
 /** The Budget Accounts header total: the sum of exactly the group subtotals
@@ -216,7 +216,7 @@ export function onBudgetTotals(onBudgetByType: Map<string, Account[]>): OnBudget
   let cards = 0
   for (const list of onBudgetByType.values()) {
     for (const account of list) {
-      const amount = Number(account.balance)
+      const amount = account.balance
       if (accountKind(account) === 'debt') cards += amount
       else cash += amount
     }
