@@ -110,10 +110,13 @@ export function debtMovement(card: CardStatus, money: Money): RowNote | null {
   if (moved === 0) return null
   const charged = money(card.charged_this_month)
   const paid = money(card.paid_this_month)
+  // "this month" lives in the tooltip, not the label: the Balance column is
+  // barely wider than the figure above it, and the longer phrasing wrapped to
+  // a second line mid-sentence. The page is already scoped to one month.
   const detail = `${charged} charged, ${paid} paid to the card this month.`
   return moved > 0
-    ? { label: `down ${money(moved)} this month`, title: `${detail} The debt fell.` }
-    : { label: `up ${money(-moved)} this month`, title: `${detail} The debt grew.` }
+    ? { label: `down ${money(moved)}`, title: `${detail} The debt fell.` }
+    : { label: `up ${money(-moved)}`, title: `${detail} The debt grew.` }
 }
 
 /**

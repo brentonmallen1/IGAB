@@ -229,6 +229,6 @@ describe('what the row says about a reserve', () => {
       category_balances: [],
     } as unknown as BudgetMonth
     render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
-    expect(screen.getByText(/down .* this month/)).toBeInTheDocument()
+    expect(screen.getByText(/^down /)).toBeInTheDocument()
   })
 })

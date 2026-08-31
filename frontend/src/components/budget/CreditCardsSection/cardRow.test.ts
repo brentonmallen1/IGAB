@@ -136,13 +136,13 @@ describe('debtMovement', () => {
       card({ debt_change_this_month: 228, charged_this_month: 412, paid_this_month: 640 }),
       money
     )
-    expect(note?.label).toBe('down $228.00 this month')
+    expect(note?.label).toBe('down $228.00')
     expect(note?.title).toContain('$412.00 charged, $640.00 paid')
   })
 
   it('reads a falling balance as debt going up', () => {
     const note = debtMovement(card({ debt_change_this_month: -412 }), money)
-    expect(note?.label).toBe('up $412.00 this month')
+    expect(note?.label).toBe('up $412.00')
   })
 })
 

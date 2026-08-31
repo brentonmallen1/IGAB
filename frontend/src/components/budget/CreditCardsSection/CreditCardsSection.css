@@ -207,6 +207,9 @@
   font-size: var(--font-size-xs);
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
+  /* A note under a figure is a caption, not a paragraph — wrapping it mid
+     phrase reads as a layout accident, which is what it was. */
+  white-space: nowrap;
 }
 
 /* The one place colour is earned on this row: a reserve the model itself
