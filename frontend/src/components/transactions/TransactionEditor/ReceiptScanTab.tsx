@@ -3,7 +3,12 @@ import { Link } from 'react-router-dom'
 import { Upload, X, Loader2, Sparkles, AlertTriangle, FileText } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useQueryClient } from '@tanstack/react-query'
-import { ATTACHMENT_ACCEPT, isAttachableFile } from '../../../api/attachments'
+import {
+  ATTACHMENT_ACCEPT,
+  MAX_ATTACHMENT_LABEL,
+  isAttachableFile,
+  isTooLargeToAttach,
+} from '../../../api/attachments'
 import { useSubmitReceipt, useAIJob, type AIJob } from '../../../api/aiJobs'
 import './ReceiptScanTab.css'
 import { apiErrorMessage } from '../../../api/client'
@@ -103,8 +108,8 @@ export function ReceiptScanTab({
       toast.error(`${file.name} is not an image or PDF`)
       return
     }
-    if (file.size > 20 * 1024 * 1024) {
-      toast.error(`${file.name} is too large (max 20MB)`)
+    if (isTooLargeToAttach(file)) {
+      toast.error(`${file.name} is too large (max ${MAX_ATTACHMENT_LABEL})`)
       return
     }
     setStage({ kind: 'preview', file })
@@ -246,7 +251,7 @@ export function ReceiptScanTab({
       >
         <Upload size={20} />
         <span>{dragOver ? 'Drop receipt to scan' : 'Click, drag, or paste a receipt'}</span>
-        <span className="receipt-scan__hint">Image or PDF, max 20MB</span>
+        <span className="receipt-scan__hint">Image or PDF, max {MAX_ATTACHMENT_LABEL}</span>
         <input
           ref={fileInputRef}
           type="file"

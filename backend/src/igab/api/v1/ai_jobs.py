@@ -7,7 +7,11 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
 from igab.api.route import CommitRoute
-from igab.api.v1.attachments import ALLOWED_CONTENT_TYPES, MAX_FILE_SIZE
+from igab.api.v1.attachments import (
+    ALLOWED_CONTENT_TYPES,
+    MAX_FILE_SIZE,
+    TOO_LARGE_DETAIL,
+)
 from igab.api.v1.schemas.ai_job import (
     ActiveCountResponse,
     AIJobListResponse,
@@ -141,7 +145,7 @@ async def submit_receipt(
     if len(content) > MAX_FILE_SIZE:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File too large (max 20MB)",
+            detail=TOO_LARGE_DETAIL,
         )
 
     # Submitting the same receipt twice would double-count the expense. Unlike

@@ -29,7 +29,15 @@ ALLOWED_CONTENT_TYPES = {
     "image/gif",
     "application/pdf",
 }
-MAX_FILE_SIZE = 20 * 1024 * 1024
+#: The upload ceiling. One number, two derived forms — the megabyte figure was
+#: typed into the refusal message beside it and into four places on the client,
+#: and a limit spelled that often eventually disagrees with the check that
+#: enforces it. The client keeps its own copy (it has to pre-check before
+#: sending) and `tests/unit/test_upload_limit_agreement.py` asserts the two
+#: still agree.
+MAX_FILE_MB = 20
+MAX_FILE_SIZE = MAX_FILE_MB * 1024 * 1024
+TOO_LARGE_DETAIL = f"File too large (max {MAX_FILE_MB}MB)"
 
 
 @router.get("/transactions/{transaction_id}/attachments", response_model=list[AttachmentResponse])
@@ -68,7 +76,7 @@ async def upload_attachment(
     if len(content) > MAX_FILE_SIZE:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File too large (max 20MB)",
+            detail=TOO_LARGE_DETAIL,
         )
 
     try:

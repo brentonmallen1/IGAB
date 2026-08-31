@@ -26,7 +26,9 @@ import { useCreateTransaction } from '../../../api/transactions'
 import { confirmFutureOverspend } from '../../../api/budgets'
 import {
   ATTACHMENT_ACCEPT,
+  MAX_ATTACHMENT_LABEL,
   isAttachableFile,
+  isTooLargeToAttach,
   uploadFilesToTransaction,
 } from '../../../api/attachments'
 import { useAIStatus } from '../../../api/ai'
@@ -244,8 +246,8 @@ export function QuickAddSheet() {
         toast.error(`${file.name} is not an image or PDF`)
         continue
       }
-      if (file.size > 20 * 1024 * 1024) {
-        toast.error(`${file.name} is too large (max 20MB)`)
+      if (isTooLargeToAttach(file)) {
+        toast.error(`${file.name} is too large (max ${MAX_ATTACHMENT_LABEL})`)
         continue
       }
       accepted.push(file)
@@ -270,8 +272,8 @@ export function QuickAddSheet() {
     for (const file of files) {
       if (!isAttachableFile(file)) {
         toast.error(`${file.name} is not an image or PDF`)
-      } else if (file.size > 20 * 1024 * 1024) {
-        toast.error(`${file.name} is too large (max 20MB)`)
+      } else if (isTooLargeToAttach(file)) {
+        toast.error(`${file.name} is too large (max ${MAX_ATTACHMENT_LABEL})`)
       } else {
         accepted.push(file)
       }

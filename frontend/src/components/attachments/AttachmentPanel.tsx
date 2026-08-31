@@ -3,6 +3,8 @@ import { Camera, Paperclip, Upload, Trash2, X, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import {
   ATTACHMENT_ACCEPT,
+  MAX_ATTACHMENT_LABEL,
+  isTooLargeToAttach,
   fetchAttachmentBlob,
   isAttachableFile,
   isPdfAttachment,
@@ -75,8 +77,8 @@ export function AttachmentPanel({ transactionId, onClose, embedded = false }: Pr
           toast.error(`${file.name} is not an image or PDF`)
           continue
         }
-        if (file.size > 20 * 1024 * 1024) {
-          toast.error(`${file.name} is too large (max 20MB)`)
+        if (isTooLargeToAttach(file)) {
+          toast.error(`${file.name} is too large (max ${MAX_ATTACHMENT_LABEL})`)
           continue
         }
         try {

@@ -23,6 +23,30 @@ export function isAttachableFile(file: File): boolean {
   return file.type.startsWith('image/') || file.type === 'application/pdf'
 }
 
+/** The upload ceiling, written once.
+ *
+ * `20 * 1024 * 1024` was inline in three components and the string "20MB" was
+ * typed six times across both languages, including a hint that promised it to
+ * the user. A number spelled that often is a number that eventually disagrees
+ * with the server that enforces it, and the first sign would have been an
+ * upload the client cheerfully accepted and the API rejected.
+ *
+ * The server is authoritative — this is a pre-check so a 20MB upload fails
+ * before it is sent, not instead of the server's check. The two are the
+ * irreducible duplication CLAUDE.md describes, so they are one constant per
+ * side plus a differential test: `tests/unit/test_upload_limit_agreement.py`
+ * reads this line and asserts it equals `MAX_FILE_SIZE`.
+ */
+const MAX_ATTACHMENT_MB = 20
+export const MAX_ATTACHMENT_BYTES = MAX_ATTACHMENT_MB * 1024 * 1024
+/** The same ceiling as a person reads it. Derived, so the copy in a toast and
+ *  the number in the check cannot drift apart. */
+export const MAX_ATTACHMENT_LABEL = `${MAX_ATTACHMENT_MB}MB`
+
+export function isTooLargeToAttach(file: File): boolean {
+  return file.size > MAX_ATTACHMENT_BYTES
+}
+
 export function isPdfAttachment(a: Pick<Attachment, 'content_type'>): boolean {
   return a.content_type === 'application/pdf'
 }
