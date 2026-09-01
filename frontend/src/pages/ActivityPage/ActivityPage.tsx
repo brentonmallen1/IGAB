@@ -2,6 +2,7 @@ import { parseApiDecimal } from '../../utils/money'
 import { Fragment, useState } from 'react'
 import {
   Undo2,
+  Redo2,
   Package,
   RefreshCw,
   Trash2,
@@ -13,6 +14,8 @@ import {
   FileUp,
   GitMerge,
   History,
+  Archive,
+  ArchiveRestore,
 } from 'lucide-react'
 import { useAppStore } from '../../stores/appStore'
 import {
@@ -27,7 +30,8 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useFormatters } from '../../hooks/useFormatters'
 import { confirmAsync } from '../../stores/confirmStore'
 import toast from 'react-hot-toast'
-import { groupChanges, summarizeBatch } from './groupChanges'
+import { groupChanges, redoHeadId, summarizeBatch } from './groupChanges'
+import { useUndoRedo } from '../../hooks/useUndoRedo'
 import { actionTypeLabel, entityTypeLabel } from './changeLabels'
 import './ActivityPage.css'
 
@@ -43,6 +47,8 @@ export function ActivityPage() {
   const undoChange = useUndoChange(budgetId ?? '')
   const undoBatch = useUndoBatch(budgetId ?? '')
   const undoNewer = useUndoNewer(budgetId ?? '')
+  // One redo for every way of asking — same hook as ⌘⇧Z and the header.
+  const { redo } = useUndoRedo()
   // Batches collapse to one line; a user who wants the detail asks for it.
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   // Index of the group the hovered line sits directly below. Everything
@@ -62,6 +68,8 @@ export function ActivityPage() {
   const hasMore = offset + changes.length < total
 
   const grouped = groupChanges(changes)
+  // Where redo would land right now — the only row that gets the button.
+  const redoHead = redoHeadId(changes, offset)
 
   async function handleUndo(changeId: string) {
     try {
@@ -170,6 +178,8 @@ export function ActivityPage() {
                     onToggle={() => toggleExpanded(group.batchId!)}
                     onUndo={() => handleUndoBatch(group.batchId!, summarizeBatch(group.changes))}
                     isUndoing={undoBatch.isPending}
+                    showRedo={group.changes.some((c) => c.id === redoHead)}
+                    onRedo={redo}
                   />
                 )}
                 {(!isBatch || isOpen) &&
@@ -180,6 +190,8 @@ export function ActivityPage() {
                       formatDateTime={formatDateTime}
                       onUndo={() => handleUndo(change.id)}
                       isUndoing={undoChange.isPending}
+                      showRedo={!isBatch && change.id === redoHead}
+                      onRedo={redo}
                     />
                   ))}
               </div>
@@ -243,6 +255,9 @@ interface BatchHeaderProps {
   onToggle: () => void
   onUndo: () => void
   isUndoing: boolean
+  /** True only when this batch holds the current redo head. */
+  showRedo: boolean
+  onRedo: () => void
 }
 
 /**
@@ -260,6 +275,8 @@ function BatchHeader({
   onToggle,
   onUndo,
   isUndoing,
+  showRedo,
+  onRedo,
 }: BatchHeaderProps) {
   const allUndone = group.changes.every((c) => c.undone_at)
   const newest = group.changes[0]
@@ -282,7 +299,19 @@ function BatchHeader({
       </span>
       <span className="batch-header__time">{formatDateTime(newest.created_at)}</span>
       {allUndone ? (
-        <span className="batch-header__badge">Undone</span>
+        <>
+          <span className="batch-header__badge">Undone</span>
+          {showRedo && (
+            <button
+              type="button"
+              className="change-card__undo"
+              onClick={onRedo}
+              title="Redo this whole batch"
+            >
+              <Redo2 size={14} />
+            </button>
+          )}
+        </>
       ) : (
         <button
           type="button"
@@ -303,9 +332,19 @@ interface ChangeCardProps {
   formatDateTime: (date: string) => string
   onUndo: () => void
   isUndoing: boolean
+  /** True only when this row is the current redo head. */
+  showRedo: boolean
+  onRedo: () => void
 }
 
-function ChangeCard({ change, formatDateTime, onUndo, isUndoing }: ChangeCardProps) {
+function ChangeCard({
+  change,
+  formatDateTime,
+  onUndo,
+  isUndoing,
+  showRedo,
+  onRedo,
+}: ChangeCardProps) {
   const icon = actionIcon(change.action)
   const entityLabel = entityTypeLabel(change.entity_type)
   const actionLabel = actionTypeLabel(change.action)
@@ -322,6 +361,9 @@ function ChangeCard({ change, formatDateTime, onUndo, isUndoing }: ChangeCardPro
   } else if (change.action === 'merge') {
     summary = 'Merged into another'
   }
+  // Archive rows carry id-keyed payloads (one archive touches many rows), so
+  // the field-diff summarizer would print raw ids; the action label says it.
+  if (change.action === 'archive' || change.action === 'unarchive') summary = ''
 
   return (
     <div className={`change-card ${isUndone ? 'change-card--undone' : ''}`}>
@@ -352,6 +394,11 @@ function ChangeCard({ change, formatDateTime, onUndo, isUndoing }: ChangeCardPro
           <Undo2 size={14} />
         </button>
       )}
+      {isUndone && showRedo && (
+        <button className="change-card__undo" onClick={onRedo} title="Redo this change">
+          <Redo2 size={14} />
+        </button>
+      )}
     </div>
   )
 }
@@ -370,6 +417,10 @@ function actionIcon(action: string) {
       return <FileUp size={14} />
     case 'merge':
       return <GitMerge size={14} />
+    case 'archive':
+      return <Archive size={14} />
+    case 'unarchive':
+      return <ArchiveRestore size={14} />
     default:
       return <RefreshCw size={14} />
   }

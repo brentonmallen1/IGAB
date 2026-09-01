@@ -47,3 +47,27 @@ export function summarizeBatch(changes: Change[]): string {
   }
   return `${n} changes in one action`
 }
+
+/**
+ * The change redo would replay right now, or null when redo is impossible —
+ * what decides where the Activity page offers a Redo button.
+ *
+ * A mirror of the server's own selection and guard (`latest_undone` +
+ * `count_live_after_seq`), for DISPLAY only: the head is the undone row with
+ * the highest `undo_seq`, and it is refused while any live row is newer by
+ * `seq`. The server enforces; this merely avoids offering a button the
+ * server would 409. Null when not looking at the newest page — the guard
+ * needs the newest rows to compare against, and they are not loaded.
+ */
+export function redoHeadId(changes: Change[], offset: number): string | null {
+  if (offset !== 0) return null
+  let head: Change | null = null
+  for (const c of changes) {
+    if (c.undone_at === null || c.undo_seq === null) continue
+    if (head === null || c.undo_seq > (head.undo_seq ?? -1)) head = c
+  }
+  if (head === null) return null
+  const blocked = head.seq
+  if (changes.some((c) => c.undone_at === null && c.seq > blocked)) return null
+  return head.id
+}

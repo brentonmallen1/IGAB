@@ -4,7 +4,12 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from igab.api.route import CommitRoute
-from igab.api.v1.schemas.change import ChangeListResponse, ChangeOut, UndoResult
+from igab.api.v1.schemas.change import (
+    ChangeListResponse,
+    ChangeOut,
+    UndoLatestResult,
+    UndoResult,
+)
 from igab.dependencies import (
     BudgetAccess,
     CurrentUser,
@@ -41,6 +46,28 @@ def _conflict(e: UndoConflict) -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_409_CONFLICT,
         detail={"message": str(e), "fields": e.fields},
+    )
+
+
+@router.post("/{budget_id}/changes/undo", response_model=UndoLatestResult)
+async def undo_latest(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    undo_service: Annotated[UndoService, Depends(get_undo_service)],
+) -> UndoLatestResult:
+    """Undo the newest live manual change — ⌘Z's target. The server picks:
+    the client used to select from a 20-row window it fetched separately,
+    which raced background writers (a sync landing mid-⌘Z got undone) and
+    starved on a page of already-undone rows. Import/system/AI rows are
+    skipped — they keep their own undo surfaces."""
+    try:
+        candidate, undone = await undo_service.undo_latest(budget_id)
+    except UndoConflict as e:
+        raise _conflict(e) from e
+    return UndoLatestResult(
+        undone_change_ids=undone,
+        action=candidate.action,
+        entity_type=candidate.entity_type,
     )
 
 
