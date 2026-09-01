@@ -247,6 +247,15 @@ class CardFunding[C, K]:
     #: ever had riding on that card. A reserve may go negative on it, which is
     #: a real position (a credit balance) and the T2 bound of the identity.
     residual_by_card: dict[K, dict[date, Decimal]] = field(default_factory=dict)
+    #: The same residual, attributed to the (category, card) pair that carried
+    #: the inflow — a decomposition of `residual_by_card`, never a second
+    #: opinion about its total (pinned by test). Kept because "WHICH envelope
+    #: produced the residual" is the whole question a negative reserve raises:
+    #: a reimbursement filed to a category that never charged this card, a
+    #: refund filed to the wrong envelope, a payment onto card A for spending
+    #: done on card B — every one of them lands here, and without the pair the
+    #: diagnosis stops at "residual".
+    residual_by_pair: dict[tuple[C, K], dict[date, Decimal]] = field(default_factory=dict)
     #: Assignments to each card's own payment category, per month. Signed:
     #: money moved back out of a card envelope is an ordinary thing to do.
     #: Authoritative — the reserve reads the series from here rather than
@@ -411,6 +420,9 @@ def card_funding[C, K](
                 _add(out.released_by_card, card, month, released)
                 _add(out.residual_by_card, card, month, residual)
                 _add(out.riding_by_card, card, month, -discharged)
+                if residual != ZERO:
+                    per_pair = out.residual_by_pair.setdefault(pair, {})
+                    per_pair[month] = per_pair.get(month, ZERO) + residual
             if repaid != ZERO:
                 out.repaid_by_category.setdefault(category, {})[month] = repaid
 
@@ -670,10 +682,17 @@ def reserve_discrepancy(
 
       Note `assigned - covered` is ONE term inside `_allowance`, not two.
       Flooring `covered` on its own would break the subtraction.
-    - **T2** `short_reserved <= payments + residual_releases`. A reserve goes
-      negative only by paying the card more than was reserved, or by an inflow
-      beyond what its category ever had riding there. Replaces "and no inflows
-      that predate their reservations".
+    - **T2** `short_reserved <= payments + residual_releases + released_out`,
+      where `released_out` is the negative half of the lifetime assignment.
+      A reserve goes negative only by paying the card more than was reserved,
+      by an inflow beyond what its category ever had riding there, or by the
+      user moving more money back out of the card's envelope than was ever
+      put in — which the over-reserve note itself invites ("type a negative
+      in Assigned"). The third term was missing: a release past the reserve
+      reported its whole short-reserve as drift on a card where nothing was
+      wrong — the same one-sided arithmetic as "The Watchman's Arithmetic",
+      on the other bound. Replaces "and no inflows that predate their
+      reservations".
     - **T3** `card_credit <= short_reserved + unclaimed_rows`. A credit
       balance on a card is either budget money or somebody else's. This is the
       one that catches a repayment landing where no category ever charged.
@@ -700,7 +719,7 @@ def reserve_discrepancy(
     pos = card_position(set_aside, balance)
     worst = max(
         pos.over_reserved - _allowance(assigned - covered, unclaimed_rows),
-        pos.short_reserved - _allowance(payments, residual_releases),
+        pos.short_reserved - _allowance(payments, residual_releases, -assigned),
         pos.card_credit - _allowance(pos.short_reserved, unclaimed_rows),
     )
     return worst if worst > ZERO else ZERO

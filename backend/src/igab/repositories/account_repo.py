@@ -201,6 +201,41 @@ class AccountRepository(BaseRepository[Account]):
         )
         return {account_id: Decimal(str(total)) for account_id, total in result.all()}
 
+    async def card_balances_by_month(
+        self, budget_id: uuid.UUID, as_of: date
+    ) -> dict[uuid.UUID, dict[date, Decimal]]:
+        """`card_balances`, kept per month: {card: {month_start: signed net}}.
+
+        The card timeline needs the balance BESIDE each month of the reserve —
+        `card_position` at a month is meaningless against today's balance.
+        Same predicates and same bound as `card_balances`, grouped by month
+        instead of summed, so the series always totals that figure.
+        """
+        month = func.date_trunc("month", Transaction.date)
+        result = await self.session.execute(
+            select(
+                Transaction.account_id,
+                month.label("month"),
+                func.coalesce(func.sum(Transaction.amount), 0),
+            )
+            .select_from(Transaction)
+            .join(Account, Account.id == Transaction.account_id)
+            .where(
+                Account.budget_id == budget_id,
+                CARD_ACCOUNT,  # carries LIVE_ACCOUNT — deleted accounts out
+                BALANCE_ROW,
+                not_future(as_of),
+            )
+            .group_by(Transaction.account_id, month)
+        )
+        out: dict[uuid.UUID, dict[date, Decimal]] = {}
+        for account_id, month_value, total in result.all():
+            month_start = (
+                month_value.date() if hasattr(month_value, "date") else month_value
+            ).replace(day=1)
+            out.setdefault(account_id, {})[month_start] = Decimal(str(total))
+        return out
+
     async def card_month_flows(
         self, budget_id: uuid.UUID, month_start: date, month_end: date
     ) -> dict[uuid.UUID, tuple[Decimal, Decimal, Decimal]]:

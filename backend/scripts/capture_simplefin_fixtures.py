@@ -152,13 +152,17 @@ def save_fixture(name: str, data: dict) -> None:
     assert_clean(payload)
     path.write_text(payload)
     txn_count = sum(len(a.get("transactions", [])) for a in data.get("accounts", []))
-    print(f"  Saved {path.name}: {len(data.get('accounts', []))} accounts, {txn_count} transactions")
+    print(
+        f"  Saved {path.name}: {len(data.get('accounts', []))} accounts, {txn_count} transactions"
+    )
 
 
 async def main() -> None:
     load_dotenv(Path(__file__).parent.parent.parent / ".env")
 
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--setup-token", help="Base64-encoded SimpleFIN setup token")
     parser.add_argument("--access-url", help="Already-claimed SimpleFIN access URL")
     parser.add_argument(
@@ -192,14 +196,20 @@ async def main() -> None:
     if not access_url:
         setup_token = args.setup_token or os.environ.get("SIMPLEFIN_API_TOKEN")
         if not setup_token:
-            print("ERROR: Provide --access-url, --setup-token, or set SIMPLEFIN_API_TOKEN in .env", file=sys.stderr)
+            print(
+                "ERROR: Provide --access-url, --setup-token, or set SIMPLEFIN_API_TOKEN in .env",
+                file=sys.stderr,
+            )
             sys.exit(1)
         print("Claiming setup token...")
         try:
             access_url = await claim_token(setup_token)
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 403:
-                print("ERROR: Token already claimed or invalid. Provide --access-url directly.", file=sys.stderr)
+                print(
+                    "ERROR: Token already claimed or invalid. Provide --access-url directly.",
+                    file=sys.stderr,
+                )
                 sys.exit(1)
             raise
         ACCESS_URL_CACHE.write_text(access_url)

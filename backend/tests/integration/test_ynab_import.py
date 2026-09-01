@@ -1138,3 +1138,44 @@ async def test_card_payment_reserves_import_onto_the_cards_envelope(db_session):
     assert ccp[0].is_archived is False
     assert ccp[0].is_card_only is True
     assert (await services.category_repo.get(linked.id)).is_assignable is False
+
+
+async def test_a_register_row_filed_to_a_ccp_category_is_stripped_and_counted(db_session):
+    """A register row cannot be filed to a card's reserve, so the category is
+    dropped — and counted, because this was the importer's one unreported
+    drop. Case matters not at all: the guard is case-insensitive, matching
+    the case-insensitive group lookup, so a lowercase group cannot slip past
+    it and land a user category inside the card-only plumbing group."""
+    services = make_services(db_session)
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+
+    data = YNABBudget(
+        transactions=[
+            _txn("Checking", "Employer", "2000.00", group="Inflow", category="Ready to Assign"),
+            _txn("Checking", "Odd Row", "-25.00", group="Credit Card Payments", category="Visa"),
+            _txn("Checking", "Odder Row", "-10.00", group="credit card payments", category="Amex"),
+            _split_txn(
+                "Checking",
+                "Split With Odd Leg",
+                [
+                    ("-30.00", "Everyday", "Groceries", None),
+                    ("-5.00", "Credit Card Payments", "Visa", None),
+                ],
+            ),
+        ]
+    )
+    result = await _importer(services, db_session, budget).import_budget(data)
+
+    assert result.credit_card_payment_categories_stripped == 3
+    groups = await CategoryGroupRepository(db_session).get_all(budget.id, include_archived=True)
+    assert "Credit Card Payments" not in {g.name for g in groups}
+    assert "credit card payments" not in {g.name for g in groups}
+    rows = (
+        (await db_session.execute(select(Transaction).where(Transaction.budget_id == budget.id)))
+        .scalars()
+        .all()
+    )
+    categorized = [r for r in rows if r.category_id is not None]
+    # Only the inflow and the split's Groceries leg kept a category.
+    assert len(categorized) == 2
