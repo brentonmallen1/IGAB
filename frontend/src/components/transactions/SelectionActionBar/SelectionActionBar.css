@@ -1,10 +1,19 @@
-/* Total amount color variants */
-.sab__total--negative {
+/* The selected total. On a solid accent fill hue cannot carry sign — the
+   old variants painted a green mixed against the WRONG surface (--bg-primary,
+   while sitting on --color-accent) and a "negative" identical to the bar's
+   own text. Sign is carried by the number's own glyphs (an explicit + / −)
+   and the figure sits in the bar's standard darkened chip, in --bg-primary —
+   the one pair contrast.test.ts already holds to AA on the accent in all 40
+   themes. */
+.sab__total {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: var(--border-radius-sm);
+  background: rgba(0, 0, 0, 0.15);
   color: var(--bg-primary);
-}
-
-.sab__total--positive {
-  color: color-mix(in srgb, var(--color-positive) 80%, var(--bg-primary));
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
 }
 
 /* Categorize combobox inline in the bar */

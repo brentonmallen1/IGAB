@@ -6,6 +6,7 @@ import { useReportStore } from '../../stores/reportStore'
 import { exportTransactionsPath, useDashboardMetrics } from '../../api/reports'
 import { useBudgetMonth } from '../../api/budgets'
 import { MetricCard } from './MetricCard'
+import { MetricRow } from './MetricRow'
 import { ReportInfoButton, ReportScopeNote } from './ReportInfoButton'
 import { ReportExportButton } from './ReportExportButton/ReportExportButton'
 import { useFormatters } from '../../hooks/useFormatters'
@@ -108,7 +109,7 @@ export function OverviewReport({ budgetId }: Props) {
             />
           </div>
         </div>
-        <div className="overview-report__metrics-grid" ref={captureRef}>
+        <MetricRow ref={captureRef}>
           {budgetMonth && (
             <MetricCard
               label="To Be Assigned"
@@ -163,7 +164,7 @@ export function OverviewReport({ budgetId }: Props) {
                 : undefined
             }
           />
-        </div>
+        </MetricRow>
       </div>
 
       {data.top_categories.length > 0 && (

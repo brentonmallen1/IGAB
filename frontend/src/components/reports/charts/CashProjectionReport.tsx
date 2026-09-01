@@ -16,6 +16,7 @@ import { useChartHeight } from '../../../hooks/useChartHeight'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
 import { MetricCard } from '../MetricCard'
+import { MetricRow } from '../MetricRow'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { TOOLTIP_STYLE } from './chartColors'
 
@@ -123,14 +124,14 @@ export function CashProjectionReport({ budgetId }: Props) {
         </div>
       )}
 
-      <div className="report-metrics">
+      <MetricRow>
         <MetricCard label="Current Balance" value={formatMoney(startBalance)} />
         <MetricCard
           label={`Projected (${horizon}d)`}
           value={formatMoney(projectedBalance)}
           sub={`Range: ${formatMoney(rangeP10)} – ${formatMoney(rangeP90)}`}
         />
-      </div>
+      </MetricRow>
 
       {chartData.length === 0 ? (
         <div className="reports-empty">No projection data available.</div>
