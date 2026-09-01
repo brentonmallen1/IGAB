@@ -58,6 +58,11 @@
   opacity: 0.75;
 }
 
+.fsb__sublabel--plain {
+  opacity: 1;
+  font-size: var(--font-size-sm);
+}
+
 .fsb__divider {
   width: 1px;
   height: 16px;

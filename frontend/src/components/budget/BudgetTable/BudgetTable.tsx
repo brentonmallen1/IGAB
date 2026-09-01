@@ -225,17 +225,25 @@ export function BudgetTable() {
           not an afterthought below the fold; folds shut and stays folded. */}
       <CreditCardsSection budgetId={budgetId} month={month} />
       <div className="budget-table__header">
+        {/* Column 1 is the group rows' hover-checkbox column — empty here. */}
+        <span />
+        {/* The master fold sits in the CHEVRON column, directly above every
+            group's own chevron, so it reads as their master control. It
+            lived mid-header in the actions cluster, pushed to the far right
+            by a margin — three buttons deep and nowhere near the things it
+            folds, where nobody found it. */}
+        <button
+          className="budget-table__master-toggle"
+          onClick={() => (allCollapsed ? expandAll(allGroupIds) : collapseAll(allGroupIds))}
+          disabled={allGroupIds.length === 0}
+          aria-label={allCollapsed ? 'Expand all groups' : 'Collapse all groups'}
+          title={allCollapsed ? 'Expand all groups' : 'Collapse all groups'}
+        >
+          {allCollapsed ? <ChevronsUpDown size={14} /> : <ChevronsDownUp size={14} />}
+        </button>
         <div className="budget-table__col budget-table__col--name">
           Category
           <div className="budget-table__header-actions">
-            <button
-              className="budget-table__header-btn"
-              onClick={() => (allCollapsed ? expandAll() : collapseAll(allGroupIds))}
-              title={allCollapsed ? 'Expand all groups' : 'Collapse all groups'}
-            >
-              {allCollapsed ? <ChevronsUpDown size={11} /> : <ChevronsDownUp size={11} />}
-              {allCollapsed ? 'Expand all' : 'Collapse all'}
-            </button>
             {/* Add Group creates a group in the budget's own arrangement. With
                 a view active that is not what the user is looking at, so it is
                 hidden rather than quietly editing the thing behind the view. */}

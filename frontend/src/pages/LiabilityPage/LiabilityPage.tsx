@@ -17,6 +17,7 @@ import { PaydownChart } from '../../components/liabilities/PaydownChart'
 import { PayoffPill } from '../../components/liabilities/PayoffPill'
 import { Combobox } from '../../components/common/Combobox/Combobox'
 import { MetricCard } from '../../components/reports/MetricCard'
+import { MetricRow } from '../../components/reports/MetricRow'
 import { useIsMobile } from '../../hooks/useMediaQuery'
 import { useAppStore } from '../../stores/appStore'
 import { useUIStore } from '../../stores/uiStore'
@@ -260,7 +261,7 @@ export function LiabilityPage() {
         </div>
       )}
 
-      <div className="liability-page__metrics">
+      <MetricRow>
         <MetricCard
           variant="raised"
           label="Current Balance"
@@ -299,7 +300,7 @@ export function LiabilityPage() {
           value={monthsRemaining === null ? '—' : String(monthsRemaining)}
           sub="At minimum payment"
         />
-      </div>
+      </MetricRow>
 
       {liability.origination_date !== null &&
         liability.original_principal !== null &&

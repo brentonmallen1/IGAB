@@ -1,9 +1,20 @@
+/* The one metric-card container — see MetricRow.tsx for the three rules it
+   replaced. Equal tracks wide enough for a five-figure value at full size;
+   the card is a container, so a longer figure shrinks its own type instead
+   of painting outside the well. */
+.metric-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(196px, 1fr));
+  gap: var(--spacing-md);
+}
+
 .metric-card {
-  padding: var(--spacing-md) var(--spacing-lg);
+  padding: var(--spacing-md);
   display: flex;
   flex-direction: column;
   gap: 4px;
-  min-width: 160px;
+  min-width: 0;
+  container-type: inline-size;
 }
 
 .metric-card--accent {
@@ -25,7 +36,9 @@
 }
 
 .metric-card__value {
-  font-size: 1.5rem;
+  /* Shrinks with the card so $123,456.78 stays inside the well — 170px
+     tracks used to overflow by ~30px on an ordinary five-figure value. */
+  font-size: clamp(1.05rem, 13.5cqw, 1.5rem);
   font-weight: 700;
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
@@ -57,17 +70,22 @@
 .metric-card__sub {
   font-size: var(--font-size-sm);
   color: var(--text-muted);
+  /* Pinned to the bottom, so cards without a delta still share a baseline
+     with their neighbours and the values line up across the row. */
+  margin-top: auto;
 }
 
 @media (max-width: 768px) {
   /* Two cards per row instead of a tall single-column stack */
+  .metric-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
   .metric-card {
-    min-width: 0;
-    flex: 1 1 40%;
     padding: var(--spacing-sm) var(--spacing-md);
   }
 
   .metric-card__value {
-    font-size: 1.25rem;
+    font-size: clamp(0.95rem, 13.5cqw, 1.25rem);
   }
 }

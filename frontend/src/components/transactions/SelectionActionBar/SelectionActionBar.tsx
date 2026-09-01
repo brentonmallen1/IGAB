@@ -61,7 +61,9 @@ export function SelectionActionBar({
   const [morePos, setMorePos] = useState({ x: 0, y: 0 })
   const moreRef = useRef<HTMLButtonElement>(null)
 
-  const totalClass = selectedTotal < 0 ? 'negative' : selectedTotal > 0 ? 'positive' : ''
+  // An explicit sign, both ways: formatMoney only writes the minus, and on
+  // the accent fill the glyph is the whole signal (see SelectionActionBar.css).
+  const signedTotal = `${selectedTotal > 0 ? '+' : ''}${formatMoney(selectedTotal)}`
 
   function handleMoreClick() {
     const rect = moreRef.current?.getBoundingClientRect()
@@ -89,9 +91,8 @@ export function SelectionActionBar({
   return (
     <FloatingSelectionBar
       label={`${selectedCount} Transaction${selectedCount !== 1 ? 's' : ''}`}
-      sublabel={
-        <span className={`sab__total sab__total--${totalClass}`}>{formatMoney(selectedTotal)}</span>
-      }
+      sublabel={<span className="sab__total">{signedTotal}</span>}
+      sublabelPlain
       onClose={onClear}
     >
       {onEdit && selectedCount === 1 && (

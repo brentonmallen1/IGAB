@@ -17,6 +17,7 @@ import { ReportErrorState } from '../ReportErrorState'
 import { COLOR_NEGATIVE, COLOR_NEUTRAL, COLOR_POSITIVE } from './chartColors'
 import { DrillDownTable } from '../DrillDownTable'
 import { MetricCard } from '../MetricCard'
+import { MetricRow } from '../MetricRow'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 
@@ -179,14 +180,14 @@ export function BudgetActualReport({ budgetId }: Props) {
 
       <div ref={captureRef} className="report-capture">
         {data && (
-          <div className="report-metrics">
+          <MetricRow>
             <MetricCard label="Total Assigned" value={formatMoney(data.total_assigned)} />
             <MetricCard label="Total Spent" value={formatMoney(data.total_spent)} />
             <MetricCard
               label="Variance"
               value={formatMoney(data.total_assigned - data.total_spent)}
             />
-          </div>
+          </MetricRow>
         )}
 
         {chartData.length === 0 ? (
