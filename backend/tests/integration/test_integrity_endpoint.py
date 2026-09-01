@@ -255,6 +255,22 @@ class TestTheCardReserveIdentity:
         await services.budgets.set_assignment(budget.id, linked.id, first, Decimal("-100.00"))
         assert (await self._check(db_session, budget)).passed is True
 
+    async def test_a_release_past_the_reserve_passes(self, db_session):
+        """T2's third term, end to end. The over-reserve note says "type a
+        negative in Assigned", and a release larger than everything the
+        envelope ever held drives the reserve itself below zero. Every cent
+        of that short-reserve is the user's own release — but T2's allowance
+        named only payments and residual, so this card reported its whole
+        short-reserve as drift. Same arithmetic as the T1 case above, on the
+        other bound."""
+        budget, _checking, visa, linked, cat = await self._card_budget(db_session)
+        first = TODAY.replace(day=1)
+        services = make_services(db_session)
+        await services.budgets.set_assignment(budget.id, cat.id, first, Decimal("100.00"))
+        await create_transaction(db_session, budget, visa, "-100.00", TODAY, category=cat)
+        await services.budgets.set_assignment(budget.id, linked.id, first, Decimal("-150.00"))
+        assert (await self._check(db_session, budget)).passed is True
+
     async def test_a_reserve_that_outlived_its_debt_is_named(self, db_session):
         """The failure direction, seeded directly: a set-aside with nothing
         behind it. Without a case that fails, the check above proves nothing.

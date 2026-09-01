@@ -65,6 +65,7 @@ def test_every_leg_series_agrees(scenario: CardScenario):
     assert ours.covered_by_card.get(card, {}) == theirs.covered_by_card.get(card, {})
     assert ours.floored_by_card.get(card, {}) == theirs.floored_by_card.get(card, {})
     assert ours.end_balances == theirs.end_balances
+    assert ours.residual_by_pair == theirs.residual_by_pair
 
 
 @pytest.mark.parametrize("scenario", ALL_SCENARIOS, ids=IDS)

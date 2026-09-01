@@ -20,6 +20,7 @@ from .factories import (
     create_account,
     create_budget,
     create_category,
+    create_card_payment,
     create_category_group,
     create_payee,
     create_transaction,
@@ -496,3 +497,119 @@ class TestUnlinkedCardPayments:
         await db_session.flush()
 
         assert "unlinked_card_payments" not in await _run(db_session, budget)
+
+
+class TestCardReserveDiagnostics:
+    """The four findings that explain a card whose Ready to pay went wrong.
+
+    Each one is a shape a ten-year import actually produced: a reserve driven
+    below zero, an inflow filed to an envelope that never charged the card, a
+    payment landing on the wrong card, debt older than the budget, and the
+    hand-made payment envelope the migration left behind. Amounts are
+    invented and rescaled, as everywhere."""
+
+    async def _card_world(self, db_session):
+        services, budget = await _world(db_session)
+        checking = await create_account(db_session, budget, "Checking")
+        card = await create_account(
+            db_session, budget, "Sapphire Visa", account_type="credit_card", on_budget=True
+        )
+        group = await create_category_group(db_session, budget, "Everyday")
+        cat = await create_category(db_session, budget, group, "Groceries")
+        return services, budget, checking, card, group, cat
+
+    async def test_a_reserve_below_zero_names_the_breach_month_and_the_leg(self, db_session):
+        """Pre-budget debt, one funded month, and a full-statement payment:
+        the reserve reads 200 − 500 = −300 while the card still owes 1,700,
+        and the finding says the payment did it — in the month it happened."""
+        services, budget, checking, card, _group, cat = await self._card_world(db_session)
+        await create_transaction(db_session, budget, card, "-2000.00", LONG_AGO)
+        await services.budgets.set_assignment(
+            budget.id, cat.id, RECENT.replace(day=1), Decimal("200.00")
+        )
+        await create_transaction(db_session, budget, card, "-200.00", RECENT, category=cat)
+        await create_card_payment(services, budget, checking, card, "500.00", RECENT)
+
+        finding = (await _run(db_session, budget))["card_reserve_went_negative"]
+        assert "payment ran past everything reserved" in finding.detail
+        assert RECENT.strftime("%B %Y") in finding.detail
+        assert finding.account_ids == [card.id]
+
+    async def test_a_card_in_credit_is_not_a_negative_reserve_finding(self, db_session):
+        """Genuinely overpaid — the card holds the user's money. The reserve
+        is negative and nothing is wrong; `card_credit` is the discriminator,
+        exactly as it is for the row's own note."""
+        services, budget, checking, card, _group, cat = await self._card_world(db_session)
+        await services.budgets.set_assignment(
+            budget.id, cat.id, RECENT.replace(day=1), Decimal("60.00")
+        )
+        await create_transaction(db_session, budget, card, "-60.00", RECENT, category=cat)
+        await create_card_payment(services, budget, checking, card, "400.00", RECENT)
+
+        findings = await _run(db_session, budget)
+        assert "card_reserve_went_negative" not in findings
+
+    async def test_an_inflow_via_an_envelope_that_never_charged_the_card(self, db_session):
+        """The reimbursed shape: a shared-expenses envelope that never touched
+        this card receives money on it. Nothing was riding to release, so the
+        reserve fell outright — and the finding names the envelope."""
+        services, budget, _checking, card, group, _cat = await self._card_world(db_session)
+        shared = await create_category(db_session, budget, group, "Shared Expenses")
+        await create_transaction(db_session, budget, card, "-800.00", LONG_AGO)
+        await create_transaction(db_session, budget, card, "300.00", RECENT, category=shared)
+
+        finding = (await _run(db_session, budget))["residual_on_uncharged_category"]
+        assert "Shared Expenses" in finding.detail
+        assert finding.account_ids == [card.id]
+
+    async def test_an_inflow_whose_envelope_charged_a_different_card(self, db_session):
+        """A payment or refund filed onto the wrong card: the envelope's card
+        spending lives on the OTHER card, so the finding points there rather
+        than at a reimbursement."""
+        services, budget, _checking, card, group, _cat = await self._card_world(db_session)
+        other = await create_account(
+            db_session, budget, "Nordvik Store Card", account_type="credit_card", on_budget=True
+        )
+        shopping = await create_category(db_session, budget, group, "Shopping")
+        await create_transaction(db_session, budget, other, "-300.00", RECENT, category=shopping)
+        await create_transaction(db_session, budget, card, "300.00", RECENT, category=shopping)
+
+        finding = (await _run(db_session, budget))["card_inflow_belongs_to_other_card"]
+        assert "Nordvik Store Card" in finding.detail
+        assert finding.account_ids == [card.id]
+
+    async def test_debt_older_than_the_budgets_first_reserving_is_named(self, db_session):
+        """A card synced in with bank history: charges long before anything
+        reserved. Only fires once reserving HAS begun — a card with no
+        reserving at all is unfiled spending, which its own row explains."""
+        services, budget, _checking, card, _group, cat = await self._card_world(db_session)
+        await create_transaction(db_session, budget, card, "-500.00", LONG_AGO)
+        await services.budgets.set_assignment(
+            budget.id, cat.id, RECENT.replace(day=1), Decimal("100.00")
+        )
+        await create_transaction(db_session, budget, card, "-100.00", RECENT, category=cat)
+
+        finding = (await _run(db_session, budget))["card_debt_predates_budget"]
+        assert LONG_AGO.strftime("%B %Y") in finding.detail
+        assert finding.account_ids == [card.id]
+
+    async def test_an_envelope_holding_the_missing_reserve_is_connected(self, db_session):
+        """The migration trap: a hand-made 'Visa Payment Fund' kept the money
+        while converting payments to transfers drove the card's reserve to
+        exactly minus that. Nothing else on any page connects the two."""
+        services, budget, checking, card, group, cat = await self._card_world(db_session)
+        fund = await create_category(db_session, budget, group, "Visa Payment Fund")
+        await services.budgets.set_assignment(
+            budget.id, fund.id, RECENT.replace(day=1), Decimal("300.00")
+        )
+        await create_transaction(db_session, budget, card, "-2000.00", LONG_AGO)
+        await services.budgets.set_assignment(
+            budget.id, cat.id, RECENT.replace(day=1), Decimal("200.00")
+        )
+        await create_transaction(db_session, budget, card, "-200.00", RECENT, category=cat)
+        await create_card_payment(services, budget, checking, card, "500.00", RECENT)
+
+        finding = (await _run(db_session, budget))["payment_envelope_shadow"]
+        assert "Visa Payment Fund" in finding.detail
+        assert "names match" in finding.detail
+        assert finding.account_ids == [card.id]

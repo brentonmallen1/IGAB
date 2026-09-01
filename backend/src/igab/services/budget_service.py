@@ -333,6 +333,28 @@ def distribute_cover(
     return result
 
 
+@dataclass(frozen=True)
+class CardWalk:
+    """One assembly of the card model's inputs (`BudgetService.card_walk`).
+
+    A dataclass, not a tuple: the tuple grew its fifth slot with every caller
+    unpacking placeholders, which is how an unnamed slot ships untested.
+    `credit_outflows` is carried so attribution surfaces (hygiene, the
+    timeline) can say which categories charged which card without re-running
+    the repository query the walk was built from.
+    """
+
+    card_accounts: list = field(default_factory=list)
+    linked_by_account: dict[uuid.UUID | None, Category] = field(default_factory=dict)
+    funding: CardFunding[uuid.UUID, uuid.UUID] = field(default_factory=CardFunding)
+    payments: dict[uuid.UUID, dict[date, Decimal]] = field(default_factory=dict)
+    unclaimed: dict[uuid.UUID, dict[date, Decimal]] = field(default_factory=dict)
+    #: {category: {card: {month: SIGNED net}}} — the walk's own input, kept.
+    credit_outflows: dict[uuid.UUID, dict[uuid.UUID, dict[date, Decimal]]] = field(
+        default_factory=dict
+    )
+
+
 class BudgetService:
     def __init__(
         self,
@@ -474,29 +496,21 @@ class BudgetService:
             available=available,
         )
 
-    async def _card_walk(
+    async def card_walk(
         self,
         budget_id: uuid.UUID,
         month_start: date,
         *,
         categories: list[Category] | None = None,
-    ) -> tuple[
-        list,
-        dict[uuid.UUID, Category],
-        CardFunding[uuid.UUID, uuid.UUID],
-        dict[uuid.UUID, dict[date, Decimal]],
-        dict[uuid.UUID, dict[date, Decimal]],
-    ]:
-        """Everything the card model reads, assembled once: the card accounts,
-        their linked envelopes, the funding walk, the payment leg, and the
-        unclaimed rows — `(card_accounts, linked_by_account, funding,
-        payments, unclaimed)`.
+    ) -> "CardWalk":
+        """Everything the card model reads, assembled once.
 
-        Extracted from `get_budget_summary` so `check_parity` can read each
-        card's reserve at EVERY month of an import without a summary per month
-        — assembling these inputs a second time at that call site is exactly
-        how the assignment leg once skipped the walk. `get_budget_summary`
-        remains the only place a reserve becomes a served figure.
+        Extracted from `get_budget_summary` so other card surfaces — the
+        import parity check reading every month of a reserve, the hygiene
+        detectors attributing a negative one — never assemble these inputs a
+        second time: a second assembly is exactly how the assignment leg once
+        skipped the walk. `get_budget_summary` remains the only place a
+        reserve becomes a served figure.
 
         `categories` is an optimization hand-off, not a variation point: the
         summary already holds the full list and passes it to avoid a second
@@ -508,7 +522,7 @@ class BudgetService:
             if a.on_budget and a.classification == "liability"
         ]
         if not card_accounts:
-            return [], {}, CardFunding(), {}, {}
+            return CardWalk()
         if categories is None:
             categories = await self.category_repo.get_all(budget_id, include_archived=True)
         month_end_date = last_of_month(month_start)
@@ -556,7 +570,14 @@ class BudgetService:
         unclaimed = await self.transaction_repo.sum_unclaimed_card_rows(
             budget_id, month_end_date
         )
-        return card_accounts, linked_by_account, funding, payments, unclaimed
+        return CardWalk(
+            card_accounts=card_accounts,
+            linked_by_account=linked_by_account,
+            funding=funding,
+            payments=payments,
+            unclaimed=unclaimed,
+            credit_outflows=credit_outflows,
+        )
 
     async def card_reserves(
         self, budget_id: uuid.UUID, month: date
@@ -570,12 +591,10 @@ class BudgetService:
         the import parity check reads ten years of set-asides from one walk
         instead of one summary per month.
         """
-        card_accounts, _linked, funding, payments, _unclaimed = await self._card_walk(
-            budget_id, first_of_month(month)
-        )
+        walk = await self.card_walk(budget_id, first_of_month(month))
         return {
-            a.id: (a.name, card_reserve(funding, a.id, payments.get(a.id, {})))
-            for a in card_accounts
+            a.id: (a.name, card_reserve(walk.funding, a.id, walk.payments.get(a.id, {})))
+            for a in walk.card_accounts
         }
 
     async def get_budget_summary(self, budget_id: uuid.UUID, month: date) -> BudgetSummary:
@@ -644,9 +663,9 @@ class BudgetService:
         zero = Decimal("0")
         cards: list[CardStatus] = []
         uncovered_current = zero
-        card_accounts, linked_by_account, funding, payments, unclaimed = (
-            await self._card_walk(budget_id, month_start, categories=categories)
-        )
+        walk = await self.card_walk(budget_id, month_start, categories=categories)
+        card_accounts, linked_by_account = walk.card_accounts, walk.linked_by_account
+        funding, payments, unclaimed = walk.funding, walk.payments, walk.unclaimed
         if card_accounts:
             month_end_date = last_of_month(month_start)
             owed_by_card = await self.account_repo.card_balances(budget_id, month_end_date)
