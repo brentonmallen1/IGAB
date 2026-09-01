@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowUpRight, Pencil } from 'lucide-react'
+import { AlertTriangle, ArrowUpRight, Banknote, Pencil } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useLiabilities } from '../../api/liabilities'
 import { useFormatters } from '../../hooks/useFormatters'
@@ -93,6 +93,20 @@ export function LiabilityTermsHeader({ budgetId, accountId, isLoan }: Props) {
       </div>
 
       <div className="liability-terms__actions">
+        {/* Cards only (a loan's payment is usually scheduled, and its page
+            has the paydown tools): the one payment that spends the card's
+            set-aside is a transfer from cash, and this builds exactly that —
+            the info dialog used to tell the user to type it by hand. */}
+        {!isLoan && (
+          <button
+            type="button"
+            className="liability-terms__btn"
+            onClick={() => openModal('card-payment', accountId)}
+          >
+            <Banknote size={12} />
+            Make a payment
+          </button>
+        )}
         {!termsSet && (
           <span className="liability-terms__hint">
             {isLoan
