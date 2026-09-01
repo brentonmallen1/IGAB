@@ -801,7 +801,18 @@ class ReportService:
             by_type: dict[str, Decimal] = {t: Decimal("0") for t in all_types}
             for snap in point["accounts"]:
                 by_type[snap["account_type"]] += snap["balance"]
-            results.append({"date": point["date"], "balances": by_type})
+            results.append(
+                {
+                    "date": point["date"],
+                    "balances": by_type,
+                    # The net trend the stacked areas add up to — history
+                    # already computed it, and the chart re-deriving it from
+                    # the visible series would silently disagree the moment
+                    # anything (an unmanaged debt) is in net worth but not in
+                    # the per-account snapshots.
+                    "net_worth": point["net_worth"],
+                }
+            )
         return results
 
     # ─── Burn Rate ────────────────────────────────────────────────────────────

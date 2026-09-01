@@ -1,11 +1,24 @@
 import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
 import { useEssentialsReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { MetricCard } from '../MetricCard'
 import { ReportInfoButton } from '../ReportInfoButton'
 import { ReportErrorState } from '../ReportErrorState'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
+import { ChartTooltip } from './ChartTooltip'
+import { CHART_COLORS, COLOR_NET } from './chartColors'
+import { shareOfLeanMonth, worstMonth } from './essentialsView'
 import './EssentialsReport.css'
 
 interface Props {
@@ -34,9 +47,12 @@ export function EssentialsReport({ budgetId }: Props) {
   if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
   if (!data) return <div className="reports-empty">No data available.</div>
 
-  const maxAverage = Math.max(0, ...data.categories.map((c) => c.monthly_average))
-  const maxMonth = Math.max(0, ...data.monthly_series.map((m) => m.total))
   const [rangeLow, rangeHigh] = data.roadmap_range
+  const worst = worstMonth(data.monthly_series)
+  const monthData = data.monthly_series.map((m) => ({
+    month: m.month.slice(0, 7),
+    Spent: m.total,
+  }))
 
   return (
     <div className="essentials-report">
@@ -117,10 +133,31 @@ export function EssentialsReport({ budgetId }: Props) {
                   />
                 )
               })}
+              {worst && (
+                <MetricCard
+                  label="Worst month"
+                  value={formatMoney(worst.total)}
+                  sub={`${formatMonth(worst.month)} — ×${rangeHigh} reserve: ${formatMoney(
+                    worst.total * rangeHigh
+                  )}`}
+                />
+              )}
             </div>
             <p className="essentials-report__note">
               Save targets, not balances — what you have set aside lives on the{' '}
               <Link to="/guide">roadmap</Link>.
+            </p>
+
+            {/* Two windows on one screen, deliberately (see
+                essentials_summary's docstring): the headline is the Guide's
+                rolling 90 days ÷ 3; the table averages complete months so a
+                partial month cannot drag every category down. Two different
+                "per month" figures with no explanation read as a bug, so the
+                gap is said here rather than only in the info panel. */}
+            <p className="essentials-report__note">
+              The table averages the last {months} <strong>complete</strong> months (
+              {formatMoney(data.monthly_total_average)}/mo); the headline is the rolling 90 days.
+              The two differ when recent spending has shifted.
             </p>
 
             <div className="essentials-report__table-wrap">
@@ -132,7 +169,7 @@ export function EssentialsReport({ budgetId }: Props) {
                       Avg / month
                     </th>
                     <th scope="col" className="essentials-report__bar-col">
-                      <span className="visually-hidden">Share</span>
+                      Share of a lean month
                     </th>
                     <th scope="col" className="essentials-report__num">
                       Total
@@ -145,7 +182,10 @@ export function EssentialsReport({ budgetId }: Props) {
                 <tbody>
                   {data.categories.map((c) => {
                     const avg = c.monthly_average
-                    const width = maxAverage > 0 ? (avg / maxAverage) * 100 : 0
+                    // Share of the lean-month total, not of the largest
+                    // category: the old max-scaled bar only restated "this
+                    // is the biggest number" beside the number itself.
+                    const share = shareOfLeanMonth(avg, data.monthly_total_average)
                     return (
                       <tr key={c.category_id ?? 'uncategorized'}>
                         <td>
@@ -157,13 +197,18 @@ export function EssentialsReport({ budgetId }: Props) {
                         <td className="essentials-report__num tabular">{formatMoney(avg)}</td>
                         <td className="essentials-report__bar-col">
                           <div
-                            className="essentials-report__bar"
-                            title={`${c.name}: ${formatMoney(avg)} per month over ${months} months`}
+                            className="essentials-report__share"
+                            title={`${c.name}: ${share.toFixed(1)}% of a lean month`}
                           >
-                            <div
-                              className="essentials-report__bar-fill"
-                              style={{ width: `${width}%` }}
-                            />
+                            <div className="essentials-report__bar">
+                              <div
+                                className="essentials-report__bar-fill"
+                                style={{ width: `${Math.min(share, 100)}%` }}
+                              />
+                            </div>
+                            <span className="essentials-report__share-pct tabular">
+                              {share.toFixed(0)}%
+                            </span>
                           </div>
                         </td>
                         <td className="essentials-report__num tabular">{formatMoney(c.total)}</td>
@@ -190,28 +235,45 @@ export function EssentialsReport({ budgetId }: Props) {
               </table>
             </div>
 
-            <div className="essentials-report__months" aria-label="Essentials by month">
-              {data.monthly_series.map((m) => {
-                const total = m.total
-                const height = maxMonth > 0 ? (total / maxMonth) * 100 : 0
-                return (
-                  <div
-                    key={m.month}
-                    className="essentials-report__month"
-                    title={`${formatMonth(m.month)}: ${formatMoney(total)}`}
-                  >
-                    <div className="essentials-report__month-bar">
-                      <div
-                        className="essentials-report__month-fill"
-                        style={{ height: `${height}%` }}
-                      />
-                    </div>
-                    <span className="essentials-report__month-label">
-                      {formatMonth(m.month).slice(0, 3)}
-                    </span>
-                  </div>
-                )
-              })}
+            {/* The reserve is headline × N, so the question this chart
+                answers is whether the headline is representative: each
+                complete month against a labelled line at the 90-day figure.
+                A month towering over the line is the stress case the
+                reserve has to survive — the Worst month card names it. */}
+            <div className="essentials-report__chart">
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={monthData} margin={{ top: 16, right: 16, left: 0, bottom: 0 }}>
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="var(--border-color)"
+                    vertical={false}
+                  />
+                  <XAxis dataKey="month" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
+                  <YAxis
+                    tickFormatter={(v) => formatMoney(v)}
+                    tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
+                    width={90}
+                  />
+                  <Tooltip
+                    content={<ChartTooltip showTotal={false} />}
+                    offset={16}
+                    isAnimationActive={false}
+                    cursor={{ fill: 'var(--row-hover-bg)' }}
+                  />
+                  <ReferenceLine
+                    y={data.essentials_90d}
+                    stroke={COLOR_NET}
+                    strokeDasharray="6 3"
+                    label={{
+                      value: `90-day: ${formatMoney(data.essentials_90d)}`,
+                      position: 'insideTopRight',
+                      fill: 'var(--text-secondary)',
+                      fontSize: 11,
+                    }}
+                  />
+                  <Bar dataKey="Spent" fill={CHART_COLORS[0]} radius={[2, 2, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
             </div>
           </div>
         )}
