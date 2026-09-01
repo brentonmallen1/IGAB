@@ -250,15 +250,20 @@ async def test_budget_summary_hits_target_with_one_overspend(db_session):
     # The demo cards say what they were built to say, from one definition.
     shown = {c.name: c for c in summary.cards}
     for scenario in scenarios_for("starter"):
+        row = shown[scenario.card]
         differences = scenario.expect.differences(
             ExpectedPosition(
-                balance=shown[scenario.card].balance,
-                set_aside=shown[scenario.card].set_aside,
-                uncovered=shown[scenario.card].uncovered,
-                over_reserved=shown[scenario.card].over_reserved,
-                short_reserved=shown[scenario.card].short_reserved,
-                card_credit=shown[scenario.card].card_credit,
-                riding=shown[scenario.card].riding,
+                balance=row.balance,
+                set_aside=row.set_aside,
+                uncovered=row.uncovered,
+                over_reserved=row.over_reserved,
+                short_reserved=row.short_reserved,
+                card_credit=row.card_credit,
+                riding=row.riding,
+                charged_this_month=row.charged_this_month,
+                inflows_this_month=row.inflows_this_month,
+                paid_this_month=row.paid_this_month,
+                debt_change_this_month=row.debt_change_this_month,
             )
         )
         assert not differences, f"{scenario.slug}: {differences}"

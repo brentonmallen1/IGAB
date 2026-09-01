@@ -21,7 +21,7 @@ import {
   pendingNote,
   reserveNote,
   rideMonths,
-  unexplainedInflow,
+  otherCredits,
 } from './cardRow'
 import { Dialog } from '../../common/Dialog/Dialog'
 import { Surface } from '../../common/Surface'
@@ -69,7 +69,7 @@ function ReserveLegs({
   formatMonth: (m: string) => string
 }) {
   const rides = rideMonths(card)
-  const otherInflow = unexplainedInflow(card)
+  const otherInflow = otherCredits(card)
   const pending = pendingNote(card, formatMoney)
   const legs = [
     { label: 'Assigned to this card', value: card.assigned, sign: '+' },
@@ -104,14 +104,16 @@ function ReserveLegs({
         totals, so nothing here can be worked out from them — and the debt
         falling is the one thing a paydown does that the strip never said.
 
-        Every term that moved the balance is a ROW. The reconciling credit
-        used to be prose underneath, which left three figures on screen that
-        visibly did not add up: a card read `charged 2,400`, `paid 0`,
-        `debt down 1,500`, and the 3,900 of credits that explains them sat in
-        a footnote. The explanation stays a footnote; the amount does not. */}
+        Every term that moved the balance is a ROW, and every row is SERVED:
+        what arrived on the card used to appear only when a client-side plug
+        (debt_change + charged − paid) came out non-zero, so a card whose
+        only credit was an ordinary payment listed Charged and Paid and
+        never named what came in — and the plug, being algebra over the
+        other terms, could not fail to reconcile even when they were wrong.
+        Received is the whole inflow; the two sub-rows are its split into
+        paired payments and everything else. */}
       {(card.charged_this_month !== 0 ||
-        card.paid_this_month !== 0 ||
-        otherInflow !== 0 ||
+        card.inflows_this_month !== 0 ||
         card.debt_change_this_month !== 0) && (
         <dl className="credit-cards__legs-list credit-cards__legs-month">
           <div className="credit-cards__leg credit-cards__leg--heading">
@@ -122,15 +124,21 @@ function ReserveLegs({
             <dd className="tabular">+ {formatMoney(card.charged_this_month)}</dd>
           </div>
           <div className="credit-cards__leg">
-            <dt>Paid to the card</dt>
-            <dd className="tabular">− {formatMoney(card.paid_this_month)}</dd>
+            <dt>Received on the card</dt>
+            <dd className="tabular">− {formatMoney(card.inflows_this_month)}</dd>
           </div>
+          {card.paid_this_month !== 0 && (
+            <div className="credit-cards__leg credit-cards__leg--sub">
+              <dt>Paid from your accounts</dt>
+              <dd className="tabular">{formatMoney(card.paid_this_month)}</dd>
+            </div>
+          )}
           {otherInflow !== 0 && (
-            <div className="credit-cards__leg">
+            <div className="credit-cards__leg credit-cards__leg--sub">
               <dt>
                 Other credits<span className="credit-cards__footnote-mark">*</span>
               </dt>
-              <dd className="tabular">− {formatMoney(otherInflow)}</dd>
+              <dd className="tabular">{formatMoney(otherInflow)}</dd>
             </div>
           )}
           <div className="credit-cards__leg credit-cards__leg--total">
