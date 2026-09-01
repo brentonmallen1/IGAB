@@ -34,6 +34,11 @@ vi.mock('../../api/changes', () => ({
   useUndoBatch: () => ({ mutateAsync: undoBatch, isPending: false }),
   useUndoNewer: () => ({ mutateAsync: undoNewer, isPending: false }),
   invalidateAfterUndo: vi.fn(),
+  changesKeys: { budget: (id: string) => ['changes', id] },
+}))
+const redo = vi.hoisted(() => vi.fn())
+vi.mock('../../hooks/useUndoRedo', () => ({
+  useUndoRedo: () => ({ undo: vi.fn(), redo, enabled: true }),
 }))
 vi.mock('@tanstack/react-query', () => ({ useQueryClient: () => ({}) }))
 vi.mock('../../stores/appStore', () => ({
@@ -51,6 +56,8 @@ vi.mock('../../stores/confirmStore', () => ({ confirmAsync }))
 function change(id: string, over: Partial<Change> = {}): Change {
   return {
     id,
+    seq: 0,
+    undo_seq: null,
     entity_type: 'transaction',
     entity_id: `e-${id}`,
     action: 'create',
@@ -115,6 +122,28 @@ describe('ActivityPage', () => {
     )
     // …then did it, with the same anchor
     expect(undoNewer).toHaveBeenNthCalledWith(2, { changeId: 'middle' })
+  })
+
+  it('offers Redo only on the redo head, and not under a newer live change', async () => {
+    const at = '2026-09-01T10:00:00+00:00'
+    // B (seq 9) was undone after C (seq 10): B is the head.
+    changes = [
+      change('c', { seq: 10, undo_seq: 1, undone_at: at }),
+      change('b', { seq: 9, undo_seq: 2, undone_at: at }),
+    ]
+    render(<ActivityPage />)
+    expect(screen.getAllByTitle('Redo this change')).toHaveLength(1)
+    await userEvent.click(screen.getByTitle('Redo this change'))
+    expect(redo).toHaveBeenCalled()
+  })
+
+  it('offers no Redo while a live change is newer than the last undo', () => {
+    changes = [
+      change('live', { seq: 11 }),
+      change('c', { seq: 10, undo_seq: 1, undone_at: '2026-09-01T10:00:00+00:00' }),
+    ]
+    render(<ActivityPage />)
+    expect(screen.queryByTitle('Redo this change')).toBeNull()
   })
 
   it('does nothing when the confirmation is declined', async () => {

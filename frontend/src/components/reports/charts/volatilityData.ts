@@ -17,6 +17,11 @@ export interface VolatilityChartRow {
   Mean: number
   /** [below, above]: distance from mean down to min and up to max */
   errorY: [number, number]
+  /** One-sided spans of the same range, so the two halves can be drawn in
+   *  different colours: the low whisker lands ON the bar fill and the high
+   *  whisker on the plot background — one stroke cannot read on both. */
+  errorLow: [number, number]
+  errorHigh: [number, number]
   StdDev: number
   Min: number
   Max: number
@@ -31,14 +36,20 @@ export function buildVolatilityChartRows(
   categories: VolatilityCategoryLike[],
   topN = 20
 ): VolatilityChartRow[] {
-  return categories.slice(0, topN).map((c) => ({
-    name: c.category_name.length > 16 ? c.category_name.slice(0, 14) + '…' : c.category_name,
-    Mean: Number(c.mean),
-    errorY: [Number(c.mean) - Number(c.min_val), Number(c.max_val) - Number(c.mean)],
-    StdDev: Number(c.std_dev),
-    Min: Number(c.min_val),
-    Max: Number(c.max_val),
-  }))
+  return categories.slice(0, topN).map((c) => {
+    const below = Number(c.mean) - Number(c.min_val)
+    const above = Number(c.max_val) - Number(c.mean)
+    return {
+      name: c.category_name.length > 16 ? c.category_name.slice(0, 14) + '…' : c.category_name,
+      Mean: Number(c.mean),
+      errorY: [below, above] as [number, number],
+      errorLow: [below, 0] as [number, number],
+      errorHigh: [0, above] as [number, number],
+      StdDev: Number(c.std_dev),
+      Min: Number(c.min_val),
+      Max: Number(c.max_val),
+    }
+  })
 }
 
 /** Coefficient of variation as a percentage: σ/mean × 100; 0 for mean ≤ 0. */

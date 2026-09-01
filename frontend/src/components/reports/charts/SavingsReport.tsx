@@ -15,6 +15,7 @@ import { useFormatters } from '../../../hooks/useFormatters'
 import { getCurrencySymbol } from '../../../utils/money'
 import { ReportErrorState } from '../ReportErrorState'
 import { MetricCard } from '../MetricCard'
+import { MetricRow } from '../MetricRow'
 import { chartColor } from './chartColors'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
@@ -140,7 +141,7 @@ export function SavingsReport({ budgetId }: Props) {
         </div>
       ) : (
         <div ref={captureRef} className="report-capture">
-          <div className="report-metrics">
+          <MetricRow>
             <MetricCard label="Total Balance" value={formatMoney(summary?.total_balance ?? 0)} />
             <MetricCard
               label="Avg Monthly Inflow"
@@ -151,7 +152,7 @@ export function SavingsReport({ budgetId }: Props) {
               value={String(summary?.category_count ?? 0)}
               sub="tracked"
             />
-          </div>
+          </MetricRow>
 
           <div className="report-chart" style={{ height: 300 }}>
             <ResponsiveContainer width="100%" height="100%">

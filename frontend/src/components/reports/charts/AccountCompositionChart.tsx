@@ -1,9 +1,11 @@
 import { useRef, useState } from 'react'
 import {
   Area,
-  AreaChart,
   CartesianGrid,
+  ComposedChart,
   Legend,
+  Line,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -16,7 +18,7 @@ import { useChartHeight } from '../../../hooks/useChartHeight'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
 import { ChartTooltip } from './ChartTooltip'
-import { CHART_COLORS } from './chartColors'
+import { COLOR_NET, chartColor } from './chartColors'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ReportRangeButtons } from './rangeButtons'
@@ -43,6 +45,7 @@ export function AccountCompositionReport({ budgetId }: Props) {
   const labelFor = (key: string) => accountTypeLabel(key, typeRows)
   const chartData = points.map((p) => ({
     date: p.date.slice(0, 7),
+    Net: Number(p.net_worth),
     ...Object.fromEntries(typeKeys.map((k) => [labelFor(k), Number(p.balances[k] ?? 0)])),
   }))
 
@@ -56,8 +59,9 @@ export function AccountCompositionReport({ budgetId }: Props) {
             savings, investments, loans, and any custom types — over time, across all accounts.
           </p>
           <p>
-            Balances keep their sign: asset balances stack above zero, debt balances below. A
-            growing asset area relative to debt is a healthy trend.
+            Balances keep their sign: asset balances stack above zero, debt balances below. The{' '}
+            <strong>Net</strong> line is their sum plus any unmanaged debts — the same figure the
+            Net Worth report draws.
           </p>
           <ReportScopeNote scope="all-accounts" />
         </ReportInfoButton>
@@ -68,6 +72,7 @@ export function AccountCompositionReport({ budgetId }: Props) {
             getRows={() =>
               points.map((p) => ({
                 date: p.date,
+                net_worth: Number(p.net_worth),
                 ...Object.fromEntries(typeKeys.map((k) => [k, Number(p.balances[k] ?? 0)])),
               }))
             }
@@ -82,7 +87,18 @@ export function AccountCompositionReport({ budgetId }: Props) {
           <div className="reports-empty">No account data available.</div>
         ) : (
           <ResponsiveContainer width="100%" height={chartHeight}>
-            <AreaChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+            {/* stackOffset="sign" is load-bearing: the default ("none")
+                accumulates mixed signs naively, so a negative series walked
+                the stack back DOWN and the debt band rendered inside the
+                asset band — the exact opposite of the subtitle's promise.
+                Sign-based is also the correct rule: an overdrawn checking
+                account genuinely belongs below the line, which splitting by
+                classification would get wrong. */}
+            <ComposedChart
+              data={chartData}
+              stackOffset="sign"
+              margin={{ top: 8, right: 16, left: 0, bottom: 0 }}
+            >
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
               <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
               <YAxis
@@ -90,21 +106,29 @@ export function AccountCompositionReport({ budgetId }: Props) {
                 tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
                 width={90}
               />
-              <Tooltip content={<ChartTooltip showTotal />} offset={16} isAnimationActive={false} />
+              {/* showTotal would sum the stack AND the net line — the Net row
+                  already is the total, served rather than re-derived. */}
+              <Tooltip
+                content={<ChartTooltip showTotal={false} />}
+                offset={16}
+                isAnimationActive={false}
+              />
               <Legend />
+              <ReferenceLine y={0} stroke="var(--border-color)" strokeWidth={2} />
               {typeKeys.map((k, i) => (
                 <Area
                   key={k}
                   type="monotone"
                   dataKey={labelFor(k)}
-                  stroke={CHART_COLORS[i % CHART_COLORS.length]}
-                  fill={CHART_COLORS[i % CHART_COLORS.length]}
+                  stroke={chartColor(i)}
+                  fill={chartColor(i)}
                   fillOpacity={0.15}
                   strokeWidth={2}
                   stackId="1"
                 />
               ))}
-            </AreaChart>
+              <Line type="monotone" dataKey="Net" stroke={COLOR_NET} strokeWidth={2} dot={false} />
+            </ComposedChart>
           </ResponsiveContainer>
         )}
       </div>

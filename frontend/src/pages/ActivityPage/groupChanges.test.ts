@@ -4,12 +4,14 @@
  * so two independent receipt failures rendered as "Batch of 2".
  */
 import { describe, expect, it } from 'vitest'
-import { groupChanges, summarizeBatch } from './groupChanges'
+import { groupChanges, redoHeadId, summarizeBatch } from './groupChanges'
 import type { Change } from '../../api/changes'
 
 function change(id: string, batchId: string | null, over: Partial<Change> = {}): Change {
   return {
     id,
+    seq: 0,
+    undo_seq: null,
     entity_type: 'transaction',
     entity_id: `entity-${id}`,
     action: 'create',
@@ -108,5 +110,34 @@ describe('summarizeBatch', () => {
 
   it('says nothing about an empty batch', () => {
     expect(summarizeBatch([])).toBe('')
+  })
+})
+
+describe('redoHeadId', () => {
+  const undone = (id: string, seq: number, undoSeq: number) =>
+    change(id, null, { seq, undo_seq: undoSeq, undone_at: '2026-09-01T10:00:00+00:00' })
+
+  it('picks the most recently undone row — highest undo_seq, not highest seq', () => {
+    // C(seq 10) was undone first, then B(9): redo must replay B first.
+    const rows = [undone('c', 10, 1), undone('b', 9, 2)]
+    expect(redoHeadId(rows, 0)).toBe('b')
+  })
+
+  it('offers nothing while a live row is newer than the head', () => {
+    const rows = [change('newer', null, { seq: 11 }), undone('c', 10, 1)]
+    expect(redoHeadId(rows, 0)).toBeNull()
+  })
+
+  it('ignores live rows older than the head', () => {
+    const rows = [undone('c', 10, 1), change('older', null, { seq: 3 })]
+    expect(redoHeadId(rows, 0)).toBe('c')
+  })
+
+  it('offers nothing off the newest page — the guard cannot see the newest rows', () => {
+    expect(redoHeadId([undone('c', 10, 1)], 50)).toBeNull()
+  })
+
+  it('offers nothing when nothing is undone', () => {
+    expect(redoHeadId([change('a', null, { seq: 1 })], 0)).toBeNull()
   })
 })

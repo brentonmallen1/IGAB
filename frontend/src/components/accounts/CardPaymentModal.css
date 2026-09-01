@@ -1,0 +1,93 @@
+.card-payment {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.card-payment__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.card-payment__select,
+.card-payment__amount {
+  padding: 6px var(--spacing-sm);
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-primary);
+  font-size: var(--font-size-base);
+}
+
+.card-payment__amount {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.card-payment__presets {
+  display: flex;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.card-payment__preset {
+  font-size: var(--font-size-xs);
+  padding: 3px 8px;
+  border-radius: var(--border-radius-sm);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  background: none;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+
+.card-payment__preset:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.card-payment__note {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  margin: 0;
+  max-width: 44ch;
+}
+
+.card-payment__error {
+  font-size: var(--font-size-sm);
+  color: var(--color-negative);
+  margin: 0;
+}
+
+.card-payment__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-sm);
+}
+
+.card-payment__cancel {
+  padding: 6px var(--spacing-md);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-secondary);
+  background: none;
+}
+
+.card-payment__cancel:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.card-payment__submit {
+  padding: 6px var(--spacing-md);
+  border-radius: var(--border-radius-sm);
+  background: var(--color-accent);
+  color: var(--bg-primary);
+  font-weight: 600;
+}
+
+.card-payment__submit:disabled {
+  opacity: 0.6;
+}

@@ -116,3 +116,27 @@ async def test_overdrawn_checking_reduces_assets(api_client, db_session):
     assert Decimal(latest["total_assets"]) == Decimal("700.00")
     assert Decimal(latest["total_liabilities"]) == Decimal("0")
     assert Decimal(latest["net_worth"]) == Decimal("700.00")
+
+
+async def test_composition_net_line_is_history_net_worth(api_client, db_session):
+    """The chart's Net line is served, never summed from the visible series:
+    the unmanaged debt sits in net worth without appearing in any account
+    series, so a client-side sum would read 855 too high — silently, on the
+    same screen that draws the stack it disagrees with."""
+    budget = await _setup(db_session, api_client.test_user)
+
+    comp = (
+        await api_client.get(
+            f"/api/v1/{budget.id}/reports/account-composition", params={"months": 3}
+        )
+    ).json()
+    history = (
+        await api_client.get(f"/api/v1/{budget.id}/reports/net-worth", params={"months": 3})
+    ).json()
+
+    for cpoint, hpoint in zip(comp["points"], history["points"], strict=True):
+        assert Decimal(cpoint["net_worth"]) == Decimal(hpoint["net_worth"])
+
+    latest = comp["points"][-1]
+    visible_sum = sum(Decimal(str(v)) for v in latest["balances"].values())
+    assert Decimal(latest["net_worth"]) == visible_sum - Decimal("855.00")

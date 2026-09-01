@@ -362,6 +362,25 @@ function checksFor(theme: string): Check[] {
     token(theme, 'input-bg'),
     AA_NON_TEXT
   )
+
+  // The volatility chart's two whiskers, one per background: mean→min is
+  // drawn INSIDE the bar fill (--chart-neutral = --color-info), mean→max on
+  // the raised section surface. One stroke served both and vanished on the
+  // fill in every theme. Non-text 3:1 — they are graphics, and the first
+  // pair actually clears 4.5 wherever color-info passes its own text check
+  // (contrast is symmetric), but the floor pinned here is the graphic one.
+  add(
+    'volatility low whisker on its bar fill',
+    token(theme, 'bg-primary'),
+    token(theme, 'color-info'),
+    AA_NON_TEXT
+  )
+  add(
+    'volatility high whisker on the raised surface',
+    token(theme, 'text-primary'),
+    token(theme, 'surface-raised'),
+    AA_NON_TEXT
+  )
   return out
 }
 

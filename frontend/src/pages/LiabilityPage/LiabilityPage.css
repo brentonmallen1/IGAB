@@ -120,12 +120,6 @@
   padding: var(--spacing-sm) 0;
 }
 
-.liability-page__metrics {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: var(--spacing-md);
-}
-
 .liability-page__hint {
   display: flex;
   align-items: center;
@@ -379,10 +373,6 @@
   .liability-page__header {
     flex-direction: column;
     align-items: flex-start;
-  }
-
-  .liability-page__metrics {
-    grid-template-columns: repeat(2, 1fr);
   }
 
   .liability-page__chart-controls {

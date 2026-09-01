@@ -1372,3 +1372,72 @@ class TestTheMonthAndThePosition:
         card = (await _summary(services, budget, AUG)).cards[0]
         assert card.rode_by_month == [(JUL, D("60.00"))]
         assert card.riding == D("60.00")
+
+
+async def test_the_payment_endpoint_shape_spends_the_reserve(api_client, db_session):
+    """The exact POST the card page's "Make a payment" modal sends: from the
+    CASH side, amount −|payment|, transfer_account_id = the card — the server
+    writes −|amount| on account_id and +|amount| on the partner, so the supply
+    account must be the source. The card leg must satisfy
+    CARD_PAYMENT_FROM_CASH, the only shape that spends the set-aside; a
+    payment typed any other way lowers the balance while Ready to pay stands
+    still."""
+    from igab.db.models import Transaction
+    from igab.repositories.txn_filters import CARD_PAYMENT_FROM_CASH
+
+    services = make_services(db_session)
+    budget = await create_budget(db_session, api_client.test_user)
+    checking = await create_account(db_session, budget, "Checking")
+    visa = await create_account(db_session, budget, "Visa", account_type="credit_card")
+    linked = await ensure_payment_category(db_session, visa)
+    assert linked is not None
+    income_group = await create_category_group(db_session, budget, "Income", is_system=True)
+    inflow = await create_category(db_session, budget, income_group, "Inflow")
+    everyday = await create_category_group(db_session, budget, "Everyday")
+    groceries = await create_category(db_session, budget, everyday, "Groceries")
+    await create_transaction(
+        db_session, budget, checking, "1000.00", date(2026, 7, 2), category=inflow
+    )
+    await create_budget_assignment(db_session, budget, groceries, JUL, "150.00")
+    await create_transaction(
+        db_session, budget, visa, "-150.00", date(2026, 7, 9), category=groceries
+    )
+    await db_session.flush()
+
+    resp = await api_client.post(
+        f"/api/v1/{budget.id}/transactions",
+        json={
+            "account_id": str(checking.id),
+            "date": "2026-07-25",
+            "amount": "-150.00",
+            "transfer_account_id": str(visa.id),
+            "cleared": "uncleared",
+            "approved": True,
+        },
+    )
+    assert resp.status_code == 201, resp.text
+
+    # The card leg is a payment in the credit model's own terms.
+    card_leg = (
+        (
+            await db_session.execute(
+                select(Transaction).where(
+                    Transaction.account_id == visa.id,
+                    Transaction.amount > 0,
+                    CARD_PAYMENT_FROM_CASH,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(card_leg) == 1
+    assert card_leg[0].amount == D("150.00")
+
+    # And it spent the reserve: funded swipe reserved 150, the payment
+    # drained it, and the figure (to-be-assigned) never moved.
+    s2 = await _summary(services, budget, JUL)
+    assert s2.to_be_assigned == D("850.00")
+    card = s2.cards[0]
+    assert (card.balance, card.set_aside, card.uncovered) == (D("0.00"), D("0.00"), D("0"))
+    assert card.payments == D("150.00")

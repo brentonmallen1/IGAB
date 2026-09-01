@@ -13,15 +13,29 @@ import { ROOT } from './queryKeys'
 
 export interface Change {
   id: string
+  /** The log's one total order, newest highest. */
+  seq: number
   /** `budget` appears only as the subject of a `reorder` of its groups. */
   entity_type: 'transaction' | 'payee' | 'category' | 'category_group' | 'assignment' | 'budget'
   entity_id: string
-  action: 'create' | 'update' | 'delete' | 'approve' | 'import' | 'merge' | 'reorder'
+  action:
+    | 'create'
+    | 'update'
+    | 'delete'
+    | 'approve'
+    | 'import'
+    | 'merge'
+    | 'reorder'
+    | 'archive'
+    | 'unarchive'
   before: Record<string, unknown> | null
   after: Record<string, unknown> | null
   batch_id: string | null
   source: 'manual' | 'import' | 'ai' | 'system'
   undone_at: string | null
+  /** Redo-stack order: the undone row with the highest value is the redo
+   *  head. Null while live. */
+  undo_seq: number | null
   created_at: string
   /** Actor — null for system/AI changes. */
   user_id: string | null
@@ -35,6 +49,12 @@ interface ChangesResponse {
 
 interface UndoResponse {
   undone_change_ids: string[]
+}
+
+/** What ⌘Z undid — served with the result so the toast needs no second fetch. */
+export interface UndoLatestResponse extends UndoResponse {
+  action: Change['action']
+  entity_type: Change['entity_type']
 }
 
 // Query key factory for cache invalidation

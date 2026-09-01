@@ -8,6 +8,7 @@ import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
 import { previousWindow } from '../../../utils/dateWindow'
 import { MetricCard } from '../MetricCard'
+import { MetricRow } from '../MetricRow'
 import { CHART_COLORS, COLOR_NEGATIVE, COLOR_POSITIVE } from './chartColors'
 import { Sankey, Tooltip, ResponsiveContainer } from 'recharts'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
@@ -399,7 +400,7 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
 
       <div ref={captureRef} className="report-capture">
         {data && (
-          <div className="report-metrics">
+          <MetricRow>
             <MetricCard
               label="Total Income"
               value={formatMoney(data.total_income)}
@@ -450,7 +451,7 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
                   : undefined
               }
             />
-          </div>
+          </MetricRow>
         )}
 
         {compare && prevData && (

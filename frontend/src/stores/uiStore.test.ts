@@ -68,3 +68,31 @@ describe('uiStore modals', () => {
     expect(persisted.state?.activeModal).toBeUndefined()
   })
 })
+
+describe('budget group folds', () => {
+  beforeEach(() => {
+    useUIStore.setState({ collapsedGroups: new Set() })
+  })
+
+  it('collapse-all and expand-all touch only the groups on screen', () => {
+    // g3 is hidden by a filter and stays exactly as the user left it: the
+    // old collapseAll REPLACED the set (expanding g3), and the old
+    // expandAll cleared it (also expanding g3).
+    useUIStore.getState().toggleGroupExpanded('g3')
+
+    useUIStore.getState().collapseAll(['g1', 'g2'])
+    expect([...useUIStore.getState().collapsedGroups].sort()).toEqual(['g1', 'g2', 'g3'])
+
+    useUIStore.getState().expandAll(['g1', 'g2'])
+    expect([...useUIStore.getState().collapsedGroups]).toEqual(['g3'])
+  })
+
+  it('persists the folds as an array and rehydrates them as a Set', () => {
+    // A Set JSON-stringifies to {} and rehydrates as a plain object whose
+    // .has is undefined — the same trap collapsedSidebarGroups documents.
+    useUIStore.getState().collapseAll(['g1'])
+
+    const persisted = JSON.parse(localStorage.getItem(PERSIST_KEYS.ui) ?? '{}')
+    expect(persisted.state?.collapsedGroups).toEqual(['g1'])
+  })
+})

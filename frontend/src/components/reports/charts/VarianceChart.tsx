@@ -18,6 +18,7 @@ import { ReportErrorState } from '../ReportErrorState'
 import { ChartTooltip } from './ChartTooltip'
 import { CHART_COLORS, COLOR_NEGATIVE, COLOR_NEUTRAL } from './chartColors'
 import { MetricCard } from '../MetricCard'
+import { MetricRow } from '../MetricRow'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ReportRangeButtons } from './rangeButtons'
@@ -85,7 +86,7 @@ export function VarianceReport({ budgetId }: Props) {
 
       <div ref={captureRef} className="report-capture">
         {latest && (
-          <div className="report-metrics">
+          <MetricRow>
             <MetricCard
               label="Cumulative Variance"
               value={formatMoney(latest.cumulative_variance)}
@@ -93,7 +94,7 @@ export function VarianceReport({ budgetId }: Props) {
             />
             <MetricCard label="Last Month Assigned" value={formatMoney(latest.budget_assigned)} />
             <MetricCard label="Last Month Spent" value={formatMoney(latest.actual_spent)} />
-          </div>
+          </MetricRow>
         )}
 
         {chartData.length === 0 ? (

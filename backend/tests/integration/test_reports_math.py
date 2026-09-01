@@ -240,3 +240,49 @@ async def test_cash_flow_sankey_includes_split_children(db_session):
         (f"g_{gas.category_group_id}", f"c_{gas.category_group_id}_{gas.id}")
     ) == Decimal("40.0")
     assert sankey["total_expense"] == Decimal("100.0")
+
+
+async def test_days_until_zero_divides_cash_not_net_worth(db_session):
+    """Runway is cash ÷ burn. The old numerator was net worth, which counts a
+    house, a 401k and the mortgage against them: a household with a mortgage
+    read a runway near zero (or none at all), one with a brokerage read years.
+    """
+    services, budget, checking, savings, groceries, gas = await _setup(db_session)
+    reports = ReportService(db_session)
+
+    payee = await create_payee(db_session, budget, "Northwind Payserv")
+    await create_transaction(db_session, budget, checking, "3000.00", TODAY, payee=payee)
+    await create_transaction(db_session, budget, checking, "-600.00", TODAY, category=groceries)
+    # An off-budget mortgage dwarfing the cash: net worth is deeply negative,
+    # which used to report no runway at all.
+    mortgage = await create_account(
+        db_session, budget, "Maple St Mortgage", account_type="mortgage", on_budget=False
+    )
+    await create_transaction(db_session, budget, mortgage, "-280000.00", TODAY)
+
+    metrics = await reports.dashboard_metrics(budget.id, TODAY.replace(day=1), TODAY)
+
+    # cash 2,400 ÷ (600 burn / 30 days) = 120 days.
+    assert metrics["days_until_zero"] == 120.0
+
+
+async def test_card_debt_does_not_shrink_the_runway_pot(db_session):
+    """An on-budget card's debt lives beside its set-aside, not in cash
+    (`CASH_ACCOUNT`'s own docstring) — so it must not shorten the runway."""
+    services, budget, checking, savings, groceries, gas = await _setup(db_session)
+    reports = ReportService(db_session)
+
+    payee = await create_payee(db_session, budget, "Northwind Payserv")
+    await create_transaction(db_session, budget, checking, "3000.00", TODAY, payee=payee)
+    await create_transaction(db_session, budget, checking, "-300.00", TODAY, category=groceries)
+    card = await create_account(db_session, budget, "Sapphire Visa", account_type="credit_card")
+    # Outside every burn window: only the debt itself is under test.
+    await create_transaction(
+        db_session, budget, card, "-2900.00", TODAY - timedelta(days=100), category=gas
+    )
+
+    metrics = await reports.dashboard_metrics(budget.id, TODAY.replace(day=1), TODAY)
+
+    # cash 2,700 ÷ (300 / 30) = 270 days; net worth here is −200, which the
+    # old numerator reported as no runway.
+    assert metrics["days_until_zero"] == 270.0

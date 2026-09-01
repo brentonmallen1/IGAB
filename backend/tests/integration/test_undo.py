@@ -1197,3 +1197,213 @@ async def test_changes_scoped_to_budget(api_client, db_session):
     resp = await api_client.get(f"/api/v1/{other.id}/changes")
     assert resp.status_code == 200
     assert resp.json()["total"] == 0
+
+
+# ─── ⌘Z selection and the redo stack ─────────────────────────────────────────
+#
+# Selection lives on the server (`undo_latest` / POST /changes/undo): the
+# client used to pick from a 20-row window it fetched separately, preferring a
+# shadow stack of inline edits that was never cleared — so ⌘Z after a delete
+# popped a stale memo edit instead of the delete. Redo order lives in
+# `undo_seq`: `undone_at` is the transaction timestamp, identical for every
+# row one request undoes, so these tests deliberately run whole undo/redo
+# conversations inside one transaction — the exact case timestamps cannot
+# order.
+
+
+async def _make_txn(services, budget, account, amount="-10.00", memo=None):
+    return await services.transactions.create(
+        budget.id,
+        TransactionCreate(account_id=account.id, date=JAN, amount=Decimal(amount), memo=memo),
+    )
+
+
+async def test_undo_latest_takes_the_newest_manual_change(api_client, db_session):
+    budget = await create_budget(db_session, api_client.test_user)
+    account = await create_account(db_session, budget, "Checking")
+    services = make_services(db_session)
+    first = await _make_txn(services, budget, account, "-10.00")
+    second = await _make_txn(services, budget, account, "-20.00")
+    await db_session.flush()
+
+    resp = await api_client.post(f"/api/v1/{budget.id}/changes/undo")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["action"] == "create"
+    assert body["entity_type"] == "transaction"
+    assert len(body["undone_change_ids"]) == 1
+
+    await db_session.refresh(first)
+    await db_session.refresh(second)
+    assert second.is_deleted is True
+    assert first.is_deleted is False
+
+
+async def test_undo_latest_skips_background_writers(api_client, db_session):
+    """A sync landing between the user's action and their ⌘Z must not be
+    what gets undone."""
+    budget = await create_budget(db_session, api_client.test_user)
+    account = await create_account(db_session, budget, "Checking")
+    services = make_services(db_session)
+    mine = await _make_txn(services, budget, account, "-10.00")
+    # A newer system-recorded row, as a sync writes one: real transaction,
+    # hand-built log row. If selection wrongly preferred it, the synced row
+    # would be the one soft-deleted below.
+    synced = await create_transaction(db_session, budget, account, "-33.00", JAN)
+    db_session.add(
+        ChangeLog(
+            budget_id=budget.id,
+            entity_type="transaction",
+            entity_id=synced.id,
+            action="create",
+            after={"amount": "-33.00"},
+            source="system",
+        )
+    )
+    await db_session.flush()
+
+    resp = await api_client.post(f"/api/v1/{budget.id}/changes/undo")
+    assert resp.status_code == 200
+
+    await db_session.refresh(mine)
+    await db_session.refresh(synced)
+    assert mine.is_deleted is True
+    assert synced.is_deleted is False
+
+
+async def test_undo_latest_fans_out_to_the_batch(api_client, db_session):
+    budget = await create_budget(db_session, api_client.test_user)
+    checking = await create_account(db_session, budget, "Checking")
+    savings = await create_account(db_session, budget, "Savings")
+    services = make_services(db_session)
+    source = await services.transactions.create(
+        budget.id,
+        TransactionCreate(
+            account_id=checking.id,
+            date=JAN,
+            amount=Decimal("150.00"),
+            transfer_account_id=savings.id,
+        ),
+    )
+    await db_session.flush()
+
+    resp = await api_client.post(f"/api/v1/{budget.id}/changes/undo")
+    assert resp.status_code == 200
+    assert len(resp.json()["undone_change_ids"]) == 2
+
+    await db_session.refresh(source)
+    assert source.is_deleted is True
+
+
+async def test_undo_latest_with_nothing_live_is_a_conflict(api_client, db_session):
+    budget = await create_budget(db_session, api_client.test_user)
+    resp = await api_client.post(f"/api/v1/{budget.id}/changes/undo")
+    assert resp.status_code == 409
+    assert "Nothing to undo" in resp.json()["detail"]["message"]
+
+
+async def test_redo_walks_the_stack_back_in_order(db_session):
+    """Depth-N redo. All three undos share one transaction timestamp, which
+    is exactly why order is carried by `undo_seq` and not `undone_at`."""
+    budget, account, _, _ = await setup_budget(db_session)
+    services = make_services(db_session)
+    undo = UndoService(db_session)
+    txn = await _make_txn(services, budget, account, memo="m0")
+    for memo in ("m1", "m2", "m3"):
+        await services.transactions.update(budget.id, txn.id, TransactionUpdate(memo=memo))
+    await db_session.flush()
+
+    for expected in ("m2", "m1", "m0"):
+        await undo.undo_latest(budget.id)
+        await db_session.refresh(txn)
+        assert txn.memo == expected
+
+    for expected in ("m1", "m2", "m3"):
+        await undo.redo_latest(budget.id)
+        await db_session.refresh(txn)
+        assert txn.memo == expected
+
+
+async def test_a_new_action_empties_the_redo_stack(db_session):
+    """Linear redo, as in any editor: a change recorded after an undo
+    refuses the old branch's redo — and undoing that newer change makes IT
+    the redo head, not the abandoned branch."""
+    budget, account, _, _ = await setup_budget(db_session)
+    services = make_services(db_session)
+    undo = UndoService(db_session)
+    txn = await _make_txn(services, budget, account, memo="m0")
+    await services.transactions.update(budget.id, txn.id, TransactionUpdate(memo="m1"))
+    await db_session.flush()
+
+    await undo.undo_latest(budget.id)  # memo back to m0
+    other = await _make_txn(services, budget, account, "-5.00")
+    await db_session.flush()
+
+    with pytest.raises(UndoConflict):
+        await undo.redo_latest(budget.id)
+
+    # Undo the newer change: the redo head is now that change itself.
+    await undo.undo_latest(budget.id)
+    await undo.redo_latest(budget.id)
+    await db_session.refresh(txn)
+    await db_session.refresh(other)
+    assert other.is_deleted is False
+    assert txn.memo == "m0"
+    # The abandoned branch stays abandoned: the recreated row is live and
+    # newer than the memo undo, so its redo is still refused.
+    with pytest.raises(UndoConflict):
+        await undo.redo_latest(budget.id)
+
+
+async def test_revert_to_here_redoes_in_forward_order(db_session):
+    """The timestamp-tie bug, pinned: one `undo_newer` stamps every reverted
+    row with the same `undone_at`, and the old tie-break (seq DESC) made redo
+    replay the NEWEST change first — onto an entity state it could not match.
+    Redo must walk forward: oldest reverted change first."""
+    budget, account, _, _ = await setup_budget(db_session)
+    services = make_services(db_session)
+    undo = UndoService(db_session)
+    txn = await _make_txn(services, budget, account, memo="m0")
+    await db_session.flush()
+    creation = (await changes_for(db_session, budget.id, "transaction", "create"))[-1]
+    await services.transactions.update(budget.id, txn.id, TransactionUpdate(memo="m1"))
+    await services.transactions.update(budget.id, txn.id, TransactionUpdate(memo="m2"))
+    await db_session.flush()
+
+    await undo.undo_newer(budget.id, creation.id)
+    await db_session.refresh(txn)
+    assert txn.memo == "m0"
+
+    for expected in ("m1", "m2"):
+        await undo.redo_latest(budget.id)
+        await db_session.refresh(txn)
+        assert txn.memo == expected
+
+
+async def test_redo_of_a_category_delete_is_refused_by_name(db_session):
+    from igab.repositories.category_repo import (
+        BudgetAssignmentRepository,
+        CategoryGroupRepository,
+        CategoryRepository,
+    )
+    from igab.repositories.transaction_repo import TransactionRepository
+    from igab.services.category_service import CategoryService
+
+    budget, account, group, category = await setup_budget(db_session)
+    services = make_services(db_session)
+    undo = UndoService(db_session)
+    category_service = CategoryService(
+        db_session,
+        CategoryRepository(db_session),
+        CategoryGroupRepository(db_session),
+        services.budgets,
+        TransactionRepository(db_session),
+        BudgetAssignmentRepository(db_session),
+    )
+    await category_service.delete_categories(budget.id, [category.id])
+    await db_session.flush()
+    change = (await changes_for(db_session, budget.id, "category", "delete"))[-1]
+    await undo.undo_change(budget.id, change.id)
+
+    with pytest.raises(UndoConflict, match="category delete"):
+        await undo.redo_latest(budget.id)

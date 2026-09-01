@@ -668,6 +668,10 @@ export interface AccountCompositionPoint {
   date: string
   // Balance per account-type key present in the budget (custom types included)
   balances: Record<string, number>
+  /** Net worth at this point — served (report_service.account_composition)
+   *  rather than summed from `balances`, because unmanaged debts sit in net
+   *  worth without appearing in any account series. */
+  net_worth: number
 }
 
 export interface AccountCompositionReport {
