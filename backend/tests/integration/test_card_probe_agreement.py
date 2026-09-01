@@ -1,0 +1,135 @@
+"""The probe's inlined arithmetic must agree with domain/cards.py, exactly.
+
+`scripts/card_reserve_probe.py` deliberately carries its own copy of the
+reserve walk: it runs inside an arbitrary deployed IGAB container, where
+importing that deployment's `domain/cards.py` would report what that version
+believes rather than what the data says. The copy is allowed because it is
+pinned — this suite runs both implementations over every scenario in
+`sample_budget/card_scenarios.py` and requires agreement to the cent, leg by
+leg. Change the walk in `domain/cards.py` and this file is what tells you the
+probe has to follow.
+
+No database: both sides are pure functions over the same plain dicts.
+"""
+
+import importlib.util
+import sys
+from datetime import date
+from decimal import Decimal
+from pathlib import Path
+
+import pytest
+
+from igab.domain.cards import card_funding as domain_funding
+from igab.domain.cards import card_position as domain_position
+from igab.domain.cards import card_reserve
+from igab.domain.carryover import sum_through
+from igab.sample_budget.card_scenarios import ALL_SCENARIOS, CardScenario, to_funding_inputs
+
+_PROBE_PATH = Path(__file__).resolve().parents[2] / "scripts" / "card_reserve_probe.py"
+_spec = importlib.util.spec_from_file_location("card_reserve_probe", _PROBE_PATH)
+assert _spec is not None and _spec.loader is not None
+probe = importlib.util.module_from_spec(_spec)
+sys.modules[_spec.name] = probe  # dataclasses resolves the module through here
+_spec.loader.exec_module(probe)
+
+ANCHOR = date(2026, 8, 15)
+MONTH = date(ANCHOR.year, ANCHOR.month, 1)
+IDS = [s.slug for s in ALL_SCENARIOS]
+
+
+def _both(scenario: CardScenario):
+    inputs = to_funding_inputs(scenario, ANCHOR)
+    ours = probe.card_funding(
+        inputs.assignments, inputs.activity, inputs.outflows, inputs.card_categories
+    )
+    theirs = domain_funding(
+        inputs.assignments, inputs.activity, inputs.outflows, inputs.card_categories
+    )
+    return inputs, ours, theirs
+
+
+@pytest.mark.parametrize("scenario", ALL_SCENARIOS, ids=IDS)
+def test_every_leg_series_agrees(scenario: CardScenario):
+    """Month-by-month, not just in total: the timeline is built from the
+    monthly series, so a compensating error would survive a totals-only
+    check and put the first breach in the wrong month."""
+    inputs, ours, theirs = _both(scenario)
+    card = scenario.card
+    reserve = card_reserve(theirs, card, inputs.payments)
+    assert ours.assignments_by_card.get(card, {}) == reserve.assignments
+    assert ours.reservations_by_card.get(card, {}) == reserve.reservations
+    assert ours.released_by_card.get(card, {}) == reserve.released
+    assert ours.residual_by_card.get(card, {}) == reserve.residual
+    assert ours.riding_by_card.get(card, {}) == theirs.riding_by_card.get(card, {})
+    assert ours.covered_by_card.get(card, {}) == theirs.covered_by_card.get(card, {})
+    assert ours.floored_by_card.get(card, {}) == theirs.floored_by_card.get(card, {})
+    assert ours.end_balances == theirs.end_balances
+
+
+@pytest.mark.parametrize("scenario", ALL_SCENARIOS, ids=IDS)
+def test_the_timeline_lands_on_the_domain_set_aside(scenario: CardScenario):
+    inputs, ours, theirs = _both(scenario)
+    card = scenario.card
+    legs = {
+        "assigned": ours.assignments_by_card.get(card, {}),
+        "reserved": ours.reservations_by_card.get(card, {}),
+        "released": ours.released_by_card.get(card, {}),
+        "residual": ours.residual_by_card.get(card, {}),
+        "payments": inputs.payments,
+    }
+    timeline = probe.card_timeline(legs, {}, ours.riding_by_card.get(card, {}))
+    want = card_reserve(theirs, card, inputs.payments).set_aside(MONTH)
+    got = timeline[-1].set_aside if timeline else Decimal("0")
+    assert got == want, scenario.story
+    if timeline:
+        assert timeline[-1].riding == sum_through(theirs.riding_by_card.get(card, {}), MONTH)
+
+
+@pytest.mark.parametrize("scenario", ALL_SCENARIOS, ids=IDS)
+def test_the_position_agrees(scenario: CardScenario):
+    inputs, _, theirs = _both(scenario)
+    set_aside = card_reserve(theirs, scenario.card, inputs.payments).set_aside(MONTH)
+    ours = probe.card_position(set_aside, inputs.balance)
+    want = domain_position(set_aside, inputs.balance)
+    assert (ours.uncovered, ours.over_reserved, ours.short_reserved, ours.card_credit) == (
+        want.uncovered,
+        want.over_reserved,
+        want.short_reserved,
+        want.card_credit,
+    )
+
+
+@pytest.mark.parametrize("scenario", ALL_SCENARIOS, ids=IDS)
+def test_residual_attribution_sums_to_the_residual_leg(scenario: CardScenario):
+    """The probe keeps residual per (category, card) — the one series the
+    domain does not. It must be a decomposition of the leg, never a second
+    opinion about its total."""
+    _, ours, _ = _both(scenario)
+    by_card: dict[str, Decimal] = {}
+    for (_cat, card), series in ours.residual_by_pair.items():
+        by_card[card] = by_card.get(card, Decimal("0")) + sum(series.values(), Decimal("0"))
+    for card, series in ours.residual_by_card.items():
+        assert by_card.get(card, Decimal("0")) == sum(series.values(), Decimal("0"))
+
+
+def test_a_negative_reserve_scenario_reports_a_breach():
+    """REIMBURSED ends at set_aside -100: the timeline must name a first
+    breach month, and the breach's dominant leg must be the residual that
+    caused it — the whole point of the probe."""
+    scenario = next(s for s in ALL_SCENARIOS if s.slug == "reimbursed")
+    inputs, ours, _ = _both(scenario)
+    card = scenario.card
+    legs = {
+        "assigned": ours.assignments_by_card.get(card, {}),
+        "reserved": ours.reservations_by_card.get(card, {}),
+        "released": ours.released_by_card.get(card, {}),
+        "residual": ours.residual_by_card.get(card, {}),
+        "payments": inputs.payments,
+    }
+    timeline = probe.card_timeline(legs, {}, ours.riding_by_card.get(card, {}))
+    breach = probe.first_breach(timeline)
+    assert breach is not None
+    leg, amount = breach.ranked_legs[0]
+    assert leg == "residual"
+    assert amount < Decimal("0")
