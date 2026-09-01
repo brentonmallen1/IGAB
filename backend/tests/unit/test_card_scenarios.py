@@ -31,7 +31,7 @@ IDS = [s.slug for s in ALL_SCENARIOS]
 
 @pytest.mark.parametrize("scenario", ALL_SCENARIOS, ids=IDS)
 def test_the_card_lands_where_the_scenario_says(scenario: CardScenario):
-    assert walk(scenario, ANCHOR) == scenario.expect, scenario.story
+    assert scenario.expect.differences(walk(scenario, ANCHOR)) == {}, scenario.story
 
 
 @pytest.mark.parametrize("scenario", ALL_SCENARIOS, ids=IDS)
@@ -57,7 +57,7 @@ def test_the_five_legs_reconstruct_the_reserve(scenario: CardScenario):
         - sum_through(reserve.residual, month)
         - sum_through(reserve.payments, month)
     )
-    assert legs == scenario.expect.set_aside
+    assert legs == walk(scenario, ANCHOR).set_aside
 
 
 @pytest.mark.parametrize("scenario", ALL_SCENARIOS, ids=IDS)

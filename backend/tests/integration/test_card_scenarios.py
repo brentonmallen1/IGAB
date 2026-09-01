@@ -10,7 +10,11 @@ from decimal import Decimal
 
 import pytest
 
-from igab.sample_budget.card_scenarios import ALL_SCENARIOS, CardScenario
+from igab.sample_budget.card_scenarios import (
+    ALL_SCENARIOS,
+    CardScenario,
+    ExpectedPosition,
+)
 
 from .card_scenario_apply import apply_card_scenario
 from .factories import (
@@ -73,17 +77,17 @@ async def _card_row(services, budget, card_id):
 async def test_the_served_row_reads_what_the_scenario_says(db_session, scenario: CardScenario):
     services, budget, applied = await _budget_with(db_session, scenario)
     card = await _card_row(services, budget, applied[0].card_id)
-    actual = {
-        "balance": card.balance,
-        "set_aside": card.set_aside,
-        "uncovered": card.uncovered,
-        "over_reserved": card.over_reserved,
-        "short_reserved": card.short_reserved,
-        "card_credit": card.card_credit,
-        "riding": card.riding,
-        "reserve_discrepancy": card.reserve_discrepancy,
-    }
-    assert actual == dict(vars(scenario.expect)), scenario.story
+    actual = ExpectedPosition(
+        balance=card.balance,
+        set_aside=card.set_aside,
+        uncovered=card.uncovered,
+        over_reserved=card.over_reserved,
+        short_reserved=card.short_reserved,
+        card_credit=card.card_credit,
+        riding=card.riding,
+        reserve_discrepancy=card.reserve_discrepancy,
+    )
+    assert scenario.expect.differences(actual) == {}, scenario.story
 
 
 @pytest.mark.parametrize("scenario", ALL_SCENARIOS, ids=IDS)
@@ -101,8 +105,9 @@ async def test_every_scenario_on_one_budget_still_reads_the_same(db_session):
     services, budget, applied = await _budget_with(db_session, *ALL_SCENARIOS)
     for item in applied:
         card = await _card_row(services, budget, item.card_id)
-        assert card.set_aside == item.scenario.expect.set_aside, item.scenario.slug
         assert card.uncovered == item.scenario.expect.uncovered, item.scenario.slug
+        if item.scenario.expect.set_aside is not None:
+            assert card.set_aside == item.scenario.expect.set_aside, item.scenario.slug
     await assert_financial_invariants(db_session, budget.id)
 
 

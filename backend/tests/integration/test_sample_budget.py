@@ -221,11 +221,25 @@ async def test_budget_summary_hits_target_with_one_overspend(db_session):
         if b.available < 0 and not b.is_card_payment
     ]
     assert overspent == ["Dining Out"]
-    # The demo's Visa is deliberately overpaid ($600/month against smaller
-    # spending), so its set-aside envelope runs negative — a card-section
-    # state, not overspending: the totals above already leave it out.
+    # The demo's card is healthy: every charge came out of a funded envelope,
+    # so the cash it gave up is reserved and waiting, and the card owes an
+    # ordinary statement balance with nothing Uncovered behind it.
+    #
+    # This used to assert the opposite — the Visa was paid $600/month against
+    # roughly $315 of spending, so its envelope ran NEGATIVE and "Try a sample
+    # budget" opened on a card holding thousands of the user's money. That is
+    # a real state with a name (`credit-balance` in card_scenarios.py) and it
+    # belongs to a card that demonstrates it, not to the first row a new user
+    # ever sees.
     card_envelopes = [b for b in summary.category_balances if b.is_card_payment]
-    assert card_envelopes and all(b.available < 0 for b in card_envelopes)
+    assert card_envelopes and all(b.available > 0 for b in card_envelopes)
+    assert all(c.card_credit == Decimal("0") for c in summary.cards)
+    # And Uncovered decomposes exactly: the 420 the card arrived with, plus
+    # the 45 of this month's deliberate overspend, which was swiped on the
+    # card and so rides there instead of charging Ready to Assign. Nothing
+    # else — every other charge came out of a funded envelope and reserved its
+    # own cash. That sum is the whole credit model in one assertion.
+    assert [c.uncovered for c in summary.cards] == [Decimal("420.00") + summary.total_overspent]
 
 
 async def test_integrity_all_green(db_session):

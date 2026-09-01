@@ -261,6 +261,36 @@ fixed it.
 - Any code touching amount calculations, budget distribution, category assignment, or transaction reconciliation requires exhaustive test coverage — this is the core trust surface of the app
 - Cover edge cases: zero balances, negative amounts, overspending, partial allocation, rounding
 
+### A card behaviour with no scenario is a behaviour nobody demoed
+
+Card situations live once, in
+`backend/src/igab/sample_budget/card_scenarios.py`: the events, and the
+position the card must read once they have happened. Three suites are
+parametrised over `ALL_SCENARIOS` — pure domain, served summary, generated
+sample data — so **adding a scenario adds three tests and cannot be added
+un-asserted**, and the generator refuses to build a card whose declared
+position it does not reach.
+
+When you change what a card's figures do, add or update a scenario. Do not
+pin a card behaviour with a hand-built fixture when a scenario would say it
+once, and do not give the sample budget a card that takes an inflow without
+declaring what that card should then read — an inflow is what this model has
+been bitten by twice.
+
+This exists because six situations had to be hand-built twice each, in two
+different vocabularies, and none of them could be *shown* to anybody: the
+generator asserted that no card inflow may exist anywhere in the register,
+which was true and which forbade every interesting card from the demo.
+
+- **`expect` is written by hand, never derived.** Deriving it from the walk
+  makes every assertion a tautology — the arithmetic is the thing under test.
+  Keep the figures round enough to check on paper.
+- **`None` in an `ExpectedPosition` means the scenario does not claim that
+  figure**, and is the honest answer where texture decides it. It is not a
+  synonym for zero.
+- Fixtures and amounts are invented and rescaled, like everything else here —
+  see the personal-data rule above.
+
 ## Library Preferences
 - Prefer established libraries over custom implementations; only go custom if the overhead clearly outweighs the benefit
 - Existing choices: recharts (charts), lucide-react (icons), React Query (async state), Zustand (client state), axios (HTTP)

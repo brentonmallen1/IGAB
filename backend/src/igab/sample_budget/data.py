@@ -619,7 +619,14 @@ SAMPLE_BUDGET = SampleBudgetSpec(
             category="Car Payment",
             memo="Car loan payment",
         ),
-        TransferSpec(CHECKING, VISA, day=25, amount=_d("600.00"), memo="Card payment"),
+        # Below what the card is charged, so the demo opens on a card that
+        # owes an ordinary statement balance with the cash already reserved
+        # for it. It used to be 600 against roughly 315 of spending, which
+        # made "Try a sample budget" open on a card holding thousands of the
+        # user's money — a real state, and the least useful first impression
+        # available. It is the `credit-balance` scenario, and it belongs to
+        # that card, not to this one.
+        TransferSpec(CHECKING, VISA, day=25, amount=_d("300.00"), memo="Card payment"),
         TransferSpec(
             CHECKING,
             BROKERAGE,

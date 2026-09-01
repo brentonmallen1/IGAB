@@ -107,18 +107,38 @@ async def test_the_generated_budget_is_sound_with_card_inflows_in_it(db_session)
     await assert_financial_invariants(db_session, budget.id)
 
 
-async def test_generation_refuses_a_card_that_is_not_a_declared_scenario(db_session):
-    """The ratchet in the other direction: the demo may not grow a card
-    nobody can explain."""
+async def test_an_undeclared_card_may_spend_but_not_take_an_inflow(db_session):
+    """The ratchet in the other direction, and the line it draws.
+
+    Ordinary textured spending on a card nobody pinned is fine — that is what
+    a realistic demo card is. What is refused is an INFLOW there: a refund or
+    a reimbursement changes a card's position in ways this model has been bitten
+    by twice, and the demo may not carry one whose result nobody declared.
+    """
     from dataclasses import replace
 
-    from igab.sample_budget.spec import AccountSpec
+    from igab.sample_budget.spec import AccountSpec, OneOffTxn, RelDate
 
-    spec = build_scenario_spec((ALL_SCENARIOS[0],))
-    spec = replace(spec, accounts=(*spec.accounts, AccountSpec("Stray Card", "credit_card")))
+    base = build_scenario_spec((ALL_SCENARIOS[0],))
+    stray = AccountSpec("Stray Card", "credit_card")
+    # Unfiled on purpose: filing them to a shared envelope would change the
+    # SCENARIO's position too, because a shortfall rides from whichever card
+    # carried it — a real interaction, and not the one under test here.
+    spending = OneOffTxn(RelDate(1, 5), "Stray Card", "Corner Market", Decimal("-40"))
+    refund = OneOffTxn(RelDate(1, 9), "Stray Card", "Corner Market", Decimal("25"))
+
+    spends_only = replace(
+        base, accounts=(*base.accounts, stray), one_offs=(*base.one_offs, spending)
+    )
     budget = await create_budget(db_session, await create_user(db_session))
+    await _generate(db_session, budget, spends_only)
+
+    takes_an_inflow = replace(
+        base, accounts=(*base.accounts, stray), one_offs=(*base.one_offs, spending, refund)
+    )
+    other = await create_budget(db_session, await create_user(db_session))
     with pytest.raises(AssertionError, match="not a declared scenario"):
-        await _generate(db_session, budget, spec)
+        await _generate(db_session, other, takes_an_inflow)
 
 
 async def test_a_scenario_that_lies_about_itself_fails_generation(db_session):

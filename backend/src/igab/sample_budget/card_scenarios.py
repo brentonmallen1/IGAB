@@ -97,11 +97,19 @@ class ExpectedPosition:
 
     Mirrors `domain/cards.py card_position` plus the two totals the row and
     the breakdown quote, so one declaration answers every layer.
+
+    **`None` means "this scenario does not claim a figure here."** The demo's
+    everyday card carries months of ordinary texture, and its `set_aside` is
+    whatever that texture adds up to — a number nobody can check on paper, and
+    one that would need rewriting every time somebody adds a coffee. Its claim
+    is the other five fields, all zero, which is exactly what "this card is
+    healthy" means. Pinning a figure you cannot justify is worse than leaving
+    it unpinned and saying so.
     """
 
-    balance: Decimal
-    set_aside: Decimal
     uncovered: Decimal
+    balance: Decimal | None = None
+    set_aside: Decimal | None = None
     over_reserved: Decimal = ZERO
     short_reserved: Decimal = ZERO
     card_credit: Decimal = ZERO
@@ -110,6 +118,18 @@ class ExpectedPosition:
     #: their balance for reasons the identity's bounds accept, and that is the
     #: point: a row keyed on this number says nothing about them.
     reserve_discrepancy: Decimal = ZERO
+
+    def differences(self, actual: "ExpectedPosition") -> dict[str, tuple]:
+        """Fields where `actual` disagrees with what this scenario claims.
+        Unclaimed fields (None) are skipped, never treated as zero."""
+        out: dict[str, tuple] = {}
+        for field_name, want in vars(self).items():
+            if want is None:
+                continue
+            got = getattr(actual, field_name)
+            if got != want:
+                out[field_name] = (want, got)
+        return out
 
 
 @dataclass(frozen=True)

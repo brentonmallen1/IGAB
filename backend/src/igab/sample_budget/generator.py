@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, BudgetAssignment, Category, CategoryGroup, Payee
 from igab.domain.cards import card_funding, card_position, card_reserve
-from igab.domain.carryover import available_at, available_through
+from igab.domain.carryover import available_at, available_through, sum_through
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import (
     BudgetAssignmentRepository,
@@ -39,6 +39,7 @@ from igab.repositories.scheduled_transaction_repo import ScheduledTransactionRep
 from igab.repositories.tag_repo import TagRepository
 from igab.repositories.target_repo import TargetRepository
 from igab.repositories.transaction_repo import TransactionRepository
+from igab.sample_budget.card_scenarios import ExpectedPosition
 from igab.sample_budget.data import SAMPLE_BUDGET
 from igab.sample_budget.spec import (
     RelDate,
@@ -728,6 +729,7 @@ class SampleBudgetGenerator:
         # themselves no longer say they are transfers.
         rows_by_id = {r["id"]: r for r in inserted}
         payments: dict[uuid.UUID, dict[date, Decimal]] = {}
+        paid_leg_ids: set[uuid.UUID] = set()
         for leg_id, partner_id in transfer_links:
             leg = rows_by_id.get(leg_id)
             partner = rows_by_id.get(partner_id)
@@ -741,6 +743,7 @@ class SampleBudgetGenerator:
                 key = leg["date"].replace(day=1)
                 per = payments.setdefault(leg["account_id"], {})
                 per[key] = per.get(key, _ZERO) + leg["amount"]
+                paid_leg_ids.add(leg["id"])
         scenario_by_card_id = {
             self._accounts[sc.card].id: sc
             for sc in spec.card_scenarios
@@ -759,33 +762,40 @@ class SampleBudgetGenerator:
             available_total += set_aside
             scenario = scenario_by_card_id.get(card_id)
             if scenario is None:
-                assert not spec.card_scenarios, (
-                    f"card {card_id} is in the sample but is not a declared scenario — "
-                    "every card the demo shows must be a shape somebody can read"
+                # A card with no scenario keeps the old guarantee, now said
+                # per card rather than over the whole register: it may not
+                # take an inflow. Ordinary textured spending is welcome — what
+                # is not is a refund or a reimbursement landing on a card
+                # whose resulting position nobody declared, which is the state
+                # the demo used to be in wholesale.
+                stray = [
+                    r
+                    for r in inserted
+                    if r["account_id"] == card_id
+                    and r["amount"] > _ZERO
+                    and r["id"] not in paid_leg_ids
+                ]
+                assert not stray, (
+                    f"card {card_id} takes an inflow but is "
+                    "not a declared scenario — say what it should read, in card_scenarios.py"
                 )
                 continue
             balance = card_balances.get(card_id, _ZERO)
             position = card_position(set_aside, balance)
-            actual = (
-                set_aside,
-                balance,
-                position.uncovered,
-                position.over_reserved,
-                position.short_reserved,
-                position.card_credit,
+            differences = scenario.expect.differences(
+                ExpectedPosition(
+                    balance=balance,
+                    set_aside=set_aside,
+                    uncovered=position.uncovered,
+                    over_reserved=position.over_reserved,
+                    short_reserved=position.short_reserved,
+                    card_credit=position.card_credit,
+                    riding=sum_through(funding.riding_by_card.get(card_id, {}), current_month),
+                )
             )
-            want = scenario.expect
-            expected = (
-                want.set_aside,
-                want.balance,
-                want.uncovered,
-                want.over_reserved,
-                want.short_reserved,
-                want.card_credit,
-            )
-            assert actual == expected, (
+            assert not differences, (
                 f"scenario {scenario.slug!r} does not land where it says: "
-                f"got {actual}, expected {expected}. {scenario.story}"
+                f"{differences} (want, got). {scenario.story}"
             )
         uncovered_current = sum(
             (
