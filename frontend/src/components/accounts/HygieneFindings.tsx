@@ -72,9 +72,16 @@ export function HygieneFindings({
     }
   }
 
-  // Only this one leads somewhere other than the accounts list itself.
+  // The two that lead somewhere other than the accounts list itself. A
+  // finding with no next step is criticism, per the service that raises them.
   function target(f: HygieneFinding): string | null {
-    return f.kind === 'unpaired_transfer_legs' ? '/transactions?q=is:unpaired' : null
+    if (f.kind === 'unpaired_transfer_legs') return '/transactions?q=is:unpaired'
+    // The card's own register, where the credits sit and can be linked to
+    // their partner. `account_ids` leads with the card for exactly this.
+    if (f.kind === 'unlinked_card_payments' && f.account_ids.length > 0) {
+      return `/accounts/${f.account_ids[0]}`
+    }
+    return null
   }
 
   function go(to: string) {

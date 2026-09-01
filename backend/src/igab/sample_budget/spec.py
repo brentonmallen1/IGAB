@@ -79,6 +79,11 @@ class CategorySpec:
     # Present ⇒ this category's current month is assigned exactly this much
     # BELOW its spending to date, guaranteeing one intentional overspend.
     overspend_this_month: Decimal | None = None
+    # Skip the inference above entirely — `ExplicitAssignment` says what this
+    # category gets. The inference funds a bill-like category to exactly what
+    # it spent, which is right for a household and fatal for a scenario about
+    # a month ending SHORT: it tops the shortfall up and nothing ever rides.
+    assignments_are_explicit: bool = False
     is_archived: bool = False
     tiers: tuple[str, ...] = BOTH_TIERS
 
@@ -168,6 +173,43 @@ class TransferSpec:
 
 
 @dataclass(frozen=True)
+class OneOffTransfer:
+    """A transfer on one date, rather than every month.
+
+    `TransferSpec` is a recurring habit — the rent, the monthly card payment.
+    A card scenario pays on the months it says and not on the others, and
+    "pays every month except the current one" is not a habit, it is a story.
+    Never carries a category: both sides are on-budget here, and a categorised
+    transfer is the off-budget spending shape.
+    """
+
+    when: RelDate
+    from_account: str
+    to_account: str
+    amount: Decimal
+    memo: str | None = None
+    tiers: tuple[str, ...] = BOTH_TIERS
+
+
+@dataclass(frozen=True)
+class ExplicitAssignment:
+    """An assignment stated outright, not derived from what a month spent.
+
+    Every other assignment in the sample is inferred — fund the bill, top up
+    the shortfall, sweep the remainder. That inference cannot reach a card's
+    payment envelope at all: nothing can be *filed* to one, so its activity is
+    always empty and the derived amount is always zero, which is why the
+    sample had never assigned a cent to a card. Paying a card down is an
+    intention, and intentions have to be said.
+    """
+
+    category: str
+    when: RelDate
+    amount: Decimal
+    tiers: tuple[str, ...] = BOTH_TIERS
+
+
+@dataclass(frozen=True)
 class ScheduledSpec:
     account: str
     amount: Decimal
@@ -234,6 +276,14 @@ class SampleBudgetSpec:
     one_offs: tuple[OneOffTxn, ...]
     transfers: tuple[TransferSpec, ...]
     scheduled: tuple[ScheduledSpec, ...]
+    one_off_transfers: tuple[OneOffTransfer, ...] = ()
+    explicit_assignments: tuple[ExplicitAssignment, ...] = ()
+    #: The card shapes this budget demonstrates. Declared rather than
+    #: inferred: the generator asserts each one lands exactly where its
+    #: `expect` says, which is what replaced "the register may contain no card
+    #: inflow at all" — a rule that was true and that forbade every
+    #: interesting card from ever being shown.
+    card_scenarios: tuple = ()
     liabilities: tuple[LiabilitySpec, ...] = ()
     # (name, color_slot) tags created beyond the seeded system tags
     custom_tags: tuple[tuple[str, str], ...] = ()

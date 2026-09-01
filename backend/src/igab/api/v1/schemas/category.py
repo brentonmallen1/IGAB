@@ -468,6 +468,12 @@ class CardStatusOut(ApiModel):
     charged_this_month: Decimal
     paid_this_month: Decimal
     debt_change_this_month: Decimal
+    #: Signed net of rows the bank still calls pending. `POSTED` keeps them out
+    #: of the three figures above and out of `balance`, so the panel agrees
+    #: with the balance and disagrees with the register by exactly this much.
+    #: Required — a path that forgets must raise rather than report a silent
+    #: agreement that does not hold.
+    pending_this_month: Decimal
     #: Which months put riding debt on this card, chronological. The month is
     #: the actionable half: funding an envelope in the month it ended short
     #: retires the ride, funding it the month after does not reach back.

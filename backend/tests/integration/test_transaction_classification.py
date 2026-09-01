@@ -1,6 +1,6 @@
 """The "why is this classified this way?" endpoint.
 
-Phase 2 silently changed what 169 of derkus's transactions count as. A
+Phase 2 silently changed what 169 transactions in a real budget count as. A
 reclassification the user cannot audit is worse than one they can argue with,
 so every row can say which rule decided it and why, in a sentence.
 """

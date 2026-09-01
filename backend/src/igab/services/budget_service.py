@@ -202,6 +202,13 @@ class CardStatus:
     paid_this_month: Decimal = Decimal("0")
     #: Signed: positive means the debt shrank this month.
     debt_change_this_month: Decimal = Decimal("0")
+    #: Signed net of this month's rows the bank still calls pending, which
+    #: `POSTED` keeps out of all three figures above AND out of `balance`. The
+    #: panel and the balance therefore agree with each other and disagree with
+    #: the register by exactly this. Served so the surface can say so: a card
+    #: whose register the user counted did not match the panel, and nothing on
+    #: screen accounted for the difference.
+    pending_this_month: Decimal = Decimal("0")
     #: Which months put riding debt on this card, and how much. The remedy
     #: needs the month: funding an envelope in the month it ended short
     #: retires the ride (the walk is recomputed from scratch every request),
@@ -621,7 +628,7 @@ class BudgetService:
                 # One implementation of "where does this card stand", shared
                 # with `reserve_discrepancy`. It used to be spelled again here.
                 position = card_position(set_aside, balance)
-                charged, received = month_flows.get(account.id, (zero, zero))
+                charged, received, pending = month_flows.get(account.id, (zero, zero, zero))
                 if account.is_closed and balance == zero and set_aside == zero:
                     # Settled and closed: nothing owed, nothing reserved,
                     # nothing to act on. The arithmetic above still ran — the
@@ -664,6 +671,7 @@ class BudgetService:
                         charged_this_month=-charged,
                         paid_this_month=reserve.payments.get(month_start, zero),
                         debt_change_this_month=charged + received,
+                        pending_this_month=pending,
                         # Sorted so the panel can name the earliest month that
                         # still has debt riding on it — that is the one whose
                         # envelope is worth back-funding first.

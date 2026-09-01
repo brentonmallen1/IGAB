@@ -53,7 +53,7 @@ UNIGRAMS = {
     "4f74a33966da3f01", "5aea8a5f9b55fb47", "61ced68c200cbde9", "681a024a50310b7d",
     "973e809e7e7f3e46", "978d2a2dd71d5d71", "9c58d15eceb3e456", "9c8720f7f1528d3e",
     "a0e25391d8319bab", "b9805963ecf02918", "bdafd7b1ab8272c5", "c4aee9e4b5773431",
-    "c5d673cfa1ad5d6f", "e23011c058a38a17", "f66f87d87754f4a7",
+    "abbecdcda8407880", "c5d673cfa1ad5d6f", "e23011c058a38a17", "f66f87d87754f4a7",
 }
 #: Adjacent word pairs, for names whose halves are each too common to deny.
 BIGRAMS = {

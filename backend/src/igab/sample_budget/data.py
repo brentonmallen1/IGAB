@@ -19,6 +19,7 @@ strict subset: full-only elements are tagged tiers=("full",).
 
 from decimal import Decimal
 
+from igab.sample_budget.card_scenarios import ALL_SCENARIOS, merge_into
 from igab.sample_budget.spec import (
     AccountSpec,
     CategorySpec,
@@ -63,6 +64,7 @@ CRYPTO = "Crypto Wallet"
 LEGACY = "First National Checking (old)"
 
 FULL = ("full",)
+STARTER = ("starter",)
 
 # Sinking-fund categories carry their math in the name — the power-user YNAB
 # convention ("$1,424/12" = an annual cost budgeted monthly, "~" = estimate)
@@ -72,7 +74,7 @@ CAT_HOME_MAINT = "Home Maintenance – 1%/12"
 CAT_CHRISTMAS = "Christmas – $600/12"
 CAT_MORTGAGE = "Mortgage – $2,444/mo"
 
-SAMPLE_BUDGET = SampleBudgetSpec(
+_HOUSEHOLD = SampleBudgetSpec(
     accounts=(
         AccountSpec(CHECKING, "checking", opening_balance=_d("2500.00"), sort_order=0),
         AccountSpec(SAVINGS, "savings", opening_balance=_d("3200.00"), sort_order=1),
@@ -619,7 +621,20 @@ SAMPLE_BUDGET = SampleBudgetSpec(
             category="Car Payment",
             memo="Car loan payment",
         ),
-        TransferSpec(CHECKING, VISA, day=25, amount=_d("600.00"), memo="Card payment"),
+        # Just under what the card is charged, so the demo opens on a card
+        # owing an ordinary statement balance with the cash already reserved
+        # for it — and Uncovered showing exactly the balance it arrived with.
+        #
+        # Per tier, because the two charge at different rates: the starter
+        # spends about 340 a month on this card and the full household about
+        # 610. One figure for both is what made this wrong twice over — 600
+        # flat overpaid the starter into a large credit balance (a card that
+        # owed the user thousands, the least useful first impression there
+        # is), and 300 flat let the full tier pile up a five-figure balance.
+        TransferSpec(
+            CHECKING, VISA, day=25, amount=_d("330.00"), memo="Card payment", tiers=STARTER
+        ),
+        TransferSpec(CHECKING, VISA, day=25, amount=_d("600.00"), memo="Card payment", tiers=FULL),
         TransferSpec(
             CHECKING,
             BROKERAGE,
@@ -785,3 +800,18 @@ SAMPLE_BUDGET = SampleBudgetSpec(
     custom_tags=(("Travel", "blue"),),
     tier_overrides=(("full", TierConfig(months_of_history=30, tba_target=_d("150"))),),
 )
+
+
+# The card shapes, spliced in beside the household. Each brings its own
+# account, payment envelope and spending envelopes — named after the card,
+# because a shared envelope would let one card's month-end shortfall ride
+# from another, and because the budget page should say which envelope belongs
+# to which card without anyone having to look it up.
+#
+# The Visa above stays as it is: a real card with real texture, paid from
+# funded envelopes, whose only Uncovered is the balance it arrived with. These
+# are the shapes that texture cannot show — a month that ended short, a
+# reserve standing far above the debt, somebody else settling part of the
+# bill, a card genuinely overpaid — and the generator asserts each one lands
+# exactly where `card_scenarios.py` says it should.
+SAMPLE_BUDGET = merge_into(_HOUSEHOLD, ALL_SCENARIOS, cash_account=CHECKING)

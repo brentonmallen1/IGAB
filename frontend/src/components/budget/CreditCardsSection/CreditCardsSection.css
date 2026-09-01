@@ -292,7 +292,7 @@
   color: inherit;
   font: inherit;
   padding: 2px 0;
-  width: 100%;
+  width: auto;
   text-align: right;
   cursor: pointer;
 }
@@ -435,4 +435,12 @@
   font-size: var(--font-size-xs);
   line-height: 1.5;
   color: var(--text-muted);
+}
+
+/* Ties the "Other credits" row to the note that explains it. The amount is a
+   row so the month's figures reconcile on their face; only the explanation is
+   a footnote, and this is what joins the two. */
+.credit-cards__footnote-mark {
+  color: var(--text-muted);
+  padding-left: 1px;
 }

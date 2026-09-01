@@ -28,6 +28,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.api.v1.imports import _TRACKED_HINTS, _matches, _normalize_for_match
 from igab.db.models import Account, Liability, Transaction
+from igab.domain.matching import DATE_WINDOW_DAYS
+from igab.domain.transfers import PairableLeg, pair_legs
 from igab.guide.detection import budget_service_from
 from igab.repositories.category_filters import IN_SYSTEM_GROUP
 from igab.repositories.category_repo import CategoryRepository
@@ -36,6 +38,7 @@ from igab.repositories.txn_filters import (
     LEAF,
     NOT_DELETED,
     ON_BUDGET_ACCOUNT,
+    PAIRABLE_LEG,
     POSTED,
     UNPAIRED_TRANSFER_LEG,
     row_category,
@@ -46,6 +49,13 @@ from igab.utils.clock import today_utc
 #: Matches the import step's threshold so the two never disagree about the same
 #: account.
 DORMANT_AFTER_MONTHS = 12
+
+#: How far back to look for two rows that are one card payment. The pairing
+#: pass only ever runs over rows a sync just created, so a budget that already
+#: holds both legs — a card added later and back-filled, an import — never gets
+#: one. Bounded because `pair_legs` compares every outflow against every inflow
+#: in the window.
+UNLINKED_PAYMENT_LOOKBACK_DAYS = 180
 
 #: How far a balance must sit on the wrong side of its classification before we
 #: say so. Not zero: a credit card paid in full often rests slightly positive,
@@ -90,6 +100,7 @@ class AccountHygieneService:
             await self._tracked_name_on_budget(accounts),
             await self._liability_with_positive_balance(accounts),
             await self._unpaired_transfer_legs(budget_id),
+            await self._unlinked_card_payments(budget_id),
             await self._categorized_tracking_rows(budget_id),
             await self._card_rows_filed_as_income(budget_id),
             await self._dormant_open_accounts(accounts, budget_id),
@@ -190,6 +201,108 @@ class AccountHygieneService:
                 "genuinely one-sided — open one to pick its partner or add the missing row."
             ),
             transaction_count=int(count),
+        )
+
+    async def _unlinked_card_payments(self, budget_id: uuid.UUID) -> HygieneFinding | None:
+        """A card credit and a cash debit that are one payment, still unlinked.
+
+        Distinct from `_unpaired_transfer_legs`, which finds rows whose PAYEE
+        already names another account. Two synced legs of one card payment
+        arrive with ordinary bank payees on both sides, so that finding never
+        sees them — and `repair_transfers` is payee-based too, so neither does
+        the repair. The amount-based pass (`pair_legs`) only ever runs over
+        rows a sync just created, which means a budget that already holds both
+        legs has no path to the answer at all.
+
+        That gap is what a real card looked like: `paid to the card` reading
+        zero while thousands of debt was repaid, the payment sitting in the
+        "other credits" term, and the reserve untouched because only a
+        transfer spends it.
+
+        The decision is `domain/transfers.pair_legs` — the same pure function
+        the sync uses, not a second opinion about what makes two rows one
+        movement. Pairs it calls confident are reported as safe; pairs it
+        holds for review are counted separately, because those need a person
+        (usually to clear a category off the cash leg, which linking must do
+        and which is never done unattended).
+        """
+        cutoff = today_utc() - timedelta(days=UNLINKED_PAYMENT_LOOKBACK_DAYS)
+        rows = list(
+            (
+                await self.session.execute(
+                    select(Transaction)
+                    .join(Account, Account.id == Transaction.account_id)
+                    .where(
+                        Account.budget_id == budget_id,
+                        PAIRABLE_LEG,
+                        Transaction.date >= cutoff,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if not rows:
+            return None
+
+        accounts = {a.id: a for a in await self._accounts(budget_id)}
+        legs = [
+            PairableLeg(
+                id=r.id,
+                account_id=r.account_id,
+                on_budget=accounts[r.account_id].on_budget,
+                date=r.date,
+                amount=r.amount,
+                categorized=r.category_id is not None,
+                # Nothing here is this run's own guess: a sync's guesses are
+                # only clearable by the sync that made them, moments later.
+                category_is_a_guess=False,
+            )
+            for r in rows
+            if r.account_id in accounts
+        ]
+        confident, review = pair_legs(legs, window_days=DATE_WINDOW_DAYS)
+
+        cards = {a.id for a in accounts.values() if a.classification == "liability"}
+        by_id = {r.id: r for r in rows}
+        involved = [
+            pair
+            for pair in (*confident, *review)
+            if by_id[pair.inflow_id].account_id in cards
+            or by_id[pair.outflow_id].account_id in cards
+        ]
+        if not involved:
+            return None
+
+        card_ids = list(
+            dict.fromkeys(
+                acct
+                for pair in involved
+                for acct in (by_id[pair.inflow_id].account_id, by_id[pair.outflow_id].account_id)
+                if acct in cards
+            )
+        )
+        total = sum((abs(by_id[p.inflow_id].amount) for p in involved), Decimal("0"))
+        n = len(involved)
+        return HygieneFinding(
+            kind="unlinked_card_payments",
+            title=f"{n:,} card payment{'s' if n != 1 else ''} may never have been linked",
+            detail=(
+                f"A credit on a card and a debit from one of your own accounts, same "
+                f"amount and within a few days, with nothing joining them — "
+                f"{total:,.2f} in total. Only a transfer spends a card's set-aside, so "
+                f"until these are linked the card reads 'paid 0.00' while its balance "
+                f"visibly falls, and the money shows up as a credit that came from "
+                f"nowhere. Balances are right either way; what is wrong is the story."
+            ),
+            action=(
+                "Open one and pick its partner. Where the payment on the cash side "
+                "sits in a spending envelope, linking has to clear that category — "
+                "an internal transfer is not spending — so that choice is yours to "
+                "make rather than something a sync does quietly."
+            ),
+            account_ids=card_ids,
+            transaction_count=n,
         )
 
     async def _card_rows_filed_as_income(self, budget_id: uuid.UUID) -> HygieneFinding | None:

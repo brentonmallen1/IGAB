@@ -1,9 +1,10 @@
 """Views: alternate arrangements of the same categories.
 
-derkus's ask: "i want the concept of views to be completely different ways to
-look at the categories. like being able to have categories that move to
-different groups based on the view." His real groups are types of expense;
-he wants to read the same budget as need/want/save without cloning it.
+The ask that produced this: "i want the concept of views to be completely
+different ways to look at the categories. like being able to have categories
+that move to different groups based on the view." Their real groups are types
+of expense; they want to read the same budget as need/want/save without
+cloning it.
 
 The rules that matter here:
   - a view never touches the default arrangement in category_groups;

@@ -58,6 +58,7 @@ function card(over: Partial<CardStatus> = {}): CardStatus {
     charged_this_month: 0,
     paid_this_month: 0,
     debt_change_this_month: 0,
+    pending_this_month: 0,
     rode_by_month: [],
     ...over,
   }
@@ -144,6 +145,54 @@ describe('the Ready to pay breakdown', () => {
     await userEvent.click(screen.getByLabelText('What makes up Ready to pay for Sapphire Visa'))
     expect(screen.getByText('This month')).toBeInTheDocument()
     expect(screen.getByText('Debt down')).toBeInTheDocument()
+  })
+
+  it('puts the reconciling credit in the list, so the month adds up on its face', async () => {
+    // The shape a card produced, invented and rescaled: charged 2,400, paid
+    // nothing, debt down 1,500 — three figures that cannot be reconciled
+    // without the fourth. The 3,900 that explains them was prose under the
+    // list, so the panel showed arithmetic that visibly did not work.
+    month.current = {
+      cards: [
+        card({
+          charged_this_month: 2400,
+          paid_this_month: 0,
+          debt_change_this_month: 1500,
+        }),
+      ],
+      category_balances: [],
+    } as unknown as BudgetMonth
+    render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
+    await userEvent.click(screen.getByLabelText('What makes up Ready to pay for Sapphire Visa'))
+
+    const rows = [...document.querySelectorAll('.credit-cards__legs-month .credit-cards__leg')]
+    const labelled = (label: string) =>
+      rows.find((r) => r.querySelector('dt')?.textContent?.startsWith(label))
+
+    // Every term that moved the balance is a row, and they reconcile:
+    // 2,400 charged − 0 paid − 3,900 credited = 1,500 down.
+    expect(labelled('Charged')?.querySelector('dd')?.textContent).toContain('2,400.00')
+    expect(labelled('Paid to the card')?.querySelector('dd')?.textContent).toContain('0.00')
+    expect(labelled('Other credits')?.querySelector('dd')?.textContent).toContain('3,900.00')
+    expect(labelled('Debt down')?.querySelector('dd')?.textContent).toContain('1,500.00')
+
+    // The explanation stays a footnote; the amount does not live there.
+    const note = document.querySelector('.credit-cards__legs-note')
+    expect(note?.textContent).toContain('never linked')
+    expect(note?.textContent).not.toContain('3,900.00')
+  })
+
+  it('draws the month block when a credit is the only thing that moved', async () => {
+    // charged 0 and paid 0 used to hide the block entirely, so a card whose
+    // debt moved purely on a refund showed a note explaining a list nobody saw.
+    month.current = {
+      cards: [card({ charged_this_month: 0, paid_this_month: 0, debt_change_this_month: 90 })],
+      category_balances: [],
+    } as unknown as BudgetMonth
+    render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
+    await userEvent.click(screen.getByLabelText('What makes up Ready to pay for Sapphire Visa'))
+    expect(screen.getByText('This month')).toBeInTheDocument()
+    expect(screen.getByText('Other credits')).toBeInTheDocument()
   })
 
   it('renders the served total rather than a sum of its own', async () => {

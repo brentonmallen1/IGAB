@@ -257,6 +257,36 @@ async def create_transfer(
     return from_leg, to_leg
 
 
+async def create_card_payment(
+    services,
+    budget: Budget,
+    from_account: Account,
+    card: Account,
+    amount: str | Decimal,
+    txn_date: date,
+) -> None:
+    """A payment to a credit card — a transfer from cash, through the service.
+
+    The one shape that cannot go through `create_transaction`: only a paired
+    transfer spends a card's reserve, and the pairing is what the service
+    does. Eleven card tests each re-imported `TransactionCreate` inside the
+    function body to spell this by hand; a payment typed any other way lowers
+    the balance while Ready to pay stands still, which is a different scenario
+    wearing this one's clothes.
+    """
+    from igab.services.transaction_service import TransactionCreate
+
+    await services.transactions.create(
+        budget.id,
+        TransactionCreate(
+            account_id=from_account.id,
+            date=txn_date,
+            amount=-Decimal(str(amount)),
+            transfer_account_id=card.id,
+        ),
+    )
+
+
 async def create_budget_assignment(
     session: AsyncSession,
     budget: Budget,

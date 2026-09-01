@@ -4,7 +4,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any, Literal
 
-from sqlalchemy import case, func, select, update
+from sqlalchemy import and_, case, func, not_, select, update
 
 from igab.db.models import (
     Account,
@@ -21,6 +21,7 @@ from igab.repositories.txn_filters import (
     CLEARED,
     NEEDS_CATEGORY,
     NOT_DELETED,
+    PARENT_ROW,
     POSTED,
     not_future,
 )
@@ -202,10 +203,10 @@ class AccountRepository(BaseRepository[Account]):
 
     async def card_month_flows(
         self, budget_id: uuid.UUID, month_start: date, month_end: date
-    ) -> dict[uuid.UUID, tuple[Decimal, Decimal]]:
-        """Each card's charges and inflows inside one month, as `(charges,
-        inflows)` — charges negative, inflows positive, so the pair sums to the
-        month's move in the balance.
+    ) -> dict[uuid.UUID, tuple[Decimal, Decimal, Decimal]]:
+        """Each card's charges, inflows and still-pending net inside one month,
+        as `(charges, inflows, pending)` — charges negative, inflows positive,
+        so the first pair sums to the month's move in the balance.
 
         Same predicates and same upper bound as `card_balances`, one month wide
         instead of open-ended: the two have to agree about which rows count, or
@@ -216,29 +217,47 @@ class AccountRepository(BaseRepository[Account]):
         is paired transfers from cash; `inflows` here is every credit — refunds,
         rewards, someone else paying the bill, and a payment whose transfer leg
         was never paired. The gap between the two is the diagnostic.
+
+        **`pending` is the named half of a deliberate divergence.** `POSTED`
+        keeps provisional rows out of every money aggregate, so this panel and
+        the balance beside it agree with each other — and both disagree with
+        the register, which shows a pending row the moment the bank mentions
+        it. A real card read `charged 2,400` against a register the user
+        counted at `2,700`, with nothing on screen accounting for the gap.
+        Reporting it is what keeps the divergence bounded rather than silent;
+        it is NOT added to the other two, which stay posted-only.
+
+        One query, so the three can never be taken over different row sets:
+        the WHERE keeps every live parent row in the month and `POSTED` moves
+        into the case expressions.
         """
-        charges = func.sum(case((Transaction.amount < 0, Transaction.amount), else_=0))
-        inflows = func.sum(case((Transaction.amount > 0, Transaction.amount), else_=0))
+        out = and_(POSTED, Transaction.amount < 0)
+        into = and_(POSTED, Transaction.amount > 0)
+        charges = func.sum(case((out, Transaction.amount), else_=0))
+        inflows = func.sum(case((into, Transaction.amount), else_=0))
+        pending = func.sum(case((not_(POSTED), Transaction.amount), else_=0))
         result = await self.session.execute(
             select(
                 Transaction.account_id,
                 func.coalesce(charges, 0),
                 func.coalesce(inflows, 0),
+                func.coalesce(pending, 0),
             )
             .select_from(Transaction)
             .join(Account, Account.id == Transaction.account_id)
             .where(
                 Account.budget_id == budget_id,
                 CARD_ACCOUNT,
-                BALANCE_ROW,
+                NOT_DELETED,
+                PARENT_ROW,
                 Transaction.date >= month_start,
                 not_future(month_end),
             )
             .group_by(Transaction.account_id)
         )
         return {
-            account_id: (Decimal(str(charged)), Decimal(str(received)))
-            for account_id, charged, received in result.all()
+            account_id: (Decimal(str(charged)), Decimal(str(received)), Decimal(str(unposted)))
+            for account_id, charged, received, unposted in result.all()
         }
 
     async def soft_delete(

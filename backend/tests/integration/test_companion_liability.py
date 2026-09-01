@@ -39,6 +39,28 @@ from .factories import (
 
 TODAY = date.today()
 
+#: The mortgage ledger `TestConvertingADebtKeepsItsChart` converts: an opening
+#: balance a year back, then eleven payments at 30-day steps.
+#:
+#: Defined once because the assertion needs the same dates the fixture writes.
+#: `_owed_history` emits one point per month the ledger SPANS, and 30-day steps
+#: cross a number of month boundaries that depends on where `TODAY` falls — so
+#: a hard-coded "at least 12" held on most days and failed on the first of a
+#: month, which is where CI (which runs in UTC) found it while a developer an
+#: hour behind UTC saw it pass.
+MORTGAGE_LEDGER: list[tuple[date, str]] = [(TODAY - timedelta(days=365), "-300000.00")] + [
+    (TODAY - timedelta(days=365 - month * 30), "1000.00") for month in range(1, 12)
+]
+
+#: Distinct calendar months the ledger above touches, inclusive of both ends —
+#: exactly the number of monthly points `_owed_history` should produce.
+MORTGAGE_LEDGER_MONTHS = (
+    (MORTGAGE_LEDGER[-1][0].year - MORTGAGE_LEDGER[0][0].year) * 12
+    + MORTGAGE_LEDGER[-1][0].month
+    - MORTGAGE_LEDGER[0][0].month
+    + 1
+)
+
 
 async def _companion(db_session, account) -> Liability | None:
     """The row linked to this account, deleted or not — the unique constraint
@@ -804,13 +826,8 @@ class TestConvertingADebtKeepsItsChart:
         loan = await create_account(
             db_session, budget, "Mortgage", account_type="mortgage", on_budget=False
         )
-        await create_transaction(
-            db_session, budget, loan, "-300000.00", TODAY - timedelta(days=365)
-        )
-        for month in range(1, 12):
-            await create_transaction(
-                db_session, budget, loan, "1000.00", TODAY - timedelta(days=365 - month * 30)
-            )
+        for when, amount in MORTGAGE_LEDGER:
+            await create_transaction(db_session, budget, loan, amount, when)
         companion = await create_liability(
             db_session,
             budget,
@@ -846,7 +863,7 @@ class TestConvertingADebtKeepsItsChart:
         await AccountRepository(db_session).soft_delete(loan.id)
 
         snapshots = await LiabilityRepository(db_session).get_snapshots(companion.id)
-        assert len(snapshots) >= 12
+        assert len(snapshots) == MORTGAGE_LEDGER_MONTHS
         assert snapshots[0].balance == Decimal("300000.00")
         assert snapshots[-1].balance == companion.manual_balance
 

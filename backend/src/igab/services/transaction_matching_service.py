@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Transaction
 from igab.domain.exceptions import InvariantViolation
-from igab.domain.matching import date_proximity, payee_similarity
+from igab.domain.matching import DATE_WINDOW_DAYS, date_proximity, payee_similarity
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.transaction_match_repo import TransactionMatchRepository
 from igab.repositories.transaction_repo import TransactionRepository
@@ -25,10 +25,17 @@ if TYPE_CHECKING:
     from igab.services.transaction_service import TransactionService
 
 AUTO_ACCEPT_THRESHOLD = 0.90
-DATE_WINDOW_DAYS = 5
 
-
+#: `DATE_WINDOW_DAYS` is imported, not re-declared. "How far apart two postings
+#: may be and still look like one transaction" is one rule, it lives in
+#: `domain/matching.py`, and `date_proximity` — which this module already calls
+#: — decays against exactly that constant. The local copy meant widening the
+#: window moved the sync path and silently left this one behind.
 SCAN_REVIEW_THRESHOLD = 0.55
+#: Deliberately its OWN window, not the one above: the scan asks a different
+#: question (how far to look for a candidate worth showing someone) and pairs
+#: with its own threshold. Same value today, different rule — so it is named
+#: rather than shared.
 SCAN_DATE_WINDOW_DAYS = 5
 
 

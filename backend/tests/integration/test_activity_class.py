@@ -107,7 +107,7 @@ class TestTransfersToTrackedAccounts:
 
     async def test_works_for_an_orphaned_leg(self, db_session):
         """No partner link — the transfer payee is the only signal. This is the
-        shape a YNAB import produces, and the one derkus's export is full of."""
+        shape a YNAB import produces, and the one a real export is full of."""
         w = await _world(db_session)
         cat = await create_category(db_session, w.budget, w.group, "Investments")
         payee = await _transfer_payee(db_session, w.budget, w.brokerage)

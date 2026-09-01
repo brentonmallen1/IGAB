@@ -1,6 +1,6 @@
 """Savings rate: how much of what came in was kept.
 
-The number derkus asked for. Its honesty rests on two things the class
+The number a user asked for. Its honesty rests on two things the class
 partition provides:
 
 - growth inside a tracked account is `investment_return`, not saving, so the

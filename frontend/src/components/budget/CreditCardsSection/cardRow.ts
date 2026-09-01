@@ -169,3 +169,49 @@ export function rideMonths(card: CardStatus, limit = 3): RideMonths {
     retired: Math.max(0, Math.round((gross - card.riding) * 100) / 100),
   }
 }
+
+/**
+ * What the legs list says when all five of them are zero.
+ *
+ * "Nothing has moved through this card yet" is true of a card nobody has used
+ * and flatly false of a card carrying a balance whose spending was never filed
+ * to an envelope — a card printed that line directly above "Charged
+ * $2,400.00", contradicting itself inside one panel.
+ *
+ * The five legs are the **reserve**, not the card. A busy card reserves
+ * nothing when its charges are uncategorized (nothing to set aside against)
+ * and nothing has been assigned to it, which is exactly the state that reads
+ * as the whole balance uncovered.
+ */
+export function emptyLegsNote(card: CardStatus): string {
+  const untouched =
+    card.balance === 0 && card.charged_this_month === 0 && card.debt_change_this_month === 0
+  return untouched
+    ? 'Nothing has moved through this card yet.'
+    : 'Nothing has been set aside for this card yet — nothing assigned to it, and no spending on it filed to a funded envelope.'
+}
+
+/**
+ * What to say about rows the bank still calls pending, or null when there are
+ * none.
+ *
+ * `POSTED` keeps provisional rows out of every money aggregate, so the month
+ * figures above and the balance beside them agree with each other — and both
+ * differ from the register, which lists a pending row the moment the bank
+ * mentions it. A user counting charges in the register found more than the
+ * panel showed, with nothing on screen accounting for the difference.
+ *
+ * Per CLAUDE.md the divergence is fine and the silence is not: this names it
+ * and the amount bounds it, so a gap that widens says so instead of
+ * accumulating quietly. Deliberately NOT added to the figures above — a
+ * pending amount is provisional and often arrives changed.
+ */
+export function pendingNote(card: CardStatus, money: Money): string | null {
+  const pending = card.pending_this_month
+  if (pending === 0) return null
+  const kind = pending < 0 ? 'of charges' : 'of credits'
+  return (
+    `Posted rows only. ${money(Math.abs(pending))} ${kind} on this card ` +
+    `is still pending, so the register shows more than this.`
+  )
+}

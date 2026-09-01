@@ -65,6 +65,15 @@ async def _transactions(session, budget_id) -> list[Transaction]:
     return list(result.scalars().all())
 
 
+#: The one element that is deliberately per-tier, and why. The two households
+#: charge this card at different rates — about 340 a month in the starter and
+#: about 610 in the full — so a single payment cannot suit both: 600 overpaid
+#: the starter into a large credit balance, and 330 let the full tier pile up
+#: a five-figure one. Named here rather than exempted quietly, and bounded by
+#: the test below.
+TIER_VARIANT_TRANSFERS = {("Checking", "Sapphire Visa")}
+
+
 def test_starter_is_a_strict_subset_of_full():
     """Pure spec check: everything tagged for the starter is in the full tier
     too — the tiers can never drift apart."""
@@ -80,8 +89,26 @@ def test_starter_is_a_strict_subset_of_full():
         "liabilities",
     ):
         for element in getattr(SAMPLE_BUDGET, field):
+            route = (
+                (getattr(element, "from_account", None), getattr(element, "to_account", None))
+                if field == "transfers"
+                else None
+            )
+            if route in TIER_VARIANT_TRANSFERS:
+                continue
             if "starter" in element.tiers:
                 assert "full" in element.tiers, f"{field}: {element} is starter-only"
+
+
+def test_the_tier_variant_is_exactly_one_transfer_per_tier():
+    """Bound on the exception above. A variant is a pair — one per tier, same
+    route, same day — not a licence for the tiers to drift on this route."""
+    for route in TIER_VARIANT_TRANSFERS:
+        legs = [t for t in SAMPLE_BUDGET.transfers if (t.from_account, t.to_account) == route]
+        assert sorted(t.tiers for t in legs) == [("full",), ("starter",)], (
+            f"{route} must be exactly one transfer per tier, got {[t.tiers for t in legs]}"
+        )
+        assert len({t.day for t in legs}) == 1, f"{route} legs fall on different days"
 
 
 async def test_full_tier_shape_and_texture(db_session):
@@ -91,7 +118,8 @@ async def test_full_tier_shape_and_texture(db_session):
     counts = gen.result
 
     accounts = await AccountRepository(db_session).get_all(budget.id, include_closed=True)
-    assert counts.accounts == 16
+    # Ten household accounts plus the eight card-shape demos.
+    assert counts.accounts == 24
     types = {a.account_type for a in accounts}
     assert {
         "checking",
@@ -157,7 +185,8 @@ async def test_full_tier_liabilities(db_session):
     liabilities = {item.name: item for item in await liability_repo.get_all(budget.id)}
     # Four from the spec plus the Visa's companion: a liability-classified
     # account without one is the dead-end state this model exists to remove.
-    assert len(liabilities) == 5
+    # Five household debts plus a companion for each of the eight demo cards.
+    assert len(liabilities) == 13
     for account in await AccountRepository(db_session).get_all(budget.id, include_closed=True):
         if account.classification == "liability":
             assert await liability_repo.get_by_linked_account(account.id) is not None, account.name
@@ -194,7 +223,14 @@ async def test_full_tier_keeps_starter_invariants(db_session):
 
     categories = await CategoryRepository(db_session).get_all(budget.id, include_archived=True)
     names = {c.id: c.name for c in categories}
-    overspent = [names[b.category_id] for b in summary.category_balances if b.available < 0]
+    # Card payment envelopes excluded, as in the starter suite: a card whose
+    # reserve is negative is a card-section state, not an overspent envelope,
+    # and one of the demo cards exists precisely to show that.
+    overspent = [
+        names[b.category_id]
+        for b in summary.category_balances
+        if b.available < 0 and not b.is_card_payment
+    ]
     assert overspent == ["Dining Out"]
 
     report = await IntegrityService(db_session).run(budget.id)
@@ -225,6 +261,6 @@ async def test_endpoint_accepts_the_tier(api_client):
     )
     assert response.status_code == 201, response.text
     counts = response.json()["counts"]
-    assert counts["accounts"] == 16
+    assert counts["accounts"] == 24
     assert counts["transactions"] > 1500
-    assert counts["liabilities"] == 5
+    assert counts["liabilities"] == 13
