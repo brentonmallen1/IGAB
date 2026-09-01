@@ -137,7 +137,9 @@ export function EssentialsReport({ budgetId }: Props) {
                 <MetricCard
                   label="Worst month"
                   value={formatMoney(worst.total)}
-                  sub={formatMonth(worst.month)}
+                  sub={`${formatMonth(worst.month)} — ×${rangeHigh} reserve: ${formatMoney(
+                    worst.total * rangeHigh
+                  )}`}
                 />
               )}
             </div>
