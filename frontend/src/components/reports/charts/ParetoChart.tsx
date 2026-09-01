@@ -18,6 +18,7 @@ import { useChartHeight } from '../../../hooks/useChartHeight'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { DrillDownTable } from '../DrillDownTable'
 import { MetricCard } from '../MetricCard'
+import { MetricRow } from '../MetricRow'
 import { ReportErrorState } from '../ReportErrorState'
 import { CHART_COLORS, COLOR_NEGATIVE, chartColor } from './chartColors'
 import {
@@ -268,7 +269,7 @@ export function ParetoReport({ budgetId }: Props) {
 
       <div ref={captureRef} className="report-capture">
         {grandTotal > 0 && (
-          <div className="report-metrics">
+          <MetricRow>
             <MetricCard label="Total Spending" value={formatMoney(grandTotal)} />
             {idx80 >= 0 && (
               <MetricCard
@@ -282,7 +283,7 @@ export function ParetoReport({ budgetId }: Props) {
                 warning={adherence ? !adherence.adherent : false}
               />
             )}
-          </div>
+          </MetricRow>
         )}
 
         {chartData.length === 0 ? (

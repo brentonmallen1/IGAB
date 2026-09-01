@@ -47,25 +47,58 @@ class ChangeLogRepository(BaseRepository[ChangeLog]):
         )
         return list(result.scalars().all())
 
-    async def latest_undone(self, budget_id: uuid.UUID) -> ChangeLog | None:
-        """The most recently undone row — the redo candidate."""
+    async def latest_live_manual(self, budget_id: uuid.UUID) -> ChangeLog | None:
+        """The newest live change a bare ⌘Z may take back: manual rows only.
+
+        Selection lives here, not on the client — the client used to pick
+        from a 20-row window it fetched separately, which raced background
+        writers and starved on a page of already-undone rows. Background and
+        import sources are skipped: a SimpleFIN sync or an AI job landing
+        between the user's action and their ⌘Z must not be what gets undone.
+        Those rows keep their own explicit undo surfaces (the import toast,
+        the Activity page, which can undo anything by id)."""
         result = await self.session.execute(
             select(ChangeLog)
-            .where(ChangeLog.budget_id == budget_id, ChangeLog.undone_at.is_not(None))
-            .order_by(ChangeLog.undone_at.desc(), ChangeLog.seq.desc())
+            .where(
+                ChangeLog.budget_id == budget_id,
+                ChangeLog.undone_at.is_(None),
+                ChangeLog.source == "manual",
+            )
+            .order_by(ChangeLog.seq.desc())
             .limit(1)
         )
         return result.scalars().first()
 
-    async def count_live_after(self, budget_id: uuid.UUID, since) -> int:
-        """Live rows recorded after `since` — a new action empties the redo stack."""
+    async def latest_undone(self, budget_id: uuid.UUID) -> ChangeLog | None:
+        """The most recently undone row — the redo candidate.
+
+        Ordered by `undo_seq`, never `undone_at`: undone_at is the
+        transaction timestamp, identical for every row one request undoes,
+        and the old seq tie-break picked the NEWEST seq of a multi-row
+        revert — the wrong end, since redo must replay the most recently
+        undone (oldest-seq) row first. nulls_last() is a belt for rows
+        undone before the column existed and missed by the backfill."""
+        result = await self.session.execute(
+            select(ChangeLog)
+            .where(ChangeLog.budget_id == budget_id, ChangeLog.undone_at.is_not(None))
+            .order_by(ChangeLog.undo_seq.desc().nulls_last(), ChangeLog.seq.desc())
+            .limit(1)
+        )
+        return result.scalars().first()
+
+    async def count_live_after_seq(self, budget_id: uuid.UUID, seq: int) -> int:
+        """Live rows with a higher `seq` — a new action empties the redo
+        stack, and a redo may never replay a row underneath a newer live
+        change. Keyed on seq, the log's one total order; the old form
+        compared `created_at` against `undone_at`, two clocks that agree
+        only by luck."""
         result = await self.session.execute(
             select(func.count())
             .select_from(ChangeLog)
             .where(
                 ChangeLog.budget_id == budget_id,
                 ChangeLog.undone_at.is_(None),
-                ChangeLog.created_at > since,
+                ChangeLog.seq > seq,
             )
         )
         return int(result.scalar_one())

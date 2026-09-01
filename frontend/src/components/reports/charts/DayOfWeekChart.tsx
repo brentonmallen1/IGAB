@@ -16,6 +16,7 @@ import { useChartHeight } from '../../../hooks/useChartHeight'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
 import { MetricCard } from '../MetricCard'
+import { MetricRow } from '../MetricRow'
 import { CHART_COLORS, TOOLTIP_STYLE } from './chartColors'
 import { ReportInfoButton, ReportScopeNote, SpendingClassNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
@@ -140,7 +141,7 @@ export function DayPatternsReport({ budgetId }: Props) {
 
         <div ref={captureRef} className="report-capture">
           {hasSpending && maxDay && minDay && (
-            <div className="report-metrics">
+            <MetricRow>
               <MetricCard
                 label="Highest Spending Day"
                 value={maxDay.day_name}
@@ -151,7 +152,7 @@ export function DayPatternsReport({ budgetId }: Props) {
                 value={minDay.day_name}
                 sub={formatMoney(minDay.total)}
               />
-            </div>
+            </MetricRow>
           )}
 
           {/* Before the empty state, not after: when the selection is all savings
@@ -261,7 +262,7 @@ export function DayPatternsReport({ budgetId }: Props) {
           </div>
         ) : (
           <>
-            <div className="report-metrics">
+            <MetricRow>
               <MetricCard
                 label="Baseline Daily"
                 value={formatMoney(paydayBaseline)}
@@ -274,7 +275,7 @@ export function DayPatternsReport({ budgetId }: Props) {
                   sub={formatMoney(paydayPeakDay.avg_spend)}
                 />
               )}
-            </div>
+            </MetricRow>
 
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={paydayChartData} margin={{ top: 8, right: 20, left: 0, bottom: 8 }}>

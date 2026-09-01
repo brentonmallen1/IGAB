@@ -36,6 +36,10 @@ export function actionTypeLabel(action: string): string {
       return 'Merged'
     case 'reorder':
       return 'Reordered'
+    case 'archive':
+      return 'Archived'
+    case 'unarchive':
+      return 'Unarchived'
     default:
       return action
   }

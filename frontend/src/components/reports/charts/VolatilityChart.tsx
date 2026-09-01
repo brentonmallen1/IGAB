@@ -68,8 +68,9 @@ export function VolatilityReport({ budgetId }: Props) {
         <h2 className="report-section__title">Category Volatility</h2>
         <ReportInfoButton title="Category Volatility">
           <p>
-            The <strong>bar</strong> shows the mean monthly spend. The <strong>error bars</strong>{' '}
-            extend from the historical minimum to maximum, showing the full range of variation.
+            The <strong>bar</strong> shows the mean monthly spend. The <strong>whiskers</strong>{' '}
+            extend from the historical minimum (drawn on the bar) to the maximum (drawn beside it) —
+            the full range of variation.
           </p>
           <p>
             Categories with large error bars (wide range) are <strong>unpredictable</strong> — they
@@ -137,11 +138,26 @@ export function VolatilityReport({ budgetId }: Props) {
                 {...TOOLTIP_STYLE}
               />
               <Bar dataKey="Mean" fill={COLOR_NEUTRAL} barSize={12} radius={[0, 2, 2, 0]}>
+                {/* Two one-sided whiskers, because they land on two different
+                    backgrounds: mean→min is drawn INSIDE the bar fill
+                    (--chart-neutral), mean→max on the section surface. One
+                    stroke cannot read on both — --text-secondary vanished on
+                    the fill in every theme. --bg-primary vs --color-info is
+                    ≥4.5:1 wherever the palette passes its own text checks
+                    (contrast is symmetric); both pairs are pinned in
+                    themes/contrast.test.ts. */}
                 <ErrorBar
-                  dataKey="errorY"
-                  width={4}
+                  dataKey="errorLow"
+                  width={8}
                   strokeWidth={2}
-                  stroke="var(--text-secondary)"
+                  stroke="var(--bg-primary)"
+                  direction="x"
+                />
+                <ErrorBar
+                  dataKey="errorHigh"
+                  width={8}
+                  strokeWidth={2}
+                  stroke="var(--text-primary)"
                   direction="x"
                 />
               </Bar>

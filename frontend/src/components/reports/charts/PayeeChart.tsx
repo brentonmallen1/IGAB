@@ -15,6 +15,7 @@ import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
 import { DrillDownTable } from '../DrillDownTable'
 import { MetricCard } from '../MetricCard'
+import { MetricRow } from '../MetricRow'
 import { CHART_COLORS, TOOLTIP_STYLE } from './chartColors'
 import { ReportInfoButton, ReportScopeNote, SpendingClassNote } from '../ReportInfoButton'
 import { LogScaleToggle, logAxisProps } from './logScale'
@@ -135,11 +136,11 @@ export function PayeeReport({ budgetId }: Props) {
 
       <div ref={captureRef} className="report-capture">
         {payees.length > 0 && (
-          <div className="report-metrics">
+          <MetricRow>
             <MetricCard label="Total Payees" value={String(payees.length)} />
             <MetricCard label="Recurring Payees" value={String(recurring.length)} />
             <MetricCard label="Total Spent" value={formatMoney(grandTotal)} />
-          </div>
+          </MetricRow>
         )}
 
         {chartData.length === 0 ? (

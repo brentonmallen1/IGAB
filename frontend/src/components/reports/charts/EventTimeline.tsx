@@ -5,6 +5,7 @@ import { usePayees } from '../../../api/payees'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
 import { MetricCard } from '../MetricCard'
+import { MetricRow } from '../MetricRow'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import './EventTimeline.css'
@@ -122,10 +123,10 @@ export function TimelineReport({ budgetId }: Props) {
 
       <div ref={captureRef} className="report-capture">
         {transactions.length > 0 && (
-          <div className="report-metrics">
+          <MetricRow>
             <MetricCard label="Largest Transaction" value={formatMoney(largestAmt)} />
             <MetricCard label="Shown" value={`${transactions.length} transactions`} />
-          </div>
+          </MetricRow>
         )}
 
         {transactions.length === 0 ? (

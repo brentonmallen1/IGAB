@@ -15,6 +15,7 @@ import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
 import { ChartTooltip } from './ChartTooltip'
 import { MetricCard } from '../MetricCard'
+import { MetricRow } from '../MetricRow'
 import { COLOR_NEGATIVE, COLOR_NET, COLOR_POSITIVE } from './chartColors'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
@@ -80,11 +81,11 @@ export function NetWorthReport({ budgetId }: Props) {
 
       <div ref={captureRef} className="report-capture">
         {latest && (
-          <div className="report-metrics">
+          <MetricRow>
             <MetricCard label="Current Net Worth" value={formatMoney(latest.net_worth)} />
             <MetricCard label="Total Assets" value={formatMoney(latest.total_assets)} />
             <MetricCard label="Total Liabilities" value={formatMoney(latest.total_liabilities)} />
-          </div>
+          </MetricRow>
         )}
         {Number(data?.unmanaged_liability_total ?? 0) > 0 && (
           <p className="report-section__subtitle">

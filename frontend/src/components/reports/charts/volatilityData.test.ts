@@ -29,6 +29,14 @@ describe('buildVolatilityChartRows', () => {
     expect(row.Max).toBe(150)
   })
 
+  it('splits the range into one-sided spans, one per background', () => {
+    // The low whisker is drawn on the bar fill, the high one on the plot —
+    // two colours, so two spans that together are exactly errorY.
+    const [row] = buildVolatilityChartRows([cat()])
+    expect(row.errorLow).toEqual([40, 0])
+    expect(row.errorHigh).toEqual([0, 50])
+  })
+
   it('caps the chart at topN rows', () => {
     const many = Array.from({ length: 25 }, (_, i) => cat({ category_id: `c${i}` }))
     expect(buildVolatilityChartRows(many)).toHaveLength(20)

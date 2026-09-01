@@ -29,7 +29,6 @@ import { useIsMobile } from '../../../hooks/useMediaQuery'
 import { useLongPress } from '../../../hooks/useLongPress'
 import { useTransactionEditStore, type EditableField } from '../../../stores/transactionEditStore'
 import { nextEditableField } from './fieldOrder'
-import { useHistoryStore } from '../../../stores/historyStore'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { SHORTCUTS, formatCombo } from '../../../keyboard/shortcuts'
 import { useToastUndo } from '../../../utils/toastUndo'
@@ -269,11 +268,6 @@ export const TransactionRow = memo(function TransactionRow({
 
   function commitField(field: string, value: unknown) {
     if (value !== undefined) {
-      useHistoryStore.getState().push({
-        transactionId: txn.id,
-        field,
-        before: txn[field as keyof typeof txn],
-      })
       updateTxn.mutate({ id: txn.id, [field]: value } as Parameters<typeof updateTxn.mutate>[0])
     }
     stopEditing()
@@ -282,11 +276,6 @@ export const TransactionRow = memo(function TransactionRow({
   function commitAmount(raw: string, sign: 1 | -1) {
     const num = parseAmountExpressionInput(raw)
     if (!isNaN(num) && num !== 0) {
-      useHistoryStore.getState().push({
-        transactionId: txn.id,
-        field: 'amount',
-        before: txn.amount,
-      })
       updateTxn.mutate({ id: txn.id, amount: num * sign })
     }
     stopEditing()

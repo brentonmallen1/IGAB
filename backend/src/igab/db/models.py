@@ -15,6 +15,7 @@ from sqlalchemy import (
     Index,
     Integer,
     Numeric,
+    Sequence,
     String,
     Table,
     Text,
@@ -733,6 +734,12 @@ class BudgetMove(Base):
 # ─── Change Log (undo/audit) ──────────────────────────────────────────────────
 
 
+#: Stamps `ChangeLog.undo_seq` at undo time (see that column). Declared on
+#: the metadata so `create_all` (tests, fresh installs) creates it alongside
+#: the table; migration c4e8b2a71d59 creates it for existing databases.
+CHANGE_LOG_UNDO_SEQ = Sequence("change_log_undo_seq", metadata=Base.metadata)
+
+
 class ChangeLog(Base):
     """Audit log of user-visible mutations, with enough state to undo them.
 
@@ -747,6 +754,10 @@ class ChangeLog(Base):
     __table_args__ = (
         Index("ix_change_log_budget_created", "budget_id", "created_at"),
         Index("ix_change_log_batch", "batch_id"),
+        # Every hot selection (latest live, live-after, batch) filters on
+        # budget_id and sorts by seq; (budget_id, created_at) cannot serve
+        # that and the log only grows.
+        Index("ix_change_log_budget_seq", "budget_id", "seq"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
@@ -773,6 +784,14 @@ class ChangeLog(Base):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True
     )
     undone_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Redo-stack order. `undone_at` is func.now() — the TRANSACTION timestamp,
+    # identical for every row one request undoes — so a multi-row "revert to
+    # here" left the redo candidate ambiguous, and tie-breaking by `seq` picked
+    # the WRONG end (redo must replay the most recently undone row first,
+    # which is the OLDEST seq of the reverted run). Stamped from its own
+    # sequence (`change_log_undo_seq`) when a row is undone, cleared again on
+    # redo; NULL means live.
+    undo_seq: Mapped[int | None] = mapped_column(BigInteger)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

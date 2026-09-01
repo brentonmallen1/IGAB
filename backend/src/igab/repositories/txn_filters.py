@@ -28,7 +28,7 @@ from igab.db.models import (
     category_tags,
     payee_tags,
 )
-from igab.repositories.category_filters import SPENDABLE
+from igab.repositories.category_filters import SPENDABLE, SPENT_ENVELOPE
 
 NOT_DELETED = Transaction.is_deleted == False  # noqa: E712
 POSTED = Transaction.cleared != "pending"
@@ -511,3 +511,40 @@ def payee_tagged(*system_keys: str):
 #: tagged Essential. Evaluated only by TransactionRepository.essential_spend*
 #: — the Guide, the Overview card and the Essentials report all read those.
 ESSENTIAL_TAGGED = or_(category_tagged("essential"), payee_tagged("essential"))
+
+
+#: A row that spends planned money: what plan-vs-actual reports may count as
+#: "spent" against what `BUDGETED_ENVELOPE` counts as "assigned".
+#:
+#: This predicate existed twice — byte-identical, in `cumulative_variance` and
+#: `budget_vs_actual` — and both copies were missing the same three terms, so
+#: each subtracted a bigger spending universe from a smaller planning one:
+#:
+#: - `ON_BUDGET_ACCOUNT`: categorized rows on tracking accounts counted as
+#:   spent; nothing is ever assigned against a tracking account.
+#: - `row_category(SPENT_ENVELOPE)`: rows filed into system-group categories
+#:   counted as spent while `BUDGETED_ENVELOPE` excludes them from assigned.
+#:   Deleted categories stay IN, exactly as `SPENT_ENVELOPE` documents — the
+#:   money moved, and deleting the envelope afterwards does not unspend it.
+#:   The EXISTS also absorbs `category_id IS NOT NULL`: a NULL category
+#:   matches no Category row.
+#: - The activity-class filter, which cannot live here: callers add
+#:   `_spending_classes()` AND `apply_class_joins`, because the predicate and
+#:   the joins must travel together (see `_spending_classes`' docstring — a
+#:   query with the class filter and no joins is a cartesian product).
+#:   Without it, a categorized brokerage transfer (SAVINGS) or a mortgage
+#:   principal payment (DEBT_PRINCIPAL) counted as spending with no matching
+#:   assignment, and cumulative variance compounded the gap every month.
+#:
+#: One divergence is deliberate and stays: `amount < 0` means a refund posted
+#: to a spending category never reduces "spent". Pinned by test rather than
+#: silently changed — flipping it would move every historical variance figure.
+PLANNED_SPEND_ROW = and_(
+    NOT_DELETED,
+    POSTED,
+    Transaction.amount < 0,
+    LEAF,
+    CASH_FLOW_ROW,
+    ON_BUDGET_ACCOUNT,
+    row_category(SPENT_ENVELOPE),
+)
