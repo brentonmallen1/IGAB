@@ -8,11 +8,7 @@ import {
   Info,
   TrendingDown,
 } from 'lucide-react'
-import {
-  useBudgetMonth,
-  useCardTimeline,
-  useSetAssignment,
-} from '../../../api/budgets'
+import { useBudgetMonth, useCardTimeline, useSetAssignment } from '../../../api/budgets'
 import type { CardTimelineBreach } from '../../../api/budgets'
 import { useLiabilities } from '../../../api/liabilities'
 import { useTarget } from '../../../api/targets'
@@ -269,7 +265,11 @@ function ReserveHistory({
           {breachSentence(data.breach, formatMoney, formatMonth)}
         </p>
       )}
-      <div className="credit-cards__history-scroll" role="table" aria-label={`Ready to pay by month for ${card.name}`}>
+      <div
+        className="credit-cards__history-scroll"
+        role="table"
+        aria-label={`Ready to pay by month for ${card.name}`}
+      >
         <div className="credit-cards__history-row credit-cards__history-head" role="row">
           <span role="columnheader">Month</span>
           <span role="columnheader" className="credit-cards__col--num">
