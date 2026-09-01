@@ -782,6 +782,20 @@ class SampleBudgetGenerator:
                 continue
             balance = card_balances.get(card_id, _ZERO)
             position = card_position(set_aside, balance)
+            # The month ledger off the rows actually inserted — the same
+            # posted-parent-row terms `card_month_flows` sums, so an event
+            # generated into the wrong month fails here, in the generator,
+            # before any test reads the served summary.
+            month_rows = [
+                r
+                for r in inserted
+                if r["account_id"] == card_id
+                and not r["is_split"]
+                and r["date"].replace(day=1) == current_month
+                and r.get("cleared") != "pending"
+            ]
+            charged = -sum((r["amount"] for r in month_rows if r["amount"] < _ZERO), _ZERO)
+            inflows = sum((r["amount"] for r in month_rows if r["amount"] > _ZERO), _ZERO)
             differences = scenario.expect.differences(
                 ExpectedPosition(
                     balance=balance,
@@ -791,6 +805,10 @@ class SampleBudgetGenerator:
                     short_reserved=position.short_reserved,
                     card_credit=position.card_credit,
                     riding=sum_through(funding.riding_by_card.get(card_id, {}), current_month),
+                    charged_this_month=charged,
+                    inflows_this_month=inflows,
+                    paid_this_month=payments.get(card_id, {}).get(current_month, _ZERO),
+                    debt_change_this_month=inflows - charged,
                 )
             )
             assert not differences, (

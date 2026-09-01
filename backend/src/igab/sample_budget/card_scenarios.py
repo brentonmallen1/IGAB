@@ -125,6 +125,17 @@ class ExpectedPosition:
     #: their balance for reasons the identity's bounds accept, and that is the
     #: point: a row keyed on this number says nothing about them.
     reserve_discrepancy: Decimal = ZERO
+    #: The anchor month off the card's own ledger — the four figures the
+    #: breakdown's "This month" block quotes. Hand-written like everything
+    #: else here; an inflow is what this model has been bitten by twice, and
+    #: before these fields existed the month arithmetic was asserted nowhere
+    #: in the suite. `debt_change_this_month` is signed, positive = shrank;
+    #: the other three are magnitudes, and the identity the panel renders is
+    #: inflows − charged == debt_change.
+    charged_this_month: Decimal | None = None
+    inflows_this_month: Decimal | None = None
+    paid_this_month: Decimal | None = None
+    debt_change_this_month: Decimal | None = None
 
     def differences(self, actual: "ExpectedPosition") -> dict[str, tuple]:
         """Fields where `actual` disagrees with what this scenario claims.
@@ -268,10 +279,21 @@ def walk(scenario: CardScenario, anchor: date, through: date | None = None) -> E
     reserve = card_reserve(funding, scenario.card, inputs.payments)
     set_aside = reserve.set_aside(month)
     position = card_position(set_aside, inputs.balance)
+    # The month ledger, summed straight off the events — deliberately a
+    # different path from the SQL (`card_month_flows`) the served figure
+    # takes, so the two check each other through the shared expectations.
+    month_events = [e for e in scenario.events if e.month(anchor) == month]
+    charged = sum((e.amount for e in month_events if e.kind in ("spend", "charge")), ZERO)
+    inflows = sum((e.amount for e in month_events if e.kind in ("refund", "pay", "deposit")), ZERO)
+    paid = sum((e.amount for e in month_events if e.kind == "pay"), ZERO)
     return ExpectedPosition(
         balance=inputs.balance,
         set_aside=set_aside,
         uncovered=position.uncovered,
+        charged_this_month=charged,
+        inflows_this_month=inflows,
+        paid_this_month=paid,
+        debt_change_this_month=inflows - charged,
         over_reserved=position.over_reserved,
         short_reserved=position.short_reserved,
         card_credit=position.card_credit,
@@ -368,6 +390,12 @@ PAID_IN_FULL = CardScenario(
         balance=_d("-200"),
         set_aside=_d("200"),
         uncovered=_d("0"),
+        # 200 spent, the 200 payment received the same day: the debt this
+        # month net-moved not at all.
+        charged_this_month=_d("200"),
+        inflows_this_month=_d("200"),
+        paid_this_month=_d("200"),
+        debt_change_this_month=_d("0"),
     ),
 )
 
@@ -401,6 +429,11 @@ CARRYING_DEBT = CardScenario(
         balance=_d("-2600"),
         set_aside=_d("350"),
         uncovered=_d("2250"),
+        # The anchor month's payment has not gone out yet — only the spend.
+        charged_this_month=_d("100"),
+        inflows_this_month=_d("0"),
+        paid_this_month=_d("0"),
+        debt_change_this_month=_d("-100"),
     ),
 )
 
@@ -432,6 +465,10 @@ MONTH_ENDED_SHORT = CardScenario(
         set_aside=_d("100"),
         uncovered=_d("60"),
         riding=_d("60"),
+        charged_this_month=_d("80"),
+        inflows_this_month=_d("0"),
+        paid_this_month=_d("0"),
+        debt_change_this_month=_d("-80"),
     ),
 )
 
@@ -468,6 +505,10 @@ OVER_RESERVED = CardScenario(
         set_aside=_d("1250"),
         uncovered=_d("0"),
         over_reserved=_d("1200"),
+        charged_this_month=_d("50"),
+        inflows_this_month=_d("0"),
+        paid_this_month=_d("0"),
+        debt_change_this_month=_d("-50"),
     ),
     tiers=("full",),
 )
@@ -502,6 +543,10 @@ REIMBURSED = CardScenario(
         set_aside=_d("-100"),
         uncovered=_d("1900"),
         short_reserved=_d("100"),
+        charged_this_month=_d("200"),
+        inflows_this_month=_d("0"),
+        paid_this_month=_d("0"),
+        debt_change_this_month=_d("-200"),
     ),
     tiers=("full",),
 )
@@ -535,6 +580,10 @@ CREDIT_BALANCE = CardScenario(
         uncovered=_d("0"),
         short_reserved=_d("220"),
         card_credit=_d("220"),
+        charged_this_month=_d("60"),
+        inflows_this_month=_d("0"),
+        paid_this_month=_d("0"),
+        debt_change_this_month=_d("-60"),
     ),
     tiers=("full",),
 )
@@ -567,6 +616,10 @@ UNFILED_SPENDING = CardScenario(
         balance=_d("-600"),
         set_aside=_d("0"),
         uncovered=_d("600"),
+        charged_this_month=_d("100"),
+        inflows_this_month=_d("0"),
+        paid_this_month=_d("0"),
+        debt_change_this_month=_d("-100"),
     ),
     tiers=("full",),
 )
@@ -601,6 +654,10 @@ UNLINKED_PAYMENT = CardScenario(
         balance=_d("-400"),
         set_aside=_d("200"),
         uncovered=_d("200"),
+        charged_this_month=_d("100"),
+        inflows_this_month=_d("0"),
+        paid_this_month=_d("0"),
+        debt_change_this_month=_d("-100"),
     ),
     tiers=("full",),
 )
@@ -634,10 +691,16 @@ PAID_AHEAD_THEN_CAUGHT_UP = CardScenario(
     # -150 at the end of the first month (100 reserved, 250 paid) and +50
     # after the second. The 300 of pre-budget debt was never categorized, so
     # every cent of what the card still owes is uncovered.
+    # The anchor month holds only the 50 payment: nothing charged, the
+    # payment is the card's one credit, and the debt steps -350 -> -300.
     expect=ExpectedPosition(
         balance=_d("-300"),
         set_aside=_d("0"),
         uncovered=_d("300"),
+        charged_this_month=_d("0"),
+        inflows_this_month=_d("50"),
+        paid_this_month=_d("50"),
+        debt_change_this_month=_d("50"),
     ),
     tiers=("full",),
 )

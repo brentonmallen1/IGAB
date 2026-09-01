@@ -466,6 +466,10 @@ class CardStatusOut(ApiModel):
     #: positive when the debt shrank. Required — every leg above is a lifetime
     #: total, so a client cannot derive a month from them.
     charged_this_month: Decimal
+    #: Every credit the ledger took this month; `paid_this_month` is the
+    #: paired-transfer subset. Required — a path that forgot it would report
+    #: a card's credits as zero, not raise.
+    inflows_this_month: Decimal
     paid_this_month: Decimal
     debt_change_this_month: Decimal
     #: Signed net of rows the bank still calls pending. `POSTED` keeps them out

@@ -3,7 +3,7 @@ import {
   reserveNote,
   debtMovement,
   rideMonths,
-  unexplainedInflow,
+  otherCredits,
   emptyLegsNote,
   pendingNote,
 } from './cardRow'
@@ -34,6 +34,7 @@ function card(over: Partial<CardStatus> = {}): CardStatus {
     short_reserved: 0,
     card_credit: 0,
     charged_this_month: 0,
+    inflows_this_month: 0,
     paid_this_month: 0,
     debt_change_this_month: 0,
     pending_this_month: 0,
@@ -191,41 +192,28 @@ describe('rideMonths', () => {
   })
 })
 
-describe('unexplainedInflow', () => {
-  it('is zero when the month reconciles', () => {
-    // 412 charged, 640 paid, debt down 228: nothing else arrived.
-    expect(
-      unexplainedInflow(
-        card({ charged_this_month: 412, paid_this_month: 640, debt_change_this_month: 228 })
-      )
-    ).toBe(0)
+describe('otherCredits', () => {
+  it('is zero when everything received was a paired payment', () => {
+    // 640 arrived, all of it the transfer from checking: nothing else came.
+    expect(otherCredits(card({ inflows_this_month: 640, paid_this_month: 640 }))).toBe(0)
   })
 
   it('names a payment recorded as a deposit rather than a transfer', () => {
-    // The balance fell 300 with nothing paired against it. Only a transfer
-    // spends the reserve, so Ready to pay stood still while the card's debt
-    // dropped — one way a card ends up reserving far more than it owes.
-    expect(
-      unexplainedInflow(
-        card({ charged_this_month: 412, paid_this_month: 0, debt_change_this_month: -112 })
-      )
-    ).toBe(300)
+    // 300 arrived with nothing paired against it. Only a transfer spends the
+    // reserve, so Ready to pay stood still while the card's debt dropped —
+    // one way a card ends up reserving far more than it owes.
+    expect(otherCredits(card({ inflows_this_month: 300, paid_this_month: 0 }))).toBe(300)
   })
 
-  it('names a refund that was not a payment', () => {
-    expect(
-      unexplainedInflow(
-        card({ charged_this_month: 100, paid_this_month: 100, debt_change_this_month: 30 })
-      )
-    ).toBe(30)
+  it('names a refund beside a real payment', () => {
+    expect(otherCredits(card({ inflows_this_month: 130, paid_this_month: 100 }))).toBe(30)
   })
 
-  it('does not draw a note for a floating-point residue', () => {
-    expect(
-      unexplainedInflow(
-        card({ charged_this_month: 0.1, paid_this_month: 0.3, debt_change_this_month: 0.2 })
-      )
-    ).toBe(0)
+  it('rounds to cents — a difference of two served figures, never a plug', () => {
+    // The old computation (debt_change + charged − paid) was algebra over
+    // the other terms, so it could not fail to reconcile even when they
+    // were wrong. This one can, which is the point.
+    expect(otherCredits(card({ inflows_this_month: 0.3, paid_this_month: 0.1 }))).toBe(0.2)
   })
 })
 

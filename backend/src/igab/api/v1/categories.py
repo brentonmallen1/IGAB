@@ -767,6 +767,7 @@ async def get_budget_month(
                 short_reserved=c.short_reserved,
                 card_credit=c.card_credit,
                 charged_this_month=c.charged_this_month,
+                inflows_this_month=c.inflows_this_month,
                 paid_this_month=c.paid_this_month,
                 debt_change_this_month=c.debt_change_this_month,
                 pending_this_month=c.pending_this_month,

@@ -80,6 +80,12 @@ async def test_a_scenario_can_be_generated_on_its_own(db_session, scenario: Card
     assert card.uncovered == scenario.expect.uncovered
     assert card.card_credit == scenario.expect.card_credit
     assert card.reserve_discrepancy == Decimal("0")
+    # The month ledger the breakdown quotes, off rows the generator dated:
+    # an event generated into the wrong month shows up here first.
+    assert card.charged_this_month == scenario.expect.charged_this_month
+    assert card.inflows_this_month == scenario.expect.inflows_this_month
+    assert card.paid_this_month == scenario.expect.paid_this_month
+    assert card.debt_change_this_month == scenario.expect.debt_change_this_month
 
 
 async def test_all_six_shapes_on_one_budget(db_session):
