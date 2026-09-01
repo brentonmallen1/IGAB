@@ -19,6 +19,7 @@ import { ReportErrorState } from '../ReportErrorState'
 import { ChartTooltip } from './ChartTooltip'
 import { chartColor } from './chartColors'
 import { MetricCard } from '../MetricCard'
+import { MetricRow } from '../MetricRow'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { LogScaleToggle, logAxisProps } from './logScale'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
@@ -177,7 +178,7 @@ export function LiabilitiesReport({ budgetId }: Props) {
           </div>
         ) : (
           <>
-            <div className="report-metrics">
+            <MetricRow>
               {/* Every debt, on-budget credit cards included. The sidebar's
                   Liabilities section deliberately sums something narrower —
                   what that section lists, with cards counted under their own
@@ -200,7 +201,7 @@ export function LiabilitiesReport({ budgetId }: Props) {
                 }
               />
               <MetricCard label="Liabilities" value={String(data!.items.length)} />
-            </div>
+            </MetricRow>
 
             {chartPoints.length > 1 && (
               <ResponsiveContainer width="100%" height={280}>

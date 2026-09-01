@@ -17,6 +17,7 @@ import { ReportErrorState } from '../ReportErrorState'
 import { ChartTooltip } from './ChartTooltip'
 import { COLOR_NEGATIVE, COLOR_NET, COLOR_NEUTRAL, COLOR_POSITIVE } from './chartColors'
 import { MetricCard } from '../MetricCard'
+import { MetricRow } from '../MetricRow'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ReportRangeButtons } from './rangeButtons'
@@ -110,7 +111,7 @@ export function SavingsRateReport({ budgetId }: Props) {
 
       <div ref={captureRef} className="report-capture">
         {summary && (
-          <div className="report-metrics">
+          <MetricRow>
             <MetricCard
               label={withDebt ? 'Savings Rate (with debt)' : 'Savings Rate'}
               value={pct(withDebt ? summary.savings_rate_with_debt : summary.savings_rate)}
@@ -121,7 +122,7 @@ export function SavingsRateReport({ budgetId }: Props) {
               label="Debt Paid Down"
               value={formatMoney(Number(summary.debt_principal))}
             />
-          </div>
+          </MetricRow>
         )}
 
         {!hasAnything ? (

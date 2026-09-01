@@ -16,6 +16,7 @@ import { ReportErrorState } from '../ReportErrorState'
 import { ChartTooltip } from './ChartTooltip'
 import { COLOR_NEGATIVE, COLOR_NEUTRAL } from './chartColors'
 import { MetricCard } from '../MetricCard'
+import { MetricRow } from '../MetricRow'
 import { ReportInfoButton, ReportScopeNote, SpendingClassNote } from '../ReportInfoButton'
 import { LogScaleToggle, logAxisProps } from './logScale'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
@@ -82,10 +83,10 @@ export function BurnRateReport({ budgetId }: Props) {
 
       <div ref={captureRef} className="report-capture">
         {latest && (
-          <div className="report-metrics">
+          <MetricRow>
             <MetricCard label="Current 30-Day Burn" value={formatMoney(latest.rolling_30)} />
             <MetricCard label="Current 90-Day Avg" value={formatMoney(latest.rolling_90)} />
-          </div>
+          </MetricRow>
         )}
 
         {chartData.length === 0 ? (

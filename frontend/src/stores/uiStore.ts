@@ -102,8 +102,12 @@ interface UIState {
   transactionSearchQuery: string
 
   toggleGroupExpanded: (groupId: string) => void
+  /** Both scoped to the ids on screen, symmetrically: collapse-all used to
+   *  REPLACE the set (quietly expanding off-screen groups a filter hid) while
+   *  expand-all cleared it (quietly expanding them too). A group a view is
+   *  not showing keeps whatever fold the user gave it. */
   collapseAll: (groupIds: string[]) => void
-  expandAll: () => void
+  expandAll: (groupIds: string[]) => void
   openModal: (kind: ModalKind, editingId?: string | null) => void
   closeModal: () => void
   toggleSidebarCollapsed: () => void
@@ -215,8 +219,14 @@ export const useUIStore = create<UIState>()(
         set({ collapsedGroups: groups })
       },
 
-      collapseAll: (groupIds) => set({ collapsedGroups: new Set(groupIds) }),
-      expandAll: () => set({ collapsedGroups: new Set() }),
+      collapseAll: (groupIds) =>
+        set((s) => ({ collapsedGroups: new Set([...s.collapsedGroups, ...groupIds]) })),
+      expandAll: (groupIds) =>
+        set((s) => {
+          const groups = new Set(s.collapsedGroups)
+          for (const id of groupIds) groups.delete(id)
+          return { collapsedGroups: groups }
+        }),
       toggleCreditCardsCollapsed: () =>
         set((s) => ({ creditCardsCollapsed: !s.creditCardsCollapsed })),
 
@@ -447,17 +457,25 @@ export const useUIStore = create<UIState>()(
         // merge() below. Persisting the Set directly rehydrates a plain
         // object whose `.has` is undefined, which throws on first render.
         collapsedSidebarGroups: [...s.collapsedSidebarGroups],
+        // Budget-page group folds are the same kind of standing choice; they
+        // were the one fold that reset on every reload, by omission rather
+        // than argument.
+        collapsedGroups: [...s.collapsedGroups],
         // Folding the cards strip is the same kind of standing choice.
         creditCardsCollapsed: s.creditCardsCollapsed,
       }),
       merge: (persisted, current) => {
         const saved = (persisted ?? {}) as Partial<
-          Omit<UIState, 'collapsedSidebarGroups'> & { collapsedSidebarGroups: string[] }
+          Omit<UIState, 'collapsedSidebarGroups' | 'collapsedGroups'> & {
+            collapsedSidebarGroups: string[]
+            collapsedGroups: string[]
+          }
         >
         return {
           ...current,
           ...saved,
           collapsedSidebarGroups: new Set(saved.collapsedSidebarGroups ?? []),
+          collapsedGroups: new Set(saved.collapsedGroups ?? []),
         }
       },
     }

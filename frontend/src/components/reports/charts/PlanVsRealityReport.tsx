@@ -6,6 +6,7 @@ import { ReportErrorState } from '../ReportErrorState'
 import { abbreviateValue } from './seasonalityScale'
 import { monthWindow } from '../../../utils/dateWindow'
 import { MetricCard } from '../MetricCard'
+import { MetricRow } from '../MetricRow'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import type { PlanRealityCell } from '../../../types'
@@ -125,11 +126,11 @@ export function PlanVsRealityReport({ budgetId }: Props) {
 
       <div ref={captureRef} className="report-capture">
         {data && (
-          <div className="report-metrics">
+          <MetricRow>
             <MetricCard label="Total Assigned" value={formatMoney(data.total_assigned)} />
             <MetricCard label="Total Spent" value={formatMoney(data.total_spent)} />
             <MetricCard label="Chronically Over" value={String(data.chronic_count)} />
-          </div>
+          </MetricRow>
         )}
 
         {categories.length === 0 ? (

@@ -13,6 +13,7 @@ import {
 import { useEssentialsReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { MetricCard } from '../MetricCard'
+import { MetricRow } from '../MetricRow'
 import { ReportInfoButton } from '../ReportInfoButton'
 import { ReportErrorState } from '../ReportErrorState'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
@@ -115,7 +116,7 @@ export function EssentialsReport({ budgetId }: Props) {
           </div>
         ) : (
           <div ref={captureRef}>
-            <div className="overview-report__metrics-grid">
+            <MetricRow>
               <MetricCard
                 label="Essentials / month"
                 value={formatMoney(data.essentials_90d)}
@@ -142,7 +143,7 @@ export function EssentialsReport({ budgetId }: Props) {
                   )}`}
                 />
               )}
-            </div>
+            </MetricRow>
             <p className="essentials-report__note">
               Save targets, not balances — what you have set aside lives on the{' '}
               <Link to="/guide">roadmap</Link>.
