@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { reserveNote, debtMovement, rideMonths, unexplainedInflow } from './cardRow'
+import { reserveNote, debtMovement, rideMonths, unexplainedInflow, emptyLegsNote } from './cardRow'
 import type { CardStatus } from '../../../types'
 
 const money = (n: number) => `$${n.toFixed(2)}`
@@ -218,5 +218,32 @@ describe('unexplainedInflow', () => {
         card({ charged_this_month: 0.1, paid_this_month: 0.3, debt_change_this_month: 0.2 })
       )
     ).toBe(0)
+  })
+})
+
+describe('emptyLegsNote', () => {
+  it('says nothing has moved when the card really is untouched', () => {
+    const note = emptyLegsNote(
+      card({ balance: 0, charged_this_month: 0, debt_change_this_month: 0 })
+    )
+    expect(note).toContain('Nothing has moved through this card')
+  })
+
+  it('does not claim a card with a balance is untouched', () => {
+    // The real shape, rescaled: a card owing money whose every charge is
+    // uncategorized, so all five reserve legs are zero. The old copy printed
+    // "nothing has moved" directly above "Charged $2,400.00".
+    const note = emptyLegsNote(
+      card({ balance: -8200, charged_this_month: 2400, debt_change_this_month: 1500 })
+    )
+    expect(note).not.toContain('Nothing has moved')
+    expect(note).toContain('set aside')
+  })
+
+  it('does not claim a card that only took a credit is untouched', () => {
+    const note = emptyLegsNote(
+      card({ balance: 0, charged_this_month: 0, debt_change_this_month: 90 })
+    )
+    expect(note).not.toContain('Nothing has moved')
   })
 })

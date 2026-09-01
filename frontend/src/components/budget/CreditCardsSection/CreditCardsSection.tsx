@@ -15,7 +15,7 @@ import { TargetEditor } from '../TargetEditor'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { useUIStore } from '../../../stores/uiStore'
 import { parseAssignmentCommit } from '../../../utils/amountExpression'
-import { debtMovement, reserveNote, rideMonths, unexplainedInflow } from './cardRow'
+import { debtMovement, emptyLegsNote, reserveNote, rideMonths, unexplainedInflow } from './cardRow'
 import { Dialog } from '../../common/Dialog/Dialog'
 import { Surface } from '../../common/Surface'
 import { Link } from 'react-router-dom'
@@ -76,7 +76,7 @@ function ReserveLegs({
       <dl className="credit-cards__legs-list">
         {legs.length === 0 && (
           <div className="credit-cards__leg credit-cards__leg--empty">
-            <dt>Nothing has moved through this card yet.</dt>
+            <dt>{emptyLegsNote(card)}</dt>
           </div>
         )}
         {legs.map((leg) => (
@@ -94,36 +94,53 @@ function ReserveLegs({
       </dl>
       {/* This month, from the card's own ledger. The legs above are lifetime
         totals, so nothing here can be worked out from them — and the debt
-        falling is the one thing a paydown does that the strip never said. */}
-      {(card.charged_this_month !== 0 || card.paid_this_month !== 0) && (
+        falling is the one thing a paydown does that the strip never said.
+
+        Every term that moved the balance is a ROW. The reconciling credit
+        used to be prose underneath, which left three figures on screen that
+        visibly did not add up: a card read `charged 2,400`, `paid 0`,
+        `debt down 1,500`, and the 3,900 of credits that explains them sat in
+        a footnote. The explanation stays a footnote; the amount does not. */}
+      {(card.charged_this_month !== 0 ||
+        card.paid_this_month !== 0 ||
+        otherInflow !== 0 ||
+        card.debt_change_this_month !== 0) && (
         <dl className="credit-cards__legs-list credit-cards__legs-month">
           <div className="credit-cards__leg credit-cards__leg--heading">
             <dt>This month</dt>
           </div>
           <div className="credit-cards__leg">
             <dt>Charged</dt>
-            <dd className="tabular">{formatMoney(card.charged_this_month)}</dd>
+            <dd className="tabular">+ {formatMoney(card.charged_this_month)}</dd>
           </div>
           <div className="credit-cards__leg">
             <dt>Paid to the card</dt>
-            <dd className="tabular">{formatMoney(card.paid_this_month)}</dd>
+            <dd className="tabular">− {formatMoney(card.paid_this_month)}</dd>
           </div>
+          {otherInflow !== 0 && (
+            <div className="credit-cards__leg">
+              <dt>
+                Other credits<span className="credit-cards__footnote-mark">*</span>
+              </dt>
+              <dd className="tabular">− {formatMoney(otherInflow)}</dd>
+            </div>
+          )}
           <div className="credit-cards__leg credit-cards__leg--total">
             <dt>{card.debt_change_this_month >= 0 ? 'Debt down' : 'Debt up'}</dt>
             <dd className="tabular">{formatMoney(Math.abs(card.debt_change_this_month))}</dd>
           </div>
         </dl>
       )}
-      {/* Named, not left as a silent gap between the three figures above.
-        Only a transfer spends the card's reserve, so a payment recorded as a
-        plain deposit lowers the balance while Ready to pay stands still —
-        which is one way a card ends up reserving far more than it owes. */}
+      {/* The footnote explains the row above it; it no longer carries the
+        amount. Only a transfer spends the card's reserve, so a payment
+        recorded as a plain deposit lowers the balance while Ready to pay
+        stands still — which is one way a card ends up reserving far more
+        than it owes, and why this term is named rather than absorbed. */}
       {otherInflow !== 0 && (
         <p className="credit-cards__legs-note">
-          {formatMoney(otherInflow)} also came onto this card without being a payment from your own
-          accounts — a refund, a credit, or a payment recorded as a deposit rather than a transfer.
-          Only a transfer spends the reserve, so the three figures above do not reconcile by that
-          much.
+          <span className="credit-cards__footnote-mark">*</span> A refund, a credit, or a payment
+          recorded as a deposit rather than a transfer from one of your own accounts. Only a
+          transfer spends the reserve, so this lowers the balance while Ready to pay stands still.
         </p>
       )}
       {card.riding !== 0 && (

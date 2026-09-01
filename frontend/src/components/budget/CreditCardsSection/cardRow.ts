@@ -169,3 +169,24 @@ export function rideMonths(card: CardStatus, limit = 3): RideMonths {
     retired: Math.max(0, Math.round((gross - card.riding) * 100) / 100),
   }
 }
+
+/**
+ * What the legs list says when all five of them are zero.
+ *
+ * "Nothing has moved through this card yet" is true of a card nobody has used
+ * and flatly false of a card carrying a balance whose spending was never filed
+ * to an envelope — a card printed that line directly above "Charged
+ * $2,400.00", contradicting itself inside one panel.
+ *
+ * The five legs are the **reserve**, not the card. A busy card reserves
+ * nothing when its charges are uncategorized (nothing to set aside against)
+ * and nothing has been assigned to it, which is exactly the state that reads
+ * as the whole balance uncovered.
+ */
+export function emptyLegsNote(card: CardStatus): string {
+  const untouched =
+    card.balance === 0 && card.charged_this_month === 0 && card.debt_change_this_month === 0
+  return untouched
+    ? 'Nothing has moved through this card yet.'
+    : 'Nothing has been set aside for this card yet — nothing assigned to it, and no spending on it filed to a funded envelope.'
+}
