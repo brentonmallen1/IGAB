@@ -178,7 +178,7 @@ describe('the Ready to pay breakdown', () => {
 
     // The explanation stays a footnote; the amount does not live there.
     const note = document.querySelector('.credit-cards__legs-note')
-    expect(note?.textContent).toContain('recorded as a deposit')
+    expect(note?.textContent).toContain('never linked')
     expect(note?.textContent).not.toContain('3,900.00')
   })
 

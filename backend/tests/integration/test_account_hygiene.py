@@ -399,3 +399,100 @@ async def test_a_healthy_budget_reports_nothing(db_session):
 
     report = await AccountHygieneService(db_session).run(budget.id)
     assert report.clean, [f.kind for f in report.findings]
+
+
+class TestUnlinkedCardPayments:
+    """The gap between the two pairing rules.
+
+    `_unpaired_transfer_legs` finds rows whose PAYEE already names another
+    account. Two synced legs of one card payment arrive with ordinary bank
+    payees on both sides, so it never sees them — and `repair_transfers` is
+    payee-based too. The amount-based pass runs only over rows a sync just
+    created, so a budget that already holds both legs had no path to the
+    answer at all.
+
+    A real card read "paid to the card 0.00" against three payments totalling
+    five figures, all sitting in the "credits that came from nowhere" term.
+    Amounts here are invented and rescaled.
+    """
+
+    async def test_a_card_credit_matching_a_cash_debit_is_reported(self, db_session):
+        services, budget = await _world(db_session)
+        checking = await create_account(db_session, budget, "Checking")
+        card = await create_account(db_session, budget, "Card", account_type="credit_card")
+        await create_transaction(db_session, budget, checking, "-460.00", RECENT)
+        await create_transaction(db_session, budget, card, "460.00", RECENT)
+        await db_session.flush()
+
+        finding = (await _run(db_session, budget))["unlinked_card_payments"]
+        assert finding.transaction_count == 1
+        assert card.id in finding.account_ids
+
+    async def test_a_category_on_the_cash_leg_still_reports(self, db_session):
+        """The real shape, and the reason nothing linked it. Linking an
+        on-budget pair must clear the category — an internal transfer is not
+        spending — and a person's category is never cleared unattended, so
+        `pair_legs` holds the pair for review. Held for review is exactly what
+        this finding exists to surface: silence there is what produced a card
+        reading 'paid 0.00' beside a balance that visibly fell."""
+        services, budget = await _world(db_session)
+        checking = await create_account(db_session, budget, "Checking")
+        card = await create_account(db_session, budget, "Card", account_type="credit_card")
+        group = await create_category_group(db_session, budget, "Bills")
+        envelope = await create_category(db_session, budget, group, "Card Payment")
+        await create_transaction(db_session, budget, checking, "-460.00", RECENT, category=envelope)
+        await create_transaction(db_session, budget, card, "460.00", RECENT)
+        await db_session.flush()
+
+        finding = (await _run(db_session, budget))["unlinked_card_payments"]
+        assert finding.transaction_count == 1
+
+    async def test_an_already_linked_payment_is_not(self, db_session):
+        services, budget = await _world(db_session)
+        checking = await create_account(db_session, budget, "Checking")
+        card = await create_account(db_session, budget, "Card", account_type="credit_card")
+        out = await create_transaction(db_session, budget, checking, "-460.00", RECENT)
+        back = await create_transaction(
+            db_session, budget, card, "460.00", RECENT, transfer_id=out.id
+        )
+        out.transfer_id = back.id
+        await db_session.flush()
+
+        assert "unlinked_card_payments" not in await _run(db_session, budget)
+
+    async def test_a_refund_with_no_cash_partner_is_not(self, db_session):
+        """A card credit that is genuinely a refund has no matching debit, so
+        nothing is claimed about it. The finding must not fire on every
+        inflow — that is how a panel gets dismissed and stops being read."""
+        services, budget = await _world(db_session)
+        await create_account(db_session, budget, "Checking")
+        card = await create_account(db_session, budget, "Card", account_type="credit_card")
+        await create_transaction(db_session, budget, card, "460.00", RECENT)
+        await db_session.flush()
+
+        assert "unlinked_card_payments" not in await _run(db_session, budget)
+
+    async def test_two_cash_accounts_moving_money_is_not_a_card_payment(self, db_session):
+        """Scoped to cards on purpose: a checking-to-savings pair is the other
+        finding's business, and reporting it here would double-count it."""
+        services, budget = await _world(db_session)
+        checking = await create_account(db_session, budget, "Checking")
+        savings = await create_account(db_session, budget, "Savings", account_type="savings")
+        await create_transaction(db_session, budget, checking, "-460.00", RECENT)
+        await create_transaction(db_session, budget, savings, "460.00", RECENT)
+        await db_session.flush()
+
+        assert "unlinked_card_payments" not in await _run(db_session, budget)
+
+    async def test_a_payment_older_than_the_lookback_is_not(self, db_session):
+        """`pair_legs` compares every outflow against every inflow in the
+        window, so the window is bounded and says so rather than quietly
+        getting slower as a budget grows."""
+        services, budget = await _world(db_session)
+        checking = await create_account(db_session, budget, "Checking")
+        card = await create_account(db_session, budget, "Card", account_type="credit_card")
+        await create_transaction(db_session, budget, checking, "-460.00", LONG_AGO)
+        await create_transaction(db_session, budget, card, "460.00", LONG_AGO)
+        await db_session.flush()
+
+        assert "unlinked_card_payments" not in await _run(db_session, budget)

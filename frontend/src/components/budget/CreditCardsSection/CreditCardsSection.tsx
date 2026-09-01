@@ -148,8 +148,9 @@ function ReserveLegs({
       {otherInflow !== 0 && (
         <p className="credit-cards__legs-note">
           <span className="credit-cards__footnote-mark">*</span> A refund, a credit, or a payment
-          recorded as a deposit rather than a transfer from one of your own accounts. Only a
-          transfer spends the reserve, so this lowers the balance while Ready to pay stands still.
+          whose two halves were never linked. Only a transfer spends the reserve, so this lowers the
+          balance while Ready to pay stands still. Account suggestions, on the Accounts page, lists
+          payments that still need linking.
         </p>
       )}
       {card.riding !== 0 && (
