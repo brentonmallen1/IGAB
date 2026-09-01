@@ -1,0 +1,77 @@
+/* Extracted verbatim from LiabilityPage's balance overlay — one form for a
+   dated stated figure, used for liability balances and asset values. */
+
+.daf__overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 120px;
+  z-index: var(--z-overlay);
+}
+
+.daf__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  padding: var(--spacing-lg);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow-lg);
+}
+
+.daf__form h3 {
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.daf__form label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.daf__form input {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+}
+
+.daf__form input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: var(--input-focus-shadow);
+}
+
+.daf__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-sm);
+}
+
+.daf__actions button {
+  padding: 6px var(--spacing-md);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+}
+
+.daf__actions button.primary {
+  background: var(--color-accent);
+  color: var(--text-inverse);
+  border: none;
+  font-weight: 500;
+}

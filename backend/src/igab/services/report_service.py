@@ -13,6 +13,8 @@ from sqlalchemy.orm import aliased
 
 from igab.db.models import (
     Account,
+    Asset,
+    AssetValueSnapshot,
     BudgetAssignment,
     BudgetView,
     BudgetViewGroup,
@@ -472,11 +474,15 @@ class ReportService:
         )
 
         # Unmanaged liabilities reduce net worth here exactly as they do in
-        # net_worth_history — the dashboard card and the report headline
-        # must never disagree.
+        # net_worth_history, and stated asset values raise it the same way —
+        # the dashboard card and the report headline must never disagree
+        # (test_dashboard_matches_charts pins it).
         unmanaged_now, unmanaged_series = await self._unmanaged_liabilities(budget_id)
         net_worth -= unmanaged_now
         net_worth_prev -= self._unmanaged_total_at(unmanaged_series, prev_end)
+        asset_now, asset_series = await self._asset_values(budget_id)
+        net_worth += asset_now
+        net_worth_prev += self._asset_total_at(asset_series, prev_end)
 
         # Every figure below reads the activity-class partition, not the sign
         # of the amount. The dashboard summarises the report tabs, so it has to
@@ -663,6 +669,59 @@ class ReportService:
                 total += latest
         return total
 
+    @staticmethod
+    def _asset_total_at(
+        series: dict[uuid.UUID, list[tuple[date, Decimal]]], as_of: date
+    ) -> Decimal:
+        """The asset side of `_unmanaged_total_at`, same rule: each asset's
+        latest point on or before as_of, nothing before its first point — a
+        June appraisal must not rewrite January."""
+        return ReportService._unmanaged_total_at(series, as_of)
+
+    async def _asset_values(
+        self, budget_id: uuid.UUID
+    ) -> tuple[Decimal, dict[uuid.UUID, list[tuple[date, Decimal]]]]:
+        """Current total of stated asset values, plus each asset's snapshot
+        series — the symmetric `+` beside `_unmanaged_liabilities`' `−`.
+
+        A stated value is self-reported and moves net worth UP, the dangerous
+        direction — which is why it enters through the same dated step
+        function as a stated debt, contributes nothing before its first
+        point, and carries `value_as_of` everywhere it is shown. If a told-us
+        debt counts (manual_balance always has), a told-us asset must too, or
+        net worth is systematically pessimistic: a mortgage with no house
+        reads as a household underwater."""
+        assets = (
+            await self.session.execute(
+                select(Asset.id, Asset.manual_value).where(
+                    Asset.budget_id == budget_id,
+                    Asset.is_deleted == False,  # noqa: E712
+                )
+            )
+        ).all()
+        if not assets:
+            return Decimal("0"), {}
+        current_total = sum(
+            (max(Decimal("0"), item.manual_value or Decimal("0")) for item in assets),
+            Decimal("0"),
+        )
+        asset_ids = [item.id for item in assets]
+        snaps = (
+            await self.session.execute(
+                select(
+                    AssetValueSnapshot.asset_id,
+                    AssetValueSnapshot.date,
+                    AssetValueSnapshot.value,
+                )
+                .where(AssetValueSnapshot.asset_id.in_(asset_ids))
+                .order_by(AssetValueSnapshot.date)
+            )
+        ).all()
+        series: dict[uuid.UUID, list[tuple[date, Decimal]]] = {item.id: [] for item in assets}
+        for snap in snaps:
+            series[snap.asset_id].append((snap.date, snap.value))
+        return current_total, series
+
     async def net_worth_history(
         self,
         budget_id: uuid.UUID,
@@ -681,6 +740,12 @@ class ReportService:
         accounts = (await self.session.execute(acct_q)).all()
 
         unmanaged_now, unmanaged_series = await self._unmanaged_liabilities(budget_id)
+        # Stated asset values are the mirror bucket: in net worth without
+        # appearing in any account series, exactly as unmanaged debts are —
+        # which is why every point serves `asset_value_total` beside
+        # `unmanaged_liability_total`, so the charts can footnote the gap
+        # between the visible account stack and the net line.
+        asset_now, asset_series = await self._asset_values(budget_id)
         account_map = {str(a.id): a for a in accounts}
 
         q = select(Transaction.date, Transaction.amount, Transaction.account_id).where(
@@ -698,18 +763,21 @@ class ReportService:
             points = []
             for i in range(months - 1, -1, -1):
                 month_start = _subtract_months(first_of_month, i)
+                month_end = _last_day(month_start)
                 unmanaged = (
                     unmanaged_now
                     if i == 0
-                    else self._unmanaged_total_at(unmanaged_series, _last_day(month_start))
+                    else self._unmanaged_total_at(unmanaged_series, month_end)
                 )
+                asset_total = asset_now if i == 0 else self._asset_total_at(asset_series, month_end)
                 points.append(
                     {
                         "date": month_start,
-                        "total_assets": Decimal("0"),
+                        "total_assets": asset_total,
                         "total_liabilities": unmanaged,
-                        "net_worth": -unmanaged,
+                        "net_worth": asset_total - unmanaged,
                         "unmanaged_liability_total": unmanaged,
+                        "asset_value_total": asset_total,
                         "accounts": [],
                     }
                 )
@@ -764,11 +832,14 @@ class ReportService:
                     total_assets += bal
 
             # Unmanaged debts join the liability side: current total for the
-            # current month, snapshot step-function for history.
+            # current month, snapshot step-function for history. Stated asset
+            # values join the asset side the same way.
             unmanaged = (
                 unmanaged_now if i == 0 else self._unmanaged_total_at(unmanaged_series, month_end)
             )
+            asset_total = asset_now if i == 0 else self._asset_total_at(asset_series, month_end)
             total_liabilities = -liability_balances + unmanaged
+            total_assets += asset_total
 
             results.append(
                 {
@@ -777,6 +848,7 @@ class ReportService:
                     "total_liabilities": total_liabilities,
                     "net_worth": total_assets - total_liabilities,
                     "unmanaged_liability_total": unmanaged,
+                    "asset_value_total": asset_total,
                     "accounts": snapshots,
                 }
             )
@@ -808,9 +880,10 @@ class ReportService:
                     # The net trend the stacked areas add up to — history
                     # already computed it, and the chart re-deriving it from
                     # the visible series would silently disagree the moment
-                    # anything (an unmanaged debt) is in net worth but not in
-                    # the per-account snapshots.
+                    # anything (an unmanaged debt, a stated asset value) is
+                    # in net worth but not in the per-account snapshots.
                     "net_worth": point["net_worth"],
+                    "asset_value_total": point["asset_value_total"],
                 }
             )
         return results

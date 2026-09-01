@@ -663,7 +663,12 @@ class TestNetWorthHistory:
             mock_date.today.return_value = date(2026, 1, 31)
             mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
             svc = ReportService(
-                make_session(mock_result(accounts), mock_result([]), mock_result(txns))
+                make_session(
+                    mock_result(accounts),
+                    mock_result([]),  # unmanaged liabilities
+                    mock_result([]),  # stated asset values
+                    mock_result(txns),
+                )
             )
             result = await svc.net_worth_history(BUDGET, months=1)
 
@@ -680,7 +685,12 @@ class TestNetWorthHistory:
             mock_date.today.return_value = date(2026, 1, 31)
             mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
             svc = ReportService(
-                make_session(mock_result(accounts), mock_result([]), mock_result(txns))
+                make_session(
+                    mock_result(accounts),
+                    mock_result([]),  # unmanaged liabilities
+                    mock_result([]),  # stated asset values
+                    mock_result(txns),
+                )
             )
             result = await svc.net_worth_history(BUDGET, months=1)
 
@@ -702,7 +712,12 @@ class TestNetWorthHistory:
             mock_date.today.return_value = date(2026, 1, 31)
             mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
             svc = ReportService(
-                make_session(mock_result(accounts), mock_result([]), mock_result(txns))
+                make_session(
+                    mock_result(accounts),
+                    mock_result([]),  # unmanaged liabilities
+                    mock_result([]),  # stated asset values
+                    mock_result(txns),
+                )
             )
             result = await svc.net_worth_history(BUDGET, months=1)
 
@@ -711,7 +726,9 @@ class TestNetWorthHistory:
         assert result[0]["net_worth"] == D("8000.00")
 
     async def test_empty_budget_returns_zero_points(self):
-        svc = ReportService(make_session(mock_result([]), mock_result([]), mock_result([])))
+        svc = ReportService(
+            make_session(mock_result([]), mock_result([]), mock_result([]), mock_result([]))
+        )
         result = await svc.net_worth_history(BUDGET, months=3)
         assert len(result) == 3
         assert all(p["net_worth"] == D("0") for p in result)
@@ -736,7 +753,12 @@ class TestNetWorthHistory:
             mock_date.today.return_value = date(2026, 1, 31)
             mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
             svc = ReportService(
-                make_session(mock_result(accounts), mock_result([]), mock_result(txns))
+                make_session(
+                    mock_result(accounts),
+                    mock_result([]),  # unmanaged liabilities
+                    mock_result([]),  # stated asset values
+                    mock_result(txns),
+                )
             )
             result = await svc.net_worth_history(BUDGET, months=1)
 
@@ -760,7 +782,12 @@ class TestNetWorthHistory:
             mock_date.today.return_value = date(2026, 1, 31)
             mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
             svc = ReportService(
-                make_session(mock_result(accounts), mock_result([]), mock_result(txns))
+                make_session(
+                    mock_result(accounts),
+                    mock_result([]),  # unmanaged liabilities
+                    mock_result([]),  # stated asset values
+                    mock_result(txns),
+                )
             )
             result = await svc.net_worth_history(BUDGET, months=1)
 
@@ -782,7 +809,12 @@ class TestNetWorthHistory:
             mock_date.today.return_value = date(2026, 1, 31)
             mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
             svc = ReportService(
-                make_session(mock_result(accounts), mock_result([]), mock_result(txns))
+                make_session(
+                    mock_result(accounts),
+                    mock_result([]),  # unmanaged liabilities
+                    mock_result([]),  # stated asset values
+                    mock_result(txns),
+                )
             )
             result = await svc.net_worth_history(BUDGET, months=1)
 
@@ -802,7 +834,12 @@ class TestNetWorthHistory:
             mock_date.today.return_value = date(2026, 2, 28)
             mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
             svc = ReportService(
-                make_session(mock_result(accounts), mock_result([]), mock_result(txns))
+                make_session(
+                    mock_result(accounts),
+                    mock_result([]),  # unmanaged liabilities
+                    mock_result([]),  # stated asset values
+                    mock_result(txns),
+                )
             )
             result = await svc.net_worth_history(BUDGET, months=2)
 
@@ -954,6 +991,7 @@ class TestAccountComposition:
                 "total_assets": D("10000"),
                 "total_liabilities": D("2000"),
                 "net_worth": D("8000"),
+                "asset_value_total": D("0"),
                 "accounts": [
                     {
                         "account_type": "checking",

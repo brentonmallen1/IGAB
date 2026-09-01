@@ -81,6 +81,12 @@ export function AccountCompositionReport({ budgetId }: Props) {
         </div>
       </div>
       <p className="report-section__subtitle">Assets stack positive, debts negative.</p>
+      {Number(points[points.length - 1]?.asset_value_total ?? 0) > 0 && (
+        <p className="report-section__subtitle">
+          The Net line includes {formatMoney(Number(points[points.length - 1].asset_value_total))}{' '}
+          of stated asset value that no account series shows.
+        </p>
+      )}
 
       <div ref={captureRef} className="report-capture">
         {chartData.length === 0 ? (

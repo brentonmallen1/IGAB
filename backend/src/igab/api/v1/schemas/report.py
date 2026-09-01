@@ -87,12 +87,16 @@ class NetWorthPoint(ApiModel):
     # Liabilities with no Account (unmanaged liabilities) — included in
     # total_liabilities, broken out so the bucket stays visible
     unmanaged_liability_total: Decimal = Decimal("0")
+    # Stated asset values (Assets, no account) — included in total_assets,
+    # broken out for the same footnote: in the net line, not in any series.
+    asset_value_total: Decimal = Decimal("0")
     accounts: list[AccountSnapshot]
 
 
 class NetWorthResponse(ApiModel):
     points: list[NetWorthPoint]
     unmanaged_liability_total: Decimal = Decimal("0")
+    asset_value_total: Decimal = Decimal("0")
 
 
 # ─── Account Composition ──────────────────────────────────────────────────────
@@ -106,6 +110,9 @@ class AccountCompositionPoint(ApiModel):
     # Required, not optional: the chart draws this as the net trend line, and
     # a path that forgot it would draw a flat zero over real data.
     net_worth: Decimal
+    # The stated-asset share of that net line — the amount by which it floats
+    # above the visible account stack; footnoted when non-zero.
+    asset_value_total: Decimal
 
 
 class AccountCompositionResponse(ApiModel):

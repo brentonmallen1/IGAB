@@ -1,0 +1,67 @@
+.asset-modal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.asset-modal__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.asset-modal__field input,
+.asset-modal__field select {
+  padding: 6px var(--spacing-sm);
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-primary);
+  font-size: var(--font-size-base);
+}
+
+.asset-modal__error {
+  font-size: var(--font-size-sm);
+  color: var(--color-negative);
+  margin: 0;
+}
+
+.asset-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-sm);
+}
+
+.asset-modal__delete {
+  margin-right: auto;
+  padding: 6px var(--spacing-md);
+  border-radius: var(--border-radius-sm);
+  color: var(--color-negative);
+  background: none;
+}
+
+.asset-modal__cancel {
+  padding: 6px var(--spacing-md);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-secondary);
+  background: none;
+}
+
+.asset-modal__cancel:hover,
+.asset-modal__delete:hover {
+  background: var(--bg-hover);
+}
+
+.asset-modal__submit {
+  padding: 6px var(--spacing-md);
+  border-radius: var(--border-radius-sm);
+  background: var(--color-accent);
+  color: var(--bg-primary);
+  font-weight: 600;
+}
+
+.asset-modal__submit:disabled {
+  opacity: 0.6;
+}

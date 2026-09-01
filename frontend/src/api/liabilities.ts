@@ -14,6 +14,9 @@ export interface Liability {
   liability_type: LiabilityType
   mode: 'managed' | 'unmanaged'
   linked_account_id: string | null
+  /** The asset this debt is secured against — the served input to
+   *  utils/equity.ts. */
+  linked_asset_id: string | null
   linked_category_id: string | null
   current_balance: number
   /** 'manual_fallback' = linked account's register is empty; the pre-link

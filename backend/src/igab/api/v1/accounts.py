@@ -65,6 +65,8 @@ class HygieneFindingResponse(BaseModel):
     detail: str
     action: str
     account_ids: list[uuid.UUID] = []
+    #: Valued Assets are not accounts; the panel routes these to /assets/{id}.
+    asset_ids: list[uuid.UUID] = []
     transaction_count: int = 0
 
 

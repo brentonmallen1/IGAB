@@ -34,6 +34,7 @@ function companion(overrides: Partial<Liability> = {}): Liability {
     liability_type: 'auto',
     mode: 'managed',
     linked_account_id: 'loan',
+    linked_asset_id: null,
     linked_category_id: null,
     current_balance: 9000,
     balance_source: 'ledger',

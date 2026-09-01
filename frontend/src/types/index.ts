@@ -619,6 +619,9 @@ export interface NetWorthPoint {
   total_liabilities: number
   net_worth: number
   unmanaged_liability_total: number
+  /** Stated asset values — in total_assets and the net line without
+   *  appearing in any account series; the charts footnote the gap. */
+  asset_value_total: number
   accounts: {
     account_id: string
     account_name: string
@@ -631,6 +634,7 @@ export interface NetWorthPoint {
 export interface NetWorthReport {
   points: NetWorthPoint[]
   unmanaged_liability_total: number
+  asset_value_total: number
 }
 
 export interface LiabilitiesReportItem {
@@ -669,9 +673,12 @@ export interface AccountCompositionPoint {
   // Balance per account-type key present in the budget (custom types included)
   balances: Record<string, number>
   /** Net worth at this point — served (report_service.account_composition)
-   *  rather than summed from `balances`, because unmanaged debts sit in net
-   *  worth without appearing in any account series. */
+   *  rather than summed from `balances`, because unmanaged debts and stated
+   *  asset values sit in net worth without appearing in any account series. */
   net_worth: number
+  /** The stated-asset share of the gap between the net line and the visible
+   *  stack — footnoted when non-zero. */
+  asset_value_total: number
 }
 
 export interface AccountCompositionReport {

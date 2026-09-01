@@ -3,6 +3,7 @@ from decimal import Decimal
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel
 
 from igab.api.route import CommitRoute
 from igab.api.v1.schemas.category import CategoryResponse
@@ -22,6 +23,7 @@ from igab.db.models import Liability
 from igab.dependencies import (
     BudgetAccess,
     CurrentUser,
+    SessionDep,
     get_account_repo,
     get_category_repo,
     get_liability_repo,
@@ -130,6 +132,7 @@ async def _liability_out(
         liability_type=await liability_service.resolve_type(liability),
         mode="managed" if liability.linked_account_id is not None else "unmanaged",
         linked_account_id=liability.linked_account_id,
+        linked_asset_id=liability.linked_asset_id,
         linked_category_id=linked_category.id if linked_category else None,
         current_balance=status_.current_balance,
         balance_source=status_.balance_source,
@@ -373,6 +376,39 @@ async def create_balance_snapshot(
         balance=snapshot.balance,
         source=snapshot.source,
     )
+
+
+class LinkAssetBody(BaseModel):
+    asset_id: uuid.UUID | None
+
+
+@router.put("/{budget_id}/liabilities/{liability_id}/link-asset", response_model=LiabilityOut)
+async def link_asset(
+    budget_id: BudgetAccess,
+    liability_id: uuid.UUID,
+    body: LinkAssetBody,
+    current_user: CurrentUser,
+    liability_repo: Annotated[LiabilityRepository, Depends(get_liability_repo)],
+    liability_service: Annotated[LiabilityService, Depends(get_liability_service)],
+    category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
+    session: SessionDep,
+) -> LiabilityOut:
+    """Point this debt at the asset securing it (null unlinks). Not unique
+    on the asset side on purpose: a house can secure a mortgage and a HELOC,
+    and equity is value minus everything linked."""
+    liability = await _get_owned_liability(liability_repo, budget_id, liability_id)
+    if body.asset_id is not None:
+        from igab.repositories.asset_repo import AssetRepository
+
+        asset = await AssetRepository(session).get(body.asset_id)
+        if asset is None or asset.budget_id != budget_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
+    liability.linked_asset_id = body.asset_id
+    await session.flush()
+    # updated_at is onupdate=func.now(): the flush expires it, and letting
+    # serialization lazy-load it lands in sync context (MissingGreenlet).
+    await session.refresh(liability)
+    return await _liability_out(liability, liability_service, category_repo)
 
 
 @router.get(

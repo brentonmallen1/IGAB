@@ -27,7 +27,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.api.v1.imports import _TRACKED_HINTS, _matches, _normalize_for_match
-from igab.db.models import Account, Liability, Transaction
+from igab.db.models import Account, Asset, Liability, Transaction
 from igab.domain.card_timeline import card_timeline, first_breach
 from igab.domain.cards import card_reserve
 from igab.domain.matching import DATE_WINDOW_DAYS
@@ -64,6 +64,12 @@ UNLINKED_PAYMENT_LOOKBACK_DAYS = 180
 #: and a finding on every paid-off card is one people learn to scroll past.
 SIGN_MISMATCH_FLOOR = 1000
 
+#: Months before a stated asset value reads as stale. 12, matching BOTH
+#: existing staleness precedents — DORMANT_AFTER_MONTHS above and the Guide's
+#: STALE_EXTERNAL_MONTHS (guide/concepts.py) — so a third staleness rule
+#: cannot drift from the other two.
+STALE_ASSET_VALUE_MONTHS = 12
+
 
 @dataclass
 class HygieneFinding:
@@ -75,6 +81,9 @@ class HygieneFinding:
     action: str
     #: Accounts this is about, most-relevant first.
     account_ids: list[uuid.UUID] = field(default_factory=list)
+    #: For findings about a valued Asset, which is not an account — the panel
+    #: routes these to /assets/{id} instead.
+    asset_ids: list[uuid.UUID] = field(default_factory=list)
     #: For findings that lead to transactions rather than to an account.
     transaction_count: int = 0
 
@@ -108,6 +117,7 @@ class AccountHygieneService:
             # so a house inside the budget poisons every envelope figure.
             await self._tracked_name_on_budget(accounts),
             await self._liability_with_positive_balance(accounts),
+            await self._asset_beside_asset_account(budget_id, accounts),
             await self._unpaired_transfer_legs(budget_id),
             await self._unlinked_card_payments(budget_id),
             self._card_reserve_went_negative(summary, walk),
@@ -119,6 +129,7 @@ class AccountHygieneService:
             await self._dormant_open_accounts(accounts, budget_id),
             await self._stale_companion_liabilities(budget_id, accounts),
             await self._money_in_an_archived_envelope_from(budget_id, summary),
+            await self._stale_asset_values(budget_id),
         ]
         return HygieneReport(findings=[f for f in findings if f is not None])
 
@@ -826,4 +837,85 @@ class AccountHygieneService:
             account_ids=[
                 liability.linked_account_id for liability in stale if liability.linked_account_id
             ],
+        )
+
+    async def _stale_asset_values(self, budget_id: uuid.UUID) -> HygieneFinding | None:
+        """A stated value is the app's record of when it was told, and it
+        cannot refresh itself. Past a year it is probably not the number the
+        household would say today — and it is moving net worth UP, the
+        dangerous direction for a stale figure."""
+        cutoff = today_utc() - timedelta(days=STALE_ASSET_VALUE_MONTHS * 30)
+        result = await self.session.execute(
+            select(Asset)
+            .where(
+                Asset.budget_id == budget_id,
+                Asset.is_deleted == False,  # noqa: E712
+                Asset.value_as_of.is_not(None),
+                Asset.value_as_of < cutoff,
+            )
+            .order_by(Asset.value_as_of)
+        )
+        stale = list(result.scalars().all())
+        if not stale:
+            return None
+        oldest = stale[0]
+        names = ", ".join(a.name for a in stale[:3])
+        return HygieneFinding(
+            kind="stale_asset_value",
+            title=f"{'A stated value is' if len(stale) == 1 else 'Stated values are'} "
+            f"over {STALE_ASSET_VALUE_MONTHS} months old",
+            detail=(
+                f"{names}{'…' if len(stale) > 3 else ''}: the newest value on record is from "
+                f"{oldest.value_as_of:%B %Y}. IGAB cannot refresh a number it was told, and "
+                "this one is counted in net worth."
+            ),
+            action="Open the asset and record what it is worth today.",
+            asset_ids=[a.id for a in stale],
+        )
+
+    async def _asset_beside_asset_account(
+        self, budget_id: uuid.UUID, accounts: list[Account]
+    ) -> HygieneFinding | None:
+        """The double-count suspect: a valued Asset AND an asset-classified
+        tracking account that look like the same thing. Net worth counts a
+        house once through the account ledger and once through the value
+        series, and nothing can prove they are one house — but a shared name
+        is exactly the "probably wrong, not provably" this service exists
+        for."""
+        result = await self.session.execute(
+            select(Asset).where(
+                Asset.budget_id == budget_id,
+                Asset.is_deleted == False,  # noqa: E712
+            )
+        )
+        assets = list(result.scalars().all())
+        if not assets:
+            return None
+        candidates = [
+            a
+            for a in accounts
+            if a.classification == "asset" and not a.on_budget and not a.is_closed
+        ]
+        suspects: list[tuple[Asset, Account]] = []
+        for asset in assets:
+            asset_words = {w for w in asset.name.lower().split() if len(w) >= 4}
+            for account in candidates:
+                account_words = {w for w in account.name.lower().split() if len(w) >= 4}
+                if asset_words & account_words:
+                    suspects.append((asset, account))
+                    break
+        if not suspects:
+            return None
+        asset, account = suspects[0]
+        return HygieneFinding(
+            kind="asset_beside_asset_account",
+            title="A valued asset may double-count an account",
+            detail=(
+                f"“{asset.name}” has a stated value AND the tracking account "
+                f"“{account.name}” looks like the same thing. Net worth would count it "
+                "twice — once from the account's ledger, once from the stated value."
+            ),
+            action="Keep one: delete the stated asset, or close the account.",
+            asset_ids=[a.id for a, _ in suspects],
+            account_ids=[acc.id for _, acc in suspects],
         )

@@ -6,6 +6,7 @@ from igab.api.v1 import (
     accounts,
     ai,
     ai_jobs,
+    assets,
     attachments,
     auth,
     backups,
@@ -38,6 +39,7 @@ api_router.include_router(users.router, tags=["users"])
 api_router.include_router(budget_members.router, tags=["budget-members"])
 api_router.include_router(budgets.router, tags=["budgets"])
 api_router.include_router(accounts.router, tags=["accounts"])
+api_router.include_router(assets.router, tags=["assets"])
 api_router.include_router(account_types.router, tags=["account-types"])
 api_router.include_router(categories.router, tags=["categories"])
 api_router.include_router(changes.router, tags=["changes"])

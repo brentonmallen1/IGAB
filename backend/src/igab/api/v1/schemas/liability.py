@@ -67,6 +67,11 @@ class LiabilityOut(ApiModel):
     liability_type: str
     mode: Literal["managed", "unmanaged"]
     linked_account_id: uuid.UUID | None
+    #: The asset this debt is secured against, when the user has said so.
+    #: Served because the client computes equity from it (one pure module,
+    #: utils/equity.ts) — "the client already has the fields" was untrue
+    #: until this line, which is the boundary-rule trap by name.
+    linked_asset_id: uuid.UUID | None
     linked_category_id: uuid.UUID | None
     current_balance: Decimal  # owed, positive
     # 'ledger' | 'manual' | 'manual_fallback' — manual_fallback means the

@@ -37,6 +37,8 @@ export const ROOT = {
   aiStatus: 'ai-status',
   allTransactions: 'all-transactions',
   archivedCategories: 'archivedCategories',
+  assetValues: 'asset-values',
+  assets: 'assets',
   assignPreview: 'assignPreview',
   assignStrategies: 'assignStrategies',
   attachmentBlob: 'attachmentBlob',

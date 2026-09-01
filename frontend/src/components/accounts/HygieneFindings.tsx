@@ -81,6 +81,14 @@ export function HygieneFindings({
     if (f.kind === 'unlinked_card_payments' && f.account_ids.length > 0) {
       return `/accounts/${f.account_ids[0]}`
     }
+    // Asset findings lead to the asset — where the value can be restated,
+    // or the double-counted thing deleted.
+    if (
+      (f.kind === 'stale_asset_value' || f.kind === 'asset_beside_asset_account') &&
+      f.asset_ids.length > 0
+    ) {
+      return `/assets/${f.asset_ids[0]}`
+    }
     // The card diagnostics all resolve on the budget page's cards section —
     // the Ready to pay breakdown is where the months and legs they cite live.
     if (
