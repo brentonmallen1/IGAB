@@ -26,6 +26,9 @@ from .factories import (
     create_user,
 )
 
+# Cards are ON-budget, which is why they need their own test below: the
+# off-budget scope test cannot catch a card leaking in.
+
 TODAY = date.today()
 
 
@@ -111,16 +114,12 @@ async def test_uniform_history_projects_constant_daily_flow(db_session):
     assert data["goes_negative_date"] == TODAY + timedelta(days=10)
 
 
-async def test_off_budget_closed_pending_and_deleted_contribute_nothing(db_session):
+async def test_off_budget_pending_and_deleted_contribute_nothing(db_session):
     budget, checking = await _budget_with_checking(db_session)
 
     # Each of these would distort the projection if it leaked in:
     tracking = await create_account(db_session, budget, "Brokerage", on_budget=False)
     await create_transaction(db_session, budget, tracking, "9999.00", TODAY - timedelta(days=50))
-    closed = await create_account(db_session, budget, "Old Checking")
-    await create_transaction(db_session, budget, closed, "777.00", TODAY - timedelta(days=40))
-    closed.is_closed = True
-    await db_session.flush()
     await create_transaction(
         db_session, budget, checking, "500.00", TODAY - timedelta(days=5), cleared="pending"
     )
@@ -143,6 +142,34 @@ async def test_off_budget_closed_pending_and_deleted_contribute_nothing(db_sessi
     _assert_bands_collapsed(data["points"])
     for p in data["points"]:
         assert p["p50"] == p["deterministic"] == Decimal("5000.00")
+    assert data["events"] == []
+
+
+async def test_a_closed_account_keeps_its_balance_but_generates_no_flows(db_session):
+    """Closed accounts split by design: the residual BALANCE is still the
+    budget's cash — `sum_on_budget_balance` includes closed accounts because
+    closing moves no money, and the projection quoting a different cash figure
+    than Ready to Assign is two answers to one question. But a closed account
+    generates no FUTURE flows: its history is not sampled and its schedules
+    fire nowhere. (Before the balance moved to `sum_on_budget_balance`, the
+    projection silently dropped closed balances too.)"""
+    budget, checking = await _budget_with_checking(db_session)
+    closed = await create_account(db_session, budget, "Old Checking")
+    await create_transaction(db_session, budget, closed, "777.00", TODAY - timedelta(days=200))
+    # Inside the 180-day history window — would un-collapse the bands.
+    await create_transaction(db_session, budget, closed, "-33.00", TODAY - timedelta(days=15))
+    await create_scheduled_transaction(
+        db_session, budget, closed, "-88.00", "monthly", TODAY + timedelta(days=4)
+    )
+    closed.is_closed = True
+    await db_session.flush()
+
+    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=20)
+
+    assert data["start_balance"] == Decimal("5744.00")  # 5000 + 777 − 33
+    _assert_bands_collapsed(data["points"])
+    for p in data["points"]:
+        assert p["p50"] == p["deterministic"] == Decimal("5744.00")
     assert data["events"] == []
 
 
@@ -225,3 +252,28 @@ async def test_percentile_bands_ordered_and_same_day_idempotent(db_session):
     for p in first["points"]:
         assert p["p10"] <= p["p25"] <= p["p50"] <= p["p75"] <= p["p90"]
     assert first == second
+
+
+async def test_cards_contribute_neither_balance_nor_history_nor_schedules(db_session):
+    """A card is on-budget, so the old inline balance sum included it and
+    "Current Balance" read cash minus card debt — a figure with no name. The
+    projection is CASH (`sum_on_budget_balance`): the card's balance, its
+    ledger history, and any schedule pointed at it all stay out. Card spending
+    reaches the projection only through the cash the payment moves."""
+    budget, checking = await _budget_with_checking(db_session)
+    card = await create_account(db_session, budget, "Sapphire Visa", account_type="credit_card")
+    # One purchase in the balance window only, one inside the 180-day history
+    # window: the first used to lower start_balance, the second used to feed
+    # the sampled flows and un-collapse the bands.
+    await create_transaction(db_session, budget, card, "-1200.00", TODAY - timedelta(days=200))
+    await create_transaction(db_session, budget, card, "-60.00", TODAY - timedelta(days=10))
+    await create_scheduled_transaction(
+        db_session, budget, card, "-45.00", "monthly", TODAY + timedelta(days=5)
+    )
+
+    result = await ReportService(db_session).cash_projection(budget.id, horizon_days=30)
+
+    assert result["start_balance"] == Decimal("5000.00")
+    assert result["events"] == []
+    _assert_bands_collapsed(result["points"])
+    assert result["points"][-1]["deterministic"] == Decimal("5000.00")
