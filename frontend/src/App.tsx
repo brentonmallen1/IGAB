@@ -59,6 +59,14 @@ const AIActivityPage = lazy(() =>
 const ActivityPage = lazy(() =>
   import('./pages/ActivityPage/ActivityPage').then((m) => ({ default: m.ActivityPage }))
 )
+const AssetsOverviewPage = lazy(() =>
+  import('./pages/AssetsOverviewPage/AssetsOverviewPage').then((m) => ({
+    default: m.AssetsOverviewPage,
+  }))
+)
+const AssetPage = lazy(() =>
+  import('./pages/AssetPage/AssetPage').then((m) => ({ default: m.AssetPage }))
+)
 const LiabilitiesOverviewPage = lazy(() =>
   import('./pages/LiabilitiesOverviewPage/LiabilitiesOverviewPage').then((m) => ({
     default: m.LiabilitiesOverviewPage,
@@ -165,6 +173,8 @@ function App() {
                 <Route path="/accounts" element={page(<AccountsOverviewPage />)} />
                 <Route path="/accounts/:accountId" element={page(<AccountPage />)} />
                 <Route path="/transactions" element={page(<AllTransactionsPage />)} />
+                <Route path="/assets" element={page(<AssetsOverviewPage />)} />
+                <Route path="/assets/:assetId" element={page(<AssetPage />)} />
                 <Route path="/liabilities" element={page(<LiabilitiesOverviewPage />)} />
                 <Route path="/liabilities/:liabilityId" element={page(<LiabilityPage />)} />
                 <Route path="/settings" element={page(<SettingsPage />)} />

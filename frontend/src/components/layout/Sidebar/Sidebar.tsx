@@ -35,6 +35,8 @@ import {
   groupLabel,
   isRowActive,
   onBudgetTotals,
+  assetHeaderTotal,
+  buildAssetRows,
   liabilityHeaderTotal,
   orderedOnBudgetKeys,
   parseSidebarLocation,
@@ -43,6 +45,7 @@ import {
 } from './sidebarGroups'
 import { useBudgets } from '../../../api/budgets'
 import { useLiabilities } from '../../../api/liabilities'
+import { useAssets } from '../../../api/assets'
 import {
   useSimpleFINConnections,
   useSyncSimpleFIN,
@@ -73,6 +76,7 @@ export function Sidebar() {
   const { data: typeRows } = useAccountTypes(budgetId)
   const { data: budgets = [] } = useBudgets()
   const { data: liabilities = [] } = useLiabilities(budgetId)
+  const { data: trackedAssets = [] } = useAssets(budgetId)
   const updateAvailable = useUpdateStatus().data?.update_available === true
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed)
   const toggleSidebarCollapsed = useUIStore((s) => s.toggleSidebarCollapsed)
@@ -137,7 +141,10 @@ export function Sidebar() {
   // by construction the sum of the subtotals listed under it.
   const onBudget = onBudgetTotals(onBudgetByType)
 
-  const assetsTotal = accountsTotal(offBudgetAssets)
+  // Valued assets join the section beside asset accounts — every asset
+  // exactly once, the Debts rule mirrored; the header sums what's listed.
+  const assetRows = buildAssetRows(offBudgetAssets, trackedAssets)
+  const assetsTotal = assetHeaderTotal(assetRows)
   // Every debt exactly once: liability-classified accounts (tracker balance
   // when linked), managed liabilities whose account lives elsewhere, and
   // unmanaged liabilities. The header total is the sum of what's listed.
@@ -423,15 +430,17 @@ export function Sidebar() {
           </div>
         )}
 
-        {!collapsed && (offBudgetAssets.length > 0 || budgetId) && (
+        {!collapsed && (assetRows.length > 0 || budgetId) && (
           <div className="sidebar__section">
             <SidebarGroupHeader
               level="section"
               label="Assets"
-              total={assetsTotal}
-              collapsible={offBudgetAssets.length > 0}
+              total={assetRows.length > 0 ? assetsTotal : null}
+              collapsible={assetRows.length > 0}
               collapsed={isFolded(SIDEBAR_SECTION_IDS.assets)}
               onToggle={() => toggleGroup(SIDEBAR_SECTION_IDS.assets)}
+              onLabelClick={() => navigate('/assets')}
+              labelTitle={assetRows.length > 0 ? 'All assets' : 'Track an asset'}
               actions={
                 <button
                   className="sidebar__group-action"
@@ -444,14 +453,29 @@ export function Sidebar() {
               }
             />
             {!isFolded(SIDEBAR_SECTION_IDS.assets) &&
-              offBudgetAssets.map((acc) => (
+              assetRows.map((row) => (
                 <SidebarAccountRow
-                  key={acc.id}
-                  name={acc.name}
-                  balance={acc.balance}
-                  kind={accountKind(acc)}
-                  onClick={() => handleAccountClick(acc)}
-                  isActive={isRowActive(accountTarget(acc.id), null, sidebarLocation)}
+                  key={row.key}
+                  name={row.name}
+                  balance={row.balance}
+                  kind="asset"
+                  isActive={isRowActive(row.target, null, sidebarLocation)}
+                  onClick={() => {
+                    const target = row.target
+                    if (target.kind === 'asset') {
+                      navigate(`/assets/${target.assetId}`)
+                    } else if (target.kind === 'account') {
+                      const acc = offBudgetAssets.find((a) => a.id === target.accountId)
+                      if (acc) handleAccountClick(acc)
+                    }
+                  }}
+                  leadingIcon={
+                    row.icon === 'manual' ? (
+                      <span className="sidebar__liability-icon" title="Manually valued">
+                        <PenLine size={12} />
+                      </span>
+                    ) : undefined
+                  }
                 />
               ))}
           </div>
@@ -494,7 +518,7 @@ export function Sidebar() {
                     const target = row.target
                     if (target.kind === 'liability') {
                       navigate(`/liabilities/${target.liabilityId}`)
-                    } else {
+                    } else if (target.kind === 'account') {
                       const acc = offBudgetLiabilityAccounts.find((a) => a.id === target.accountId)
                       if (acc) handleAccountClick(acc)
                     }

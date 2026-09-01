@@ -18,6 +18,7 @@ function liability(overrides: Partial<Liability> = {}): Liability {
     liability_type: 'auto',
     mode: 'managed',
     linked_account_id: 'a1',
+    linked_asset_id: null,
     linked_category_id: null,
     current_balance: 9000,
     balance_source: 'ledger',

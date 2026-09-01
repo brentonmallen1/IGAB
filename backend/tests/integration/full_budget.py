@@ -217,6 +217,19 @@ async def build_full_budget(session: AsyncSession, owner: User) -> FullBudget:
     unmanaged = await create_liability(session, budget, manual_balance=Decimal("500.00"))
     await create_liability_snapshot(session, unmanaged, TODAY, Decimal("500.00"))
 
+    # A valued asset securing the managed debt: covers `assets` and
+    # `asset_value_snapshots` in the cascade/snapshot graph, and the
+    # non-unique linked_asset_id edge.
+    from igab.repositories.asset_repo import AssetRepository
+
+    asset_repo = AssetRepository(session)
+    asset = await asset_repo.create(
+        budget_id=budget.id, name="Maple St House", asset_type="property"
+    )
+    await asset_repo.upsert_value(asset, TODAY, Decimal("300000.00"))
+    managed.linked_asset_id = asset.id
+    await session.flush()
+
     tag = await create_tag(session, budget)
     await session.execute(category_tags.insert().values(category_id=category.id, tag_id=tag.id))
     await session.execute(payee_tags.insert().values(payee_id=payee.id, tag_id=tag.id))

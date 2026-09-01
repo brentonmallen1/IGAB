@@ -170,6 +170,7 @@ async def net_worth_report(
     return NetWorthResponse(
         points=[NetWorthPoint.model_validate(p) for p in data],
         unmanaged_liability_total=data[-1]["unmanaged_liability_total"] if data else Decimal("0"),
+        asset_value_total=data[-1]["asset_value_total"] if data else Decimal("0"),
     )
 
 

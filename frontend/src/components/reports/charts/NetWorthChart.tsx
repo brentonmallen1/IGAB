@@ -93,6 +93,12 @@ export function NetWorthReport({ budgetId }: Props) {
             debt (no linked account).
           </p>
         )}
+        {Number(data?.asset_value_total ?? 0) > 0 && (
+          <p className="report-section__subtitle">
+            Assets include {formatMoney(data!.asset_value_total)} of stated value — a home, a
+            vehicle — with no account behind it.
+          </p>
+        )}
 
         {chartData.length === 0 ? (
           <div className="reports-empty">No account data available.</div>

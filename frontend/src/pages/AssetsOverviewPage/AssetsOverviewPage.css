@@ -1,0 +1,120 @@
+.assets-page {
+  padding: var(--spacing-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+  max-width: 960px;
+}
+
+.assets-page__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+}
+
+.assets-page__title {
+  font-size: var(--font-size-xl);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.assets-page__total {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.assets-page__add {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px var(--spacing-md);
+  border-radius: var(--border-radius-sm);
+  background: var(--color-accent);
+  color: var(--bg-primary);
+  font-weight: 600;
+  font-size: var(--font-size-sm);
+}
+
+.assets-page__empty {
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  align-items: flex-start;
+}
+
+.assets-page__empty-sub {
+  font-size: var(--font-size-sm);
+  max-width: 52ch;
+}
+
+.assets-page__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--spacing-md);
+}
+
+.assets-page__card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  padding: var(--spacing-md);
+  background: var(--surface-raised);
+  border: 1px solid var(--edge);
+  border-radius: var(--border-radius);
+  cursor: pointer;
+}
+
+.assets-page__card:hover {
+  border-color: var(--edge-strong);
+}
+
+.assets-page__card-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+}
+
+.assets-page__card-name {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.assets-page__card-type {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.assets-page__card-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.assets-page__card-sub {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.assets-page__stale {
+  color: var(--color-warning);
+}
+
+.assets-page__card-equity {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+@media (max-width: 640px) {
+  .assets-page {
+    padding: var(--spacing-md);
+  }
+}

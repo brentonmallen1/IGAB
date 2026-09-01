@@ -1,6 +1,7 @@
 import { AlertTriangle, ArrowUpRight, Pencil } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useLiabilities } from '../../api/liabilities'
+import { useAssets } from '../../api/assets'
 import { useFormatters } from '../../hooks/useFormatters'
 import { useUIStore } from '../../stores/uiStore'
 import './LiabilityTermsHeader.css'
@@ -28,6 +29,7 @@ const NOT_SET = 'Not set'
 export function LiabilityTermsHeader({ budgetId, accountId, isLoan }: Props) {
   const { formatMoney, formatMonth } = useFormatters()
   const { data: liabilities = [] } = useLiabilities(budgetId)
+  const { data: assets = [] } = useAssets(budgetId)
   const openModal = useUIStore((s) => s.openModal)
 
   const liability = liabilities.find((l) => l.linked_account_id === accountId)
@@ -44,6 +46,7 @@ export function LiabilityTermsHeader({ budgetId, accountId, isLoan }: Props) {
     : liability.baseline_never_pays_off
 
   const minimumRule = describeMinimumRule(liability, formatMoney)
+  const securedAsset = assets.find((a) => a.id === liability.linked_asset_id) ?? null
 
   return (
     <div className={`liability-terms ${termsSet ? '' : 'liability-terms--empty'}`}>
@@ -82,6 +85,29 @@ export function LiabilityTermsHeader({ budgetId, accountId, isLoan }: Props) {
             )}
           </span>
         </div>
+        {/* Loans only: what the debt is secured against. An empty field in a
+            header that clearly wants it reads as "fill this in" without a
+            banner — the header's own documented philosophy. The value is
+            stated on the ASSET, dated; there is nothing to type here. */}
+        {isLoan && (
+          <div className="liability-terms__item">
+            <span className="liability-terms__value">
+              {securedAsset
+                ? securedAsset.current_value === null
+                  ? NOT_SET
+                  : formatMoney(securedAsset.current_value)
+                : NOT_SET}
+            </span>
+            <span className="liability-terms__label">
+              {securedAsset ? `Value of ${securedAsset.name}` : 'Asset value'}
+            </span>
+            {securedAsset && (
+              <Link className="liability-terms__sub" to={`/assets/${securedAsset.id}`}>
+                Update on its page
+              </Link>
+            )}
+          </div>
+        )}
         {liability.promo_end_date && (
           <div className="liability-terms__item">
             <span className="liability-terms__value">{formatMonth(liability.promo_end_date)}</span>

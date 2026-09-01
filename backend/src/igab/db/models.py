@@ -1570,6 +1570,84 @@ class Tag(Base):
 # ─── Liabilities ─────────────────────────────────────────────────────────────
 
 
+class Asset(Base):
+    """A thing the household owns whose worth is STATED and dated, never
+    derived from a ledger — a home, a vehicle, anything appraised rather
+    than transacted.
+
+    Deliberately NOT an account. An account's balance is the sum of its
+    transactions ("it appraised higher" is not a transaction), and "balance
+    == sum of rows" is assumed at BALANCE_ROW's eight query sites plus two
+    more that roll their own — a balance-mode toggle on Account would have
+    had to fork all of them, and the two inline ones would have failed
+    silently, reporting a valued account as $0. This is the symmetric twin
+    of the unmanaged `Liability` instead: `manual_value` beside a dated
+    snapshot series, joined to net worth through the same step function.
+
+    `manual_value` and `value_as_of` travel together, always — the pair is
+    denormalised from the newest snapshot and only ever written through
+    `AssetRepository`'s newest-wins path. `Liability.manual_balance` carries
+    no date, and the cost is visible there: net worth's current month uses
+    it however old it is, so the freshest point on the chart is the one with
+    no provenance. A self-reported number that can move net worth UP carries
+    its date everywhere, or the reports stop being trustworthy.
+    """
+
+    __tablename__ = "assets"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    budget_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    # 'property' | 'vehicle' | 'other'. Nullable like Liability.liability_type.
+    asset_type: Mapped[str | None] = mapped_column(String(30))
+    # Denormalised from the newest snapshot; NULL until the first value point
+    # is recorded, and an asset with no point contributes NOTHING to net
+    # worth — before tracking began there is no honest number to show.
+    manual_value: Mapped[Decimal | None] = mapped_column(Numeric(19, 4))
+    value_as_of: Mapped[_PyDate | None] = mapped_column(Date)
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    budget: Mapped["Budget"] = relationship()
+    values: Mapped[list["AssetValueSnapshot"]] = relationship(
+        back_populates="asset", passive_deletes=True, order_by="AssetValueSnapshot.date"
+    )
+
+
+class AssetValueSnapshot(Base):
+    """Dated value point for an asset — one per day at most, the mirror of
+    LiabilityBalanceSnapshot. History is the point: net worth is a time
+    series, and a bare value column would either rewrite every past month
+    when a new appraisal lands or need a step function anyway — which is
+    this table with one row."""
+
+    __tablename__ = "asset_value_snapshots"
+    __table_args__ = (UniqueConstraint("asset_id", "date", name="uq_asset_value_date"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    asset_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("assets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    date: Mapped[_PyDate] = mapped_column(Date, nullable=False)
+    value: Mapped[Decimal] = mapped_column(Numeric(19, 4), nullable=False)
+    source: Mapped[str] = mapped_column(String(20), default="manual", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    asset: Mapped["Asset"] = relationship(back_populates="values")
+
+
 class Liability(Base):
     """A first-class liability, independent of whether a full Account exists.
 
@@ -1595,6 +1673,16 @@ class Liability(Base):
     liability_type: Mapped[str | None] = mapped_column(String(30))
     linked_account_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="SET NULL"), unique=True
+    )
+    # The asset this debt is secured against — the house behind the mortgage,
+    # the car behind the loan. NOT unique, unlike linked_account_id: one
+    # account is one debt, but one house can secure a mortgage AND a HELOC,
+    # and equity (value − Σ owed on the liabilities linked here) is only
+    # right with that cardinality. ondelete=SET NULL never fires on a SOFT
+    # delete, so AssetRepository.soft_delete nulls these itself — the same
+    # duty AccountRepository.soft_delete carries for Category.linked_account_id.
+    linked_asset_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("assets.id", ondelete="SET NULL"), index=True
     )
     # Authoritative only when linked_account_id IS NULL
     manual_balance: Mapped[Decimal | None] = mapped_column(Numeric(19, 4))

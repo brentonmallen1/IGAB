@@ -57,8 +57,11 @@ class TestEveryTableIsClassified:
         scopes = classify(METADATA)
         counted = {scope: sum(1 for s in scopes.values() if s is scope) for scope in Scope}
         assert counted[Scope.ROOT] == 1
-        assert counted[Scope.OWNED] == 23
-        assert counted[Scope.CHILD] == 10
+        # 24: `assets` joined the graph (2026-09-01) — a valued thing with a
+        # budget_id, carried by snapshots and cascaded by budget delete.
+        assert counted[Scope.OWNED] == 24
+        # 11: `asset_value_snapshots` rides in as its child.
+        assert counted[Scope.CHILD] == 11
         assert counted[Scope.GLOBAL] == 3
         assert counted[Scope.EXCLUDED] == 0
 

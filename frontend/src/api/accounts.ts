@@ -93,6 +93,8 @@ export interface HygieneFinding {
   detail: string
   action: string
   account_ids: string[]
+  /** Valued Assets are not accounts; findings about one route to /assets/{id}. */
+  asset_ids: string[]
   transaction_count: number
 }
 

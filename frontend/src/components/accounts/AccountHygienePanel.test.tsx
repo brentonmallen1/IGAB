@@ -43,6 +43,7 @@ function finding(over: Partial<HygieneFinding> = {}): HygieneFinding {
     detail: 'A debt-typed account is subtracted from net worth.',
     action: 'Check the balance.',
     account_ids: [],
+    asset_ids: [],
     transaction_count: 0,
     ...over,
   }

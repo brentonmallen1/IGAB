@@ -22,6 +22,9 @@ import { useIsMobile } from '../../hooks/useMediaQuery'
 import { useAppStore } from '../../stores/appStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useFormatters } from '../../hooks/useFormatters'
+import { DatedAmountForm } from '../../components/common/DatedAmountForm/DatedAmountForm'
+import { useAssets, useLinkAsset } from '../../api/assets'
+import { equityOf } from '../../utils/equity'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import { useAccountTypes } from '../../api/accountTypes'
 import { liabilityTypeLabel } from '../../utils/liabilityTypeLabel'
@@ -47,13 +50,14 @@ export function LiabilityPage() {
   const [chartMode, setChartMode] = useState<'now' | 'beginning'>('now')
   const [extraInput, setExtraInput] = useState('')
   const [showBalanceForm, setShowBalanceForm] = useState(false)
-  const [newBalance, setNewBalance] = useState('')
-  const [balanceDate, setBalanceDate] = useState('')
   const [showLinkPicker, setShowLinkPicker] = useState(false)
+  const [showAssetPicker, setShowAssetPicker] = useState(false)
 
   const { data: categories = [] } = useCategories(budgetId)
+  const { data: assets = [] } = useAssets(budgetId)
   const createSnapshot = useCreateLiabilitySnapshot(budgetId)
   const linkCategory = useLinkCategoryLiability(budgetId)
+  const linkAsset = useLinkAsset(budgetId ?? '')
   const createTransaction = useCreateTransaction(budgetId ?? '')
 
   // Debounced so typing doesn't spam the API — the same hook the Guide's
@@ -88,6 +92,12 @@ export function LiabilityPage() {
   }
 
   const linkedCategory = categories.find((c) => c.id === liability.linked_category_id) ?? null
+  const securedAsset = assets.find((a) => a.id === liability.linked_asset_id) ?? null
+  // One home for the subtraction (utils/equity.ts) — the AssetPage renders
+  // the same figure and the two must not be able to disagree.
+  const assetEquity = securedAsset
+    ? equityOf(securedAsset.current_value, securedAsset.id, liabilities)
+    : null
   // A liability may bind a category no account and no *other* liability owns.
   // linked_liability_id was not exposed before, so this offered categories
   // another liability already held.
@@ -106,19 +116,21 @@ export function LiabilityPage() {
       ? null
       : amortization.baseline_schedule.length
 
-  async function handleSaveBalance(e: React.FormEvent) {
-    e.preventDefault()
-    const parsed = parseAmountInput(newBalance)
-    if (isNaN(parsed) || parsed < 0) return
+  async function handleLinkAsset(assetId: string | null) {
+    if (!assetId) return
+    await linkAsset.mutateAsync({ liabilityId: liability!.id, assetId })
+    setShowAssetPicker(false)
+    toast.success('Linked')
+  }
+
+  async function handleSaveBalance(balance: number, date: string | null) {
     await createSnapshot.mutateAsync({
       liabilityId: liability!.id,
-      balance: parsed,
-      ...(balanceDate ? { date: balanceDate } : {}),
+      balance,
+      ...(date ? { date } : {}),
     })
     toast.success('Balance updated')
     setShowBalanceForm(false)
-    setNewBalance('')
-    setBalanceDate('')
   }
 
   async function handleSeedOpeningBalance() {
@@ -381,6 +393,69 @@ export function LiabilityPage() {
         </div>
       )}
 
+      {/* What this debt is secured against. With a link, equity in one line
+          and a way through to the asset; without one, the affordance that
+          creates it — the value lives on the asset, stated and dated, never
+          typed straight into a liability field. */}
+      {securedAsset ? (
+        <div className="liability-page__hint liability-page__hint--linked">
+          <span>
+            Secured by{' '}
+            <Link to={`/assets/${securedAsset.id}`} className="liability-page__link">
+              {securedAsset.name}
+            </Link>
+            {securedAsset.current_value !== null && (
+              <>
+                {' '}
+                — worth {formatMoney(securedAsset.current_value)}
+                {assetEquity !== null && <>, {formatMoney(assetEquity)} equity across its debts</>}
+              </>
+            )}
+          </span>
+          <button
+            className="liability-page__hint-dismiss"
+            onClick={() => linkAsset.mutate({ liabilityId: liability!.id, assetId: null })}
+          >
+            Unlink
+          </button>
+        </div>
+      ) : (
+        <div className="liability-page__hint">
+          {showAssetPicker ? (
+            <div className="liability-page__link-picker">
+              <span>What is this securing?</span>
+              <Combobox
+                value={null}
+                options={assets.map((a) => ({ id: a.id, label: a.name }))}
+                onChange={handleLinkAsset}
+                placeholder={assets.length ? 'Choose an asset…' : 'No assets tracked yet'}
+                autoFocus
+                aria-label="Asset this debt is secured against"
+              />
+              <Link to="/assets" className="liability-page__link">
+                Track a new one
+              </Link>
+              <button
+                className="liability-page__hint-dismiss"
+                onClick={() => setShowAssetPicker(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <>
+              <span>
+                Securing an asset — a home, a vehicle? Link it and this page shows the equity
+                between its value and what is owed.
+              </span>
+              <button className="liability-page__action" onClick={() => setShowAssetPicker(true)}>
+                What is this securing?
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
       <Surface
         as="section"
         className="liability-page__section"
@@ -500,45 +575,14 @@ export function LiabilityPage() {
       </Surface>
 
       {showBalanceForm && (
-        <div
-          className="liability-page__balance-overlay"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setShowBalanceForm(false)
-          }}
-        >
-          <form className="liability-page__balance-form" onSubmit={handleSaveBalance}>
-            <h3>Update balance</h3>
-            <label>
-              <span>Balance owed</span>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                inputMode="decimal"
-                value={newBalance}
-                onChange={(e) => setNewBalance(e.target.value)}
-                autoFocus
-                placeholder={String(liability.current_balance)}
-              />
-            </label>
-            <label>
-              <span>As of (optional — defaults to today)</span>
-              <input
-                type="date"
-                value={balanceDate}
-                onChange={(e) => setBalanceDate(e.target.value)}
-              />
-            </label>
-            <div className="liability-page__balance-actions">
-              <button type="button" onClick={() => setShowBalanceForm(false)}>
-                Cancel
-              </button>
-              <button type="submit" className="primary" disabled={createSnapshot.isPending}>
-                {createSnapshot.isPending ? 'Saving…' : 'Save'}
-              </button>
-            </div>
-          </form>
-        </div>
+        <DatedAmountForm
+          title="Update balance"
+          amountLabel="Balance owed"
+          placeholder={String(liability.current_balance)}
+          pending={createSnapshot.isPending}
+          onSubmit={handleSaveBalance}
+          onClose={() => setShowBalanceForm(false)}
+        />
       )}
 
       {activeModal?.kind === 'liability' && activeModal.editingId === liability.id && (

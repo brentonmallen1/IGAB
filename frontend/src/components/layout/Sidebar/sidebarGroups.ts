@@ -106,10 +106,12 @@ export function orderedOnBudgetKeys(onBudgetByType: Map<string, Account[]>): str
   })
 }
 
-/** Where a sidebar row sends you. Shared by account rows and liability rows so
- *  the active-row rule below has one shape to reason about rather than two. */
+/** Where a sidebar row sends you. Shared by account rows, liability rows and
+ *  asset rows so the active-row rule below has one shape to reason about. */
 export type SidebarRowTarget =
-  { kind: 'account'; accountId: string } | { kind: 'liability'; liabilityId: string }
+  | { kind: 'account'; accountId: string }
+  | { kind: 'liability'; liabilityId: string }
+  | { kind: 'asset'; assetId: string }
 
 export interface LiabilityRow {
   key: string
@@ -181,6 +183,60 @@ export function liabilityHeaderTotal(rows: LiabilityRow[]): number {
   return rows.reduce((sum, r) => sum + r.balance, 0)
 }
 
+export interface AssetRow {
+  key: string
+  name: string
+  balance: number
+  target: SidebarRowTarget
+  /** Stated (manually valued) rows carry the pen icon, like unmanaged debts. */
+  icon: 'manual' | null
+}
+
+interface ValuedAssetLike {
+  id: string
+  name: string
+  current_value: number | null
+}
+
+/** Every asset, exactly once — the Debts rule mirrored:
+ * - off-budget asset-classified accounts (brokerage, an HSA), from their
+ *   ledgers
+ * - valued Assets (a home, a vehicle), from their stated values; one with no
+ *   value point yet still gets a row at 0, because a thing being tracked and
+ *   contributing nothing is a state worth seeing
+ *
+ * A valued Asset is never an account, so "once" is structural here; the same
+ * real-world house existing as BOTH is the double-count the hygiene panel
+ * suspects by name, not something this list can dedupe.
+ */
+export function buildAssetRows(
+  offBudgetAssetAccounts: Account[],
+  assets: ValuedAssetLike[]
+): AssetRow[] {
+  const rows: AssetRow[] = offBudgetAssetAccounts.map((acc) => ({
+    key: `acct-${acc.id}`,
+    name: acc.name,
+    balance: acc.balance,
+    target: { kind: 'account', accountId: acc.id },
+    icon: null,
+  }))
+  for (const asset of assets) {
+    rows.push({
+      key: `asset-${asset.id}`,
+      name: asset.name,
+      balance: asset.current_value ?? 0,
+      target: { kind: 'asset', assetId: asset.id },
+      icon: 'manual',
+    })
+  }
+  return rows
+}
+
+/** The header is the sum of what's listed — the same discipline as Debts. */
+export function assetHeaderTotal(rows: AssetRow[]): number {
+  return rows.reduce((sum, r) => sum + r.balance, 0)
+}
+
 /** The one place account ledgers are summed — the on-budget header, the
  * Assets header, and every type-group subtotal all come through here. Three
  * hand-written copies of this reduce is how a header stops agreeing with the
@@ -237,7 +293,10 @@ export function onBudgetTotals(onBudgetByType: Map<string, Account[]>): OnBudget
  * than hand it `location.pathname`.
  */
 export type SidebarLocation =
-  { kind: 'account'; id: string } | { kind: 'liability'; id: string } | null
+  | { kind: 'account'; id: string }
+  | { kind: 'liability'; id: string }
+  | { kind: 'asset'; id: string }
+  | null
 
 export function parseSidebarLocation(pathname: string): SidebarLocation {
   const segments = pathname.split('/').filter(Boolean)
@@ -247,6 +306,7 @@ export function parseSidebarLocation(pathname: string): SidebarLocation {
   const id = decodeURIComponent(raw)
   if (section === 'accounts') return { kind: 'account', id }
   if (section === 'liabilities') return { kind: 'liability', id }
+  if (section === 'assets') return { kind: 'asset', id }
   return null
 }
 
@@ -267,6 +327,9 @@ export function isRowActive(
   if (location === null) return false
   if (location.kind === 'liability') {
     return target.kind === 'liability' && target.liabilityId === location.id
+  }
+  if (location.kind === 'asset') {
+    return target.kind === 'asset' && target.assetId === location.id
   }
   if (target.kind === 'account' && target.accountId === location.id) return true
   return registerAccountId !== null && registerAccountId === location.id
