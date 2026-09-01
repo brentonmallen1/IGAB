@@ -356,3 +356,25 @@ def export_consistency(budget: YNABBudget) -> ExportConsistency:
         activity_cells_checked=activity_checked,
         activity_cells_disagreeing=activity_disagreeing,
     )
+
+def ccp_available_history(budget: YNABBudget) -> dict[str, dict[date, Decimal]]:
+    """YNAB's Credit Card Payments Available for EVERY month in the plan:
+    `{card name lowercased: {month: available}}`.
+
+    The per-month generalization of `RTAOracle.ccp_available_by_card`, which
+    answers only for the oracle's one month. An import carries the whole
+    series, and it is the one moment a card's reserve can be checked against
+    an independent statement of what it should have been at every point in
+    its history — so `check_parity` walks this to name the FIRST month the
+    two detached, not just whether they agree today.
+
+    Keys match how the importer matches cards: YNAB names the CCP category
+    after the card. Rows whose Available is blank are skipped, never invented.
+    """
+    out: dict[str, dict[date, Decimal]] = {}
+    for row in budget.plan_rows:
+        if row.category_group != _CREDIT_CARD_PAYMENTS or row.available is None:
+            continue
+        per_card = out.setdefault(row.category.lower(), {})
+        per_card[row.month] = per_card.get(row.month, ZERO) + row.available
+    return out

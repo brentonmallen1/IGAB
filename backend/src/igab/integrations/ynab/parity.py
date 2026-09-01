@@ -20,6 +20,7 @@ from igab.domain.money import quantize_cents
 from igab.integrations.ynab.models import YNABBudget
 from igab.integrations.ynab.oracle import (
     ExportConsistency,
+    ccp_available_history,
     export_consistency,
     subset_sums,
     ynab_rta,
@@ -57,6 +58,25 @@ class ParityDifference:
 
 
 @dataclass
+class CardHistoryDivergence:
+    """The first month a card's set-aside detached from YNAB's reserve.
+
+    The single-month `card_differences` says a card is off TODAY; on a
+    ten-year import the actionable fact is WHEN it started — the register of
+    that one month is a few dozen rows, the register of ten years is not.
+    Only cards with at least one divergent month get an entry."""
+
+    name: str
+    first_month: date
+    #: The two figures at `first_month`, so the entry says how far apart
+    #: they started, not just that they did.
+    igab: Decimal
+    ynab: Decimal
+    months_compared: int
+    months_differing: int
+
+
+@dataclass
 class ParityReport:
     month: date
     ynab_ready_to_assign: Decimal
@@ -88,6 +108,12 @@ class ParityReport:
     cards_compared: int
     cards_differing: int
     card_differences: list[ParityDifference]
+    #: Per card, the first month IGAB's set-aside and YNAB's CCP Available
+    #: disagreed — every month of the plan is compared, not just the viewed
+    #: one. Known-model divergences (a card refund repaying uncovered debt —
+    #: see `ParityDifference.repaid_uncovered_debt`) appear here too; the
+    #: entry names where the gap opened, which is where to read the register.
+    card_history: list[CardHistoryDivergence]
     #: Whether the export's own numbers agree with each other. When they do
     #: not, `categories_differing` measures the file, not the import.
     consistency: ExportConsistency
@@ -159,6 +185,34 @@ async def check_parity(
             card_differences.append(ParityDifference(card.name, card.set_aside, theirs))
     card_differences.sort(key=lambda d: abs(d.igab - d.ynab), reverse=True)
 
+    # Every month of every card, against the file's own series — one walk
+    # (`card_reserves`), not one summary per month. `set_aside` evaluates at
+    # any month, so ten years costs no more than one.
+    history = ccp_available_history(ynab_budget)
+    card_history: list[CardHistoryDivergence] = []
+    reserves = await budget_service.card_reserves(budget_id, month)
+    for _account_id, (name, reserve) in reserves.items():
+        series = history.get(name.lower())
+        if not series:
+            continue
+        months = [m for m in sorted(series) if m <= oracle.month]
+        divergent = [
+            m for m in months if quantize_cents(reserve.set_aside(m)) != quantize_cents(series[m])
+        ]
+        if divergent:
+            first = divergent[0]
+            card_history.append(
+                CardHistoryDivergence(
+                    name=name,
+                    first_month=first,
+                    igab=quantize_cents(reserve.set_aside(first)),
+                    ynab=quantize_cents(series[first]),
+                    months_compared=len(months),
+                    months_differing=len(divergent),
+                )
+            )
+    card_history.sort(key=lambda d: d.first_month)
+
     igab = summary.to_be_assigned
     return ParityReport(
         month=oracle.month,
@@ -178,5 +232,6 @@ async def check_parity(
         cards_compared=cards_compared,
         cards_differing=len(card_differences),
         card_differences=card_differences[:max_differences],
+        card_history=card_history[:max_differences],
         consistency=export_consistency(ynab_budget),
     )

@@ -487,3 +487,56 @@ class TestOlderExportsStillCarryTheirAssignments:
 
     def test_a_zip_with_a_plan_reports_nothing(self, tmp_path: Path):
         assert self.parser.parse_zip(_make_zip(tmp_path, REGISTER_CSV, PLAN_CSV)).errors == []
+
+
+class TestADroppedRowIsReportedNotSilent:
+    """The two drops that used to say nothing: a row missing its account or
+    date, and a row whose date cannot be read. Same rule as the unreadable
+    amount above — a dropped row must be visible in the errors, because a
+    balance that is quietly short of one row reconciles with nothing."""
+
+    def test_a_missing_date_with_money_is_reported(self):
+        parser = YNABParser()
+        register = SPLIT_HEADER + _reg_row(date_="", outflow="$12.00") + _reg_row()
+
+        txns = parser.parse_register_csv(register)
+
+        assert len(txns) == 1
+        assert len(parser.errors) == 1
+        assert "missing date" in parser.errors[0]
+
+    def test_a_missing_account_with_money_is_reported(self):
+        parser = YNABParser()
+        register = SPLIT_HEADER + _reg_row(account="", inflow="$40.00") + _reg_row()
+
+        txns = parser.parse_register_csv(register)
+
+        assert len(txns) == 1
+        assert len(parser.errors) == 1
+        assert "missing account" in parser.errors[0]
+
+    def test_an_unreadable_date_is_reported(self):
+        parser = YNABParser()
+        register = SPLIT_HEADER + _reg_row(date_="tomorrow-ish") + _reg_row()
+
+        txns = parser.parse_register_csv(register)
+
+        assert len(txns) == 1
+        assert len(parser.errors) == 1
+        assert "unreadable date" in parser.errors[0]
+        assert "tomorrow-ish" in parser.errors[0]
+
+    def test_a_fully_blank_line_is_noise_not_a_drop(self):
+        """Trailing blank lines are spreadsheet artifacts; reporting each one
+        would bury the real drops in noise."""
+        parser = YNABParser()
+        register = (
+            SPLIT_HEADER
+            + _reg_row()
+            + '"","","","","","","","",,,""\n'
+        )
+
+        txns = parser.parse_register_csv(register)
+
+        assert len(txns) == 1
+        assert parser.errors == []
