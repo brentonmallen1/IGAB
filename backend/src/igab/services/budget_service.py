@@ -40,6 +40,8 @@ from igab.services.ownership import require_in_budget
 from igab.utils.clock import today_utc
 
 if TYPE_CHECKING:
+    from igab.domain.card_timeline import Breach as TimelineBreach
+    from igab.domain.card_timeline import CardMonth as TimelineMonth
     from igab.repositories.budget_move_repo import BudgetMoveRepository
 
 
@@ -345,7 +347,7 @@ class CardWalk:
     """
 
     card_accounts: list = field(default_factory=list)
-    linked_by_account: dict[uuid.UUID | None, Category] = field(default_factory=dict)
+    linked_by_account: dict[uuid.UUID, Category] = field(default_factory=dict)
     funding: CardFunding[uuid.UUID, uuid.UUID] = field(default_factory=CardFunding)
     payments: dict[uuid.UUID, dict[date, Decimal]] = field(default_factory=dict)
     unclaimed: dict[uuid.UUID, dict[date, Decimal]] = field(default_factory=dict)
@@ -596,6 +598,38 @@ class BudgetService:
             a.id: (a.name, card_reserve(walk.funding, a.id, walk.payments.get(a.id, {})))
             for a in walk.card_accounts
         }
+
+    async def card_timeline_for(
+        self, budget_id: uuid.UUID, account_id: uuid.UUID, month: date
+    ) -> tuple[str, list["TimelineMonth"], "TimelineBreach | None"] | None:
+        """One card's reserve month by month, through `month`, with its first
+        breach — `(name, timeline, breach)`, or None for an account that is
+        not one of the budget's cards.
+
+        The serving side of `domain/card_timeline.py`: the same walk the
+        summary reads, evaluated at every month instead of the last one, with
+        the balance series beside it so each month's `card_position` is
+        against that month's balance rather than today's.
+        """
+        from igab.domain.card_timeline import card_timeline as build_timeline
+        from igab.domain.card_timeline import first_breach
+
+        month_start = first_of_month(month)
+        walk = await self.card_walk(budget_id, month_start)
+        account = next((a for a in walk.card_accounts if a.id == account_id), None)
+        if account is None:
+            return None
+        balances = await self.account_repo.card_balances_by_month(
+            budget_id, last_of_month(month_start)
+        )
+        reserve = card_reserve(walk.funding, account_id, walk.payments.get(account_id, {}))
+        timeline = build_timeline(
+            reserve,
+            balances.get(account_id, {}),
+            walk.funding.riding_by_card.get(account_id, {}),
+        )
+        timeline = [cm for cm in timeline if cm.month <= month_start]
+        return account.name, timeline, first_breach(timeline)
 
     async def get_budget_summary(self, budget_id: uuid.UUID, month: date) -> BudgetSummary:
         """
