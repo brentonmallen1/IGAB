@@ -50,15 +50,22 @@ ZERO = Decimal("0")
 #: negative charge.
 #:
 #: spend   an outflow on the card, filed to `category`
+#: charge  an outflow on the card, filed NOWHERE — the emergency expense the
+#:         user never categorised. Symmetric with `deposit`, and invisible to
+#:         the reserve for the same reason: exposure is per (category, card),
+#:         so a row with no category never reserves, never rides, and never
+#:         releases. It moves the balance and nothing else, which is why the
+#:         whole of it reads as uncovered.
 #: refund  an inflow on the card, filed to `category`
 #: pay     a transfer from the budget's cash to the card (the only kind that
 #:         spends the card's reserve)
-#: deposit a plain inflow on the card, filed nowhere — somebody else paid it
+#: deposit a plain inflow on the card, filed nowhere — somebody else paid it,
+#:         or a payment the importer never paired to its cash leg
 #: fund    an assignment to a spending category
 #: assign  an assignment to this card's own payment envelope
-EventKind = Literal["spend", "refund", "pay", "deposit", "fund", "assign"]
+EventKind = Literal["spend", "charge", "refund", "pay", "deposit", "fund", "assign"]
 
-_CARD_ROWS: frozenset[str] = frozenset({"spend", "refund", "pay", "deposit"})
+_CARD_ROWS: frozenset[str] = frozenset({"spend", "charge", "refund", "pay", "deposit"})
 _NEEDS_CATEGORY: frozenset[str] = frozenset({"spend", "refund", "fund"})
 
 
@@ -84,7 +91,7 @@ class CardEvent:
 
     def signed(self) -> Decimal:
         """What this event does to the card's balance. 0 for assignments."""
-        if self.kind == "spend":
+        if self.kind in ("spend", "charge"):
             return -self.amount
         if self.kind in ("refund", "pay", "deposit"):
             return self.amount
@@ -218,10 +225,20 @@ def to_funding_inputs(scenario: CardScenario, anchor: date) -> FundingInputs:
                 month,
                 direction * event.amount,
             )
+        elif event.kind == "charge":
+            # Deliberately contributes to NOTHING here. Exposure is per
+            # (category, card), so a row filed nowhere never reserves, never
+            # rides and can never be released — it reaches the card only
+            # through `signed()` in the balance below. That is the behaviour
+            # under test, and stating it as a branch keeps it from reading as
+            # an omission.
+            pass
         elif event.kind == "pay":
             _bump(payments, month, event.amount)
         elif event.kind == "deposit":
             _bump(unclaimed, month, event.amount)
+        else:  # pragma: no cover - the guard is the point
+            raise AssertionError(f"to_funding_inputs cannot walk a {event.kind!r} event")
 
     balance = scenario.opening + sum((e.signed() for e in scenario.events), ZERO)
     return FundingInputs(
@@ -292,6 +309,18 @@ def _assign(months_ago: int, amount: str) -> CardEvent:
 
 def _pay(months_ago: int, amount: str, day: int = 25) -> CardEvent:
     return CardEvent(RelDate(months_ago, day), "pay", Decimal(amount))
+
+
+def _charge(months_ago: int, amount: str, day: int = 12) -> CardEvent:
+    """An outflow filed nowhere. No category, by construction — the whole
+    point of the kind."""
+    return CardEvent(RelDate(months_ago, day), "charge", _d(amount))
+
+
+def _deposit(months_ago: int, amount: str, day: int = 16) -> CardEvent:
+    """An inflow filed nowhere: somebody else settled part of the bill, or a
+    payment arrived as a plain credit because its cash leg was never paired."""
+    return CardEvent(RelDate(months_ago, day), "deposit", _d(amount))
 
 
 def _refund(months_ago: int, amount: str, category: str, day: int = 18) -> CardEvent:
@@ -510,6 +539,72 @@ CREDIT_BALANCE = CardScenario(
     tiers=("full",),
 )
 
+UNFILED_SPENDING = CardScenario(
+    slug="unfiled-spending",
+    title="Charges nobody filed to an envelope",
+    story=(
+        "An urgent expense goes on the card and never gets a category — the "
+        "case a budget has to allow, because the alternative is a user who "
+        "cannot record what actually happened. Exposure is per (category, "
+        "card), so a row filed nowhere reserves nothing, rides nothing, and "
+        "releases nothing: it moves the balance and only the balance. Every "
+        "cent of it therefore reads as uncovered, which is the honest answer "
+        "— no envelope is standing behind this debt. The card that raised "
+        "this had a whole month of them and read its entire balance as "
+        "uncovered while Ready to pay sat at zero."
+    ),
+    card="Ironwood Card",
+    short="Ironwood",
+    opening=_d("0"),
+    events=(
+        _charge(2, "300"),
+        _charge(1, "200"),
+        _charge(0, "100", day=1),
+    ),
+    # Hand-computed, not derived: nothing funded and nothing assigned, so the
+    # reserve never moves and the whole 600 owed is uncovered.
+    expect=ExpectedPosition(
+        balance=_d("-600"),
+        set_aside=_d("0"),
+        uncovered=_d("600"),
+    ),
+    tiers=("full",),
+)
+
+UNLINKED_PAYMENT = CardScenario(
+    slug="unlinked-payment",
+    title="A payment that arrived as a plain credit",
+    story=(
+        "The bill was paid from checking, but the two legs were never linked "
+        "— the importer sees a card credit and a cash debit and has no reason "
+        "to know they are one movement. Only a transfer spends the reserve, "
+        "so `paid to the card` stays at zero while the balance visibly falls, "
+        "and the money lands in the 'other credits' term instead. The card "
+        "that raised this showed 0.00 paid against thousands of debt "
+        "repaid, with nothing on screen saying where the movement came from."
+    ),
+    card="Kestrel Card",
+    short="Kestrel",
+    opening=_d("0"),
+    events=(
+        _fund(2, "200", "Kestrel Groceries"),
+        _spend(2, "200", "Kestrel Groceries"),
+        _charge(1, "400"),
+        _deposit(1, "300"),
+        _charge(0, "100", day=1),
+    ),
+    # Hand-computed: 200 of funded spending reserves 200. The 500 of unfiled
+    # charges and the 300 credit touch the balance only, leaving 400 owed
+    # against a 200 reserve — so 200 is uncovered and nothing is over- or
+    # short-reserved.
+    expect=ExpectedPosition(
+        balance=_d("-400"),
+        set_aside=_d("200"),
+        uncovered=_d("200"),
+    ),
+    tiers=("full",),
+)
+
 #: Order is the order the demo shows them: the healthy card first, so the
 #: strip does not open on an oddity the way it used to.
 ALL_SCENARIOS: tuple[CardScenario, ...] = (
@@ -518,6 +613,8 @@ ALL_SCENARIOS: tuple[CardScenario, ...] = (
     MONTH_ENDED_SHORT,
     OVER_RESERVED,
     REIMBURSED,
+    UNFILED_SPENDING,
+    UNLINKED_PAYMENT,
     CREDIT_BALANCE,
 )
 
@@ -570,7 +667,7 @@ def to_spec_elements(
         )
 
     for event in scenario.events:
-        if event.kind in ("spend", "refund", "deposit"):
+        if event.kind in ("spend", "charge", "refund", "deposit"):
             one_offs.append(
                 OneOffTxn(
                     when=event.when,
@@ -631,6 +728,7 @@ def to_spec_elements(
 #: nobody, unlike an employer or a servicer.
 _PAYEES = {
     "spend": "Corner Market",
+    "charge": "Urgent Care Clinic",
     "refund": "Shared Expenses Settle-Up",
     "deposit": "Payment Received",
 }

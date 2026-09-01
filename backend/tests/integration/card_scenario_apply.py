@@ -125,11 +125,20 @@ async def apply_card_scenario(
             category = await _category(session, budget, group, event.category or "", cache)
             amount = -event.amount if event.kind == "spend" else event.amount
             await create_transaction(session, budget, card, amount, when, category=category)
+        elif event.kind == "charge":
+            # Filed nowhere — `deposit` in the other direction. The row exists
+            # on the card and touches no envelope, which is the whole point.
+            await create_transaction(session, budget, card, -event.amount, when)
         elif event.kind == "deposit":
             await create_transaction(session, budget, card, event.amount, when)
         elif event.kind == "pay":
             await session.flush()
             await create_card_payment(services, budget, cash_account, card, event.amount, when)
+        else:  # pragma: no cover - the guard is the point
+            # A kind added to the vocabulary but not here used to produce NO
+            # row at all, silently: the scenario's own figures then read as a
+            # card nothing had happened to, and only the served layer noticed.
+            raise AssertionError(f"card_scenario_apply cannot build a {event.kind!r} event")
 
     await session.flush()
     return AppliedScenario(

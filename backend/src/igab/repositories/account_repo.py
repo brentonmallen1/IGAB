@@ -231,8 +231,10 @@ class AccountRepository(BaseRepository[Account]):
         the WHERE keeps every live parent row in the month and `POSTED` moves
         into the case expressions.
         """
-        charges = func.sum(case((and_(POSTED, Transaction.amount < 0), Transaction.amount), else_=0))
-        inflows = func.sum(case((and_(POSTED, Transaction.amount > 0), Transaction.amount), else_=0))
+        out = and_(POSTED, Transaction.amount < 0)
+        into = and_(POSTED, Transaction.amount > 0)
+        charges = func.sum(case((out, Transaction.amount), else_=0))
+        inflows = func.sum(case((into, Transaction.amount), else_=0))
         pending = func.sum(case((not_(POSTED), Transaction.amount), else_=0))
         result = await self.session.execute(
             select(
