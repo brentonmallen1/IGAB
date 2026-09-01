@@ -54,6 +54,11 @@ export function LiabilityPage() {
   // A string (even '') means the user is trying something else right now.
   const [extraInput, setExtraInput] = useState<string | null>(null)
   const [curtailInput, setCurtailInput] = useState('')
+  // Which schedule the table shows once an extra schedule exists. 'extra'
+  // by default: with a plan or a live what-if, that is the path being
+  // considered, and a table pinned to the contractual minimum would quietly
+  // contradict the chart above it.
+  const [scheduleView, setScheduleView] = useState<'minimum' | 'extra'>('extra')
   const [showBalanceForm, setShowBalanceForm] = useState(false)
   const [showLinkPicker, setShowLinkPicker] = useState(false)
   const [showAssetPicker, setShowAssetPicker] = useState(false)
@@ -615,7 +620,30 @@ export function LiabilityPage() {
         header={
           <div className="liability-page__section-header">
             <h2>Amortization schedule</h2>
-            <span className="liability-page__section-sub">At the minimum payment</span>
+            {amortization?.extra_schedule ? (
+              <div className="liability-page__toggle" role="group" aria-label="Which schedule">
+                <button
+                  type="button"
+                  className={scheduleView === 'extra' ? 'active' : ''}
+                  aria-pressed={scheduleView === 'extra'}
+                  onClick={() => setScheduleView('extra')}
+                >
+                  {extraPayment > 0 && extraPayment === storedPlan && curtailment === 0
+                    ? 'My plan'
+                    : 'With extra'}
+                </button>
+                <button
+                  type="button"
+                  className={scheduleView === 'minimum' ? 'active' : ''}
+                  aria-pressed={scheduleView === 'minimum'}
+                  onClick={() => setScheduleView('minimum')}
+                >
+                  Minimum
+                </button>
+              </div>
+            ) : (
+              <span className="liability-page__section-sub">At the minimum payment</span>
+            )}
           </div>
         }
       >
@@ -640,7 +668,13 @@ export function LiabilityPage() {
               </div>
             ) : (
               <Surface variant="sunken" className="liability-page__well">
-                <AmortizationTable schedule={amortization.baseline_schedule} />
+                <AmortizationTable
+                  schedule={
+                    scheduleView === 'extra' && amortization.extra_schedule
+                      ? amortization.extra_schedule
+                      : amortization.baseline_schedule
+                  }
+                />
               </Surface>
             )
           ) : (

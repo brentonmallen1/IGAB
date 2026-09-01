@@ -30,22 +30,54 @@
   color: var(--color-negative);
 }
 
-.amort-table__more {
-  display: block;
-  width: 100%;
-  margin-top: var(--spacing-sm);
-  padding: var(--spacing-sm);
-  background: transparent;
-  border: 1px dashed var(--border-color);
-  border-radius: var(--border-radius-sm);
-  color: var(--text-secondary);
-  font-size: var(--font-size-sm);
+.amort-table__year {
   cursor: pointer;
-  transition: background var(--transition-fast);
 }
 
-.amort-table__more:hover {
+.amort-table__year td {
+  font-weight: 600;
+  background: var(--bg-secondary);
+}
+
+.amort-table__year:hover td {
   background: var(--bg-hover);
+}
+
+.amort-table__year-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.amort-table__year-months {
+  font-weight: 400;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.amort-table__month td {
+  color: var(--text-secondary);
+}
+
+.amort-table__month-name {
+  padding-left: 26px !important;
+}
+
+.amort-table__month-index {
+  margin-left: var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.amort-table tfoot th,
+.amort-table tfoot td {
+  border-top: 1px solid var(--edge-strong);
+  border-bottom: none;
+  font-weight: 600;
+  text-align: left;
+  padding: 6px 8px;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
 }
 
 .amort-table__empty {
@@ -63,10 +95,16 @@
 
   .amort-table table,
   .amort-table tbody,
+  .amort-table tfoot,
   .amort-table tr,
-  .amort-table td {
+  .amort-table td,
+  .amort-table tfoot th {
     display: block;
     width: 100%;
+  }
+
+  .amort-table__month-name {
+    padding-left: 4px !important;
   }
 
   .amort-table tr {
