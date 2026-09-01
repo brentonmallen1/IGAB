@@ -605,6 +605,43 @@ UNLINKED_PAYMENT = CardScenario(
     tiers=("full",),
 )
 
+PAID_AHEAD_THEN_CAUGHT_UP = CardScenario(
+    slug="paid-ahead-then-caught-up",
+    title="A payment ran ahead of the reserve, then the reserve caught up",
+    story=(
+        "The statement was paid in full — but the statement included debt "
+        "carried in from before the budget, which nothing had reserved "
+        "against, so the payment drove the reserve below zero. The next "
+        "month's funded spending reserved as usual and pulled it back up. "
+        "The final position is unremarkable, and that is the lesson: only "
+        "the month-by-month timeline shows the dip, which is why a card's "
+        "history is worth reading and its current figure is not the whole "
+        "story."
+    ),
+    card="Foxglove Card",
+    short="Foxglove",
+    opening=_d("-300"),
+    events=(
+        _fund(2, "100", "Foxglove Groceries"),
+        _spend(2, "100", "Foxglove Groceries"),
+        _pay(2, "250"),
+        _fund(1, "200", "Foxglove Groceries"),
+        _spend(1, "200", "Foxglove Groceries"),
+        _pay(0, "50", day=1),
+    ),
+    # Hand-computed. Reservations 100 + 200 = 300 against payments
+    # 250 + 50 = 300, so the reserve lands at exactly zero — after reading
+    # -150 at the end of the first month (100 reserved, 250 paid) and +50
+    # after the second. The 300 of pre-budget debt was never categorized, so
+    # every cent of what the card still owes is uncovered.
+    expect=ExpectedPosition(
+        balance=_d("-300"),
+        set_aside=_d("0"),
+        uncovered=_d("300"),
+    ),
+    tiers=("full",),
+)
+
 #: Order is the order the demo shows them: the healthy card first, so the
 #: strip does not open on an oddity the way it used to.
 ALL_SCENARIOS: tuple[CardScenario, ...] = (
@@ -615,6 +652,7 @@ ALL_SCENARIOS: tuple[CardScenario, ...] = (
     REIMBURSED,
     UNFILED_SPENDING,
     UNLINKED_PAYMENT,
+    PAID_AHEAD_THEN_CAUGHT_UP,
     CREDIT_BALANCE,
 )
 

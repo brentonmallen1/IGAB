@@ -286,6 +286,8 @@ function SummaryStep({ summary }: { summary: YnabImportResult }) {
       `${n(summary.credit_card_payment_assignments_skipped)} credit-card payment assignment${summary.credit_card_payment_assignments_skipped === 1 ? '' : 's'} (${formatMoney(reserves)}) had no matching card here — the card was left out of the import or is not on budget — so those reserves were not carried over.`,
     summary.tracking_account_categories_stripped > 0 &&
       `${n(summary.tracking_account_categories_stripped)} row${summary.tracking_account_categories_stripped === 1 ? '' : 's'} on tracking accounts arrived with a category and imported without one — off-budget activity is net-worth movement, not budget spending.`,
+    summary.credit_card_payment_categories_stripped > 0 &&
+      `${n(summary.credit_card_payment_categories_stripped)} row${summary.credit_card_payment_categories_stripped === 1 ? '' : 's'} arrived filed to a Credit Card Payments category — a reserve, not a spending envelope — and imported uncategorized. YNAB never writes such rows itself, so this file was unusual; find them in the register and file them by hand.`,
     summary.skipped > 0 &&
       `${n(summary.skipped)} rows skipped as duplicates of something already here.`,
     repairable > 0 &&
@@ -427,6 +429,26 @@ function ParityBlock({ parity }: { parity: NonNullable<YnabImportResult['parity'
                 <span className="tabular">
                   {formatMoney(parseApiDecimal(d.igab))} here vs{' '}
                   {formatMoney(parseApiDecimal(d.ynab))} in YNAB
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {parity.card_history.length > 0 && (
+        <>
+          <p className="import-review__verdict import-review__verdict--warn">
+            Compared month by month across the whole history, the first disagreement
+            {parity.card_history.length === 1 ? '' : 's'}:
+          </p>
+          <ul className="import-review__diffs">
+            {parity.card_history.map((d) => (
+              <li key={d.name}>
+                <span className="import-review__diff-n">{d.name}</span>
+                <span className="tabular">
+                  detached {formatDate(d.first_month)}: {formatMoney(parseApiDecimal(d.igab))} here
+                  vs {formatMoney(parseApiDecimal(d.ynab))} in YNAB · {n(d.months_differing)} of{' '}
+                  {n(d.months_compared)} months differ
                 </span>
               </li>
             ))}

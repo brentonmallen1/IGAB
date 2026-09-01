@@ -89,6 +89,17 @@ export function HygieneFindings({
     ) {
       return `/assets/${f.asset_ids[0]}`
     }
+    // The card diagnostics all resolve on the budget page's cards section —
+    // the Ready to pay breakdown is where the months and legs they cite live.
+    if (
+      f.kind === 'card_reserve_went_negative' ||
+      f.kind === 'card_debt_predates_budget' ||
+      f.kind === 'residual_on_uncharged_category' ||
+      f.kind === 'card_inflow_belongs_to_other_card' ||
+      f.kind === 'payment_envelope_shadow'
+    ) {
+      return '/budget'
+    }
     return null
   }
 

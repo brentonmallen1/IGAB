@@ -112,6 +112,21 @@ class YNABExportConsistencyOut(BaseModel):
     activity_cells_disagreeing: int
 
 
+class YNABCardHistoryOut(BaseModel):
+    """The first month a card's set-aside detached from YNAB's reserve.
+
+    Every month of the plan is compared, not just the viewed one: on a
+    long import "which month" is the actionable half — that month's
+    register is a few dozen rows, the whole history is not."""
+
+    name: str
+    first_month: date
+    igab: Decimal
+    ynab: Decimal
+    months_compared: int
+    months_differing: int
+
+
 class YNABParityOut(BaseModel):
     """How the imported budget compares with the export's own figures.
 
@@ -149,6 +164,9 @@ class YNABParityOut(BaseModel):
     cards_compared: int
     cards_differing: int
     card_differences: list[YNABParityDifference]
+    #: Cards with at least one divergent month, earliest first. Empty when
+    #: every card agrees with the file in every month.
+    card_history: list[YNABCardHistoryOut]
     consistency: YNABExportConsistencyOut
 
 
@@ -198,6 +216,11 @@ class YNABImportResult(BaseModel):
     #: imported without one — off-budget activity is net-worth movement, and
     #: a category here would move the budget with no on-budget event.
     tracking_account_categories_stripped: int = 0
+    #: Register rows filed to a Credit Card Payments category — a reserve,
+    #: not a spending envelope — imported uncategorized. YNAB never writes
+    #: such rows itself; a non-zero here means the file was unusual and the
+    #: rows need filing by hand.
+    credit_card_payment_categories_stripped: int = 0
     #: None when the check could not run; never a failed import.
     parity: YNABParityOut | None = None
     errors: list[str]
@@ -649,6 +672,17 @@ async def ynab_parity_or_none(
         card_differences=[
             YNABParityDifference(name=d.name, igab=d.igab, ynab=d.ynab)
             for d in report.card_differences
+        ],
+        card_history=[
+            YNABCardHistoryOut(
+                name=d.name,
+                first_month=d.first_month,
+                igab=d.igab,
+                ynab=d.ynab,
+                months_compared=d.months_compared,
+                months_differing=d.months_differing,
+            )
+            for d in report.card_history
         ],
         consistency=YNABExportConsistencyOut(
             self_consistent=report.consistency.self_consistent,

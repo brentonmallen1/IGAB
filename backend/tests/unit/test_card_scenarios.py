@@ -61,6 +61,23 @@ def test_the_five_legs_reconstruct_the_reserve(scenario: CardScenario):
 
 
 @pytest.mark.parametrize("scenario", ALL_SCENARIOS, ids=IDS)
+def test_residual_by_pair_decomposes_the_residual_leg(scenario: CardScenario):
+    """`residual_by_pair` is attribution, never arithmetic: summed across
+    categories it must equal `residual_by_card` exactly, or a surface reading
+    the pairs would tell a different story than the leg total."""
+    inputs = to_funding_inputs(scenario, ANCHOR)
+    funding = card_funding(
+        inputs.assignments, inputs.activity, inputs.outflows, inputs.card_categories
+    )
+    by_card: dict[str, Decimal] = {}
+    for (_cat, card), series in funding.residual_by_pair.items():
+        by_card[card] = by_card.get(card, Decimal("0")) + sum(series.values(), Decimal("0"))
+    for card, series in funding.residual_by_card.items():
+        assert by_card.get(card, Decimal("0")) == sum(series.values(), Decimal("0"))
+    assert set(by_card) <= set(funding.residual_by_card)
+
+
+@pytest.mark.parametrize("scenario", ALL_SCENARIOS, ids=IDS)
 def test_the_scenario_is_anchor_relative(scenario: CardScenario):
     """Every date is `RelDate`, so the same story told in a different month
     lands in the same place. The sample budget always ends 'today', and a

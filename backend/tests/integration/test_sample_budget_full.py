@@ -119,7 +119,7 @@ async def test_full_tier_shape_and_texture(db_session):
 
     accounts = await AccountRepository(db_session).get_all(budget.id, include_closed=True)
     # Ten household accounts plus the eight card-shape demos.
-    assert counts.accounts == 24
+    assert counts.accounts == 25
     types = {a.account_type for a in accounts}
     assert {
         "checking",
@@ -185,8 +185,8 @@ async def test_full_tier_liabilities(db_session):
     liabilities = {item.name: item for item in await liability_repo.get_all(budget.id)}
     # Four from the spec plus the Visa's companion: a liability-classified
     # account without one is the dead-end state this model exists to remove.
-    # Five household debts plus a companion for each of the eight demo cards.
-    assert len(liabilities) == 13
+    # Five household debts plus a companion for each of the nine demo cards.
+    assert len(liabilities) == 14
     for account in await AccountRepository(db_session).get_all(budget.id, include_closed=True):
         if account.classification == "liability":
             assert await liability_repo.get_by_linked_account(account.id) is not None, account.name
@@ -261,6 +261,6 @@ async def test_endpoint_accepts_the_tier(api_client):
     )
     assert response.status_code == 201, response.text
     counts = response.json()["counts"]
-    assert counts["accounts"] == 24
+    assert counts["accounts"] == 25
     assert counts["transactions"] > 1500
-    assert counts["liabilities"] == 13
+    assert counts["liabilities"] == 14
