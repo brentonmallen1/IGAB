@@ -302,6 +302,13 @@ export interface CardStatus {
    *  total, so a month cannot be derived from them here.
    *  `debt_change_this_month` is signed: positive means the debt shrank. */
   charged_this_month: number
+  /** EVERY credit the card's ledger took this month — refunds, rewards,
+   *  somebody else paying the bill, unpaired payments — where
+   *  `paid_this_month` is paired transfers from cash only. Served (home:
+   *  budget_service.CardStatus ← card_month_flows); the client used to
+   *  reconstruct it as `debt_change + charged − paid`, a plug that cannot
+   *  fail to reconcile and so absorbed any error silently. */
+  inflows_this_month: number
   paid_this_month: number
   debt_change_this_month: number
   /** Signed net of this month's rows the bank still calls pending. Served

@@ -202,6 +202,16 @@ class CardStatus:
     #: every row included. They differ by refunds, interest, and payments
     #: whose transfer leg was never paired — a gap worth showing, not hiding.
     charged_this_month: Decimal = Decimal("0")
+    #: EVERY credit the card's ledger took this month — refunds, rewards,
+    #: somebody else paying the bill, and payments whose transfer leg was
+    #: never paired — where `paid_this_month` is paired transfers from cash
+    #: only. The gap between the two is the diagnostic
+    #: (`card_month_flows`' own words), and the client used to reconstruct
+    #: it as `debt_change + charged − paid` — a plug that cannot fail to
+    #: reconcile, so it silently absorbed any error in the other terms and
+    #: relabelled it "other credits". Served, so the month block renders
+    #: figures and never sums them.
+    inflows_this_month: Decimal = Decimal("0")
     paid_this_month: Decimal = Decimal("0")
     #: Signed: positive means the debt shrank this month.
     debt_change_this_month: Decimal = Decimal("0")
@@ -776,6 +786,7 @@ class BudgetService:
                         payments=sum_through(reserve.payments, month_start),
                         riding=sum_through(funding.riding_by_card.get(account.id, {}), month_start),
                         charged_this_month=-charged,
+                        inflows_this_month=received,
                         paid_this_month=reserve.payments.get(month_start, zero),
                         debt_change_this_month=charged + received,
                         pending_this_month=pending,

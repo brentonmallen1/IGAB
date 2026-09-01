@@ -418,6 +418,14 @@
   color: var(--text-muted);
 }
 
+/* The split of "Received on the card" into paired payments and everything
+   else — indented under the figure they decompose, unsigned because the
+   sign lives on the parent row. */
+.credit-cards__leg--sub {
+  padding-left: var(--spacing-md);
+  color: var(--text-muted);
+}
+
 /* The total the five legs add up to. A rule rather than a weight change:
    this is arithmetic, and arithmetic is what a rule under a column means. */
 .credit-cards__leg--total {
