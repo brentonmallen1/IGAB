@@ -16,6 +16,7 @@ import { ReconcileModal } from '../../components/accounts/ReconcileModal'
 import { ReconcileStatusBar } from '../../components/accounts/ReconcileStatusBar'
 import { PendingReviewBanner } from '../../components/accounts/PendingReviewBanner'
 import { AccountSettingsModal } from '../../components/accounts/AccountSettingsModal'
+import { CardPaymentModal } from '../../components/accounts/CardPaymentModal'
 import { LiabilityTermsHeader } from '../../components/liabilities/LiabilityTermsHeader'
 import { LiabilitySettingsModal } from '../../components/liabilities/LiabilitySettingsModal'
 import { MatchReviewModal } from '../../components/simplefin/MatchReviewModal'
@@ -311,6 +312,14 @@ export function AccountPage() {
 
       {activeModal?.kind === 'account' && activeModal.editingId && (
         <AccountSettingsModal accountId={activeModal.editingId} onClose={closeModal} />
+      )}
+
+      {activeModal?.kind === 'card-payment' && activeModal.editingId && budgetId && (
+        <CardPaymentModal
+          budgetId={budgetId}
+          accountId={activeModal.editingId}
+          onClose={closeModal}
+        />
       )}
 
       {activeModal?.kind === 'liability' && activeModal.editingId && budgetId && (
