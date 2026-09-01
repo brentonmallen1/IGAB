@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { reserveNote, debtMovement, rideMonths, unexplainedInflow, emptyLegsNote } from './cardRow'
+import {
+  reserveNote,
+  debtMovement,
+  rideMonths,
+  unexplainedInflow,
+  emptyLegsNote,
+  pendingNote,
+} from './cardRow'
 import type { CardStatus } from '../../../types'
 
 const money = (n: number) => `$${n.toFixed(2)}`
@@ -29,6 +36,7 @@ function card(over: Partial<CardStatus> = {}): CardStatus {
     charged_this_month: 0,
     paid_this_month: 0,
     debt_change_this_month: 0,
+    pending_this_month: 0,
     rode_by_month: [],
     ...over,
   }
@@ -245,5 +253,26 @@ describe('emptyLegsNote', () => {
       card({ balance: 0, charged_this_month: 0, debt_change_this_month: 90 })
     )
     expect(note).not.toContain('Nothing has moved')
+  })
+})
+
+describe('pendingNote', () => {
+  it('says nothing when every row has posted', () => {
+    expect(pendingNote(card({ pending_this_month: 0 }), money)).toBeNull()
+  })
+
+  it('names the gap between this panel and the register', () => {
+    // The panel and the balance both exclude pending; the register does not.
+    // A user counting the register found more charges than the panel showed.
+    const note = pendingNote(card({ pending_this_month: -65 }), money)
+    expect(note).toContain('$65.00')
+    expect(note).toContain('charges')
+    expect(note).toContain('register')
+  })
+
+  it('calls a pending credit a credit', () => {
+    const note = pendingNote(card({ pending_this_month: 30 }), money)
+    expect(note).toContain('credits')
+    expect(note).toContain('$30.00')
   })
 })

@@ -1184,6 +1184,7 @@ class TestTheFiveLegs:
                 "charged_this_month",
                 "paid_this_month",
                 "debt_change_this_month",
+                "pending_this_month",
                 "rode_by_month",
             ):
                 assert leg in card, f"{leg} missing from the served card row"
@@ -1268,6 +1269,74 @@ class TestTheMonthAndThePosition:
         # June's charge is outside the window, so the month figures do not see
         # it while the lifetime legs and the balance do.
         assert card.balance == D("-820.00")
+
+    async def test_the_month_excludes_pending_and_says_by_how_much(self, db_session):
+        """The register and the panel disagree, on purpose, and the panel says
+        so.
+
+        `POSTED` keeps a provisional row out of every money aggregate — the
+        month figures AND the balance — while the register lists it the moment
+        the bank mentions it. A real card read `charged 2,400` against a
+        register its owner counted at `2,700`, with nothing on screen
+        accounting for the difference; they reasonably concluded the panel was
+        wrong.
+
+        So the divergence is named and bounded: `pending_this_month` is
+        exactly what the register shows and these figures do not. It is NOT
+        added to them — a pending amount is provisional and often arrives
+        changed.
+        """
+        services, budget, _, visa, _, groceries = await _setup(db_session)
+        await create_budget_assignment(db_session, budget, groceries, JUL, "500.00")
+        await create_transaction(
+            db_session, budget, visa, "-120.00", date(2026, 7, 9), category=groceries
+        )
+        # Two rows the bank has mentioned but not confirmed.
+        await create_transaction(
+            db_session, budget, visa, "-40.00", date(2026, 7, 28), cleared="pending"
+        )
+        await create_transaction(
+            db_session, budget, visa, "-25.00", date(2026, 7, 29), cleared="pending"
+        )
+        await db_session.flush()
+
+        card = (await _summary(services, budget, JUL)).cards[0]
+        # The posted figures ignore both, and so does the balance beside them:
+        # the panel is self-consistent, which is why the gap is invisible.
+        assert card.charged_this_month == D("120.00")
+        assert card.debt_change_this_month == D("-120.00")
+        assert card.balance == D("-120.00")
+        # And the gap the register shows is stated rather than left to be found.
+        assert card.pending_this_month == D("-65.00")
+
+    async def test_pending_is_zero_when_every_row_has_posted(self, db_session):
+        """No note on the common case — the line only earns its place when the
+        two screens actually disagree."""
+        services, budget, _, visa, _, groceries = await _setup(db_session)
+        await create_budget_assignment(db_session, budget, groceries, JUL, "500.00")
+        await create_transaction(
+            db_session, budget, visa, "-120.00", date(2026, 7, 9), category=groceries
+        )
+        await db_session.flush()
+
+        card = (await _summary(services, budget, JUL)).cards[0]
+        assert card.pending_this_month == D("0")
+
+    async def test_a_pending_credit_is_reported_as_a_credit(self, db_session):
+        """Signed, so the surface can say "charges" or "credits" rather than
+        guessing. A pending refund is the other direction and reads that way."""
+        services, budget, _, visa, _, groceries = await _setup(db_session)
+        await create_budget_assignment(db_session, budget, groceries, JUL, "500.00")
+        await create_transaction(
+            db_session, budget, visa, "-120.00", date(2026, 7, 9), category=groceries
+        )
+        await create_transaction(
+            db_session, budget, visa, "30.00", date(2026, 7, 27), cleared="pending"
+        )
+        await db_session.flush()
+
+        card = (await _summary(services, budget, JUL)).cards[0]
+        assert card.pending_this_month == D("30.00")
 
     async def test_an_over_reserve_the_discrepancy_check_excuses_still_reports_a_position(
         self, db_session

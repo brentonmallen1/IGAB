@@ -304,6 +304,14 @@ export interface CardStatus {
   charged_this_month: number
   paid_this_month: number
   debt_change_this_month: number
+  /** Signed net of this month's rows the bank still calls pending. Served
+   *  (backend/.../repositories/account_repo.py `card_month_flows`) because the
+   *  client cannot see a row the money aggregates deliberately exclude.
+   *  `POSTED` keeps these out of the three figures above AND out of `balance`,
+   *  so the panel agrees with the balance and differs from the register by
+   *  exactly this — a divergence the surface names rather than leaving as an
+   *  unexplained gap between two screens. NOT added to the figures above. */
+  pending_this_month: number
   /** Which months put riding debt on this card, chronological. The month is
    *  the actionable half: funding an envelope in the month it ended short
    *  retires the ride — the walk is recomputed every request, so a backdated

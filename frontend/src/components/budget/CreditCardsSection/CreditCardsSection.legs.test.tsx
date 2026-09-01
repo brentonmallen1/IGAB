@@ -58,6 +58,7 @@ function card(over: Partial<CardStatus> = {}): CardStatus {
     charged_this_month: 0,
     paid_this_month: 0,
     debt_change_this_month: 0,
+    pending_this_month: 0,
     rode_by_month: [],
     ...over,
   }

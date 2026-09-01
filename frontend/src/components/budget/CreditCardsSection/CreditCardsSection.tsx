@@ -15,7 +15,14 @@ import { TargetEditor } from '../TargetEditor'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { useUIStore } from '../../../stores/uiStore'
 import { parseAssignmentCommit } from '../../../utils/amountExpression'
-import { debtMovement, emptyLegsNote, reserveNote, rideMonths, unexplainedInflow } from './cardRow'
+import {
+  debtMovement,
+  emptyLegsNote,
+  pendingNote,
+  reserveNote,
+  rideMonths,
+  unexplainedInflow,
+} from './cardRow'
 import { Dialog } from '../../common/Dialog/Dialog'
 import { Surface } from '../../common/Surface'
 import { Link } from 'react-router-dom'
@@ -63,6 +70,7 @@ function ReserveLegs({
 }) {
   const rides = rideMonths(card)
   const otherInflow = unexplainedInflow(card)
+  const pending = pendingNote(card, formatMoney)
   const legs = [
     { label: 'Assigned to this card', value: card.assigned, sign: '+' },
     { label: 'Set aside by funded spending', value: card.reserved, sign: '+' },
@@ -131,6 +139,7 @@ function ReserveLegs({
           </div>
         </dl>
       )}
+      {pending && <p className="credit-cards__legs-note">{pending}</p>}
       {/* The footnote explains the row above it; it no longer carries the
         amount. Only a transfer spends the card's reserve, so a payment
         recorded as a plain deposit lowers the balance while Ready to pay

@@ -712,6 +712,7 @@ async def get_budget_month(
                 charged_this_month=c.charged_this_month,
                 paid_this_month=c.paid_this_month,
                 debt_change_this_month=c.debt_change_this_month,
+                pending_this_month=c.pending_this_month,
                 rode_by_month=[RodeMonth(month=m, amount=v) for m, v in c.rode_by_month],
             )
             for c in summary.cards
