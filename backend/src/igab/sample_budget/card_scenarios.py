@@ -691,10 +691,16 @@ PAID_AHEAD_THEN_CAUGHT_UP = CardScenario(
     # -150 at the end of the first month (100 reserved, 250 paid) and +50
     # after the second. The 300 of pre-budget debt was never categorized, so
     # every cent of what the card still owes is uncovered.
+    # The anchor month holds only the 50 payment: nothing charged, the
+    # payment is the card's one credit, and the debt steps -350 -> -300.
     expect=ExpectedPosition(
         balance=_d("-300"),
         set_aside=_d("0"),
         uncovered=_d("300"),
+        charged_this_month=_d("0"),
+        inflows_this_month=_d("50"),
+        paid_this_month=_d("50"),
+        debt_change_this_month=_d("50"),
     ),
     tiers=("full",),
 )
