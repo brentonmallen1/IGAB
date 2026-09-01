@@ -103,6 +103,9 @@ class AccountCompositionPoint(ApiModel):
     # Balance per account-type key present in the budget (custom types
     # included) — the type set is per-budget, so it can't be a fixed schema
     balances: dict[str, Decimal]
+    # Required, not optional: the chart draws this as the net trend line, and
+    # a path that forgot it would draw a flat zero over real data.
+    net_worth: Decimal
 
 
 class AccountCompositionResponse(ApiModel):
