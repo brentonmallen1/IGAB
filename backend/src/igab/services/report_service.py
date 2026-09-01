@@ -137,7 +137,7 @@ def _spending_classes(
     cartesian product, which `pyproject.toml` promotes from a warning to a test
     failure. All three callers today do apply them.
 
-    Defaults to spending alone. That is the behaviour change derkus asked for:
+    Defaults to spending alone. That is the behaviour change a user asked for:
     a transfer to a brokerage or a mortgage is money leaving the budget, but it
     is not money spent, and counting it as spending skews every average.
     Callers that genuinely want the wider picture pass the classes they mean.
@@ -2657,7 +2657,7 @@ class ReportService:
     async def savings_rate(self, budget_id: uuid.UUID, months: int = 12) -> dict:
         """How much of what came in was kept, month by month.
 
-        derkus asked for this directly: "i would like there to be categories
+        Asked for directly: "i would like there to be categories
         that are classified as savings and be able to track my savings rate as
         compared to income and/or all spending".
 

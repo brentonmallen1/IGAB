@@ -1,6 +1,6 @@
 """Spending rolled up by a view's groups instead of the budget's own.
 
-derkus: "i guess i'd like to have a report that looks at the category groups
+The ask: "i guess i'd like to have a report that looks at the category groups
 where you can pick the view as a really high level look at the data."
 
 The rule that matters: a report and the budget grid must never disagree about
