@@ -242,10 +242,21 @@ class YNABParser:
             cleared_raw = row.get("Cleared", "Uncleared").strip()
 
             if not account or not raw_date:
+                # A fully blank line (a trailing newline, a spreadsheet
+                # artifact) is noise; a line that carried money or a payee
+                # and lost its account or date is a dropped row, and dropped
+                # rows are reported, never silent — same rule as the
+                # unreadable-amount branch below.
+                if raw_outflow or raw_inflow or payee:
+                    self.errors.append(
+                        f"row skipped: missing {'account' if not account else 'date'}"
+                        f" (payee {payee or '?'}, date {raw_date or '?'})"
+                    )
                 continue
 
             txn_date = _parse_date(raw_date)
             if txn_date is None:
+                self.errors.append(f"{account}: unreadable date {raw_date!r}, row skipped")
                 continue
 
             try:

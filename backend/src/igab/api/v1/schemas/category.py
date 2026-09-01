@@ -488,6 +488,60 @@ class CardStatusOut(ApiModel):
     rode_by_month: list[RodeMonth]
 
 
+class CardTimelineMonthOut(ApiModel):
+    """One month of a card's reserve — the five legs' deltas and the running
+    totals once the month had happened (`domain/card_timeline.py`). Leg names
+    match `CardStatusOut`'s lifetime totals so the panel and the timeline
+    speak one vocabulary."""
+
+    month: datetime.date
+    assigned: Decimal
+    reserved: Decimal
+    released: Decimal
+    residual: Decimal
+    payments: Decimal
+    #: What this month did to the reserve, signed — served so the client
+    #: ranks rather than re-deriving the legs' arithmetic.
+    reserve_delta: Decimal
+    #: Cumulative through this month, unfloored.
+    set_aside: Decimal
+    #: The card's ledger through this month. Negative is owed.
+    balance: Decimal
+    riding: Decimal
+    #: `card_position` at THIS month's reserve and THIS month's balance —
+    #: a position against today's balance would be a different (wrong) claim.
+    uncovered: Decimal
+    over_reserved: Decimal
+    short_reserved: Decimal
+    card_credit: Decimal
+
+
+class CardBreachLegOut(ApiModel):
+    """One leg's signed contribution to the reserve in the breach month."""
+
+    leg: str
+    amount: Decimal
+
+
+class CardTimelineBreachOut(ApiModel):
+    """The first month the reserve crossed below zero, legs ranked most
+    negative first — the first entry is what did it."""
+
+    month: datetime.date
+    set_aside_before: Decimal
+    set_aside_after: Decimal
+    legs: list[CardBreachLegOut]
+
+
+class CardTimelineResponse(ApiModel):
+    """A card's whole reserve history, served — never summed client-side."""
+
+    account_id: uuid.UUID
+    name: str
+    months: list[CardTimelineMonthOut]
+    breach: CardTimelineBreachOut | None
+
+
 class BudgetMonthResponse(ApiModel):
     month: datetime.date
     to_be_assigned: Decimal

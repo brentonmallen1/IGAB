@@ -204,6 +204,7 @@ async def import_ynab_as_budget(
         credit_card_payment_assignments_skipped=(result.credit_card_payment_assignments_skipped),
         credit_card_payment_reserves_skipped=result.credit_card_payment_reserves_skipped,
         tracking_account_categories_stripped=result.tracking_account_categories_stripped,
+        credit_card_payment_categories_stripped=result.credit_card_payment_categories_stripped,
         parity=parity,
         errors=result.errors,
     )

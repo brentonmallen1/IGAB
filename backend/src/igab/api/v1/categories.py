@@ -19,7 +19,11 @@ from igab.api.v1.schemas.category import (
     AutoAssignRequest,
     BudgetMonthResponse,
     BudgetMoveResponse,
+    CardBreachLegOut,
     CardStatusOut,
+    CardTimelineBreachOut,
+    CardTimelineMonthOut,
+    CardTimelineResponse,
     CategoryArchivePreviewResponse,
     CategoryArchiveRequest,
     CategoryBalance,
@@ -656,6 +660,59 @@ async def delete_category(
 
 
 # ─── Budget Month / Assignments ───────────────────────────────────────────────
+
+
+@router.get("/{budget_id}/cards/{account_id}/timeline/{month}", response_model=CardTimelineResponse)
+async def get_card_timeline(
+    budget_id: BudgetAccess,
+    account_id: uuid.UUID,
+    month: date,
+    current_user: CurrentUser,
+    budget_service: Annotated[BudgetService, Depends(get_budget_service)],
+) -> CardTimelineResponse:
+    """One card's reserve month by month, with the first month it went below
+    zero. The months, the breach, and each month's position are all computed
+    server-side (`domain/card_timeline.py` over the same walk the summary
+    serves); the client orders and caps for display, nothing more."""
+    result = await budget_service.card_timeline_for(budget_id, account_id, month)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Not a card account of this budget")
+    name, timeline, breach = result
+    return CardTimelineResponse(
+        account_id=account_id,
+        name=name,
+        months=[
+            CardTimelineMonthOut(
+                month=cm.month,
+                assigned=cm.legs["assignments"],
+                reserved=cm.legs["reservations"],
+                released=cm.legs["released"],
+                residual=cm.legs["residual"],
+                payments=cm.legs["payments"],
+                reserve_delta=cm.reserve_delta,
+                set_aside=cm.set_aside,
+                balance=cm.balance,
+                riding=cm.riding,
+                uncovered=cm.position.uncovered,
+                over_reserved=cm.position.over_reserved,
+                short_reserved=cm.position.short_reserved,
+                card_credit=cm.position.card_credit,
+            )
+            for cm in timeline
+        ],
+        breach=(
+            CardTimelineBreachOut(
+                month=breach.month,
+                set_aside_before=breach.set_aside_before,
+                set_aside_after=breach.set_aside_after,
+                legs=[
+                    CardBreachLegOut(leg=leg, amount=amount) for leg, amount in breach.ranked_legs
+                ],
+            )
+            if breach
+            else None
+        ),
+    )
 
 
 @router.get("/{budget_id}/months/{month}", response_model=BudgetMonthResponse)

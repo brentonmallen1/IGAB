@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from igab.db.models import BudgetMove, Category
 from igab.domain.cards import (
     CardFunding,
+    CardReserve,
     card_funding,
     card_position,
     card_reserve,
@@ -39,6 +40,8 @@ from igab.services.ownership import require_in_budget
 from igab.utils.clock import today_utc
 
 if TYPE_CHECKING:
+    from igab.domain.card_timeline import Breach as TimelineBreach
+    from igab.domain.card_timeline import CardMonth as TimelineMonth
     from igab.repositories.budget_move_repo import BudgetMoveRepository
 
 
@@ -342,6 +345,28 @@ def distribute_cover(
     return result
 
 
+@dataclass(frozen=True)
+class CardWalk:
+    """One assembly of the card model's inputs (`BudgetService.card_walk`).
+
+    A dataclass, not a tuple: the tuple grew its fifth slot with every caller
+    unpacking placeholders, which is how an unnamed slot ships untested.
+    `credit_outflows` is carried so attribution surfaces (hygiene, the
+    timeline) can say which categories charged which card without re-running
+    the repository query the walk was built from.
+    """
+
+    card_accounts: list = field(default_factory=list)
+    linked_by_account: dict[uuid.UUID, Category] = field(default_factory=dict)
+    funding: CardFunding[uuid.UUID, uuid.UUID] = field(default_factory=CardFunding)
+    payments: dict[uuid.UUID, dict[date, Decimal]] = field(default_factory=dict)
+    unclaimed: dict[uuid.UUID, dict[date, Decimal]] = field(default_factory=dict)
+    #: {category: {card: {month: SIGNED net}}} — the walk's own input, kept.
+    credit_outflows: dict[uuid.UUID, dict[uuid.UUID, dict[date, Decimal]]] = field(
+        default_factory=dict
+    )
+
+
 class BudgetService:
     def __init__(
         self,
@@ -483,6 +508,135 @@ class BudgetService:
             available=available,
         )
 
+    async def card_walk(
+        self,
+        budget_id: uuid.UUID,
+        month_start: date,
+        *,
+        categories: list[Category] | None = None,
+    ) -> "CardWalk":
+        """Everything the card model reads, assembled once.
+
+        Extracted from `get_budget_summary` so other card surfaces — the
+        import parity check reading every month of a reserve, the hygiene
+        detectors attributing a negative one — never assemble these inputs a
+        second time: a second assembly is exactly how the assignment leg once
+        skipped the walk. `get_budget_summary` remains the only place a
+        reserve becomes a served figure.
+
+        `categories` is an optimization hand-off, not a variation point: the
+        summary already holds the full list and passes it to avoid a second
+        load; any other caller omits it.
+        """
+        card_accounts = [
+            a
+            for a in await self.account_repo.get_all(budget_id, include_closed=True)
+            if a.on_budget and a.classification == "liability"
+        ]
+        if not card_accounts:
+            return CardWalk()
+        if categories is None:
+            categories = await self.category_repo.get_all(budget_id, include_archived=True)
+        month_end_date = last_of_month(month_start)
+        linked_by_account = {
+            cat.linked_account_id: cat for cat in categories if cat.linked_account_id
+        }
+        # `category_filters.SPENDABLE`, whose complement
+        # `txn_filters.UNCLAIMED_CARD_ROW` selects on. Read from the
+        # one expression rather than re-filtered out of `categories`: the
+        # two spellings disagreed about income, so a rewards credit filed
+        # to Ready to Assign on a card belonged to neither and the reserve
+        # identity reported it as drift forever.
+        spending_ids = await self.category_repo.spendable_ids(budget_id)
+        spending_activity = await self.transaction_repo.sum_all_categories_by_month(
+            spending_ids, end_date=month_end_date
+        )
+        assignments_by_cat: dict[uuid.UUID, dict[date, Decimal]] = {}
+        for a in await self.assignment_repo.get_all_for_budget(budget_id):
+            if a.month <= month_start:
+                assignments_by_cat.setdefault(a.category_id, {})[a.month] = a.assigned
+        credit_outflows = await self.transaction_repo.sum_credit_outflows_by_category(
+            spending_ids, month_end_date
+        )
+        # `card_funding` runs the carryover simulation itself. The part of
+        # a card inflow that repays uncovered debt has to be taken off the
+        # month's activity *inside* that walk — subtracted after it, as a
+        # cumulative total against a floored balance, it ratcheted upward
+        # forever and rendered as overspending ("The Refused Repayment").
+        # Card payment categories go in by card: their assignments are the
+        # fifth leg of a reserve, and they have to retire the ride *inside*
+        # the walk. Added afterwards — which is what the old
+        # `set_aside_through(assignments, synthetic)` did — nothing ever
+        # took them back out ("Two Ledgers, One Debt").
+        card_categories = {
+            account.id: linked.id
+            for account in card_accounts
+            if (linked := linked_by_account.get(account.id)) is not None
+        }
+        funding = card_funding(
+            assignments_by_cat, spending_activity, credit_outflows, card_categories
+        )
+        payments = await self.transaction_repo.sum_card_payments_by_month(budget_id, month_end_date)
+        unclaimed = await self.transaction_repo.sum_unclaimed_card_rows(budget_id, month_end_date)
+        return CardWalk(
+            card_accounts=card_accounts,
+            linked_by_account=linked_by_account,
+            funding=funding,
+            payments=payments,
+            unclaimed=unclaimed,
+            credit_outflows=credit_outflows,
+        )
+
+    async def card_reserves(
+        self, budget_id: uuid.UUID, month: date
+    ) -> dict[uuid.UUID, tuple[str, CardReserve]]:
+        """Each card's five-leg reserve through `month`, keyed by account —
+        `{account_id: (name, CardReserve)}` — assembled by the same walk the
+        summary serves.
+
+        For callers that need a reserve's whole history rather than one
+        month's figure: `CardReserve.set_aside` evaluates at any month, so
+        the import parity check reads ten years of set-asides from one walk
+        instead of one summary per month.
+        """
+        walk = await self.card_walk(budget_id, first_of_month(month))
+        return {
+            a.id: (a.name, card_reserve(walk.funding, a.id, walk.payments.get(a.id, {})))
+            for a in walk.card_accounts
+        }
+
+    async def card_timeline_for(
+        self, budget_id: uuid.UUID, account_id: uuid.UUID, month: date
+    ) -> tuple[str, list["TimelineMonth"], "TimelineBreach | None"] | None:
+        """One card's reserve month by month, through `month`, with its first
+        breach — `(name, timeline, breach)`, or None for an account that is
+        not one of the budget's cards.
+
+        The serving side of `domain/card_timeline.py`: the same walk the
+        summary reads, evaluated at every month instead of the last one, with
+        the balance series beside it so each month's `card_position` is
+        against that month's balance rather than today's.
+        """
+        from igab.domain.card_timeline import card_timeline as build_timeline
+        from igab.domain.card_timeline import first_breach
+
+        month_start = first_of_month(month)
+        walk = await self.card_walk(budget_id, month_start)
+        account = next((a for a in walk.card_accounts if a.id == account_id), None)
+        if account is None:
+            return None
+        balances = await self.account_repo.card_balances_by_month(
+            budget_id, last_of_month(month_start)
+        )
+        reserve = card_reserve(walk.funding, account_id, walk.payments.get(account_id, {}))
+        timeline = build_timeline(
+            reserve,
+            balances.get(account_id, {}),
+            walk.funding.riding_by_card.get(account_id, {}),
+        )
+        timeline = [cm for cm in timeline if cm.month <= month_start]
+        return account.name, timeline, first_breach(timeline)
+
     async def get_budget_summary(self, budget_id: uuid.UUID, month: date) -> BudgetSummary:
         """
         Compute TBA and all category balances for a given month.
@@ -549,58 +703,11 @@ class BudgetService:
         zero = Decimal("0")
         cards: list[CardStatus] = []
         uncovered_current = zero
-        funding: CardFunding[uuid.UUID, uuid.UUID] = CardFunding()
-        card_accounts = [
-            a
-            for a in await self.account_repo.get_all(budget_id, include_closed=True)
-            if a.on_budget and a.classification == "liability"
-        ]
+        walk = await self.card_walk(budget_id, month_start, categories=categories)
+        card_accounts, linked_by_account = walk.card_accounts, walk.linked_by_account
+        funding, payments, unclaimed = walk.funding, walk.payments, walk.unclaimed
         if card_accounts:
             month_end_date = last_of_month(month_start)
-            linked_by_account = {
-                cat.linked_account_id: cat for cat in categories if cat.linked_account_id
-            }
-            # `category_filters.SPENDABLE`, whose complement
-            # `txn_filters.UNCLAIMED_CARD_ROW` selects on. Read from the
-            # one expression rather than re-filtered out of `categories`: the
-            # two spellings disagreed about income, so a rewards credit filed
-            # to Ready to Assign on a card belonged to neither and the reserve
-            # identity reported it as drift forever.
-            spending_ids = await self.category_repo.spendable_ids(budget_id)
-            spending_activity = await self.transaction_repo.sum_all_categories_by_month(
-                spending_ids, end_date=month_end_date
-            )
-            assignments_by_cat: dict[uuid.UUID, dict[date, Decimal]] = {}
-            for a in await self.assignment_repo.get_all_for_budget(budget_id):
-                if a.month <= month_start:
-                    assignments_by_cat.setdefault(a.category_id, {})[a.month] = a.assigned
-            credit_outflows = await self.transaction_repo.sum_credit_outflows_by_category(
-                spending_ids, month_end_date
-            )
-            # `card_funding` runs the carryover simulation itself. The part of
-            # a card inflow that repays uncovered debt has to be taken off the
-            # month's activity *inside* that walk — subtracted after it, as a
-            # cumulative total against a floored balance, it ratcheted upward
-            # forever and rendered as overspending ("The Refused Repayment").
-            # Card payment categories go in by card: their assignments are the
-            # fifth leg of a reserve, and they have to retire the ride *inside*
-            # the walk. Added afterwards — which is what the old
-            # `set_aside_through(assignments, synthetic)` did — nothing ever
-            # took them back out ("Two Ledgers, One Debt").
-            card_categories = {
-                account.id: linked.id
-                for account in card_accounts
-                if (linked := linked_by_account.get(account.id)) is not None
-            }
-            funding = card_funding(
-                assignments_by_cat, spending_activity, credit_outflows, card_categories
-            )
-            payments = await self.transaction_repo.sum_card_payments_by_month(
-                budget_id, month_end_date
-            )
-            unclaimed = await self.transaction_repo.sum_unclaimed_card_rows(
-                budget_id, month_end_date
-            )
             owed_by_card = await self.account_repo.card_balances(budget_id, month_end_date)
             # The card's own ledger for the viewed month, beside the reserve's
             # legs: what a person charged, and how far the debt actually moved.

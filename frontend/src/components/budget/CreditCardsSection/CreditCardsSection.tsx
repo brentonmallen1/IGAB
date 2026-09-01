@@ -8,7 +8,8 @@ import {
   Info,
   TrendingDown,
 } from 'lucide-react'
-import { useBudgetMonth, useSetAssignment } from '../../../api/budgets'
+import { useBudgetMonth, useCardTimeline, useSetAssignment } from '../../../api/budgets'
+import type { CardTimelineBreach } from '../../../api/budgets'
 import { useLiabilities } from '../../../api/liabilities'
 import { useTarget } from '../../../api/targets'
 import { TargetEditor } from '../TargetEditor'
@@ -60,14 +61,19 @@ import './CreditCardsSection.css'
  * ("Two Ledgers, One Debt").
  */
 function ReserveLegs({
+  budgetId,
+  month,
   card,
   formatMoney,
   formatMonth,
 }: {
+  budgetId: string
+  month: string
   card: CardStatus
   formatMoney: (n: number) => string
   formatMonth: (m: string) => string
 }) {
+  const [historyOpen, setHistoryOpen] = useState(false)
   const rides = rideMonths(card)
   const otherInflow = otherCredits(card)
   const pending = pendingNote(card, formatMoney)
@@ -205,8 +211,142 @@ function ReserveLegs({
           </p>
         </div>
       )}
+      {/* The legs above are lifetime totals; every question a negative one
+        raises is about WHEN. The history is served whole — months, deltas,
+        and the first month the reserve crossed below zero — and this only
+        draws it. */}
+      <button
+        type="button"
+        className="credit-cards__history-btn"
+        aria-expanded={historyOpen}
+        onClick={() => setHistoryOpen((v) => !v)}
+      >
+        {historyOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+        Month by month
+      </button>
+      {historyOpen && (
+        <ReserveHistory
+          budgetId={budgetId}
+          month={month}
+          card={card}
+          formatMoney={formatMoney}
+          formatMonth={formatMonth}
+        />
+      )}
     </div>
   )
+}
+
+/**
+ * A card's reserve, month by month, drawn from the served timeline.
+ *
+ * Rendering only: the months, each month's delta, the running Ready to pay,
+ * and the breach line all arrive computed (`/cards/{id}/timeline/{month}`,
+ * domain/card_timeline.py). Summing a leg here would be the client's second
+ * opinion about what a reserve is made of — the defect this whole section
+ * exists to end.
+ */
+function ReserveHistory({
+  budgetId,
+  month,
+  card,
+  formatMoney,
+  formatMonth,
+}: {
+  budgetId: string
+  month: string
+  card: CardStatus
+  formatMoney: (n: number) => string
+  formatMonth: (m: string) => string
+}) {
+  const { data, isPending, isError } = useCardTimeline(budgetId, card.account_id, month)
+  if (isPending) {
+    return <p className="credit-cards__legs-note">Reading the card's history…</p>
+  }
+  if (isError || !data) {
+    return <p className="credit-cards__legs-note">The history could not be loaded.</p>
+  }
+  return (
+    <div className="credit-cards__history">
+      {data.breach && (
+        <p className="credit-cards__history-breach">
+          {breachSentence(data.breach, formatMoney, formatMonth)}
+        </p>
+      )}
+      <div
+        className="credit-cards__history-scroll"
+        role="table"
+        aria-label={`Ready to pay by month for ${card.name}`}
+      >
+        <div className="credit-cards__history-row credit-cards__history-head" role="row">
+          <span role="columnheader">Month</span>
+          <span role="columnheader" className="credit-cards__col--num">
+            Reserve change
+          </span>
+          <span role="columnheader" className="credit-cards__col--num">
+            Ready to pay
+          </span>
+          <span role="columnheader" className="credit-cards__col--num">
+            Balance
+          </span>
+        </div>
+        {data.months.map((m) => (
+          <div
+            className={`credit-cards__history-row${data.breach?.month === m.month ? ' credit-cards__history-row--breach' : ''}`}
+            role="row"
+            key={m.month}
+            title={monthLegsTitle(m, formatMoney)}
+          >
+            <span role="cell">{formatMonth(m.month)}</span>
+            <span role="cell" className="credit-cards__col--num tabular">
+              {m.reserve_delta === 0 ? '—' : formatMoney(m.reserve_delta)}
+            </span>
+            <span role="cell" className="credit-cards__col--num tabular">
+              {formatMoney(m.set_aside)}
+            </span>
+            <span role="cell" className="credit-cards__col--num tabular">
+              {formatMoney(m.balance)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/** The breach, in a sentence: when, from what to what, and which leg did it. */
+function breachSentence(
+  breach: CardTimelineBreach,
+  formatMoney: (n: number) => string,
+  formatMonth: (m: string) => string
+): string {
+  const legPhrases: Record<string, string> = {
+    payments: 'a payment ran past everything reserved',
+    residual: 'money came back beyond anything an envelope charged here',
+    assignments: 'more money was moved back out of this envelope than it held',
+    released: 'a refund released reserved cash',
+    reservations: 'funded spending reserved',
+  }
+  const [leg] = breach.legs
+  const cause = leg ? ` — ${legPhrases[leg.leg] ?? leg.leg} (${formatMoney(leg.amount)})` : ''
+  return `Ready to pay first went below zero in ${formatMonth(breach.month)}, ${formatMoney(
+    breach.set_aside_before
+  )} → ${formatMoney(breach.set_aside_after)}${cause}.`
+}
+
+/** The row's tooltip: the month's non-zero legs, served values verbatim. */
+function monthLegsTitle(
+  m: { assigned: number; reserved: number; released: number; residual: number; payments: number },
+  formatMoney: (n: number) => string
+): string {
+  const parts = [
+    m.assigned !== 0 && `assigned ${formatMoney(m.assigned)}`,
+    m.reserved !== 0 && `reserved ${formatMoney(m.reserved)}`,
+    m.released !== 0 && `released ${formatMoney(m.released)}`,
+    m.residual !== 0 && `residual ${formatMoney(m.residual)}`,
+    m.payments !== 0 && `paid ${formatMoney(m.payments)}`,
+  ].filter(Boolean)
+  return parts.length ? parts.join(', ') : 'nothing moved through the reserve'
 }
 
 export function CreditCardsSection({ budgetId, month }: { budgetId: string; month: string }) {
@@ -461,7 +601,13 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
                     </span>
                   </div>
                   {legsOpen && (
-                    <ReserveLegs card={card} formatMoney={formatMoney} formatMonth={formatMonth} />
+                    <ReserveLegs
+                      budgetId={budgetId}
+                      month={month}
+                      card={card}
+                      formatMoney={formatMoney}
+                      formatMonth={formatMonth}
+                    />
                   )}
                 </div>
               )

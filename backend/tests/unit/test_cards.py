@@ -444,6 +444,25 @@ class TestReserveDiscrepancy:
         # 60 reserved against 100 owed: 40 uncovered, everything in bounds.
         assert discrepancy("60", "-100") == D("0")
 
+    def test_a_release_past_the_reserve_is_explained_by_the_negative_assignment(self):
+        """Assign 100 to a card's envelope, later move 200 back out — the UI
+        itself says "type a negative in Assigned". The reserve reads -100 and
+        every cent of it is the user's own release, so nothing is wrong. T2's
+        allowance named only payments and residual — the same one-sided
+        arithmetic as "The Watchman's Arithmetic", on the other bound — so
+        this ordinary card reported its whole short-reserve as drift."""
+        assert discrepancy("-100", "0", assigned="-100") == D("0")
+
+    def test_a_short_reserve_beyond_every_explanation_still_reports(self):
+        """The new term is exact, not a blanket pass: 300 short with only a
+        100 release and 150 of payments to explain it leaves 50 of drift."""
+        assert discrepancy("-300", "0", assigned="-100", payments="150") == D("50")
+
+    def test_a_positive_assignment_lends_nothing_to_the_short_bound(self):
+        """Money put IN cannot explain a reserve below zero — the term floors
+        on its own, like every allowance term (`_allowance`)."""
+        assert discrepancy("-100", "0", assigned="500") == D("100")
+
     def test_a_reserve_that_outlived_its_debt_is_named(self):
         # The pre-fix numbers from the refund-before-purchase case: 100 reserved
         # against a card that owes nothing, with no assignment behind it.

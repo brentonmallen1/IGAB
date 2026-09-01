@@ -452,3 +452,77 @@
   color: var(--text-muted);
   padding-left: 1px;
 }
+
+/* ── Month-by-month history ─────────────────────────────────────────────── */
+
+.credit-cards__history-btn {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+  margin-top: var(--spacing-sm);
+  padding: 2px var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  border-radius: var(--border-radius-sm);
+  cursor: pointer;
+  transition:
+    color var(--transition-fast),
+    background-color var(--transition-fast);
+}
+
+.credit-cards__history-btn:hover {
+  color: var(--text-primary);
+  background-color: var(--row-hover-bg);
+}
+
+.credit-cards__history {
+  max-width: 560px;
+  margin-top: var(--spacing-xs);
+}
+
+/* The breach line leads: it is the answer, the table is the evidence. */
+.credit-cards__history-breach {
+  margin: 0 0 var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+/* Ten years is ~120 rows; density is a feature, so the whole series ships
+   and scrolls in its own well rather than being summarized away. */
+.credit-cards__history-scroll {
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--edge);
+  border-radius: var(--border-radius-sm);
+}
+
+.credit-cards__history-row {
+  display: grid;
+  grid-template-columns: 1fr repeat(3, minmax(90px, auto));
+  gap: var(--spacing-md);
+  padding: 1px var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.credit-cards__history-row:nth-child(even) {
+  background-color: var(--row-alt-bg, transparent);
+}
+
+.credit-cards__history-head {
+  position: sticky;
+  top: 0;
+  color: var(--text-muted);
+  background-color: var(--surface-sunken);
+  border-bottom: 1px solid var(--edge);
+}
+
+/* The month the reserve crossed below zero — the row the breach line cites.
+   An accent border, not a fill: marking state, not decorating. */
+.credit-cards__history-row--breach {
+  color: var(--text-primary);
+  border-left: 2px solid var(--color-accent);
+}

@@ -89,6 +89,9 @@ async def test_every_envelope_and_ready_to_assign_agree_in_every_month(db_sessio
         tracking_accounts=TRACKING,
     )
     assert report.matches
+    # Every card, every MONTH — the single-month card check below says a card
+    # is right today; this says it never detached anywhere in the history.
+    assert report.card_history == [], report.card_history
     assert report.igab_ready_to_assign == cents("9780")
     assert report.ynab_ready_to_assign == cents("9780")
     assert report.uncovered_card_debt == cents("50")
@@ -182,9 +185,37 @@ async def test_real_export(db_session):
     # — the reconciliation "The Unreleased Reservation" showed nothing was
     # asserting. A real multi-year ledger is where cross-month refunds live.
     assert report.cards_differing == 0, report.card_differences
+    assert report.card_history == [], report.card_history
     assert report.igab_ready_to_assign == report.expected_ready_to_assign, (
         f"IGAB {report.igab_ready_to_assign} vs expected {report.expected_ready_to_assign} "
         f"(YNAB {report.ynab_ready_to_assign}, uncovered card debt {report.uncovered_card_debt}, "
         f"uncategorized {report.uncategorized_net}, "
         f"{report.categories_pending} envelope(s) pending approval)"
     )
+
+
+async def test_card_history_names_the_first_divergent_month(db_session, tmp_path):
+    """When a card's set-aside detaches from the file's CCP series, the
+    report names the FIRST month it did — the actionable half on a long
+    import. The detachment is injected into the parsed plan (June's reserve
+    bumped by 100), so the entry must say June, not August, and must count
+    every divergent month from there."""
+    services, budget_id, ynab_budget = await _imported(db_session, tmp_path)
+    for row in ynab_budget.plan_rows:
+        if row.category_group == "Credit Card Payments" and row.month >= JUN:
+            row.available = (row.available or Decimal("0")) + Decimal("100")
+    report = await parity(
+        services,
+        budget_id,
+        ynab_budget,
+        AUG,
+        accounts=TYPES,
+        credit_card_accounts=CARDS,
+        tracking_accounts=TRACKING,
+    )
+    assert [d.name for d in report.card_history] == ["Visa"]
+    entry = report.card_history[0]
+    assert entry.first_month == JUN
+    assert entry.ynab - entry.igab == Decimal("100.00")
+    assert entry.months_compared == 3
+    assert entry.months_differing == 3
