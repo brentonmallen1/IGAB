@@ -119,20 +119,18 @@ export function LiabilityTermsHeader({ budgetId, accountId, isLoan }: Props) {
       </div>
 
       <div className="liability-terms__actions">
-        {/* Cards only (a loan's payment is usually scheduled, and its page
-            has the paydown tools): the one payment that spends the card's
-            set-aside is a transfer from cash, and this builds exactly that —
-            the info dialog used to tell the user to type it by hand. */}
-        {!isLoan && (
-          <button
-            type="button"
-            className="liability-terms__btn"
-            onClick={() => openModal('card-payment', accountId)}
-          >
-            <Banknote size={12} />
-            Make a payment
-          </button>
-        )}
+        {/* Cards and loans both: for a card this is the transfer that spends
+            the set-aside; for a loan it is the same transfer plus an
+            "extra to principal" field, so a curtailment is one decision at
+            record time instead of a hand-typed register row. */}
+        <button
+          type="button"
+          className="liability-terms__btn"
+          onClick={() => openModal('card-payment', accountId)}
+        >
+          <Banknote size={12} />
+          {isLoan ? 'Record a payment' : 'Make a payment'}
+        </button>
         {!termsSet && (
           <span className="liability-terms__hint">
             {isLoan

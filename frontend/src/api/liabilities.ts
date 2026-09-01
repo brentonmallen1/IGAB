@@ -37,6 +37,9 @@ export interface Liability {
    *  which owns the balance and the interest; the client owns neither and
    *  must not recompute it. Null when there is no usable rule. */
   minimum_payment_due_now: number | null
+  /** The standing curtailment plan: monthly, above the minimum, all
+   *  principal by construction. Prefills the paydown what-if. */
+  planned_extra_payment: number | null
   /** False = no APR/minimum on file yet, so every projection below is absent
    * rather than zero. The one flag to branch on. */
   terms_complete: boolean
@@ -105,6 +108,8 @@ export interface LiabilityCreate {
   promo_end_date?: string | null
   promo_deferred_interest?: boolean
   term_months?: number | null
+  /** Explicit null clears the plan. */
+  planned_extra_payment?: number | null
 }
 
 export interface AmortizationMonth {
@@ -130,6 +135,9 @@ export interface AmortizationResponse {
   baseline_never_pays_off: boolean
   baseline_total_interest: number | null
   extra_payment: number | null
+  /** One-off amount applied straight to the balance today; composes with
+   *  extra_payment. Clamped to the balance server-side. */
+  curtailment: number | null
   extra_schedule: AmortizationMonth[] | null
   extra_payoff_date: string | null
   extra_never_pays_off: boolean
@@ -213,16 +221,24 @@ export function useCreateLiabilitySnapshot(budgetId: string | null) {
 export function useLiabilityAmortization(
   budgetId: string | null,
   liabilityId: string | null,
-  options: { extraPayment?: number; fromOrigination?: boolean } = {}
+  options: { extraPayment?: number; curtailment?: number; fromOrigination?: boolean } = {}
 ) {
-  const { extraPayment = 0, fromOrigination = false } = options
+  const { extraPayment = 0, curtailment = 0, fromOrigination = false } = options
   return useQuery({
-    queryKey: [ROOT.liabilityAmortization, budgetId, liabilityId, extraPayment, fromOrigination],
+    queryKey: [
+      ROOT.liabilityAmortization,
+      budgetId,
+      liabilityId,
+      extraPayment,
+      curtailment,
+      fromOrigination,
+    ],
     queryFn: () =>
       apiClient
         .get<AmortizationResponse>(`/${budgetId}/liabilities/${liabilityId}/amortization`, {
           params: {
             ...(extraPayment > 0 ? { extra_payment: extraPayment } : {}),
+            ...(curtailment > 0 ? { curtailment } : {}),
             ...(fromOrigination ? { from: 'origination' } : {}),
           },
         })
