@@ -24,7 +24,7 @@ from decimal import ROUND_DOWN, Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, BudgetAssignment, Category, CategoryGroup, Payee
-from igab.domain.cards import card_funding, card_reserve
+from igab.domain.cards import card_funding, card_position, card_reserve
 from igab.domain.carryover import available_at, available_through
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import (
@@ -517,6 +517,32 @@ class SampleBudgetGenerator:
                     )
                 )
 
+        # One-off transfers. Both legs, mutually linked, never categorised —
+        # a card payment is on-budget to on-budget, and only a paired transfer
+        # spends the card's reserve. `generate()` strips and re-applies the
+        # link either side of the bulk insert, same as the recurring ones.
+        for ot in spec.one_off_transfers:
+            d = ot.when.resolve(anchor)
+            out_row = self._row(
+                ot.from_account,
+                d,
+                -ot.amount,
+                anchor,
+                payee=f"Transfer : {ot.to_account}",
+                memo=ot.memo,
+            )
+            in_row = self._row(
+                ot.to_account,
+                d,
+                ot.amount,
+                anchor,
+                payee=f"Transfer : {ot.from_account}",
+                memo=ot.memo,
+            )
+            out_row["transfer_id"] = in_row["id"]
+            in_row["transfer_id"] = out_row["id"]
+            rows.extend([out_row, in_row])
+
         inserted = [r for r in rows if r["date"] <= anchor]
         projected = [r for r in rows if r["date"] > anchor]
 
@@ -562,6 +588,10 @@ class SampleBudgetGenerator:
                 category = self._categories[cat_spec.name]
                 if cat_spec.sweep_remainder:
                     sweep_category = category
+                if cat_spec.assignments_are_explicit:
+                    # Stated, not inferred. The loop below would fund away the
+                    # very shortfall the scenario exists to demonstrate.
+                    continue
                 full_activity = activity_by_month(all_rows, category.id)
                 inserted_activity = activity_by_month(inserted, category.id)
 
@@ -581,6 +611,18 @@ class SampleBudgetGenerator:
                     if amount != 0:
                         assigned[(category.id, m)] = amount
                     carry = max(_ZERO, carry + amount + full_activity.get(m, _ZERO))
+
+        # Assignments the spec states outright, added on top of the derived
+        # ones. This is the only way money reaches a card's payment envelope:
+        # nothing can be filed to one, so its activity is always empty and the
+        # inference above always yields zero. Added here, before the identity
+        # below reads them, so a paydown assignment counts in the envelope
+        # term exactly as the budget page counts it.
+        for ea in spec.explicit_assignments:
+            category = self._categories[ea.category]
+            month = ea.when.resolve(anchor).replace(day=1)
+            key = (category.id, month)
+            assigned[key] = assigned.get(key, _ZERO) + ea.amount
 
         # Sweep the surplus so TBA lands exactly on target, mirroring
         # BudgetService's identity with the domain's own functions:
@@ -667,11 +709,20 @@ class SampleBudgetGenerator:
                 if adjusted is not None
                 else available_through(asg, activity_by_cat[cat_id], current_month)
             )
-        # The generated register has no card inflow at all, so nothing should
-        # ever be repaid or left over. Asserted rather than assumed: the comment
-        # that used to say so was the only thing checking it.
-        assert not funding.repaid_by_category, "sample register grew an uncovered-debt repayment"
-        assert not funding.residual_by_card, "sample register grew an unmatched card inflow"
+        # Card inflows: forbidden outright where the spec declares no
+        # scenarios, contracted per card where it does.
+        #
+        # This used to be an unconditional "the register has no card inflow at
+        # all", which was true and which forbade the refund, reimbursement and
+        # repayment shapes from ever being demoed. The replacement is
+        # stronger, not weaker: below, every declared card must land exactly
+        # where its scenario says, so an unintended inflow fails because the
+        # position moved — and an intended one is finally expressible.
+        if not spec.card_scenarios:
+            assert not funding.repaid_by_category, (
+                "sample register grew an uncovered-debt repayment"
+            )
+            assert not funding.residual_by_card, "sample register grew an unmatched card inflow"
         # Payments come from the captured link pairs — generate() strips
         # `transfer_id` off these very dicts before bulk insert, so the rows
         # themselves no longer say they are transfers.
@@ -690,9 +741,51 @@ class SampleBudgetGenerator:
                 key = leg["date"].replace(day=1)
                 per = payments.setdefault(leg["account_id"], {})
                 per[key] = per.get(key, _ZERO) + leg["amount"]
+        scenario_by_card_id = {
+            self._accounts[sc.card].id: sc
+            for sc in spec.card_scenarios
+            if sc.card in self._accounts
+        }
+        card_balances: dict[uuid.UUID, Decimal] = {}
+        for r in inserted:
+            if r["account_id"] in card_ids and not r["is_split"]:
+                card_balances[r["account_id"]] = (
+                    card_balances.get(r["account_id"], _ZERO) + r["amount"]
+                )
         for card_id in card_ids:
-            available_total += card_reserve(funding, card_id, payments.get(card_id, {})).set_aside(
+            set_aside = card_reserve(funding, card_id, payments.get(card_id, {})).set_aside(
                 current_month
+            )
+            available_total += set_aside
+            scenario = scenario_by_card_id.get(card_id)
+            if scenario is None:
+                assert not spec.card_scenarios, (
+                    f"card {card_id} is in the sample but is not a declared scenario — "
+                    "every card the demo shows must be a shape somebody can read"
+                )
+                continue
+            balance = card_balances.get(card_id, _ZERO)
+            position = card_position(set_aside, balance)
+            actual = (
+                set_aside,
+                balance,
+                position.uncovered,
+                position.over_reserved,
+                position.short_reserved,
+                position.card_credit,
+            )
+            want = scenario.expect
+            expected = (
+                want.set_aside,
+                want.balance,
+                want.uncovered,
+                want.over_reserved,
+                want.short_reserved,
+                want.card_credit,
+            )
+            assert actual == expected, (
+                f"scenario {scenario.slug!r} does not land where it says: "
+                f"got {actual}, expected {expected}. {scenario.story}"
             )
         uncovered_current = sum(
             (
@@ -814,6 +907,11 @@ def _filter_spec(spec: SampleBudgetSpec, tier: str) -> SampleBudgetSpec:
         transfers=keep(spec.transfers),
         scheduled=keep(spec.scheduled),
         liabilities=keep(spec.liabilities),
+        one_off_transfers=keep(spec.one_off_transfers),
+        explicit_assignments=keep(spec.explicit_assignments),
+        # Filtered like everything else: a full-tier card's payment surviving
+        # into the starter would pay an account that is not there.
+        card_scenarios=keep(spec.card_scenarios),
         months_of_history=(overrides.months_of_history if overrides else spec.months_of_history),
         tba_target=overrides.tba_target if overrides else spec.tba_target,
     )

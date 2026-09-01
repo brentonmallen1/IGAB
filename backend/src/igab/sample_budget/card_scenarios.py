@@ -26,12 +26,22 @@ Amounts and card names are invented and rescaled — see the personal-data rule
 in CLAUDE.md. The ratios are what teach; the digits are nobody's.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from decimal import Decimal
 from typing import Literal
 
-from igab.sample_budget.spec import BOTH_TIERS, RelDate, shift_months
+from igab.sample_budget.spec import (
+    BOTH_TIERS,
+    AccountSpec,
+    CategorySpec,
+    ExplicitAssignment,
+    OneOffTransfer,
+    OneOffTxn,
+    RelDate,
+    SampleBudgetSpec,
+    shift_months,
+)
 
 ZERO = Decimal("0")
 
@@ -471,3 +481,203 @@ ALL_SCENARIOS: tuple[CardScenario, ...] = (
 
 def scenarios_for(tier: str) -> tuple[CardScenario, ...]:
     return tuple(s for s in ALL_SCENARIOS if tier in s.tiers)
+
+
+# ── The generator adapter ─────────────────────────────────────────────────────
+# The third projection: a scenario as sample-budget spec elements, so the demo
+# shows the same six shapes the suites assert.
+
+
+@dataclass(frozen=True)
+class SpecElements:
+    account: AccountSpec
+    payment_category: CategorySpec
+    one_offs: tuple[OneOffTxn, ...]
+    transfers: tuple[OneOffTransfer, ...]
+    assignments: tuple[ExplicitAssignment, ...]
+    #: Spending categories the scenario files to. The caller places them —
+    #: they are ordinary envelopes and mostly already exist in the demo.
+    spending_categories: tuple[str, ...]
+
+
+def to_spec_elements(
+    scenario: CardScenario, *, cash_account: str, sort_order: int = 0
+) -> SpecElements:
+    """A scenario as spec elements. Dates stay `RelDate`, so the demo built
+    from these ends today and the assertions do not go stale in November."""
+    one_offs: list[OneOffTxn] = []
+    transfers: list[OneOffTransfer] = []
+    assignments: list[ExplicitAssignment] = []
+
+    if scenario.opening:
+        one_offs.append(
+            OneOffTxn(
+                when=RelDate(scenario.events[0].when.months_ago, 1),
+                account=scenario.card,
+                payee="Starting Balance",
+                amount=scenario.opening,
+                # Filed nowhere: on a card the opening gap is debt the budget
+                # never funded, not income to assign.
+                category=None,
+                memo="Starting balance",
+                tiers=scenario.tiers,
+            )
+        )
+
+    for event in scenario.events:
+        if event.kind in ("spend", "refund", "deposit"):
+            one_offs.append(
+                OneOffTxn(
+                    when=event.when,
+                    account=scenario.card,
+                    payee=_payee_for(event, scenario),
+                    amount=event.signed(),
+                    category=event.category,
+                    tiers=scenario.tiers,
+                )
+            )
+        elif event.kind == "pay":
+            transfers.append(
+                OneOffTransfer(
+                    when=event.when,
+                    from_account=cash_account,
+                    to_account=scenario.card,
+                    amount=event.amount,
+                    memo="Card payment",
+                    tiers=scenario.tiers,
+                )
+            )
+        elif event.kind in ("fund", "assign"):
+            assignments.append(
+                ExplicitAssignment(
+                    category=(
+                        scenario.payment_category
+                        if event.kind == "assign"
+                        else event.category or ""
+                    ),
+                    when=RelDate(event.when.months_ago, 1),
+                    amount=event.amount,
+                    tiers=scenario.tiers,
+                )
+            )
+
+    return SpecElements(
+        account=AccountSpec(
+            scenario.card,
+            "credit_card",
+            sort_order=sort_order,
+            tiers=scenario.tiers,
+        ),
+        payment_category=CategorySpec(
+            scenario.payment_category,
+            linked_account=scenario.card,
+            tiers=scenario.tiers,
+        ),
+        one_offs=tuple(one_offs),
+        transfers=tuple(transfers),
+        assignments=tuple(assignments),
+        spending_categories=scenario.categories(),
+    )
+
+
+#: A payee per kind, so the register reads like a register rather than a
+#: table of amounts. Deliberately generic chains — a merchant name identifies
+#: nobody, unlike an employer or a servicer.
+_PAYEES = {
+    "spend": "Corner Market",
+    "refund": "Shared Expenses Settle-Up",
+    "deposit": "Payment Received",
+}
+
+
+def _payee_for(event: CardEvent, scenario: CardScenario) -> str:
+    if event.kind == "spend" and event.category:
+        return {"Dining Out": "Thai Garden", "Streaming": "Netflix", "Shopping": "Amazon"}.get(
+            event.category, _PAYEES["spend"]
+        )
+    return _PAYEES.get(event.kind, "Corner Market")
+
+
+def build_scenario_spec(
+    scenarios: tuple[CardScenario, ...],
+    *,
+    cash_account: str = "Checking",
+    monthly_income: Decimal = Decimal("6000"),
+    months: int = 3,
+) -> "SampleBudgetSpec":
+    """A whole sample budget that is nothing but these card shapes.
+
+    The demo mixes them into a household; this builds the minimum around them
+    so a scenario can be generated and read on its own. Used by the
+    sample-budget suite and by `--scenario` reproductions, where a budget with
+    one card and no distractions is the point.
+    """
+    from igab.sample_budget.spec import (
+        GroupSpec,
+        MonthlyTxn,
+        PayeeSpec,
+        SampleBudgetSpec,
+        TargetSpec,
+    )
+
+    # Tier tags are how the DEMO chooses which shapes to show. A spec built
+    # for a given set of scenarios is already the choice, so they all belong
+    # in it — otherwise a full-tier card generated on its own would filter
+    # itself out and leave its payment pointing at an account that is not
+    # there.
+    scenarios = tuple(replace(s, tiers=BOTH_TIERS) for s in scenarios)
+    elements = [
+        to_spec_elements(s, cash_account=cash_account, sort_order=i + 1)
+        for i, s in enumerate(scenarios)
+    ]
+    spending = tuple(dict.fromkeys(c for e in elements for c in e.spending_categories))
+    payees = tuple(
+        dict.fromkeys(
+            [_PAYEES[k] for k in _PAYEES]
+            + [
+                "Starting Balance",
+                "Employer Payroll",
+                "Thai Garden",
+                "Netflix",
+                "Amazon",
+            ]
+        )
+    )
+
+    return SampleBudgetSpec(
+        accounts=(
+            AccountSpec(cash_account, "checking", sort_order=0),
+            *(e.account for e in elements),
+        ),
+        groups=(
+            GroupSpec("Income", (CategorySpec("Other Income"),), is_system=True),
+            GroupSpec(
+                "Everyday",
+                (
+                    *(CategorySpec(name, assignments_are_explicit=True) for name in spending),
+                    # Somewhere for the surplus to land. Every spec needs one,
+                    # or the sweep has nothing to sweep into and generation
+                    # raises rather than quietly missing its target.
+                    CategorySpec(
+                        "Savings",
+                        sweep_remainder=True,
+                        target=TargetSpec("savings_balance", Decimal("1000")),
+                    ),
+                ),
+            ),
+            GroupSpec("Debt", tuple(e.payment_category for e in elements)),
+        ),
+        payees=tuple(PayeeSpec(p) for p in payees),
+        monthly=(
+            MonthlyTxn(cash_account, "Employer Payroll", "Other Income", 1, (monthly_income,)),
+        ),
+        weekly=(),
+        one_offs=tuple(o for e in elements for o in e.one_offs),
+        transfers=(),
+        scheduled=(),
+        one_off_transfers=tuple(t for e in elements for t in e.transfers),
+        explicit_assignments=tuple(a for e in elements for a in e.assignments),
+        card_scenarios=scenarios,
+        months_of_history=months,
+        tba_target=Decimal("150"),
+    )
