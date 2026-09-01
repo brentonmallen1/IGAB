@@ -65,6 +65,15 @@ async def _transactions(session, budget_id) -> list[Transaction]:
     return list(result.scalars().all())
 
 
+#: The one element that is deliberately per-tier, and why. The two households
+#: charge this card at different rates — about 340 a month in the starter and
+#: about 610 in the full — so a single payment cannot suit both: 600 overpaid
+#: the starter into a large credit balance, and 330 let the full tier pile up
+#: a five-figure one. Named here rather than exempted quietly, and bounded by
+#: the test below.
+TIER_VARIANT_TRANSFERS = {("Checking", "Sapphire Visa")}
+
+
 def test_starter_is_a_strict_subset_of_full():
     """Pure spec check: everything tagged for the starter is in the full tier
     too — the tiers can never drift apart."""
@@ -80,8 +89,26 @@ def test_starter_is_a_strict_subset_of_full():
         "liabilities",
     ):
         for element in getattr(SAMPLE_BUDGET, field):
+            route = (
+                (getattr(element, "from_account", None), getattr(element, "to_account", None))
+                if field == "transfers"
+                else None
+            )
+            if route in TIER_VARIANT_TRANSFERS:
+                continue
             if "starter" in element.tiers:
                 assert "full" in element.tiers, f"{field}: {element} is starter-only"
+
+
+def test_the_tier_variant_is_exactly_one_transfer_per_tier():
+    """Bound on the exception above. A variant is a pair — one per tier, same
+    route, same day — not a licence for the tiers to drift on this route."""
+    for route in TIER_VARIANT_TRANSFERS:
+        legs = [t for t in SAMPLE_BUDGET.transfers if (t.from_account, t.to_account) == route]
+        assert sorted(t.tiers for t in legs) == [("full",), ("starter",)], (
+            f"{route} must be exactly one transfer per tier, got {[t.tiers for t in legs]}"
+        )
+        assert len({t.day for t in legs}) == 1, f"{route} legs fall on different days"
 
 
 async def test_full_tier_shape_and_texture(db_session):

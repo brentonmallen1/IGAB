@@ -316,15 +316,20 @@ PAID_IN_FULL = CardScenario(
     card="Cedar Point Visa",
     short="Cedar Point",
     opening=_d("0"),
+    # Paid a month in arrears, which is how a statement actually works — and
+    # which keeps the card showing a balance in EVERY month. Paying each
+    # month's charge inside that same month nets the card to zero everywhere
+    # except the anchor, so the demo's healthiest card rendered as a row of
+    # dashes for anyone who stepped back a month.
     events=(
         _fund(2, "200", "Cedar Point Groceries"),
         _spend(2, "200", "Cedar Point Groceries"),
-        _pay(2, "200"),
         _fund(1, "200", "Cedar Point Groceries"),
         _spend(1, "200", "Cedar Point Groceries"),
         _pay(1, "200"),
         _fund(0, "200", "Cedar Point Groceries"),
         _spend(0, "200", "Cedar Point Groceries", day=1),
+        _pay(0, "200", day=1),
     ),
     # Full tier only: the starter already shows a healthy card, and it shows
     # one with real texture. This is the same shape with a position pinned to

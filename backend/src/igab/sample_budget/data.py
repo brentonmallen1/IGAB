@@ -64,6 +64,7 @@ CRYPTO = "Crypto Wallet"
 LEGACY = "First National Checking (old)"
 
 FULL = ("full",)
+STARTER = ("starter",)
 
 # Sinking-fund categories carry their math in the name — the power-user YNAB
 # convention ("$1,424/12" = an annual cost budgeted monthly, "~" = estimate)
@@ -620,14 +621,20 @@ _HOUSEHOLD = SampleBudgetSpec(
             category="Car Payment",
             memo="Car loan payment",
         ),
-        # Below what the card is charged, so the demo opens on a card that
-        # owes an ordinary statement balance with the cash already reserved
-        # for it. It used to be 600 against roughly 315 of spending, which
-        # made "Try a sample budget" open on a card holding thousands of the
-        # user's money — a real state, and the least useful first impression
-        # available. It is the `credit-balance` scenario, and it belongs to
-        # that card, not to this one.
-        TransferSpec(CHECKING, VISA, day=25, amount=_d("300.00"), memo="Card payment"),
+        # Just under what the card is charged, so the demo opens on a card
+        # owing an ordinary statement balance with the cash already reserved
+        # for it — and Uncovered showing exactly the balance it arrived with.
+        #
+        # Per tier, because the two charge at different rates: the starter
+        # spends about 340 a month on this card and the full household about
+        # 610. One figure for both is what made this wrong twice over — 600
+        # flat overpaid the starter into a large credit balance (a card that
+        # owed the user thousands, the least useful first impression there
+        # is), and 300 flat let the full tier pile up a five-figure balance.
+        TransferSpec(
+            CHECKING, VISA, day=25, amount=_d("330.00"), memo="Card payment", tiers=STARTER
+        ),
+        TransferSpec(CHECKING, VISA, day=25, amount=_d("600.00"), memo="Card payment", tiers=FULL),
         TransferSpec(
             CHECKING,
             BROKERAGE,
