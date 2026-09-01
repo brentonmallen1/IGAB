@@ -28,6 +28,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.api.v1.imports import _TRACKED_HINTS, _matches, _normalize_for_match
 from igab.db.models import Account, Liability, Transaction
+from igab.domain.card_timeline import card_timeline, first_breach
+from igab.domain.cards import card_reserve
 from igab.domain.matching import DATE_WINDOW_DAYS
 from igab.domain.transfers import PairableLeg, pair_legs
 from igab.guide.detection import budget_service_from
@@ -92,6 +94,13 @@ class AccountHygieneService:
 
     async def run(self, budget_id: uuid.UUID) -> HygieneReport:
         accounts = await self._accounts(budget_id)
+        # One summary and one card walk, shared by every detector that reads
+        # them — the walk is the app's most expensive computation, and each
+        # detector re-running it is a page that gets slower per finding.
+        budget_service = budget_service_from(self.session)
+        today = today_utc()
+        summary = await budget_service.get_budget_summary(budget_id, today)
+        walk = await budget_service.card_walk(budget_id, today.replace(day=1))
         findings = [
             # Order is the ranking. On-budget-but-tracked leads because it is
             # the only one here that corrupts a number the user reads daily:
@@ -101,11 +110,15 @@ class AccountHygieneService:
             await self._liability_with_positive_balance(accounts),
             await self._unpaired_transfer_legs(budget_id),
             await self._unlinked_card_payments(budget_id),
+            self._card_reserve_went_negative(summary, walk),
+            await self._card_debt_predates_budget(budget_id, summary, walk),
+            *(await self._misfiled_card_inflows(budget_id, walk)),
+            await self._payment_envelope_shadow(budget_id, summary),
             await self._categorized_tracking_rows(budget_id),
             await self._card_rows_filed_as_income(budget_id),
             await self._dormant_open_accounts(accounts, budget_id),
             await self._stale_companion_liabilities(budget_id, accounts),
-            await self._money_in_an_archived_envelope(budget_id),
+            await self._money_in_an_archived_envelope_from(budget_id, summary),
         ]
         return HygieneReport(findings=[f for f in findings if f is not None])
 
@@ -363,7 +376,293 @@ class AccountHygieneService:
             transaction_count=int(count),
         )
 
-    async def _money_in_an_archived_envelope(self, budget_id: uuid.UUID) -> HygieneFinding | None:
+    #: How the timeline's leg names read in a sentence. One spelling — the
+    #: breach ranks by `card_timeline.LEG_SIGNS` names, and prose written at
+    #: each call site is how the same leg gets three descriptions.
+    _LEG_PHRASES = {
+        "payments": "a payment ran past everything reserved",
+        "residual": "money came back onto the card beyond anything an envelope charged to it",
+        "assignments": "more money was moved back out of the card's envelope than it held",
+        "released": "a refund released reserved cash",
+        "reservations": "funded spending reserved",
+    }
+
+    def _card_reserve_went_negative(self, summary, walk) -> HygieneFinding | None:
+        """A card's Ready to pay below zero while the card is not in credit.
+
+        A legitimate position, not an integrity failure — the reserve is
+        deliberately unfloored (domain/cards.py `CardReserve`) — but on a
+        card that still owes money it always has a cause worth reading, and
+        the row itself only shows the current figure. This names WHEN it
+        crossed and which leg did it, out of the same walk the row is served
+        from (`domain/card_timeline.py`).
+        """
+        lines: list[str] = []
+        account_ids: list[uuid.UUID] = []
+        for card in summary.cards:
+            if card.set_aside >= 0 or card.card_credit > 0:
+                continue
+            reserve = card_reserve(
+                walk.funding, card.account_id, walk.payments.get(card.account_id, {})
+            )
+            breach = first_breach(
+                card_timeline(reserve, {}, walk.funding.riding_by_card.get(card.account_id, {}))
+            )
+            account_ids.append(card.account_id)
+            if breach is None:
+                lines.append(f"{card.name} is at {card.set_aside}.")
+                continue
+            leg, _amount = breach.ranked_legs[0]
+            phrase = self._LEG_PHRASES.get(leg, leg)
+            lines.append(
+                f"{card.name} first crossed below zero in "
+                f"{breach.month.strftime('%B %Y')}, when {phrase}."
+            )
+        if not lines:
+            return None
+        count = len(lines)
+        return HygieneFinding(
+            kind="card_reserve_went_negative",
+            title=(f"{count} card{'s' if count != 1 else ''} with Ready to pay below zero"),
+            detail=" ".join(lines),
+            action=(
+                "Read the card's Ready to pay breakdown on the budget page for the "
+                "month it names. A reimbursement or misfiled refund is fixed by "
+                "re-filing the inflow; a payment that ran ahead of the budget is "
+                "settled by assigning that much to the card."
+            ),
+            account_ids=account_ids,
+        )
+
+    async def _card_debt_predates_budget(
+        self, budget_id: uuid.UUID, summary, walk
+    ) -> HygieneFinding | None:
+        """A card that was charged before anything ever reserved against it.
+
+        The synced-history shape: a card arrives carrying months of bank
+        history from before the budget used it, nothing reserves against that
+        debt, and every full-statement payment then drives the reserve down
+        by money the budget never set aside. Only cards still showing
+        uncovered debt are named — a fully covered card has nothing left to
+        act on — and only cards where reserving DID later begin: a card with
+        no reserving at all is simply unfiled spending, which its own row
+        already explains (`cardRow.emptyLegsNote`), and flagging every fresh
+        card would bury the signal.
+        """
+        first_reserving: dict[uuid.UUID, date] = {}
+        for series_by_card in (
+            walk.funding.reservations_by_card,
+            walk.funding.assignments_by_card,
+        ):
+            for card_id, series in series_by_card.items():
+                months = [m for m, v in series.items() if v > 0]
+                if not months:
+                    continue
+                first = min(months)
+                if card_id not in first_reserving or first < first_reserving[card_id]:
+                    first_reserving[card_id] = first
+
+        card_ids = [c.account_id for c in summary.cards if c.uncovered > 0]
+        if not card_ids:
+            return None
+        rows = await self.session.execute(
+            select(Transaction.account_id, func.min(Transaction.date))
+            .where(
+                Transaction.account_id.in_(card_ids),
+                NOT_DELETED,
+                POSTED,
+                Transaction.parent_transaction_id.is_(None),
+                Transaction.amount < 0,
+            )
+            .group_by(Transaction.account_id)
+        )
+        first_charge = {aid: d.replace(day=1) for aid, d in rows.all()}
+
+        lines: list[str] = []
+        account_ids: list[uuid.UUID] = []
+        for card in summary.cards:
+            if card.uncovered <= 0:
+                continue
+            charged = first_charge.get(card.account_id)
+            reserved = first_reserving.get(card.account_id)
+            if charged is None or reserved is None or charged >= reserved:
+                continue
+            account_ids.append(card.account_id)
+            lines.append(
+                f"{card.name} has charges since {charged.strftime('%B %Y')} and "
+                f"nothing reserved until {reserved.strftime('%B %Y')}."
+            )
+        if not lines:
+            return None
+        count = len(lines)
+        return HygieneFinding(
+            kind="card_debt_predates_budget",
+            title=(f"{count} card{'s' if count != 1 else ''} carrying debt older than the budget"),
+            detail=(
+                " ".join(lines)
+                + " Spending from before the budget reserves nothing, so it reads as "
+                "Uncovered — and a payment covering it spends reserve the budget "
+                "never set aside."
+            ),
+            action=(
+                "Assign to the card to cover the old debt, or set the account's "
+                "budget start date so its early history reads as opening position."
+            ),
+            account_ids=account_ids,
+        )
+
+    async def _misfiled_card_inflows(
+        self, budget_id: uuid.UUID, walk
+    ) -> list[HygieneFinding | None]:
+        """Card inflows filed to an envelope that never charged that card.
+
+        Exposure is per (category, card) — deliberately, see domain/cards.py —
+        so such an inflow releases nothing and reduces the card's reserve
+        outright (`residual_by_pair`). Two findings, because the remedies
+        differ: an envelope that charged a DIFFERENT card points at a payment
+        or refund filed onto the wrong card; one that charged no card at all
+        points at a reimbursement or a misfiled deposit.
+        """
+        names = {a.id: a.name for a in walk.card_accounts}
+        categories = {
+            c.id: c.name
+            for c in await CategoryRepository(self.session).get_all(
+                budget_id, include_archived=True
+            )
+        }
+
+        def charged(cat_id: uuid.UUID, card_id: uuid.UUID) -> bool:
+            series = walk.credit_outflows.get(cat_id, {}).get(card_id, {})
+            return any(v > 0 for v in series.values())
+
+        other_card: list[str] = []
+        other_ids: list[uuid.UUID] = []
+        uncharged: list[str] = []
+        uncharged_ids: list[uuid.UUID] = []
+        for (cat_id, card_id), series in walk.funding.residual_by_pair.items():
+            total = sum(series.values(), Decimal("0"))
+            if total <= 0 or charged(cat_id, card_id):
+                continue
+            cat_name = categories.get(cat_id, "an envelope")
+            card_name = names.get(card_id, "a card")
+            elsewhere = [
+                names.get(k, "another card")
+                for k in walk.credit_outflows.get(cat_id, {})
+                if k != card_id and charged(cat_id, k)
+            ]
+            if elsewhere:
+                other_card.append(
+                    f"{total} onto {card_name} via {cat_name}, whose card spending is on "
+                    f"{', '.join(sorted(set(elsewhere)))}."
+                )
+                other_ids.append(card_id)
+            else:
+                uncharged.append(f"{total} onto {card_name} via {cat_name}.")
+                uncharged_ids.append(card_id)
+
+        findings: list[HygieneFinding | None] = []
+        if other_card:
+            findings.append(
+                HygieneFinding(
+                    kind="card_inflow_belongs_to_other_card",
+                    title="Card inflows whose envelope charged a different card",
+                    detail=(
+                        " ".join(other_card)
+                        + " Exposure is per card, so these released nothing — each one "
+                        "reduced its card's Ready to pay outright."
+                    ),
+                    action=(
+                        "If the inflow was a payment or refund for the other card, move "
+                        "the transaction to that card's register. If it genuinely landed "
+                        "here, assign the same amount to this card to square the reserve."
+                    ),
+                    account_ids=sorted(set(other_ids), key=str),
+                )
+            )
+        if uncharged:
+            findings.append(
+                HygieneFinding(
+                    kind="residual_on_uncharged_category",
+                    title="Card inflows filed to envelopes that never charged the card",
+                    detail=(
+                        " ".join(uncharged)
+                        + " Nothing was riding there to release, so each inflow reduced "
+                        "the card's Ready to pay without freeing any envelope's cash — "
+                        "the shape a reimbursement or a misfiled deposit makes."
+                    ),
+                    action=(
+                        "Re-file each inflow to the envelope that actually charged the "
+                        "card, or leave it and assign the amount to the card. The card's "
+                        "Ready to pay breakdown names the months."
+                    ),
+                    account_ids=sorted(set(uncharged_ids), key=str),
+                )
+            )
+        return findings
+
+    async def _payment_envelope_shadow(
+        self, budget_id: uuid.UUID, summary
+    ) -> HygieneFinding | None:
+        """A spending envelope holding almost exactly a card's missing reserve.
+
+        The migration trap `scripts/repair_card_payment_transfers.py`
+        documents: a budget that funded card payments through a hand-made
+        envelope ("Sapphire Visa Fund") ends, once payments become transfers, with a
+        negative set-aside and a matching surplus in that envelope. Ready to
+        Assign is right either way — the two cancel — but it takes one budget
+        move to square, and nothing else on any page connects the two numbers.
+        """
+        categories = {
+            c.id: c.name
+            for c in await CategoryRepository(self.session).get_all(
+                budget_id, include_archived=True
+            )
+        }
+        envelopes = [
+            b
+            for b in summary.category_balances
+            if not b.in_system_group and not b.is_card_payment and b.available > 0
+        ]
+        lines: list[str] = []
+        account_ids: list[uuid.UUID] = []
+        for card in summary.cards:
+            if card.set_aside >= 0 or card.card_credit > 0:
+                continue
+            hole = -card.set_aside
+            tolerance = max(Decimal("5"), hole * Decimal("0.02"))
+            for b in envelopes:
+                if abs(b.available - hole) > tolerance:
+                    continue
+                name = categories.get(b.category_id, "an envelope")
+                card_tokens = {w.lower() for w in card.name.split() if len(w) > 2}
+                similar = any(w.lower() in card_tokens for w in name.split())
+                lines.append(
+                    f"{name} holds {b.available} while {card.name}'s Ready to pay is "
+                    f"{card.set_aside}" + (" — and the names match." if similar else ".")
+                )
+                account_ids.append(card.account_id)
+        if not lines:
+            return None
+        return HygieneFinding(
+            kind="payment_envelope_shadow",
+            title="An envelope holds almost exactly a card's missing reserve",
+            detail=(
+                " ".join(lines)
+                + " This is the shape left behind by funding card payments through an "
+                "ordinary envelope: converting the payments to transfers drained the "
+                "card's reserve while the envelope kept the money. Ready to Assign is "
+                "right either way — the two cancel."
+            ),
+            action=(
+                "Move the envelope's balance to the card: a negative assignment on the "
+                "envelope and the same amount assigned to the card, in the same month."
+            ),
+            account_ids=account_ids,
+        )
+
+    async def _money_in_an_archived_envelope_from(
+        self, budget_id: uuid.UUID, summary
+    ) -> HygieneFinding | None:
         """Money sitting in an envelope the budget no longer draws.
 
         Archiving refuses to leave a balance behind — `CategoryService.
@@ -382,7 +681,6 @@ class AccountHygieneService:
         see them, and a second carryover simulation here would be a copy of the
         one rule this app most needs to have only once.
         """
-        summary = await budget_service_from(self.session).get_budget_summary(budget_id, today_utc())
         archived = {
             c.id: c
             for c in await CategoryRepository(self.session).get_all(

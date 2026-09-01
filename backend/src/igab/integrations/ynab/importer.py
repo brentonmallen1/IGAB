@@ -62,8 +62,14 @@ def is_credit_card_payments_group(group: str) -> bool:
     envelope by name rather than creating ordinary categories for them.
     Only an entry whose card was never imported has nowhere to land, and
     those are counted, not dropped.
+
+    Case-insensitive, matching `_get_or_create_category`'s group lookup: an
+    exact compare here beside a casefolded lookup there meant a file whose
+    group read "credit card payments" bypassed this guard and landed
+    ordinary user categories inside the card-only plumbing group, where they
+    are non-assignable and invisible in the grid.
     """
-    return group == _YNAB_CREDIT_CARD_PAYMENTS_GROUP
+    return group.lower() == _YNAB_CREDIT_CARD_PAYMENTS_GROUP.lower()
 
 
 @dataclass
@@ -130,6 +136,12 @@ class ImportResult:
     #: on-budget event behind it. The rule is domain/transfers.py's; bulk
     #: insert bypasses the service, so it is applied at the row-build site.
     tracking_account_categories_stripped: int = 0
+    #: Register rows whose export line filed them to a Credit Card Payments
+    #: category — a reserve, not a spending envelope, so the category is
+    #: dropped and the row imports uncategorized. YNAB itself never writes
+    #: such rows; a hand-edited or third-party export can, and losing the
+    #: category silently was the one unreported drop in this importer.
+    credit_card_payment_categories_stripped: int = 0
     #: How the imported budget compares with the export's own figures — set
     #: by the import route after the import, None if the check could not run.
     parity: Any = None
@@ -503,12 +515,14 @@ class YNABImporter:
                     children: list[dict] = []
                     for leg in txn.splits:
                         leg_category_id: uuid.UUID | None = None
-                        if (
-                            leg.category_group
-                            and leg.category
-                            and not is_credit_card_payments_group(leg.category_group)
-                        ):
-                            if account.on_budget:
+                        if leg.category_group and leg.category:
+                            if is_credit_card_payments_group(leg.category_group):
+                                # A register row cannot be filed to a card's
+                                # reserve. Dropped — but counted: this was the
+                                # one place the importer lost information
+                                # without reporting it.
+                                result.credit_card_payment_categories_stripped += 1
+                            elif account.on_budget:
                                 cat = await self._get_or_create_category(
                                     leg.category_group, leg.category, result
                                 )
@@ -555,12 +569,11 @@ class YNABImporter:
                     continue
 
                 category_id: uuid.UUID | None = None
-                if (
-                    txn.category_group
-                    and txn.category
-                    and not is_credit_card_payments_group(txn.category_group)
-                ):
-                    if account.on_budget:
+                if txn.category_group and txn.category:
+                    if is_credit_card_payments_group(txn.category_group):
+                        # Same rule and same counter as the split leg above.
+                        result.credit_card_payment_categories_stripped += 1
+                    elif account.on_budget:
                         cat = await self._get_or_create_category(
                             txn.category_group, txn.category, result
                         )

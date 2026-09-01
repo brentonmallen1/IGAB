@@ -27,7 +27,9 @@ def _money(value) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("zip", type=Path)
     ap.add_argument("--month", help="YYYY-MM; defaults to the plan's final month")
     ap.add_argument("--skip", action="append", default=[], help="account left out of the import")

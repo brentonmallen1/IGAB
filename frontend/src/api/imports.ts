@@ -63,6 +63,18 @@ export interface YnabParity {
     igab: string
     ynab: string
   }[]
+  /** Per card, the first month the set-aside detached from YNAB's reserve —
+   *  every month of the plan is compared, not just the viewed one. On a long
+   *  import "which month" is the actionable half. Empty when every card
+   *  agrees everywhere. */
+  card_history: {
+    name: string
+    first_month: string
+    igab: string
+    ynab: string
+    months_compared: number
+    months_differing: number
+  }[]
   top_differences: {
     name: string
     igab: string
@@ -115,6 +127,10 @@ export interface YnabImportResult {
   /** Register rows on tracking accounts whose export line named a category,
    *  imported without one — off-budget activity is net-worth movement. */
   tracking_account_categories_stripped: number
+  /** Register rows filed to a Credit Card Payments category — a reserve,
+   *  not a spending envelope — imported uncategorized. YNAB never writes
+   *  such rows itself; non-zero means the file was unusual. */
+  credit_card_payment_categories_stripped: number
   /** Null when the check could not run. */
   parity: YnabParity | null
   errors: string[]

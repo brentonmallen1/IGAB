@@ -31,6 +31,56 @@ export function useBudgets() {
   })
 }
 
+/** One month of a card's reserve, served — the five legs' deltas and the
+ * running totals once the month had happened (ApiModel ships numbers). */
+export interface CardTimelineMonth {
+  month: string
+  assigned: number
+  reserved: number
+  released: number
+  residual: number
+  payments: number
+  /** What this month did to the reserve, signed. Served so the client ranks
+   * rather than re-deriving the legs' arithmetic. */
+  reserve_delta: number
+  set_aside: number
+  balance: number
+  riding: number
+  uncovered: number
+  over_reserved: number
+  short_reserved: number
+  card_credit: number
+}
+
+export interface CardTimelineBreach {
+  month: string
+  set_aside_before: number
+  set_aside_after: number
+  /** Ranked most negative first — the first entry is what did it. */
+  legs: { leg: string; amount: number }[]
+}
+
+export interface CardTimeline {
+  account_id: string
+  name: string
+  months: CardTimelineMonth[]
+  breach: CardTimelineBreach | null
+}
+
+export function useCardTimeline(budgetId: string | null, accountId: string | null, month: string) {
+  return useQuery({
+    queryKey: [ROOT.cardTimeline, budgetId, accountId, month],
+    queryFn: async () => {
+      const { data } = await apiClient.get<CardTimeline>(
+        `/${budgetId}/cards/${accountId}/timeline/${month}`
+      )
+      return data
+    },
+    enabled: !!budgetId && !!accountId,
+    staleTime: 10_000,
+  })
+}
+
 export function useBudgetMonth(budgetId: string | null, month: string) {
   return useQuery({
     queryKey: [ROOT.budgetMonth, budgetId, month],
