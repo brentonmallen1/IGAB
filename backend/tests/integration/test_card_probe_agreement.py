@@ -133,3 +133,42 @@ def test_a_negative_reserve_scenario_reports_a_breach():
     leg, amount = breach.ranked_legs[0]
     assert leg == "residual"
     assert amount < Decimal("0")
+
+
+@pytest.mark.parametrize("scenario", ALL_SCENARIOS, ids=IDS)
+def test_breach_and_worst_months_agree_with_domain_card_timeline(scenario: CardScenario):
+    """`domain/card_timeline.py` is the in-app statement of the same analysis
+    the probe carries. The two must find the same breach month and the same
+    worst months, or the page and the report would tell different stories
+    about one card."""
+    from igab.domain.card_timeline import card_timeline as domain_timeline
+    from igab.domain.card_timeline import first_breach as domain_first_breach
+    from igab.domain.card_timeline import worst_months as domain_worst_months
+
+    inputs, ours, theirs = _both(scenario)
+    card = scenario.card
+    probe_timeline = probe.card_timeline(
+        {
+            "assigned": ours.assignments_by_card.get(card, {}),
+            "reserved": ours.reservations_by_card.get(card, {}),
+            "released": ours.released_by_card.get(card, {}),
+            "residual": ours.residual_by_card.get(card, {}),
+            "payments": inputs.payments,
+        },
+        {},
+        ours.riding_by_card.get(card, {}),
+    )
+    reserve = card_reserve(theirs, card, inputs.payments)
+    dom_timeline = domain_timeline(reserve, {}, theirs.riding_by_card.get(card, {}))
+
+    ours_breach = probe.first_breach(probe_timeline)
+    dom_breach = domain_first_breach(dom_timeline)
+    assert (ours_breach is None) == (dom_breach is None)
+    if ours_breach is not None and dom_breach is not None:
+        assert ours_breach.month == dom_breach.month
+        assert ours_breach.set_aside_before == dom_breach.set_aside_before
+        assert ours_breach.set_aside_after == dom_breach.set_aside_after
+
+    ours_worst = [cm.month for cm in probe.worst_months(probe_timeline)]
+    dom_worst = [cm.month for cm in domain_worst_months(dom_timeline)]
+    assert ours_worst == dom_worst
