@@ -45,14 +45,17 @@ from igab.guide.concepts import (
     FULL_EMERGENCY_FUND_MONTHS_HIGH,
     FULL_EMERGENCY_FUND_MONTHS_LOW,
 )
+from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_filters import BUDGETED_ENVELOPE, SPENT_ENVELOPE
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.repositories.txn_filters import (
+    CASH_ACCOUNT,
     CASH_FLOW_ROW,
     LEAF,
     NOT_DELETED,
     ON_BUDGET_ACCOUNT,
     PARENT_ROW,
+    PLANNED_SPEND_ROW,
     POSTED,
 )
 
@@ -137,7 +140,7 @@ def _spending_classes(
     is used without the joins visibly beside it, so it is the one place a new
     caller could forget: a query with this predicate and no joins is a
     cartesian product, which `pyproject.toml` promotes from a warning to a test
-    failure. All three callers today do apply them.
+    failure. Every caller today does apply them.
 
     Defaults to spending alone. That is the behaviour change a user asked for:
     a transfer to a brokerage or a mortgage is money leaving the budget, but it
@@ -203,6 +206,7 @@ def _magnitude(buckets: dict[str, Decimal], cls: ActivityClass) -> Decimal:
 class ReportService:
     def __init__(self, session: AsyncSession) -> None:
         self.txns = TransactionRepository(session)
+        self.accounts = AccountRepository(session)
         self.session = session
 
     # ─── Existing ─────────────────────────────────────────────────────────────
@@ -545,10 +549,17 @@ class ReportService:
         # label and disagreed on exactly the months a new budget starts with.
         savings_rate = float(savings_this / income_this) if income_this > 0 else None
 
-        # Days until zero
+        # Days until zero — runway is CASH divided by burn, and the pot is
+        # the budget's cash (`sum_on_budget_balance`, the Ready-to-Assign
+        # balance term), not net worth. Net worth counts a house, a 401k and
+        # the mortgage against them: a household with a mortgage read a
+        # runway near zero while one with a brokerage read one of years, and
+        # neither is money that can be spent next week. Same figure, one
+        # home — do not respell the account set here.
+        cash_on_hand = await self.accounts.sum_on_budget_balance(budget_id, today)
         daily_burn = float(burn_30) / 30 if burn_30 > 0 else 0
         days_until_zero: float | None = (
-            float(net_worth) / daily_burn if daily_burn > 0 and net_worth > 0 else None
+            float(cash_on_hand) / daily_burn if daily_burn > 0 and cash_on_hand > 0 else None
         )
 
         # Top 3 categories in current period — leaf rows so splits count;
@@ -1383,18 +1394,18 @@ class ReportService:
             )
         )
 
-        # Activity (expenses) in range — leaf rows so split children count
+        # Activity (expenses) in range — leaf rows so split children count.
+        # PLANNED_SPEND_ROW: one universe with the assigned side above; this
+        # query was the byte-identical twin of cumulative_variance's before
+        # the predicate was extracted.
         spend_q = select(Transaction.category_id, Transaction.amount).where(
             Transaction.budget_id == budget_id,
-            NOT_DELETED,
-            POSTED,
-            Transaction.amount < 0,
             Transaction.date >= start_date,
             Transaction.date <= end_date,
-            LEAF,
-            CASH_FLOW_ROW,
-            Transaction.category_id.isnot(None),
+            PLANNED_SPEND_ROW,
+            _spending_classes(),
         )
+        spend_q = apply_class_joins(spend_q)
         if category_ids:
             assign_q = assign_q.where(BudgetAssignment.category_id.in_(category_ids))
             spend_q = spend_q.where(Transaction.category_id.in_(category_ids))
@@ -1475,17 +1486,18 @@ class ReportService:
 
         start = months_list[0]
         end = _last_day(months_list[-1])
+        # PLANNED_SPEND_ROW + the class filter: the spent side must live in
+        # the same universe as the assigned side, or the subtraction
+        # compounds an apples-to-oranges gap every month. The predicate's
+        # docstring lists exactly what the old inline copy missed.
         spend_q = select(Transaction.date, Transaction.amount).where(
             Transaction.budget_id == budget_id,
-            NOT_DELETED,
-            POSTED,
-            Transaction.amount < 0,
             Transaction.date >= start,
             Transaction.date <= end,
-            LEAF,
-            CASH_FLOW_ROW,
-            Transaction.category_id.isnot(None),
+            PLANNED_SPEND_ROW,
+            _spending_classes(),
         )
+        spend_q = apply_class_joins(spend_q)
         spending = (await self.session.execute(spend_q)).all()
 
         assign_by_month: dict[date, Decimal] = {}
@@ -3276,21 +3288,14 @@ class ReportService:
         today = date.today()
         end_date = today + timedelta(days=horizon_days)
 
-        # 1. Get current on-budget account balances (sum of cleared transactions)
-        q = (
-            select(func.coalesce(func.sum(Transaction.amount), 0))
-            .join(Account, Account.id == Transaction.account_id)
-            .where(
-                Transaction.budget_id == budget_id,
-                NOT_DELETED,
-                PARENT_ROW,
-                POSTED,
-                Account.is_closed == False,  # noqa: E712
-                Account.on_budget == True,  # noqa: E712
-            )
-        )
-        result = await self.session.execute(q)
-        start_balance = Decimal(str(result.scalar() or 0))
+        # 1. Current balance: the budget's CASH (`sum_on_budget_balance` —
+        # CASH_ACCOUNT, bounded to today). The old inline sum took every
+        # on-budget account, which in this credit model includes cards, so
+        # "Current Balance" read low by the whole card balance — cash minus
+        # card debt, a figure with no name. Card spending and payments enter
+        # the projection only through the cash they move (see the flow
+        # queries below, which scope the same way).
+        start_balance = await self.accounts.sum_on_budget_balance(budget_id, today)
 
         # 2. Get scheduled transactions in the projection window. The
         # projection covers on-budget cash, so schedules pointed at
@@ -3311,7 +3316,10 @@ class ReportService:
                 ScheduledTransaction.is_deleted == False,  # noqa: E712
                 ScheduledTransaction.next_occurrence_date <= end_date,
                 Account.is_closed == False,  # noqa: E712
-                Account.on_budget == True,  # noqa: E712
+                # Cash accounts only, matching the balance being projected.
+                # A schedule pointed at a card does not move cash on its
+                # date; the card payment (a cash-side transfer) is what does.
+                CASH_ACCOUNT,
             )
         )
         sched_rows = (await self.session.execute(sched_q)).all()
@@ -3359,7 +3367,9 @@ class ReportService:
                     Transaction.payee_id.in_(subscription_payee_ids),
                     Transaction.amount < 0,
                     Account.is_closed == False,  # noqa: E712
-                    Account.on_budget == True,  # noqa: E712
+                    # Cash accounts only: a subscription charged to a card
+                    # consumes cash at payment time, not charge time.
+                    CASH_ACCOUNT,
                 )
                 .group_by(Transaction.payee_id, Payee.name)
             )
@@ -3377,9 +3387,10 @@ class ReportService:
                         subscription_events.append((next_date, payee_name, avg_amount))
                     next_date = next_date + timedelta(days=30)
 
-        # 4. Get historical daily net flows for stochastic layer — on-budget
-        # open accounts only, matching the balance being projected (a
-        # brokerage swing is not a cash flow).
+        # 4. Get historical daily net flows for stochastic layer — open CASH
+        # accounts only, matching the balance being projected (a brokerage
+        # swing is not a cash flow, and a card purchase moves no cash; the
+        # cash leg of the card payment is already on the cash side).
         hist_start = today - timedelta(days=180)
         hist_q = (
             select(Transaction.date, Transaction.amount)
@@ -3392,7 +3403,7 @@ class ReportService:
                 Transaction.date >= hist_start,
                 Transaction.date < today,
                 Account.is_closed == False,  # noqa: E712
-                Account.on_budget == True,  # noqa: E712
+                CASH_ACCOUNT,
             )
         )
         hist_rows = (await self.session.execute(hist_q)).all()

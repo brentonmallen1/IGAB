@@ -56,6 +56,7 @@ function card(over: Partial<CardStatus> = {}): CardStatus {
     short_reserved: 0,
     card_credit: 0,
     charged_this_month: 0,
+    inflows_this_month: 0,
     paid_this_month: 0,
     debt_change_this_month: 0,
     pending_this_month: 0,
@@ -156,6 +157,7 @@ describe('the Ready to pay breakdown', () => {
       cards: [
         card({
           charged_this_month: 2400,
+          inflows_this_month: 3900,
           paid_this_month: 0,
           debt_change_this_month: 1500,
         }),
@@ -169,11 +171,14 @@ describe('the Ready to pay breakdown', () => {
     const labelled = (label: string) =>
       rows.find((r) => r.querySelector('dt')?.textContent?.startsWith(label))
 
-    // Every term that moved the balance is a row, and they reconcile:
-    // 2,400 charged − 0 paid − 3,900 credited = 1,500 down.
+    // Every term that moved the balance is a row, all served, and they
+    // reconcile: 3,900 received − 2,400 charged = 1,500 down. The received
+    // figure comes from the server; the sub-rows are its split, and with no
+    // paired payment the whole of it is "other credits".
     expect(labelled('Charged')?.querySelector('dd')?.textContent).toContain('2,400.00')
-    expect(labelled('Paid to the card')?.querySelector('dd')?.textContent).toContain('0.00')
+    expect(labelled('Received on the card')?.querySelector('dd')?.textContent).toContain('3,900.00')
     expect(labelled('Other credits')?.querySelector('dd')?.textContent).toContain('3,900.00')
+    expect(labelled('Paid from your accounts')).toBeUndefined()
     expect(labelled('Debt down')?.querySelector('dd')?.textContent).toContain('1,500.00')
 
     // The explanation stays a footnote; the amount does not live there.
@@ -186,7 +191,14 @@ describe('the Ready to pay breakdown', () => {
     // charged 0 and paid 0 used to hide the block entirely, so a card whose
     // debt moved purely on a refund showed a note explaining a list nobody saw.
     month.current = {
-      cards: [card({ charged_this_month: 0, paid_this_month: 0, debt_change_this_month: 90 })],
+      cards: [
+        card({
+          charged_this_month: 0,
+          inflows_this_month: 90,
+          paid_this_month: 0,
+          debt_change_this_month: 90,
+        }),
+      ],
       category_balances: [],
     } as unknown as BudgetMonth
     render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)

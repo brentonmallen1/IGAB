@@ -63,8 +63,9 @@ export function OverviewReport({ budgetId }: Props) {
               emergency-fund target is built from. Shows “—” until something is tagged.{' '}
               <strong>Savings Rate</strong>: Savings ÷ Income — money moved into savings or
               investments, not simply money left over. Shows “—” for a window with no income.{' '}
-              <strong>Days Until Zero</strong>: current net worth ÷ daily burn rate — how long your
-              money would last at this pace.
+              <strong>Days Until Zero</strong>: cash on hand ÷ daily burn rate — how long the
+              budget’s cash accounts would last at this pace. Cards, loans and tracked investments
+              are out: net worth is not money you can spend next week.
             </p>
             <ReportScopeNote scope="overview" />
           </ReportInfoButton>
@@ -151,7 +152,7 @@ export function OverviewReport({ budgetId }: Props) {
             <MetricCard
               label="Days Until Zero"
               value={`${daysUntilZero}d`}
-              sub="At current 30-day burn"
+              sub="Cash at current 30-day burn"
             />
           )}
           <MetricCard label="Income This Period" value={formatMoney(data.income_this_month)} />

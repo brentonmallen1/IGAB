@@ -120,20 +120,22 @@ export function debtMovement(card: CardStatus, money: Money): RowNote | null {
 }
 
 /**
- * Money that came onto the card this month and was not a payment from your own
- * accounts — a refund, a statement credit, someone else paying the bill, or a
- * payment recorded as a plain deposit instead of a transfer.
+ * Money that came onto the card this month and was not a payment from your
+ * own accounts — a refund, a statement credit, someone else paying the bill,
+ * or a payment recorded as a plain deposit instead of a transfer. Only a
+ * transfer spends the card's reserve, so this is the term that leaves a card
+ * reserving far more than it owes.
  *
- * The month block shows Charged, Paid and the net, and those three do not
- * reconcile when this is non-zero. Leaving that as a silent gap is the thing
- * worth avoiding: only a transfer spends the card's reserve, so a payment
- * typed as a deposit lowers the balance while Ready to pay stands still — the
- * exact shape that leaves a card reserving far more than it owes.
- *
- *     debt_change = paid + other − charged   ⇒   other = debt_change + charged − paid
+ * A difference of two SERVED figures, never a plug: this used to be
+ * reconstructed as `debt_change + charged − paid`, which cannot fail to
+ * reconcile — any error in the other terms was silently absorbed and
+ * relabelled "other credits". Now the server serves what arrived
+ * (`inflows_this_month`, every credit) and what was paid
+ * (`paid_this_month`, paired transfers only); the gap between the two is the
+ * diagnostic, in `card_month_flows`' own words.
  */
-export function unexplainedInflow(card: CardStatus): number {
-  const other = card.debt_change_this_month + card.charged_this_month - card.paid_this_month
+export function otherCredits(card: CardStatus): number {
+  const other = card.inflows_this_month - card.paid_this_month
   // Cents, not floats: a 1e-13 residue would draw a note about nothing.
   return Math.round(other * 100) / 100
 }

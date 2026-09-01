@@ -11,6 +11,7 @@ import {
 import { formatSyncAge } from '../simplefin/SyncStatusIcon'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
 import { useFormatters } from '../../hooks/useFormatters'
+import { isCardAccount } from '../../utils/accountKinds'
 import { useAppStore } from '../../stores/appStore'
 import { useAccountTypes } from '../../api/accountTypes'
 import { BUILTIN_ACCOUNT_TYPES } from '../../constants/accountTypes'
@@ -103,7 +104,7 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
     // in the budget (the Credit cards section keeps its row, tagged Closed,
     // until both reach zero) — quietly hiding the account would read as the
     // debt or the reserve vanishing.
-    const isCard = account.classification === 'liability' && account.on_budget
+    const isCard = isCardAccount(account)
     const cardMessage =
       account.balance !== 0
         ? `This card's balance is ${formatMoney(account.balance)}. Closing moves no money — the balance and anything reserved to pay it stay in the budget's Credit cards section until both reach zero.`

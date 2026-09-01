@@ -41,6 +41,7 @@ export type ModalKind =
   | 'transaction'
   | 'account'
   | 'add-account'
+  | 'card-payment'
   | 'liability'
   | 'view'
   | 'manage-views'

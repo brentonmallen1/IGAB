@@ -86,6 +86,10 @@ async def test_the_served_row_reads_what_the_scenario_says(db_session, scenario:
         card_credit=card.card_credit,
         riding=card.riding,
         reserve_discrepancy=card.reserve_discrepancy,
+        charged_this_month=card.charged_this_month,
+        inflows_this_month=card.inflows_this_month,
+        paid_this_month=card.paid_this_month,
+        debt_change_this_month=card.debt_change_this_month,
     )
     assert scenario.expect.differences(actual) == {}, scenario.story
 
