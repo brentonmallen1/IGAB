@@ -19,8 +19,8 @@ from igab.services.account_hygiene import AccountHygieneService
 from .factories import (
     create_account,
     create_budget,
-    create_category,
     create_card_payment,
+    create_category,
     create_category_group,
     create_payee,
     create_transaction,

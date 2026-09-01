@@ -607,7 +607,7 @@ class AccountHygieneService:
 
         The migration trap `scripts/repair_card_payment_transfers.py`
         documents: a budget that funded card payments through a hand-made
-        envelope ("Citi Card") ends, once payments become transfers, with a
+        envelope ("Sapphire Visa Fund") ends, once payments become transfers, with a
         negative set-aside and a matching surplus in that envelope. Ready to
         Assign is right either way — the two cancel — but it takes one budget
         move to square, and nothing else on any page connects the two numbers.

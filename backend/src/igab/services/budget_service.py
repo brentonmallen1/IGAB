@@ -566,12 +566,8 @@ class BudgetService:
         funding = card_funding(
             assignments_by_cat, spending_activity, credit_outflows, card_categories
         )
-        payments = await self.transaction_repo.sum_card_payments_by_month(
-            budget_id, month_end_date
-        )
-        unclaimed = await self.transaction_repo.sum_unclaimed_card_rows(
-            budget_id, month_end_date
-        )
+        payments = await self.transaction_repo.sum_card_payments_by_month(budget_id, month_end_date)
+        unclaimed = await self.transaction_repo.sum_unclaimed_card_rows(budget_id, month_end_date)
         return CardWalk(
             card_accounts=card_accounts,
             linked_by_account=linked_by_account,

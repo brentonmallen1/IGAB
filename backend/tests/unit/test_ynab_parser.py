@@ -530,11 +530,7 @@ class TestADroppedRowIsReportedNotSilent:
         """Trailing blank lines are spreadsheet artifacts; reporting each one
         would bury the real drops in noise."""
         parser = YNABParser()
-        register = (
-            SPLIT_HEADER
-            + _reg_row()
-            + '"","","","","","","","",,,""\n'
-        )
+        register = SPLIT_HEADER + _reg_row() + '"","","","","","","","",,,""\n'
 
         txns = parser.parse_register_csv(register)
 

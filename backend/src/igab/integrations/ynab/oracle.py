@@ -357,6 +357,7 @@ def export_consistency(budget: YNABBudget) -> ExportConsistency:
         activity_cells_disagreeing=activity_disagreeing,
     )
 
+
 def ccp_available_history(budget: YNABBudget) -> dict[str, dict[date, Decimal]]:
     """YNAB's Credit Card Payments Available for EVERY month in the plan:
     `{card name lowercased: {month: available}}`.

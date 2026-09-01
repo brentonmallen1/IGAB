@@ -15,7 +15,6 @@ from .factories import (
     create_category,
     create_category_group,
     create_transaction,
-    create_user,
     make_services,
 )
 
@@ -47,9 +46,7 @@ async def test_the_timeline_ends_where_the_month_endpoint_stands(api_client, db_
     summary = await api_client.get(f"/api/v1/{budget.id}/months/{TODAY.isoformat()}")
     served = next(c for c in summary.json()["cards"] if c["name"] == "Sapphire Visa")
 
-    resp = await api_client.get(
-        f"/api/v1/{budget.id}/cards/{card.id}/timeline/{TODAY.isoformat()}"
-    )
+    resp = await api_client.get(f"/api/v1/{budget.id}/cards/{card.id}/timeline/{TODAY.isoformat()}")
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["name"] == "Sapphire Visa"
@@ -72,9 +69,7 @@ async def test_the_breach_names_the_month_and_the_leg(api_client, db_session):
     await create_card_payment(services, budget, checking, card, "500.00", RECENT)
     await db_session.commit()
 
-    resp = await api_client.get(
-        f"/api/v1/{budget.id}/cards/{card.id}/timeline/{TODAY.isoformat()}"
-    )
+    resp = await api_client.get(f"/api/v1/{budget.id}/cards/{card.id}/timeline/{TODAY.isoformat()}")
     body = resp.json()
     breach = body["breach"]
     assert breach is not None
