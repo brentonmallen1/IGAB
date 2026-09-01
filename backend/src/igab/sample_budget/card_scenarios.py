@@ -141,6 +141,12 @@ class CardScenario:
     #: docstring of every test generated from it.
     story: str
     card: str
+    #: The card's name in its category names — "Harborstone Groceries". Card
+    #: names are unique budget-wide, and so are category names, so scenario
+    #: envelopes cannot be shared and must not look like they are. A shared
+    #: envelope is not a cosmetic problem: a shortfall rides from whichever
+    #: card carried it, so one scenario's spending moves another's position.
+    short: str
     #: Pre-budget debt. Filed nowhere, so it reads as Uncovered from day one.
     opening: Decimal
     events: tuple[CardEvent, ...]
@@ -271,6 +277,8 @@ def walk(scenario: CardScenario, anchor: date, through: date | None = None) -> E
 
 
 def _spend(months_ago: int, amount: str, category: str, day: int = 12) -> CardEvent:
+    """A charge. Current-month charges are dated the 1st on purpose — see
+    `test_every_current_month_event_precedes_any_anchor`."""
     return CardEvent(RelDate(months_ago, day), "spend", Decimal(amount), category)
 
 
@@ -305,18 +313,23 @@ PAID_IN_FULL = CardScenario(
         "figure is not zero is that this month's statement has not been paid "
         "yet — which is a due date, not a problem."
     ),
-    card="Sapphire Visa",
+    card="Cedar Point Visa",
+    short="Cedar Point",
     opening=_d("0"),
     events=(
-        _fund(2, "200", "Groceries"),
-        _spend(2, "200", "Groceries"),
+        _fund(2, "200", "Cedar Point Groceries"),
+        _spend(2, "200", "Cedar Point Groceries"),
         _pay(2, "200"),
-        _fund(1, "200", "Groceries"),
-        _spend(1, "200", "Groceries"),
+        _fund(1, "200", "Cedar Point Groceries"),
+        _spend(1, "200", "Cedar Point Groceries"),
         _pay(1, "200"),
-        _fund(0, "200", "Groceries"),
-        _spend(0, "200", "Groceries"),
+        _fund(0, "200", "Cedar Point Groceries"),
+        _spend(0, "200", "Cedar Point Groceries", day=1),
     ),
+    # Full tier only: the starter already shows a healthy card, and it shows
+    # one with real texture. This is the same shape with a position pinned to
+    # the cent, which is a different job.
+    tiers=("full",),
     expect=ExpectedPosition(
         balance=_d("-200"),
         set_aside=_d("200"),
@@ -335,18 +348,19 @@ CARRYING_DEBT = CardScenario(
         "falls, month by month, and nothing about it is an alarm."
     ),
     card="Harborstone Card",
+    short="Harborstone",
     opening=_d("-3000"),
     events=(
-        _fund(2, "100", "Groceries"),
-        _spend(2, "100", "Groceries"),
+        _fund(2, "100", "Harborstone Groceries"),
+        _spend(2, "100", "Harborstone Groceries"),
         _assign(2, "250"),
         _pay(2, "350"),
-        _fund(1, "100", "Groceries"),
-        _spend(1, "100", "Groceries"),
+        _fund(1, "100", "Harborstone Groceries"),
+        _spend(1, "100", "Harborstone Groceries"),
         _assign(1, "250"),
         _pay(1, "350"),
-        _fund(0, "100", "Groceries"),
-        _spend(0, "100", "Groceries"),
+        _fund(0, "100", "Harborstone Groceries"),
+        _spend(0, "100", "Harborstone Groceries", day=1),
         _assign(0, "250"),
     ),
     expect=ExpectedPosition(
@@ -368,15 +382,16 @@ MONTH_ENDED_SHORT = CardScenario(
         "for the statement lag — which costs nothing."
     ),
     card="Meridian Card",
+    short="Meridian",
     opening=_d("0"),
     events=(
-        _fund(2, "40", "Dining Out"),
-        _spend(2, "100", "Dining Out", day=28),
-        _fund(1, "80", "Dining Out"),
-        _spend(1, "80", "Dining Out"),
+        _fund(2, "40", "Meridian Dining Out"),
+        _spend(2, "100", "Meridian Dining Out", day=28),
+        _fund(1, "80", "Meridian Dining Out"),
+        _spend(1, "80", "Meridian Dining Out"),
         _pay(1, "100"),
-        _fund(0, "80", "Dining Out"),
-        _spend(0, "80", "Dining Out"),
+        _fund(0, "80", "Meridian Dining Out"),
+        _spend(0, "80", "Meridian Dining Out", day=1),
     ),
     expect=ExpectedPosition(
         balance=_d("-160"),
@@ -399,18 +414,19 @@ OVER_RESERVED = CardScenario(
         "row reads the position instead of waiting for the check."
     ),
     card="Summit Rewards",
+    short="Summit",
     opening=_d("0"),
     events=(
-        _fund(2, "50", "Streaming"),
-        _spend(2, "50", "Streaming"),
+        _fund(2, "50", "Summit Streaming"),
+        _spend(2, "50", "Summit Streaming"),
         _assign(2, "400"),
         _pay(2, "50"),
-        _fund(1, "50", "Streaming"),
-        _spend(1, "50", "Streaming"),
+        _fund(1, "50", "Summit Streaming"),
+        _spend(1, "50", "Summit Streaming"),
         _assign(1, "400"),
         _pay(1, "50"),
-        _fund(0, "50", "Streaming"),
-        _spend(0, "50", "Streaming"),
+        _fund(0, "50", "Summit Streaming"),
+        _spend(0, "50", "Summit Streaming", day=1),
         _assign(0, "400"),
     ),
     expect=ExpectedPosition(
@@ -435,16 +451,17 @@ REIMBURSED = CardScenario(
         "shape the integrity check accepts by design."
     ),
     card="Alder Grove Card",
+    short="Alder Grove",
     opening=_d("-2000"),
     events=(
-        _fund(2, "200", "Groceries"),
-        _spend(2, "200", "Groceries"),
+        _fund(2, "200", "Alder Grove Groceries"),
+        _spend(2, "200", "Alder Grove Groceries"),
         _pay(2, "200"),
-        _fund(1, "200", "Groceries"),
-        _spend(1, "200", "Groceries"),
-        _refund(1, "500", "Shared Expenses"),
-        _fund(0, "200", "Groceries"),
-        _spend(0, "200", "Groceries"),
+        _fund(1, "200", "Alder Grove Groceries"),
+        _spend(1, "200", "Alder Grove Groceries"),
+        _refund(1, "500", "Alder Grove Shared Expenses"),
+        _fund(0, "200", "Alder Grove Groceries"),
+        _spend(0, "200", "Alder Grove Groceries", day=1),
     ),
     expect=ExpectedPosition(
         balance=_d("-1900"),
@@ -466,16 +483,17 @@ CREDIT_BALANCE = CardScenario(
         "thousands, with nothing saying why."
     ),
     card="Nordvik Store Card",
+    short="Nordvik",
     opening=_d("0"),
     events=(
-        _fund(2, "60", "Shopping"),
-        _spend(2, "60", "Shopping"),
+        _fund(2, "60", "Nordvik Shopping"),
+        _spend(2, "60", "Nordvik Shopping"),
         _pay(2, "200"),
-        _fund(1, "60", "Shopping"),
-        _spend(1, "60", "Shopping"),
+        _fund(1, "60", "Nordvik Shopping"),
+        _spend(1, "60", "Nordvik Shopping"),
         _pay(1, "200"),
-        _fund(0, "60", "Shopping"),
-        _spend(0, "60", "Shopping"),
+        _fund(0, "60", "Nordvik Shopping"),
+        _spend(0, "60", "Nordvik Shopping", day=1),
     ),
     expect=ExpectedPosition(
         balance=_d("220"),
@@ -515,9 +533,11 @@ class SpecElements:
     one_offs: tuple[OneOffTxn, ...]
     transfers: tuple[OneOffTransfer, ...]
     assignments: tuple[ExplicitAssignment, ...]
-    #: Spending categories the scenario files to. The caller places them —
-    #: they are ordinary envelopes and mostly already exist in the demo.
+    #: Spending categories the scenario files to, named after the card.
     spending_categories: tuple[str, ...]
+    #: Payees its rows name. A spec that omits one fails generation with a
+    #: bare KeyError, so they travel with the rows that need them.
+    payees: tuple[str, ...]
 
 
 def to_spec_elements(
@@ -597,6 +617,7 @@ def to_spec_elements(
         transfers=tuple(transfers),
         assignments=tuple(assignments),
         spending_categories=scenario.categories(),
+        payees=tuple(dict.fromkeys([o.payee for o in one_offs])),
     )
 
 
@@ -611,11 +632,22 @@ _PAYEES = {
 
 
 def _payee_for(event: CardEvent, scenario: CardScenario) -> str:
+    """A payee that suits the envelope. Matched on the category's tail, since
+    the name carries the card's own prefix in front of it."""
     if event.kind == "spend" and event.category:
-        return {"Dining Out": "Thai Garden", "Streaming": "Netflix", "Shopping": "Amazon"}.get(
-            event.category, _PAYEES["spend"]
-        )
-    return _PAYEES.get(event.kind, "Corner Market")
+        for tail, payee in _BY_CATEGORY.items():
+            if event.category.endswith(tail):
+                return payee
+        return _PAYEES["spend"]
+    return _PAYEES.get(event.kind, _PAYEES["spend"])
+
+
+_BY_CATEGORY = {
+    "Dining Out": "Thai Garden",
+    "Streaming": "Netflix",
+    "Shopping": "Amazon",
+    "Groceries": "Corner Market",
+}
 
 
 def build_scenario_spec(
@@ -700,4 +732,79 @@ def build_scenario_spec(
         card_scenarios=scenarios,
         months_of_history=months,
         tba_target=Decimal("150"),
+    )
+
+
+def merge_into(
+    spec: SampleBudgetSpec,
+    scenarios: tuple[CardScenario, ...],
+    *,
+    cash_account: str,
+    group_name: str = "Card demos",
+    sort_from: int = 50,
+) -> SampleBudgetSpec:
+    """Splice scenario cards into a household budget.
+
+    Each scenario brings its own account, its own payment envelope and its own
+    spending envelopes — named after the card, because category names are
+    unique budget-wide and because a SHARED envelope is not a cosmetic problem:
+    a month-end shortfall rides from whichever card carried it, so one
+    scenario's spending would silently move another's position.
+
+    Their envelopes are `assignments_are_explicit`, so the household's
+    fund-what-you-spent inference leaves them alone — that inference would
+    top up the very shortfall `month-ended-short` exists to show.
+    """
+    from igab.sample_budget.spec import GroupSpec, PayeeSpec
+
+    elements = [
+        to_spec_elements(sc, cash_account=cash_account, sort_order=sort_from + i)
+        for i, sc in enumerate(scenarios)
+    ]
+    spending = tuple(
+        dict.fromkeys(
+            (name, sc.tiers)
+            for sc, e in zip(scenarios, elements, strict=True)
+            for name in e.spending_categories
+        )
+    )
+    demo_group = GroupSpec(
+        group_name,
+        (
+            *(
+                CategorySpec(name, assignments_are_explicit=True, tiers=tiers)
+                for name, tiers in spending
+            ),
+            *(e.payment_category for e in elements),
+        ),
+        tiers=tuple(dict.fromkeys(t for sc in scenarios for t in sc.tiers)),
+    )
+    # A payee shared between scenarios carries the UNION of their tiers. Take
+    # the first scenario's instead and a name claimed by a full-only card
+    # disappears from the starter, where a both-tiers card still names it —
+    # which fails generation with a bare KeyError on the payee.
+    known = {p.name for p in spec.payees}
+    tiers_by_payee: dict[str, tuple[str, ...]] = {}
+    for sc, element in zip(scenarios, elements, strict=True):
+        for name in element.payees:
+            if name in known:
+                continue
+            merged = dict.fromkeys((*tiers_by_payee.get(name, ()), *sc.tiers))
+            tiers_by_payee[name] = tuple(merged)
+    new_payees = tuple(PayeeSpec(name, tiers=t) for name, t in tiers_by_payee.items())
+    return replace(
+        spec,
+        accounts=(*spec.accounts, *(e.account for e in elements)),
+        groups=(*spec.groups, demo_group),
+        payees=(*spec.payees, *new_payees),
+        one_offs=(*spec.one_offs, *(o for e in elements for o in e.one_offs)),
+        one_off_transfers=(
+            *spec.one_off_transfers,
+            *(t for e in elements for t in e.transfers),
+        ),
+        explicit_assignments=(
+            *spec.explicit_assignments,
+            *(a for e in elements for a in e.assignments),
+        ),
+        card_scenarios=(*spec.card_scenarios, *scenarios),
     )

@@ -26,6 +26,7 @@ from igab.repositories.scheduled_transaction_repo import ScheduledTransactionRep
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.repositories.target_repo import TargetRepository
 from igab.repositories.transaction_repo import TransactionRepository
+from igab.sample_budget.card_scenarios import ExpectedPosition, scenarios_for
 from igab.sample_budget.generator import SampleBudgetGenerator
 from igab.services.budget_service import BudgetService
 from igab.services.integrity_service import IntegrityService
@@ -69,7 +70,9 @@ async def test_generation_covers_every_entity_kind(db_session):
 
     accounts = await AccountRepository(db_session).get_all(budget.id)
     types = {a.account_type for a in accounts}
-    assert counts.accounts == 5
+    # Checking, Savings, the everyday Visa, a car loan, a dental plan — plus
+    # the starter's two card-shape demos (carrying-debt, month-ended-short).
+    assert counts.accounts == 7
     assert {"checking", "savings", "credit_card", "auto_loan", "investment"} <= types
 
     txns = await _transactions(db_session, budget.id)
@@ -142,8 +145,11 @@ async def test_generation_covers_every_entity_kind(db_session):
     # the user has to know to create.
     liability_repo = LiabilityRepository(db_session)
     liabilities = await liability_repo.get_all(budget.id)
-    assert counts.liabilities == 3
-    assert len(liabilities) == 3
+    # The three household debts plus a companion for each demo card: every
+    # liability-classified account gets one, which the loop below asserts.
+    assert counts.liabilities == 5
+    # Three household debts plus a companion for each demo card.
+    assert len(liabilities) == 5
     for account in accounts:
         if account.classification == "liability":
             assert await liability_repo.get_by_linked_account(account.id) is not None, account.name
@@ -239,7 +245,23 @@ async def test_budget_summary_hits_target_with_one_overspend(db_session):
     # card and so rides there instead of charging Ready to Assign. Nothing
     # else — every other charge came out of a funded envelope and reserved its
     # own cash. That sum is the whole credit model in one assertion.
-    assert [c.uncovered for c in summary.cards] == [Decimal("420.00") + summary.total_overspent]
+    everyday = next(c for c in summary.cards if c.name == "Sapphire Visa")
+    assert everyday.uncovered == Decimal("420.00") + summary.total_overspent
+    # The demo cards say what they were built to say, from one definition.
+    shown = {c.name: c for c in summary.cards}
+    for scenario in scenarios_for("starter"):
+        differences = scenario.expect.differences(
+            ExpectedPosition(
+                balance=shown[scenario.card].balance,
+                set_aside=shown[scenario.card].set_aside,
+                uncovered=shown[scenario.card].uncovered,
+                over_reserved=shown[scenario.card].over_reserved,
+                short_reserved=shown[scenario.card].short_reserved,
+                card_credit=shown[scenario.card].card_credit,
+                riding=shown[scenario.card].riding,
+            )
+        )
+        assert not differences, f"{scenario.slug}: {differences}"
 
 
 async def test_integrity_all_green(db_session):
@@ -276,7 +298,7 @@ async def test_endpoint_creates_and_auto_suffixes(api_client):
     assert body["budget"]["name"] == "Sample Budget"
     assert body["counts"]["transactions"] > 0
     assert body["counts"]["scheduled"] == 5
-    assert body["counts"]["liabilities"] == 3
+    assert body["counts"]["liabilities"] == 5
 
     second = await api_client.post("/api/v1/budgets/create-sample", json={})
     assert second.status_code == 201

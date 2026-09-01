@@ -91,7 +91,8 @@ async def test_full_tier_shape_and_texture(db_session):
     counts = gen.result
 
     accounts = await AccountRepository(db_session).get_all(budget.id, include_closed=True)
-    assert counts.accounts == 16
+    # Ten household accounts plus the six card-shape demos.
+    assert counts.accounts == 22
     types = {a.account_type for a in accounts}
     assert {
         "checking",
@@ -157,7 +158,8 @@ async def test_full_tier_liabilities(db_session):
     liabilities = {item.name: item for item in await liability_repo.get_all(budget.id)}
     # Four from the spec plus the Visa's companion: a liability-classified
     # account without one is the dead-end state this model exists to remove.
-    assert len(liabilities) == 5
+    # Five household debts plus a companion for each of the six demo cards.
+    assert len(liabilities) == 11
     for account in await AccountRepository(db_session).get_all(budget.id, include_closed=True):
         if account.classification == "liability":
             assert await liability_repo.get_by_linked_account(account.id) is not None, account.name
@@ -194,7 +196,14 @@ async def test_full_tier_keeps_starter_invariants(db_session):
 
     categories = await CategoryRepository(db_session).get_all(budget.id, include_archived=True)
     names = {c.id: c.name for c in categories}
-    overspent = [names[b.category_id] for b in summary.category_balances if b.available < 0]
+    # Card payment envelopes excluded, as in the starter suite: a card whose
+    # reserve is negative is a card-section state, not an overspent envelope,
+    # and one of the demo cards exists precisely to show that.
+    overspent = [
+        names[b.category_id]
+        for b in summary.category_balances
+        if b.available < 0 and not b.is_card_payment
+    ]
     assert overspent == ["Dining Out"]
 
     report = await IntegrityService(db_session).run(budget.id)
@@ -225,6 +234,6 @@ async def test_endpoint_accepts_the_tier(api_client):
     )
     assert response.status_code == 201, response.text
     counts = response.json()["counts"]
-    assert counts["accounts"] == 16
+    assert counts["accounts"] == 22
     assert counts["transactions"] > 1500
-    assert counts["liabilities"] == 5
+    assert counts["liabilities"] == 11

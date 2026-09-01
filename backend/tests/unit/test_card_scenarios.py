@@ -80,10 +80,14 @@ def test_every_scenario_is_distinct_and_named():
 
 
 def test_the_starter_tier_is_a_subset_that_still_teaches():
-    """Three shapes is enough to explain the model; six is the full tour.
-    The healthy card sorts first so the strip does not open on an oddity."""
+    """Two demo shapes beside the household's own everyday card is enough to
+    explain the model; six is the full tour.
+
+    `paid-in-full` is full-tier only because the starter already shows a
+    healthy card — the Visa, with real texture — and a second one pinned to
+    the cent would be the same lesson twice."""
     starter = scenarios_for("starter")
-    assert [s.slug for s in starter] == ["paid-in-full", "carrying-debt", "month-ended-short"]
+    assert [s.slug for s in starter] == ["carrying-debt", "month-ended-short"]
     assert set(starter) <= set(scenarios_for("full")) == set(ALL_SCENARIOS)
 
 
@@ -99,3 +103,22 @@ def test_an_event_cannot_be_spelled_backwards():
         CardEvent(RelDate(0, 1), "spend", Decimal("5"))
     with pytest.raises(ValueError, match="takes no category"):
         CardEvent(RelDate(0, 25), "pay", Decimal("5"), "Groceries")
+
+
+def test_every_current_month_event_precedes_any_anchor():
+    """The sample budget promises to be demo-ready on ANY date, and a row
+    dated after the anchor is projected rather than written.
+
+    A current-month charge on the 12th therefore vanishes for the first eleven
+    days of every month — which is not a test failure you would see, it is a
+    demo that quietly shows a different card in the first third of the month.
+    It cost the scenarios their positions the moment the clock rolled into a
+    new month. Day 1 is on or before every anchor there is.
+    """
+    late = [
+        (s.slug, e.kind, e.when.day)
+        for s in ALL_SCENARIOS
+        for e in s.events
+        if e.when.months_ago == 0 and e.when.day > 1
+    ]
+    assert not late, f"current-month events dated after the 1st: {late}"
