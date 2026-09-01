@@ -283,6 +283,27 @@
   border-color: var(--color-accent);
 }
 
+.liability-page__plan-btn {
+  margin-left: var(--spacing-sm);
+  padding: 1px 8px;
+  border-radius: var(--border-radius-sm);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  background: none;
+}
+
+.liability-page__plan-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.liability-page__plan-note {
+  margin-left: var(--spacing-sm);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
 .liability-page__whatif-result {
   font-size: var(--font-size-sm);
   color: var(--color-positive);

@@ -269,6 +269,97 @@ class TestAmortizationEndpoint:
         assert Decimal(str(body["extra_total_interest"])) == Decimal("15.25")
         assert body["history"] == []
 
+    async def test_curtailment_reduces_the_balance_not_the_interest_rule(
+        self, api_client, db_session
+    ):
+        """A lump sum today IS principal, by definition — interest is a
+        function of the balance and the clock, so the only thing a
+        curtailment can do is shrink the balance the next month's interest
+        accrues on. 500 off a 1,000 balance at 400/mo: two payments instead
+        of three, and the interest bill falls with the balance."""
+        budget = await create_budget(db_session, api_client.test_user)
+        liability = await create_liability(
+            db_session,
+            budget,
+            manual_balance=Decimal("1000.00"),
+            interest_rate=Decimal("12.0000"),
+            minimum_payment=Decimal("400.00"),
+        )
+
+        resp = await api_client.get(
+            f"/api/v1/{budget.id}/liabilities/{liability.id}/amortization",
+            params={"curtailment": "500.00"},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert Decimal(str(body["curtailment"])) == Decimal("500.00")
+        # Baseline untouched: 3 payments, 18.26 interest.
+        assert len(body["baseline_schedule"]) == 3
+        # From 500: interest 5.00, principal 395 -> 105; interest 1.05, done.
+        assert len(body["extra_schedule"]) == 2
+        assert Decimal(str(body["extra_total_interest"])) == Decimal("6.05")
+        assert not body["extra_never_pays_off"]
+
+    async def test_curtailment_composes_with_extra_and_clamps_at_the_balance(
+        self, api_client, db_session
+    ):
+        budget = await create_budget(db_session, api_client.test_user)
+        liability = await create_liability(
+            db_session,
+            budget,
+            manual_balance=Decimal("1000.00"),
+            interest_rate=Decimal("12.0000"),
+            minimum_payment=Decimal("400.00"),
+        )
+
+        # A lump sum AND more each month, together.
+        resp = await api_client.get(
+            f"/api/v1/{budget.id}/liabilities/{liability.id}/amortization",
+            params={"curtailment": "500.00", "extra_payment": "100.00"},
+        )
+        body = resp.json()
+        # From 500 at 500/mo: 5.00 interest then 505 owed -> two payments.
+        assert len(body["extra_schedule"]) == 2
+
+        # Paying more than is owed pays it off, not past off.
+        resp = await api_client.get(
+            f"/api/v1/{budget.id}/liabilities/{liability.id}/amortization",
+            params={"curtailment": "99999.00"},
+        )
+        body = resp.json()
+        assert Decimal(str(body["curtailment"])) == Decimal("1000.00")
+        assert body["extra_schedule"] == []
+        assert not body["extra_never_pays_off"]
+        assert Decimal(str(body["extra_total_interest"])) == Decimal("0")
+
+    async def test_planned_extra_payment_round_trips_and_clears(self, api_client, db_session):
+        """The standing plan: set from the paydown page, prefills the
+        what-if on every visit, cleared with an explicit null."""
+        budget = await create_budget(db_session, api_client.test_user)
+        liability = await create_liability(
+            db_session,
+            budget,
+            manual_balance=Decimal("1000.00"),
+            interest_rate=Decimal("12.0000"),
+            minimum_payment=Decimal("400.00"),
+        )
+
+        resp = await api_client.patch(
+            f"/api/v1/{budget.id}/liabilities/{liability.id}",
+            json={"planned_extra_payment": "150.00"},
+        )
+        assert resp.status_code == 200
+        assert Decimal(str(resp.json()["planned_extra_payment"])) == Decimal("150.00")
+
+        listed = (await api_client.get(f"/api/v1/{budget.id}/liabilities")).json()
+        assert Decimal(str(listed[0]["planned_extra_payment"])) == Decimal("150.00")
+
+        resp = await api_client.patch(
+            f"/api/v1/{budget.id}/liabilities/{liability.id}",
+            json={"planned_extra_payment": None},
+        )
+        assert resp.json()["planned_extra_payment"] is None
+
     async def test_origination_history_for_managed_liability(self, api_client, db_session):
         budget = await create_budget(db_session, api_client.test_user)
         loan = await create_account(

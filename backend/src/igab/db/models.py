@@ -1714,6 +1714,14 @@ class Liability(Base):
         Boolean, default=False, server_default="false", nullable=False
     )
     compounding: Mapped[str] = mapped_column(String(20), default="monthly", nullable=False)
+    # A standing curtailment plan: what the household intends to pay each
+    # month ABOVE the minimum. Every dollar of it is principal by
+    # construction — amortization computes interest from the balance and the
+    # clock, then principal = payment − interest — so this needs no
+    # "principal vs interest" split of its own. Stored so the paydown page
+    # can show the with-plan schedule persistently instead of asking for the
+    # figure again every visit; the what-if input prefills from it.
+    planned_extra_payment: Mapped[Decimal | None] = mapped_column(Numeric(19, 4))
     origination_date: Mapped[_PyDate | None] = mapped_column(Date)
     original_principal: Mapped[Decimal | None] = mapped_column(Numeric(19, 4))
     # Promotional financing ("0% until X"): interest_rate applies only after

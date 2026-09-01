@@ -143,6 +143,7 @@ async def _liability_out(
         minimum_payment_floor=liability.minimum_payment_floor,
         minimum_payment_plus_interest=liability.minimum_payment_plus_interest,
         minimum_payment_due_now=_minimum_due_now(liability, status_.current_balance),
+        planned_extra_payment=liability.planned_extra_payment,
         terms_complete=status_.terms_complete,
         origination_date=liability.origination_date,
         original_principal=liability.original_principal,
@@ -420,7 +421,8 @@ async def get_amortization(
     current_user: CurrentUser,
     liability_repo: Annotated[LiabilityRepository, Depends(get_liability_repo)],
     liability_service: Annotated[LiabilityService, Depends(get_liability_service)],
-    extra_payment: Decimal = Query(default=Decimal("0")),
+    extra_payment: Decimal = Query(default=Decimal("0"), ge=0),
+    curtailment: Decimal = Query(default=Decimal("0"), ge=0),
     from_: Literal["now", "origination"] = Query(default="now", alias="from"),
 ) -> AmortizationResponse:
     liability = await _get_owned_liability(liability_repo, budget_id, liability_id)
@@ -433,10 +435,18 @@ async def get_amortization(
     # unset as zero. Gating on the same flag as the baseline also keeps the
     # response coherent: an extra schedule never appears without one to
     # compare it against.
+    #
+    # `curtailment` is a one-off amount thrown at the balance today. It
+    # simply reduces the starting balance — a curtailment IS principal, by
+    # definition; interest is a function of the balance and the clock, so
+    # there is no way to aim money at "the interest" instead. Clamped to the
+    # balance: paying more than is owed pays it off, not past off. Composes
+    # with `extra_payment` (a lump sum now AND more every month).
     rate, minimum = liability.interest_rate, liability.minimum_payment
-    if extra_payment > 0 and rate is not None and minimum is not None:
+    curtailment = min(curtailment, status_.current_balance)
+    if (extra_payment > 0 or curtailment > 0) and rate is not None and minimum is not None:
         extra_sched = amortization_schedule(
-            status_.current_balance, rate, minimum + extra_payment, today_utc()
+            status_.current_balance - curtailment, rate, minimum + extra_payment, today_utc()
         )
 
     history: list[BalancePointOut] = []
@@ -462,6 +472,7 @@ async def get_amortization(
         baseline_never_pays_off=baseline.never_pays_off if baseline else False,
         baseline_total_interest=baseline.total_interest if baseline else None,
         extra_payment=extra_payment if extra_payment > 0 else None,
+        curtailment=curtailment if curtailment > 0 else None,
         extra_schedule=(
             [
                 AmortizationMonthOut(

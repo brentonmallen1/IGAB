@@ -7,6 +7,7 @@ import { useCategories } from '../../api/categories'
 import {
   useCreateLiabilitySnapshot,
   useLiabilityAmortization,
+  useUpdateLiability,
   useLiabilities,
   useLinkCategoryLiability,
 } from '../../api/liabilities'
@@ -48,7 +49,16 @@ export function LiabilityPage() {
   const closeModal = useUIStore((s) => s.closeModal)
 
   const [chartMode, setChartMode] = useState<'now' | 'beginning'>('now')
-  const [extraInput, setExtraInput] = useState('')
+  // null = untouched: the field shows the STORED plan, so the page opens on
+  // the with-plan schedule instead of demanding the figure be retyped.
+  // A string (even '') means the user is trying something else right now.
+  const [extraInput, setExtraInput] = useState<string | null>(null)
+  const [curtailInput, setCurtailInput] = useState('')
+  // Which schedule the table shows once an extra schedule exists. 'extra'
+  // by default: with a plan or a live what-if, that is the path being
+  // considered, and a table pinned to the contractual minimum would quietly
+  // contradict the chart above it.
+  const [scheduleView, setScheduleView] = useState<'minimum' | 'extra'>('extra')
   const [showBalanceForm, setShowBalanceForm] = useState(false)
   const [showLinkPicker, setShowLinkPicker] = useState(false)
   const [showAssetPicker, setShowAssetPicker] = useState(false)
@@ -59,17 +69,27 @@ export function LiabilityPage() {
   const linkCategory = useLinkCategoryLiability(budgetId)
   const linkAsset = useLinkAsset(budgetId ?? '')
   const createTransaction = useCreateTransaction(budgetId ?? '')
+  const updateLiability = useUpdateLiability(budgetId)
+
+  const storedPlan = liability?.planned_extra_payment ?? null
+  const effectiveExtra = extraInput ?? (storedPlan !== null ? String(storedPlan) : '')
 
   // Debounced so typing doesn't spam the API — the same hook the Guide's
   // calculators use.
-  const settledExtra = useDebouncedValue(extraInput)
+  const settledExtra = useDebouncedValue(effectiveExtra)
+  const settledCurtail = useDebouncedValue(curtailInput)
   const extraPayment = useMemo(() => {
     const parsed = parseAmountInput(settledExtra)
     return !isNaN(parsed) && parsed > 0 ? parsed : 0
   }, [settledExtra])
+  const curtailment = useMemo(() => {
+    const parsed = parseAmountInput(settledCurtail)
+    return !isNaN(parsed) && parsed > 0 ? parsed : 0
+  }, [settledCurtail])
 
   const { data: amortization } = useLiabilityAmortization(budgetId, liabilityId ?? null, {
     extraPayment,
+    curtailment,
     fromOrigination: chartMode === 'beginning',
   })
 
@@ -123,6 +143,21 @@ export function LiabilityPage() {
     toast.success('Linked')
   }
 
+  async function handleSavePlan() {
+    await updateLiability.mutateAsync({
+      liabilityId: liability!.id,
+      planned_extra_payment: extraPayment,
+    })
+    setExtraInput(null) // back to following the stored plan
+    toast.success(`Plan saved: +${formatMoney(extraPayment)}/mo to principal`)
+  }
+
+  async function handleClearPlan() {
+    await updateLiability.mutateAsync({ liabilityId: liability!.id, planned_extra_payment: null })
+    setExtraInput(null)
+    toast.success('Plan cleared')
+  }
+
   async function handleSaveBalance(balance: number, date: string | null) {
     await createSnapshot.mutateAsync({
       liabilityId: liability!.id,
@@ -170,7 +205,7 @@ export function LiabilityPage() {
     amortization?.terms_complete &&
     amortization.extra_schedule &&
     !amortization.extra_never_pays_off &&
-    extraPayment > 0
+    (extraPayment > 0 || curtailment > 0)
       ? {
           monthsSooner: amortization.baseline_never_pays_off
             ? null
@@ -485,8 +520,20 @@ export function LiabilityPage() {
                   step="10"
                   inputMode="decimal"
                   placeholder="0"
-                  value={extraInput}
+                  value={effectiveExtra}
                   onChange={(e) => setExtraInput(e.target.value)}
+                />
+              </label>
+              <label className="liability-page__whatif">
+                <span>One-off to principal:</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="100"
+                  inputMode="decimal"
+                  placeholder="0"
+                  value={curtailInput}
+                  onChange={(e) => setCurtailInput(e.target.value)}
                 />
               </label>
             </div>
@@ -496,12 +543,45 @@ export function LiabilityPage() {
         <div className="liability-page__section-body">
           {whatIfSavings && (
             <div className="liability-page__whatif-result">
-              +{formatMoney(extraPayment)}/mo →{' '}
+              {[
+                extraPayment > 0 ? `+${formatMoney(extraPayment)}/mo` : null,
+                curtailment > 0 ? `${formatMoney(curtailment)} once` : null,
+              ]
+                .filter(Boolean)
+                .join(' and ')}{' '}
+              →{' '}
               {whatIfSavings.monthsSooner !== null
                 ? `paid off ${whatIfSavings.monthsSooner} month${whatIfSavings.monthsSooner === 1 ? '' : 's'} sooner`
                 : 'actually pays off'}
               {' · '}
               {formatMoney(whatIfSavings.interestSaved)} interest saved
+              {/* Curtailment IS principal — interest accrues on the balance,
+                  so a lump sum can only shrink what next month's interest is
+                  computed on. Said here because the question keeps coming. */}
+              {curtailment > 0 && <span> — every cent of the one-off is principal</span>}
+              {extraPayment > 0 && extraPayment !== storedPlan && (
+                <button
+                  type="button"
+                  className="liability-page__plan-btn"
+                  onClick={handleSavePlan}
+                  disabled={updateLiability.isPending}
+                >
+                  Save as my plan
+                </button>
+              )}
+              {storedPlan !== null && extraPayment === storedPlan && (
+                <span className="liability-page__plan-note">
+                  Your plan
+                  <button
+                    type="button"
+                    className="liability-page__plan-btn"
+                    onClick={handleClearPlan}
+                    disabled={updateLiability.isPending}
+                  >
+                    Clear
+                  </button>
+                </span>
+              )}
             </div>
           )}
           {amortization ? (
@@ -540,7 +620,30 @@ export function LiabilityPage() {
         header={
           <div className="liability-page__section-header">
             <h2>Amortization schedule</h2>
-            <span className="liability-page__section-sub">At the minimum payment</span>
+            {amortization?.extra_schedule ? (
+              <div className="liability-page__toggle" role="group" aria-label="Which schedule">
+                <button
+                  type="button"
+                  className={scheduleView === 'extra' ? 'active' : ''}
+                  aria-pressed={scheduleView === 'extra'}
+                  onClick={() => setScheduleView('extra')}
+                >
+                  {extraPayment > 0 && extraPayment === storedPlan && curtailment === 0
+                    ? 'My plan'
+                    : 'With extra'}
+                </button>
+                <button
+                  type="button"
+                  className={scheduleView === 'minimum' ? 'active' : ''}
+                  aria-pressed={scheduleView === 'minimum'}
+                  onClick={() => setScheduleView('minimum')}
+                >
+                  Minimum
+                </button>
+              </div>
+            ) : (
+              <span className="liability-page__section-sub">At the minimum payment</span>
+            )}
           </div>
         }
       >
@@ -565,7 +668,13 @@ export function LiabilityPage() {
               </div>
             ) : (
               <Surface variant="sunken" className="liability-page__well">
-                <AmortizationTable schedule={amortization.baseline_schedule} />
+                <AmortizationTable
+                  schedule={
+                    scheduleView === 'extra' && amortization.extra_schedule
+                      ? amortization.extra_schedule
+                      : amortization.baseline_schedule
+                  }
+                />
               </Surface>
             )
           ) : (

@@ -43,6 +43,8 @@ class LiabilityUpdate(ApiModel):
     name: str | None = None
     liability_type: LiabilityType | None = None
     interest_rate: Decimal | None = None
+    #: Explicit null clears the plan (exclude_unset keeps sent nulls).
+    planned_extra_payment: Money | None = None
     minimum_payment: Money | None = None
     minimum_payment_kind: Literal["fixed", "percent_of_balance"] | None = None
     minimum_payment_percent: Decimal | None = None
@@ -96,6 +98,9 @@ class LiabilityOut(ApiModel):
     # quietly render a rule as a blank. Null only when there is no usable
     # rule, which `terms_complete` already reports.
     minimum_payment_due_now: Decimal | None
+    #: The standing curtailment plan — monthly, above the minimum, all
+    #: principal by construction. The paydown what-if prefills from it.
+    planned_extra_payment: Decimal | None
     terms_complete: bool
     origination_date: datetime.date | None
     original_principal: Decimal | None
@@ -188,6 +193,9 @@ class AmortizationResponse(ApiModel):
     baseline_never_pays_off: bool
     baseline_total_interest: Decimal | None
     extra_payment: Decimal | None = None
+    #: One-off amount applied straight to the balance today — the classic
+    #: curtailment question. Composes with extra_payment.
+    curtailment: Decimal | None = None
     extra_schedule: list[AmortizationMonthOut] | None = None
     extra_payoff_date: datetime.date | None = None
     extra_never_pays_off: bool = False

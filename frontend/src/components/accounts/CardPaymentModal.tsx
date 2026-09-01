@@ -20,21 +20,24 @@ interface Props {
 }
 
 /**
- * Record a card payment: a TRANSFER from a cash account to the card.
+ * Record a payment: a TRANSFER from a cash account to a card or a loan.
  *
- * Only a paired transfer from cash spends the card's set-aside
+ * For a card, only a paired transfer from cash spends the set-aside
  * (`CARD_PAYMENT_FROM_CASH`) — a payment typed as a plain deposit lowers the
- * balance while "Ready to pay" stands still, which is how a card ends up
- * reserving far more than it owes. The app used to *say* this in an info
- * dialog and leave the user to build the transfer by hand in the register.
+ * balance while "Ready to pay" stands still. The prefill is the served
+ * `set_aside`, with the served minimum and the full balance as alternatives.
  *
- * The POST goes from the CASH side: `_create_transfer` writes −|amount| on
- * `account_id` and +|amount| on `transfer_account_id`, so the supply account
- * must be the source — the same shape `create_card_payment` pins in the
- * backend tests. Both legs land in one undo batch.
+ * For a loan (an off-budget liability account), the same transfer is the
+ * whole story, plus one field: "extra to principal". The extra needs no
+ * special handling on the server — interest is a function of the balance and
+ * the clock, so everything a payment carries above this month's interest IS
+ * principal — the field exists so a curtailment is one decision at record
+ * time rather than mental arithmetic, and the note quotes the served
+ * `monthly_interest_now` so the split is visible.
  *
- * The prefill is the card's `set_aside` ("Ready to pay") — served, never
- * recomputed; the alternatives are the served minimum and the full balance.
+ * Either way the POST goes from the CASH side: `_create_transfer` writes
+ * −|amount| on `account_id` and +|amount| on `transfer_account_id`, so the
+ * supply account must be the source. Both legs land in one undo batch.
  */
 export function CardPaymentModal({ budgetId, accountId, onClose }: Props) {
   const { formatMoney } = useFormatters()
@@ -46,18 +49,22 @@ export function CardPaymentModal({ budgetId, accountId, onClose }: Props) {
   const card = accounts.find((a) => a.id === accountId)
   const cardStatus = monthData?.cards?.find((c) => c.account_id === accountId)
   const liability = liabilities.find((l) => l.linked_account_id === accountId)
+  // A loan is an off-budget liability account; a card is on-budget.
+  const isLoan = !!card && !card.on_budget
 
   // useAccounts already excludes closed accounts.
   const supplyAccounts = accounts.filter((a) => isCashAccount(a))
 
-  const readyToPay = cardStatus && cardStatus.set_aside > 0 ? cardStatus.set_aside : null
+  const readyToPay = !isLoan && cardStatus && cardStatus.set_aside > 0 ? cardStatus.set_aside : null
   const fullBalance = card && card.balance < 0 ? -card.balance : null
   const minimum = liability?.minimum_payment_due_now ?? null
 
   const [supplyId, setSupplyId] = useState(() => supplyAccounts[0]?.id ?? '')
-  const [amount, setAmount] = useState(() =>
-    readyToPay !== null ? readyToPay.toFixed(2) : (fullBalance?.toFixed(2) ?? '')
-  )
+  const [amount, setAmount] = useState(() => {
+    if (isLoan) return minimum !== null && minimum > 0 ? minimum.toFixed(2) : ''
+    return readyToPay !== null ? readyToPay.toFixed(2) : (fullBalance?.toFixed(2) ?? '')
+  })
+  const [extra, setExtra] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   const presets = [
@@ -73,21 +80,31 @@ export function CardPaymentModal({ budgetId, accountId, onClose }: Props) {
       setError('Enter an amount greater than zero')
       return
     }
+    const extraParsed = extra ? parseAmountInput(extra) : 0
+    const extraValue = !isNaN(extraParsed) && extraParsed > 0 ? extraParsed : 0
+    const total = value + extraValue
     if (!supplyId) {
       setError('Pick the account the payment comes from')
       return
     }
     setError(null)
     try {
+      // One transfer for payment + extra, because that is what actually
+      // happens at the bank: one debit, of which everything above the
+      // month's interest reduces principal.
       await createTxn.mutateAsync({
         account_id: supplyId,
         date: today(),
-        amount: -Math.abs(value),
+        amount: -Math.abs(total),
         transfer_account_id: accountId,
         cleared: 'uncleared',
         approved: true,
       })
-      toast.success(`Payment of ${formatMoney(value)} recorded`)
+      toast.success(
+        extraValue > 0
+          ? `Payment of ${formatMoney(total)} recorded — ${formatMoney(extraValue)} of it straight to principal`
+          : `Payment of ${formatMoney(value)} recorded`
+      )
       onClose()
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
@@ -140,10 +157,31 @@ export function CardPaymentModal({ budgetId, accountId, onClose }: Props) {
           </div>
         )}
 
-        <p className="card-payment__note">
-          Recorded as a transfer, so it spends this card&apos;s reserve — a plain deposit would
-          lower the balance while Ready to pay stood still.
-        </p>
+        {isLoan && (
+          <label className="card-payment__field">
+            <span>Extra to principal (optional)</span>
+            <AmountInput
+              value={extra}
+              onValueChange={setExtra}
+              className="card-payment__amount"
+              placeholder="0"
+            />
+          </label>
+        )}
+
+        {isLoan ? (
+          <p className="card-payment__note">
+            One transfer covers both. Interest accrues on the balance
+            {liability?.monthly_interest_now != null &&
+              ` (about ${formatMoney(liability.monthly_interest_now)} this month)`}
+            , so everything above it — the extra included — reduces principal.
+          </p>
+        ) : (
+          <p className="card-payment__note">
+            Recorded as a transfer, so it spends this card&apos;s reserve — a plain deposit would
+            lower the balance while Ready to pay stood still.
+          </p>
+        )}
 
         {error && <p className="card-payment__error">{error}</p>}
 
