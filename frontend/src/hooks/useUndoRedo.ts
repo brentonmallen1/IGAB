@@ -2,71 +2,57 @@ import { useCallback, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { apiClient } from '../api/client'
-import { changesKeys, invalidateAfterUndo, useUndoChange, type Change } from '../api/changes'
-import { useUpdateTransaction } from '../api/transactions'
+import { changesKeys, invalidateAfterUndo, type UndoLatestResponse } from '../api/changes'
 import { useAppStore } from '../stores/appStore'
-import { useHistoryStore } from '../stores/historyStore'
 import { actionTypeLabel, entityTypeLabel } from '../pages/ActivityPage/changeLabels'
 
 /**
- * Undo and redo, once, for every way of asking.
+ * Undo and redo, once, for every way of asking — ⌘Z, the header buttons, the
+ * Activity page's redo affordance.
  *
- * ⌘Z lived inline in GlobalShortcuts; the header buttons would have been a
- * second copy of the same two-stack rule the day they were added, and the
- * palette a third. The rule: an inline register edit (client-side,
- * field-level) is undone first; with none pending, the newest server-recorded
- * change goes — a bulk assign, a cover, a delete — through the change log.
- * Undoing one row of a batch undoes the batch, which is what "undo Reset
- * Available" means.
+ * One stack, and it lives on the server. There used to be two: a client-side
+ * shadow stack of inline register edits that ⌘Z preferred unconditionally,
+ * was never cleared, and never learned about anything else the user did — so
+ * after an inline memo edit, ⌘Z on a deleted transaction popped the stale
+ * memo instead of the delete, and the compensating PATCH then recorded a NEW
+ * change row that the next ⌘Z undid, re-applying the first edit. Every
+ * inline edit already records a server `update` row; the shadow stack was a
+ * second representation of the same action, and deleting it is the fix.
  *
- * `busy` is a ref rather than state on purpose: it guards against a second
- * request while one is in flight without re-rendering every consumer.
+ * Selection is the server's too (`POST /changes/undo`): newest live MANUAL
+ * change, whole batch if it has one. Background writers — SimpleFIN sync,
+ * the AI worker, the scheduler — are skipped by source, so a sync landing
+ * between the user's action and their ⌘Z is never what gets undone. The
+ * Activity page can still undo anything by id.
+ *
+ * `inFlight` is a ref rather than state on purpose: it guards against a
+ * second request while one is in flight without re-rendering every consumer.
  */
 export function useUndoRedo() {
   const budgetId = useAppStore((s) => s.currentBudgetId)
-  const undoTxn = useUpdateTransaction(budgetId ?? '')
-  const undoChange = useUndoChange(budgetId ?? '')
   const qc = useQueryClient()
   const inFlight = useRef(false)
 
   const undo = useCallback(async () => {
-    const local = useHistoryStore.getState().undo()
-    if (local) {
-      undoTxn.mutate({ id: local.transactionId, [local.field]: local.before } as Parameters<
-        typeof undoTxn.mutate
-      >[0])
-      return
-    }
     if (!budgetId || inFlight.current) return
     inFlight.current = true
     try {
-      const { data } = await apiClient.get<{ changes: Change[] }>(`/${budgetId}/changes`, {
-        params: { limit: 20 },
-      })
-      const latest = data.changes.find((c) => !c.undone_at)
-      if (!latest) {
-        toast('Nothing to undo')
-        return
-      }
-      // Every recorded change carries a batch id; only say "batch" when it
-      // actually had siblings (a bulk assign, a cover, a multi-row delete).
-      const siblings = latest.batch_id
-        ? data.changes.filter((c) => c.batch_id === latest.batch_id).length
-        : 1
-      await undoChange.mutateAsync({ changeId: latest.id })
+      const { data } = await apiClient.post<UndoLatestResponse>(`/${budgetId}/changes/undo`)
+      qc.invalidateQueries({ queryKey: changesKeys.budget(budgetId) })
       invalidateAfterUndo(qc, budgetId)
+      const others = data.undone_change_ids.length - 1
       toast.success(
-        `Undid: ${actionTypeLabel(latest.action).toLowerCase()} ${entityTypeLabel(latest.entity_type)}${siblings > 1 ? ` — and the other ${siblings - 1} in that batch` : ''}`
+        `Undid: ${actionTypeLabel(data.action).toLowerCase()} ${entityTypeLabel(data.entity_type)}${others > 0 ? ` — and the other ${others} in that batch` : ''}`
       )
-    } catch {
-      // useUndoChange already reports the failure
+    } catch (err: unknown) {
+      toast(conflictMessage(err) ?? 'Nothing to undo')
     } finally {
       inFlight.current = false
     }
-  }, [budgetId, qc, undoChange, undoTxn])
+  }, [budgetId, qc])
 
   // Re-applies the most recently undone change; the server refuses once
-  // anything newer has been recorded, so the toast explains the refusal.
+  // anything newer is live, so the toast explains the refusal.
   const redo = useCallback(async () => {
     if (!budgetId || inFlight.current) return
     inFlight.current = true
@@ -76,14 +62,18 @@ export function useUndoRedo() {
       invalidateAfterUndo(qc, budgetId)
       toast.success('Redone')
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: { message?: string } | string } } })
-        ?.response?.data?.detail
-      const message = typeof detail === 'string' ? detail : detail?.message
-      toast(message ?? 'Nothing to redo')
+      toast(conflictMessage(err) ?? 'Nothing to redo')
     } finally {
       inFlight.current = false
     }
   }, [budgetId, qc])
 
   return { undo, redo, enabled: !!budgetId }
+}
+
+/** The message inside a 409's structured detail, if the error carries one. */
+function conflictMessage(err: unknown): string | undefined {
+  const detail = (err as { response?: { data?: { detail?: { message?: string } | string } } })
+    ?.response?.data?.detail
+  return typeof detail === 'string' ? detail : detail?.message
 }
