@@ -24,6 +24,7 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import (
+    CHANGE_LOG_UNDO_SEQ,
     BudgetAssignment,
     BudgetFilterCategory,
     BudgetMove,
@@ -48,10 +49,29 @@ def _opt_uuid(value: object) -> uuid.UUID | None:
     return uuid.UUID(str(value)) if value else None
 
 
+def _mark_undone(change: ChangeLog) -> None:
+    """The one spelling of "this row is now undone": timestamp for people,
+    `undo_seq` for the redo stack. A site that stamps one without the other
+    makes the row invisible to redo, so they travel together."""
+    change.undone_at = func.now()
+    change.undo_seq = CHANGE_LOG_UNDO_SEQ.next_value()
+
+
 class UndoService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
         self.repo = ChangeLogRepository(session)
+
+    async def undo_latest(self, budget_id: uuid.UUID) -> tuple[ChangeLog, list[uuid.UUID]]:
+        """Undo the newest live MANUAL change — the server side of ⌘Z —
+        returning the candidate (for the toast) and everything undone (its
+        whole batch, if it had one). Selection is `latest_live_manual`'s;
+        see its docstring for why the client no longer picks."""
+        candidate = await self.repo.latest_live_manual(budget_id)
+        if candidate is None:
+            raise UndoConflict("Nothing to undo")
+        undone = await self.undo_change(budget_id, candidate.id)
+        return candidate, undone
 
     async def undo_change(
         self, budget_id: uuid.UUID, change_id: uuid.UUID, force: bool = False
@@ -66,7 +86,7 @@ class UndoService:
         if change.undone_at is not None:
             raise UndoConflict("This change has already been undone")
         await self._apply(change, force)
-        change.undone_at = func.now()
+        _mark_undone(change)
         await self.session.flush()
         return [change.id]
 
@@ -82,7 +102,7 @@ class UndoService:
         undone: list[uuid.UUID] = []
         for change in pending:
             await self._apply(change, force)
-            change.undone_at = func.now()
+            _mark_undone(change)
             undone.append(change.id)
             # One flush per step, so the reverse order is the order the
             # database sees. A merge's batch is "delete the loser, then write
@@ -131,7 +151,7 @@ class UndoService:
         undone: list[uuid.UUID] = []
         for change in pending:
             await self._apply(change, force)
-            change.undone_at = func.now()
+            _mark_undone(change)
             undone.append(change.id)
             # One flush per step, for the same reason undo_batch does it: the
             # database must see the reversals in the order they are applied.
@@ -169,7 +189,7 @@ class UndoService:
                 str((row.before or {})["assigned"])
             )
             entity.assigned = entity.assigned - delta
-            row.undone_at = func.now()
+            _mark_undone(row)
             undone.append(row.id)
         await self.session.delete(move)
         await self.session.flush()
@@ -177,12 +197,23 @@ class UndoService:
 
     async def redo_latest(self, budget_id: uuid.UUID, force: bool = False) -> list[uuid.UUID]:
         """Re-apply the most recently undone change (its whole batch, if it
-        had one). Refused when anything has been recorded since the undo:
-        a new action empties the redo stack, as in any editor."""
+        had one). Refused when any LIVE row is newer than the candidate:
+        a new action empties the redo stack, as in any editor.
+
+        Depth-N: each undo stamps `undo_seq`, so undoing C, B, A leaves A as
+        the candidate (highest undo_seq), and redoing walks A, B, C back in.
+        A row the guard refuses today becomes redoable again if the newer
+        change is itself undone. The guard is keyed on `seq` — the log's one
+        total order — never on timestamps, and is deliberately conservative:
+        it refuses under ANY newer live row, including one that touches an
+        unrelated entity. That breadth is also what makes redo-of-a-move
+        safe: `undo_move` reverses by delta, `_reapply` writes the absolute
+        `after`, and the two agree exactly when nothing has moved since —
+        which is the only state this guard lets through."""
         candidate = await self.repo.latest_undone(budget_id)
         if candidate is None:
             raise UndoConflict("Nothing to redo")
-        if await self.repo.count_live_after(budget_id, candidate.undone_at) > 0:
+        if await self.repo.count_live_after_seq(budget_id, candidate.seq) > 0:
             raise UndoConflict("Nothing to redo — something changed since that undo")
         rows = (
             await self.repo.get_batch(budget_id, candidate.batch_id)
@@ -195,6 +226,7 @@ class UndoService:
         for change in pending:
             await self._reapply(change, force)
             change.undone_at = None
+            change.undo_seq = None
             redone.append(change.id)
         await self.session.flush()
         return redone
@@ -223,7 +255,13 @@ class UndoService:
                 setattr(entity, field, coerce_value(model, field, value))
             if change.entity_type == "assignment":
                 await self._remember_move(change)
-        elif change.action == "delete" and change.entity_type != "category":
+        elif change.action == "delete" and change.entity_type == "category":
+            # The undo rebuilt categories, assignments, placements and
+            # re-filed rows across five steps; replaying the delete would
+            # need the delete service, not a snapshot write. Refuse by name
+            # rather than half-apply.
+            raise UndoConflict("Redo of a category delete is not supported — delete it again")
+        elif change.action == "delete":
             if getattr(entity, "is_deleted", False):
                 raise UndoConflict("The item is already deleted")
             entity.is_deleted = True
