@@ -73,7 +73,13 @@ export interface RoadmapBranch {
 
 /** The scenario calculators on the Tools tab. A node names the one that
  *  answers its question; the registry of labels lives with the components. */
-export const TOOL_IDS = ['payoff-plan', 'pay-vs-save', 'loan-compare', 'emergency-fund'] as const
+export const TOOL_IDS = [
+  'category-planner',
+  'payoff-plan',
+  'pay-vs-save',
+  'loan-compare',
+  'emergency-fund',
+] as const
 export type ToolId = (typeof TOOL_IDS)[number]
 
 export interface RoadmapNode {
@@ -211,6 +217,7 @@ export const ROADMAP: RoadmapStage[] = [
         glossary: ['zero-based-budgeting', 'to-be-assigned'],
         appLinks: [{ label: 'Open your budget', to: '/budget' }],
         signal: 'budget_exists',
+        tool: 'category-planner',
       },
       {
         id: 'housing',

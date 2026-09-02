@@ -1090,6 +1090,41 @@ class GuideState(Base):
     )
 
 
+class CategoryPlan(Base):
+    """A paycheck-by-paycheck category plan — the Guide's planning scratchpad.
+
+    One row per named plan; a budget may keep several to try scenarios side by
+    side. The whole plan lives in ``payload`` as one JSONB document (shape
+    validated by ``api.v1.schemas.category_plan.PlanPayload``): header facts
+    (monthly take-home, cadence, count override) plus paychecks, each holding
+    its rows. Amounts are integer cents — JSONB cannot carry Decimal, and ints
+    round-trip exactly.
+
+    A document, not normalized tables, because it is edited and autosaved as a
+    whole and nothing joins against its rows; the apply-targets action reads
+    the whole plan anyway. Storage is draft-permissive on purpose (empty row
+    names, missing amounts): autosave persists half-typed rows, and strictness
+    lives at apply time. Kept out of ``guide_state`` only because named-plan
+    CRUD wants ``name`` and timestamps as real columns.
+    """
+
+    __tablename__ = "category_plans"
+    __table_args__ = (UniqueConstraint("budget_id", "name", name="uq_category_plan_budget_name"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    budget_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
 class WishlistProject(Base):
     """A group of wishes — "we want to do X, so we need a, b, c".
 

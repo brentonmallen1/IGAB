@@ -16,6 +16,13 @@ export interface ToolDef {
 }
 
 export const TOOLS: Record<ToolId, ToolDef> = {
+  'category-planner': {
+    id: 'category-planner',
+    label: 'Category planner',
+    blurb:
+      'Lay your categories under the paychecks that pay for them — what each check has to cover, and what is left of the month’s take-home. Plans save with your budget, and can set your category targets when you are ready.',
+    linkLabel: 'Plan your categories paycheck by paycheck',
+  },
   'payoff-plan': {
     id: 'payoff-plan',
     label: 'Payoff planner',

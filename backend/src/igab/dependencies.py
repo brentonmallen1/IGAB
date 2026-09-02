@@ -39,6 +39,7 @@ from igab.services.assign_service import AssignService
 from igab.services.attachment_service import AttachmentService
 from igab.services.auth_service import AuthService
 from igab.services.budget_service import BudgetService
+from igab.services.category_plan_service import CategoryPlanService
 from igab.services.category_service import CategoryService
 from igab.services.change_log import ChangeRecorder
 from igab.services.liability_service import LiabilityService
@@ -270,6 +271,10 @@ def get_wishlist_service(
     target_service: Annotated[TargetService, Depends(get_target_service)],
 ) -> WishlistService:
     return WishlistService(session, budget_service=budget_service, target_service=target_service)
+
+
+def get_category_plan_service(session: SessionDep) -> CategoryPlanService:
+    return CategoryPlanService(session)
 
 
 def get_assign_service(

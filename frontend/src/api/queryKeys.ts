@@ -61,6 +61,7 @@ export const ROOT = {
   categoryGroups: 'categoryGroups',
   categoryHistory: 'categoryHistory',
   categoryHistoryBatch: 'categoryHistoryBatch',
+  categoryPlans: 'category-plans',
   changes: 'changes',
   coverOverspentPreview: 'coverOverspentPreview',
   currentUser: 'currentUser',
