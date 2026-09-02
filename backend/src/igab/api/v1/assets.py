@@ -23,7 +23,7 @@ from igab.api.v1.schemas.asset import (
 from igab.db.models import Asset
 from igab.dependencies import BudgetAccess, CurrentUser, SessionDep
 from igab.repositories.asset_repo import AssetRepository
-from igab.utils.clock import today_utc
+from igab.utils.clock import recorded_on
 
 router = APIRouter(route_class=CommitRoute)
 
@@ -55,7 +55,7 @@ async def create_asset(
 ) -> AssetOut:
     asset = await repo.create(budget_id=budget_id, name=body.name, asset_type=body.asset_type)
     if body.value is not None:
-        await repo.upsert_value(asset, body.value_as_of or today_utc(), body.value)
+        await repo.upsert_value(asset, recorded_on(body.value_as_of, body.client_today), body.value)
         # updated_at is onupdate=func.now(); the flush expired it, and
         # lazy-loading it during serialization is sync-context IO.
         await repo.session.refresh(asset)
@@ -119,7 +119,7 @@ async def add_value(
     repo: RepoDep,
 ) -> AssetValueOut:
     asset = await _owned(repo, budget_id, asset_id)
-    snapshot = await repo.upsert_value(asset, body.date or today_utc(), body.value)
+    snapshot = await repo.upsert_value(asset, recorded_on(body.date, body.client_today), body.value)
     return AssetValueOut.model_validate(snapshot)
 
 

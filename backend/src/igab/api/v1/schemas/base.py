@@ -24,6 +24,7 @@ exact `Decimal` (`1234.56` → `Decimal('1234.56')`), so write paths are
 unchanged.
 """
 
+import datetime
 from decimal import Decimal
 from typing import Any
 
@@ -52,3 +53,19 @@ class ApiModel(BaseModel):
         ):
             return {k: float(v) for k, v in value.items()}
         return handler(value)
+
+
+class ClientDated(ApiModel):
+    """A request body that stamps a date on something the person just recorded.
+
+    The browser sends its own local date. The server cannot work it out: it
+    does not know the caller's timezone, so `today_utc()` is already tomorrow
+    every evening west of UTC — which is how an asset valued on Tuesday night
+    got dated Wednesday. Resolve with `clock.recorded_on`, which ranks the
+    explicit date above this and this above the server's clock; never read a
+    clock at the call site.
+    """
+
+    #: The browser's local "today", ISO. Optional: a non-browser caller that
+    #: omits it still gets a date, just the server's own.
+    client_today: datetime.date | None = None

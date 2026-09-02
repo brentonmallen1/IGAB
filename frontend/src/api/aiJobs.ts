@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 import { downscaleForUpload } from '../utils/imageUpload'
+import { today } from '../utils/dates'
 import { useAIStatus } from './ai'
 import { ROOT } from './queryKeys'
 
@@ -82,14 +83,6 @@ export interface NLDraft {
   category_name: string | null
   memo: string | null
   confidence: number
-}
-
-function localToday(): string {
-  const now = new Date()
-  const y = now.getFullYear()
-  const m = String(now.getMonth() + 1).padStart(2, '0')
-  const d = String(now.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
 }
 
 export function useAIJobs(
@@ -185,7 +178,7 @@ export function useSubmitReceipt(budgetId: string) {
       // no-op (size gate in shouldDownscale).
       formData.append('file', await downscaleForUpload(file))
       formData.append('account_id', accountId)
-      formData.append('client_today', localToday())
+      formData.append('client_today', today())
       const { data } = await apiClient.post<AIJob>(`/${budgetId}/ai/receipts`, formData)
       return data
     },
@@ -238,7 +231,7 @@ export function useParseNLTransaction(budgetId: string) {
       apiClient
         .post<{ job_id: string; draft: NLDraft }>(`/${budgetId}/ai/parse-transaction`, {
           text,
-          client_today: localToday(),
+          client_today: today(),
         })
         .then((r) => r.data),
     // The endpoint writes an ai_jobs audit row whether the parse succeeds or

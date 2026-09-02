@@ -3,7 +3,7 @@ import uuid
 from decimal import Decimal
 from typing import Literal
 
-from igab.api.v1.schemas.base import ApiModel
+from igab.api.v1.schemas.base import ApiModel, ClientDated
 from igab.domain.money import Money
 
 LiabilityType = Literal[
@@ -11,7 +11,7 @@ LiabilityType = Literal[
 ]
 
 
-class LiabilityCreate(ApiModel):
+class LiabilityCreate(ClientDated):
     name: str
     #: Ignored when linked_account_id is set — a managed liability's kind is
     #: its account's type. Required for an unmanaged one, which has no account
@@ -149,9 +149,11 @@ class PromoProjectionOut(ApiModel):
     deferred_interest_estimate: Decimal | None
 
 
-class LiabilityBalanceSnapshotCreate(ApiModel):
+class LiabilityBalanceSnapshotCreate(ClientDated):
     balance: Money
-    date: datetime.date | None = None  # default: today
+    #: Defaults to the caller's today (`client_today`), and only then to the
+    #: server's — see `clock.recorded_on`.
+    date: datetime.date | None = None
 
 
 class LiabilityBalanceSnapshotOut(ApiModel):

@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from pydantic import Field
 
-from igab.api.v1.schemas.base import ApiModel
+from igab.api.v1.schemas.base import ApiModel, ClientDated
 
 
 class AssetOut(ApiModel):
@@ -23,7 +23,7 @@ class AssetOut(ApiModel):
     updated_at: datetime.datetime
 
 
-class AssetCreate(ApiModel):
+class AssetCreate(ClientDated):
     name: str = Field(min_length=1, max_length=100)
     asset_type: str | None = None
     #: Optional first value point, recorded through the same newest-wins path
@@ -47,9 +47,10 @@ class AssetValueOut(ApiModel):
     model_config = {"from_attributes": True}
 
 
-class AssetValueCreate(ApiModel):
+class AssetValueCreate(ClientDated):
     value: Decimal = Field(ge=0)
-    #: Defaults to today, stamped server-side like the Guide's `as_of`.
+    #: Defaults to the caller's today (`client_today`), and only then to the
+    #: server's — see `clock.recorded_on`.
     date: datetime.date | None = None
 
 

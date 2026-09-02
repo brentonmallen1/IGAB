@@ -189,9 +189,17 @@ async def test_an_asset_outlives_its_loan(db_session):
 
 async def test_the_value_register_lists_edits_and_refuses_strangers(api_client, db_session):
     budget = await _budget(db_session, api_client.test_user)
+    # client_today, like the browser sends: TODAY here is the *local* date, and
+    # without it the server would stamp its own UTC one — already tomorrow
+    # every evening west of UTC, so this failed nightly and passed by morning.
     resp = await api_client.post(
         f"/api/v1/{budget.id}/assets",
-        json={"name": "Maple St House", "asset_type": "property", "value": "250000.00"},
+        json={
+            "name": "Maple St House",
+            "asset_type": "property",
+            "value": "250000.00",
+            "client_today": str(TODAY),
+        },
     )
     assert resp.status_code == 201, resp.text
     asset_id = resp.json()["id"]
