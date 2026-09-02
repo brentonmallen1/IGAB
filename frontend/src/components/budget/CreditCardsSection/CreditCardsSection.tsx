@@ -133,16 +133,21 @@ function ReserveLegs({
             <dt>Received on the card</dt>
             <dd className="tabular">− {formatMoney(card.inflows_this_month)}</dd>
           </div>
+          {/* "of which:" in the label, because indentation alone did not carry
+            the part-of relationship: a card whose only inflow was unlinked
+            read as "Received −$5,380.69 / Other credits $5,380.69" — two rows
+            that looked like they cancelled, when the second is the first's
+            breakdown. */}
           {card.paid_this_month !== 0 && (
             <div className="credit-cards__leg credit-cards__leg--sub">
-              <dt>Paid from your accounts</dt>
+              <dt>of which: Paid from your accounts</dt>
               <dd className="tabular">{formatMoney(card.paid_this_month)}</dd>
             </div>
           )}
           {otherInflow !== 0 && (
             <div className="credit-cards__leg credit-cards__leg--sub">
               <dt>
-                Other credits<span className="credit-cards__footnote-mark">*</span>
+                of which: Other credits<span className="credit-cards__footnote-mark">*</span>
               </dt>
               <dd className="tabular">{formatMoney(otherInflow)}</dd>
             </div>

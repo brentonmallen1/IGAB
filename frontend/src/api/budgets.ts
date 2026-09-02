@@ -3,6 +3,7 @@ import { apiClient } from './client'
 import { invalidateAfterImport } from './invalidateAfterImport'
 import { confirmAsync } from '../stores/confirmStore'
 import type { Budget, BudgetMonth } from '../types'
+import type { SnapshotInspection } from './budgetSnapshots'
 import type { YnabImportResult } from './imports'
 import { ROOT } from './queryKeys'
 
@@ -10,8 +11,6 @@ export interface YnabImportBudgetResult {
   budget: Budget
   import_result: YnabImportResult
 }
-
-const MULTIPART_HEADERS = { 'Content-Type': undefined }
 
 export async function fetchBudgets(): Promise<Budget[]> {
   const { data } = await apiClient.get<Budget[]>('/budgets')
@@ -488,15 +487,23 @@ export interface YnabAccountTypeChoice {
 }
 
 /** Parse the export without importing — feeds the account-type mapping step */
-export function usePreviewYnabImport() {
+/**
+ * Which importer takes an uploaded budget file, and that importer's preview.
+ * The server reads the zip's members to decide — the filename cannot, since a
+ * browser's duplicate-download rename ("… (1).zip") strips any suffix.
+ * Exactly one branch is populated, matching `kind`.
+ */
+export type BudgetImportPreview =
+  | { kind: 'snapshot'; snapshot: SnapshotInspection; ynab: null }
+  | { kind: 'ynab'; ynab: YnabPreviewResult; snapshot: null }
+
+export function usePreviewBudgetImport() {
   return useMutation({
     mutationFn: (file: File) => {
       const formData = new FormData()
       formData.append('file', file)
       return apiClient
-        .post<YnabPreviewResult>('/budgets/import-ynab/preview', formData, {
-          headers: MULTIPART_HEADERS,
-        })
+        .post<BudgetImportPreview>('/budgets/import/preview', formData)
         .then((r) => r.data)
     },
   })
@@ -521,9 +528,7 @@ export function useImportYnabAsBudget() {
         formData.append('account_types', JSON.stringify(accountTypes))
       }
       return apiClient
-        .post<YnabImportBudgetResult>('/budgets/import-ynab', formData, {
-          headers: MULTIPART_HEADERS,
-        })
+        .post<YnabImportBudgetResult>('/budgets/import-ynab', formData)
         .then((r) => r.data)
     },
     onSuccess: (result) =>

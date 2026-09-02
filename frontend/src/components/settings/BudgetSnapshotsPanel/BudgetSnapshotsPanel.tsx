@@ -226,10 +226,10 @@ export function BudgetSnapshotsPanel({ budgetId, budgetName }: Props) {
           <button
             className="settings-btn settings-btn--secondary"
             onClick={() =>
-              downloadSnapshotNow(budgetId).catch(() => toast.error('Download failed.'))
+              downloadSnapshotNow(budgetId, budgetName).catch(() => toast.error('Export failed.'))
             }
           >
-            <Download size={14} aria-hidden="true" /> Download
+            <Download size={14} aria-hidden="true" /> IGAB export
           </button>
           <button
             className="settings-btn"
@@ -258,7 +258,7 @@ export function BudgetSnapshotsPanel({ budgetId, budgetName }: Props) {
               downloadBudgetExport(budgetId, budgetName).catch(() => toast.error('Export failed.'))
             }
           >
-            <FileSpreadsheet size={14} aria-hidden="true" /> Export
+            <FileSpreadsheet size={14} aria-hidden="true" /> YNAB export
           </button>
         </div>
       </div>

@@ -108,19 +108,30 @@ export function useDeleteBudgetSnapshot(budgetId: string | null) {
   })
 }
 
-/** A readable, portable export — YNAB-shaped, so a spreadsheet opens it and
- *  IGAB's own YNAB importer reads it back. Lossy, and the file says so. */
-export function downloadBudgetExport(budgetId: string, budgetName: string): Promise<void> {
+/** One spelling of "this budget's name as a filename". Both download paths
+ *  use it, so the two files sort together and each names its format — a
+ *  bare-UUID filename is how a snapshot ends up fed to the YNAB importer. */
+function budgetSlug(budgetName: string): string {
   const slug = budgetName
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
-  return downloadAuthed(`/budgets/${budgetId}/export?format=ynab`, `${slug || 'budget'}-export.zip`)
+  return slug || 'budget'
 }
 
-/** Export now and hand the file straight to the browser. */
-export function downloadSnapshotNow(budgetId: string): Promise<void> {
-  return downloadAuthed(`/budgets/${budgetId}/snapshot`, `${budgetId}.igab.zip`)
+/** A readable, portable export — YNAB-shaped, so a spreadsheet opens it and
+ *  IGAB's own YNAB importer reads it back. Lossy, and the file says so. */
+export function downloadBudgetExport(budgetId: string, budgetName: string): Promise<void> {
+  return downloadAuthed(
+    `/budgets/${budgetId}/export?format=ynab`,
+    `${budgetSlug(budgetName)}-ynab-export.zip`
+  )
+}
+
+/** Export now and hand the file straight to the browser. Named after the
+ *  budget, with the format in the suffix — like the kept-snapshot files. */
+export function downloadSnapshotNow(budgetId: string, budgetName: string): Promise<void> {
+  return downloadAuthed(`/budgets/${budgetId}/snapshot`, `${budgetSlug(budgetName)}.igab.zip`)
 }
 
 export function downloadKeptSnapshot(budgetId: string, name: string): Promise<void> {

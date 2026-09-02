@@ -17,13 +17,14 @@ import {
   useCreateBudget,
   useCreateSampleBudget,
   useImportYnabAsBudget,
-  usePreviewYnabImport,
+  usePreviewBudgetImport,
   useRenameBudget,
   useDeleteBudget,
   type SampleTier,
   type YnabAccountPreview,
   type YnabAccountTypeChoice,
 } from '../../api/budgets'
+import { useImportSnapshot, type SnapshotInspection } from '../../api/budgetSnapshots'
 import { useLogout } from '../../api/auth'
 import { useAppStore } from '../../stores/appStore'
 import { ContextMenu, type ContextMenuItem } from '../../components/common/ContextMenu/ContextMenu'
@@ -132,12 +133,16 @@ export function BudgetSelectorPage() {
   const [sampleOpen, setSampleOpen] = useState(false)
   const createOpen = createToggled ?? (!isLoading && budgets.length === 0)
 
-  // YNAB import form — two steps: preview (parse accounts) → mapped import
+  // Import form — two steps: preview (the server says which kind of file
+  // this is and parses it) → import. Step 2 is either the YNAB account
+  // mapping or the snapshot verdict, whichever the file turned out to be.
   const [importName, setImportName] = useState('')
   const importFileRef = useRef<HTMLInputElement>(null)
   const [importError, setImportError] = useState<string | null>(null)
-  const previewYnab = usePreviewYnabImport()
+  const previewImport = usePreviewBudgetImport()
+  const importSnapshot = useImportSnapshot()
   const [previewAccounts, setPreviewAccounts] = useState<YnabAccountPreview[] | null>(null)
+  const [snapshotPreview, setSnapshotPreview] = useState<SnapshotInspection | null>(null)
   const [accountChoices, setAccountChoices] = useState<Record<string, YnabAccountTypeChoice>>({})
   const [showTypeInfo, setShowTypeInfo] = useState(false)
 
@@ -235,11 +240,16 @@ export function BudgetSelectorPage() {
     if (!file) return
     setImportError(null)
     try {
-      const preview = await previewYnab.mutateAsync(file)
-      setPreviewAccounts(preview.accounts)
+      const preview = await previewImport.mutateAsync(file)
+      if (preview.kind === 'snapshot') {
+        setSnapshotPreview(preview.snapshot)
+        if (!importName.trim()) setImportName(preview.snapshot.budget_name)
+        return
+      }
+      setPreviewAccounts(preview.ynab.accounts)
       setAccountChoices(
         Object.fromEntries(
-          preview.accounts.map((a) => [
+          preview.ynab.accounts.map((a) => [
             a.name,
             {
               account_type: a.suggested_type,
@@ -252,7 +262,7 @@ export function BudgetSelectorPage() {
       )
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      setImportError(detail ?? (err instanceof Error ? err.message : 'Could not read the export'))
+      setImportError(detail ?? (err instanceof Error ? err.message : 'Could not read the file'))
     }
   }
 
@@ -261,6 +271,21 @@ export function BudgetSelectorPage() {
     const file = importFileRef.current?.files?.[0]
     if (!file) return
     setImportError(null)
+    if (snapshotPreview) {
+      try {
+        const result = await importSnapshot.mutateAsync({
+          file,
+          name: importName.trim() || undefined,
+        })
+        setCurrentBudgetId(result.budget_id)
+        navigate('/budget')
+      } catch (err: unknown) {
+        const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data
+          ?.detail
+        setImportError(detail ?? (err instanceof Error ? err.message : 'Import failed'))
+      }
+      return
+    }
     try {
       const result = await importYnab.mutateAsync({
         name: importName.trim(),
@@ -287,6 +312,7 @@ export function BudgetSelectorPage() {
 
   function resetImportPreview() {
     setPreviewAccounts(null)
+    setSnapshotPreview(null)
     setAccountChoices({})
     setImportError(null)
   }
@@ -460,40 +486,66 @@ export function BudgetSelectorPage() {
             </form>
           </SelectorSection>
 
-          {/* Import from YNAB — or from IGAB's own export, which is written in
-            the same shape on purpose, so this reader takes both. */}
+          {/* One entry point for "here is a budget file". The server reads
+            the zip and says which importer it belongs to — a YNAB export,
+            IGAB's YNAB-shaped export, or an IGAB snapshot — so the person
+            uploading never has to know which kind of file they hold. */}
           <SelectorSection
-            title="Import from YNAB or an IGAB export"
-            subtitle="Creates a new budget from an export ZIP — YNAB's, or one IGAB wrote"
+            title="Import a Budget"
+            subtitle="From a YNAB export or any file IGAB wrote — the format is detected for you"
             open={importOpen}
             onToggle={() => setImportOpen((v) => !v)}
           >
             <form
               className="selector-card__body"
-              onSubmit={previewAccounts ? handleImport : handlePreview}
+              onSubmit={previewAccounts || snapshotPreview ? handleImport : handlePreview}
             >
               <div className="selector-field">
                 <label className="selector-field__label">Budget name</label>
                 <input
                   className="selector-field__input"
                   type="text"
-                  placeholder="e.g. Household 2020"
+                  placeholder="e.g. Household 2020 — a snapshot fills this in itself"
                   value={importName}
                   onChange={(e) => setImportName(e.target.value)}
-                  required
+                  required={!!previewAccounts}
                 />
               </div>
               <div className="selector-field">
-                <label className="selector-field__label">Export file (.zip)</label>
+                <label className="selector-field__label">Budget file (.zip)</label>
                 <input
                   ref={importFileRef}
                   type="file"
                   className="selector-field__input"
-                  accept=".zip,application/zip"
+                  accept=".zip,.igab.zip,application/zip"
                   required
                   onChange={resetImportPreview}
                 />
               </div>
+
+              {snapshotPreview && (
+                <div className="selector-field">
+                  <Surface variant="sunken" className="snapshot-verdict" role="status">
+                    <p className="snapshot-verdict__headline">
+                      An IGAB snapshot of <strong>{snapshotPreview.budget_name}</strong>, exported{' '}
+                      {new Date(snapshotPreview.exported_at).toLocaleDateString()} —{' '}
+                      {(snapshotPreview.row_counts['transactions'] ?? 0).toLocaleString()}{' '}
+                      transactions across {snapshotPreview.row_counts['accounts'] ?? 0} accounts.
+                      Importing creates a new budget; nothing existing is touched.
+                    </p>
+                    {snapshotPreview.refusals.map((r) => (
+                      <p key={r} className="snapshot-verdict__refusal">
+                        {r}
+                      </p>
+                    ))}
+                    {snapshotPreview.warnings.map((w) => (
+                      <p key={w} className="snapshot-verdict__warning">
+                        {w}
+                      </p>
+                    ))}
+                  </Surface>
+                </div>
+              )}
 
               {previewAccounts && (
                 <div className="selector-field">
@@ -665,15 +717,21 @@ export function BudgetSelectorPage() {
                 <button
                   type="submit"
                   className="selector-btn"
-                  disabled={previewYnab.isPending || importYnab.isPending || !importName.trim()}
+                  disabled={
+                    previewImport.isPending ||
+                    importYnab.isPending ||
+                    importSnapshot.isPending ||
+                    (!!previewAccounts && !importName.trim()) ||
+                    (!!snapshotPreview && !snapshotPreview.ok)
+                  }
                 >
-                  {previewAccounts
-                    ? importYnab.isPending
+                  {previewAccounts || snapshotPreview
+                    ? importYnab.isPending || importSnapshot.isPending
                       ? 'Importing…'
                       : 'Import Budget'
-                    : previewYnab.isPending
-                      ? 'Reading export…'
-                      : 'Review Accounts'}
+                    : previewImport.isPending
+                      ? 'Reading file…'
+                      : 'Review File'}
                 </button>
                 {importError && (
                   <div className="selector-result selector-result--error">{importError}</div>

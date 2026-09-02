@@ -6,7 +6,13 @@ from pathlib import Path
 
 import pytest
 
-from igab.integrations.ynab.parser import YNABParser, _parse_currency, _parse_date, _parse_month
+from igab.integrations.ynab.parser import (
+    YNABParser,
+    _parse_currency,
+    _parse_date,
+    _parse_month,
+    looks_like_ynab_export,
+)
 
 # ruff: noqa: E501 — these are YNAB export rows, verbatim. A wrapped
 # fixture is no longer the file the parser has to read.
@@ -210,6 +216,43 @@ class TestYNABParser:
         path.write_bytes(buf.read())
         with pytest.raises(ValueError, match="Register CSV not found"):
             self.parser.parse_zip(path)
+
+    def test_a_misfiled_snapshot_is_named_not_described(self, tmp_path: Path):
+        """An IGAB snapshot fed here must say what the file IS, not that a
+        Register CSV is missing — the original of this misfile was a real
+        downloaded snapshot answered with 'Register CSV not found'."""
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("manifest.json", '{"format": "igab.budget-snapshot"}')
+            zf.writestr("tables/accounts.ndjson", "")
+        buf.seek(0)
+        path = tmp_path / "misfiled.igab (1).zip"
+        path.write_bytes(buf.read())
+        with pytest.raises(ValueError, match="budget snapshot"):
+            self.parser.parse_zip(path)
+
+    def test_a_foreign_manifest_still_gets_the_register_message(self, tmp_path: Path):
+        """A zip with somebody else's manifest.json is not ours to claim."""
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("manifest.json", '{"format": "someone-elses"}')
+        buf.seek(0)
+        path = tmp_path / "foreign.zip"
+        path.write_bytes(buf.read())
+        with pytest.raises(ValueError, match="Register CSV not found"):
+            self.parser.parse_zip(path)
+
+
+class TestLooksLikeYnabExport:
+    def test_a_register_member_decides_it(self):
+        assert looks_like_ynab_export(["My Budget as of 2020-01-01 - Register.csv"])
+
+    def test_case_does_not_matter(self):
+        assert looks_like_ynab_export(["EXPORT - REGISTER.CSV"])
+
+    def test_anything_else_does_not(self):
+        assert not looks_like_ynab_export(["manifest.json", "tables/accounts.ndjson"])
+        assert not looks_like_ynab_export([])
 
 
 SPLIT_HEADER = (
