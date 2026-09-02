@@ -32,6 +32,7 @@ from igab.db.models import (
     BudgetViewGroup,
     BudgetViewPlacement,
     CategoryMonthSnapshot,
+    CategoryPlan,
     CategoryTarget,
     ChangeLog,
     GuideBinding,
@@ -303,6 +304,31 @@ async def build_full_budget(session: AsyncSession, owner: User) -> FullBudget:
                 attachment_id=attachment.id,
             ),
             GuideState(budget_id=budget.id, key="roadmap_position", value={"step": 2}),
+            CategoryPlan(
+                budget_id=budget.id,
+                name="Paycheck plan",
+                payload={
+                    "schema_version": 1,
+                    "monthly_income_cents": 520000,
+                    "cadence": "biweekly",
+                    "paycheck_count_override": None,
+                    "paychecks": [
+                        {
+                            "id": "5f0a1b2c-3d4e-4f50-8a6b-7c8d9e0f1a2b",
+                            "income_override_cents": None,
+                            "items": [
+                                {
+                                    "id": "6a1b2c3d-4e5f-4a60-9b7c-8d9e0f1a2b3c",
+                                    "category_id": str(category.id),
+                                    "name": "Groceries",
+                                    "due_day": 15,
+                                    "amount_cents": 45000,
+                                }
+                            ],
+                        }
+                    ],
+                },
+            ),
             # One binding per mode: the precedence rules in guide/bindings.py
             # only mean anything if all four survive a copy.
             GuideBinding(

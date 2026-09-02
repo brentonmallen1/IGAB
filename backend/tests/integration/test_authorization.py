@@ -56,6 +56,8 @@ async def test_foreign_resources_return_404(api_client, db_session):
             f"/api/v1/accounts/{account.id}/reconcile/finish",
             {"statement_balance": "0.00"},
         ),
+        ("get", f"/api/v1/{budget.id}/category-plans", None),
+        ("post", f"/api/v1/{budget.id}/category-plans", {}),
         ("get", f"/api/v1/{budget.id}/payees", None),
         ("get", f"/api/v1/{budget.id}/payees/nearby?lat=40.0&lng=-75.0", None),
         ("delete", f"/api/v1/payees/{payee.id}", None),

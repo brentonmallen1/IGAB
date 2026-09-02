@@ -16,6 +16,7 @@ from igab.api.v1 import (
     budget_views,
     budgets,
     categories,
+    category_plans,
     changes,
     guide,
     imports,
@@ -42,6 +43,7 @@ api_router.include_router(accounts.router, tags=["accounts"])
 api_router.include_router(assets.router, tags=["assets"])
 api_router.include_router(account_types.router, tags=["account-types"])
 api_router.include_router(categories.router, tags=["categories"])
+api_router.include_router(category_plans.router, tags=["category-plans"])
 api_router.include_router(changes.router, tags=["changes"])
 api_router.include_router(transactions.router, tags=["transactions"])
 api_router.include_router(imports.router, tags=["imports"])

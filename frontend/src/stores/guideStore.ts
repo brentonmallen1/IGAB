@@ -45,6 +45,9 @@ interface GuideState {
   answers: Record<string, string>
   /** Which calculator the Tools tab shows. Null means the tab's default. */
   activeTool: ToolId | null
+  /** The category plan the planner last had open. Null means the first plan;
+   *  a stale id (plan deleted elsewhere) also falls back to the first. */
+  activePlanId: string | null
   /** A single glossary term opened from somewhere else — the palette, or a
    *  GlossaryChip. Lifted out of GlossaryPanel's local state so one
    *  definition can have a URL: `/guide?tab=glossary&term=<id>`. Deliberately
@@ -60,6 +63,7 @@ interface GuideState {
   setPositionSeen: (id: StageId | null) => void
   setRoadmapView: (view: RoadmapView) => void
   setActiveTool: (tool: ToolId) => void
+  setActivePlanId: (id: string | null) => void
   setOpenGlossaryTerm: (term: GlossaryId | null) => void
   setWishlistView: (view: WishlistView) => void
   setWishlistSort: (sort: WishlistSort) => void
@@ -81,6 +85,7 @@ export const useGuideStore = create<GuideState>()(
       expandedDetails: [],
       answers: {},
       activeTool: null,
+      activePlanId: null,
       openGlossaryTerm: null,
       positionSeen: null,
       wishlistView: 'flat',
@@ -90,6 +95,7 @@ export const useGuideStore = create<GuideState>()(
       setPositionSeen: (id) => set({ positionSeen: id }),
       setRoadmapView: (view) => set({ roadmapView: view }),
       setActiveTool: (tool) => set({ activeTool: tool }),
+      setActivePlanId: (id) => set({ activePlanId: id }),
       setOpenGlossaryTerm: (term) => set({ openGlossaryTerm: term }),
       setWishlistView: (view) => set({ wishlistView: view }),
       setWishlistSort: (sort) => set({ wishlistSort: sort }),
@@ -131,6 +137,7 @@ export const useGuideStore = create<GuideState>()(
         expandedDetails: s.expandedDetails,
         answers: s.answers,
         activeTool: s.activeTool,
+        activePlanId: s.activePlanId,
         positionSeen: s.positionSeen,
         wishlistView: s.wishlistView,
         wishlistSort: s.wishlistSort,
