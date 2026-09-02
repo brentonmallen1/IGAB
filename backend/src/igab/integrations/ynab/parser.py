@@ -2,11 +2,13 @@ import csv
 import io
 import re
 import zipfile
+from collections.abc import Iterable
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 
 from igab.domain.money import parse_csv_amount
+from igab.domain.snapshot_format import MANIFEST_MEMBER, is_snapshot_manifest
 from igab.integrations.ynab.models import (
     YNABBudget,
     YNABBudgetEntry,
@@ -20,6 +22,20 @@ from igab.integrations.ynab.models import (
 # older export that matched neither imported zero assignments in silence.
 _PLAN_MEMBER_SUFFIXES = ("- plan.csv", "- budget.csv")
 _ASSIGNED_COLUMNS = ("Assigned", "Budgeted")
+
+# The member that makes a zip a YNAB-shaped export at all — the one suffix
+# looks_like_ynab_export and parse_zip both mean.
+_REGISTER_SUFFIX = "- register.csv"
+
+
+def looks_like_ynab_export(member_names: Iterable[str]) -> bool:
+    """Whether a zip's member list is a YNAB-shaped export's.
+
+    Counterpart to snapshot_format.is_snapshot_manifest: the unified import
+    preview asks both to pick a reader.
+    """
+    return any(name.lower().endswith(_REGISTER_SUFFIX) for name in member_names)
+
 
 _CLEARED_MAP = {
     "Uncleared": "uncleared",
@@ -165,15 +181,17 @@ class YNABParser:
 
     def parse_zip(self, path: Path) -> YNABBudget:
         with zipfile.ZipFile(path) as zf:
+            member_names = zf.namelist()
+            manifest_bytes = zf.read(MANIFEST_MEMBER) if MANIFEST_MEMBER in member_names else None
             register_content: str | None = None
             plan_content: str | None = None
             accounts_content: str | None = None
-            for name in zf.namelist():
+            for name in member_names:
                 lower = name.lower()
                 if lower.endswith("accounts.csv"):
                     with zf.open(name) as f:
                         accounts_content = f.read().decode("utf-8-sig")
-                if lower.endswith("- register.csv"):
+                if lower.endswith(_REGISTER_SUFFIX):
                     with zf.open(name) as f:
                         register_content = f.read().decode("utf-8-sig")
                 # YNAB renamed this member Budget.csv → Plan.csv (and its
@@ -185,6 +203,13 @@ class YNABParser:
                         plan_content = f.read().decode("utf-8-sig")
 
         if register_content is None:
+            # Naming what the file IS beats describing what it lacks: the zip
+            # most often fed here by mistake is IGAB's own snapshot.
+            if is_snapshot_manifest(manifest_bytes):
+                raise ValueError(
+                    "This file is an IGAB budget snapshot, not a YNAB-shaped "
+                    "export. Import it as a snapshot instead."
+                )
             raise ValueError(
                 "Register CSV not found in ZIP (expected a file ending in '- Register.csv')"
             )

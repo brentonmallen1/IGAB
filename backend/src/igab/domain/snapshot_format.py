@@ -28,6 +28,7 @@ value nothing can read back, and it would do it silently — which is how a
 restore discovers, a year later, that one column has been prose all along.
 """
 
+import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -59,6 +60,30 @@ from igab.db.models import Base
 FORMAT = "igab.budget-snapshot"
 VERSION = 1
 MIN_SUPPORTED_VERSION = 1
+
+#: The one member every snapshot has, readable without touching a data row.
+MANIFEST_MEMBER = "manifest.json"
+
+
+def is_snapshot_manifest(raw: bytes | None) -> bool:
+    """Whether a zip's ``manifest.json`` bytes declare THIS format.
+
+    The one spelling of "is this file ours": the unified import preview uses
+    it to pick a reader, and the YNAB parser uses it to say "wrong importer"
+    instead of "no Register CSV". Neither the filename nor the member's mere
+    presence can answer it — a browser's duplicate-download rename
+    ("… (1).zip") strips any suffix convention, and the YNAB-shaped export
+    writes a ``manifest.json`` too (saying ``igab.budget-export``). The
+    ``format`` field is the discriminator.
+    """
+    if raw is None:
+        return False
+    try:
+        data = json.loads(raw)
+    except (ValueError, UnicodeDecodeError):
+        return False
+    return isinstance(data, dict) and data.get("format") == FORMAT
+
 
 #: The one hard floor on age, and the only one. Snapshots exported before this
 #: migration carry account_type values whose *meaning* changed — 'loan' became

@@ -50,6 +50,7 @@ from igab.db.models import Base
 from igab.domain.exceptions import IGABError, InvariantViolation, NotFoundError
 from igab.domain.snapshot_format import (
     FORMAT,
+    MANIFEST_MEMBER,
     REDACT_ON_NEW_BUDGET,
     SNAPSHOT_OMITTED,
     VERSION,
@@ -67,7 +68,6 @@ from igab.services.account_type_service import ensure_account_types_seeded
 from igab.services.budget_provisioning import grant_owner, unique_budget_name
 
 SNAPSHOT_SUFFIX = ".igab.zip"
-MANIFEST_MEMBER = "manifest.json"
 
 #: Rows per round trip out of the cursor. Large enough that a big export is
 #: not a million round trips, small enough that the buffer stays incidental.

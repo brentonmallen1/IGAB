@@ -10,7 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # drifted the moment imports.py gained fields (imports.py has no module-level
 # api.v1 imports, so this cannot cycle).
 from igab.api.route import CommitRoute
-from igab.api.v1.imports import YNABImportResult, YNABTaggedCategory
+from igab.api.v1.imports import YNABImportResult, YNABPreviewResult, YNABTaggedCategory
+from igab.api.v1.schemas.budget_snapshots import SnapshotInspection
 from igab.db.models import Budget, BudgetMember
 from igab.db.session import get_session
 from igab.dependencies import (
@@ -31,7 +32,9 @@ from igab.dependencies import (
     get_transaction_repo,
     get_transaction_service,
 )
+from igab.domain.snapshot_format import MANIFEST_MEMBER, is_snapshot_manifest
 from igab.integrations.ynab.importer import YNABImporter
+from igab.integrations.ynab.parser import looks_like_ynab_export
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import (
     BudgetAssignmentRepository,
@@ -101,6 +104,75 @@ async def preview_ynab_budget_import(
 
     ynab_budget = await parse_uploaded_ynab_zip(file)
     return build_ynab_preview(ynab_budget)
+
+
+class BudgetImportPreview(BaseModel):
+    """Which importer takes an uploaded budget file, and that importer's
+    preview. Exactly one of ``snapshot`` / ``ynab`` is set, matching ``kind``.
+    """
+
+    kind: Literal["snapshot", "ynab"]
+    snapshot: SnapshotInspection | None = None
+    ynab: YNABPreviewResult | None = None
+
+
+@router.post("/budgets/import/preview", response_model=BudgetImportPreview)
+async def preview_budget_import(
+    current_user: CurrentUser,
+    file: UploadFile = File(...),
+    session: AsyncSession = Depends(get_session),
+) -> BudgetImportPreview:
+    """One reader for "here is a budget file": says which importer takes it
+    and returns that importer's preview, so the person uploading never has to
+    know which kind of file they hold. The zip's members decide — a filename
+    cannot, since a browser's duplicate-download rename ("… (1).zip") strips
+    any suffix convention.
+
+    Writes nothing. The import itself still goes to /budgets/import-snapshot
+    or /budgets/import-ynab, matching the returned ``kind``.
+    """
+    import tempfile
+    import zipfile
+    from pathlib import Path
+
+    from igab.api.v1.budget_snapshots import inspect_snapshot_file
+    from igab.api.v1.imports import build_ynab_preview, parse_ynab_zip_path
+
+    with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+        tmp_path = Path(tmp.name)
+        while chunk := await file.read(1024 * 1024):
+            tmp.write(chunk)
+    try:
+        try:
+            with zipfile.ZipFile(tmp_path) as archive:
+                member_names = archive.namelist()
+                manifest_bytes = (
+                    archive.read(MANIFEST_MEMBER) if MANIFEST_MEMBER in member_names else None
+                )
+        except zipfile.BadZipFile as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="That file is not a zip archive.",
+            ) from e
+
+        if is_snapshot_manifest(manifest_bytes):
+            return BudgetImportPreview(
+                kind="snapshot", snapshot=await inspect_snapshot_file(tmp_path, session)
+            )
+        if looks_like_ynab_export(member_names):
+            return BudgetImportPreview(
+                kind="ynab", ynab=build_ynab_preview(parse_ynab_zip_path(tmp_path))
+            )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "This zip is neither an IGAB budget snapshot (no manifest.json "
+                "inside) nor a YNAB-shaped export (no file ending in "
+                "'- Register.csv')."
+            ),
+        )
+    finally:
+        tmp_path.unlink(missing_ok=True)
 
 
 @router.post(

@@ -177,8 +177,10 @@ describe('the Ready to pay breakdown', () => {
     // paired payment the whole of it is "other credits".
     expect(labelled('Charged')?.querySelector('dd')?.textContent).toContain('2,400.00')
     expect(labelled('Received on the card')?.querySelector('dd')?.textContent).toContain('3,900.00')
-    expect(labelled('Other credits')?.querySelector('dd')?.textContent).toContain('3,900.00')
-    expect(labelled('Paid from your accounts')).toBeUndefined()
+    expect(labelled('of which: Other credits')?.querySelector('dd')?.textContent).toContain(
+      '3,900.00'
+    )
+    expect(labelled('of which: Paid from your accounts')).toBeUndefined()
     expect(labelled('Debt down')?.querySelector('dd')?.textContent).toContain('1,500.00')
 
     // The explanation stays a footnote; the amount does not live there.
@@ -204,7 +206,7 @@ describe('the Ready to pay breakdown', () => {
     render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
     await userEvent.click(screen.getByLabelText('What makes up Ready to pay for Sapphire Visa'))
     expect(screen.getByText('This month')).toBeInTheDocument()
-    expect(screen.getByText('Other credits')).toBeInTheDocument()
+    expect(screen.getByText(/Other credits/)).toBeInTheDocument()
   })
 
   it('renders the served total rather than a sum of its own', async () => {
