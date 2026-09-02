@@ -136,8 +136,6 @@ export interface YnabImportResult {
   errors: string[]
 }
 
-const MULTIPART_HEADERS = { 'Content-Type': undefined }
-
 export async function importCsv(
   budgetId: string,
   accountId: string,
@@ -147,7 +145,6 @@ export async function importCsv(
   formData.append('file', file)
   const { data } = await apiClient.post<CsvImportResult>(`/${budgetId}/import/csv`, formData, {
     params: { account_id: accountId },
-    headers: MULTIPART_HEADERS,
   })
   return data
 }

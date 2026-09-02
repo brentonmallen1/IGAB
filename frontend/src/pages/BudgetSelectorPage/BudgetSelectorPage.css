@@ -367,6 +367,28 @@
   background-color: var(--color-negative-bg);
 }
 
+/* ── Snapshot verdict (import preview step, .igab.zip files) ────────────────── */
+
+.snapshot-verdict {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-size: var(--font-size-sm);
+}
+
+.snapshot-verdict__headline {
+  color: var(--text-primary);
+}
+
+.snapshot-verdict__refusal {
+  color: var(--color-negative);
+}
+
+.snapshot-verdict__warning {
+  color: var(--text-secondary);
+}
+
 /* ── YNAB account-type mapping (import preview step) ────────────────────────── */
 
 .ynab-mapping {

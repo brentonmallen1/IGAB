@@ -36,6 +36,7 @@ from igab.domain.snapshot_format import (
     encode_row,
     encode_value,
     exported_columns,
+    is_snapshot_manifest,
 )
 
 METADATA = Base.metadata
@@ -158,6 +159,28 @@ class TestRows:
         table = METADATA.tables["accounts"]
         decoded = decode_row(table, {"id": str(SAMPLES["uuid"]), "name": "Sapphire Visa"})
         assert set(decoded) == {"id", "name"}
+
+
+class TestIsSnapshotManifest:
+    """The discriminator behind the unified import preview: only bytes that
+    parse as JSON and declare THIS format are ours. Member presence cannot
+    decide — the YNAB-shaped export writes a manifest.json too."""
+
+    def test_our_format_is_recognised(self):
+        assert is_snapshot_manifest(json.dumps({"format": FORMAT}).encode())
+
+    def test_the_ynab_shaped_exports_manifest_is_not_ours(self):
+        assert not is_snapshot_manifest(json.dumps({"format": "igab.budget-export"}).encode())
+
+    def test_absence_is_not_a_snapshot(self):
+        assert not is_snapshot_manifest(None)
+
+    def test_unparseable_bytes_are_not_a_snapshot(self):
+        assert not is_snapshot_manifest(b"not json at all")
+        assert not is_snapshot_manifest(b"\xff\xfe")
+
+    def test_a_json_scalar_is_not_a_snapshot(self):
+        assert not is_snapshot_manifest(b'"igab.budget-snapshot"')
 
 
 class TestWhatIsCarried:

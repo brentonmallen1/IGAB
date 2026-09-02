@@ -13,12 +13,13 @@ every path that can make such an account, that it appears empty and inert, and
 that nothing quietly removes it again.
 """
 
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal
 
 from sqlalchemy import select
 
 from igab.db.models import Liability
+from igab.domain.dates import add_months
 from igab.repositories.liability_repo import LiabilityRepository
 from igab.services.liability_service import (
     LiabilityService,
@@ -40,26 +41,28 @@ from .factories import (
 TODAY = date.today()
 
 #: The mortgage ledger `TestConvertingADebtKeepsItsChart` converts: an opening
-#: balance a year back, then eleven payments at 30-day steps.
+#: balance a year back, then eleven monthly payments.
 #:
 #: Defined once because the assertion needs the same dates the fixture writes.
-#: `_owed_history` emits one point per month the ledger SPANS, and 30-day steps
-#: cross a number of month boundaries that depends on where `TODAY` falls — so
-#: a hard-coded "at least 12" held on most days and failed on the first of a
-#: month, which is where CI (which runs in UTC) found it while a developer an
-#: hour behind UTC saw it pass.
-MORTGAGE_LEDGER: list[tuple[date, str]] = [(TODAY - timedelta(days=365), "-300000.00")] + [
-    (TODAY - timedelta(days=365 - month * 30), "1000.00") for month in range(1, 12)
+#: **Monthly means `add_months`, not 30 days.** A 30-day step drifts, and in a
+#: 28-day February it steps clean over the month: from 30 Jan straight to 1
+#: Mar, leaving February with no row at all. `_owed_history` documents that it
+#: skips months with no activity ("a gap is not a hole"), so the ledger then
+#: produced 11 points where a span-based count predicted 12 — every run on a
+#: date whose walk clears February, which is how CI (in UTC) failed while a
+#: developer an hour behind UTC saw it pass.
+#:
+#: Stepping by real months makes the dates land in twelve consecutive months
+#: whatever the date is read, so the count below is a literal rather than
+#: arithmetic that has to re-derive the bug.
+MORTGAGE_LEDGER: list[tuple[date, str]] = [(add_months(TODAY, -12), "-300000.00")] + [
+    (add_months(TODAY, -12 + month), "1000.00") for month in range(1, 12)
 ]
 
-#: Distinct calendar months the ledger above touches, inclusive of both ends —
-#: exactly the number of monthly points `_owed_history` should produce.
-MORTGAGE_LEDGER_MONTHS = (
-    (MORTGAGE_LEDGER[-1][0].year - MORTGAGE_LEDGER[0][0].year) * 12
-    + MORTGAGE_LEDGER[-1][0].month
-    - MORTGAGE_LEDGER[0][0].month
-    + 1
-)
+#: Distinct calendar months the ledger above touches — one opening month plus
+#: eleven payment months, and exactly the number of monthly points
+#: `_owed_history` should produce, since none of them is empty.
+MORTGAGE_LEDGER_MONTHS = 12
 
 
 async def _companion(db_session, account) -> Liability | None:

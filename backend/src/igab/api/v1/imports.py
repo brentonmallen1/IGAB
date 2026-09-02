@@ -712,6 +712,19 @@ async def run_ynab_import(importer: YNABImporter, ynab_budget) -> YNABRunResult:
         ) from e
 
 
+def parse_ynab_zip_path(path):
+    """Parse a YNAB-shaped zip already on disk, turning reader complaints
+    into 400s. The upload wrapper below and the unified import preview both
+    funnel through here."""
+    try:
+        return YNABParser().parse_zip(path)
+    except (ValueError, KeyError) as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        ) from e
+
+
 async def parse_uploaded_ynab_zip(file: UploadFile):
     import tempfile
     from pathlib import Path
@@ -721,13 +734,7 @@ async def parse_uploaded_ynab_zip(file: UploadFile):
         tmp.write(content)
         tmp_path = Path(tmp.name)
     try:
-        try:
-            return YNABParser().parse_zip(tmp_path)
-        except (ValueError, KeyError) as e:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=str(e),
-            ) from e
+        return parse_ynab_zip_path(tmp_path)
     finally:
         tmp_path.unlink(missing_ok=True)
 

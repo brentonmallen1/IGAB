@@ -154,8 +154,7 @@ export function useUploadAttachment(transactionId: string) {
       formData.append('file', await downscaleForUpload(file))
       const { data } = await apiClient.post<Attachment>(
         `/transactions/${transactionId}/attachments`,
-        formData,
-        { headers: { 'Content-Type': 'multipart/form-data' } }
+        formData
       )
       return data
     },
@@ -194,9 +193,7 @@ export async function uploadFilesToTransaction(
       const formData = new FormData()
       // Same API-layer downscale as useUploadAttachment — see there.
       formData.append('file', await downscaleForUpload(file))
-      await apiClient.post(`/transactions/${transactionId}/attachments`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
+      await apiClient.post(`/transactions/${transactionId}/attachments`, formData)
       ok++
     } catch {
       failed.push(file)

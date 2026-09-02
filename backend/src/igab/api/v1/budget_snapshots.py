@@ -129,6 +129,33 @@ async def delete_snapshot(budget_id: BudgetOwnerAccess, name: str) -> None:
     budget_snapshot.delete_snapshot(budget_id, name)
 
 
+async def inspect_snapshot_file(tmp_path: Path, session: AsyncSession) -> SnapshotInspection:
+    """One reading of "what does this file say, and can this installation
+    import it". The inspect endpoint and the unified import preview
+    (budgets.py) both serve exactly this — a second copy would be two
+    verdicts on one file."""
+    manifest = budget_snapshot.read_manifest(tmp_path)
+    verdict = check_compatibility(
+        manifest,
+        current_revision=await budget_snapshot.current_revision(session),
+        revision_history=budget_snapshot.migration_history(),
+    )
+    return SnapshotInspection(
+        format=manifest.format,
+        format_version=manifest.format_version,
+        alembic_revision=manifest.alembic_revision,
+        app_version=manifest.app_version,
+        exported_at=manifest.exported_at,
+        budget_name=manifest.budget_name,
+        source_budget_id=manifest.source_budget_id,
+        row_counts=dict(manifest.row_counts),
+        attachments_omitted=manifest.attachments.omitted_count,
+        ok=verdict.ok,
+        refusals=list(verdict.refusals),
+        warnings=list(verdict.warnings),
+    )
+
+
 @router.post("/budgets/snapshot/inspect", response_model=SnapshotInspection)
 async def inspect_snapshot(
     current_user: CurrentUser,
@@ -146,29 +173,9 @@ async def inspect_snapshot(
         while chunk := await file.read(1024 * 1024):
             tmp.write(chunk)
     try:
-        manifest = budget_snapshot.read_manifest(tmp_path)
-        verdict = check_compatibility(
-            manifest,
-            current_revision=await budget_snapshot.current_revision(session),
-            revision_history=budget_snapshot.migration_history(),
-        )
+        return await inspect_snapshot_file(tmp_path, session)
     finally:
         tmp_path.unlink(missing_ok=True)
-
-    return SnapshotInspection(
-        format=manifest.format,
-        format_version=manifest.format_version,
-        alembic_revision=manifest.alembic_revision,
-        app_version=manifest.app_version,
-        exported_at=manifest.exported_at,
-        budget_name=manifest.budget_name,
-        source_budget_id=manifest.source_budget_id,
-        row_counts=dict(manifest.row_counts),
-        attachments_omitted=manifest.attachments.omitted_count,
-        ok=verdict.ok,
-        refusals=list(verdict.refusals),
-        warnings=list(verdict.warnings),
-    )
 
 
 @router.post(

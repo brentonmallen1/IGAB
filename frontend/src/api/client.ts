@@ -5,9 +5,14 @@ import axios from 'axios'
 // VITE_API_URL in .env to hit the uvicorn port directly.
 const BASE_URL = import.meta.env.VITE_API_URL ?? '/api/v1'
 
+// No default Content-Type — axios derives it from the body: plain objects go
+// out as application/json, FormData as multipart with a browser-set boundary.
+// A forced JSON default here makes axios serialize FormData *as JSON* (the
+// File becomes "{}"), so every upload site had to override it per-call — and
+// the one that forgot (snapshots) shipped broken. client.contentType.test.ts
+// pins both behaviours.
 export const apiClient = axios.create({
   baseURL: BASE_URL,
-  headers: { 'Content-Type': 'application/json' },
 })
 
 // Attach access token to every request

@@ -186,9 +186,7 @@ export function useSubmitReceipt(budgetId: string) {
       formData.append('file', await downscaleForUpload(file))
       formData.append('account_id', accountId)
       formData.append('client_today', localToday())
-      const { data } = await apiClient.post<AIJob>(`/${budgetId}/ai/receipts`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
+      const { data } = await apiClient.post<AIJob>(`/${budgetId}/ai/receipts`, formData)
       return data
     },
     onSuccess: () => {
