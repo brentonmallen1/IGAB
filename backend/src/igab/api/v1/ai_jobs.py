@@ -42,6 +42,7 @@ from igab.services.ai_service import AIService
 from igab.services.settings_service import SettingsService
 from igab.services.transaction_service import TransactionService
 from igab.tasks.ai_worker import ai_worker, cleanup_staging, staging_dir
+from igab.utils.clock import recorded_on
 
 router = APIRouter(route_class=CommitRoute)
 
@@ -87,10 +88,15 @@ def _safe_filename(name: str | None) -> str:
 
 
 def _parse_client_today(value: str | None) -> date:
+    """The multipart spelling of `ClientDated`: this endpoint takes Form
+    fields, so the date arrives as a string and is parsed by hand rather than
+    by pydantic. The ranking itself is `clock.recorded_on`, so the receipt
+    flow and the asset/liability bodies cannot drift about which clock wins.
+    """
     if not value:
-        return datetime.now(UTC).date()
+        return recorded_on(None, None)
     try:
-        return date.fromisoformat(value)
+        return recorded_on(None, date.fromisoformat(value))
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

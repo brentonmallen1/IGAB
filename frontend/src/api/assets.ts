@@ -8,6 +8,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 import { ROOT } from './queryKeys'
+import { today } from '../utils/dates'
 
 export interface Asset {
   id: string
@@ -73,7 +74,13 @@ export function useCreateAsset(budgetId: string) {
       value?: number | null
       value_as_of?: string | null
     }) => {
-      const { data } = await apiClient.post<Asset>(`/${budgetId}/assets`, body)
+      // client_today on every date-stamping mutation: the server cannot know
+      // this browser's timezone, and its own clock is already tomorrow every
+      // evening west of UTC. See backend clock.recorded_on.
+      const { data } = await apiClient.post<Asset>(`/${budgetId}/assets`, {
+        ...body,
+        client_today: today(),
+      })
       return data
     },
     onSuccess: () => invalidateAssetData(qc, budgetId),
@@ -116,6 +123,7 @@ export function useAddAssetValue(budgetId: string) {
       const { data } = await apiClient.post<AssetValue>(`/${budgetId}/assets/${assetId}/values`, {
         value,
         date,
+        client_today: today(),
       })
       return data
     },

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 import { ROOT } from './queryKeys'
+import { today } from '../utils/dates'
 
 export type LiabilityType =
   'mortgage' | 'auto' | 'student' | 'personal' | 'credit_card' | 'medical' | 'other'
@@ -161,7 +162,11 @@ export function useCreateLiability(budgetId: string | null) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (body: LiabilityCreate) =>
-      apiClient.post<Liability>(`/${budgetId}/liabilities`, body).then((r) => r.data),
+      // client_today because creating with a manual balance seeds a dated
+      // snapshot — see backend clock.recorded_on.
+      apiClient
+        .post<Liability>(`/${budgetId}/liabilities`, { ...body, client_today: today() })
+        .then((r) => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: [ROOT.liabilities, budgetId] }),
   })
 }
@@ -207,6 +212,7 @@ export function useCreateLiabilitySnapshot(budgetId: string | null) {
       apiClient.post(`/${budgetId}/liabilities/${liabilityId}/balance-snapshots`, {
         balance,
         date,
+        client_today: today(),
       }),
     onSuccess: (_, { liabilityId }) => {
       qc.invalidateQueries({ queryKey: [ROOT.liabilities, budgetId] })

@@ -34,7 +34,7 @@ from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.liability_repo import LiabilityRepository
 from igab.services.amortization import AmortizationResult, amortization_schedule, quantize_cents
 from igab.services.liability_service import LIABILITY_CLASSIFICATION, LiabilityService
-from igab.utils.clock import today_utc
+from igab.utils.clock import recorded_on, today_utc
 
 router = APIRouter(route_class=CommitRoute)
 
@@ -242,7 +242,10 @@ async def create_liability(
     if liability.linked_account_id is None and body.manual_balance is not None:
         # Seed the snapshot trail so history starts at creation
         await liability_repo.upsert_snapshot(
-            liability.id, today_utc(), Decimal(body.manual_balance), source="initial"
+            liability.id,
+            recorded_on(None, body.client_today),
+            Decimal(body.manual_balance),
+            source="initial",
         )
     return await _liability_out(liability, liability_service, category_repo)
 
@@ -361,7 +364,7 @@ async def create_balance_snapshot(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Snapshots are for unmanaged liabilities — this one tracks an account",
         )
-    snapshot_date = body.date or today_utc()
+    snapshot_date = recorded_on(body.date, body.client_today)
     snapshot = await liability_repo.upsert_snapshot(
         liability.id, snapshot_date, Decimal(body.balance), source="manual"
     )
