@@ -7,11 +7,7 @@ import { AIAdvancedSettings } from './AIAdvancedSettings'
 import { AIPromptSettings } from './AIPromptSettings'
 import './AISettingsPanel.css'
 import { Surface } from '../common/Surface'
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(0)} MB`
-  return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`
-}
+import { formatBytes } from '../../utils/formatBytes'
 
 export function AISettingsPanel() {
   const { data: appSettings } = useSettings()

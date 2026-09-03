@@ -666,7 +666,7 @@ export function SettingsPage() {
 
         {/* Whole-application backups. Admin-only, matching the endpoints. */}
         {me?.is_admin && (
-          <Surface as="section" className="settings-section" id="data" title="Backups">
+          <Surface as="section" className="settings-section" id="data" title="Server Backups">
             <div className="settings-section__body">
               <BackupsPanel />
             </div>

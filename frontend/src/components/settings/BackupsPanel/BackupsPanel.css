@@ -1,35 +1,29 @@
+/* The installation backups panel — and, deliberately, the per-budget
+   snapshots panel beside it, which imports this file. Same table, same modal
+   body, because it is the same job; two visual languages for "a list of backup
+   files with actions" would be a duplicate that drifts.
+
+   The overlay, the panel and the scrim used to live here as .bkp-overlay /
+   .bkp-modal. They are common/Dialog and common/Modal now, which is where the
+   portal, the focus trap, the overlay stack and the scroll lock already
+   were. */
+
 .bkp-panel {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-sm, 0.5rem);
+  gap: var(--spacing-md);
 }
 
+/* Pill carries the fill and the edge; only the offset from the label is ours. */
 .bkp-status-pill {
-  display: inline-block;
-  margin-left: 0.5rem;
-  padding: 0.1rem 0.5rem;
-  border-radius: 999px;
-  font-size: 0.7rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  margin-left: var(--spacing-sm);
   vertical-align: middle;
 }
 
-.bkp-status-pill--online {
-  color: var(--color-positive);
-  background: color-mix(in srgb, var(--color-positive) 12%, transparent);
-}
-
-.bkp-status-pill--offline {
-  color: var(--text-muted);
-  background: var(--bg-tertiary);
-}
-
 .bkp-job-note {
-  font-size: 0.8rem;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
-  padding: 0.25rem 0;
+  padding: var(--spacing-xs) 0;
 }
 
 .bkp-job-note--error {
@@ -48,33 +42,25 @@
 .bkp-recipient-input {
   width: min(24rem, 100%);
   font-family: var(--font-mono, monospace);
-  font-size: 0.8rem;
+  font-size: var(--font-size-sm);
 }
 
 .bkp-field-error {
-  font-size: 0.78rem;
+  font-size: var(--font-size-xs);
   color: var(--color-negative);
-  margin-top: 0.25rem;
+  margin-top: var(--spacing-xs);
 }
 
 /* --- File list --- */
 
 .bkp-files {
-  margin-top: var(--spacing-md, 1rem);
   overflow-x: auto;
 }
 
-.bkp-files__title {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 0.5rem;
-}
-
 .bkp-files__empty {
-  font-size: 0.85rem;
+  font-size: var(--font-size-sm);
   color: var(--text-muted);
-  padding: 0.5rem 0;
+  padding: var(--spacing-sm) 0;
 }
 
 .bkp-table {
@@ -83,112 +69,95 @@
   /* separate, not collapse: a collapsed table ignores the well's border-radius */
   border-collapse: separate;
   border-spacing: 0;
-  font-size: 0.82rem;
+  font-size: var(--font-size-sm);
 }
 
 .bkp-table th {
   text-align: left;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   color: var(--text-secondary);
-  padding: 0.35rem 0.6rem;
-  border-bottom: 1px solid var(--border-color);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-bottom: 1px solid var(--edge-strong);
   white-space: nowrap;
 }
 
 .bkp-table td {
-  padding: 0.4rem 0.6rem;
-  border-bottom: 1px solid var(--border-subtle);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-bottom: 1px solid var(--edge);
   color: var(--text-secondary);
   white-space: nowrap;
+}
+
+.bkp-table tr:last-child td {
+  border-bottom: none;
 }
 
 .bkp-table__name {
   color: var(--text-primary);
   font-family: var(--font-mono, monospace);
-  font-size: 0.78rem;
+  font-size: var(--font-size-xs);
 }
 
 .bkp-table__name-inner {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: var(--spacing-xs);
 }
 
 .bkp-table__lock {
   color: var(--color-warning);
 }
 
+/* The download button sits beside Restore in the same cell. One rule: this was
+   declared twice, `text-align: right` first and this second, and the flex
+   silently won — so the first was dead the whole time. */
 .bkp-table__action {
-  text-align: right;
+  display: flex;
+  gap: var(--spacing-xs);
+  justify-content: flex-end;
+  align-items: center;
 }
 
 .bkp-restore-btn {
-  padding: 0.2rem 0.6rem;
-  font-size: 0.75rem;
+  padding: 2px var(--spacing-sm);
+  font-size: var(--font-size-xs);
 }
 
 .bkp-table__cli-hint {
-  font-size: 0.72rem;
+  font-size: var(--font-size-2xs);
   color: var(--text-muted);
-  border: 1px dashed var(--border-color);
+  border: 1px dashed var(--edge-strong);
   border-radius: var(--border-radius-sm);
-  padding: 0.1rem 0.45rem;
+  padding: 1px var(--spacing-xs);
   cursor: help;
 }
 
-/* Small screens: handled by the default overflow-x: auto on .bkp-files */
-
-/* --- Restore modal + blocking overlay --- */
-
-.bkp-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.55);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: var(--z-nested-overlay);
-  padding: var(--spacing-md, 1rem);
-}
-
-.bkp-overlay--blocking {
-  z-index: calc(var(--z-nested-overlay) + 1);
-}
-
-.bkp-modal {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-md);
-  box-shadow: var(--shadow-lg);
-  max-width: 30rem;
-  width: 100%;
-}
-
-.bkp-modal__header {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.9rem 1.1rem 0;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.bkp-modal__warn-icon {
-  color: var(--color-warning);
-  flex-shrink: 0;
-}
+/* --- Restore dialog body (the panel itself is common/Dialog) --- */
 
 .bkp-modal__body {
-  padding: 0.75rem 1.1rem;
-  font-size: 0.85rem;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: var(--spacing-sm);
+}
+
+.bkp-modal__body p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* The warning icon leads the sentence it qualifies rather than sitting in a
+   header of its own — Dialog owns the header now. */
+.bkp-modal__warn-icon {
+  color: var(--color-warning);
+  flex-shrink: 0;
+  vertical-align: -3px;
+  margin-right: var(--spacing-xs);
 }
 
 .bkp-modal__body code {
-  font-size: 0.78rem;
+  font-size: var(--font-size-xs);
   color: var(--text-primary);
   word-break: break-all;
 }
@@ -196,46 +165,60 @@
 .bkp-modal__prebackup {
   display: flex;
   align-items: flex-start;
-  gap: 0.5rem;
+  gap: var(--spacing-sm);
   cursor: pointer;
-  background: var(--bg-tertiary);
+  background: var(--surface-sunken);
+  border: 1px solid var(--edge);
   border-radius: var(--border-radius-sm);
-  padding: 0.55rem 0.7rem;
+  padding: var(--spacing-sm);
 }
 
 .bkp-modal__prebackup input {
-  margin-top: 0.15rem;
+  margin-top: 2px;
   flex-shrink: 0;
 }
 
 .bkp-modal__footer {
   display: flex;
   justify-content: flex-end;
-  gap: 0.5rem;
-  padding: 0 1.1rem 0.9rem;
+  gap: var(--spacing-sm);
+  width: 100%;
+}
+
+/* --- The blocking restore overlay --- */
+
+/* Above every other overlay: the database is being replaced underneath the
+   page, and nothing may be drawn over that. Specificity 0,2,0 so it beats
+   `.overlay`'s own --z-overlay regardless of which stylesheet loads last.
+   Centred too — .overlay pads 80px from the top for a panel, and this is a
+   small blocker with nothing above it. */
+.overlay.bkp-overlay--blocking {
+  z-index: calc(var(--z-nested-overlay) + 1);
+  align-items: center;
+  padding-top: 0;
 }
 
 .bkp-restoring {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.75rem;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
+  gap: var(--spacing-md);
+  background: var(--surface-overlay);
+  border: 1px solid var(--edge-strong);
   border-radius: var(--border-radius-md);
-  box-shadow: var(--shadow-lg);
-  padding: 2rem 2.5rem;
+  box-shadow: var(--elevation-overlay);
+  padding: var(--spacing-xl);
   max-width: 26rem;
   text-align: center;
 }
 
 .bkp-restoring__title {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
 }
 
 .bkp-restoring__detail {
-  font-size: 0.83rem;
+  font-size: var(--font-size-sm);
   color: var(--text-secondary);
   margin: 0;
 }
@@ -244,32 +227,11 @@
   color: var(--color-negative);
 }
 
+/* Animation from base.css's .spin — this only draws the ring. */
 .bkp-restoring__spinner {
   width: 1.6rem;
   height: 1.6rem;
-  border: 3px solid var(--border-color);
+  border: 3px solid var(--edge-strong);
   border-top-color: var(--color-accent);
   border-radius: 50%;
-  animation: bkp-spin 0.9s linear infinite;
-}
-
-@keyframes bkp-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .bkp-restoring__spinner {
-    animation-duration: 2.5s;
-  }
-}
-
-/* The download button sits beside Restore in the same cell; the cell was
-   built for one control. */
-.bkp-table__action {
-  display: flex;
-  gap: var(--spacing-xs);
-  justify-content: flex-end;
-  align-items: center;
 }
