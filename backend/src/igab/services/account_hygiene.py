@@ -525,14 +525,24 @@ class AccountHygieneService:
     async def _misfiled_card_inflows(
         self, budget_id: uuid.UUID, walk
     ) -> list[HygieneFinding | None]:
-        """Card inflows filed to an envelope that never charged that card.
+        """Card inflows that drained a reserve without releasing anything.
 
         Exposure is per (category, card) — deliberately, see domain/cards.py —
         so such an inflow releases nothing and reduces the card's reserve
-        outright (`residual_by_pair`). Two findings, because the remedies
+        outright (`residual_by_pair`). Three findings, because the remedies
         differ: an envelope that charged a DIFFERENT card points at a payment
         or refund filed onto the wrong card; one that charged no card at all
-        points at a reimbursement or a misfiled deposit.
+        points at a reimbursement or a misfiled deposit; and one that DOES
+        charge this card but produced residual in two or more months carries a
+        recurring inflow stream that has cumulatively outrun its charges — a
+        partner's repayments, or payments arriving from outside the budget.
+
+        The third exists because the first two used to skip any pair that had
+        ever charged the card, on an existence test. The pair reserve ratchets
+        negative once inflows overtake charges (`reserved[pair]` is uncapped,
+        domain/cards.py), so exactly the histories with the LARGEST recurring
+        residual — 42 straight months, on the budget that motivated the card
+        probe — were the ones no detector could see.
         """
         names = {a.id: a.name for a in walk.card_accounts}
         categories = {
@@ -550,12 +560,23 @@ class AccountHygieneService:
         other_ids: list[uuid.UUID] = []
         uncharged: list[str] = []
         uncharged_ids: list[uuid.UUID] = []
+        recurring: list[str] = []
+        recurring_ids: list[uuid.UUID] = []
         for (cat_id, card_id), series in walk.funding.residual_by_pair.items():
             total = sum(series.values(), Decimal("0"))
-            if total <= 0 or charged(cat_id, card_id):
+            if total <= 0:
                 continue
             cat_name = categories.get(cat_id, "an envelope")
             card_name = names.get(card_id, "a card")
+            if charged(cat_id, card_id):
+                # A one-month residual on a charging pair is an ordinary
+                # refund overshoot; two or more is a stream.
+                if len(series) >= 2:
+                    recurring.append(
+                        f"{total} onto {card_name} via {cat_name}, across {len(series)} months."
+                    )
+                    recurring_ids.append(card_id)
+                continue
             elsewhere = [
                 names.get(k, "another card")
                 for k in walk.credit_outflows.get(cat_id, {})
@@ -607,6 +628,28 @@ class AccountHygieneService:
                         "Ready to pay breakdown names the months."
                     ),
                     account_ids=sorted(set(uncharged_ids), key=str),
+                )
+            )
+        if recurring:
+            findings.append(
+                HygieneFinding(
+                    kind="recurring_card_residual",
+                    title="A recurring inflow stream is draining a card's reserve",
+                    detail=(
+                        " ".join(recurring)
+                        + " Each envelope does charge this card, but its inflows have "
+                        "cumulatively outrun its charges, so every further inflow "
+                        "reduces the card's Ready to pay outright while the envelope "
+                        "keeps the money."
+                    ),
+                    action=(
+                        "Read the envelope's recurring inflows on this card. A payment "
+                        "arriving from an account outside the budget, or someone else "
+                        "paying their share, belongs on the card as a transfer — or "
+                        "assign the same amount to the card to square the reserve. A "
+                        "refund for spending done on another card belongs on that card."
+                    ),
+                    account_ids=sorted(set(recurring_ids), key=str),
                 )
             )
         return findings

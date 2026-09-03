@@ -500,7 +500,7 @@ class TestUnlinkedCardPayments:
 
 
 class TestCardReserveDiagnostics:
-    """The four findings that explain a card whose Ready to pay went wrong.
+    """The findings that explain a card whose Ready to pay went wrong.
 
     Each one is a shape a ten-year import actually produced: a reserve driven
     below zero, an inflow filed to an envelope that never charged the card, a
@@ -613,3 +613,46 @@ class TestCardReserveDiagnostics:
         assert "Visa Payment Fund" in finding.detail
         assert "names match" in finding.detail
         assert finding.account_ids == [card.id]
+
+    async def test_a_recurring_inflow_stream_on_a_charging_envelope_is_reported(self, db_session):
+        """The 42-month shape the probe found on a real import: the envelope
+        DOES charge this card, so the two misfiled-inflow findings skip it on
+        their existence test — while its inflows cumulatively outrun its
+        charges and every month's residual drains the reserve. Two residual
+        months is the line: a stream, not a refund overshoot."""
+        services, budget, _checking, card, _group, cat = await self._card_world(db_session)
+        month_2 = RECENT.replace(day=1)
+        month_1 = (month_2 - timedelta(days=1)).replace(day=1)
+        await create_transaction(db_session, budget, card, "-800.00", LONG_AGO)
+        await services.budgets.set_assignment(
+            budget.id, cat.id, LONG_AGO.replace(day=1), Decimal("50.00")
+        )
+        await create_transaction(db_session, budget, card, "-50.00", LONG_AGO, category=cat)
+        await create_transaction(db_session, budget, card, "200.00", month_1, category=cat)
+        await create_transaction(db_session, budget, card, "200.00", month_2, category=cat)
+
+        findings = await _run(db_session, budget)
+        finding = findings["recurring_card_residual"]
+        assert "Groceries" in finding.detail
+        assert "2 months" in finding.detail
+        assert finding.account_ids == [card.id]
+        # The charged() guard used to make these two the only vocabulary, and
+        # this shape fit neither — that silence is the bug this finding fixes.
+        assert "residual_on_uncharged_category" not in findings
+        assert "card_inflow_belongs_to_other_card" not in findings
+
+    async def test_a_single_refund_overshoot_is_not_a_stream(self, db_session):
+        """One month of residual on an envelope that charges the card is an
+        ordinary oversized refund; flagging every such month is how a panel
+        gets dismissed once and never read again."""
+        services, budget, _checking, card, _group, cat = await self._card_world(db_session)
+        await create_transaction(db_session, budget, card, "-800.00", LONG_AGO)
+        await services.budgets.set_assignment(
+            budget.id, cat.id, LONG_AGO.replace(day=1), Decimal("50.00")
+        )
+        await create_transaction(db_session, budget, card, "-50.00", LONG_AGO, category=cat)
+        await create_transaction(db_session, budget, card, "300.00", RECENT, category=cat)
+
+        findings = await _run(db_session, budget)
+        assert "recurring_card_residual" not in findings
+        assert "residual_on_uncharged_category" not in findings
