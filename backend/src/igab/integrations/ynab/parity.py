@@ -114,6 +114,13 @@ class ParityReport:
     #: see `ParityDifference.repaid_uncovered_debt`) appear here too; the
     #: entry names where the gap opened, which is where to read the register.
     card_history: list[CardHistoryDivergence]
+    #: YNAB's shipped CCP Available, per card (lowercased name) per plan
+    #: month — the series `card_history` was measured against, carried whole.
+    #: The import route persists it with the summary because the export zip
+    #: is the only other place it exists, and a reserve question usually
+    #: arrives after the zip is gone (scripts/card_reserve_probe.py reads it
+    #: back for its YNAB overlay).
+    ccp_available_history: dict[str, dict[date, Decimal]]
     #: Whether the export's own numbers agree with each other. When they do
     #: not, `categories_differing` measures the file, not the import.
     consistency: ExportConsistency
@@ -233,5 +240,6 @@ async def check_parity(
         cards_differing=len(card_differences),
         card_differences=card_differences[:max_differences],
         card_history=card_history[:max_differences],
+        ccp_available_history=history,
         consistency=export_consistency(ynab_budget),
     )

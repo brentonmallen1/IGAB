@@ -173,3 +173,50 @@ def test_breach_and_worst_months_agree_with_domain_card_timeline(scenario: CardS
     ours_worst = [cm.month for cm in probe.worst_months(probe_timeline)]
     dom_worst = [cm.month for cm in domain_worst_months(dom_timeline)]
     assert ours_worst == dom_worst
+
+
+def test_the_persisted_ccp_history_round_trips_into_the_probe():
+    """The import route stores YNAB's CCP Available series inside
+    `budgets.import_summary` (`YNABParityOut.ccp_available_history`), and the
+    probe reads it back for its overlay. Serialization is the seam: pydantic
+    turns date keys and Decimals into JSON on the way in, and the probe's
+    `_ccp_history_from_summary` must recover exactly what was stored — a
+    drifted month format or a float round would misplace or corrupt the
+    overlay without any error."""
+    from igab.api.v1.imports import YNABExportConsistencyOut, YNABParityOut
+
+    history = {
+        "sapphire visa": {
+            date(2024, 1, 1): Decimal("120.50"),
+            date(2024, 2, 1): Decimal("-33.10"),
+        },
+        "harborstone rewards": {date(2023, 11, 1): Decimal("0.00")},
+    }
+    parity = YNABParityOut(
+        month=date(2024, 2, 1),
+        ynab_ready_to_assign=Decimal("10.00"),
+        expected_ready_to_assign=Decimal("10.00"),
+        igab_ready_to_assign=Decimal("10.00"),
+        uncovered_card_debt=Decimal("0"),
+        uncategorized_net=Decimal("0"),
+        matches=True,
+        categories_compared=0,
+        categories_differing=0,
+        categories_pending=0,
+        categories_unmatched=0,
+        top_differences=[],
+        cards_compared=2,
+        cards_differing=0,
+        card_differences=[],
+        card_history=[],
+        ccp_available_history=history,
+        consistency=YNABExportConsistencyOut(
+            self_consistent=True,
+            carryover_rows_checked=0,
+            carryover_rows_violating=0,
+            activity_cells_checked=0,
+            activity_cells_disagreeing=0,
+        ),
+    )
+    summary = {"parity": parity.model_dump(mode="json")}
+    assert probe._ccp_history_from_summary(summary) == history

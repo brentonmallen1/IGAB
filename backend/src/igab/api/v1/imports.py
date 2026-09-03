@@ -167,6 +167,13 @@ class YNABParityOut(BaseModel):
     #: Cards with at least one divergent month, earliest first. Empty when
     #: every card agrees with the file in every month.
     card_history: list[YNABCardHistoryOut]
+    #: YNAB's shipped CCP Available, per card (lowercased name, the way the
+    #: importer matches cards) per plan month. The export zip is the only
+    #: other place this series exists, and it is routinely gone by the time a
+    #: reserve question comes up — persisting it here is what lets
+    #: scripts/card_reserve_probe.py overlay IGAB's reserve against YNAB's
+    #: own figures on a long-lived install, no zip required.
+    ccp_available_history: dict[str, dict[date, Decimal]] = Field(default_factory=dict)
     consistency: YNABExportConsistencyOut
 
 
@@ -684,6 +691,7 @@ async def ynab_parity_or_none(
             )
             for d in report.card_history
         ],
+        ccp_available_history=report.ccp_available_history,
         consistency=YNABExportConsistencyOut(
             self_consistent=report.consistency.self_consistent,
             carryover_rows_checked=report.consistency.carryover_rows_checked,

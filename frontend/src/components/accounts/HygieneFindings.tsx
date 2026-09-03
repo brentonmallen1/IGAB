@@ -96,6 +96,7 @@ export function HygieneFindings({
       f.kind === 'card_debt_predates_budget' ||
       f.kind === 'residual_on_uncharged_category' ||
       f.kind === 'card_inflow_belongs_to_other_card' ||
+      f.kind === 'recurring_card_residual' ||
       f.kind === 'payment_envelope_shadow'
     ) {
       return '/budget'

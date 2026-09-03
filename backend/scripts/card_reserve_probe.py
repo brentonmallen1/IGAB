@@ -27,7 +27,11 @@ WHAT THIS IS
         --ynab-zip PATH   also read a YNAB export zip and compare each card's
                           reserve against YNAB's own Credit Card Payments
                           "Available", month by month. Works with no database
-                          at all (zip-only mode).
+                          at all (zip-only mode). Imports made by newer IGAB
+                          versions persist that history with the import
+                          summary, and the probe reads it from the database
+                          automatically — the flag is only needed when the
+                          import predates that.
 
 WHAT THE REPORT CONTAINS, AND WHAT IT DOES NOT
     Contains: per-card, per-month aggregate amounts and row counts, with every
@@ -362,6 +366,45 @@ STRUCTURAL_NAMES = {
     "ready to assign",
 }
 
+#: Every word the two renderers can print on their own, harvested from a
+#: maximal render and pinned by tests/unit/test_card_probe.py
+#: (`test_every_static_render_word_is_in_the_vocabulary`). `deny_tokens`
+#: subtracts these: a word this report prints for EVERY budget cannot
+#: identify one, and leaving them deniable made the probe refuse to run on
+#: any budget whose account or envelope names contain ordinary words — a
+#: real run died on names carrying "The", "Transfer", "Payment", "Delta".
+#: A name's distinctive tokens (surnames, banks, employers) are never in
+#: here, so the guard still catches what it exists to catch; and a new
+#: render line whose words are missing fails CLOSED — the guard refuses to
+#: write, and the pinning test names the word to add.
+_REPORT_VOCABULARY = frozenset((
+    "account", "accounts", "activity", "after", "against", "aggregate", "agrees",
+    "all", "amount", "amounts", "and", "another", "any", "anything", "are",
+    "arrived", "aside", "assign", "assigned", "assignments", "available", "balance", "been",
+    "before", "below", "beyond", "breach", "but", "can", "cards", "categories",
+    "category", "charge", "charged", "charges", "closed", "compared", "comparison", "contain",
+    "contains", "count", "counts", "created", "credit", "dates", "day", "debt",
+    "delta", "deposit", "design", "differ", "differing", "divergence", "divergent", "does",
+    "early", "either", "elided", "envelope", "envelopes", "ever", "excluded", "expected",
+    "export", "exported", "factor", "false", "file", "filed", "final", "first",
+    "for", "found", "from", "funded", "gross", "groups", "had", "has", "have",
+    "here", "history", "hold", "holds", "identifying", "ids", "igab", "import",
+    "imported", "income", "inflows", "kind", "legs", "level", "lifetime", "linked",
+    "matches", "may", "memos", "missing", "month", "monthly", "months", "moves",
+    "names", "net", "nets", "never", "not", "nothing", "null", "numbers", "ours",
+    "outside", "over", "overlay", "parity", "partner", "pay", "payee", "payment",
+    "payments", "pending", "per", "persisted", "plain", "plan", "position", "possible",
+    "possibly", "predates", "probe", "pseudonymized", "ratios", "read", "ready", "refund",
+    "released", "report", "rescaled", "reserve", "reserved", "reserves", "reserving", "residual",
+    "revision", "reward", "riding", "rode", "row", "rows", "scaled", "scanned",
+    "schema", "sees", "set", "shadow", "short", "signs", "since", "skipped",
+    "spendable", "splits", "stripped", "summary", "system", "tagged", "that", "the",
+    "theirs", "these", "this", "through", "time", "tokens", "total", "touches",
+    "transactions", "transfer", "transfers", "true", "truncated", "typed", "uncategorized",
+    "unclaimed", "uncovered", "undisclosed", "unlinked", "unmatched", "unpaired", "unreadable",
+    "was", "went", "whose", "window", "with", "worst", "writing", "ynab", "zero", "zip",
+))
+
 _UUID_RE = re.compile(
     r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
 )
@@ -401,16 +444,31 @@ class Pseudonyms:
 
     def deny_tokens(self) -> set[str]:
         """Word tokens from every real name seen — the output must not
-        contain any of them."""
+        contain any of them. The report's own static vocabulary is exempt:
+        a word every report prints identifies nobody, and denying it made
+        the probe refuse to run on names like "The Transfer Card".
+
+        The vocabulary exemption is what makes the multi-word PHRASES below
+        necessary: a name spelled entirely out of exempt words ("The Transfer
+        Payment") has no deniable token left, but the full name appearing in
+        sequence is a leak no single word is. Phrases carry spaces, which is
+        how `assert_clean` knows to match them across punctuation; ones the
+        structural names contain are skipped, or every report would trip on
+        its own "Credit Card Payments"."""
         tokens: set[str] = set()
+        phrases: set[str] = set()
         for (_, real_name), _label in self._map.items():
-            for word in re.findall(r"[A-Za-z]{3,}", real_name):
-                tokens.add(word.lower())
+            words = [w.lower() for w in re.findall(r"[A-Za-z]{3,}", real_name)]
+            tokens.update(words)
+            if len(words) >= 2:
+                phrase = " ".join(words)
+                if not any(phrase in name for name in STRUCTURAL_NAMES):
+                    phrases.add(phrase)
         # Words a pseudonym or structural name legitimately contains.
         allowed = {"card", "cash", "env", "tracking", "group", "budget"}
         for name in STRUCTURAL_NAMES:
             allowed.update(re.findall(r"[a-z]{3,}", name))
-        return tokens - allowed
+        return (tokens - allowed - _REPORT_VOCABULARY) | phrases
 
     def key_lines(self) -> list[str]:
         return [f"{label} = {real}" for (kind, real), label in sorted(self._map.items())]
@@ -444,7 +502,15 @@ def assert_clean(rendered: str, deny_tokens: set[str]) -> None:
         raise GuardError(f"output contains a digit run ({run.group()[:4]}…) — refusing to write")
     lowered = rendered.lower()
     for token in deny_tokens:
-        if re.search(rf"\b{re.escape(token)}\b", lowered):
+        if " " in token:
+            # A whole real name, as a word sequence: match it across any
+            # punctuation/spacing so "Fern-Hollow" still reads as the name.
+            pattern = (
+                r"\b" + r"[^a-z0-9]{1,8}".join(re.escape(w) for w in token.split()) + r"\b"
+            )
+        else:
+            pattern = rf"\b{re.escape(token)}\b"
+        if re.search(pattern, lowered):
             raise GuardError(
                 "output contains a word from a real account/category name — refusing to write"
             )
@@ -491,6 +557,52 @@ _SQL_ROW_CATEGORY_SPENDABLE = (
 )
 _SQL_MONTH = "date_trunc('month', t.date)::date"
 
+#: Probe-only, no repository original: how each (category, card) pair's
+#: INFLOW rows arrived. 'plain' is a refund/reward/deposit typed straight
+#: onto the card; the transfer kinds split by what is on the other side —
+#: 'transfer_tracking' is a payment from an account outside the budget,
+#: which YNAB forces a category onto, and which the funding walk therefore
+#: reads as category activity (residual) rather than as a payment. Every
+#: row matches exactly one CASE arm, so the buckets partition the pair's
+#: inflows by construction; the integration test asserts the arms land
+#: where they claim.
+_SQL_INFLOW_KINDS = (
+    "SELECT t.category_id, t.account_id,"
+    " CASE"
+    f"  WHEN NOT {_SQL_TRANSFER_LEG} THEN 'plain'"
+    "  ELSE COALESCE((SELECT CASE"
+    "    WHEN NOT ca.on_budget THEN 'transfer_tracking'"
+    "    WHEN ca.classification = 'liability' THEN 'transfer_card'"
+    "    ELSE 'transfer_cash' END"
+    f"    FROM accounts ca WHERE ca.id = {_SQL_COUNTERPART}"
+    "     AND NOT ca.is_deleted),"
+    "   'transfer_unlinked')"
+    " END AS kind, COUNT(*) AS n, SUM(t.amount) AS net"
+    " FROM transactions t"
+    " WHERE t.budget_id = :b AND NOT t.is_deleted AND NOT t.is_split"
+    " AND t.cleared != 'pending' AND t.amount > 0"
+    f" AND {_SQL_ON_CARD_ACCOUNT}"
+    f" AND {_SQL_ROW_CATEGORY_SPENDABLE}"
+    " GROUP BY 1, 2, 3"
+)
+
+#: The other side of the same pair: GROSS charge rows. The walk reserves from
+#: MONTHLY NETS, so an envelope whose charges and repayments land in the same
+#: months reads as a small `charged_total` while enormous value washes through
+#: it — the first real report showed inflow rows 18× the net-charge months,
+#: which the gross side resolves into "charges and repayments largely offset,
+#: repayments cumulatively ahead". Without this line the reader hunts a
+#: phantom trickle-drain instead of a pass-through flow.
+_SQL_CHARGE_ROWS = (
+    "SELECT t.category_id, t.account_id, COUNT(*) AS n, SUM(-t.amount) AS gross"
+    " FROM transactions t"
+    " WHERE t.budget_id = :b AND NOT t.is_deleted AND NOT t.is_split"
+    " AND t.cleared != 'pending' AND t.amount < 0"
+    f" AND {_SQL_ON_CARD_ACCOUNT}"
+    f" AND {_SQL_ROW_CATEGORY_SPENDABLE}"
+    " GROUP BY 1, 2"
+)
+
 
 @dataclass
 class DbData:
@@ -521,6 +633,17 @@ class DbData:
     first_charge: dict[str, date]
     #: numeric counters from the persisted import summary (allowlisted keys)
     import_summary: dict[str, object]
+    #: (category_id, card_id) -> kind -> (rows, net) for the card's INFLOW
+    #: rows filed to a spendable category — how each residual stream's money
+    #: actually arrived (plain row vs transfer leg, and from where).
+    inflow_kinds: dict[tuple[str, str], dict[str, tuple[int, Decimal]]]
+    #: (category_id, card_id) -> (rows, gross) for the pair's CHARGE rows —
+    #: the gross side the monthly nets hide (see _SQL_CHARGE_ROWS).
+    charge_rows: dict[tuple[str, str], tuple[int, Decimal]]
+    #: YNAB's CCP Available per {card name lowercased: {month: amount}},
+    #: persisted with the import summary by newer importers. Real card names
+    #: stay inside the analysis (matched, never rendered).
+    ynab_ccp_from_import: dict[str, dict[date, Decimal]]
 
 
 async def read_db(database_url: str, budget_id: str | None) -> DbData:
@@ -735,10 +858,30 @@ async def read_db(database_url: str, budget_id: str | None) -> DbData:
             ):
                 unpaired_legs[str(r.account_id)] = int(r.n)
 
+            # How a card's categorized inflows arrived. The funding walk
+            # deliberately includes categorized transfer legs
+            # (sum_credit_outflows_by_category has no transfer exclusion), so
+            # a card paid from an off-budget account — YNAB requires a
+            # category on that leg — drains the reserve as residual, not as a
+            # payment. This classification is what tells a refund, a partner
+            # repayment, and such a payment apart in the report.
+            inflow_kinds: dict[tuple[str, str], dict[str, tuple[int, Decimal]]] = {}
+            for r in await rows(_SQL_INFLOW_KINDS, b=budget_id):
+                pair = (str(r.category_id), str(r.account_id))
+                inflow_kinds.setdefault(pair, {})[str(r.kind)] = (int(r.n), Decimal(str(r.net)))
+
+            charge_rows: dict[tuple[str, str], tuple[int, Decimal]] = {}
+            for r in await rows(_SQL_CHARGE_ROWS, b=budget_id):
+                charge_rows[(str(r.category_id), str(r.account_id))] = (
+                    int(r.n),
+                    Decimal(str(r.gross)),
+                )
+
             summary_json = await scalar(
                 "SELECT import_summary FROM budgets WHERE id = :b", b=budget_id
             )
             import_summary = _allowlisted_import_summary(summary_json)
+            ynab_ccp_from_import = _ccp_history_from_summary(summary_json)
 
         return DbData(
             budget_name=budget_name,
@@ -758,6 +901,9 @@ async def read_db(database_url: str, budget_id: str | None) -> DbData:
             unpaired_legs=unpaired_legs,
             first_charge=first_charge,
             import_summary=import_summary,
+            inflow_kinds=inflow_kinds,
+            charge_rows=charge_rows,
+            ynab_ccp_from_import=ynab_ccp_from_import,
         )
     finally:
         await engine.dispose()
@@ -819,6 +965,36 @@ def _allowlisted_import_summary(summary: object) -> dict[str, object]:
         for key in _PARITY_MONEY_KEYS:
             if key in parity:
                 out[f"parity.{key}"] = ("money", parity[key])
+    return out
+
+
+def _ccp_history_from_summary(summary: object) -> dict[str, dict[date, Decimal]]:
+    """The YNAB CCP Available history newer importers persist with the parity
+    summary — same shape as `read_ynab_ccp_available`, so the overlay works
+    without the export zip. Keys are real card names (lowercased); they are
+    used only to match cards and never rendered. Unreadable entries are
+    skipped, never invented."""
+    if not isinstance(summary, dict):
+        return {}
+    parity = summary.get("parity")
+    if not isinstance(parity, dict):
+        return {}
+    history = parity.get("ccp_available_history")
+    if not isinstance(history, dict):
+        return {}
+    out: dict[str, dict[date, Decimal]] = {}
+    for card_name, months in history.items():
+        if not isinstance(months, dict):
+            continue
+        for month_key, amount in months.items():
+            month = _parse_ynab_month(str(month_key))
+            if month is None:
+                continue
+            try:
+                value = Decimal(str(amount))
+            except InvalidOperation:
+                continue
+            out.setdefault(str(card_name).lower(), {})[month] = value
     return out
 
 
@@ -908,6 +1084,34 @@ def read_ynab_ccp_available(zip_path: str) -> tuple[dict[str, dict[date, Decimal
 
 
 @dataclass
+class ResidualContributor:
+    """One envelope's residual stream on one card, largest first."""
+
+    envelope: str
+    months: int
+    total: Decimal
+    #: Lifetime net charges this envelope made on this card (positive months
+    #: of the outflow series — what could ever reserve) — distinguishes
+    #: "never charged here" from "charged sometimes, but the inflows drowned
+    #: it".
+    charged_total: Decimal
+    #: (rows, gross) of the pair's charge rows. The walk nets by month, so a
+    #: pass-through envelope (big charges, near-matching repayments in the
+    #: same months) shows a tiny `charged_total` while this stays honest
+    #: about the volume — set beside the inflow kinds' gross, it tells a
+    #: reimbursement wash apart from a trickle-drain.
+    charge_rows: tuple[int, Decimal]
+    #: kind -> (rows, net) over the pair's inflow rows: 'plain' (a refund,
+    #: reward, reimbursement) or a transfer leg by counterpart —
+    #: 'transfer_cash', 'transfer_card', 'transfer_tracking' (a payment from
+    #: an account outside the budget), 'transfer_unlinked'.
+    inflow_kinds: dict[str, tuple[int, Decimal]]
+    #: The full residual series, kept for the top contributors only — the
+    #: months to read in the register.
+    monthly: dict[date, Decimal]
+
+
+@dataclass
 class CardReport:
     label: str
     timeline: list[CardMonth]
@@ -915,8 +1119,7 @@ class CardReport:
     worst: list[CardMonth]
     position: Position
     riding: Decimal
-    #: (envelope label, months, total residual) largest first
-    residual_contributors: list[tuple[str, int, Decimal]]
+    residual_contributors: list[ResidualContributor]
     uncategorized: tuple[int, Decimal]
     system_filed: tuple[int, Decimal]
     unpaired_legs: int
@@ -979,15 +1182,31 @@ def analyze(
         final = timeline[-1]
         position = card_position(final.set_aside, final.balance)
 
-        contributors: list[tuple[str, int, Decimal]] = []
+        contributors: list[ResidualContributor] = []
         for (cat_id, k), series in funding.residual_by_pair.items():
             if k != card:
                 continue
             cat_name = data.categories.get(cat_id, ("?", "?", False))[0]
-            contributors.append(
-                (names.get("env", cat_name), len(series), sum(series.values(), ZERO))
+            charged = sum(
+                (v for v in data.outflows.get(cat_id, {}).get(card, {}).values() if v > ZERO),
+                ZERO,
             )
-        contributors.sort(key=lambda t: t[2], reverse=True)
+            contributors.append(
+                ResidualContributor(
+                    envelope=names.get("env", cat_name),
+                    months=len(series),
+                    total=sum(series.values(), ZERO),
+                    charged_total=charged,
+                    charge_rows=data.charge_rows.get((cat_id, card), (0, ZERO)),
+                    inflow_kinds=data.inflow_kinds.get((cat_id, card), {}),
+                    monthly=dict(sorted(series.items())),
+                )
+            )
+        contributors.sort(key=lambda c: c.total, reverse=True)
+        # The full monthly series is the expensive part; keep it where the
+        # diagnosis is and drop it from the tail.
+        for c in contributors[3:]:
+            c.monthly = {}
 
         first_reserving: date | None = None
         for leg in ("reserved", "assigned"):
@@ -1066,6 +1285,18 @@ def _ym(month: date) -> str:
     return f"{month.year:04d}-{month.month:02d}"
 
 
+#: How a pair's inflow rows read in the .txt. The keys are the SQL CASE
+#: labels; 'transfer_tracking' is the one that means "a payment from an
+#: account outside the budget, categorized because YNAB required it".
+_KIND_LABELS = {
+    "plain": "plain rows (refund/reward/deposit)",
+    "transfer_cash": "transfers from budget cash",
+    "transfer_card": "transfers from another card",
+    "transfer_tracking": "transfers from OUTSIDE the budget",
+    "transfer_unlinked": "transfer legs with no linked partner",
+}
+
+
 def _short_rev(revision: str | None) -> str:
     """The alembic revision, truncated to 8 chars. Public information (it
     names a migration file in the repo), but the full 12-char id trips the
@@ -1081,6 +1312,7 @@ def render_text(
     scaled: bool,
     ynab_unreadable: int | None,
     ynab_empty: bool = False,
+    ynab_source: str | None = None,
 ) -> str:
     lines: list[str] = [_PREAMBLE]
     if scaled:
@@ -1106,6 +1338,8 @@ def render_text(
                     lines.append(f"  {key}: {rendered}")
                 else:
                     lines.append(f"  {key}: {value}")
+    if ynab_source:
+        lines.append(f"\nYNAB overlay read from {ynab_source}.")
     if ynab_unreadable:
         lines.append(
             f"\nYNAB overlay: {ynab_unreadable} plan rows had unreadable amounts (skipped)"
@@ -1166,8 +1400,20 @@ def render_text(
 
         if r.residual_contributors:
             lines.append("  residual by envelope (inflows beyond anything that rode here):")
-            for env, months, total in r.residual_contributors:
-                lines.append(f"    {env}: {fmt(total)} over {months} month(s)")
+            for c in r.residual_contributors:
+                lines.append(
+                    f"    {c.envelope}: {fmt(c.total)} over {c.months} month(s); "
+                    f"lifetime charges here {fmt(c.charged_total)} (monthly nets)"
+                )
+                n, gross = c.charge_rows
+                if n:
+                    lines.append(f"      charge rows: {n} row(s), gross {fmt(gross)}")
+                arrived = "; ".join(
+                    f"{_KIND_LABELS.get(kind, kind)}: {n} row(s), net {fmt(net)}"
+                    for kind, (n, net) in sorted(c.inflow_kinds.items())
+                )
+                if arrived:
+                    lines.append(f"      inflows arrived as — {arrived}")
         n, net = r.uncategorized
         if n:
             lines.append(
@@ -1263,8 +1509,21 @@ def render_json(
                 "months": [month_row(cm) for cm in kept],
                 "months_elided": len(r.timeline) - len(kept),
                 "residual_by_envelope": [
-                    {"envelope": env, "months": months, "total": fmt(total)}
-                    for env, months, total in r.residual_contributors
+                    {
+                        "envelope": c.envelope,
+                        "months": c.months,
+                        "total": fmt(c.total),
+                        "charged_lifetime": fmt(c.charged_total),
+                        "charge_rows": {"rows": c.charge_rows[0], "gross": fmt(c.charge_rows[1])},
+                        "inflows": {
+                            kind: {"rows": n, "net": fmt(net)}
+                            for kind, (n, net) in sorted(c.inflow_kinds.items())
+                        },
+                        "monthly": [
+                            {"month": _ym(m), "amount": fmt(a)} for m, a in c.monthly.items()
+                        ],
+                    }
+                    for c in r.residual_contributors
                 ],
                 "uncategorized_rows": {
                     "count": r.uncategorized[0],
@@ -1321,8 +1580,10 @@ def main(argv: list[str] | None = None) -> int:
 
     ynab_ccp = None
     ynab_unreadable = None
+    ynab_source = None
     if args.ynab_zip:
         ynab_ccp, ynab_unreadable = read_ynab_ccp_available(args.ynab_zip)
+        ynab_source = "the export zip"
 
     names = Pseudonyms()
     scale = args.scale if args.scale is not None else Decimal("1")
@@ -1332,6 +1593,9 @@ def main(argv: list[str] | None = None) -> int:
     reports: list[CardReport] = []
     if database_url is not None:
         data = asyncio.run(read_db(database_url, args.budget))
+        if ynab_ccp is None and data.ynab_ccp_from_import:
+            ynab_ccp = data.ynab_ccp_from_import
+            ynab_source = "the plan history persisted with the import summary"
         reports = analyze(data, names, ynab_ccp)
     elif ynab_ccp is not None:
         # Zip-only mode: report YNAB's own CCP series and its negative months.
@@ -1375,6 +1639,7 @@ def main(argv: list[str] | None = None) -> int:
         scaled=args.scale is not None,
         ynab_unreadable=ynab_unreadable,
         ynab_empty=ynab_ccp is not None and not ynab_ccp,
+        ynab_source=ynab_source if ynab_ccp else None,
     )
     json_report = render_json(reports, data, fmt, scaled=args.scale is not None)
 
