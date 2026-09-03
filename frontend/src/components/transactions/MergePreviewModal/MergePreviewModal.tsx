@@ -1,8 +1,7 @@
 import { useState } from 'react'
-import { X, GitMerge } from 'lucide-react'
 import { useFormatters } from '../../../hooks/useFormatters'
 import type { Transaction } from '../../../types'
-import { useFocusTrap } from '../../../hooks/useFocusTrap'
+import { Dialog } from '../../common/Dialog/Dialog'
 import './MergePreviewModal.css'
 
 interface Props {
@@ -100,7 +99,6 @@ export function MergePreviewModal({
   const defaultSurvivor =
     reconciledTxn?.id ?? (txn1.created_at <= txn2.created_at ? txn1.id : txn2.id)
   const [survivorId, setSurvivorId] = useState<string>(defaultSurvivor)
-  const trapRef = useFocusTrap<HTMLDivElement>(onCancel)
 
   const survivor = survivorId === txn1.id ? txn1 : txn2
   const deleted = survivorId === txn1.id ? txn2 : txn1
@@ -110,60 +108,13 @@ export function MergePreviewModal({
   const willCopySyncId = !survivor.sync_id && !!deleted.sync_id
 
   return (
-    <div className="merge-modal-overlay" onClick={onCancel}>
-      <div
-        ref={trapRef}
-        tabIndex={-1}
-        className="merge-modal"
-        role="dialog"
-        aria-modal
-        aria-labelledby="merge-modal-title"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="merge-modal__header">
-          <span id="merge-modal-title" className="merge-modal__title">
-            <GitMerge size={14} />
-            Merge Transactions
-          </span>
-          <button className="merge-modal__close" onClick={onCancel} aria-label="Close">
-            <X size={14} />
-          </button>
-        </div>
-
-        <p className="merge-modal__hint">
-          {reconciledTxn
-            ? 'The reconciled transaction will always be kept.'
-            : 'Click a transaction to keep it. The other is removed — but nothing it has is lost: a memo, category, payee, receipt or bank details the kept one lacks carry over.'}
-        </p>
-
-        <div className="merge-modal__columns">
-          <TxnCard
-            txn={txn1}
-            payeeMap={payeeMap}
-            categoryMap={categoryMap}
-            isSelected={survivorId === txn1.id}
-            onClick={reconciledTxn ? undefined : () => setSurvivorId(txn1.id)}
-            formatMoney={formatMoney}
-            formatDate={formatDate}
-          />
-          <TxnCard
-            txn={txn2}
-            payeeMap={payeeMap}
-            categoryMap={categoryMap}
-            isSelected={survivorId === txn2.id}
-            onClick={reconciledTxn ? undefined : () => setSurvivorId(txn2.id)}
-            formatMoney={formatMoney}
-            formatDate={formatDate}
-          />
-        </div>
-
-        {(willCopyImportId || willCopyImportDesc || willCopySyncId) && (
-          <p className="merge-modal__note">
-            Bank import data will be copied from the deleted transaction.
-          </p>
-        )}
-
-        <div className="merge-modal__footer">
+    <Dialog
+      title="Merge Transactions"
+      onClose={onCancel}
+      historyKey="merge-preview"
+      className="merge-modal"
+      footer={
+        <>
           <button
             className="merge-modal__btn merge-modal__btn--cancel"
             onClick={onCancel}
@@ -178,8 +129,41 @@ export function MergePreviewModal({
           >
             {isPending ? 'Merging…' : 'Confirm Merge'}
           </button>
-        </div>
+        </>
+      }
+    >
+      <p className="merge-modal__hint">
+        {reconciledTxn
+          ? 'The reconciled transaction will always be kept.'
+          : 'Click a transaction to keep it. The other is removed — but nothing it has is lost: a memo, category, payee, receipt or bank details the kept one lacks carry over.'}
+      </p>
+
+      <div className="merge-modal__columns">
+        <TxnCard
+          txn={txn1}
+          payeeMap={payeeMap}
+          categoryMap={categoryMap}
+          isSelected={survivorId === txn1.id}
+          onClick={reconciledTxn ? undefined : () => setSurvivorId(txn1.id)}
+          formatMoney={formatMoney}
+          formatDate={formatDate}
+        />
+        <TxnCard
+          txn={txn2}
+          payeeMap={payeeMap}
+          categoryMap={categoryMap}
+          isSelected={survivorId === txn2.id}
+          onClick={reconciledTxn ? undefined : () => setSurvivorId(txn2.id)}
+          formatMoney={formatMoney}
+          formatDate={formatDate}
+        />
       </div>
-    </div>
+
+      {(willCopyImportId || willCopyImportDesc || willCopySyncId) && (
+        <p className="merge-modal__note">
+          Bank import data will be copied from the deleted transaction.
+        </p>
+      )}
+    </Dialog>
   )
 }

@@ -1,67 +1,15 @@
-.pmerge-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: var(--z-overlay);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.4);
+/* The overlay, panel, header and footer come from common/Dialog. 0,2,0 so the
+   width beats `.dialog--md`'s 520 regardless of which stylesheet loads last. */
+.dialog.pmerge-modal {
+  --dialog-w: 480px;
 }
 
-.pmerge-modal {
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-lg);
-  width: 480px;
-  max-width: calc(100vw - 32px);
-  /* Long payee lists scroll inside the body — header and footer stay pinned */
-  max-height: min(640px, calc(var(--app-h) - 80px));
-  box-shadow: var(--shadow-lg);
-  display: flex;
-  flex-direction: column;
-}
-
-.pmerge-modal__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--spacing-md);
-  border-bottom: 1px solid var(--border-color);
-}
-
-.pmerge-modal__title {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-xs);
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.pmerge-modal__close {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--text-muted);
-  padding: 4px;
-  border-radius: var(--border-radius-sm);
-  display: flex;
-  align-items: center;
-}
-
-.pmerge-modal__close:hover {
-  color: var(--text-primary);
-  background: var(--bg-secondary);
-}
-
+/* Dialog's scroll region is the scroller; this is layout only. */
 .pmerge-modal__body {
-  padding: var(--spacing-md);
   display: flex;
   flex-direction: column;
   gap: var(--spacing-sm);
   min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
 }
 
 .pmerge-section-label {
@@ -373,12 +321,9 @@
   color: var(--text-muted);
 }
 
-.pmerge-modal__footer {
-  display: flex;
-  gap: var(--spacing-sm);
+/* Dialog's .dialog__footer carries the rule and the padding. */
+.dialog.pmerge-modal .dialog__footer {
   justify-content: flex-end;
-  padding: var(--spacing-sm) var(--spacing-md);
-  border-top: 1px solid var(--border-color);
 }
 
 .pmerge-btn {

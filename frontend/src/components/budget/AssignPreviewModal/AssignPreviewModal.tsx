@@ -1,10 +1,9 @@
-import { X } from 'lucide-react'
 import { useToastUndo } from '../../../utils/toastUndo'
 import { useAssignApply, useAssignPreview } from '../../../api/assign'
 import { useFormatters } from '../../../hooks/useFormatters'
 import type { AssignStrategy } from '../../../types'
-import { useFocusTrap } from '../../../hooks/useFocusTrap'
 import { STRATEGY_META } from '../AssignDropdown/strategyMeta'
+import { Dialog } from '../../common/Dialog/Dialog'
 import './AssignPreviewModal.css'
 
 interface Props {
@@ -26,8 +25,6 @@ export function AssignPreviewModal({ budgetId, month, strategy, onClose }: Props
   const apply = useAssignApply(budgetId)
   const showUndo = useToastUndo(budgetId)
   const meta = STRATEGY_META[strategy]
-  const trapRef = useFocusTrap<HTMLDivElement>(onClose)
-
   const tbaAfter = Number(preview?.tba_after ?? 0)
   const toAssign = Number(preview?.to_assign ?? 0)
   const toReturn = Number(preview?.to_return ?? 0)
@@ -50,145 +47,123 @@ export function AssignPreviewModal({ budgetId, month, strategy, onClose }: Props
     onClose()
   }
 
-  return (
-    <div
-      className="assign-preview-overlay"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
-    >
-      <div
-        ref={trapRef}
-        tabIndex={-1}
-        className="assign-preview-modal"
-        role="dialog"
-        aria-modal
-        aria-labelledby="assign-preview-title"
-      >
-        <div className="assign-preview-modal__header">
-          <span id="assign-preview-title" className="assign-preview-modal__title">
-            {meta.label}
+  // Dialog pins the footer below the scroll region; which of the two it is
+  // depends on whether the preview found anything to change.
+  const footer =
+    preview && preview.items.length > 0 ? (
+      <>
+        <div className="assign-preview-modal__tba-summary">
+          <span className="assign-preview-modal__tba-label">TBA:</span>
+          <span className="assign-preview-modal__tba-value">{formatMoney(preview.tba_before)}</span>
+          <span className="assign-preview-modal__tba-arrow">→</span>
+          <span
+            className={`assign-preview-modal__tba-value ${tbaAfter >= 0 ? 'positive' : 'negative'}`}
+          >
+            {formatMoney(tbaAfter)}
           </span>
-          <button className="assign-preview-modal__close" onClick={onClose} aria-label="Close">
-            <X size={18} />
+        </div>
+        <div className="assign-preview-modal__actions">
+          <button
+            className="assign-preview-modal__btn assign-preview-modal__btn--secondary"
+            onClick={onClose}
+            disabled={apply.isPending}
+          >
+            Cancel
+          </button>
+          <button
+            className="assign-preview-modal__btn assign-preview-modal__btn--primary"
+            onClick={handleApply}
+            disabled={apply.isPending || !hasChanges}
+          >
+            {apply.isPending
+              ? 'Applying…'
+              : toAssign > 0 && toReturn > 0
+                ? `Apply — ${formatMoney(toAssign)} in, ${formatMoney(toReturn)} back`
+                : toReturn > 0
+                  ? `Apply — return ${formatMoney(toReturn)}`
+                  : `Apply — ${formatMoney(toAssign)}`}
           </button>
         </div>
+      </>
+    ) : !isLoading ? (
+      <button
+        className="assign-preview-modal__btn assign-preview-modal__btn--secondary"
+        onClick={onClose}
+      >
+        Close
+      </button>
+    ) : undefined
 
-        <div className="assign-preview-modal__body">
-          {isLoading ? (
-            <div className="assign-preview-modal__loading">Calculating…</div>
-          ) : !preview || preview.items.length === 0 ? (
-            <div className="assign-preview-modal__empty">Nothing to change — you're all set.</div>
-          ) : (
-            <>
-              <p className="assign-preview-modal__description">{meta.description}</p>
-              <table className="assign-preview-modal__table">
-                <caption className="sr-only">Per-category changes for {meta.label}</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Category</th>
-                    <th scope="col" className="assign-preview-modal__col-num">
-                      Current
-                    </th>
-                    <th scope="col" className="assign-preview-modal__col-num">
-                      Change
-                    </th>
-                    <th scope="col" className="assign-preview-modal__col-num">
-                      New Total
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {preview.items.map((item) => {
-                    const delta = item.delta
-                    return (
-                      <tr key={item.category_id}>
-                        <td>{item.category_name}</td>
-                        <td className="assign-preview-modal__col-num">
-                          {formatMoney(item.current_assigned)}
-                        </td>
-                        <td
-                          className={`assign-preview-modal__col-num ${
-                            delta > 0
-                              ? 'assign-preview-modal__delta--positive'
-                              : delta < 0
-                                ? 'assign-preview-modal__delta--negative'
-                                : ''
-                          }`}
-                        >
-                          {delta > 0 ? '+' : ''}
-                          {formatMoney(delta)}
-                        </td>
-                        <td className="assign-preview-modal__col-num">
-                          {formatMoney(item.new_assigned)}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-              {tbaAfter < 0 && (
-                <div className="assign-preview-modal__overassign-warning">
-                  This assigns more than you have — Ready to Assign will go negative (
-                  {formatMoney(tbaAfter)}). You can cover it later by moving money back.
-                </div>
-              )}
-            </>
-          )}
-        </div>
-
-        {preview && preview.items.length > 0 && (
-          <div className="assign-preview-modal__footer">
-            <div className="assign-preview-modal__tba-summary">
-              <span className="assign-preview-modal__tba-label">TBA:</span>
-              <span className="assign-preview-modal__tba-value">
-                {formatMoney(preview.tba_before)}
-              </span>
-              <span className="assign-preview-modal__tba-arrow">→</span>
-              <span
-                className={`assign-preview-modal__tba-value ${
-                  tbaAfter >= 0 ? 'positive' : 'negative'
-                }`}
-              >
-                {formatMoney(tbaAfter)}
-              </span>
-            </div>
-            <div className="assign-preview-modal__actions">
-              <button
-                className="assign-preview-modal__btn assign-preview-modal__btn--secondary"
-                onClick={onClose}
-                disabled={apply.isPending}
-              >
-                Cancel
-              </button>
-              <button
-                className="assign-preview-modal__btn assign-preview-modal__btn--primary"
-                onClick={handleApply}
-                disabled={apply.isPending || !hasChanges}
-              >
-                {apply.isPending
-                  ? 'Applying…'
-                  : toAssign > 0 && toReturn > 0
-                    ? `Apply — ${formatMoney(toAssign)} in, ${formatMoney(toReturn)} back`
-                    : toReturn > 0
-                      ? `Apply — return ${formatMoney(toReturn)}`
-                      : `Apply — ${formatMoney(toAssign)}`}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {(!preview || preview.items.length === 0) && !isLoading && (
-          <div className="assign-preview-modal__footer assign-preview-modal__footer--empty">
-            <button
-              className="assign-preview-modal__btn assign-preview-modal__btn--secondary"
-              onClick={onClose}
-            >
-              Close
-            </button>
-          </div>
+  return (
+    <Dialog
+      title={meta.label}
+      onClose={onClose}
+      historyKey="assign-preview"
+      className="assign-preview-modal"
+      footer={footer}
+    >
+      <div className="assign-preview-modal__body">
+        {isLoading ? (
+          <div className="assign-preview-modal__loading">Calculating…</div>
+        ) : !preview || preview.items.length === 0 ? (
+          <div className="assign-preview-modal__empty">Nothing to change — you're all set.</div>
+        ) : (
+          <>
+            <p className="assign-preview-modal__description">{meta.description}</p>
+            <table className="assign-preview-modal__table">
+              <caption className="sr-only">Per-category changes for {meta.label}</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Category</th>
+                  <th scope="col" className="assign-preview-modal__col-num">
+                    Current
+                  </th>
+                  <th scope="col" className="assign-preview-modal__col-num">
+                    Change
+                  </th>
+                  <th scope="col" className="assign-preview-modal__col-num">
+                    New Total
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {preview.items.map((item) => {
+                  const delta = item.delta
+                  return (
+                    <tr key={item.category_id}>
+                      <td>{item.category_name}</td>
+                      <td className="assign-preview-modal__col-num">
+                        {formatMoney(item.current_assigned)}
+                      </td>
+                      <td
+                        className={`assign-preview-modal__col-num ${
+                          delta > 0
+                            ? 'assign-preview-modal__delta--positive'
+                            : delta < 0
+                              ? 'assign-preview-modal__delta--negative'
+                              : ''
+                        }`}
+                      >
+                        {delta > 0 ? '+' : ''}
+                        {formatMoney(delta)}
+                      </td>
+                      <td className="assign-preview-modal__col-num">
+                        {formatMoney(item.new_assigned)}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+            {tbaAfter < 0 && (
+              <div className="assign-preview-modal__overassign-warning">
+                This assigns more than you have — Ready to Assign will go negative (
+                {formatMoney(tbaAfter)}). You can cover it later by moving money back.
+              </div>
+            )}
+          </>
         )}
       </div>
-    </div>
+    </Dialog>
   )
 }

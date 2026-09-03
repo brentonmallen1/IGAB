@@ -18,7 +18,6 @@ export function GlobalShortcuts() {
   const onBudgetPage = useLocation().pathname === '/budget'
 
   useShortcut(SHORTCUTS.help.combo, () => setHelpOpen((o) => !o))
-  useShortcut('escape', () => setHelpOpen(false), { enabled: helpOpen, allowInInputs: true })
   useShortcut(SHORTCUTS.monthPrev.combo, () => setSelectedMonth(addMonths(selectedMonth, -1)), {
     enabled: onBudgetPage,
   })

@@ -1,44 +1,8 @@
-.target-editor-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: var(--z-overlay);
-}
-
-.target-editor {
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
-  width: 340px;
-  max-width: 95vw;
-  padding: var(--spacing-lg);
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-md);
-}
-
-.target-editor__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.target-editor__title {
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.target-editor__close {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  font-size: var(--font-size-lg);
-  cursor: pointer;
-  padding: 0 4px;
+/* The overlay, panel and header come from common/Dialog — which also brings
+   the focus trap and Escape this editor declared `role="dialog" aria-modal`
+   without ever having. 0,2,0 so the width beats `.dialog--md`'s 520. */
+.dialog.target-editor {
+  --dialog-w: 340px;
 }
 
 .target-editor__form {
@@ -93,12 +57,6 @@
 }
 
 @media (max-width: 768px) {
-  .target-editor {
-    width: 100%;
-    max-width: none;
-    max-height: calc(var(--app-h) - 80px);
-  }
-
   .target-editor input,
   .target-editor select,
   .target-editor button {

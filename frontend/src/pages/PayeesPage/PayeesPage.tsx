@@ -18,6 +18,7 @@ import { useAIStatus, useSuggestRegex } from '../../api/ai'
 import { PayeeMergeModal } from '../../components/payees/PayeeMergeModal/PayeeMergeModal'
 import type { MergeConfig } from '../../components/payees/PayeeMergeModal/PayeeMergeModal'
 import { FloatingSelectionBar } from '../../components/common/FloatingSelectionBar/FloatingSelectionBar'
+import { Dialog } from '../../components/common/Dialog/Dialog'
 import { suggestPayeeRegex, testPattern } from '../../utils/payeeRegex'
 import { dedupeSamples, samplesFromLines } from '../../utils/payeeSamples'
 import {
@@ -376,48 +377,13 @@ export function PayeesPage() {
       </div>
 
       {showCleanupModal && (
-        <div
-          className="payees-wizard-overlay"
-          onClick={(e) => e.target === e.currentTarget && setShowCleanupModal(false)}
-        >
-          <div className="payees-wizard">
-            <div className="payees-wizard__header">
-              <span>Payee Cleanup</span>
-              <button className="payees-wizard__close" onClick={() => setShowCleanupModal(false)}>
-                ×
-              </button>
-            </div>
-            <div className="payees-wizard__body">
-              <p className="payees-wizard__label">Find similar payees to merge</p>
-              <p className="payees-wizard__sub">
-                Names are compared with the bank's store numbers, reference codes and dates set
-                aside, so postings that differ only there read as one payee.
-              </p>
-              <p className="payees-wizard__sub" style={{ marginTop: 'var(--spacing-md)' }}>
-                Sensitivity:
-              </p>
-              <div className="payees-wizard__options">
-                <button
-                  className={`payees-wizard__option ${sensitivity === 'strict' ? 'payees-wizard__option--selected' : ''}`}
-                  onClick={() => setSensitivity('strict')}
-                >
-                  <strong>Strict</strong> — Only very similar names
-                </button>
-                <button
-                  className={`payees-wizard__option ${sensitivity === 'balanced' ? 'payees-wizard__option--selected' : ''}`}
-                  onClick={() => setSensitivity('balanced')}
-                >
-                  <strong>Balanced</strong> — Recommended
-                </button>
-                <button
-                  className={`payees-wizard__option ${sensitivity === 'loose' ? 'payees-wizard__option--selected' : ''}`}
-                  onClick={() => setSensitivity('loose')}
-                >
-                  <strong>Loose</strong> — More suggestions, some may be wrong
-                </button>
-              </div>
-            </div>
-            <div className="payees-wizard__footer">
+        <Dialog
+          title="Payee Cleanup"
+          onClose={() => setShowCleanupModal(false)}
+          historyKey="payee-cleanup"
+          className="payees-wizard"
+          footer={
+            <>
               <button className="payees-btn" onClick={() => setShowCleanupModal(false)}>
                 Cancel
               </button>
@@ -428,87 +394,50 @@ export function PayeesPage() {
               >
                 {fetchDuplicates.isPending ? 'Scanning…' : 'Find Duplicates'}
               </button>
+            </>
+          }
+        >
+          <div className="payees-wizard__body">
+            <p className="payees-wizard__label">Find similar payees to merge</p>
+            <p className="payees-wizard__sub">
+              Names are compared with the bank's store numbers, reference codes and dates set aside,
+              so postings that differ only there read as one payee.
+            </p>
+            <p className="payees-wizard__sub" style={{ marginTop: 'var(--spacing-md)' }}>
+              Sensitivity:
+            </p>
+            <div className="payees-wizard__options">
+              <button
+                className={`payees-wizard__option ${sensitivity === 'strict' ? 'payees-wizard__option--selected' : ''}`}
+                onClick={() => setSensitivity('strict')}
+              >
+                <strong>Strict</strong> — Only very similar names
+              </button>
+              <button
+                className={`payees-wizard__option ${sensitivity === 'balanced' ? 'payees-wizard__option--selected' : ''}`}
+                onClick={() => setSensitivity('balanced')}
+              >
+                <strong>Balanced</strong> — Recommended
+              </button>
+              <button
+                className={`payees-wizard__option ${sensitivity === 'loose' ? 'payees-wizard__option--selected' : ''}`}
+                onClick={() => setSensitivity('loose')}
+              >
+                <strong>Loose</strong> — More suggestions, some may be wrong
+              </button>
             </div>
           </div>
-        </div>
+        </Dialog>
       )}
 
       {showWizard && currentGroup && (
-        <div
-          className="payees-wizard-overlay"
-          onClick={(e) => e.target === e.currentTarget && setShowWizard(false)}
-        >
-          <div className="payees-wizard">
-            <div className="payees-wizard__header">
-              <span>
-                Cleanup Wizard ({wizardIdx + 1} / {wizardGroups.length})
-              </span>
-              <button className="payees-wizard__close" onClick={() => setShowWizard(false)}>
-                ×
-              </button>
-            </div>
-            <div className="payees-wizard__body">
-              <p className="payees-wizard__label">
-                These payees look similar: <strong>{currentGroup.label}</strong>
-              </p>
-              <p className="payees-wizard__sub">
-                Uncheck any that don't belong, then merge the rest — you'll choose the surviving
-                name next.
-              </p>
-              <div className="payees-wizard__options scroll-list">
-                {currentGroup.payees.map((p) => {
-                  const isChecked = wizardChecked.has(p.id)
-                  const isPeeking = wizardPeekId === p.id
-                  return (
-                    <div key={p.id} className="payees-wizard__candidate">
-                      <label
-                        className={`payees-wizard__option payees-wizard__option--check ${isChecked ? 'payees-wizard__option--selected' : ''}`}
-                      >
-                        <input
-                          type="checkbox"
-                          className="payees-checkbox"
-                          checked={isChecked}
-                          onChange={() =>
-                            setWizardChecked((prev) => {
-                              const next = new Set(prev)
-                              if (next.has(p.id)) next.delete(p.id)
-                              else next.add(p.id)
-                              return next
-                            })
-                          }
-                        />
-                        <span>
-                          <strong>"{p.name}"</strong>
-                          {p.transaction_count !== undefined && (
-                            <span className="payees-wizard__option-count">
-                              ({p.transaction_count} txns)
-                            </span>
-                          )}
-                        </span>
-                        <button
-                          type="button"
-                          className={`payees-wizard__peek-btn ${isPeeking ? 'payees-wizard__peek-btn--open' : ''}`}
-                          onClick={(e) => {
-                            // Inside a <label>: without preventDefault the click
-                            // would also toggle the checkbox.
-                            e.preventDefault()
-                            setWizardPeekId(isPeeking ? null : p.id)
-                          }}
-                          title={isPeeking ? 'Hide transactions' : 'Show recent transactions'}
-                          aria-expanded={isPeeking}
-                        >
-                          {isPeeking ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                        </button>
-                      </label>
-                      {isPeeking && budgetId && (
-                        <PayeeTransactionPeek budgetId={budgetId} payeeId={p.id} />
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-            <div className="payees-wizard__footer">
+        <Dialog
+          title={`Cleanup Wizard — ${wizardIdx + 1} of ${wizardGroups.length}`}
+          onClose={() => setShowWizard(false)}
+          historyKey="payee-wizard"
+          className="payees-wizard"
+          footer={
+            <>
               <button className="payees-btn" onClick={prevWizard} disabled={wizardIdx === 0}>
                 Back
               </button>
@@ -523,9 +452,71 @@ export function PayeesPage() {
               >
                 Merge {checkedPayees.length}…
               </button>
+            </>
+          }
+        >
+          <div className="payees-wizard__body">
+            <p className="payees-wizard__label">
+              These payees look similar: <strong>{currentGroup.label}</strong>
+            </p>
+            <p className="payees-wizard__sub">
+              Uncheck any that don't belong, then merge the rest — you'll choose the surviving name
+              next.
+            </p>
+            <div className="payees-wizard__options scroll-list">
+              {currentGroup.payees.map((p) => {
+                const isChecked = wizardChecked.has(p.id)
+                const isPeeking = wizardPeekId === p.id
+                return (
+                  <div key={p.id} className="payees-wizard__candidate">
+                    <label
+                      className={`payees-wizard__option payees-wizard__option--check ${isChecked ? 'payees-wizard__option--selected' : ''}`}
+                    >
+                      <input
+                        type="checkbox"
+                        className="payees-checkbox"
+                        checked={isChecked}
+                        onChange={() =>
+                          setWizardChecked((prev) => {
+                            const next = new Set(prev)
+                            if (next.has(p.id)) next.delete(p.id)
+                            else next.add(p.id)
+                            return next
+                          })
+                        }
+                      />
+                      <span>
+                        <strong>"{p.name}"</strong>
+                        {p.transaction_count !== undefined && (
+                          <span className="payees-wizard__option-count">
+                            ({p.transaction_count} txns)
+                          </span>
+                        )}
+                      </span>
+                      <button
+                        type="button"
+                        className={`payees-wizard__peek-btn ${isPeeking ? 'payees-wizard__peek-btn--open' : ''}`}
+                        onClick={(e) => {
+                          // Inside a <label>: without preventDefault the click
+                          // would also toggle the checkbox.
+                          e.preventDefault()
+                          setWizardPeekId(isPeeking ? null : p.id)
+                        }}
+                        title={isPeeking ? 'Hide transactions' : 'Show recent transactions'}
+                        aria-expanded={isPeeking}
+                      >
+                        {isPeeking ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                      </button>
+                    </label>
+                    {isPeeking && budgetId && (
+                      <PayeeTransactionPeek budgetId={budgetId} payeeId={p.id} />
+                    )}
+                  </div>
+                )
+              })}
             </div>
           </div>
-        </div>
+        </Dialog>
       )}
 
       {showMergeModal && (

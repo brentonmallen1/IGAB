@@ -1,7 +1,6 @@
 import { parseAmountInput } from '../../utils/money'
 import type { MinimumPaymentKind } from '../../api/liabilities'
 import { useState } from 'react'
-import { X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAccounts } from '../../api/accounts'
 import { useAccountTypes } from '../../api/accountTypes'
@@ -14,9 +13,9 @@ import {
   type Liability,
   type LiabilityType,
 } from '../../api/liabilities'
-import { useFocusTrap } from '../../hooks/useFocusTrap'
 import './LiabilitySettingsModal.css'
 import { confirmAsync } from '../../stores/confirmStore'
+import { Dialog } from '../common/Dialog/Dialog'
 
 const LIABILITY_TYPES: { value: LiabilityType; label: string }[] = [
   { value: 'mortgage', label: 'Mortgage' },
@@ -27,6 +26,10 @@ const LIABILITY_TYPES: { value: LiabilityType; label: string }[] = [
   { value: 'medical', label: 'Medical' },
   { value: 'other', label: 'Other' },
 ]
+
+/** The form lives in the scroll region; its submit button lives in the pinned
+ *  footer, and `form=` is what joins them. */
+const FORM_ID = 'liability-settings-form'
 
 interface Props {
   budgetId: string
@@ -94,7 +97,6 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
   const [promoEndDate, setPromoEndDate] = useState(liability?.promo_end_date ?? '')
   const [promoDeferred, setPromoDeferred] = useState(liability?.promo_deferred_interest ?? false)
   const [error, setError] = useState<string | null>(null)
-  const trapRef = useFocusTrap<HTMLDivElement>(onClose)
 
   // A companion liability belongs to its account: the account is where it
   // lives, not a setting on it. Type is already read-only for that reason;
@@ -216,338 +218,324 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
   }
 
   return (
-    <div
-      className="liability-modal-overlay"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
+    <Dialog
+      title={liability ? 'Liability settings' : 'Track a liability'}
+      onClose={onClose}
+      historyKey="liability-settings"
+      className="liability-modal"
+      footer={
+        <>
+          {liability ? (
+            <button
+              type="button"
+              className="liability-modal__btn liability-modal__btn--danger"
+              onClick={handleDelete}
+              disabled={isPending}
+            >
+              Delete
+            </button>
+          ) : (
+            <span />
+          )}
+          <div className="liability-modal__actions">
+            <button
+              type="button"
+              className="liability-modal__btn liability-modal__btn--secondary"
+              onClick={onClose}
+              disabled={isPending}
+            >
+              Cancel
+            </button>
+            {/* The footer is pinned outside the form, so the submit button
+                reaches it by id rather than by containment. */}
+            <button
+              type="submit"
+              form={FORM_ID}
+              className="liability-modal__btn liability-modal__btn--primary"
+              disabled={isPending}
+            >
+              {isPending ? 'Saving…' : liability ? 'Save' : 'Start tracking'}
+            </button>
+          </div>
+        </>
+      }
     >
-      <div
-        ref={trapRef}
-        tabIndex={-1}
-        className="liability-modal"
-        role="dialog"
-        aria-modal
-        aria-labelledby="liability-modal-title"
-      >
-        <div className="liability-modal__header">
-          <span id="liability-modal-title" className="liability-modal__title">
-            {liability ? 'Liability settings' : 'Track a liability'}
-          </span>
-          <button className="liability-modal__close" onClick={onClose} aria-label="Close">
-            <X size={18} />
-          </button>
-        </div>
+      <form id={FORM_ID} className="liability-modal__body" onSubmit={handleSubmit}>
+        <label className="liability-modal__field">
+          <span>Name</span>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            autoFocus
+            placeholder="Car loan"
+          />
+        </label>
 
-        <form className="liability-modal__body" onSubmit={handleSubmit}>
+        <div className="liability-modal__row">
+          {mode === 'unmanaged' ? (
+            <label className="liability-modal__field">
+              <span>Type</span>
+              <select
+                value={liabilityType}
+                onChange={(e) => setLiabilityType(e.target.value as LiabilityType)}
+              >
+                {LIABILITY_TYPES.map((t) => (
+                  <option key={t.value} value={t.value}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <label className="liability-modal__field">
+              <span>Type</span>
+              <input
+                type="text"
+                value={liabilityTypeLabel(liability?.liability_type, accountTypes)}
+                readOnly
+                title="Set by the linked account's type — change it on the account"
+              />
+            </label>
+          )}
           <label className="liability-modal__field">
-            <span>Name</span>
+            <span>Interest rate (% / yr)</span>
             <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              autoFocus
-              placeholder="Car loan"
+              type="number"
+              inputMode="decimal"
+              min="0"
+              step="0.001"
+              value={rate}
+              onChange={(e) => setRate(e.target.value)}
+              placeholder="6.25"
             />
           </label>
-
-          <div className="liability-modal__row">
-            {mode === 'unmanaged' ? (
-              <label className="liability-modal__field">
-                <span>Type</span>
-                <select
-                  value={liabilityType}
-                  onChange={(e) => setLiabilityType(e.target.value as LiabilityType)}
-                >
-                  {LIABILITY_TYPES.map((t) => (
-                    <option key={t.value} value={t.value}>
-                      {t.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : (
-              <label className="liability-modal__field">
-                <span>Type</span>
-                <input
-                  type="text"
-                  value={liabilityTypeLabel(liability?.liability_type, accountTypes)}
-                  readOnly
-                  title="Set by the linked account's type — change it on the account"
-                />
-              </label>
-            )}
-            <label className="liability-modal__field">
-              <span>Interest rate (% / yr)</span>
+          <div className="liability-modal__field">
+            <span>Minimum payment</span>
+            <div
+              className="liability-modal__segmented"
+              role="radiogroup"
+              aria-label="Minimum payment"
+            >
+              <button
+                type="button"
+                role="radio"
+                aria-checked={minimumKind === 'fixed'}
+                className={minimumKind === 'fixed' ? 'is-selected' : ''}
+                onClick={() => setMinimumKind('fixed')}
+              >
+                A fixed amount
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={minimumKind === 'percent_of_balance'}
+                className={minimumKind === 'percent_of_balance' ? 'is-selected' : ''}
+                onClick={() => setMinimumKind('percent_of_balance')}
+              >
+                A percentage of the balance
+              </button>
+            </div>
+            {minimumKind === 'fixed' ? (
               <input
                 type="number"
                 inputMode="decimal"
                 min="0"
-                step="0.001"
-                value={rate}
-                onChange={(e) => setRate(e.target.value)}
-                placeholder="6.25"
+                step="0.01"
+                value={minimumPayment}
+                onChange={(e) => setMinimumPayment(e.target.value)}
+                placeholder="275.00"
+                aria-label="Minimum payment amount"
               />
-            </label>
-            <div className="liability-modal__field">
-              <span>Minimum payment</span>
-              <div
-                className="liability-modal__segmented"
-                role="radiogroup"
-                aria-label="Minimum payment"
-              >
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={minimumKind === 'fixed'}
-                  className={minimumKind === 'fixed' ? 'is-selected' : ''}
-                  onClick={() => setMinimumKind('fixed')}
-                >
-                  A fixed amount
-                </button>
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={minimumKind === 'percent_of_balance'}
-                  className={minimumKind === 'percent_of_balance' ? 'is-selected' : ''}
-                  onClick={() => setMinimumKind('percent_of_balance')}
-                >
-                  A percentage of the balance
-                </button>
-              </div>
-              {minimumKind === 'fixed' ? (
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  min="0"
-                  step="0.01"
-                  value={minimumPayment}
-                  onChange={(e) => setMinimumPayment(e.target.value)}
-                  placeholder="275.00"
-                  aria-label="Minimum payment amount"
-                />
-              ) : (
-                <div className="liability-modal__rule">
-                  <label>
-                    <span>Percent of balance</span>
-                    {/* Placeholders, not values: a guessed number that looks
+            ) : (
+              <div className="liability-modal__rule">
+                <label>
+                  <span>Percent of balance</span>
+                  {/* Placeholders, not values: a guessed number that looks
                         entered is worse than a blank one. */}
-                    <input
-                      type="number"
-                      inputMode="decimal"
-                      min="0"
-                      step="0.01"
-                      value={minimumPercent}
-                      onChange={(e) => setMinimumPercent(e.target.value)}
-                      placeholder="2"
-                    />
-                  </label>
-                  <label>
-                    <span>But at least</span>
-                    <input
-                      type="number"
-                      inputMode="decimal"
-                      min="0"
-                      step="0.01"
-                      value={minimumFloor}
-                      onChange={(e) => setMinimumFloor(e.target.value)}
-                      placeholder="35.00"
-                    />
-                  </label>
-                  <label className="liability-modal__rule-check">
-                    <input
-                      type="checkbox"
-                      checked={minimumPlusInterest}
-                      onChange={(e) => setMinimumPlusInterest(e.target.checked)}
-                    />
-                    <span>plus this month&rsquo;s interest</span>
-                  </label>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {isCompanion ? (
-            <label className="liability-modal__field">
-              <span>Account</span>
-              <input
-                type="text"
-                value={ownAccount?.name ?? ''}
-                readOnly
-                title="Set by the account this liability lives in — its balance and payments come from that ledger"
-              />
-            </label>
-          ) : (
-            <fieldset className="liability-modal__mode">
-              <legend>Where does the balance come from?</legend>
-              <label
-                className={`liability-modal__mode-option ${mode === 'managed' ? 'liability-modal__mode-option--active' : ''}`}
-              >
-                <input
-                  type="radio"
-                  name="liability-mode"
-                  checked={mode === 'managed'}
-                  onChange={() => setMode('managed')}
-                />
-                <span>
-                  <strong>An account in this budget</strong>
-                  <small>Balance and payments track the account's ledger automatically</small>
-                </span>
-              </label>
-              <label
-                className={`liability-modal__mode-option ${mode === 'unmanaged' ? 'liability-modal__mode-option--active' : ''}`}
-              >
-                <input
-                  type="radio"
-                  name="liability-mode"
-                  checked={mode === 'unmanaged'}
-                  onChange={() => setMode('unmanaged')}
-                />
-                <span>
-                  <strong>I'll enter it myself</strong>
-                  <small>
-                    For liabilities without an account here — update the balance as you pay
-                  </small>
-                </span>
-              </label>
-
-              {mode === 'managed' ? (
-                <label className="liability-modal__field liability-modal__mode-detail">
-                  <span>Account</span>
-                  <select value={accountId} onChange={(e) => setAccountId(e.target.value)}>
-                    <option value="" disabled>
-                      Choose an account…
-                    </option>
-                    {linkableAccounts.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : (
-                <label className="liability-modal__field liability-modal__mode-detail">
-                  <span>Current balance owed</span>
                   <input
                     type="number"
                     inputMode="decimal"
                     min="0"
                     step="0.01"
-                    value={balance}
-                    onChange={(e) => setBalance(e.target.value)}
-                    placeholder="9480.00"
+                    value={minimumPercent}
+                    onChange={(e) => setMinimumPercent(e.target.value)}
+                    placeholder="2"
                   />
                 </label>
-              )}
-            </fieldset>
-          )}
+                <label>
+                  <span>But at least</span>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min="0"
+                    step="0.01"
+                    value={minimumFloor}
+                    onChange={(e) => setMinimumFloor(e.target.value)}
+                    placeholder="35.00"
+                  />
+                </label>
+                <label className="liability-modal__rule-check">
+                  <input
+                    type="checkbox"
+                    checked={minimumPlusInterest}
+                    onChange={(e) => setMinimumPlusInterest(e.target.checked)}
+                  />
+                  <span>plus this month&rsquo;s interest</span>
+                </label>
+              </div>
+            )}
+          </div>
+        </div>
 
-          <details className="liability-modal__optional">
-            <summary>Loan details — enables progress &amp; term insights</summary>
-            <div className="liability-modal__row">
-              <label className="liability-modal__field">
-                <span>Origination date</span>
-                <input
-                  type="date"
-                  value={originationDate}
-                  onChange={(e) => setOriginationDate(e.target.value)}
-                />
+        {isCompanion ? (
+          <label className="liability-modal__field">
+            <span>Account</span>
+            <input
+              type="text"
+              value={ownAccount?.name ?? ''}
+              readOnly
+              title="Set by the account this liability lives in — its balance and payments come from that ledger"
+            />
+          </label>
+        ) : (
+          <fieldset className="liability-modal__mode">
+            <legend>Where does the balance come from?</legend>
+            <label
+              className={`liability-modal__mode-option ${mode === 'managed' ? 'liability-modal__mode-option--active' : ''}`}
+            >
+              <input
+                type="radio"
+                name="liability-mode"
+                checked={mode === 'managed'}
+                onChange={() => setMode('managed')}
+              />
+              <span>
+                <strong>An account in this budget</strong>
+                <small>Balance and payments track the account's ledger automatically</small>
+              </span>
+            </label>
+            <label
+              className={`liability-modal__mode-option ${mode === 'unmanaged' ? 'liability-modal__mode-option--active' : ''}`}
+            >
+              <input
+                type="radio"
+                name="liability-mode"
+                checked={mode === 'unmanaged'}
+                onChange={() => setMode('unmanaged')}
+              />
+              <span>
+                <strong>I'll enter it myself</strong>
+                <small>
+                  For liabilities without an account here — update the balance as you pay
+                </small>
+              </span>
+            </label>
+
+            {mode === 'managed' ? (
+              <label className="liability-modal__field liability-modal__mode-detail">
+                <span>Account</span>
+                <select value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+                  <option value="" disabled>
+                    Choose an account…
+                  </option>
+                  {linkableAccounts.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
+                </select>
               </label>
-              <label className="liability-modal__field">
-                <span>Original principal</span>
+            ) : (
+              <label className="liability-modal__field liability-modal__mode-detail">
+                <span>Current balance owed</span>
                 <input
                   type="number"
                   inputMode="decimal"
                   min="0"
                   step="0.01"
-                  value={originalPrincipal}
-                  onChange={(e) => setOriginalPrincipal(e.target.value)}
+                  value={balance}
+                  onChange={(e) => setBalance(e.target.value)}
+                  placeholder="9480.00"
                 />
               </label>
-              <label className="liability-modal__field">
-                <span>Term (months)</span>
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  min="1"
-                  step="1"
-                  value={termMonths}
-                  onChange={(e) => setTermMonths(e.target.value)}
-                  placeholder="360"
-                />
-              </label>
-            </div>
+            )}
+          </fieldset>
+        )}
 
-            <label className="liability-modal__promo-toggle">
+        <details className="liability-modal__optional">
+          <summary>Loan details — enables progress &amp; term insights</summary>
+          <div className="liability-modal__row">
+            <label className="liability-modal__field">
+              <span>Origination date</span>
               <input
-                type="checkbox"
-                checked={promoEnabled}
-                onChange={(e) => setPromoEnabled(e.target.checked)}
+                type="date"
+                value={originationDate}
+                onChange={(e) => setOriginationDate(e.target.value)}
               />
-              <span>
-                <strong>Promotional financing</strong>
-                <small>0% interest until a deadline — the rate above applies after it</small>
-              </span>
             </label>
-            {promoEnabled && (
-              <div className="liability-modal__row">
-                <label className="liability-modal__field">
-                  <span>Promo ends</span>
-                  <input
-                    type="date"
-                    value={promoEndDate}
-                    onChange={(e) => setPromoEndDate(e.target.value)}
-                  />
-                </label>
-                <label className="liability-modal__promo-toggle liability-modal__promo-toggle--sub">
-                  <input
-                    type="checkbox"
-                    checked={promoDeferred}
-                    onChange={(e) => setPromoDeferred(e.target.checked)}
-                  />
-                  <span>
-                    <strong>Deferred interest</strong>
-                    <small>Missing the deadline charges interest retroactively</small>
-                  </span>
-                </label>
-              </div>
-            )}
-          </details>
-
-          {error && <div className="liability-modal__error">{error}</div>}
-
-          <div className="liability-modal__footer">
-            {liability ? (
-              <button
-                type="button"
-                className="liability-modal__btn liability-modal__btn--danger"
-                onClick={handleDelete}
-                disabled={isPending}
-              >
-                Delete
-              </button>
-            ) : (
-              <span />
-            )}
-            <div className="liability-modal__actions">
-              <button
-                type="button"
-                className="liability-modal__btn liability-modal__btn--secondary"
-                onClick={onClose}
-                disabled={isPending}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="liability-modal__btn liability-modal__btn--primary"
-                disabled={isPending}
-              >
-                {isPending ? 'Saving…' : liability ? 'Save' : 'Start tracking'}
-              </button>
-            </div>
+            <label className="liability-modal__field">
+              <span>Original principal</span>
+              <input
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="0.01"
+                value={originalPrincipal}
+                onChange={(e) => setOriginalPrincipal(e.target.value)}
+              />
+            </label>
+            <label className="liability-modal__field">
+              <span>Term (months)</span>
+              <input
+                type="number"
+                inputMode="numeric"
+                min="1"
+                step="1"
+                value={termMonths}
+                onChange={(e) => setTermMonths(e.target.value)}
+                placeholder="360"
+              />
+            </label>
           </div>
-        </form>
-      </div>
-    </div>
+
+          <label className="liability-modal__promo-toggle">
+            <input
+              type="checkbox"
+              checked={promoEnabled}
+              onChange={(e) => setPromoEnabled(e.target.checked)}
+            />
+            <span>
+              <strong>Promotional financing</strong>
+              <small>0% interest until a deadline — the rate above applies after it</small>
+            </span>
+          </label>
+          {promoEnabled && (
+            <div className="liability-modal__row">
+              <label className="liability-modal__field">
+                <span>Promo ends</span>
+                <input
+                  type="date"
+                  value={promoEndDate}
+                  onChange={(e) => setPromoEndDate(e.target.value)}
+                />
+              </label>
+              <label className="liability-modal__promo-toggle liability-modal__promo-toggle--sub">
+                <input
+                  type="checkbox"
+                  checked={promoDeferred}
+                  onChange={(e) => setPromoDeferred(e.target.checked)}
+                />
+                <span>
+                  <strong>Deferred interest</strong>
+                  <small>Missing the deadline charges interest retroactively</small>
+                </span>
+              </label>
+            </div>
+          )}
+        </details>
+
+        {error && <div className="liability-modal__error">{error}</div>}
+      </form>
+    </Dialog>
   )
 }
