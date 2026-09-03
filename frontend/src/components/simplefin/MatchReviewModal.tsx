@@ -1,21 +1,13 @@
 import { useState } from 'react'
-import {
-  X,
-  Link2,
-  ChevronLeft,
-  ChevronRight,
-  RefreshCw,
-  ArrowRight,
-  AlertTriangle,
-} from 'lucide-react'
+import { ChevronLeft, ChevronRight, RefreshCw, ArrowRight, AlertTriangle } from 'lucide-react'
 import { useAcceptMatch, useRejectMatch } from '../../api/simplefin'
 import { usePayees } from '../../api/payees'
 import { useCategories } from '../../api/categories'
 import { useFormatters } from '../../hooks/useFormatters'
-import { useFocusTrap } from '../../hooks/useFocusTrap'
 import type { Transaction, TransactionMatch } from '../../types'
 import './MatchReviewModal.css'
 import { useTransaction } from '../../api/transactions'
+import { Dialog } from '../common/Dialog/Dialog'
 
 function ConfidenceBar({ score }: { score: number }) {
   const pct = Math.round(score * 100)
@@ -327,7 +319,6 @@ export function MatchReviewModal({ matches, budgetId, onClose, initialMatchId }:
     return i >= 0 ? i : 0
   })
   const [dismissed, setDismissed] = useState<Set<string>>(new Set())
-  const trapRef = useFocusTrap<HTMLDivElement>(onClose)
 
   const pending = matches.filter((m) => !dismissed.has(m.id))
   const current = pending[idx] ?? pending[0]
@@ -346,43 +337,20 @@ export function MatchReviewModal({ matches, budgetId, onClose, initialMatchId }:
   if (!current) return null
 
   return (
-    <div className="match-modal-overlay" onClick={onClose}>
-      <div
-        ref={trapRef}
-        tabIndex={-1}
-        className="match-modal"
-        role="dialog"
-        aria-modal
-        aria-labelledby="match-modal-title"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="match-modal__header">
-          <span id="match-modal-title" className="match-modal__title">
-            <Link2 size={14} />
-            Review Possible Duplicate
-          </span>
-          <div className="match-modal__header-right">
-            {pending.length > 1 && (
-              <span className="match-modal__counter">
-                {idx + 1} / {pending.length}
-              </span>
-            )}
-            <button className="match-modal__close" onClick={onClose} aria-label="Close">
-              <X size={14} />
-            </button>
-          </div>
-        </div>
-
-        <MatchCard
-          key={current.id}
-          match={current}
-          budgetId={budgetId}
-          onAccepted={() => handleDismiss(current.id)}
-          onRejected={() => handleDismiss(current.id)}
-        />
-
-        {pending.length > 1 && (
-          <div className="match-modal__nav">
+    <Dialog
+      // The queue position moves into the title: Dialog takes a string, and
+      // "3 of 7" belongs with the name of the thing being counted anyway.
+      title={
+        pending.length > 1
+          ? `Review Possible Duplicate — ${idx + 1} of ${pending.length}`
+          : 'Review Possible Duplicate'
+      }
+      onClose={onClose}
+      historyKey="match-review"
+      className="match-modal"
+      footer={
+        pending.length > 1 ? (
+          <>
             <button
               className="match-modal__nav-btn"
               onClick={() => setIdx((i) => Math.max(0, i - 1))}
@@ -397,9 +365,17 @@ export function MatchReviewModal({ matches, budgetId, onClose, initialMatchId }:
             >
               Next <ChevronRight size={14} />
             </button>
-          </div>
-        )}
-      </div>
-    </div>
+          </>
+        ) : undefined
+      }
+    >
+      <MatchCard
+        key={current.id}
+        match={current}
+        budgetId={budgetId}
+        onAccepted={() => handleDismiss(current.id)}
+        onRejected={() => handleDismiss(current.id)}
+      />
+    </Dialog>
   )
 }

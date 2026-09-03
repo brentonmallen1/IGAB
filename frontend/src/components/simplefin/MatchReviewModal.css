@@ -1,64 +1,9 @@
-.match-modal-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: var(--z-overlay);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.4);
-}
-
-.match-modal {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
-  padding: var(--spacing-lg);
-  width: 580px;
-  max-width: 95vw;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-}
-
-.match-modal__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: var(--spacing-md);
-}
-
-.match-modal__title {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-xs);
-  font-weight: 600;
-  font-size: var(--font-size-sm);
-  color: var(--color-text);
-}
-
-.match-modal__header-right {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-}
-
-.match-modal__counter {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-muted);
-}
-
-.match-modal__close {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--color-text-muted);
-  padding: 4px;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-}
-
-.match-modal__close:hover {
-  color: var(--color-text);
-  background: var(--hover-bg);
+/* The overlay, panel, header and footer come from common/Dialog — which also
+   brings a scroll region. This modal had `overflow: hidden` and no max-height,
+   so a tall match card was clipped outright with no way to reach the rest.
+   0,2,0 so the width beats `.dialog--md`'s 520. */
+.dialog.match-modal {
+  --dialog-w: 580px;
 }
 
 .match-modal__card {
@@ -219,15 +164,6 @@
   font-size: var(--font-size-xs);
 }
 
-.match-modal__hint {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-muted);
-  border-top: 1px solid var(--color-border);
-  padding-top: var(--spacing-sm);
-  margin: 0;
-  line-height: 1.5;
-}
-
 .match-modal__actions {
   display: flex;
   gap: var(--spacing-sm);
@@ -270,11 +206,9 @@
   background: var(--hover-bg);
 }
 
-.match-modal__nav {
-  display: flex;
+/* Dialog's .dialog__footer carries the rule and the padding. */
+.dialog.match-modal .dialog__footer {
   justify-content: space-between;
-  border-top: 1px solid var(--color-border);
-  padding-top: var(--spacing-sm);
 }
 
 .match-modal__nav-btn {

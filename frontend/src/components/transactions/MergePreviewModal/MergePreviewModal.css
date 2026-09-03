@@ -1,55 +1,9 @@
-.merge-modal-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: var(--z-overlay);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.4);
-}
-
-.merge-modal {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
-  padding: var(--spacing-lg);
-  width: 560px;
-  max-width: 95vw;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-md);
-}
-
-.merge-modal__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.merge-modal__title {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-xs);
-  font-weight: 600;
-  font-size: var(--font-size-sm);
-  color: var(--color-text);
-}
-
-.merge-modal__close {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--color-text-muted);
-  padding: 4px;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-}
-
-.merge-modal__close:hover {
-  color: var(--color-text);
-  background: var(--hover-bg);
+/* The overlay, panel, header and footer come from common/Dialog — which also
+   brings the scroll region this modal never had: it capped nothing, so a tall
+   two-column diff ran off the viewport with the buttons out of reach.
+   0,2,0 so the width beats `.dialog--md`'s 520. */
+.dialog.merge-modal {
+  --dialog-w: 560px;
 }
 
 .merge-modal__hint {
@@ -162,12 +116,9 @@
   border-radius: 4px;
 }
 
-.merge-modal__footer {
-  display: flex;
-  gap: var(--spacing-sm);
+/* Dialog's .dialog__footer carries the rule and the padding. */
+.dialog.merge-modal .dialog__footer {
   justify-content: flex-end;
-  border-top: 1px solid var(--color-border);
-  padding-top: var(--spacing-sm);
 }
 
 .merge-modal__btn {

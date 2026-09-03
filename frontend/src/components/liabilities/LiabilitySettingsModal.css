@@ -1,58 +1,12 @@
-.liability-modal-overlay {
-  position: fixed;
-  inset: 0;
-  background-color: rgba(0, 0, 0, 0.55);
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding-top: 60px;
-  z-index: var(--z-overlay);
-}
+/* The overlay, panel, header and footer come from common/Dialog — which also
+   pins the footer, where before it scrolled away with the form. 520 is exactly
+   `.dialog--md`, so no width override is needed. */
 
-.liability-modal {
-  background-color: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
-  box-shadow: var(--shadow-lg);
-  width: 520px;
-  max-width: calc(100vw - 32px);
-  max-height: calc(var(--app-h) - 100px);
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-
-.liability-modal__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--spacing-md) var(--spacing-lg);
-  border-bottom: 1px solid var(--border-color);
-}
-
-.liability-modal__title {
-  font-size: var(--font-size-base);
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.liability-modal__close {
-  color: var(--text-muted);
-  padding: 4px;
-  display: flex;
-  align-items: center;
-}
-
-.liability-modal__close:hover {
-  color: var(--text-primary);
-}
-
+/* Dialog's scroll region supplies the padding and the scrolling. */
 .liability-modal__body {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-md);
-  padding: var(--spacing-lg);
 }
 
 .liability-modal__row {
@@ -197,11 +151,10 @@
   color: var(--color-negative);
 }
 
-.liability-modal__footer {
-  display: flex;
-  align-items: center;
+/* Dialog's .dialog__footer carries the rule and the padding; this only says
+   how Delete and the Cancel/Save pair share the row. */
+.dialog.liability-modal .dialog__footer {
   justify-content: space-between;
-  margin-top: var(--spacing-sm);
 }
 
 .liability-modal__actions {

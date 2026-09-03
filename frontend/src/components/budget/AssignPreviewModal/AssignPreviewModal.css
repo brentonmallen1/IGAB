@@ -1,59 +1,15 @@
-.assign-preview-overlay {
-  position: fixed;
-  inset: 0;
-  background-color: rgba(0, 0, 0, 0.55);
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding-top: 80px;
-  z-index: var(--z-overlay);
+/* The overlay, panel, header and footer come from common/Dialog; only this
+   preview's own contents live here. 0,2,0 so the width beats `.dialog--md`'s
+   520 regardless of which stylesheet loads last. */
+.dialog.assign-preview-modal {
+  --dialog-w: 560px;
 }
 
-.assign-preview-modal {
-  background-color: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
-  box-shadow: var(--shadow-lg);
-  width: 560px;
-  max-width: calc(100vw - 32px);
-  max-height: calc(var(--app-h) - 120px);
+/* Dialog's scroll region is the scroller; the body is layout only. */
+.assign-preview-modal__body {
   display: flex;
   flex-direction: column;
-}
-
-.assign-preview-modal__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--spacing-md) var(--spacing-lg);
-  border-bottom: 1px solid var(--border-color);
-  flex-shrink: 0;
-}
-
-.assign-preview-modal__title {
-  font-size: var(--font-size-base);
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.assign-preview-modal__close {
-  color: var(--text-muted);
-  padding: 4px;
-  border-radius: var(--border-radius-sm);
-  display: flex;
-  align-items: center;
-  transition: color var(--transition-fast);
-}
-
-.assign-preview-modal__close:hover {
-  color: var(--text-primary);
-}
-
-.assign-preview-modal__body {
-  padding: var(--spacing-lg);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  flex: 1;
+  gap: var(--spacing-md);
 }
 
 .assign-preview-modal__loading,
@@ -119,17 +75,10 @@
   line-height: 1.5;
 }
 
-.assign-preview-modal__footer {
-  display: flex;
-  align-items: center;
+/* Dialog's .dialog__footer carries the rule and the padding; this only says
+   how the TBA summary and the buttons share the row. */
+.dialog.assign-preview-modal .dialog__footer {
   justify-content: space-between;
-  padding: var(--spacing-md) var(--spacing-lg);
-  border-top: 1px solid var(--border-color);
-  flex-shrink: 0;
-}
-
-.assign-preview-modal__footer--empty {
-  justify-content: flex-end;
 }
 
 .assign-preview-modal__tba-summary {
@@ -198,14 +147,9 @@
 }
 
 @media (max-width: 640px) {
-  .assign-preview-overlay {
-    padding-top: 24px;
-  }
-
-  .assign-preview-modal__footer {
+  .dialog.assign-preview-modal .dialog__footer {
     flex-direction: column;
     align-items: stretch;
-    gap: var(--spacing-sm);
   }
 
   .assign-preview-modal__actions {

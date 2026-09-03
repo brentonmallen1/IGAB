@@ -1,59 +1,13 @@
-.shortcut-help-overlay {
-  position: fixed;
-  inset: 0;
-  background-color: rgba(0, 0, 0, 0.45);
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding-top: min(12vh, 96px);
-  z-index: var(--z-overlay);
+/* The overlay, panel and header come from common/Dialog. 0,2,0 so the width
+   beats `.dialog--md`'s 520 regardless of which stylesheet loads last. */
+.dialog.shortcut-help {
+  --dialog-w: 420px;
 }
 
-.shortcut-help {
-  width: 420px;
-  max-width: calc(100vw - 32px);
-  max-height: calc(var(--app-h) - 160px);
-  background-color: var(--bg-elevated);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-lg);
-  box-shadow: var(--shadow-lg);
+/* Dialog's scroll region is the scroller; this is layout only. */
+.shortcut-help__body {
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-}
-
-.shortcut-help__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--spacing-md) var(--spacing-lg);
-  border-bottom: 1px solid var(--border-color);
-  flex-shrink: 0;
-}
-
-.shortcut-help__title {
-  font-size: var(--font-size-base);
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.shortcut-help__close {
-  color: var(--text-muted);
-  padding: 4px;
-  border-radius: var(--border-radius-sm);
-  display: flex;
-  align-items: center;
-  transition: color var(--transition-fast);
-}
-
-.shortcut-help__close:hover {
-  color: var(--text-primary);
-}
-
-.shortcut-help__body {
-  padding: var(--spacing-md) var(--spacing-lg) var(--spacing-lg);
-  overflow-y: auto;
-  overscroll-behavior: contain;
 }
 
 .shortcut-help__group + .shortcut-help__group {
