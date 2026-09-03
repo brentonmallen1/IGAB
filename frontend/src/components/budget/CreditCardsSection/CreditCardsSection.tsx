@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Fragment, useId, useState } from 'react'
 import {
   AlertCircle,
   ChevronDown,
@@ -20,6 +20,7 @@ import {
   debtMovement,
   emptyLegsNote,
   pendingNote,
+  reserveLegs,
   reserveNote,
   rideMonths,
   otherCredits,
@@ -74,20 +75,18 @@ function ReserveLegs({
   formatMonth: (m: string) => string
 }) {
   const [historyOpen, setHistoryOpen] = useState(false)
+  const historyId = useId()
   const rides = rideMonths(card)
   const otherInflow = otherCredits(card)
   const pending = pendingNote(card, formatMoney)
-  const legs = [
-    { label: 'Assigned to this card', value: card.assigned, sign: '+' },
-    { label: 'Set aside by funded spending', value: card.reserved, sign: '+' },
-    { label: 'Released by refunds', value: card.released, sign: '−' },
-    { label: 'Refunds beyond what was reserved', value: card.residual, sign: '−' },
-    { label: 'Paid to the card', value: card.payments, sign: '−' },
-  ].filter((leg) => leg.value !== 0)
+  const legs = reserveLegs(card)
 
   return (
     <div className="credit-cards__legs">
       <dl className="credit-cards__legs-list">
+        <div className="credit-cards__leg credit-cards__leg--heading">
+          <dt>All time</dt>
+        </div>
         {legs.length === 0 && (
           <div className="credit-cards__leg credit-cards__leg--empty">
             <dt>{emptyLegsNote(card)}</dt>
@@ -173,7 +172,8 @@ function ReserveLegs({
         </p>
       )}
       {card.riding !== 0 && (
-        <div className="credit-cards__legs-note">
+        <div className="credit-cards__legs-note credit-cards__riding">
+          <p className="section-label credit-cards__riding-title">Riding debt</p>
           <p>
             {formatMoney(card.riding)} of spending rode onto this card when a month ended short. It
             sits outside the total above.
@@ -224,6 +224,7 @@ function ReserveLegs({
         type="button"
         className="credit-cards__history-btn"
         aria-expanded={historyOpen}
+        aria-controls={historyId}
         onClick={() => setHistoryOpen((v) => !v)}
       >
         {historyOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
@@ -231,6 +232,7 @@ function ReserveLegs({
       </button>
       {historyOpen && (
         <ReserveHistory
+          id={historyId}
           budgetId={budgetId}
           month={month}
           card={card}
@@ -252,18 +254,23 @@ function ReserveLegs({
  * exists to end.
  */
 function ReserveHistory({
+  id,
   budgetId,
   month,
   card,
   formatMoney,
   formatMonth,
 }: {
+  id: string
   budgetId: string
   month: string
   card: CardStatus
   formatMoney: (n: number) => string
   formatMonth: (m: string) => string
 }) {
+  // One row open at a time: this is a dense table read at a glance, and a
+  // column of expanded rows is the wall of text it is meant to replace.
+  const [expanded, setExpanded] = useState<string | null>(null)
   const { data, isPending, isError } = useCardTimeline(budgetId, card.account_id, month)
   if (isPending) {
     return <p className="credit-cards__legs-note">Reading the card's history…</p>
@@ -271,15 +278,19 @@ function ReserveHistory({
   if (isError || !data) {
     return <p className="credit-cards__legs-note">The history could not be loaded.</p>
   }
+  // Newest first. The server walks forward from the first month anything moved,
+  // which put the months you opened this to look at — the recent ones — at the
+  // bottom of a scroll well ten years long.
+  const months = [...data.months].reverse()
   return (
-    <div className="credit-cards__history">
+    <div className="credit-cards__history" id={id}>
       {data.breach && (
         <p className="credit-cards__history-breach">
           {breachSentence(data.breach, formatMoney, formatMonth)}
         </p>
       )}
       <div
-        className="credit-cards__history-scroll"
+        className="credit-cards__history-scroll scroll-list"
         role="table"
         aria-label={`Ready to pay by month for ${card.name}`}
       >
@@ -295,25 +306,84 @@ function ReserveHistory({
             Balance
           </span>
         </div>
-        {data.months.map((m) => (
-          <div
-            className={`credit-cards__history-row${data.breach?.month === m.month ? ' credit-cards__history-row--breach' : ''}`}
-            role="row"
-            key={m.month}
-            title={monthLegsTitle(m, formatMoney)}
-          >
-            <span role="cell">{formatMonth(m.month)}</span>
-            <span role="cell" className="credit-cards__col--num tabular">
-              {m.reserve_delta === 0 ? '—' : formatMoney(m.reserve_delta)}
-            </span>
-            <span role="cell" className="credit-cards__col--num tabular">
-              {formatMoney(m.set_aside)}
-            </span>
-            <span role="cell" className="credit-cards__col--num tabular">
-              {formatMoney(m.balance)}
-            </span>
-          </div>
-        ))}
+        {months.map((m, i) => {
+          const year = m.month.slice(0, 4)
+          const newYear = i === 0 || months[i - 1].month.slice(0, 4) !== year
+          const open = expanded === m.month
+          const legs = reserveLegs(m)
+          const detailId = `${id}-${m.month}`
+          return (
+            <Fragment key={m.month}>
+              {/* Scrolling down walks backwards in time, so each year is
+                  announced as it is entered. */}
+              {newYear && (
+                <div className="credit-cards__history-year section-label" role="row">
+                  <span role="cell">{year}</span>
+                </div>
+              )}
+              <div
+                className={[
+                  'credit-cards__history-row',
+                  // Striped on the data rows' own count. :nth-child would have
+                  // counted the sticky header and every year separator.
+                  i % 2 === 1 ? 'credit-cards__history-row--alt' : '',
+                  data.breach?.month === m.month ? 'credit-cards__history-row--breach' : '',
+                  open ? 'credit-cards__history-row--open' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+                role="row"
+              >
+                <span role="cell">
+                  {/* A button inside the cell, not instead of it: the row keeps
+                      its table semantics. The legs used to live in a `title`
+                      tooltip, which on an installed iOS PWA is unreachable. */}
+                  <button
+                    type="button"
+                    className="credit-cards__history-expand"
+                    aria-expanded={open}
+                    aria-controls={detailId}
+                    onClick={() => setExpanded(open ? null : m.month)}
+                  >
+                    {open ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+                    {formatMonth(m.month)}
+                  </button>
+                </span>
+                <span role="cell" className="credit-cards__col--num tabular">
+                  {m.reserve_delta === 0 ? '—' : formatMoney(m.reserve_delta)}
+                </span>
+                <span role="cell" className="credit-cards__col--num tabular">
+                  {formatMoney(m.set_aside)}
+                </span>
+                <span role="cell" className="credit-cards__col--num tabular">
+                  {formatMoney(m.balance)}
+                </span>
+              </div>
+              {open && (
+                <div className="credit-cards__history-detail" role="row" id={detailId}>
+                  <span role="cell">
+                    {legs.length === 0 ? (
+                      <p className="credit-cards__history-detail-empty">
+                        Nothing moved through the reserve this month.
+                      </p>
+                    ) : (
+                      <dl className="credit-cards__legs-list">
+                        {legs.map((leg) => (
+                          <div className="credit-cards__leg" key={leg.label}>
+                            <dt>{leg.label}</dt>
+                            <dd className="tabular">
+                              {leg.sign} {formatMoney(Math.abs(leg.value))}
+                            </dd>
+                          </div>
+                        ))}
+                      </dl>
+                    )}
+                  </span>
+                </div>
+              )}
+            </Fragment>
+          )
+        })}
       </div>
     </div>
   )
@@ -337,21 +407,6 @@ function breachSentence(
   return `Ready to pay first went below zero in ${formatMonth(breach.month)}, ${formatMoney(
     breach.set_aside_before
   )} → ${formatMoney(breach.set_aside_after)}${cause}.`
-}
-
-/** The row's tooltip: the month's non-zero legs, served values verbatim. */
-function monthLegsTitle(
-  m: { assigned: number; reserved: number; released: number; residual: number; payments: number },
-  formatMoney: (n: number) => string
-): string {
-  const parts = [
-    m.assigned !== 0 && `assigned ${formatMoney(m.assigned)}`,
-    m.reserved !== 0 && `reserved ${formatMoney(m.reserved)}`,
-    m.released !== 0 && `released ${formatMoney(m.released)}`,
-    m.residual !== 0 && `residual ${formatMoney(m.residual)}`,
-    m.payments !== 0 && `paid ${formatMoney(m.payments)}`,
-  ].filter(Boolean)
-  return parts.length ? parts.join(', ') : 'nothing moved through the reserve'
 }
 
 export function CreditCardsSection({ budgetId, month }: { budgetId: string; month: string }) {
