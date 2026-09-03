@@ -18,12 +18,11 @@ import {
   type ApplyPreview,
   type PlanCadence,
 } from '../../../api/categoryPlans'
-import { useCategories, useCategoryGroups } from '../../../api/categories'
-import { useTargetsByBudget } from '../../../api/targets'
 import { useDebouncedValue } from '../../../hooks/useDebouncedValue'
 import { useFormatters } from '../../../hooks/useFormatters'
-import { renderableCategoryIds } from '../../budget/budgetGroups'
 import { AmountInput } from '../../common/AmountInput/AmountInput'
+import { Surface } from '../../common/Surface'
+import { ImportPanel } from './ImportPanel'
 import { centsToInputString } from '../../../utils/amountExpression'
 import { fromCents } from '../../../utils/money'
 import { randomUUID } from '../../../utils/uuid'
@@ -40,7 +39,6 @@ import {
   paycheckPlannedCents,
   payloadToDraft,
   resizePaychecks,
-  seedCentsFromTarget,
   type DraftItem,
   type PlanDraft,
 } from './plannerMath'
@@ -320,7 +318,7 @@ export function CategoryPlanner() {
           const remaining = income - colPlanned
           const overridden = doc.paychecks[pi].income_override_cents !== null
           return (
-            <section key={paycheck.id} className="planner__column surface surface--sunken">
+            <Surface key={paycheck.id} as="section" variant="sunken" className="planner__column">
               <header className="planner__column-head">
                 <h3>Paycheck {pi + 1}</h3>
                 <div
@@ -446,12 +444,12 @@ export function CategoryPlanner() {
                   <dd className="tabular">{money(remaining)}</dd>
                 </div>
               </dl>
-            </section>
+            </Surface>
           )
         })}
       </div>
 
-      <dl className="planner__summary surface surface--chrome">
+      <Surface as="dl" variant="chrome" className="planner__summary">
         <div>
           <dt>Take-home</dt>
           <dd className="tabular">{money(doc.monthly_income_cents)}</dd>
@@ -473,7 +471,7 @@ export function CategoryPlanner() {
           <dt>{leftToPlan < 0 ? 'Over by' : 'Left to plan'}</dt>
           <dd className="tabular">{money(Math.abs(leftToPlan))}</dd>
         </div>
-      </dl>
+      </Surface>
 
       <ImportPanel
         budgetId={budgetId}
@@ -683,143 +681,6 @@ function ItemRow(props: {
   )
 }
 
-// ── pull in budget categories ───────────────────────────────────────────────
-
-function ImportPanel(props: {
-  budgetId: string
-  linkedIds: Set<string>
-  paycheckCount: number
-  onImport: (items: DraftItem[], toPaycheck: number) => void
-}) {
-  const [open, setOpen] = useState(false)
-  const [picked, setPicked] = useState<Set<string>>(new Set())
-  const [destination, setDestination] = useState(0)
-  const groups = useCategoryGroups(open ? props.budgetId : null)
-  const categories = useCategories(open ? props.budgetId : null)
-  const targets = useTargetsByBudget(open ? props.budgetId : null)
-
-  const candidates = useMemo(() => {
-    if (!groups.data || !categories.data) return []
-    const renderable = renderableCategoryIds(groups.data, categories.data)
-    return categories.data.filter(
-      (c) =>
-        renderable.has(c.id) &&
-        c.linked_liability_id === null &&
-        !c.is_archived &&
-        !props.linkedIds.has(c.id)
-    )
-  }, [groups.data, categories.data, props.linkedIds])
-
-  const targetByCategory = useMemo(
-    () => new Map((targets.data ?? []).map((t) => [t.category_id, t])),
-    [targets.data]
-  )
-
-  if (!open) {
-    return (
-      <div className="planner__panel-toggle">
-        <button type="button" className="guide-link-button" onClick={() => setOpen(true)}>
-          Pull in budget categories
-        </button>
-      </div>
-    )
-  }
-
-  function importPicked() {
-    const items: DraftItem[] = candidates
-      .filter((c) => picked.has(c.id))
-      .map((c) => {
-        const seed = seedCentsFromTarget(targetByCategory.get(c.id))
-        return {
-          id: randomUUID(),
-          categoryId: c.id,
-          name: c.name,
-          dueDay: '',
-          amount: seed === null ? '' : centsToInputString(seed),
-        }
-      })
-    props.onImport(items, destination)
-    setPicked(new Set())
-    setOpen(false)
-  }
-
-  return (
-    <div className="planner__panel surface surface--sunken">
-      <div className="planner__panel-head">
-        <h4>Pull in budget categories</h4>
-        <button
-          type="button"
-          className="tool__icon-button"
-          aria-label="Close"
-          onClick={() => setOpen(false)}
-        >
-          <X size={13} />
-        </button>
-      </div>
-      {categories.isLoading || groups.isLoading ? (
-        <p className="tool__hint">Loading categories…</p>
-      ) : candidates.length === 0 ? (
-        <p className="tool__hint">
-          Every category the budget offers is already in this plan — or the budget has none yet.
-        </p>
-      ) : (
-        <>
-          <p className="tool__hint">
-            Amounts start from each category’s monthly target where it has one; everything else
-            starts blank.
-          </p>
-          <div className="planner__import-list">
-            {candidates.map((c) => (
-              <label key={c.id} className="planner__import-item">
-                <input
-                  type="checkbox"
-                  checked={picked.has(c.id)}
-                  onChange={(e) => {
-                    const next = new Set(picked)
-                    if (e.target.checked) next.add(c.id)
-                    else next.delete(c.id)
-                    setPicked(next)
-                  }}
-                />
-                <span>{c.name}</span>
-              </label>
-            ))}
-          </div>
-          <div className="planner__panel-actions">
-            <button
-              type="button"
-              className="guide-link-button"
-              onClick={() => setPicked(new Set(candidates.map((c) => c.id)))}
-            >
-              Select all
-            </button>
-            <select
-              aria-label="Which paycheck the rows go under"
-              value={destination}
-              onChange={(e) => setDestination(Number(e.target.value))}
-            >
-              {Array.from({ length: props.paycheckCount }, (_, i) => (
-                <option key={i} value={i}>
-                  Under Paycheck {i + 1}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              className="guide-link-button"
-              disabled={picked.size === 0}
-              onClick={importPicked}
-            >
-              <Plus size={12} aria-hidden /> Add {picked.size || ''}{' '}
-              {picked.size === 1 ? 'category' : 'categories'}
-            </button>
-          </div>
-        </>
-      )}
-    </div>
-  )
-}
-
 // ── apply to budget ─────────────────────────────────────────────────────────
 
 const APPLY_COPY: Record<ApplyEntry['kind'], string> = {
@@ -906,9 +767,11 @@ function ApplyPanel(props: {
   }
 
   return (
-    <div className="planner__panel surface surface--sunken">
-      <div className="planner__panel-head">
-        <h4>What applying this plan does</h4>
+    <Surface
+      variant="sunken"
+      className="planner__panel"
+      title="What applying this plan does"
+      actions={
         <button
           type="button"
           className="tool__icon-button"
@@ -917,8 +780,9 @@ function ApplyPanel(props: {
         >
           <X size={13} />
         </button>
-      </div>
-      <ul className="planner__apply-list">
+      }
+    >
+      <ul className="planner__apply-list scroll-list">
         {preview.entries.map((entry, i) => (
           <li key={i} className={entry.kind.startsWith('skip') ? 'planner__apply--skip' : ''}>
             <span className="planner__apply-name">{entry.name || '(unnamed row)'}</span>
@@ -943,6 +807,6 @@ function ApplyPanel(props: {
           <Check size={12} aria-hidden /> Apply to budget
         </button>
       </div>
-    </div>
+    </Surface>
   )
 }

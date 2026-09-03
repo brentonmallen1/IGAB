@@ -1,0 +1,187 @@
+/* The grouped multi-select list. No fill of its own — it takes the surface of
+   whatever holds it (an anchored dropdown, a dialog body), so only the search
+   row's sticky background names a role. */
+
+.gms {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  font-size: var(--font-size-sm);
+}
+
+.gms__search-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-bottom: 1px solid var(--edge);
+  flex-shrink: 0;
+}
+
+.gms__search {
+  flex: 1;
+  /* Without this the input keeps its intrinsic width — min-width defaults to
+     auto on a flex item — and the bulk actions get pushed past the right edge. */
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  outline: none;
+}
+
+.gms__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex-shrink: 0;
+}
+
+.gms__count {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.gms__action-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+  white-space: nowrap;
+  padding: 0;
+}
+
+.gms__action-btn:hover {
+  color: var(--text-primary);
+}
+
+.gms__list {
+  /* Height cap comes from .scroll-list; hosts set --scroll-list-max. */
+  padding: var(--spacing-xs) 0;
+}
+
+.gms__empty {
+  padding: var(--spacing-sm);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* ── group header ────────────────────────────────────────────────────────── */
+
+.gms__group-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  width: 100%;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: none;
+  border: none;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.gms__group-header:hover {
+  background: var(--row-hover-bg);
+  color: var(--text-primary);
+}
+
+.gms__group-name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* The tally is the answer to "did select-all take the whole group?" without
+   counting checkmarks down the list. */
+.gms__group-tally {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.gms__group-check {
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 1px solid var(--edge-strong);
+  border-radius: 3px;
+  font-size: var(--font-size-2xs);
+  color: var(--text-inverse);
+}
+
+.gms__group-header--selected .gms__group-check {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.gms__group-header--partial .gms__group-check {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  opacity: 0.6;
+}
+
+.gms__group-partial-dash {
+  line-height: 0;
+  font-size: var(--font-size-xs);
+}
+
+/* ── option row ──────────────────────────────────────────────────────────── */
+
+.gms__option {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  cursor: pointer;
+  color: var(--text-primary);
+  transition: background var(--transition-fast);
+}
+
+.gms__option:hover,
+.gms__option--highlighted {
+  background: var(--row-hover-bg);
+}
+
+.gms__option--checked {
+  color: var(--color-accent);
+}
+
+.gms__check {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 1px solid var(--edge-strong);
+  border-radius: 3px;
+  color: var(--color-accent);
+}
+
+.gms__option--checked .gms__check {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--text-inverse);
+}
+
+/* Wrap rather than truncate: these are the names you are picking between, so
+   hiding the end of one defeats the control. `anywhere` covers a long name
+   with no spaces, which would otherwise push the row past the panel edge. */
+.gms__option-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}

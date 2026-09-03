@@ -185,7 +185,7 @@ export function WishlistPanel() {
       )}
 
       <Surface as="div" className="guide-wishlist__card">
-        <div className="guide-wishlist__bar surface surface--chrome">
+        <Surface as="div" variant="chrome" sticky className="guide-wishlist__bar">
           <input
             type="search"
             className="guide-wishlist__search"
@@ -226,51 +226,15 @@ export function WishlistPanel() {
           <button
             type="button"
             className="guide-icon-button"
-            onClick={() => setSettingsOpen((o) => !o)}
+            onClick={() => setSettingsOpen(true)}
             aria-label="Wishlist settings"
             title="Cooling-off and review defaults"
-            aria-expanded={settingsOpen}
           >
             <Settings2 size={14} />
           </button>
-        </div>
+        </Surface>
 
         <div className="guide-wishlist__body">
-          {settingsOpen && (
-            <form
-              className="guide-wishlist__settings"
-              onSubmit={(e) => {
-                e.preventDefault()
-                const form = new FormData(e.currentTarget)
-                setSettings.mutate({
-                  cooling_days: Number(form.get('cooling_days')),
-                  review_after_days: Number(form.get('review_after_days')),
-                })
-                setSettingsOpen(false)
-              }}
-            >
-              <label className="tool__field tool__field--inline">
-                <span>Cooling-off for new wishes, days</span>
-                <input
-                  name="cooling_days"
-                  inputMode="numeric"
-                  defaultValue={data.settings.cooling_days}
-                />
-              </label>
-              <label className="tool__field tool__field--inline">
-                <span>Ask "still want it?" after, days</span>
-                <input
-                  name="review_after_days"
-                  inputMode="numeric"
-                  defaultValue={data.settings.review_after_days}
-                />
-              </label>
-              <button type="submit" className="guide-link-button">
-                Save
-              </button>
-            </form>
-          )}
-
           {data.items.length === 0 ? (
             <p className="guide-wishlist__empty">
               Nothing on the list yet. Add something you want — and give it an envelope, so the
@@ -311,7 +275,7 @@ export function WishlistPanel() {
                     {fmt.formatMoney(Number(data.drains.total))} moved out of wish envelopes this
                     month.
                   </p>
-                  <ul className="wish-drains__list">
+                  <ul className="wish-drains__list scroll-list">
                     {data.drains.moves.map((m) => (
                       <li key={m.move_id} className="wish-drains__row">
                         <span className="wish-drains__date">
@@ -385,6 +349,58 @@ export function WishlistPanel() {
           defaultCoolingDays={data.settings.cooling_days}
           onClose={() => setEditing(null)}
         />
+      )}
+      {settingsOpen && (
+        <GuideDialog
+          title="Wishlist settings"
+          onClose={() => setSettingsOpen(false)}
+          historyKey="wishlist-settings"
+        >
+          <form
+            className="guide-wishlist__settings"
+            onSubmit={(e) => {
+              e.preventDefault()
+              const form = new FormData(e.currentTarget)
+              setSettings.mutate({
+                cooling_days: Number(form.get('cooling_days')),
+                review_after_days: Number(form.get('review_after_days')),
+              })
+              setSettingsOpen(false)
+            }}
+          >
+            <label className="tool__field">
+              <span>Cooling-off for new wishes, days</span>
+              <input
+                name="cooling_days"
+                inputMode="numeric"
+                defaultValue={data.settings.cooling_days}
+              />
+            </label>
+            <label className="tool__field">
+              <span>Ask "still want it?" after, days</span>
+              <input
+                name="review_after_days"
+                inputMode="numeric"
+                defaultValue={data.settings.review_after_days}
+              />
+            </label>
+            <p className="wish-form__hint">
+              Both apply to wishes you add from now on — nothing already on the list moves.
+            </p>
+            <div className="wish-form__actions">
+              <button
+                type="button"
+                className="guide-link-button"
+                onClick={() => setSettingsOpen(false)}
+              >
+                Cancel
+              </button>
+              <button type="submit" className="guide-checkup__run">
+                Save
+              </button>
+            </div>
+          </form>
+        </GuideDialog>
       )}
       {adding === 'project' && <ProjectForm budgetId={budgetId} onClose={() => setAdding(null)} />}
       {editingProject && (

@@ -9,8 +9,8 @@
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--text-muted);
-  background-color: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-color);
+  background-color: var(--surface-chrome);
+  border-bottom: 1px solid var(--edge-strong);
   text-align: left;
   cursor: pointer;
   transition: color var(--transition-fast);
@@ -29,7 +29,8 @@
 .collapsible__count {
   margin-left: var(--spacing-xs);
   padding: 1px 6px;
-  background-color: var(--bg-tertiary);
+  background-color: var(--surface-sunken);
+  border: 1px solid var(--edge);
   border-radius: 10px;
   font-size: var(--font-size-xs);
   color: var(--text-muted);
