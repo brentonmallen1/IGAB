@@ -1,14 +1,14 @@
-import { useState, useRef, useEffect, type KeyboardEvent } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronDown, X, Check } from 'lucide-react'
+import { ChevronDown, X } from 'lucide-react'
 import { useAnchoredPosition } from '../../../hooks/useAnchoredPosition'
+import {
+  GroupedMultiSelect,
+  type MultiSelectOption,
+} from '../../common/GroupedMultiSelect/GroupedMultiSelect'
 import './MultiSelectCombobox.css'
 
-export interface MultiSelectOption {
-  id: string
-  label: string
-  group?: string
-}
+export type { MultiSelectOption }
 
 interface Props {
   selectedIds: string[]
@@ -21,6 +21,12 @@ interface Props {
   title?: string
 }
 
+/**
+ * The report bar's filter control: a compact trigger, and the shared
+ * GroupedMultiSelect hanging off it in an anchored dropdown. The list itself —
+ * search, bulk actions, tri-state groups — lives in common/ so the planner's
+ * import dialog and this filter cannot drift apart.
+ */
 export function MultiSelectCombobox({
   selectedIds,
   options,
@@ -31,11 +37,8 @@ export function MultiSelectCombobox({
   title,
 }: Props) {
   const [open, setOpen] = useState(false)
-  const [query, setQuery] = useState('')
   const triggerRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
-  const [highlightedIndex, setHighlightedIndex] = useState(0)
 
   // 220 is this filter's floor: the trigger is narrow in the report bar but
   // the option labels (account and category names) are not.
@@ -44,67 +47,20 @@ export function MultiSelectCombobox({
     minWidth: 220,
   })
 
-  const filtered = options.filter((o) => o.label.toLowerCase().includes(query.toLowerCase()))
-
-  const grouped = filtered.reduce<{ group: string; items: MultiSelectOption[] }[]>((acc, opt) => {
-    const g = opt.group ?? ''
-    const existing = acc.find((a) => a.group === g)
-    if (existing) existing.items.push(opt)
-    else acc.push({ group: g, items: [opt] })
-    return acc
-  }, [])
-
-  const flatFiltered = grouped.flatMap((g) => g.items)
-
   function measureAndOpen() {
     if (disabled) return
     setOpen(true)
-    setHighlightedIndex(0)
-  }
-
-  function close() {
-    setOpen(false)
-    setQuery('')
   }
 
   useEffect(() => {
     if (!open) return
     function handleClick(e: MouseEvent) {
       const t = e.target as Node
-      if (!triggerRef.current?.contains(t) && !listRef.current?.contains(t)) close()
+      if (!triggerRef.current?.contains(t) && !listRef.current?.contains(t)) setOpen(false)
     }
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
   }, [open])
-
-  function toggle(id: string) {
-    if (selectedIds.includes(id)) onChange(selectedIds.filter((x) => x !== id))
-    else onChange([...selectedIds, id])
-  }
-
-  function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
-    if (!open) {
-      if (e.key === 'ArrowDown' || e.key === 'Enter') measureAndOpen()
-      return
-    }
-    switch (e.key) {
-      case 'ArrowDown':
-        e.preventDefault()
-        setHighlightedIndex((i) => Math.min(i + 1, flatFiltered.length - 1))
-        break
-      case 'ArrowUp':
-        e.preventDefault()
-        setHighlightedIndex((i) => Math.max(i - 1, 0))
-        break
-      case 'Enter':
-        e.preventDefault()
-        if (flatFiltered[highlightedIndex]) toggle(flatFiltered[highlightedIndex].id)
-        break
-      case 'Escape':
-        close()
-        break
-    }
-  }
 
   const count = selectedIds.length
   const displayLabel =
@@ -128,98 +84,21 @@ export function MultiSelectCombobox({
               width: dropdownPos.width,
               maxHeight: dropdownPos.maxHeight,
               zIndex: 'var(--z-dropdown)',
+              // The panel does not scroll; its list does. 40px is the search
+              // row, which stays put above it.
+              ['--scroll-list-max' as string]:
+                typeof dropdownPos.maxHeight === 'number'
+                  ? `${Math.max(dropdownPos.maxHeight - 40, 80)}px`
+                  : '280px',
             }}
           >
-            <div className="msc__search-wrap">
-              <input
-                ref={inputRef}
-                className="msc__search"
-                value={query}
-                onChange={(e) => {
-                  setQuery(e.target.value)
-                  setHighlightedIndex(0)
-                }}
-                onKeyDown={handleKeyDown}
-                placeholder="Search…"
-                autoFocus
-              />
-              <div className="msc__actions">
-                {options.length > 0 && selectedIds.length < options.length && (
-                  <button
-                    className="msc__action-btn"
-                    onMouseDown={(e) => {
-                      e.preventDefault()
-                      onChange(options.map((o) => o.id))
-                    }}
-                    type="button"
-                  >
-                    Select all
-                  </button>
-                )}
-                {count > 0 && (
-                  <button
-                    className="msc__action-btn"
-                    onMouseDown={(e) => {
-                      e.preventDefault()
-                      onChange([])
-                    }}
-                    type="button"
-                  >
-                    Clear all
-                  </button>
-                )}
-              </div>
-            </div>
-            {filtered.length === 0 && <div className="msc__empty">No results</div>}
-            {grouped.map(({ group, items }) => {
-              const groupItemIds = items.map((o) => o.id)
-              const allGroupSelected =
-                groupItemIds.length > 0 && groupItemIds.every((id) => selectedIds.includes(id))
-              const someGroupSelected =
-                groupItemIds.some((id) => selectedIds.includes(id)) && !allGroupSelected
-              function toggleGroup(e: React.MouseEvent) {
-                e.preventDefault()
-                if (allGroupSelected) {
-                  onChange(selectedIds.filter((id) => !groupItemIds.includes(id)))
-                } else {
-                  onChange([...new Set([...selectedIds, ...groupItemIds])])
-                }
-              }
-              return (
-                <div key={group || '__ungrouped'} className="msc__group">
-                  {group && (
-                    <div
-                      className={`msc__group-header msc__group-header--clickable ${allGroupSelected ? 'msc__group-header--selected' : ''} ${someGroupSelected ? 'msc__group-header--partial' : ''}`}
-                      onMouseDown={toggleGroup}
-                    >
-                      <span className="msc__group-check">
-                        {allGroupSelected && <Check size={10} />}
-                        {someGroupSelected && <span className="msc__group-partial-dash">—</span>}
-                      </span>
-                      {group}
-                    </div>
-                  )}
-                  {items.map((opt) => {
-                    const idx = flatFiltered.indexOf(opt)
-                    const checked = selectedIds.includes(opt.id)
-                    return (
-                      <div
-                        key={opt.id}
-                        className={`msc__option ${idx === highlightedIndex ? 'msc__option--highlighted' : ''} ${checked ? 'msc__option--checked' : ''}`}
-                        onMouseDown={(e) => {
-                          e.preventDefault()
-                          toggle(opt.id)
-                        }}
-                        onMouseEnter={() => setHighlightedIndex(idx)}
-                      >
-                        <span className="msc__check">{checked && <Check size={11} />}</span>
-                        <span className="msc__option-label">{opt.label}</span>
-                      </div>
-                    )
-                  })}
-                </div>
-              )
-            })}
+            <GroupedMultiSelect
+              options={options}
+              selectedIds={selectedIds}
+              onChange={onChange}
+              onEscape={() => setOpen(false)}
+              autoFocusSearch
+            />
           </div>,
           document.body
         )
@@ -239,7 +118,7 @@ export function MultiSelectCombobox({
         aria-haspopup="listbox"
         aria-expanded={open}
         onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') measureAndOpen()
+          if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') measureAndOpen()
         }}
       >
         <span className="msc__value">{displayLabel}</span>

@@ -499,7 +499,7 @@ a {
    carry var(--shadow-*) and bloom via the ramp instead — the two families must
    never fight over one box-shadow property; .more-sheet__theme-swatch--* sits
    inside the nested data-theme palette preview and would light every swatch;
-   .txn-checkbox and .msc__check are tick marks; toggle knobs are too small to
+   .txn-checkbox and .gms__check are tick marks; toggle knobs are too small to
    read as anything but smeared; .nl-form__mic--listening has its own pulse.
 
    ALSO excluded, as a category: the accent-FILLED active state of every

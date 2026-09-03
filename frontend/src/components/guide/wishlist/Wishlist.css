@@ -65,18 +65,25 @@
   gap: var(--spacing-md);
 }
 
+/* No `overflow: hidden` here, however tempting for the bar's corners: it makes
+   the card a scroll container, and the sticky bar inside would then pin to the
+   card — which never scrolls — instead of to .guide-content. The bar rounds
+   its own top corners instead. */
 .guide-wishlist__card {
   display: flex;
   flex-direction: column;
-  overflow: hidden; /* the chrome bar follows the card's corners */
 }
 
-.guide-wishlist__bar {
+/* Specificity 0,2,0 so it beats `.surface--chrome`'s `border-radius: 0`
+   without relying on which stylesheet loaded last. */
+.surface--chrome.guide-wishlist__bar {
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
   flex-wrap: wrap;
   padding: var(--spacing-sm) var(--spacing-lg);
+  border-top-left-radius: var(--border-radius-md);
+  border-top-right-radius: var(--border-radius-md);
 }
 
 .guide-wishlist__body {
@@ -100,16 +107,16 @@
   color: var(--text-muted);
 }
 
+/* In the settings dialog: a stacked form, so the two day-counts read as the
+   pair of defaults they are rather than a row of controls in the toolbar. */
 .guide-wishlist__settings {
   display: flex;
-  gap: var(--spacing-lg);
-  flex-wrap: wrap;
-  align-items: center;
-  padding: var(--spacing-sm) 0;
+  flex-direction: column;
+  gap: var(--spacing-md);
 }
 
 .guide-wishlist__settings input {
-  width: 80px;
+  width: 100px;
 }
 
 .guide-wishlist__list {
@@ -126,17 +133,28 @@
 
 /* ── a wish ─────────────────────────────────────────────────────────────── */
 
+/* Layout only. Which fill a wish takes depends on where it sits, so the two
+   cases say so separately below. */
 .wish {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-xs);
   padding: var(--spacing-md);
+}
+
+/* A wish inside the card is a well cut into it.
+   Written as :not(.wish--hero) rather than left to `.surface` to override:
+   both are a single class, so the winner was source order, and component CSS
+   loads after base.css — every hero drew `.surface`'s raised border and
+   shadow over this sunken fill. */
+.wish:not(.wish--hero) {
   background: var(--surface-sunken);
   border: 1px solid var(--edge);
   border-radius: var(--border-radius-sm);
 }
 
-/* Fill, edge and elevation come from `surface`; this only sizes it. */
+/* A hero sits on the page canvas, so fill, edge and elevation come from
+   `surface`; this only sizes it. */
 .wish--hero {
   padding: var(--spacing-lg);
 }
@@ -329,6 +347,8 @@
   color: var(--text-muted);
 }
 
+/* A month of raids on the wish envelopes is bounded, but a busy one still runs
+   long enough to bury the history below it — .scroll-list caps it. */
 .wish-drains__list {
   list-style: none;
   margin: 0;
@@ -336,6 +356,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--spacing-xs);
+  --scroll-list-max: 260px;
 }
 
 .wish-drains__row {

@@ -1,3 +1,6 @@
+/* The report filter's trigger and the anchored panel it opens. The list inside
+   the panel is common/GroupedMultiSelect and paints itself. */
+
 .msc {
   display: flex;
   flex-direction: column;
@@ -16,28 +19,28 @@
   align-items: center;
   gap: var(--spacing-xs);
   padding: var(--spacing-xs) var(--spacing-sm);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--edge-strong);
   border-radius: var(--border-radius);
-  background: var(--bg-secondary);
+  background: var(--surface-chrome);
   cursor: pointer;
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
   user-select: none;
-  transition: border-color 0.12s;
+  transition: border-color var(--transition-fast);
 }
 
 .msc__trigger:hover {
-  border-color: var(--accent-color);
+  border-color: var(--color-accent);
   color: var(--text-primary);
 }
 
 .msc__trigger--open {
-  border-color: var(--accent-color);
+  border-color: var(--color-accent);
 }
 
 .msc__trigger--active {
   color: var(--text-primary);
-  border-color: var(--accent-color);
+  border-color: var(--color-accent);
 }
 
 .msc__value {
@@ -67,156 +70,16 @@
   flex-shrink: 0;
 }
 
+/* The panel itself never scrolls — the list inside it does, so the search row
+   stays put. Clipping keeps that list inside the rounded corners. */
 .msc__dropdown {
-  background: var(--bg-elevated, var(--bg-secondary));
-  border: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--surface-overlay);
+  border: 1px solid var(--edge-strong);
   border-radius: var(--border-radius);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
-  max-height: 320px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  font-size: var(--font-size-sm);
-}
-
-.msc__search-wrap {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-xs);
-  padding: var(--spacing-xs) var(--spacing-sm);
-  border-bottom: 1px solid var(--border-color);
-  position: sticky;
-  top: 0;
-  background: var(--bg-elevated, var(--bg-secondary));
-  z-index: 1;
-}
-
-.msc__search {
-  flex: 1;
-  /* Without this the input keeps its intrinsic width — min-width defaults to
-     auto on a flex item — and "Select all / Clear all" get pushed out past the
-     right edge of the panel. */
-  min-width: 0;
-  border: none;
-  background: transparent;
-  color: var(--text-primary);
-  font-size: var(--font-size-sm);
-  outline: none;
-}
-
-.msc__actions {
-  display: flex;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.msc__action-btn {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  font-size: var(--font-size-xs);
-  cursor: pointer;
-  white-space: nowrap;
-  padding: 0;
-}
-
-.msc__action-btn:hover {
-  color: var(--text-primary);
-}
-
-.msc__empty {
-  padding: var(--spacing-sm);
-  color: var(--text-muted);
-  text-align: center;
-}
-
-.msc__group-header {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-xs);
-  padding: var(--spacing-xs) var(--spacing-sm);
-  font-size: var(--font-size-xs);
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.msc__group-header--clickable {
-  cursor: pointer;
-  transition:
-    background 0.1s,
-    color 0.1s;
-}
-
-.msc__group-header--clickable:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.msc__group-check {
-  width: 14px;
-  height: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  border: 1px solid var(--border-color);
-  border-radius: 3px;
-  font-size: var(--font-size-2xs);
-  color: var(--bg-primary);
-}
-
-.msc__group-header--selected .msc__group-check {
-  background: var(--accent-color);
-  border-color: var(--accent-color);
-}
-
-.msc__group-header--partial .msc__group-check {
-  background: var(--accent-color);
-  border-color: var(--accent-color);
-  opacity: 0.6;
-}
-
-.msc__group-partial-dash {
-  line-height: 0;
-  font-size: var(--font-size-xs);
-}
-
-.msc__option {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-xs) var(--spacing-sm);
-  cursor: pointer;
-  color: var(--text-primary);
-  transition: background 0.1s;
-}
-
-.msc__option:hover,
-.msc__option--highlighted {
-  background: var(--bg-hover);
-}
-
-.msc__option--checked {
-  color: var(--accent-color);
-}
-
-.msc__check {
-  width: 16px;
-  height: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  border: 1px solid var(--border-color);
-  border-radius: 3px;
-  color: var(--accent-color);
-}
-
-.msc__option--checked .msc__check {
-  background: var(--accent-color);
-  border-color: var(--accent-color);
-  color: var(--bg-primary);
+  box-shadow: var(--elevation-overlay);
 }
 
 .msc--disabled {
@@ -225,16 +88,4 @@
 
 .msc--disabled .msc__trigger {
   cursor: not-allowed;
-}
-
-/* Wrap rather than truncate: these are the names you are picking between, so
-   hiding the end of one defeats the control. `anywhere` covers a long name with
-   no spaces in it, which would otherwise push the row past the panel edge. */
-/* The option's own label. Named apart from .msc__label (the combobox's
-   field label) because sharing that class let its muted, extra-small type
-   win over .msc__option's colour — so every option rendered secondary and a
-   checked one no longer turned accent. */
-.msc__option-label {
-  min-width: 0;
-  overflow-wrap: anywhere;
 }

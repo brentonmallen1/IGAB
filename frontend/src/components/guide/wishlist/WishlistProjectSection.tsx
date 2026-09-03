@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useId, useState, type ReactNode } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import type { WishlistProject } from '../../../api/wishlist'
 import { useFormatters } from '../../../hooks/useFormatters'
@@ -16,6 +16,7 @@ interface Props {
 export function WishlistProjectSection({ project, count, onEdit, onDelete, children }: Props) {
   const [open, setOpen] = useState(true)
   const fmt = useFormatters()
+  const bodyId = useId()
   const title = project?.name ?? 'Other wants'
   return (
     <section className="wish-project">
@@ -25,6 +26,7 @@ export function WishlistProjectSection({ project, count, onEdit, onDelete, child
           className="wish-project__toggle"
           onClick={() => setOpen((o) => !o)}
           aria-expanded={open}
+          aria-controls={bodyId}
         >
           {open ? <ChevronDown size={14} aria-hidden /> : <ChevronRight size={14} aria-hidden />}
           <h3 className="wish-project__name">{title}</h3>
@@ -51,7 +53,11 @@ export function WishlistProjectSection({ project, count, onEdit, onDelete, child
           </div>
         )}
       </header>
-      {open && <div className="wish-project__body">{children}</div>}
+      {open && (
+        <div id={bodyId} className="wish-project__body">
+          {children}
+        </div>
+      )}
     </section>
   )
 }

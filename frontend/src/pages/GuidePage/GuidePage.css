@@ -55,13 +55,13 @@
 }
 
 .guide-nav__tab:hover {
-  background: var(--bg-secondary);
+  background: var(--surface-raised);
   color: var(--text-primary);
 }
 
 .guide-nav__tab--active {
   background: var(--color-accent);
-  color: var(--bg-primary);
+  color: var(--text-inverse);
   border-color: var(--color-accent);
   font-weight: var(--font-weight-semibold);
 }
@@ -109,12 +109,14 @@
 
 /* ─── View switch ────────────────────────────────────────────────────────── */
 
+/* An inset track with a raised thumb: the switch reads as one control whose
+   selected half sits above the rest, in every theme's grey ladder. */
 .guide-viewswitch {
   display: flex;
   gap: 2px;
   padding: 2px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
+  background: var(--surface-sunken);
+  border: 1px solid var(--edge-strong);
   border-radius: var(--border-radius);
   flex-shrink: 0;
 }
@@ -137,7 +139,7 @@
 }
 
 .guide-viewswitch__button--active {
-  background: var(--bg-primary);
+  background: var(--surface-raised);
   color: var(--text-primary);
   font-weight: var(--font-weight-semibold);
   box-shadow: var(--shadow-sm);

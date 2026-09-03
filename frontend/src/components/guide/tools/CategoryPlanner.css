@@ -224,40 +224,26 @@
   display: flex;
 }
 
+/* The title row comes from Surface's header slot, which brings its own padding
+   and hairline — so the panel pads its body, not itself. */
 .planner__panel {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-sm);
-  padding: var(--spacing-sm) var(--spacing-md);
   border-radius: var(--border-radius);
 }
 
-.planner__panel-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.planner__panel > .surface__header {
+  padding: var(--spacing-sm) var(--spacing-md);
 }
 
-.planner__panel-head h4 {
-  margin: 0;
-  font-size: var(--font-size-xs);
-  color: var(--text-secondary);
+.planner__panel > .planner__apply-list,
+.planner__panel > .planner__panel-actions {
+  padding: 0 var(--spacing-md);
 }
 
-.planner__import-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 2px var(--spacing-md);
-  max-height: 14rem;
-  overflow-y: auto;
-}
-
-.planner__import-item {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-xs);
-  font-size: var(--font-size-xs);
-  color: var(--text-primary);
+.planner__panel > .planner__panel-actions {
+  padding-bottom: var(--spacing-md);
 }
 
 .planner__panel-actions {
@@ -267,6 +253,45 @@
   flex-wrap: wrap;
 }
 
+/* ── the import dialog ── */
+
+.planner__import-hint {
+  margin-bottom: var(--spacing-sm);
+}
+
+/* The picker is a well inside the dialog body, so it reads as the region you
+   are working in rather than more of the same panel. */
+.planner__import-picker {
+  background: var(--surface-sunken);
+  border: 1px solid var(--edge);
+  border-radius: var(--border-radius-sm);
+  /* A budget with 120 categories still shows a fixed pane and scrolls. */
+  --scroll-list-max: 22rem;
+}
+
+.planner__import-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.planner__import-destination {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.planner__import-confirm {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
 .planner__apply-list {
   margin: 0;
   padding: 0;
@@ -274,8 +299,7 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-height: 16rem;
-  overflow-y: auto;
+  --scroll-list-max: 16rem;
 }
 
 .planner__apply-list li {

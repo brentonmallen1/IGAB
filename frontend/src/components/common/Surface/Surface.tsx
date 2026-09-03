@@ -3,7 +3,8 @@ import { useStuck } from './useStuck'
 
 export type SurfaceVariant = 'raised' | 'sunken' | 'chrome'
 
-type SurfaceElement = 'div' | 'section' | 'header' | 'aside' | 'nav' | 'article' | 'footer'
+type SurfaceElement =
+  'div' | 'section' | 'header' | 'aside' | 'nav' | 'article' | 'footer' | 'dl' | 'ul'
 
 export interface SurfaceProps extends Omit<HTMLAttributes<HTMLElement>, 'title'> {
   as?: SurfaceElement
