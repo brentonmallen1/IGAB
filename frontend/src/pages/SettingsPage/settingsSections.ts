@@ -63,7 +63,14 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     needsBudget: true,
     keywords: 'snapshot export duplicate restore download',
   },
-  { id: 'data', label: 'Backups', adminOnly: true, keywords: 'export restore dump download' },
+  // "Backups" sat directly under "Budget Backups" in the nav, and the nav is
+  // the only thing that distinguishes them. This one is the whole install.
+  {
+    id: 'data',
+    label: 'Server Backups',
+    adminOnly: true,
+    keywords: 'export restore dump download admin installation',
+  },
   { id: 'updates', label: 'Updates' },
   { id: 'simplefin', label: 'SimpleFIN' },
   { id: 'ai', label: 'AI' },

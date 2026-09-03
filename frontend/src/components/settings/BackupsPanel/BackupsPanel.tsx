@@ -19,21 +19,17 @@ import {
   type BackupJob,
 } from '../../../api/backups'
 import { useSettings, useUpdateSetting } from '../../../api/settings'
-import { useFocusTrap } from '../../../hooks/useFocusTrap'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { formatBytes } from '../../../utils/formatBytes'
+import { Dialog } from '../../common/Dialog/Dialog'
+import { Modal } from '../../common/Modal/Modal'
+import { Pill } from '../../common/Pill/Pill'
 import './BackupsPanel.css'
 
 const KIND_LABEL: Record<BackupFile['kind'], string> = {
   db: 'Database',
   attachments: 'Attachments',
   prerestore: 'Pre-restore',
-}
-
-function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
-  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`
-  return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`
 }
 
 interface NumberSettingRowProps {
@@ -163,41 +159,13 @@ interface RestoreModalProps {
 function RestoreModal({ file, onConfirm, onCancel, isPending, error }: RestoreModalProps) {
   const { formatDateTime } = useFormatters()
   const [preBackup, setPreBackup] = useState(true)
-  const trapRef = useFocusTrap<HTMLDivElement>(onCancel)
 
   return (
-    <div className="bkp-overlay" role="presentation">
-      <div
-        ref={trapRef}
-        className="bkp-modal"
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby="bkp-restore-title"
-      >
-        <div className="bkp-modal__header">
-          <AlertTriangle size={18} className="bkp-modal__warn-icon" />
-          <span id="bkp-restore-title">Restore from backup?</span>
-        </div>
-        <div className="bkp-modal__body">
-          <p>
-            This replaces <strong>all current data</strong> with the contents of{' '}
-            <code>{file.name}</code> from {formatDateTime(file.modified_at)}. Anything entered since
-            that backup will be lost.
-          </p>
-          <p>The app will briefly go offline and restart once the restore finishes.</p>
-          <label className="bkp-modal__prebackup">
-            <input
-              type="checkbox"
-              checked={preBackup}
-              onChange={(e) => setPreBackup(e.target.checked)}
-            />
-            <span>
-              Back up current data first (recommended) — saved as a <em>pre-restore</em> backup you
-              can return to
-            </span>
-          </label>
-          {error && <div className="bkp-field-error">{error}</div>}
-        </div>
+    <Dialog
+      title="Restore from backup?"
+      onClose={onCancel}
+      historyKey="backup-restore"
+      footer={
         <div className="bkp-modal__footer">
           <button className="settings-btn settings-btn--secondary" onClick={onCancel}>
             Cancel
@@ -210,8 +178,30 @@ function RestoreModal({ file, onConfirm, onCancel, isPending, error }: RestoreMo
             {isPending ? 'Starting…' : 'Restore'}
           </button>
         </div>
+      }
+    >
+      <div className="bkp-modal__body">
+        <p className="bkp-modal__warn">
+          <AlertTriangle size={16} className="bkp-modal__warn-icon" aria-hidden="true" />
+          This replaces <strong>all current data</strong> with the contents of{' '}
+          <code>{file.name}</code> from {formatDateTime(file.modified_at)}. Anything entered since
+          that backup will be lost.
+        </p>
+        <p>The app will briefly go offline and restart once the restore finishes.</p>
+        <label className="bkp-modal__prebackup">
+          <input
+            type="checkbox"
+            checked={preBackup}
+            onChange={(e) => setPreBackup(e.target.checked)}
+          />
+          <span>
+            Back up current data first (recommended) — saved as a <em>pre-restore</em> backup you
+            can return to
+          </span>
+        </label>
+        {error && <div className="bkp-field-error">{error}</div>}
       </div>
-    </div>
+    </Dialog>
   )
 }
 
@@ -254,8 +244,11 @@ function RestoringOverlay() {
   }, [])
 
   return (
-    <div className="bkp-overlay bkp-overlay--blocking" role="alert" aria-live="assertive">
-      <div className="bkp-restoring">
+    // Modal, not Dialog: Dialog always draws a close control, and there is no
+    // closing this — the database is being replaced underneath the page. The
+    // veto keeps Escape and the backdrop from dismissing it too.
+    <Modal onClose={() => {}} canClose={() => false} className="bkp-overlay--blocking">
+      <div className="bkp-restoring" role="alert" aria-live="assertive">
         {phase === 'error' ? (
           <>
             <AlertTriangle size={28} className="bkp-restoring__error-icon" />
@@ -272,7 +265,7 @@ function RestoringOverlay() {
           </>
         ) : (
           <>
-            <div className="bkp-restoring__spinner" aria-hidden="true" />
+            <div className="bkp-restoring__spinner spin" aria-hidden="true" />
             <div className="bkp-restoring__title">
               {phase === 'restarting' ? 'Restarting the app…' : 'Restoring from backup…'}
             </div>
@@ -284,7 +277,7 @@ function RestoringOverlay() {
           </>
         )}
       </div>
-    </div>
+    </Modal>
   )
 }
 
@@ -326,13 +319,9 @@ export function BackupsPanel() {
         <div>
           <div className="settings-row__label">
             Backup service{' '}
-            <span
-              className={`bkp-status-pill ${
-                agentOnline ? 'bkp-status-pill--online' : 'bkp-status-pill--offline'
-              }`}
-            >
+            <Pill tone={agentOnline ? 'positive' : 'outline'} caps className="bkp-status-pill">
               {agentOnline ? 'online' : 'offline'}
-            </span>
+            </Pill>
           </div>
           <div className="settings-row__desc">
             {agentOnline
@@ -386,90 +375,92 @@ export function BackupsPanel() {
       />
       <RecipientSettingRow />
 
-      <div className="bkp-files">
-        <div className="bkp-files__title">Existing backups</div>
-        {isLoading ? (
-          <div className="bkp-files__empty">Loading…</div>
-        ) : files.length === 0 ? (
-          <div className="bkp-files__empty">
-            No backups yet{agentOnline ? ' — one will be created on the next cycle.' : '.'}
-          </div>
-        ) : (
-          <table className="bkp-table surface surface--sunken">
-            <thead>
-              <tr>
-                <th scope="col">File</th>
-                <th scope="col">Kind</th>
-                <th scope="col">Size</th>
-                <th scope="col">Created</th>
-                <th scope="col">
-                  <span className="sr-only">Actions</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {files.map((f) => {
-                const restorable = f.kind !== 'attachments' && !f.encrypted
-                const hint = f.encrypted
-                  ? 'Encrypted — restore from the CLI with your age private key: just restore ' +
-                    f.name
-                  : f.kind === 'attachments'
-                    ? 'Attachment archives are restored from the CLI (see README → Backups)'
-                    : undefined
-                return (
-                  <tr key={f.name}>
-                    <td className="bkp-table__name">
-                      <span className="bkp-table__name-inner">
-                        {f.kind === 'attachments' ? (
-                          <Archive size={13} aria-hidden="true" />
-                        ) : f.kind === 'prerestore' ? (
-                          <History size={13} aria-hidden="true" />
-                        ) : (
-                          <Database size={13} aria-hidden="true" />
-                        )}
-                        {f.name}
-                        {f.encrypted && (
-                          <Lock size={12} className="bkp-table__lock" aria-label="Encrypted" />
-                        )}
-                      </span>
-                    </td>
-                    <td>{KIND_LABEL[f.kind]}</td>
-                    <td>{formatBytes(f.size_bytes)}</td>
-                    <td>{formatDateTime(f.modified_at)}</td>
-                    <td className="bkp-table__action">
-                      <button
-                        className="settings-btn settings-btn--secondary bkp-download-btn"
-                        onClick={() =>
-                          downloadBackupFile(f.name).catch(() => toast.error('Download failed.'))
-                        }
-                        aria-label={`Download ${f.name}`}
-                        title="Download"
-                      >
-                        <Download size={13} aria-hidden="true" />
-                      </button>
-                      {restorable ? (
-                        <button
-                          className="settings-btn settings-btn--secondary bkp-restore-btn"
-                          onClick={() => {
-                            setRestoreError(null)
-                            setRestoreTarget(f)
-                          }}
-                          disabled={!agentOnline || jobRunning}
-                        >
-                          Restore
-                        </button>
-                      ) : (
-                        <span className="bkp-table__cli-hint" title={hint}>
-                          CLI
+      <div className="settings-subsection">
+        <div className="settings-subsection__title">Existing backups</div>
+        <div className="bkp-files">
+          {isLoading ? (
+            <div className="bkp-files__empty">Loading…</div>
+          ) : files.length === 0 ? (
+            <div className="bkp-files__empty">
+              No backups yet{agentOnline ? ' — one will be created on the next cycle.' : '.'}
+            </div>
+          ) : (
+            <table className="bkp-table surface surface--sunken">
+              <thead>
+                <tr>
+                  <th scope="col">File</th>
+                  <th scope="col">Kind</th>
+                  <th scope="col">Size</th>
+                  <th scope="col">Created</th>
+                  <th scope="col">
+                    <span className="sr-only">Actions</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {files.map((f) => {
+                  const restorable = f.kind !== 'attachments' && !f.encrypted
+                  const hint = f.encrypted
+                    ? 'Encrypted — restore from the CLI with your age private key: just restore ' +
+                      f.name
+                    : f.kind === 'attachments'
+                      ? 'Attachment archives are restored from the CLI (see README → Backups)'
+                      : undefined
+                  return (
+                    <tr key={f.name}>
+                      <td className="bkp-table__name">
+                        <span className="bkp-table__name-inner">
+                          {f.kind === 'attachments' ? (
+                            <Archive size={13} aria-hidden="true" />
+                          ) : f.kind === 'prerestore' ? (
+                            <History size={13} aria-hidden="true" />
+                          ) : (
+                            <Database size={13} aria-hidden="true" />
+                          )}
+                          {f.name}
+                          {f.encrypted && (
+                            <Lock size={12} className="bkp-table__lock" aria-label="Encrypted" />
+                          )}
                         </span>
-                      )}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        )}
+                      </td>
+                      <td>{KIND_LABEL[f.kind]}</td>
+                      <td>{formatBytes(f.size_bytes)}</td>
+                      <td>{formatDateTime(f.modified_at)}</td>
+                      <td className="bkp-table__action">
+                        <button
+                          className="settings-btn settings-btn--secondary bkp-download-btn"
+                          onClick={() =>
+                            downloadBackupFile(f.name).catch(() => toast.error('Download failed.'))
+                          }
+                          aria-label={`Download ${f.name}`}
+                          title="Download"
+                        >
+                          <Download size={13} aria-hidden="true" />
+                        </button>
+                        {restorable ? (
+                          <button
+                            className="settings-btn settings-btn--secondary bkp-restore-btn"
+                            onClick={() => {
+                              setRestoreError(null)
+                              setRestoreTarget(f)
+                            }}
+                            disabled={!agentOnline || jobRunning}
+                          >
+                            Restore
+                          </button>
+                        ) : (
+                          <span className="bkp-table__cli-hint" title={hint}>
+                            CLI
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
       </div>
 
       {restoreTarget && (

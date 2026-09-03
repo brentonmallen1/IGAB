@@ -1,6 +1,16 @@
-/* Only what is genuinely new here. The table, modal and overlay come from
+/* Only what is genuinely new here. The table and the dialog body come from
    BackupsPanel.css — it is the same job, and a second copy of that visual
    language would drift from it. */
+
+/* The three groups the panel is now divided into: get a file out, keep one on
+   the server, put one back. The first group carries no hairline — it opens the
+   section, and .settings-subsection's rule would draw a line under the section
+   title itself. */
+.snap-group:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
 
 .snap-actions {
   display: flex;
@@ -24,9 +34,8 @@
 }
 
 .snap-inspection {
-  margin-top: var(--spacing-md);
   padding: var(--spacing-md);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--edge);
   border-radius: var(--border-radius-md);
 }
 
@@ -40,20 +49,20 @@
 
 .snap-inspection__meta {
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-xs);
 }
 
 .snap-inspection__refusals,
 .snap-inspection__warnings {
   margin: 0 0 var(--spacing-sm);
   padding-left: var(--spacing-lg);
-  font-size: 12px;
+  font-size: var(--font-size-xs);
 }
 
 /* Refusals are the reason nothing will happen; warnings are things to know
    about a file that will still load. Different weight, deliberately. */
 .snap-inspection__refusals {
-  color: var(--color-danger);
+  color: var(--color-negative);
 }
 
 .snap-inspection__warnings {
@@ -63,24 +72,24 @@
 .snap-note {
   margin: 0 0 var(--spacing-sm);
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-xs);
 }
 
 .snap-confirm {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-xs);
-  margin-top: var(--spacing-md);
-  font-size: 13px;
+  margin-top: var(--spacing-sm);
+  font-size: var(--font-size-sm);
 }
 
 .snap-confirm input {
   padding: var(--spacing-xs) var(--spacing-sm);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--input-border);
   border-radius: var(--border-radius-sm);
-  background: var(--bg-primary);
+  background: var(--input-bg);
   color: var(--text-primary);
-  font-size: 13px;
+  font-size: var(--font-size-sm);
 }
 
 .snap-confirm input:focus-visible {
