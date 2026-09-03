@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  reserveLegs,
   reserveNote,
   debtMovement,
   rideMonths,
@@ -262,5 +263,64 @@ describe('pendingNote', () => {
     const note = pendingNote(card({ pending_this_month: 30 }), money)
     expect(note).toContain('credits')
     expect(note).toContain('$30.00')
+  })
+})
+
+describe('reserveLegs', () => {
+  it('names the five terms, in order, with the sign each carries', () => {
+    const legs = reserveLegs({
+      assigned: 40,
+      reserved: 100,
+      released: 20,
+      residual: 7,
+      payments: 5,
+    })
+    expect(legs.map((l) => [l.label, l.sign])).toEqual([
+      ['Assigned to this card', '+'],
+      ['Set aside by funded spending', '+'],
+      ['Released by refunds', '−'],
+      ['Refunds beyond what was reserved', '−'],
+      ['Paid to the card', '−'],
+    ])
+  })
+
+  it('drops a leg that never moved — a month lists what happened', () => {
+    const legs = reserveLegs({
+      assigned: 0,
+      reserved: 0,
+      released: 0,
+      residual: 0,
+      payments: 150,
+    })
+    expect(legs).toHaveLength(1)
+    expect(legs[0]).toEqual({ label: 'Paid to the card', value: 150, sign: '−' })
+  })
+
+  it('returns nothing at all for a month where nothing moved', () => {
+    expect(
+      reserveLegs({ assigned: 0, reserved: 0, released: 0, residual: 0, payments: 0 })
+    ).toEqual([])
+  })
+
+  it('is the one table both the lifetime list and a single month read', () => {
+    // The drawer shows lifetime legs above and a month's legs in an expanded
+    // row. Two copies of this sign table is how a refund comes to add to the
+    // reserve in one place and subtract from it in the other.
+    const lifetime = reserveLegs({
+      assigned: 40,
+      reserved: 0,
+      released: 20,
+      residual: 0,
+      payments: 0,
+    })
+    const oneMonth = reserveLegs({
+      assigned: 5,
+      reserved: 0,
+      released: 3,
+      residual: 0,
+      payments: 0,
+    })
+    expect(lifetime.map((l) => l.sign)).toEqual(oneMonth.map((l) => l.sign))
+    expect(lifetime.map((l) => l.label)).toEqual(oneMonth.map((l) => l.label))
   })
 })

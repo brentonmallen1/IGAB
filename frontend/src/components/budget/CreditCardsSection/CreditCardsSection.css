@@ -178,7 +178,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.3px;
-  background: var(--bg-secondary);
+  background: var(--surface-raised);
   color: var(--text-muted);
   border: 1px solid var(--border-subtle);
   flex-shrink: 0;
@@ -445,6 +445,23 @@
   color: var(--text-muted);
 }
 
+/* Riding debt is its own section of the drawer, not another paragraph in the
+   run of notes above it — four stacked notes at one size and one colour is
+   the wall of text this hairline and label break up. */
+.credit-cards__riding {
+  margin-top: var(--spacing-sm);
+  padding-top: var(--spacing-sm);
+  border-top: 1px solid var(--edge);
+}
+
+.credit-cards__riding-title {
+  margin-bottom: var(--spacing-xs);
+}
+
+.credit-cards__riding p + p {
+  margin-top: var(--spacing-xs);
+}
+
 /* Ties the "Other credits" row to the note that explains it. The amount is a
    row so the month's figures reconcile on their face; only the explanation is
    a footnote, and this is what joins the two. */
@@ -490,11 +507,12 @@
   color: var(--text-secondary);
 }
 
-/* Ten years is ~120 rows; density is a feature, so the whole series ships
-   and scrolls in its own well rather than being summarized away. */
+/* Ten years is ~120 rows; density is a feature, so the whole series ships and
+   scrolls in its own well rather than being summarized away. About six months
+   at a time: enough to read a trend, few enough that the well never dominates
+   the drawer. Height comes from .scroll-list. */
 .credit-cards__history-scroll {
-  max-height: 260px;
-  overflow-y: auto;
+  --scroll-list-max: 200px;
   border: 1px solid var(--edge);
   border-radius: var(--border-radius-sm);
 }
@@ -508,16 +526,82 @@
   color: var(--text-secondary);
 }
 
-.credit-cards__history-row:nth-child(even) {
-  background-color: var(--row-alt-bg, transparent);
+/* Striping is a class, applied over the DATA rows' own count. It was
+   `:nth-child(even)` reading `var(--row-alt-bg)` — a token defined in no theme
+   and in no stylesheet, so every stripe fell back to `transparent` and the
+   zebra silently did nothing. nth-child could not work here in any case: it
+   counts the sticky header and every year separator. */
+.credit-cards__history-row--alt {
+  background-color: color-mix(in srgb, var(--edge) 40%, transparent);
 }
 
+/* Chrome, not sunken: the header shared the well's own fill, so nothing but a
+   1px rule separated the column names from the figures under them. */
 .credit-cards__history-head {
   position: sticky;
   top: 0;
+  z-index: var(--z-sticky);
   color: var(--text-muted);
-  background-color: var(--surface-sunken);
+  background-color: var(--surface-chrome);
+  border-bottom: 1px solid var(--edge-strong);
+}
+
+/* The year being entered as the reader scrolls back through time. Deliberately
+   not sticky: it would need a hand-guessed offset under the sticky header, and
+   two stacked stickies that disagree look like a rendering fault. */
+.credit-cards__history-year {
+  padding: var(--spacing-sm) var(--spacing-sm) 2px;
+  border-top: 1px solid var(--edge);
+}
+
+.credit-cards__history-year:first-of-type {
+  padding-top: var(--spacing-xs);
+  border-top: none;
+}
+
+/* The month cell's disclosure. Sits inside the cell so the row keeps its
+   table semantics, and fills it so the whole month reads as the target. */
+.credit-cards__history-expand {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  width: 100%;
+  padding: 1px 0;
+  font-size: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  transition: color var(--transition-fast);
+}
+
+.credit-cards__history-expand:hover {
+  color: var(--text-primary);
+}
+
+.credit-cards__history-row--open {
+  color: var(--text-primary);
+  background-color: var(--row-hover-bg);
+}
+
+/* The month's legs, under the row they belong to. This is what the native
+   `title` tooltip used to carry — invisible on a touch screen, and
+   unreachable from the keyboard. */
+.credit-cards__history-detail {
+  padding: var(--spacing-xs) var(--spacing-sm) var(--spacing-sm) var(--spacing-lg);
+  background-color: var(--row-hover-bg);
   border-bottom: 1px solid var(--edge);
+}
+
+.credit-cards__history-detail .credit-cards__legs-list {
+  max-width: 360px;
+}
+
+.credit-cards__history-detail-empty {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
 }
 
 /* The month the reserve crossed below zero — the row the breach line cites.

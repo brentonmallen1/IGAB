@@ -140,6 +140,45 @@ export function otherCredits(card: CardStatus): number {
   return Math.round(other * 100) / 100
 }
 
+export interface CardLeg {
+  label: string
+  value: number
+  sign: '+' | '−'
+}
+
+/** The five terms a reserve is made of. */
+export interface ReserveTerms {
+  assigned: number
+  reserved: number
+  released: number
+  residual: number
+  payments: number
+}
+
+/**
+ * The legs a reserve is made of — which five, in what order, carrying which
+ * sign — for a lifetime total or for one month.
+ *
+ * Both live in the same drawer: the list at the top is the card's lifetime
+ * legs, and a month's row expands to the same five for that month. They are
+ * one rule, so the set, the order and the signs are written once. Two copies
+ * of a sign table is how a drawer comes to say a refund added to the reserve
+ * in one place and subtracted from it in another.
+ *
+ * Zero legs are dropped: a month lists what moved, not what did not.
+ */
+export function reserveLegs(terms: ReserveTerms): CardLeg[] {
+  return (
+    [
+      { label: 'Assigned to this card', value: terms.assigned, sign: '+' },
+      { label: 'Set aside by funded spending', value: terms.reserved, sign: '+' },
+      { label: 'Released by refunds', value: terms.released, sign: '−' },
+      { label: 'Refunds beyond what was reserved', value: terms.residual, sign: '−' },
+      { label: 'Paid to the card', value: terms.payments, sign: '−' },
+    ] satisfies CardLeg[]
+  ).filter((leg) => leg.value !== 0)
+}
+
 export interface RideMonths {
   shown: CardStatus['rode_by_month']
   elided: number
