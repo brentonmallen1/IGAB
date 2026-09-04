@@ -29,12 +29,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from igab.api.v1.imports import _TRACKED_HINTS, _matches, _normalize_for_match
 from igab.db.models import Account, Asset, Liability, Transaction
 from igab.domain.card_timeline import card_timeline, first_breach
-from igab.domain.cards import card_reserve
+from igab.domain.cards import card_reserve, residual_is_pass_through
 from igab.domain.matching import DATE_WINDOW_DAYS
 from igab.domain.transfers import PairableLeg, pair_legs
 from igab.guide.detection import budget_service_from
 from igab.repositories.category_filters import IN_SYSTEM_GROUP
-from igab.repositories.category_repo import CategoryRepository
+from igab.repositories.category_repo import BudgetAssignmentRepository, CategoryRepository
 from igab.repositories.txn_filters import (
     CARD_ACCOUNT,
     LEAF,
@@ -111,6 +111,10 @@ class AccountHygieneService:
         today = today_utc()
         summary = await budget_service.get_budget_summary(budget_id, today)
         walk = await budget_service.card_walk(budget_id, today.replace(day=1))
+        # Which envelopes are receivable ledgers rather than funds — read once
+        # here, because two card detectors ask and both must give the same
+        # answer about the same category.
+        ledgers = await self._ledger_categories(budget_id, summary)
         findings = [
             # Order is the ranking. On-budget-but-tracked leads because it is
             # the only one here that corrupts a number the user reads daily:
@@ -121,9 +125,9 @@ class AccountHygieneService:
             await self._asset_beside_asset_account(budget_id, accounts),
             await self._unpaired_transfer_legs(budget_id),
             await self._unlinked_card_payments(budget_id),
-            self._card_reserve_went_negative(summary, walk),
+            self._card_reserve_went_negative(summary, walk, ledgers),
             await self._card_debt_predates_budget(budget_id, summary, walk),
-            *(await self._misfiled_card_inflows(budget_id, walk)),
+            *(await self._misfiled_card_inflows(budget_id, walk, ledgers)),
             await self._payment_envelope_shadow(budget_id, summary),
             await self._categorized_tracking_rows(budget_id),
             await self._card_rows_filed_as_income(budget_id),
@@ -400,7 +404,33 @@ class AccountHygieneService:
         "reservations": "funded spending reserved",
     }
 
-    def _card_reserve_went_negative(self, summary, walk) -> HygieneFinding | None:
+    async def _ledger_categories(self, budget_id: uuid.UUID, summary) -> set[uuid.UUID]:
+        """The budget's receivable ledgers — categories run as a running tab
+        for someone else's spending rather than as a fund.
+
+        One place, because two card detectors ask: the misfiled-inflow
+        findings, which claim such an envelope kept money, and the
+        negative-reserve finding, which asks for a remedy. Both claims are
+        false on a ledger, and they must not disagree about which categories
+        those are. The rule itself is
+        `domain.cards.residual_is_pass_through`; this only gathers its two
+        inputs.
+
+        A category the summary did not carry is not a ledger — nothing here
+        knows what it holds, and silence is the wrong way to be wrong.
+        """
+        assigned: dict[uuid.UUID, list[Decimal]] = {}
+        for row in await BudgetAssignmentRepository(self.session).get_all_for_budget(budget_id):
+            assigned.setdefault(row.category_id, []).append(row.assigned)
+        return {
+            balance.category_id
+            for balance in summary.category_balances
+            if residual_is_pass_through(assigned.get(balance.category_id, []), balance.available)
+        }
+
+    def _card_reserve_went_negative(
+        self, summary, walk, ledgers: set[uuid.UUID]
+    ) -> HygieneFinding | None:
         """A card's Ready to pay below zero while the card is not in credit.
 
         A legitimate position, not an integrity failure — the reserve is
@@ -410,10 +440,26 @@ class AccountHygieneService:
         crossed and which leg did it, out of the same walk the row is served
         from (`domain/card_timeline.py`).
         """
+        # What each card's reserve gave up to receivable ledgers. A ledger
+        # settles onto the card every month, so its residual drives Ready to
+        # pay down by construction — beside a debt that fell with it.
+        ledger_residual: dict[uuid.UUID, Decimal] = {}
+        for (cat_id, card_id), series in walk.funding.residual_by_pair.items():
+            if cat_id in ledgers:
+                ledger_residual[card_id] = ledger_residual.get(card_id, Decimal("0")) + sum(
+                    series.values(), Decimal("0")
+                )
+
         lines: list[str] = []
         account_ids: list[uuid.UUID] = []
         for card in summary.cards:
             if card.set_aside >= 0 or card.card_credit > 0:
+                continue
+            if card.set_aside + ledger_residual.get(card.account_id, Decimal("0")) >= 0:
+                # Below zero only because a ledger settles onto this card.
+                # Fully explained — not partly, or a real shortfall would
+                # hide behind a household's bookkeeping — and there is
+                # nothing here to re-file or assign.
                 continue
             reserve = card_reserve(
                 walk.funding,
@@ -540,7 +586,7 @@ class AccountHygieneService:
         )
 
     async def _misfiled_card_inflows(
-        self, budget_id: uuid.UUID, walk
+        self, budget_id: uuid.UUID, walk, ledgers: set[uuid.UUID]
     ) -> list[HygieneFinding | None]:
         """Card inflows that drained a reserve without releasing anything.
 
@@ -553,6 +599,15 @@ class AccountHygieneService:
         charge this card but produced residual in two or more months carries a
         recurring inflow stream that has cumulatively outrun its charges — a
         partner's repayments, or payments arriving from outside the budget.
+
+        A pair whose envelope is a **receivable ledger** — never assigned to,
+        holding nothing — is skipped by all three: see
+        `domain.cards.residual_is_pass_through`. Such a category is a running
+        tab settled onto the card every month, so its residual is the half of
+        an offsetting pair whose other half is a card payment that
+        deliberately never happened, and every remedy these findings offer
+        would break a budget being kept correctly. Left in, it is the loudest
+        finding a careful household gets.
 
         On an anchored budget the walk starts at the import boundary, so
         these totals cover post-anchor months only — and a refund of a
@@ -587,6 +642,10 @@ class AccountHygieneService:
         for (cat_id, card_id), series in walk.funding.residual_by_pair.items():
             total = sum(series.values(), Decimal("0"))
             if total <= 0:
+                continue
+            if cat_id in ledgers:
+                # A running tab settled onto the card, not an envelope that
+                # lost money. Nothing here has a remedy.
                 continue
             cat_name = categories.get(cat_id, "an envelope")
             card_name = names.get(card_id, "a card")
