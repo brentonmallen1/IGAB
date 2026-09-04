@@ -25,6 +25,7 @@ from igab.domain.cards import (
     credit_floored_by_month,
     release_split,
     reserve_discrepancy,
+    residual_is_pass_through,
 )
 from igab.domain.carryover import available_at, monthly_end_balances, sum_through
 
@@ -1160,3 +1161,62 @@ class TestTheAnchoredIdentity:
         # The differential: every input identical to an unanchored call.
         args = (D("200"), D("-200"), D("200"), D("0"), D("0"), D("0"), D("0"))
         assert reserve_discrepancy(*args) == reserve_discrepancy(*args, opening_credit=D("0"))
+
+
+class TestTheReceivableLedger:
+    """`residual_is_pass_through` — when the complaint about residual is
+    false, because the envelope was never an envelope.
+
+    The shape: a category run as a running tab for someone else's spending.
+    Never funded, allowed to go negative as charges land on whatever account
+    was handy, squared to zero when they settle up — and they settle up onto
+    one card, which is what makes that pair net to an inflow every month. The
+    residual accumulates monotonically and nothing is lost: the card was paid
+    down by exactly that much more than was charged to it, so the household
+    pays it that much less. Both legs carry -1 into the set-aside.
+    """
+
+    def test_never_assigned_and_square_is_a_ledger(self):
+        assert residual_is_pass_through([], D("0"))
+
+    def test_zero_assignment_rows_are_still_never_funded(self):
+        """A month someone opened and left at zero is not funding."""
+        assert residual_is_pass_through([D("0"), D("0")], D("0"))
+
+    def test_a_ledger_may_sit_negative(self):
+        """Mid-month, before the settle-up: charges have landed and the
+        repayment has not. Still holding none of the household's money."""
+        assert residual_is_pass_through([], D("-340"))
+
+    def test_an_envelope_that_kept_the_inflow_is_not_a_ledger(self):
+        """The complaint, restated: unfunded, but the inflow stayed. That
+        money came off a card's reserve and is sitting in the envelope."""
+        assert not residual_is_pass_through([], D("300"))
+
+    def test_one_cent_left_over_is_still_kept_money(self):
+        assert not residual_is_pass_through([], D("0.01"))
+
+    def test_a_funded_envelope_spent_to_zero_is_not_a_ledger(self):
+        """The case the whole test exists to separate. Available reads zero
+        here exactly as a ledger's does, but 300 of the household's money was
+        reserved through this envelope — a refund that fails to find its
+        exposure genuinely lost something."""
+        assert not residual_is_pass_through([D("300")], D("0"))
+
+    def test_funded_once_years_ago_still_disqualifies(self):
+        """Never means never. There is no threshold below which funding
+        stops counting — that threshold would sit between a household's
+        money and a detector's silence."""
+        assert not residual_is_pass_through([D("0"), D("0"), D("5"), D("0")], D("0"))
+
+    def test_funding_that_nets_to_zero_is_not_a_ledger(self):
+        """Funded in March, emptied in April. The sum is zero and the history
+        is not: the money was there, charges reserved against it, and a later
+        refund is a release that failed to find its exposure. Summing the
+        assignments would call this a ledger — which is why the rule reads
+        the amounts."""
+        assert not residual_is_pass_through([D("300"), D("-300")], D("0"))
+
+    def test_a_negative_assignment_alone_disqualifies(self):
+        """Money moved OUT of an envelope is money that was in it."""
+        assert not residual_is_pass_through([D("-50")], D("0"))

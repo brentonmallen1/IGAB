@@ -33,6 +33,15 @@ RECENT = TODAY - timedelta(days=10)
 LONG_AGO = TODAY - timedelta(days=800)
 
 
+def _months(count: int) -> list[date]:
+    """`count` consecutive month starts ending at the current one — oldest
+    first, so a stream reads in the order it happened."""
+    months = [RECENT.replace(day=1)]
+    for _ in range(count - 1):
+        months.append((months[-1] - timedelta(days=1)).replace(day=1))
+    return list(reversed(months))
+
+
 async def _world(db_session):
     services = make_services(db_session)
     user = await create_user(db_session)
@@ -565,18 +574,42 @@ class TestCardReserveDiagnostics:
     async def test_an_inflow_whose_envelope_charged_a_different_card(self, db_session):
         """A payment or refund filed onto the wrong card: the envelope's card
         spending lives on the OTHER card, so the finding points there rather
-        than at a reimbursement."""
+        than at a reimbursement.
+
+        Funded, and that is the point — 300 of the household's money was
+        reserved on Nordvik for a charge that has since been refunded onto
+        the Sapphire. The envelope's cash is stranded on the wrong card,
+        which is what makes the remedy worth offering."""
         services, budget, _checking, card, group, _cat = await self._card_world(db_session)
         other = await create_account(
             db_session, budget, "Nordvik Store Card", account_type="credit_card", on_budget=True
         )
         shopping = await create_category(db_session, budget, group, "Shopping")
+        await services.budgets.set_assignment(
+            budget.id, shopping.id, RECENT.replace(day=1), Decimal("300.00")
+        )
         await create_transaction(db_session, budget, other, "-300.00", RECENT, category=shopping)
         await create_transaction(db_session, budget, card, "300.00", RECENT, category=shopping)
 
         finding = (await _run(db_session, budget))["card_inflow_belongs_to_other_card"]
         assert "Nordvik Store Card" in finding.detail
         assert finding.account_ids == [card.id]
+
+    async def test_the_same_inflow_on_a_ledger_envelope_is_silent(self, db_session):
+        """The identical rows minus the funding. Nothing of the household's
+        was ever reserved through this envelope, so the inflow stranded
+        nothing — the Sapphire's reserve fell beside a Sapphire debt that
+        fell with it, and 'move it to the other card' would be bookkeeping
+        advice about money that is not at risk."""
+        services, budget, _checking, card, group, _cat = await self._card_world(db_session)
+        other = await create_account(
+            db_session, budget, "Nordvik Store Card", account_type="credit_card", on_budget=True
+        )
+        shopping = await create_category(db_session, budget, group, "Shared Expenses")
+        await create_transaction(db_session, budget, other, "-300.00", RECENT, category=shopping)
+        await create_transaction(db_session, budget, card, "300.00", RECENT, category=shopping)
+
+        assert "card_inflow_belongs_to_other_card" not in await _run(db_session, budget)
 
     async def test_debt_older_than_the_budgets_first_reserving_is_named(self, db_session):
         """A card synced in with bank history: charges long before anything
@@ -640,6 +673,114 @@ class TestCardReserveDiagnostics:
         # this shape fit neither — that silence is the bug this finding fixes.
         assert "residual_on_uncharged_category" not in findings
         assert "card_inflow_belongs_to_other_card" not in findings
+
+    async def _ledger_stream(self, db_session, budget, card, checking, cat, months):
+        """One person's spending, tracked as a running tab and settled onto
+        the card. Never funded, square at every month end.
+
+        The first month is charged on the card and settled back through
+        checking, so it is covered: it reserves 100, and its outflow is what
+        `charged()` reads. Every month after is 100 on the card, 40 somewhere
+        else, and one 140 repayment onto the card — so that pair nets to an
+        inflow of 40 a month. The first two of those release the reserve the
+        opening month built; once it is gone the rest is residual, month
+        after month, monotone by construction. That is the whole mechanic:
+        the repayment paid the card down 40 more than was charged to it, so
+        the household pays the card 40 less from its own cash."""
+        await create_transaction(db_session, budget, card, "-100.00", months[0], category=cat)
+        await create_transaction(db_session, budget, checking, "100.00", months[0], category=cat)
+        for month in months[1:]:
+            await create_transaction(db_session, budget, card, "-100.00", month, category=cat)
+            await create_transaction(db_session, budget, checking, "-40.00", month, category=cat)
+            await create_transaction(db_session, budget, card, "140.00", month, category=cat)
+
+    async def test_a_receivable_ledger_settled_onto_the_card_is_silent(self, db_session):
+        """The workflow the exception exists for, and it is a household
+        keeping its budget correctly.
+
+        Residual lands in three separate months on a pair that does charge
+        this card — `recurring_card_residual`'s exact signature — and the
+        reserve goes below zero on a card that still owes money, which is
+        `card_reserve_went_negative`'s. Both would fire every month forever,
+        and the loudest finding a careful household ever got would be its own
+        bookkeeping."""
+        services, budget, checking, card, group, _cat = await self._card_world(db_session)
+        ledger = await create_category(db_session, budget, group, "Shared Expenses")
+        await create_transaction(db_session, budget, card, "-800.00", LONG_AGO)
+        await self._ledger_stream(db_session, budget, card, checking, ledger, _months(6))
+
+        findings = await _run(db_session, budget)
+        assert "recurring_card_residual" not in findings
+        assert "residual_on_uncharged_category" not in findings
+        assert "card_inflow_belongs_to_other_card" not in findings
+        assert "card_reserve_went_negative" not in findings
+
+    async def test_the_same_stream_on_a_funded_envelope_is_still_reported(self, db_session):
+        """The gate is not a mute, and funding is the only variable: the same
+        rows, plus one month years back where 20 was assigned and spent on
+        this card. That makes it an envelope — the household's own money was
+        reserved through it — and inflows outrunning that reserve are
+        draining something real. Available reads 0 in both tests, which is
+        why availability alone cannot be the rule."""
+        services, budget, checking, card, group, _cat = await self._card_world(db_session)
+        envelope = await create_category(db_session, budget, group, "Shared Expenses")
+        await create_transaction(db_session, budget, card, "-800.00", LONG_AGO)
+        await services.budgets.set_assignment(
+            budget.id, envelope.id, LONG_AGO.replace(day=1), Decimal("20.00")
+        )
+        await create_transaction(db_session, budget, card, "-20.00", LONG_AGO, category=envelope)
+        await self._ledger_stream(db_session, budget, card, checking, envelope, _months(6))
+
+        findings = await _run(db_session, budget)
+        assert "Shared Expenses" in findings["recurring_card_residual"].detail
+        assert "card_reserve_went_negative" in findings
+
+    async def test_a_ledger_that_never_charged_the_card_is_silent(self, db_session):
+        """The steady state, with no opening month to reserve anything: every
+        month nets to an inflow, so the pair never reads as having charged
+        this card and the residual lands in the uncharged finding instead.
+        Same envelope, same answer — the gate is on the category, not on
+        which of the three findings the shape happens to reach."""
+        services, budget, checking, card, group, _cat = await self._card_world(db_session)
+        ledger = await create_category(db_session, budget, group, "Shared Expenses")
+        for month in _months(2)[1:]:
+            await create_transaction(db_session, budget, card, "-100.00", month, category=ledger)
+            await create_transaction(db_session, budget, checking, "-40.00", month, category=ledger)
+            await create_transaction(db_session, budget, card, "140.00", month, category=ledger)
+
+        findings = await _run(db_session, budget)
+        assert "residual_on_uncharged_category" not in findings
+        assert "recurring_card_residual" not in findings
+
+    async def test_a_ledger_that_kept_the_inflow_is_still_reported(self, db_session):
+        """Never funded, but the repayments ran past the charges and 60 of
+        the card's reserve is now sitting in the envelope. Available reads
+        positive, so the complaint the finding makes — the envelope keeps the
+        money — is simply true, and re-filing the inflow is a real remedy."""
+        services, budget, _checking, card, group, _cat = await self._card_world(db_session)
+        ledger = await create_category(db_session, budget, group, "Shared Expenses")
+        await create_transaction(db_session, budget, card, "-800.00", LONG_AGO)
+        for month in _months(2)[1:]:
+            await create_transaction(db_session, budget, card, "-100.00", month, category=ledger)
+            await create_transaction(db_session, budget, card, "130.00", month, category=ledger)
+
+        finding = (await _run(db_session, budget))["residual_on_uncharged_category"]
+        assert "Shared Expenses" in finding.detail
+
+    async def test_a_shortfall_only_partly_explained_by_a_ledger_still_reports(self, db_session):
+        """Fully explained, not partly. The same ledger stream, plus a 300
+        payment that ran ahead of anything assigned: 100 of the negative
+        reserve is the ledger settling up and the rest is a real shortfall,
+        so the card is named. A rule that skipped any card a ledger touched
+        would hide it behind the household's bookkeeping."""
+        services, budget, checking, card, group, _cat = await self._card_world(db_session)
+        ledger = await create_category(db_session, budget, group, "Shared Expenses")
+        await create_transaction(db_session, budget, card, "-800.00", LONG_AGO)
+        await self._ledger_stream(db_session, budget, card, checking, ledger, _months(6))
+        await create_card_payment(services, budget, checking, card, "300.00", RECENT)
+
+        finding = (await _run(db_session, budget))["card_reserve_went_negative"]
+        assert finding.account_ids == [card.id]
 
     async def test_a_single_refund_overshoot_is_not_a_stream(self, db_session):
         """One month of residual on an envelope that charges the card is an

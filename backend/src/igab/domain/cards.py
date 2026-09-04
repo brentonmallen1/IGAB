@@ -133,6 +133,7 @@ supplies SIGNED net credit outflows per (category, month, card) — a month
 that nets to an inflow arrives negative, never clamped.
 """
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
@@ -678,6 +679,49 @@ class CardPosition:
     #: The card holds your money: it owes nothing and then some. This is the
     #: only state the word "overpaid" was ever true of.
     card_credit: Decimal
+
+
+def residual_is_pass_through(assigned_amounts: Iterable[Decimal], available: Decimal) -> bool:
+    """Whether an envelope's residual took nothing from anybody.
+
+    Residual is inflow beyond everything a category ever had riding on a card
+    (`CardFunding.residual_by_pair`): it reduces the card's reserve without
+    releasing any envelope's cash. The complaint a surface makes about it is
+    that *the envelope keeps the money*. This says when that complaint is
+    false, and the answer is not about the residual at all — it is about
+    whether the envelope was ever an envelope.
+
+    A **receivable ledger** is a category run as a running tab rather than a
+    fund: never assigned to, allowed to go negative as charges land, squared
+    to zero when the person settles up. Its charges land on whatever account
+    was handy — cash accounts and other cards included — while the single
+    repayment lands on one card, so that pair nets to an inflow every month
+    and residual accumulates monotonically. Nothing is lost: the repayment
+    paid the card down by exactly that much more than was charged to it, so
+    the reserve falls beside a debt that fell with it, and the household pays
+    the card that much less from its own cash. Both legs carry `-1` into
+    `set_aside`; they cancel.
+
+    The discriminator is not "does available look like zero" — a funded
+    envelope that spent everything it held reads zero too, and a refund
+    arriving there is a genuine release that failed to find its exposure.
+    It is **never assigned, and holding nothing now**:
+
+    - **never assigned** — not one month carried a non-zero amount, so no
+      cash of the household's was ever reserved through it to hand back.
+    - `available <= 0` — it is holding none of the inflow. A ledger squares to
+      zero; one carrying a positive balance has kept card money, which is the
+      complaint, restated.
+
+    "Never", not "nets to zero": a category funded in March and emptied in
+    April held real money in between, its charges reserved against it, and a
+    later refund there is a release that failed to find its exposure. Summing
+    the assignments would call that history a ledger. Reasoning about how much
+    funding is a little would put a threshold between a household's money and
+    a detector's silence, so there is no threshold — one non-zero assignment,
+    ever, and the envelope is an envelope.
+    """
+    return all(amount == ZERO for amount in assigned_amounts) and available <= ZERO
 
 
 def card_position(set_aside: Decimal, balance: Decimal) -> CardPosition:
