@@ -65,6 +65,11 @@ NOT_CARRIED: dict[str, str] = {
     "AI history": "Queued and completed AI jobs.",
     "Guide and wishlist": "Roadmap answers, bindings, and wishlist items.",
     "Approval state": "Whether a transaction had been reviewed.",
+    "Pre-anchor plan history": (
+        "Envelope balances and assignments from months before the import "
+        "anchor — the anchor month's row is the boundary statement; every "
+        "transaction is still in the register."
+    ),
 }
 
 
@@ -97,6 +102,7 @@ async def _month_range(session: AsyncSession, budget_id: UUID) -> list[date]:
     """
     transactions = Base.metadata.tables["transactions"]
     assignments = Base.metadata.tables["budget_assignments"]
+    import_anchors = Base.metadata.tables["import_anchors"]
 
     bounds = (
         await session.execute(
@@ -120,6 +126,18 @@ async def _month_range(session: AsyncSession, budget_id: UUID) -> list[date]:
         return []
 
     first = min(starts).replace(day=1)
+    # An anchored budget's plan starts at its anchor's B−1: the summary loop
+    # below would otherwise export pre-anchor months the walks never derive.
+    # B−1 itself IS exported — its rows carry the openings as Available, an
+    # opening-statement month — so re-importing this file re-anchors at the
+    # same boundary and reads the same openings back.
+    anchor_row = (
+        await session.execute(
+            select(func.min(import_anchors.c.month)).where(import_anchors.c.budget_id == budget_id)
+        )
+    ).scalar_one_or_none()
+    if anchor_row is not None:
+        first = max(first, anchor_row)
     last = max(ends).replace(day=1)
     months: list[date] = []
     cursor = first

@@ -33,6 +33,11 @@ from igab.repositories.category_repo import (
     CategoryGroupRepository,
     CategoryRepository,
 )
+from igab.repositories.import_anchor_repo import (
+    BudgetAnchor,
+    ImportAnchorRepository,
+    category_opening,
+)
 from igab.repositories.snapshot_repo import SnapshotRepository
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.change_log import ChangeRecorder, snapshot
@@ -179,6 +184,11 @@ class CardStatus:
     released: Decimal = Decimal("0")
     residual: Decimal = Decimal("0")
     payments: Decimal = Decimal("0")
+    #: The sixth leg, first in time: YNAB's own CCP Available at an import
+    #: anchor's B−1. Zero everywhere but anchored budgets. With it the legs
+    #: still sum to `set_aside` — `opening + assigned + reserved − released −
+    #: residual − payments` — and the other five stay post-anchor sums.
+    opening: Decimal = Decimal("0")
     #: What is riding uncovered on this card, lifetime — what went on, less
     #: what an inflow discharged, less what an assignment covered. Distinct
     #: from `uncovered`, which is what the card OWES beyond its reserve.
@@ -281,6 +291,11 @@ class BudgetSummary:
     #: computed here because their set-aside envelopes are part of the same
     #: identity Ready to Assign is. Empty when the budget has no cards.
     cards: list[CardStatus] = field(default_factory=list)
+    #: B, the first month this budget's envelope math re-derives — set only
+    #: on budgets anchored at import (repositories/import_anchor_repo.py).
+    #: The client clamps month navigation here; months before it live in the
+    #: register and reports only.
+    anchor_month: date | None = None
 
 
 @dataclass
@@ -365,6 +380,39 @@ class CardWalk:
     credit_outflows: dict[uuid.UUID, dict[uuid.UUID, dict[date, Decimal]]] = field(
         default_factory=dict
     )
+    #: The budget's import anchor, loaded once here so hygiene, the timeline
+    #: and the parity check read the same seeds the walk consumed. None on
+    #: every unanchored budget — the byte-identical path.
+    anchor: BudgetAnchor | None = None
+
+
+def _from_month(
+    series_by_key: dict[uuid.UUID, dict[date, Decimal]], start: date
+) -> dict[uuid.UUID, dict[date, Decimal]]:
+    """Each key's monthly series with months before `start` dropped —
+    the anchor's truncation, applied to repository sums the walk never sees."""
+    return {
+        key: {m: v for m, v in series.items() if m >= start}
+        for key, series in series_by_key.items()
+    }
+
+
+class _Unset:
+    """ "Nobody said" — distinct from `None`, which says "unanchored"."""
+
+
+_UNSET = _Unset()
+
+
+def _opening_leg(anchor: BudgetAnchor | None, account_id: uuid.UUID) -> dict[date, Decimal] | None:
+    """One card's `CardReserve.opening` leg — `{B−1: CCP Available}` on an
+    anchored budget, None (an empty leg) everywhere else. The one spelling;
+    the summary, `card_reserves` and the timeline all read it."""
+    if anchor is None:
+        return None
+    return {
+        anchor.openings.opening_month: anchor.openings.reserve_by_card.get(account_id, Decimal("0"))
+    }
 
 
 class BudgetService:
@@ -377,6 +425,7 @@ class BudgetService:
         transaction_repo: TransactionRepository,
         move_repo: "BudgetMoveRepository | None" = None,
         snapshot_repo: SnapshotRepository | None = None,
+        anchor_repo: ImportAnchorRepository | None = None,
     ) -> None:
         self.account_repo = account_repo
         self.category_repo = category_repo
@@ -385,7 +434,14 @@ class BudgetService:
         self.transaction_repo = transaction_repo
         self.move_repo = move_repo
         self.snapshot_repo = snapshot_repo
+        self.anchor_repo = anchor_repo
         self.changes = ChangeRecorder(assignment_repo.session)
+
+    async def _budget_anchor(self, budget_id: uuid.UUID) -> BudgetAnchor | None:
+        """The budget's import anchor, or None — None is today's code path."""
+        if self.anchor_repo is None:
+            return None
+        return await self.anchor_repo.get_for_budget(budget_id)
 
     async def _record_assignment(
         self, assignment, before_assigned: Decimal, move: BudgetMove | None = None
@@ -472,6 +528,8 @@ class BudgetService:
         category_id: uuid.UUID,
         month: date,
         activity_by_month: dict[date, Decimal] | None = None,
+        *,
+        opening: tuple[date, Decimal] | None | _Unset = _UNSET,
     ) -> CategoryBalance:
         """
         Compute available balance for a category through the given month.
@@ -496,8 +554,27 @@ class BudgetService:
 
         this_activity = activity_by_month.get(month_start, Decimal("0"))
 
+        # The import anchor's single seam into the live path: guide, wishlist
+        # and the category previews all read available through here, so one
+        # opening kwarg reaches every one of them. A caller looping over a
+        # budget's categories hands the seed in — it holds the budget id and
+        # can load the anchor once — exactly as it already hands in activity;
+        # `_UNSET` (not None) keeps "unanchored" distinguishable from "not
+        # looked up yet".
+        seed: tuple[date, Decimal] | None
+        if isinstance(opening, _Unset):
+            seed = (
+                await self.anchor_repo.get_for_category(category_id)
+                if self.anchor_repo is not None
+                else None
+            )
+        else:
+            seed = opening
         available = available_through(
-            {a.month: a.assigned for a in assignments}, activity_by_month, month_start
+            {a.month: a.assigned for a in assignments},
+            activity_by_month,
+            month_start,
+            opening=seed,
         )
 
         return CategoryBalance(
@@ -528,13 +605,16 @@ class BudgetService:
         summary already holds the full list and passes it to avoid a second
         load; any other caller omits it.
         """
+        anchor = await self._budget_anchor(budget_id)
         card_accounts = [
             a
             for a in await self.account_repo.get_all(budget_id, include_closed=True)
             if a.on_budget and a.classification == "liability"
         ]
         if not card_accounts:
-            return CardWalk()
+            # The anchor still rides out: a cardless anchored budget serves
+            # its anchor month (the client clamps navigation on it).
+            return CardWalk(anchor=anchor)
         if categories is None:
             categories = await self.category_repo.get_all(budget_id, include_archived=True)
         month_end_date = last_of_month(month_start)
@@ -574,10 +654,22 @@ class BudgetService:
             if (linked := linked_by_account.get(account.id)) is not None
         }
         funding = card_funding(
-            assignments_by_cat, spending_activity, credit_outflows, card_categories
+            assignments_by_cat,
+            spending_activity,
+            credit_outflows,
+            card_categories,
+            openings=anchor.openings if anchor is not None else None,
         )
         payments = await self.transaction_repo.sum_card_payments_by_month(budget_id, month_end_date)
         unclaimed = await self.transaction_repo.sum_unclaimed_card_rows(budget_id, month_end_date)
+        if anchor is not None:
+            # The two reserve legs the domain walk never sees are repository
+            # sums, so the anchor's truncation is applied here — the seed at
+            # B−1 already accounts for everything earlier. Correctness lives
+            # at this seam; bounding the queries themselves would be an
+            # optimization, not a second rule.
+            payments = _from_month(payments, anchor.month)
+            unclaimed = _from_month(unclaimed, anchor.month)
         return CardWalk(
             card_accounts=card_accounts,
             linked_by_account=linked_by_account,
@@ -585,6 +677,7 @@ class BudgetService:
             payments=payments,
             unclaimed=unclaimed,
             credit_outflows=credit_outflows,
+            anchor=anchor,
         )
 
     async def card_reserves(
@@ -601,16 +694,25 @@ class BudgetService:
         """
         walk = await self.card_walk(budget_id, first_of_month(month))
         return {
-            a.id: (a.name, card_reserve(walk.funding, a.id, walk.payments.get(a.id, {})))
+            a.id: (
+                a.name,
+                card_reserve(
+                    walk.funding,
+                    a.id,
+                    walk.payments.get(a.id, {}),
+                    opening=_opening_leg(walk.anchor, a.id),
+                ),
+            )
             for a in walk.card_accounts
         }
 
     async def card_timeline_for(
         self, budget_id: uuid.UUID, account_id: uuid.UUID, month: date
-    ) -> tuple[str, list["TimelineMonth"], "TimelineBreach | None"] | None:
+    ) -> tuple[str, list["TimelineMonth"], "TimelineBreach | None", date | None] | None:
         """One card's reserve month by month, through `month`, with its first
-        breach — `(name, timeline, breach)`, or None for an account that is
-        not one of the budget's cards.
+        breach — `(name, timeline, breach, anchor_month)`, or None for an
+        account that is not one of the budget's cards. `anchor_month` is B on
+        an anchored budget (the timeline then opens at B−1, the seam row).
 
         The serving side of `domain/card_timeline.py`: the same walk the
         summary reads, evaluated at every month instead of the last one, with
@@ -628,14 +730,21 @@ class BudgetService:
         balances = await self.account_repo.card_balances_by_month(
             budget_id, last_of_month(month_start)
         )
-        reserve = card_reserve(walk.funding, account_id, walk.payments.get(account_id, {}))
+        reserve = card_reserve(
+            walk.funding,
+            account_id,
+            walk.payments.get(account_id, {}),
+            opening=_opening_leg(walk.anchor, account_id),
+        )
         timeline = build_timeline(
             reserve,
             balances.get(account_id, {}),
             walk.funding.riding_by_card.get(account_id, {}),
+            start=walk.anchor.openings.opening_month if walk.anchor is not None else None,
         )
         timeline = [cm for cm in timeline if cm.month <= month_start]
-        return account.name, timeline, first_breach(timeline)
+        anchor_month = walk.anchor.month if walk.anchor is not None else None
+        return account.name, timeline, first_breach(timeline), anchor_month
 
     async def get_budget_summary(self, budget_id: uuid.UUID, month: date) -> BudgetSummary:
         """
@@ -686,9 +795,16 @@ class BudgetService:
             all_activity_by_month = await self.transaction_repo.sum_all_categories_by_month(
                 [cat.id for cat in categories], end_date=last_of_month(month_start)
             )
+            # One anchor load for the whole loop (memoized on the repo), and
+            # none at all on an unanchored budget — the per-category lookup
+            # would otherwise be a query per envelope on every summary.
+            summary_anchor = await self._budget_anchor(budget_id)
             balance_map = {
                 cat.id: await self.get_category_balance(
-                    cat.id, month_start, activity_by_month=all_activity_by_month.get(cat.id, {})
+                    cat.id,
+                    month_start,
+                    activity_by_month=all_activity_by_month.get(cat.id, {}),
+                    opening=category_opening(summary_anchor, cat.id),
                 )
                 for cat in categories
             }
@@ -709,6 +825,16 @@ class BudgetService:
         if card_accounts:
             month_end_date = last_of_month(month_start)
             owed_by_card = await self.account_repo.card_balances(budget_id, month_end_date)
+            # An anchored budget's identity needs each card's balance at the
+            # anchor's B−1: a card imported holding a credit has no
+            # post-anchor leg to explain it (`reserve_discrepancy`'s T3
+            # opening_credit). Read live from the register, never stored, so
+            # edits to pre-anchor rows stay coherent.
+            owed_at_anchor: dict[uuid.UUID, Decimal] = {}
+            if walk.anchor is not None:
+                owed_at_anchor = await self.account_repo.card_balances(
+                    budget_id, _month_end(walk.anchor.openings.opening_month)
+                )
             # The card's own ledger for the viewed month, beside the reserve's
             # legs: what a person charged, and how far the debt actually moved.
             # Every leg above is a lifetime `sum_through`, so nothing here is
@@ -719,11 +845,17 @@ class BudgetService:
             )
             for account in card_accounts:
                 linked = linked_by_account.get(account.id)
-                # One assembler for all five legs. Composing a reserve at the
+                # One assembler for all six legs. Composing a reserve at the
                 # call site is what let the assignment leg skip the walk.
-                reserve = card_reserve(funding, account.id, payments.get(account.id, {}))
+                reserve = card_reserve(
+                    funding,
+                    account.id,
+                    payments.get(account.id, {}),
+                    opening=_opening_leg(walk.anchor, account.id),
+                )
                 set_aside = reserve.set_aside(month_start)
                 card_assignments = reserve.assignments
+                opening_total = sum_through(reserve.opening, month_start)
                 if linked is not None:
                     # The linked category's balance is this computation, not
                     # the transaction sums — nothing can be filed there, and
@@ -784,6 +916,7 @@ class BudgetService:
                         released=sum_through(reserve.released, month_start),
                         residual=sum_through(reserve.residual, month_start),
                         payments=sum_through(reserve.payments, month_start),
+                        opening=opening_total,
                         riding=sum_through(funding.riding_by_card.get(account.id, {}), month_start),
                         charged_this_month=-charged,
                         inflows_this_month=received,
@@ -803,14 +936,20 @@ class BudgetService:
                         # exactly the histories that produce them. Computed
                         # where all six inputs are already in hand, and read
                         # back by the integrity check rather than re-derived.
+                        # On an anchored budget the opening reserve is folded
+                        # into `assigned` — YNAB's accumulated CCP position is
+                        # a pre-anchor net assignment, and it enters T1 and T2
+                        # with exactly an assignment's signs. `opening_credit`
+                        # is the T3 allowance for a card imported in credit.
                         reserve_discrepancy=reserve_discrepancy(
                             set_aside,
                             balance,
-                            sum_through(card_assignments, month_start),
+                            opening_total + sum_through(card_assignments, month_start),
                             sum_through(funding.covered_by_card.get(account.id, {}), month_start),
                             sum_through(reserve.payments, month_start),
                             sum_through(reserve.residual, month_start),
                             sum_through(unclaimed.get(account.id, {}), month_start),
+                            opening_credit=max(zero, owed_at_anchor.get(account.id, zero)),
                         ),
                     )
                 )
@@ -913,6 +1052,7 @@ class BudgetService:
             assigned_in_future=assigned_in_future,
             category_balances=balances,
             cards=cards,
+            anchor_month=walk.anchor.month if walk.anchor is not None else None,
         )
 
     async def _snapshot_balances(
@@ -970,13 +1110,22 @@ class BudgetService:
         for a in assignments:
             assigned_by_cat.setdefault(a.category_id, {})[a.month] = a.assigned
 
+        # The same anchor the live path applies (`get_category_balance`), so
+        # the cache and the fallback cannot disagree. Anchored: each category
+        # opens at YNAB's B−1 Available (zero when unlisted) and pre-anchor
+        # months are never emitted; the B−1 row then serves every later
+        # month's floored carryover through the existing snapshot read.
+        anchor = await self._budget_anchor(budget_id)
+
         rows: list[dict[str, object]] = []
         for cat in categories:
             asg = assigned_by_cat.get(cat.id, {})
             act = activity.get(cat.id, {})
             # One loop, the domain's: these rows must be exactly what
             # `available_through` would say, month by month.
-            for m, end_of_month in monthly_end_balances(asg, act).items():
+            for m, end_of_month in monthly_end_balances(
+                asg, act, opening=category_opening(anchor, cat.id)
+            ).items():
                 rows.append(
                     {
                         "budget_id": budget_id,

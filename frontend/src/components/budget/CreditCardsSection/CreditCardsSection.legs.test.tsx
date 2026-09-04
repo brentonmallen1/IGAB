@@ -49,6 +49,7 @@ function card(over: Partial<CardStatus> = {}): CardStatus {
     residual: 0,
     payments: 5,
     riding: 0,
+    opening: 0,
     // Kept coherent with balance/set_aside above rather than zeroed: 115
     // reserved against 60 owed IS over-reserved by 55, and a fixture that
     // said otherwise would let the row contradict itself unnoticed.

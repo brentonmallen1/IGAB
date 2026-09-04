@@ -29,6 +29,7 @@ import './Header.css'
 export function Header() {
   const selectedMonth = useAppStore((s) => s.selectedMonth)
   const setSelectedMonth = useAppStore((s) => s.setSelectedMonth)
+  const budgetAnchorMonth = useAppStore((s) => s.budgetAnchorMonth)
   const theme = useAppStore((s) => s.theme)
   const setTheme = useAppStore((s) => s.setTheme)
   const toggleThemeMode = useAppStore((s) => s.toggleThemeMode)
@@ -68,6 +69,13 @@ export function Header() {
             className="header__month-btn"
             onClick={() => setSelectedMonth(addMonths(selectedMonth, -1))}
             aria-label="Previous month"
+            // The store clamps anyway (one rule); disabling says so.
+            disabled={!!budgetAnchorMonth && selectedMonth <= budgetAnchorMonth}
+            title={
+              budgetAnchorMonth && selectedMonth <= budgetAnchorMonth
+                ? 'Your budget starts here — earlier months live in the register and reports'
+                : undefined
+            }
           >
             <ChevronLeft size={16} />
           </button>

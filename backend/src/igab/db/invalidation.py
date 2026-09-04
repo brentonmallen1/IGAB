@@ -26,9 +26,17 @@ active.
 from sqlalchemy import delete, event
 from sqlalchemy.orm import ORMExecuteState, Session
 
-from igab.db.models import BudgetAssignment, BudgetSnapshotMeta, Category, Transaction
+from igab.db.models import (
+    BudgetAssignment,
+    BudgetSnapshotMeta,
+    Category,
+    ImportAnchor,
+    Transaction,
+)
 
-_WATCHED = (Transaction, BudgetAssignment, Category)
+# ImportAnchor is written once per import, but that write must invalidate:
+# the category snapshot cache bakes the anchor's openings into its rows.
+_WATCHED = (Transaction, BudgetAssignment, Category, ImportAnchor)
 
 
 def _invalidate(session: Session) -> None:

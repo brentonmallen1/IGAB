@@ -12,6 +12,7 @@ import pytest
 
 from igab.sample_budget.card_scenarios import (
     ALL_SCENARIOS,
+    ANCHORED_SCENARIOS,
     CardScenario,
     ExpectedPosition,
 )
@@ -30,7 +31,8 @@ from .invariants import assert_financial_invariants
 
 ANCHOR = date(2026, 8, 15)
 MONTH = date(2026, 8, 1)
-IDS = [s.slug for s in ALL_SCENARIOS]
+EVERY = ALL_SCENARIOS + ANCHORED_SCENARIOS
+IDS = [s.slug for s in EVERY]
 D = Decimal
 
 
@@ -73,7 +75,7 @@ async def _card_row(services, budget, card_id):
     return next(c for c in summary.cards if c.account_id == card_id)
 
 
-@pytest.mark.parametrize("scenario", ALL_SCENARIOS, ids=IDS)
+@pytest.mark.parametrize("scenario", EVERY, ids=IDS)
 async def test_the_served_row_reads_what_the_scenario_says(db_session, scenario: CardScenario):
     services, budget, applied = await _budget_with(db_session, scenario)
     card = await _card_row(services, budget, applied[0].card_id)
@@ -94,7 +96,7 @@ async def test_the_served_row_reads_what_the_scenario_says(db_session, scenario:
     assert scenario.expect.differences(actual) == {}, scenario.story
 
 
-@pytest.mark.parametrize("scenario", ALL_SCENARIOS, ids=IDS)
+@pytest.mark.parametrize("scenario", EVERY, ids=IDS)
 async def test_the_scenario_leaves_the_budget_sound(db_session, scenario: CardScenario):
     """Every invariant the suite has, over each shape — including the reserve
     identity, which had never seen a refund or a residual in generated data."""

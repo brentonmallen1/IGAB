@@ -54,6 +54,10 @@ class TestItSurvivesTheRequest:
         assert stored["accounts"] == body["import_result"]["accounts"]
         assert stored["categories"] == body["import_result"]["categories"]
         assert stored["category_groups"] == body["import_result"]["category_groups"]
+        # A register-only export cannot anchor, and the summary says so
+        # rather than staying silent (the review dialog reads this).
+        assert stored["anchored_at"] is None
+        assert stored["anchor_skipped_reason"] == "no plan in the export"
 
     @pytest.mark.asyncio
     async def test_it_names_the_categories_it_tagged(self, api_client):

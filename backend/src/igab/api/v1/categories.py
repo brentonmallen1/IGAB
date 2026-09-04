@@ -677,13 +677,15 @@ async def get_card_timeline(
     result = await budget_service.card_timeline_for(budget_id, account_id, month)
     if result is None:
         raise HTTPException(status_code=404, detail="Not a card account of this budget")
-    name, timeline, breach = result
+    name, timeline, breach, anchor_month = result
     return CardTimelineResponse(
         account_id=account_id,
         name=name,
+        anchor_month=anchor_month,
         months=[
             CardTimelineMonthOut(
                 month=cm.month,
+                opening=cm.legs["opening"],
                 assigned=cm.legs["assignments"],
                 reserved=cm.legs["reservations"],
                 released=cm.legs["released"],
@@ -746,6 +748,7 @@ async def get_budget_month(
         overspent_count_cash=summary.overspent_count_cash,
         overspent_count=summary.overspent_count,
         assigned_in_future=summary.assigned_in_future,
+        anchor_month=summary.anchor_month,
         cards=[
             CardStatusOut(
                 account_id=c.account_id,
@@ -762,6 +765,7 @@ async def get_budget_month(
                 released=c.released,
                 residual=c.residual,
                 payments=c.payments,
+                opening=c.opening,
                 riding=c.riding,
                 over_reserved=c.over_reserved,
                 short_reserved=c.short_reserved,

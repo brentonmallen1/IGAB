@@ -306,7 +306,13 @@ function SummaryStep({ summary }: { summary: YnabImportResult }) {
         </div>
       </Surface>
 
-      {summary.parity && <ParityBlock parity={summary.parity} />}
+      {summary.parity && (
+        <ParityBlock
+          parity={summary.parity}
+          anchoredAt={summary.anchored_at}
+          anchorSkippedReason={summary.anchor_skipped_reason}
+        />
+      )}
 
       {leftOut.length > 0 && (
         <Surface variant="sunken" title="What was left out" className="import-review__block">
@@ -351,7 +357,15 @@ function verdictModifier(matches: boolean, incoherent: boolean): string {
   return matches ? 'import-review__verdict--ok' : ''
 }
 
-function ParityBlock({ parity }: { parity: NonNullable<YnabImportResult['parity']> }) {
+function ParityBlock({
+  parity,
+  anchoredAt,
+  anchorSkippedReason,
+}: {
+  parity: NonNullable<YnabImportResult['parity']>
+  anchoredAt?: string | null
+  anchorSkippedReason?: string | null
+}) {
   const { formatMoney, formatDate } = useFormatters()
   const igab = parseApiDecimal(parity.igab_ready_to_assign)
   const ynab = parseApiDecimal(parity.ynab_ready_to_assign)
@@ -366,7 +380,19 @@ function ParityBlock({ parity }: { parity: NonNullable<YnabImportResult['parity'
   const { consistency } = parity
   const incoherent = !consistency.self_consistent
 
+  const anchorMonthLabel = anchoredAt
+    ? new Date(`${anchoredAt}T00:00:00`).toLocaleDateString(undefined, {
+        month: 'long',
+        year: 'numeric',
+      })
+    : null
   const notes = [
+    // Absent keys (pre-feature summaries) render nothing — see YnabImportResult.
+    anchorMonthLabel &&
+      `Envelopes and card reserves start from YNAB's own position at the month before ${anchorMonthLabel}; the figures above compare that handoff, and earlier months live in the register and reports.`,
+    !anchoredAt &&
+      anchorSkippedReason &&
+      `This import could not be anchored (${anchorSkippedReason}) — envelope history was re-derived from the transactions instead.`,
     incoherent &&
       consistency.carryover_rows_violating > 0 &&
       `${percent(consistency.carryover_rows_violating, consistency.carryover_rows_checked)} of its plan rows (${n(consistency.carryover_rows_violating)} of ${n(consistency.carryover_rows_checked)}) do not match YNAB's own running balance.`,

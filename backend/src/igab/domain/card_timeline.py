@@ -6,7 +6,7 @@ negative reserve raises is about *when*. A ten-year import that lands at
 naming them is the difference between "your card is negative" and "fund
 March 2019, or assign the reimbursements envelope's windfall to the card".
 
-Composes what already exists — the five legs of `CardReserve`, and
+Composes what already exists — the six legs of `CardReserve`, and
 `card_position` — into a per-month series. **No new money rules**: the
 cumulative reserve here is definitionally `CardReserve.set_aside` evaluated
 at each month, pinned by a test rather than trusted, and the position is the
@@ -27,11 +27,13 @@ from igab.domain.cards import CardPosition, CardReserve, card_position
 
 ZERO = Decimal("0")
 
-#: The five legs in reserve order, with the sign each contributes to the
+#: The six legs in reserve order, with the sign each contributes to the
 #: set-aside. One spelling — `first_breach` ranks by these, `CardMonth`
 #: recombines them, and a second list would let the two disagree about what
-#: a reserve is made of.
+#: a reserve is made of. `opening` is first in time by construction: an
+#: import anchor's B−1 seed, present only on anchored budgets.
 LEG_SIGNS: tuple[tuple[str, int], ...] = (
+    ("opening", 1),
     ("assignments", 1),
     ("reservations", 1),
     ("released", -1),
@@ -42,7 +44,7 @@ LEG_SIGNS: tuple[tuple[str, int], ...] = (
 
 @dataclass(frozen=True)
 class CardMonth:
-    """One month of a card's reserve: the five legs' deltas, and where the
+    """One month of a card's reserve: the six legs' deltas, and where the
     running totals stood once the month had happened."""
 
     month: date
@@ -79,20 +81,34 @@ def card_timeline(
     reserve: CardReserve,
     balance_by_month: dict[date, Decimal],
     riding_by_month: dict[date, Decimal],
+    *,
+    start: date | None = None,
 ) -> list[CardMonth]:
     """The reserve's whole history, one entry per month anything moved.
 
-    Months come from the union of the five legs, the balance, and the ride —
+    Months come from the union of the six legs, the balance, and the ride —
     a month where only the balance moved (an unfiled charge) still appears,
     because that is exactly the month a diagnosis needs to see.
+
+    `start` is an import anchor's B−1: balance movement from earlier months
+    folds into the `start` entry, so the timeline's first row is the seam —
+    the opening leg, the real B−1 balance, the opening ride — rather than a
+    history the anchor exists not to re-derive. The walk's own series carry
+    no pre-anchor months, so only the register-sourced balance needs folding.
     """
     leg_series: dict[str, dict[date, Decimal]] = {
+        "opening": reserve.opening,
         "assignments": reserve.assignments,
         "reservations": reserve.reservations,
         "released": reserve.released,
         "residual": reserve.residual,
         "payments": reserve.payments,
     }
+    if start is not None:
+        folded = sum((v for m, v in balance_by_month.items() if m <= start), ZERO)
+        balance_by_month = {m: v for m, v in balance_by_month.items() if m > start}
+        if folded != ZERO:
+            balance_by_month[start] = folded
     months = sorted(
         {m for series in leg_series.values() for m in series}
         | set(balance_by_month)

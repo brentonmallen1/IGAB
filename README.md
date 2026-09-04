@@ -136,11 +136,14 @@ Filter by date range, category, payee, or account; monthly reports have their ow
   reconciled. A hold that posts clears in place; a changed amount goes to
   review instead of being applied silently
 - **YNAB import** — bring over your full export (accounts, categories,
-  transactions, budget history) and run both in parallel until you trust the
-  numbers. Every import checks Ready to Assign against the export's own
-  figures and says where the two differ. Saved views aren't in YNAB's export,
-  and YNAB's credit-card payment reserves are left out on purpose: IGAB
-  reserves card debt from the card's own balance
+  transactions, budget history) and start where YNAB left off: every envelope
+  and card reserve opens at YNAB's own figures at the export's last complete
+  month, so day one matches the screen you just left. Earlier history still
+  imports in full for the register and reports; envelope math simply starts
+  at the handoff instead of re-deriving years of history under different
+  rules. Every import checks Ready to Assign against the export's own figures
+  and says where the two differ — keep YNAB around until you trust the
+  numbers (see docs/ynab-import.md)
 - **CSV import** — per-account bank CSV import with configurable parsing
   (including EU decimal formats) and hash-based dedup
 

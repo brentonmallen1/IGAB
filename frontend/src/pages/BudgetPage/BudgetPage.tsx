@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Archive, FolderInput, Trash2 } from 'lucide-react'
 import { BudgetTable } from '../../components/budget/BudgetTable/BudgetTable'
 import { CategoryInspector } from '../../components/budget/CategoryInspector/CategoryInspector'
@@ -18,6 +18,7 @@ import { useUIStore } from '../../stores/uiStore'
 import { useIsMobile } from '../../hooks/useMediaQuery'
 import { useSwipeNavigation } from '../../hooks/useSwipeNavigation'
 import { addMonths } from '../../utils/dates'
+import { useBudgetMonth } from '../../api/budgets'
 import { useBudgets, useCreateBudget } from '../../api/budgets'
 import {
   useArchiveCategories,
@@ -36,6 +37,21 @@ export function BudgetPage() {
   const setBudgetId = useAppStore((s) => s.setCurrentBudgetId)
   const month = useAppStore((s) => s.selectedMonth)
   const setSelectedMonth = useAppStore((s) => s.setSelectedMonth)
+  const setBudgetAnchorMonth = useAppStore((s) => s.setBudgetAnchorMonth)
+  // React Query dedupes this against the children's own month reads; the page
+  // needs it to sync the anchor clamp into the store (one rule, every
+  // navigation surface) and to label the boundary.
+  const { data: budgetMonth } = useBudgetMonth(budgetId, month)
+  const anchorMonth = budgetMonth?.anchor_month ?? null
+  useEffect(() => {
+    setBudgetAnchorMonth(anchorMonth)
+    return () => setBudgetAnchorMonth(null)
+  }, [anchorMonth, setBudgetAnchorMonth])
+  useEffect(() => {
+    // A persisted month from before the anchor (or another budget) clamps
+    // forward the moment the anchor is known.
+    if (anchorMonth && month < anchorMonth) setSelectedMonth(anchorMonth)
+  }, [anchorMonth, month, setSelectedMonth])
 
   const selectedCategoryIds = useUIStore((s) => s.selectedCategoryIds)
   const clearCategorySelection = useUIStore((s) => s.clearCategorySelection)
@@ -159,6 +175,11 @@ export function BudgetPage() {
     <div className="budget-page" {...(isMobile ? swipeHandlers : {})}>
       {/* A fresh import lands here; the review it produced opens once. */}
       <ImportReviewGate budgetId={budgetId} />
+      {anchorMonth === month && (
+        <p className="budget-page__anchor-note">
+          Your budget&apos;s plan starts here — earlier months live in the register and reports.
+        </p>
+      )}
       <TbaHero budgetId={budgetId} month={month} />
       <div className="budget-page__body">
         <div

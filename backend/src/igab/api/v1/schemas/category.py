@@ -428,22 +428,28 @@ class CardStatusOut(ApiModel):
     #: Required, not optional: a path that forgets it must raise, not report a
     #: drifting reserve as healthy.
     reserve_discrepancy: Decimal
-    #: The five legs `set_aside` is the running total of, each through the
+    #: The legs `set_aside` is the running total of, each through the
     #: viewed month, plus what is still riding uncovered on the card:
     #:
-    #:     assigned + reserved − released − residual − payments == set_aside
+    #:     opening + assigned + reserved − released − residual − payments
+    #:         == set_aside
     #:
     #: The surface used to show only the total, and every question this model
     #: raised was answered by decomposing it. The client renders these; it
     #: must not sum them into a set-aside of its own.
     #:
-    #: Required, not optional, all six — a path that forgets must raise rather
-    #: than show a reserve made of zeros.
+    #: Required, not optional, all seven — a path that forgets must raise
+    #: rather than show a reserve made of zeros.
     assigned: Decimal
     reserved: Decimal
     released: Decimal
     residual: Decimal
     payments: Decimal
+    #: The sixth leg, first in time: YNAB's own CCP Available at an import
+    #: anchor's B−1 (db.models.ImportAnchor). Zero everywhere but anchored
+    #: budgets; with it the legs still sum to `set_aside`, and the other five
+    #: stay post-anchor sums.
+    opening: Decimal
     #: What is riding uncovered on this card, lifetime. Distinct from
     #: `uncovered`, which is what the card OWES beyond its reserve: a card can
     #: carry a ride while owing less than it has reserved.
@@ -489,12 +495,14 @@ class CardStatusOut(ApiModel):
 
 
 class CardTimelineMonthOut(ApiModel):
-    """One month of a card's reserve — the five legs' deltas and the running
+    """One month of a card's reserve — the legs' deltas and the running
     totals once the month had happened (`domain/card_timeline.py`). Leg names
     match `CardStatusOut`'s lifetime totals so the panel and the timeline
-    speak one vocabulary."""
+    speak one vocabulary. `opening` is non-zero on exactly one row of an
+    anchored budget's card: the B−1 seam, the timeline's first entry."""
 
     month: datetime.date
+    opening: Decimal
     assigned: Decimal
     reserved: Decimal
     released: Decimal
@@ -540,6 +548,9 @@ class CardTimelineResponse(ApiModel):
     name: str
     months: list[CardTimelineMonthOut]
     breach: CardTimelineBreachOut | None
+    #: B when the budget was anchored at import — the months list then opens
+    #: at B−1 with the seam row. Null on unanchored budgets.
+    anchor_month: datetime.date | None
 
 
 class BudgetMonthResponse(ApiModel):
@@ -572,6 +583,11 @@ class BudgetMonthResponse(ApiModel):
     overspent_count_cash: int
     # Committed to months after this one; already deducted from to_be_assigned
     assigned_in_future: Decimal = Decimal("0")
+    #: B, the first month this budget's envelope math re-derives — set only on
+    #: budgets anchored at import (db.models.ImportAnchor). The client clamps
+    #: month navigation here; months before it live in the register and
+    #: reports only.
+    anchor_month: datetime.date | None = None
     category_balances: list[CategoryBalance]
     #: The budget's cards — balance / set aside / uncovered (domain/cards.py).
     #: Empty when the budget has none; the budget page draws its cards

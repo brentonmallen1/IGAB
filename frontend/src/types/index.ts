@@ -267,10 +267,11 @@ export interface CardStatus {
    *  in domain/cards.py, and the integrity check reads the same field, so the
    *  page and the check cannot disagree about one card. */
   reserve_discrepancy: number
-  /** The five legs `set_aside` is the running total of, each through the
+  /** The legs `set_aside` is the running total of, each through the
    *  viewed month:
    *
-   *      assigned + reserved − released − residual − payments === set_aside
+   *      opening + assigned + reserved − released − residual − payments
+   *        === set_aside
    *
    *  Home is `CardReserve` in domain/cards.py. **Render these; never sum
    *  them.** `set_aside` is already served, and a client-side second opinion
@@ -281,6 +282,10 @@ export interface CardStatus {
   released: number
   residual: number
   payments: number
+  /** The sixth leg, first in time: YNAB's own CCP Available at an import
+   *  anchor's B−1 (server home: CardStatusOut → db.models.ImportAnchor).
+   *  Zero everywhere but budgets anchored at import; never derived here. */
+  opening: number
   /** What is riding uncovered on this card, lifetime — distinct from
    *  `uncovered`, which is what the card OWES beyond its reserve. */
   riding: number
@@ -360,6 +365,12 @@ export interface BudgetMonth {
   overspent_count_cash: number
   /** Committed to months after this one; already deducted from to_be_assigned */
   assigned_in_future: number
+  /** B, the first month this budget's envelope math re-derives — set only on
+   *  budgets anchored at import (server home: BudgetMonthResponse →
+   *  db.models.ImportAnchor). Null on every other budget. Month navigation
+   *  clamps here; months before it live in the register and reports only —
+   *  never request or derive a pre-anchor budget month. */
+  anchor_month: string | null
   category_balances: CategoryBalance[]
   /** The budget's cards — empty when it has none. The cards section draws
    *  exactly this and computes nothing. */

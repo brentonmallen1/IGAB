@@ -31,6 +31,7 @@ function card(over: Partial<CardStatus> = {}): CardStatus {
     residual: 0,
     payments: 0,
     riding: 0,
+    opening: 0,
     over_reserved: 0,
     short_reserved: 0,
     card_credit: 0,
@@ -274,6 +275,7 @@ describe('reserveLegs', () => {
       released: 20,
       residual: 7,
       payments: 5,
+      opening: 0,
     })
     expect(legs.map((l) => [l.label, l.sign])).toEqual([
       ['Assigned to this card', '+'],
@@ -291,6 +293,7 @@ describe('reserveLegs', () => {
       released: 0,
       residual: 0,
       payments: 150,
+      opening: 0,
     })
     expect(legs).toHaveLength(1)
     expect(legs[0]).toEqual({ label: 'Paid to the card', value: 150, sign: '−' })
@@ -298,7 +301,7 @@ describe('reserveLegs', () => {
 
   it('returns nothing at all for a month where nothing moved', () => {
     expect(
-      reserveLegs({ assigned: 0, reserved: 0, released: 0, residual: 0, payments: 0 })
+      reserveLegs({ assigned: 0, reserved: 0, released: 0, residual: 0, payments: 0, opening: 0 })
     ).toEqual([])
   })
 
@@ -312,6 +315,7 @@ describe('reserveLegs', () => {
       released: 20,
       residual: 0,
       payments: 0,
+      opening: 0,
     })
     const oneMonth = reserveLegs({
       assigned: 5,
@@ -319,8 +323,35 @@ describe('reserveLegs', () => {
       released: 3,
       residual: 0,
       payments: 0,
+      opening: 0,
     })
     expect(lifetime.map((l) => l.sign)).toEqual(oneMonth.map((l) => l.sign))
     expect(lifetime.map((l) => l.label)).toEqual(oneMonth.map((l) => l.label))
+  })
+})
+
+describe('the opening leg', () => {
+  it('leads the list on an anchored budget', () => {
+    const legs = reserveLegs({
+      opening: 150,
+      assigned: 250,
+      reserved: 100,
+      released: 0,
+      residual: 0,
+      payments: 150,
+    })
+    expect(legs[0]).toEqual({ label: 'Where YNAB left it at import', value: 150, sign: '+' })
+  })
+
+  it('is omitted everywhere else, like any zero leg', () => {
+    const legs = reserveLegs({
+      opening: 0,
+      assigned: 250,
+      reserved: 0,
+      released: 0,
+      residual: 0,
+      payments: 0,
+    })
+    expect(legs.map((l) => l.label)).toEqual(['Assigned to this card'])
   })
 })

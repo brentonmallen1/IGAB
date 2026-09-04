@@ -16,6 +16,7 @@ from datetime import date
 from decimal import Decimal
 
 from igab.domain.cards import (
+    AnchorOpenings,
     CardReserve,
     allocate_capped,
     card_funding,
@@ -1019,3 +1020,143 @@ class TestTheStatementCycleTrap:
         _, reserve = self.walk({JAN: D("500")}, {JAN: D("500")}, payments={FEB: D("500")})
         assert reserve.set_aside(JAN) == D("500")
         assert reserve.set_aside(FEB) == D("0")
+
+
+class TestTheAnchoredWalk:
+    """`card_funding(openings=...)` — an import anchor's seeds: truncation,
+    the sentinel ride, and the deliberate residual coarsening."""
+
+    def _openings(self, available=None, reserve=None, uncovered=None, month=FEB):
+        return AnchorOpenings(
+            month=month,
+            available_by_category=available or {},
+            reserve_by_card=reserve or {},
+            uncovered_by_card=uncovered or {},
+        )
+
+    def test_zero_openings_at_the_first_month_equal_unanchored(self):
+        """The differential: an anchor that seeds nothing and truncates
+        nothing must reproduce today's walk output for output."""
+        asg = {"groceries": {JAN: D("100")}, "visa payment": {FEB: D("50")}}
+        act = {"groceries": {JAN: D("-100")}}
+        out = {"groceries": {VISA: {JAN: D("100")}}}
+        cards = {VISA: "visa payment"}
+        plain = card_funding(asg, act, out, cards)
+        anchored = card_funding(asg, act, out, cards, openings=self._openings(month=JAN))
+        assert plain == anchored
+
+    def test_months_before_the_boundary_never_reserve(self):
+        cf = card_funding(
+            {"groceries": {JAN: D("100")}},
+            {"groceries": {JAN: D("-100")}},
+            {"groceries": {VISA: {JAN: D("100")}}},
+            {VISA: "visa payment"},
+            openings=self._openings(),
+        )
+        assert VISA not in cf.reservations_by_card
+
+    def test_the_opening_carryover_funds_a_post_anchor_charge(self):
+        cf = card_funding(
+            {},
+            {"groceries": {FEB: D("-40")}},
+            {"groceries": {VISA: {FEB: D("40")}}},
+            {VISA: "visa payment"},
+            openings=self._openings(available={"groceries": D("40")}),
+        )
+        # Fully funded by the seed: reserves, rides nothing.
+        assert sum_through(cf.reservations_by_card[VISA], FEB) == D("40")
+        assert VISA not in cf.floored_by_card
+
+    def test_a_negative_opening_is_floored_like_any_month_end(self):
+        cf = card_funding(
+            {},
+            {"groceries": {FEB: D("-40")}},
+            {"groceries": {VISA: {FEB: D("40")}}},
+            {VISA: "visa payment"},
+            openings=self._openings(available={"groceries": D("-25")}),
+        )
+        # The category starts at zero (the write-off already happened in
+        # YNAB's own figures), so the whole charge rides.
+        assert sum_through(cf.floored_by_card[VISA], FEB) == D("40")
+
+    def test_an_assignment_retires_the_opening_ride(self):
+        cf = card_funding(
+            {"visa payment": {FEB: D("250")}},
+            {},
+            {},
+            {VISA: "visa payment"},
+            openings=self._openings(uncovered={VISA: D("400")}),
+        )
+        assert sum_through(cf.covered_by_card[VISA], FEB) == D("250")
+        # 400 rode in at B−1, 250 retired at B.
+        assert sum_through(cf.riding_by_card[VISA], FEB) == D("150")
+        # The sentinel never leaks into residual attribution.
+        assert not cf.residual_by_pair
+
+    def test_a_refund_of_pre_anchor_spending_lands_as_residual(self):
+        """The accepted coarsening, pinned: per-pair `reserved` is not
+        seeded, so a post-anchor refund of a pre-anchor funded charge drains
+        the reserve as residual — exact at the card level, coarser in
+        attribution (see the module docstring's anchor section)."""
+        cf = card_funding(
+            {},
+            {"groceries": {FEB: D("30")}},
+            {"groceries": {VISA: {FEB: D("-30")}}},
+            {VISA: "visa payment"},
+            openings=self._openings(reserve={VISA: D("150")}),
+        )
+        assert sum_through(cf.residual_by_card[VISA], FEB) == D("30")
+        assert VISA not in cf.released_by_card
+
+    def test_the_opening_leg_enters_set_aside_first(self):
+        reserve = CardReserve(opening={JAN: D("150")}, payments={FEB: D("100")})
+        assert reserve.set_aside(JAN) == D("150")
+        assert reserve.set_aside(FEB) == D("50")
+
+
+class TestTheAnchoredIdentity:
+    """`reserve_discrepancy` with the opening folded into `assigned` and the
+    `opening_credit` allowance — the worked cases from the design, A through
+    F. O_r = 150, O_u = 400 unless stated."""
+
+    def test_a_untouched_anchored_card(self):
+        # set_aside = O_r; owed 550 = O_r + O_u. All bounds at zero.
+        assert reserve_discrepancy(
+            D("150"), D("-550"), D("150"), D("0"), D("0"), D("0"), D("0")
+        ) == D("0")
+
+    def test_b_an_assignment_covering_part_of_the_opening_ride(self):
+        # assign 400 at B, all of it covering: set_aside 550, owed 550.
+        assert reserve_discrepancy(
+            D("550"), D("-550"), D("550"), D("400"), D("0"), D("0"), D("0")
+        ) == D("0")
+
+    def test_c_an_assignment_past_the_opening_ride(self):
+        # assign 600, 400 covered: set_aside 750 on owed 550 → over-reserved
+        # 200, explained by (assigned 750 − covered 400).
+        assert reserve_discrepancy(
+            D("750"), D("-550"), D("750"), D("400"), D("0"), D("0"), D("0")
+        ) == D("0")
+
+    def test_d_moving_the_opening_back_out(self):
+        # Opening over-reserve 500, then −600 assigned out: assigned input
+        # 500 − 600 = −100, set_aside −100 → short-reserved exactly the
+        # negative half. T2's `-assigned` term is what explains it.
+        assert reserve_discrepancy(
+            D("-100"), D("0"), D("-100"), D("0"), D("0"), D("0"), D("0")
+        ) == D("0")
+
+    def test_e_a_card_imported_in_credit_needs_the_allowance(self):
+        # Balance +80 at B−1, nothing else: without `opening_credit` T3
+        # reports the credit as drift; with it the anchor era explains it.
+        without = reserve_discrepancy(D("0"), D("80"), D("0"), D("0"), D("0"), D("0"), D("0"))
+        assert without == D("80")
+        with_allowance = reserve_discrepancy(
+            D("0"), D("80"), D("0"), D("0"), D("0"), D("0"), D("0"), opening_credit=D("80")
+        )
+        assert with_allowance == D("0")
+
+    def test_f_zero_openings_change_nothing(self):
+        # The differential: every input identical to an unanchored call.
+        args = (D("200"), D("-200"), D("200"), D("0"), D("0"), D("0"), D("0"))
+        assert reserve_discrepancy(*args) == reserve_discrepancy(*args, opening_credit=D("0"))

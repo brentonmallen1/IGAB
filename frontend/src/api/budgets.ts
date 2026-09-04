@@ -30,10 +30,13 @@ export function useBudgets() {
   })
 }
 
-/** One month of a card's reserve, served — the five legs' deltas and the
+/** One month of a card's reserve, served — the legs' deltas and the
  * running totals once the month had happened (ApiModel ships numbers). */
 export interface CardTimelineMonth {
   month: string
+  /** Non-zero on exactly one row of an anchored budget's card: the B−1 seam,
+   * the timeline's first entry (server: CardTimelineMonthOut). */
+  opening: number
   assigned: number
   reserved: number
   released: number
@@ -64,6 +67,9 @@ export interface CardTimeline {
   name: string
   months: CardTimelineMonth[]
   breach: CardTimelineBreach | null
+  /** B when the budget was anchored at import — the months list then opens at
+   * B−1 with the seam row. Null on unanchored budgets. */
+  anchor_month: string | null
 }
 
 export function useCardTimeline(budgetId: string | null, accountId: string | null, month: string) {
@@ -471,6 +477,11 @@ export interface YnabPreviewResult {
   accounts: YnabAccountPreview[]
   transaction_count: number
   budget_entry_count: number
+  /** B — where this file will anchor if imported (server:
+   * YNABPreviewResult ← integrations/ynab/models.plan_boundary): envelope
+   * and card positions start from YNAB's own figures at the month before
+   * this. Null for a register-only export, which imports unanchored. */
+  anchor_month: string | null
 }
 
 export interface YnabAccountTypeChoice {

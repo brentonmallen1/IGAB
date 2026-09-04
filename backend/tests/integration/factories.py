@@ -37,6 +37,7 @@ from igab.repositories.category_repo import (
     CategoryGroupRepository,
     CategoryRepository,
 )
+from igab.repositories.import_anchor_repo import ImportAnchorRepository
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.reconciliation_repo import ReconciliationRepository
 from igab.repositories.simplefin_repo import SimpleFINRepository
@@ -456,6 +457,7 @@ def make_services(session: AsyncSession) -> Services:
         assignment_repo,
         transaction_repo,
         move_repo=BudgetMoveRepository(session),
+        anchor_repo=ImportAnchorRepository(session),
     )
     reconciliation = ReconciliationService(
         session, reconciliation_repo, account_repo, payee_repo, transaction_repo, transactions

@@ -19,22 +19,27 @@ from igab.domain.cards import card_funding, card_reserve
 from igab.domain.carryover import sum_through
 from igab.sample_budget.card_scenarios import (
     ALL_SCENARIOS,
+    ANCHORED_SCENARIOS,
     CardScenario,
+    merge_into,
     scenarios_for,
     to_funding_inputs,
     walk,
 )
 
 ANCHOR = date(2026, 8, 15)
-IDS = [s.slug for s in ALL_SCENARIOS]
+#: Every scenario there is — the demoed set plus the anchored-import shapes,
+#: which live beside the demo rather than in it (one budget, one anchor).
+EVERY = ALL_SCENARIOS + ANCHORED_SCENARIOS
+IDS = [s.slug for s in EVERY]
 
 
-@pytest.mark.parametrize("scenario", ALL_SCENARIOS, ids=IDS)
+@pytest.mark.parametrize("scenario", EVERY, ids=IDS)
 def test_the_card_lands_where_the_scenario_says(scenario: CardScenario):
     assert scenario.expect.differences(walk(scenario, ANCHOR)) == {}, scenario.story
 
 
-@pytest.mark.parametrize("scenario", ALL_SCENARIOS, ids=IDS)
+@pytest.mark.parametrize("scenario", EVERY, ids=IDS)
 def test_the_reserve_identity_holds(scenario: CardScenario):
     """Zero for all six, including the two the check accepts by design — an
     over-reserve explained by assignments and a negative reserve explained by
@@ -42,16 +47,26 @@ def test_the_reserve_identity_holds(scenario: CardScenario):
     assert walk(scenario, ANCHOR).reserve_discrepancy == Decimal("0")
 
 
-@pytest.mark.parametrize("scenario", ALL_SCENARIOS, ids=IDS)
+@pytest.mark.parametrize("scenario", EVERY, ids=IDS)
 def test_the_five_legs_reconstruct_the_reserve(scenario: CardScenario):
     inputs = to_funding_inputs(scenario, ANCHOR)
     funding = card_funding(
-        inputs.assignments, inputs.activity, inputs.outflows, inputs.card_categories
+        inputs.assignments,
+        inputs.activity,
+        inputs.outflows,
+        inputs.card_categories,
+        openings=inputs.openings,
     )
-    reserve = card_reserve(funding, scenario.card, inputs.payments)
+    opening = (
+        {inputs.openings.opening_month: inputs.openings.reserve_by_card[scenario.card]}
+        if inputs.openings is not None
+        else None
+    )
+    reserve = card_reserve(funding, scenario.card, inputs.payments, opening=opening)
     month = date(ANCHOR.year, ANCHOR.month, 1)
     legs = (
-        sum_through(reserve.assignments, month)
+        sum_through(reserve.opening, month)
+        + sum_through(reserve.assignments, month)
         + sum_through(reserve.reservations, month)
         - sum_through(reserve.released, month)
         - sum_through(reserve.residual, month)
@@ -60,14 +75,18 @@ def test_the_five_legs_reconstruct_the_reserve(scenario: CardScenario):
     assert legs == walk(scenario, ANCHOR).set_aside
 
 
-@pytest.mark.parametrize("scenario", ALL_SCENARIOS, ids=IDS)
+@pytest.mark.parametrize("scenario", EVERY, ids=IDS)
 def test_residual_by_pair_decomposes_the_residual_leg(scenario: CardScenario):
     """`residual_by_pair` is attribution, never arithmetic: summed across
     categories it must equal `residual_by_card` exactly, or a surface reading
     the pairs would tell a different story than the leg total."""
     inputs = to_funding_inputs(scenario, ANCHOR)
     funding = card_funding(
-        inputs.assignments, inputs.activity, inputs.outflows, inputs.card_categories
+        inputs.assignments,
+        inputs.activity,
+        inputs.outflows,
+        inputs.card_categories,
+        openings=inputs.openings,
     )
     by_card: dict[str, Decimal] = {}
     for (_cat, card), series in funding.residual_by_pair.items():
@@ -77,7 +96,7 @@ def test_residual_by_pair_decomposes_the_residual_leg(scenario: CardScenario):
     assert set(by_card) <= set(funding.residual_by_card)
 
 
-@pytest.mark.parametrize("scenario", ALL_SCENARIOS, ids=IDS)
+@pytest.mark.parametrize("scenario", EVERY, ids=IDS)
 def test_the_scenario_is_anchor_relative(scenario: CardScenario):
     """Every date is `RelDate`, so the same story told in a different month
     lands in the same place. The sample budget always ends 'today', and a
@@ -88,11 +107,11 @@ def test_the_scenario_is_anchor_relative(scenario: CardScenario):
 
 
 def test_every_scenario_is_distinct_and_named():
-    slugs = [s.slug for s in ALL_SCENARIOS]
-    cards = [s.card for s in ALL_SCENARIOS]
+    slugs = [s.slug for s in EVERY]
+    cards = [s.card for s in EVERY]
     assert len(set(slugs)) == len(slugs), "two scenarios share a slug"
     assert len(set(cards)) == len(cards), "two scenarios share a card name"
-    for s in ALL_SCENARIOS:
+    for s in EVERY:
         assert s.story.strip() and s.title.strip(), f"{s.slug} has no story"
 
 
@@ -139,3 +158,36 @@ def test_every_current_month_event_precedes_any_anchor():
         if e.when.months_ago == 0 and e.when.day > 1
     ]
     assert not late, f"current-month events dated after the 1st: {late}"
+
+
+def test_anchored_scenarios_stay_out_of_the_demo():
+    """One budget has one anchor. The anchored shapes live beside
+    ALL_SCENARIOS, and `merge_into` refuses to splice one into a household —
+    doing so would truncate every other scenario's history."""
+    assert not set(ANCHORED_SCENARIOS) & set(ALL_SCENARIOS)
+    for s in ANCHORED_SCENARIOS:
+        assert s.import_anchor is not None
+    from igab.sample_budget.card_scenarios import build_scenario_spec
+
+    spec = build_scenario_spec(ALL_SCENARIOS[:1])
+    with pytest.raises(ValueError, match="anchored scenarios cannot be merged"):
+        merge_into(spec, ANCHORED_SCENARIOS[:1], cash_account="Checking")
+
+
+def test_a_pre_anchor_charge_reserves_nothing():
+    """The behaviour anchoring exists for: history before B is the seed's
+    problem, not the walk's. Re-deriving it would double-count against the
+    opening — `anchored-import`'s pre-anchor 300 must move no leg."""
+    scenario = next(s for s in ANCHORED_SCENARIOS if s.slug == "anchored-import")
+    inputs = to_funding_inputs(scenario, ANCHOR)
+    funding = card_funding(
+        inputs.assignments,
+        inputs.activity,
+        inputs.outflows,
+        inputs.card_categories,
+        openings=inputs.openings,
+    )
+    reserved = funding.reservations_by_card.get(scenario.card, {})
+    assert inputs.openings is not None
+    assert all(m >= inputs.openings.month for m in reserved)
+    assert sum(reserved.values(), Decimal("0")) == Decimal("100")

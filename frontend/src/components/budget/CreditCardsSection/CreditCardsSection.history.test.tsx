@@ -46,6 +46,7 @@ function card(over: Partial<CardStatus> = {}): CardStatus {
     residual: 0,
     payments: 5,
     riding: 0,
+    opening: 0,
     over_reserved: 55,
     short_reserved: 0,
     card_credit: 0,
@@ -71,6 +72,7 @@ function tlMonth(m: string, over: Record<string, number> = {}) {
     set_aside: 0,
     balance: 0,
     riding: 0,
+    opening: 0,
     uncovered: 0,
     over_reserved: 0,
     short_reserved: 0,
@@ -89,7 +91,13 @@ const MONTHS = [
 
 beforeEach(() => {
   month.current = { cards: [card()], category_balances: [] } as unknown as BudgetMonth
-  timeline.current = { account_id: 'a1', name: 'Sapphire Visa', months: MONTHS, breach: null }
+  timeline.current = {
+    account_id: 'a1',
+    name: 'Sapphire Visa',
+    months: MONTHS,
+    breach: null,
+    anchor_month: null,
+  }
 })
 
 async function openHistory() {
@@ -201,5 +209,45 @@ describe('the month-by-month history', () => {
     const marked = dataRows().filter((r) => r.className.includes('--breach'))
     expect(marked).toHaveLength(1)
     expect(marked[0].textContent).toContain('January 2026')
+  })
+})
+
+describe('the import-anchor seam', () => {
+  it('labels where the history ends, after the oldest month', async () => {
+    timeline.current = {
+      account_id: 'a1',
+      name: 'Sapphire Visa',
+      // Oldest entry is B−1: the opening leg, per the server's contract.
+      months: [
+        tlMonth('2025-11-01', { opening: 200, reserve_delta: 200, set_aside: 200 }),
+        ...MONTHS.slice(1),
+      ],
+      breach: null,
+      anchor_month: '2025-12-01',
+    }
+    await openHistory()
+    expect(screen.getByText(/Imported from YNAB/)).toBeInTheDocument()
+    expect(screen.getByText(/earlier months live in the register and reports/)).toBeInTheDocument()
+    // Below the oldest data row — scrolling down walks backwards in time.
+    const rows = [...document.querySelectorAll('[role="row"]')]
+    expect(rows[rows.length - 1].textContent).toMatch(/Imported from YNAB/)
+  })
+
+  it('does not disturb the striping — like the year separators', async () => {
+    timeline.current = {
+      account_id: 'a1',
+      name: 'Sapphire Visa',
+      months: MONTHS,
+      breach: null,
+      anchor_month: '2025-11-01',
+    }
+    await openHistory()
+    const striped = dataRows().filter((r) => r.className.includes('--alt'))
+    expect(striped).toHaveLength(2)
+  })
+
+  it('is absent on an unanchored budget', async () => {
+    await openHistory()
+    expect(screen.queryByText(/Imported from YNAB/)).not.toBeInTheDocument()
   })
 })

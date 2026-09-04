@@ -68,6 +68,7 @@ async def import_export(
     account_types: dict[str, tuple[str, bool]] | None = None,
     skip_accounts: set[str] | None = None,
     close_accounts: set[str] | None = None,
+    expect_errors: bool = False,
 ) -> tuple[Services, uuid.UUID, YNABBudget]:
     services = make_services(db_session)
     user = await create_user(db_session)
@@ -88,7 +89,8 @@ async def import_export(
         close_accounts=close_accounts,
     )
     result = await importer.import_budget(ynab_budget)
-    assert result.errors == [], result.errors
+    if not expect_errors:
+        assert result.errors == [], result.errors
     return services, budget.id, ynab_budget
 
 
@@ -101,6 +103,7 @@ async def parity(
     accounts: Collection[str] | None = None,
     credit_card_accounts: Collection[str] = (),
     tracking_accounts: Collection[str] = (),
+    anchor: date | None = None,
 ) -> ParityReport:
     return await check_parity(
         services.budgets,
@@ -111,6 +114,7 @@ async def parity(
         accounts=accounts,
         credit_card_accounts=credit_card_accounts,
         tracking_accounts=tracking_accounts,
+        anchor=anchor,
     )
 
 

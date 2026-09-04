@@ -94,6 +94,7 @@ function moneyClass(n: number): string {
 
 export function MultiMonthSheet({ budgetId }: Props) {
   const selectedMonth = useAppStore((s) => s.selectedMonth)
+  const budgetAnchorMonth = useAppStore((s) => s.budgetAnchorMonth)
   const setMultiMonthOpen = useUIStore((s) => s.setMultiMonthOpen)
   const { formatMoney, formatMonth } = useFormatters()
 
@@ -170,7 +171,13 @@ export function MultiMonthSheet({ budgetId }: Props) {
         <div className="mm-sheet__nav">
           <button
             className="mm-sheet__nav-btn"
-            onClick={() => setAnchor(addMonths(anchor, -1))}
+            onClick={() => {
+              // Months before the import anchor are never requested — there
+              // is no budget month to show there.
+              const prev = addMonths(anchor, -1)
+              setAnchor(budgetAnchorMonth && prev < budgetAnchorMonth ? budgetAnchorMonth : prev)
+            }}
+            disabled={!!budgetAnchorMonth && anchor <= budgetAnchorMonth}
             title="Earlier month"
             aria-label="Shift window one month earlier"
           >

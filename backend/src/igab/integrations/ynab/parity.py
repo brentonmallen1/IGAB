@@ -16,10 +16,12 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
+from igab.domain.dates import add_months
 from igab.domain.money import quantize_cents
 from igab.integrations.ynab.models import YNABBudget
 from igab.integrations.ynab.oracle import (
     ExportConsistency,
+    anchored_expected,
     ccp_available_history,
     export_consistency,
     subset_sums,
@@ -137,6 +139,7 @@ async def check_parity(
     credit_card_accounts: Collection[str],
     tracking_accounts: Collection[str] = (),
     max_differences: int = 5,
+    anchor: date | None = None,
 ) -> ParityReport:
     oracle = ynab_rta(
         ynab_budget,
@@ -202,7 +205,16 @@ async def check_parity(
         series = history.get(name.lower())
         if not series:
             continue
-        months = [m for m in sorted(series) if m <= oracle.month]
+        # On an anchored budget the comparison starts at B−1: earlier
+        # months were never re-derived, and B−1 itself is free — the reserve
+        # there IS the anchor row, so comparing it asserts the seeds
+        # round-tripped the file exactly.
+        floor_month = add_months(anchor, -1) if anchor is not None else None
+        months = [
+            m
+            for m in sorted(series)
+            if m <= oracle.month and (floor_month is None or m >= floor_month)
+        ]
         divergent = [
             m for m in months if quantize_cents(reserve.set_aside(m)) != quantize_cents(series[m])
         ]
@@ -221,14 +233,19 @@ async def check_parity(
     card_history.sort(key=lambda d: d.first_month)
 
     igab = summary.to_be_assigned
+    # Anchored budgets are held to the cash form: every term is the file's
+    # own displayed position, so the handoff must match even when the file's
+    # month-by-month history contradicts itself. The history form (`rta`)
+    # stays what "YNAB's own figures" reports — it is still YNAB's number.
+    expected = anchored_expected(oracle) if anchor is not None else oracle.expected_igab
     return ParityReport(
         month=oracle.month,
         ynab_ready_to_assign=quantize_cents(oracle.rta),
-        expected_ready_to_assign=quantize_cents(oracle.expected_igab),
+        expected_ready_to_assign=quantize_cents(expected),
         igab_ready_to_assign=quantize_cents(igab),
         uncovered_card_debt=quantize_cents(oracle.uncovered_card_debt),
         uncategorized_net=quantize_cents(oracle.uncategorized_net),
-        matches=quantize_cents(igab) == quantize_cents(oracle.expected_igab)
+        matches=quantize_cents(igab) == quantize_cents(expected)
         and not unexplained
         and not card_differences,
         categories_compared=compared,

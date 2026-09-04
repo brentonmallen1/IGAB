@@ -31,6 +31,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Literal
 
+from igab.domain.cards import AnchorOpenings
 from igab.sample_budget.spec import (
     BOTH_TIERS,
     AccountSpec,
@@ -151,6 +152,29 @@ class ExpectedPosition:
 
 
 @dataclass(frozen=True)
+class CardAnchor:
+    """An import anchor, scenario-shaped: the position the budget starts from.
+
+    Budget-level metadata, not a register event — which is why it is a field
+    on the scenario rather than an `EventKind`: it writes no row, has no
+    payee, and dates itself. `months_ago` is B (the first re-derived month)
+    relative to today; the openings are stated at B−1, exactly as the
+    importer writes them (db.models.ImportAnchor). Events before B still
+    build register rows and balances — the production shape: register full,
+    walk truncated.
+    """
+
+    #: B, as months before today. Openings are dated one month earlier.
+    months_ago: int
+    #: The card's opening reserve (YNAB's CCP Available at B−1). Signed.
+    reserve: Decimal
+    #: Debt no reserve stood behind at B−1 — rides under ANCHOR_OPENING.
+    uncovered: Decimal
+    #: Per spending-category openings (YNAB's Available at B−1), sparse.
+    available: tuple[tuple[str, Decimal], ...] = ()
+
+
+@dataclass(frozen=True)
 class CardScenario:
     slug: str
     #: The lesson the row teaches, one line. Shown beside the card in docs.
@@ -170,6 +194,10 @@ class CardScenario:
     events: tuple[CardEvent, ...]
     expect: ExpectedPosition
     tiers: tuple[str, ...] = BOTH_TIERS
+    #: Set only on ANCHORED_SCENARIOS — never in the demo (`merge_into`
+    #: refuses them: one budget has one anchor, and splicing one in would
+    #: truncate every other scenario's history).
+    import_anchor: CardAnchor | None = None
 
     @property
     def payment_category(self) -> str:
@@ -205,13 +233,22 @@ class FundingInputs:
     #: move the balance and explain a card credit, and nothing else.
     unclaimed: dict[date, Decimal]
     balance: Decimal
+    #: The import anchor as `card_funding` wants it, or None. Built from
+    #: `CardScenario.import_anchor` — the same shape the serving side builds
+    #: from `ImportAnchor` rows, so the scenario checker and production walk
+    #: the identical seeds.
+    openings: "AnchorOpenings[str, str] | None" = None
+    #: `max(0, card balance at end of B−1)` — the T3 allowance for a card
+    #: imported in credit, mirrored from pre-anchor events the way the
+    #: serving side reads it live from the register.
+    opening_credit: Decimal = ZERO
 
 
 def _bump(store: dict[date, Decimal], month: date, amount: Decimal) -> None:
     store[month] = store.get(month, ZERO) + amount
 
 
-def to_funding_inputs(scenario: CardScenario, anchor: date) -> FundingInputs:
+def to_funding_inputs(scenario: CardScenario, today: date) -> FundingInputs:
     assignments: dict[str, dict[date, Decimal]] = {}
     activity: dict[str, dict[date, Decimal]] = {}
     outflows: dict[str, dict[str, dict[date, Decimal]]] = {}
@@ -220,7 +257,7 @@ def to_funding_inputs(scenario: CardScenario, anchor: date) -> FundingInputs:
     card = scenario.card
 
     for event in scenario.events:
-        month = event.month(anchor)
+        month = event.month(today)
         category = event.category or ""
         if event.kind == "fund":
             _bump(assignments.setdefault(category, {}), month, event.amount)
@@ -252,6 +289,28 @@ def to_funding_inputs(scenario: CardScenario, anchor: date) -> FundingInputs:
             raise AssertionError(f"to_funding_inputs cannot walk a {event.kind!r} event")
 
     balance = scenario.opening + sum((e.signed() for e in scenario.events), ZERO)
+    openings = None
+    opening_credit = ZERO
+    if scenario.import_anchor is not None:
+        ia = scenario.import_anchor
+        year, month_no = shift_months(today, ia.months_ago)
+        boundary = date(year, month_no, 1)
+        openings = AnchorOpenings(
+            month=boundary,
+            available_by_category=dict(ia.available),
+            reserve_by_card={card: ia.reserve},
+            uncovered_by_card={card: ia.uncovered},
+        )
+        pre_anchor = scenario.opening + sum(
+            (e.signed() for e in scenario.events if e.month(today) < boundary), ZERO
+        )
+        opening_credit = max(ZERO, pre_anchor)
+        # The two reserve legs the domain walk never sees are truncated at B,
+        # exactly as `BudgetService.card_walk` truncates its repository sums —
+        # the seed at B−1 already accounts for everything earlier. The
+        # BALANCE keeps every event: register full, walk truncated.
+        payments = {m: v for m, v in payments.items() if m >= boundary}
+        unclaimed = {m: v for m, v in unclaimed.items() if m >= boundary}
     return FundingInputs(
         assignments=assignments,
         activity=activity,
@@ -260,10 +319,12 @@ def to_funding_inputs(scenario: CardScenario, anchor: date) -> FundingInputs:
         payments=payments,
         unclaimed=unclaimed,
         balance=balance,
+        openings=openings,
+        opening_credit=opening_credit,
     )
 
 
-def walk(scenario: CardScenario, anchor: date, through: date | None = None) -> ExpectedPosition:
+def walk(scenario: CardScenario, today: date, through: date | None = None) -> ExpectedPosition:
     """Run a scenario through the real domain and report where the card lands.
 
     Used to CHECK `expect`, never to produce it — see the module docstring.
@@ -271,18 +332,27 @@ def walk(scenario: CardScenario, anchor: date, through: date | None = None) -> E
     from igab.domain.cards import card_funding, card_position, card_reserve, reserve_discrepancy
     from igab.domain.carryover import sum_through
 
-    inputs = to_funding_inputs(scenario, anchor)
-    month = through or date(anchor.year, anchor.month, 1)
+    inputs = to_funding_inputs(scenario, today)
+    month = through or date(today.year, today.month, 1)
     funding = card_funding(
-        inputs.assignments, inputs.activity, inputs.outflows, inputs.card_categories
+        inputs.assignments,
+        inputs.activity,
+        inputs.outflows,
+        inputs.card_categories,
+        openings=inputs.openings,
     )
-    reserve = card_reserve(funding, scenario.card, inputs.payments)
+    opening_leg = (
+        {inputs.openings.opening_month: inputs.openings.reserve_by_card[scenario.card]}
+        if inputs.openings is not None
+        else None
+    )
+    reserve = card_reserve(funding, scenario.card, inputs.payments, opening=opening_leg)
     set_aside = reserve.set_aside(month)
     position = card_position(set_aside, inputs.balance)
     # The month ledger, summed straight off the events — deliberately a
     # different path from the SQL (`card_month_flows`) the served figure
     # takes, so the two check each other through the shared expectations.
-    month_events = [e for e in scenario.events if e.month(anchor) == month]
+    month_events = [e for e in scenario.events if e.month(today) == month]
     charged = sum((e.amount for e in month_events if e.kind in ("spend", "charge")), ZERO)
     inflows = sum((e.amount for e in month_events if e.kind in ("refund", "pay", "deposit")), ZERO)
     paid = sum((e.amount for e in month_events if e.kind == "pay"), ZERO)
@@ -298,14 +368,18 @@ def walk(scenario: CardScenario, anchor: date, through: date | None = None) -> E
         short_reserved=position.short_reserved,
         card_credit=position.card_credit,
         riding=sum_through(funding.riding_by_card.get(scenario.card, {}), month),
+        # The serving arithmetic exactly (budget_service.get_budget_summary):
+        # the opening reserve folds into `assigned`, and `opening_credit` is
+        # the T3 allowance — this checker must not drift from what is served.
         reserve_discrepancy=reserve_discrepancy(
             set_aside,
             inputs.balance,
-            sum_through(reserve.assignments, month),
+            sum_through(reserve.opening, month) + sum_through(reserve.assignments, month),
             sum_through(funding.covered_by_card.get(scenario.card, {}), month),
             sum_through(reserve.payments, month),
             sum_through(reserve.residual, month),
             sum_through(inputs.unclaimed, month),
+            opening_credit=inputs.opening_credit,
         ),
     )
 
@@ -724,6 +798,105 @@ def scenarios_for(tier: str) -> tuple[CardScenario, ...]:
     return tuple(s for s in ALL_SCENARIOS if tier in s.tiers)
 
 
+ANCHORED_IMPORT = CardScenario(
+    slug="anchored-import",
+    title="A YNAB import that starts where YNAB left off",
+    story=(
+        "An imported budget's walks start from YNAB's own displayed position "
+        "instead of re-deriving history: the reserve opens at the shipped CCP "
+        "Available, the debt nothing stood behind rides under the anchor, and "
+        "a pre-anchor charge reserves nothing at all — the seed already "
+        "accounts for it. Assigning then retires the opening ride exactly as "
+        "it retires any ride, and the identity closes with the opening folded "
+        "into the assignment leg."
+    ),
+    card="Sapphire Visa",
+    short="Sapphire",
+    # Pre-budget debt plus a pre-anchor charge: at B−1 the card owes 550, of
+    # which the anchor says 150 was reserved and 400 rode uncovered —
+    # exactly the importer's max(0, -balance - ccp).
+    opening=_d("-250"),
+    import_anchor=CardAnchor(
+        months_ago=2,
+        reserve=_d("150"),
+        uncovered=_d("400"),
+        available=(("Sapphire Groceries", _d("40")),),
+    ),
+    events=(
+        # B−1: real register history the walk must NOT re-derive. Had this
+        # reserved, set_aside would read 450 and the scenario would fail.
+        _spend(3, "300", "Sapphire Groceries"),
+        # B: cover 250 of the opening ride, pay part of the statement.
+        _assign(2, "250"),
+        _pay(2, "150"),
+        # Today: ordinary funded spending, reserving as ever.
+        _fund(0, "100", "Sapphire Groceries"),
+        _spend(0, "100", "Sapphire Groceries", day=1),
+    ),
+    tiers=("full",),
+    expect=ExpectedPosition(
+        # 250 opening debt + 300 pre-anchor spend − 150 paid + 100 today.
+        balance=_d("-500"),
+        # opening 150 + assigned 250 + reserved 100 − paid 150. The
+        # pre-anchor 300 contributes nothing — that is the behaviour under
+        # test.
+        set_aside=_d("350"),
+        # 500 owed − 350 reserved; equally, the 400 opening ride less the
+        # 250 the assignment covered.
+        uncovered=_d("150"),
+        riding=_d("150"),
+        charged_this_month=_d("100"),
+        inflows_this_month=_d("0"),
+        paid_this_month=_d("0"),
+        debt_change_this_month=_d("-100"),
+        reserve_discrepancy=_d("0"),
+    ),
+)
+
+ANCHORED_IN_CREDIT = CardScenario(
+    slug="anchored-in-credit",
+    title="A card imported already holding your money",
+    story=(
+        "A card can arrive from YNAB in credit — a refund landed after the "
+        "last payment. No post-anchor leg explains that credit, so the "
+        "identity needs the anchor-era allowance (`opening_credit` in "
+        "reserve_discrepancy's T3): the card held this money before the "
+        "budget's first re-derived month existed."
+    ),
+    card="Basalt Card",
+    short="Basalt",
+    opening=_d("0"),
+    import_anchor=CardAnchor(months_ago=2, reserve=_d("0"), uncovered=_d("0")),
+    events=(
+        # Pre-anchor: a plain credit put the card in the black. Truncated
+        # from the walk — only the balance remembers it.
+        _deposit(3, "80"),
+    ),
+    tiers=("full",),
+    expect=ExpectedPosition(
+        balance=_d("80"),
+        set_aside=_d("0"),
+        uncovered=_d("0"),
+        card_credit=_d("80"),
+        riding=_d("0"),
+        charged_this_month=_d("0"),
+        inflows_this_month=_d("0"),
+        paid_this_month=_d("0"),
+        debt_change_this_month=_d("0"),
+        reserve_discrepancy=_d("0"),
+    ),
+)
+
+#: Anchored shapes, beside — never inside — ALL_SCENARIOS: one budget has one
+#: anchor, and splicing one into the demo would truncate every other
+#: scenario's history. `merge_into` refuses them; `build_scenario_spec`
+#: builds them a budget of their own.
+ANCHORED_SCENARIOS: tuple[CardScenario, ...] = (
+    ANCHORED_IMPORT,
+    ANCHORED_IN_CREDIT,
+)
+
+
 # ── The generator adapter ─────────────────────────────────────────────────────
 # The third projection: a scenario as sample-budget spec elements, so the demo
 # shows the same six shapes the suites assert.
@@ -803,6 +976,11 @@ def to_spec_elements(
                     tiers=scenario.tiers,
                 )
             )
+        else:  # pragma: no cover - the guard is the point
+            # The other two adapters raise on a kind they cannot express;
+            # this one silently emitted nothing, which is how a new kind
+            # ships demoed nowhere.
+            raise AssertionError(f"to_spec_elements cannot build a {event.kind!r} event")
 
     return SpecElements(
         account=AccountSpec(
@@ -961,6 +1139,11 @@ def merge_into(
     """
     from igab.sample_budget.spec import GroupSpec, PayeeSpec
 
+    anchored = [sc.slug for sc in scenarios if sc.import_anchor is not None]
+    if anchored:
+        # One budget has one anchor; splicing an anchored scenario into a
+        # household would truncate every other scenario's history.
+        raise ValueError(f"anchored scenarios cannot be merged into a demo: {anchored}")
     elements = [
         to_spec_elements(sc, cash_account=cash_account, sort_order=sort_from + i)
         for i, sc in enumerate(scenarios)
