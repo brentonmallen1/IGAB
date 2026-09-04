@@ -3,13 +3,21 @@
 from datetime import date
 from decimal import Decimal
 
+from igab.domain.dates import add_months
 from igab.integrations.ynab.models import (
     YNABBudget,
     YNABPlanRow,
     YNABSplitLeg,
     YNABTransaction,
+    anchor_month,
+    plan_boundary,
 )
-from igab.integrations.ynab.oracle import export_consistency, subset_sums, ynab_rta
+from igab.integrations.ynab.oracle import (
+    anchored_expected,
+    export_consistency,
+    subset_sums,
+    ynab_rta,
+)
 
 JUL, AUG, SEP = date(2026, 7, 1), date(2026, 8, 1), date(2026, 9, 1)
 D = Decimal
@@ -27,6 +35,12 @@ def txn(account, day, amount, group=None, category=None, splits=(), cleared="cle
         cleared=cleared,
         splits=list(splits),
     )
+
+
+def months(first, count):
+    """`count` consecutive month starts — a real export lists every month
+    between its first and its last, which is what makes the clamp safe."""
+    return [add_months(first, i) for i in range(count)]
 
 
 def inflow(account, day, amount):
@@ -489,3 +503,102 @@ class TestParityExplanations:
         from igab.integrations.ynab.parity import ParityDifference
 
         assert not ParityDifference("Everyday: Groceries", D("100"), D("100")).explained
+
+
+class TestPlanBoundary:
+    """One spelling of the anchor boundary — the last plan month at or
+    before today, and always a month the export actually carries."""
+
+    def test_no_plan_no_boundary(self):
+        assert plan_boundary([], date(2026, 9, 3)) is None
+
+    def test_clamped_by_today_for_future_assignment_months(self):
+        rows = [plan(m, "g", "c", "5") for m in months(date(2026, 6, 1), 6)]
+        assert plan_boundary(rows, date(2026, 9, 3)) == date(2026, 9, 1)
+
+    def test_an_old_export_boundaries_at_its_own_last_month(self):
+        rows = [plan(date(2026, 3, 1), "g", "c"), plan(date(2026, 5, 1), "g", "c")]
+        assert plan_boundary(rows, date(2026, 9, 3)) == date(2026, 5, 1)
+
+    def test_a_gap_before_today_falls_back_to_a_month_the_export_has(self):
+        """Budgeted ahead into December, nothing planned since June: the
+        obvious spelling, min(today, max(month)), names September — a month
+        no plan row mentions. `_seed_arrangement` then matches nothing and
+        every group lands at sort_order 0, and the anchor seed reads an empty
+        month."""
+        rows = [plan(date(2026, 6, 1), "g", "c"), plan(date(2026, 12, 1), "g", "c")]
+        assert plan_boundary(rows, date(2026, 9, 3)) == date(2026, 6, 1)
+
+    def test_an_export_entirely_in_the_future_uses_its_first_month(self):
+        """A budget that starts next month has no past to clamp to; the
+        earliest month it carries is the only honest layout."""
+        rows = [plan(date(2026, 10, 1), "g", "c"), plan(date(2026, 11, 1), "g", "c")]
+        assert plan_boundary(rows, date(2026, 9, 3)) == date(2026, 10, 1)
+
+
+class TestAnchorMonth:
+    """The boundary the anchor itself can use: B, but only when B−1 is in
+    the export. The preview screen and `_write_anchor` ask this same
+    question, so the screen never promises an anchor the import declines."""
+
+    def test_none_without_a_plan(self):
+        assert anchor_month([], date(2026, 9, 3)) is None
+
+    def test_none_when_the_export_begins_at_the_boundary(self):
+        """A budget younger than one complete YNAB month has no position to
+        anchor on."""
+        rows = [plan(date(2026, 9, 1), "g", "c")]
+        assert anchor_month(rows, date(2026, 9, 3)) is None
+
+    def test_the_boundary_when_the_month_before_it_is_present(self):
+        rows = [plan(date(2026, 8, 1), "g", "c"), plan(date(2026, 9, 1), "g", "c")]
+        assert anchor_month(rows, date(2026, 9, 3)) == date(2026, 9, 1)
+
+    def test_none_when_the_boundary_month_stands_alone_after_a_gap(self):
+        """June and December, today September: the boundary is June, whose
+        previous month the file never mentions. Anchoring there would seed
+        every envelope from nothing."""
+        rows = [plan(date(2026, 6, 1), "g", "c"), plan(date(2026, 12, 1), "g", "c")]
+        assert anchor_month(rows, date(2026, 9, 3)) is None
+
+
+class TestAnchoredExpected:
+    """The cash form of the Ready to Assign rule, for anchored budgets."""
+
+    def _b(self):
+        return budget(
+            [
+                inflow("Checking", date(2026, 7, 3), "1000"),
+                txn("Checking", date(2026, 7, 10), "-200", "Everyday", "Groceries"),
+                txn("Sapphire Visa", date(2026, 7, 12), "-50", "Everyday", "Groceries"),
+            ],
+            [
+                plan(date(2026, 7, 1), "Everyday", "Groceries", "300", available="50"),
+                plan(
+                    date(2026, 7, 1),
+                    "Credit Card Payments",
+                    "Sapphire Visa",
+                    "0",
+                    available="50",
+                ),
+                plan(date(2026, 8, 1), "Everyday", "Groceries", "25", available="75"),
+            ],
+        )
+
+    def test_matches_the_history_form_plus_uncategorized_on_a_coherent_file(self):
+        """The F1 equivalence: on a file whose own numbers cohere, the cash
+        form and the history form describe the same budget — offset only by
+        uncategorized rows, which sit inside cash here and outside the plan
+        there."""
+        o = ynab_rta(self._b(), date(2026, 7, 1), credit_card_accounts={"Sapphire Visa"})
+        assert anchored_expected(o) == o.rta + o.uncategorized_net
+
+    def test_card_balances_split_sums_to_the_total(self):
+        o = ynab_rta(self._b(), date(2026, 7, 1), credit_card_accounts={"Sapphire Visa"})
+        assert sum(o.card_balances_by_card.values(), D("0")) == o.card_balances
+        assert o.card_balances_by_card == {"sapphire visa": D("-50")}
+
+    def test_assigned_after_counts_only_later_months(self):
+        o = ynab_rta(self._b(), date(2026, 7, 1), credit_card_accounts={"Sapphire Visa"})
+        assert o.assigned_after == D("25")
+        assert o.cash_balance == D("800")

@@ -22,6 +22,7 @@ from igab.repositories.category_repo import (
     CategoryRepository,
 )
 from igab.repositories.change_log_repo import ChangeLogRepository
+from igab.repositories.import_anchor_repo import ImportAnchorRepository
 from igab.repositories.liability_repo import LiabilityRepository
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.reconciliation_repo import ReconciliationRepository
@@ -210,6 +211,7 @@ def get_budget_service(
         transaction_repo,
         move_repo=move_repo,
         snapshot_repo=snapshot_repo,
+        anchor_repo=ImportAnchorRepository(assignment_repo.session),
     )
     # Attribute the request's change-log rows to the caller. The service
     # constructs its own recorder internally, so stamp it here — the one

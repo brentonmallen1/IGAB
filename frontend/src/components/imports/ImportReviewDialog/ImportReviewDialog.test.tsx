@@ -310,3 +310,49 @@ describe('adding a tag the hints never thought of', () => {
     expect(within(row('Groceries')).getByText('Travel')).toBeInTheDocument()
   })
 })
+
+describe('the anchor note', () => {
+  const parity = (): NonNullable<YnabImportResult['parity']> => ({
+    month: '2026-08-01',
+    ynab_ready_to_assign: '9780.00',
+    expected_ready_to_assign: '9780.00',
+    igab_ready_to_assign: '9780.00',
+    uncovered_card_debt: '0',
+    uncategorized_net: '0',
+    matches: true,
+    categories_compared: 8,
+    categories_differing: 0,
+    categories_pending: 0,
+    categories_unmatched: 0,
+    consistency: {
+      self_consistent: true,
+      carryover_rows_checked: 16,
+      carryover_rows_violating: 0,
+      activity_cells_checked: 16,
+      activity_cells_disagreeing: 0,
+    },
+    cards_compared: 1,
+    cards_differing: 0,
+    card_differences: [],
+    card_history: [],
+    top_differences: [],
+  })
+
+  it('says where the handoff anchored', () => {
+    open({ parity: parity(), anchored_at: '2026-08-01' })
+    expect(screen.getByText(/start from YNAB's own position/)).toBeInTheDocument()
+    expect(screen.getByText(/August 2026/)).toBeInTheDocument()
+  })
+
+  it('says why an import could not anchor', () => {
+    open({ parity: parity(), anchored_at: null, anchor_skipped_reason: 'no plan in the export' })
+    expect(screen.getByText(/could not be anchored \(no plan in the export\)/)).toBeInTheDocument()
+  })
+
+  it('renders nothing for a pre-feature summary', () => {
+    // Absent keys, not nulls: a summary stored before the feature existed.
+    open({ parity: parity() })
+    expect(screen.queryByText(/start from YNAB's own position/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/could not be anchored/)).not.toBeInTheDocument()
+  })
+})

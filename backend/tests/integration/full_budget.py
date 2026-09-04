@@ -37,6 +37,7 @@ from igab.db.models import (
     ChangeLog,
     GuideBinding,
     GuideState,
+    ImportAnchor,
     ImportBatch,
     ReconciliationSnapshot,
     TransactionAttachment,
@@ -304,6 +305,28 @@ async def build_full_budget(session: AsyncSession, owner: User) -> FullBudget:
                 attachment_id=attachment.id,
             ),
             GuideState(budget_id=budget.id, key="roadmap_position", value={"step": 2}),
+            # An import anchor pair — a category opening and a card reserve —
+            # so snapshots carry the table and budget delete cascades it.
+            # Fictional figures, dated well before the fixture's activity so
+            # the walks' truncation does not hide the rows this fixture's
+            # OTHER assertions rely on.
+            # Inert on purpose: a zero category opening (the importer writes
+            # zeros too) and a reserve on a non-card account, so the fixture's
+            # existing balance assertions keep meaning what they meant.
+            ImportAnchor(
+                budget_id=budget.id,
+                month=date(2020, 1, 1),
+                kind="available",
+                category_id=category.id,
+                amount=Decimal("0"),
+            ),
+            ImportAnchor(
+                budget_id=budget.id,
+                month=date(2020, 1, 1),
+                kind="reserve",
+                account_id=savings.id,
+                amount=Decimal("150"),
+            ),
             CategoryPlan(
                 budget_id=budget.id,
                 name="Paycheck plan",

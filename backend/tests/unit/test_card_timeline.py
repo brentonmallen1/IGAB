@@ -17,7 +17,11 @@ import pytest
 
 from igab.domain.card_timeline import card_timeline, first_breach, worst_months
 from igab.domain.cards import CardReserve, card_funding, card_reserve
-from igab.sample_budget.card_scenarios import ALL_SCENARIOS, to_funding_inputs
+from igab.sample_budget.card_scenarios import (
+    ALL_SCENARIOS,
+    ANCHORED_SCENARIOS,
+    to_funding_inputs,
+)
 
 D = Decimal
 JAN, FEB, MAR = date(2026, 1, 1), date(2026, 2, 1), date(2026, 3, 1)
@@ -124,20 +128,42 @@ class TestWorstMonths:
         assert worst_months(card_timeline(reserve, {}, {})) == []
 
 
-@pytest.mark.parametrize("scenario", ALL_SCENARIOS, ids=[s.slug for s in ALL_SCENARIOS])
+@pytest.mark.parametrize(
+    "scenario",
+    ALL_SCENARIOS + ANCHORED_SCENARIOS,
+    ids=[s.slug for s in ALL_SCENARIOS + ANCHORED_SCENARIOS],
+)
 def test_the_timeline_restates_set_aside_at_every_month(scenario):
     """Against the real walk, month by month: the timeline's cumulative figure
     must equal `CardReserve.set_aside` evaluated at each of its own months —
-    a restatement, never a second opinion."""
+    a restatement, never a second opinion. Anchored scenarios walk seeded and
+    open on the B−1 seam entry."""
     anchor = date(2026, 8, 15)
     inputs = to_funding_inputs(scenario, anchor)
     funding = card_funding(
-        inputs.assignments, inputs.activity, inputs.outflows, inputs.card_categories
+        inputs.assignments,
+        inputs.activity,
+        inputs.outflows,
+        inputs.card_categories,
+        openings=inputs.openings,
     )
-    reserve = card_reserve(funding, scenario.card, inputs.payments)
-    timeline = card_timeline(reserve, {}, funding.riding_by_card.get(scenario.card, {}))
+    opening = (
+        {inputs.openings.opening_month: inputs.openings.reserve_by_card[scenario.card]}
+        if inputs.openings is not None
+        else None
+    )
+    reserve = card_reserve(funding, scenario.card, inputs.payments, opening=opening)
+    timeline = card_timeline(
+        reserve,
+        {},
+        funding.riding_by_card.get(scenario.card, {}),
+        start=inputs.openings.opening_month if inputs.openings is not None else None,
+    )
     for cm in timeline:
         assert cm.set_aside == reserve.set_aside(cm.month)
+    if inputs.openings is not None:
+        assert timeline[0].month == inputs.openings.opening_month
+        assert timeline[0].legs["opening"] == inputs.openings.reserve_by_card[scenario.card]
 
 
 def test_paid_ahead_then_caught_up_dips_exactly_where_the_scenario_says():

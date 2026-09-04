@@ -24,7 +24,12 @@ from igab.domain.cards import card_funding as domain_funding
 from igab.domain.cards import card_position as domain_position
 from igab.domain.cards import card_reserve
 from igab.domain.carryover import sum_through
-from igab.sample_budget.card_scenarios import ALL_SCENARIOS, CardScenario, to_funding_inputs
+from igab.sample_budget.card_scenarios import (
+    ALL_SCENARIOS,
+    ANCHORED_SCENARIOS,
+    CardScenario,
+    to_funding_inputs,
+)
 
 _PROBE_PATH = Path(__file__).resolve().parents[2] / "scripts" / "card_reserve_probe.py"
 _spec = importlib.util.spec_from_file_location("card_reserve_probe", _PROBE_PATH)
@@ -35,28 +40,53 @@ _spec.loader.exec_module(probe)
 
 ANCHOR = date(2026, 8, 15)
 MONTH = date(ANCHOR.year, ANCHOR.month, 1)
-IDS = [s.slug for s in ALL_SCENARIOS]
+EVERY = ALL_SCENARIOS + ANCHORED_SCENARIOS
+IDS = [s.slug for s in EVERY]
 
 
 def _both(scenario: CardScenario):
     inputs = to_funding_inputs(scenario, ANCHOR)
+    probe_openings = (
+        probe.Openings(
+            month=inputs.openings.month,
+            available_by_category=dict(inputs.openings.available_by_category),
+            reserve_by_card=dict(inputs.openings.reserve_by_card),
+            uncovered_by_card=dict(inputs.openings.uncovered_by_card),
+        )
+        if inputs.openings is not None
+        else None
+    )
     ours = probe.card_funding(
-        inputs.assignments, inputs.activity, inputs.outflows, inputs.card_categories
+        inputs.assignments,
+        inputs.activity,
+        inputs.outflows,
+        inputs.card_categories,
+        openings=probe_openings,
     )
     theirs = domain_funding(
-        inputs.assignments, inputs.activity, inputs.outflows, inputs.card_categories
+        inputs.assignments,
+        inputs.activity,
+        inputs.outflows,
+        inputs.card_categories,
+        openings=inputs.openings,
     )
     return inputs, ours, theirs
 
 
-@pytest.mark.parametrize("scenario", ALL_SCENARIOS, ids=IDS)
+def _opening_leg(inputs, card):
+    if inputs.openings is None:
+        return None
+    return {inputs.openings.opening_month: inputs.openings.reserve_by_card[card]}
+
+
+@pytest.mark.parametrize("scenario", EVERY, ids=IDS)
 def test_every_leg_series_agrees(scenario: CardScenario):
     """Month-by-month, not just in total: the timeline is built from the
     monthly series, so a compensating error would survive a totals-only
     check and put the first breach in the wrong month."""
     inputs, ours, theirs = _both(scenario)
     card = scenario.card
-    reserve = card_reserve(theirs, card, inputs.payments)
+    reserve = card_reserve(theirs, card, inputs.payments, opening=_opening_leg(inputs, card))
     assert ours.assignments_by_card.get(card, {}) == reserve.assignments
     assert ours.reservations_by_card.get(card, {}) == reserve.reservations
     assert ours.released_by_card.get(card, {}) == reserve.released
@@ -68,11 +98,12 @@ def test_every_leg_series_agrees(scenario: CardScenario):
     assert ours.residual_by_pair == theirs.residual_by_pair
 
 
-@pytest.mark.parametrize("scenario", ALL_SCENARIOS, ids=IDS)
+@pytest.mark.parametrize("scenario", EVERY, ids=IDS)
 def test_the_timeline_lands_on_the_domain_set_aside(scenario: CardScenario):
     inputs, ours, theirs = _both(scenario)
     card = scenario.card
     legs = {
+        "opening": _opening_leg(inputs, card) or {},
         "assigned": ours.assignments_by_card.get(card, {}),
         "reserved": ours.reservations_by_card.get(card, {}),
         "released": ours.released_by_card.get(card, {}),
@@ -80,17 +111,21 @@ def test_the_timeline_lands_on_the_domain_set_aside(scenario: CardScenario):
         "payments": inputs.payments,
     }
     timeline = probe.card_timeline(legs, {}, ours.riding_by_card.get(card, {}))
-    want = card_reserve(theirs, card, inputs.payments).set_aside(MONTH)
+    want = card_reserve(
+        theirs, card, inputs.payments, opening=_opening_leg(inputs, card)
+    ).set_aside(MONTH)
     got = timeline[-1].set_aside if timeline else Decimal("0")
     assert got == want, scenario.story
     if timeline:
         assert timeline[-1].riding == sum_through(theirs.riding_by_card.get(card, {}), MONTH)
 
 
-@pytest.mark.parametrize("scenario", ALL_SCENARIOS, ids=IDS)
+@pytest.mark.parametrize("scenario", EVERY, ids=IDS)
 def test_the_position_agrees(scenario: CardScenario):
     inputs, _, theirs = _both(scenario)
-    set_aside = card_reserve(theirs, scenario.card, inputs.payments).set_aside(MONTH)
+    set_aside = card_reserve(
+        theirs, scenario.card, inputs.payments, opening=_opening_leg(inputs, scenario.card)
+    ).set_aside(MONTH)
     ours = probe.card_position(set_aside, inputs.balance)
     want = domain_position(set_aside, inputs.balance)
     assert (ours.uncovered, ours.over_reserved, ours.short_reserved, ours.card_credit) == (
@@ -101,7 +136,7 @@ def test_the_position_agrees(scenario: CardScenario):
     )
 
 
-@pytest.mark.parametrize("scenario", ALL_SCENARIOS, ids=IDS)
+@pytest.mark.parametrize("scenario", EVERY, ids=IDS)
 def test_residual_attribution_sums_to_the_residual_leg(scenario: CardScenario):
     """The probe keeps residual per (category, card) — the one series the
     domain does not. It must be a decomposition of the leg, never a second
@@ -136,7 +171,7 @@ def test_a_negative_reserve_scenario_reports_a_breach():
     assert amount < Decimal("0")
 
 
-@pytest.mark.parametrize("scenario", ALL_SCENARIOS, ids=IDS)
+@pytest.mark.parametrize("scenario", EVERY, ids=IDS)
 def test_breach_and_worst_months_agree_with_domain_card_timeline(scenario: CardScenario):
     """`domain/card_timeline.py` is the in-app statement of the same analysis
     the probe carries. The two must find the same breach month and the same

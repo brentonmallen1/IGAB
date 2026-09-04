@@ -40,6 +40,8 @@ def next_carryover(end_of_month: Decimal) -> Decimal:
 def monthly_end_balances(
     assignments_by_month: dict[date, Decimal],
     activity_by_month: dict[date, Decimal],
+    *,
+    opening: tuple[date, Decimal] | None = None,
 ) -> dict[date, Decimal]:
     """Each data month's raw end-of-month available, in one pass.
 
@@ -48,10 +50,28 @@ def monthly_end_balances(
     negatives out of it to split a month's overspending by funding source.
     Values may be negative; the floor is applied *between* entries, so each
     value is what that month ended at before the next month floored it.
+
+    `opening` is an import anchor: `(month B−1, YNAB's own Available then)`.
+    The walk emits that raw value as B−1's entry (when non-zero), carries its
+    *floored* value forward — the floor rule stays in `next_carryover`, its
+    one home — and skips every data month at or before it. Truncation lives
+    here, inside the domain, so no caller can apply the seed and forget the
+    cut. `opening=None` is byte-for-byte today's walk; `domain.cards.
+    card_funding` seeds its per-category carryover from the same rule, and a
+    differential test holds the two to one answer.
     """
     out: dict[date, Decimal] = {}
     carryover = ZERO
+    start_after: date | None = None
+    if opening is not None:
+        opening_month, opening_amount = opening
+        if opening_amount != ZERO:
+            out[opening_month] = opening_amount
+        carryover = next_carryover(opening_amount)
+        start_after = opening_month
     for m in sorted(set(assignments_by_month) | set(activity_by_month)):
+        if start_after is not None and m <= start_after:
+            continue
         end_of_month = (
             carryover + assignments_by_month.get(m, ZERO) + activity_by_month.get(m, ZERO)
         )
@@ -93,17 +113,22 @@ def available_through(
     assignments_by_month: dict[date, Decimal],
     activity_by_month: dict[date, Decimal],
     month_start: date,
+    *,
+    opening: tuple[date, Decimal] | None = None,
 ) -> Decimal:
     """Available in `month_start`, simulating every month up to it.
 
     Both dicts are keyed by the first of the month. Months absent from both
     contribute nothing and are skipped — a gap in the calendar is not a month
-    that zeroed the carryover.
+    that zeroed the carryover. `opening` is the import anchor, applied by
+    `monthly_end_balances`; a viewed month at or before the anchor month
+    reads the anchor's own figure, not a re-derivation.
     """
     return available_at(
         monthly_end_balances(
             {m: v for m, v in assignments_by_month.items() if m <= month_start},
             {m: v for m, v in activity_by_month.items() if m <= month_start},
+            opening=opening,
         ),
         month_start,
     )

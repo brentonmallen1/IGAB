@@ -153,6 +153,9 @@ export interface ReserveTerms {
   released: number
   residual: number
   payments: number
+  /** An import anchor's B−1 seed (server: CardStatusOut.opening /
+   *  CardTimelineMonthOut.opening). Zero everywhere but anchored budgets. */
+  opening: number
 }
 
 /**
@@ -170,6 +173,7 @@ export interface ReserveTerms {
 export function reserveLegs(terms: ReserveTerms): CardLeg[] {
   return (
     [
+      { label: 'Where YNAB left it at import', value: terms.opening, sign: '+' },
       { label: 'Assigned to this card', value: terms.assigned, sign: '+' },
       { label: 'Set aside by funded spending', value: terms.reserved, sign: '+' },
       { label: 'Released by refunds', value: terms.released, sign: '−' },

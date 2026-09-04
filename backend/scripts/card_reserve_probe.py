@@ -145,11 +145,35 @@ class Funding:
     residual_by_pair: dict[tuple[str, str], dict[date, Decimal]] = field(default_factory=dict)
 
 
+ANCHOR_OPENING = "anchor-opening"
+
+
+@dataclass
+class Openings:
+    """cards.AnchorOpenings, str-keyed: an import anchor's walk seeds.
+
+    `month` is B (the first re-derived month); the seeds are stated at B−1.
+    Read from the `import_anchors` table when it exists — older schemas
+    simply have no anchor and walk from zero, exactly as before.
+    """
+
+    month: date
+    available_by_category: dict[str, Decimal]
+    reserve_by_card: dict[str, Decimal]
+    uncovered_by_card: dict[str, Decimal]
+
+    @property
+    def opening_month(self) -> date:
+        m = self.month
+        return date(m.year - 1, 12, 1) if m.month == 1 else date(m.year, m.month - 1, 1)
+
+
 def card_funding(
     assignments_by_category: dict[str, dict[date, Decimal]],
     activity_by_category: dict[str, dict[date, Decimal]],
     credit_outflows: dict[str, dict[str, dict[date, Decimal]]],
     card_categories: dict[str, str],
+    openings: Openings | None = None,
 ) -> Funding:
     """cards.card_funding — the month-major walk, steps 1..5, copied exactly.
 
@@ -179,10 +203,23 @@ def card_funding(
     ridden: dict[tuple[str, str], Decimal] = {}
     reserved: dict[tuple[str, str], Decimal] = {}
 
+    if openings is not None:
+        # cards.card_funding's anchor seeding, verbatim: floored carryover
+        # openings, opening uncovered riding under the sentinel, months
+        # before B skipped.
+        for category, amount in openings.available_by_category.items():
+            carryover[category] = next_carryover(amount)
+        for card, uncovered in openings.uncovered_by_card.items():
+            if uncovered > ZERO:
+                ridden[(ANCHOR_OPENING, card)] = uncovered
+                _add(out.riding_by_card, card, openings.opening_month, uncovered)
+
     all_months = sorted(
         set(categories_in_month) | {m for series in card_assignments.values() for m in series}
     )
     for month in all_months:
+        if openings is not None and month < openings.month:
+            continue
         for category in sorted(categories_in_month.get(month, []), key=str):
             nets = {
                 card: series[month]
@@ -279,9 +316,17 @@ def card_position(set_aside: Decimal, balance: Decimal) -> Position:
 
 # ─── Timeline analysis ────────────────────────────────────────────────────────
 
-LEGS = ("assigned", "reserved", "released", "residual", "payments")
+LEGS = ("opening", "assigned", "reserved", "released", "residual", "payments")
 #: Legs that subtract from the reserve, as they appear in set_aside.
-_SIGNS = {"assigned": 1, "reserved": 1, "released": -1, "residual": -1, "payments": -1}
+#: `opening` is an import anchor's B−1 seed — zero everywhere else.
+_SIGNS = {
+    "opening": 1,
+    "assigned": 1,
+    "reserved": 1,
+    "released": -1,
+    "residual": -1,
+    "payments": -1,
+}
 
 
 @dataclass
@@ -377,33 +422,214 @@ STRUCTURAL_NAMES = {
 #: here, so the guard still catches what it exists to catch; and a new
 #: render line whose words are missing fails CLOSED — the guard refuses to
 #: write, and the pinning test names the word to add.
-_REPORT_VOCABULARY = frozenset((
-    "account", "accounts", "activity", "after", "against", "aggregate", "agrees",
-    "all", "amount", "amounts", "and", "another", "any", "anything", "are",
-    "arrived", "aside", "assign", "assigned", "assignments", "available", "balance", "been",
-    "before", "below", "beyond", "breach", "but", "can", "cards", "categories",
-    "category", "charge", "charged", "charges", "closed", "compared", "comparison", "contain",
-    "contains", "count", "counts", "created", "credit", "dates", "day", "debt",
-    "delta", "deposit", "design", "differ", "differing", "divergence", "divergent", "does",
-    "early", "either", "elided", "envelope", "envelopes", "ever", "excluded", "expected",
-    "export", "exported", "factor", "false", "file", "filed", "final", "first",
-    "for", "found", "from", "funded", "gross", "groups", "had", "has", "have",
-    "here", "history", "hold", "holds", "identifying", "ids", "igab", "import",
-    "imported", "income", "inflows", "kind", "legs", "level", "lifetime", "linked",
-    "matches", "may", "memos", "missing", "month", "monthly", "months", "moves",
-    "names", "net", "nets", "never", "not", "nothing", "null", "numbers", "ours",
-    "outside", "over", "overlay", "parity", "partner", "pay", "payee", "payment",
-    "payments", "pending", "per", "persisted", "plain", "plan", "position", "possible",
-    "possibly", "predates", "probe", "pseudonymized", "ratios", "read", "ready", "refund",
-    "released", "report", "rescaled", "reserve", "reserved", "reserves", "reserving", "residual",
-    "revision", "reward", "riding", "rode", "row", "rows", "scaled", "scanned",
-    "schema", "sees", "set", "shadow", "short", "signs", "since", "skipped",
-    "spendable", "splits", "stripped", "summary", "system", "tagged", "that", "the",
-    "theirs", "these", "this", "through", "time", "tokens", "total", "touches",
-    "transactions", "transfer", "transfers", "true", "truncated", "typed", "uncategorized",
-    "unclaimed", "uncovered", "undisclosed", "unlinked", "unmatched", "unpaired", "unreadable",
-    "was", "went", "whose", "window", "with", "worst", "writing", "ynab", "zero", "zip",
-))
+_REPORT_VOCABULARY = frozenset(
+    (
+        "account",
+        "accounts",
+        "activity",
+        "after",
+        "against",
+        "aggregate",
+        "agrees",
+        "all",
+        "amount",
+        "amounts",
+        "and",
+        "another",
+        "any",
+        "anything",
+        "are",
+        "arrived",
+        "aside",
+        "assign",
+        "assigned",
+        "assignments",
+        "available",
+        "balance",
+        "been",
+        "before",
+        "below",
+        "beyond",
+        "breach",
+        "but",
+        "can",
+        "cards",
+        "categories",
+        "category",
+        "charge",
+        "charged",
+        "charges",
+        "closed",
+        "compared",
+        "comparison",
+        "contain",
+        "contains",
+        "count",
+        "counts",
+        "created",
+        "credit",
+        "dates",
+        "day",
+        "debt",
+        "delta",
+        "deposit",
+        "design",
+        "differ",
+        "differing",
+        "divergence",
+        "divergent",
+        "does",
+        "early",
+        "either",
+        "elided",
+        "envelope",
+        "envelopes",
+        "ever",
+        "excluded",
+        "expected",
+        "export",
+        "exported",
+        "factor",
+        "false",
+        "file",
+        "filed",
+        "final",
+        "first",
+        "for",
+        "found",
+        "from",
+        "funded",
+        "gross",
+        "groups",
+        "had",
+        "has",
+        "have",
+        "here",
+        "history",
+        "hold",
+        "holds",
+        "identifying",
+        "ids",
+        "igab",
+        "import",
+        "imported",
+        "income",
+        "inflows",
+        "kind",
+        "legs",
+        "level",
+        "lifetime",
+        "linked",
+        "matches",
+        "may",
+        "memos",
+        "missing",
+        "month",
+        "monthly",
+        "months",
+        "moves",
+        "names",
+        "net",
+        "nets",
+        "never",
+        "not",
+        "nothing",
+        "null",
+        "numbers",
+        "ours",
+        "anchor",
+        "anchored",
+        "opening",
+        "outside",
+        "over",
+        "overlay",
+        "parity",
+        "partner",
+        "pay",
+        "payee",
+        "payment",
+        "payments",
+        "pending",
+        "per",
+        "persisted",
+        "plain",
+        "plan",
+        "position",
+        "possible",
+        "possibly",
+        "predates",
+        "probe",
+        "pseudonymized",
+        "ratios",
+        "read",
+        "ready",
+        "refund",
+        "released",
+        "report",
+        "rescaled",
+        "reserve",
+        "reserved",
+        "reserves",
+        "reserving",
+        "residual",
+        "revision",
+        "reward",
+        "riding",
+        "rode",
+        "row",
+        "rows",
+        "scaled",
+        "scanned",
+        "schema",
+        "sees",
+        "set",
+        "shadow",
+        "short",
+        "signs",
+        "since",
+        "skipped",
+        "spendable",
+        "splits",
+        "stripped",
+        "summary",
+        "system",
+        "tagged",
+        "that",
+        "the",
+        "theirs",
+        "these",
+        "this",
+        "through",
+        "time",
+        "tokens",
+        "total",
+        "touches",
+        "transactions",
+        "transfer",
+        "transfers",
+        "true",
+        "truncated",
+        "typed",
+        "uncategorized",
+        "unclaimed",
+        "uncovered",
+        "undisclosed",
+        "unlinked",
+        "unmatched",
+        "unpaired",
+        "unreadable",
+        "was",
+        "went",
+        "whose",
+        "window",
+        "with",
+        "worst",
+        "writing",
+        "ynab",
+        "zero",
+        "zip",
+    )
+)
 
 _UUID_RE = re.compile(
     r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
@@ -505,9 +731,7 @@ def assert_clean(rendered: str, deny_tokens: set[str]) -> None:
         if " " in token:
             # A whole real name, as a word sequence: match it across any
             # punctuation/spacing so "Fern-Hollow" still reads as the name.
-            pattern = (
-                r"\b" + r"[^a-z0-9]{1,8}".join(re.escape(w) for w in token.split()) + r"\b"
-            )
+            pattern = r"\b" + r"[^a-z0-9]{1,8}".join(re.escape(w) for w in token.split()) + r"\b"
         else:
             pattern = rf"\b{re.escape(token)}\b"
         if re.search(pattern, lowered):
@@ -644,6 +868,10 @@ class DbData:
     #: persisted with the import summary by newer importers. Real card names
     #: stay inside the analysis (matched, never rendered).
     ynab_ccp_from_import: dict[str, dict[date, Decimal]]
+    #: The budget's import anchor (see `Openings`), or None. Read from the
+    #: `import_anchors` table when the schema has one; older deployments
+    #: simply walk from zero, exactly as before the feature.
+    anchor: Openings | None = None
 
 
 async def read_db(database_url: str, budget_id: str | None) -> DbData:
@@ -883,6 +1111,41 @@ async def read_db(database_url: str, budget_id: str | None) -> DbData:
             import_summary = _allowlisted_import_summary(summary_json)
             ynab_ccp_from_import = _ccp_history_from_summary(summary_json)
 
+            anchor: Openings | None = None
+            try:
+                anchor_rows = await rows(
+                    "SELECT month, kind, category_id, account_id, amount"
+                    " FROM import_anchors WHERE budget_id = :b",
+                    b=budget_id,
+                )
+            except Exception:
+                # The deployment predates anchoring — no table, no anchor.
+                anchor_rows = []
+            if anchor_rows:
+                available: dict[str, Decimal] = {}
+                reserve: dict[str, Decimal] = {}
+                uncovered: dict[str, Decimal] = {}
+                opening_month = anchor_rows[0].month
+                for r in anchor_rows:
+                    amount = Decimal(str(r.amount))
+                    if r.kind == "available" and r.category_id is not None:
+                        available[str(r.category_id)] = amount
+                    elif r.kind == "reserve" and r.account_id is not None:
+                        reserve[str(r.account_id)] = amount
+                    elif r.kind == "uncovered" and r.account_id is not None:
+                        uncovered[str(r.account_id)] = amount
+                boundary = (
+                    date(opening_month.year + 1, 1, 1)
+                    if opening_month.month == 12
+                    else date(opening_month.year, opening_month.month + 1, 1)
+                )
+                anchor = Openings(
+                    month=boundary,
+                    available_by_category=available,
+                    reserve_by_card=reserve,
+                    uncovered_by_card=uncovered,
+                )
+
         return DbData(
             budget_name=budget_name,
             alembic_revision=alembic,
@@ -903,6 +1166,7 @@ async def read_db(database_url: str, budget_id: str | None) -> DbData:
             import_summary=import_summary,
             inflow_kinds=inflow_kinds,
             charge_rows=charge_rows,
+            anchor=anchor,
             ynab_ccp_from_import=ynab_ccp_from_import,
         )
     finally:
@@ -1131,6 +1395,10 @@ class CardReport:
     #: (first divergent month, our set_aside, ynab available, months compared,
     #: months divergent) — only when a YNAB zip was given and the card matched.
     ynab: tuple[date, Decimal, Decimal, int, int] | None = None
+    #: The anchor's B−1 and this card's openings — the seam the report labels.
+    anchored_at: date | None = None
+    opening_reserve: Decimal = ZERO
+    opening_uncovered: Decimal = ZERO
 
 
 def analyze(
@@ -1138,7 +1406,13 @@ def analyze(
     names: Pseudonyms,
     ynab_ccp: dict[str, dict[date, Decimal]] | None,
 ) -> list[CardReport]:
-    funding = card_funding(data.assignments, data.activity, data.outflows, data.card_categories)
+    funding = card_funding(
+        data.assignments,
+        data.activity,
+        data.outflows,
+        data.card_categories,
+        openings=data.anchor,
+    )
 
     # Envelope availables for shadow detection: the walk's corrected series
     # where it exists, the plain floored walk elsewhere (budget_service does
@@ -1165,16 +1439,31 @@ def analyze(
         real_name, _ = data.accounts[card]
         label = names.get("card", real_name)
 
+        card_payments = data.payments.get(card, {})
+        balances = data.balance_by_card_month.get(card, {})
+        opening_series: dict[date, Decimal] = {}
+        if data.anchor is not None:
+            om = data.anchor.opening_month
+            opening_series = {om: data.anchor.reserve_by_card.get(card, ZERO)}
+            # The serving side's truncation and folding, verbatim: payments
+            # from B on, pre-anchor balance movement folded into the B−1
+            # seam entry.
+            card_payments = {m: v for m, v in card_payments.items() if m >= data.anchor.month}
+            folded = sum((v for m, v in balances.items() if m <= om), ZERO)
+            balances = {m: v for m, v in balances.items() if m > om}
+            if folded != ZERO:
+                balances[om] = folded
         legs_by_month = {
+            "opening": opening_series,
             "assigned": funding.assignments_by_card.get(card, {}),
             "reserved": funding.reservations_by_card.get(card, {}),
             "released": funding.released_by_card.get(card, {}),
             "residual": funding.residual_by_card.get(card, {}),
-            "payments": data.payments.get(card, {}),
+            "payments": card_payments,
         }
         timeline = card_timeline(
             legs_by_month,
-            data.balance_by_card_month.get(card, {}),
+            balances,
             funding.riding_by_card.get(card, {}),
         )
         if not timeline:
@@ -1234,8 +1523,11 @@ def analyze(
                 ours = {cm.month: cm.set_aside for cm in timeline}
                 compared = divergent = 0
                 first_div: tuple[date, Decimal, Decimal] | None = None
+                floor_month = data.anchor.opening_month if data.anchor is not None else None
                 for month in sorted(theirs):
                     if month not in ours:
+                        continue
+                    if floor_month is not None and month < floor_month:
                         continue
                     compared += 1
                     if abs(ours[month] - theirs[month]) > Decimal("0.01"):
@@ -1265,6 +1557,15 @@ def analyze(
                 has_payment_category=card in data.card_categories,
                 shadow_envelopes=shadow[:3],
                 ynab=ynab_line,
+                anchored_at=(data.anchor.opening_month if data.anchor is not None else None),
+                opening_reserve=(
+                    data.anchor.reserve_by_card.get(card, ZERO) if data.anchor is not None else ZERO
+                ),
+                opening_uncovered=(
+                    data.anchor.uncovered_by_card.get(card, ZERO)
+                    if data.anchor is not None
+                    else ZERO
+                ),
             )
         )
     return reports
@@ -1369,6 +1670,12 @@ def render_text(
         totals = {leg: sum(cm.legs[leg] for cm in r.timeline) for leg in LEGS}
         lines.append("  lifetime legs: " + "  ".join(f"{leg} {fmt(totals[leg])}" for leg in LEGS))
 
+        if r.anchored_at is not None:
+            lines.append(
+                f"  anchored at {_ym(r.anchored_at)} — opening reserve "
+                f"{fmt(r.opening_reserve)}, opening uncovered {fmt(r.opening_uncovered)}; "
+                "months before it are history, not re-derived"
+            )
         if not r.has_payment_category:
             lines.append("  !! this card has NO linked payment envelope — nothing can be assigned")
         if r.first_charge and r.first_reserving and r.first_charge < r.first_reserving:

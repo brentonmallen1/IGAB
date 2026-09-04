@@ -68,3 +68,10 @@
   font-weight: 500;
   white-space: nowrap;
 }
+
+/* The import-anchor boundary: a quiet label, not a warning. */
+.budget-page__anchor-note {
+  margin: 0 0 var(--spacing-sm);
+  font-size: 11px;
+  color: var(--text-secondary);
+}

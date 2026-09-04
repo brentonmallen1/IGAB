@@ -176,3 +176,45 @@ class TestQuantizeCents:
             assert quantize_cents(D("0.125")) == D("0.12")
         finally:
             decimal.getcontext().rounding = original
+
+
+class TestTheImportAnchorOpening:
+    """`monthly_end_balances(opening=...)` — the walk seeded at YNAB's B−1
+    figure, with everything earlier truncated inside the domain."""
+
+    def test_none_is_byte_identical(self):
+        asg, act = {JAN: D("100"), MAR: D("20")}, {FEB: D("-30")}
+        from igab.domain.carryover import monthly_end_balances
+
+        assert monthly_end_balances(asg, act, opening=None) == monthly_end_balances(asg, act)
+
+    def test_the_opening_is_emitted_raw_and_floored_forward(self):
+        from igab.domain.carryover import monthly_end_balances
+
+        out = monthly_end_balances({}, {FEB: D("-10")}, opening=(JAN, D("-25")))
+        # January shows YNAB's own (negative) figure; February starts at the
+        # floored zero, exactly as any month end would.
+        assert out == {JAN: D("-25"), FEB: D("-10")}
+
+    def test_months_at_or_before_the_opening_are_truncated(self):
+        from igab.domain.carryover import monthly_end_balances
+
+        out = monthly_end_balances({JAN: D("999")}, {JAN: D("-500")}, opening=(FEB, D("40")))
+        # January's data is history the seed already accounts for.
+        assert out == {FEB: D("40")}
+
+    def test_a_zero_opening_still_truncates(self):
+        from igab.domain.carryover import monthly_end_balances
+
+        out = monthly_end_balances({JAN: D("999")}, {MAR: D("-5")}, opening=(FEB, D("0")))
+        assert out == {MAR: D("-5")}
+
+    def test_available_through_reads_the_anchor(self):
+        assert available_through({}, {}, FEB, opening=(FEB, D("-25"))) == D("-25")
+        assert available_through({}, {}, MAR, opening=(FEB, D("-25"))) == D("0")
+        assert available_through({MAR: D("10")}, {}, MAR, opening=(FEB, D("40"))) == D("50")
+
+    def test_a_month_before_the_anchor_reads_zero(self):
+        # The UI clamps navigation at B; a service caller asking anyway gets
+        # a calm zero, never a re-derivation.
+        assert available_through({JAN: D("777")}, {}, JAN, opening=(FEB, D("40"))) == D("0")

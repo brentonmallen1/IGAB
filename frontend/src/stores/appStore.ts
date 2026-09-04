@@ -167,6 +167,12 @@ interface AppState {
   fontScale: FontScale
   currentBudgetId: string | null
   selectedMonth: string // ISO date string: "2024-01-01"
+  /** B for the open budget — the first month its envelope math re-derives
+   *  (server: BudgetMonthResponse.anchor_month, set only on budgets anchored
+   *  at import). Synced from the month query by BudgetPage; null elsewhere.
+   *  `setSelectedMonth` clamps against it, so every navigation surface —
+   *  header arrows, shortcuts, swipe — obeys one rule. */
+  budgetAnchorMonth: string | null
   autoOpenLastBudget: boolean
   lastQuickAddAccountId: string | null
   /** Opt-in, device-local: capture location on quick-add to suggest nearby payees */
@@ -180,6 +186,7 @@ interface AppState {
   setCurrentBudgetId: (id: string) => void
   clearCurrentBudget: () => void
   setSelectedMonth: (month: string) => void
+  setBudgetAnchorMonth: (month: string | null) => void
   setAutoOpenLastBudget: (val: boolean) => void
   setLastQuickAddAccountId: (id: string) => void
   setLocationEnabled: (val: boolean) => void
@@ -198,6 +205,7 @@ export const useAppStore = create<AppState>()(
       fontScale: 'small',
       currentBudgetId: null,
       selectedMonth: currentMonthString(),
+      budgetAnchorMonth: null,
       autoOpenLastBudget: true,
       lastQuickAddAccountId: null,
       locationEnabled: false,
@@ -218,9 +226,27 @@ export const useAppStore = create<AppState>()(
         document.documentElement.setAttribute('data-font-size', scale)
         set({ fontScale: scale })
       },
-      setCurrentBudgetId: (id) => set({ currentBudgetId: id }),
-      clearCurrentBudget: () => set({ currentBudgetId: null }),
-      setSelectedMonth: (month) => set({ selectedMonth: month }),
+      // The anchor belongs to the open budget, so changing budgets drops it:
+      // BudgetPage sets it from the month query, but the register or reports
+      // of the next budget can be reached without that page ever mounting,
+      // and a stale clamp there is a month the user cannot navigate to.
+      setCurrentBudgetId: (id) =>
+        set((state) =>
+          state.currentBudgetId === id
+            ? { currentBudgetId: id }
+            : { currentBudgetId: id, budgetAnchorMonth: null }
+        ),
+      clearCurrentBudget: () => set({ currentBudgetId: null, budgetAnchorMonth: null }),
+      setSelectedMonth: (month) =>
+        set((state) => ({
+          // Months before the anchor live in the register and reports only —
+          // there is no budget month to show there.
+          selectedMonth:
+            state.budgetAnchorMonth && month < state.budgetAnchorMonth
+              ? state.budgetAnchorMonth
+              : month,
+        })),
+      setBudgetAnchorMonth: (month) => set({ budgetAnchorMonth: month }),
       setAutoOpenLastBudget: (val) => set({ autoOpenLastBudget: val }),
       setLastQuickAddAccountId: (id) => set({ lastQuickAddAccountId: id }),
       setLocationEnabled: (val) => set({ locationEnabled: val }),
@@ -229,6 +255,21 @@ export const useAppStore = create<AppState>()(
     {
       name: PERSIST_KEYS.app,
       version: 1,
+      // Everything here is device-local and durable EXCEPT the anchor, which
+      // belongs to whichever budget is open. Persisting it clamped month
+      // navigation on the next launch — including on an unanchored budget,
+      // whose BudgetPage would never clear it because the page that sets it
+      // had not mounted yet.
+      partialize: (s) => ({
+        theme: s.theme,
+        fontScale: s.fontScale,
+        currentBudgetId: s.currentBudgetId,
+        selectedMonth: s.selectedMonth,
+        autoOpenLastBudget: s.autoOpenLastBudget,
+        lastQuickAddAccountId: s.lastQuickAddAccountId,
+        locationEnabled: s.locationEnabled,
+        privacyMode: s.privacyMode,
+      }),
       migrate: (persisted: unknown, from: number) => {
         const state = persisted as { fontScale?: string } | null
         if (from < 1 && state?.fontScale) {

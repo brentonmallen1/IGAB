@@ -384,6 +384,18 @@ function ReserveHistory({
             </Fragment>
           )
         })}
+        {data.anchor_month && months.length > 0 && (
+          /* The seam: scrolling down walks backwards in time, so the anchor
+             reads where the history ends — a labeled row like the year
+             separators, and like them never counted by the striping. */
+          <div className="credit-cards__history-year section-label" role="row">
+            <span role="cell">
+              Imported from YNAB — Ready to pay started at{' '}
+              {formatMoney(months[months.length - 1].set_aside)}; earlier months live in the
+              register and reports
+            </span>
+          </div>
+        )}
       </div>
     </div>
   )

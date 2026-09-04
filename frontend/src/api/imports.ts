@@ -133,6 +133,12 @@ export interface YnabImportResult {
   credit_card_payment_categories_stripped: number
   /** Null when the check could not run. */
   parity: YnabParity | null
+  /** B — the budget's envelope math starts from YNAB's own position at the
+   * month before this (server: YNABImportResult; db.models.ImportAnchor).
+   * Top-level, not inside parity: parity may fail, the anchor may not.
+   * Absent on pre-feature summaries — render nothing then. */
+  anchored_at?: string | null
+  anchor_skipped_reason?: string | null
   errors: string[]
 }
 

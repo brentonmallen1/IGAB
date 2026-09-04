@@ -12,6 +12,7 @@ is a different scenario wearing this one's clothes.
 import uuid
 from dataclasses import dataclass
 from datetime import date
+from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -139,6 +140,31 @@ async def apply_card_scenario(
             # row at all, silently: the scenario's own figures then read as a
             # card nothing had happened to, and only the served layer noticed.
             raise AssertionError(f"card_scenario_apply cannot build a {event.kind!r} event")
+
+    if scenario.import_anchor is not None:
+        # The importer's rows, through the importer's own shaping rule
+        # (`anchor_rows`): dated B−1, reserve/uncovered on the card, an
+        # available row for every category the scenario touches — zeros
+        # included, exactly as a plan's B−1 month lists every envelope.
+        ia = scenario.import_anchor
+        from igab.domain.dates import add_months, month_start
+        from igab.repositories.import_anchor_repo import anchor_rows
+
+        opening_month = add_months(month_start(anchor), -(ia.months_ago + 1))
+        named = dict(ia.available)
+        available = {}
+        for name in scenario.categories():
+            category = await _category(session, budget, group, name, cache)
+            available[category.id] = named.get(name, Decimal("0"))
+        session.add_all(
+            anchor_rows(
+                budget.id,
+                opening_month,
+                available=available,
+                reserve={card.id: ia.reserve},
+                uncovered={card.id: ia.uncovered},
+            )
+        )
 
     await session.flush()
     return AppliedScenario(

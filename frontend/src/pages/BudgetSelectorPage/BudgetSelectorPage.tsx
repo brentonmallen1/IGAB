@@ -142,6 +142,8 @@ export function BudgetSelectorPage() {
   const previewImport = usePreviewBudgetImport()
   const importSnapshot = useImportSnapshot()
   const [previewAccounts, setPreviewAccounts] = useState<YnabAccountPreview[] | null>(null)
+  // B for the file being previewed — see YnabPreviewResult.anchor_month.
+  const [previewAnchorMonth, setPreviewAnchorMonth] = useState<string | null>(null)
   const [snapshotPreview, setSnapshotPreview] = useState<SnapshotInspection | null>(null)
   const [accountChoices, setAccountChoices] = useState<Record<string, YnabAccountTypeChoice>>({})
   const [showTypeInfo, setShowTypeInfo] = useState(false)
@@ -247,6 +249,7 @@ export function BudgetSelectorPage() {
         return
       }
       setPreviewAccounts(preview.ynab.accounts)
+      setPreviewAnchorMonth(preview.ynab.anchor_month)
       setAccountChoices(
         Object.fromEntries(
           preview.ynab.accounts.map((a) => [
@@ -312,6 +315,7 @@ export function BudgetSelectorPage() {
 
   function resetImportPreview() {
     setPreviewAccounts(null)
+    setPreviewAnchorMonth(null)
     setSnapshotPreview(null)
     setAccountChoices({})
     setImportError(null)
@@ -549,6 +553,27 @@ export function BudgetSelectorPage() {
 
               {previewAccounts && (
                 <div className="selector-field">
+                  <Surface variant="sunken" className="snapshot-verdict" role="status">
+                    {previewAnchorMonth ? (
+                      <p className="snapshot-verdict__headline">
+                        This budget will start where YNAB left off — every envelope and card reserve
+                        anchored at{' '}
+                        <strong>
+                          {new Date(`${previewAnchorMonth}T00:00:00`).toLocaleDateString(
+                            undefined,
+                            { month: 'long', year: 'numeric' }
+                          )}
+                        </strong>
+                        . Earlier history still imports into the register and reports. Keep YNAB
+                        around until you&apos;re confident in the handoff.
+                      </p>
+                    ) : (
+                      <p className="snapshot-verdict__headline">
+                        No plan in this export — envelope history will be re-derived from the
+                        transactions instead of starting from YNAB&apos;s own figures.
+                      </p>
+                    )}
+                  </Surface>
                   <div className="ynab-mapping__heading">
                     <span className="selector-field__label" id="ynab-accounts-label">
                       Accounts

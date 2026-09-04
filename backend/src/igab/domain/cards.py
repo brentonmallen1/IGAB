@@ -104,6 +104,16 @@ The cost is that a repayment onto card A for spending done on card B lands as
 a residual (a negative reserve on A) rather than releasing B — correct for the
 card ledgers, and named rather than silent (`reserve_discrepancy`'s T2 bound).
 
+**An import anchor coarsens attribution the same way, on purpose.** An
+anchored walk (`AnchorOpenings`) starts at B with per-card openings only:
+YNAB publishes no per-pair history, so opening uncovered debt rides under the
+`ANCHOR_OPENING` sentinel — retired by assignments through step 5's pooled
+read, unreachable by inflows — and per-pair `reserved` starts empty. A
+post-anchor refund of a pre-anchor funded charge therefore lands as residual:
+exact at the card level (the balance fell, the reserve falls), coarser in
+category attribution, and the accepted price of not re-deriving the history
+the anchor exists to retire.
+
 The identity that keeps the accumulated series honest against the
 directly-computed truth, with **no exclusions** — assignments, inflows that
 predate their reservations, and overpayments all included:
@@ -126,11 +136,59 @@ that nets to an inflow arrives negative, never clamped.
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
+from typing import Final, cast
 
 from igab.domain.carryover import next_carryover, sum_through
+from igab.domain.dates import add_months
 
 ZERO = Decimal("0")
 ONE = Decimal("1")
+
+#: The category key an import anchor's opening uncovered debt rides under.
+#: Not a real category: YNAB publishes per-card uncovered only, so the ride
+#: has no category to belong to. Step 5's pooled read retires it like any
+#: other ride; inflows can never reach it, because an inflow's pair key is
+#: always the register row's real category. A plain string, because
+#: `allocate_capped` sorts keys through `str` and UUIDs and test stubs both
+#: survive that.
+ANCHOR_OPENING: Final = "anchor-opening"
+
+
+@dataclass(frozen=True)
+class AnchorOpenings[C, K]:
+    """YNAB's displayed position at an import boundary, as walk seeds.
+
+    `month` is B — the first month the walk re-derives. The openings
+    themselves are dated B−1 (the last complete YNAB month): each category's
+    raw Available, each card's signed CCP Available, and each card's
+    uncovered debt (`max(0, -balance - ccp)`, so never negative). Built in
+    exactly one place per consumer — `ImportAnchorRepository.get_for_budget`
+    on the serving side, the scenario adapter in `sample_budget` — so the
+    walk, the snapshot rebuild, and the probe cannot disagree about what was
+    anchored.
+    """
+
+    month: date
+    available_by_category: dict[C, Decimal] = field(default_factory=dict)
+    reserve_by_card: dict[K, Decimal] = field(default_factory=dict)
+    uncovered_by_card: dict[K, Decimal] = field(default_factory=dict)
+
+    @property
+    def opening_month(self) -> date:
+        """B−1 — the month the openings are stated at."""
+        return add_months(self.month, -1)
+
+    def opening_for(self, category: C) -> tuple[date, Decimal]:
+        """One category's carryover seed, `(B−1, its opening Available)`.
+
+        Zero for a category the anchor never named: an envelope YNAB showed
+        at zero and one the anchor skipped are the same position, and both
+        truncate. The one derivation — the serving path, the snapshot
+        rebuild and the generator's own verification all read it from here,
+        because three hand-written copies of `.get(id, ZERO)` is how the
+        cache and the fallback learn to disagree.
+        """
+        return (self.opening_month, self.available_by_category.get(category, ZERO))
 
 
 def credit_floored(end_of_month: Decimal, net_card_outflow: Decimal) -> Decimal:
@@ -327,6 +385,7 @@ def card_funding[C, K](
     activity_by_category: dict[C, dict[date, Decimal]],
     credit_outflows: dict[C, dict[K, dict[date, Decimal]]],
     card_categories: dict[K, C],
+    openings: AnchorOpenings[C, K] | None = None,
 ) -> CardFunding[C, K]:
     """The whole budget's card funding, in one forward pass over the months.
 
@@ -393,10 +452,29 @@ def card_funding[C, K](
     ridden: dict[tuple[C, K], Decimal] = {}
     reserved: dict[tuple[C, K], Decimal] = {}
 
+    if openings is not None:
+        # An import anchor: seed the running state from YNAB's own B−1
+        # position and walk months >= B only. The carryover seed is the same
+        # rule `carryover.monthly_end_balances` applies (floored opening,
+        # earlier months skipped) — a differential test holds the two walks
+        # to one answer. The opening uncovered debt rides under
+        # ANCHOR_OPENING: step 5 retires it like any ride; per-pair
+        # `reserved` is deliberately NOT seeded, so a post-anchor refund of
+        # a pre-anchor funded charge lands as residual — exact at the card
+        # level (balance falls, reserve falls), coarser in attribution.
+        for category, amount in openings.available_by_category.items():
+            carryover[category] = next_carryover(amount)
+        for card, uncovered in openings.uncovered_by_card.items():
+            if uncovered > ZERO:
+                ridden[(cast(C, ANCHOR_OPENING), card)] = uncovered
+                _add(out.riding_by_card, card, openings.opening_month, uncovered)
+
     all_months = sorted(
         set(categories_in_month) | {m for series in card_assignments.values() for m in series}
     )
     for month in all_months:
+        if openings is not None and month < openings.month:
+            continue
         for category in sorted(categories_in_month.get(month, []), key=str):
             nets = {
                 card: series[month]
@@ -510,6 +588,10 @@ class CardReserve:
     rode on forever. A subset of these legs is not a reserve.
     """
 
+    #: + YNAB's own CCP Available at an import anchor's B−1 — at most one
+    #: entry, and only on anchored budgets. Signed: a card can be imported
+    #: with its envelope in the red. The sixth leg, first in time.
+    opening: dict[date, Decimal] = field(default_factory=dict)
     #: + money the user put into the card's payment envelope. Signed.
     assignments: dict[date, Decimal] = field(default_factory=dict)
     #: + funded credit spending that moved into this card.
@@ -522,7 +604,7 @@ class CardReserve:
     payments: dict[date, Decimal] = field(default_factory=dict)
 
     def set_aside(self, month_start: date) -> Decimal:
-        """The reserve at `month_start`: a plain running total of five legs.
+        """The reserve at `month_start`: a plain running total of six legs.
 
         Deliberately NOT `carryover.available_through`: the zero floor between
         months is the write-off rule for spending envelopes, where a negative
@@ -533,7 +615,8 @@ class CardReserve:
         not to show one, it floors at the presentation layer only.
         """
         return (
-            sum_through(self.assignments, month_start)
+            sum_through(self.opening, month_start)
+            + sum_through(self.assignments, month_start)
             + sum_through(self.reservations, month_start)
             - sum_through(self.released, month_start)
             - sum_through(self.residual, month_start)
@@ -545,15 +628,19 @@ def card_reserve[C, K](
     funding: CardFunding[C, K],
     card: K,
     payments: dict[date, Decimal],
+    opening: dict[date, Decimal] | None = None,
 ) -> CardReserve:
-    """One card's five legs, out of the walk plus the payments it did not see.
+    """One card's six legs, out of the walk plus the two it did not see.
 
     `payments` stays outside `card_funding` because it is a repository query,
     and because a payment legitimately does NOT retire riding debt: paying a
     bill the budget never funded drives the reserve negative, and the
-    assignment that repairs it is what retires the ride.
+    assignment that repairs it is what retires the ride. `opening` is an
+    import anchor's `{B−1: CCP Available}` — repository data too, and empty
+    everywhere but anchored budgets.
     """
     return CardReserve(
+        opening=opening or {},
         assignments=funding.assignments_by_card.get(card, {}),
         reservations=funding.reservations_by_card.get(card, {}),
         released=funding.released_by_card.get(card, {}),
@@ -639,6 +726,7 @@ def reserve_discrepancy(
     payments: Decimal,
     residual_releases: Decimal,
     unclaimed_rows: Decimal,
+    opening_credit: Decimal = ZERO,
 ) -> Decimal:
     """0 when a card's reserve identity holds with all three bounds met;
     otherwise the largest amount by which one of them does not.
@@ -693,13 +781,23 @@ def reserve_discrepancy(
       wrong — the same one-sided arithmetic as "The Watchman's Arithmetic",
       on the other bound. Replaces "and no inflows that predate their
       reservations".
-    - **T3** `card_credit <= short_reserved + unclaimed_rows`. A credit
-      balance on a card is either budget money or somebody else's. This is the
-      one that catches a repayment landing where no category ever charged.
+    - **T3** `card_credit <= short_reserved + unclaimed_rows +
+      opening_credit`. A credit balance on a card is either budget money,
+      somebody else's, or — on an anchored budget — a credit the card already
+      held at B−1, before any post-anchor leg existed to explain it. This is
+      the one that catches a repayment landing where no category ever
+      charged.
 
     `assigned` is the *net* lifetime assignment to the card's own linked
     category — negative where more has been moved out than in, which is why it
-    is floored rather than trusted to be positive. `covered` is
+    is floored rather than trusted to be positive. **On an anchored budget the
+    caller folds the opening reserve into it**: YNAB's accumulated CCP
+    position is a pre-anchor net assignment, and it enters T1 and T2 with
+    exactly an assignment's signs — an opening the user later moves out
+    appears in T2's `-assigned` term, an opening standing beyond the debt in
+    T1's allowance. `opening_credit` is `max(0, balance at end of B−1)` —
+    computed live from the register, not stored, so edits to pre-anchor rows
+    stay coherent. `covered` is
     `CardFunding.covered_by_card` summed through the month: the part of those
     assignments that retired riding debt. `payments` are transfers from the
     budget's cash, `residual_releases` is `CardFunding.residual_by_card`
@@ -720,6 +818,6 @@ def reserve_discrepancy(
     worst = max(
         pos.over_reserved - _allowance(assigned - covered, unclaimed_rows),
         pos.short_reserved - _allowance(payments, residual_releases, -assigned),
-        pos.card_credit - _allowance(pos.short_reserved, unclaimed_rows),
+        pos.card_credit - _allowance(pos.short_reserved, unclaimed_rows, opening_credit),
     )
     return worst if worst > ZERO else ZERO

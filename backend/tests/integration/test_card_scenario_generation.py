@@ -30,7 +30,12 @@ from igab.repositories.scheduled_transaction_repo import ScheduledTransactionRep
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.repositories.target_repo import TargetRepository
 from igab.repositories.transaction_repo import TransactionRepository
-from igab.sample_budget.card_scenarios import ALL_SCENARIOS, CardScenario, build_scenario_spec
+from igab.sample_budget.card_scenarios import (
+    ALL_SCENARIOS,
+    ANCHORED_SCENARIOS,
+    CardScenario,
+    build_scenario_spec,
+)
 from igab.sample_budget.generator import SampleBudgetGenerator
 
 from .factories import create_budget, create_user, make_services
@@ -67,7 +72,11 @@ async def _summary(session, budget):
     return await services.budgets.get_budget_summary(budget.id, MONTH)
 
 
-@pytest.mark.parametrize("scenario", ALL_SCENARIOS, ids=IDS)
+@pytest.mark.parametrize(
+    "scenario",
+    ALL_SCENARIOS + ANCHORED_SCENARIOS,
+    ids=[s.slug for s in ALL_SCENARIOS + ANCHORED_SCENARIOS],
+)
 async def test_a_scenario_can_be_generated_on_its_own(db_session, scenario: CardScenario):
     """One card, no distractions — what a `--scenario` reproduction is for.
     Generation asserting its own contract means reaching this line is most of

@@ -250,6 +250,7 @@ async def import_ynab_as_budget(
         ynab_budget,
         type_map=type_map,
         skip_accounts=skip_accounts,
+        anchor=result.anchored_at,
     )
 
     summary = YNABImportResult(
@@ -278,6 +279,8 @@ async def import_ynab_as_budget(
         tracking_account_categories_stripped=result.tracking_account_categories_stripped,
         credit_card_payment_categories_stripped=result.credit_card_payment_categories_stripped,
         parity=parity,
+        anchored_at=result.anchored_at,
+        anchor_skipped_reason=result.anchor_skipped_reason,
         errors=result.errors,
     )
     # Kept, not just returned. This records an event -- counts, the parity

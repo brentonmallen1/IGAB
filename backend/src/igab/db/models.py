@@ -6,6 +6,7 @@ from decimal import Decimal
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     Column,
     Date,
     DateTime,
@@ -843,6 +844,65 @@ class BudgetSnapshotMeta(Base):
         UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="CASCADE"), primary_key=True
     )
     computed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class ImportAnchor(Base):
+    """YNAB's own displayed position at the import boundary — the walk seeds.
+
+    Written once by the YNAB importer and never edited: one row per anchored
+    figure, all dated the same month B−1 (the export's last complete plan
+    month). The carryover walk (domain/carryover.py) and the card walk
+    (domain/cards.py) start from these instead of re-deriving pre-anchor
+    history, which is what makes an imported budget open on the numbers the
+    user just left.
+
+    Deliberately NOT in change_log's ENTITY_MODELS and NOT undoable — the
+    anchor is the boundary statement of the import, not a user action. It is
+    budget-owned (FK below), so budget delete cascades it and snapshots carry
+    it with no further registration (db/budget_scope.py). It IS in
+    db/invalidation's watched set: the category snapshot cache reads it.
+
+    `kind` says which figure a row is:
+    - ``available``: a category's raw YNAB Available at B−1 (may be negative;
+      the walk floors it at the boundary, same as any month end).
+    - ``reserve``: a card's signed CCP Available at B−1 — the reserve's
+      `opening` leg.
+    - ``uncovered``: a card's debt no reserve stood behind at B−1,
+      ``max(0, -balance - ccp)`` — rides under `cards.ANCHOR_OPENING`.
+    Every category's ``available`` row is written, zeros included — the rows
+    are how the walks know the budget is anchored at all, and a plan's B−1
+    month always lists every category. ``reserve``/``uncovered`` rows are
+    written only when non-zero; the walks key truncation off the budget
+    having an anchor, not off per-row presence.
+    """
+
+    __tablename__ = "import_anchors"
+    __table_args__ = (
+        CheckConstraint(
+            "(category_id IS NULL) != (account_id IS NULL)",
+            name="ck_import_anchor_one_target",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    budget_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    #: B−1, first of month; identical on every row of one budget (single
+    #: writer — pinned by test, not by constraint).
+    month: Mapped[date] = mapped_column(Date, nullable=False)
+    #: 'available' | 'reserve' | 'uncovered' — see the class docstring.
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    category_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("categories.id", ondelete="CASCADE"), index=True
+    )
+    account_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="CASCADE"), index=True
+    )
+    amount: Mapped[Decimal] = mapped_column(Numeric(19, 4), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 

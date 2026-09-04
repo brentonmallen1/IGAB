@@ -45,6 +45,7 @@ from igab.repositories.txn_filters import (
     UNPAIRED_TRANSFER_LEG,
     row_category,
 )
+from igab.services.budget_service import _opening_leg
 from igab.utils.clock import today_utc
 
 #: Months without a posted transaction before an open account reads as dormant.
@@ -393,6 +394,7 @@ class AccountHygieneService:
     _LEG_PHRASES = {
         "payments": "a payment ran past everything reserved",
         "residual": "money came back onto the card beyond anything an envelope charged to it",
+        "opening": "the budget started there — YNAB's own position at import",
         "assignments": "more money was moved back out of the card's envelope than it held",
         "released": "a refund released reserved cash",
         "reservations": "funded spending reserved",
@@ -414,10 +416,18 @@ class AccountHygieneService:
             if card.set_aside >= 0 or card.card_credit > 0:
                 continue
             reserve = card_reserve(
-                walk.funding, card.account_id, walk.payments.get(card.account_id, {})
+                walk.funding,
+                card.account_id,
+                walk.payments.get(card.account_id, {}),
+                opening=_opening_leg(walk.anchor, card.account_id),
             )
             breach = first_breach(
-                card_timeline(reserve, {}, walk.funding.riding_by_card.get(card.account_id, {}))
+                card_timeline(
+                    reserve,
+                    {},
+                    walk.funding.riding_by_card.get(card.account_id, {}),
+                    start=(walk.anchor.openings.opening_month if walk.anchor is not None else None),
+                )
             )
             account_ids.append(card.account_id)
             if breach is None:
@@ -459,7 +469,14 @@ class AccountHygieneService:
         no reserving at all is simply unfiled spending, which its own row
         already explains (`cardRow.emptyLegsNote`), and flagging every fresh
         card would bury the signal.
+
+        An anchored budget never fires this: the anchor IS the "budget start"
+        this finding's action text used to ask the user to declare — history
+        before it is opening position by construction, and the walk never
+        reserves against it in the first place.
         """
+        if walk.anchor is not None:
+            return None
         first_reserving: dict[uuid.UUID, date] = {}
         for series_by_card in (
             walk.funding.reservations_by_card,
@@ -536,6 +553,11 @@ class AccountHygieneService:
         charge this card but produced residual in two or more months carries a
         recurring inflow stream that has cumulatively outrun its charges — a
         partner's repayments, or payments arriving from outside the budget.
+
+        On an anchored budget the walk starts at the import boundary, so
+        these totals cover post-anchor months only — and a refund of a
+        pre-anchor charge legitimately lands as residual there (the accepted
+        attribution coarsening; see domain/cards.py's anchor section).
 
         The third exists because the first two used to skip any pair that had
         ever charged the card, on an existence test. The pair reserve ratchets

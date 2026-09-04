@@ -63,18 +63,19 @@ async def test_the_oracle_reads_the_fixture_the_way_ynab_does(db_session, tmp_pa
     assert ("Credit Card Payments", "Visa") not in o.available
 
 
-async def test_every_envelope_and_ready_to_assign_agree_in_every_month(db_session, tmp_path):
-    """June: Groceries −50 in both (credit overspending is visible while the
-    month is open, so YNAB and IGAB agree exactly: 9000 − 5170 = 3830).
-    July: Utilities −50 in both. August: Groceries 300, everything else 0,
-    and Ready to Assign 9780 in both — the reset card debt is the card's
-    Uncovered, not a gap."""
+async def test_every_envelope_and_ready_to_assign_agree_from_the_anchor_on(db_session, tmp_path):
+    """The import anchors at B = Aug (the plan's last month), openings at
+    July. July: every envelope reads YNAB's own July Available — the anchor
+    rows, by construction. August: re-derived from the seed, and Ready to
+    Assign 9780 in both — the reset card debt is the card's Uncovered, not a
+    gap. June is before the anchor and is not re-derived (the client clamps
+    navigation there); the unanchored differential below still pins it."""
     services, budget_id, ynab_budget = await _imported(db_session, tmp_path)
     await assert_ynab_agreement(
         services,
         budget_id,
         ynab_budget,
-        months=(JUN, JUL, AUG),
+        months=(JUL, AUG),
         accounts=TYPES,
         credit_card_accounts=CARDS,
         tracking_accounts=TRACKING,
@@ -87,14 +88,39 @@ async def test_every_envelope_and_ready_to_assign_agree_in_every_month(db_sessio
         accounts=TYPES,
         credit_card_accounts=CARDS,
         tracking_accounts=TRACKING,
+        anchor=AUG,
     )
     assert report.matches
-    # Every card, every MONTH — the single-month card check below says a card
-    # is right today; this says it never detached anywhere in the history.
+    # Every card, every MONTH from B−1 — the anchored history starts there,
+    # and B−1 itself asserts the anchor rows round-tripped the file exactly.
     assert report.card_history == [], report.card_history
     assert report.igab_ready_to_assign == cents("9780")
     assert report.ynab_ready_to_assign == cents("9780")
     assert report.uncovered_card_debt == cents("50")
+
+
+async def test_the_unanchored_walk_still_agrees_with_ynab_everywhere(db_session, tmp_path):
+    """The pre-anchor differential, kept on purpose: with the anchor rows
+    removed, the walk re-derives all three months and must still match YNAB
+    cell for cell — this is what pins IGAB's rules against the oracle's, the
+    check the anchor makes optional but must never make wrong. June: Groceries
+    −50 in both and Ready to Assign 9000 − 5170 = 3830 in both."""
+    from sqlalchemy import delete
+
+    from igab.db.models import ImportAnchor
+
+    services, budget_id, ynab_budget = await _imported(db_session, tmp_path)
+    await db_session.execute(delete(ImportAnchor).where(ImportAnchor.budget_id == budget_id))
+    await db_session.flush()
+    await assert_ynab_agreement(
+        services,
+        budget_id,
+        ynab_budget,
+        months=(JUN, JUL, AUG),
+        accounts=TYPES,
+        credit_card_accounts=CARDS,
+        tracking_accounts=TRACKING,
+    )
     june = await parity(
         services,
         budget_id,

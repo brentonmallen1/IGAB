@@ -1,5 +1,6 @@
 import uuid
 from dataclasses import dataclass, field
+from datetime import date
 from decimal import Decimal
 from typing import Any
 
@@ -7,16 +8,19 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, Category, CategoryGroup
+from igab.domain.dates import add_months
 from igab.domain.import_identity import disambiguate_in_batch, generate_import_id
 from igab.domain.tag_hints import suggest_system_tag
 from igab.domain.transfers import linking_breaks_category_rule
-from igab.integrations.ynab.models import YNABBudget
+from igab.integrations.ynab.models import YNABBudget, anchor_month, plan_boundary
+from igab.integrations.ynab.oracle import ynab_rta
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import (
     BudgetAssignmentRepository,
     CategoryGroupRepository,
     CategoryRepository,
 )
+from igab.repositories.import_anchor_repo import ImportAnchorRepository, anchor_rows
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.repositories.transaction_repo import TransactionRepository
@@ -24,6 +28,7 @@ from igab.services.account_type_service import apply_type, resolve_type
 from igab.services.card_payment import ensure_payment_category
 from igab.services.liability_service import ensure_for_account
 from igab.services.transaction_service import TransactionService
+from igab.utils.clock import today_utc
 
 _TRANSFER_PREFIX = "Transfer : "
 _YNAB_INFLOW_GROUP = "Inflow"
@@ -145,6 +150,13 @@ class ImportResult:
     #: How the imported budget compares with the export's own figures — set
     #: by the import route after the import, None if the check could not run.
     parity: Any = None
+    #: B, the anchor boundary — the budget's envelope math starts from YNAB's
+    #: own position at B−1 (see db.models.ImportAnchor). None when the export
+    #: could not be anchored, and then `anchor_skipped_reason` says why. Set
+    #: by the import itself, never by the parity check: parity is allowed to
+    #: fail, the anchor is not conditional on it.
+    anchored_at: "date | None" = None
+    anchor_skipped_reason: str | None = None
     errors: list[str] = field(default_factory=list)
 
 
@@ -174,6 +186,7 @@ class YNABImporter:
         self.transaction_service = transaction_service
         self.assignment_repo = assignment_repo
         self.tag_repo = TagRepository(session)
+        self.anchor_repo = ImportAnchorRepository(session)
         # account name → (account_type, on_budget) override; YNAB register
         # exports carry no type info, so callers may supply the mapping.
         self.account_types = account_types or {}
@@ -207,6 +220,7 @@ class YNABImporter:
         await self._seed_arrangement(budget, result)
         await self._import_transactions(budget, result)
         await self._import_assignments(budget, result)
+        await self._write_anchor(budget, result)
         return result
 
     async def _seed_arrangement(self, budget: YNABBudget, result: ImportResult) -> None:
@@ -222,7 +236,11 @@ class YNABImporter:
         """
         if not budget.plan_rows:
             return
-        last = max(row.month for row in budget.plan_rows)
+        # The same boundary the anchor and the parity check use — clamped by
+        # today, so an export carrying future assignment months lays out from
+        # a month that exists on screen. Plan.csv repeats every category in
+        # every month, so the clamped month lists them all.
+        last = plan_boundary(budget.plan_rows, today_utc())
         group_positions: dict[str, int] = {}
         next_in_group: dict[str, int] = {}
         for row in budget.plan_rows:
@@ -750,3 +768,101 @@ class YNABImporter:
                 result.assignments_imported += 1
             except Exception as e:
                 result.errors.append(f"Assignment {entry.month} {entry.category}: {e}")
+
+    async def _write_anchor(self, budget: YNABBudget, result: ImportResult) -> None:
+        """Record YNAB's own displayed position at the boundary — the import's
+        last step, and the reason an imported budget opens on the numbers the
+        user just left (db.models.ImportAnchor; the walks in domain/carryover
+        and domain/cards start from these rows).
+
+        The seed is `ynab_rta` evaluated at B−1, scoped exactly as the import
+        itself was — the account cache is authoritative for what is a card
+        and what is tracking (the parity check derives the same sets from the
+        request's type map; the two must agree, and the import summary's
+        parity block is what would say if they did not). Written even when
+        the export contradicts itself: an incoherent file is still what the
+        user saw, and the review dialog already qualifies the verdict.
+
+        Which rows that becomes — availables in full including zeros,
+        card legs only where non-zero — is `anchor_rows`' rule, shared with
+        the sample-budget generator so a demoed anchor is a shape an import
+        can actually produce.
+        """
+        boundary = anchor_month(budget.plan_rows, today_utc())
+        if boundary is None:
+            # The same predicate the preview screen asked, so a promised
+            # anchor is always a written one. Which of the two reasons it is
+            # comes from the unconditioned boundary.
+            result.anchor_skipped_reason = (
+                "no plan in the export"
+                if plan_boundary(budget.plan_rows, today_utc()) is None
+                # A budget younger than one complete YNAB month has no
+                # position to anchor on; it re-derives from its (short)
+                # history instead.
+                else "the export has no complete month to anchor on"
+            )
+            return
+        opening_month = add_months(boundary, -1)
+        kept = {
+            t.account_name
+            for t in budget.transactions
+            if t.account_name.lower() not in self.skip_accounts
+        }
+        cards = {
+            name
+            for name, account in self._account_cache.items()
+            if account.on_budget and account.classification == "liability"
+        }
+        tracking = {name for name, account in self._account_cache.items() if not account.on_budget}
+        seed = ynab_rta(
+            budget,
+            opening_month,
+            accounts=kept,
+            credit_card_accounts=cards,
+            tracking_accounts=tracking,
+        )
+
+        rows = await self.category_repo.get_all_with_group_names(
+            self.budget_id, include_archived=True
+        )
+        by_name: dict[tuple[str, str], uuid.UUID] = {}
+        system_groups = {
+            g.name for g in await self.category_group_repo.get_all(self.budget_id) if g.is_system
+        }
+        for category, group_name in rows:
+            by_name[(group_name, category.name)] = category.id
+
+        available: dict[uuid.UUID, Decimal] = {}
+        for (group, name), amount in seed.available.items():
+            if group in system_groups:
+                # Income categories hold no money; an opening there would
+                # invent an envelope the summary deliberately excludes.
+                continue
+            category_id = by_name.get((group, name))
+            if category_id is None:
+                # A plan row whose category never reached the import — the
+                # parity block reports these as unmatched.
+                continue
+            available[category_id] = amount
+        zero = Decimal("0")
+        reserve: dict[uuid.UUID, Decimal] = {}
+        uncovered: dict[uuid.UUID, Decimal] = {}
+        for name, account in self._account_cache.items():
+            if not (account.on_budget and account.classification == "liability"):
+                continue
+            ccp = seed.ccp_available_by_card.get(name.lower(), zero)
+            balance = seed.card_balances_by_card.get(name.lower(), zero)
+            reserve[account.id] = ccp
+            uncovered[account.id] = max(zero, -balance - ccp)
+        anchors = anchor_rows(
+            self.budget_id,
+            opening_month,
+            available=available,
+            reserve=reserve,
+            uncovered=uncovered,
+        )
+        if not anchors:
+            result.anchor_skipped_reason = "the export has no positions to anchor on"
+            return
+        await self.anchor_repo.bulk_create(anchors)
+        result.anchored_at = boundary

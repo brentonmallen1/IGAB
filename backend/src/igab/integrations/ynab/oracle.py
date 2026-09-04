@@ -91,6 +91,17 @@ class RTAOracle:
     #: YNAB's Ready to Assign for `month`.
     rta: Decimal
     card_balances: Decimal
+    #: The same figure split per card, keyed by lowercased account name —
+    #: what the anchor's per-card `uncovered` (`-balance - ccp`) reads. Sums
+    #: to `card_balances`, pinned by test.
+    card_balances_by_card: dict[str, Decimal]
+    #: Every kept on-budget row on a NON-card account through the month —
+    #: the cash term of `anchored_expected`. Uncategorized rows included:
+    #: they are cash whether or not they are filed.
+    cash_balance: Decimal
+    #: Plan `assigned` for months strictly after `month` — what IGAB's
+    #: Ready to Assign subtracts as `assigned_in_future`.
+    assigned_after: Decimal
     ccp_available: Decimal
     #: YNAB's Available per card-payment reserve at `month`, keyed by the
     #: CCP category's name lowercased — which is the card account's name,
@@ -145,6 +156,8 @@ def ynab_rta(
 
     inflow = ZERO
     card_balances = ZERO
+    cash_balance = ZERO
+    card_balances_by_card: dict[str, Decimal] = {}
     uncategorized_net = ZERO
     # (group, category, month) → outflow on credit cards, as a positive figure
     # SIGNED net card movement per (group, category, month), the same shape
@@ -160,7 +173,11 @@ def ynab_rta(
         on_card = txn.account_name.lower() in cards
         if on_card:
             card_balances += txn.amount
+            key = txn.account_name.lower()
+            card_balances_by_card[key] = card_balances_by_card.get(key, ZERO) + txn.amount
         on_budget = txn.account_name.lower() not in tracking
+        if on_budget and not on_card:
+            cash_balance += txn.amount
         is_transfer = txn.payee.startswith(_TRANSFER_PREFIX)
         in_month = txn.date >= month
         legs = txn.splits or [txn]
@@ -183,6 +200,7 @@ def ynab_rta(
                 uncleared[map_ynab_names(leg.category_group, leg.category)].append(leg.amount)
 
     assigned = ZERO
+    assigned_after = ZERO
     ccp_assigned = ZERO
     written_off = ZERO
     uncovered_current = ZERO
@@ -191,6 +209,8 @@ def ynab_rta(
     available: dict[tuple[str, str], Decimal] = {}
     for row in budget.plan_rows:
         assigned += row.assigned
+        if row.month > month:
+            assigned_after += row.assigned
         is_ccp = row.category_group == _CREDIT_CARD_PAYMENTS
         if is_ccp:
             ccp_assigned += row.assigned
@@ -223,6 +243,9 @@ def ynab_rta(
         cash_overspending_written_off=written_off,
         rta=rta,
         card_balances=card_balances,
+        card_balances_by_card=card_balances_by_card,
+        cash_balance=cash_balance,
+        assigned_after=assigned_after,
         ccp_available=ccp_available,
         ccp_available_by_card=ccp_available_by_card,
         uncovered_current=uncovered_current,
@@ -231,6 +254,29 @@ def ynab_rta(
         expected_igab=rta + uncategorized_net,
         available=available,
         uncleared={k: v for k, v in uncleared.items() if k in available},
+    )
+
+
+def anchored_expected(o: RTAOracle) -> Decimal:
+    """What an anchored IGAB budget must show at `o.month`, from the file's
+    own displayed positions — the cash form of the Ready to Assign rule:
+
+        cash − Σ available − ccp_available − assigned_after − uncovered_current
+
+    Matching this asserts the handoff (register rows + anchor seeds) was
+    faithful, and it holds even when the file is incoherent, because every
+    term is the file's own answer rather than a re-derivation. Uncategorized
+    rows sit inside `cash_balance` here and inside IGAB's cash term there, so
+    no `uncategorized_net` adjustment applies in this form — the difference
+    from the history-form `rta` is exactly `uncategorized_net` plus whatever
+    incoherence the export carries, which the review dialog already explains.
+    """
+    return (
+        o.cash_balance
+        - sum(o.available.values(), ZERO)
+        - o.ccp_available
+        - o.assigned_after
+        - o.uncovered_current
     )
 
 

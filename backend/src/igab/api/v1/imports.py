@@ -230,6 +230,13 @@ class YNABImportResult(BaseModel):
     credit_card_payment_categories_stripped: int = 0
     #: None when the check could not run; never a failed import.
     parity: YNABParityOut | None = None
+    #: B — the budget's envelope math starts from YNAB's own position at the
+    #: month before this (db.models.ImportAnchor). Top-level, not inside
+    #: `parity`: parity is allowed to fail, the anchor is not conditional on
+    #: it. None with `anchor_skipped_reason` set when the export could not be
+    #: anchored (register-only, or no complete plan month).
+    anchored_at: date | None = None
+    anchor_skipped_reason: str | None = None
     errors: list[str]
 
 
@@ -263,6 +270,11 @@ class YNABPreviewResult(BaseModel):
     accounts: list[YNABAccountPreview]
     transaction_count: int
     budget_entry_count: int
+    #: B — where this file will anchor if imported (integrations/ynab/models
+    #: `plan_boundary`), so the preview can say "starts where YNAB left off"
+    #: before anything is written. None for a register-only export, which
+    #: imports unanchored.
+    anchor_month: date | None = None
 
 
 class YNABAccountTypeChoice(BaseModel):
@@ -600,10 +612,17 @@ def build_ynab_preview(ynab_budget) -> "YNABPreviewResult":
                 related_group=related.get(name),
             )
         )
+    from igab.integrations.ynab.models import anchor_month
+    from igab.utils.clock import today_utc
+
     return YNABPreviewResult(
         accounts=accounts,
         transaction_count=len(ynab_budget.transactions),
         budget_entry_count=len(ynab_budget.budget_entries),
+        # `anchor_month`, not `plan_boundary`: the screen promises an anchor
+        # only where `_write_anchor` will write one — same predicate, one
+        # spelling, so the verdict cannot outrun the import.
+        anchor_month=anchor_month(ynab_budget.plan_rows, today_utc()),
     )
 
 
@@ -615,6 +634,7 @@ async def ynab_parity_or_none(
     *,
     type_map: dict[str, tuple[str, bool]],
     skip_accounts: set[str],
+    anchor: date | None = None,
 ) -> YNABParityOut | None:
     """The parity line for the import summary, or None if it cannot be
     computed. A failed check must never fail the import: the budget is
@@ -622,20 +642,21 @@ async def ynab_parity_or_none(
     import logging
 
     from igab.domain.dates import month_start
+    from igab.integrations.ynab.models import plan_boundary
     from igab.integrations.ynab.parity import check_parity
     from igab.utils.clock import today_utc
 
     try:
-        # The last month the export knows about, or today's if it is older.
-        # A file with no plan cannot show overspending written off after its
-        # last month, so comparing later than that would compare against
-        # nothing.
-        month = month_start(today_utc())
-        known = [row.month for row in ynab_budget.plan_rows] or [
-            month_start(t.date) for t in ynab_budget.transactions
-        ]
-        if known:
-            month = min(month, max(known))
+        # The last month the export knows about, or today's if it is older —
+        # the same `plan_boundary` the anchor writer and the layout seed use,
+        # with a register-month fallback that is parity's own: a file with no
+        # plan cannot be anchored, but its register can still be compared.
+        month = plan_boundary(ynab_budget.plan_rows, today_utc())
+        if month is None:
+            month = month_start(today_utc())
+            register_months = [month_start(t.date) for t in ynab_budget.transactions]
+            if register_months:
+                month = min(month, max(register_months))
         skipped = {name.lower() for name in skip_accounts}
         kept = {
             t.account_name
@@ -654,6 +675,7 @@ async def ynab_parity_or_none(
             accounts=kept,
             credit_card_accounts=cards,
             tracking_accounts=tracking,
+            anchor=anchor,
         )
     except Exception:  # noqa: BLE001 — the summary is still the summary
         logging.getLogger(__name__).exception("YNAB parity check failed")

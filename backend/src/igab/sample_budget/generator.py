@@ -172,6 +172,53 @@ class SampleBudgetGenerator:
             )
             result.accounts += 1
 
+    def _write_import_anchor(self, spec, anchor: date):
+        """Anchored scenarios' seeds, resolved to real ids and written as
+        `ImportAnchor` rows — through `anchor_rows`, the importer's own shape,
+        so a demoed anchor is one an import could have produced. One anchor
+        per budget, asserted."""
+        from igab.domain.cards import AnchorOpenings
+        from igab.domain.dates import add_months, month_start
+        from igab.repositories.import_anchor_repo import anchor_rows
+
+        anchored = [sc for sc in spec.card_scenarios if sc.import_anchor is not None]
+        if not anchored:
+            return None
+        months = {sc.import_anchor.months_ago for sc in anchored}
+        assert len(months) == 1, f"one budget has one anchor month, got {sorted(months)}"
+        boundary = add_months(month_start(anchor), -months.pop())
+        opening_month = add_months(boundary, -1)
+        available: dict[uuid.UUID, Decimal] = {}
+        reserve: dict[uuid.UUID, Decimal] = {}
+        uncovered: dict[uuid.UUID, Decimal] = {}
+        for sc in anchored:
+            ia = sc.import_anchor
+            card_id = self._accounts[sc.card].id
+            reserve[card_id] = ia.reserve
+            uncovered[card_id] = ia.uncovered
+            named = dict(ia.available)
+            for name in sc.categories():
+                # Every category the scenario touches gets a row, zeros
+                # included — the importer writes a plan's whole B−1 month the
+                # same way, and it is the zeros that carry "anchored" to a
+                # card whose openings are all zero.
+                available[self._categories[name].id] = named.get(name, _ZERO)
+        self.session.add_all(
+            anchor_rows(
+                self.budget_id,
+                opening_month,
+                available=available,
+                reserve=reserve,
+                uncovered=uncovered,
+            )
+        )
+        return AnchorOpenings(
+            month=boundary,
+            available_by_category=available,
+            reserve_by_card=reserve,
+            uncovered_by_card=uncovered,
+        )
+
     async def _create_categories(self, anchor: date, result: SampleResult) -> None:
         for gi, group_spec in enumerate(self.spec.groups):
             group = await self.category_group_repo.create(
@@ -692,11 +739,16 @@ class SampleBudgetGenerator:
                     if net:
                         credit_outflows.setdefault(category.id, {})[card_id] = net
 
+        # An anchored scenario's seeds, resolved to real ids, and its rows
+        # written the way the importer writes them — the verification below
+        # then exercises the same anchored walk the app serves.
+        openings = self._write_import_anchor(spec, anchor)
         funding = card_funding(
             assigned_by_cat | card_category_assigned,
             activity_by_cat,
             credit_outflows,
             card_categories,
+            openings=openings,
         )
         # The envelope term of the identity, read the way the budget page reads
         # it: out of `card_funding`'s adjusted series for any category a card
@@ -708,7 +760,15 @@ class SampleBudgetGenerator:
             available_total += (
                 available_at(adjusted, current_month)
                 if adjusted is not None
-                else available_through(asg, activity_by_cat[cat_id], current_month)
+                else available_through(
+                    asg,
+                    activity_by_cat[cat_id],
+                    current_month,
+                    # Anchored budgets truncate EVERY category at the
+                    # boundary, opening at the anchor's figure (zero when it
+                    # names none) — the serving side's rule, mirrored.
+                    opening=openings.opening_for(cat_id) if openings is not None else None,
+                )
             )
         # Card inflows: forbidden outright where the spec declares no
         # scenarios, contracted per card where it does.
@@ -755,10 +815,20 @@ class SampleBudgetGenerator:
                 card_balances[r["account_id"]] = (
                     card_balances.get(r["account_id"], _ZERO) + r["amount"]
                 )
+        if openings is not None:
+            payments = {
+                card_id: {m: v for m, v in series.items() if m >= openings.month}
+                for card_id, series in payments.items()
+            }
         for card_id in card_ids:
-            set_aside = card_reserve(funding, card_id, payments.get(card_id, {})).set_aside(
-                current_month
+            opening_leg = (
+                {openings.opening_month: openings.reserve_by_card.get(card_id, _ZERO)}
+                if openings is not None
+                else None
             )
+            set_aside = card_reserve(
+                funding, card_id, payments.get(card_id, {}), opening=opening_leg
+            ).set_aside(current_month)
             available_total += set_aside
             scenario = scenario_by_card_id.get(card_id)
             if scenario is None:

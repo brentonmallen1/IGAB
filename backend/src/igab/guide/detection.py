@@ -35,6 +35,7 @@ from igab.repositories.category_repo import (
     CategoryGroupRepository,
     CategoryRepository,
 )
+from igab.repositories.import_anchor_repo import ImportAnchorRepository
 from igab.repositories.liability_repo import LiabilityRepository
 from igab.repositories.snapshot_repo import SnapshotRepository
 from igab.repositories.tag_repo import TagRepository
@@ -104,6 +105,7 @@ def budget_service_from(session: AsyncSession) -> BudgetService:
         BudgetAssignmentRepository(session),
         TransactionRepository(session),
         snapshot_repo=SnapshotRepository(session),
+        anchor_repo=ImportAnchorRepository(session),
     )
 
 
