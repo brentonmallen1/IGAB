@@ -53,6 +53,7 @@ from igab.repositories.category_repo import (
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.repositories.target_repo import TargetRepository
 from igab.services.budget_service import BudgetService
+from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match
 from igab.services.target_service import TargetService
 
 SETTINGS_KEY = "wishlist"
@@ -80,6 +81,10 @@ class WishlistService:
         self.assignments = BudgetAssignmentRepository(session)
         self.moves = BudgetMoveRepository(session)
         self.guide = GuideRepository(session)
+        # Every mutation below records — the global undo is LIFO over the
+        # change log, and this domain being invisible to it meant ⌘Z after a
+        # wish delete silently reverted something older and unrelated.
+        self.changes = ChangeRecorder(session)
 
     # ── switches and settings ────────────────────────────────────────────────
 
@@ -301,7 +306,7 @@ class WishlistService:
     async def _projects(self, budget_id: uuid.UUID) -> list[WishlistProject]:
         rows = await self.session.execute(
             select(WishlistProject)
-            .where(WishlistProject.budget_id == budget_id)
+            .where(WishlistProject.budget_id == budget_id, ~WishlistProject.is_deleted)
             .order_by(WishlistProject.sort_order, WishlistProject.name)
         )
         return list(rows.scalars().all())
@@ -309,7 +314,7 @@ class WishlistService:
     async def _items(self, budget_id: uuid.UUID) -> list[WishlistItem]:
         rows = await self.session.execute(
             select(WishlistItem)
-            .where(WishlistItem.budget_id == budget_id)
+            .where(WishlistItem.budget_id == budget_id, ~WishlistItem.is_deleted)
             .order_by(WishlistItem.priority, WishlistItem.created_at)
         )
         return list(rows.scalars().all())
@@ -332,13 +337,13 @@ class WishlistService:
 
     async def _get_item(self, budget_id: uuid.UUID, item_id: uuid.UUID) -> WishlistItem:
         item = await self.session.get(WishlistItem, item_id)
-        if item is None or item.budget_id != budget_id:
+        if item is None or item.budget_id != budget_id or item.is_deleted:
             raise NotFoundError("Wish", str(item_id))
         return item
 
     async def _get_project(self, budget_id: uuid.UUID, project_id: uuid.UUID) -> WishlistProject:
         project = await self.session.get(WishlistProject, project_id)
-        if project is None or project.budget_id != budget_id:
+        if project is None or project.budget_id != budget_id or project.is_deleted:
             raise NotFoundError("Project", str(project_id))
         return project
 
@@ -432,6 +437,13 @@ class WishlistService:
         )
         self.session.add(item)
         await self.session.flush()
+        await self.changes.record(
+            budget_id=budget_id,
+            entity_type="wishlist_item",
+            entity_id=item.id,
+            action="create",
+            after=snapshot("wishlist_item", item),
+        )
         await self._sync_tags(budget_id, [await self._envelope_of(budget_id, item)])
         return await self.item_out(budget_id, item.id)
 
@@ -440,6 +452,7 @@ class WishlistService:
     ) -> dict[str, Any]:
         await self._require_enabled(budget_id)
         item = await self._get_item(budget_id, item_id)
+        before = snapshot("wishlist_item", item)
         before_envelope = await self._envelope_of(budget_id, item)
 
         if "name" in data:
@@ -483,6 +496,16 @@ class WishlistService:
             await self._apply_priority(budget_id, item, bool(data["is_priority"]))
 
         await self.session.flush()
+        after = snapshot("wishlist_item", item)
+        if snapshots_match(after, before):  # non-empty diff — something changed
+            await self.changes.record(
+                budget_id=budget_id,
+                entity_type="wishlist_item",
+                entity_id=item.id,
+                action="update",
+                before=before,
+                after=after,
+            )
         after_envelope = await self._envelope_of(budget_id, item)
         await self._sync_tags(budget_id, [before_envelope, after_envelope])
         return await self.item_out(budget_id, item.id)
@@ -515,6 +538,9 @@ class WishlistService:
                     WishlistItem.budget_id == budget_id,
                     WishlistItem.status == "open",
                     WishlistItem.is_priority,
+                    # A deleted wish keeps its pin in the snapshot (undo
+                    # restores it faithfully) but holds no slot while gone.
+                    ~WishlistItem.is_deleted,
                     WishlistItem.id != item.id,
                 )
             )
@@ -540,25 +566,58 @@ class WishlistService:
                     "available": balance.available,
                 }
         envelope = await self._envelope_of(budget_id, item)
-        await self.session.delete(item)
+        # Soft, never session.delete: a hard-deleted row is beyond undo's
+        # reach — the flag is what lets ⌘Z bring the wish back exactly.
+        before = snapshot("wishlist_item", item)
+        item.is_deleted = True
         await self.session.flush()
+        await self.changes.record(
+            budget_id=budget_id,
+            entity_type="wishlist_item",
+            entity_id=item.id,
+            action="delete",
+            before=before,
+        )
         await self._sync_tags(budget_id, [envelope])
         return {"envelope": envelope_out}
 
     async def affirm(self, budget_id: uuid.UUID, item_id: uuid.UUID) -> None:
         await self._require_enabled(budget_id)
         item = await self._get_item(budget_id, item_id)
+        before = snapshot("wishlist_item", item)
         item.last_affirmed_at = datetime.now(UTC)
         await self.session.flush()
+        await self.changes.record(
+            budget_id=budget_id,
+            entity_type="wishlist_item",
+            entity_id=item.id,
+            action="update",
+            before=before,
+            after=snapshot("wishlist_item", item),
+        )
 
     async def reorder_items(self, budget_id: uuid.UUID, item_ids: list[uuid.UUID]) -> None:
         await self._require_enabled(budget_id)
-        items = {i.id: i for i in await self._items(budget_id)}
+        ordered = await self._items(budget_id)
+        items = {i.id: i for i in ordered}
         if len(set(item_ids)) != len(item_ids) or set(item_ids) - items.keys():
             raise InvariantViolation("Reorder must name this budget's wishes, each once")
         for wish_id, position in renumber(item_ids).items():
             items[wish_id].priority = position
         await self.session.flush()
+        # Subject = the budget (the container), like a group reorder;
+        # `_collection` tells the undo which of the budget's lists to renumber.
+        before_ids = [str(i.id) for i in ordered]
+        after_ids = [str(i) for i in item_ids]
+        if before_ids != after_ids:
+            await self.changes.record(
+                budget_id=budget_id,
+                entity_type="wishlist",
+                entity_id=budget_id,
+                action="reorder",
+                before={"_order": before_ids, "_collection": "wishlist_items"},
+                after={"_order": after_ids, "_collection": "wishlist_items"},
+            )
 
     # ── projects ─────────────────────────────────────────────────────────────
 
@@ -583,6 +642,13 @@ class WishlistService:
         )
         self.session.add(project)
         await self.session.flush()
+        await self.changes.record(
+            budget_id=budget_id,
+            entity_type="wishlist_project",
+            entity_id=project.id,
+            action="create",
+            after=snapshot("wishlist_project", project),
+        )
         await self._sync_tags(budget_id, [category_id])
         return await self.project_out(budget_id, project.id)
 
@@ -591,6 +657,7 @@ class WishlistService:
     ) -> dict[str, Any]:
         await self._require_enabled(budget_id)
         project = await self._get_project(budget_id, project_id)
+        before_snapshot = snapshot("wishlist_project", project)
         before = project.category_id
         if "name" in data and data["name"] is not None:
             project.name = data["name"].strip()
@@ -603,6 +670,16 @@ class WishlistService:
                 else None
             )
         await self.session.flush()
+        after_snapshot = snapshot("wishlist_project", project)
+        if snapshots_match(after_snapshot, before_snapshot):
+            await self.changes.record(
+                budget_id=budget_id,
+                entity_type="wishlist_project",
+                entity_id=project.id,
+                action="update",
+                before=before_snapshot,
+                after=after_snapshot,
+            )
         await self._sync_tags(budget_id, [before, project.category_id])
         return await self.project_out(budget_id, project.id)
 
@@ -611,21 +688,46 @@ class WishlistService:
         await self._require_enabled(budget_id)
         project = await self._get_project(budget_id, project_id)
         envelope = project.category_id
+        # `_wish_ids` is undo bookkeeping: the wishes this delete orphaned,
+        # so the undo can re-point exactly those — and only those that are
+        # still loose when it runs.
+        orphaned: list[str] = []
         for item in await self._items(budget_id):
             if item.project_id == project_id:
                 item.project_id = None
-        await self.session.delete(project)
+                orphaned.append(str(item.id))
+        before = snapshot("wishlist_project", project)
+        project.is_deleted = True
         await self.session.flush()
+        await self.changes.record(
+            budget_id=budget_id,
+            entity_type="wishlist_project",
+            entity_id=project.id,
+            action="delete",
+            before={**before, "_wish_ids": orphaned},
+        )
         await self._sync_tags(budget_id, [envelope])
 
     async def reorder_projects(self, budget_id: uuid.UUID, project_ids: list[uuid.UUID]) -> None:
         await self._require_enabled(budget_id)
-        projects = {p.id: p for p in await self._projects(budget_id)}
+        ordered = await self._projects(budget_id)
+        projects = {p.id: p for p in ordered}
         if len(set(project_ids)) != len(project_ids) or set(project_ids) - projects.keys():
             raise InvariantViolation("Reorder must name this budget's projects, each once")
         for project_id, position in renumber(project_ids).items():
             projects[project_id].sort_order = position
         await self.session.flush()
+        before_ids = [str(p.id) for p in ordered]
+        after_ids = [str(p) for p in project_ids]
+        if before_ids != after_ids:
+            await self.changes.record(
+                budget_id=budget_id,
+                entity_type="wishlist",
+                entity_id=budget_id,
+                action="reorder",
+                before={"_order": before_ids, "_collection": "wishlist_projects"},
+                after={"_order": after_ids, "_collection": "wishlist_projects"},
+            )
 
     # ── the derived tag ──────────────────────────────────────────────────────
 

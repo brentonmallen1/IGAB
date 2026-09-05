@@ -15,8 +15,19 @@ export interface Change {
   id: string
   /** The log's one total order, newest highest. */
   seq: number
-  /** `budget` appears only as the subject of a `reorder` of its groups. */
-  entity_type: 'transaction' | 'payee' | 'category' | 'category_group' | 'assignment' | 'budget'
+  /** `budget` appears only as the subject of a `reorder` of its groups;
+   *  `wishlist` is the same pseudo-subject for a reorder of wishes or
+   *  wish projects. */
+  entity_type:
+    | 'transaction'
+    | 'payee'
+    | 'category'
+    | 'category_group'
+    | 'assignment'
+    | 'budget'
+    | 'wishlist_item'
+    | 'wishlist_project'
+    | 'wishlist'
   entity_id: string
   action:
     | 'create'
@@ -215,4 +226,7 @@ export function invalidateAfterUndo(
   if (accountId) {
     qc.invalidateQueries({ queryKey: [ROOT.pendingReviewCountAccount, accountId] })
   }
+
+  // Wishlist: wishes, projects, and their reorders all live under one key.
+  qc.invalidateQueries({ queryKey: [ROOT.wishlist, budgetId] })
 }

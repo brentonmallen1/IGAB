@@ -456,7 +456,11 @@ class CategoryService:
             "wish",
             "wishlist item funds it",
             "wishlist items fund it",
-            await count(select(WishlistItem.id).where(WishlistItem.category_id.in_(ids))),
+            await count(
+                select(WishlistItem.id).where(
+                    WishlistItem.category_id.in_(ids), ~WishlistItem.is_deleted
+                )
+            ),
             clearable=False,
         )
         add(

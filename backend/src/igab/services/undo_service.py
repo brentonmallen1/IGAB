@@ -36,9 +36,12 @@ from igab.db.models import (
     ScheduledTransaction,
     Transaction,
     TransactionAttachment,
+    WishlistItem,
+    WishlistProject,
 )
 from igab.domain.enums import ClearedStatus
 from igab.domain.exceptions import NotFoundError, UndoConflict
+from igab.domain.ordering import renumber
 from igab.domain.reconciliation import RECONCILED_LOCKED_FIELDS, locked_changes
 from igab.repositories.category_repo import CategoryGroupRepository, CategoryRepository
 from igab.repositories.change_log_repo import ChangeLogRepository
@@ -265,6 +268,14 @@ class UndoService:
             if getattr(entity, "is_deleted", False):
                 raise UndoConflict("The item is already deleted")
             entity.is_deleted = True
+            if change.entity_type == "wishlist_project":
+                # Replaying the delete re-orphans its wishes, exactly as the
+                # original did.
+                rows = await self.session.execute(
+                    select(WishlistItem).where(WishlistItem.project_id == change.entity_id)
+                )
+                for wish in rows.scalars():
+                    wish.project_id = None
         elif change.action == "reorder":
             await self._apply_order(change, force, target="after")
         elif change.action in ("archive", "unarchive"):
@@ -332,6 +343,8 @@ class UndoService:
                 await self._forget_move(change)
         elif change.action == "delete" and change.entity_type == "category":
             await self._undo_category_delete(change, entity)
+        elif change.action == "delete" and change.entity_type == "wishlist_project":
+            await self._undo_wishlist_project_delete(change, entity)
         elif change.action == "delete":
             await self._undo_delete(change, entity)
         elif change.action == "merge":
@@ -439,7 +452,27 @@ class UndoService:
         expected_key = "after" if target == "before" else "before"
         expected = [uuid.UUID(x) for x in (getattr(change, expected_key) or {}).get("_order", [])]
         wanted = [uuid.UUID(x) for x in (getattr(change, target) or {}).get("_order", [])]
-        if change.entity_type == "budget":
+        # The "wishlist" pseudo-subject reorders one of the budget's two wish
+        # lists; `_collection` bookkeeping says which.
+        collection = (change.before or {}).get("_collection", "wishlist_items")
+        wishlist_rows: list[Any] = []
+        if change.entity_type == "wishlist" and collection == "wishlist_projects":
+            result = await self.session.execute(
+                select(WishlistProject)
+                .where(WishlistProject.budget_id == change.entity_id, ~WishlistProject.is_deleted)
+                .order_by(WishlistProject.sort_order, WishlistProject.name)
+            )
+            wishlist_rows = list(result.scalars())
+            live = [r.id for r in wishlist_rows]
+        elif change.entity_type == "wishlist":
+            result = await self.session.execute(
+                select(WishlistItem)
+                .where(WishlistItem.budget_id == change.entity_id, ~WishlistItem.is_deleted)
+                .order_by(WishlistItem.priority, WishlistItem.created_at)
+            )
+            wishlist_rows = list(result.scalars())
+            live = [r.id for r in wishlist_rows]
+        elif change.entity_type == "budget":
             groups = CategoryGroupRepository(self.session)
             live = [g.id for g in await groups.get_all(change.entity_id, include_archived=True)]
         elif change.entity_type == "category_group":
@@ -454,7 +487,12 @@ class UndoService:
             raise UndoConflict("The order has changed since this reorder")
         wanted_set = set(wanted)
         restored = [i for i in wanted if i in live_set] + [i for i in live if i not in wanted_set]
-        if change.entity_type == "budget":
+        if change.entity_type == "wishlist":
+            by_id = {r.id: r for r in wishlist_rows}
+            field = "sort_order" if collection == "wishlist_projects" else "priority"
+            for row_id, position in renumber(restored).items():
+                setattr(by_id[row_id], field, position)
+        elif change.entity_type == "budget":
             await CategoryGroupRepository(self.session).reorder(change.entity_id, restored)
         else:
             await CategoryRepository(self.session).reorder(change.entity_id, restored)
@@ -537,6 +575,22 @@ class UndoService:
                 .where(TransactionAttachment.id.in_([uuid.UUID(a) for a in attachment_ids]))
                 .values(transaction_id=change.entity_id)
             )
+
+    async def _undo_wishlist_project_delete(self, change: ChangeLog, entity) -> None:
+        """Bring a project back, and re-point the wishes its delete orphaned.
+
+        `_wish_ids` names exactly the wishes the delete set loose. Only ones
+        still loose come back: a wish moved to another project since was
+        re-decided by a person, and undo must not overrule that.
+        """
+        await self._undo_delete(change, entity)
+        wish_ids = [uuid.UUID(w) for w in (change.before or {}).get("_wish_ids", [])]
+        if not wish_ids:
+            return
+        rows = await self.session.execute(select(WishlistItem).where(WishlistItem.id.in_(wish_ids)))
+        for wish in rows.scalars():
+            if wish.project_id is None and not wish.is_deleted:
+                wish.project_id = change.entity_id
 
     async def _undo_hard_category_delete(self, change: ChangeLog) -> None:
         """Rebuild categories (and their group) that were removed outright.

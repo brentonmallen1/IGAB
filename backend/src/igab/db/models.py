@@ -1221,6 +1221,8 @@ class WishlistProject(Base):
     )
     notes: Mapped[str | None] = mapped_column(Text)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    #: Soft delete for undo — see WishlistItem.is_deleted.
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -1277,6 +1279,10 @@ class WishlistItem(Base):
     is_priority: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     #: 'open' | 'done' | 'dropped'
     status: Mapped[str] = mapped_column(String(20), default="open", nullable=False)
+    #: Soft delete, so the change log's undo can flip a wish back exactly as
+    #: it was — id, created_at, review clock and all. Every wishlist query
+    #: filters it; a hard delete would put the row beyond undo's reach.
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     cooling_until: Mapped[date | None] = mapped_column(Date)
     last_affirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     done_at: Mapped[date | None] = mapped_column(Date)

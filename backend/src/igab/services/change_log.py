@@ -3,7 +3,10 @@
 Write paths call `ChangeRecorder.record()` explicitly — no ORM-event magic —
 so what lands in the log is exactly what the services decide is a
 user-visible mutation. Scope: transactions, payees, categories, category
-groups, and budget assignments. Auto-created side effects (transfer payees,
+groups, budget assignments, and wishlist items/projects — the standing rule
+is that EVERY user-visible mutation records, because the global undo is
+LIFO over this log and any uncovered domain makes ⌘Z silently revert
+something older and unrelated. Auto-created side effects (transfer payees,
 payees resolved during transaction entry) are deliberately not recorded:
 undoing them independently would orphan references.
 
@@ -30,6 +33,8 @@ from igab.db.models import (
     ChangeLog,
     Payee,
     Transaction,
+    WishlistItem,
+    WishlistProject,
     new_uuid,
 )
 from igab.domain.payee_names import samples_from_legacy
@@ -43,6 +48,12 @@ ENTITY_MODELS: dict[str, type] = {
     # Only ever the subject of a `reorder` (of its groups); it has no
     # snapshot fields because nothing on the budget row itself is restored.
     "budget": Budget,
+    "wishlist_item": WishlistItem,
+    "wishlist_project": WishlistProject,
+    # Pseudo-subject in the same spirit as "budget": a reorder of the
+    # budget's wishes or wish projects (`_collection` bookkeeping says
+    # which). Resolves to the budget row; nothing on it is restored.
+    "wishlist": Budget,
 }
 
 # Restorable fields per entity. is_deleted is excluded on purpose — the
@@ -102,6 +113,22 @@ SNAPSHOT_FIELDS: dict[str, tuple[str, ...]] = {
     ),
     "category_group": ("name", "sort_order", "is_archived", "is_system"),
     "assignment": ("category_id", "month", "assigned"),
+    "wishlist_item": (
+        "project_id",
+        "name",
+        "url",
+        "notes",
+        "cost",
+        "category_id",
+        "owns_envelope",
+        "priority",
+        "is_priority",
+        "status",
+        "cooling_until",
+        "last_affirmed_at",
+        "done_at",
+    ),
+    "wishlist_project": ("name", "category_id", "notes", "sort_order"),
 }
 
 

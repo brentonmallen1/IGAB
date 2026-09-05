@@ -15,6 +15,13 @@ export function entityTypeLabel(entityType: string): string {
     case 'budget':
       // Only ever the subject of a reorder of its groups.
       return 'category groups'
+    case 'wishlist_item':
+      return 'wishlist item'
+    case 'wishlist_project':
+      return 'wishlist project'
+    case 'wishlist':
+      // The reorder pseudo-subject, like 'budget' above.
+      return 'wishlist'
     default:
       return entityType
   }
