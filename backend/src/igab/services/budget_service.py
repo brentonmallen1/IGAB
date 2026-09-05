@@ -830,9 +830,16 @@ class BudgetService:
             # post-anchor leg to explain it (`reserve_discrepancy`'s T3
             # opening_credit). Read live from the register, never stored, so
             # edits to pre-anchor rows stay coherent.
-            owed_at_anchor: dict[uuid.UUID, Decimal] = {}
+            #
+            # `card_balances` returns a BALANCE — owed as a negative — so a
+            # credit is the positive side and `max(0, ...)` below selects it.
+            # Named for what it holds, not for `owed`: the sibling call above
+            # is spelled `owed_by_card` and assigned straight to `balance`,
+            # and a map whose name says owed but whose values say balance is
+            # a sign error waiting for its second reader.
+            balance_at_anchor: dict[uuid.UUID, Decimal] = {}
             if walk.anchor is not None:
-                owed_at_anchor = await self.account_repo.card_balances(
+                balance_at_anchor = await self.account_repo.card_balances(
                     budget_id, _month_end(walk.anchor.openings.opening_month)
                 )
             # The card's own ledger for the viewed month, beside the reserve's
@@ -949,7 +956,7 @@ class BudgetService:
                             sum_through(reserve.payments, month_start),
                             sum_through(reserve.residual, month_start),
                             sum_through(unclaimed.get(account.id, {}), month_start),
-                            opening_credit=max(zero, owed_at_anchor.get(account.id, zero)),
+                            opening_credit=max(zero, balance_at_anchor.get(account.id, zero)),
                         ),
                     )
                 )

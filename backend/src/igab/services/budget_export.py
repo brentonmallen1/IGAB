@@ -49,6 +49,7 @@ from igab.integrations.ynab.writer import (
     write_csv,
 )
 from igab.repositories.category_repo import CategoryRepository
+from igab.repositories.import_anchor_repo import ImportAnchorRepository
 from igab.services.budget_service import BudgetService
 
 ZERO = Decimal("0")
@@ -102,7 +103,6 @@ async def _month_range(session: AsyncSession, budget_id: UUID) -> list[date]:
     """
     transactions = Base.metadata.tables["transactions"]
     assignments = Base.metadata.tables["budget_assignments"]
-    import_anchors = Base.metadata.tables["import_anchors"]
 
     bounds = (
         await session.execute(
@@ -131,13 +131,14 @@ async def _month_range(session: AsyncSession, budget_id: UUID) -> list[date]:
     # B−1 itself IS exported — its rows carry the openings as Available, an
     # opening-statement month — so re-importing this file re-anchors at the
     # same boundary and reads the same openings back.
-    anchor_row = (
-        await session.execute(
-            select(func.min(import_anchors.c.month)).where(import_anchors.c.budget_id == budget_id)
-        )
-    ).scalar_one_or_none()
-    if anchor_row is not None:
-        first = max(first, anchor_row)
+    # Through the repository, which is the ONE assembler of a budget's anchor.
+    # This used to read `min(month)` directly — a second answer to "what month
+    # is this budget anchored at", and one that silently picked the earliest
+    # where `_assemble` refuses to pick at all. Two answers to that question
+    # cannot both be right about a budget whose rows disagree.
+    anchor = await ImportAnchorRepository(session).get_for_budget(budget_id)
+    if anchor is not None:
+        first = max(first, anchor.openings.opening_month)
     last = max(ends).replace(day=1)
     months: list[date] = []
     cursor = first

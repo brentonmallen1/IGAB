@@ -49,7 +49,52 @@ line-length = 100
 src = ["src"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP"]
+# C90 (mccabe) and the two PLR size rules are here for READABILITY, not
+# correctness — they say whether a function can be held in your head, which is
+# what makes it safe to change. They would not have caught any bug this repo
+# has had; `reserve_discrepancy` shipped a missing bound at complexity 1.
+# The file-length half of the same question is `scripts/check-size.py`.
+#
+# Deliberately NOT enabled: PLR0913 (too-many-arguments) — FastAPI endpoints
+# take their dependencies as parameters, so it fires 78 times on `Depends()`
+# and identifies nothing.
+select = ["E", "F", "I", "UP", "C90", "PLR0912", "PLR0915"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
+
+[tool.ruff.lint.pylint]
+max-branches = 12
+max-statements = 50
+
+# The debt list, and it works like `check-size.py`'s: these 19 files were over
+# the bar when the rules went in, so they are exempt and everything else is
+# held. Ruff has no warn level, so a per-file exemption is the only shape
+# available — which makes it weaker than the file-length ratchet, because a
+# NEW complex function in one of these files also passes. Prefer shrinking the
+# list to adding to it; a file that comes clean should lose its line.
+[tool.ruff.lint.per-file-ignores]
+"src/igab/api/v1/imports.py" = ["C901", "PLR0912", "PLR0915"]
+"src/igab/api/v1/settings.py" = ["PLR0912"]
+"src/igab/domain/bank_posting.py" = ["C901", "PLR0912"]
+"src/igab/domain/cards.py" = ["C901", "PLR0912", "PLR0915"]
+"src/igab/guide/wishlist_service.py" = ["PLR0912"]
+"src/igab/integrations/ynab/importer.py" = ["C901", "PLR0912", "PLR0915"]
+"src/igab/integrations/ynab/oracle.py" = ["C901", "PLR0912", "PLR0915"]
+"src/igab/repositories/transaction_repo.py" = ["C901", "PLR0912", "PLR0915"]
+"src/igab/sample_budget/generator.py" = ["C901", "PLR0912", "PLR0915"]
+"src/igab/services/amortization.py" = ["C901", "PLR0912", "PLR0915"]
+"src/igab/services/assign_service.py" = ["PLR0912"]
+"src/igab/services/budget_service.py" = ["PLR0912", "PLR0915"]
+"src/igab/services/category_plan_service.py" = ["C901", "PLR0912", "PLR0915"]
+"src/igab/services/report_service.py" = ["C901", "PLR0912", "PLR0915"]
+"src/igab/services/simplefin_service.py" = ["C901", "PLR0912", "PLR0915"]
+"src/igab/services/transaction_service.py" = ["C901", "PLR0912", "PLR0915"]
+"src/igab/services/undo_service.py" = ["C901", "PLR0912"]
+"src/igab/tasks/ai_worker.py" = ["C901", "PLR0912", "PLR0915"]
+"src/igab/tasks/attachment_sweep.py" = ["PLR0912"]
+# Tests enumerate cases; a long table-driven test is the good kind of long.
+"tests/**" = ["C901", "PLR0912", "PLR0915"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -62,6 +107,47 @@ addopts = "-n auto"
 # turns "forgot the joins" into a loud failure at whichever test touches that
 # query, instead of a plausible-looking number in a chart.
 filterwarnings = ["error::sqlalchemy.exc.SAWarning"]
+
+# ─── Coverage ─────────────────────────────────────────────────────────────────
+# Measured, not assumed. Branch coverage on, because a bound that is never
+# taken is exactly the kind of thing statement coverage calls covered.
+#
+# **What this gate can and cannot buy.** It catches code no test reaches. It
+# does NOT catch a case no test states: `domain/cards.py` stood at 100% of
+# statements AND 100% of branches (62/62) while `reserve_discrepancy`'s T1
+# bound was missing its anchor-era allowance, because every line ran on every
+# test — just never with an anchored card that had also been used. Coverage is
+# the floor under the test suite, never the ceiling. The mechanism for case
+# gaps is `sample_budget/card_scenarios.py`, and it is a different mechanism.
+[tool.coverage.run]
+source = ["src/igab"]
+branch = true
+# xdist: workers write their own data files and combine at the end.
+parallel = true
+concurrency = ["multiprocessing", "thread"]
+omit = [
+    # Alembic revisions run once against a live database; they are exercised
+    # end to end by `test_migrations_match_models.py`, not line by line.
+    "*/alembic/*",
+]
+
+[tool.coverage.report]
+# Measured 90.96% with branches on when this went in; 91.30% once
+# `integrations/simplefin/client.py` went from 17.8% to 100%. This is a
+# RATCHET: raise it when the real number rises, never lower it to make a red
+# build green.
+fail_under = 91
+show_missing = true
+skip_covered = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "@overload",
+    "\\.\\.\\.$",
+    # Guard branches whose point is that they never run — the repo writes
+    # these deliberately (`# pragma: no cover - the guard is the point`).
+    "pragma: no cover",
+]
 
 [tool.uv]
 package = true

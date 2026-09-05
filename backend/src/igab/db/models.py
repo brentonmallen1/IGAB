@@ -24,7 +24,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID, ExcludeConstraint
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
@@ -884,14 +884,27 @@ class ImportAnchor(Base):
             "(category_id IS NULL) != (account_id IS NULL)",
             name="ck_import_anchor_one_target",
         ),
+        # One budget, one anchor month — the invariant `_assemble` refuses to
+        # guess at, stated where the database can hold it instead of where a
+        # test can only notice afterwards. Reject two rows of one budget whose
+        # months differ; any number of rows AT one month is the normal write.
+        # `<>` under gist needs btree_gist, created by the migration.
+        ExcludeConstraint(
+            ("budget_id", "="),
+            ("month", "<>"),
+            name="ex_import_anchor_one_month_per_budget",
+            using="gist",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
     budget_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    #: B−1, first of month; identical on every row of one budget (single
-    #: writer — pinned by test, not by constraint).
+    #: B−1, first of month; identical on every row of one budget — enforced by
+    #: `ex_import_anchor_one_month_per_budget` above, not merely by the single
+    #: writer. `_assemble` still raises on a mixed set: the constraint is what
+    #: makes that branch unreachable rather than what makes it unnecessary.
     month: Mapped[date] = mapped_column(Date, nullable=False)
     #: 'available' | 'reserve' | 'uncovered' — see the class docstring.
     kind: Mapped[str] = mapped_column(String(20), nullable=False)

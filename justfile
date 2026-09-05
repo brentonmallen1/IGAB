@@ -200,12 +200,16 @@ ci:
     #!/usr/bin/env bash
     set -euo pipefail
     echo "── personal data ──"             && python3 scripts/check-pii.py
+    echo "── file-length budget ──"         && python3 scripts/check-size.py
     # src/ AND tests/. Leaving tests out is how 110 of them drifted out of
     # format and collected 141 lint errors while CI stayed green.
     echo "── backend: ruff check ──"        && cd backend && uv run ruff check src/ tests/
     echo "── backend: ruff format check ──" && uv run ruff format --check src/ tests/
     echo "── backend: ty ──"                && uv run ty check src/
-    echo "── backend: pytest ──"            && uv run pytest
+    # --cov turns the gate on: `fail_under` in pyproject stops the build if
+    # coverage drops below the ratchet. Coverage catches code no test REACHES;
+    # it cannot catch a case no test STATES — see the note in pyproject.toml.
+    echo "── backend: pytest + coverage ──"  && uv run pytest --cov
     cd ../frontend
     # The formatter is a gate, not a suggestion. Without it `npx prettier`
     # resolves its own defaults and rewrites the tree into a style nothing
@@ -213,9 +217,23 @@ ci:
     echo "── frontend: prettier ──"         && npm run format:check
     echo "── frontend: typecheck ──"        && npm run typecheck
     echo "── frontend: eslint ──"           && npm run lint
-    echo "── frontend: vitest ──"           && npm test
+    echo "── frontend: vitest + coverage ──" && npm run test:coverage
     echo
     echo "All CI checks passed."
+
+# Coverage report for both halves, with the per-file misses listed. The gate
+# itself lives in `just ci`; this is the one you run to decide what to test
+# next. Thresholds are ratchets — raise them when the real number rises.
+coverage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "── backend ──"
+    cd backend && uv run pytest --cov --cov-report=term-missing --cov-report=html
+    echo "  html: backend/htmlcov/index.html"
+    echo
+    echo "── frontend ──"
+    cd ../frontend && npx vitest run --coverage --coverage.reporter=text --coverage.reporter=html
+    echo "  html: frontend/coverage/index.html"
 
 # ─── Production ───────────────────────────────────────────────────────────────
 
@@ -274,6 +292,22 @@ ynab-oracle FILE *ARGS:
 # Refuse to ship personal data. Runs first in `just ci`; run it before committing.
 check-pii:
     python3 scripts/check-pii.py
+
+# File-length budget (both halves). `--update` reprints the debt list.
+check-size *ARGS:
+    python3 scripts/check-size.py {{ARGS}}
+
+# Install the git pre-commit hook (scripts/pre-commit). Runs only the checks
+# that are instant — personal data, file length, ruff — about 1.8s. eslint,
+# tsc and the test suites stay in `just ci`, because a 25-second hook is one
+# people bypass. Re-run this after the hook script changes.
+hooks:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    hook="$(git rev-parse --git-path hooks/pre-commit)"
+    ln -sf "$(git rev-parse --show-toplevel)/scripts/pre-commit" "$hook"
+    echo "installed $hook -> scripts/pre-commit"
+    echo "bypass a single commit with: git commit --no-verify"
 
 # Repair budgets damaged before synced transfer legs were paired: unlinked
 # transfer pairs, card charges filed as income, stranded card envelopes.

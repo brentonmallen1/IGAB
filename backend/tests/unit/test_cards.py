@@ -15,6 +15,8 @@ from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 
+import pytest
+
 from igab.domain.cards import (
     AnchorOpenings,
     CardReserve,
@@ -1161,6 +1163,205 @@ class TestTheAnchoredIdentity:
         # The differential: every input identical to an unanchored call.
         args = (D("200"), D("-200"), D("200"), D("0"), D("0"), D("0"), D("0"))
         assert reserve_discrepancy(*args) == reserve_discrepancy(*args, opening_credit=D("0"))
+
+    def test_g_an_opening_credit_spent_down_becomes_over_reserve(self):
+        """The hole T3's allowance alone left open.
+
+        An opening credit does not stay in `card_credit`. Card arrives holding
+        80; the user funds an envelope 100 and spends it on the card. The card
+        owes 20, not 100 — the credit absorbed the difference — so the envelope
+        reserves 100 against a 20 debt and `over_reserved` reads exactly the 80
+        the card came in with. That is T1's bound, not T3's, and with the
+        allowance on T3 alone this reported 80 as drift on an ordinary card,
+        every month, forever.
+        """
+        assert reserve_discrepancy(
+            D("100"), D("-20"), D("0"), D("0"), D("0"), D("0"), D("0"), opening_credit=D("80")
+        ) == D("0")
+        # The unanchored equivalent — same legs, no pre-existing credit, so the
+        # balance moved the full 100 — was always silent. The anchored card now
+        # agrees with it.
+        assert reserve_discrepancy(
+            D("100"), D("-100"), D("0"), D("0"), D("0"), D("0"), D("0")
+        ) == D("0")
+
+    def test_h_drift_beyond_the_opening_is_still_reported(self):
+        """The allowance is bounded by the opening credit and nothing more.
+
+        This is the test that fails if the gap widens: both bounds are wider on
+        a card imported in credit, by exactly `opening_credit`, permanently.
+        Anything past that is still drift on both of them.
+        """
+        # T1: 130 over-reserved against an 80 opening → 50 unexplained.
+        assert reserve_discrepancy(
+            D("150"), D("-20"), D("0"), D("0"), D("0"), D("0"), D("0"), opening_credit=D("80")
+        ) == D("50")
+        # T3: a 130 credit against an 80 opening → the same 50.
+        assert reserve_discrepancy(
+            D("0"), D("130"), D("0"), D("0"), D("0"), D("0"), D("0"), opening_credit=D("80")
+        ) == D("50")
+
+
+#: Positions that breach exactly ONE bound of `reserve_discrepancy`, each by
+#: `BREACH`. Isolation is what makes the table below readable: `card_position`
+#: floors `owed` at zero, so a card cannot be over-reserved and in credit on
+#: one balance, and a negative reserve cannot also be an over-reserve.
+BREACH = D("80")
+_BREACHED: dict[str, tuple[Decimal, Decimal]] = {
+    # set_aside 100 against a 20 debt -> over_reserved 80.
+    "T1_over_reserved": (D("100"), D("-20")),
+    # A reserve 80 below zero on a card owing 200 -> short_reserved 80.
+    "T2_short_reserved": (D("-80"), D("-200")),
+    # A card holding 80 with nothing reserved -> card_credit 80.
+    "T3_card_credit": (D("0"), D("80")),
+}
+
+#: Every allowance input, supplied at exactly the size of the breach.
+_ALLOWANCE_INPUTS: dict[str, dict[str, Decimal]] = {
+    # `assigned` is the SAME argument in both directions — it is a signed
+    # lifetime net. Positive feeds T1 (`assigned - covered`); negative feeds
+    # T2 (`-assigned`), which is the user moving money back out of the card's
+    # envelope. Two names, one input, opposite bounds.
+    "assigned_in": {"assigned": BREACH},
+    "assigned_out": {"assigned": -BREACH},
+    "payments": {"payments": BREACH},
+    "residual_releases": {"residual_releases": BREACH},
+    "unclaimed_rows": {"unclaimed_rows": BREACH},
+    "opening_credit": {"opening_credit": BREACH},
+}
+
+#: **The matrix, and the reason this class exists.** Which inputs excuse which
+#: bound — every cell a decision somebody made, written down where the next
+#: person changing `reserve_discrepancy` has to look at it.
+#:
+#: It exists because of one cell that was wrong: `opening_credit` was wired
+#: into T3 and not T1. An opening credit does not stay in `card_credit` — it
+#: converts to over-reserve the moment the card is used — so every anchored
+#: card that arrived in credit reported its whole opening as drift, from its
+#: first ordinary funded spend onward, forever. `domain/cards.py` was at 100%
+#: of statements AND 100% of branches when that shipped. No coverage gate
+#: could have caught it; a table nobody had filled in is what let it through.
+#:
+#: Adding an allowance term to `reserve_discrepancy` means adding a row or a
+#: cell here. A term wired into one bound and not another now fails loudly
+#: instead of going quiet for a year.
+_EXCUSED_BY: dict[str, set[str]] = {
+    "T1_over_reserved": {"assigned_in", "unclaimed_rows", "opening_credit"},
+    "T2_short_reserved": {"assigned_out", "payments", "residual_releases"},
+    "T3_card_credit": {"unclaimed_rows", "opening_credit"},
+}
+
+
+def _discrepancy(set_aside: Decimal, balance: Decimal, **inputs: Decimal) -> Decimal:
+    """`reserve_discrepancy` with every allowance defaulting to zero, so a case
+    names only the input it is about."""
+    named = {
+        "assigned": D("0"),
+        "covered": D("0"),
+        "payments": D("0"),
+        "residual_releases": D("0"),
+        "unclaimed_rows": D("0"),
+        "opening_credit": D("0"),
+    }
+    named.update(inputs)
+    return reserve_discrepancy(
+        set_aside,
+        balance,
+        named["assigned"],
+        named["covered"],
+        named["payments"],
+        named["residual_releases"],
+        named["unclaimed_rows"],
+        opening_credit=named["opening_credit"],
+    )
+
+
+class TestTheBoundAllowanceMatrix:
+    """Every (bound, allowance) pair of `reserve_discrepancy`, stated once.
+
+    The three bounds are independent claims about what can explain a card
+    standing where it does, and each names its own allowance terms. Tested
+    one bound at a time, at a breach of exactly `BREACH`, so a cell says
+    plainly whether that input explains that bound — and, just as importantly,
+    whether it does NOT.
+    """
+
+    @pytest.mark.parametrize("bound", sorted(_BREACHED))
+    def test_the_position_breaches_exactly_one_bound(self, bound):
+        """The fixtures isolate what they claim to. If this fails, every cell
+        below is measuring something other than what it says."""
+        set_aside, balance = _BREACHED[bound]
+        pos = card_position(set_aside, balance)
+        breached = {
+            "T1_over_reserved": pos.over_reserved,
+            "T2_short_reserved": pos.short_reserved,
+            "T3_card_credit": pos.card_credit,
+        }
+        assert breached.pop(bound) == BREACH
+        assert all(v == D("0") for v in breached.values()), breached
+        # With no allowance at all, the whole breach is reported.
+        assert _discrepancy(set_aside, balance) == BREACH
+
+    @pytest.mark.parametrize("supplied", sorted(_ALLOWANCE_INPUTS))
+    @pytest.mark.parametrize("bound", sorted(_BREACHED))
+    def test_the_matrix(self, bound, supplied):
+        set_aside, balance = _BREACHED[bound]
+        got = _discrepancy(set_aside, balance, **_ALLOWANCE_INPUTS[supplied])
+        if supplied in _EXCUSED_BY[bound]:
+            assert got == D("0"), (
+                f"{supplied} is listed as explaining {bound}, but supplying it at the "
+                f"full size of the breach still reports {got}"
+            )
+        else:
+            assert got == BREACH, (
+                f"{supplied} is NOT listed as explaining {bound}, yet supplying it moved "
+                f"the discrepancy to {got}. Either the code gained an allowance the "
+                f"matrix does not know about, or the matrix is wrong."
+            )
+
+    @pytest.mark.parametrize("supplied", sorted(_ALLOWANCE_INPUTS))
+    @pytest.mark.parametrize("bound", sorted(_BREACHED))
+    def test_every_allowance_is_bounded_by_its_own_size(self, bound, supplied):
+        """An allowance explains exactly what it is worth and not a penny more.
+
+        This is the half that keeps a bound from quietly becoming an excuse:
+        supply one less than the breach and exactly one must still be reported.
+        """
+        if supplied not in _EXCUSED_BY[bound]:
+            pytest.skip(f"{supplied} does not explain {bound} at all")
+        set_aside, balance = _BREACHED[bound]
+        short = {
+            k: (v - D("1") if v > 0 else v + D("1")) for k, v in _ALLOWANCE_INPUTS[supplied].items()
+        }
+        assert _discrepancy(set_aside, balance, **short) == D("1")
+
+    def test_covered_subtracts_from_t1_rather_than_flooring_on_its_own(self):
+        """`assigned - covered` is ONE term inside `_allowance`, not two.
+
+        An assignment that retired riding debt has been spent; it explains the
+        debt it covered, not a reserve standing beyond it. Were `covered`
+        floored separately the subtraction would vanish and T1 would excuse
+        the very drift the assignment caused.
+        """
+        set_aside, balance = _BREACHED["T1_over_reserved"]
+        # The whole assignment did its job: nothing left to explain the reserve.
+        assert _discrepancy(set_aside, balance, assigned=BREACH, covered=BREACH) == BREACH
+        # Half of it did: half the breach stays unexplained.
+        assert _discrepancy(set_aside, balance, assigned=BREACH, covered=BREACH / 2) == BREACH / 2
+
+    def test_an_unanchored_call_is_byte_identical_across_the_matrix(self):
+        """`opening_credit` defaults to zero and changes nothing when it is.
+
+        The differential that says the anchored allowance cannot alter a budget
+        that was never imported — checked on every bound, not just one.
+        """
+        for set_aside, balance in _BREACHED.values():
+            for inputs in _ALLOWANCE_INPUTS.values():
+                if "opening_credit" in inputs:
+                    continue
+                assert _discrepancy(set_aside, balance, **inputs) == _discrepancy(
+                    set_aside, balance, **inputs, opening_credit=D("0")
+                )
 
 
 class TestTheReceivableLedger:

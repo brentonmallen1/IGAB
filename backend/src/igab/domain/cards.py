@@ -798,11 +798,27 @@ def reserve_discrepancy(
     floors at zero individually (`_allowance`); a bound written `L - R` is only
     sound while `R >= 0`, and `assigned` is signed:
 
-    - **T1** `over_reserved <= (assigned - covered) + unclaimed_rows`. A
-      reserve exceeds its debt only by money someone deliberately assigned to
-      the card **and that has not already done its job**, or by a row on the
-      card the budget has no claim on. Replaces "for a card with no
-      assignments".
+    - **T1** `over_reserved <= (assigned - covered) + unclaimed_rows +
+      opening_credit`. A reserve exceeds its debt only by money someone
+      deliberately assigned to the card **and that has not already done its
+      job**, by a row on the card the budget has no claim on, or — on an
+      anchored budget — by a credit the card already held at B−1. Replaces
+      "for a card with no assignments".
+
+      The anchor-era term is on this bound for the same reason it is on T3,
+      and leaving it off T3 alone was a hole: an opening credit does not STAY
+      in `card_credit`. It converts to over-reserve the moment the card is
+      used. A card imported holding 80 that then funds and spends 100 owes 20,
+      not 100, because the credit absorbed the difference — so its envelope
+      reserves 100 against a 20 debt and `over_reserved` reads exactly the 80
+      the card came in with. With the allowance only on T3, every anchored
+      card that arrived in credit reported that 80 as drift forever, from its
+      first ordinary funded spend onward, and the integrity check said so.
+
+      The allowance is the same size on both bounds and that does not
+      double-count: `owed` floors at zero inside `card_position`, so
+      `over_reserved` and `card_credit` are never both positive on one
+      balance — and `worst` below is a `max`, never a sum.
 
       The subtraction is the whole content of this bound. With the plain
       lifetime `assigned`, the quantity that *caused* the drift and the
@@ -832,6 +848,15 @@ def reserve_discrepancy(
       the one that catches a repayment landing where no category ever
       charged.
 
+      **`opening_credit` is permanent and read live.** It never decays: the
+      offset between a lifetime reserve that starts at the anchor and a
+      balance that starts at B−1 is fixed for the life of the budget, so the
+      allowance has to be too. And the caller computes it from the register
+      rather than from a stored row, so editing or importing a pre-anchor card
+      row moves it with no anchor rewrite. Both bounds are that much wider on
+      such a card, for as long as it exists — `test_g`/`test_h` pin the size,
+      and `ANCHORED_CREDIT_SPENT_DOWN` shows the shape.
+
     `assigned` is the *net* lifetime assignment to the card's own linked
     category — negative where more has been moved out than in, which is why it
     is floored rather than trusted to be positive. **On an anchored budget the
@@ -860,7 +885,7 @@ def reserve_discrepancy(
     """
     pos = card_position(set_aside, balance)
     worst = max(
-        pos.over_reserved - _allowance(assigned - covered, unclaimed_rows),
+        pos.over_reserved - _allowance(assigned - covered, unclaimed_rows, opening_credit),
         pos.short_reserved - _allowance(payments, residual_releases, -assigned),
         pos.card_credit - _allowance(pos.short_reserved, unclaimed_rows, opening_credit),
     )

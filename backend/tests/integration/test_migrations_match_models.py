@@ -105,6 +105,12 @@ def test_migrations_produce_the_model_schema(scratch_dbs):
     _run_migrations(migrated_db)
 
     modelled = create_engine(_url(model_db))
+    # The migration side creates btree_gist itself; the model side has to be
+    # given it, or `import_anchors`' EXCLUDE ... USING gist cannot be built and
+    # the two schemas differ for a reason that is not a drift.
+    with modelled.connect() as conn:
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS btree_gist"))
+        conn.commit()
     Base.metadata.create_all(modelled)
 
     try:

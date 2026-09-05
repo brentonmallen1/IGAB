@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+#
+# Pre-commit hook. Install with `just hooks`.
+#
+# **What is here and what is deliberately not.** This runs the checks that are
+# effectively instant (~1.8s total) and that catch things you do not want in a
+# commit at all:
+#
+#   check-pii.py    personal data, on a public repo. Once it is pushed it is
+#                   public, and scrubbing the working tree does not unpublish
+#                   it — the blob stays in history and behind refs/pull/<n>/head.
+#                   This is the one check whose cost of being late is unbounded.
+#   check-size.py   a file crossing its length budget, caught while the change
+#                   is still small enough to put somewhere else.
+#   ruff            lint + format on the backend. 0.1s.
+#
+# NOT here, on purpose:
+#
+#   eslint (9.5s), tsc (10.9s), prettier (3.1s)  -> 23s, and a 23-second hook
+#   pytest + coverage (50s), vitest (10s)           is one people start
+#                                                   bypassing with --no-verify
+#                                                   inside a week. A gate that
+#                                                   gets bypassed is worse than
+#                                                   no gate, because it is still
+#                                                   believed in.
+#
+# Those live in `just ci`, which is what to run before pushing. This hook is
+# not a substitute for it and does not pretend to be.
+#
+# Bypass with `git commit --no-verify` when you genuinely need to (a WIP commit
+# on a branch nobody pulls). The checks run again in `just ci` and in GitHub CI,
+# so a bypass costs you nothing but a later failure.
+
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+
+fail=0
+
+run() {
+  local label="$1"; shift
+  if ! out=$("$@" 2>&1); then
+    printf '\n  ✗ %s\n\n%s\n' "$label" "$out"
+    fail=1
+  fi
+}
+
+run "personal data (scripts/check-pii.py)"     python3 scripts/check-pii.py
+run "file-length budget (scripts/check-size.py)" python3 scripts/check-size.py
+
+if command -v uv >/dev/null 2>&1; then
+  run "ruff check"  bash -c 'cd backend && uv run ruff check src/ tests/'
+  run "ruff format" bash -c 'cd backend && uv run ruff format --check src/ tests/'
+fi
+
+if [ "$fail" -ne 0 ]; then
+  printf '\npre-commit failed. Fix the above, or `git commit --no-verify` to skip.\n'
+  printf 'Run `just ci` before pushing — it covers what this hook deliberately omits.\n\n'
+  exit 1
+fi
+
+exit 0
