@@ -30,13 +30,18 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import (
+    Asset,
+    AssetValueSnapshot,
     Budget,
     BudgetAssignment,
     Category,
     CategoryGroup,
     CategoryTarget,
     ChangeLog,
+    Liability,
+    LiabilityBalanceSnapshot,
     Payee,
+    ScheduledTransaction,
     Transaction,
     WishlistItem,
     WishlistProject,
@@ -59,9 +64,14 @@ ENTITY_MODELS: dict[str, type] = {
     # budget's wishes or wish projects (`_collection` bookkeeping says
     # which). Resolves to the budget row; nothing on it is restored.
     "wishlist": Budget,
-    # Hard-row entity (no is_deleted column): undo re-inserts from the
+    # Hard-row entities (no is_deleted column): undo re-inserts from the
     # snapshot — see undo_service.HARD_ROW_NATURAL_KEY.
     "category_target": CategoryTarget,
+    "liability_snapshot": LiabilityBalanceSnapshot,
+    "asset_value": AssetValueSnapshot,
+    "liability": Liability,
+    "asset": Asset,
+    "scheduled_transaction": ScheduledTransaction,
 }
 
 # Restorable fields per entity. is_deleted is excluded on purpose — the
@@ -143,6 +153,50 @@ SNAPSHOT_FIELDS: dict[str, tuple[str, ...]] = {
         "target_amount",
         "target_date",
         "repeat_frequency",
+    ),
+    "liability": (
+        "name",
+        "liability_type",
+        "linked_account_id",
+        "linked_asset_id",
+        "manual_balance",
+        "interest_rate",
+        "minimum_payment",
+        "minimum_payment_kind",
+        "minimum_payment_percent",
+        "minimum_payment_floor",
+        "minimum_payment_plus_interest",
+        "compounding",
+        "planned_extra_payment",
+        "origination_date",
+        "original_principal",
+        "promo_end_date",
+        "promo_deferred_interest",
+        "term_months",
+        "payment_due_day",
+    ),
+    "liability_snapshot": ("liability_id", "date", "balance", "source"),
+    # manual_value/value_as_of are derived from the newest surviving value
+    # point, but they snapshot anyway: a value-point operation records the
+    # pair's move as an explicit asset update in the same batch, so undo
+    # restores it by field instead of re-running the derivation.
+    "asset": ("name", "asset_type", "manual_value", "value_as_of"),
+    "asset_value": ("asset_id", "date", "value", "source"),
+    "scheduled_transaction": (
+        "account_id",
+        "amount",
+        "payee_id",
+        "category_id",
+        "memo",
+        "frequency",
+        "start_date",
+        "end_date",
+        "second_day_of_month",
+        "auto_create",
+        "days_before_reminder",
+        "transfer_account_id",
+        "last_created_date",
+        "next_occurrence_date",
     ),
 }
 

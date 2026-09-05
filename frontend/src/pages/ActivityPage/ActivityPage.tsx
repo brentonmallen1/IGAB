@@ -432,7 +432,7 @@ function actionIcon(action: string) {
 function summarizeSnapshot(change: Change, snap: Record<string, unknown> | null): string {
   if (!snap) return ''
 
-  if (change.entity_type === 'transaction') {
+  if (change.entity_type === 'transaction' || change.entity_type === 'scheduled_transaction') {
     const amount = snap.amount as string | undefined
     const memo = snap.memo as string | undefined
     if (amount) {
@@ -453,6 +453,14 @@ function summarizeSnapshot(change: Change, snap: Record<string, unknown> | null)
     const amount = snap.target_amount as string | undefined
     if (amount) {
       return `Goal $${parseApiDecimal(amount).toFixed(2)}`
+    }
+  }
+
+  // Dated balance/value points: the figure and the day it was stated for.
+  if (change.entity_type === 'liability_snapshot' || change.entity_type === 'asset_value') {
+    const figure = (snap.balance ?? snap.value) as string | undefined
+    if (figure) {
+      return `$${parseApiDecimal(figure).toFixed(2)} on ${snap.date as string}`
     }
   }
 

@@ -5,7 +5,6 @@ it: `enter_now` never passed it, so a rent row entered from the schedule was
 indistinguishable from one typed by hand.
 """
 
-from datetime import timedelta
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -146,8 +145,12 @@ async def test_listing_paths_serialize_scheduled_transaction_id(api_client, db_s
     assert one["created_via"] == "scheduled"
 
 
-async def test_undo_of_enter_now_removes_the_row(db_session):
+async def test_undo_of_enter_now_removes_the_row_and_rolls_the_schedule_back(db_session):
+    """Enter-now is one batch: undoing the created transaction also takes
+    back the schedule's advance. It used to leave last_created_date set — a
+    register with no row while the schedule claimed it had run."""
     services, sched_svc, budget, checking, sched, _ = await _setup(db_session)
+    before_next = sched.next_occurrence_date
     await sched_svc.enter_now(sched.id, budget.id)
     [row] = await _rows_for(services, checking.id)
     await db_session.flush()
@@ -164,4 +167,6 @@ async def test_undo_of_enter_now_removes_the_row(db_session):
     await UndoService(db_session).undo_change(budget.id, change.id)
 
     assert await _rows_for(services, checking.id) == []
-    assert (await sched_svc.repo.get(sched.id)).last_created_date == today_utc() - timedelta(days=0)
+    rolled_back = await sched_svc.repo.get(sched.id)
+    assert rolled_back.last_created_date is None
+    assert rolled_back.next_occurrence_date == before_next

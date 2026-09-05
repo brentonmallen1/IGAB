@@ -356,8 +356,12 @@ def get_reconciliation_service(
 def get_scheduled_transaction_service(
     repo: Annotated[ScheduledTransactionRepository, Depends(get_scheduled_transaction_repo)],
     txn_service: Annotated[TransactionService, Depends(get_transaction_service)],
+    current_user: "CurrentUser",
 ) -> ScheduledTransactionService:
-    return ScheduledTransactionService(repo, txn_service)
+    service = ScheduledTransactionService(repo, txn_service)
+    # Same actor stamping as get_budget_service — see there.
+    service.changes.actor_user_id = current_user.id
+    return service
 
 
 async def get_current_user(

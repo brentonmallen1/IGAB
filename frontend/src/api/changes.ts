@@ -29,6 +29,11 @@ export interface Change {
     | 'wishlist_project'
     | 'wishlist'
     | 'category_target'
+    | 'liability'
+    | 'liability_snapshot'
+    | 'asset'
+    | 'asset_value'
+    | 'scheduled_transaction'
   entity_id: string
   action:
     | 'create'
@@ -234,4 +239,10 @@ export function invalidateAfterUndo(
   // Targets — never in invalidateAfterCategoryChange, so listed here.
   qc.invalidateQueries({ queryKey: [ROOT.target] })
   qc.invalidateQueries({ queryKey: [ROOT.targets] })
+
+  // Debts and assets, including their balance/value histories.
+  qc.invalidateQueries({ queryKey: [ROOT.liabilities] })
+  qc.invalidateQueries({ queryKey: [ROOT.liabilityAmortization] })
+  qc.invalidateQueries({ queryKey: [ROOT.assets] })
+  qc.invalidateQueries({ queryKey: [ROOT.assetValues] })
 }

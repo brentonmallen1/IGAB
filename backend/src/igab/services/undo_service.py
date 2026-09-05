@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import (
     CHANGE_LOG_UNDO_SEQ,
+    Asset,
     BudgetAssignment,
     BudgetFilterCategory,
     BudgetMove,
@@ -32,6 +33,7 @@ from igab.db.models import (
     Category,
     CategoryGroup,
     ChangeLog,
+    Liability,
     Payee,
     ScheduledTransaction,
     Transaction,
@@ -61,12 +63,16 @@ def _opt_uuid(value: object) -> uuid.UUID | None:
 # later decision, and undo refuses rather than fighting the unique index.
 HARD_ROW_NATURAL_KEY: dict[str, tuple[str, ...]] = {
     "category_target": ("category_id",),
+    "liability_snapshot": ("liability_id", "date"),
+    "asset_value": ("asset_id", "date"),
 }
 
 # The FK a re-inserted hard row hangs from. Checked before insert so a
 # vanished parent surfaces as a conflict message, never an IntegrityError.
 HARD_ROW_PARENT: dict[str, tuple[type, str]] = {
     "category_target": (Category, "category_id"),
+    "liability_snapshot": (Liability, "liability_id"),
+    "asset_value": (Asset, "asset_id"),
 }
 
 
@@ -304,6 +310,13 @@ class UndoService:
                 )
                 for wish in rows.scalars():
                     wish.project_id = None
+            elif change.entity_type == "asset":
+                # Replaying the retire unlinks its secured liabilities again.
+                await self.session.execute(
+                    update(Liability)
+                    .where(Liability.linked_asset_id == change.entity_id)
+                    .values(linked_asset_id=None)
+                )
         elif change.action == "reorder":
             await self._apply_order(change, force, target="after")
         elif change.action in ("archive", "unarchive"):
@@ -375,6 +388,8 @@ class UndoService:
             await self._undo_category_delete(change, entity)
         elif change.action == "delete" and change.entity_type == "wishlist_project":
             await self._undo_wishlist_project_delete(change, entity)
+        elif change.action == "delete" and change.entity_type == "asset":
+            await self._undo_asset_delete(change, entity)
         elif change.action == "delete":
             await self._undo_delete(change, entity)
         elif change.action == "merge":
@@ -658,6 +673,20 @@ class UndoService:
             raise UndoConflict("Its place has been taken by a newer entry — remove that one first")
         self.session.add(model(id=change.entity_id, **fields))
         await self.session.flush()
+
+    async def _undo_asset_delete(self, change: ChangeLog, entity) -> None:
+        """Bring an asset back, and re-point the liabilities its retire
+        unlinked — the same "only those still loose" rule the wishlist
+        project delete follows: a liability re-secured against another asset
+        since was re-decided by a person, and undo must not overrule that."""
+        await self._undo_delete(change, entity)
+        liability_ids = [uuid.UUID(x) for x in (change.before or {}).get("_liability_ids", [])]
+        if not liability_ids:
+            return
+        rows = await self.session.execute(select(Liability).where(Liability.id.in_(liability_ids)))
+        for liability in rows.scalars():
+            if liability.linked_asset_id is None and not liability.is_deleted:
+                liability.linked_asset_id = change.entity_id
 
     async def _undo_hard_category_delete(self, change: ChangeLog) -> None:
         """Rebuild categories (and their group) that were removed outright.

@@ -24,6 +24,16 @@ export function entityTypeLabel(entityType: string): string {
       return 'wishlist'
     case 'category_target':
       return 'target'
+    case 'liability':
+      return 'liability'
+    case 'liability_snapshot':
+      return 'balance point'
+    case 'asset':
+      return 'asset'
+    case 'asset_value':
+      return 'value point'
+    case 'scheduled_transaction':
+      return 'scheduled transaction'
     default:
       return entityType
   }
