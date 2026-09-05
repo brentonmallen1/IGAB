@@ -235,6 +235,10 @@ describe('WishlistPanel', () => {
     // claiming to be empty.
     expect(screen.getByText(/sits in your top priorities above/)).toBeInTheDocument()
     expect(screen.queryByText('Nothing on it yet.')).not.toBeInTheDocument()
+    // A hero floats above the sections, so it names its project itself —
+    // both Porch wishes in the strip carry the chip.
+    const hero = container.querySelector('.guide-wishlist__hero')!
+    expect(within(hero as HTMLElement).getAllByText('Porch')).toHaveLength(2)
   })
 
   it('a search with no matches says so instead of an empty card', () => {

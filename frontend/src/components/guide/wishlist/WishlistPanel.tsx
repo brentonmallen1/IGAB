@@ -139,7 +139,9 @@ export function WishlistPanel() {
         wish={wish}
         hero={hero}
         project={wish.project_id ? projectsById.get(wish.project_id) : null}
-        showProject={view === 'flat'}
+        // A hero floats above the project sections, so it names its project
+        // itself — in projects view the section header does it for the rest.
+        showProject={hero || view === 'flat'}
         priorityFull={pinnedCount >= data.priority_limit}
         onTogglePriority={() => update.mutate({ id: wish.id, is_priority: !wish.is_priority })}
         onEdit={() => setEditing(wish)}
