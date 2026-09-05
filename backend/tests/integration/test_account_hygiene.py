@@ -340,6 +340,58 @@ class TestCardRowsFiledAsIncome:
 
         assert "card_rows_filed_as_income" not in await _run(db_session, budget)
 
+    async def test_a_card_reconciliation_adjustment_is_not(self, db_session):
+        """YNAB writes the identical income-filed adjustment row when you
+        reconcile a *card*, and the cash-account skip did not reach it: a real
+        import's hygiene sweep read twelve of these as card charges filed as
+        income. A ledger correction is not spending to give an envelope, so
+        the skip follows the payee (`BALANCE_ADJUSTMENT_PAYEES`), not the
+        account classification."""
+        budget, card, income, _ = await self._world_with_a_card(db_session)
+        adjustment = await create_payee(db_session, budget, "Reconciliation Balance Adjustment")
+        await create_transaction(
+            db_session, budget, card, "-45.00", RECENT, category=income, payee=adjustment
+        )
+        await db_session.flush()
+
+        assert "card_rows_filed_as_income" not in await _run(db_session, budget)
+
+    async def test_a_card_starting_balance_is_not(self, db_session):
+        """Same convention, written once per account instead of once per
+        reconcile: YNAB's opening row on a card is filed to Inflow and
+        imported verbatim. IGAB's own starting balances never get here — they
+        are written uncategorized — so any row shaped like this came from an
+        import, carrying YNAB's filing."""
+        budget, card, income, _ = await self._world_with_a_card(db_session)
+        opening = await create_payee(db_session, budget, "Starting Balance")
+        await create_transaction(
+            db_session, budget, card, "-800.00", RECENT, category=income, payee=opening
+        )
+        await db_session.flush()
+
+        assert "card_rows_filed_as_income" not in await _run(db_session, budget)
+
+    async def test_adjustment_rows_do_not_hide_real_misfilings(self, db_session):
+        """The skip must subtract the convention rows, not silence the check:
+        the same sweep that flagged thirteen adjustment rows also held three
+        genuine misfiled charges, and those are the finding's whole point."""
+        budget, card, income, _ = await self._world_with_a_card(db_session)
+        adjustment = await create_payee(db_session, budget, "Reconciliation Balance Adjustment")
+        merchant = await create_payee(db_session, budget, "Nordstrom")
+        await create_transaction(
+            db_session, budget, card, "-45.00", RECENT, category=income, payee=adjustment
+        )
+        await create_transaction(
+            db_session, budget, card, "-60.00", RECENT, category=income, payee=adjustment
+        )
+        await create_transaction(
+            db_session, budget, card, "-30.00", RECENT, category=income, payee=merchant
+        )
+        await db_session.flush()
+
+        finding = (await _run(db_session, budget))["card_rows_filed_as_income"]
+        assert finding.transaction_count == 1
+
 
 class TestMoneyInAnArchivedEnvelope:
     """Archiving refuses to leave a balance behind. This finds the ones that

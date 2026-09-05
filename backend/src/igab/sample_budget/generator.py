@@ -39,7 +39,7 @@ from igab.repositories.scheduled_transaction_repo import ScheduledTransactionRep
 from igab.repositories.tag_repo import TagRepository
 from igab.repositories.target_repo import TargetRepository
 from igab.repositories.transaction_repo import TransactionRepository
-from igab.sample_budget.card_scenarios import ExpectedPosition
+from igab.sample_budget.card_scenarios import STARTING_BALANCE_PAYEE, ExpectedPosition
 from igab.sample_budget.data import SAMPLE_BUDGET
 from igab.sample_budget.spec import (
     RelDate,
@@ -415,7 +415,7 @@ class SampleBudgetGenerator:
                     opening_when.resolve(anchor),
                     acct.opening_balance,
                     anchor,
-                    payee="Starting Balance",
+                    payee=STARTING_BALANCE_PAYEE,
                     # The rule `_anchor_opening_balance` follows on a real
                     # first sync: on a cash account the opening gap is income
                     # into Ready to Assign, on a card it is pre-history debt

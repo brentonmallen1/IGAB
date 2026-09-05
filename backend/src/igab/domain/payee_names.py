@@ -25,6 +25,30 @@ Three rules live here, all pure:
 import re
 from collections.abc import Iterable, Sequence
 
+#: The auto-generated bookkeeping payees. The two constants are the single
+#: spelling for IGAB's own writers — `reconciliation_service` writes the
+#: first; `simplefin_service` and the sample budget write the second — so a
+#: row they create is recognized everywhere by construction, not by strings
+#: staying in step. A YNAB export uses the same two names plus "Manual
+#: Balance Adjustment", which IGAB never writes and only ever imports.
+#:
+#: A row under one of these names is a ledger correction, not spending
+#: anybody did — checks that read filing quality must not treat it as a
+#: purchase (`txn_filters.BALANCE_ADJUSTMENT_ROW` is the SQL reading of this
+#: set). IGAB's own writers always leave these rows uncategorized; ones that
+#: arrive *with* a category come from a YNAB import, which preserves the
+#: export's "Inflow: Ready to Assign" filing because that is YNAB's own
+#: convention for an adjustment on any account.
+RECONCILIATION_ADJUSTMENT_PAYEE = "Reconciliation Balance Adjustment"
+STARTING_BALANCE_PAYEE = "Starting Balance"
+BALANCE_ADJUSTMENT_PAYEES = frozenset(
+    {
+        RECONCILIATION_ADJUSTMENT_PAYEE,
+        STARTING_BALANCE_PAYEE,
+        "Manual Balance Adjustment",
+    }
+)
+
 #: Tokens carrying at least this many digits are the bank's, not the
 #: merchant's: store numbers, reference codes, dates (`240815`, `08/15/26`).
 #: Two digits stay — `76`, `Forever 21`, `24 Hour Fitness` are names.

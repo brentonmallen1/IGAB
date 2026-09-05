@@ -17,6 +17,7 @@ from igab.domain.matching import (
     date_proximity,
     payee_similarity,
 )
+from igab.domain.payee_names import STARTING_BALANCE_PAYEE
 from igab.domain.transfers import PairableLeg, pair_legs
 from igab.integrations.simplefin.client import SimpleFINClient, SimpleFINFeed
 from igab.integrations.simplefin.encryption import (
@@ -707,7 +708,7 @@ class SimpleFINService:
                 account_id=account.id,
                 date=anchor_date,
                 amount=gap,
-                payee_name="Starting Balance",
+                payee_name=STARTING_BALANCE_PAYEE,
                 category_id=None,
                 memo="Anchors this account to the balance your bank reported",
                 cleared="reconciled",
