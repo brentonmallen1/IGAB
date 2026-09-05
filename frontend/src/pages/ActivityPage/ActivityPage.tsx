@@ -455,6 +455,10 @@ function summarizeAfter(change: Change): string {
     }
   }
 
+  if (change.entity_type === 'wishlist_item' || change.entity_type === 'wishlist_project') {
+    return (after.name as string) ?? ''
+  }
+
   return ''
 }
 
@@ -477,6 +481,10 @@ function summarizeBefore(change: Change): string {
   }
 
   if (change.entity_type === 'category') {
+    return (before.name as string) ?? ''
+  }
+
+  if (change.entity_type === 'wishlist_item' || change.entity_type === 'wishlist_project') {
     return (before.name as string) ?? ''
   }
 

@@ -271,8 +271,12 @@ def get_wishlist_service(
     session: SessionDep,
     budget_service: Annotated[BudgetService, Depends(get_budget_service)],
     target_service: Annotated[TargetService, Depends(get_target_service)],
+    current_user: "CurrentUser",
 ) -> WishlistService:
-    return WishlistService(session, budget_service=budget_service, target_service=target_service)
+    service = WishlistService(session, budget_service=budget_service, target_service=target_service)
+    # Same actor stamping as get_budget_service — see there.
+    service.changes.actor_user_id = current_user.id
+    return service
 
 
 def get_category_plan_service(session: SessionDep) -> CategoryPlanService:
