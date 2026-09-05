@@ -173,6 +173,30 @@
   gap: var(--spacing-md);
 }
 
+/* Heads the projects list, flush with the section carets it acts on — a
+   quiet control in their vocabulary, not toolbar chrome. */
+.guide-wishlist__fold-all {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  align-self: flex-start;
+  padding: 0;
+  background: none;
+  border: none;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.guide-wishlist__fold-all:hover {
+  color: var(--text-primary);
+}
+
+.guide-wishlist__fold-all:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
 .guide-wishlist__empty {
   margin: 0;
   font-size: var(--font-size-sm);
@@ -219,7 +243,7 @@
 
 .wish__name {
   margin: 0;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-md);
   font-weight: 600;
   color: var(--text-primary);
 }

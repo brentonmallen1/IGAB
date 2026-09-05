@@ -1,6 +1,14 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ChevronDown, ChevronRight, Heart, Plus, Settings2 } from 'lucide-react'
+import {
+  ChevronDown,
+  ChevronRight,
+  ChevronsDownUp,
+  ChevronsUpDown,
+  Heart,
+  Plus,
+  Settings2,
+} from 'lucide-react'
 import { useAppStore } from '../../../stores/appStore'
 import { useGuideStore, type WishlistSort } from '../../../stores/guideStore'
 import { useGuideOverview } from '../../../api/guide'
@@ -263,19 +271,14 @@ export function WishlistPanel() {
               </button>
             ))}
           </div>
-          {view === 'projects' && sections.length > 0 && (
-            <button
-              type="button"
-              className="guide-link-button"
-              onClick={() => setCollapsedProjects(allProjectsCollapsed ? [] : sectionKeys)}
-            >
-              {allProjectsCollapsed ? 'Expand all' : 'Collapse all'}
-            </button>
-          )}
           <button type="button" className="guide-checkup__run" onClick={() => setAdding('wish')}>
             <Plus size={13} aria-hidden /> Add a wish
           </button>
-          <button type="button" className="guide-link-button" onClick={() => setAdding('project')}>
+          <button
+            type="button"
+            className="guide-checkup__run guide-checkup__run--secondary"
+            onClick={() => setAdding('project')}
+          >
             Add a project
           </button>
           <button
@@ -305,6 +308,20 @@ export function WishlistPanel() {
             <div className="guide-wishlist__list">{rest.map((w) => card(w))}</div>
           ) : (
             <div className="guide-wishlist__list">
+              {/* At the head of the list, not in the toolbar: it acts on the
+                  section carets below it, so it sits where they start. */}
+              <button
+                type="button"
+                className="guide-wishlist__fold-all"
+                onClick={() => setCollapsedProjects(allProjectsCollapsed ? [] : sectionKeys)}
+              >
+                {allProjectsCollapsed ? (
+                  <ChevronsUpDown size={14} aria-hidden />
+                ) : (
+                  <ChevronsDownUp size={14} aria-hidden />
+                )}
+                {allProjectsCollapsed ? 'Expand all' : 'Collapse all'}
+              </button>
               {sections.map((section) => {
                 const key = section.project?.id ?? 'loose'
                 return (
