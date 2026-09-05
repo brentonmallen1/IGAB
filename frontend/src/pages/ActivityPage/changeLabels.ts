@@ -22,6 +22,8 @@ export function entityTypeLabel(entityType: string): string {
     case 'wishlist':
       // The reorder pseudo-subject, like 'budget' above.
       return 'wishlist'
+    case 'category_target':
+      return 'target'
     default:
       return entityType
   }

@@ -2,15 +2,30 @@ import uuid
 from datetime import date
 from decimal import Decimal
 
-from igab.db.models import CategoryTarget
+from igab.db.models import Category, CategoryTarget
 from igab.domain.dates import months_between
 from igab.domain.enums import TargetStatus
+from igab.domain.exceptions import NotFoundError
 from igab.repositories.target_repo import TargetRepository
+from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match
 
 
 class TargetService:
     def __init__(self, repo: TargetRepository) -> None:
         self.repo = repo
+        # Targets are money rules, so every mutation records (change_log.py).
+        # Recording lives here rather than in the router because the
+        # wishlist's envelope goals and the planner's apply-targets both
+        # write through this service — a router-side record would cover one
+        # path of three. `batch_id` lets those callers group the target row
+        # with their own, so the compound operation undoes as one unit.
+        self.changes = ChangeRecorder(repo.session)
+
+    async def _budget_of(self, category_id: uuid.UUID) -> uuid.UUID:
+        category = await self.repo.session.get(Category, category_id)
+        if category is None:
+            raise NotFoundError("Category", str(category_id))
+        return category.budget_id
 
     async def get(self, category_id: uuid.UUID) -> CategoryTarget | None:
         return await self.repo.get_by_category(category_id)
@@ -22,25 +37,61 @@ class TargetService:
         target_amount: Decimal,
         target_date: date | None = None,
         repeat_frequency: str | None = None,
+        *,
+        batch_id: uuid.UUID | None = None,
     ) -> CategoryTarget:
+        budget_id = await self._budget_of(category_id)
         existing = await self.repo.get_by_category(category_id)
         if existing is None:
-            return await self.repo.create(
+            created = await self.repo.create(
                 category_id=category_id,
                 target_type=target_type,
                 target_amount=target_amount,
                 target_date=target_date,
                 repeat_frequency=repeat_frequency,
             )
-        return await self.repo.update(
+            await self.changes.record(
+                budget_id=budget_id,
+                entity_type="category_target",
+                entity_id=created.id,
+                action="create",
+                after=snapshot("category_target", created),
+                batch_id=batch_id,
+            )
+            return created
+        before = snapshot("category_target", existing)
+        updated = await self.repo.update(
             existing.id,
             target_type=target_type,
             target_amount=target_amount,
             target_date=target_date,
             repeat_frequency=repeat_frequency,
         )
+        after = snapshot("category_target", updated)
+        if snapshots_match(after, before):  # non-empty diff — something changed
+            await self.changes.record(
+                budget_id=budget_id,
+                entity_type="category_target",
+                entity_id=updated.id,
+                action="update",
+                before=before,
+                after=after,
+                batch_id=batch_id,
+            )
+        return updated
 
-    async def delete(self, category_id: uuid.UUID) -> None:
+    async def delete(self, category_id: uuid.UUID, *, batch_id: uuid.UUID | None = None) -> None:
+        existing = await self.repo.get_by_category(category_id)
+        if existing is None:
+            return
+        await self.changes.record(
+            budget_id=await self._budget_of(category_id),
+            entity_type="category_target",
+            entity_id=existing.id,
+            action="delete",
+            before=snapshot("category_target", existing),
+            batch_id=batch_id,
+        )
         await self.repo.delete(category_id)
 
     def needed_gross(

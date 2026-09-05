@@ -381,7 +381,23 @@ class WishlistService:
             category_group_id=group.id,
             name=name,
         )
-        await self.targets.upsert(category.id, "savings_balance", quantize_cents(cost), want_by)
+        # The envelope and its goal are the wish's own side effects, recorded
+        # into the caller's open batch so undoing the wish removes them too —
+        # without the batch, ⌘Z peeled them off one keystroke at a time.
+        await self.changes.record(
+            budget_id=budget_id,
+            entity_type="category",
+            entity_id=category.id,
+            action="create",
+            after=snapshot("category", category),
+        )
+        await self.targets.upsert(
+            category.id,
+            "savings_balance",
+            quantize_cents(cost),
+            want_by,
+            batch_id=self.changes.current_batch_id,
+        )
         return category
 
     async def create(self, budget_id: uuid.UUID, data: dict[str, Any]) -> dict[str, Any]:
@@ -395,55 +411,58 @@ class WishlistService:
 
         category_id: uuid.UUID | None = None
         owns = False
-        if mode == "own":
-            category_id = (
-                await self._create_envelope(budget_id, name, cost, funding.get("want_by"))
-            ).id
-            owns = True
-        elif mode == "existing":
-            category_id = await self._checked_category(budget_id, funding.get("category_id"))
+        # One batch: a wish born with its own envelope records the category,
+        # the goal, and the wish as a unit, so one ⌘Z takes all three back.
+        with self.changes.batch():
+            if mode == "own":
+                category_id = (
+                    await self._create_envelope(budget_id, name, cost, funding.get("want_by"))
+                ).id
+                owns = True
+            elif mode == "existing":
+                category_id = await self._checked_category(budget_id, funding.get("category_id"))
 
-        project_id = data.get("project_id")
-        if project_id is not None:
-            await self._get_project(budget_id, project_id)
+            project_id = data.get("project_id")
+            if project_id is not None:
+                await self._get_project(budget_id, project_id)
 
-        priority = data.get("priority")
-        if priority is None:
-            last = (
-                await self.session.execute(
-                    select(func.coalesce(func.max(WishlistItem.priority), -1)).where(
-                        WishlistItem.budget_id == budget_id
+            priority = data.get("priority")
+            if priority is None:
+                last = (
+                    await self.session.execute(
+                        select(func.coalesce(func.max(WishlistItem.priority), -1)).where(
+                            WishlistItem.budget_id == budget_id
+                        )
                     )
-                )
-            ).scalar_one()
-            priority = int(last) + 1
+                ).scalar_one()
+                priority = int(last) + 1
 
-        cooling_days = data.get("cooling_days")
-        if cooling_days is None:
-            cooling_days = settings["cooling_days"]
+            cooling_days = data.get("cooling_days")
+            if cooling_days is None:
+                cooling_days = settings["cooling_days"]
 
-        item = WishlistItem(
-            budget_id=budget_id,
-            project_id=project_id,
-            name=name,
-            url=data.get("url"),
-            notes=data.get("notes"),
-            cost=cost,
-            category_id=category_id,
-            owns_envelope=owns,
-            priority=priority,
-            status="open",
-            cooling_until=cooling_until_for(today, cooling_days),
-        )
-        self.session.add(item)
-        await self.session.flush()
-        await self.changes.record(
-            budget_id=budget_id,
-            entity_type="wishlist_item",
-            entity_id=item.id,
-            action="create",
-            after=snapshot("wishlist_item", item),
-        )
+            item = WishlistItem(
+                budget_id=budget_id,
+                project_id=project_id,
+                name=name,
+                url=data.get("url"),
+                notes=data.get("notes"),
+                cost=cost,
+                category_id=category_id,
+                owns_envelope=owns,
+                priority=priority,
+                status="open",
+                cooling_until=cooling_until_for(today, cooling_days),
+            )
+            self.session.add(item)
+            await self.session.flush()
+            await self.changes.record(
+                budget_id=budget_id,
+                entity_type="wishlist_item",
+                entity_id=item.id,
+                action="create",
+                after=snapshot("wishlist_item", item),
+            )
         await self._sync_tags(budget_id, [await self._envelope_of(budget_id, item)])
         return await self.item_out(budget_id, item.id)
 
@@ -455,57 +474,63 @@ class WishlistService:
         before = snapshot("wishlist_item", item)
         before_envelope = await self._envelope_of(budget_id, item)
 
-        if "name" in data:
-            item.name = data["name"].strip()
-        for key in ("url", "notes", "cooling_until"):
-            if key in data:
-                setattr(item, key, data[key])
-        if "priority" in data and data["priority"] is not None:
-            item.priority = int(data["priority"])
-        if "cost" in data and data["cost"] is not None:
-            item.cost = quantize_cents(Decimal(data["cost"]))
-            if item.owns_envelope and item.category_id:
-                # One-way: the wish's cost sets the goal. The budget page may
-                # move the goal afterwards; the two are allowed to differ.
-                target = await self.targets.get(item.category_id)
-                await self.targets.upsert(
-                    item.category_id,
-                    target.target_type if target else "savings_balance",
-                    item.cost,
-                    target.target_date if target else None,
-                    target.repeat_frequency if target else None,
-                )
-        if "project_id" in data:
-            if data["project_id"] is not None:
-                await self._get_project(budget_id, data["project_id"])
-            item.project_id = data["project_id"]
-        if "funding" in data and data["funding"] is not None:
-            mode = data["funding"].get("mode", "none")
-            if mode == "own":
-                raise InvariantViolation("An envelope of its own is chosen when a wish is added")
-            if mode == "existing":
-                item.category_id = await self._checked_category(
-                    budget_id, data["funding"].get("category_id")
-                )
-            else:
-                item.category_id = None
-            item.owns_envelope = False
-        if "status" in data and data["status"] is not None:
-            self._apply_status(item, data["status"])
-        if "is_priority" in data and data["is_priority"] is not None:
-            await self._apply_priority(budget_id, item, bool(data["is_priority"]))
+        # One batch: a cost edit that moves the envelope's goal records both
+        # rows as a unit, so one ⌘Z takes the pair back together.
+        with self.changes.batch():
+            if "name" in data:
+                item.name = data["name"].strip()
+            for key in ("url", "notes", "cooling_until"):
+                if key in data:
+                    setattr(item, key, data[key])
+            if "priority" in data and data["priority"] is not None:
+                item.priority = int(data["priority"])
+            if "cost" in data and data["cost"] is not None:
+                item.cost = quantize_cents(Decimal(data["cost"]))
+                if item.owns_envelope and item.category_id:
+                    # One-way: the wish's cost sets the goal. The budget page may
+                    # move the goal afterwards; the two are allowed to differ.
+                    target = await self.targets.get(item.category_id)
+                    await self.targets.upsert(
+                        item.category_id,
+                        target.target_type if target else "savings_balance",
+                        item.cost,
+                        target.target_date if target else None,
+                        target.repeat_frequency if target else None,
+                        batch_id=self.changes.current_batch_id,
+                    )
+            if "project_id" in data:
+                if data["project_id"] is not None:
+                    await self._get_project(budget_id, data["project_id"])
+                item.project_id = data["project_id"]
+            if "funding" in data and data["funding"] is not None:
+                mode = data["funding"].get("mode", "none")
+                if mode == "own":
+                    raise InvariantViolation(
+                        "An envelope of its own is chosen when a wish is added"
+                    )
+                if mode == "existing":
+                    item.category_id = await self._checked_category(
+                        budget_id, data["funding"].get("category_id")
+                    )
+                else:
+                    item.category_id = None
+                item.owns_envelope = False
+            if "status" in data and data["status"] is not None:
+                self._apply_status(item, data["status"])
+            if "is_priority" in data and data["is_priority"] is not None:
+                await self._apply_priority(budget_id, item, bool(data["is_priority"]))
 
-        await self.session.flush()
-        after = snapshot("wishlist_item", item)
-        if snapshots_match(after, before):  # non-empty diff — something changed
-            await self.changes.record(
-                budget_id=budget_id,
-                entity_type="wishlist_item",
-                entity_id=item.id,
-                action="update",
-                before=before,
-                after=after,
-            )
+            await self.session.flush()
+            after = snapshot("wishlist_item", item)
+            if snapshots_match(after, before):  # non-empty diff — something changed
+                await self.changes.record(
+                    budget_id=budget_id,
+                    entity_type="wishlist_item",
+                    entity_id=item.id,
+                    action="update",
+                    before=before,
+                    after=after,
+                )
         after_envelope = await self._envelope_of(budget_id, item)
         await self._sync_tags(budget_id, [before_envelope, after_envelope])
         return await self.item_out(budget_id, item.id)

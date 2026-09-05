@@ -52,6 +52,24 @@ def _opt_uuid(value: object) -> uuid.UUID | None:
     return uuid.UUID(str(value)) if value else None
 
 
+# Entities whose rows are removed outright rather than soft-deleted: nothing
+# references them by id, so a delete leaves no flag to flip back. Undo of a
+# delete (and redo of a create) re-inserts the recorded snapshot under its
+# original id via `_insert_hard_row`; undo of a create removes the row again.
+# The natural key names the columns that make a concurrent replacement
+# detectable — a second row on the same key since the delete is a person's
+# later decision, and undo refuses rather than fighting the unique index.
+HARD_ROW_NATURAL_KEY: dict[str, tuple[str, ...]] = {
+    "category_target": ("category_id",),
+}
+
+# The FK a re-inserted hard row hangs from. Checked before insert so a
+# vanished parent surfaces as a conflict message, never an IntegrityError.
+HARD_ROW_PARENT: dict[str, tuple[type, str]] = {
+    "category_target": (Category, "category_id"),
+}
+
+
 def _mark_undone(change: ChangeLog) -> None:
     """The one spelling of "this row is now undone": timestamp for people,
     `undo_seq` for the redo stack. A site that stamps one without the other
@@ -240,8 +258,15 @@ class UndoService:
             raise UndoConflict(f"Unknown entity type '{change.entity_type}'")
         entity: Any = await self.session.get(model, change.entity_id)
         if entity is None:
+            # Redo of a hard-row create: the undo removed the row, so put the
+            # recorded `after` back under its original id.
+            if change.action in ("create", "import") and change.entity_type in HARD_ROW_NATURAL_KEY:
+                await self._insert_hard_row(change, "after")
+                return
             raise UndoConflict("The affected item no longer exists")
         if change.action in ("create", "import"):
+            if change.entity_type in HARD_ROW_NATURAL_KEY:
+                raise UndoConflict("The item is already present")
             if not getattr(entity, "is_deleted", False):
                 raise UndoConflict("The item is already present")
             entity.is_deleted = False
@@ -264,6 +289,9 @@ class UndoService:
             # need the delete service, not a snapshot write. Refuse by name
             # rather than half-apply.
             raise UndoConflict("Redo of a category delete is not supported — delete it again")
+        elif change.action == "delete" and change.entity_type in HARD_ROW_NATURAL_KEY:
+            # Replaying a hard delete removes the row the undo re-inserted.
+            await self.session.delete(entity)
         elif change.action == "delete":
             if getattr(entity, "is_deleted", False):
                 raise UndoConflict("The item is already deleted")
@@ -326,17 +354,19 @@ class UndoService:
         entity = await self.session.get(model, change.entity_id)
         if entity is None:
             # A hard delete removed the row outright, so there is no flag to
-            # flip back — the record carries what to rebuild from. Only a
-            # category delete takes that path, and only when nothing recorded
-            # that the category existed, which is why rebuilding the bare rows
-            # is a complete inverse here and would not be anywhere else.
+            # flip back — the record carries what to rebuild from. The
+            # category path is bespoke (it rebuilds a family of rows); the
+            # hard-row entities re-insert their one snapshot generically.
             if (change.before or {}).get("_hard") and change.entity_type == "category":
                 await self._undo_hard_category_delete(change)
+                return
+            if change.action == "delete" and change.entity_type in HARD_ROW_NATURAL_KEY:
+                await self._insert_hard_row(change, "before")
                 return
             raise UndoConflict("The affected item no longer exists")
 
         if change.action in ("create", "import"):
-            self._undo_create(change, entity, force)
+            await self._undo_create(change, entity, force)
         elif change.action in ("update", "approve"):
             self._undo_update(change, entity, force)
             if change.entity_type == "assignment":
@@ -497,7 +527,14 @@ class UndoService:
         else:
             await CategoryRepository(self.session).reorder(change.entity_id, restored)
 
-    def _undo_create(self, change: ChangeLog, entity, force: bool) -> None:
+    async def _undo_create(self, change: ChangeLog, entity, force: bool) -> None:
+        if change.entity_type in HARD_ROW_NATURAL_KEY:
+            if not force and change.after is not None:
+                diff = snapshots_match(snapshot(change.entity_type, entity), change.after)
+                if diff:
+                    raise UndoConflict("The item has been edited since this change", fields=diff)
+            await self.session.delete(entity)
+            return
         if not hasattr(entity, "is_deleted"):
             raise UndoConflict("This item cannot be removed by undo")
         if entity.is_deleted:
@@ -591,6 +628,36 @@ class UndoService:
         for wish in rows.scalars():
             if wish.project_id is None and not wish.is_deleted:
                 wish.project_id = change.entity_id
+
+    async def _insert_hard_row(self, change: ChangeLog, side: str) -> None:
+        """Re-insert a hard-deleted row — undo of its delete, redo of its
+        create — from the recorded snapshot, under its original id.
+
+        The row's spot may have been re-taken since: a new target on the same
+        category, a new value point on the same date. That is a person's later
+        decision, so the restore refuses rather than fighting the unique key.
+        """
+        model: Any = ENTITY_MODELS[change.entity_type]
+        payload = getattr(change, side) or {}
+        fields = {f: coerce_value(model, f, v) for f, v in payload.items() if not f.startswith("_")}
+        if "budget_id" in model.__table__.columns and "budget_id" not in fields:
+            fields["budget_id"] = change.budget_id
+        parent = HARD_ROW_PARENT.get(change.entity_type)
+        if parent is not None:
+            parent_model, fk = parent
+            if fields.get(fk) is None or await self.session.get(parent_model, fields[fk]) is None:
+                raise UndoConflict("What this row belonged to no longer exists")
+        key = HARD_ROW_NATURAL_KEY[change.entity_type]
+        clauses = [getattr(model, col) == fields.get(col) for col in key]
+        taken: Any = (await self.session.execute(select(model).where(*clauses))).scalars().first()
+        if taken is not None:
+            if taken.id == change.entity_id:
+                # Something already put it back. Leave it as it stands rather
+                # than overwriting — the rule every other branch here follows.
+                return
+            raise UndoConflict("Its place has been taken by a newer entry — remove that one first")
+        self.session.add(model(id=change.entity_id, **fields))
+        await self.session.flush()
 
     async def _undo_hard_category_delete(self, change: ChangeLog) -> None:
         """Rebuild categories (and their group) that were removed outright.

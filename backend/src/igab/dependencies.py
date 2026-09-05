@@ -86,8 +86,12 @@ def get_target_repo(session: SessionDep) -> TargetRepository:
 
 def get_target_service(
     repo: Annotated[TargetRepository, Depends(get_target_repo)],
+    current_user: "CurrentUser",
 ) -> TargetService:
-    return TargetService(repo)
+    service = TargetService(repo)
+    # Same actor stamping as get_budget_service — see there.
+    service.changes.actor_user_id = current_user.id
+    return service
 
 
 def get_ai_service(
@@ -279,8 +283,14 @@ def get_wishlist_service(
     return service
 
 
-def get_category_plan_service(session: SessionDep) -> CategoryPlanService:
-    return CategoryPlanService(session)
+def get_category_plan_service(
+    session: SessionDep, current_user: "CurrentUser"
+) -> CategoryPlanService:
+    service = CategoryPlanService(session)
+    # The plan service builds its own TargetService (it predates DI); stamp
+    # that recorder too so apply-targets rows carry the acting user.
+    service.targets.changes.actor_user_id = current_user.id
+    return service
 
 
 def get_assign_service(

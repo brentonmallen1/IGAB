@@ -28,6 +28,7 @@ export interface Change {
     | 'wishlist_item'
     | 'wishlist_project'
     | 'wishlist'
+    | 'category_target'
   entity_id: string
   action:
     | 'create'
@@ -229,4 +230,8 @@ export function invalidateAfterUndo(
 
   // Wishlist: wishes, projects, and their reorders all live under one key.
   qc.invalidateQueries({ queryKey: [ROOT.wishlist, budgetId] })
+
+  // Targets — never in invalidateAfterCategoryChange, so listed here.
+  qc.invalidateQueries({ queryKey: [ROOT.target] })
+  qc.invalidateQueries({ queryKey: [ROOT.targets] })
 }

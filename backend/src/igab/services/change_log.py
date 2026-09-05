@@ -2,13 +2,17 @@
 
 Write paths call `ChangeRecorder.record()` explicitly — no ORM-event magic —
 so what lands in the log is exactly what the services decide is a
-user-visible mutation. Scope: transactions, payees, categories, category
-groups, budget assignments, and wishlist items/projects — the standing rule
-is that EVERY user-visible mutation records, because the global undo is
-LIFO over this log and any uncovered domain makes ⌘Z silently revert
-something older and unrelated. Auto-created side effects (transfer payees,
-payees resolved during transaction entry) are deliberately not recorded:
-undoing them independently would orphan references.
+user-visible mutation. The standing rule is that EVERY user-visible mutation
+records, because the global undo is LIFO over this log and any uncovered
+domain makes ⌘Z silently revert something older and unrelated. Its corollary:
+every MANUAL record must have a working inverse in undo_service, or the
+first ⌘Z that reaches it jams on "cannot be undone". Auto-created side
+effects (transfer payees, payees resolved during transaction entry, derived
+tag syncs) are deliberately not recorded: undoing them independently would
+orphan references. The deliberate exclusions — whole-budget deletes and
+snapshot restores (they destroy this log itself), and rows with no budget to
+file under (users, app settings, SimpleFIN connections; `budget_id` here is
+NOT NULL) — are named in the API modules that own them.
 
 Snapshots hold every restorable field, serialized to JSON-safe values.
 Keys starting with "_" carry undo bookkeeping (e.g. attachment ids moved by
@@ -30,6 +34,7 @@ from igab.db.models import (
     BudgetAssignment,
     Category,
     CategoryGroup,
+    CategoryTarget,
     ChangeLog,
     Payee,
     Transaction,
@@ -54,6 +59,9 @@ ENTITY_MODELS: dict[str, type] = {
     # budget's wishes or wish projects (`_collection` bookkeeping says
     # which). Resolves to the budget row; nothing on it is restored.
     "wishlist": Budget,
+    # Hard-row entity (no is_deleted column): undo re-inserts from the
+    # snapshot — see undo_service.HARD_ROW_NATURAL_KEY.
+    "category_target": CategoryTarget,
 }
 
 # Restorable fields per entity. is_deleted is excluded on purpose — the
@@ -129,6 +137,13 @@ SNAPSHOT_FIELDS: dict[str, tuple[str, ...]] = {
         "done_at",
     ),
     "wishlist_project": ("name", "category_id", "notes", "sort_order"),
+    "category_target": (
+        "category_id",
+        "target_type",
+        "target_amount",
+        "target_date",
+        "repeat_frequency",
+    ),
 }
 
 
@@ -238,6 +253,14 @@ class ChangeRecorder:
         finally:
             if owner:
                 self._batch_id = None
+
+    @property
+    def current_batch_id(self) -> uuid.UUID | None:
+        """The open batch, for handing to ANOTHER service's recorder so a
+        compound operation that crosses services still undoes as one unit
+        (batch_id is just a column — it does not care which recorder wrote
+        the row). None outside a batch, which `record` treats as unbatched."""
+        return self._batch_id
 
     async def record(
         self,

@@ -206,3 +206,31 @@ class TestProjectUndo:
         await _undo(api_client, budget)
         body = (await api_client.get(_url(budget))).json()
         assert [p["name"] for p in body["projects"]] == ["A", "B"]
+
+    async def test_undoing_an_own_envelope_wish_takes_its_envelope_and_goal_too(
+        self, db_session, api_client
+    ):
+        """A wish born with its own envelope records the category, the goal
+        and the wish as one batch — one ⌘Z, three rows back. Before the
+        batch, undo peeled them off one keystroke at a time and left an
+        orphan envelope carrying a goal for a wish that no longer existed."""
+        budget = await _budget(db_session, api_client)
+        wish = await _add(api_client, budget, name="Kayak", funding={"mode": "own"})
+        envelope_id = wish["funding"]["category_id"]
+        assert envelope_id is not None
+
+        undone = await _undo(api_client, budget)
+        assert (undone["entity_type"], undone["action"]) == ("wishlist_item", "create")
+        assert await _items(api_client, budget) == []
+        cats = (await api_client.get(f"/api/v1/{budget.id}/categories")).json()
+        assert envelope_id not in [c["id"] for c in cats]
+        r = await api_client.get(f"/api/v1/categories/{envelope_id}/target")
+        assert r.status_code == 404  # the category 404s, so its goal does too
+
+        r = await api_client.post(f"/api/v1/{budget.id}/changes/redo")
+        assert r.status_code == 200, r.text
+        [restored] = await _items(api_client, budget)
+        assert restored["id"] == wish["id"]
+        assert restored["funding"]["category_id"] == envelope_id
+        target = (await api_client.get(f"/api/v1/categories/{envelope_id}/target")).json()
+        assert target["target_amount"] == 1800.0
