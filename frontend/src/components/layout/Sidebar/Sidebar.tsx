@@ -22,6 +22,7 @@ import {
   Sparkles,
   History,
   Compass,
+  Heart,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAccounts } from '../../../api/accounts'
@@ -44,6 +45,7 @@ import {
   sidebarTypeGroupId,
 } from './sidebarGroups'
 import { useBudgets } from '../../../api/budgets'
+import { useGuideOverview } from '../../../api/guide'
 import { useLiabilities } from '../../../api/liabilities'
 import { useAssets } from '../../../api/assets'
 import {
@@ -70,6 +72,10 @@ export function Sidebar() {
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const clearCurrentBudget = useAppStore((s) => s.clearCurrentBudget)
   const navigate = useNavigate()
+  // Same optimistic default as GuidePage: the wishlist ships on, so a flash
+  // of a missing entry is the rarer wrong guess while the overview loads.
+  const { data: guideOverview } = useGuideOverview(budgetId)
+  const wishlistOn = guideOverview ? guideOverview.preferences.wishlist : true
   const { pathname } = useLocation()
   const { formatMoney } = useFormatters()
   const { data: accounts } = useAccounts(budgetId)
@@ -237,6 +243,17 @@ export function Sidebar() {
             <Compass size={16} />
             {!collapsed && <span>Guide</span>}
           </NavLink>
+          {wishlistOn && (
+            <NavLink
+              to="/wishlist"
+              className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`}
+              title="Wishlist"
+              aria-label="Wishlist"
+            >
+              <Heart size={16} />
+              {!collapsed && <span>Wishlist</span>}
+            </NavLink>
+          )}
           <NavLink
             to="/scheduled"
             className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`}

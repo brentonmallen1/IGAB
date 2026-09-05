@@ -4,7 +4,7 @@ import { PERSIST_KEYS } from './persistKeys'
 import type { StageId, ToolId } from '../content/roadmap'
 import type { GlossaryId } from '../content/glossary'
 
-export type GuideTab = 'roadmap' | 'checkup' | 'tools' | 'glossary' | 'wishlist'
+export type GuideTab = 'roadmap' | 'checkup' | 'tools' | 'glossary'
 
 export interface GuideTabDef {
   id: GuideTab
@@ -16,7 +16,6 @@ export const GUIDE_TABS: GuideTabDef[] = [
   { id: 'checkup', label: 'Checkup' },
   { id: 'tools', label: 'Tools' },
   { id: 'glossary', label: 'Glossary' },
-  { id: 'wishlist', label: 'Wishlist' },
 ]
 
 /** How the roadmap is rendered.
@@ -27,7 +26,11 @@ export const GUIDE_TABS: GuideTabDef[] = [
  * boxes and arrows, pannable and zoomable, foldable a step at a time. */
 export type RoadmapView = 'journey' | 'browse' | 'map'
 
-/** The wishlist as one list sorted, or grouped under its projects. */
+/** The wishlist as one list sorted, or grouped under its projects.
+ *
+ * The wishlist page moved out of the Guide, but its view preferences stay in
+ * this store: moving them would orphan what people already have persisted
+ * under the guide key, for no gain a user could see. */
 export type WishlistView = 'flat' | 'projects'
 export type WishlistSort = 'reach' | 'priority' | 'cost' | 'added' | 'name'
 

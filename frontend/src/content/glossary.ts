@@ -153,7 +153,7 @@ export const GLOSSARY: GlossaryEntry[] = [
     short: 'A deliberate wait between wanting something and buying it.',
     body: 'Most impulse purchases do not survive a month on a list. A cooling-off period is that month, made explicit: the wish sits, the envelope fills or does not, and at the end you decide with the urgency gone. The friction is the feature — an impulse that survives it was never an impulse.',
     inIgab:
-      'Every wish on the Guide’s wishlist gets one (30 days by default, adjustable per wish and per budget). Until it passes, the wish reads "cooling off until <date>" and the Done button keeps quiet.',
+      'Every wish on the wishlist gets one (30 days by default, adjustable per wish and per budget). Until it passes, the wish reads "cooling off until <date>" and the Done button keeps quiet.',
     related: ['sinking-fund', 'target'],
   },
   {

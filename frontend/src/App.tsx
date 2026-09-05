@@ -75,6 +75,9 @@ const LiabilitiesOverviewPage = lazy(() =>
 const GuidePage = lazy(() =>
   import('./pages/GuidePage/GuidePage').then((m) => ({ default: m.GuidePage }))
 )
+const WishlistPage = lazy(() =>
+  import('./pages/WishlistPage/WishlistPage').then((m) => ({ default: m.WishlistPage }))
+)
 const LiabilityPage = lazy(() =>
   import('./pages/LiabilityPage/LiabilityPage').then((m) => ({ default: m.LiabilityPage }))
 )
@@ -181,6 +184,7 @@ function App() {
                 <Route path="/import" element={page(<ImportPage />)} />
                 <Route path="/reports" element={page(<ReportsPage />)} />
                 <Route path="/guide" element={page(<GuidePage />)} />
+                <Route path="/wishlist" element={page(<WishlistPage />)} />
                 <Route path="/scheduled" element={page(<ScheduledTransactionsPage />)} />
                 <Route path="/payees" element={page(<PayeesPage />)} />
                 <Route path="/ai-activity" element={page(<AIActivityPage />)} />

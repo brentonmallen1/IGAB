@@ -274,13 +274,20 @@ describe('CommandPalette derived destinations', () => {
     expect(await screen.findByText('Settings: Users')).toBeInTheDocument()
   })
 
-  it('does not offer a guide tab that preferences have switched off', async () => {
+  it('reaches the wishlist page by name', async () => {
+    renderPalette()
+    await type('wishlist')
+    await userEvent.click(await screen.findByText('Wishlist'))
+    expect(navigate).toHaveBeenCalledWith('/wishlist')
+  })
+
+  it('does not offer a destination that preferences have switched off', async () => {
     guideOverview.mockReturnValue({
       data: { preferences: { personalization: true, checkup: true, wishlist: false } },
     })
     renderPalette()
     await type('wishlist')
-    await waitFor(() => expect(screen.queryByText('Guide: Wishlist')).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.queryByText('Wishlist')).not.toBeInTheDocument())
   })
 
   it('stays quiet until something is typed', async () => {

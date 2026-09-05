@@ -8,6 +8,7 @@ import {
   Settings,
   ChevronDown,
   ChevronLeft,
+  Heart,
   LogOut,
   Moon,
   Palette,
@@ -20,6 +21,7 @@ import {
 } from 'lucide-react'
 import { BottomSheet } from '../../common/BottomSheet/BottomSheet'
 import { PALETTES, getPaletteForTheme, isLightTheme } from '../../../stores/appStore'
+import { useGuideOverview } from '../../../api/guide'
 import { useUpdateStatus } from '../../../api/system'
 import { useCurrentUser, useLogout } from '../../../api/auth'
 import { useAppStore } from '../../../stores/appStore'
@@ -65,6 +67,10 @@ export function MoreSheet() {
   const logout = useLogout()
   const { data: me } = useCurrentUser()
   const updateAvailable = useUpdateStatus().data?.update_available === true
+  const budgetId = useAppStore((s) => s.currentBudgetId)
+  // Optimistic while loading, like the sidebar: the wishlist ships on.
+  const { data: guideOverview } = useGuideOverview(budgetId)
+  const wishlistOn = guideOverview ? guideOverview.preferences.wishlist : true
 
   function go(path: string) {
     closeMoreSheet()
@@ -88,6 +94,12 @@ export function MoreSheet() {
           <Compass size={18} />
           <span>Guide</span>
         </button>
+        {wishlistOn && (
+          <button className="more-sheet__item press-scale" onClick={() => go('/wishlist')}>
+            <Heart size={18} />
+            <span>Wishlist</span>
+          </button>
+        )}
         <button className="more-sheet__item press-scale" onClick={() => go('/scheduled')}>
           <CalendarClock size={18} />
           <span>Scheduled</span>

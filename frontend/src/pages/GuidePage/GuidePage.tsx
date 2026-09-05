@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useGuideStore, GUIDE_TABS, type GuideTab } from '../../stores/guideStore'
 import { TOOL_IDS, type ToolId } from '../../content/roadmap'
 import { GLOSSARY_IDS, type GlossaryId } from '../../content/glossary'
@@ -9,12 +9,13 @@ import { RoadmapPanel } from '../../components/guide/RoadmapPanel'
 import { GlossaryPanel } from '../../components/guide/GlossaryPanel'
 import { CheckupPanel } from '../../components/guide/CheckupPanel'
 import { ToolsPanel } from '../../components/guide/tools/ToolsPanel'
-import { WishlistPanel } from '../../components/guide/wishlist/WishlistPanel'
 import './GuidePage.css'
 
 /**
  * Guidance and tools — the roadmap, a financial checkup, scenario
- * calculators, a glossary and a wishlist.
+ * calculators and a glossary. The wishlist lived here once; it is a working
+ * tool rather than guidance, so it has a page of its own now, and old
+ * `?tab=wishlist` links are walked over to it.
  *
  * Shell-plus-tab-router, the same shape as ReportsPage. The Checkup tab is
  * offered only while health reviews are on — off means the tab, the report
@@ -33,10 +34,7 @@ export function GuidePage() {
   const checkupOn = overview
     ? overview.preferences.personalization && overview.preferences.checkup
     : true
-  const wishlistOn = overview ? overview.preferences.wishlist : true
-  const tabs = GUIDE_TABS.filter(
-    (t) => (t.id !== 'checkup' || checkupOn) && (t.id !== 'wishlist' || wishlistOn)
-  )
+  const tabs = GUIDE_TABS.filter((t) => t.id !== 'checkup' || checkupOn)
 
   // The map pans and zooms inside its own viewport. If the page scrolled too,
   // one wheel gesture would drive both — which is exactly as confusing as it
@@ -54,11 +52,17 @@ export function GuidePage() {
   // (`/guide?tab=tools&tool=payoff-plan`). Read once, then the stored state
   // takes over — the same shape ReportsPage uses for `?tab=`.
   const [searchParams, setSearchParams] = useSearchParams()
+  const navigate = useNavigate()
   useEffect(() => {
     const tab = searchParams.get('tab')
     const tool = searchParams.get('tool')
     const term = searchParams.get('term')
     if (!tab && !tool && !term) return
+    // The wishlist's old address, honoured: it was a tab here for weeks.
+    if (tab === 'wishlist') {
+      navigate('/wishlist', { replace: true })
+      return
+    }
     if (tab && GUIDE_TABS.some((t) => t.id === tab)) setActiveTab(tab as GuideTab)
     if (tool && (TOOL_IDS as readonly string[]).includes(tool)) setActiveTool(tool as ToolId)
     // Validated against the id list exactly as ?tool= is: a term that no
@@ -67,7 +71,7 @@ export function GuidePage() {
       setOpenGlossaryTerm(term as GlossaryId)
     }
     setSearchParams({}, { replace: true })
-  }, [searchParams, setActiveTab, setActiveTool, setOpenGlossaryTerm, setSearchParams])
+  }, [navigate, searchParams, setActiveTab, setActiveTool, setOpenGlossaryTerm, setSearchParams])
 
   function renderTab() {
     switch (activeTab) {
@@ -79,8 +83,6 @@ export function GuidePage() {
         return <CheckupPanel />
       case 'tools':
         return <ToolsPanel />
-      case 'wishlist':
-        return <WishlistPanel />
     }
   }
 

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { GuidePage } from './GuidePage'
 import { useAppStore } from '../../stores/appStore'
@@ -24,7 +24,11 @@ function renderPage(path = '/guide') {
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={[path]}>
-        <GuidePage />
+        <Routes>
+          <Route path="/guide" element={<GuidePage />} />
+          {/* A probe, so the wishlist hand-off is observable as a render. */}
+          <Route path="/wishlist" element={<div>wishlist page</div>} />
+        </Routes>
       </MemoryRouter>
     </QueryClientProvider>
   )
@@ -63,11 +67,24 @@ describe('GuidePage', () => {
     expect(useGuideStore.getState().activeTool).toBeNull()
   })
 
-  it('hides the Wishlist tab when the wishlist is off', () => {
-    prefs({ personalization: true, checkup: true, wishlist: false })
+  it('offers no Wishlist tab — the wishlist has a page of its own now', () => {
+    prefs({ personalization: true, checkup: true })
     renderPage()
     expect(screen.queryByRole('button', { name: 'Wishlist' })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Checkup' })).toBeInTheDocument()
+  })
+
+  it("walks the wishlist's old tab address over to its page", () => {
+    prefs({ personalization: true, checkup: true })
+    renderPage('/guide?tab=wishlist')
+    expect(screen.getByText('wishlist page')).toBeInTheDocument()
+  })
+
+  it('bounces a stale persisted wishlist tab to the roadmap', () => {
+    // Anyone who last had the Guide open on the wishlist tab rehydrates this.
+    prefs({ personalization: true, checkup: true })
+    useGuideStore.setState({ activeTab: 'wishlist' as never })
+    renderPage()
+    expect(useGuideStore.getState().activeTab).toBe('roadmap')
   })
 
   it('falls back to the roadmap when the persisted tab is switched off', () => {

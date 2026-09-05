@@ -10,6 +10,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Compass,
+  Heart,
   Landmark,
   LifeBuoy,
   Plus,
@@ -152,9 +153,19 @@ export const STATIC_COMMANDS: AppCommand[] = [
     id: 'nav-guide',
     label: 'Guide',
     section: 'Navigate',
-    keywords: 'roadmap education glossary learn help checkup wishlist',
+    keywords: 'roadmap education glossary learn help checkup',
     icon: Compass,
     run: (c) => c.navigate('/guide'),
+  },
+  {
+    // A Guide tab once, its own page now. The one static destination a
+    // preference can switch off — the palette filters it by id when it is.
+    id: 'nav-wishlist',
+    label: 'Wishlist',
+    section: 'Navigate',
+    keywords: 'wants wish priorities cooling',
+    icon: Heart,
+    run: (c) => c.navigate('/wishlist'),
   },
   {
     id: 'nav-scheduled',
@@ -232,8 +243,10 @@ export const STATIC_COMMANDS: AppCommand[] = [
 export interface DerivedCommandCtx {
   budgetId: string | null
   isAdmin: boolean
-  /** Guide tabs switched off in preferences. Offering one would navigate to a
-   *  tab GuidePage does not render — and it bounces to Roadmap. */
+  /** Destinations switched off in guide preferences. Guide tabs here gate the
+   *  derived rows below; 'wishlist' rides along for the palette itself, which
+   *  reads it to hide the static Wishlist row (a Guide tab once, its own page
+   *  now, gated by the same preference). */
   hiddenGuideTabs: readonly string[]
 }
 
