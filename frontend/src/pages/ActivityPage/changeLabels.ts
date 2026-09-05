@@ -50,6 +50,10 @@ export function entityTypeLabel(entityType: string): string {
       return 'account'
     case 'account_type':
       return 'account type'
+    case 'reconciliation':
+      return 'reconciliation'
+    case 'transaction_match':
+      return 'duplicate match'
     default:
       return entityType
   }

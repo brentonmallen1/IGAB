@@ -464,6 +464,13 @@ function summarizeSnapshot(change: Change, snap: Record<string, unknown> | null)
     }
   }
 
+  if (change.entity_type === 'reconciliation') {
+    const statement = snap.statement_balance as string | undefined
+    if (statement) {
+      return `Statement $${parseApiDecimal(statement).toFixed(2)}`
+    }
+  }
+
   // Everything else that carries a name (or an account type's label) is
   // summarized by it.
   return ((snap.name ?? snap.label) as string) ?? ''

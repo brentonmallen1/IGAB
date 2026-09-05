@@ -79,6 +79,7 @@ HARD_ROW_NATURAL_KEY: dict[str, tuple[str, ...]] = {
     "liability_snapshot": ("liability_id", "date"),
     "asset_value": ("asset_id", "date"),
     "account_type": ("budget_id", "key"),
+    "reconciliation": ("account_id", "reconciled_at"),
 }
 
 # The FK a re-inserted hard row hangs from. Checked before insert so a
@@ -287,6 +288,9 @@ class UndoService:
         if entity is None:
             # Redo of a hard-row create: the undo removed the row, so put the
             # recorded `after` back under its original id.
+            if change.action == "create" and change.entity_type == "reconciliation":
+                await self._redo_reconcile(change)
+                return
             if change.action in ("create", "import") and change.entity_type in HARD_ROW_NATURAL_KEY:
                 await self._insert_hard_row(change, "after")
                 return
@@ -435,7 +439,9 @@ class UndoService:
                 return
             raise UndoConflict("The affected item no longer exists")
 
-        if change.action in ("create", "import"):
+        if change.action == "create" and change.entity_type == "reconciliation":
+            await self._undo_reconcile(change, entity)
+        elif change.action in ("create", "import"):
             await self._undo_create(change, entity, force)
         elif change.action == "update" and change.entity_type in ("category_tags", "payee_tags"):
             # Bookkeeping-only record: no fields to restore, so the generic
@@ -954,6 +960,69 @@ class UndoService:
                 self.session.add(
                     BudgetFilterCategory(filter_id=change.entity_id, category_id=cat_id)
                 )
+        await self.session.flush()
+
+    async def _undo_reconcile(self, change: ChangeLog, entity) -> None:
+        """Unreconcile: flip the locked rows back to cleared, put the
+        account's last-reconciled stamp back, and remove the snapshot row.
+
+        `_transaction_ids` names exactly the rows the finish locked; only
+        ones still reconciled flip back — one unreconciled by hand since was
+        re-decided by a person. The reconciliation guard elsewhere is what
+        makes this branch necessary AND safe: a locked row can only come
+        back under undo through the very record that locked it.
+        """
+        after = change.after or {}
+        txn_ids = [uuid.UUID(t) for t in after.get("_transaction_ids") or []]
+        for i in range(0, len(txn_ids), 1000):
+            await self.session.execute(
+                update(Transaction)
+                .where(
+                    Transaction.id.in_(txn_ids[i : i + 1000]),
+                    Transaction.cleared == ClearedStatus.RECONCILED,
+                )
+                .values(cleared="cleared")
+            )
+        account = await self.session.get(Account, entity.account_id)
+        stamp = after.get("_account_before") or {}
+        if account is not None:
+            account.last_reconciled_at = coerce_value(
+                Account, "last_reconciled_at", stamp.get("last_reconciled_at")
+            )
+            account.last_reconciled_balance = coerce_value(
+                Account, "last_reconciled_balance", stamp.get("last_reconciled_balance")
+            )
+        await self.session.delete(entity)
+        await self.session.flush()
+
+    async def _redo_reconcile(self, change: ChangeLog) -> None:
+        """Replay a finish the undo reversed: re-insert the snapshot row,
+        re-lock the rows it named (only ones still cleared), and re-stamp
+        the account."""
+        after = change.after or {}
+        await self._insert_hard_row(change, "after")
+        txn_ids = [uuid.UUID(t) for t in after.get("_transaction_ids") or []]
+        for i in range(0, len(txn_ids), 1000):
+            await self.session.execute(
+                update(Transaction)
+                .where(
+                    Transaction.id.in_(txn_ids[i : i + 1000]),
+                    Transaction.cleared == ClearedStatus.CLEARED,
+                )
+                .values(cleared="reconciled")
+            )
+        raw_account = after.get("account_id")
+        account = None
+        if raw_account:
+            account = await self.session.get(Account, uuid.UUID(str(raw_account)))
+        stamp = after.get("_account_after") or {}
+        if account is not None:
+            account.last_reconciled_at = coerce_value(
+                Account, "last_reconciled_at", stamp.get("last_reconciled_at")
+            )
+            account.last_reconciled_balance = coerce_value(
+                Account, "last_reconciled_balance", stamp.get("last_reconciled_balance")
+            )
         await self.session.flush()
 
     async def _refuse_if_referenced(self, change: ChangeLog) -> None:

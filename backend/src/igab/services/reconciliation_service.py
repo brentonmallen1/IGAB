@@ -12,6 +12,7 @@ from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.reconciliation_repo import ReconciliationRepository
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.repositories.txn_filters import BALANCE_ROW, CLEARED, not_future
+from igab.services.change_log import ChangeRecorder, serialize_value, snapshot
 from igab.services.transaction_service import TransactionCreate, TransactionService
 from igab.utils.clock import today_utc
 
@@ -32,6 +33,11 @@ class ReconciliationService:
         self.payee_repo = payee_repo
         self.transaction_repo = transaction_repo
         self.transaction_service = transaction_service
+        # Finishing a reconciliation records (change_log.py): it retroactively
+        # LOCKS rows against undo, so being invisible in Activity meant the
+        # user met "reconciled transactions cannot be removed" with no log
+        # entry explaining when the lock happened — and no way back.
+        self.changes = ChangeRecorder(session)
 
     async def get_status(self, account_id: uuid.UUID) -> dict:
         """Return current cleared balance and uncleared transaction count for the account.
@@ -131,47 +137,81 @@ class ReconciliationService:
         status = await self.get_status(account_id)
         cleared_balance = status["cleared_balance"]
 
-        difference = statement_balance - cleared_balance
-        if difference != 0:
-            adjustment = await self.create_adjustment(account_id, difference)
-            adjustment_transaction_id = adjustment.id
+        # One batch across both recorders (batch_id is just a column): ⌘Z
+        # after finishing takes back the lock, the account's stamp, AND the
+        # adjustment transaction — the unreconcile people ask for.
+        with self.transaction_service.changes.batch() as batch_id:
+            difference = statement_balance - cleared_balance
+            if difference != 0:
+                adjustment = await self.create_adjustment(account_id, difference)
+                adjustment_transaction_id = adjustment.id
 
-        # Mark all cleared → reconciled (includes the fresh adjustment).
-        # Future-dated cleared transactions stay merely "cleared": they were
-        # excluded from the balance above, so locking them as reconciled
-        # would bless amounts the statement never confirmed.
-        await self.session.execute(
-            update(Transaction)
-            .where(
+            # `_transaction_ids` names exactly the rows about to be locked, so
+            # undo flips back precisely those and nothing reconciled earlier.
+            lock_clauses = (
                 Transaction.account_id == account_id,
                 Transaction.is_deleted == False,  # noqa: E712
                 Transaction.cleared == "cleared",
                 Transaction.date <= today_utc(),
             )
-            .values(cleared="reconciled")
-        )
+            locked_ids = [
+                str(t)
+                for t in (
+                    await self.session.execute(select(Transaction.id).where(*lock_clauses))
+                ).scalars()
+            ]
 
-        # Update account reconciliation metadata
-        from datetime import datetime
-
-        await self.session.execute(
-            update(Account)
-            .where(Account.id == account_id)
-            .values(
-                last_reconciled_at=datetime.now(tz=UTC),
-                last_reconciled_balance=statement_balance,
+            # Mark all cleared → reconciled (includes the fresh adjustment).
+            # Future-dated cleared transactions stay merely "cleared": they were
+            # excluded from the balance above, so locking them as reconciled
+            # would bless amounts the statement never confirmed.
+            await self.session.execute(
+                update(Transaction).where(*lock_clauses).values(cleared="reconciled")
             )
-        )
 
-        snapshot = await self.repo.create(
-            account_id=account_id,
-            statement_balance=statement_balance,
-            cleared_balance=cleared_balance,
-            adjustment_amount=difference,
-            adjustment_transaction_id=adjustment_transaction_id,
-        )
-        await self.session.flush()
-        return snapshot
+            # Update account reconciliation metadata
+            from datetime import datetime
+
+            account = await self.account_repo.get_or_raise(account_id)
+            stamp_before = {
+                "last_reconciled_at": serialize_value(account.last_reconciled_at),
+                "last_reconciled_balance": serialize_value(account.last_reconciled_balance),
+            }
+            reconciled_at = datetime.now(tz=UTC)
+            await self.session.execute(
+                update(Account)
+                .where(Account.id == account_id)
+                .values(
+                    last_reconciled_at=reconciled_at,
+                    last_reconciled_balance=statement_balance,
+                )
+            )
+
+            row = await self.repo.create(
+                account_id=account_id,
+                statement_balance=statement_balance,
+                cleared_balance=cleared_balance,
+                adjustment_amount=difference,
+                adjustment_transaction_id=adjustment_transaction_id,
+            )
+            await self.changes.record(
+                budget_id=account.budget_id,
+                entity_type="reconciliation",
+                entity_id=row.id,
+                action="create",
+                after={
+                    **snapshot("reconciliation", row),
+                    "_transaction_ids": locked_ids,
+                    "_account_before": stamp_before,
+                    "_account_after": {
+                        "last_reconciled_at": serialize_value(reconciled_at),
+                        "last_reconciled_balance": serialize_value(statement_balance),
+                    },
+                },
+                batch_id=batch_id,
+            )
+            await self.session.flush()
+        return row
 
     async def get_history(self, account_id: uuid.UUID) -> list[ReconciliationSnapshot]:
         return await self.repo.get_history(account_id)

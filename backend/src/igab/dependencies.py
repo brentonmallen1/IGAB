@@ -323,8 +323,12 @@ def get_transaction_service(session: SessionDep, current_user: "CurrentUser") ->
 def get_transaction_matching_service(
     session: SessionDep,
     txn_service: Annotated[TransactionService, Depends(get_transaction_service)],
+    current_user: "CurrentUser",
 ) -> TransactionMatchingService:
-    return build_transaction_matching_service(session, txn_service)
+    service = build_transaction_matching_service(session, txn_service)
+    # Same actor stamping as get_budget_service — see there.
+    service.changes.actor_user_id = current_user.id
+    return service
 
 
 def get_simplefin_service(
@@ -347,10 +351,14 @@ def get_reconciliation_service(
     payee_repo: Annotated[PayeeRepository, Depends(get_payee_repo)],
     transaction_repo: Annotated[TransactionRepository, Depends(get_transaction_repo)],
     transaction_service: Annotated[TransactionService, Depends(get_transaction_service)],
+    current_user: "CurrentUser",
 ) -> ReconciliationService:
-    return ReconciliationService(
+    service = ReconciliationService(
         session, repo, account_repo, payee_repo, transaction_repo, transaction_service
     )
+    # Same actor stamping as get_budget_service — see there.
+    service.changes.actor_user_id = current_user.id
+    return service
 
 
 def get_scheduled_transaction_service(

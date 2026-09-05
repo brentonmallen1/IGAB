@@ -41,6 +41,8 @@ export interface Change {
     | 'payee_tags'
     | 'account'
     | 'account_type'
+    | 'reconciliation'
+    | 'transaction_match'
   entity_id: string
   action:
     | 'create'
@@ -262,4 +264,10 @@ export function invalidateAfterUndo(
   qc.invalidateQueries({ queryKey: [ROOT.accountHygiene] })
   qc.invalidateQueries({ queryKey: [ROOT.cardTimeline] })
   qc.invalidateQueries({ queryKey: [ROOT.scheduledTransactions] })
+
+  // Reconciliation state and duplicate-match reviews.
+  qc.invalidateQueries({ queryKey: [ROOT.reconcileStatus] })
+  qc.invalidateQueries({ queryKey: [ROOT.reconcileHistory] })
+  qc.invalidateQueries({ queryKey: [ROOT.simplefinMatches] })
+  qc.invalidateQueries({ queryKey: [ROOT.pendingMatchesAccount] })
 }

@@ -45,9 +45,11 @@ from igab.db.models import (
     Liability,
     LiabilityBalanceSnapshot,
     Payee,
+    ReconciliationSnapshot,
     ScheduledTransaction,
     Tag,
     Transaction,
+    TransactionMatch,
     WishlistItem,
     WishlistProject,
     new_uuid,
@@ -86,6 +88,11 @@ ENTITY_MODELS: dict[str, type] = {
     "payee_tags": Payee,
     "account": Account,
     "account_type": AccountType,
+    # A reconciliation is one hard row plus bookkeeping: `_transaction_ids`
+    # it locked, `_account_before`/`_account_after` for the account's
+    # last-reconciled stamp (kept out of the account snapshot on purpose).
+    "reconciliation": ReconciliationSnapshot,
+    "transaction_match": TransactionMatch,
 }
 
 # Restorable fields per entity. is_deleted is excluded on purpose — the
@@ -246,6 +253,21 @@ SNAPSHOT_FIELDS: dict[str, tuple[str, ...]] = {
         "description",
         "is_system",
         "sort_order",
+    ),
+    "reconciliation": (
+        "account_id",
+        "reconciled_at",
+        "statement_balance",
+        "cleared_balance",
+        "adjustment_amount",
+        "adjustment_transaction_id",
+        "note",
+    ),
+    "transaction_match": (
+        "synced_transaction_id",
+        "manual_transaction_id",
+        "confidence_score",
+        "status",
     ),
 }
 
