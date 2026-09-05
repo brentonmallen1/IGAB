@@ -32,6 +32,10 @@ class ChangeOut(ApiModel):
 class ChangeListResponse(ApiModel):
     changes: list[ChangeOut]
     total: int
+    #: id → display name for every reference this page's snapshots carry
+    #: (accounts, payees, categories, tags, …) — resolved server-side so
+    #: entities deleted since still name themselves in the feed.
+    names: dict[uuid.UUID, str] = {}
 
 
 class UndoResult(ApiModel):

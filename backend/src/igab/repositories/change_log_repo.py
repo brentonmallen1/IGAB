@@ -1,13 +1,85 @@
 import uuid
+from typing import Any
 
 from sqlalchemy import func, select
 
-from igab.db.models import ChangeLog, User
+from igab.db.models import (
+    Account,
+    Asset,
+    Category,
+    CategoryGroup,
+    ChangeLog,
+    Liability,
+    Payee,
+    Tag,
+    User,
+    WishlistProject,
+)
 from igab.repositories.base import BaseRepository
+
+# Snapshot fields that are references, and what they point at. The log stores
+# bare ids; the Activity page needs names — including for entities deleted
+# since, whose names no list endpoint serves — so `display_names` resolves a
+# page's worth in one query per model, is_deleted ignored on purpose.
+_REFERENCE_FIELDS: dict[str, Any] = {
+    "account_id": Account,
+    "transfer_account_id": Account,
+    "linked_account_id": Account,
+    "payee_id": Payee,
+    "category_id": Category,
+    "prior_category_id": Category,
+    "category_group_id": CategoryGroup,
+    "linked_liability_id": Liability,
+    "liability_id": Liability,
+    "asset_id": Asset,
+    "linked_asset_id": Asset,
+    "project_id": WishlistProject,
+}
+# List-shaped bookkeeping references (tag membership dumps).
+_REFERENCE_LIST_FIELDS: dict[str, Any] = {
+    "_tag_ids": Tag,
+}
 
 
 class ChangeLogRepository(BaseRepository[ChangeLog]):
     model = ChangeLog
+
+    async def display_names(self, changes: list[ChangeLog]) -> dict[uuid.UUID, str]:
+        """id → display name for every reference these rows carry.
+
+        Served beside the page rather than resolved client-side because the
+        client is genuinely missing the input: a change row can point at an
+        account or payee deleted since, and deleted names appear on no list
+        endpoint. One map for the whole page keeps the client dumb — it looks
+        up whichever ids it wants to show.
+        """
+        wanted: dict[Any, set[uuid.UUID]] = {}
+
+        def collect(snapshot: dict[str, Any] | None) -> None:
+            if not snapshot:
+                return
+            for field, value in snapshot.items():
+                model = _REFERENCE_FIELDS.get(field)
+                if model is not None and value:
+                    wanted.setdefault(model, set()).add(uuid.UUID(str(value)))
+                list_model = _REFERENCE_LIST_FIELDS.get(field)
+                if list_model is not None and isinstance(value, list):
+                    for item in value:
+                        if item:
+                            wanted.setdefault(list_model, set()).add(uuid.UUID(str(item)))
+
+        for change in changes:
+            collect(change.before)
+            collect(change.after)
+
+        names: dict[uuid.UUID, str] = {}
+        for model, ids in wanted.items():
+            result = await self.session.execute(
+                select(model.id, model.name).where(model.id.in_(ids))
+            )
+            for row_id, name in result.all():
+                names[row_id] = name
+        return names
 
     async def list_for_budget(
         self, budget_id: uuid.UUID, limit: int = 50, offset: int = 0

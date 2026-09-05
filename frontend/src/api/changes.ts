@@ -76,6 +76,9 @@ export interface Change {
 interface ChangesResponse {
   changes: Change[]
   total: number
+  /** id → display name for every reference this page's snapshots carry —
+   *  resolved server-side, so entities deleted since still name themselves. */
+  names: Record<string, string>
 }
 
 interface UndoResponse {
