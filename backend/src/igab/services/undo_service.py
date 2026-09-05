@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import (
     CHANGE_LOG_UNDO_SEQ,
+    Account,
     Asset,
     BudgetAssignment,
     BudgetFilterCategory,
@@ -35,6 +36,7 @@ from igab.db.models import (
     CategoryGroup,
     ChangeLog,
     Liability,
+    LiabilityBalanceSnapshot,
     Payee,
     ScheduledTransaction,
     Tag,
@@ -76,6 +78,7 @@ HARD_ROW_NATURAL_KEY: dict[str, tuple[str, ...]] = {
     "category_target": ("category_id",),
     "liability_snapshot": ("liability_id", "date"),
     "asset_value": ("asset_id", "date"),
+    "account_type": ("budget_id", "key"),
 }
 
 # The FK a re-inserted hard row hangs from. Checked before insert so a
@@ -84,6 +87,13 @@ HARD_ROW_PARENT: dict[str, tuple[type, str]] = {
     "category_target": (Category, "category_id"),
     "liability_snapshot": (Liability, "liability_id"),
     "asset_value": (Asset, "asset_id"),
+}
+
+# Rows that may point AT a hard row (no ondelete on the FK). Checked before a
+# hard delete — undo of a create, redo of a delete — so a referenced row
+# refuses with words rather than an IntegrityError.
+HARD_ROW_REFERENCERS: dict[str, tuple[Any, str]] = {
+    "account_type": (Account, "account_type_id"),
 }
 
 
@@ -325,6 +335,7 @@ class UndoService:
             raise UndoConflict("Redo of a category delete is not supported — delete it again")
         if change.entity_type in HARD_ROW_NATURAL_KEY:
             # Replaying a hard delete removes the row the undo re-inserted.
+            await self._refuse_if_referenced(change)
             await self.session.delete(entity)
             return
         if getattr(entity, "is_deleted", False):
@@ -353,6 +364,22 @@ class UndoService:
             await self.session.execute(
                 delete(payee_tags).where(payee_tags.c.tag_id == change.entity_id)
             )
+        elif change.entity_type == "account":
+            # Replaying the delete takes the ledger back down with it. The
+            # companion liability and unlinked categories are batch siblings
+            # and replay themselves; the balance-history backfill the original
+            # delete reconstructed is NOT replayed — a cosmetic loss in the
+            # converted liability's past net-worth points.
+            txn_ids = [uuid.UUID(t) for t in (change.before or {}).get("_transaction_ids") or []]
+            for i in range(0, len(txn_ids), 1000):
+                await self.session.execute(
+                    update(Transaction)
+                    .where(
+                        Transaction.id.in_(txn_ids[i : i + 1000]),
+                        Transaction.is_deleted == False,  # noqa: E712
+                    )
+                    .values(is_deleted=True)
+                )
 
     async def _remember_move(self, change: ChangeLog) -> None:
         """Redo of a move's row puts the audit row back, under its original id,
@@ -430,6 +457,8 @@ class UndoService:
             await self._undo_asset_delete(change, entity)
         elif change.action == "delete" and change.entity_type == "tag":
             await self._undo_tag_delete(change, entity)
+        elif change.action == "delete" and change.entity_type == "account":
+            await self._undo_account_delete(change, entity)
         elif change.action == "delete" and change.entity_type in ("budget_view", "budget_filter"):
             await self._undo_named_delete(change, entity)
         elif change.action == "delete":
@@ -590,6 +619,7 @@ class UndoService:
                 diff = snapshots_match(snapshot(change.entity_type, entity), change.after)
                 if diff:
                     raise UndoConflict("The item has been edited since this change", fields=diff)
+            await self._refuse_if_referenced(change)
             await self.session.delete(entity)
             return
         if not hasattr(entity, "is_deleted"):
@@ -756,6 +786,36 @@ class UndoService:
                 )
         await self.session.flush()
 
+    async def _undo_account_delete(self, change: ChangeLog, entity) -> None:
+        """Bring an account back with its ledger.
+
+        `_transaction_ids` names exactly the rows the delete soft-deleted;
+        only ones still deleted come back — one deleted individually since
+        the undo... cannot exist (the account was gone), but the guard costs
+        nothing and keeps the rule uniform. The companion liability's
+        conversion and the category unlinks are batch siblings and restore
+        themselves; `_backfill_snapshot_ids` names the balance-history points
+        the conversion reconstructed, which the undo removes again — the
+        re-linked companion reads the restored ledger, not those.
+        """
+        await self._undo_named_delete(change, entity)
+        before = change.before or {}
+        txn_ids = [uuid.UUID(t) for t in before.get("_transaction_ids") or []]
+        for i in range(0, len(txn_ids), 1000):
+            await self.session.execute(
+                update(Transaction)
+                .where(
+                    Transaction.id.in_(txn_ids[i : i + 1000]),
+                    Transaction.is_deleted == True,  # noqa: E712
+                )
+                .values(is_deleted=False)
+            )
+        backfill = [uuid.UUID(s) for s in before.get("_backfill_snapshot_ids") or []]
+        if backfill:
+            await self.session.execute(
+                delete(LiabilityBalanceSnapshot).where(LiabilityBalanceSnapshot.id.in_(backfill))
+            )
+
     async def _undo_named_delete(self, change: ChangeLog, entity) -> None:
         """Restore a soft-deleted row whose name is unique among LIVE rows
         (a partial index): a reused name since the delete surfaces as this
@@ -895,6 +955,21 @@ class UndoService:
                     BudgetFilterCategory(filter_id=change.entity_id, category_id=cat_id)
                 )
         await self.session.flush()
+
+    async def _refuse_if_referenced(self, change: ChangeLog) -> None:
+        """A hard delete of a row something still points at would be an
+        IntegrityError; say why instead."""
+        referencer = HARD_ROW_REFERENCERS.get(change.entity_type)
+        if referencer is None:
+            return
+        ref_model, fk = referencer
+        held = (
+            await self.session.execute(
+                select(getattr(ref_model, fk)).where(getattr(ref_model, fk) == change.entity_id)
+            )
+        ).first()
+        if held is not None:
+            raise UndoConflict("Something still uses this item — repoint or remove that first")
 
     async def _insert_hard_row(self, change: ChangeLog, side: str) -> None:
         """Re-insert a hard-deleted row — undo of its delete, redo of its

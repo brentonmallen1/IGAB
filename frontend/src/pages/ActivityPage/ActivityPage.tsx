@@ -464,8 +464,9 @@ function summarizeSnapshot(change: Change, snap: Record<string, unknown> | null)
     }
   }
 
-  // Everything else that carries a name is summarized by it.
-  return (snap.name as string) ?? ''
+  // Everything else that carries a name (or an account type's label) is
+  // summarized by it.
+  return ((snap.name ?? snap.label) as string) ?? ''
 }
 
 function summarizeAfter(change: Change): string {

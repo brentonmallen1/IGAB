@@ -30,6 +30,8 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import (
+    Account,
+    AccountType,
     Asset,
     AssetValueSnapshot,
     Budget,
@@ -82,6 +84,8 @@ ENTITY_MODELS: dict[str, type] = {
     # set moved; the record carries only a `_tag_ids` bookkeeping dump.
     "category_tags": Category,
     "payee_tags": Payee,
+    "account": Account,
+    "account_type": AccountType,
 }
 
 # Restorable fields per entity. is_deleted is excluded on purpose — the
@@ -217,6 +221,32 @@ SNAPSHOT_FIELDS: dict[str, tuple[str, ...]] = {
     # Bookkeeping-only records; empty so a stray snapshot() call is harmless.
     "category_tags": (),
     "payee_tags": (),
+    # Sync/reconcile bookkeeping (first_sync_complete, last_simplefin_sync_at,
+    # simplefin_balance, last_reconciled_*) is deliberately absent: those are
+    # not user edits, and undo must not roll them back as a side effect.
+    "account": (
+        "name",
+        "account_type_id",
+        "account_type",
+        "on_budget",
+        "classification",
+        "is_closed",
+        "sort_order",
+        "note",
+        "simplefin_account_id",
+        "simplefin_account_name",
+        "simplefin_sync_enabled",
+        "budget_start_date",
+    ),
+    "account_type": (
+        "key",
+        "label",
+        "classification",
+        "default_on_budget",
+        "description",
+        "is_system",
+        "sort_order",
+    ),
 }
 
 

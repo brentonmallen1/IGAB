@@ -3,7 +3,7 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, update
+from sqlalchemy import func, select, update
 
 from igab.api.route import CommitRoute
 from igab.api.v1.schemas.account_type import (
@@ -12,13 +12,15 @@ from igab.api.v1.schemas.account_type import (
     AccountTypeUpdate,
 )
 from igab.db.models import Account
-from igab.dependencies import BudgetAccess, CurrentUser, get_account_type_repo
+from igab.dependencies import BudgetAccess, CurrentUser, get_account_type_repo, get_change_recorder
 from igab.domain.exceptions import NotFoundError
 from igab.repositories.account_type_repo import AccountTypeRepository
+from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match
 
 router = APIRouter(route_class=CommitRoute)
 
 AccountTypeRepoDep = Annotated[AccountTypeRepository, Depends(get_account_type_repo)]
+Recorder = Annotated[ChangeRecorder, Depends(get_change_recorder)]
 
 
 def _slugify(label: str) -> str:
@@ -53,6 +55,7 @@ async def create_account_type(
     body: AccountTypeCreate,
     current_user: CurrentUser,
     repo: AccountTypeRepoDep,
+    recorder: Recorder,
 ) -> AccountTypeResponse:
     """Create a custom account type. The key is derived from the label
     (slugified, suffixed on collision) and never changes afterwards — accounts
@@ -73,6 +76,13 @@ async def create_account_type(
         description=body.description,
         is_system=False,
     )
+    await recorder.record(
+        budget_id=budget_id,
+        entity_type="account_type",
+        entity_id=row.id,
+        action="create",
+        after=snapshot("account_type", row),
+    )
     return AccountTypeResponse.model_validate(row)
 
 
@@ -83,6 +93,7 @@ async def update_account_type(
     body: AccountTypeUpdate,
     current_user: CurrentUser,
     repo: AccountTypeRepoDep,
+    recorder: Recorder,
 ) -> AccountTypeResponse:
     row = await _get_budget_type(repo, budget_id, type_id)
     if row.is_system:
@@ -90,24 +101,58 @@ async def update_account_type(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Built-in account types cannot be edited",
         )
+    before = snapshot("account_type", row)
 
     changes = body.model_dump(exclude_unset=True)
     if "classification" in changes and changes["classification"] is not None:
         changes["classification"] = changes["classification"].value
-    try:
-        row = await repo.update(type_id, **changes)
-    except NotFoundError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+    # One batch: the type edit and the mirrors it cascades onto accounts.
+    with recorder.batch():
+        try:
+            row = await repo.update(type_id, **changes)
+        except NotFoundError as e:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
 
-    # classification is mirrored onto accounts — keep every referencing
-    # account's mirror in sync with its type row
-    if "classification" in changes:
-        await repo.session.execute(
-            update(Account)
-            .where(Account.account_type_id == type_id)
-            .values(classification=row.classification, updated_at=func.now())
-        )
-        await repo.session.flush()
+        # classification is mirrored onto accounts — keep every referencing
+        # account's mirror in sync with its type row. Recorded per account
+        # (full snapshots, generic undo) rather than as bookkeeping: the
+        # referencing set is small and each mirror is an account field move.
+        if "classification" in changes:
+            mirrored = list(
+                (
+                    await repo.session.execute(
+                        select(Account).where(Account.account_type_id == type_id)
+                    )
+                ).scalars()
+            )
+            account_befores = {a.id: snapshot("account", a) for a in mirrored}
+            await repo.session.execute(
+                update(Account)
+                .where(Account.account_type_id == type_id)
+                .values(classification=row.classification, updated_at=func.now())
+            )
+            await repo.session.flush()
+            for acc in mirrored:
+                acc_after = snapshot("account", acc)
+                if snapshots_match(acc_after, account_befores[acc.id]):
+                    await recorder.record(
+                        budget_id=budget_id,
+                        entity_type="account",
+                        entity_id=acc.id,
+                        action="update",
+                        before=account_befores[acc.id],
+                        after=acc_after,
+                    )
+        after = snapshot("account_type", row)
+        if snapshots_match(after, before):  # non-empty diff — something changed
+            await recorder.record(
+                budget_id=budget_id,
+                entity_type="account_type",
+                entity_id=row.id,
+                action="update",
+                before=before,
+                after=after,
+            )
 
     return AccountTypeResponse.model_validate(row)
 
@@ -118,6 +163,7 @@ async def delete_account_type(
     type_id: uuid.UUID,
     current_user: CurrentUser,
     repo: AccountTypeRepoDep,
+    recorder: Recorder,
 ) -> None:
     row = await _get_budget_type(repo, budget_id, type_id)
     if row.is_system:
@@ -131,4 +177,13 @@ async def delete_account_type(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"{referencing} account(s) still use this type — retype them first",
         )
+    # A hard delete, guarded empty above — nothing referenced it, so the
+    # snapshot alone rebuilds it (hard-row inverse, keyed budget+key).
+    await recorder.record(
+        budget_id=budget_id,
+        entity_type="account_type",
+        entity_id=row.id,
+        action="delete",
+        before=snapshot("account_type", row),
+    )
     await repo.hard_delete(type_id)

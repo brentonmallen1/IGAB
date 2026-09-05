@@ -46,6 +46,10 @@ export function entityTypeLabel(entityType: string): string {
       return 'category tags'
     case 'payee_tags':
       return 'payee tags'
+    case 'account':
+      return 'account'
+    case 'account_type':
+      return 'account type'
     default:
       return entityType
   }

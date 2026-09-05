@@ -39,6 +39,8 @@ export interface Change {
     | 'tag'
     | 'category_tags'
     | 'payee_tags'
+    | 'account'
+    | 'account_type'
   entity_id: string
   action:
     | 'create'
@@ -254,4 +256,10 @@ export function invalidateAfterUndo(
   // Tags and their memberships.
   qc.invalidateQueries({ queryKey: [ROOT.tags] })
   qc.invalidateQueries({ queryKey: [ROOT.tagSuggestions] })
+
+  // Accounts and their types (ROOT.accounts is budget-scoped above).
+  qc.invalidateQueries({ queryKey: [ROOT.accountTypes] })
+  qc.invalidateQueries({ queryKey: [ROOT.accountHygiene] })
+  qc.invalidateQueries({ queryKey: [ROOT.cardTimeline] })
+  qc.invalidateQueries({ queryKey: [ROOT.scheduledTransactions] })
 }

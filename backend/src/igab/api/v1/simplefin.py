@@ -24,6 +24,7 @@ from igab.dependencies import (
     CurrentUser,
     MatchAccess,
     get_account_repo,
+    get_change_recorder,
     get_simplefin_service,
     get_transaction_matching_service,
 )
@@ -33,6 +34,7 @@ from igab.integrations.simplefin.encryption import (
     key_problem,
 )
 from igab.repositories.account_repo import AccountRepository
+from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match
 from igab.services.simplefin_service import SimpleFINService
 from igab.services.transaction_matching_service import TransactionMatchingService
 
@@ -204,14 +206,37 @@ async def sync_all_connections(
     return SyncAllResult(**result)
 
 
+async def _recorded_account_update(
+    recorder: ChangeRecorder, account_repo: AccountRepository, account_id, **updates
+) -> None:
+    """The one spelling of "change account fields and record it" for the
+    bank-link endpoints — linking is a user decision, so it undoes."""
+    account = await account_repo.get_or_raise(account_id)
+    before = snapshot("account", account)
+    updated = await account_repo.update(account_id, **updates)
+    after = snapshot("account", updated)
+    if snapshots_match(after, before):  # non-empty diff — something changed
+        await recorder.record(
+            budget_id=updated.budget_id,
+            entity_type="account",
+            entity_id=updated.id,
+            action="update",
+            before=before,
+            after=after,
+        )
+
+
 @router.post("/accounts/{account_id}/link-simplefin", status_code=204)
 async def link_account(
     account_id: AccountAccess,
     body: LinkSimpleFINRequest,
     current_user: CurrentUser,
     account_repo: Annotated[AccountRepository, Depends(get_account_repo)],
+    recorder: Annotated[ChangeRecorder, Depends(get_change_recorder)],
 ) -> None:
-    await account_repo.update(
+    await _recorded_account_update(
+        recorder,
+        account_repo,
         account_id,
         simplefin_account_id=body.simplefin_account_id,
         simplefin_account_name=body.simplefin_account_name,
@@ -223,8 +248,11 @@ async def unlink_account(
     account_id: AccountAccess,
     current_user: CurrentUser,
     account_repo: Annotated[AccountRepository, Depends(get_account_repo)],
+    recorder: Annotated[ChangeRecorder, Depends(get_change_recorder)],
 ) -> None:
-    await account_repo.update(account_id, simplefin_account_id=None, simplefin_account_name=None)
+    await _recorded_account_update(
+        recorder, account_repo, account_id, simplefin_account_id=None, simplefin_account_name=None
+    )
 
 
 @router.get("/accounts/{account_id}/sync-status", response_model=AccountSyncStatusResponse)
@@ -242,13 +270,14 @@ async def update_account_simplefin_settings(
     account_id: AccountAccess,
     current_user: CurrentUser,
     account_repo: Annotated[AccountRepository, Depends(get_account_repo)],
+    recorder: Annotated[ChangeRecorder, Depends(get_change_recorder)],
     simplefin_sync_enabled: bool | None = None,
 ) -> None:
     updates: dict = {}
     if simplefin_sync_enabled is not None:
         updates["simplefin_sync_enabled"] = simplefin_sync_enabled
     if updates:
-        await account_repo.update(account_id, **updates)
+        await _recorded_account_update(recorder, account_repo, account_id, **updates)
 
 
 # ── Transaction match review ─────────────────────────────────────────────────
