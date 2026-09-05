@@ -1,8 +1,9 @@
-import { AlertTriangle, ArrowUpRight, Banknote, Pencil } from 'lucide-react'
+import { AlertTriangle, ArrowUpRight, Pencil } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useLiabilities } from '../../api/liabilities'
 import { useAssets } from '../../api/assets'
 import { useFormatters } from '../../hooks/useFormatters'
+import { ordinalDay } from '../../utils/dates'
 import { useUIStore } from '../../stores/uiStore'
 import './LiabilityTermsHeader.css'
 import { describeMinimumRule } from './minimumPaymentCopy'
@@ -108,6 +109,16 @@ export function LiabilityTermsHeader({ budgetId, accountId, isLoan }: Props) {
             )}
           </div>
         )}
+        {/* Cards only, and only once set: the bill's day is a reminder, not a
+            term the projections need, so an empty slot has nothing to ask. */}
+        {!isLoan && liability.payment_due_day != null && (
+          <div className="liability-terms__item">
+            <span className="liability-terms__value">
+              the {ordinalDay(liability.payment_due_day)}
+            </span>
+            <span className="liability-terms__label">Bill due</span>
+          </div>
+        )}
         {liability.promo_end_date && (
           <div className="liability-terms__item">
             <span className="liability-terms__value">{formatMonth(liability.promo_end_date)}</span>
@@ -119,18 +130,8 @@ export function LiabilityTermsHeader({ budgetId, accountId, isLoan }: Props) {
       </div>
 
       <div className="liability-terms__actions">
-        {/* Cards and loans both: for a card this is the transfer that spends
-            the set-aside; for a loan it is the same transfer plus an
-            "extra to principal" field, so a curtailment is one decision at
-            record time instead of a hand-typed register row. */}
-        <button
-          type="button"
-          className="liability-terms__btn"
-          onClick={() => openModal('card-payment', accountId)}
-        >
-          <Banknote size={12} />
-          {isLoan ? 'Record a payment' : 'Make a payment'}
-        </button>
+        {/* The payment action lives in the register toolbar (`RegisterToolbar`),
+            beside Add Transaction — this strip is the terms, not the doing. */}
         {!termsSet && (
           <span className="liability-terms__hint">
             {isLoan

@@ -3,6 +3,8 @@ import uuid
 from decimal import Decimal
 from typing import Literal
 
+from pydantic import Field
+
 from igab.api.v1.schemas.base import ApiModel, ClientDated
 from igab.domain.money import Money
 
@@ -37,6 +39,9 @@ class LiabilityCreate(ClientDated):
     promo_end_date: datetime.date | None = None
     promo_deferred_interest: bool = False
     term_months: int | None = None
+    #: The card bill's due day of the month. Metadata for the card header;
+    #: no projection reads it.
+    payment_due_day: int | None = Field(default=None, ge=1, le=31)
 
 
 class LiabilityUpdate(ApiModel):
@@ -57,6 +62,8 @@ class LiabilityUpdate(ApiModel):
     promo_end_date: datetime.date | None = None
     promo_deferred_interest: bool | None = None
     term_months: int | None = None
+    #: Explicit null clears it, like planned_extra_payment above.
+    payment_due_day: int | None = Field(default=None, ge=1, le=31)
 
 
 class LiabilityOut(ApiModel):
@@ -127,6 +134,8 @@ class LiabilityOut(ApiModel):
     promo_end_date: datetime.date | None
     promo_deferred_interest: bool
     term_months: int | None
+    #: The card bill's due day of the month — metadata, no projection reads it.
+    payment_due_day: int | None
     promo_projection: "PromoProjectionOut | None"
     baseline_payoff_date: datetime.date | None
     baseline_never_pays_off: bool

@@ -13,6 +13,7 @@ function wish(over: Partial<Wish>): Wish {
     notes: null,
     cost: '100',
     priority: 0,
+    is_priority: false,
     status: 'open',
     funding: {
       mode: 'existing',

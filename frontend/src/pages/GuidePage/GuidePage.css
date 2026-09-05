@@ -725,6 +725,15 @@
   text-decoration: underline;
 }
 
+.guide-link-button:disabled {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.guide-link-button:disabled:hover {
+  text-decoration: none;
+}
+
 /* ─── Browse ─────────────────────────────────────────────────────────────── */
 
 .guide-browse {

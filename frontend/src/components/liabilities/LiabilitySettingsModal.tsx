@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 import { useAccounts } from '../../api/accounts'
 import { useAccountTypes } from '../../api/accountTypes'
 import { liabilityTypeLabel } from '../../utils/liabilityTypeLabel'
+import { isCardAccount } from '../../utils/accountKinds'
 import {
   useCreateLiability,
   useLiabilities,
@@ -96,6 +97,9 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
   const [promoEnabled, setPromoEnabled] = useState(liability?.promo_end_date != null)
   const [promoEndDate, setPromoEndDate] = useState(liability?.promo_end_date ?? '')
   const [promoDeferred, setPromoDeferred] = useState(liability?.promo_deferred_interest ?? false)
+  const [dueDay, setDueDay] = useState(
+    liability?.payment_due_day != null ? String(liability.payment_due_day) : ''
+  )
   const [error, setError] = useState<string | null>(null)
 
   // A companion liability belongs to its account: the account is where it
@@ -104,6 +108,14 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
   // account's own page, and the old picker offered Checking and Savings.
   const isCompanion = liability !== null && liability.mode === 'managed'
   const ownAccount = accounts.find((a) => a.id === liability?.linked_account_id)
+  // A card, by the accountKinds rule for a managed liability (accountId is
+  // seeded from the link, so this tracks the form) or by the stored kind for
+  // an unmanaged one. Cards get a bill due day; loans don't.
+  const linkedAccount = accounts.find((a) => a.id === accountId)
+  const isCard =
+    mode === 'managed'
+      ? linkedAccount !== undefined && isCardAccount(linkedAccount)
+      : liabilityType === 'credit_card'
 
   // Creating: only accounts that are liabilities and are not already backing
   // another one.
@@ -155,6 +167,10 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
     if (promoEnabled && !promoEndDate) {
       return setError('Enter the promo end date (or turn promotional financing off)')
     }
+    const dueDayNum = dueDay ? parseInt(dueDay, 10) : null
+    if (isCard && dueDayNum !== null && (isNaN(dueDayNum) || dueDayNum < 1 || dueDayNum > 31)) {
+      return setError('The bill due day is a day of the month — 1 to 31')
+    }
 
     const shared = {
       name: name.trim(),
@@ -172,6 +188,9 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
       term_months: termMonths ? parseInt(termMonths, 10) : null,
       promo_end_date: promoEnabled ? promoEndDate : null,
       promo_deferred_interest: promoEnabled ? promoDeferred : false,
+      // Null for a loan on purpose: retyping a card to a loan clears the day
+      // rather than leaving a stale one behind.
+      payment_due_day: isCard ? dueDayNum : null,
     }
 
     try {
@@ -309,82 +328,101 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
               placeholder="6.25"
             />
           </label>
-          <div className="liability-modal__field">
-            <span>Minimum payment</span>
-            <div
-              className="liability-modal__segmented"
-              role="radiogroup"
-              aria-label="Minimum payment"
-            >
-              <button
-                type="button"
-                role="radio"
-                aria-checked={minimumKind === 'fixed'}
-                className={minimumKind === 'fixed' ? 'is-selected' : ''}
-                onClick={() => setMinimumKind('fixed')}
-              >
-                A fixed amount
-              </button>
-              <button
-                type="button"
-                role="radio"
-                aria-checked={minimumKind === 'percent_of_balance'}
-                className={minimumKind === 'percent_of_balance' ? 'is-selected' : ''}
-                onClick={() => setMinimumKind('percent_of_balance')}
-              >
-                A percentage of the balance
-              </button>
-            </div>
-            {minimumKind === 'fixed' ? (
+          {/* In this row because it is the same shape as its neighbours — one
+              short input. The minimum-payment rule below is not, which is why
+              it gets the full width instead of a third of it. */}
+          {isCard && (
+            <label className="liability-modal__field">
+              <span>Bill due day</span>
               <input
                 type="number"
-                inputMode="decimal"
-                min="0"
-                step="0.01"
-                value={minimumPayment}
-                onChange={(e) => setMinimumPayment(e.target.value)}
-                placeholder="275.00"
-                aria-label="Minimum payment amount"
+                inputMode="numeric"
+                min="1"
+                max="31"
+                value={dueDay}
+                onChange={(e) => setDueDay(e.target.value)}
+                placeholder="17"
+                title="Shown on the card page — a reminder, not a projection input"
               />
-            ) : (
-              <div className="liability-modal__rule">
-                <label>
-                  <span>Percent of balance</span>
-                  {/* Placeholders, not values: a guessed number that looks
-                        entered is worse than a blank one. */}
-                  <input
-                    type="number"
-                    inputMode="decimal"
-                    min="0"
-                    step="0.01"
-                    value={minimumPercent}
-                    onChange={(e) => setMinimumPercent(e.target.value)}
-                    placeholder="2"
-                  />
-                </label>
-                <label>
-                  <span>But at least</span>
-                  <input
-                    type="number"
-                    inputMode="decimal"
-                    min="0"
-                    step="0.01"
-                    value={minimumFloor}
-                    onChange={(e) => setMinimumFloor(e.target.value)}
-                    placeholder="35.00"
-                  />
-                </label>
-                <label className="liability-modal__rule-check">
-                  <input
-                    type="checkbox"
-                    checked={minimumPlusInterest}
-                    onChange={(e) => setMinimumPlusInterest(e.target.checked)}
-                  />
-                  <span>plus this month&rsquo;s interest</span>
-                </label>
-              </div>
-            )}
+            </label>
+          )}
+        </div>
+
+        <div className="liability-modal__field">
+          <span>Minimum payment</span>
+          <div
+            className="liability-modal__segmented"
+            role="radiogroup"
+            aria-label="Minimum payment"
+          >
+            <button
+              type="button"
+              role="radio"
+              aria-checked={minimumKind === 'fixed'}
+              className={minimumKind === 'fixed' ? 'is-selected' : ''}
+              onClick={() => setMinimumKind('fixed')}
+            >
+              A fixed amount
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={minimumKind === 'percent_of_balance'}
+              className={minimumKind === 'percent_of_balance' ? 'is-selected' : ''}
+              onClick={() => setMinimumKind('percent_of_balance')}
+            >
+              A percentage of the balance
+            </button>
           </div>
+          {minimumKind === 'fixed' ? (
+            <input
+              type="number"
+              inputMode="decimal"
+              min="0"
+              step="0.01"
+              value={minimumPayment}
+              onChange={(e) => setMinimumPayment(e.target.value)}
+              placeholder="275.00"
+              aria-label="Minimum payment amount"
+            />
+          ) : (
+            <div className="liability-modal__rule">
+              <label>
+                <span>Percent of balance</span>
+                {/* Placeholders, not values: a guessed number that looks
+                        entered is worse than a blank one. */}
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  step="0.01"
+                  value={minimumPercent}
+                  onChange={(e) => setMinimumPercent(e.target.value)}
+                  placeholder="2"
+                />
+              </label>
+              <label>
+                <span>But at least</span>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  step="0.01"
+                  value={minimumFloor}
+                  onChange={(e) => setMinimumFloor(e.target.value)}
+                  placeholder="35.00"
+                />
+              </label>
+              <label className="liability-modal__rule-check">
+                <input
+                  type="checkbox"
+                  checked={minimumPlusInterest}
+                  onChange={(e) => setMinimumPlusInterest(e.target.checked)}
+                />
+                <span>plus this month&rsquo;s interest</span>
+              </label>
+            </div>
+          )}
         </div>
 
         {isCompanion ? (

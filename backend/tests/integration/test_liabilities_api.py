@@ -360,6 +360,32 @@ class TestAmortizationEndpoint:
         )
         assert resp.json()["planned_extra_payment"] is None
 
+    async def test_payment_due_day_round_trips_clears_and_bounds(self, api_client, db_session):
+        """The card bill's due day: statement metadata for the header, so it
+        round-trips, clears with an explicit null, and stays a real day."""
+        budget = await create_budget(db_session, api_client.test_user)
+        liability = await create_liability(
+            db_session,
+            budget,
+            manual_balance=Decimal("1000.00"),
+            interest_rate=Decimal("12.0000"),
+            minimum_payment=Decimal("40.00"),
+        )
+        url = f"/api/v1/{budget.id}/liabilities/{liability.id}"
+
+        resp = await api_client.patch(url, json={"payment_due_day": 17})
+        assert resp.status_code == 200 and resp.json()["payment_due_day"] == 17
+
+        listed = (await api_client.get(f"/api/v1/{budget.id}/liabilities")).json()
+        assert listed[0]["payment_due_day"] == 17
+
+        resp = await api_client.patch(url, json={"payment_due_day": None})
+        assert resp.status_code == 200 and resp.json()["payment_due_day"] is None
+
+        for bad in (0, 32):
+            resp = await api_client.patch(url, json={"payment_due_day": bad})
+            assert resp.status_code == 422, resp.text
+
     async def test_origination_history_for_managed_liability(self, api_client, db_session):
         budget = await create_budget(db_session, api_client.test_user)
         loan = await create_account(

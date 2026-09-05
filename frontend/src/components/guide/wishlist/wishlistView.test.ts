@@ -1,13 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { Wish, WishlistProject, WishReach } from '../../../api/wishlist'
-import {
-  filterWishes,
-  groupByProject,
-  HERO_COUNT,
-  sortWishes,
-  splitHero,
-  splitProjects,
-} from './wishlistView'
+import { filterWishes, groupByProject, sortWishes, splitHero, splitProjects } from './wishlistView'
 
 function reach(state: WishReach['state'], months: number | null = null): WishReach {
   return { state, months, date: null, ahead_cost: '0', progress: '0' }
@@ -22,6 +15,7 @@ function wish(over: Partial<Wish>): Wish {
     notes: null,
     cost: '100',
     priority: 0,
+    is_priority: false,
     status: 'open',
     funding: {
       mode: 'none',
@@ -94,12 +88,25 @@ describe('sortWishes', () => {
 })
 
 describe('splitHero', () => {
-  it('takes the top priorities whatever the list order', () => {
-    const items = [4, 1, 3, 0, 2].map((p) => wish({ name: `p${p}`, priority: p }))
+  it('the strip holds only what is pinned, in queue order', () => {
+    // Given in display (sorted-by-whatever) order; pins scattered through it.
+    const items = [
+      wish({ name: 'p4', priority: 4, is_priority: true }),
+      wish({ name: 'p1', priority: 1 }),
+      wish({ name: 'p3', priority: 3 }),
+      wish({ name: 'p0', priority: 0, is_priority: true }),
+      wish({ name: 'p2', priority: 2, is_priority: true }),
+    ]
     const { hero, rest } = splitHero(items)
-    expect(hero.map((w) => w.name)).toEqual(['p0', 'p1', 'p2'])
-    expect(hero).toHaveLength(HERO_COUNT)
-    expect(rest.map((w) => w.name)).toEqual(['p4', 'p3'])
+    expect(hero.map((w) => w.name)).toEqual(['p0', 'p2', 'p4']) // queue order
+    expect(rest.map((w) => w.name)).toEqual(['p1', 'p3']) // given order kept
+  })
+
+  it('nothing pinned, nothing floats — the strip is a choice, not a default', () => {
+    const items = [2, 0, 1].map((p) => wish({ name: `p${p}`, priority: p }))
+    const { hero, rest } = splitHero(items)
+    expect(hero).toEqual([])
+    expect(rest.map((w) => w.name)).toEqual(['p2', 'p0', 'p1'])
   })
 })
 

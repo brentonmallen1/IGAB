@@ -162,6 +162,7 @@ async def _liability_out(
         promo_end_date=liability.promo_end_date,
         promo_deferred_interest=liability.promo_deferred_interest,
         term_months=liability.term_months,
+        payment_due_day=liability.payment_due_day,
         promo_projection=(
             PromoProjectionOut(
                 months_until_promo_end=status_.promo.months_until_promo_end,
@@ -238,6 +239,7 @@ async def create_liability(
         promo_end_date=body.promo_end_date,
         promo_deferred_interest=body.promo_deferred_interest,
         term_months=body.term_months,
+        payment_due_day=body.payment_due_day,
     )
     if liability.linked_account_id is None and body.manual_balance is not None:
         # Seed the snapshot trail so history starts at creation

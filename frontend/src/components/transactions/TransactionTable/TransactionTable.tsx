@@ -1,6 +1,6 @@
 import { useMemo, useRef, useEffect, useLayoutEffect, useState, useCallback, memo } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Plus, ChevronUp, ChevronDown, Info, Link2, GitMerge, X } from 'lucide-react'
+import { ChevronUp, ChevronDown, Info, Link2, GitMerge, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useShallow } from 'zustand/react/shallow'
 import {
@@ -34,9 +34,8 @@ import {
 import { SelectionActionBar } from '../SelectionActionBar/SelectionActionBar'
 import { MergePreviewModal } from '../MergePreviewModal/MergePreviewModal'
 import { MatchReviewModal } from '../../simplefin/MatchReviewModal'
-import { TransactionSearch } from '../TransactionSearch/TransactionSearch'
-import { SearchHelp } from '../TransactionSearch/SearchHelp'
 import { SearchFilterChips } from '../SearchFilterChips/SearchFilterChips'
+import { RegisterToolbar } from './RegisterToolbar'
 import { AttachmentPanel } from '../../attachments/AttachmentPanel'
 import { Collapsible } from '../../common/Collapsible/Collapsible'
 import { parseTransactionSearch } from '../../../utils/searchParser'
@@ -58,6 +57,7 @@ import type {
 } from '../../../types'
 import type { ComboboxOption } from '../../common/Combobox/Combobox'
 import { countsAsPendingReview, inReviewSection, nextHeldForReview } from './reviewSection'
+import { registerPayAction } from './payButton'
 import './TransactionTable.css'
 import { Surface } from '../../common/Surface'
 
@@ -138,6 +138,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   const { data: categories = [] } = useCategories(budgetId)
   const { data: categoryGroups = [] } = useCategoryGroups(budgetId)
   const { data: accounts = [] } = useAccounts(budgetId)
+  const payAction = useMemo(() => registerPayAction(accounts, accountId), [accounts, accountId])
   const bulkSetCleared = useBulkUpdateCleared(budgetId)
   const bulkCategorize = useBulkCategorize(budgetId)
   const bulkDelete = useBulkDeleteTransactions(budgetId)
@@ -865,20 +866,16 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
 
       {/* Toolbar, filter chips, selection bar and column header pin together */}
       <Surface variant="chrome" sticky className="transaction-table__chrome">
-        <div className="transaction-table__toolbar">
-          {/* The ⓘ sits beside the box, not inside it: inside, it shared an edge
-            with the clear ✕ and took the click meant for it. */}
-          <div className="transaction-table__search-group">
-            <TransactionSearch value={transactionSearchQuery} onChange={setTransactionSearch} />
-            <span className="transaction-table__search-help">
-              <SearchHelp />
-            </span>
-          </div>
-          <button className="transaction-table__add-btn" onClick={() => openModal('transaction')}>
-            <Plus size={14} />
-            Add Transaction
-          </button>
-        </div>
+        <RegisterToolbar
+          searchQuery={transactionSearchQuery}
+          onSearchChange={setTransactionSearch}
+          onAdd={() => openModal('transaction')}
+          pay={
+            payAction && accountId !== null
+              ? { label: payAction.label, onClick: () => openModal('card-payment', accountId) }
+              : null
+          }
+        />
 
         <SearchFilterChips
           query={transactionSearchQuery}

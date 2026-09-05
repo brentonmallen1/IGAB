@@ -1272,6 +1272,9 @@ class WishlistItem(Base):
     #: the envelope with the wish, and the cost → savings-goal write.
     owns_envelope: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     priority: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    #: Pinned as a top priority — an explicit, capped choice (PRIORITY_LIMIT),
+    #: distinct from `priority`, which orders the whole funding queue.
+    is_priority: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     #: 'open' | 'done' | 'dropped'
     status: Mapped[str] = mapped_column(String(20), default="open", nullable=False)
     cooling_until: Mapped[date | None] = mapped_column(Date)
@@ -1839,6 +1842,11 @@ class Liability(Base):
     promo_deferred_interest: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     # Explicit contractual term, when known (overrides the implied estimate)
     term_months: Mapped[int | None] = mapped_column(Integer)
+    # The card bill's due day of the month (1-31). Statement metadata, shown
+    # on the card page; no projection reads it — amortization stays monthly
+    # and dateless by design. Meaningful for cards; the UI offers it nowhere
+    # else.
+    payment_due_day: Mapped[int | None] = mapped_column(Integer)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

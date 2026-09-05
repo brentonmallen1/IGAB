@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isCardAccount, isCashAccount } from './accountKinds'
+import { isCardAccount, isCashAccount, isLiabilityAccount } from './accountKinds'
 
 const acct = (on_budget: boolean, classification: 'asset' | 'liability' | null) => ({
   on_budget,
@@ -18,5 +18,12 @@ describe('accountKinds', () => {
     expect(isCashAccount(acct(true, null))).toBe(true)
     expect(isCashAccount(acct(true, 'liability'))).toBe(false)
     expect(isCashAccount(acct(false, 'asset'))).toBe(false) // tracking
+  })
+
+  it('a liability takes a payment whether on budget (card) or off (loan)', () => {
+    expect(isLiabilityAccount(acct(true, 'liability'))).toBe(true)
+    expect(isLiabilityAccount(acct(false, 'liability'))).toBe(true)
+    expect(isLiabilityAccount(acct(true, 'asset'))).toBe(false)
+    expect(isLiabilityAccount(acct(false, null))).toBe(false)
   })
 })

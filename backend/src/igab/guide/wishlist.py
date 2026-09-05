@@ -26,6 +26,10 @@ DEFAULT_COOLING_DAYS = 30
 DEFAULT_REVIEW_DAYS = 90
 #: "Added a while ago and still wanted" — the line the feature exists for.
 STILL_WANTED_MONTHS = 3
+#: How many wishes may be pinned as top priorities at once. A hard cap, and
+#: deliberately small: a spotlight that holds everything holds nothing. The
+#: server enforces it and serves it, so the client never spells its own 3.
+PRIORITY_LIMIT = 3
 
 ReachState = Literal["now", "months", "no_rate", "unlinked"]
 ProjectState = Literal["now", "months", "no_rate", "unlinked", "mixed", "complete", "empty"]

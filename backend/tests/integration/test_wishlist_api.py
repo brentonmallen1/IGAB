@@ -409,6 +409,60 @@ class TestCoolingReviewAndStillWanted:
         assert body["still_wanted"] == {"count": 0, "of": 0, "months": 3}
 
 
+class TestTopPriorities:
+    """Pinning is an explicit, capped choice — the strip shows only what
+    someone chose, and a full spotlight refuses rather than displaces."""
+
+    async def _pin(self, api_client, budget, wish_id, pinned=True):
+        return await api_client.patch(f"{_url(budget)}/{wish_id}", json={"is_priority": pinned})
+
+    async def test_pins_serve_and_the_cap_refuses_a_fourth(self, db_session, api_client):
+        budget = await _budget(db_session, api_client)
+        wishes = [await _add(api_client, budget, name=f"W{i}") for i in range(4)]
+        assert all(w["is_priority"] is False for w in wishes)  # nobody starts pinned
+
+        for w in wishes[:3]:
+            r = await self._pin(api_client, budget, w["id"])
+            assert r.status_code == 200 and r.json()["is_priority"] is True
+        r = await self._pin(api_client, budget, wishes[3]["id"])
+        assert r.status_code == 409
+        assert "unpin one first" in r.json()["detail"]
+
+        body = (await api_client.get(_url(budget))).json()
+        assert body["priority_limit"] == 3
+        assert sum(1 for w in body["items"] if w["is_priority"]) == 3
+
+    async def test_unpinning_frees_the_slot(self, db_session, api_client):
+        budget = await _budget(db_session, api_client)
+        wishes = [await _add(api_client, budget, name=f"W{i}") for i in range(4)]
+        for w in wishes[:3]:
+            assert (await self._pin(api_client, budget, w["id"])).status_code == 200
+        r = await self._pin(api_client, budget, wishes[0]["id"], pinned=False)
+        assert r.status_code == 200 and r.json()["is_priority"] is False
+        assert (await self._pin(api_client, budget, wishes[3]["id"])).status_code == 200
+
+    async def test_leaving_open_clears_the_pin_and_reopening_does_not_restore_it(
+        self, db_session, api_client
+    ):
+        budget = await _budget(db_session, api_client)
+        wish = await _add(api_client, budget)
+        assert (await self._pin(api_client, budget, wish["id"])).status_code == 200
+
+        r = await api_client.patch(f"{_url(budget)}/{wish['id']}", json={"status": "done"})
+        assert r.status_code == 200 and r.json()["is_priority"] is False
+        # Reopening keeps it unpinned — restoring it silently could bust the cap.
+        r = await api_client.patch(f"{_url(budget)}/{wish['id']}", json={"status": "open"})
+        assert r.status_code == 200 and r.json()["is_priority"] is False
+
+    async def test_only_an_open_wish_takes_a_pin(self, db_session, api_client):
+        budget = await _budget(db_session, api_client)
+        wish = await _add(api_client, budget)
+        await api_client.patch(f"{_url(budget)}/{wish['id']}", json={"status": "dropped"})
+        r = await self._pin(api_client, budget, wish["id"])
+        assert r.status_code == 409
+        assert "open wish" in r.json()["detail"]
+
+
 class TestSwitchAndBoundaries:
     async def test_off_hides_the_group_and_refuses_writes(self, db_session, api_client):
         budget = await _budget(db_session, api_client)

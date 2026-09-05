@@ -58,6 +58,7 @@ function companion(overrides: Partial<Liability> = {}): Liability {
     promo_end_date: null,
     promo_deferred_interest: false,
     term_months: null,
+    payment_due_day: null,
     promo_projection: null,
     baseline_payoff_date: '2028-04-15',
     baseline_never_pays_off: false,

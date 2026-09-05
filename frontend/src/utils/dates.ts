@@ -126,6 +126,24 @@ export function formatMonth(monthStr: string): string {
   return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
 }
 
+/** A bare day-of-month as "1st" / "2nd" / "17th" / "23rd" — for recurring
+ * days that have no date attached, like a card bill's due day. */
+export function ordinalDay(day: number): string {
+  const rem100 = day % 100
+  const rem10 = day % 10
+  const suffix =
+    rem100 >= 11 && rem100 <= 13
+      ? 'th'
+      : rem10 === 1
+        ? 'st'
+        : rem10 === 2
+          ? 'nd'
+          : rem10 === 3
+            ? 'rd'
+            : 'th'
+  return `${day}${suffix}`
+}
+
 /** Format ISO date "YYYY-MM-DD" to "Jan 5, 2024" - legacy API */
 export function formatDate(dateStr: string): string {
   const d = new Date(dateStr + 'T00:00:00')

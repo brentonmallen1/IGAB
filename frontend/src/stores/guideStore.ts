@@ -59,6 +59,8 @@ interface GuideState {
   positionSeen: StageId | null
   wishlistView: WishlistView
   wishlistSort: WishlistSort
+  /** The "Top priorities" strip above the wishlist card, folded away. */
+  wishlistHeroCollapsed: boolean
   setActiveTab: (tab: GuideTab) => void
   setPositionSeen: (id: StageId | null) => void
   setRoadmapView: (view: RoadmapView) => void
@@ -67,6 +69,7 @@ interface GuideState {
   setOpenGlossaryTerm: (term: GlossaryId | null) => void
   setWishlistView: (view: WishlistView) => void
   setWishlistSort: (sort: WishlistSort) => void
+  toggleWishlistHero: () => void
   toggleStage: (id: StageId) => void
   openStage: (id: StageId) => void
   toggleDetail: (nodeId: string) => void
@@ -90,6 +93,7 @@ export const useGuideStore = create<GuideState>()(
       positionSeen: null,
       wishlistView: 'flat',
       wishlistSort: 'reach',
+      wishlistHeroCollapsed: false,
 
       setActiveTab: (tab) => set({ activeTab: tab }),
       setPositionSeen: (id) => set({ positionSeen: id }),
@@ -99,6 +103,7 @@ export const useGuideStore = create<GuideState>()(
       setOpenGlossaryTerm: (term) => set({ openGlossaryTerm: term }),
       setWishlistView: (view) => set({ wishlistView: view }),
       setWishlistSort: (sort) => set({ wishlistSort: sort }),
+      toggleWishlistHero: () => set((s) => ({ wishlistHeroCollapsed: !s.wishlistHeroCollapsed })),
 
       toggleStage: (id) =>
         set((s) => ({
@@ -141,6 +146,7 @@ export const useGuideStore = create<GuideState>()(
         positionSeen: s.positionSeen,
         wishlistView: s.wishlistView,
         wishlistSort: s.wishlistSort,
+        wishlistHeroCollapsed: s.wishlistHeroCollapsed,
       }),
     }
   )

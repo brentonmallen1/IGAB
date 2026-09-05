@@ -41,6 +41,9 @@ export interface Wish {
   notes: string | null
   cost: string
   priority: number
+  /** Pinned as a top priority — an explicit choice, capped at the served
+   *  `priority_limit`; distinct from `priority`, the funding-queue order. */
+  is_priority: boolean
   status: WishStatus
   funding: WishFunding
   cooling_until: string | null
@@ -112,6 +115,8 @@ export interface Wishlist {
   still_wanted: { count: number; of: number; months: number }
   review_due_count: number
   settings: WishlistSettings
+  /** The pin cap, served — the client never spells its own 3. */
+  priority_limit: number
   drains: Drains | null
 }
 
@@ -139,6 +144,7 @@ export interface WishUpdate {
   notes?: string | null
   project_id?: string | null
   priority?: number
+  is_priority?: boolean
   status?: WishStatus
   cooling_until?: string | null
   funding?: FundingIn
