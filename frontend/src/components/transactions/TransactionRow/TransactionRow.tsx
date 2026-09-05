@@ -41,7 +41,9 @@ import { ContextMenu, type ContextMenuItem } from '../../common/ContextMenu/Cont
 import { BankRecordIcon } from '../../simplefin/BankRecordIcon'
 import { Tooltip } from '../../common/Tooltip/Tooltip'
 import { RowAttachmentButton } from './RowAttachmentButton'
-import type { Transaction, Category, CategoryGroup, Payee } from '../../../types'
+import { AccountCell, accountCellLock } from './AccountCell'
+import { categoryOptions, payeeOptions } from './rowOptions'
+import type { Transaction, Category, CategoryGroup, Payee, Account } from '../../../types'
 import './TransactionRow.css'
 import { confirmAsync } from '../../../stores/confirmStore'
 
@@ -54,6 +56,8 @@ interface Props {
   accountMap: Map<string, string>
   categoryMap: Map<string, string>
   payees: Payee[]
+  /** Open accounts, for the all-accounts register's account picker. */
+  accounts: Account[]
   categories: Category[]
   categoryGroups: CategoryGroup[]
   isSelected: boolean
@@ -162,6 +166,7 @@ export const TransactionRow = memo(function TransactionRow({
   accountMap,
   categoryMap,
   payees,
+  accounts,
   categories,
   categoryGroups,
   isSelected,
@@ -213,6 +218,7 @@ export const TransactionRow = memo(function TransactionRow({
     editingField?.transactionId === txn.id && editingField.field === field
 
   const isReconciled = txn.cleared === 'reconciled'
+  const accountLock = accountCellLock(txn, accountLabel !== undefined)
   const isPending = txn.cleared === 'pending'
 
   const dateProvenance =
@@ -261,6 +267,7 @@ export const TransactionRow = memo(function TransactionRow({
       isTransfer: !!txn.transfer_id,
       isSplit: txn.is_split,
       onBudget: !!accountOnBudget,
+      accountMovable: accountLock.movable,
     })
     if (next) startEditing(txn.id, next)
     else stopEditing()
@@ -358,24 +365,9 @@ export const TransactionRow = memo(function TransactionRow({
     }
   }
 
-  const payeeOptions = useMemo<ComboboxOption[]>(
-    () => payees.filter((p) => !p.transfer_account_id).map((p) => ({ id: p.id, label: p.name })),
-    [payees]
-  )
-
-  const categoryOptions = useMemo<ComboboxOption[]>(
-    // `is_categorizable`, like every other category picker — the server
-    // decides what a leg may be filed to. Offering the raw list put each
-    // card's set-aside envelope in the register's most-used control, under
-    // a blank group heading (its group is hidden, so no name resolved), and
-    // filing a row there hid the money from the budget entirely.
-    () =>
-      categories
-        .filter((c) => c.is_categorizable)
-        .map((c) => {
-          const group = categoryGroups.find((g) => g.id === c.category_group_id)
-          return { id: c.id, label: c.name, group: group?.name ?? '' }
-        }),
+  const payeeOpts = useMemo(() => payeeOptions(payees), [payees])
+  const categoryOpts = useMemo(
+    () => categoryOptions(categories, categoryGroups),
     [categories, categoryGroups]
   )
 
@@ -537,17 +529,19 @@ export const TransactionRow = memo(function TransactionRow({
         )}
       </div>
 
-      {/* Account (all-accounts register only) */}
-      {accountLabel !== undefined && (
-        <div className="txn-col txn-col--account txn-text-clip" title={accountLabel}>
-          <span
-            className="txn-account-dot"
-            style={accountColor ? { backgroundColor: accountColor } : undefined}
-            aria-hidden
-          />
-          <span className="txn-cell-text">{accountLabel}</span>
-        </div>
-      )}
+      <AccountCell
+        transaction={txn}
+        budgetId={budgetId}
+        accounts={accounts}
+        label={accountLabel}
+        color={accountColor}
+        lock={accountLock}
+        isEditing={isEditing('account')}
+        isMobile={isMobile}
+        onStartEdit={() => startEditing(txn.id, 'account')}
+        onStopEdit={stopEditing}
+        onTabOut={(d) => advance('account', d)}
+      />
 
       {/* Payee */}
       <div
@@ -559,7 +553,7 @@ export const TransactionRow = memo(function TransactionRow({
         {isEditing('payee') ? (
           <Combobox
             value={txn.payee_id}
-            options={payeeOptions}
+            options={payeeOpts}
             onChange={(id) => commitField('payee_id', id)}
             onCreateNew={handleCreatePayee}
             createLabel="New Payee…"
@@ -595,7 +589,7 @@ export const TransactionRow = memo(function TransactionRow({
         {isEditing('category') ? (
           <Combobox
             value={txn.category_id}
-            options={categoryOptions}
+            options={categoryOpts}
             onChange={handleCategoryChange}
             onCreateNew={handleCreateCategory}
             createLabel="New Category…"

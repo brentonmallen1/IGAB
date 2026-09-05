@@ -100,7 +100,7 @@ OVER_BUDGET: dict[str, int] = {
     "frontend/src/utils/searchParser.ts": 740,
     "frontend/src/components/budget/CreditCardsSection/CreditCardsSection.tsx": 735,
     "frontend/src/components/guide/tools/CategoryPlanner.tsx": 733,
-    "frontend/src/components/transactions/TransactionRow/TransactionRow.tsx": 690,
+    "frontend/src/components/transactions/TransactionRow/TransactionRow.tsx": 689,
     "frontend/src/pages/LiabilityPage/LiabilityPage.tsx": 650,
     "frontend/src/components/imports/ImportReviewDialog/ImportReviewDialog.tsx": 632,
 }

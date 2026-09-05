@@ -109,7 +109,9 @@ describe('no surface offers a card set-aside envelope', () => {
   // hid the money from the budget completely. Read as source, so a seventh
   // spelling cannot quietly appear.
   const readsServedVerdict: [string, RegExp][] = [
-    ['../transactions/TransactionRow/TransactionRow.tsx', /c\.is_categorizable/],
+    // The register row's picker builds its list in a colocated pure module,
+    // so the verdict is read there — the same rule, one file along.
+    ['../transactions/TransactionRow/rowOptions.ts', /c\.is_categorizable/],
     ['../transactions/SplitTransactionEditor/SplitTransactionEditor.tsx', /c\.is_categorizable/],
     ['../guide/wishlist/ProjectForm.tsx', /c\.is_assignable/],
     ['../guide/wishlist/WishForm.tsx', /c\.is_assignable/],

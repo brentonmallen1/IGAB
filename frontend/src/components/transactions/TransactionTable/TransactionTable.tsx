@@ -639,6 +639,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
           accountMap={accountMap}
           categoryMap={categoryMap}
           payees={payees}
+          accounts={accounts}
           categories={categories}
           categoryGroups={categoryGroups}
           accountOnBudget={onBudgetAccountIds.has(txn.account_id)}
