@@ -53,6 +53,7 @@ from igab.repositories.category_repo import (
 )
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.transaction_repo import TransactionRepository
+from igab.repositories.txn_filters import CARD_ROW_FILED_AS_INCOME
 from igab.services.budget_service import BudgetService
 from igab.services.card_payment import CARD_PAYMENTS_GROUP
 from igab.services.category_service import CategoryService
@@ -197,17 +198,7 @@ async def _card_rows_filed_as_income(
         await session.execute(
             select(Transaction, Category.name)
             .join(Category, Category.id == Transaction.category_id)
-            .join(CategoryGroup, CategoryGroup.id == Category.category_group_id)
-            .join(Account, Account.id == Transaction.account_id)
-            .where(
-                Transaction.budget_id == budget_id,
-                Transaction.is_deleted == False,  # noqa: E712
-                Transaction.amount < 0,
-                CategoryGroup.is_system == True,  # noqa: E712
-                Account.is_deleted == False,  # noqa: E712
-                Account.on_budget == True,  # noqa: E712
-                Account.classification == "liability",
-            )
+            .where(Transaction.budget_id == budget_id, CARD_ROW_FILED_AS_INCOME)
             .order_by(Transaction.date)
         )
     ).all()

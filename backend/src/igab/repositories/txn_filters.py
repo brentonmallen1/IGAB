@@ -28,7 +28,8 @@ from igab.db.models import (
     category_tags,
     payee_tags,
 )
-from igab.repositories.category_filters import SPENDABLE, SPENT_ENVELOPE
+from igab.domain.payee_names import BALANCE_ADJUSTMENT_PAYEES
+from igab.repositories.category_filters import IN_SYSTEM_GROUP, SPENDABLE, SPENT_ENVELOPE
 
 NOT_DELETED = Transaction.is_deleted == False  # noqa: E712
 POSTED = Transaction.cleared != "pending"
@@ -142,6 +143,18 @@ TRANSFER_PAYEE = (
 )
 TRANSFER_LEG = or_(Transaction.transfer_id.isnot(None), TRANSFER_PAYEE)
 NON_TRANSFER = ~TRANSFER_LEG
+
+# A row under one of the auto-generated bookkeeping names is a ledger
+# correction, not spending anybody did — the set and its story live in
+# `domain/payee_names.py` beside the writers' own spellings. EXISTS for the
+# same NULL reason as TRANSFER_PAYEE above: a payee-less row must read as
+# "not an adjustment", never as UNKNOWN.
+BALANCE_ADJUSTMENT_ROW = (
+    select(Payee.id)
+    .where(Payee.id == Transaction.payee_id, Payee.name.in_(BALANCE_ADJUSTMENT_PAYEES))
+    .correlate(Transaction)
+    .exists()
+)
 
 #: A row that could still be joined to a partner: live, whole (not a split
 #: parent and not one of its children), and not already linked.
@@ -466,6 +479,31 @@ UNCLAIMED_CARD_ROW = and_(
     ON_CARD_ACCOUNT,
     not_(row_category(SPENDABLE)),
     not_(CARD_PAYMENT_FROM_CASH),
+)
+
+#: A charge on a card filed to an income category: money going out, claimed as
+#: money coming in. Not an integrity failure — the arithmetic matches an
+#: uncategorized row — but a visibility one: the envelope term skips system
+#: groups, so the spending lands in Uncovered with no envelope ever naming it.
+#:
+#: Two exclusions, one rationale. Cash accounts are out of scope entirely: an
+#: income-filed outflow there is YNAB's own convention for a reconciliation
+#: adjustment. And on cards, rows under a `BALANCE_ADJUSTMENT_PAYEES` name are
+#: skipped by payee — YNAB writes the *identical* adjustment when reconciling
+#: a card, and encoding the skip as "cash accounts only" read twelve imported
+#: reconciliation rows and a starting balance as thirteen card charges filed
+#: as income. Ledger corrections are not spending to give an envelope.
+#:
+#: Two readers, one spelling: the hygiene check counts these
+#: (`account_hygiene._card_rows_filed_as_income`) and the repair script
+#: unfiles them (`scripts/repair_card_payment_transfers.py`). They disagreed
+#: about adjustment rows for exactly as long as each spelled this itself.
+CARD_ROW_FILED_AS_INCOME = and_(
+    NOT_DELETED,
+    Transaction.amount < 0,
+    row_category(IN_SYSTEM_GROUP),
+    ON_CARD_ACCOUNT,
+    not_(BALANCE_ADJUSTMENT_ROW),
 )
 
 

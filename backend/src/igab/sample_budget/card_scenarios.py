@@ -32,6 +32,7 @@ from decimal import Decimal
 from typing import Literal
 
 from igab.domain.cards import AnchorOpenings
+from igab.domain.payee_names import STARTING_BALANCE_PAYEE
 from igab.sample_budget.spec import (
     BOTH_TIERS,
     AccountSpec,
@@ -982,7 +983,7 @@ def to_spec_elements(
             OneOffTxn(
                 when=RelDate(scenario.events[0].when.months_ago, 1),
                 account=scenario.card,
-                payee="Starting Balance",
+                payee=STARTING_BALANCE_PAYEE,
                 amount=scenario.opening,
                 # Filed nowhere: on a card the opening gap is debt the budget
                 # never funded, not income to assign.
@@ -1120,13 +1121,7 @@ def build_scenario_spec(
     payees = tuple(
         dict.fromkeys(
             [_PAYEES[k] for k in _PAYEES]
-            + [
-                "Starting Balance",
-                "Employer Payroll",
-                "Thai Garden",
-                "Netflix",
-                "Amazon",
-            ]
+            + [STARTING_BALANCE_PAYEE, "Employer Payroll", "Thai Garden", "Netflix", "Amazon"]
         )
     )
 

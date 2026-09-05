@@ -33,17 +33,15 @@ from igab.domain.cards import card_reserve, residual_is_pass_through
 from igab.domain.matching import DATE_WINDOW_DAYS
 from igab.domain.transfers import PairableLeg, pair_legs
 from igab.guide.detection import budget_service_from
-from igab.repositories.category_filters import IN_SYSTEM_GROUP
 from igab.repositories.category_repo import BudgetAssignmentRepository, CategoryRepository
 from igab.repositories.txn_filters import (
-    CARD_ACCOUNT,
+    CARD_ROW_FILED_AS_INCOME,
     LEAF,
     NOT_DELETED,
     ON_BUDGET_ACCOUNT,
     PAIRABLE_LEG,
     POSTED,
     UNPAIRED_TRANSFER_LEG,
-    row_category,
 )
 from igab.services.budget_service import _opening_leg
 from igab.utils.clock import today_utc
@@ -353,22 +351,15 @@ class AccountHygieneService:
         Assign" because the payee carried a mapping sample of "Interest" and
         the bank called the row "Interest Charge".
 
-        Cash accounts are deliberately excluded. There, an outflow filed to an
-        income category is arithmetically identical to an uncategorized one and
-        is YNAB's own convention for a reconciliation adjustment — flagging
-        those would bury this signal under decades of correct rows.
+        Cash accounts are deliberately excluded, and so are balance-adjustment
+        rows on the cards themselves — the two exclusions and their shared
+        rationale live on `txn_filters.CARD_ROW_FILED_AS_INCOME`, which the
+        repair script reads too so the two cannot disagree about what counts.
         """
         result = await self.session.execute(
             select(func.count())
             .select_from(Transaction)
-            .join(Account, Account.id == Transaction.account_id)
-            .where(
-                Transaction.budget_id == budget_id,
-                NOT_DELETED,
-                Transaction.amount < 0,
-                row_category(IN_SYSTEM_GROUP),
-                CARD_ACCOUNT,
-            )
+            .where(Transaction.budget_id == budget_id, CARD_ROW_FILED_AS_INCOME)
         )
         count = result.scalar_one()
         if not count:

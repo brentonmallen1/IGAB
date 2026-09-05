@@ -19,7 +19,7 @@ strict subset: full-only elements are tagged tiers=("full",).
 
 from decimal import Decimal
 
-from igab.sample_budget.card_scenarios import ALL_SCENARIOS, merge_into
+from igab.sample_budget.card_scenarios import ALL_SCENARIOS, STARTING_BALANCE_PAYEE, merge_into
 from igab.sample_budget.spec import (
     AccountSpec,
     CategorySpec,
@@ -248,7 +248,7 @@ _HOUSEHOLD = SampleBudgetSpec(
     ),
     payees=(
         PayeeSpec("Acme Corp Payroll", default_category="Salary"),
-        PayeeSpec("Starting Balance"),
+        PayeeSpec(STARTING_BALANCE_PAYEE),
         PayeeSpec("Maple St Mortgage Interest", tiers=FULL),
         PayeeSpec("Oakwood Property Mgmt", default_category="Rent"),
         PayeeSpec("City Power & Light", default_category="Electric"),

@@ -6,6 +6,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, ReconciliationSnapshot, Transaction
+from igab.domain.payee_names import RECONCILIATION_ADJUSTMENT_PAYEE
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.reconciliation_repo import ReconciliationRepository
@@ -91,7 +92,7 @@ class ReconciliationService:
 
         account = await self.account_repo.get_or_raise(account_id)
         payee = await self.payee_repo.find_or_create(
-            account.budget_id, "Reconciliation Balance Adjustment"
+            account.budget_id, RECONCILIATION_ADJUSTMENT_PAYEE
         )
         # Through the service, not the repo: an adjustment moves real money
         # and belongs in the change log like any other transaction, so the
