@@ -35,7 +35,10 @@ wheels/
 .mypy_cache/
 htmlcov/
 .coverage
+.coverage.*
 coverage.xml
+coverage.json
+frontend/coverage/
 
 # ── Node / Frontend ───────────────────────────────────────────────────────────
 node_modules/

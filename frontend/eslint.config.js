@@ -81,4 +81,48 @@ export default defineConfig([
     files: ['src/utils/money.ts', 'src/utils/amountExpression.ts', 'src/utils/searchParser.ts'],
     rules: { 'no-restricted-syntax': 'off' },
   },
+  {
+    // ── Readability budget, .ts ONLY ────────────────────────────────────────
+    // Deliberately not applied to .tsx. The `complexity` rule counts every
+    // `&&` and ternary in JSX, so a component that renders a lot of optional
+    // bits scores enormously without being hard to follow — CategoryRow.tsx
+    // reads 76, TransactionEditor.tsx 172. Gating that would push JSX into
+    // wrapper components to satisfy a number, which is churn, not clarity.
+    // A .tsx file's real budget is its LENGTH, and that lives in
+    // `scripts/check-size.py` alongside the Python one.
+    //
+    // On .ts — the pure modules where the rules actually live — the numbers
+    // mean what they say, and there are only 11 violations across 6 files.
+    files: ['src/**/*.ts'],
+    ignores: ['**/*.test.ts'],
+    rules: {
+      complexity: ['error', 15],
+      'max-lines-per-function': [
+        'error',
+        { max: 150, skipBlankLines: true, skipComments: true },
+      ],
+    },
+  },
+  {
+    // The debt list for the block above — `warn`, following the same pattern
+    // as LEGACY_WARNINGS: the count is the debt and should go down, never up.
+    // searchParser.ts is six of the eleven on its own; it parses a search
+    // grammar, and a hand-written parser is the one place a high branch count
+    // is the honest shape rather than a mess.
+    files: [
+      'src/utils/searchParser.ts',
+      'src/api/transactions.ts',
+      'src/components/guide/flowLayout.ts',
+      'src/components/guide/tools/payoffRows.ts',
+      'src/components/reports/charts/sankeyView.ts',
+      'src/stores/uiStore.ts',
+    ],
+    rules: {
+      complexity: ['warn', 15],
+      'max-lines-per-function': [
+        'warn',
+        { max: 150, skipBlankLines: true, skipComments: true },
+      ],
+    },
+  },
 ])

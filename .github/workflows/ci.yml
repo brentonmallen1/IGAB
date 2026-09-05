@@ -25,6 +25,21 @@ permissions:
   contents: read
 
 jobs:
+  # Repo-wide gates that need neither toolchain. `check-pii.py` was running in
+  # `just ci` and NOWHERE in GitHub CI — on a public repo, for the check
+  # CLAUDE.md calls the one that runs first. That is the gap this job closes;
+  # the size budget rides along because it has the same shape (no deps, fast,
+  # covers both halves).
+  gates:
+    name: gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Personal data
+        run: python3 scripts/check-pii.py
+      - name: File-length budget
+        run: python3 scripts/check-size.py
+
   backend:
     name: backend
     runs-on: ubuntu-latest
@@ -81,11 +96,14 @@ jobs:
       # No secrets needed: every field in igab/config.py has a default and
       # pydantic-settings tolerates the absent .env file. pyproject sets
       # `addopts = -n auto`, so xdist spins up one test DB per runner core.
-      - name: Tests (pytest)
+      # --cov enables the coverage gate: `fail_under` in pyproject fails the
+      # build if it drops below the ratchet. Same flag `just ci` passes, so the
+      # two cannot disagree about what green means.
+      - name: Tests (pytest + coverage)
         working-directory: backend
         env:
           DATABASE_URL: postgresql+asyncpg://igab:changeme@localhost:5432/igab
-        run: uv run pytest
+        run: uv run pytest --cov
 
   frontend:
     name: frontend
@@ -128,9 +146,9 @@ jobs:
 
       # Includes src/themes/contrast.test.ts, which holds every palette to
       # WCAG AA — the hard gate described in CLAUDE.md.
-      - name: Tests (vitest)
+      - name: Tests (vitest + coverage)
         working-directory: frontend
-        run: npm test
+        run: npm run test:coverage
 
   # Fails the PR if a dependency bump introduces a package with a known CVE,
   # rather than alerting after it has already landed on main.
