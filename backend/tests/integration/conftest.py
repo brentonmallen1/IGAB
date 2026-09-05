@@ -48,6 +48,13 @@ def test_db() -> str:
     admin.dispose()
 
     schema_engine = create_engine(_url(_db_name(), sync=True))
+    with schema_engine.connect() as conn:
+        # `import_anchors` carries an EXCLUDE ... USING gist constraint, whose
+        # `<>` operator comes from btree_gist. The migration creates the
+        # extension; this fixture builds the schema from the models instead, so
+        # it has to create it too or `create_all` fails on that table.
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS btree_gist"))
+        conn.commit()
     Base.metadata.create_all(schema_engine)
     schema_engine.dispose()
     return _db_name()

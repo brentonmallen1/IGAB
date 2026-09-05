@@ -13,7 +13,9 @@ import zipfile
 from datetime import date
 from decimal import Decimal
 
+import pytest
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from igab.db.models import ImportAnchor
 from igab.services.account_hygiene import AccountHygieneService
@@ -145,3 +147,52 @@ async def test_hygiene_never_asks_an_anchored_budget_for_a_start_date(db_session
     _, budget_id, _ = await _imported(db_session, tmp_path)
     report = await AccountHygieneService(db_session).run(budget_id)
     assert "card_debt_predates_budget" not in {f.kind for f in report.findings}
+
+
+async def test_the_database_refuses_a_second_anchor_month(db_session, tmp_path):
+    """One budget, one anchor month — held by the database, not by the writer.
+
+    `_assemble` raises rather than pick when it reads a budget whose rows
+    disagree about the month, because picking one would move every envelope
+    figure in that budget silently. Nothing used to stop the disagreement from
+    existing: the model said "pinned by test, not by constraint", and the
+    production writers were safe only because each happens to target a fresh
+    budget. `ex_import_anchor_one_month_per_budget` makes that a property of
+    the schema, so a future writer cannot quietly reintroduce it.
+
+    Rows AT the anchor month stay unrestricted — a budget writes one per
+    category and one per card, which is the normal write, not the defect.
+    """
+    _services, budget_id, _ynab = await _imported(db_session, tmp_path)
+    existing = await _anchor_rows(db_session, budget_id)
+    assert existing, "the fixture import must anchor for this test to mean anything"
+    assert {row.month for row in existing} == {JUL}
+
+    # Another row AT the same month is fine — that is how an anchor is written,
+    # one row per category and per card, all at B−1.
+    a_category = next(row.category_id for row in existing if row.category_id is not None)
+    db_session.add(
+        ImportAnchor(
+            budget_id=budget_id,
+            month=JUL,
+            kind="available",
+            category_id=a_category,
+            amount=D("1"),
+        )
+    )
+    await db_session.flush()
+
+    # A row at a DIFFERENT month is the corruption `_assemble` refuses to
+    # guess at, and the database now refuses to store.
+    db_session.add(
+        ImportAnchor(
+            budget_id=budget_id,
+            month=AUG,
+            kind="available",
+            category_id=a_category,
+            amount=D("1"),
+        )
+    )
+    with pytest.raises(IntegrityError, match="ex_import_anchor_one_month_per_budget"):
+        await db_session.flush()
+    await db_session.rollback()
