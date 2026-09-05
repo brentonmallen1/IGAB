@@ -7,7 +7,7 @@
  * category the form deliberately doesn't show. These pin the seeding.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { WishForm } from './WishForm'
@@ -146,6 +146,54 @@ describe('WishForm', () => {
     // Switch to an unfunded project and the same choice means waiting.
     await userEvent.selectOptions(screen.getByLabelText('Project'), 'Someday')
     expect(screen.getByText('Not yet')).toBeInTheDocument()
+  })
+
+  it('the edit sends every attribute the form owns — nothing silently dropped', async () => {
+    // The twin of the backend's every-field round-trip: the wish's link once
+    // looked uneditable because an unrelated validation blocked the save, and
+    // this pins that each form field actually reaches the request.
+    const w = wish(
+      { mode: 'none' },
+      { url: 'https://old.example', notes: 'old', cooling_until: '2026-09-20', cooling: true }
+    )
+    renderForm(w, [cabin])
+
+    await userEvent.clear(screen.getByLabelText('What'))
+    await userEvent.type(screen.getByLabelText('What'), 'Kayak')
+    await userEvent.clear(screen.getByLabelText('Cost'))
+    await userEvent.type(screen.getByLabelText('Cost'), '1200')
+    await userEvent.selectOptions(screen.getByLabelText('Project'), 'Cabin')
+    const link = screen.getByLabelText('Link (optional)')
+    await userEvent.clear(link)
+    await userEvent.type(link, 'https://new.example/kayak')
+    const notes = screen.getByLabelText('Notes (optional)')
+    await userEvent.clear(notes)
+    await userEvent.type(notes, 'the tandem')
+    const cooling = screen.getByLabelText(/Cooling off until/)
+    await userEvent.clear(cooling)
+    // fireEvent for the date value: typing into a date input is flaky in jsdom
+    fireEvent.change(cooling, { target: { value: '2026-10-01' } })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(update).toHaveBeenCalledWith({
+      id: 'w1',
+      name: 'Kayak',
+      cost: '1200',
+      url: 'https://new.example/kayak',
+      notes: 'the tandem',
+      project_id: 'Cabin',
+      cooling_until: '2026-10-01',
+      funding: { mode: 'none', category_id: null },
+    })
+  })
+
+  it('clearing the cooling date ends the cooling-off', async () => {
+    const w = wish({ mode: 'none' }, { cooling_until: '2026-09-20', cooling: true })
+    renderForm(w, [])
+    fireEvent.change(screen.getByLabelText(/Cooling off until/), { target: { value: '' } })
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({ cooling_until: null }))
   })
 
   it('still requires a category when one was explicitly chosen and then cleared', async () => {

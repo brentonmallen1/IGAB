@@ -36,6 +36,9 @@ export function WishForm({ budgetId, wish, projects, defaultCoolingDays, onClose
   const [notes, setNotes] = useState(wish?.notes ?? '')
   const [projectId, setProjectId] = useState<string>(wish?.project_id ?? '')
   const [coolingDays, setCoolingDays] = useState(String(defaultCoolingDays))
+  // Editing works on the stored date, not a day count: days only mean
+  // something at creation, when they measure from today.
+  const [coolingUntil, setCoolingUntil] = useState(wish?.cooling_until ?? '')
   // Inherited funding seeds 'none': the wish's own stored choice is "no
   // category of its own" — the envelope it shows belongs to the project. The
   // served mode says 'existing' for it, and seeding from that blocked every
@@ -96,6 +99,7 @@ export function WishForm({ budgetId, wish, projects, defaultCoolingDays, onClose
           url: url.trim() || null,
           notes: notes.trim() || null,
           project_id: projectId || null,
+          cooling_until: coolingUntil || null,
           ...(ownsEnvelope
             ? {}
             : { funding: { mode, category_id: mode === 'existing' ? categoryId : null } }),
@@ -229,7 +233,16 @@ export function WishForm({ budgetId, wish, projects, defaultCoolingDays, onClose
           )}
         </fieldset>
 
-        {!editing && (
+        {editing ? (
+          <label className="tool__field tool__field--inline">
+            <span>Cooling off until (blank ends it)</span>
+            <input
+              type="date"
+              value={coolingUntil}
+              onChange={(e) => setCoolingUntil(e.target.value)}
+            />
+          </label>
+        ) : (
           <label className="tool__field tool__field--inline">
             <span>Cooling-off, days</span>
             <input
