@@ -32,7 +32,7 @@ from igab.integrations.ynab.parser import YNABParser
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.transaction_repo import TransactionRepository
-from igab.services.change_log import snapshot
+from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match
 
 router = APIRouter(route_class=CommitRoute)
 
@@ -954,4 +954,17 @@ async def mark_import_reviewed(
     budget = await session.get(Budget, budget_id)
     if budget is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Budget not found")
+    before = snapshot("budget", budget)
     budget.import_reviewed_at = datetime.now(UTC)
+    after = snapshot("budget", budget)
+    if snapshots_match(after, before):  # re-stamping records a real move only
+        recorder = ChangeRecorder(session)
+        recorder.actor_user_id = current_user.id
+        await recorder.record(
+            budget_id=budget_id,
+            entity_type="budget",
+            entity_id=budget_id,
+            action="update",
+            before=before,
+            after=after,
+        )

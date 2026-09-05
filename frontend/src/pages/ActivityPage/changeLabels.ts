@@ -1,6 +1,6 @@
 /** Human labels for change-log rows — the Activity page and the global undo toast share them. */
 
-export function entityTypeLabel(entityType: string): string {
+export function entityTypeLabel(entityType: string, action?: string): string {
   switch (entityType) {
     case 'transaction':
       return 'transaction'
@@ -13,8 +13,9 @@ export function entityTypeLabel(entityType: string): string {
     case 'assignment':
       return 'assignment'
     case 'budget':
-      // Only ever the subject of a reorder of its groups.
-      return 'category groups'
+      // The subject of plain settings updates AND — as a pseudo-subject —
+      // of a reorder of its category groups.
+      return action === 'reorder' ? 'category groups' : 'budget'
     case 'wishlist_item':
       return 'wishlist item'
     case 'wishlist_project':
@@ -56,6 +57,14 @@ export function entityTypeLabel(entityType: string): string {
       return 'duplicate match'
     case 'category_plan':
       return 'plan'
+    case 'guide_state':
+      return 'guide setting'
+    case 'guide_binding':
+      return 'guide answer'
+    case 'budget_member':
+      return 'member'
+    case 'attachment':
+      return 'attachment'
     default:
       return entityType
   }

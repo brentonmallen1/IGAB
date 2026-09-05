@@ -24,7 +24,7 @@ from igab.domain.exceptions import InvariantViolation, NotFoundError
 from igab.domain.money import quantize_cents
 from igab.domain.ordering import renumber
 from igab.guide.detection import budget_service_from
-from igab.guide.repo import GuideRepository
+from igab.guide.repo import GuideRepository, set_state_recorded
 from igab.guide.service import DEFAULT_PREFS, PREFS_KEY
 from igab.guide.wishlist import (
     DEFAULT_COOLING_DAYS,
@@ -105,7 +105,7 @@ class WishlistService:
 
     async def set_settings(self, budget_id: uuid.UUID, changes: dict[str, int]) -> dict[str, int]:
         merged = {**(await self.settings(budget_id)), **changes}
-        await self.guide.set_state(budget_id, SETTINGS_KEY, merged)
+        await set_state_recorded(self.guide, self.changes, budget_id, SETTINGS_KEY, merged)
         return merged
 
     async def ensure_group(self, budget_id: uuid.UUID) -> CategoryGroup:

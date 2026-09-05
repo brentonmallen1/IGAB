@@ -346,7 +346,7 @@ function ChangeCard({
   onRedo,
 }: ChangeCardProps) {
   const icon = actionIcon(change.action)
-  const entityLabel = entityTypeLabel(change.entity_type)
+  const entityLabel = entityTypeLabel(change.entity_type, change.action)
   const actionLabel = actionTypeLabel(change.action)
   const isUndone = !!change.undone_at
 

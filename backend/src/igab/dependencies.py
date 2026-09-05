@@ -261,14 +261,18 @@ def get_guide_service(
     target_service: Annotated[TargetService, Depends(get_target_service)],
     report_service: Annotated[ReportService, Depends(get_report_service)],
     liability_service: Annotated[LiabilityService, Depends(get_liability_service)],
+    current_user: "CurrentUser",
 ) -> GuideService:
-    return GuideService(
+    service = GuideService(
         session,
         budget_service=budget_service,
         target_service=target_service,
         report_service=report_service,
         liability_service=liability_service,
     )
+    # Same actor stamping as get_budget_service — see there.
+    service.changes.actor_user_id = current_user.id
+    return service
 
 
 def get_wishlist_service(

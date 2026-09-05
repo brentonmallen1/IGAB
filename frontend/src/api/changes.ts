@@ -44,6 +44,10 @@ export interface Change {
     | 'reconciliation'
     | 'transaction_match'
     | 'category_plan'
+    | 'guide_state'
+    | 'guide_binding'
+    | 'budget_member'
+    | 'attachment'
   entity_id: string
   action:
     | 'create'
@@ -274,4 +278,17 @@ export function invalidateAfterUndo(
 
   // Category planner documents.
   qc.invalidateQueries({ queryKey: [ROOT.categoryPlans] })
+
+  // Guide state, budget settings, and membership.
+  qc.invalidateQueries({ queryKey: [ROOT.guide] })
+  qc.invalidateQueries({ queryKey: [ROOT.guideCandidates] })
+  qc.invalidateQueries({ queryKey: [ROOT.guideCheckup] })
+  qc.invalidateQueries({ queryKey: [ROOT.guideSignals] })
+  qc.invalidateQueries({ queryKey: [ROOT.budgets] })
+  qc.invalidateQueries({ queryKey: [ROOT.budgetMembers] })
+  qc.invalidateQueries({ queryKey: [ROOT.importSummary] })
+
+  // Receipts.
+  qc.invalidateQueries({ queryKey: [ROOT.attachments] })
+  qc.invalidateQueries({ queryKey: [ROOT.attachmentCheck] })
 }

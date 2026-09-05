@@ -1,5 +1,5 @@
 import uuid
-from datetime import date
+from datetime import UTC, date, datetime
 from hashlib import sha256
 from io import BytesIO
 from pathlib import Path
@@ -191,6 +191,17 @@ class AttachmentService:
         return attachment
 
     async def delete(self, attachment: TransactionAttachment, txn: Transaction) -> None:
+        """Soft delete: the row flips (stamping deleted_at) and the bytes
+        stay on disk for the sweep's grace period, so ⌘Z can bring the
+        receipt back whole. attachment_sweep purges for good."""
+        attachment.is_deleted = True
+        attachment.deleted_at = datetime.now(UTC)
+        await self.repo.session.flush()
+
+    async def purge(self, attachment: TransactionAttachment, txn: Transaction) -> None:
+        """The irreversible exit — files unlinked, row gone. Only the sweep
+        calls this, after the grace period; past it, undo of the delete
+        meets an honest "no longer exists" instead of a broken image."""
         file_path = self._resolve_path(attachment, txn)
         thumb_path = file_path.parent / f"thumb_{file_path.name}"
 
@@ -204,4 +215,4 @@ class AttachmentService:
         except OSError:
             pass
 
-        await self.repo.delete_attachment(attachment.id)
+        await self.repo.hard_delete_attachment(attachment.id)

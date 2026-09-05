@@ -1,12 +1,15 @@
 """Database access for the Guide's own two tables."""
 
 import uuid
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import GuideBinding, GuideState
+
+if TYPE_CHECKING:
+    from igab.services.change_log import ChangeRecorder
 
 
 class GuideRepository:
@@ -82,3 +85,34 @@ class GuideRepository:
             delete(GuideState).where(GuideState.budget_id == budget_id, GuideState.key == key)
         )
         await self.session.flush()
+
+
+async def set_state_recorded(
+    repo: GuideRepository,
+    changes: "ChangeRecorder",
+    budget_id: uuid.UUID,
+    key: str,
+    value: dict[str, Any] | None,
+) -> None:
+    """Write (value=None: delete) one Guide state key and record the move.
+
+    The one spelling shared by guide preferences, progress steps, and the
+    wishlist's settings — each a user decision, so each undoes. Recorded as
+    the `guide_state` pseudo-subject with `_key`/`_value` bookkeeping
+    (`_value` None means the row was absent); a no-op write records nothing.
+    """
+    before = (await repo.state(budget_id)).get(key)
+    if before == value:
+        return
+    if value is None:
+        await repo.delete_state(budget_id, key)
+    else:
+        await repo.set_state(budget_id, key, value)
+    await changes.record(
+        budget_id=budget_id,
+        entity_type="guide_state",
+        entity_id=budget_id,
+        action="update",
+        before={"_key": key, "_value": before},
+        after={"_key": key, "_value": value},
+    )

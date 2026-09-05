@@ -42,7 +42,7 @@ export function useUndoRedo() {
       invalidateAfterUndo(qc, budgetId)
       const others = data.undone_change_ids.length - 1
       toast.success(
-        `Undid: ${actionTypeLabel(data.action).toLowerCase()} ${entityTypeLabel(data.entity_type)}${others > 0 ? ` — and the other ${others} in that batch` : ''}`
+        `Undid: ${actionTypeLabel(data.action).toLowerCase()} ${entityTypeLabel(data.entity_type, data.action)}${others > 0 ? ` — and the other ${others} in that batch` : ''}`
       )
     } catch (err: unknown) {
       toast(conflictMessage(err) ?? 'Nothing to undo')

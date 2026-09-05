@@ -1529,6 +1529,10 @@ class TransactionAttachment(Base):
     # budgeting app is a double-count, not just clutter. Nullable: rows created
     # before this column existed have no hash and simply never match.
     content_hash: Mapped[str | None] = mapped_column(String(64), index=True)
+    # Soft delete so Cmd+Z can bring a receipt back; the bytes stay on disk
+    # until attachment_sweep purges rows past deleted_at's grace period.
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

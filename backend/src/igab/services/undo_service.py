@@ -25,12 +25,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import (
     CHANGE_LOG_UNDO_SEQ,
-    Account,
-    Asset,
     BudgetAssignment,
     BudgetFilterCategory,
     BudgetMove,
-    BudgetViewGroup,
     BudgetViewPlacement,
     Category,
     CategoryGroup,
@@ -39,7 +36,6 @@ from igab.db.models import (
     LiabilityBalanceSnapshot,
     Payee,
     ScheduledTransaction,
-    Tag,
     Transaction,
     TransactionAttachment,
     WishlistItem,
@@ -56,47 +52,17 @@ from igab.repositories.change_log_repo import ChangeLogRepository
 from igab.services.change_log import (
     ENTITY_MODELS,
     coerce_value,
-    filter_selection_dump,
     snapshot,
     snapshots_match,
-    view_children_dump,
+)
+from igab.services.undo_restores import (
+    HARD_ROW_NATURAL_KEY,
+    UndoRestores,
 )
 
 
 def _opt_uuid(value: object) -> uuid.UUID | None:
     return uuid.UUID(str(value)) if value else None
-
-
-# Entities whose rows are removed outright rather than soft-deleted: nothing
-# references them by id, so a delete leaves no flag to flip back. Undo of a
-# delete (and redo of a create) re-inserts the recorded snapshot under its
-# original id via `_insert_hard_row`; undo of a create removes the row again.
-# The natural key names the columns that make a concurrent replacement
-# detectable — a second row on the same key since the delete is a person's
-# later decision, and undo refuses rather than fighting the unique index.
-HARD_ROW_NATURAL_KEY: dict[str, tuple[str, ...]] = {
-    "category_target": ("category_id",),
-    "liability_snapshot": ("liability_id", "date"),
-    "asset_value": ("asset_id", "date"),
-    "account_type": ("budget_id", "key"),
-    "reconciliation": ("account_id", "reconciled_at"),
-    "category_plan": ("budget_id", "name"),
-}
-
-# The FK a re-inserted hard row hangs from. Checked before insert so a
-# vanished parent surfaces as a conflict message, never an IntegrityError.
-HARD_ROW_PARENT: dict[str, tuple[type, str]] = {
-    "category_target": (Category, "category_id"),
-    "liability_snapshot": (Liability, "liability_id"),
-    "asset_value": (Asset, "asset_id"),
-}
-
-# Rows that may point AT a hard row (no ondelete on the FK). Checked before a
-# hard delete — undo of a create, redo of a delete — so a referenced row
-# refuses with words rather than an IntegrityError.
-HARD_ROW_REFERENCERS: dict[str, tuple[Any, str]] = {
-    "account_type": (Account, "account_type_id"),
-}
 
 
 def _mark_undone(change: ChangeLog) -> None:
@@ -107,7 +73,7 @@ def _mark_undone(change: ChangeLog) -> None:
     change.undo_seq = CHANGE_LOG_UNDO_SEQ.next_value()
 
 
-class UndoService:
+class UndoService(UndoRestores):
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
         self.repo = ChangeLogRepository(session)
@@ -285,6 +251,9 @@ class UndoService:
         model = ENTITY_MODELS.get(change.entity_type)
         if model is None:
             raise UndoConflict(f"Unknown entity type '{change.entity_type}'")
+        if change.entity_type == "budget_member":
+            await self._apply_membership(change, target="after")
+            return
         entity: Any = await self.session.get(model, change.entity_id)
         if entity is None:
             # Redo of a hard-row create: the undo removed the row, so put the
@@ -304,6 +273,12 @@ class UndoService:
             entity.is_deleted = False
         elif change.action == "update" and change.entity_type in ("category_tags", "payee_tags"):
             await self._restore_tag_membership(change, target="after", force=force)
+        elif change.action == "update" and change.entity_type == "guide_state":
+            await self._restore_guide_state(change, target="after", force=force)
+        elif change.action == "update" and change.entity_type == "guide_binding":
+            await self._restore_guide_bindings(change, target="after", force=force)
+        elif change.action == "update" and change.entity_type == "attachment":
+            await self._replay_rotation(change, entity, direction="redo")
         elif change.action in ("update", "approve"):
             skip = self._reconciled_skip(entity, change, "redo")
             if not force and change.before is not None:
@@ -426,6 +401,10 @@ class UndoService:
         model = ENTITY_MODELS.get(change.entity_type)
         if model is None:
             raise UndoConflict(f"Unknown entity type '{change.entity_type}'")
+        if change.entity_type == "budget_member":
+            # Composite-keyed; never fetched by entity_id alone.
+            await self._apply_membership(change, target="before")
+            return
         entity = await self.session.get(model, change.entity_id)
         if entity is None:
             # A hard delete removed the row outright, so there is no flag to
@@ -448,6 +427,12 @@ class UndoService:
             # Bookkeeping-only record: no fields to restore, so the generic
             # update path (whose staleness check reads fields) is skipped.
             await self._restore_tag_membership(change, target="before", force=force)
+        elif change.action == "update" and change.entity_type == "guide_state":
+            await self._restore_guide_state(change, target="before", force=force)
+        elif change.action == "update" and change.entity_type == "guide_binding":
+            await self._restore_guide_bindings(change, target="before", force=force)
+        elif change.action == "update" and change.entity_type == "attachment":
+            await self._replay_rotation(change, entity, direction="undo")
         elif change.action in ("update", "approve"):
             self._undo_update(change, entity, force)
             if change.entity_type == "assignment":
@@ -456,20 +441,8 @@ class UndoService:
                 await self._restore_view_children(change, target="before", force=force)
             elif change.entity_type == "budget_filter":
                 await self._restore_filter_selections(change, target="before", force=force)
-        elif change.action == "delete" and change.entity_type == "category":
-            await self._undo_category_delete(change, entity)
-        elif change.action == "delete" and change.entity_type == "wishlist_project":
-            await self._undo_wishlist_project_delete(change, entity)
-        elif change.action == "delete" and change.entity_type == "asset":
-            await self._undo_asset_delete(change, entity)
-        elif change.action == "delete" and change.entity_type == "tag":
-            await self._undo_tag_delete(change, entity)
-        elif change.action == "delete" and change.entity_type == "account":
-            await self._undo_account_delete(change, entity)
-        elif change.action == "delete" and change.entity_type in ("budget_view", "budget_filter"):
-            await self._undo_named_delete(change, entity)
         elif change.action == "delete":
-            await self._undo_delete(change, entity)
+            await self._apply_delete(change, entity)
         elif change.action == "merge":
             await self._undo_merge(change, entity)
         elif change.action == "reorder":
@@ -478,6 +451,24 @@ class UndoService:
             await self._apply_archive(change, target="before")
         else:
             raise UndoConflict(f"Changes of type '{change.action}' cannot be undone")
+
+    async def _apply_delete(self, change: ChangeLog, entity) -> None:
+        """Undo a delete: the entity types with side effects to reverse get
+        their bespoke inverse, everything else flips its flag back."""
+        if change.entity_type == "category":
+            await self._undo_category_delete(change, entity)
+        elif change.entity_type == "wishlist_project":
+            await self._undo_wishlist_project_delete(change, entity)
+        elif change.entity_type == "asset":
+            await self._undo_asset_delete(change, entity)
+        elif change.entity_type == "tag":
+            await self._undo_tag_delete(change, entity)
+        elif change.entity_type == "account":
+            await self._undo_account_delete(change, entity)
+        elif change.entity_type in ("budget_view", "budget_filter"):
+            await self._undo_named_delete(change, entity)
+        else:
+            await self._undo_delete(change, entity)
 
     async def _apply_archive(self, change: ChangeLog, *, target: str) -> None:
         """Put the archived flag and its stamp back for every row one archive touched.
@@ -753,46 +744,6 @@ class UndoService:
                     )
         await self.session.flush()
 
-    async def _restore_tag_membership(self, change: ChangeLog, *, target: str, force: bool) -> None:
-        """Put one category's or payee's tag set back the way the record says.
-
-        The membership rows are hard-replaced by every set, so the record is
-        a `_tag_ids` dump per side and staleness is checked here against the
-        step's own expected side. Tags deleted since are skipped."""
-        assoc = category_tags if change.entity_type == "category_tags" else payee_tags
-        owner_col = "category_id" if change.entity_type == "category_tags" else "payee_id"
-        current = sorted(
-            str(t)
-            for t in (
-                await self.session.execute(
-                    select(assoc.c.tag_id).where(assoc.c[owner_col] == change.entity_id)
-                )
-            ).scalars()
-        )
-        expected_side = getattr(change, "after" if target == "before" else "before") or {}
-        if not force and current != (expected_side.get("_tag_ids") or []):
-            raise UndoConflict("The tags have changed since this change")
-        wanted = [uuid.UUID(t) for t in (getattr(change, target) or {}).get("_tag_ids") or []]
-        alive: set[uuid.UUID] = set()
-        if wanted:
-            alive = set(
-                (
-                    await self.session.execute(
-                        select(Tag.id).where(
-                            Tag.id.in_(wanted),
-                            Tag.is_deleted == False,  # noqa: E712
-                        )
-                    )
-                ).scalars()
-            )
-        await self.session.execute(delete(assoc).where(assoc.c[owner_col] == change.entity_id))
-        for tag_id in wanted:
-            if tag_id in alive:
-                await self.session.execute(
-                    assoc.insert().values(**{owner_col: change.entity_id, "tag_id": tag_id})
-                )
-        await self.session.flush()
-
     async def _undo_account_delete(self, change: ChangeLog, entity) -> None:
         """Bring an account back with its ledger.
 
@@ -848,228 +799,6 @@ class UndoService:
                 f'Something named "{name}" already exists — rename or remove it first'
             )
         await self._undo_delete(change, entity)
-
-    async def _restore_view_children(self, change: ChangeLog, *, target: str, force: bool) -> None:
-        """Put a view's groups and placements back the way the record says.
-
-        The scalar fields went through the generic update path; the children
-        are hard-replaced rows, recorded as canonical dumps (invisible to
-        `snapshots_match`), so staleness is checked here: the children must
-        still stand as this step left them, unless `force`. Placements whose
-        category has been deleted since are skipped — the reorder rule.
-        Groups keep their recorded ids, because placements reference them.
-        """
-        payload = getattr(change, target) or {}
-        if "_groups" not in payload and "_placements" not in payload:
-            return
-        expected = getattr(change, "after" if target == "before" else "before") or {}
-        groups = list(
-            (
-                await self.session.execute(
-                    select(BudgetViewGroup).where(BudgetViewGroup.view_id == change.entity_id)
-                )
-            ).scalars()
-        )
-        placements = list(
-            (
-                await self.session.execute(
-                    select(BudgetViewPlacement).where(
-                        BudgetViewPlacement.view_id == change.entity_id
-                    )
-                )
-            ).scalars()
-        )
-        current = view_children_dump(groups, placements)
-        recorded = {k: expected.get(k) for k in ("_groups", "_placements")}
-        if not force and current != recorded:
-            raise UndoConflict("The view has been rearranged since this change")
-        for row in placements:
-            await self.session.delete(row)
-        for row in groups:
-            await self.session.delete(row)
-        await self.session.flush()
-        wanted_groups = payload.get("_groups") or []
-        for g in wanted_groups:
-            self.session.add(
-                BudgetViewGroup(
-                    id=uuid.UUID(g["id"]),
-                    view_id=change.entity_id,
-                    name=g["name"],
-                    sort_order=int(g["sort_order"]),
-                )
-            )
-        await self.session.flush()
-        group_ids = {g["id"] for g in wanted_groups}
-        wanted_placements = payload.get("_placements") or []
-        cat_ids = [uuid.UUID(p["category_id"]) for p in wanted_placements]
-        alive: set[uuid.UUID] = set()
-        if cat_ids:
-            alive = set(
-                (
-                    await self.session.execute(select(Category.id).where(Category.id.in_(cat_ids)))
-                ).scalars()
-            )
-        for p in wanted_placements:
-            cat_id = uuid.UUID(p["category_id"])
-            if cat_id not in alive:
-                continue
-            self.session.add(
-                BudgetViewPlacement(
-                    view_id=change.entity_id,
-                    category_id=cat_id,
-                    group_id=uuid.UUID(p["group_id"]) if p.get("group_id") in group_ids else None,
-                    sort_order=int(p["sort_order"]),
-                    is_hidden=bool(p["is_hidden"]),
-                )
-            )
-        await self.session.flush()
-
-    async def _restore_filter_selections(
-        self, change: ChangeLog, *, target: str, force: bool
-    ) -> None:
-        """The filter analogue of `_restore_view_children`, for its one child
-        set: the selected categories."""
-        payload = getattr(change, target) or {}
-        if "_category_ids" not in payload:
-            return
-        expected = getattr(change, "after" if target == "before" else "before") or {}
-        rows = list(
-            (
-                await self.session.execute(
-                    select(BudgetFilterCategory).where(
-                        BudgetFilterCategory.filter_id == change.entity_id
-                    )
-                )
-            ).scalars()
-        )
-        current = filter_selection_dump(rows)
-        if not force and current["_category_ids"] != expected.get("_category_ids"):
-            raise UndoConflict("The filter's categories have changed since this change")
-        for row in rows:
-            await self.session.delete(row)
-        await self.session.flush()
-        cat_ids = [uuid.UUID(c) for c in payload.get("_category_ids") or []]
-        alive: set[uuid.UUID] = set()
-        if cat_ids:
-            alive = set(
-                (
-                    await self.session.execute(select(Category.id).where(Category.id.in_(cat_ids)))
-                ).scalars()
-            )
-        for cat_id in cat_ids:
-            if cat_id in alive:
-                self.session.add(
-                    BudgetFilterCategory(filter_id=change.entity_id, category_id=cat_id)
-                )
-        await self.session.flush()
-
-    async def _undo_reconcile(self, change: ChangeLog, entity) -> None:
-        """Unreconcile: flip the locked rows back to cleared, put the
-        account's last-reconciled stamp back, and remove the snapshot row.
-
-        `_transaction_ids` names exactly the rows the finish locked; only
-        ones still reconciled flip back — one unreconciled by hand since was
-        re-decided by a person. The reconciliation guard elsewhere is what
-        makes this branch necessary AND safe: a locked row can only come
-        back under undo through the very record that locked it.
-        """
-        after = change.after or {}
-        txn_ids = [uuid.UUID(t) for t in after.get("_transaction_ids") or []]
-        for i in range(0, len(txn_ids), 1000):
-            await self.session.execute(
-                update(Transaction)
-                .where(
-                    Transaction.id.in_(txn_ids[i : i + 1000]),
-                    Transaction.cleared == ClearedStatus.RECONCILED,
-                )
-                .values(cleared="cleared")
-            )
-        account = await self.session.get(Account, entity.account_id)
-        stamp = after.get("_account_before") or {}
-        if account is not None:
-            account.last_reconciled_at = coerce_value(
-                Account, "last_reconciled_at", stamp.get("last_reconciled_at")
-            )
-            account.last_reconciled_balance = coerce_value(
-                Account, "last_reconciled_balance", stamp.get("last_reconciled_balance")
-            )
-        await self.session.delete(entity)
-        await self.session.flush()
-
-    async def _redo_reconcile(self, change: ChangeLog) -> None:
-        """Replay a finish the undo reversed: re-insert the snapshot row,
-        re-lock the rows it named (only ones still cleared), and re-stamp
-        the account."""
-        after = change.after or {}
-        await self._insert_hard_row(change, "after")
-        txn_ids = [uuid.UUID(t) for t in after.get("_transaction_ids") or []]
-        for i in range(0, len(txn_ids), 1000):
-            await self.session.execute(
-                update(Transaction)
-                .where(
-                    Transaction.id.in_(txn_ids[i : i + 1000]),
-                    Transaction.cleared == ClearedStatus.CLEARED,
-                )
-                .values(cleared="reconciled")
-            )
-        raw_account = after.get("account_id")
-        account = None
-        if raw_account:
-            account = await self.session.get(Account, uuid.UUID(str(raw_account)))
-        stamp = after.get("_account_after") or {}
-        if account is not None:
-            account.last_reconciled_at = coerce_value(
-                Account, "last_reconciled_at", stamp.get("last_reconciled_at")
-            )
-            account.last_reconciled_balance = coerce_value(
-                Account, "last_reconciled_balance", stamp.get("last_reconciled_balance")
-            )
-        await self.session.flush()
-
-    async def _refuse_if_referenced(self, change: ChangeLog) -> None:
-        """A hard delete of a row something still points at would be an
-        IntegrityError; say why instead."""
-        referencer = HARD_ROW_REFERENCERS.get(change.entity_type)
-        if referencer is None:
-            return
-        ref_model, fk = referencer
-        held = (
-            await self.session.execute(
-                select(getattr(ref_model, fk)).where(getattr(ref_model, fk) == change.entity_id)
-            )
-        ).first()
-        if held is not None:
-            raise UndoConflict("Something still uses this item — repoint or remove that first")
-
-    async def _insert_hard_row(self, change: ChangeLog, side: str) -> None:
-        """Re-insert a hard-deleted row — undo of its delete, redo of its
-        create — from the recorded snapshot, under its original id.
-
-        The row's spot may have been re-taken since: a new target on the same
-        category, a new value point on the same date. That is a person's later
-        decision, so the restore refuses rather than fighting the unique key.
-        """
-        model: Any = ENTITY_MODELS[change.entity_type]
-        payload = getattr(change, side) or {}
-        fields = {f: coerce_value(model, f, v) for f, v in payload.items() if not f.startswith("_")}
-        if "budget_id" in model.__table__.columns and "budget_id" not in fields:
-            fields["budget_id"] = change.budget_id
-        parent = HARD_ROW_PARENT.get(change.entity_type)
-        if parent is not None:
-            parent_model, fk = parent
-            if fields.get(fk) is None or await self.session.get(parent_model, fields[fk]) is None:
-                raise UndoConflict("What this row belonged to no longer exists")
-        key = HARD_ROW_NATURAL_KEY[change.entity_type]
-        clauses = [getattr(model, col) == fields.get(col) for col in key]
-        taken: Any = (await self.session.execute(select(model).where(*clauses))).scalars().first()
-        if taken is not None:
-            if taken.id == change.entity_id:
-                # Something already put it back. Leave it as it stands rather
-                # than overwriting — the rule every other branch here follows.
-                return
-            raise UndoConflict("Its place has been taken by a newer entry — remove that one first")
-        self.session.add(model(id=change.entity_id, **fields))
-        await self.session.flush()
 
     async def _undo_asset_delete(self, change: ChangeLog, entity) -> None:
         """Bring an asset back, and re-point the liabilities its retire

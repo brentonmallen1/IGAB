@@ -37,6 +37,7 @@ from igab.db.models import (
     Budget,
     BudgetAssignment,
     BudgetFilter,
+    BudgetMember,
     BudgetView,
     Category,
     CategoryGroup,
@@ -50,6 +51,7 @@ from igab.db.models import (
     ScheduledTransaction,
     Tag,
     Transaction,
+    TransactionAttachment,
     TransactionMatch,
     WishlistItem,
     WishlistProject,
@@ -63,8 +65,11 @@ ENTITY_MODELS: dict[str, type] = {
     "category": Category,
     "category_group": CategoryGroup,
     "assignment": BudgetAssignment,
-    # Only ever the subject of a `reorder` (of its groups); it has no
-    # snapshot fields because nothing on the budget row itself is restored.
+    # The subject of a `reorder` of its groups (bookkeeping only), and of
+    # plain `update`s to its own settings fields. Its create/delete are
+    # deliberately unrecorded: this log lives INSIDE the budget — the
+    # budget's existence is the log's precondition, and deleting it takes
+    # the log with it.
     "budget": Budget,
     "wishlist_item": WishlistItem,
     "wishlist_project": WishlistProject,
@@ -95,6 +100,15 @@ ENTITY_MODELS: dict[str, type] = {
     "reconciliation": ReconciliationSnapshot,
     "transaction_match": TransactionMatch,
     "category_plan": CategoryPlan,
+    # Pseudo-subjects over the budget row: one Guide state key's value, or
+    # one concept's binding rows. The record is all bookkeeping (_key/_value,
+    # _concept_key/_rows) — undo_service has dedicated inverses.
+    "guide_state": Budget,
+    "guide_binding": Budget,
+    # Composite-keyed (budget_id, user_id): entity_id carries the user id and
+    # undo_service addresses the row itself, never via session.get.
+    "budget_member": BudgetMember,
+    "attachment": TransactionAttachment,
 }
 
 # Restorable fields per entity. is_deleted is excluded on purpose — the
@@ -273,6 +287,30 @@ SNAPSHOT_FIELDS: dict[str, tuple[str, ...]] = {
     ),
     # `payload` is the whole JSONB plan document — JSON-safe by construction.
     "category_plan": ("name", "payload"),
+    "budget": (
+        "name",
+        "currency_code",
+        "number_format",
+        "date_format",
+        "time_format",
+        "import_reviewed_at",
+    ),
+    "guide_state": (),
+    "guide_binding": (),
+    "budget_member": ("role",),
+    # A rotate's update record carries only `_degrees` bookkeeping — its
+    # inverse is the complementary rotation, not a field restore.
+    "attachment": (
+        "transaction_id",
+        "filename",
+        "original_filename",
+        "content_type",
+        "file_size",
+        "width",
+        "height",
+        "storage_path",
+        "content_hash",
+    ),
 }
 
 
@@ -304,6 +342,24 @@ def view_children_dump(groups: Any, placements: Any) -> dict[str, Any]:
 def filter_selection_dump(selections: Any) -> dict[str, Any]:
     """Bookkeeping dump of a filter's category set, sorted for ==."""
     return {"_category_ids": sorted(str(s.category_id) for s in selections)}
+
+
+def binding_rows_dump(rows: Any) -> list[dict[str, Any]]:
+    """Canonical dump of one Guide concept's binding rows, sorted for ==.
+    Ids are left out — replace_concept reissues them on every save."""
+    dumped = [
+        {
+            "mode": r.mode,
+            "entity_type": r.entity_type,
+            "entity_id": serialize_value(r.entity_id),
+            "answer": r.answer,
+            "amount": serialize_value(r.amount),
+            "as_of": serialize_value(r.as_of),
+            "note": r.note,
+        }
+        for r in rows
+    ]
+    return sorted(dumped, key=lambda d: tuple(str(d[k]) for k in sorted(d)))
 
 
 def source_for(created_via: str | None) -> str:
