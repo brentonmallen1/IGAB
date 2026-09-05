@@ -887,6 +887,57 @@ ANCHORED_IN_CREDIT = CardScenario(
     ),
 )
 
+ANCHORED_CREDIT_SPENT_DOWN = CardScenario(
+    slug="anchored-credit-spent-down",
+    title="A card that arrived in credit, then got used",
+    story=(
+        "`ANCHORED_IN_CREDIT` leaves the card at rest, where the imported "
+        "credit sits in `card_credit` and T3's anchor-era allowance covers "
+        "it. This is the same card a month later, used the way any card is. "
+        "An opening credit does NOT stay in `card_credit`: fund an envelope "
+        "100 and spend it here and the card owes 20, not 100, because the "
+        "credit absorbed the difference — so the envelope reserves 100 "
+        "against a 20 debt and the position reads over-reserved by exactly "
+        "the 80 the card came in with. That is T1's bound, not T3's. With "
+        "the allowance on T3 alone, every anchored card that arrived in "
+        "credit reported that 80 as drift from its first ordinary spend "
+        "onward, and the integrity check repeated it every month."
+    ),
+    card="Larkspur Card",
+    short="Larkspur",
+    opening=_d("0"),
+    import_anchor=CardAnchor(months_ago=2, reserve=_d("0"), uncovered=_d("0")),
+    events=(
+        # Pre-anchor: the credit the card was imported holding. Truncated from
+        # the walk; only the balance and `opening_credit` remember it, and the
+        # latter is read live off the register, never off the anchor rows.
+        _deposit(3, "80"),
+        # Post-anchor: ordinary funded spending, reserving as ever.
+        _fund(1, "100", "Larkspur Everyday"),
+        _spend(1, "100", "Larkspur Everyday"),
+    ),
+    tiers=("full",),
+    expect=ExpectedPosition(
+        # 80 credit − 100 charged.
+        balance=_d("-20"),
+        # The funded spend reserved its whole 100; nothing paid it out.
+        set_aside=_d("100"),
+        # Nothing owed beyond the reserve — the reserve is over it, not under.
+        uncovered=_d("0"),
+        # 100 reserved against 20 owed. The 80 is the imported credit,
+        # converted; it is not a defect and the identity now says so.
+        over_reserved=_d("80"),
+        card_credit=_d("0"),
+        riding=_d("0"),
+        # Every event predates this month.
+        charged_this_month=_d("0"),
+        inflows_this_month=_d("0"),
+        paid_this_month=_d("0"),
+        debt_change_this_month=_d("0"),
+        reserve_discrepancy=_d("0"),
+    ),
+)
+
 #: Anchored shapes, beside — never inside — ALL_SCENARIOS: one budget has one
 #: anchor, and splicing one into the demo would truncate every other
 #: scenario's history. `merge_into` refuses them; `build_scenario_spec`
@@ -894,6 +945,7 @@ ANCHORED_IN_CREDIT = CardScenario(
 ANCHORED_SCENARIOS: tuple[CardScenario, ...] = (
     ANCHORED_IMPORT,
     ANCHORED_IN_CREDIT,
+    ANCHORED_CREDIT_SPENT_DOWN,
 )
 
 
