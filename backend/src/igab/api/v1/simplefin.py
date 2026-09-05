@@ -142,6 +142,10 @@ async def update_connection(
     return SimpleFINConnectionResponse.model_validate(conn)
 
 
+# Connection lifecycle is deliberately absent from the change log (see
+# change_log.py's exclusion list): connections are user-scoped credentials
+# with no budget to file under. The budget-visible effects of a sync — the
+# transactions — record through TransactionService as source="system".
 @router.delete("/simplefin/connections/{connection_id}", status_code=204)
 async def delete_connection(
     connection_id: ConnectionAccess,

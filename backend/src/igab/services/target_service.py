@@ -1,6 +1,9 @@
 import uuid
 from datetime import date
 from decimal import Decimal
+from typing import cast
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Category, CategoryTarget
 from igab.domain.dates import months_between
@@ -19,7 +22,9 @@ class TargetService:
         # write through this service — a router-side record would cover one
         # path of three. `batch_id` lets those callers group the target row
         # with their own, so the compound operation undoes as one unit.
-        self.changes = ChangeRecorder(repo.session)
+        # getattr: the pure-math paths are constructible with repo=None
+        # (unit tests do), and those never record.
+        self.changes = ChangeRecorder(cast(AsyncSession, getattr(repo, "session", None)))
 
     async def _budget_of(self, category_id: uuid.UUID) -> uuid.UUID:
         category = await self.repo.session.get(Category, category_id)

@@ -86,13 +86,17 @@ def make_match(
 
 
 def make_service() -> TransactionMatchingService:
-    return TransactionMatchingService(
+    svc = TransactionMatchingService(
         session=AsyncMock(),
         txn_repo=AsyncMock(),
         match_repo=AsyncMock(),
         payee_repo=AsyncMock(),
         txn_service=AsyncMock(),
     )
+    # accept_match opens the txn service's recorder batch as a sync context
+    # manager; an AsyncMock attribute would hand back a coroutine instead.
+    svc.txn_service.changes = MagicMock()
+    return svc
 
 
 class TestAcceptLinkGuards:
