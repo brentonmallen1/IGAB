@@ -29,3 +29,9 @@ export function isCardAccount(account: AccountKindFields): boolean {
 export function isCashAccount(account: AccountKindFields): boolean {
   return account.on_budget && account.classification !== 'liability'
 }
+
+/** Anything owed — a card (on-budget) or a loan (off-budget). The accounts
+ * that take a payment, and so the ones whose register offers one. */
+export function isLiabilityAccount(account: AccountKindFields): boolean {
+  return account.classification === 'liability'
+}

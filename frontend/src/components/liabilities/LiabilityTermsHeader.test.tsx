@@ -52,6 +52,7 @@ function liability(overrides: Partial<Liability> = {}): Liability {
     promo_end_date: null,
     promo_deferred_interest: false,
     term_months: null,
+    payment_due_day: null,
     promo_projection: null,
     baseline_payoff_date: null,
     baseline_never_pays_off: false,
@@ -150,5 +151,26 @@ describe('LiabilityTermsHeader', () => {
     const { container } = renderHeader([])
 
     expect(container).toBeEmptyDOMElement()
+  })
+
+  it('offers no payment button — that action lives in the register toolbar', () => {
+    renderHeader([liability()])
+
+    expect(screen.queryByRole('button', { name: /payment/i })).not.toBeInTheDocument()
+  })
+
+  it('shows the bill due day for a card once it is set — and no slot before', () => {
+    renderHeader([liability()])
+    expect(screen.queryByText('Bill due')).not.toBeInTheDocument()
+
+    renderHeader([liability({ payment_due_day: 17 })])
+    expect(screen.getByText('the 17th')).toBeInTheDocument()
+    expect(screen.getByText('Bill due')).toBeInTheDocument()
+  })
+
+  it('never shows a bill due day on a loan, even a stale stored one', () => {
+    renderHeader([liability({ payment_due_day: 17 })], true)
+
+    expect(screen.queryByText('Bill due')).not.toBeInTheDocument()
   })
 })

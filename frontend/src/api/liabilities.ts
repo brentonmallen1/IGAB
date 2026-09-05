@@ -71,6 +71,9 @@ export interface Liability {
   promo_deferred_interest: boolean
   /** Explicitly known contractual term (overrides the implied estimate) */
   term_months: number | null
+  /** The card bill's due day of the month (1-31). Statement metadata for the
+   * card header; no projection reads it. */
+  payment_due_day: number | null
   promo_projection: PromoProjection | null
   baseline_payoff_date: string | null
   baseline_never_pays_off: boolean
@@ -109,6 +112,8 @@ export interface LiabilityCreate {
   promo_end_date?: string | null
   promo_deferred_interest?: boolean
   term_months?: number | null
+  /** The card bill's due day of the month; explicit null clears it. */
+  payment_due_day?: number | null
   /** Explicit null clears the plan. */
   planned_extra_payment?: number | null
 }

@@ -58,7 +58,55 @@
 
 /* The top priorities are raised cards on the canvas — prominent, the way
    roadmap nodes are. Everything else lives in one raised card below: a
-   chrome bar for the controls, wishes as sunken wells inside it. */
+   chrome bar for the controls, wishes as sunken wells inside it. The section
+   says so out loud and folds away; the hairline below it keeps the strip from
+   reading as part of the card's toolbar. */
+.guide-wishlist__hero-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  padding-bottom: var(--spacing-lg);
+  border-bottom: 1px solid var(--edge);
+}
+
+.guide-wishlist__hero-title {
+  margin: 0;
+}
+
+.guide-wishlist__hero-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 0;
+  background: none;
+  border: none;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.guide-wishlist__hero-toggle:hover {
+  color: var(--text-primary);
+}
+
+.guide-wishlist__hero-toggle:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.guide-wishlist__hero-count {
+  padding: 1px 6px;
+  background-color: var(--surface-sunken);
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  letter-spacing: normal;
+}
+
 .guide-wishlist__hero {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -206,9 +254,21 @@
 .wish__reach--now {
   color: var(--color-positive);
 }
+
+/* The cooling-off period is the feature, not a footnote — a pill in the
+   drain's amber (the stylesheet's one warm colour) so the friction is
+   visible at a glance. Text stays a text token over a 12% tint, so every
+   theme's contrast holds. */
 .wish__cooling {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 35%, transparent);
   color: var(--text-secondary);
-  font-style: italic;
 }
 
 .wish__chip {

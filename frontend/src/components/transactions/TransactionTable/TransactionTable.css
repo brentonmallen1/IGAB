@@ -65,6 +65,36 @@
   opacity: 0.85;
 }
 
+/* Secondary weight beside the accent add button: a real action, not the
+   ghost chrome it used to be on the liability terms strip. */
+.transaction-table__pay-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  flex-shrink: 0;
+  padding: var(--spacing-xs) var(--spacing-md);
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  transition:
+    background-color var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.transaction-table__pay-btn:hover {
+  background-color: var(--bg-hover);
+  border-color: var(--color-accent);
+}
+
+.transaction-table__pay-btn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
 .transaction-table__header {
   display: grid;
   grid-template-columns: 32px 54px 100px 1fr 1fr 1fr 90px 90px 60px;
@@ -171,6 +201,12 @@
   /* The bottom-nav ＋ FAB is the canonical add path on mobile */
   .transaction-table__add-btn {
     display: none;
+  }
+
+  /* The pay button stays — deliberately unlike the add button above: the FAB
+     opens the quick-add sheet only, so this is the phone's one payment path. */
+  .transaction-table__pay-btn {
+    min-height: var(--tap-min);
   }
 }
 

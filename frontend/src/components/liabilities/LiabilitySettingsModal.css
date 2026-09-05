@@ -105,7 +105,7 @@
 
 .liability-modal__optional summary {
   font-size: var(--font-size-xs);
-  color: var(--text-muted);
+  color: var(--text-primary);
   cursor: pointer;
 }
 

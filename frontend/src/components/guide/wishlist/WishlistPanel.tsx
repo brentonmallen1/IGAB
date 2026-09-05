@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Heart, Plus, Settings2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Heart, Plus, Settings2 } from 'lucide-react'
 import { useAppStore } from '../../../stores/appStore'
 import { useGuideStore, type WishlistSort } from '../../../stores/guideStore'
 import { useGuideOverview } from '../../../api/guide'
@@ -55,6 +55,8 @@ export function WishlistPanel() {
   const sort = useGuideStore((s) => s.wishlistSort)
   const setView = useGuideStore((s) => s.setWishlistView)
   const setSort = useGuideStore((s) => s.setWishlistSort)
+  const heroCollapsed = useGuideStore((s) => s.wishlistHeroCollapsed)
+  const toggleHero = useGuideStore((s) => s.toggleWishlistHero)
   const [query, setQuery] = useState('')
   const [adding, setAdding] = useState<'wish' | 'project' | null>(null)
   const [editing, setEditing] = useState<Wish | null>(null)
@@ -81,6 +83,12 @@ export function WishlistPanel() {
   const { hero, rest } = useMemo(
     () => (query ? { hero: [], rest: filtered } : splitHero(filtered)),
     [filtered, query]
+  )
+  /** Projects whose every wish sits in the hero: their section would
+   *  otherwise claim "Nothing on it yet" about a project that is full. */
+  const heroProjectIds = useMemo(
+    () => new Set(hero.map((w) => w.project_id).filter((id): id is string => id !== null)),
+    [hero]
   )
   const { active: activeProjects, complete: completeProjects } = useMemo(
     () => splitProjects(data?.projects ?? []),
@@ -119,6 +127,8 @@ export function WishlistPanel() {
     if (result.envelope) setPendingEnvelope({ wishName: wish.name, envelope: result.envelope })
   }
 
+  const pinnedCount = data.items.filter((w) => w.is_priority).length
+
   const card = (wish: Wish, hero = false) => {
     const ordered = [...data.items].sort((a, b) => a.priority - b.priority)
     const i = ordered.findIndex((w) => w.id === wish.id)
@@ -130,6 +140,8 @@ export function WishlistPanel() {
         hero={hero}
         project={wish.project_id ? projectsById.get(wish.project_id) : null}
         showProject={view === 'flat'}
+        priorityFull={pinnedCount >= data.priority_limit}
+        onTogglePriority={() => update.mutate({ id: wish.id, is_priority: !wish.is_priority })}
         onEdit={() => setEditing(wish)}
         onDone={() => update.mutate({ id: wish.id, status: 'done' })}
         onDrop={() => update.mutate({ id: wish.id, status: 'dropped' })}
@@ -179,9 +191,32 @@ export function WishlistPanel() {
       </header>
 
       {hero.length > 0 && (
-        <div className="guide-wishlist__hero" aria-label="Top priorities">
-          {hero.map((w) => card(w, true))}
-        </div>
+        <section className="guide-wishlist__hero-section">
+          <h3 className="guide-wishlist__hero-title">
+            <button
+              type="button"
+              className="guide-wishlist__hero-toggle tap-expand"
+              aria-expanded={!heroCollapsed}
+              aria-controls="wishlist-hero"
+              onClick={toggleHero}
+            >
+              {heroCollapsed ? (
+                <ChevronRight size={14} aria-hidden />
+              ) : (
+                <ChevronDown size={14} aria-hidden />
+              )}
+              Top priorities
+              <span className="guide-wishlist__hero-count">
+                {hero.length}/{data.priority_limit}
+              </span>
+            </button>
+          </h3>
+          {!heroCollapsed && (
+            <div id="wishlist-hero" className="guide-wishlist__hero">
+              {hero.map((w) => card(w, true))}
+            </div>
+          )}
+        </section>
       )}
 
       <Surface as="div" className="guide-wishlist__card">
@@ -240,11 +275,20 @@ export function WishlistPanel() {
               Nothing on the list yet. Add something you want — and give it an envelope, so the
               budget can tell you when.
             </p>
+          ) : filtered.length === 0 ? (
+            <p className="guide-wishlist__empty">Nothing matches "{query.trim()}".</p>
+          ) : rest.length === 0 ? (
+            <p className="guide-wishlist__empty">
+              Everything on the list sits in your top priorities above.
+            </p>
           ) : view === 'flat' ? (
             <div className="guide-wishlist__list">{rest.map((w) => card(w))}</div>
           ) : (
             <div className="guide-wishlist__list">
-              {groupByProject(filtered, activeProjects).map((section) => (
+              {/* `rest`, not `filtered`: the hero already shows the top
+                  priorities above the card, and a wish drawn twice reads as a
+                  bug, not emphasis. */}
+              {groupByProject(rest, activeProjects).map((section) => (
                 <WishlistProjectSection
                   key={section.project?.id ?? 'loose'}
                   project={section.project}
@@ -256,6 +300,10 @@ export function WishlistPanel() {
                 >
                   {section.items.length ? (
                     section.items.map((w) => card(w))
+                  ) : section.project && heroProjectIds.has(section.project.id) ? (
+                    <p className="guide-wishlist__empty">
+                      Everything on it sits in your top priorities above.
+                    </p>
                   ) : (
                     <p className="guide-wishlist__empty">Nothing on it yet.</p>
                   )}

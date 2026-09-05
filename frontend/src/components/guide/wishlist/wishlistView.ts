@@ -6,9 +6,6 @@ import type { WishlistSort } from '../../../stores/guideStore'
  * nothing here re-derives a figure — reach, rollups and counts are served.
  */
 
-/** How many priorities sit above the list with progress bars. */
-export const HERO_COUNT = 3
-
 const REACH_ORDER: Record<string, number> = { now: 0, months: 1, no_rate: 2, unlinked: 3 }
 
 function reachKey(w: Wish): [number, number] {
@@ -36,13 +33,16 @@ export function sortWishes(items: Wish[], sort: WishlistSort): Wish[] {
   }
 }
 
-/** The top priorities, whatever the list is sorted by, and everything else
- *  in the order given. */
+/** The pinned wishes for the strip, and everything else in the order given.
+ *
+ *  Pins only — the strip used to auto-promote the top three of the queue,
+ *  which showed items nobody chose (and, with ≤3 wishes, hollowed out the
+ *  card entirely). Empty until someone pins; the server caps how many.
+ *  Strip order is queue order, so the spotlight and the funding queue never
+ *  disagree about which pinned wish comes first. */
 export function splitHero(sorted: Wish[]): { hero: Wish[]; rest: Wish[] } {
-  const byPriority = [...sorted].sort((a, b) => a.priority - b.priority)
-  const hero = byPriority.slice(0, HERO_COUNT)
-  const heroIds = new Set(hero.map((w) => w.id))
-  return { hero, rest: sorted.filter((w) => !heroIds.has(w.id)) }
+  const hero = sorted.filter((w) => w.is_priority).sort((a, b) => a.priority - b.priority)
+  return { hero, rest: sorted.filter((w) => !w.is_priority) }
 }
 
 export function filterWishes(items: Wish[], projects: WishlistProject[], query: string): Wish[] {

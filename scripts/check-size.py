@@ -91,7 +91,7 @@ OVER_BUDGET: dict[str, int] = {
     "backend/src/igab/db/models.py": 1121,
     "backend/src/igab/repositories/transaction_repo.py": 1083,
     "backend/src/igab/api/v1/categories.py": 1028,
-    "frontend/src/components/transactions/TransactionTable/TransactionTable.tsx": 929,
+    "frontend/src/components/transactions/TransactionTable/TransactionTable.tsx": 926,
     "frontend/src/components/transactions/QuickAddSheet/QuickAddSheet.tsx": 847,
     "frontend/src/pages/SettingsPage/SettingsPage.tsx": 842,
     "frontend/src/pages/PayeesPage/PayeesPage.tsx": 794,

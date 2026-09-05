@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, ExternalLink } from 'lucide-react'
+import { ArrowDown, ArrowUp, ExternalLink, Hourglass } from 'lucide-react'
 import type { Wish, WishlistProject } from '../../../api/wishlist'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { coolingLabel, fundingLabel, reachLabel } from './wishlistCopy'
@@ -8,6 +8,9 @@ interface Props {
   project?: WishlistProject | null
   showProject?: boolean
   hero?: boolean
+  /** The pin cap is reached — an unpinned card's Prioritize goes quiet. */
+  priorityFull: boolean
+  onTogglePriority: () => void
   onEdit: () => void
   onDone: () => void
   onDrop: () => void
@@ -28,6 +31,8 @@ export function WishCard({
   project,
   showProject = false,
   hero = false,
+  priorityFull,
+  onTogglePriority,
   onEdit,
   onDone,
   onDrop,
@@ -80,7 +85,12 @@ export function WishCard({
       <p className={`wish__reach ${wish.reach?.state === 'now' ? 'wish__reach--now' : ''}`}>
         {reachLabel(wish, fmt)}
       </p>
-      {cooling && <p className="wish__cooling">{cooling}</p>}
+      {cooling && (
+        <p className="wish__cooling">
+          <Hourglass size={11} aria-hidden />
+          {cooling}
+        </p>
+      )}
       {wish.notes && <p className="wish__notes">{wish.notes}</p>}
 
       <div className="wish__actions">
@@ -91,6 +101,19 @@ export function WishCard({
           title={wish.cooling ? 'Still cooling off — but it is your call' : 'Bought it, or did it'}
         >
           Done
+        </button>
+        <button
+          type="button"
+          className="guide-link-button"
+          onClick={onTogglePriority}
+          disabled={!wish.is_priority && priorityFull}
+          title={
+            !wish.is_priority && priorityFull
+              ? 'Top priorities are full — unpin one first'
+              : undefined
+          }
+        >
+          {wish.is_priority ? 'Unpin' : 'Prioritize'}
         </button>
         <button type="button" className="guide-link-button" onClick={onEdit}>
           Edit

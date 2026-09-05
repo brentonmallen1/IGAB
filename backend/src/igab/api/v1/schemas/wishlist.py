@@ -47,6 +47,9 @@ class WishUpdate(ApiModel):
     notes: str | None = Field(default=None, max_length=2000)
     project_id: uuid.UUID | None = None
     priority: int | None = Field(default=None, ge=0)
+    #: Pin as a top priority. Capped server-side (PRIORITY_LIMIT); a full
+    #: spotlight refuses the pin rather than silently displacing one.
+    is_priority: bool | None = None
     status: Literal["open", "done", "dropped"] | None = None
     cooling_until: date | None = None
     #: `existing` or `none` — an envelope of its own is chosen at creation.
@@ -78,6 +81,9 @@ class WishOut(ApiModel):
     notes: str | None
     cost: Decimal
     priority: int
+    #: Required, not optional: a path that forgets to serialize it must raise,
+    #: not quietly report an unpinned wish.
+    is_priority: bool
     status: Literal["open", "done", "dropped"]
     funding: FundingOut
     cooling_until: date | None
@@ -191,4 +197,7 @@ class WishlistResponse(ApiModel):
     still_wanted: StillWantedOut
     review_due_count: int
     settings: WishlistSettingsOut
+    #: The pin cap, served so the client disables the action at the limit
+    #: without spelling its own 3.
+    priority_limit: int
     drains: DrainsOut | None

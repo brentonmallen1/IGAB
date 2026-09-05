@@ -29,6 +29,7 @@ from igab.guide.service import DEFAULT_PREFS, PREFS_KEY
 from igab.guide.wishlist import (
     DEFAULT_COOLING_DAYS,
     DEFAULT_REVIEW_DAYS,
+    PRIORITY_LIMIT,
     STILL_WANTED_MONTHS,
     Funding,
     ProjectInput,
@@ -118,6 +119,7 @@ class WishlistService:
                 "still_wanted": {"count": 0, "of": 0, "months": STILL_WANTED_MONTHS},
                 "review_due_count": 0,
                 "settings": await self.settings(budget_id),
+                "priority_limit": PRIORITY_LIMIT,
                 "drains": None,
             }
         await self.ensure_group(budget_id)
@@ -177,6 +179,7 @@ class WishlistService:
             "still_wanted": {"count": count, "of": of, "months": STILL_WANTED_MONTHS},
             "review_due_count": sum(1 for o in open_items if o["review_due"]),
             "settings": settings,
+            "priority_limit": PRIORITY_LIMIT,
             "drains": drains,
         }
 
@@ -258,6 +261,7 @@ class WishlistService:
             "notes": item.notes,
             "cost": item.cost,
             "priority": item.priority,
+            "is_priority": item.is_priority,
             "status": item.status,
             "funding": {
                 "mode": mode,
@@ -474,15 +478,51 @@ class WishlistService:
                 item.category_id = None
             item.owns_envelope = False
         if "status" in data and data["status"] is not None:
-            if data["status"] not in STATUSES:
-                raise InvariantViolation(f"Unknown status '{data['status']}'")
-            item.status = data["status"]
-            item.done_at = date.today() if item.status == "done" else None
+            self._apply_status(item, data["status"])
+        if "is_priority" in data and data["is_priority"] is not None:
+            await self._apply_priority(budget_id, item, bool(data["is_priority"]))
 
         await self.session.flush()
         after_envelope = await self._envelope_of(budget_id, item)
         await self._sync_tags(budget_id, [before_envelope, after_envelope])
         return await self.item_out(budget_id, item.id)
+
+    @staticmethod
+    def _apply_status(item: WishlistItem, status: str) -> None:
+        if status not in STATUSES:
+            raise InvariantViolation(f"Unknown status '{status}'")
+        item.status = status
+        item.done_at = date.today() if status == "done" else None
+        if status != "open":
+            # Only an open wish holds a spotlight slot; clearing here is what
+            # keeps a reopened wish from silently busting the cap.
+            item.is_priority = False
+
+    async def _apply_priority(self, budget_id: uuid.UUID, item: WishlistItem, pinned: bool) -> None:
+        """Pin or unpin a wish as a top priority.
+
+        The cap is the rule, not the strip's rendering: a full spotlight
+        refuses the pin rather than silently displacing one, so what is shown
+        is always exactly what someone chose.
+        """
+        if pinned and not item.is_priority:
+            if item.status != "open":
+                raise InvariantViolation("Only an open wish can be a top priority")
+            taken = await self.session.scalar(
+                select(func.count())
+                .select_from(WishlistItem)
+                .where(
+                    WishlistItem.budget_id == budget_id,
+                    WishlistItem.status == "open",
+                    WishlistItem.is_priority,
+                    WishlistItem.id != item.id,
+                )
+            )
+            if (taken or 0) >= PRIORITY_LIMIT:
+                raise InvariantViolation(
+                    f"Top priorities are full ({PRIORITY_LIMIT}) — unpin one first"
+                )
+        item.is_priority = pinned
 
     async def delete(self, budget_id: uuid.UUID, item_id: uuid.UUID) -> dict[str, Any]:
         await self._require_enabled(budget_id)

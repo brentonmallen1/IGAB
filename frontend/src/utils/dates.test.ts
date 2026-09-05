@@ -8,7 +8,7 @@
  * test runner is in.
  */
 import { describe, expect, it } from 'vitest'
-import { formatDateTimeWithOptions } from './dates'
+import { formatDateTimeWithOptions, ordinalDay } from './dates'
 
 const AFTERNOON = '2026-08-17T13:53:41'
 
@@ -55,5 +55,22 @@ describe('formatDateTimeWithOptions', () => {
 
   it('returns unparseable input verbatim instead of NaN soup', () => {
     expect(formatDateTimeWithOptions('not-a-date', 'mdy', '12h')).toBe('not-a-date')
+  })
+})
+
+describe('ordinalDay', () => {
+  it('speaks English about every day a bill can be due', () => {
+    expect(ordinalDay(1)).toBe('1st')
+    expect(ordinalDay(2)).toBe('2nd')
+    expect(ordinalDay(3)).toBe('3rd')
+    expect(ordinalDay(4)).toBe('4th')
+    // The teens are the trap: 11th/12th/13th, never 11st/12nd/13rd.
+    expect(ordinalDay(11)).toBe('11th')
+    expect(ordinalDay(12)).toBe('12th')
+    expect(ordinalDay(13)).toBe('13th')
+    expect(ordinalDay(21)).toBe('21st')
+    expect(ordinalDay(22)).toBe('22nd')
+    expect(ordinalDay(23)).toBe('23rd')
+    expect(ordinalDay(31)).toBe('31st')
   })
 })
