@@ -40,3 +40,38 @@ export function sumBalances(balances: CategoryBalance[]): BalanceTotals {
   }
   return { assigned, activity, available, carriedOver: available - assigned - activity }
 }
+
+/**
+ * How much overspending there is, and how much of it is card debt.
+ *
+ * Three surfaces ask this — the hero chip, the Assign dropdown's Cover row,
+ * and the cover dialog — and until 2026-09-05 two of them answered it with
+ * `total_overspent_cash` while the third acted on the whole red. Covering
+ * therefore emptied the chip and the row while the grid stayed red, which is
+ * the app disagreeing with itself about whether there is work to do.
+ *
+ * So the question has one implementation, over the shape both payloads share
+ * (`BudgetMonth` and the assign-strategy totals both carry these two fields).
+ * The headline is the WHOLE red: Cover Overspending funds all of it, and the
+ * card part is a label on where the money lands — into a card's set-aside,
+ * retiring debt — not a smaller offer.
+ */
+export interface OverspendingSource {
+  total_overspent: number
+  total_overspent_credit: number
+}
+
+export interface Overspending {
+  /** The figure every call to action shows. Matches the grid's red. */
+  total: number
+  /** The part of `total` that rode onto a card. A subset, never a second
+   *  number beside it — the chip that names it reads "of it on cards". */
+  onCards: number
+}
+
+export function overspending(source: OverspendingSource | undefined | null): Overspending {
+  return {
+    total: Number(source?.total_overspent ?? 0),
+    onCards: Number(source?.total_overspent_credit ?? 0),
+  }
+}

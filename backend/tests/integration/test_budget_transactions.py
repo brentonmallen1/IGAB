@@ -454,6 +454,56 @@ async def test_search_composes_with_filters(api_client, db_session):
     assert body["total_count"] == 0
 
 
+async def _setup_amount_search(api_client, db_session):
+    """Four amounts that make "12" mean four different things: 12.34, 112.00,
+    1200.00 and 0.12. Invented figures — only the digit overlap matters."""
+    _, budget, checking, _, groceries, _ = await _setup(api_client, db_session)
+    for amount in ("-12.34", "-112.00", "-1200.00", "-0.12"):
+        await create_transaction(db_session, budget, checking, amount, TODAY, category=groceries)
+    return budget, checking, groceries
+
+
+async def test_amount_search_is_partial_like_every_other_term(api_client, db_session):
+    """The bug this fixes: a search box that matched "star" against "Starbucks"
+    answered "12" with only the rows costing exactly twelve dollars."""
+    budget, _, _ = await _setup_amount_search(api_client, db_session)
+    body = await _fetch(api_client, budget.id, search="12")
+    assert body["total_count"] == 4
+
+
+async def test_each_keystroke_narrows_the_amount_search(api_client, db_session):
+    budget, _, _ = await _setup_amount_search(api_client, db_session)
+    # The dot is a real keystroke, not a wildcard: "12." is in 12.34 and
+    # 112.00 but not in 1200.00 ("...120...") or 0.12.
+    assert (await _fetch(api_client, budget.id, search="12."))["total_count"] == 2
+    assert (await _fetch(api_client, budget.id, search="12.34"))["total_count"] == 1
+    assert (await _fetch(api_client, budget.id, search="1200"))["total_count"] == 1
+
+
+async def test_amount_search_ignores_the_sign_and_currency_dressing(api_client, db_session):
+    budget, _, _ = await _setup_amount_search(api_client, db_session)
+    # Every row here is an outflow; the search term carries no sign.
+    assert (await _fetch(api_client, budget.id, search="$1,200"))["total_count"] == 1
+
+
+async def test_amount_search_matches_the_two_place_figure_not_the_column(api_client, db_session):
+    """`amount` is Numeric(19, 4), so the stored text is "1200.0000". Matching
+    that raw would make "00" find nearly every row and "000" find only the
+    round ones — neither is what the register draws."""
+    budget, _, _ = await _setup_amount_search(api_client, db_session)
+    assert (await _fetch(api_client, budget.id, search="0000"))["total_count"] == 0
+
+
+async def test_a_number_still_finds_a_payee_that_contains_it(api_client, db_session):
+    budget, checking, groceries = await _setup_amount_search(api_client, db_session)
+    store = await create_payee(db_session, budget, "Store 12")
+    await create_transaction(
+        db_session, budget, checking, "-90.00", TODAY, category=groceries, payee=store
+    )
+    body = await _fetch(api_client, budget.id, search="12")
+    assert body["total_count"] == 5
+
+
 async def test_search_no_match_returns_empty(api_client, db_session):
     budget = await _setup_search(api_client, db_session)
     body = await _fetch(api_client, budget.id, search="zebra")

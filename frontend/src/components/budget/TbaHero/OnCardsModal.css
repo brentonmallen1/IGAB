@@ -1,0 +1,110 @@
+/* The overlay, panel, header and footer come from common/Dialog; only this
+   dialog's own contents live here. 0,2,0 so the width beats `.dialog--md`'s
+   520 regardless of which stylesheet loads last. */
+.dialog.on-cards {
+  --dialog-w: 520px;
+}
+
+.on-cards__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.on-cards__description {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* Each card is a group in the register's own vocabulary (common/Collapsible),
+   sunken inside the overlay so the panel does not read as one slab — the same
+   two-tone rule the cards strip and the dialogs share. */
+.on-cards__group {
+  background: var(--surface-sunken);
+  border: 1px solid var(--edge);
+  border-radius: var(--border-radius-sm);
+  overflow: hidden;
+}
+
+/* The shared header paints chrome and an accent underline for a register
+   group; inside a dialog the group IS the section, so the underline would be
+   a second divider between two things already separated by the card's edge. */
+.on-cards__group .collapsible__body {
+  border-bottom: none;
+}
+
+.on-cards__list {
+  list-style: none;
+  margin: 0;
+  padding: var(--spacing-xs) 0;
+}
+
+.on-cards__row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-sm);
+  padding: 3px var(--spacing-md);
+  font-size: var(--font-size-sm);
+}
+
+/* The envelope's name is the way in to its transactions — underlined on hover
+   only, like the register's own drill-ins: a list of permanently underlined
+   rows reads as a warning. */
+.on-cards__category {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--text-primary);
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.on-cards__category:hover {
+  color: var(--color-accent);
+  text-decoration: underline;
+}
+
+/* Not the negative colour. This red costs nothing today and no action here
+   retires it — the same calm treatment Uncovered gets on the cards strip. */
+.on-cards__amount {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.on-cards__group-note {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  margin: 0;
+  padding: var(--spacing-xs) var(--spacing-md) var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.on-cards__group-note svg {
+  flex-shrink: 0;
+}
+
+.on-cards__btn {
+  padding: 6px var(--spacing-md);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  background-color: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+  transition: opacity var(--transition-fast);
+}
+
+.on-cards__btn:hover {
+  opacity: 0.8;
+}

@@ -47,6 +47,10 @@ class MockTransaction:
     amount: Decimal = Decimal("-10.00")
     date: date = date(2026, 7, 10)
     cleared: str = "uncleared"
+    # The account/category pair is judged as an edit LEAVES it, so `update`
+    # reads the row's current category even when the edit does not mention one.
+    category_id: uuid.UUID | None = None
+    sync_id: str | None = None
     transfer_id: uuid.UUID | None = None
     parent_transaction_id: uuid.UUID | None = None
     is_split: bool = False

@@ -783,6 +783,15 @@
   color: var(--text-muted);
 }
 
+/* A sentence under one field, about that field only — the wider
+   __lock-note banner is for the row. Muted and unadorned: it explains, it
+   does not warn (the calm register the whole editor keeps). */
+.txn-editor__field-note {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
 .txn-editor__locked {
   display: inline-flex;
   align-items: center;

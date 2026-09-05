@@ -335,11 +335,25 @@ export interface CardStatus {
    *  remains. `rideMonths` names the difference rather than implying every
    *  month here is still owed. */
   rode_by_month: RodeMonth[]
+  /** `overspent_this_month` broken out by the envelope that rode onto this
+   *  card, largest first. Home: `CardFunding.floored_by_pair` (backend
+   *  domain/cards.py) — the client cannot derive it, since the allocation is
+   *  a running walk per (category, card). Sums to `overspent_this_month`. */
+  overspent_by_category: RodeCategory[]
 }
 
 /** One month that put riding debt on a card. */
 export interface RodeMonth {
   month: string
+  amount: number
+}
+
+/** One envelope that rode onto a card in the viewed month. */
+export interface RodeCategory {
+  category_id: string
+  /** Named server-side: a hidden or archived envelope can ride, and the
+   *  client's category list does not always carry it. */
+  category_name: string
   amount: number
 }
 

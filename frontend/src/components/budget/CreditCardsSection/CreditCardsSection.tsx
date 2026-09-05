@@ -18,6 +18,7 @@ import { useUIStore } from '../../../stores/uiStore'
 import { parseAssignmentCommit } from '../../../utils/amountExpression'
 import {
   debtMovement,
+  debtMovementWord,
   emptyLegsNote,
   pendingNote,
   reserveLegs,
@@ -152,7 +153,7 @@ function ReserveLegs({
             </div>
           )}
           <div className="credit-cards__leg credit-cards__leg--total">
-            <dt>{card.debt_change_this_month >= 0 ? 'Debt down' : 'Debt up'}</dt>
+            <dt>Debt {debtMovementWord(card.debt_change_this_month)}</dt>
             <dd className="tabular">{formatMoney(Math.abs(card.debt_change_this_month))}</dd>
           </div>
         </dl>

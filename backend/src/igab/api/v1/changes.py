@@ -67,7 +67,8 @@ async def undo_latest(
     except UndoConflict as e:
         raise _conflict(e) from e
     return UndoLatestResult(
-        undone_change_ids=undone,
+        undone_change_ids=undone.undone,
+        skipped_change_ids=undone.skipped,
         action=candidate.action,
         entity_type=candidate.entity_type,
     )
@@ -87,7 +88,7 @@ async def undo_change(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
     except UndoConflict as e:
         raise _conflict(e) from e
-    return UndoResult(undone_change_ids=undone)
+    return UndoResult(undone_change_ids=undone.undone, skipped_change_ids=undone.skipped)
 
 
 @router.post("/{budget_id}/changes/redo", response_model=UndoResult)
@@ -161,4 +162,4 @@ async def undo_batch(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
     except UndoConflict as e:
         raise _conflict(e) from e
-    return UndoResult(undone_change_ids=undone)
+    return UndoResult(undone_change_ids=undone.undone, skipped_change_ids=undone.skipped)

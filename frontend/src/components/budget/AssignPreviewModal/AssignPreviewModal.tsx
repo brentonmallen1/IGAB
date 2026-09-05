@@ -161,6 +161,21 @@ export function AssignPreviewModal({ budgetId, month, strategy, onClose }: Props
                 {formatMoney(tbaAfter)}). You can cover it later by moving money back.
               </div>
             )}
+            {/* The consequence a before/after table of ASSIGNED cannot show:
+                setting an envelope back to a past figure unfunds money that
+                has already been spent from it. Legitimate — it is what the
+                strategy means — but it should not be a surprise found in the
+                grid afterwards. Stated, not blocked. */}
+            {preview.newly_overspent_count > 0 && (
+              <div className="assign-preview-modal__overspend-warning">
+                Leaves{' '}
+                {preview.newly_overspent_count === 1
+                  ? '1 category'
+                  : `${preview.newly_overspent_count} categories`}{' '}
+                overspent by {formatMoney(preview.newly_overspent_total)} in total — money already
+                spent from them would stop being funded. Cover Overspending can put it back.
+              </div>
+            )}
           </>
         )}
       </div>

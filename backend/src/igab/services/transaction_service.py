@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, cast
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, Category, Payee, Transaction
+from igab.domain.account_move import MoveRequest, refusal_for_move
 from igab.domain.bank_posting import Apply, FeedRecord, Review, RowState, posting_updates
 from igab.domain.exceptions import InvariantViolation
 from igab.domain.merging import MergeSide, choose_survivor, survivor_violation
@@ -79,6 +80,10 @@ class TransactionCreate:
 
 @dataclass
 class TransactionUpdate:
+    #: Move the row to another account. The editor sends it on every save, so
+    #: `update` drops it when it matches the row's current account — an
+    #: unchanged account must not trip the move guards (domain.account_move).
+    account_id: uuid.UUID | None = UNSET
     date: datetime.date | None = UNSET
     amount: Decimal | None = UNSET
     payee_id: uuid.UUID | None = UNSET
@@ -114,7 +119,7 @@ class SplitSpec:
 
 
 # Fields that may never be set to NULL via PATCH
-_REQUIRED_FIELDS = ("date", "amount", "cleared", "approved")
+_REQUIRED_FIELDS = ("date", "amount", "cleared", "approved", "account_id")
 
 
 def origin_of(data: TransactionCreate) -> str:
@@ -468,6 +473,14 @@ class TransactionService:
         transfer_account_id: uuid.UUID | None = changes.pop("transfer_account_id", None)
         partner_pick: uuid.UUID | None = changes.pop("transfer_partner_transaction_id", None)
         create_partner: bool = bool(changes.pop("transfer_create_partner", False))
+        # An unchanged account is not a move. The editor PATCHes every field it
+        # shows, so a row that never left its account still arrives carrying
+        # one — and a bank-synced row would be refused on every memo edit.
+        # (Same reasoning as the reconciled block below, which drops locked
+        # fields whose value did not actually change.)
+        if "account_id" in changes and str(changes["account_id"]) == str(txn.account_id):
+            del changes["account_id"]
+        moving_account = "account_id" in changes
         for field in _REQUIRED_FIELDS:
             if field in changes and changes[field] is None:
                 raise InvariantViolation(f"{field} cannot be empty")
@@ -524,10 +537,24 @@ class TransactionService:
             if changes.get("category_id") is not None:
                 raise InvariantViolation("A split transaction's categories live on its lines")
 
+        # The account the row ENDS in — the category rules below judge the
+        # edit's result, never its starting point, now that a row can move.
+        resulting_account_id = changes.get("account_id", txn.account_id)
+        resulting_category_id = (
+            changes["category_id"] if "category_id" in changes else txn.category_id
+        )
+
         # Plain rows: same rule as create — a category may not land on an
         # off-budget account (bulk-categorize funnels through here too).
-        if changes.get("category_id") is not None and not txn.transfer_id:
-            own_account = await self.account_repo.get_or_raise(txn.account_id)
+        # Asked when either half of the pair moved: filing a row into a
+        # category and moving a filed row to a tracking account are the same
+        # illegal end state reached from two directions.
+        if (
+            resulting_category_id is not None
+            and ("category_id" in changes or moving_account)
+            and not txn.transfer_id
+        ):
+            own_account = await self.account_repo.get_or_raise(resulting_account_id)
             if not leg_may_carry_category(own_account.on_budget):
                 raise InvariantViolation(
                     "Transactions on a tracking account cannot carry a category — "
@@ -546,7 +573,7 @@ class TransactionService:
                     "Change the transfer's account, or break the transfer first."
                 )
             if changes.get("category_id") is not None and not transfer_requested:
-                own_account = await self.account_repo.get_or_raise(txn.account_id)
+                own_account = await self.account_repo.get_or_raise(resulting_account_id)
                 partner_account = (
                     await self.account_repo.get(partner.account_id) if partner is not None else None
                 )
@@ -570,6 +597,34 @@ class TransactionService:
                         "Changing a transfer's direction isn't supported; "
                         "delete it and create a new transfer"
                     )
+
+        # Moving the row to another account. Guarded here, after the pair is
+        # loaded, because two of the refusals are about the transfer.
+        move_partner_payee_id: uuid.UUID | None = None
+        if moving_account:
+            await require_in_budget(
+                self.session, Account, resulting_account_id, budget_id, "Account"
+            )
+            target_account = await self.account_repo.get_or_raise(resulting_account_id)
+            refusal = refusal_for_move(
+                MoveRequest(
+                    target_account_id=target_account.id,
+                    target_is_closed=bool(target_account.is_closed),
+                    is_split_child=txn.parent_transaction_id is not None,
+                    is_bank_synced=txn.sync_id is not None,
+                    counterpart_account_id=partner.account_id if partner is not None else None,
+                    retargeting_transfer=transfer_requested,
+                )
+            )
+            if refusal:
+                raise InvariantViolation(refusal)
+            if partner is not None:
+                # Each leg's payee names the OTHER account, so moving this leg
+                # renames the partner's payee. Leaving it behind is how a
+                # transfer comes to say it went somewhere it did not.
+                move_partner_payee_id = (
+                    await self._get_transfer_payee(budget_id, target_account)
+                ).id
 
         transfer_plan: dict[str, Any] | None = None
         if transfer_requested:
@@ -598,6 +653,8 @@ class TransactionService:
                     partner_changes["amount"] = -changes["amount"]
                 if "date" in changes:
                     partner_changes["date"] = changes["date"]
+                if move_partner_payee_id is not None:
+                    partner_changes["payee_id"] = move_partner_payee_id
                 if partner_changes:
                     partner_before = snapshot("transaction", partner)
                     updated_partner = await self.transaction_repo.update(
@@ -605,9 +662,15 @@ class TransactionService:
                     )
                     await self._record_txn(updated_partner, "update", before=partner_before)
 
-            # Propagate parent date/cleared to children (mirror invariant).
-            if txn.is_split and ({"date", "cleared"} & changes.keys()):
-                child_changes = {k: changes[k] for k in ("date", "cleared") if k in changes}
+            # Propagate parent date/cleared/account to children (mirror
+            # invariant). A split's lines carry their parent's account, so a
+            # parent that moved and lines that did not would put the account
+            # balance (parent rows) and the category activity (leaf rows) in
+            # two different accounts.
+            if txn.is_split and ({"date", "cleared", "account_id"} & changes.keys()):
+                child_changes = {
+                    k: changes[k] for k in ("date", "cleared", "account_id") if k in changes
+                }
                 await self._mirror_children(txn.id, **child_changes)
 
             updated = await self.transaction_repo.update(transaction_id, **changes)

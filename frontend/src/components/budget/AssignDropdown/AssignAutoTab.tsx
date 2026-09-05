@@ -1,5 +1,6 @@
 import { AlertTriangle } from 'lucide-react'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { overspending } from '../budgetTotals'
 import type { AssignStrategy } from '../../../types'
 import type { AssignStrategyTotalsResponse } from '../../../api/assign'
 import { AUTO_STRATEGY_ORDER, RESET_STRATEGY_ORDER, STRATEGY_META } from './strategyMeta'
@@ -32,10 +33,11 @@ export function AssignAutoTab({
   }
 
   const byStrategy = new Map(totals.strategies.map((s) => [s.strategy, s]))
-  // The cash part: what this row would actually fund. Credit-funded red rode
-  // onto a card and no assignment retires it, so offering to cover it would
-  // name a number the dialog then refuses to act on.
-  const overspent = totals.total_overspent_cash
+  // The same implementation the hero chip reads (budgetTotals). This row read
+  // `total_overspent_cash` until 2026-09-05, so a month overspent entirely on
+  // cards showed "Cover Overspending $0.00", disabled, beside a grid full of
+  // red the dialog would in fact have funded.
+  const { total: overspent } = overspending(totals)
   const underfundedNeeded = Number(byStrategy.get('underfunded')?.total_needed ?? 0)
   // Overspending and underfunding measure different things: a category with
   // no target is never "underfunded" however overspent it is. When the two

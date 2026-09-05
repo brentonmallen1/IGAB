@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { sumBalances } from './budgetTotals'
+import { overspending, sumBalances } from './budgetTotals'
 import type { CategoryBalance } from '../../types'
 
 function bal(assigned: number, activity: number, available: number): CategoryBalance {
@@ -62,5 +62,30 @@ describe('sumBalances', () => {
       sumBalances([{ ...bal(0, 0, 0), assigned: 10.5, activity: -2.25, available: 8.25 }])
         .carriedOver
     ).toBe(0)
+  })
+})
+
+describe('overspending', () => {
+  it('answers with the whole red, not the cash part', () => {
+    // The bug this replaced: the hero chip and the Assign dropdown's Cover
+    // row each answered "how much is overspent" for themselves, one with the
+    // cash-only total. Covering emptied both while the grid stayed red.
+    expect(overspending({ total_overspent: 120, total_overspent_credit: 45 })).toEqual({
+      total: 120,
+      onCards: 45,
+    })
+  })
+
+  it('treats the card figure as a part of the total, never a sibling', () => {
+    // A month overspent entirely on cards is still overspent — the row that
+    // read the cash total showed "$0.00, disabled" for exactly this month.
+    const { total, onCards } = overspending({ total_overspent: 45, total_overspent_credit: 45 })
+    expect(total).toBe(45)
+    expect(onCards).toBeLessThanOrEqual(total)
+  })
+
+  it('reads zero from a month that has not loaded yet', () => {
+    expect(overspending(undefined)).toEqual({ total: 0, onCards: 0 })
+    expect(overspending(null)).toEqual({ total: 0, onCards: 0 })
   })
 })

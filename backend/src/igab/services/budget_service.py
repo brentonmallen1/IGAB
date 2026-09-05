@@ -247,6 +247,28 @@ class CardStatus:
     #: to say so rather than point at a month that is already settled.
     #: Chronological here; the surface orders and caps for display.
     rode_by_month: list[tuple[date, Decimal]] = field(default_factory=list)
+    #: WHICH envelopes rode onto this card in the viewed month, and for how
+    #: much — `overspent_this_month` broken out, summing to it exactly
+    #: (`CardFunding.floored_by_pair`). Served because that total is the one
+    #: figure on the budget page with no way to ask "which spending?", and a
+    #: red envelope that Cover Overspent will not touch is only explicable by
+    #: naming the pair. Descending by amount; zero entries omitted.
+    overspent_by_category: list["RodeEnvelope"] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class RodeEnvelope:
+    """One envelope's ride onto one card in one month.
+
+    Carries the name because the only surface that asks for it is a dialog
+    listing envelopes, and the name has to survive a hidden or archived
+    category — `get_budget_summary` already holds the full category list
+    (`include_archived=True`), while the budget-month endpoint does not.
+    """
+
+    category_id: uuid.UUID
+    category_name: str
+    amount: Decimal
 
 
 @dataclass
@@ -311,20 +333,29 @@ class FutureOverspendWarning:
 class CoverOverspentItem:
     category_id: uuid.UUID
     category_name: str
+    #: The whole red on this row — what a full cover takes it to zero from.
     overspent: Decimal
     proposed_addition: Decimal
+    #: Still short after the proposed addition, and now the whole truth: a
+    #: zero here means the grid cell goes black. It could not say that while
+    #: the ridden part was withheld from `overspent`.
     remaining_after: Decimal
+    #: How much of this row's red rode onto a card. Not withheld — covering it
+    #: retires that debt (see `_overspent_shortfalls`) — but worth naming,
+    #: because the money goes somewhere different: into the card's set-aside
+    #: rather than staying in the envelope to spend.
+    credit_overspent: Decimal = Decimal("0")
 
 
 @dataclass
 class CoverOverspentPreview:
     items: list[CoverOverspentItem]
-    #: What `items` sums to before any distribution — the cash shortfall, which
-    #: is the whole of what this dialog can act on.
+    #: What `items` sums to before any distribution — the grid's whole red,
+    #: which is the whole of what this dialog acts on.
     total_overspent: Decimal
-    #: Overspending left out of `items` because it rode onto a card. Shown so
-    #: the difference between this dialog and the grid's red is stated rather
-    #: than left for the reader to notice and distrust.
+    #: How much of that rode onto a card. Covering it retires the card debt
+    #: rather than leaving spendable money in the envelope, so the dialog says
+    #: so — it is a label on the money, not an exclusion from it.
     total_overspent_credit: Decimal
     total_addition: Decimal
     tba_before: Decimal
@@ -823,6 +854,10 @@ class BudgetService:
         card_accounts, linked_by_account = walk.card_accounts, walk.linked_by_account
         funding, payments, unclaimed = walk.funding, walk.payments, walk.unclaimed
         if card_accounts:
+            # Named from `categories` above — the full list, archived and
+            # hidden included — because a ride from a hidden envelope is
+            # exactly the one a dialog cannot leave unnamed.
+            category_names = {c.id: c.name for c in categories}
             month_end_date = last_of_month(month_start)
             owed_by_card = await self.account_repo.card_balances(budget_id, month_end_date)
             # An anchored budget's identity needs each card's balance at the
@@ -937,6 +972,20 @@ class BudgetService:
                             (m, v)
                             for m, v in funding.floored_by_card.get(account.id, {}).items()
                             if m <= month_start and v != zero
+                        ),
+                        overspent_by_category=sorted(
+                            (
+                                RodeEnvelope(
+                                    category_id=category_id,
+                                    category_name=category_names.get(category_id, "Unknown"),
+                                    amount=months[month_start],
+                                )
+                                for (category_id, card_id), months in (
+                                    funding.floored_by_pair.items()
+                                )
+                                if card_id == account.id and months.get(month_start, zero) != zero
+                            ),
+                            key=lambda rode: (-rode.amount, rode.category_name),
                         ),
                         # Every defect this model has had was visible here, and
                         # the invariant that would have caught them excused
@@ -1359,24 +1408,40 @@ class BudgetService:
     async def _overspent_shortfalls(
         self, budget_id: uuid.UUID, month: date
     ) -> tuple["BudgetSummary", dict[uuid.UUID, Decimal]]:
-        """Current summary plus {category_id: cash shortfall} for envelope
+        """Current summary plus {category_id: shortfall} for envelope
         categories. Hidden categories are included on purpose — they participate
         in the TBA math, so covering them is required to zero out overspending.
 
-        The **cash** part only. Credit-funded overspending is money that rode
-        onto a card: it is already counted in that card's Uncovered, it does not
-        charge Ready to Assign now, and at the month boundary it rolls onto the
-        card rather than being written off. Assigning cash to it buys nothing —
-        the debt stays, and the dollars leave Ready to Assign for an envelope
-        that will floor to zero regardless. A category overspent entirely on a
-        card therefore produces no row here at all.
+        **The whole red, cash and card-ridden alike.** This subtracted
+        `credit_overspent` until 2026-09-05, on the theory that assigning cash
+        to a ride "buys nothing — the debt stays, and the dollars leave Ready to
+        Assign for an envelope that will floor to zero regardless". Measured,
+        that is false. Funding the envelope in the month it ended short retires
+        the ride, because the walk is recomputed from scratch on every request
+        (`CardStatus.rode_by_month` says so in as many words):
 
-        The glossary has said this since the credit model shipped ("Cover
-        Overspent handles only the cash kind, on purpose"); until now only the
-        glossary said it."""
+            envelope −50, of which 20 rode onto a card; TBA 900; Uncovered 20
+              + 30 (the old behaviour):  envelope −20, TBA 870, Uncovered 20
+              + 50 (the whole red):      envelope   0, TBA 850, Uncovered  0
+                                                       card set-aside 0 → 20
+
+        So the ridden 20 costs exactly 20 of Ready to Assign and converts 20 of
+        card debt into 20 reserved to pay that card — the same trade as
+        assigning to the card directly, and it clears the envelope's red as
+        well. What it never does is nothing.
+
+        The old rule left the dialog covering a row and reporting it done while
+        the grid still drew it red, which is what a person reads as broken
+        arithmetic. `credit_overspent` is still served per row, because "20 of
+        this is card debt you are about to retire" is worth saying — it is a
+        label on the money, not a reason to withhold it.
+
+        Card payment envelopes stay out: a negative there is the card's own
+        Uncovered, not an overspent envelope, and it is retired by assigning to
+        the card in the cards strip."""
         summary = await self.get_budget_summary(budget_id, month)
         shortfalls = {
-            b.category_id: -b.available - b.credit_overspent
+            b.category_id: -b.available
             for b in summary.category_balances
             if b.available < 0 and not b.in_system_group and not b.is_card_payment
         }
@@ -1391,6 +1456,7 @@ class BudgetService:
         categories = await self.category_repo.get_all(budget_id, include_archived=True)
         name_map = {c.id: c.name for c in categories}
 
+        credit_by_category = {b.category_id: b.credit_overspent for b in summary.category_balances}
         items = [
             CoverOverspentItem(
                 category_id=cat_id,
@@ -1398,6 +1464,7 @@ class BudgetService:
                 overspent=shortfall,
                 proposed_addition=proposed[cat_id],
                 remaining_after=shortfall - proposed[cat_id],
+                credit_overspent=credit_by_category.get(cat_id, Decimal("0")),
             )
             for cat_id, shortfall in shortfalls.items()
         ]

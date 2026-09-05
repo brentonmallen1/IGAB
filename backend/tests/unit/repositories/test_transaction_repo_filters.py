@@ -18,6 +18,7 @@ import pytest
 from sqlalchemy.dialects import sqlite
 
 from igab.repositories.transaction_repo import TransactionRepository
+from igab.repositories.txn_filters import amount_search_text
 
 
 def _make_repo() -> TransactionRepository:
@@ -172,15 +173,18 @@ class TestDuplicatePairStructuredFilter:
 
 
 class TestFreeTextSearchMatchesAmounts:
-    """Typing a bare number should find the transaction with that amount —
-    the sign is ignored, so an outflow of -12.34 matches '12.34'."""
+    """Typing a bare number should find transactions whose amount CONTAINS it —
+    the sign is ignored, so an outflow of -12.34 matches '12', '12.3', '12.34'
+    and '.34'. A number is not the one term in the box that has to be typed
+    perfectly; see `search_matches`."""
 
     @pytest.mark.asyncio
-    async def test_numeric_search_adds_amount_clause(self) -> None:
+    async def test_numeric_search_matches_the_amount_partially(self) -> None:
         repo = _make_repo()
         await repo.get_for_account(uuid.uuid4(), search="12.34")
         sql = _captured_sql(repo)
-        assert "abs(transactions.amount) = 12.34" in sql.lower()
+        assert "round(abs(transactions.amount), 2)" in sql.lower()
+        assert "'%12.34%'" in sql
         # Payee/memo matching is preserved alongside it
         assert "ilike" in sql.lower() or "like" in sql.lower()
 
@@ -189,14 +193,23 @@ class TestFreeTextSearchMatchesAmounts:
         repo = _make_repo()
         await repo.get_for_account(uuid.uuid4(), search="$1,200")
         sql = _captured_sql(repo)
-        assert "abs(transactions.amount) = 1200" in sql.lower()
+        assert "'%1200%'" in sql
+
+    @pytest.mark.asyncio
+    async def test_an_exact_amount_is_no_longer_the_rule(self) -> None:
+        """The clause this replaced. A register that matched "star" against
+        "Starbucks" answered "12" with only the twelve-dollar rows."""
+        repo = _make_repo()
+        await repo.get_for_account(uuid.uuid4(), search="12.34")
+        sql = _captured_sql(repo)
+        assert "abs(transactions.amount) = 12.34" not in sql.lower()
 
     @pytest.mark.asyncio
     async def test_non_numeric_search_has_no_amount_clause(self) -> None:
         repo = _make_repo()
         await repo.get_for_account(uuid.uuid4(), search="starbucks")
         sql = _captured_sql(repo)
-        assert "abs(transactions.amount) =" not in sql.lower()
+        assert "abs(transactions.amount)" not in sql.lower()
 
     @pytest.mark.asyncio
     async def test_partially_numeric_search_has_no_amount_clause(self) -> None:
@@ -204,27 +217,45 @@ class TestFreeTextSearchMatchesAmounts:
         repo = _make_repo()
         await repo.get_for_account(uuid.uuid4(), search="12 west")
         sql = _captured_sql(repo)
-        assert "abs(transactions.amount) =" not in sql.lower()
+        assert "abs(transactions.amount)" not in sql.lower()
 
     @pytest.mark.asyncio
-    async def test_a_half_typed_amount_still_matches(self) -> None:
-        """'12.' is one keystroke inside '12.34'. Refusing it emptied the
-        register mid-word, which reads as "typing a dot breaks search"."""
+    async def test_a_half_typed_amount_matches_what_it_is_headed_for(self) -> None:
+        """'12.' is one keystroke inside '12.34'. It used to compile to
+        `= 12`, which answered the keystroke before it and the keystroke
+        after it with two different, equally wrong sets."""
         repo = _make_repo()
         await repo.get_for_account(uuid.uuid4(), search="12.")
         sql = _captured_sql(repo)
-        assert "abs(transactions.amount) = 12" in sql.lower()
+        assert "'%12.%'" in sql
 
     @pytest.mark.asyncio
     async def test_a_leading_dot_amount_still_matches(self) -> None:
         repo = _make_repo()
         await repo.get_for_account(uuid.uuid4(), search=".34")
         sql = _captured_sql(repo)
-        assert "abs(transactions.amount) = 0.34" in sql.lower()
+        assert "'%.34%'" in sql
 
     @pytest.mark.asyncio
     async def test_two_dots_are_not_an_amount(self) -> None:
         repo = _make_repo()
         await repo.get_for_account(uuid.uuid4(), search="12.34.56")
         sql = _captured_sql(repo)
-        assert "abs(transactions.amount) =" not in sql.lower()
+        assert "abs(transactions.amount)" not in sql.lower()
+
+
+class TestAmountSearchText:
+    """The pure half: which terms read as a number, and what digits they
+    contribute to the pattern."""
+
+    def test_currency_dressing_is_stripped(self) -> None:
+        assert amount_search_text("$1,200") == "1200"
+        assert amount_search_text("  12.34 ") == "12.34"
+
+    def test_half_typed_forms_survive(self) -> None:
+        assert amount_search_text("12.") == "12."
+        assert amount_search_text(".34") == ".34"
+
+    def test_anything_that_is_not_a_number_is_none(self) -> None:
+        for term in ("starbucks", "12 west", "12.34.56", "", "-12"):
+            assert amount_search_text(term) is None

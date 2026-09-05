@@ -12,11 +12,14 @@ the money on reconciled transactions is immutable to undo, in both
 directions (see domain.reconciliation); their bookkeeping is not.
 
 Batches are all-or-nothing: changes apply in reverse insertion order inside
-one DB transaction, so a conflict mid-batch rolls back everything.
+one DB transaction, so a conflict mid-batch rolls back everything — with one
+named exception, `_move_groups` below, where the batch is only a grouping for
+the toast and the real unit of atomicity is the budget move.
 """
 
 import datetime
 import uuid
+from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
@@ -65,6 +68,51 @@ def _opt_uuid(value: object) -> uuid.UUID | None:
     return uuid.UUID(str(value)) if value else None
 
 
+@dataclass(frozen=True)
+class BatchUndo:
+    """What an undo actually took back.
+
+    `skipped` is normally empty. It is non-empty only for a batch of budget
+    moves where some envelope has been assigned by hand since — those rows are
+    left exactly as the user set them, and the caller says so rather than
+    reporting a clean undo (see `_move_groups`).
+    """
+
+    undone: list[uuid.UUID]
+    skipped: list[uuid.UUID]
+
+
+def _move_groups(pending: list[ChangeLog]) -> list[list[ChangeLog]] | None:
+    """The batch's rows split into independently-undoable units, or None when
+    the batch is not that shape and all-or-nothing still applies.
+
+    Only budget-move rows qualify, and the unit is the move, not the row: a
+    move is what conserves money (TBA → envelope, or envelope → envelope), so
+    one can be taken back while its siblings stay, whereas half a transfer or
+    half a split is meaningless. This is the same unit `undo_move` already
+    reverses one at a time from the month's move list; the two now agree.
+
+    Why it matters: Cover Overspending and every bulk assign write one move
+    per envelope under one batch id. Under strict all-or-nothing, hand-editing
+    a single envelope afterwards made the whole operation permanently
+    un-undoable — the report was "I hit undo and none of the amounts went
+    back", and none of them did. `category_service._record_delete` avoided the
+    same trap by refusing to use a batch at all.
+
+    A batch holding a single move falls through to the ordinary path: there is
+    nothing to partition, so the plain conflict message is the honest answer.
+    """
+    groups: dict[str, list[ChangeLog]] = {}
+    for change in pending:
+        if change.entity_type != "assignment":
+            return None
+        move_id = (change.after or {}).get("_move_id")
+        if not move_id:
+            return None
+        groups.setdefault(str(move_id), []).append(change)
+    return list(groups.values()) if len(groups) > 1 else None
+
+
 def _mark_undone(change: ChangeLog) -> None:
     """The one spelling of "this row is now undone": timestamp for people,
     `undo_seq` for the redo stack. A site that stamps one without the other
@@ -78,7 +126,7 @@ class UndoService(UndoRestores):
         self.session = session
         self.repo = ChangeLogRepository(session)
 
-    async def undo_latest(self, budget_id: uuid.UUID) -> tuple[ChangeLog, list[uuid.UUID]]:
+    async def undo_latest(self, budget_id: uuid.UUID) -> tuple[ChangeLog, BatchUndo]:
         """Undo the newest live MANUAL change — the server side of ⌘Z —
         returning the candidate (for the toast) and everything undone (its
         whole batch, if it had one). Selection is `latest_live_manual`'s;
@@ -91,7 +139,7 @@ class UndoService(UndoRestores):
 
     async def undo_change(
         self, budget_id: uuid.UUID, change_id: uuid.UUID, force: bool = False
-    ) -> list[uuid.UUID]:
+    ) -> BatchUndo:
         """Undo one change — or, if it belongs to a batch, the whole batch
         (a split's or transfer's halves are meaningless alone)."""
         change = await self.repo.get_or_raise(change_id)
@@ -104,17 +152,22 @@ class UndoService(UndoRestores):
         await self._apply(change, force)
         _mark_undone(change)
         await self.session.flush()
-        return [change.id]
+        return BatchUndo([change.id], [])
 
     async def undo_batch(
         self, budget_id: uuid.UUID, batch_id: uuid.UUID, force: bool = False
-    ) -> list[uuid.UUID]:
+    ) -> BatchUndo:
         changes = await self.repo.get_batch(budget_id, batch_id)
         if not changes:
             raise NotFoundError("change batch", str(batch_id))
         pending = [c for c in changes if c.undone_at is None]
         if not pending:
             raise UndoConflict("This batch has already been undone")
+        # `force` already overrides the staleness check on every row, so there
+        # is nothing for the per-move path to rescue.
+        groups = None if force else _move_groups(pending)
+        if groups is not None:
+            return await self._undo_move_groups(groups, force)
         undone: list[uuid.UUID] = []
         for change in pending:
             await self._apply(change, force)
@@ -127,7 +180,57 @@ class UndoService(UndoRestores):
             # back, and the partial unique index on (account_id, sync_id)
             # refuses two live rows with it.
             await self.session.flush()
-        return undone
+        return BatchUndo(undone, [])
+
+    async def _undo_move_groups(self, groups: list[list[ChangeLog]], force: bool) -> "BatchUndo":
+        """Undo a batch of budget moves, move by move, skipping the ones whose
+        envelope has been assigned by hand since.
+
+        A move whose envelope moved on is left alone rather than reverted:
+        neither answer the strict path could give is right. Restoring the
+        snapshot would wipe the figure the user typed; reversing by delta (what
+        `undo_move` does, and correctly, for a later *move*) would add the
+        undone amount back on top of an absolute edit that already replaced it.
+        Leaving it is the only reading that keeps the user's own last word,
+        which is what the skip report then says out loud.
+        """
+        undone: list[uuid.UUID] = []
+        skipped: list[uuid.UUID] = []
+        for group in groups:
+            blocked = False
+            for change in group:
+                if await self._is_stale(change):
+                    blocked = True
+                    break
+            if blocked:
+                skipped.extend(c.id for c in group)
+                continue
+            for change in group:
+                await self._apply(change, force)
+                _mark_undone(change)
+                await self.session.flush()
+            undone.extend(c.id for c in group)
+        if not undone:
+            raise UndoConflict(
+                "Every envelope in this batch has been assigned since — nothing to take back",
+                fields=["assigned"],
+            )
+        return BatchUndo(undone, skipped)
+
+    async def _is_stale(self, change: ChangeLog) -> bool:
+        """Would `_undo_update`'s staleness check refuse this row?
+
+        Asked BEFORE anything is written, so a move whose two halves disagree
+        is skipped whole rather than half-reverted. The comparison is
+        `_undo_update`'s own, not a second spelling of it.
+        """
+        model = ENTITY_MODELS.get(change.entity_type)
+        if model is None:
+            return True
+        entity = await self.session.get(model, change.entity_id)
+        if entity is None:
+            return True
+        return bool(snapshots_match(snapshot(change.entity_type, entity), change.after or {}))
 
     async def undo_newer(
         self,

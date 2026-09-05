@@ -21,7 +21,8 @@ import { useCallback } from 'react'
 import toast from 'react-hot-toast'
 import { useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '../api/client'
-import { invalidateAfterUndo, changesKeys } from '../api/changes'
+import { invalidateAfterUndo, changesKeys, type UndoResponse } from '../api/changes'
+import { undoneMessage } from './undoneMessage'
 
 /** Undo one change row by id (`/changes/{id}/undo`). */
 export function useToastUndoChange(budgetId: string, accountId?: string | null) {
@@ -58,10 +59,10 @@ function useUndoToast(
               onClick={async () => {
                 toast.dismiss(t.id)
                 try {
-                  await apiClient.post(path(batchId))
+                  const { data } = await apiClient.post<UndoResponse>(path(batchId))
                   qc.invalidateQueries({ queryKey: changesKeys.budget(budgetId) })
                   invalidateAfterUndo(qc, budgetId, accountId)
-                  toast.success('Undone')
+                  toast.success(undoneMessage(data))
                 } catch (err) {
                   // Extract error message from API response if available
                   let msg = 'Could not undo'

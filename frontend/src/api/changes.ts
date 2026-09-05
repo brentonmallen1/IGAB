@@ -9,6 +9,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { apiClient } from './client'
 import { invalidateAfterCategoryChange } from './invalidateAfterCategoryChange'
+import { invalidateAfterMoneyMove } from './invalidateAfterMoneyMove'
 import { ROOT } from './queryKeys'
 
 export interface Change {
@@ -81,8 +82,11 @@ interface ChangesResponse {
   names: Record<string, string>
 }
 
-interface UndoResponse {
+export interface UndoResponse {
   undone_change_ids: string[]
+  /** Rows the undo deliberately left alone — only ever the envelopes of a
+   *  bulk assign or Cover Overspending that were assigned by hand since. */
+  skipped_change_ids: string[]
 }
 
 /** What ⌘Z undid — served with the result so the toast needs no second fetch. */
@@ -227,8 +231,12 @@ export function invalidateAfterUndo(
   qc.invalidateQueries({ queryKey: [ROOT.transactionsPeek] })
   qc.invalidateQueries({ queryKey: [ROOT.payeeTransactions] })
 
-  // Budget/assignment data
-  qc.invalidateQueries({ queryKey: [ROOT.budgetMonth, budgetId] })
+  // Budget/assignment data. The money keys live in one list rather than a
+  // second spelling of it here: undoing a bulk assign or Cover Overspending
+  // has to stale exactly what applying them staled, and while this file kept
+  // its own shorter version it did not — the hero, the overspent pill and the
+  // preview all kept showing the undone operation's figures.
+  invalidateAfterMoneyMove(qc, budgetId)
   qc.invalidateQueries({ queryKey: [ROOT.accounts, budgetId] })
 
   // Payee data

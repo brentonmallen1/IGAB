@@ -5,6 +5,7 @@ import { apiClient } from '../api/client'
 import { changesKeys, invalidateAfterUndo, type UndoLatestResponse } from '../api/changes'
 import { useAppStore } from '../stores/appStore'
 import { actionTypeLabel, entityTypeLabel } from '../pages/ActivityPage/changeLabels'
+import { skippedNote } from '../utils/undoneMessage'
 
 /**
  * Undo and redo, once, for every way of asking — ⌘Z, the header buttons, the
@@ -41,8 +42,9 @@ export function useUndoRedo() {
       qc.invalidateQueries({ queryKey: changesKeys.budget(budgetId) })
       invalidateAfterUndo(qc, budgetId)
       const others = data.undone_change_ids.length - 1
+      const left = skippedNote(data)
       toast.success(
-        `Undid: ${actionTypeLabel(data.action).toLowerCase()} ${entityTypeLabel(data.entity_type, data.action)}${others > 0 ? ` — and the other ${others} in that batch` : ''}`
+        `Undid: ${actionTypeLabel(data.action).toLowerCase()} ${entityTypeLabel(data.entity_type, data.action)}${others > 0 ? ` — and the other ${others} in that batch` : ''}${left ? `. ${left}` : ''}`
       )
     } catch (err: unknown) {
       toast(conflictMessage(err) ?? 'Nothing to undo')

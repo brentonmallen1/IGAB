@@ -62,6 +62,7 @@ function card(over: Partial<CardStatus> = {}): CardStatus {
     debt_change_this_month: 0,
     pending_this_month: 0,
     rode_by_month: [],
+    overspent_by_category: [],
     ...over,
   }
 }
@@ -146,7 +147,7 @@ describe('the Ready to pay breakdown', () => {
     render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
     await userEvent.click(screen.getByLabelText('What makes up Ready to pay for Sapphire Visa'))
     expect(screen.getByText('This month')).toBeInTheDocument()
-    expect(screen.getByText('Debt down')).toBeInTheDocument()
+    expect(screen.getByText('Debt decreased')).toBeInTheDocument()
   })
 
   it('puts the reconciling credit in the list, so the month adds up on its face', async () => {
@@ -182,7 +183,7 @@ describe('the Ready to pay breakdown', () => {
       '3,900.00'
     )
     expect(labelled('of which: Paid from your accounts')).toBeUndefined()
-    expect(labelled('Debt down')?.querySelector('dd')?.textContent).toContain('1,500.00')
+    expect(labelled('Debt decreased')?.querySelector('dd')?.textContent).toContain('1,500.00')
 
     // The explanation stays a footnote; the amount does not live there.
     const note = document.querySelector('.credit-cards__legs-note')
@@ -293,6 +294,6 @@ describe('what the row says about a reserve', () => {
       category_balances: [],
     } as unknown as BudgetMonth
     render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
-    expect(screen.getByText(/^down /)).toBeInTheDocument()
+    expect(screen.getByText(/^debt decreased /)).toBeInTheDocument()
   })
 })

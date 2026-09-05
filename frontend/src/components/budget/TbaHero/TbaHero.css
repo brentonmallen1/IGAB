@@ -157,9 +157,20 @@
   font-variant-numeric: tabular-nums;
   color: var(--text-secondary);
   background-color: var(--surface-sunken);
+  border: none;
   border-radius: 999px;
   white-space: nowrap;
-  cursor: default;
+  /* It opens the breakdown now. Still the calm chip — a pointer and a quiet
+     hover, not the accent fill the overspent chip uses for its action. */
+  cursor: pointer;
+  transition:
+    color var(--transition-fast),
+    background-color var(--transition-fast);
+}
+
+.tba-hero__on-cards:hover {
+  color: var(--text-primary);
+  background-color: var(--row-hover-bg);
 }
 
 /* History button — opens the month's move log in a modal */

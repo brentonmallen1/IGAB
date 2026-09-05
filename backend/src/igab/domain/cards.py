@@ -340,6 +340,15 @@ class CardFunding[C, K]:
     #: the cards with positive net that month, and that pool sums to at least
     #: the month's net — so the per-card figures sum to the per-category ones.
     floored_by_card: dict[K, dict[date, Decimal]] = field(default_factory=dict)
+    #: The same allocation kept at full resolution: which envelope rode onto
+    #: which card, per month. `floored_by_card` and `floored_by_category` are
+    #: both sums of this (pinned by test), so a surface that shows the
+    #: breakdown and one that shows a total cannot disagree.
+    #:
+    #: This is what answers "why is this envelope still red after I covered
+    #: the overspending" — the cash part was covered and the ride was not,
+    #: and until this existed no surface could name the card holding it.
+    floored_by_pair: dict[tuple[C, K], dict[date, Decimal]] = field(default_factory=dict)
     #: Signed change in what is riding uncovered on each card, per month:
     #: what went on, less what an inflow discharged, less what an assignment
     #: covered. `sum_through` it for the level — which is the `riding` term of
@@ -530,6 +539,9 @@ def card_funding[C, K](
             for card, share in floored_share.items():
                 _add(out.floored_by_card, card, month, share)
                 _add(out.riding_by_card, card, month, share)
+                if share != ZERO:
+                    per_pair = out.floored_by_pair.setdefault((category, card), {})
+                    per_pair[month] = per_pair.get(month, ZERO) + share
                 ridden[(category, card)] = ridden.get((category, card), ZERO) + share
             for card, net in nets.items():
                 if net <= ZERO:

@@ -40,6 +40,11 @@ class ChangeListResponse(ApiModel):
 
 class UndoResult(ApiModel):
     undone_change_ids: list[uuid.UUID]
+    #: Rows the undo deliberately left alone — only ever the envelopes of a
+    #: bulk assign or Cover Overspending that were assigned by hand since, so
+    #: the toast can say the operation came back except for those. Empty for
+    #: every other kind of undo; see `UndoService._undo_move_groups`.
+    skipped_change_ids: list[uuid.UUID] = []
 
 
 class UndoLatestResult(UndoResult):

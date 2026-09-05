@@ -1,5 +1,7 @@
 import { groupedCategorySections } from '../../../utils/categoryPickers'
 import { rowMayCarryCategory } from '../../../utils/rowCategoryRule'
+import { AccountField } from './AccountField'
+import { accountLockReason, categoryDropNote } from './accountMove'
 import { useState, useRef, useEffect, useMemo } from 'react'
 import {
   X,
@@ -137,7 +139,7 @@ export function TransactionEditor({
   // same sticky "last used" account the quick-add flow remembers.
   const lastPickedAccountId = useAppStore((s) => s.lastQuickAddAccountId)
   const setLastPickedAccountId = useAppStore((s) => s.setLastQuickAddAccountId)
-  const [pickedAccountId, setPickedAccountId] = useState('')
+  const [pickedAccountId, setPickedAccountId] = useState(transaction?.account_id ?? '')
   const openAccounts = useMemo(() => accounts.filter((a) => !a.is_closed), [accounts])
   useEffect(() => {
     if (fixedAccountId || transaction || pickedAccountId || openAccounts.length === 0) return
@@ -147,7 +149,10 @@ export function TransactionEditor({
         : (openAccounts.find((a) => a.on_budget)?.id ?? openAccounts[0].id)
     setPickedAccountId(preferred)
   }, [fixedAccountId, transaction, pickedAccountId, openAccounts, lastPickedAccountId])
-  const accountId = fixedAccountId ?? transaction?.account_id ?? pickedAccountId
+  // An existing row's account is the picker's, not the register's: opening a
+  // row from an account page must still let it be moved OUT of that page.
+  // A fresh row started from an account page keeps that account fixed.
+  const accountId = isEdit ? pickedAccountId : (fixedAccountId ?? pickedAccountId)
 
   const [date, setDate] = useState(transaction?.date.slice(0, 10) ?? initialDraft?.date ?? today())
   const [payeeQuery, setPayeeQuery] = useState(
@@ -305,6 +310,23 @@ export function TransactionEditor({
   // off-budget row, so the field is not offered where the save would refuse.
   const rowAccount = accounts.find((a) => a.id === accountId)
   const canCategorize = rowMayCarryCategory(rowAccount?.on_budget ?? true)
+  // Whether this row's account may be changed here at all, and what to say
+  // when it may not (accountMove.ts — the server's own rule is
+  // domain/account_move.py, which refuses regardless of what we offer).
+  const accountLock = isEdit
+    ? accountLockReason({
+        isReconciled,
+        isBankFed: !!transaction?.sync_id,
+        isSplitLine: !!transaction?.parent_transaction_id,
+      })
+    : null
+  // Moving to a tracking account clears the category. Said before the save.
+  const accountNote = isEdit
+    ? categoryDropNote(
+        rowAccount?.on_budget ?? true,
+        categories.find((c) => c.id === categoryId)?.name ?? null
+      )
+    : null
 
   function handlePayeeSelect(p: Payee) {
     setPayeeQuery(p.name)
@@ -496,10 +518,12 @@ export function TransactionEditor({
         : {
             payee_id: selectedPayeeId || undefined,
             payee_name: !selectedPayeeId && payeeQuery ? payeeQuery : undefined,
-            // Guarded even though the field is hidden: a category picked
-            // before switching to a tracking account must not reach a save
-            // the server will refuse.
-            category_id: canCategorize ? categoryId || undefined : undefined,
+            // An explicit null, never "omit": PATCH treats an omitted field
+            // as untouched, so the picker's own None option cleared nothing
+            // and moving a filed row to a tracking account (where the field
+            // is hidden entirely) would be refused for a category the user
+            // could no longer see.
+            category_id: canCategorize ? categoryId || null : null,
           }),
     }
 
@@ -525,10 +549,27 @@ export function TransactionEditor({
           transfer_account_id: null,
         })
       }
+      // Same shape for a transfer that also moved: the server refuses to
+      // change the account a row is IN and the account it points AT in one
+      // request (two accounts moving, no obvious order), so the move goes
+      // first. The account in `payload` is then the row's own and is dropped
+      // server-side as "not a move".
+      if (isTransfer && accountId !== transaction!.account_id) {
+        await updateTxn.mutateAsync({ id: transaction!.id, account_id: accountId })
+      }
       await updateTxn.mutateAsync({ id: transaction!.id, ...payload })
     } else {
       // A new row is never reconciled; restate the money so the type says so.
-      await createTxn.mutateAsync({ ...payload, date, amount, cleared, ai_job_id: aiJobId })
+      // `category_id: null` is the PATCH spelling of "clear it"; on a create
+      // there is nothing to clear, and POST takes the field absent instead.
+      await createTxn.mutateAsync({
+        ...payload,
+        category_id: ('category_id' in payload ? payload.category_id : null) ?? undefined,
+        date,
+        amount,
+        cleared,
+        ai_job_id: aiJobId,
+      })
       if (!fixedAccountId) setLastPickedAccountId(accountId)
     }
     onClose()
@@ -621,48 +662,18 @@ export function TransactionEditor({
     )
   }
 
-  // Account field used in both tabs (shared state survives tab switches)
+  // Which account this row is in — a picker for a new row with no register to
+  // inherit from, and the move control for an existing one (AccountField).
   const accountField =
-    !fixedAccountId && !isEdit ? (
-      <div className="txn-editor__field">
-        <label className="txn-editor__label">Account</label>
-        <select
-          className="txn-editor__select"
-          value={pickedAccountId}
-          onChange={(e) => setPickedAccountId(e.target.value)}
-          required
-        >
-          <option value="">Select account…</option>
-          {openAccounts.some((a) => !a.on_budget) ? (
-            <>
-              <optgroup label="Budget accounts">
-                {openAccounts
-                  .filter((a) => a.on_budget)
-                  .map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
-              </optgroup>
-              <optgroup label="Tracking">
-                {openAccounts
-                  .filter((a) => !a.on_budget)
-                  .map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
-              </optgroup>
-            </>
-          ) : (
-            openAccounts.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))
-          )}
-        </select>
-      </div>
+    !fixedAccountId || isEdit ? (
+      <AccountField
+        accounts={openAccounts}
+        value={pickedAccountId}
+        onChange={setPickedAccountId}
+        current={rowAccount ?? null}
+        lockReason={accountLock}
+        note={accountNote}
+      />
     ) : null
 
   return (
