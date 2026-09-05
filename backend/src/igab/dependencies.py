@@ -288,7 +288,8 @@ def get_category_plan_service(
 ) -> CategoryPlanService:
     service = CategoryPlanService(session)
     # The plan service builds its own TargetService (it predates DI); stamp
-    # that recorder too so apply-targets rows carry the acting user.
+    # both recorders so apply-targets rows carry the acting user.
+    service.changes.actor_user_id = current_user.id
     service.targets.changes.actor_user_id = current_user.id
     return service
 

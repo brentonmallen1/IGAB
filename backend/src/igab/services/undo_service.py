@@ -80,6 +80,7 @@ HARD_ROW_NATURAL_KEY: dict[str, tuple[str, ...]] = {
     "asset_value": ("asset_id", "date"),
     "account_type": ("budget_id", "key"),
     "reconciliation": ("account_id", "reconciled_at"),
+    "category_plan": ("budget_id", "name"),
 }
 
 # The FK a re-inserted hard row hangs from. Checked before insert so a

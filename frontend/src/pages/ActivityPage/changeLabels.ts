@@ -54,6 +54,8 @@ export function entityTypeLabel(entityType: string): string {
       return 'reconciliation'
     case 'transaction_match':
       return 'duplicate match'
+    case 'category_plan':
+      return 'plan'
     default:
       return entityType
   }

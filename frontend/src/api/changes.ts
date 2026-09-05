@@ -43,6 +43,7 @@ export interface Change {
     | 'account_type'
     | 'reconciliation'
     | 'transaction_match'
+    | 'category_plan'
   entity_id: string
   action:
     | 'create'
@@ -270,4 +271,7 @@ export function invalidateAfterUndo(
   qc.invalidateQueries({ queryKey: [ROOT.reconcileHistory] })
   qc.invalidateQueries({ queryKey: [ROOT.simplefinMatches] })
   qc.invalidateQueries({ queryKey: [ROOT.pendingMatchesAccount] })
+
+  // Category planner documents.
+  qc.invalidateQueries({ queryKey: [ROOT.categoryPlans] })
 }

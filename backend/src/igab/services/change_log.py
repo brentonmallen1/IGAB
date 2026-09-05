@@ -40,6 +40,7 @@ from igab.db.models import (
     BudgetView,
     Category,
     CategoryGroup,
+    CategoryPlan,
     CategoryTarget,
     ChangeLog,
     Liability,
@@ -93,6 +94,7 @@ ENTITY_MODELS: dict[str, type] = {
     # last-reconciled stamp (kept out of the account snapshot on purpose).
     "reconciliation": ReconciliationSnapshot,
     "transaction_match": TransactionMatch,
+    "category_plan": CategoryPlan,
 }
 
 # Restorable fields per entity. is_deleted is excluded on purpose — the
@@ -269,6 +271,8 @@ SNAPSHOT_FIELDS: dict[str, tuple[str, ...]] = {
         "confidence_score",
         "status",
     ),
+    # `payload` is the whole JSONB plan document — JSON-safe by construction.
+    "category_plan": ("name", "payload"),
 }
 
 
