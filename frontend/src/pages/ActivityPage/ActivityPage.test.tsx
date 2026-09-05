@@ -27,9 +27,14 @@ const undoChange = vi.hoisted(() =>
   vi.fn((_args: { changeId: string }) => Promise.resolve({ undone_change_ids: ['x'] }))
 )
 let changes: Change[] = []
+let names: Record<string, string> = {}
 
 vi.mock('../../api/changes', () => ({
-  useChanges: () => ({ data: { changes, total: changes.length }, isLoading: false, error: null }),
+  useChanges: () => ({
+    data: { changes, total: changes.length, names },
+    isLoading: false,
+    error: null,
+  }),
   useUndoChange: () => ({ mutateAsync: undoChange, isPending: false }),
   useUndoBatch: () => ({ mutateAsync: undoBatch, isPending: false }),
   useUndoNewer: () => ({ mutateAsync: undoNewer, isPending: false }),
@@ -78,6 +83,7 @@ beforeEach(() => {
   undoBatch.mockClear()
   undoChange.mockClear()
   confirmAsync.mockClear()
+  names = {}
 })
 
 describe('ActivityPage', () => {
@@ -144,6 +150,25 @@ describe('ActivityPage', () => {
     ]
     render(<ActivityPage />)
     expect(screen.queryByTitle('Redo this change')).toBeNull()
+  })
+
+  it('names the payee on the summary line, and expands to a before → after diff', async () => {
+    // The server resolves ids to names beside the page; the card shows them
+    // instead of UUIDs, and tapping the row reveals what actually moved.
+    names = { p1: 'Harborstone Market' }
+    changes = [
+      change('a', {
+        action: 'update',
+        before: { amount: '-42.50', payee_id: 'p1' },
+        after: { amount: '-60.00', payee_id: 'p1' },
+      }),
+    ]
+    render(<ActivityPage />)
+
+    expect(screen.queryByText('-$42.50')).toBeNull() // detail hidden until asked
+    await userEvent.click(screen.getByText('Amount → -$60.00 · Harborstone Market'))
+    expect(screen.getByText('-$42.50')).toBeInTheDocument()
+    expect(screen.getByText('-$60.00')).toBeInTheDocument()
   })
 
   it('does nothing when the confirmation is declined', async () => {

@@ -1,4 +1,3 @@
-import { parseApiDecimal } from '../../utils/money'
 import { Fragment, useState } from 'react'
 import {
   Undo2,
@@ -33,6 +32,7 @@ import toast from 'react-hot-toast'
 import { groupChanges, redoHeadId, summarizeBatch } from './groupChanges'
 import { useUndoRedo } from '../../hooks/useUndoRedo'
 import { actionTypeLabel, entityTypeLabel } from './changeLabels'
+import { diffRows, summarizeChange, type Names } from './changeDetails'
 import './ActivityPage.css'
 
 const PAGE_SIZE = 50
@@ -65,6 +65,7 @@ export function ActivityPage() {
 
   const changes = data?.changes ?? []
   const total = data?.total ?? 0
+  const names = data?.names ?? {}
   const hasMore = offset + changes.length < total
 
   const grouped = groupChanges(changes)
@@ -187,6 +188,7 @@ export function ActivityPage() {
                     <ChangeCard
                       key={change.id}
                       change={change}
+                      names={names}
                       formatDateTime={formatDateTime}
                       onUndo={() => handleUndo(change.id)}
                       isUndoing={undoChange.isPending}
@@ -329,6 +331,7 @@ function BatchHeader({
 
 interface ChangeCardProps {
   change: Change
+  names: Names
   formatDateTime: (date: string) => string
   onUndo: () => void
   isUndoing: boolean
@@ -339,6 +342,7 @@ interface ChangeCardProps {
 
 function ChangeCard({
   change,
+  names,
   formatDateTime,
   onUndo,
   isUndoing,
@@ -349,39 +353,60 @@ function ChangeCard({
   const entityLabel = entityTypeLabel(change.entity_type, change.action)
   const actionLabel = actionTypeLabel(change.action)
   const isUndone = !!change.undone_at
-
-  // Show a summary of what changed
-  let summary = ''
-  if (change.action === 'create' || change.action === 'import') {
-    summary = summarizeAfter(change)
-  } else if (change.action === 'delete') {
-    summary = summarizeBefore(change)
-  } else if (change.action === 'update' || change.action === 'approve') {
-    summary = summarizeUpdate(change)
-  } else if (change.action === 'merge') {
-    summary = 'Merged into another'
-  }
-  // Archive rows carry id-keyed payloads (one archive touches many rows), so
-  // the field-diff summarizer would print raw ids; the action label says it.
-  if (change.action === 'archive' || change.action === 'unarchive') summary = ''
+  const summary = summarizeChange(change, names)
+  const rows = diffRows(change, names)
+  // Tap the row to see the before → after detail. A tap, not a hover: the
+  // phone is an installed PWA where hover does not exist.
+  const [open, setOpen] = useState(false)
 
   return (
     <div className={`change-card ${isUndone ? 'change-card--undone' : ''}`}>
       <div className="change-card__icon">{icon}</div>
       <div className="change-card__content">
-        <div className="change-card__header">
-          <span className="change-card__action">
-            {actionLabel} {entityLabel}
-          </span>
-          {/* Who did it — matters once a budget is shared. System/AI changes
-              carry no user; show the source instead. */}
-          <span className="change-card__actor">
-            {change.user_display_name ??
-              (change.source === 'ai' ? 'AI' : change.source === 'manual' ? '' : change.source)}
-          </span>
-          <span className="change-card__time">{formatDateTime(change.created_at)}</span>
-        </div>
-        {summary && <div className="change-card__summary">{summary}</div>}
+        <button
+          type="button"
+          className="change-card__reveal"
+          onClick={() => setOpen((o) => !o)}
+          disabled={rows.length === 0}
+          aria-expanded={open}
+          title={rows.length > 0 && !open ? 'Show what changed' : undefined}
+        >
+          <div className="change-card__header">
+            <span className="change-card__action">
+              {actionLabel} {entityLabel}
+            </span>
+            {/* Who did it — matters once a budget is shared. System/AI changes
+                carry no user; show the source instead. */}
+            <span className="change-card__actor">
+              {change.user_display_name ??
+                (change.source === 'ai' ? 'AI' : change.source === 'manual' ? '' : change.source)}
+            </span>
+            <span className="change-card__time">{formatDateTime(change.created_at)}</span>
+          </div>
+          {summary && <div className="change-card__summary">{summary}</div>}
+        </button>
+        {open && rows.length > 0 && (
+          <dl className="change-card__diff">
+            {rows.map((row, i) => (
+              <div className="change-card__diff-row" key={`${row.label}-${i}`}>
+                <dt className="change-card__diff-label">{row.label}</dt>
+                <dd className="change-card__diff-values">
+                  {row.before !== null && (
+                    <span className="change-card__diff-before">{row.before}</span>
+                  )}
+                  {row.before !== null && row.after !== null && (
+                    <span className="change-card__diff-arrow" aria-hidden>
+                      →
+                    </span>
+                  )}
+                  {row.after !== null && (
+                    <span className="change-card__diff-after">{row.after}</span>
+                  )}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        )}
         {isUndone && <div className="change-card__undone-badge">Undone</div>}
       </div>
       {!isUndone && (
@@ -424,95 +449,4 @@ function actionIcon(action: string) {
     default:
       return <RefreshCw size={14} />
   }
-}
-
-/** One summarizer for both sides — a create reads `after`, a delete reads
- *  `before`, and the text for a given entity must be the same either way
- *  (these were two drifting copies: only one of them knew assignments). */
-function summarizeSnapshot(change: Change, snap: Record<string, unknown> | null): string {
-  if (!snap) return ''
-
-  if (change.entity_type === 'transaction' || change.entity_type === 'scheduled_transaction') {
-    const amount = snap.amount as string | undefined
-    const memo = snap.memo as string | undefined
-    if (amount) {
-      const amtNum = parseApiDecimal(amount)
-      const formatted = Math.abs(amtNum).toFixed(2)
-      return `${amtNum < 0 ? '-' : '+'}$${formatted}${memo ? ` – ${memo}` : ''}`
-    }
-  }
-
-  if (change.entity_type === 'assignment') {
-    const assigned = snap.assigned as string | undefined
-    if (assigned) {
-      return `Assigned $${parseApiDecimal(assigned).toFixed(2)}`
-    }
-  }
-
-  if (change.entity_type === 'category_target') {
-    const amount = snap.target_amount as string | undefined
-    if (amount) {
-      return `Goal $${parseApiDecimal(amount).toFixed(2)}`
-    }
-  }
-
-  // Dated balance/value points: the figure and the day it was stated for.
-  if (change.entity_type === 'liability_snapshot' || change.entity_type === 'asset_value') {
-    const figure = (snap.balance ?? snap.value) as string | undefined
-    if (figure) {
-      return `$${parseApiDecimal(figure).toFixed(2)} on ${snap.date as string}`
-    }
-  }
-
-  if (change.entity_type === 'reconciliation') {
-    const statement = snap.statement_balance as string | undefined
-    if (statement) {
-      return `Statement $${parseApiDecimal(statement).toFixed(2)}`
-    }
-  }
-
-  // Everything else that carries a name (or an account type's label) is
-  // summarized by it.
-  return ((snap.name ?? snap.label) as string) ?? ''
-}
-
-function summarizeAfter(change: Change): string {
-  return summarizeSnapshot(change, change.after)
-}
-
-function summarizeBefore(change: Change): string {
-  return summarizeSnapshot(change, change.before)
-}
-
-function summarizeUpdate(change: Change): string {
-  const before = change.before ?? {}
-  const after = change.after ?? {}
-
-  // Find fields that changed
-  const changed: string[] = []
-  for (const key of Object.keys(after)) {
-    if (key.startsWith('_')) continue
-    const b = before[key]
-    const a = after[key]
-    if (String(b) !== String(a)) {
-      changed.push(key)
-    }
-  }
-
-  if (changed.length === 0) return ''
-  if (changed.length === 1) {
-    const field = changed[0]
-    if (field === 'approved') return 'Marked approved'
-    if (field === 'cleared') return `Cleared: ${after.cleared}`
-    if (field === 'amount') {
-      const a = parseApiDecimal(after.amount as string)
-      return `Amount → ${a < 0 ? '-' : '+'}$${Math.abs(a).toFixed(2)}`
-    }
-    if (field === 'name') return `Renamed to "${after.name}"`
-    if (field === 'assigned') {
-      return `Assigned → $${parseApiDecimal(after.assigned as string).toFixed(2)}`
-    }
-    return `Changed ${field}`
-  }
-  return `Changed ${changed.length} fields`
 }
