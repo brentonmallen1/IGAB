@@ -64,6 +64,10 @@ interface GuideState {
   wishlistSort: WishlistSort
   /** The "Top priorities" strip above the wishlist card, folded away. */
   wishlistHeroCollapsed: boolean
+  /** Folded project sections in the wishlist's projects view, by project id
+   *  ('loose' is the Other-wants section). A deleted project's id going stale
+   *  in here is harmless — nothing renders it. */
+  collapsedWishProjects: string[]
   setActiveTab: (tab: GuideTab) => void
   setPositionSeen: (id: StageId | null) => void
   setRoadmapView: (view: RoadmapView) => void
@@ -73,6 +77,9 @@ interface GuideState {
   setWishlistView: (view: WishlistView) => void
   setWishlistSort: (sort: WishlistSort) => void
   toggleWishlistHero: () => void
+  toggleWishProject: (id: string) => void
+  /** Collapse-all / expand-all: the whole set at once. */
+  setCollapsedWishProjects: (ids: string[]) => void
   toggleStage: (id: StageId) => void
   openStage: (id: StageId) => void
   toggleDetail: (nodeId: string) => void
@@ -97,6 +104,7 @@ export const useGuideStore = create<GuideState>()(
       wishlistView: 'flat',
       wishlistSort: 'reach',
       wishlistHeroCollapsed: false,
+      collapsedWishProjects: [],
 
       setActiveTab: (tab) => set({ activeTab: tab }),
       setPositionSeen: (id) => set({ positionSeen: id }),
@@ -107,6 +115,13 @@ export const useGuideStore = create<GuideState>()(
       setWishlistView: (view) => set({ wishlistView: view }),
       setWishlistSort: (sort) => set({ wishlistSort: sort }),
       toggleWishlistHero: () => set((s) => ({ wishlistHeroCollapsed: !s.wishlistHeroCollapsed })),
+      toggleWishProject: (id) =>
+        set((s) => ({
+          collapsedWishProjects: s.collapsedWishProjects.includes(id)
+            ? s.collapsedWishProjects.filter((x) => x !== id)
+            : [...s.collapsedWishProjects, id],
+        })),
+      setCollapsedWishProjects: (ids) => set({ collapsedWishProjects: ids }),
 
       toggleStage: (id) =>
         set((s) => ({
@@ -150,6 +165,7 @@ export const useGuideStore = create<GuideState>()(
         wishlistView: s.wishlistView,
         wishlistSort: s.wishlistSort,
         wishlistHeroCollapsed: s.wishlistHeroCollapsed,
+        collapsedWishProjects: s.collapsedWishProjects,
       }),
     }
   )

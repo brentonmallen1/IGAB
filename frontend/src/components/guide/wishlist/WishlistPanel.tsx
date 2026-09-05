@@ -57,6 +57,9 @@ export function WishlistPanel() {
   const setSort = useGuideStore((s) => s.setWishlistSort)
   const heroCollapsed = useGuideStore((s) => s.wishlistHeroCollapsed)
   const toggleHero = useGuideStore((s) => s.toggleWishlistHero)
+  const collapsedProjects = useGuideStore((s) => s.collapsedWishProjects)
+  const toggleProject = useGuideStore((s) => s.toggleWishProject)
+  const setCollapsedProjects = useGuideStore((s) => s.setCollapsedWishProjects)
   const [query, setQuery] = useState('')
   const [adding, setAdding] = useState<'wish' | 'project' | null>(null)
   const [editing, setEditing] = useState<Wish | null>(null)
@@ -95,6 +98,12 @@ export function WishlistPanel() {
     [data]
   )
   const projectsById = useMemo(() => new Map((data?.projects ?? []).map((p) => [p.id, p])), [data])
+  // `rest`, not `filtered`: the hero already shows the top priorities above
+  // the card, and a wish drawn twice reads as a bug, not emphasis.
+  const sections = useMemo(() => groupByProject(rest, activeProjects), [rest, activeProjects])
+  const sectionKeys = sections.map((s) => s.project?.id ?? 'loose')
+  const allProjectsCollapsed =
+    sectionKeys.length > 0 && sectionKeys.every((k) => collapsedProjects.includes(k))
   const due = useMemo(() => (data?.items ?? []).filter((w) => w.review_due), [data])
 
   if (overview && !enabled) {
@@ -254,6 +263,15 @@ export function WishlistPanel() {
               </button>
             ))}
           </div>
+          {view === 'projects' && sections.length > 0 && (
+            <button
+              type="button"
+              className="guide-link-button"
+              onClick={() => setCollapsedProjects(allProjectsCollapsed ? [] : sectionKeys)}
+            >
+              {allProjectsCollapsed ? 'Expand all' : 'Collapse all'}
+            </button>
+          )}
           <button type="button" className="guide-checkup__run" onClick={() => setAdding('wish')}>
             <Plus size={13} aria-hidden /> Add a wish
           </button>
@@ -287,30 +305,32 @@ export function WishlistPanel() {
             <div className="guide-wishlist__list">{rest.map((w) => card(w))}</div>
           ) : (
             <div className="guide-wishlist__list">
-              {/* `rest`, not `filtered`: the hero already shows the top
-                  priorities above the card, and a wish drawn twice reads as a
-                  bug, not emphasis. */}
-              {groupByProject(rest, activeProjects).map((section) => (
-                <WishlistProjectSection
-                  key={section.project?.id ?? 'loose'}
-                  project={section.project}
-                  count={section.items.length}
-                  onEdit={section.project ? () => setEditingProject(section.project) : undefined}
-                  onDelete={
-                    section.project ? () => removeProject.mutate(section.project!.id) : undefined
-                  }
-                >
-                  {section.items.length ? (
-                    section.items.map((w) => card(w))
-                  ) : section.project && heroProjectIds.has(section.project.id) ? (
-                    <p className="guide-wishlist__empty">
-                      Everything on it sits in your top priorities above.
-                    </p>
-                  ) : (
-                    <p className="guide-wishlist__empty">Nothing on it yet.</p>
-                  )}
-                </WishlistProjectSection>
-              ))}
+              {sections.map((section) => {
+                const key = section.project?.id ?? 'loose'
+                return (
+                  <WishlistProjectSection
+                    key={key}
+                    project={section.project}
+                    count={section.items.length}
+                    open={!collapsedProjects.includes(key)}
+                    onToggle={() => toggleProject(key)}
+                    onEdit={section.project ? () => setEditingProject(section.project) : undefined}
+                    onDelete={
+                      section.project ? () => removeProject.mutate(section.project!.id) : undefined
+                    }
+                  >
+                    {section.items.length ? (
+                      section.items.map((w) => card(w))
+                    ) : section.project && heroProjectIds.has(section.project.id) ? (
+                      <p className="guide-wishlist__empty">
+                        Everything on it sits in your top priorities above.
+                      </p>
+                    ) : (
+                      <p className="guide-wishlist__empty">Nothing on it yet.</p>
+                    )}
+                  </WishlistProjectSection>
+                )
+              })}
             </div>
           )}
 
