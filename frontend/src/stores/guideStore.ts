@@ -4,7 +4,7 @@ import { PERSIST_KEYS } from './persistKeys'
 import type { StageId, ToolId } from '../content/roadmap'
 import type { GlossaryId } from '../content/glossary'
 
-export type GuideTab = 'roadmap' | 'checkup' | 'tools' | 'glossary' | 'wishlist'
+export type GuideTab = 'roadmap' | 'checkup' | 'tools' | 'glossary'
 
 export interface GuideTabDef {
   id: GuideTab
@@ -16,7 +16,6 @@ export const GUIDE_TABS: GuideTabDef[] = [
   { id: 'checkup', label: 'Checkup' },
   { id: 'tools', label: 'Tools' },
   { id: 'glossary', label: 'Glossary' },
-  { id: 'wishlist', label: 'Wishlist' },
 ]
 
 /** How the roadmap is rendered.
@@ -27,7 +26,11 @@ export const GUIDE_TABS: GuideTabDef[] = [
  * boxes and arrows, pannable and zoomable, foldable a step at a time. */
 export type RoadmapView = 'journey' | 'browse' | 'map'
 
-/** The wishlist as one list sorted, or grouped under its projects. */
+/** The wishlist as one list sorted, or grouped under its projects.
+ *
+ * The wishlist page moved out of the Guide, but its view preferences stay in
+ * this store: moving them would orphan what people already have persisted
+ * under the guide key, for no gain a user could see. */
 export type WishlistView = 'flat' | 'projects'
 export type WishlistSort = 'reach' | 'priority' | 'cost' | 'added' | 'name'
 
@@ -61,6 +64,10 @@ interface GuideState {
   wishlistSort: WishlistSort
   /** The "Top priorities" strip above the wishlist card, folded away. */
   wishlistHeroCollapsed: boolean
+  /** Folded project sections in the wishlist's projects view, by project id
+   *  ('loose' is the Other-wants section). A deleted project's id going stale
+   *  in here is harmless — nothing renders it. */
+  collapsedWishProjects: string[]
   setActiveTab: (tab: GuideTab) => void
   setPositionSeen: (id: StageId | null) => void
   setRoadmapView: (view: RoadmapView) => void
@@ -70,6 +77,9 @@ interface GuideState {
   setWishlistView: (view: WishlistView) => void
   setWishlistSort: (sort: WishlistSort) => void
   toggleWishlistHero: () => void
+  toggleWishProject: (id: string) => void
+  /** Collapse-all / expand-all: the whole set at once. */
+  setCollapsedWishProjects: (ids: string[]) => void
   toggleStage: (id: StageId) => void
   openStage: (id: StageId) => void
   toggleDetail: (nodeId: string) => void
@@ -94,6 +104,7 @@ export const useGuideStore = create<GuideState>()(
       wishlistView: 'flat',
       wishlistSort: 'reach',
       wishlistHeroCollapsed: false,
+      collapsedWishProjects: [],
 
       setActiveTab: (tab) => set({ activeTab: tab }),
       setPositionSeen: (id) => set({ positionSeen: id }),
@@ -104,6 +115,13 @@ export const useGuideStore = create<GuideState>()(
       setWishlistView: (view) => set({ wishlistView: view }),
       setWishlistSort: (sort) => set({ wishlistSort: sort }),
       toggleWishlistHero: () => set((s) => ({ wishlistHeroCollapsed: !s.wishlistHeroCollapsed })),
+      toggleWishProject: (id) =>
+        set((s) => ({
+          collapsedWishProjects: s.collapsedWishProjects.includes(id)
+            ? s.collapsedWishProjects.filter((x) => x !== id)
+            : [...s.collapsedWishProjects, id],
+        })),
+      setCollapsedWishProjects: (ids) => set({ collapsedWishProjects: ids }),
 
       toggleStage: (id) =>
         set((s) => ({
@@ -147,6 +165,7 @@ export const useGuideStore = create<GuideState>()(
         wishlistView: s.wishlistView,
         wishlistSort: s.wishlistSort,
         wishlistHeroCollapsed: s.wishlistHeroCollapsed,
+        collapsedWishProjects: s.collapsedWishProjects,
       }),
     }
   )

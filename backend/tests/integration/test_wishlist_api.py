@@ -409,6 +409,78 @@ class TestCoolingReviewAndStillWanted:
         assert body["still_wanted"] == {"count": 0, "of": 0, "months": 3}
 
 
+class TestEveryFieldUpdates:
+    """The edit dialog's contract: everything a wish stores can be changed
+    after creation, cleared again, and comes back served. The closing
+    assertion walks WishUpdate itself, so a field added there cannot ship
+    without joining this round-trip."""
+
+    async def test_every_updatable_field_round_trips_and_clears(self, db_session, api_client):
+        budget = await _budget(db_session, api_client)
+        pr = await api_client.post(f"{_url(budget)}/projects", json={"name": "Cabin"})
+        project_id = pr.json()["id"]
+        group = await create_category_group(db_session, budget, "Fun")
+        cat = await create_category(db_session, budget, group, "Fun Money")
+        wish = await _add(api_client, budget, cooling_days=0)
+        url = f"{_url(budget)}/{wish['id']}"
+
+        changes = {
+            "name": "Canoe",
+            "cost": "950",
+            "url": "https://example.com/canoe",
+            "notes": "the red one",
+            "project_id": project_id,
+            "priority": 7,
+            "is_priority": True,
+            "cooling_until": "2027-01-15",
+            "funding": {"mode": "existing", "category_id": str(cat.id)},
+        }
+        r = await api_client.patch(url, json=changes)
+        assert r.status_code == 200, r.text
+        row = r.json()
+        assert row["name"] == "Canoe"
+        assert money(row["cost"]) == Decimal("950")
+        assert row["url"] == "https://example.com/canoe"
+        assert row["notes"] == "the red one"
+        assert row["project_id"] == project_id
+        assert row["priority"] == 7
+        assert row["is_priority"] is True
+        assert row["cooling_until"] == "2027-01-15"
+        assert row["funding"]["category_id"] == str(cat.id)
+        assert row["funding"]["inherited"] is False
+
+        # Every nullable field clears with an explicit null.
+        r = await api_client.patch(
+            url,
+            json={
+                "url": None,
+                "notes": None,
+                "project_id": None,
+                "cooling_until": None,
+                "is_priority": False,
+                "funding": {"mode": "none"},
+            },
+        )
+        assert r.status_code == 200, r.text
+        row = r.json()
+        assert row["url"] is None
+        assert row["notes"] is None
+        assert row["project_id"] is None
+        assert row["cooling_until"] is None
+        assert row["is_priority"] is False
+        assert row["funding"]["mode"] == "none"
+
+        # Status last — it moves the wish to history.
+        r = await api_client.patch(url, json={"status": "done"})
+        assert r.status_code == 200 and r.json()["status"] == "done"
+
+        # The ratchet: this walk covers WishUpdate. A new field fails here
+        # until it joins `changes` (or the clears) above.
+        from igab.api.v1.schemas.wishlist import WishUpdate
+
+        assert set(changes) | {"status"} == set(WishUpdate.model_fields)
+
+
 class TestTopPriorities:
     """Pinning is an explicit, capped choice — the strip shows only what
     someone chose, and a full spotlight refuses rather than displaces."""

@@ -36,8 +36,22 @@ export function WishForm({ budgetId, wish, projects, defaultCoolingDays, onClose
   const [notes, setNotes] = useState(wish?.notes ?? '')
   const [projectId, setProjectId] = useState<string>(wish?.project_id ?? '')
   const [coolingDays, setCoolingDays] = useState(String(defaultCoolingDays))
+  // Editing works on the stored date, not a day count: days only mean
+  // something at creation, when they measure from today.
+  const [coolingUntil, setCoolingUntil] = useState(wish?.cooling_until ?? '')
+  // Inherited funding seeds 'none': the wish's own stored choice is "no
+  // category of its own" — the envelope it shows belongs to the project. The
+  // served mode says 'existing' for it, and seeding from that blocked every
+  // save behind "Pick the category that funds it" for a category the form
+  // deliberately doesn't show.
   const [mode, setMode] = useState<FundingMode>(
-    wish ? (wish.funding.owns_envelope ? 'own' : wish.funding.mode) : 'own'
+    wish
+      ? wish.funding.owns_envelope
+        ? 'own'
+        : wish.funding.inherited
+          ? 'none'
+          : wish.funding.mode
+      : 'own'
   )
   const [categoryId, setCategoryId] = useState<string | null>(
     wish && !wish.funding.inherited ? wish.funding.category_id : null
@@ -60,6 +74,10 @@ export function WishForm({ budgetId, wish, projects, defaultCoolingDays, onClose
   const update = useUpdateWish(budgetId)
   const pending = create.isPending || update.isPending
   const ownsEnvelope = !!wish?.funding.owns_envelope
+  // What "no category of its own" means depends on the project picked right
+  // now: with a funded project it follows that envelope, without one it waits.
+  const selectedProject = projects.find((p) => p.id === projectId)
+  const projectEnvelope = selectedProject?.category_id ? selectedProject.category_name : null
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -81,6 +99,7 @@ export function WishForm({ budgetId, wish, projects, defaultCoolingDays, onClose
           url: url.trim() || null,
           notes: notes.trim() || null,
           project_id: projectId || null,
+          cooling_until: coolingUntil || null,
           ...(ownsEnvelope
             ? {}
             : { funding: { mode, category_id: mode === 'existing' ? categoryId : null } }),
@@ -183,7 +202,16 @@ export function WishForm({ budgetId, wish, projects, defaultCoolingDays, onClose
                   onChange={() => setMode('none')}
                 />
                 <span>
-                  <strong>Not yet</strong> — decide later.
+                  {projectEnvelope ? (
+                    <>
+                      <strong>The project&rsquo;s envelope</strong> — funded from {projectEnvelope},
+                      alongside the rest of {selectedProject?.name}.
+                    </>
+                  ) : (
+                    <>
+                      <strong>Not yet</strong> — decide later.
+                    </>
+                  )}
                 </span>
               </label>
             </>
@@ -205,7 +233,16 @@ export function WishForm({ budgetId, wish, projects, defaultCoolingDays, onClose
           )}
         </fieldset>
 
-        {!editing && (
+        {editing ? (
+          <label className="tool__field tool__field--inline">
+            <span>Cooling off until (blank ends it)</span>
+            <input
+              type="date"
+              value={coolingUntil}
+              onChange={(e) => setCoolingUntil(e.target.value)}
+            />
+          </label>
+        ) : (
           <label className="tool__field tool__field--inline">
             <span>Cooling-off, days</span>
             <input

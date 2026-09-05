@@ -182,9 +182,12 @@ export function CommandPalette() {
         hiddenGuideTabs,
       })
     : []
-  const visibleCommands = [...STATIC_COMMANDS, ...derived].filter((c) =>
-    hit(c.id, c.label, c.keywords)
+  // The wishlist row is static (a first-class page) but preference-gated like
+  // the guide tabs it grew up beside — the one static row the list can hide.
+  const statics = STATIC_COMMANDS.filter(
+    (c) => c.id !== 'nav-wishlist' || !hiddenGuideTabs.includes('wishlist')
   )
+  const visibleCommands = [...statics, ...derived].filter((c) => hit(c.id, c.label, c.keywords))
 
   // The definition itself is the answer, so it is rendered on the row rather
   // than waiting behind Enter. Nothing on an empty query — the palette should

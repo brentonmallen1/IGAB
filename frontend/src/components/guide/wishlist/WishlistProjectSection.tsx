@@ -1,4 +1,4 @@
-import { useId, useState, type ReactNode } from 'react'
+import { useId, type ReactNode } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import type { WishlistProject } from '../../../api/wishlist'
 import { useFormatters } from '../../../hooks/useFormatters'
@@ -7,14 +7,25 @@ import { projectLine } from './wishlistCopy'
 interface Props {
   project: WishlistProject | null
   count: number
+  /** Controlled by the panel, which owns the whole set — that is what lets
+   *  the toolbar's collapse-all fold every section at once. */
+  open: boolean
+  onToggle: () => void
   onEdit?: () => void
   onDelete?: () => void
   children: ReactNode
 }
 
 /** A project's wishes under its rollup — "2 of 3 affordable now · $2,400 · all by Apr 2027". */
-export function WishlistProjectSection({ project, count, onEdit, onDelete, children }: Props) {
-  const [open, setOpen] = useState(true)
+export function WishlistProjectSection({
+  project,
+  count,
+  open,
+  onToggle,
+  onEdit,
+  onDelete,
+  children,
+}: Props) {
   const fmt = useFormatters()
   const bodyId = useId()
   const title = project?.name ?? 'Other wants'
@@ -24,7 +35,7 @@ export function WishlistProjectSection({ project, count, onEdit, onDelete, child
         <button
           type="button"
           className="wish-project__toggle"
-          onClick={() => setOpen((o) => !o)}
+          onClick={onToggle}
           aria-expanded={open}
           aria-controls={bodyId}
         >

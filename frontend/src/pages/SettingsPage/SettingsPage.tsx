@@ -493,9 +493,9 @@ export function SettingsPage() {
                 <div>
                   <div className="settings-row__label">Wishlist</div>
                   <div className="settings-row__desc">
-                    Keep a wishlist — a Wishlist group in your budget and the Wishlist tab in the
-                    Guide. Turning it off archives those envelopes and returns anything saved in
-                    them to Ready to Assign; it asks first, and says how much.
+                    Keep a wishlist — a Wishlist group in your budget and its own Wishlist page.
+                    Turning it off archives those envelopes and returns anything saved in them to
+                    Ready to Assign; it asks first, and says how much.
                   </div>
                 </div>
                 <input

@@ -91,6 +91,7 @@ beforeEach(() => {
     wishlistView: 'flat',
     wishlistSort: 'reach',
     wishlistHeroCollapsed: false,
+    collapsedWishProjects: [],
   })
   vi.mocked(useGuideOverview).mockReturnValue({
     data: {
@@ -235,6 +236,61 @@ describe('WishlistPanel', () => {
     // claiming to be empty.
     expect(screen.getByText(/sits in your top priorities above/)).toBeInTheDocument()
     expect(screen.queryByText('Nothing on it yet.')).not.toBeInTheDocument()
+    // A hero floats above the sections, so it names its project itself —
+    // both Porch wishes in the strip carry the chip.
+    const hero = container.querySelector('.guide-wishlist__hero')!
+    expect(within(hero as HTMLElement).getAllByText('Porch')).toHaveLength(2)
+  })
+
+  it('collapse all folds every project section at once, and only offers itself there', () => {
+    const projects: WishlistProject[] = [
+      {
+        id: 'pa',
+        name: 'Porch',
+        category_id: null,
+        category_name: null,
+        notes: null,
+        sort_order: 0,
+        summary: {
+          item_count: 1,
+          open_count: 1,
+          total_cost: '400',
+          affordable_now: 0,
+          funded_by: null,
+          state: 'months',
+          complete: false,
+        },
+      },
+    ]
+    const items = [
+      wish({ name: 'W0', priority: 0, project_id: 'pa' }),
+      wish({ name: 'W1', priority: 1 }),
+    ]
+    vi.mocked(wishlistApi.useWishlist).mockReturnValue({
+      data: payload({ items, projects }),
+      isLoading: false,
+    } as never)
+
+    useGuideStore.setState({ wishlistView: 'projects' })
+    const { container } = renderPanel()
+    expect(container.querySelectorAll('.wish')).toHaveLength(2)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse all' }))
+    expect(container.querySelectorAll('.wish')).toHaveLength(0)
+    // Both the Porch section and the loose "Other wants" section fold.
+    expect(useGuideStore.getState().collapsedWishProjects).toEqual(['pa', 'loose'])
+
+    fireEvent.click(screen.getByRole('button', { name: 'Expand all' }))
+    expect(container.querySelectorAll('.wish')).toHaveLength(2)
+  })
+
+  it('flat view has no sections to fold, so it offers no collapse-all', () => {
+    vi.mocked(wishlistApi.useWishlist).mockReturnValue({
+      data: payload({ items: [wish({ name: 'W0' })] }),
+      isLoading: false,
+    } as never)
+    renderPanel()
+    expect(screen.queryByRole('button', { name: /Collapse all|Expand all/ })).toBeNull()
   })
 
   it('a search with no matches says so instead of an empty card', () => {

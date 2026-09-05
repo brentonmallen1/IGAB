@@ -1,0 +1,6 @@
+/* .guide-content supplies the padding, the scrolling, and the surface the
+   panel's sticky toolbar pins to; standing alone it also needs the height
+   that .guide-page's flex column used to hand it. */
+.wishlist-page {
+  height: 100%;
+}
