@@ -3,6 +3,7 @@ import {
   reserveLegs,
   reserveNote,
   debtMovement,
+  debtMovementWord,
   rideMonths,
   otherCredits,
   emptyLegsNote,
@@ -41,6 +42,7 @@ function card(over: Partial<CardStatus> = {}): CardStatus {
     debt_change_this_month: 0,
     pending_this_month: 0,
     rode_by_month: [],
+    overspent_by_category: [],
     ...over,
   }
 }
@@ -140,7 +142,7 @@ describe('debtMovement', () => {
     expect(debtMovement(card(), money)).toBeNull()
   })
 
-  it('reads a rising balance as debt going down', () => {
+  it('reads a rising balance as the debt decreasing', () => {
     // The whole point of the phrasing: a balance moving from -900 to -672 is
     // going UP while the debt goes DOWN, and only one of those is what a
     // person means by "the card got better".
@@ -148,13 +150,41 @@ describe('debtMovement', () => {
       card({ debt_change_this_month: 228, charged_this_month: 412, paid_this_month: 640 }),
       money
     )
-    expect(note?.label).toBe('down $228.00')
+    expect(note?.label).toBe('debt\u00A0decreased $228.00')
     expect(note?.title).toContain('$412.00 charged, $640.00 paid')
+    expect(note?.title).toContain('The debt decreased.')
   })
 
-  it('reads a falling balance as debt going up', () => {
+  it('reads a falling balance as the debt increasing', () => {
     const note = debtMovement(card({ debt_change_this_month: -412 }), money)
-    expect(note?.label).toBe('up $412.00')
+    expect(note?.label).toBe('debt\u00A0increased $412.00')
+  })
+
+  // "down $412" beside a balance that grew is the report this wording came
+  // from: never a bare direction word, on either side of zero.
+  it('never says up or down', () => {
+    for (const moved of [228, -412]) {
+      const note = debtMovement(card({ debt_change_this_month: moved }), money)
+      expect(note?.label).not.toMatch(/\b(up|down)\b/)
+      expect(note?.title).not.toMatch(/\b(up|down|fell|grew)\b/)
+    }
+  })
+
+  it('breaks only between the phrase and the figure', () => {
+    const note = debtMovement(card({ debt_change_this_month: -412 }), money)
+    // One breakable space, and it sits before the amount.
+    expect(note?.label.split(' ')).toHaveLength(2)
+  })
+})
+
+describe('debtMovementWord', () => {
+  it('names the debt, not the balance', () => {
+    expect(debtMovementWord(228)).toBe('decreased')
+    expect(debtMovementWord(-412)).toBe('increased')
+  })
+
+  it('treats an unmoved debt as decreased, so the drawer never says increased at zero', () => {
+    expect(debtMovementWord(0)).toBe('decreased')
   })
 })
 

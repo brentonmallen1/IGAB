@@ -72,13 +72,26 @@ def strategy_new_assigned(
     if strategy == "average_spent":
         return history.average_spent
     if strategy == "reduce_overfunded":
-        # Mirror of "underfunded": categories assigned beyond their target
-        # come back down to it and the excess returns to TBA. Uses the same
-        # definition as the overfunded quick filter (assigned > target
-        # amount), so the filter's rows are exactly what this strategy moves.
-        if target is not None and current_assigned > target.target_amount:
-            return target.target_amount
-        return None
+        # Mirror of "underfunded": categories assigned beyond their target come
+        # back down to it and the excess returns to TBA.
+        #
+        # **Bounded by what is still in the envelope.** Money assigned above a
+        # target has often been spent, and spent money cannot return to Ready
+        # to Assign. Unbounded, this took a category with target 100, assigned
+        # 150 and 400 spent — available −250 — down to 100 assigned and −300
+        # available: it manufactured 50 of overspending and told the user it
+        # was returning 50 of surplus. (That behaviour had a test asserting it,
+        # written from the same "assigned > target" reading.)
+        #
+        # So the row set here is deliberately NARROWER than the overfunded
+        # quick filter, which asks only whether assigned exceeds the target: a
+        # category over its target with nothing left in it is over-*assigned*,
+        # not over-funded, and there is nothing to pull back. Pinned by
+        # `test_reduce_overfunded_never_pulls_back_spent_money`.
+        if target is None or available <= ZERO:
+            return None
+        pullback = min(current_assigned - target.target_amount, available)
+        return current_assigned - pullback if pullback > ZERO else None
     if strategy == "reset_available":
         # Only positive available returns to TBA; overspent categories are
         # Cover Overspending's job. Assigned may legitimately go negative.
@@ -132,6 +145,17 @@ class AssignPreview:
     tba_before: Decimal
     tba_after: Decimal
     affected_count: int
+    #: Categories this strategy would leave newly in the red, and by how much
+    #: in total. Two strategies legitimately do this — the history ones SET
+    #: assigned to a past figure, and Reset Assigned zeroes it — so money
+    #: already spent from the envelope stops being funded. That is what the
+    #: user asked for; a preview that does not say so is the surprise.
+    #:
+    #: "Newly": a category already overspent before the strategy runs is not
+    #: counted, or every preview in an overspent month would carry a warning
+    #: about a state it did not create.
+    newly_overspent_count: int = 0
+    newly_overspent_total: Decimal = ZERO
     # Set by apply(): the change-log batch the moves were recorded under, so
     # the caller can offer an undo of the whole strategy.
     batch_id: uuid.UUID | None = None
@@ -141,8 +165,14 @@ class AssignPreview:
 class AssignTotals:
     month: date
     tba: Decimal
+    #: The same pair `BudgetSummary` serves, in the same words: the whole red,
+    #: and how much of it rode onto a card. The dropdown's Cover row and the
+    #: hero chip read one client-side implementation over this shape
+    #: (frontend `budgetTotals.overspending`), which is what stops the two
+    #: from drifting again — they carried `total_overspent_cash` and
+    #: `total_overspent` respectively, and disagreed for a release.
     total_overspent: Decimal
-    total_overspent_cash: Decimal
+    total_overspent_credit: Decimal
     strategies: list[AssignPreview]
 
 
@@ -281,6 +311,18 @@ class AssignService:
             # Resets: net amount returned to TBA.
             total_amount = to_return - to_assign
 
+        # What each touched envelope would hold afterwards. `available` moves
+        # with `assigned` one for one, which is the same relation
+        # `reset_available` inverts to empty an envelope exactly.
+        newly_red: list[Decimal] = []
+        for item in items:
+            bal = ctx.balances.get(item.category_id)
+            if bal is None or bal.available < ZERO:
+                continue
+            after = bal.available + item.delta
+            if after < ZERO:
+                newly_red.append(-after)
+
         tba_before = ctx.summary.to_be_assigned
         return AssignPreview(
             strategy=strategy,
@@ -292,6 +334,8 @@ class AssignService:
             tba_before=tba_before,
             tba_after=tba_before - to_assign + to_return,
             affected_count=affected_count,
+            newly_overspent_count=len(newly_red),
+            newly_overspent_total=sum(newly_red, ZERO),
         )
 
     async def strategy_totals(self, budget_id: uuid.UUID, month: date) -> AssignTotals:
@@ -300,7 +344,7 @@ class AssignService:
             month=ctx.month,
             tba=ctx.summary.to_be_assigned,
             total_overspent=ctx.summary.total_overspent,
-            total_overspent_cash=ctx.summary.total_overspent_cash,
+            total_overspent_credit=ctx.summary.total_overspent_credit,
             strategies=[self._build_preview(ctx, s) for s in ASSIGN_STRATEGIES],
         )
 

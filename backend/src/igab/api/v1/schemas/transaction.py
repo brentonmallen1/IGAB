@@ -64,6 +64,11 @@ class TransactionUpdate(ApiModel):
     """PATCH body: omitted fields are untouched; an explicit null clears the
     nullable fields (category_id, payee_id, memo, latitude/longitude)."""
 
+    #: Move the row to another account. Not nullable in the sense the others
+    #: are — a row is always in an account, so an explicit null is refused
+    #: rather than read as "clear it" (`_REQUIRED_FIELDS`). What a move is
+    #: allowed to do lives in `domain.account_move`.
+    account_id: uuid.UUID | None = None
     date: datetime.date | None = None
     amount: Money | None = None
     payee_id: uuid.UUID | None = None

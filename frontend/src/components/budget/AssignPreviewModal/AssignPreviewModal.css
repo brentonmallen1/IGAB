@@ -75,6 +75,20 @@
   line-height: 1.5;
 }
 
+/* The quieter of the two notes: unfunding spent money is what the strategy
+   is FOR, unlike a negative Ready to Assign, so it reads as a consequence
+   rather than a warning — secondary text on the sunken well, no border. */
+.assign-preview-modal__overspend-warning {
+  margin-top: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--surface-sunken);
+  border: 1px solid var(--edge);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
+}
+
 /* Dialog's .dialog__footer carries the rule and the padding; this only says
    how the TBA summary and the buttons share the row. */
 .dialog.assign-preview-modal .dialog__footer {

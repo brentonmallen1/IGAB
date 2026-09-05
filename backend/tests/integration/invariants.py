@@ -249,6 +249,57 @@ async def assert_card_reserve_identity(session: AsyncSession, budget_id: uuid.UU
     )
 
 
+async def assert_overspending_splits_into_cash_and_credit(
+    session: AsyncSession, budget_id: uuid.UUID
+) -> None:
+    """A red envelope is cash-short, card-ridden, or some of each — never more
+    ridden than it is red, and never a part unaccounted for.
+
+    Three surfaces read this split and each acts on it differently: the hero's
+    two chips, Cover Overspent (which offers `-available − credit_overspent`
+    and would silently skip a category whose ride overstated its red), and the
+    card rows that name which card carries it. The split was reasoned about in
+    a comment and asserted nowhere, so a ride that ever exceeded its own
+    envelope's red would have looked exactly like the app failing to see
+    overspending it was drawing on the same screen.
+    """
+    from igab.guide.detection import budget_service_from
+    from igab.utils.clock import today_utc
+
+    summary = await budget_service_from(session).get_budget_summary(budget_id, today_utc())
+    # The same set the totals and Cover Overspent use: a card payment
+    # envelope's negative is the card's Uncovered, not an overspent envelope,
+    # and an income row has no envelope money at all.
+    red = [
+        b
+        for b in summary.category_balances
+        if b.available < 0 and not b.in_system_group and not b.is_card_payment
+    ]
+
+    broken = [b for b in red if not (Decimal("0") <= b.credit_overspent <= -b.available)]
+    assert not broken, "credit_overspent outside its envelope's red: " + "; ".join(
+        f"{b.category_id}: available={b.available} credit_overspent={b.credit_overspent}"
+        for b in broken
+    )
+
+    # The totals the chips render are the same numbers, summed.
+    by_hand = sum((-b.available for b in red), Decimal("0"))
+    assert summary.total_overspent == by_hand, (
+        f"total_overspent={summary.total_overspent} but the red rows sum to {by_hand}: "
+        + "; ".join(f"{b.category_id}: available={b.available}" for b in red)
+    )
+    assert summary.total_overspent_credit == sum((b.credit_overspent for b in red), Decimal("0"))
+    assert summary.total_overspent_cash == (
+        summary.total_overspent - summary.total_overspent_credit
+    )
+
+    # Every card's ridden month names the envelopes it came from, exactly.
+    for card in summary.cards:
+        assert sum((r.amount for r in card.overspent_by_category), Decimal("0")) == (
+            card.overspent_this_month
+        ), f"{card.name}: breakdown does not sum to overspent_this_month"
+
+
 async def assert_financial_invariants(session: AsyncSession, budget_id: uuid.UUID) -> None:
     await assert_split_integrity(session)
     await assert_transfer_integrity(session)
@@ -256,6 +307,7 @@ async def assert_financial_invariants(session: AsyncSession, budget_id: uuid.UUI
     await assert_activity_class_partition(session, budget_id)
     await assert_no_cross_budget_references(session, budget_id)
     await assert_card_reserve_identity(session, budget_id)
+    await assert_overspending_splits_into_cash_and_credit(session, budget_id)
 
 
 def _reference_targets(table: Table, column: Any) -> Iterator[tuple[str, tuple[Any, ...]]]:

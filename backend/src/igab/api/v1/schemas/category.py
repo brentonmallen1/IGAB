@@ -1,6 +1,7 @@
 import datetime
 import uuid
 from decimal import Decimal
+from typing import Any
 
 from igab.api.v1.schemas.base import ApiModel
 from igab.api.v1.schemas.tag import TagOutSimple
@@ -327,11 +328,14 @@ class CategoryBalance(ApiModel):
     #: How much of this row's red was spent on a card (domain/cards.py). Zero
     #: whenever `available` is not negative.
     #:
-    #: It answers "does this cost me anything": it does not. Credit-funded red
-    #: never charges Ready to Assign — at the month boundary it rides onto the
-    #: card as Uncovered instead of being written off — so a row where this
-    #: equals the whole shortfall wants a calmer treatment than one funded by
-    #: cash, and Cover Overspent does not offer to fund it.
+    #: It answers "what happens if I leave it": credit-funded red never charges
+    #: Ready to Assign — at the month boundary it rides onto the card as
+    #: Uncovered instead of being written off — so a row where this equals the
+    #: whole shortfall wants a calmer treatment than one funded by cash.
+    #:
+    #: It is NOT a reason to withhold funding: covering it retires the card's
+    #: debt (see `BudgetService._overspent_shortfalls`, which measured it), so
+    #: Cover Overspending offers the whole red and names this part.
     #:
     #: Required, not optional. A default of 0 would quietly re-draw every
     #: credit overspend as cash, which is the failure this field exists to end.
@@ -390,6 +394,20 @@ class RodeMonth(ApiModel):
     """
 
     month: datetime.date
+    amount: Decimal
+
+
+class RodeCategory(ApiModel):
+    """One envelope that rode onto this card in the viewed month.
+
+    The breakdown of `overspent_this_month`, which it sums to exactly. It
+    exists so a red envelope Cover Overspent will not touch can be traced to
+    the card carrying it — the one question the budget page could not answer
+    about its own figure.
+    """
+
+    category_id: uuid.UUID
+    category_name: str
     amount: Decimal
 
 
@@ -492,6 +510,52 @@ class CardStatusOut(ApiModel):
     #: month that rode. The client orders and caps for display, and names the
     #: difference rather than implying every month listed is still owed.
     rode_by_month: list[RodeMonth]
+    #: `overspent_this_month`, broken out by the envelope that rode. Required,
+    #: not optional: a listing path that forgot it would report a card's ridden
+    #: month as having come from nowhere.
+    overspent_by_category: list[RodeCategory]
+
+    @classmethod
+    def from_status(cls, card: Any) -> "CardStatusOut":
+        """Serialize one `BudgetService.CardStatus`.
+
+        Here rather than at the endpoint: the field list and the mapping onto
+        it are one thing, and a 25-field hand-written literal at a call site is
+        where a newly served field gets forgotten by the second listing path.
+        """
+        return cls(
+            account_id=card.account_id,
+            name=card.name,
+            category_id=card.category_id,
+            balance=card.balance,
+            set_aside=card.set_aside,
+            uncovered=card.uncovered,
+            is_closed=card.is_closed,
+            overspent_this_month=card.overspent_this_month,
+            reserve_discrepancy=card.reserve_discrepancy,
+            assigned=card.assigned,
+            reserved=card.reserved,
+            released=card.released,
+            residual=card.residual,
+            payments=card.payments,
+            opening=card.opening,
+            riding=card.riding,
+            over_reserved=card.over_reserved,
+            short_reserved=card.short_reserved,
+            card_credit=card.card_credit,
+            charged_this_month=card.charged_this_month,
+            inflows_this_month=card.inflows_this_month,
+            paid_this_month=card.paid_this_month,
+            debt_change_this_month=card.debt_change_this_month,
+            pending_this_month=card.pending_this_month,
+            rode_by_month=[RodeMonth(month=m, amount=v) for m, v in card.rode_by_month],
+            overspent_by_category=[
+                RodeCategory(
+                    category_id=r.category_id, category_name=r.category_name, amount=r.amount
+                )
+                for r in card.overspent_by_category
+            ],
+        )
 
 
 class CardTimelineMonthOut(ApiModel):
@@ -568,18 +632,21 @@ class BudgetMonthResponse(ApiModel):
     #: report "nothing overspent" rather than raising, which is the wrong
     #: failure direction for a number the user reads as a workload.
     overspent_count: int
-    #: `total_overspent` split by what funded it. The headline stays whole —
-    #: the red on the grid is real either way — but only the cash part can ever
-    #: charge Ready to Assign, so that is the figure any call to action reads.
-    #: The credit part rolls onto its card at the month boundary and needs no
-    #: action at all.
+    #: `total_overspent` split by what funded it. `total_overspent` is the
+    #: headline and the figure every call to action reads — Cover Overspending
+    #: funds both parts, and the split says only where the money lands: the
+    #: cash part stays in the envelope, the credit part moves into a card's
+    #: set-aside and retires the debt riding there.
+    #:
+    #: The hero chip read `total_overspent_cash` until 2026-09-05, which made
+    #: it vanish after a cover while the grid still drew red envelopes.
     #:
     #: Required for the same reason `overspent_count` is: a default would let a
-    #: path that forgets report the calm number as the whole story.
+    #: path that forgets report half the story as the whole one.
     total_overspent_cash: Decimal
     total_overspent_credit: Decimal
-    #: How many categories carry a cash shortfall — the count Cover Overspent
-    #: will list, which is at most `overspent_count`.
+    #: How many of `overspent_count` carry a cash shortfall. A breakdown, not
+    #: a workload: Cover Overspending lists every red envelope.
     overspent_count_cash: int
     # Committed to months after this one; already deducted from to_be_assigned
     assigned_in_future: Decimal = Decimal("0")
@@ -666,19 +733,23 @@ class AutoAssignRequest(ApiModel):
 class CoverOverspentPreviewItem(ApiModel):
     category_id: uuid.UUID
     category_name: str
+    #: The whole red on this row — cash and card-ridden alike.
     overspent: Decimal
     proposed_addition: Decimal
+    #: Still short afterwards. Zero means the grid cell goes black.
     remaining_after: Decimal
+    #: How much of this row's red rode onto a card. Covering it retires that
+    #: debt instead of leaving spendable money in the envelope, which is worth
+    #: saying — required, not optional, so no path can quietly stop saying it.
+    credit_overspent: Decimal
 
 
 class CoverOverspentPreviewResponse(ApiModel):
     items: list[CoverOverspentPreviewItem]
-    #: What `items` sums to: the cash shortfall, the whole of what this dialog
-    #: can act on.
+    #: What `items` sums to: the grid's whole red.
     total_overspent: Decimal
-    #: Overspending deliberately left out of `items` because it rode onto a
-    #: card. Served so the dialog can state the difference between itself and
-    #: the grid's red, rather than leaving a gap for the reader to find.
+    #: How much of that rode onto a card — covered too, and named because the
+    #: money lands in the card's set-aside rather than staying spendable.
     total_overspent_credit: Decimal
     total_addition: Decimal
     tba_before: Decimal
@@ -707,11 +778,12 @@ class AssignStrategyTotal(ApiModel):
 class AssignStrategyTotalsResponse(ApiModel):
     month: datetime.date
     tba: Decimal
+    #: The whole red — what the Cover Overspending row shows, and the same
+    #: figure the hero chip and the cover dialog use.
     total_overspent: Decimal
-    #: The part of `total_overspent` that Cover Overspending would actually
-    #: fund — the rest rode onto a card and needs no assignment. The dropdown
-    #: row reads this, so the number on it matches the dialog it opens.
-    total_overspent_cash: Decimal
+    #: How much of that rode onto a card. Covered too; named because the money
+    #: lands in a card's set-aside rather than staying spendable.
+    total_overspent_credit: Decimal
     strategies: list[AssignStrategyTotal]
 
 
@@ -731,6 +803,13 @@ class AssignPreviewResponse(ApiModel):
     to_return: Decimal
     tba_before: Decimal
     tba_after: Decimal
+    #: Envelopes this strategy would leave newly in the red, and by how much.
+    #: The history strategies SET assigned to a past figure and Reset Assigned
+    #: zeroes it, so money already spent can stop being funded — legitimate,
+    #: and the one consequence a table of assigned-before/assigned-after does
+    #: not show. Required, so a preview cannot quietly stop saying it.
+    newly_overspent_count: int
+    newly_overspent_total: Decimal
 
 
 class AssignApplyRequest(ApiModel):

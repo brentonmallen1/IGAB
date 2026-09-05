@@ -719,6 +719,44 @@ class TestTheRiddenAmountIsAttributedToTheCardThatCarriedIt:
         assert cf.floored_by_card == {}
 
 
+class TestTheRiddenAmountKeepsBothAttributionsAtOnce:
+    """`floored_by_pair` — which envelope rode onto which card.
+
+    The two single-axis views (`floored_by_category`, `floored_by_card`) each
+    answer half of "why is this envelope still red after I covered the
+    overspending": one names the amount, the other names a card, and neither
+    connects them. The pair is the join, and it is free — the allocation that
+    produces both already computes it.
+
+    Both totals are sums of this, so a surface showing the breakdown and one
+    showing a total cannot disagree.
+    """
+
+    def test_the_pair_names_both_ends(self) -> None:
+        cf = funding({JAN: D("20")}, {JAN: D("-70")}, {VISA: {JAN: D("70")}})
+
+        assert cf.floored_by_pair == {("groceries", VISA): {JAN: D("50")}}
+
+    def test_the_pairs_sum_to_each_single_axis_view(self) -> None:
+        cf = funding({JAN: D("10")}, {JAN: D("-100")}, {VISA: {JAN: D("60")}, AMEX: {JAN: D("40")}})
+
+        by_card: dict[str, Decimal] = {}
+        by_category: dict[str, Decimal] = {}
+        for (category, card), months in cf.floored_by_pair.items():
+            by_card[card] = by_card.get(card, D("0")) + months[JAN]
+            by_category[category] = by_category.get(category, D("0")) + months[JAN]
+
+        assert by_card == {card: months[JAN] for card, months in cf.floored_by_card.items()}
+        assert by_category == {
+            category: months[JAN] for category, months in cf.floored_by_category.items()
+        }
+
+    def test_a_month_with_nothing_ridden_names_no_pair(self) -> None:
+        cf = funding({JAN: D("70")}, {JAN: D("-50")}, {VISA: {JAN: D("50")}})
+
+        assert cf.floored_by_pair == {}
+
+
 class TestAnAssignmentRetiresRidingDebt:
     """ "Two Ledgers, One Debt": an assignment to a card's payment category is
     the other way money meets uncovered debt, and until 2026-08-30 it did not

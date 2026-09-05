@@ -588,10 +588,10 @@ async def test_ownership_404_on_all_routes(api_client, db_session):
 async def _overfunded_setup(db_session):
     """Four categories exercising every reduce_overfunded eligibility case.
 
-    Income 1000. Groceries target 200 assigned 350 (overfunded), Dining
-    target 100 assigned 100 (exactly at target), Fun no target assigned 50,
-    Rent target 100 assigned 150 with 400 spent (overfunded AND overspent —
-    available is deeply negative but assigned still exceeds the target).
+    Income 1000. Groceries target 200 assigned 350 (overfunded, untouched),
+    Dining target 100 assigned 100 (exactly at target), Fun no target assigned
+    50, Rent target 100 assigned 150 with 400 spent (over its target but
+    available is −250, so there is nothing left to pull back).
     """
     services = make_services(db_session)
     user = await create_user(db_session)
@@ -636,22 +636,19 @@ async def test_reduce_overfunded_preview_exact_values(db_session):
     preview = await assign.preview(budget.id, MONTH, "reduce_overfunded")
     by_name = {i.category_name: i for i in preview.items}
 
-    # Only categories assigned beyond their target appear; at-target and
-    # target-less categories are untouched.
-    assert set(by_name) == {"Groceries", "Rent"}
+    # Categories assigned beyond their target AND still holding the excess.
+    # At-target, target-less and spent-through categories are untouched.
+    assert set(by_name) == {"Groceries"}
     assert by_name["Groceries"].delta == Decimal("-150.00")
     assert by_name["Groceries"].new_assigned == Decimal("200.00")
-    # Overspent + overfunded: available is -250 but assigned 150 > target 100
-    assert by_name["Rent"].delta == Decimal("-50.00")
-    assert by_name["Rent"].new_assigned == Decimal("100.00")
 
     assert preview.to_assign == Decimal("0")
-    assert preview.to_return == Decimal("200.00")
-    assert preview.total_amount == Decimal("200.00")  # net returned to TBA
-    assert preview.affected_count == 2
-    # TBA 1000 - 650 assigned = 350; excess of 200 comes back
+    assert preview.to_return == Decimal("150.00")
+    assert preview.total_amount == Decimal("150.00")  # net returned to TBA
+    assert preview.affected_count == 1
+    # TBA 1000 - 650 assigned = 350; the 150 still sitting in Groceries returns
     assert preview.tba_before == Decimal("350.00")
-    assert preview.tba_after == Decimal("550.00")
+    assert preview.tba_after == Decimal("500.00")
 
 
 async def test_reduce_overfunded_apply_exact_and_idempotent(db_session):
@@ -659,24 +656,127 @@ async def test_reduce_overfunded_apply_exact_and_idempotent(db_session):
     assign = make_assign(db_session, services)
 
     applied = await assign.apply(budget.id, MONTH, "reduce_overfunded")
-    assert applied.to_return == Decimal("200.00")
+    assert applied.to_return == Decimal("150.00")
 
     summary = await services.budgets.get_budget_summary(budget.id, MONTH)
     by_cat = {b.category_id: b for b in summary.category_balances}
     assert by_cat[groceries.id].assigned == Decimal("200.00")
-    assert by_cat[rent.id].assigned == Decimal("100.00")
+    # Rent keeps its 150: the 50 above its target went out of the door in a
+    # 400 spend, and pulling it back would deepen the red, not undo funding.
+    assert by_cat[rent.id].assigned == Decimal("150.00")
+    assert by_cat[rent.id].available == Decimal("-250.00")
     assert by_cat[dining.id].assigned == Decimal("100.00")
     assert by_cat[fun.id].assigned == Decimal("50.00")
-    assert summary.to_be_assigned == Decimal("550.00")
+    assert summary.to_be_assigned == Decimal("500.00")
     moves = await services.budgets.get_move_history(budget.id, MONTH)
-    assert len(moves) == 2
+    assert len(moves) == 1
     await assert_financial_invariants(db_session, budget.id)
 
-    # Everything now sits at its target: a second apply moves nothing.
+    # Everything reachable now sits at its target: a second apply moves nothing.
     again = await assign.apply(budget.id, MONTH, "reduce_overfunded")
     assert again.affected_count == 0
     moves = await services.budgets.get_move_history(budget.id, MONTH)
-    assert len(moves) == 2
+    assert len(moves) == 1
+
+
+async def test_reduce_overfunded_never_pulls_back_spent_money(db_session):
+    """Target 100, assigned 150, 130 already spent: only 20 is still there.
+
+    It returned the whole 50 until 2026-09-05, leaving the envelope at −30 —
+    overspending manufactured by a button whose label promises to return
+    surplus. "Assigned beyond target" is not the same question as "still
+    holding it", and only the second one can be given back.
+    """
+    services, budget, checking, groceries, dining = await _spend_setup(db_session)
+    assign = make_assign(db_session, services)
+
+    preview = await assign.preview(budget.id, MONTH, "reduce_overfunded")
+    by_name = {i.category_name: i for i in preview.items}
+    assert by_name["Groceries"].delta == Decimal("-20.00")
+    assert by_name["Groceries"].new_assigned == Decimal("130.00")
+    # Dining's untouched 50 is in the same fixture, hence 70 in all.
+    assert preview.to_return == Decimal("70.00")
+
+    await assign.apply(budget.id, MONTH, "reduce_overfunded")
+    summary = await services.budgets.get_budget_summary(budget.id, MONTH)
+    by_cat = {b.category_id: b for b in summary.category_balances}
+    # Emptied, never pushed red.
+    assert by_cat[groceries.id].available == Decimal("0")
+    assert by_cat[groceries.id].assigned == Decimal("130.00")
+    await assert_financial_invariants(db_session, budget.id)
+
+
+async def _spend_setup(db_session):
+    """Groceries: target 100, assigned 150, 130 spent — 20 left in the envelope.
+    Dining: target 100, assigned 150, nothing spent — 50 genuinely surplus."""
+    services = make_services(db_session)
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+    checking = await create_account(db_session, budget, "Checking")
+    income_group = await create_category_group(db_session, budget, "Income", is_system=True)
+    income_cat = await create_category(db_session, budget, income_group, "Inflow")
+    everyday = await create_category_group(db_session, budget, "Everyday")
+    groceries = await create_category(db_session, budget, everyday, "Groceries")
+    dining = await create_category(db_session, budget, everyday, "Dining")
+    await create_transaction(
+        db_session, budget, checking, "1000.00", date(2026, 7, 2), category=income_cat
+    )
+    await create_transaction(
+        db_session, budget, checking, "-130.00", date(2026, 7, 10), category=groceries
+    )
+    await services.budgets.set_assignment(budget.id, groceries.id, MONTH, Decimal("150.00"))
+    await services.budgets.set_assignment(budget.id, dining.id, MONTH, Decimal("150.00"))
+    target_service = TargetService(TargetRepository(db_session))
+    for cat in (groceries, dining):
+        await target_service.upsert(
+            category_id=cat.id, target_type="monthly_funding", target_amount=Decimal("100.00")
+        )
+    return services, budget, checking, groceries, dining
+
+
+async def test_reduce_overfunded_still_returns_money_that_is_actually_there(db_session):
+    """The other half of the same fixture: Dining's 50 was never spent."""
+    services, budget, checking, groceries, dining = await _spend_setup(db_session)
+    assign = make_assign(db_session, services)
+
+    preview = await assign.preview(budget.id, MONTH, "reduce_overfunded")
+    by_name = {i.category_name: i for i in preview.items}
+    assert by_name["Dining"].delta == Decimal("-50.00")
+    assert by_name["Dining"].new_assigned == Decimal("100.00")
+
+
+async def test_a_preview_says_which_envelopes_it_would_push_into_the_red(db_session):
+    """Reset Assigned zeroes a spent envelope, which is what it is for — and
+    the table of assigned-before/after is the one place that consequence does
+    not appear. 150 assigned, 130 spent: zeroing leaves −130."""
+    services, budget, checking, groceries, dining = await _spend_setup(db_session)
+    assign = make_assign(db_session, services)
+
+    preview = await assign.preview(budget.id, MONTH, "reset_assigned")
+    assert preview.newly_overspent_count == 1
+    assert preview.newly_overspent_total == Decimal("130.00")
+
+
+async def test_a_preview_that_takes_nothing_away_warns_about_nothing(db_session):
+    services, budget, checking, groceries, dining = await _spend_setup(db_session)
+    assign = make_assign(db_session, services)
+
+    # Reduce Overfunding is bounded by what is in the envelope, so it can
+    # never be the strategy that turns a row red.
+    preview = await assign.preview(budget.id, MONTH, "reduce_overfunded")
+    assert preview.newly_overspent_count == 0
+    assert preview.newly_overspent_total == Decimal("0")
+
+
+async def test_an_already_red_envelope_is_not_counted_as_newly_red(db_session):
+    """Otherwise every preview in an overspent month would carry a warning
+    about a state it did not create."""
+    services, budget, groceries, dining, fun, rent = await _overfunded_setup(db_session)
+    assign = make_assign(db_session, services)
+
+    # Rent is already −250 and Reduce Overfunding leaves it alone.
+    preview = await assign.preview(budget.id, MONTH, "reduce_overfunded")
+    assert preview.newly_overspent_count == 0
 
 
 async def test_reduce_overfunded_nothing_over_target_is_noop(db_session):

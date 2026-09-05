@@ -492,6 +492,7 @@ export const CategoryRow = memo(function CategoryRow({
                   ? creditOverspent > 0
                     ? `${formatMoney(creditOverspent)} of this was spent on a card and rides ` +
                       'there as debt; the rest comes out of To Be Assigned when the month turns. ' +
+                      'Funding this envelope for this month retires the card part too. ' +
                       'Click to cover it from another envelope.'
                     : 'Overspent — click to cover from another envelope'
                   : 'Click to move money to another envelope'

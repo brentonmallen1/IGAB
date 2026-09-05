@@ -100,6 +100,21 @@ export function reserveNote(card: CardStatus, money: Money): RowNote | null {
 }
 
 /**
+ * Which way the debt moved, in one word. The Balance cell's note and the
+ * drawer's month total both say it, so they say it the same way.
+ *
+ * Never "up"/"down": the raw balance rises as the debt falls, so a bare
+ * direction word gets read against the sign the reader is looking at — a
+ * month that added $412 of debt said "down $412" beside a balance that had
+ * grown. "increased"/"decreased" names the debt, which is the only quantity
+ * this row is framed in. Zero counts as decreased, and callers that draw a
+ * figure suppress it before asking.
+ */
+export function debtMovementWord(moved: number): 'increased' | 'decreased' {
+  return moved >= 0 ? 'decreased' : 'increased'
+}
+
+/**
  * The Balance cell's note: how far the debt moved this month.
  *
  * Debt-framed on purpose. The raw balance rises as the debt falls, and showing
@@ -114,9 +129,15 @@ export function debtMovement(card: CardStatus, money: Money): RowNote | null {
   // barely wider than the figure above it, and the longer phrasing wrapped to
   // a second line mid-sentence. The page is already scoped to one month.
   const detail = `${charged} charged, ${paid} paid to the card this month.`
-  return moved > 0
-    ? { label: `down ${money(moved)}`, title: `${detail} The debt fell.` }
-    : { label: `up ${money(-moved)}`, title: `${detail} The debt grew.` }
+  const word = debtMovementWord(moved)
+  // A non-breaking space inside the phrase: the column is narrower than
+  // "debt increased $412.00", so the note wraps — but only ever between the
+  // phrase and the figure, never mid-phrase, which is the wrap that read as
+  // a layout accident.
+  return {
+    label: `debt\u00A0${word} ${money(Math.abs(moved))}`,
+    title: `${detail} The debt ${word}.`,
+  }
 }
 
 /**

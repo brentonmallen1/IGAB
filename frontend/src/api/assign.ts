@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 import type { AssignStrategy } from '../types'
 import { ROOT } from './queryKeys'
+import { invalidateAfterMoneyMove } from './invalidateAfterMoneyMove'
 
 export interface AssignStrategyTotal {
   strategy: AssignStrategy
@@ -15,11 +16,12 @@ export interface AssignStrategyTotal {
 export interface AssignStrategyTotalsResponse {
   month: string
   tba: number
+  /** The whole red — what the Cover Overspending row shows, matching the
+   *  hero chip and the dialog it opens. */
   total_overspent: number
-  /** The part of `total_overspent` Cover Overspending would actually fund;
-   *  the rest rode onto a card and no assignment retires it. The dropdown row
-   *  reads this so its number matches the dialog it opens. */
-  total_overspent_cash: number
+  /** How much of that rode onto a card. The same pair `BudgetMonth` carries,
+   *  so both surfaces read one `overspending()` (budgetTotals). */
+  total_overspent_credit: number
   strategies: AssignStrategyTotal[]
 }
 
@@ -39,6 +41,12 @@ export interface AssignPreviewResponse {
   to_return: number
   tba_before: number
   tba_after: number
+  /** Envelopes this strategy would leave newly in the red, and by how much.
+   *  Home: `AssignPreview.newly_overspent_*` (backend assign_service.py) —
+   *  the client cannot derive it, since the preview carries assigned figures
+   *  and this is about available. */
+  newly_overspent_count: number
+  newly_overspent_total: number
 }
 
 export interface AssignApplyResponse {
@@ -87,13 +95,6 @@ export function useAssignApply(budgetId: string) {
   return useMutation({
     mutationFn: (data: { month: string; strategy: AssignStrategy }) =>
       apiClient.post<AssignApplyResponse>(`/${budgetId}/assign/apply`, data).then((r) => r.data),
-    onSuccess: (_, { month }) => {
-      qc.invalidateQueries({ queryKey: [ROOT.budgetMonth, budgetId] })
-      qc.invalidateQueries({ queryKey: [ROOT.budgetMoves, budgetId, month] })
-      qc.invalidateQueries({ queryKey: [ROOT.assignStrategies, budgetId, month] })
-      qc.invalidateQueries({ queryKey: [ROOT.assignPreview, budgetId, month] })
-      qc.invalidateQueries({ queryKey: [ROOT.categoryHistoryBatch, budgetId] })
-      qc.invalidateQueries({ queryKey: [ROOT.coverOverspentPreview, budgetId, month] })
-    },
+    onSuccess: () => invalidateAfterMoneyMove(qc, budgetId),
   })
 }

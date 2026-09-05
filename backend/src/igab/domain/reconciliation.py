@@ -22,9 +22,11 @@ change the amount.
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-#: The fields a bank statement vouches for. `account_id` is not editable
-#: through PATCH today, but undo can restore it — so it is locked here, once,
-#: rather than in whichever caller happens to remember.
+#: The fields a bank statement vouches for. `account_id` is one of them: the
+#: statement is an account's statement, so moving a reconciled row out of it
+#: changes a balance the user signed off on. It is locked here, once, for
+#: every path that can set it — the editor's account picker
+#: (`domain.account_move`), undo's restore, and the bank feed.
 RECONCILED_LOCKED_FIELDS: frozenset[str] = frozenset({"amount", "date", "cleared", "account_id"})
 
 

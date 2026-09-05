@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 import type { CategoryHistory, AutoAssignAction } from '../types'
 import { ROOT } from './queryKeys'
+import { invalidateAfterMoneyMove } from './invalidateAfterMoneyMove'
 
 export function useCategoryHistory(budgetId: string | null, categoryId: string | null) {
   return useQuery({
@@ -39,9 +40,6 @@ export function useAutoAssign(budgetId: string, month: string) {
       apiClient
         .post(`/${budgetId}/categories/auto-assign`, { category_ids: categoryIds, action, month })
         .then((r) => r.data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: [ROOT.budgetMonth, budgetId] })
-      qc.invalidateQueries({ queryKey: [ROOT.categoryHistoryBatch, budgetId] })
-    },
+    onSuccess: () => invalidateAfterMoneyMove(qc, budgetId),
   })
 }

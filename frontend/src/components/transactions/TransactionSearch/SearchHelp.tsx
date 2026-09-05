@@ -21,8 +21,10 @@ export function SearchHelp() {
   return (
     <InfoPopover title="Searching transactions" label="How to search transactions" width={420}>
       <p>
-        Type words to search <strong>payees and memos</strong>. A number on its own also matches
-        that <strong>amount</strong> — <code>12.34</code> finds anything for $12.34, in or out.
+        Type words to search <strong>payees and memos</strong>. A number on its own matches any{' '}
+        <strong>amount</strong> containing it, the way words match part of a name — <code>12</code>{' '}
+        finds $12.34, $112.00 and $1,200.00, in or out, and each further keystroke narrows it. For a
+        single amount and nothing else, use <code>amount:</code>.
       </p>
 
       <InfoSection title="Filters">
@@ -54,7 +56,7 @@ export function SearchHelp() {
 
           <dt>amount:</dt>
           <dd>
-            one value or a range — <code>12.34</code>, <code>&gt;100</code>, <code>10-50</code>
+            an exact value or a range — <code>12.34</code>, <code>&gt;100</code>, <code>10-50</code>
           </dd>
 
           <dt>date:</dt>

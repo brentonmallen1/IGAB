@@ -45,6 +45,9 @@ class MockCategoryGroup:
 class MockCategory:
     id: uuid.UUID = field(default_factory=uuid.uuid4)
     category_group_id: uuid.UUID = field(default_factory=uuid.uuid4)
+    # Every category has one, and the card rows serve it with the ride they
+    # name (`RodeEnvelope.category_name`).
+    name: str = "Category"
     # Card set-aside envelopes are linked; None keeps these ordinary.
     linked_account_id: uuid.UUID | None = None
 

@@ -73,6 +73,7 @@ function renderRow(t: Transaction, accountOnBudget = true) {
           accountMap={new Map()}
           categoryMap={new Map([['c1', 'Groceries']])}
           payees={[]}
+          accounts={[]}
           categories={[]}
           categoryGroups={[]}
           isSelected={false}

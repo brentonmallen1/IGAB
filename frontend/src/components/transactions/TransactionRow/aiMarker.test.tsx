@@ -63,6 +63,7 @@ function renderRow(t: Transaction) {
           accountMap={new Map()}
           categoryMap={new Map()}
           payees={[]}
+          accounts={[]}
           categories={[]}
           categoryGroups={[]}
           isSelected={false}

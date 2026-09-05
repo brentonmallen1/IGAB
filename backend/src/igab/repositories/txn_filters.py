@@ -14,10 +14,12 @@ amounts are provisional (auth holds change at posting), so money moves exactly
 once — when the transaction posts. This mirrors AccountRepository.get_balance.
 """
 
+import re
 from datetime import date
 
-from sqlalchemy import Boolean, and_, func, not_, or_, select
+from sqlalchemy import Boolean, String, and_, cast, func, not_, or_, select
 from sqlalchemy.orm import aliased
+from sqlalchemy.sql.elements import ColumnElement
 
 from igab.db.models import (
     Account,
@@ -586,3 +588,65 @@ PLANNED_SPEND_ROW = and_(
     ON_BUDGET_ACCOUNT,
     row_category(SPENT_ENVELOPE),
 )
+
+
+# ─── Free-text search ────────────────────────────────────────────────────────
+#
+# One predicate for "does this row match what the user typed in the search
+# box". It lives here, beside every other SQL rule over transactions, because
+# both register queries (one account, and budget-wide) ask it and a second
+# spelling of "matches the search" is how two registers come to disagree
+# about what a search means.
+
+#: A term that reads as a number: "12.34", "$1,200", "12." or ".34". Both dot
+#: forms are half-typed states — "12." is one keystroke inside "12.34" — and
+#: rejecting them blanked the register mid-word, which reads as "typing a dot
+#: breaks search". A term with anything else in it ("12 west") is a payee
+#: fragment, not an amount.
+_AMOUNT_SEARCH_RE = re.compile(r"\d+\.?\d*|\.\d+")
+
+#: The amount as the register draws it, unsigned and to two places: -1200.0000
+#: becomes "1200.00". The column is Numeric(19, 4), so matching its raw text
+#: would compare against "1200.0000" and make a search for "00" find nearly
+#: everything.
+AMOUNT_AS_TEXT = cast(func.round(func.abs(Transaction.amount), 2), String)
+
+
+def amount_search_text(search: str) -> str | None:
+    """The digits of a numeric search term, as they appear in `AMOUNT_AS_TEXT`.
+
+    `None` when the term is not a number at all. Currency dressing is stripped
+    so "$1,200" and "1200" are the same search.
+    """
+    raw = search.strip().lstrip("$").replace(",", "")
+    if not _AMOUNT_SEARCH_RE.fullmatch(raw):
+        return None
+    return raw
+
+
+def search_matches(search: str):
+    """Free text matches payee name or memo — and the amount when it's numeric.
+
+    **Every term is a partial match, amounts included.** An amount used to be
+    the one exception: it compared `abs(amount) = 12.34`, so a register that
+    matched "star" against "Starbucks" answered "12" with only the rows that
+    cost exactly twelve dollars, and answered "12." — the same search one
+    keystroke later — with the same twelve-dollar rows rather than the $12.34
+    the user was typing towards. Substring-matching the drawn amount makes a
+    number behave like every other term in the box: "12" finds $12.34, $112.00
+    and $1,200.00, and each further keystroke narrows it.
+
+    Callers needing an exact amount have the `amount:` token, which is a
+    range filter (`amount_min`/`amount_max`) and stays exact on purpose.
+
+    Requires the `Payee` join.
+    """
+    pattern = f"%{search}%"
+    clauses: list[ColumnElement[bool]] = [
+        Payee.name.ilike(pattern),
+        Transaction.memo.ilike(pattern),
+    ]
+    digits = amount_search_text(search)
+    if digits is not None:
+        clauses.append(AMOUNT_AS_TEXT.like(f"%{digits}%"))
+    return or_(*clauses)

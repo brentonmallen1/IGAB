@@ -555,13 +555,18 @@ function parseSegment(
           result.amountMin = parseFloat(range[1])
           result.amountMax = parseFloat(range[2])
         } else {
-          // Bare value is an exact amount — a zero-width range.
+          // Bare value is an EXACT amount — a zero-width range, and the one
+          // place in the box that is not a partial match. Free text spells
+          // "about this much" (a bare 12 finds $12.34 and $112.00, server
+          // side in `search_matches`); `amount:` is how you ask for one
+          // figure and nothing else.
           // A TRAILING dot is accepted ("12." → 12): it is a half-typed
           // amount, and rejecting it blanked the register mid-keystroke,
-          // which reads as "typing a dot breaks search". Kept in step with
-          // _AMOUNT_SEARCH_RE in backend/repositories/transaction_repo.py —
-          // irreducible duplication (this one runs before any round-trip),
-          // so both suites carry the same cases: 12, 12., 12.34, .34, $1,200.
+          // which reads as "typing a dot breaks search". Which terms read as
+          // a number is kept in step with `amount_search_text` in
+          // backend/repositories/txn_filters.py — irreducible duplication
+          // (this one runs before any round-trip), so both suites carry the
+          // same cases: 12, 12., 12.34, .34, $1,200.
           const exact = amountExpr?.match(/^\$?([\d,]+\.?\d*|[\d,]*\.\d+)$/)
           if (exact) {
             const value = parseFloat(exact[1].replace(/,/g, ''))
@@ -853,7 +858,7 @@ export const SEARCH_SUGGESTIONS = [
   {
     syntax: 'amount: ',
     description:
-      'Exact amount or range (amount: 12.34, amount: 10-20) — typing 12.34 alone works too',
+      'Exactly this amount, or a range (amount: 12.34, amount: 10-20). A bare number in the box is a partial match instead',
   },
   { syntax: 'amount:>', description: 'Amount greater than (e.g. amount:>100)' },
   { syntax: 'amount:<', description: 'Amount less than (e.g. amount:<50)' },

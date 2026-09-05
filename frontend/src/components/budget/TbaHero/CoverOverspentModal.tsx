@@ -100,35 +100,23 @@ export function CoverOverspentModal({ budgetId, month, onClose }: Props) {
         {isLoading ? (
           <div className="cover-modal__loading">Calculating…</div>
         ) : !preview || preview.items.length === 0 ? (
-          <div className="cover-modal__empty">
-            {preview && preview.total_overspent_credit > 0 ? (
-              <>
-                <p>Nothing here needs covering.</p>
-                <p className="cover-modal__on-cards">
-                  This month&rsquo;s {formatMoney(preview.total_overspent_credit)} of overspending
-                  was all spent on a card, so it rides there as debt instead of being covered from
-                  Ready to Assign. Pay it down by assigning to the card.
-                </p>
-              </>
-            ) : (
-              'Nothing is overspent this month.'
-            )}
-          </div>
+          <div className="cover-modal__empty">Nothing is overspent this month.</div>
         ) : (
           <>
             <p className="cover-modal__description">
-              Ready to Assign ({formatMoney(preview.tba_before)}) will cover overspent categories —
-              in full when it stretches, proportionally when it doesn't.
+              Ready to Assign ({formatMoney(preview.tba_before)}) will cover these envelopes — in
+              full when it stretches, proportionally when it doesn&rsquo;t.
             </p>
-            {/* The grid's red is larger than this table, on purpose. Saying so
-                  here is cheaper than letting someone find the gap and stop
-                  trusting both numbers. */}
+            {/* Where part of this money goes. Covering a ride is not a
+                  different amount, it is a different destination: into the
+                  card's set-aside, retiring debt, rather than into the
+                  envelope to spend. Said once here, and per row below. */}
             {preview.total_overspent_credit > 0 && (
               <>
                 <p className="cover-modal__on-cards">
-                  A further {formatMoney(preview.total_overspent_credit)} was spent on a card. That
-                  rides on the card as debt, never charges Ready to Assign, and is not listed here —
-                  assigning cash to it would not retire it. Pay it down by assigning to the card.
+                  {formatMoney(preview.total_overspent_credit)} of this was swiped on a card. That
+                  part is covered too — it moves into the card&rsquo;s set-aside and retires the
+                  debt riding there, instead of staying in the envelope to spend.
                 </p>
                 {/* Only worth naming with more than one card: with a single
                       card this list restates the sentence above it. Cards are
@@ -156,28 +144,43 @@ export function CoverOverspentModal({ budgetId, month, onClose }: Props) {
                   <th scope="col" className="cover-modal__col-num">
                     Covering
                   </th>
+                  {/* "Still red", not "remaining cash short": the column has
+                      to answer the question the grid asks, or a row can read
+                      $0.00 beside a cell that is still in the red. */}
                   <th scope="col" className="cover-modal__col-num">
-                    Remaining
+                    Still red
                   </th>
                 </tr>
               </thead>
               <tbody>
-                {preview.items.map((item) => (
-                  <tr key={item.category_id}>
-                    <td>{item.category_name}</td>
-                    <td className="cover-modal__col-num cover-modal__overspent">
-                      {formatMoney(-item.overspent)}
-                    </td>
-                    <td className="cover-modal__col-num cover-modal__covering">
-                      +{formatMoney(item.proposed_addition)}
-                    </td>
-                    <td className="cover-modal__col-num">
-                      {item.remaining_after > 0
-                        ? formatMoney(-item.remaining_after)
-                        : formatMoney(0)}
-                    </td>
-                  </tr>
-                ))}
+                {preview.items.map((item) => {
+                  // What the grid will still show after this cover: the cash
+                  // this dialog could not reach, plus the part that rode onto
+                  // a card and never could be reached from here.
+                  // The whole red is on offer now, so what is left after the
+                  // proposed addition IS what the grid will still show.
+                  const stillRed = item.remaining_after
+                  return (
+                    <tr key={item.category_id}>
+                      <td>{item.category_name}</td>
+                      <td className="cover-modal__col-num cover-modal__overspent">
+                        {formatMoney(-item.overspent)}
+                      </td>
+                      <td className="cover-modal__col-num cover-modal__covering">
+                        +{formatMoney(item.proposed_addition)}
+                        {item.credit_overspent > 0 && (
+                          <span className="cover-modal__on-card-part">
+                            {formatMoney(Math.min(item.credit_overspent, item.proposed_addition))}{' '}
+                            retires card debt
+                          </span>
+                        )}
+                      </td>
+                      <td className="cover-modal__col-num">
+                        {stillRed > 0 ? formatMoney(-stillRed) : formatMoney(0)}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
             {preview.total_addition <= 0 && (

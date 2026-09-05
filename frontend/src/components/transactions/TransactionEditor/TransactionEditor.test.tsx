@@ -49,6 +49,7 @@ const ACCOUNTS = vi.hoisted(() => [
   { id: 'acc-1', name: 'Checking', on_budget: true, is_closed: false },
   { id: 'acc-2', name: 'Savings', on_budget: true, is_closed: false },
   { id: 'acc-3', name: 'Vacation Fund', on_budget: true, is_closed: false },
+  { id: 'acc-4', name: 'Cascade Point Brokerage', on_budget: false, is_closed: false },
 ])
 
 let classificationData: unknown = undefined
@@ -317,7 +318,11 @@ describe('TransactionEditor classification note', () => {
     renderEditor({ transaction: savedTxn, accountId: null })
 
     expect(screen.getByText(/Counts as/)).toBeInTheDocument()
-    expect(screen.getByText('Savings')).toBeInTheDocument()
+    // The <strong> inside the sentence — "Savings" is also an account name
+    // in the picker now, so the bare text would match twice.
+    expect(document.querySelector('.txn-editor__classification strong')).toHaveTextContent(
+      'Savings'
+    )
     expect(screen.getByText(/moves money to a tracked account you own/)).toBeInTheDocument()
   })
 
@@ -520,5 +525,107 @@ describe('TransactionEditor on a reconciled transaction', () => {
     expect(sent).not.toHaveProperty('amount')
     expect(sent).not.toHaveProperty('date')
     expect(sent).not.toHaveProperty('cleared')
+  })
+})
+
+/**
+ * Moving a row to another account. The rules are the server's
+ * (backend domain/account_move.py); what is proved here is that the control
+ * is offered where it should be, withheld where the save would be refused,
+ * and that what leaves the editor says "move" in the way PATCH understands.
+ */
+describe('TransactionEditor account picker', () => {
+  const row = {
+    id: 't10',
+    account_id: 'acc-1',
+    date: '2030-01-10',
+    amount: -41.8,
+    category_id: 'cat-1',
+    payee_id: null,
+    memo: null,
+    cleared: 'uncleared',
+    transfer_id: null,
+    is_split: false,
+    sync_id: null,
+    parent_transaction_id: null,
+  } as unknown as Transaction
+
+  beforeEach(() => {
+    updateMutate.mockClear()
+    createMutate.mockClear()
+    confirmOverspend.mockClear()
+    confirmOverspend.mockImplementation(() => Promise.resolve(true))
+    transferCandidates = []
+  })
+
+  function accountSelect() {
+    return screen.getByRole('combobox', { name: 'Account' })
+  }
+
+  it('offers the account on an existing row opened from its own register', () => {
+    // The case the editor used to hide: a row is only visible from the
+    // register it landed in, so hiding the field there hid it everywhere.
+    renderEditor({ transaction: row, accountId: 'acc-1' })
+    expect((accountSelect() as HTMLSelectElement).value).toBe('acc-1')
+  })
+
+  it('sends the new account with the rest of the edit', async () => {
+    renderEditor({ transaction: row, accountId: 'acc-1' })
+    fireEvent.change(accountSelect(), { target: { value: 'acc-2' } })
+    fireEvent.click(submitButton('Save'))
+
+    await waitFor(() => expect(updateMutate).toHaveBeenCalled())
+    expect(updateMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 't10', account_id: 'acc-2' })
+    )
+  })
+
+  it('leaves a new row started from a register pinned to that register', () => {
+    renderEditor({ accountId: 'acc-1' })
+    expect(screen.queryByRole('combobox', { name: 'Account' })).not.toBeInTheDocument()
+  })
+
+  it('will not offer to move a bank-fed row', () => {
+    renderEditor({ transaction: { ...row, sync_id: 'feed-1' }, accountId: 'acc-1' })
+    expect(screen.queryByRole('combobox', { name: 'Account' })).not.toBeInTheDocument()
+    expect(screen.getByText(/bank feed decides/)).toBeInTheDocument()
+  })
+
+  it('will not offer to move a reconciled row', () => {
+    renderEditor({ transaction: { ...row, cleared: 'reconciled' }, accountId: 'acc-1' })
+    expect(screen.queryByRole('combobox', { name: 'Account' })).not.toBeInTheDocument()
+    expect(screen.getByText(/statement vouched/)).toBeInTheDocument()
+  })
+
+  it('clears the category when the row moves to a tracking account', async () => {
+    // The field disappears with the account change, so the note is the only
+    // place the user hears about it — and an omitted field clears nothing.
+    renderEditor({ transaction: row, accountId: 'acc-1' })
+    fireEvent.change(accountSelect(), { target: { value: 'acc-4' } })
+    expect(screen.getByText(/Groceries will be cleared/)).toBeInTheDocument()
+
+    fireEvent.click(submitButton('Save'))
+    await waitFor(() => expect(updateMutate).toHaveBeenCalled())
+    expect(updateMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ account_id: 'acc-4', category_id: null })
+    )
+  })
+
+  it('moves a transfer leg in its own request, before the rest of the edit', async () => {
+    // Two accounts cannot change in one PATCH — the row's and the one it
+    // points at — so the move goes first and the second call carries the
+    // row's own (now unchanged) account.
+    const leg = { ...row, transfer_id: 't11', counterpart_account_id: 'acc-2' }
+    renderEditor({ transaction: leg as unknown as Transaction, accountId: 'acc-1' })
+    fireEvent.change(accountSelect(), { target: { value: 'acc-3' } })
+    fireEvent.click(submitButton('Save'))
+
+    await waitFor(() => expect(updateMutate).toHaveBeenCalledTimes(2))
+    expect(updateMutate.mock.calls[0][0]).toEqual({ id: 't10', account_id: 'acc-3' })
+    expect(updateMutate.mock.calls[1][0]).toMatchObject({
+      id: 't10',
+      account_id: 'acc-3',
+      transfer_account_id: 'acc-2',
+    })
   })
 })

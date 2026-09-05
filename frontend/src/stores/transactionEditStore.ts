@@ -1,7 +1,16 @@
 import { create } from 'zustand'
 import { randomUUID } from '../utils/uuid'
 
-export type EditableField = 'date' | 'payee' | 'category' | 'memo' | 'outflow' | 'inflow'
+export type EditableField =
+  | 'date'
+  /** All-accounts register only — the account column is not drawn elsewhere,
+   *  because in a single account's register the answer is the register. */
+  | 'account'
+  | 'payee'
+  | 'category'
+  | 'memo'
+  | 'outflow'
+  | 'inflow'
 
 export interface SplitDraft {
   tempId: string

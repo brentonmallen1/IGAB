@@ -77,7 +77,10 @@ describe('search help', () => {
     setupWithHelp()
     fireEvent.click(screen.getByLabelText('How to search transactions'))
     expect(screen.getByText('Searching transactions')).toBeInTheDocument()
-    expect(screen.getByText(/narrows/)).toBeInTheDocument()
+    expect(screen.getByText(/Every filter you add/)).toBeInTheDocument()
+    // The lede's job: a bare number is a partial match on the amount, the
+    // same way a word is a partial match on a payee.
+    expect(screen.getByText(/matches any/)).toBeInTheDocument()
     expect(screen.getByText(/to widen instead of narrow/)).toBeInTheDocument()
     expect(screen.getByText(/remove one to drop just/)).toBeInTheDocument()
   })

@@ -36,6 +36,16 @@
   color: var(--text-muted);
 }
 
+/* The group's own figure, right-aligned. Not uppercased with the title: it
+   is a number, and letter-spacing on tabular figures reads as a defect. */
+.collapsible__meta {
+  margin-left: auto;
+  font-weight: 600;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
 .collapsible__body {
   border-bottom: 2px solid var(--color-accent);
 }

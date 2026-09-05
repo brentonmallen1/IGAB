@@ -29,7 +29,7 @@ from .factories import (
     create_user,
     make_services,
 )
-from .invariants import assert_card_reserve_identity
+from .invariants import assert_card_reserve_identity, assert_financial_invariants
 
 JUL, AUG, SEP, OCT = (date(2026, m, 1) for m in (7, 8, 9, 10))
 D = Decimal
@@ -343,26 +343,29 @@ class TestTheIdentity:
         assert s.total_overspent == D("50.00"), "groceries only — the card is not overspending"
         preview = await services.budgets.cover_overspent_preview(budget.id, JUL)
         assert linked.id not in [i.category_id for i in preview.items]
-        # Groceries is absent too, for the other reason: its whole 50 was
-        # swiped on the card, so it is credit overspending and Cover
-        # Overspent has nothing to fund. The mixed case is the test below.
-        assert preview.items == []
-        assert preview.total_overspent == D("0")
+        # Groceries IS offered, though its whole 50 rode onto the card:
+        # funding it in the month it rode retires the ride. Only the card's
+        # own envelope is out of scope here — a negative there is the card's
+        # Uncovered, retired by assigning to the card in the cards strip.
+        assert [i.category_id for i in preview.items] == [groceries.id]
+        assert preview.total_overspent == D("50.00")
         assert preview.total_overspent_credit == D("50.00")
 
-    async def test_cover_overspent_offers_the_cash_part_and_not_the_credit_part(self, db_session):
-        """The split, through the dialog that spends real money on it.
+    async def test_cover_overspent_offers_the_whole_red_including_the_ride(self, db_session):
+        """Overspent 50 with 20 of it swiped on the card. The dialog offers 50.
 
-        Overspent 50 with 20 of it swiped on the card: 30 is cash the
-        boundary will write off from Ready to Assign, and 20 rode onto the
-        card, where it is already counted in Uncovered. Assigning cash to
-        that 20 buys nothing — the debt stays and the envelope floors to
-        zero regardless — so the dialog offers 30.
+        It offered 30 until 2026-09-05, on the theory that assigning cash to a
+        ride buys nothing. Measured on this very fixture, that is false — the
+        walk is recomputed from scratch on every request, so funding the
+        envelope in the month it rode retires the ride:
 
-        The glossary has promised exactly this since the credit model
-        shipped ("Cover Overspent handles only the cash kind, on purpose").
-        Until this test, only the glossary said it: the predicate read
-        `-available` and offered the whole 50.
+            +30 (the old offer): envelope −20, TBA 870, card Uncovered 20
+            +50 (the whole red): envelope   0, TBA 850, card Uncovered  0
+
+        The ridden 20 costs 20 of Ready to Assign and turns 20 of card debt
+        into 20 reserved to pay that card — the same trade as assigning to the
+        card directly, and it clears the envelope too. What it never does is
+        nothing, which is what the old rule assumed.
         """
         services, budget, checking, visa, _, groceries = await _setup(db_session)
         await create_budget_assignment(db_session, budget, groceries, JUL, "100.00")
@@ -383,12 +386,88 @@ class TestTheIdentity:
             D("30.00"),
             D("20.00"),
         )
-        assert (s.overspent_count, s.overspent_count_cash) == (1, 1)
 
         preview = await services.budgets.cover_overspent_preview(budget.id, JUL)
-        assert [(i.category_id, i.overspent) for i in preview.items] == [(groceries.id, D("30.00"))]
-        assert preview.total_overspent == D("30.00")
+        assert [(i.category_id, i.overspent) for i in preview.items] == [(groceries.id, D("50.00"))]
+        assert preview.total_overspent == D("50.00")
+        # Still named: the ridden 20 lands in the card's set-aside rather than
+        # staying in the envelope, and that is worth telling the reader.
+        assert preview.items[0].credit_overspent == D("20.00")
         assert preview.total_overspent_credit == D("20.00")
+
+    async def test_covering_takes_the_envelope_to_zero_and_retires_the_card_debt(self, db_session):
+        """The whole point, end to end: after Cover Overspent, nothing is red.
+
+        The report that produced this test — "I distributed the funds but am
+        left with some of them still being negative" — was a correct reading
+        of a wrong rule.
+        """
+        services, budget, checking, visa, _, groceries = await _setup(db_session)
+        await create_budget_assignment(db_session, budget, groceries, JUL, "100.00")
+        await create_transaction(
+            db_session, budget, checking, "-130.00", date(2026, 7, 8), category=groceries
+        )
+        await create_transaction(
+            db_session, budget, visa, "-20.00", date(2026, 7, 9), category=groceries
+        )
+        await db_session.flush()
+
+        preview = await services.budgets.cover_overspent_preview(budget.id, JUL)
+        await services.budgets.cover_overspent_apply(
+            budget.id, JUL, [(i.category_id, i.proposed_addition) for i in preview.items]
+        )
+
+        s = await _summary(services, budget, JUL)
+        bal = next(b for b in s.category_balances if b.category_id == groceries.id)
+        assert bal.available == D("0")
+        assert bal.credit_overspent == D("0")
+        assert [b.category_id for b in s.category_balances if b.available < 0] == []
+        assert (s.total_overspent, s.total_overspent_cash, s.total_overspent_credit) == (
+            D("0"),
+            D("0"),
+            D("0"),
+        )
+        # The 20 that had been riding is now reserved against the card.
+        card = s.cards[0]
+        assert (card.uncovered, card.set_aside) == (D("0"), D("20.00"))
+        assert card.overspent_this_month == D("0")
+        # And a second pass has nothing left to do.
+        assert (await services.budgets.cover_overspent_preview(budget.id, JUL)).items == []
+        await assert_financial_invariants(db_session, budget.id)
+
+    async def test_the_card_row_names_the_envelopes_that_rode_onto_it(self, db_session):
+        """The served breakdown behind the hero's "on cards" figure.
+
+        The budget page shows one number for card-ridden red and, until this
+        was served, no way to ask which spending produced it — the allocation
+        is a running walk per (category, card) that no client can reproduce.
+        """
+        services, budget, checking, visa, _, groceries = await _setup(db_session)
+        everyday = await create_category_group(db_session, budget, "Fun stuff")
+        dining = await create_category(db_session, budget, everyday, "Dining")
+        # Groceries rides 20 (100 assigned, 130 cash + 20 card).
+        await create_budget_assignment(db_session, budget, groceries, JUL, "100.00")
+        await create_transaction(
+            db_session, budget, checking, "-130.00", date(2026, 7, 8), category=groceries
+        )
+        await create_transaction(
+            db_session, budget, visa, "-20.00", date(2026, 7, 9), category=groceries
+        )
+        # Dining rides its whole 35: nothing assigned, spent on the card.
+        await create_transaction(
+            db_session, budget, visa, "-35.00", date(2026, 7, 10), category=dining
+        )
+        await db_session.flush()
+
+        s = await _summary(services, budget, JUL)
+        card = s.cards[0]
+        assert card.overspent_this_month == D("55.00")
+        # Largest first, and summing to the figure it breaks down.
+        assert [(r.category_id, r.category_name, r.amount) for r in card.overspent_by_category] == [
+            (dining.id, "Dining", D("35.00")),
+            (groceries.id, "Groceries", D("20.00")),
+        ]
+        assert sum(r.amount for r in card.overspent_by_category) == card.overspent_this_month
 
     async def test_filing_a_card_charge_does_not_move_ready_to_assign(self, db_session):
         """The claim the interface makes in words, pinned in code.

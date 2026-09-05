@@ -153,6 +153,16 @@
   color: var(--text-secondary);
 }
 
+/* The card-ridden part of one row's red, under the figure it explains.
+   Muted and unalarmed, like Uncovered on the cards strip: it is information,
+   not a task — no assignment here can retire it. */
+.cover-modal__on-card-part {
+  display: block;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .cover-modal__on-cards-list {
   margin: var(--spacing-xs) 0 0 var(--spacing-md);
   padding: 0;

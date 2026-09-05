@@ -212,6 +212,13 @@
   white-space: nowrap;
 }
 
+/* The one caption allowed to take two lines: "debt increased $412.00" does
+   not fit the Balance column, and the phrase carries a non-breaking space
+   (see debtMovement) so the only place it can break is before the figure. */
+.credit-cards__movement {
+  white-space: normal;
+}
+
 /* The one place colour is earned on this row: a reserve the model itself
    cannot account for is not a normal state, unlike everything else here. */
 .credit-cards__drift {

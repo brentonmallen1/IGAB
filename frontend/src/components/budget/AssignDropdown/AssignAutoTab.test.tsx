@@ -28,7 +28,7 @@ function totals(
     month: '2026-08',
     tba: 500,
     total_overspent: 0,
-    total_overspent_cash: 0,
+    total_overspent_credit: 0,
     strategies,
     ...overrides,
   }
@@ -63,7 +63,7 @@ describe('AssignAutoTab', () => {
 
   it('shows the overspent amount and count, and opens the cover flow', () => {
     const { rows, onCoverOverspent } = setup(
-      totals({ total_overspent: 123.45, total_overspent_cash: 123.45 }),
+      totals({ total_overspent: 123.45, total_overspent_credit: 123.45 }),
       3
     )
     expect(rows[0]).toBeEnabled()
@@ -73,13 +73,22 @@ describe('AssignAutoTab', () => {
     expect(onCoverOverspent).toHaveBeenCalledTimes(1)
   })
 
+  it('offers a month overspent entirely on cards', () => {
+    // The row read the cash-only total until 2026-09-05, so this month
+    // showed "Cover Overspending $0.00", disabled, beside a red grid the
+    // dialog would have funded.
+    const { rows } = setup(totals({ total_overspent: 45, total_overspent_credit: 0 }), 1)
+    expect(rows[0]).toBeEnabled()
+    expect(rows[0]).toHaveTextContent('45.00')
+  })
+
   it('explains a $0 underfunded row that sits beside overspending', () => {
-    setup(totals({ total_overspent: 50, total_overspent_cash: 50 }), 1)
+    setup(totals({ total_overspent: 50, total_overspent_credit: 50 }), 1)
     expect(screen.getByText(/isn't a target shortfall/)).toBeInTheDocument()
   })
 
   it('does not explain when targets genuinely need money', () => {
-    setup(totals({ total_overspent: 50, total_overspent_cash: 50 }, 200), 1)
+    setup(totals({ total_overspent: 50, total_overspent_credit: 50 }, 200), 1)
     expect(screen.queryByText(/isn't a target shortfall/)).toBeNull()
   })
 })

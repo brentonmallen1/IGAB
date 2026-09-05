@@ -1,8 +1,7 @@
-import re
 import uuid
 from collections.abc import Collection, Mapping, Sequence
 from datetime import date, timedelta
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import (
@@ -19,7 +18,6 @@ from sqlalchemy import (
     update,
 )
 from sqlalchemy.orm import with_expression
-from sqlalchemy.sql.elements import ColumnElement
 
 from igab.db.models import (
     Category,
@@ -56,42 +54,12 @@ from igab.repositories.txn_filters import (
     UNCLAIMED_CARD_ROW,
     UNPAIRED_TRANSFER_LEG,
     USER_ENTERED,
+    search_matches,
     sync_created_pending,
 )
 
 if TYPE_CHECKING:
     pass
-
-
-# A trailing dot is a half-typed amount, not a non-amount: "12." is what the
-# user's keyboard holds for one keystroke on the way to "12.34". Rejecting it
-# blanked the results mid-word, which reads as "typing a dot breaks search".
-# `\d+\.?\d*` accepts 12, 12., 12.34; `\.\d+` keeps bare ".34" working.
-_AMOUNT_SEARCH_RE = re.compile(r"\d+\.?\d*|\.\d+")
-
-
-def _amount_from_search(search: str) -> Decimal | None:
-    """A free-text search that reads as a plain number, e.g. '12.34' or '$1,200'."""
-    raw = search.strip().lstrip("$").replace(",", "")
-    if not _AMOUNT_SEARCH_RE.fullmatch(raw):
-        return None
-    try:
-        return abs(Decimal(raw))
-    except InvalidOperation:
-        return None
-
-
-def _search_predicate(search: str):
-    """Free text matches payee name or memo — and the amount when it's numeric."""
-    pattern = f"%{search}%"
-    clauses: list[ColumnElement[bool]] = [
-        Payee.name.ilike(pattern),
-        Transaction.memo.ilike(pattern),
-    ]
-    amount = _amount_from_search(search)
-    if amount is not None:
-        clauses.append(func.abs(Transaction.amount) == amount)
-    return or_(*clauses)
 
 
 #: One transaction's date bucketed to its month, and the reassembly of that
@@ -215,7 +183,7 @@ class TransactionRepository(BaseRepository[Transaction]):
             q = q.where(UNPAIRED_TRANSFER_LEG)
         if search:
             q = q.outerjoin(Payee, Transaction.payee_id == Payee.id)
-            q = q.where(_search_predicate(search))
+            q = q.where(search_matches(search))
         if cleared:
             q = q.where(Transaction.cleared == cleared)
         if exclude_cleared:
@@ -371,7 +339,7 @@ class TransactionRepository(BaseRepository[Transaction]):
             )
             where.append(attachment_exists if has_attachment else ~attachment_exists)
         if search:
-            where.append(_search_predicate(search))
+            where.append(search_matches(search))
         # Deliberately its own filter rather than a mode of `is_transfer`:
         # that one tests transfer_id alone, so it cannot express "has a
         # transfer payee but no partner" at all.

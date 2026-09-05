@@ -57,7 +57,6 @@ from igab.api.v1.schemas.category import (
     MoveMoneyRequest,
     RecentPayeeResponse,
     RepairOrphansResponse,
-    RodeMonth,
 )
 from igab.db.models import CategoryGroup, Transaction
 from igab.dependencies import (
@@ -749,36 +748,7 @@ async def get_budget_month(
         overspent_count=summary.overspent_count,
         assigned_in_future=summary.assigned_in_future,
         anchor_month=summary.anchor_month,
-        cards=[
-            CardStatusOut(
-                account_id=c.account_id,
-                name=c.name,
-                category_id=c.category_id,
-                balance=c.balance,
-                set_aside=c.set_aside,
-                uncovered=c.uncovered,
-                is_closed=c.is_closed,
-                overspent_this_month=c.overspent_this_month,
-                reserve_discrepancy=c.reserve_discrepancy,
-                assigned=c.assigned,
-                reserved=c.reserved,
-                released=c.released,
-                residual=c.residual,
-                payments=c.payments,
-                opening=c.opening,
-                riding=c.riding,
-                over_reserved=c.over_reserved,
-                short_reserved=c.short_reserved,
-                card_credit=c.card_credit,
-                charged_this_month=c.charged_this_month,
-                inflows_this_month=c.inflows_this_month,
-                paid_this_month=c.paid_this_month,
-                debt_change_this_month=c.debt_change_this_month,
-                pending_this_month=c.pending_this_month,
-                rode_by_month=[RodeMonth(month=m, amount=v) for m, v in c.rode_by_month],
-            )
-            for c in summary.cards
-        ],
+        cards=[CardStatusOut.from_status(c) for c in summary.cards],
         category_balances=[
             CategoryBalance(
                 category_id=b.category_id,
@@ -1131,6 +1101,8 @@ def _assign_preview_out(preview: AssignPreview) -> AssignPreviewResponse:
         to_return=preview.to_return,
         tba_before=preview.tba_before,
         tba_after=preview.tba_after,
+        newly_overspent_count=preview.newly_overspent_count,
+        newly_overspent_total=preview.newly_overspent_total,
     )
 
 
@@ -1147,7 +1119,7 @@ async def assign_strategy_totals(
         month=totals.month,
         tba=totals.tba,
         total_overspent=totals.total_overspent,
-        total_overspent_cash=totals.total_overspent_cash,
+        total_overspent_credit=totals.total_overspent_credit,
         strategies=[
             AssignStrategyTotal(
                 strategy=p.strategy,
@@ -1223,6 +1195,7 @@ async def cover_overspent_preview(
                 overspent=i.overspent,
                 proposed_addition=i.proposed_addition,
                 remaining_after=i.remaining_after,
+                credit_overspent=i.credit_overspent,
             )
             for i in preview.items
         ],

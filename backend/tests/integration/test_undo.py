@@ -284,7 +284,7 @@ async def test_undo_create_soft_deletes(db_session):
     undo = UndoService(db_session)
     undone = await undo.undo_change(budget.id, change.id)
 
-    assert undone == [change.id]
+    assert undone.undone == [change.id]
     await db_session.refresh(txn)
     assert txn.is_deleted is True
     await db_session.refresh(change)
@@ -457,7 +457,7 @@ async def test_undo_move_money_batch_restores_both_sides(db_session):
 
     undo = UndoService(db_session)
     undone = await undo.undo_batch(budget.id, batch_id)
-    assert len(undone) == 2
+    assert len(undone.undone) == 2
 
     result = await db_session.execute(
         select(BudgetAssignment).where(BudgetAssignment.budget_id == budget.id)
@@ -640,7 +640,7 @@ async def test_undo_change_in_batch_undoes_whole_batch(db_session):
     undo = UndoService(db_session)
     undone = await undo.undo_change(budget.id, changes[0].id)  # one half of the pair
 
-    assert set(undone) == {c.id for c in changes}
+    assert set(undone.undone) == {c.id for c in changes}
     for c in changes:
         row = await db_session.get(Transaction, c.entity_id)
         assert row.is_deleted is True

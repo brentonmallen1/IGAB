@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 import { invalidateAfterImport } from './invalidateAfterImport'
+import { invalidateAfterMoneyMove } from './invalidateAfterMoneyMove'
 import { confirmAsync } from '../stores/confirmStore'
 import type { Budget, BudgetMonth } from '../types'
 import type { SnapshotInspection } from './budgetSnapshots'
@@ -241,7 +242,7 @@ export function useSetAssignment(budgetId: string) {
       // only once the last of rapid sequential edits settles, so an early
       // refetch can't clobber a later edit's optimistic state.
       if (qc.isMutating({ mutationKey: ['setAssignment', budgetId] }) === 1) {
-        qc.invalidateQueries({ queryKey: [ROOT.budgetMonth, budgetId] })
+        invalidateAfterMoneyMove(qc, budgetId)
       }
     },
   })
@@ -266,10 +267,7 @@ export function useMoveMoney(budgetId: string) {
       amount: number
       month: string
     }) => apiClient.post(`/${budgetId}/budget/move-money`, data),
-    onSuccess: (_, { month }) => {
-      qc.invalidateQueries({ queryKey: [ROOT.budgetMonth, budgetId] })
-      qc.invalidateQueries({ queryKey: [ROOT.budgetMoves, budgetId, month] })
-    },
+    onSuccess: () => invalidateAfterMoneyMove(qc, budgetId),
   })
 }
 
@@ -280,11 +278,9 @@ export function useUndoMove(budgetId: string) {
   return useMutation({
     mutationFn: (move: { id: string; month: string }) =>
       apiClient.post(`/${budgetId}/budget/moves/${move.id}/undo`),
-    onSuccess: (_, { month }) => {
-      qc.invalidateQueries({ queryKey: [ROOT.budgetMonth, budgetId] })
-      qc.invalidateQueries({ queryKey: [ROOT.budgetMoves, budgetId, month] })
-      qc.invalidateQueries({ queryKey: [ROOT.assignStrategies, budgetId, month] })
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: [ROOT.changes, budgetId] })
+      return invalidateAfterMoneyMove(qc, budgetId)
     },
   })
 }
@@ -396,9 +392,16 @@ export function useDeleteBudget() {
 export interface CoverOverspentPreviewItem {
   category_id: string
   category_name: string
+  /** The CASH shortfall — what this dialog can act on, not the row's red. */
   overspent: number
   proposed_addition: number
+  /** Cash still short afterwards. Zero here does not mean the grid cell goes
+   *  black: `credit_overspent` is the rest of the red, and it stays. */
   remaining_after: number
+  /** This row's card-ridden red. Home: `CoverOverspentItem.credit_overspent`
+   *  (backend budget_service.py) — a covered row reading "Remaining $0.00"
+   *  beside a still-red grid cell is what this figure exists to explain. */
+  credit_overspent: number
 }
 
 export interface CoverOverspentPreviewResponse {
@@ -440,12 +443,7 @@ export function useCoverOverspentApply(budgetId: string) {
       apiClient
         .post<{ batch_id: string | null }>(`/${budgetId}/cover-overspent/apply`, data)
         .then((r) => r.data),
-    onSuccess: (_, { month }) => {
-      qc.invalidateQueries({ queryKey: [ROOT.budgetMonth, budgetId] })
-      qc.invalidateQueries({ queryKey: [ROOT.coverOverspentPreview, budgetId, month] })
-      qc.invalidateQueries({ queryKey: [ROOT.budgetMoves, budgetId, month] })
-      qc.invalidateQueries({ queryKey: [ROOT.assignStrategies, budgetId, month] })
-    },
+    onSuccess: () => invalidateAfterMoneyMove(qc, budgetId),
   })
 }
 
