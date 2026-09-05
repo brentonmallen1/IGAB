@@ -313,6 +313,12 @@ async def reprocess_job(
     return AIJobResponse.from_job(job)
 
 
+# The job lifecycle (retry, reprocess, delete) is deliberately absent from
+# the change log (see change_log.py's exclusion list): job rows are worker
+# state whose fields the worker overwrites at will — undoing a retry would
+# fight the queue, not restore budget data. What a job DID to the budget —
+# the transaction it created — records through TransactionService as
+# source="ai" and undoes like any other row.
 @router.delete("/{budget_id}/ai/jobs/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_job(
     budget_id: BudgetAccess,

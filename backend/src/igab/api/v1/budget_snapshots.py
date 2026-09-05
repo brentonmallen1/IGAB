@@ -216,6 +216,11 @@ async def import_snapshot(
     )
 
 
+# Deliberately absent from the change log (see change_log.py's exclusion
+# list): a restore replaces every table INCLUDING change_log itself — a
+# record of it could only ever be destroyed by the thing it records. The
+# snapshot file operations above are filesystem metadata with no budget row
+# to restore.
 @router.post("/budgets/{budget_id}/snapshot/restore", response_model=SnapshotImportResult)
 async def restore_snapshot(
     budget_id: BudgetOwnerAccess,

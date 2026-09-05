@@ -26,6 +26,7 @@ from igab.dependencies import (
     SessionDep,
     get_account_repo,
     get_category_repo,
+    get_change_recorder,
     get_liability_repo,
     get_liability_service,
 )
@@ -33,10 +34,13 @@ from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.liability_repo import LiabilityRepository
 from igab.services.amortization import AmortizationResult, amortization_schedule, quantize_cents
+from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match
 from igab.services.liability_service import LIABILITY_CLASSIFICATION, LiabilityService
 from igab.utils.clock import recorded_on, today_utc
 
 router = APIRouter(route_class=CommitRoute)
+
+Recorder = Annotated[ChangeRecorder, Depends(get_change_recorder)]
 
 
 async def _get_owned_liability(
@@ -208,6 +212,7 @@ async def create_liability(
     liability_service: Annotated[LiabilityService, Depends(get_liability_service)],
     account_repo: Annotated[AccountRepository, Depends(get_account_repo)],
     category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
+    recorder: Recorder,
 ) -> LiabilityOut:
     if body.linked_account_id is not None and body.manual_balance is not None:
         raise HTTPException(
@@ -224,30 +229,47 @@ async def create_liability(
             account_repo, liability_repo, budget_id, body.linked_account_id
         )
 
-    liability = await liability_repo.create(
-        budget_id=budget_id,
-        name=body.name,
-        # Dropped for a managed liability rather than stored and ignored: two
-        # answers to one question is the thing this model removed.
-        liability_type=None if body.linked_account_id is not None else body.liability_type,
-        linked_account_id=body.linked_account_id,
-        manual_balance=body.manual_balance,
-        interest_rate=body.interest_rate,
-        minimum_payment=body.minimum_payment,
-        origination_date=body.origination_date,
-        original_principal=body.original_principal,
-        promo_end_date=body.promo_end_date,
-        promo_deferred_interest=body.promo_deferred_interest,
-        term_months=body.term_months,
-        payment_due_day=body.payment_due_day,
-    )
-    if liability.linked_account_id is None and body.manual_balance is not None:
-        # Seed the snapshot trail so history starts at creation
-        await liability_repo.upsert_snapshot(
-            liability.id,
-            recorded_on(None, body.client_today),
-            Decimal(body.manual_balance),
-            source="initial",
+    with recorder.batch():
+        liability = await liability_repo.create(
+            budget_id=budget_id,
+            name=body.name,
+            # Dropped for a managed liability rather than stored and ignored: two
+            # answers to one question is the thing this model removed.
+            liability_type=None if body.linked_account_id is not None else body.liability_type,
+            linked_account_id=body.linked_account_id,
+            manual_balance=body.manual_balance,
+            interest_rate=body.interest_rate,
+            minimum_payment=body.minimum_payment,
+            origination_date=body.origination_date,
+            original_principal=body.original_principal,
+            promo_end_date=body.promo_end_date,
+            promo_deferred_interest=body.promo_deferred_interest,
+            term_months=body.term_months,
+            payment_due_day=body.payment_due_day,
+        )
+        if liability.linked_account_id is None and body.manual_balance is not None:
+            # Seed the snapshot trail so history starts at creation
+            seeded = await liability_repo.upsert_snapshot(
+                liability.id,
+                recorded_on(None, body.client_today),
+                Decimal(body.manual_balance),
+                source="initial",
+            )
+            await recorder.record(
+                budget_id=budget_id,
+                entity_type="liability_snapshot",
+                entity_id=seeded.id,
+                action="create",
+                after=snapshot("liability_snapshot", seeded),
+            )
+        # The liability records last: ⌘Z's toast names a batch's newest row,
+        # and "create liability" is what the person did.
+        await recorder.record(
+            budget_id=budget_id,
+            entity_type="liability",
+            entity_id=liability.id,
+            action="create",
+            after=snapshot("liability", liability),
         )
     return await _liability_out(liability, liability_service, category_repo)
 
@@ -262,8 +284,10 @@ async def update_liability(
     liability_service: Annotated[LiabilityService, Depends(get_liability_service)],
     account_repo: Annotated[AccountRepository, Depends(get_account_repo)],
     category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
+    recorder: Recorder,
 ) -> LiabilityOut:
     liability = await _get_owned_liability(liability_repo, budget_id, liability_id)
+    before = snapshot("liability", liability)
     # exclude_unset (not exclude_none): PATCHing linked_account_id to null is
     # exactly how a liability switches from managed to unmanaged
     changes = body.model_dump(exclude_unset=True)
@@ -307,6 +331,16 @@ async def update_liability(
         )
 
     liability = await liability_repo.update(liability.id, **changes)
+    after = snapshot("liability", liability)
+    if snapshots_match(after, before):  # non-empty diff — something changed
+        await recorder.record(
+            budget_id=budget_id,
+            entity_type="liability",
+            entity_id=liability.id,
+            action="update",
+            before=before,
+            after=after,
+        )
     return await _liability_out(liability, liability_service, category_repo)
 
 
@@ -318,6 +352,7 @@ async def delete_liability(
     liability_repo: Annotated[LiabilityRepository, Depends(get_liability_repo)],
     category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
     account_repo: Annotated[AccountRepository, Depends(get_account_repo)],
+    recorder: Recorder,
 ) -> None:
     liability = await _get_owned_liability(liability_repo, budget_id, liability_id)
 
@@ -342,10 +377,29 @@ async def delete_liability(
                 ),
             )
 
-    linked_category = await category_repo.get_by_linked_liability(liability.id)
-    if linked_category is not None:
-        await category_repo.update(linked_category.id, linked_liability_id=None)
-    await liability_repo.soft_delete(liability.id)
+    # One batch: the unlink and the delete undo as a unit, so the restored
+    # liability comes back with its paydown category still pointing at it.
+    with recorder.batch():
+        linked_category = await category_repo.get_by_linked_liability(liability.id)
+        if linked_category is not None:
+            cat_before = snapshot("category", linked_category)
+            updated_cat = await category_repo.update(linked_category.id, linked_liability_id=None)
+            await recorder.record(
+                budget_id=budget_id,
+                entity_type="category",
+                entity_id=linked_category.id,
+                action="update",
+                before=cat_before,
+                after=snapshot("category", updated_cat),
+            )
+        await recorder.record(
+            budget_id=budget_id,
+            entity_type="liability",
+            entity_id=liability.id,
+            action="delete",
+            before=snapshot("liability", liability),
+        )
+        await liability_repo.soft_delete(liability.id)
 
 
 @router.post(
@@ -359,6 +413,7 @@ async def create_balance_snapshot(
     body: LiabilityBalanceSnapshotCreate,
     current_user: CurrentUser,
     liability_repo: Annotated[LiabilityRepository, Depends(get_liability_repo)],
+    recorder: Recorder,
 ) -> LiabilityBalanceSnapshotOut:
     liability = await _get_owned_liability(liability_repo, budget_id, liability_id)
     if liability.linked_account_id is not None:
@@ -367,20 +422,58 @@ async def create_balance_snapshot(
             detail="Snapshots are for unmanaged liabilities — this one tracks an account",
         )
     snapshot_date = recorded_on(body.date, body.client_today)
-    snapshot = await liability_repo.upsert_snapshot(
-        liability.id, snapshot_date, Decimal(body.balance), source="manual"
-    )
-    # Update manual_balance if this is the newest snapshot (don't regress)
-    all_snaps = await liability_repo.get_snapshots(liability.id)
-    newest = max(all_snaps, key=lambda s: s.date) if all_snaps else None
-    if newest is not None and newest.id == snapshot.id:
-        await liability_repo.update(liability.id, manual_balance=snapshot.balance)
+    # One batch: the point and the manual_balance it drags along undo as a
+    # unit. A second entry on the same date replaces the first, so the record
+    # is an update with the replaced figure as `before`.
+    with recorder.batch():
+        points = await liability_repo.get_snapshots(liability.id)
+        existing = next((s for s in points if s.date == snapshot_date), None)
+        point_before = snapshot("liability_snapshot", existing) if existing is not None else None
+        liability_before = snapshot("liability", liability)
+        point = await liability_repo.upsert_snapshot(
+            liability.id, snapshot_date, Decimal(body.balance), source="manual"
+        )
+        point_after = snapshot("liability_snapshot", point)
+        # Update manual_balance if this is the newest snapshot (don't regress)
+        all_snaps = await liability_repo.get_snapshots(liability.id)
+        newest = max(all_snaps, key=lambda s: s.date) if all_snaps else None
+        if newest is not None and newest.id == point.id:
+            liability = await liability_repo.update(liability.id, manual_balance=point.balance)
+            liability_after = snapshot("liability", liability)
+            if snapshots_match(liability_after, liability_before):
+                await recorder.record(
+                    budget_id=budget_id,
+                    entity_type="liability",
+                    entity_id=liability.id,
+                    action="update",
+                    before=liability_before,
+                    after=liability_after,
+                )
+        # The point records last: ⌘Z's toast names a batch's newest row, and
+        # "add a balance point" is what the person did.
+        if point_before is None:
+            await recorder.record(
+                budget_id=budget_id,
+                entity_type="liability_snapshot",
+                entity_id=point.id,
+                action="create",
+                after=point_after,
+            )
+        elif snapshots_match(point_after, point_before):
+            await recorder.record(
+                budget_id=budget_id,
+                entity_type="liability_snapshot",
+                entity_id=point.id,
+                action="update",
+                before=point_before,
+                after=point_after,
+            )
     return LiabilityBalanceSnapshotOut(
-        id=snapshot.id,
-        liability_id=snapshot.liability_id,
-        date=snapshot.date,
-        balance=snapshot.balance,
-        source=snapshot.source,
+        id=point.id,
+        liability_id=point.liability_id,
+        date=point.date,
+        balance=point.balance,
+        source=point.source,
     )
 
 
@@ -398,6 +491,7 @@ async def link_asset(
     liability_service: Annotated[LiabilityService, Depends(get_liability_service)],
     category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
     session: SessionDep,
+    recorder: Recorder,
 ) -> LiabilityOut:
     """Point this debt at the asset securing it (null unlinks). Not unique
     on the asset side on purpose: a house can secure a mortgage and a HELOC,
@@ -409,8 +503,19 @@ async def link_asset(
         asset = await AssetRepository(session).get(body.asset_id)
         if asset is None or asset.budget_id != budget_id:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found")
+    before = snapshot("liability", liability)
     liability.linked_asset_id = body.asset_id
     await session.flush()
+    after = snapshot("liability", liability)
+    if snapshots_match(after, before):  # non-empty diff — something changed
+        await recorder.record(
+            budget_id=budget_id,
+            entity_type="liability",
+            entity_id=liability.id,
+            action="update",
+            before=before,
+            after=after,
+        )
     # updated_at is onupdate=func.now(): the flush expires it, and letting
     # serialization lazy-load it lands in sync context (MissingGreenlet).
     await session.refresh(liability)
@@ -511,25 +616,43 @@ async def link_category_to_liability(
     current_user: CurrentUser,
     category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
     liability_repo: Annotated[LiabilityRepository, Depends(get_liability_repo)],
+    recorder: Recorder,
 ) -> CategoryResponse:
     category = await category_repo.get(category_id)
     if category is None or category.budget_id != budget_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
 
-    if body.liability_id is None:
-        await category_repo.update(category.id, linked_liability_id=None)
-    else:
-        if category.linked_account_id is not None:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="This category is already linked to an account — a category "
-                "can track an account or a liability, not both",
+    async def _relink(cat, liability_id: uuid.UUID | None) -> None:
+        before = snapshot("category", cat)
+        updated = await category_repo.update(cat.id, linked_liability_id=liability_id)
+        after = snapshot("category", updated)
+        if snapshots_match(after, before):  # no-op relinks record nothing
+            await recorder.record(
+                budget_id=budget_id,
+                entity_type="category",
+                entity_id=cat.id,
+                action="update",
+                before=before,
+                after=after,
             )
-        liability = await _get_owned_liability(liability_repo, budget_id, body.liability_id)
-        previous = await category_repo.get_by_linked_liability(liability.id)
-        if previous is not None and previous.id != category.id:
-            await category_repo.update(previous.id, linked_liability_id=None)
-        await category_repo.update(category.id, linked_liability_id=liability.id)
+
+    # One batch: moving the link off one category and onto another is one
+    # decision, and undo puts both ends back at once.
+    with recorder.batch():
+        if body.liability_id is None:
+            await _relink(category, None)
+        else:
+            if category.linked_account_id is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="This category is already linked to an account — a category "
+                    "can track an account or a liability, not both",
+                )
+            liability = await _get_owned_liability(liability_repo, budget_id, body.liability_id)
+            previous = await category_repo.get_by_linked_liability(liability.id)
+            if previous is not None and previous.id != category.id:
+                await _relink(previous, None)
+            await _relink(category, liability.id)
 
     with_tags = await category_repo.get_with_tags(category.id)
     return CategoryResponse.model_validate(with_tags)

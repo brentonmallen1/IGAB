@@ -19,6 +19,7 @@ from igab.api.route import CommitRoute
 from igab.db.models import BudgetMember, User
 from igab.db.session import get_session
 from igab.dependencies import BudgetAccess, BudgetOwnerAccess, CurrentUser
+from igab.services.change_log import ChangeRecorder, snapshot
 
 router = APIRouter(route_class=CommitRoute)
 
@@ -72,6 +73,15 @@ async def add_member(
     member = BudgetMember(budget_id=budget_id, user_id=body.user_id, role="member")
     session.add(member)
     await session.flush()
+    recorder = ChangeRecorder(session)
+    recorder.actor_user_id = current_user.id
+    await recorder.record(
+        budget_id=budget_id,
+        entity_type="budget_member",
+        entity_id=member.user_id,
+        action="create",
+        after=snapshot("budget_member", member),
+    )
     return MemberResponse(
         user_id=user.id, email=user.email, display_name=user.display_name, role=member.role
     )
@@ -111,5 +121,14 @@ async def remove_member(
                 detail="A budget must keep at least one owner",
             )
 
+    recorder = ChangeRecorder(session)
+    recorder.actor_user_id = current_user.id
+    await recorder.record(
+        budget_id=budget_id,
+        entity_type="budget_member",
+        entity_id=target.user_id,
+        action="delete",
+        before=snapshot("budget_member", target),
+    )
     await session.delete(target)
     await session.flush()

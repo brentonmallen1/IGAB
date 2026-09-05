@@ -11,14 +11,20 @@ class AttachmentRepository(BaseRepository[TransactionAttachment]):
 
     async def get_by_id(self, attachment_id: uuid.UUID) -> TransactionAttachment | None:
         result = await self.session.execute(
-            select(TransactionAttachment).where(TransactionAttachment.id == attachment_id)
+            select(TransactionAttachment).where(
+                TransactionAttachment.id == attachment_id,
+                TransactionAttachment.is_deleted == False,  # noqa: E712
+            )
         )
         return result.scalar_one_or_none()
 
     async def get_for_transaction(self, transaction_id: uuid.UUID) -> list[TransactionAttachment]:
         result = await self.session.execute(
             select(TransactionAttachment)
-            .where(TransactionAttachment.transaction_id == transaction_id)
+            .where(
+                TransactionAttachment.transaction_id == transaction_id,
+                TransactionAttachment.is_deleted == False,  # noqa: E712
+            )
             .order_by(TransactionAttachment.created_at)
         )
         return list(result.scalars().all())
@@ -37,6 +43,7 @@ class AttachmentRepository(BaseRepository[TransactionAttachment]):
             .where(
                 Transaction.budget_id == budget_id,
                 Transaction.is_deleted == False,  # noqa: E712
+                TransactionAttachment.is_deleted == False,  # noqa: E712
                 TransactionAttachment.content_hash == content_hash,
             )
             .limit(1)
@@ -54,7 +61,9 @@ class AttachmentRepository(BaseRepository[TransactionAttachment]):
         )
         await self.session.flush()
 
-    async def delete_attachment(self, attachment_id: uuid.UUID) -> None:
+    async def hard_delete_attachment(self, attachment_id: uuid.UUID) -> None:
+        """The sweep's exit, not the user's: rows go through soft delete
+        first (AttachmentService.delete) so undo can bring them back."""
         await self.session.execute(
             delete(TransactionAttachment).where(TransactionAttachment.id == attachment_id)
         )
@@ -93,6 +102,7 @@ class AttachmentRepository(BaseRepository[TransactionAttachment]):
             .join(Transaction, TransactionAttachment.transaction_id == Transaction.id)
             .where(
                 TransactionAttachment.transaction_id.in_(transaction_ids),
+                TransactionAttachment.is_deleted == False,  # noqa: E712
                 membership,
             )
             .distinct()

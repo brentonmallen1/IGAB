@@ -12,13 +12,17 @@ from igab.dependencies import (
     TransactionAccess,
     get_attachment_repo,
     get_attachment_service,
+    get_change_recorder,
     get_transaction_repo,
 )
 from igab.repositories.attachment_repo import AttachmentRepository
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.attachment_service import AttachmentService
+from igab.services.change_log import ChangeRecorder, snapshot
 
 router = APIRouter(route_class=CommitRoute)
+
+Recorder = Annotated[ChangeRecorder, Depends(get_change_recorder)]
 
 ALLOWED_CONTENT_TYPES = {
     "image/jpeg",
@@ -60,6 +64,7 @@ async def upload_attachment(
     current_user: CurrentUser,
     txn_repo: Annotated[TransactionRepository, Depends(get_transaction_repo)],
     attachment_service: Annotated[AttachmentService, Depends(get_attachment_service)],
+    recorder: Recorder,
     file: UploadFile = File(...),
 ) -> AttachmentResponse:
     txn = await txn_repo.get(transaction_id)
@@ -91,6 +96,13 @@ async def upload_attachment(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unreadable file: {e}"
         ) from e
+    await recorder.record(
+        budget_id=txn.budget_id,
+        entity_type="attachment",
+        entity_id=attachment.id,
+        action="create",
+        after=snapshot("attachment", attachment),
+    )
     return AttachmentResponse.model_validate(attachment, from_attributes=True)
 
 
@@ -147,6 +159,7 @@ async def rotate_attachment(
     attachment_repo: Annotated[AttachmentRepository, Depends(get_attachment_repo)],
     attachment_service: Annotated[AttachmentService, Depends(get_attachment_service)],
     txn_repo: Annotated[TransactionRepository, Depends(get_transaction_repo)],
+    recorder: Recorder,
 ) -> AttachmentResponse:
     """Rotate an image attachment clockwise; the change is persisted on disk."""
     attachment = await attachment_repo.get_by_id(attachment_id)
@@ -165,6 +178,16 @@ async def rotate_attachment(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="File not found on disk"
         ) from e
+    # `_degrees` is the whole record: a rotate's inverse is the complementary
+    # rotation (transpose is lossless), not a field restore.
+    await recorder.record(
+        budget_id=txn.budget_id,
+        entity_type="attachment",
+        entity_id=attachment.id,
+        action="update",
+        before={"_degrees": body.degrees},
+        after={"_degrees": body.degrees},
+    )
     return AttachmentResponse.model_validate(updated, from_attributes=True)
 
 
@@ -175,6 +198,7 @@ async def delete_attachment(
     attachment_repo: Annotated[AttachmentRepository, Depends(get_attachment_repo)],
     attachment_service: Annotated[AttachmentService, Depends(get_attachment_service)],
     txn_repo: Annotated[TransactionRepository, Depends(get_transaction_repo)],
+    recorder: Recorder,
 ) -> None:
     attachment = await attachment_repo.get_by_id(attachment_id)
     if attachment is None:
@@ -184,6 +208,13 @@ async def delete_attachment(
     if txn is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found")
 
+    await recorder.record(
+        budget_id=txn.budget_id,
+        entity_type="attachment",
+        entity_id=attachment.id,
+        action="delete",
+        before=snapshot("attachment", attachment),
+    )
     await attachment_service.delete(attachment, txn)
 
 

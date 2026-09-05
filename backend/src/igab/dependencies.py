@@ -86,8 +86,12 @@ def get_target_repo(session: SessionDep) -> TargetRepository:
 
 def get_target_service(
     repo: Annotated[TargetRepository, Depends(get_target_repo)],
+    current_user: "CurrentUser",
 ) -> TargetService:
-    return TargetService(repo)
+    service = TargetService(repo)
+    # Same actor stamping as get_budget_service — see there.
+    service.changes.actor_user_id = current_user.id
+    return service
 
 
 def get_ai_service(
@@ -257,14 +261,18 @@ def get_guide_service(
     target_service: Annotated[TargetService, Depends(get_target_service)],
     report_service: Annotated[ReportService, Depends(get_report_service)],
     liability_service: Annotated[LiabilityService, Depends(get_liability_service)],
+    current_user: "CurrentUser",
 ) -> GuideService:
-    return GuideService(
+    service = GuideService(
         session,
         budget_service=budget_service,
         target_service=target_service,
         report_service=report_service,
         liability_service=liability_service,
     )
+    # Same actor stamping as get_budget_service — see there.
+    service.changes.actor_user_id = current_user.id
+    return service
 
 
 def get_wishlist_service(
@@ -279,8 +287,15 @@ def get_wishlist_service(
     return service
 
 
-def get_category_plan_service(session: SessionDep) -> CategoryPlanService:
-    return CategoryPlanService(session)
+def get_category_plan_service(
+    session: SessionDep, current_user: "CurrentUser"
+) -> CategoryPlanService:
+    service = CategoryPlanService(session)
+    # The plan service builds its own TargetService (it predates DI); stamp
+    # both recorders so apply-targets rows carry the acting user.
+    service.changes.actor_user_id = current_user.id
+    service.targets.changes.actor_user_id = current_user.id
+    return service
 
 
 def get_assign_service(
@@ -313,8 +328,12 @@ def get_transaction_service(session: SessionDep, current_user: "CurrentUser") ->
 def get_transaction_matching_service(
     session: SessionDep,
     txn_service: Annotated[TransactionService, Depends(get_transaction_service)],
+    current_user: "CurrentUser",
 ) -> TransactionMatchingService:
-    return build_transaction_matching_service(session, txn_service)
+    service = build_transaction_matching_service(session, txn_service)
+    # Same actor stamping as get_budget_service — see there.
+    service.changes.actor_user_id = current_user.id
+    return service
 
 
 def get_simplefin_service(
@@ -337,17 +356,25 @@ def get_reconciliation_service(
     payee_repo: Annotated[PayeeRepository, Depends(get_payee_repo)],
     transaction_repo: Annotated[TransactionRepository, Depends(get_transaction_repo)],
     transaction_service: Annotated[TransactionService, Depends(get_transaction_service)],
+    current_user: "CurrentUser",
 ) -> ReconciliationService:
-    return ReconciliationService(
+    service = ReconciliationService(
         session, repo, account_repo, payee_repo, transaction_repo, transaction_service
     )
+    # Same actor stamping as get_budget_service — see there.
+    service.changes.actor_user_id = current_user.id
+    return service
 
 
 def get_scheduled_transaction_service(
     repo: Annotated[ScheduledTransactionRepository, Depends(get_scheduled_transaction_repo)],
     txn_service: Annotated[TransactionService, Depends(get_transaction_service)],
+    current_user: "CurrentUser",
 ) -> ScheduledTransactionService:
-    return ScheduledTransactionService(repo, txn_service)
+    service = ScheduledTransactionService(repo, txn_service)
+    # Same actor stamping as get_budget_service — see there.
+    service.changes.actor_user_id = current_user.id
+    return service
 
 
 async def get_current_user(

@@ -1,6 +1,8 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.api.route import CommitRoute
 from igab.api.v1.schemas.tag import (
@@ -12,6 +14,7 @@ from igab.api.v1.schemas.tag import (
     TagSuggestionOut,
     TagUpdate,
 )
+from igab.db.models import category_tags, payee_tags
 from igab.dependencies import (
     BudgetAccess,
     CategoryAccess,
@@ -19,6 +22,7 @@ from igab.dependencies import (
     PayeeAccess,
     TagAccess,
     get_category_repo,
+    get_change_recorder,
     get_payee_repo,
     get_tag_repo,
 )
@@ -31,8 +35,42 @@ from igab.repositories.tag_repo import (
     TagRepository,
     seed_system_tags,
 )
+from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match
 
 router = APIRouter(route_class=CommitRoute)
+
+Recorder = Annotated[ChangeRecorder, Depends(get_change_recorder)]
+
+
+async def _membership(session: AsyncSession, assoc, owner_col: str, owner_id) -> list[str]:
+    """The raw tag ids on one category/payee, sorted for == — recorded as
+    `_tag_ids` bookkeeping on membership updates (the rows are hard-replaced
+    on every set, so undo rebuilds them rather than flipping fields)."""
+    return sorted(
+        str(t)
+        for t in (
+            await session.execute(select(assoc.c.tag_id).where(assoc.c[owner_col] == owner_id))
+        ).scalars()
+    )
+
+
+async def _record_membership(
+    recorder: ChangeRecorder,
+    budget_id,
+    entity_type: str,
+    owner_id,
+    before_ids: list[str],
+    after_ids: list[str],
+) -> None:
+    if before_ids != after_ids:
+        await recorder.record(
+            budget_id=budget_id,
+            entity_type=entity_type,
+            entity_id=owner_id,
+            action="update",
+            before={"_tag_ids": before_ids},
+            after={"_tag_ids": after_ids},
+        )
 
 
 @router.get("/{budget_id}/tags", response_model=list[TagOut])
@@ -71,6 +109,7 @@ async def create_tag(
     body: TagCreate,
     current_user: CurrentUser,
     tag_repo: Annotated[TagRepository, Depends(get_tag_repo)],
+    recorder: Recorder,
 ) -> TagOut:
     if body.color_slot and body.color_slot not in TAG_COLOR_SLOTS:
         raise HTTPException(
@@ -87,6 +126,13 @@ async def create_tag(
         budget_id=budget_id,
         name=body.name,
         color_slot=body.color_slot,
+    )
+    await recorder.record(
+        budget_id=budget_id,
+        entity_type="tag",
+        entity_id=tag.id,
+        action="create",
+        after=snapshot("tag", tag),
     )
     return TagOut(
         id=tag.id,
@@ -105,8 +151,10 @@ async def update_tag(
     body: TagUpdate,
     current_user: CurrentUser,
     tag_repo: Annotated[TagRepository, Depends(get_tag_repo)],
+    recorder: Recorder,
 ) -> TagOut:
     tag = await tag_repo.get_or_raise(tag_id)
+    before = snapshot("tag", tag)
     updates: dict = {}
     if body.name is not None:
         # A system tag's name is how the user recognises what it does — a
@@ -134,6 +182,16 @@ async def update_tag(
         updates["color_slot"] = body.color_slot
     if updates:
         tag = await tag_repo.update(tag_id, **updates)
+        after = snapshot("tag", tag)
+        if snapshots_match(after, before):  # non-empty diff — something changed
+            await recorder.record(
+                budget_id=budget_id,
+                entity_type="tag",
+                entity_id=tag.id,
+                action="update",
+                before=before,
+                after=after,
+            )
     tags_with_counts = await tag_repo.list_for_budget_with_counts(budget_id)
     for t, cat_count, payee_count in tags_with_counts:
         if t.id == tag_id:
@@ -154,6 +212,7 @@ async def delete_tag(
     tag_id: TagAccess,
     current_user: CurrentUser,
     tag_repo: Annotated[TagRepository, Depends(get_tag_repo)],
+    recorder: Recorder,
 ) -> None:
     tag = await tag_repo.get_or_raise(tag_id)
     if tag.system_key:
@@ -161,6 +220,35 @@ async def delete_tag(
             status_code=status.HTTP_409_CONFLICT,
             detail="System tags cannot be deleted",
         )
+    # `_category_ids`/`_payee_ids` name exactly the memberships the delete
+    # strips, so undo can hand them back — the merge's `_transaction_ids`
+    # rule applied to tags.
+    session = tag_repo.session
+    holders = {
+        "_category_ids": sorted(
+            str(c)
+            for c in (
+                await session.execute(
+                    select(category_tags.c.category_id).where(category_tags.c.tag_id == tag_id)
+                )
+            ).scalars()
+        ),
+        "_payee_ids": sorted(
+            str(p)
+            for p in (
+                await session.execute(
+                    select(payee_tags.c.payee_id).where(payee_tags.c.tag_id == tag_id)
+                )
+            ).scalars()
+        ),
+    }
+    await recorder.record(
+        budget_id=budget_id,
+        entity_type="tag",
+        entity_id=tag.id,
+        action="delete",
+        before={**snapshot("tag", tag), **holders},
+    )
     await tag_repo.delete_with_associations(tag_id)
 
 
@@ -213,6 +301,7 @@ async def bulk_set_category_tags(
     current_user: CurrentUser,
     tag_repo: Annotated[TagRepository, Depends(get_tag_repo)],
     category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
+    recorder: Recorder,
 ) -> None:
     """Set tags on many categories at once, in one transaction.
 
@@ -247,8 +336,19 @@ async def bulk_set_category_tags(
                     ),
                 )
 
-    for update in body.updates:
-        await tag_repo.set_category_tags(update.category_id, update.tag_ids)
+    # One batch: the review is a single decision, so it undoes as one.
+    with recorder.batch():
+        for update in body.updates:
+            before_ids = await _membership(
+                tag_repo.session, category_tags, "category_id", update.category_id
+            )
+            await tag_repo.set_category_tags(update.category_id, update.tag_ids)
+            after_ids = await _membership(
+                tag_repo.session, category_tags, "category_id", update.category_id
+            )
+            await _record_membership(
+                recorder, budget_id, "category_tags", update.category_id, before_ids, after_ids
+            )
 
 
 @router.put("/{budget_id}/categories/{category_id}/tags", response_model=list[TagOutSimple])
@@ -259,6 +359,7 @@ async def set_category_tags(
     current_user: CurrentUser,
     tag_repo: Annotated[TagRepository, Depends(get_tag_repo)],
     category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
+    recorder: Recorder,
 ) -> list[TagOutSimple]:
     for tag_id in body.tag_ids:
         tag = await tag_repo.get(tag_id)
@@ -267,7 +368,12 @@ async def set_category_tags(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Tag {tag_id} not found",
             )
+    before_ids = await _membership(tag_repo.session, category_tags, "category_id", category_id)
     await tag_repo.set_category_tags(category_id, body.tag_ids)
+    after_ids = await _membership(tag_repo.session, category_tags, "category_id", category_id)
+    await _record_membership(
+        recorder, budget_id, "category_tags", category_id, before_ids, after_ids
+    )
     tags_map = await tag_repo.get_tags_for_categories([category_id])
     return [TagOutSimple.model_validate(t) for t in tags_map.get(category_id, [])]
 
@@ -280,6 +386,7 @@ async def set_payee_tags(
     current_user: CurrentUser,
     tag_repo: Annotated[TagRepository, Depends(get_tag_repo)],
     payee_repo: Annotated[PayeeRepository, Depends(get_payee_repo)],
+    recorder: Recorder,
 ) -> list[TagOutSimple]:
     for tag_id in body.tag_ids:
         tag = await tag_repo.get(tag_id)
@@ -288,7 +395,10 @@ async def set_payee_tags(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Tag {tag_id} not found",
             )
+    before_ids = await _membership(tag_repo.session, payee_tags, "payee_id", payee_id)
     await tag_repo.set_payee_tags(payee_id, body.tag_ids)
+    after_ids = await _membership(tag_repo.session, payee_tags, "payee_id", payee_id)
+    await _record_membership(recorder, budget_id, "payee_tags", payee_id, before_ids, after_ids)
     tags_map = await tag_repo.get_tags_for_payees([payee_id])
     return [TagOutSimple.model_validate(t) for t in tags_map.get(payee_id, [])]
 
@@ -301,8 +411,10 @@ async def add_payee_tags(
     current_user: CurrentUser,
     tag_repo: Annotated[TagRepository, Depends(get_tag_repo)],
     payee_repo: Annotated[PayeeRepository, Depends(get_payee_repo)],
+    recorder: Recorder,
 ) -> list[TagOutSimple]:
     """Add tags to a payee without removing existing ones (additive)."""
+    before_ids = await _membership(tag_repo.session, payee_tags, "payee_id", payee_id)
     for tag_id in body.tag_ids:
         tag = await tag_repo.get(tag_id)
         if tag is None or tag.budget_id != budget_id:
@@ -311,5 +423,7 @@ async def add_payee_tags(
                 detail=f"Tag {tag_id} not found",
             )
         await tag_repo.add_payee_tag(payee_id, tag_id)
+    after_ids = await _membership(tag_repo.session, payee_tags, "payee_id", payee_id)
+    await _record_membership(recorder, budget_id, "payee_tags", payee_id, before_ids, after_ids)
     tags_map = await tag_repo.get_tags_for_payees([payee_id])
     return [TagOutSimple.model_validate(t) for t in tags_map.get(payee_id, [])]

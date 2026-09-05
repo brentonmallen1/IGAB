@@ -449,15 +449,16 @@ class TestFinish:
         """
         finish() must call session.execute for:
           1-3: get_status (3 queries)
-          4: UPDATE Transaction SET cleared='reconciled'
-          5: UPDATE Account SET last_reconciled_at=...
+          4: SELECT the ids about to be locked (undo bookkeeping)
+          5: UPDATE Transaction SET cleared='reconciled'
+          6: UPDATE Account SET last_reconciled_at=...
         """
         snapshot = MockSnapshot()
         svc = make_finish_service(D("1000.00"), snapshot)
 
         await svc.finish(ACCOUNT_ID, D("1000.00"))
 
-        assert svc.session.execute.call_count == 5
+        assert svc.session.execute.call_count == 6
 
     async def test_session_flushed(self):
         """Session must be flushed so all changes are committed atomically."""

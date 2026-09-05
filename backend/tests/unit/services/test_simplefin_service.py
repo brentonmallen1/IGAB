@@ -1698,13 +1698,17 @@ class TestConfidenceScoring:
 
 class TestTransactionMatchingService:
     def _make_svc(self) -> TransactionMatchingService:
-        return TransactionMatchingService(
+        svc = TransactionMatchingService(
             session=AsyncMock(),
             txn_repo=AsyncMock(),
             match_repo=AsyncMock(),
             payee_repo=AsyncMock(),
             txn_service=AsyncMock(),
         )
+        # See test_match_accept_flow.make_service: the recorder batch is a
+        # sync context manager.
+        svc.txn_service.changes = MagicMock()
+        return svc
 
     @pytest.mark.asyncio
     async def test_no_match_when_no_candidates(self) -> None:

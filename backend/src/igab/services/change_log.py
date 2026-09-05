@@ -2,13 +2,17 @@
 
 Write paths call `ChangeRecorder.record()` explicitly — no ORM-event magic —
 so what lands in the log is exactly what the services decide is a
-user-visible mutation. Scope: transactions, payees, categories, category
-groups, budget assignments, and wishlist items/projects — the standing rule
-is that EVERY user-visible mutation records, because the global undo is
-LIFO over this log and any uncovered domain makes ⌘Z silently revert
-something older and unrelated. Auto-created side effects (transfer payees,
-payees resolved during transaction entry) are deliberately not recorded:
-undoing them independently would orphan references.
+user-visible mutation. The standing rule is that EVERY user-visible mutation
+records, because the global undo is LIFO over this log and any uncovered
+domain makes ⌘Z silently revert something older and unrelated. Its corollary:
+every MANUAL record must have a working inverse in undo_service, or the
+first ⌘Z that reaches it jams on "cannot be undone". Auto-created side
+effects (transfer payees, payees resolved during transaction entry, derived
+tag syncs) are deliberately not recorded: undoing them independently would
+orphan references. The deliberate exclusions — whole-budget deletes and
+snapshot restores (they destroy this log itself), and rows with no budget to
+file under (users, app settings, SimpleFIN connections; `budget_id` here is
+NOT NULL) — are named in the API modules that own them.
 
 Snapshots hold every restorable field, serialized to JSON-safe values.
 Keys starting with "_" carry undo bookkeeping (e.g. attachment ids moved by
@@ -26,13 +30,29 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import (
+    Account,
+    AccountType,
+    Asset,
+    AssetValueSnapshot,
     Budget,
     BudgetAssignment,
+    BudgetFilter,
+    BudgetMember,
+    BudgetView,
     Category,
     CategoryGroup,
+    CategoryPlan,
+    CategoryTarget,
     ChangeLog,
+    Liability,
+    LiabilityBalanceSnapshot,
     Payee,
+    ReconciliationSnapshot,
+    ScheduledTransaction,
+    Tag,
     Transaction,
+    TransactionAttachment,
+    TransactionMatch,
     WishlistItem,
     WishlistProject,
     new_uuid,
@@ -45,8 +65,11 @@ ENTITY_MODELS: dict[str, type] = {
     "category": Category,
     "category_group": CategoryGroup,
     "assignment": BudgetAssignment,
-    # Only ever the subject of a `reorder` (of its groups); it has no
-    # snapshot fields because nothing on the budget row itself is restored.
+    # The subject of a `reorder` of its groups (bookkeeping only), and of
+    # plain `update`s to its own settings fields. Its create/delete are
+    # deliberately unrecorded: this log lives INSIDE the budget — the
+    # budget's existence is the log's precondition, and deleting it takes
+    # the log with it.
     "budget": Budget,
     "wishlist_item": WishlistItem,
     "wishlist_project": WishlistProject,
@@ -54,6 +77,38 @@ ENTITY_MODELS: dict[str, type] = {
     # budget's wishes or wish projects (`_collection` bookkeeping says
     # which). Resolves to the budget row; nothing on it is restored.
     "wishlist": Budget,
+    # Hard-row entities (no is_deleted column): undo re-inserts from the
+    # snapshot — see undo_service.HARD_ROW_NATURAL_KEY.
+    "category_target": CategoryTarget,
+    "liability_snapshot": LiabilityBalanceSnapshot,
+    "asset_value": AssetValueSnapshot,
+    "liability": Liability,
+    "asset": Asset,
+    "scheduled_transaction": ScheduledTransaction,
+    "budget_view": BudgetView,
+    "budget_filter": BudgetFilter,
+    "tag": Tag,
+    # Membership pseudo-subjects: the entity is the category/payee whose tag
+    # set moved; the record carries only a `_tag_ids` bookkeeping dump.
+    "category_tags": Category,
+    "payee_tags": Payee,
+    "account": Account,
+    "account_type": AccountType,
+    # A reconciliation is one hard row plus bookkeeping: `_transaction_ids`
+    # it locked, `_account_before`/`_account_after` for the account's
+    # last-reconciled stamp (kept out of the account snapshot on purpose).
+    "reconciliation": ReconciliationSnapshot,
+    "transaction_match": TransactionMatch,
+    "category_plan": CategoryPlan,
+    # Pseudo-subjects over the budget row: one Guide state key's value, or
+    # one concept's binding rows. The record is all bookkeeping (_key/_value,
+    # _concept_key/_rows) — undo_service has dedicated inverses.
+    "guide_state": Budget,
+    "guide_binding": Budget,
+    # Composite-keyed (budget_id, user_id): entity_id carries the user id and
+    # undo_service addresses the row itself, never via session.get.
+    "budget_member": BudgetMember,
+    "attachment": TransactionAttachment,
 }
 
 # Restorable fields per entity. is_deleted is excluded on purpose — the
@@ -129,7 +184,182 @@ SNAPSHOT_FIELDS: dict[str, tuple[str, ...]] = {
         "done_at",
     ),
     "wishlist_project": ("name", "category_id", "notes", "sort_order"),
+    "category_target": (
+        "category_id",
+        "target_type",
+        "target_amount",
+        "target_date",
+        "repeat_frequency",
+    ),
+    "liability": (
+        "name",
+        "liability_type",
+        "linked_account_id",
+        "linked_asset_id",
+        "manual_balance",
+        "interest_rate",
+        "minimum_payment",
+        "minimum_payment_kind",
+        "minimum_payment_percent",
+        "minimum_payment_floor",
+        "minimum_payment_plus_interest",
+        "compounding",
+        "planned_extra_payment",
+        "origination_date",
+        "original_principal",
+        "promo_end_date",
+        "promo_deferred_interest",
+        "term_months",
+        "payment_due_day",
+    ),
+    "liability_snapshot": ("liability_id", "date", "balance", "source"),
+    # manual_value/value_as_of are derived from the newest surviving value
+    # point, but they snapshot anyway: a value-point operation records the
+    # pair's move as an explicit asset update in the same batch, so undo
+    # restores it by field instead of re-running the derivation.
+    "asset": ("name", "asset_type", "manual_value", "value_as_of"),
+    "asset_value": ("asset_id", "date", "value", "source"),
+    "scheduled_transaction": (
+        "account_id",
+        "amount",
+        "payee_id",
+        "category_id",
+        "memo",
+        "frequency",
+        "start_date",
+        "end_date",
+        "second_day_of_month",
+        "auto_create",
+        "days_before_reminder",
+        "transfer_account_id",
+        "last_created_date",
+        "next_occurrence_date",
+    ),
+    # Child rows (groups/placements, selections) are hard-replaced on every
+    # save, so update records carry them as bookkeeping dumps — see
+    # `view_children_dump` and `filter_selection_dump`.
+    "budget_view": ("name", "sort_order", "hide_unassigned"),
+    "budget_filter": ("name", "sort_order"),
+    "tag": ("name", "system_key", "color_slot"),
+    # Bookkeeping-only records; empty so a stray snapshot() call is harmless.
+    "category_tags": (),
+    "payee_tags": (),
+    # Sync/reconcile bookkeeping (first_sync_complete, last_simplefin_sync_at,
+    # simplefin_balance, last_reconciled_*) is deliberately absent: those are
+    # not user edits, and undo must not roll them back as a side effect.
+    "account": (
+        "name",
+        "account_type_id",
+        "account_type",
+        "on_budget",
+        "classification",
+        "is_closed",
+        "sort_order",
+        "note",
+        "simplefin_account_id",
+        "simplefin_account_name",
+        "simplefin_sync_enabled",
+        "budget_start_date",
+    ),
+    "account_type": (
+        "key",
+        "label",
+        "classification",
+        "default_on_budget",
+        "description",
+        "is_system",
+        "sort_order",
+    ),
+    "reconciliation": (
+        "account_id",
+        "reconciled_at",
+        "statement_balance",
+        "cleared_balance",
+        "adjustment_amount",
+        "adjustment_transaction_id",
+        "note",
+    ),
+    "transaction_match": (
+        "synced_transaction_id",
+        "manual_transaction_id",
+        "confidence_score",
+        "status",
+    ),
+    # `payload` is the whole JSONB plan document — JSON-safe by construction.
+    "category_plan": ("name", "payload"),
+    "budget": (
+        "name",
+        "currency_code",
+        "number_format",
+        "date_format",
+        "time_format",
+        "import_reviewed_at",
+    ),
+    "guide_state": (),
+    "guide_binding": (),
+    "budget_member": ("role",),
+    # A rotate's update record carries only `_degrees` bookkeeping — its
+    # inverse is the complementary rotation, not a field restore.
+    "attachment": (
+        "transaction_id",
+        "filename",
+        "original_filename",
+        "content_type",
+        "file_size",
+        "width",
+        "height",
+        "storage_path",
+        "content_hash",
+    ),
 }
+
+
+def view_children_dump(groups: Any, placements: Any) -> dict[str, Any]:
+    """Bookkeeping dump of a view's groups and placements, canonically
+    ordered so two dumps compare with ==. Group ids ride along because
+    placements reference them; placement rows are identified by category
+    (their own ids churn on every save)."""
+    return {
+        "_groups": sorted(
+            ({"id": str(g.id), "name": g.name, "sort_order": g.sort_order} for g in groups),
+            key=lambda g: g["id"],
+        ),
+        "_placements": sorted(
+            (
+                {
+                    "category_id": str(p.category_id),
+                    "group_id": str(p.group_id) if p.group_id else None,
+                    "sort_order": p.sort_order,
+                    "is_hidden": p.is_hidden,
+                }
+                for p in placements
+            ),
+            key=lambda p: p["category_id"],
+        ),
+    }
+
+
+def filter_selection_dump(selections: Any) -> dict[str, Any]:
+    """Bookkeeping dump of a filter's category set, sorted for ==."""
+    return {"_category_ids": sorted(str(s.category_id) for s in selections)}
+
+
+def binding_rows_dump(rows: Any) -> list[dict[str, Any]]:
+    """Canonical dump of one Guide concept's binding rows, sorted for ==.
+    Ids are left out — replace_concept reissues them on every save."""
+    dumped = [
+        {
+            "mode": r.mode,
+            "entity_type": r.entity_type,
+            "entity_id": serialize_value(r.entity_id),
+            "answer": r.answer,
+            "amount": serialize_value(r.amount),
+            "as_of": serialize_value(r.as_of),
+            "note": r.note,
+        }
+        for r in rows
+    ]
+    return sorted(dumped, key=lambda d: tuple(str(d[k]) for k in sorted(d)))
 
 
 def source_for(created_via: str | None) -> str:
@@ -238,6 +468,14 @@ class ChangeRecorder:
         finally:
             if owner:
                 self._batch_id = None
+
+    @property
+    def current_batch_id(self) -> uuid.UUID | None:
+        """The open batch, for handing to ANOTHER service's recorder so a
+        compound operation that crosses services still undoes as one unit
+        (batch_id is just a column — it does not care which recorder wrote
+        the row). None outside a batch, which `record` treats as unbatched."""
+        return self._batch_id
 
     async def record(
         self,

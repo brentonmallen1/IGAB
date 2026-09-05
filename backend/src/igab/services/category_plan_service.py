@@ -43,6 +43,7 @@ from igab.domain.money import quantize_cents
 from igab.repositories.category_plan_repo import CategoryPlanRepository
 from igab.repositories.category_repo import CategoryGroupRepository, CategoryRepository
 from igab.repositories.target_repo import TargetRepository
+from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match
 from igab.services.target_service import TargetService
 
 #: Where apply files categories the budget does not have yet. A plain group —
@@ -73,6 +74,28 @@ class CategoryPlanService:
         self.categories = CategoryRepository(session)
         self.groups = CategoryGroupRepository(session)
         self.targets = TargetService(TargetRepository(session))
+        # Every mutation records (change_log.py). Plans are hard rows, and
+        # apply-targets creates covered entities (categories, a group) that
+        # every OTHER route records — bypassing the log here made the
+        # Activity feed lie by omission.
+        self.changes = ChangeRecorder(session)
+
+    async def _record(
+        self,
+        plan: CategoryPlan,
+        action: str,
+        *,
+        before: dict[str, Any] | None = None,
+        after: dict[str, Any] | None = None,
+    ) -> None:
+        await self.changes.record(
+            budget_id=plan.budget_id,
+            entity_type="category_plan",
+            entity_id=plan.id,
+            action=action,
+            before=before,
+            after=after,
+        )
 
     # ── CRUD ──────────────────────────────────────────────────────────────
 
@@ -97,15 +120,22 @@ class CategoryPlanService:
                 raise InvariantViolation(f"A plan named '{name}' already exists")
         else:
             name = await self._default_name(budget_id)
-        return await self.plans.create(
+        plan = await self.plans.create(
             budget_id=budget_id, name=name, payload=payload or _default_payload()
         )
+        await self._record(plan, "create", after=snapshot("category_plan", plan))
+        return plan
 
     async def update_payload(
         self, budget_id: uuid.UUID, plan_id: uuid.UUID, payload: dict[str, Any]
     ) -> CategoryPlan:
         plan = await self.get(budget_id, plan_id)
-        return await self.plans.update(plan.id, payload=payload)
+        before = snapshot("category_plan", plan)
+        plan = await self.plans.update(plan.id, payload=payload)
+        after = snapshot("category_plan", plan)
+        if snapshots_match(after, before):  # non-empty diff — something changed
+            await self._record(plan, "update", before=before, after=after)
+        return plan
 
     async def rename(self, budget_id: uuid.UUID, plan_id: uuid.UUID, name: str) -> CategoryPlan:
         plan = await self.get(budget_id, plan_id)
@@ -114,7 +144,12 @@ class CategoryPlanService:
             raise InvariantViolation("A plan needs a name")
         if name.lower() != plan.name.lower() and await self.plans.name_exists(budget_id, name):
             raise InvariantViolation(f"A plan named '{name}' already exists")
-        return await self.plans.update(plan.id, name=name)
+        before = snapshot("category_plan", plan)
+        plan = await self.plans.update(plan.id, name=name)
+        after = snapshot("category_plan", plan)
+        if snapshots_match(after, before):
+            await self._record(plan, "update", before=before, after=after)
+        return plan
 
     async def duplicate(
         self, budget_id: uuid.UUID, plan_id: uuid.UUID, name: str | None
@@ -131,12 +166,15 @@ class CategoryPlanService:
             name = await self._copy_name(budget_id, plan.name)
         # Ids are copied verbatim: they only need uniqueness within one plan,
         # and keeping them means a duplicated scenario diffs cleanly.
-        return await self.plans.create(
+        copied = await self.plans.create(
             budget_id=budget_id, name=name, payload=copy.deepcopy(plan.payload)
         )
+        await self._record(copied, "create", after=snapshot("category_plan", copied))
+        return copied
 
     async def delete(self, budget_id: uuid.UUID, plan_id: uuid.UUID) -> None:
         plan = await self.get(budget_id, plan_id)
+        await self._record(plan, "delete", before=snapshot("category_plan", plan))
         await self.plans.delete(plan)
 
     async def _require_room(self, budget_id: uuid.UUID) -> None:
@@ -176,36 +214,65 @@ class CategoryPlanService:
 
         # item id → (category id, canonical name), written back below
         links: dict[str, tuple[str, str]] = {}
-        for entry in entries:
-            kind = entry["kind"]
-            if kind == "create_category":
-                if planned_group is None:
-                    planned_group = await self._ensure_planned_group(budget_id)
-                category = await self.categories.create(
-                    budget_id=budget_id,
-                    category_group_id=planned_group.id,
-                    name=entry["name"],
-                )
-                entry["category_id"] = category.id
-                await self.targets.upsert(category.id, "monthly_funding", entry["amount"])
-            elif kind in ("set_target", "update_target"):
-                await self.targets.upsert(entry["category_id"], "monthly_funding", entry["amount"])
-            if entry["category_id"] is not None and kind not in (
-                "skip_invalid_link",
-                "skip_draft",
-            ):
-                # Adopted and created rows become linked; every resolved row
-                # refreshes its name snapshot to the category's canonical one.
-                for item_id in entry["item_ids"]:
-                    links[item_id] = (str(entry["category_id"]), entry["name"])
+        # One batch: everything apply conjures — the Planned group, the
+        # categories, their goals, and the plan's own link-back — undoes as
+        # one unit. Target records ride the same batch through their own
+        # recorder (batch_id is just a column).
+        with self.changes.batch() as batch_id:
+            plan_before = snapshot("category_plan", plan)
+            for entry in entries:
+                kind = entry["kind"]
+                if kind == "create_category":
+                    if planned_group is None:
+                        planned_group = await self._ensure_planned_group(budget_id)
+                        # _ensure only ever creates (adoption happened in
+                        # _classify), so this is always a fresh row.
+                        await self.changes.record(
+                            budget_id=budget_id,
+                            entity_type="category_group",
+                            entity_id=planned_group.id,
+                            action="create",
+                            after=snapshot("category_group", planned_group),
+                        )
+                    category = await self.categories.create(
+                        budget_id=budget_id,
+                        category_group_id=planned_group.id,
+                        name=entry["name"],
+                    )
+                    entry["category_id"] = category.id
+                    await self.changes.record(
+                        budget_id=budget_id,
+                        entity_type="category",
+                        entity_id=category.id,
+                        action="create",
+                        after=snapshot("category", category),
+                    )
+                    await self.targets.upsert(
+                        category.id, "monthly_funding", entry["amount"], batch_id=batch_id
+                    )
+                elif kind in ("set_target", "update_target"):
+                    await self.targets.upsert(
+                        entry["category_id"], "monthly_funding", entry["amount"], batch_id=batch_id
+                    )
+                if entry["category_id"] is not None and kind not in (
+                    "skip_invalid_link",
+                    "skip_draft",
+                ):
+                    # Adopted and created rows become linked; every resolved row
+                    # refreshes its name snapshot to the category's canonical one.
+                    for item_id in entry["item_ids"]:
+                        links[item_id] = (str(entry["category_id"]), entry["name"])
 
-        if links:
-            for paycheck in payload.get("paychecks", []):
-                for item in paycheck.get("items", []):
-                    linked = links.get(item.get("id"))
-                    if linked is not None:
-                        item["category_id"], item["name"] = linked
-            plan = await self.plans.update(plan.id, payload=payload)
+            if links:
+                for paycheck in payload.get("paychecks", []):
+                    for item in paycheck.get("items", []):
+                        linked = links.get(item.get("id"))
+                        if linked is not None:
+                            item["category_id"], item["name"] = linked
+                plan = await self.plans.update(plan.id, payload=payload)
+                plan_after = snapshot("category_plan", plan)
+                if snapshots_match(plan_after, plan_before):
+                    await self._record(plan, "update", before=plan_before, after=plan_after)
 
         report = self._report(entries)
         report["plan"] = plan

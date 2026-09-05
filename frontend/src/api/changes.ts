@@ -28,6 +28,26 @@ export interface Change {
     | 'wishlist_item'
     | 'wishlist_project'
     | 'wishlist'
+    | 'category_target'
+    | 'liability'
+    | 'liability_snapshot'
+    | 'asset'
+    | 'asset_value'
+    | 'scheduled_transaction'
+    | 'budget_view'
+    | 'budget_filter'
+    | 'tag'
+    | 'category_tags'
+    | 'payee_tags'
+    | 'account'
+    | 'account_type'
+    | 'reconciliation'
+    | 'transaction_match'
+    | 'category_plan'
+    | 'guide_state'
+    | 'guide_binding'
+    | 'budget_member'
+    | 'attachment'
   entity_id: string
   action:
     | 'create'
@@ -229,4 +249,46 @@ export function invalidateAfterUndo(
 
   // Wishlist: wishes, projects, and their reorders all live under one key.
   qc.invalidateQueries({ queryKey: [ROOT.wishlist, budgetId] })
+
+  // Targets — never in invalidateAfterCategoryChange, so listed here.
+  qc.invalidateQueries({ queryKey: [ROOT.target] })
+  qc.invalidateQueries({ queryKey: [ROOT.targets] })
+
+  // Debts and assets, including their balance/value histories.
+  qc.invalidateQueries({ queryKey: [ROOT.liabilities] })
+  qc.invalidateQueries({ queryKey: [ROOT.liabilityAmortization] })
+  qc.invalidateQueries({ queryKey: [ROOT.assets] })
+  qc.invalidateQueries({ queryKey: [ROOT.assetValues] })
+
+  // Tags and their memberships.
+  qc.invalidateQueries({ queryKey: [ROOT.tags] })
+  qc.invalidateQueries({ queryKey: [ROOT.tagSuggestions] })
+
+  // Accounts and their types (ROOT.accounts is budget-scoped above).
+  qc.invalidateQueries({ queryKey: [ROOT.accountTypes] })
+  qc.invalidateQueries({ queryKey: [ROOT.accountHygiene] })
+  qc.invalidateQueries({ queryKey: [ROOT.cardTimeline] })
+  qc.invalidateQueries({ queryKey: [ROOT.scheduledTransactions] })
+
+  // Reconciliation state and duplicate-match reviews.
+  qc.invalidateQueries({ queryKey: [ROOT.reconcileStatus] })
+  qc.invalidateQueries({ queryKey: [ROOT.reconcileHistory] })
+  qc.invalidateQueries({ queryKey: [ROOT.simplefinMatches] })
+  qc.invalidateQueries({ queryKey: [ROOT.pendingMatchesAccount] })
+
+  // Category planner documents.
+  qc.invalidateQueries({ queryKey: [ROOT.categoryPlans] })
+
+  // Guide state, budget settings, and membership.
+  qc.invalidateQueries({ queryKey: [ROOT.guide] })
+  qc.invalidateQueries({ queryKey: [ROOT.guideCandidates] })
+  qc.invalidateQueries({ queryKey: [ROOT.guideCheckup] })
+  qc.invalidateQueries({ queryKey: [ROOT.guideSignals] })
+  qc.invalidateQueries({ queryKey: [ROOT.budgets] })
+  qc.invalidateQueries({ queryKey: [ROOT.budgetMembers] })
+  qc.invalidateQueries({ queryKey: [ROOT.importSummary] })
+
+  // Receipts.
+  qc.invalidateQueries({ queryKey: [ROOT.attachments] })
+  qc.invalidateQueries({ queryKey: [ROOT.attachmentCheck] })
 }

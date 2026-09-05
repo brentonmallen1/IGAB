@@ -39,7 +39,7 @@ export function summarizeBatch(changes: Change[]): string {
   const entities = new Set(changes.map((c) => c.entity_type))
   const n = changes.length
   if (actions.size === 1 && entities.size === 1) {
-    const entity = entityTypeLabel(changes[0].entity_type)
+    const entity = entityTypeLabel(changes[0].entity_type, changes[0].action)
     // entityTypeLabel returns 'category groups' already plural for the one
     // case where the entity is the budget itself.
     const plural = n === 1 || entity.endsWith('s') ? entity : `${entity}s`

@@ -51,6 +51,7 @@ from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.account_type_service import ensure_account_types_seeded
 from igab.services.budget_provisioning import grant_owner, unique_budget_name
 from igab.services.budget_service import BudgetService
+from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match
 from igab.services.transaction_service import TransactionService
 
 router = APIRouter(route_class=CommitRoute)
@@ -471,6 +472,7 @@ async def update_budget(
     budget = await session.get(Budget, budget_id)
     if budget is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Budget not found")
+    before = snapshot("budget", budget)
     if body.name:
         budget.name = body.name
     if body.currency_code:
@@ -482,6 +484,18 @@ async def update_budget(
     if body.time_format:
         budget.time_format = body.time_format
     await session.flush()
+    after = snapshot("budget", budget)
+    if snapshots_match(after, before):  # non-empty diff — something changed
+        recorder = ChangeRecorder(session)
+        recorder.actor_user_id = current_user.id
+        await recorder.record(
+            budget_id=budget_id,
+            entity_type="budget",
+            entity_id=budget_id,
+            action="update",
+            before=before,
+            after=after,
+        )
     return BudgetResponse.model_validate(budget)
 
 
@@ -495,6 +509,9 @@ async def delete_budget(
     budget = await session.get(Budget, budget_id)
     if budget is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Budget not found")
+    # Deliberately NOT recorded (change_log.py's exclusion list): the change
+    # log lives inside the budget and cascades away with this delete — a
+    # record of it could only ever be destroyed by the thing it records.
     await session.delete(budget)
     await session.flush()
 

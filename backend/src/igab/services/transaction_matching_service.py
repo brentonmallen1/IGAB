@@ -20,6 +20,7 @@ from igab.domain.matching import DATE_WINDOW_DAYS, date_proximity, payee_similar
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.transaction_match_repo import TransactionMatchRepository
 from igab.repositories.transaction_repo import TransactionRepository
+from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match
 
 if TYPE_CHECKING:
     from igab.services.transaction_service import TransactionService
@@ -94,6 +95,11 @@ class TransactionMatchingService:
         self.match_repo = match_repo
         self.payee_repo = payee_repo
         self.txn_service = txn_service
+        # Match decisions record (change_log.py): accept merges — the merge
+        # itself already recorded, but the pair's dismissal did not — and
+        # reject permanently dismisses a duplicate pair. Both are a person
+        # deciding. Scan-created match rows stay unrecorded: proposals.
+        self.changes = ChangeRecorder(session)
 
     async def try_match(self, synced_txn: Transaction) -> None:
         """Attempt to find and link a manually entered transaction to a synced one."""
@@ -187,14 +193,47 @@ class TransactionMatchingService:
                 select(Transaction).where(Transaction.id == match.manual_transaction_id)
             )
         ).scalar_one_or_none()
-        if synced is None or manual is None or synced.is_deleted or manual.is_deleted:
-            await self.match_repo.update_status(match_id, "rejected")
-            return
-        await self._accept_link(synced, manual, float(match.confidence_score))
-        await self.match_repo.update_status(match_id, "accepted")
+        before = snapshot("transaction_match", match)
+        # One batch across both recorders: undoing the accept restores the
+        # merged pair AND puts the match back to pending for re-decision.
+        with self.txn_service.changes.batch() as batch_id:
+            if synced is None or manual is None or synced.is_deleted or manual.is_deleted:
+                await self.match_repo.update_status(match_id, "rejected")
+            else:
+                await self._accept_link(synced, manual, float(match.confidence_score))
+                await self.match_repo.update_status(match_id, "accepted")
+            await self._record_match_decision(match, before, batch_id=batch_id)
 
     async def reject_match(self, match_id: uuid.UUID) -> None:
+        match = await self.match_repo.get(match_id)
+        if match is None:
+            return
+        before = snapshot("transaction_match", match)
         await self.match_repo.update_status(match_id, "rejected")
+        await self._record_match_decision(match, before)
+
+    async def _record_match_decision(
+        self, match, before: dict, batch_id: uuid.UUID | None = None
+    ) -> None:
+        refreshed = await self.match_repo.get(match.id)
+        if refreshed is None:
+            return
+        after = snapshot("transaction_match", refreshed)
+        if not snapshots_match(after, before):  # no-op decisions record nothing
+            return
+        # The match row carries no budget; file under the synced side's.
+        txn = await self.session.get(Transaction, match.synced_transaction_id)
+        if txn is None:
+            return
+        await self.changes.record(
+            budget_id=txn.budget_id,
+            entity_type="transaction_match",
+            entity_id=match.id,
+            action="update",
+            before=before,
+            after=after,
+            batch_id=batch_id,
+        )
 
     async def scan_for_duplicates(self, account_id: uuid.UUID) -> int:
         """Scan account transactions for potential duplicates.

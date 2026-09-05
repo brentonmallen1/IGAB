@@ -44,6 +44,9 @@ async def list_users(
     return [_to_item(u) for u in result.scalars().all()]
 
 
+# User CRUD is deliberately absent from the change log (see change_log.py's
+# exclusion list): accounts are server administration with no budget to file
+# under, and change_log.budget_id is NOT NULL by design.
 @router.post("/users", response_model=UserListItem, status_code=status.HTTP_201_CREATED)
 async def create_user(
     body: UserCreateRequest,

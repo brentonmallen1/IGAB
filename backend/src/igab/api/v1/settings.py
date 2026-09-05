@@ -103,6 +103,9 @@ async def get_settings(
 # Writes are admin-gated: app_settings is a household-global singleton
 # (AI config, backup schedule) — a member mis-tap must not reconfigure the
 # server. Reads stay open: every client needs the values.
+# Settings writes are deliberately absent from the change log (see
+# change_log.py's exclusion list): app settings are household-global with no
+# budget to file under, and change_log.budget_id is NOT NULL by design.
 @router.put("/settings/{key}", response_model=SettingResponse)
 async def update_setting(
     key: str,

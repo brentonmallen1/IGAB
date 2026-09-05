@@ -346,7 +346,7 @@ function ChangeCard({
   onRedo,
 }: ChangeCardProps) {
   const icon = actionIcon(change.action)
-  const entityLabel = entityTypeLabel(change.entity_type)
+  const entityLabel = entityTypeLabel(change.entity_type, change.action)
   const actionLabel = actionTypeLabel(change.action)
   const isUndone = !!change.undone_at
 
@@ -426,13 +426,15 @@ function actionIcon(action: string) {
   }
 }
 
-function summarizeAfter(change: Change): string {
-  const after = change.after
-  if (!after) return ''
+/** One summarizer for both sides — a create reads `after`, a delete reads
+ *  `before`, and the text for a given entity must be the same either way
+ *  (these were two drifting copies: only one of them knew assignments). */
+function summarizeSnapshot(change: Change, snap: Record<string, unknown> | null): string {
+  if (!snap) return ''
 
-  if (change.entity_type === 'transaction') {
-    const amount = after.amount as string | undefined
-    const memo = after.memo as string | undefined
+  if (change.entity_type === 'transaction' || change.entity_type === 'scheduled_transaction') {
+    const amount = snap.amount as string | undefined
+    const memo = snap.memo as string | undefined
     if (amount) {
       const amtNum = parseApiDecimal(amount)
       const formatted = Math.abs(amtNum).toFixed(2)
@@ -440,55 +442,46 @@ function summarizeAfter(change: Change): string {
     }
   }
 
-  if (change.entity_type === 'payee') {
-    return (after.name as string) ?? ''
-  }
-
-  if (change.entity_type === 'category') {
-    return (after.name as string) ?? ''
-  }
-
   if (change.entity_type === 'assignment') {
-    const assigned = after.assigned as string | undefined
+    const assigned = snap.assigned as string | undefined
     if (assigned) {
       return `Assigned $${parseApiDecimal(assigned).toFixed(2)}`
     }
   }
 
-  if (change.entity_type === 'wishlist_item' || change.entity_type === 'wishlist_project') {
-    return (after.name as string) ?? ''
-  }
-
-  return ''
-}
-
-function summarizeBefore(change: Change): string {
-  const before = change.before
-  if (!before) return ''
-
-  if (change.entity_type === 'transaction') {
-    const amount = before.amount as string | undefined
-    const memo = before.memo as string | undefined
+  if (change.entity_type === 'category_target') {
+    const amount = snap.target_amount as string | undefined
     if (amount) {
-      const amtNum = parseApiDecimal(amount)
-      const formatted = Math.abs(amtNum).toFixed(2)
-      return `${amtNum < 0 ? '-' : '+'}$${formatted}${memo ? ` – ${memo}` : ''}`
+      return `Goal $${parseApiDecimal(amount).toFixed(2)}`
     }
   }
 
-  if (change.entity_type === 'payee') {
-    return (before.name as string) ?? ''
+  // Dated balance/value points: the figure and the day it was stated for.
+  if (change.entity_type === 'liability_snapshot' || change.entity_type === 'asset_value') {
+    const figure = (snap.balance ?? snap.value) as string | undefined
+    if (figure) {
+      return `$${parseApiDecimal(figure).toFixed(2)} on ${snap.date as string}`
+    }
   }
 
-  if (change.entity_type === 'category') {
-    return (before.name as string) ?? ''
+  if (change.entity_type === 'reconciliation') {
+    const statement = snap.statement_balance as string | undefined
+    if (statement) {
+      return `Statement $${parseApiDecimal(statement).toFixed(2)}`
+    }
   }
 
-  if (change.entity_type === 'wishlist_item' || change.entity_type === 'wishlist_project') {
-    return (before.name as string) ?? ''
-  }
+  // Everything else that carries a name (or an account type's label) is
+  // summarized by it.
+  return ((snap.name ?? snap.label) as string) ?? ''
+}
 
-  return ''
+function summarizeAfter(change: Change): string {
+  return summarizeSnapshot(change, change.after)
+}
+
+function summarizeBefore(change: Change): string {
+  return summarizeSnapshot(change, change.before)
 }
 
 function summarizeUpdate(change: Change): string {

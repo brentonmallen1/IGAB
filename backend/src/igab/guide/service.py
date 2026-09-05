@@ -36,7 +36,7 @@ from igab.guide.detection import (
     liability_service_from,
 )
 from igab.guide.findings import CheckupInputs, evaluate, metrics
-from igab.guide.repo import GuideRepository
+from igab.guide.repo import GuideRepository, set_state_recorded
 from igab.guide.scenarios import (
     EmergencyFundPlan,
     LoanCandidate,
@@ -53,6 +53,7 @@ from igab.repositories.target_repo import TargetRepository
 from igab.services.amortization import CascadeDebt
 from igab.services.budget_service import BudgetService
 from igab.services.category_service import CategoryArchivePreview
+from igab.services.change_log import ChangeRecorder, binding_rows_dump
 from igab.services.liability_service import LiabilityService
 from igab.services.report_service import ReportService
 from igab.services.target_service import TargetService
@@ -89,6 +90,11 @@ class GuideService:
         self.reports = report_service or ReportService(session)
         self.categories = category_service_from(session, self.budget)
         self.detection = GuideDetection(session, self.budget, self.liabilities)
+        # Preferences, progress steps and concept answers record
+        # (change_log.py) — each is a user decision, so each undoes. The
+        # checkup's last-run stamp does NOT: it is the timestamp of the run
+        # itself, and undoing it would falsify history.
+        self.changes = ChangeRecorder(session)
 
     # ── preferences ──────────────────────────────────────────────────────────
 
@@ -146,7 +152,7 @@ class GuideService:
                 group = await groups.get_by_system_key(budget_id, "wishlist")
                 if group is not None and not group.is_archived:
                     await self._retire_wishlist(budget_id, group.id, release_wishlist_money)
-        await self.repo.set_state(budget_id, PREFS_KEY, merged)
+        await set_state_recorded(self.repo, self.changes, budget_id, PREFS_KEY, merged)
         return merged
 
     async def _retire_wishlist(
@@ -185,10 +191,8 @@ class GuideService:
 
     async def set_step(self, budget_id: uuid.UUID, stage_id: str, state: str | None) -> None:
         key = f"{STEP_PREFIX}{stage_id}"
-        if state is None:
-            await self.repo.delete_state(budget_id, key)
-        else:
-            await self.repo.set_state(budget_id, key, {"state": state})
+        value = None if state is None else {"state": state}
+        await set_state_recorded(self.repo, self.changes, budget_id, key, value)
 
     # ── signals ──────────────────────────────────────────────────────────────
 
@@ -547,7 +551,7 @@ class GuideService:
         external_amount: Decimal | None = None,
     ) -> None:
         if mode == "auto":
-            await self.repo.clear_concept(budget_id, concept_key)
+            await self._replace_concept_recorded(budget_id, concept_key, [])
             return
 
         rows: list[dict[str, Any]] = []
@@ -574,10 +578,32 @@ class GuideService:
                     }
                 )
 
-        if not rows:
+        await self._replace_concept_recorded(budget_id, concept_key, rows)
+
+    async def _replace_concept_recorded(
+        self, budget_id: uuid.UUID, concept_key: str, rows: list[dict[str, Any]]
+    ) -> None:
+        """Swap one concept's binding rows and record the move — the one
+        spelling behind every set_binding branch (clear included). Recorded as
+        the `guide_binding` pseudo-subject with canonical `_rows` dumps; a
+        save that lands identical rows records nothing."""
+        existing = [b for b in await self.repo.bindings(budget_id) if b.concept_key == concept_key]
+        before = binding_rows_dump(existing)
+        if rows:
+            created = await self.repo.replace_concept(budget_id, concept_key, rows)
+            after = binding_rows_dump(created)
+        else:
             await self.repo.clear_concept(budget_id, concept_key)
-            return
-        await self.repo.replace_concept(budget_id, concept_key, rows)
+            after = []
+        if before != after:
+            await self.changes.record(
+                budget_id=budget_id,
+                entity_type="guide_binding",
+                entity_id=budget_id,
+                action="update",
+                before={"_concept_key": concept_key, "_rows": before},
+                after={"_concept_key": concept_key, "_rows": after},
+            )
 
     # ── concept catalogue ────────────────────────────────────────────────────
 

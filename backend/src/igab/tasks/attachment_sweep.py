@@ -48,7 +48,7 @@ async def sweep_deleted_transaction_attachments(session: AsyncSession) -> int:
     service = AttachmentService(AttachmentRepository(session))
     for attachment, txn in result.all():
         try:
-            await service.delete(attachment, txn)
+            await service.purge(attachment, txn)
             swept += 1
         except OSError:
             logger.exception(
@@ -57,6 +57,39 @@ async def sweep_deleted_transaction_attachments(session: AsyncSession) -> int:
     await session.commit()
     if swept:
         logger.info("attachment_sweep: removed %d attachment(s) of deleted transactions", swept)
+    return swept
+
+
+async def sweep_soft_deleted_attachments(session: AsyncSession) -> int:
+    """Purge files + rows for attachments the user deleted more than
+    DELETED_TXN_GRACE_DAYS ago (same grace as the transaction pass: within
+    it, ⌘Z restores the row and the bytes are still there; past it, undo of
+    the delete meets an honest "no longer exists")."""
+    from igab.repositories.attachment_repo import AttachmentRepository
+    from igab.services.attachment_service import AttachmentService
+
+    cutoff = datetime.now(UTC) - timedelta(days=DELETED_TXN_GRACE_DAYS)
+    swept = 0
+    result = await session.execute(
+        select(TransactionAttachment, Transaction)
+        .join(Transaction, TransactionAttachment.transaction_id == Transaction.id)
+        .where(
+            TransactionAttachment.is_deleted == True,  # noqa: E712
+            TransactionAttachment.deleted_at < cutoff,
+        )
+    )
+    service = AttachmentService(AttachmentRepository(session))
+    for attachment, txn in result.all():
+        try:
+            await service.purge(attachment, txn)
+            swept += 1
+        except OSError:
+            logger.exception(
+                "attachment_sweep: could not purge files for attachment %s", attachment.id
+            )
+    await session.commit()
+    if swept:
+        logger.info("attachment_sweep: purged %d soft-deleted attachment(s)", swept)
     return swept
 
 
@@ -113,4 +146,5 @@ async def sweep_attachments() -> None:
 
     async with AsyncSessionLocal() as session:
         await sweep_deleted_transaction_attachments(session)
+        await sweep_soft_deleted_attachments(session)
         await sweep_orphaned_attachment_files(session)
