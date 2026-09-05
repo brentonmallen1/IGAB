@@ -37,10 +37,13 @@ from igab.db.models import (
     Liability,
     Payee,
     ScheduledTransaction,
+    Tag,
     Transaction,
     TransactionAttachment,
     WishlistItem,
     WishlistProject,
+    category_tags,
+    payee_tags,
 )
 from igab.domain.enums import ClearedStatus
 from igab.domain.exceptions import NotFoundError, UndoConflict
@@ -284,6 +287,8 @@ class UndoService:
             if not getattr(entity, "is_deleted", False):
                 raise UndoConflict("The item is already present")
             entity.is_deleted = False
+        elif change.action == "update" and change.entity_type in ("category_tags", "payee_tags"):
+            await self._restore_tag_membership(change, target="after", force=force)
         elif change.action in ("update", "approve"):
             skip = self._reconciled_skip(entity, change, "redo")
             if not force and change.before is not None:
@@ -301,40 +306,53 @@ class UndoService:
                 await self._restore_view_children(change, target="after", force=force)
             elif change.entity_type == "budget_filter":
                 await self._restore_filter_selections(change, target="after", force=force)
-        elif change.action == "delete" and change.entity_type == "category":
-            # The undo rebuilt categories, assignments, placements and
-            # re-filed rows across five steps; replaying the delete would
-            # need the delete service, not a snapshot write. Refuse by name
-            # rather than half-apply.
-            raise UndoConflict("Redo of a category delete is not supported — delete it again")
-        elif change.action == "delete" and change.entity_type in HARD_ROW_NATURAL_KEY:
-            # Replaying a hard delete removes the row the undo re-inserted.
-            await self.session.delete(entity)
         elif change.action == "delete":
-            if getattr(entity, "is_deleted", False):
-                raise UndoConflict("The item is already deleted")
-            entity.is_deleted = True
-            if change.entity_type == "wishlist_project":
-                # Replaying the delete re-orphans its wishes, exactly as the
-                # original did.
-                rows = await self.session.execute(
-                    select(WishlistItem).where(WishlistItem.project_id == change.entity_id)
-                )
-                for wish in rows.scalars():
-                    wish.project_id = None
-            elif change.entity_type == "asset":
-                # Replaying the retire unlinks its secured liabilities again.
-                await self.session.execute(
-                    update(Liability)
-                    .where(Liability.linked_asset_id == change.entity_id)
-                    .values(linked_asset_id=None)
-                )
+            await self._reapply_delete(change, entity)
         elif change.action == "reorder":
             await self._apply_order(change, force, target="after")
         elif change.action in ("archive", "unarchive"):
             await self._apply_archive(change, target="after")
         else:
             raise UndoConflict(f"Changes of type '{change.action}' cannot be redone")
+
+    async def _reapply_delete(self, change: ChangeLog, entity: Any) -> None:
+        """Replay a delete the undo reversed, side effects included."""
+        if change.entity_type == "category":
+            # The undo rebuilt categories, assignments, placements and
+            # re-filed rows across five steps; replaying the delete would
+            # need the delete service, not a snapshot write. Refuse by name
+            # rather than half-apply.
+            raise UndoConflict("Redo of a category delete is not supported — delete it again")
+        if change.entity_type in HARD_ROW_NATURAL_KEY:
+            # Replaying a hard delete removes the row the undo re-inserted.
+            await self.session.delete(entity)
+            return
+        if getattr(entity, "is_deleted", False):
+            raise UndoConflict("The item is already deleted")
+        entity.is_deleted = True
+        if change.entity_type == "wishlist_project":
+            # Replaying the delete re-orphans its wishes, exactly as the
+            # original did.
+            rows = await self.session.execute(
+                select(WishlistItem).where(WishlistItem.project_id == change.entity_id)
+            )
+            for wish in rows.scalars():
+                wish.project_id = None
+        elif change.entity_type == "asset":
+            # Replaying the retire unlinks its secured liabilities again.
+            await self.session.execute(
+                update(Liability)
+                .where(Liability.linked_asset_id == change.entity_id)
+                .values(linked_asset_id=None)
+            )
+        elif change.entity_type == "tag":
+            # Replaying the delete strips its memberships again.
+            await self.session.execute(
+                delete(category_tags).where(category_tags.c.tag_id == change.entity_id)
+            )
+            await self.session.execute(
+                delete(payee_tags).where(payee_tags.c.tag_id == change.entity_id)
+            )
 
     async def _remember_move(self, change: ChangeLog) -> None:
         """Redo of a move's row puts the audit row back, under its original id,
@@ -392,6 +410,10 @@ class UndoService:
 
         if change.action in ("create", "import"):
             await self._undo_create(change, entity, force)
+        elif change.action == "update" and change.entity_type in ("category_tags", "payee_tags"):
+            # Bookkeeping-only record: no fields to restore, so the generic
+            # update path (whose staleness check reads fields) is skipped.
+            await self._restore_tag_membership(change, target="before", force=force)
         elif change.action in ("update", "approve"):
             self._undo_update(change, entity, force)
             if change.entity_type == "assignment":
@@ -406,6 +428,8 @@ class UndoService:
             await self._undo_wishlist_project_delete(change, entity)
         elif change.action == "delete" and change.entity_type == "asset":
             await self._undo_asset_delete(change, entity)
+        elif change.action == "delete" and change.entity_type == "tag":
+            await self._undo_tag_delete(change, entity)
         elif change.action == "delete" and change.entity_type in ("budget_view", "budget_filter"):
             await self._undo_named_delete(change, entity)
         elif change.action == "delete":
@@ -661,6 +685,76 @@ class UndoService:
         for wish in rows.scalars():
             if wish.project_id is None and not wish.is_deleted:
                 wish.project_id = change.entity_id
+
+    async def _undo_tag_delete(self, change: ChangeLog, entity) -> None:
+        """Bring a tag back with the memberships its delete stripped —
+        `_category_ids`/`_payee_ids` name exactly the rows that were cut.
+        Owners deleted since are skipped; a membership re-added by hand in
+        the meantime is left alone (the insert is existence-checked)."""
+        await self._undo_named_delete(change, entity)
+        before = change.before or {}
+        for key, assoc, owner_model, owner_col in (
+            ("_category_ids", category_tags, Category, "category_id"),
+            ("_payee_ids", payee_tags, Payee, "payee_id"),
+        ):
+            for raw in before.get(key) or []:
+                owner_id = uuid.UUID(raw)
+                owner = await self.session.get(owner_model, owner_id)
+                if owner is None or getattr(owner, "is_deleted", False):
+                    continue
+                held = (
+                    await self.session.execute(
+                        select(assoc).where(
+                            assoc.c[owner_col] == owner_id,
+                            assoc.c.tag_id == change.entity_id,
+                        )
+                    )
+                ).first()
+                if held is None:
+                    await self.session.execute(
+                        assoc.insert().values(**{owner_col: owner_id, "tag_id": change.entity_id})
+                    )
+        await self.session.flush()
+
+    async def _restore_tag_membership(self, change: ChangeLog, *, target: str, force: bool) -> None:
+        """Put one category's or payee's tag set back the way the record says.
+
+        The membership rows are hard-replaced by every set, so the record is
+        a `_tag_ids` dump per side and staleness is checked here against the
+        step's own expected side. Tags deleted since are skipped."""
+        assoc = category_tags if change.entity_type == "category_tags" else payee_tags
+        owner_col = "category_id" if change.entity_type == "category_tags" else "payee_id"
+        current = sorted(
+            str(t)
+            for t in (
+                await self.session.execute(
+                    select(assoc.c.tag_id).where(assoc.c[owner_col] == change.entity_id)
+                )
+            ).scalars()
+        )
+        expected_side = getattr(change, "after" if target == "before" else "before") or {}
+        if not force and current != (expected_side.get("_tag_ids") or []):
+            raise UndoConflict("The tags have changed since this change")
+        wanted = [uuid.UUID(t) for t in (getattr(change, target) or {}).get("_tag_ids") or []]
+        alive: set[uuid.UUID] = set()
+        if wanted:
+            alive = set(
+                (
+                    await self.session.execute(
+                        select(Tag.id).where(
+                            Tag.id.in_(wanted),
+                            Tag.is_deleted == False,  # noqa: E712
+                        )
+                    )
+                ).scalars()
+            )
+        await self.session.execute(delete(assoc).where(assoc.c[owner_col] == change.entity_id))
+        for tag_id in wanted:
+            if tag_id in alive:
+                await self.session.execute(
+                    assoc.insert().values(**{owner_col: change.entity_id, "tag_id": tag_id})
+                )
+        await self.session.flush()
 
     async def _undo_named_delete(self, change: ChangeLog, entity) -> None:
         """Restore a soft-deleted row whose name is unique among LIVE rows

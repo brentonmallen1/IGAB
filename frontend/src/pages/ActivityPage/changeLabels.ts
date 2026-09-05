@@ -38,6 +38,14 @@ export function entityTypeLabel(entityType: string): string {
       return 'view'
     case 'budget_filter':
       return 'filter'
+    case 'tag':
+      return 'tag'
+    case 'category_tags':
+      // Membership pseudo-subjects: the entity is the category/payee whose
+      // tag set moved.
+      return 'category tags'
+    case 'payee_tags':
+      return 'payee tags'
     default:
       return entityType
   }

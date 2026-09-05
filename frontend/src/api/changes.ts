@@ -36,6 +36,9 @@ export interface Change {
     | 'scheduled_transaction'
     | 'budget_view'
     | 'budget_filter'
+    | 'tag'
+    | 'category_tags'
+    | 'payee_tags'
   entity_id: string
   action:
     | 'create'
@@ -247,4 +250,8 @@ export function invalidateAfterUndo(
   qc.invalidateQueries({ queryKey: [ROOT.liabilityAmortization] })
   qc.invalidateQueries({ queryKey: [ROOT.assets] })
   qc.invalidateQueries({ queryKey: [ROOT.assetValues] })
+
+  // Tags and their memberships.
+  qc.invalidateQueries({ queryKey: [ROOT.tags] })
+  qc.invalidateQueries({ queryKey: [ROOT.tagSuggestions] })
 }

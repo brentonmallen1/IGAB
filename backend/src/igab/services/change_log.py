@@ -44,6 +44,7 @@ from igab.db.models import (
     LiabilityBalanceSnapshot,
     Payee,
     ScheduledTransaction,
+    Tag,
     Transaction,
     WishlistItem,
     WishlistProject,
@@ -76,6 +77,11 @@ ENTITY_MODELS: dict[str, type] = {
     "scheduled_transaction": ScheduledTransaction,
     "budget_view": BudgetView,
     "budget_filter": BudgetFilter,
+    "tag": Tag,
+    # Membership pseudo-subjects: the entity is the category/payee whose tag
+    # set moved; the record carries only a `_tag_ids` bookkeeping dump.
+    "category_tags": Category,
+    "payee_tags": Payee,
 }
 
 # Restorable fields per entity. is_deleted is excluded on purpose — the
@@ -207,6 +213,10 @@ SNAPSHOT_FIELDS: dict[str, tuple[str, ...]] = {
     # `view_children_dump` and `filter_selection_dump`.
     "budget_view": ("name", "sort_order", "hide_unassigned"),
     "budget_filter": ("name", "sort_order"),
+    "tag": ("name", "system_key", "color_slot"),
+    # Bookkeeping-only records; empty so a stray snapshot() call is harmless.
+    "category_tags": (),
+    "payee_tags": (),
 }
 
 
