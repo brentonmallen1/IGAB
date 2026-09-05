@@ -34,6 +34,8 @@ export interface Change {
     | 'asset'
     | 'asset_value'
     | 'scheduled_transaction'
+    | 'budget_view'
+    | 'budget_filter'
   entity_id: string
   action:
     | 'create'

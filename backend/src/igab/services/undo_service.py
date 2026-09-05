@@ -29,6 +29,7 @@ from igab.db.models import (
     BudgetAssignment,
     BudgetFilterCategory,
     BudgetMove,
+    BudgetViewGroup,
     BudgetViewPlacement,
     Category,
     CategoryGroup,
@@ -47,7 +48,14 @@ from igab.domain.ordering import renumber
 from igab.domain.reconciliation import RECONCILED_LOCKED_FIELDS, locked_changes
 from igab.repositories.category_repo import CategoryGroupRepository, CategoryRepository
 from igab.repositories.change_log_repo import ChangeLogRepository
-from igab.services.change_log import ENTITY_MODELS, coerce_value, snapshot, snapshots_match
+from igab.services.change_log import (
+    ENTITY_MODELS,
+    coerce_value,
+    filter_selection_dump,
+    snapshot,
+    snapshots_match,
+    view_children_dump,
+)
 
 
 def _opt_uuid(value: object) -> uuid.UUID | None:
@@ -289,6 +297,10 @@ class UndoService:
                 setattr(entity, field, coerce_value(model, field, value))
             if change.entity_type == "assignment":
                 await self._remember_move(change)
+            elif change.entity_type == "budget_view":
+                await self._restore_view_children(change, target="after", force=force)
+            elif change.entity_type == "budget_filter":
+                await self._restore_filter_selections(change, target="after", force=force)
         elif change.action == "delete" and change.entity_type == "category":
             # The undo rebuilt categories, assignments, placements and
             # re-filed rows across five steps; replaying the delete would
@@ -384,12 +396,18 @@ class UndoService:
             self._undo_update(change, entity, force)
             if change.entity_type == "assignment":
                 await self._forget_move(change)
+            elif change.entity_type == "budget_view":
+                await self._restore_view_children(change, target="before", force=force)
+            elif change.entity_type == "budget_filter":
+                await self._restore_filter_selections(change, target="before", force=force)
         elif change.action == "delete" and change.entity_type == "category":
             await self._undo_category_delete(change, entity)
         elif change.action == "delete" and change.entity_type == "wishlist_project":
             await self._undo_wishlist_project_delete(change, entity)
         elif change.action == "delete" and change.entity_type == "asset":
             await self._undo_asset_delete(change, entity)
+        elif change.action == "delete" and change.entity_type in ("budget_view", "budget_filter"):
+            await self._undo_named_delete(change, entity)
         elif change.action == "delete":
             await self._undo_delete(change, entity)
         elif change.action == "merge":
@@ -643,6 +661,146 @@ class UndoService:
         for wish in rows.scalars():
             if wish.project_id is None and not wish.is_deleted:
                 wish.project_id = change.entity_id
+
+    async def _undo_named_delete(self, change: ChangeLog, entity) -> None:
+        """Restore a soft-deleted row whose name is unique among LIVE rows
+        (a partial index): a reused name since the delete surfaces as this
+        conflict, never as an IntegrityError."""
+        model: Any = ENTITY_MODELS[change.entity_type]
+        name = (change.before or {}).get("name") or getattr(entity, "name", None)
+        clash = (
+            (
+                await self.session.execute(
+                    select(model).where(
+                        model.budget_id == change.budget_id,
+                        model.name == name,
+                        model.is_deleted == False,  # noqa: E712
+                        model.id != change.entity_id,
+                    )
+                )
+            )
+            .scalars()
+            .first()
+        )
+        if clash is not None:
+            raise UndoConflict(
+                f'Something named "{name}" already exists — rename or remove it first'
+            )
+        await self._undo_delete(change, entity)
+
+    async def _restore_view_children(self, change: ChangeLog, *, target: str, force: bool) -> None:
+        """Put a view's groups and placements back the way the record says.
+
+        The scalar fields went through the generic update path; the children
+        are hard-replaced rows, recorded as canonical dumps (invisible to
+        `snapshots_match`), so staleness is checked here: the children must
+        still stand as this step left them, unless `force`. Placements whose
+        category has been deleted since are skipped — the reorder rule.
+        Groups keep their recorded ids, because placements reference them.
+        """
+        payload = getattr(change, target) or {}
+        if "_groups" not in payload and "_placements" not in payload:
+            return
+        expected = getattr(change, "after" if target == "before" else "before") or {}
+        groups = list(
+            (
+                await self.session.execute(
+                    select(BudgetViewGroup).where(BudgetViewGroup.view_id == change.entity_id)
+                )
+            ).scalars()
+        )
+        placements = list(
+            (
+                await self.session.execute(
+                    select(BudgetViewPlacement).where(
+                        BudgetViewPlacement.view_id == change.entity_id
+                    )
+                )
+            ).scalars()
+        )
+        current = view_children_dump(groups, placements)
+        recorded = {k: expected.get(k) for k in ("_groups", "_placements")}
+        if not force and current != recorded:
+            raise UndoConflict("The view has been rearranged since this change")
+        for row in placements:
+            await self.session.delete(row)
+        for row in groups:
+            await self.session.delete(row)
+        await self.session.flush()
+        wanted_groups = payload.get("_groups") or []
+        for g in wanted_groups:
+            self.session.add(
+                BudgetViewGroup(
+                    id=uuid.UUID(g["id"]),
+                    view_id=change.entity_id,
+                    name=g["name"],
+                    sort_order=int(g["sort_order"]),
+                )
+            )
+        await self.session.flush()
+        group_ids = {g["id"] for g in wanted_groups}
+        wanted_placements = payload.get("_placements") or []
+        cat_ids = [uuid.UUID(p["category_id"]) for p in wanted_placements]
+        alive: set[uuid.UUID] = set()
+        if cat_ids:
+            alive = set(
+                (
+                    await self.session.execute(select(Category.id).where(Category.id.in_(cat_ids)))
+                ).scalars()
+            )
+        for p in wanted_placements:
+            cat_id = uuid.UUID(p["category_id"])
+            if cat_id not in alive:
+                continue
+            self.session.add(
+                BudgetViewPlacement(
+                    view_id=change.entity_id,
+                    category_id=cat_id,
+                    group_id=uuid.UUID(p["group_id"]) if p.get("group_id") in group_ids else None,
+                    sort_order=int(p["sort_order"]),
+                    is_hidden=bool(p["is_hidden"]),
+                )
+            )
+        await self.session.flush()
+
+    async def _restore_filter_selections(
+        self, change: ChangeLog, *, target: str, force: bool
+    ) -> None:
+        """The filter analogue of `_restore_view_children`, for its one child
+        set: the selected categories."""
+        payload = getattr(change, target) or {}
+        if "_category_ids" not in payload:
+            return
+        expected = getattr(change, "after" if target == "before" else "before") or {}
+        rows = list(
+            (
+                await self.session.execute(
+                    select(BudgetFilterCategory).where(
+                        BudgetFilterCategory.filter_id == change.entity_id
+                    )
+                )
+            ).scalars()
+        )
+        current = filter_selection_dump(rows)
+        if not force and current["_category_ids"] != expected.get("_category_ids"):
+            raise UndoConflict("The filter's categories have changed since this change")
+        for row in rows:
+            await self.session.delete(row)
+        await self.session.flush()
+        cat_ids = [uuid.UUID(c) for c in payload.get("_category_ids") or []]
+        alive: set[uuid.UUID] = set()
+        if cat_ids:
+            alive = set(
+                (
+                    await self.session.execute(select(Category.id).where(Category.id.in_(cat_ids)))
+                ).scalars()
+            )
+        for cat_id in cat_ids:
+            if cat_id in alive:
+                self.session.add(
+                    BudgetFilterCategory(filter_id=change.entity_id, category_id=cat_id)
+                )
+        await self.session.flush()
 
     async def _insert_hard_row(self, change: ChangeLog, side: str) -> None:
         """Re-insert a hard-deleted row — undo of its delete, redo of its

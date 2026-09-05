@@ -34,6 +34,8 @@ from igab.db.models import (
     AssetValueSnapshot,
     Budget,
     BudgetAssignment,
+    BudgetFilter,
+    BudgetView,
     Category,
     CategoryGroup,
     CategoryTarget,
@@ -72,6 +74,8 @@ ENTITY_MODELS: dict[str, type] = {
     "liability": Liability,
     "asset": Asset,
     "scheduled_transaction": ScheduledTransaction,
+    "budget_view": BudgetView,
+    "budget_filter": BudgetFilter,
 }
 
 # Restorable fields per entity. is_deleted is excluded on purpose — the
@@ -198,7 +202,42 @@ SNAPSHOT_FIELDS: dict[str, tuple[str, ...]] = {
         "last_created_date",
         "next_occurrence_date",
     ),
+    # Child rows (groups/placements, selections) are hard-replaced on every
+    # save, so update records carry them as bookkeeping dumps — see
+    # `view_children_dump` and `filter_selection_dump`.
+    "budget_view": ("name", "sort_order", "hide_unassigned"),
+    "budget_filter": ("name", "sort_order"),
 }
+
+
+def view_children_dump(groups: Any, placements: Any) -> dict[str, Any]:
+    """Bookkeeping dump of a view's groups and placements, canonically
+    ordered so two dumps compare with ==. Group ids ride along because
+    placements reference them; placement rows are identified by category
+    (their own ids churn on every save)."""
+    return {
+        "_groups": sorted(
+            ({"id": str(g.id), "name": g.name, "sort_order": g.sort_order} for g in groups),
+            key=lambda g: g["id"],
+        ),
+        "_placements": sorted(
+            (
+                {
+                    "category_id": str(p.category_id),
+                    "group_id": str(p.group_id) if p.group_id else None,
+                    "sort_order": p.sort_order,
+                    "is_hidden": p.is_hidden,
+                }
+                for p in placements
+            ),
+            key=lambda p: p["category_id"],
+        ),
+    }
+
+
+def filter_selection_dump(selections: Any) -> dict[str, Any]:
+    """Bookkeeping dump of a filter's category set, sorted for ==."""
+    return {"_category_ids": sorted(str(s.category_id) for s in selections)}
 
 
 def source_for(created_via: str | None) -> str:

@@ -34,6 +34,10 @@ export function entityTypeLabel(entityType: string): string {
       return 'value point'
     case 'scheduled_transaction':
       return 'scheduled transaction'
+    case 'budget_view':
+      return 'view'
+    case 'budget_filter':
+      return 'filter'
     default:
       return entityType
   }
