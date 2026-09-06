@@ -22,6 +22,7 @@ from igab.repositories.txn_filters import (
     NEEDS_CATEGORY,
     NOT_DELETED,
     PARENT_ROW,
+    PENDING_ROW,
     POSTED,
     not_future,
 )
@@ -91,6 +92,18 @@ class AccountRepository(BaseRepository[Account]):
     ) -> dict[uuid.UUID, Decimal]:
         return await self._sums_by_account(account_ids, BALANCE_ROW, CLEARED)
 
+    async def pending_balances_for(
+        self, account_ids: Sequence[uuid.UUID]
+    ) -> dict[uuid.UUID, Decimal]:
+        """Money the bank has authorised but not posted, per account.
+
+        Not a slice of `balances_for`: PENDING_ROW and BALANCE_ROW are
+        disjoint, because a pending amount is provisional and moves exactly
+        once — at posting. So this never sums into the header's partition; it
+        is reported beside it.
+        """
+        return await self._sums_by_account(account_ids, PENDING_ROW)
+
     async def uncategorized_counts_for(
         self, account_ids: Sequence[uuid.UUID]
     ) -> dict[uuid.UUID, int]:
@@ -119,6 +132,10 @@ class AccountRepository(BaseRepository[Account]):
 
     async def get_balance(self, account_id: uuid.UUID) -> Decimal:
         return (await self.balances_for([account_id]))[account_id]
+
+    async def get_pending_balance(self, account_id: uuid.UUID) -> Decimal:
+        """The pending total for one account — see `pending_balances_for`."""
+        return (await self.pending_balances_for([account_id]))[account_id]
 
     async def get_cleared_balance(self, account_id: uuid.UUID) -> Decimal:
         """The confirmed part of `get_balance`, over the same rows.

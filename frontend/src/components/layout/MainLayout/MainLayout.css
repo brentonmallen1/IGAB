@@ -1,8 +1,8 @@
 .main-layout {
   display: flex;
-  /* Not 100dvh: dvh tracks browser chrome but knows nothing about the
-     on-screen keyboard. --app-h subtracts the keyboard too, and reduces to
-     exactly 100dvh whenever there isn't one. */
+  /* Not 100dvh — see --app-h in base.css. dvh knows nothing about the
+     on-screen keyboard, and in an installed iOS PWA it also comes back short
+     by the top safe-area inset. --app-h is the measured visible height. */
   height: var(--app-h);
   overflow: hidden;
   background-color: var(--surface-canvas);

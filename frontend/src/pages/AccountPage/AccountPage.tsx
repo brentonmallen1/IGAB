@@ -4,6 +4,7 @@ import {
   CalendarClock,
   CheckCircle,
   CircleDot,
+  Hourglass,
   Link as LinkIcon,
   Lock,
   Pencil,
@@ -208,6 +209,21 @@ export function AccountPage() {
               <span className="account-page__balance-label">Working Balance</span>
             </div>
           </div>
+          {/* Outside the equation on purpose. Pending rows are visible in the
+              register and counted in none of the three figures above — an
+              auth hold is provisional and the money moves once, at posting
+              (backend: txn_filters.PENDING_ROW). That is defensible and it is
+              also why the total has to be said: otherwise the register shows
+              rows that add up to nothing anywhere. */}
+          {account.pending_balance !== 0 && (
+            <div className="account-page__pending">
+              <Hourglass size={11} aria-hidden />
+              <span className="account-page__pending-value tabular">
+                {formatMoney(account.pending_balance)}
+              </span>
+              <span>pending — not in the balances above until it posts</span>
+            </div>
+          )}
           {/* The bank's own figure, written every sync. Shown only when it
               disagrees with the cleared balance — agreement is the normal
               state and needs no line — and it names the fix rather than

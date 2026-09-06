@@ -78,6 +78,7 @@ async def list_accounts(
     ids = [acc.id for acc in accounts]
     balances = await account_repo.balances_for(ids)
     cleared_balances = await account_repo.cleared_balances_for(ids)
+    pending_balances = await account_repo.pending_balances_for(ids)
     uncategorized = await account_repo.uncategorized_counts_for(ids)
     result = []
     for acc in accounts:
@@ -87,6 +88,7 @@ async def list_accounts(
         resp.balance = balance
         resp.cleared_balance = cleared
         resp.uncleared_balance = balance - cleared
+        resp.pending_balance = pending_balances[acc.id]
         resp.uncategorized_count = uncategorized[acc.id]
         result.append(resp)
     return result
@@ -244,6 +246,7 @@ async def get_account(
     resp.balance = balance
     resp.cleared_balance = cleared
     resp.uncleared_balance = balance - cleared
+    resp.pending_balance = await account_repo.get_pending_balance(acc.id)
     resp.uncategorized_count = await account_repo.get_uncategorized_count(acc.id)
     return resp
 

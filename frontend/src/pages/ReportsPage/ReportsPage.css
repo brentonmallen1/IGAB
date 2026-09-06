@@ -361,6 +361,23 @@
   background: var(--accent-color);
 }
 
+/* The range picker. Reads as one of the toolbar's buttons — same padding,
+   border and radius as .report-btn — because that is what it replaced. */
+.report-select {
+  padding: var(--spacing-xs) var(--spacing-md);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.report-select:hover {
+  background: var(--bg-hover);
+}
+
 /* ─── Toggle (checkbox-style button group) ───────────────────────────────── */
 
 .report-toggle {

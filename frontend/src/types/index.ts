@@ -39,6 +39,10 @@ export interface Account {
   balance: number
   cleared_balance: number
   uncleared_balance: number
+  /** Authorised by the bank, not yet posted. Not part of
+   *  balance = cleared + uncleared — pending money is in no aggregate until
+   *  it posts (backend: txn_filters.PENDING_ROW). */
+  pending_balance: number
   last_reconciled_at: string | null
   /** Always sent (may be null) — the balance the last reconciliation locked. */
   last_reconciled_balance: number | null

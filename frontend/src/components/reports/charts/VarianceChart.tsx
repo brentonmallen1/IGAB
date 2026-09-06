@@ -21,7 +21,7 @@ import { MetricCard } from '../MetricCard'
 import { MetricRow } from '../MetricRow'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
-import { ReportRangeButtons } from './rangeButtons'
+import { ReportRangeSelect } from './rangeSelect'
 
 interface Props {
   budgetId: string
@@ -67,7 +67,7 @@ export function VarianceReport({ budgetId }: Props) {
         </ReportInfoButton>
         <p className="report-section__subtitle">Running budget drift over time</p>
         <div className="flex-row ms-auto">
-          <ReportRangeButtons months={months} onChange={setMonths} />
+          <ReportRangeSelect months={months} onChange={setMonths} />
           <ReportExportButton
             reportId="variance"
             getRows={() =>

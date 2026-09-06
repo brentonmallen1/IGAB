@@ -1,4 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { computeViewportMetrics } from './useAppViewport'
 
 /**
@@ -234,5 +236,39 @@ describe('useAppViewport', () => {
       expect(prop(name)).toBe('')
     }
     expect(root().hasAttribute('data-keyboard')).toBe(false)
+  })
+})
+
+describe('--app-h reads the measurement rather than rebuilding it', () => {
+  // The band under the bottom nav in the installed iOS PWA, reported three
+  // times. `--app-h` was `calc(100dvh - var(--kb) - var(--vv-top))` — a
+  // reconstruction of the number this hook already measures, and one that is
+  // only correct while 100dvh equals the visible height. With
+  // viewport-fit=cover plus black-translucent it does not: the web view's
+  // origin is the physical top of the screen (the header really does paint
+  // under the status bar) while 100dvh comes back short by exactly
+  // env(safe-area-inset-top) — 59pt of bare page background below the nav on
+  // a 932pt screen.
+  //
+  // Read as source because the failure is invisible to jsdom: it has no
+  // safe-area insets, so every reconstruction agrees there and disagrees only
+  // on hardware.
+  const base = readFileSync(resolve(__dirname, '../themes/base.css'), 'utf8')
+  const declaration = base.match(/^\s*--app-h:\s*(.+);$/m)?.[1] ?? ''
+
+  it('is defined', () => {
+    expect(declaration).not.toBe('')
+  })
+
+  it('is the measured visible height', () => {
+    expect(declaration).toBe('var(--vvh)')
+  })
+
+  it('contains no viewport-unit arithmetic', () => {
+    // --vvh's own fallback is 100dvh, which is right: it is what desktop and
+    // the first paint before the effect runs see. A dvh term in --app-h
+    // itself is the bug.
+    // A length, not the tail of `--vvh`: `100dvh`, `100vh`, `100svh`.
+    expect(declaration).not.toMatch(/\d\s*[dsl]?vh/)
   })
 })

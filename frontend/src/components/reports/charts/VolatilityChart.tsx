@@ -20,7 +20,7 @@ import { today } from '../../../utils/dates'
 import { DrillDownTable } from '../DrillDownTable'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
-import { ReportRangeButtons } from './rangeButtons'
+import { ReportRangeSelect } from './rangeSelect'
 
 interface Props {
   budgetId: string
@@ -84,7 +84,7 @@ export function VolatilityReport({ budgetId }: Props) {
           Mean monthly spending with min/max range. High variation = unstable spending.
         </p>
         <div className="flex-row ms-auto">
-          <ReportRangeButtons months={months} onChange={setMonths} />
+          <ReportRangeSelect months={months} onChange={setMonths} />
           <ReportExportButton
             reportId="volatility"
             getRows={() =>

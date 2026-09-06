@@ -1202,6 +1202,22 @@ class TransactionRepository(BaseRepository[Transaction]):
         rows = (await self.session.execute(apply_class_joins(q))).all()
         return list(rows), basis
 
+    async def earliest_date(self, budget_id: uuid.UUID) -> date | None:
+        """The oldest transaction in the budget, or None for an empty one.
+
+        How far back any report can look. Deliberately not POSTED/CLEARED
+        filtered and not restricted to parent rows: this answers "when does
+        this budget's history start", and a pending or split row is still
+        history. None means no history at all, not zero months.
+        """
+        result = await self.session.execute(
+            select(func.min(Transaction.date)).where(
+                Transaction.budget_id == budget_id,
+                NOT_DELETED,
+            )
+        )
+        return result.scalar_one_or_none()
+
     async def get_oldest_cleared_date_for_account(self, account_id: uuid.UUID) -> date | None:
         """Return the date of the oldest cleared or reconciled transaction on the account."""
         result = await self.session.execute(

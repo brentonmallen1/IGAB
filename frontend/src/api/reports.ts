@@ -89,6 +89,29 @@ export function useDashboardMetrics(budgetId: string | null, startDate?: string,
   })
 }
 
+// ─── Available range ───────────────────────────────────────────────────────
+
+export interface ReportRange {
+  /** First of the month the oldest transaction falls in; null for an empty budget. */
+  earliest_month: string | null
+  /** Calendar months from that month to this one, inclusive. 0 means no history. */
+  months_available: number
+}
+
+/** How far back this budget's reports can look — what the range picker offers,
+ *  and what its "All time" resolves to. */
+export function useReportRange(budgetId: string | null) {
+  return useQuery({
+    queryKey: [ROOT.reports, 'range', budgetId],
+    queryFn: async () => {
+      const { data } = await apiClient.get<ReportRange>(`/${budgetId}/reports/range`)
+      return data
+    },
+    enabled: !!budgetId,
+    staleTime: STALE,
+  })
+}
+
 // ─── Net Worth ─────────────────────────────────────────────────────────────
 
 export function useNetWorthReport(budgetId: string | null, months = 12) {

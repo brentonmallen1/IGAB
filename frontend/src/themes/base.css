@@ -172,13 +172,30 @@
   --vvh: 100dvh; /* measured visible height                                */
   --vv-top: 0px; /* visual viewport's top offset in the layout viewport    */
   --vv-bottom: 0px; /* layout-viewport band hidden below the visible region   */
-  --kb: 0px; /* keyboard-only bottom inset                             */
+  /* Keyboard-only bottom inset. No CSS reads it today (--vvh already
+     excludes the keyboard); it stays published because it is the number
+     behind html[data-keyboard], and reading it beats re-deriving it. */
+  --kb: 0px;
 
-  /* Height of any full-screen shell. dvh handles UA chrome (the browser
-     smooths it during toolbar animations); --kb handles the keyboard;
-     --vv-top handles iOS's offset. With no keyboard this reduces to exactly
-     100dvh — i.e. desktop behaviour is unchanged. */
-  --app-h: calc(100dvh - var(--kb) - var(--vv-top));
+  /* Height of any full-screen shell — the MEASURED visible height, paired
+     everywhere with `top: var(--vv-top)` so the box covers exactly the region
+     the user can see. `--vvh` already excludes the keyboard (iOS shrinks the
+     visual viewport; Chrome shrinks the layout viewport and the visual one
+     with it), so there is no --kb term and no branch.
+
+     This used to reconstruct the same number as
+     `calc(100dvh - var(--kb) - var(--vv-top))`, which is right only while
+     100dvh equals the visible height. In an installed iOS PWA
+     (viewport-fit=cover + black-translucent) it does not: the web view's
+     origin is the physical top of the screen — the header genuinely paints
+     under the status bar — while 100dvh comes back SHORT by exactly
+     env(safe-area-inset-top). Measured on a 932pt screen with a 59pt top
+     inset, the shell ended at 873pt and left a 59pt band of bare page
+     background under the bottom nav.
+
+     So: never rebuild this from dvh. The hook measures it; read the
+     measurement. */
+  --app-h: var(--vvh);
 
   /* Minimum comfortable touch target (WCAG 2.5.5 / Apple HIG). */
   --tap-min: 44px;
@@ -191,6 +208,19 @@
   /* Touch press scrim. Derived from --text-primary so it inverts correctly in
      all 19 themes with no per-theme value. */
   --press-scrim: color-mix(in srgb, var(--text-primary) 10%, transparent);
+
+  /* Register row states. Derived the same way as --press-scrim rather than
+     authored per theme (--row-hover-bg is, in 40 files): a mix against
+     --text-primary lightens a dark theme and darkens a light one, and a mix
+     against --color-accent honours each palette's own accent.
+
+     --row-pending-bg is the ground under a row the bank has authorised but
+     not posted. Deliberately neutral, not --color-warning: pending is not a
+     problem, it is money that has not moved yet, and this repo reserves
+     accent and status colour for state that asks something of the user. */
+  --row-pending-bg: color-mix(in srgb, var(--text-primary) 6%, transparent);
+  --row-selected-bg: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  --row-selected-hover-bg: color-mix(in srgb, var(--color-accent) 18%, transparent);
 
   /* Heatmap scale — semantic colors for intensity visualization */
   --heatmap-low: color-mix(in srgb, var(--color-info) 25%, transparent);

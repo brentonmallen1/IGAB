@@ -181,7 +181,20 @@ async def test_months_window_bounds(api_client, db_session):
     body = await _fetch(api_client, budget.id, months=12)
     assert len(_cat(body, cat.id)["monthly"]) == 12
 
+    # 48 months used to be a 422 here and nowhere else: this report carried a
+    # 24-month ceiling of its own while seven siblings had none. The ceiling is
+    # now the one shared MAX_REPORT_MONTHS, so a four-year window is answered.
     resp = await api_client.get(
         f"/api/v1/{budget.id}/reports/plan-vs-reality", params={"months": 48}
     )
-    assert resp.status_code == 422
+    assert resp.status_code == 200, resp.text
+
+    # The 3-month FLOOR is this report's own rule and stays: "chronic" means
+    # over-plan in 3+ of the window's last 6 months, which a shorter window
+    # cannot say. So does the shared ceiling.
+    assert (
+        await api_client.get(f"/api/v1/{budget.id}/reports/plan-vs-reality", params={"months": 2})
+    ).status_code == 422
+    assert (
+        await api_client.get(f"/api/v1/{budget.id}/reports/plan-vs-reality", params={"months": 601})
+    ).status_code == 422

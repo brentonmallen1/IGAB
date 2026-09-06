@@ -7,7 +7,7 @@ import { abbreviateValue, buildCellMap, intensityPct, maxCellValue } from './sea
 import { monthWindow } from '../../../utils/dateWindow'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
-import { ReportRangeButtons } from './rangeButtons'
+import { ReportRangeSelect } from './rangeSelect'
 import './SeasonalityHeatmap.css'
 
 interface Props {
@@ -72,7 +72,7 @@ export function SeasonalityReport({ budgetId }: Props) {
         </ReportInfoButton>
         <p className="report-section__subtitle">Monthly spending intensity per category</p>
         <div className="flex-row ms-auto">
-          <ReportRangeButtons months={months} onChange={setMonths} />
+          <ReportRangeSelect months={months} onChange={setMonths} />
           <ReportExportButton
             reportId="seasonality"
             getRows={() =>
