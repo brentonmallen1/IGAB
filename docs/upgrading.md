@@ -47,8 +47,8 @@ One volume: `./data:/data` (or your `DATA_DIR`).
    You should see your data directory mapped to `/data`. If you don't, stop —
    figure out where your data is before updating anything.
 
-2. **Take a manual backup that lands on the host.** Preferred: Settings →
-   Backups → *Back up now*, then confirm a fresh `igab-<timestamp>.dump`
+2. **Take a manual backup that lands on the host.** Preferred: System →
+   Server Backups → *Back up now*, then confirm a fresh `igab-<timestamp>.dump`
    appeared in your backups directory on the host.
 
    If the backup service shows **offline** (all AIO releases before the
@@ -134,7 +134,7 @@ docker compose -f docker-compose.aio.yml up -d
 ```
 
 Only restore from a dump if a migration actually corrupted data (rare — and
-this is why the pre-update backup exists). Restore via Settings → Backups, or
+this is why the pre-update backup exists). Restore via System → Server Backups, or
 manually:
 
 ```sh
@@ -180,12 +180,12 @@ merits, so the migration un-hides it and leaves it visible either way.
 
 This release fixes the AIO backup agent writing to ephemeral container
 storage (`/backups`) instead of the data volume (`/data/backups`), which also
-made the backup service show as **offline** in Settings → Backups.
+made the backup service show as **offline** in System → Server Backups.
 
 No manual steps are required beyond the normal routine above. After updating,
 verify the fix took:
 
-1. Settings → Backups shows the service **online** within ~30 seconds.
+1. System → Server Backups shows the service **online** within ~30 seconds.
 2. *Back up now* completes and the new `igab-<timestamp>.dump` appears in
    `./data/backups/` on the host.
 3. Any backups the old agent wrote inside the container are gone — they were

@@ -24,7 +24,11 @@ import {
 import { REPORT_TABS, TAB_GROUPS } from '../../stores/reportStore'
 import { GUIDE_TABS } from '../../stores/guideStore'
 import { TOOLS } from '../guide/tools/toolRegistry'
-import { visibleSettingsSections } from '../../pages/SettingsPage/settingsSections'
+import {
+  SETTINGS_PAGES,
+  sectionHref,
+  visibleSettingsSections,
+} from '../../pages/SettingsPage/settingsSections'
 
 /** Everything a command may do, injected by the palette so commands stay pure */
 export interface CommandCtx {
@@ -200,6 +204,14 @@ export const STATIC_COMMANDS: AppCommand[] = [
     run: (c) => c.navigate('/settings'),
   },
   {
+    id: 'nav-system',
+    label: 'System settings',
+    section: 'Navigate',
+    keywords: 'server backups restore updates users installation admin',
+    icon: Settings,
+    run: (c) => c.navigate(SETTINGS_PAGES.system.path),
+  },
+  {
     id: 'nav-switch-budget',
     label: 'Switch budget…',
     section: 'Navigate',
@@ -287,11 +299,11 @@ export function settingsCommands(ctx: DerivedCommandCtx): AppCommand[] {
   return visibleSettingsSections({ budgetId: ctx.budgetId, isAdmin: ctx.isAdmin }).map(
     (section) => ({
       id: `settings-${section.id}`,
-      label: `Settings: ${section.label}`,
+      label: `${SETTINGS_PAGES[section.page].label}: ${section.label}`,
       section: 'Navigate' as const,
       keywords: `settings preferences ${section.keywords ?? ''}`,
       icon: Settings,
-      run: (c: CommandCtx) => c.navigate(`/settings#${section.id}`),
+      run: (c: CommandCtx) => c.navigate(sectionHref(section)),
     })
   )
 }

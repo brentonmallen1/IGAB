@@ -5,6 +5,7 @@ import {
   Users,
   CalendarClock,
   Upload,
+  Server,
   Settings,
   ChevronDown,
   ChevronLeft,
@@ -119,10 +120,14 @@ export function MoreSheet() {
         <button className="more-sheet__item press-scale" onClick={() => go('/settings')}>
           <Settings size={18} />
           <span>Settings</span>
+        </button>
+        <button className="more-sheet__item press-scale" onClick={() => go('/system')}>
+          <Server size={18} />
+          <span>System</span>
           {updateAvailable && (
             <span
               className="more-sheet__update-badge"
-              title="Update available — see Settings → Updates"
+              title="Update available — see System → Updates"
             />
           )}
         </button>

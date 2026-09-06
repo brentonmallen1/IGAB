@@ -1,17 +1,8 @@
 import { useRef, useState } from 'react'
 import { Surface } from '../../components/common/Surface'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import {
-  ChevronDown,
-  ChevronUp,
-  HelpCircle,
-  LogOut,
-  MoreHorizontal,
-  Pencil,
-  Trash2,
-  Users,
-} from 'lucide-react'
+import { HelpCircle, LogOut, Server, MoreHorizontal, Pencil, Trash2, Users } from 'lucide-react'
 import {
   useBudgets,
   useCreateBudget,
@@ -29,6 +20,9 @@ import { useLogout } from '../../api/auth'
 import { useAppStore } from '../../stores/appStore'
 import { ContextMenu, type ContextMenuItem } from '../../components/common/ContextMenu/ContextMenu'
 import { formatMoney } from '../../utils/money'
+import { SelectorSection } from './SelectorSection'
+import { RestoreSection } from './RestoreSection'
+import { SETTINGS_PAGES } from '../SettingsPage/settingsSections'
 import './BudgetSelectorPage.css'
 import { confirmAsync } from '../../stores/confirmStore'
 import { SharingModal } from '../../components/budgets/SharingModal'
@@ -55,47 +49,6 @@ const CARD_MENU_ITEMS: ContextMenuItem[] = [
 // The budget (and its type registry) doesn't exist yet at mapping time, so
 // the choices are the built-ins; custom types can be created after import.
 const ACCOUNT_TYPE_OPTIONS = BUILTIN_ACCOUNT_TYPES
-
-/**
- * A selector card whose header toggles its body. The Create / Import /
- * Sample forms used to sit in a cramped second column; collapsed sections
- * under the budget list give each form the page's full width — which is what
- * makes the YNAB account-mapping rows readable.
- */
-function SelectorSection({
-  title,
-  subtitle,
-  open,
-  onToggle,
-  children,
-  dashed = false,
-}: {
-  title: string
-  subtitle: string
-  open: boolean
-  onToggle: () => void
-  children: React.ReactNode
-  /** Demoted affordance (the throwaway sample budget). */
-  dashed?: boolean
-}) {
-  return (
-    <Surface as="section" className="selector-card" dashed={dashed}>
-      <button
-        type="button"
-        className="selector-card__header selector-card__header--toggle"
-        onClick={onToggle}
-        aria-expanded={open}
-      >
-        <div>
-          <div className="section-label surface__title">{title}</div>
-          <div className="selector-card__subtitle">{subtitle}</div>
-        </div>
-        {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-      </button>
-      {open && children}
-    </Surface>
-  )
-}
 
 export function BudgetSelectorPage() {
   const navigate = useNavigate()
@@ -329,10 +282,19 @@ export function BudgetSelectorPage() {
         {me && (
           <div className="budget-selector__whoami">Signed in as {me.display_name || me.email}</div>
         )}
-        <button className="budget-selector__logout" onClick={logout} title="Sign out">
-          <LogOut size={15} />
-          <span>Sign out</span>
-        </button>
+        <div className="budget-selector__links">
+          {/* System is where server backups, restore, updates and users live —
+              reachable from here because this is the page you land on when
+              there is no budget left to open. */}
+          <Link to={SETTINGS_PAGES.system.path} className="budget-selector__link">
+            <Server size={15} />
+            <span>{SETTINGS_PAGES.system.label}</span>
+          </Link>
+          <button className="budget-selector__link" onClick={logout} title="Sign out">
+            <LogOut size={15} />
+            <span>Sign out</span>
+          </button>
+        </div>
       </div>
 
       <div className="budget-selector__body">
@@ -822,6 +784,10 @@ export function BudgetSelectorPage() {
               </div>
             </div>
           </SelectorSection>
+
+          {/* Last, and its own concern: this replaces every budget rather than
+              adding one. See RestoreSection for why it is on this page. */}
+          {me?.is_admin && <RestoreSection />}
         </div>
       </div>
       {showTypeInfo && (
