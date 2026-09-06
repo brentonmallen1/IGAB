@@ -249,8 +249,10 @@ describe('CommandPalette derived destinations', () => {
   it('reaches a settings section by its own label', async () => {
     renderPalette()
     await type('simplefin')
-    await userEvent.click(await screen.findByText('Settings: SimpleFIN'))
-    expect(navigate).toHaveBeenCalledWith('/settings#simplefin')
+    // SimpleFIN is an installation-wide section, so its row is labelled and
+    // addressed by the System page — the registry decides that, not the palette.
+    await userEvent.click(await screen.findByText('System: SimpleFIN'))
+    expect(navigate).toHaveBeenCalledWith('/system#simplefin')
   })
 
   it('keeps the words the hand-written rows carried', async () => {
@@ -264,14 +266,14 @@ describe('CommandPalette derived destinations', () => {
   it('does not offer an admin-only section to someone who is not an admin', async () => {
     renderPalette()
     await type('users')
-    await waitFor(() => expect(screen.queryByText('Settings: Users')).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.queryByText('System: Users')).not.toBeInTheDocument())
   })
 
   it('offers it to an admin', async () => {
     currentUser.mockReturnValue({ data: { id: 'u1', email: 'a@b.c', is_admin: true } })
     renderPalette()
     await type('users')
-    expect(await screen.findByText('Settings: Users')).toBeInTheDocument()
+    expect(await screen.findByText('System: Users')).toBeInTheDocument()
   })
 
   it('reaches the wishlist page by name', async () => {

@@ -1,0 +1,256 @@
+/* Layout: nav sidebar + scrollable content. Shared by Settings and System. */
+.settings-page {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: var(--spacing-md);
+  flex: 1;
+  min-height: 0; /* Critical: allow grid to shrink below content size */
+  overflow: hidden;
+}
+
+/* Fixed sidebar nav */
+.settings-nav {
+  padding: var(--spacing-xl) 0 var(--spacing-xl) var(--spacing-xl);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  min-height: 0; /* Allow shrinking in grid */
+  border-right: solid;
+  border-width: thin;
+  border-color: var(--bg-secondary);
+}
+
+.settings-nav__link {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  text-decoration: none;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--border-radius-sm);
+  transition:
+    background-color var(--transition-fast),
+    color var(--transition-fast);
+  cursor: pointer;
+  border: none;
+  background: none;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.settings-nav__link:hover {
+  color: var(--text-primary);
+  background-color: var(--bg-secondary);
+}
+
+/* Something in that section needs attention — currently only SimpleFIN with
+   no usable encryption key. A dot rather than a count: it is a yes/no state,
+   and the section itself carries the explanation. */
+.settings-nav__warn {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  vertical-align: middle;
+  border-radius: 50%;
+  background-color: var(--color-warning);
+}
+
+.settings-nav__link--active {
+  color: var(--color-accent);
+  background-color: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  font-weight: 500;
+}
+
+/* The other settings page, set apart from this page's sections by a rule. */
+.settings-nav__footer {
+  margin-top: var(--spacing-md);
+  padding-top: var(--spacing-md);
+  border-top: 1px solid var(--edge);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.settings-nav__footer .settings-nav__link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  color: var(--text-muted);
+}
+
+/* Scrollable content area */
+.settings-content {
+  /* Containing block for absolutely-positioned descendants (e.g. .sr-only):
+     without this they resolve against <html> and stretch the document,
+     creating phantom page-level scroll */
+  position: relative;
+  padding: var(--spacing-xl) var(--spacing-xl) var(--spacing-xl) 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xl);
+  max-width: 100%;
+  min-height: 0; /* Allow shrinking in grid */
+}
+
+/* --- The settings vocabulary every panel speaks --- */
+
+.settings-section__body {
+  padding: var(--spacing-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+}
+
+.settings-row__label {
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.settings-row__desc {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* Local time hint next to UTC sync hour */
+.settings-row__local-time {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.settings-select {
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  background-color: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: var(--border-radius-sm);
+  padding: 5px 10px;
+  outline: none;
+  cursor: pointer;
+  min-width: 180px;
+}
+
+.settings-select:focus {
+  border-color: var(--input-focus-ring);
+}
+
+.settings-input {
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  background-color: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: var(--border-radius-sm);
+  padding: 6px 10px;
+  outline: none;
+  width: 100%;
+}
+
+.settings-input:focus {
+  border-color: var(--input-focus-ring);
+}
+
+.settings-btn {
+  padding: 6px var(--spacing-md);
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  transition: opacity var(--transition-fast);
+}
+
+.settings-btn--primary {
+  background-color: var(--color-accent);
+  color: var(--text-inverse);
+}
+
+.settings-btn--secondary {
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+}
+
+.settings-btn--danger {
+  border: 1px solid var(--color-negative);
+  color: var(--color-negative);
+}
+
+.settings-btn:hover {
+  opacity: 0.8;
+}
+
+.settings-subsection {
+  margin-top: var(--spacing-md);
+  padding-top: var(--spacing-md);
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.settings-subsection__title {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* A section title with its help trigger beside it — the reports' pattern. */
+.settings-section__title-help {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+@media (max-width: 768px) {
+  .settings-page {
+    display: flex;
+    flex-direction: column;
+    overflow: visible;
+    height: auto;
+  }
+
+  .settings-nav {
+    position: static;
+    flex-direction: row;
+    flex-wrap: wrap;
+    padding: var(--spacing-md);
+    gap: var(--spacing-xs);
+    max-height: none;
+    overflow: visible;
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .settings-nav__footer {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+    flex-direction: row;
+  }
+
+  .settings-nav__link {
+    padding: var(--spacing-xs) var(--spacing-sm);
+    font-size: var(--font-size-xs);
+  }
+
+  .settings-content {
+    padding: var(--spacing-md);
+    max-width: none;
+    overflow: visible;
+  }
+
+  .settings-row {
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+  }
+}

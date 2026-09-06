@@ -132,18 +132,25 @@ backup:
 # Restore a dump created by `just backup` or the db-backup container — DROPS
 # AND REPLACES the database. For *.age dumps, set BACKUP_AGE_KEY_FILE to your
 # age identity (private key) file.
+#
+# Same code path as the in-app restore: scripts/db-backup.sh's restore_into_db,
+# run inside the db container (which has the matching pg_restore) with the dump
+# on stdin. Not a second pg_restore invocation here — the one this recipe used
+# to carry was the `--clean`-only form that left newer tables behind.
 restore FILE:
     #!/usr/bin/env bash
     set -euo pipefail
     echo "Restoring {{FILE}} — this REPLACES the current database. Ctrl-C to abort."
     sleep 3
+    restore() {
+        docker compose exec -T -e PGUSER="${DB_USER:-igab}" -e PGDATABASE="${DB_NAME:-igab}" db \
+            sh -c "$(cat scripts/db-backup.sh)" db-backup.sh restore-file -
+    }
     if [[ "{{FILE}}" == *.age ]]; then
         : "${BACKUP_AGE_KEY_FILE:?dump is age-encrypted — set BACKUP_AGE_KEY_FILE to your age identity file}"
-        age -d -i "$BACKUP_AGE_KEY_FILE" "{{FILE}}" | docker compose exec -T db pg_restore \
-            -U "${DB_USER:-igab}" -d "${DB_NAME:-igab}" --clean --if-exists --no-owner
+        age -d -i "$BACKUP_AGE_KEY_FILE" "{{FILE}}" | restore
     else
-        docker compose exec -T db pg_restore -U "${DB_USER:-igab}" -d "${DB_NAME:-igab}" \
-            --clean --if-exists --no-owner < "{{FILE}}"
+        restore < "{{FILE}}"
     fi
     echo "restore complete"
 

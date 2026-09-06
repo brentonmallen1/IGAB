@@ -29,6 +29,12 @@
 # The historical --aio-mode flag is accepted but is a no-op: the file-based
 # agent protocol works identically inside the AIO container, since the API
 # and the agent share one filesystem there.
+#
+# `db-backup.sh restore-file <dump|->` runs ONE restore against the PG*
+# connection in the environment and exits, without starting the agent loop.
+# `just restore` execs the script this way inside the db container, so the CLI
+# restore and the in-app restore are the same function (restore_into_db) and
+# cannot drift — the second copy in the justfile had.
 set -u
 
 BK="${BACKUP_DIR:-/backups}"
@@ -43,8 +49,6 @@ ENV_RECIPIENT="${BACKUP_AGE_RECIPIENT:-}"
 
 log() { echo "[db-backup] $(date -u +%Y-%m-%dT%H:%M:%SZ) $*"; }
 now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ; }
-
-mkdir -p "$AG"
 
 # $1=value $2=lo $3=hi $4=fallback — echoes value if a sane integer, else fallback
 clamp_int() {
@@ -193,6 +197,32 @@ json_str() {
     sed -n 's/.*"'"$2"'": *"\([^"]*\)".*/\1/p' "$1"
 }
 
+# Replace the database's contents with a dump. The ONE way this repo restores:
+# the in-app restore (do_restore) and `just restore` both end here.
+#
+# Not a bare `pg_restore --clean`. --clean drops only the objects the DUMP
+# knows about, so restoring a dump older than the running schema left every
+# table added since standing in the database while alembic_version was rolled
+# back behind it. On the next start Alembic re-ran the migration that creates
+# one of those tables, hit DuplicateTable, the API's run script exited on the
+# error, and the AIO container went down with it — a restore that reported
+# "complete" had produced an app that would not boot. Dropping the schema
+# takes everything the dump does not mention with it, so what Alembic finds
+# is exactly what the dump's alembic_version says it will find.
+#
+# $1 = dump path, or "-" to read the dump from stdin (how `just restore`
+# pipes a host file — or an age-decrypted stream — into the db container).
+restore_into_db() {
+    src=$1
+    [ "$src" = "-" ] && src=""
+    psql -X -v ON_ERROR_STOP=1 -d "$PGDATABASE" \
+        -c "DROP SCHEMA public CASCADE" -c "CREATE SCHEMA public" || return 1
+    # --clean stays for the one object a dump may still carry that now exists:
+    # a `public` schema whose owner or comment was changed, which pg_dump then
+    # emits as CREATE SCHEMA and which would otherwise collide with ours.
+    pg_restore --clean --if-exists --no-owner -d "$PGDATABASE" ${src:+"$src"}
+}
+
 do_restore() {
     id=$1; file=$2; pre=$3; started=$4
     case "$file" in
@@ -219,8 +249,7 @@ do_restore() {
         "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$PGDATABASE' AND pid <> pg_backend_pid()" \
         >/dev/null 2>&1
     write_status "$id" restore running "restoring database" "$started" ""
-    if pg_restore --clean --if-exists --no-owner -d "$PGDATABASE" "$BK/$file" \
-        > "$AG/restore-log" 2>&1; then
+    if restore_into_db "$BK/$file" > "$AG/restore-log" 2>&1; then
         log "restored $file"
         write_status "$id" restore done "restore complete" "$started" "$(now_iso)"
     else
@@ -258,6 +287,21 @@ handle_command() {
             ;;
     esac
 }
+
+case "${1:-}" in
+    restore-file)
+        [ -n "${2:-}" ] || { echo "usage: db-backup.sh restore-file <dump|->" >&2; exit 2; }
+        restore_into_db "$2"
+        exit $?
+        ;;
+    '' | --aio-mode) ;;
+    *)
+        echo "db-backup.sh: unknown argument: $1" >&2
+        exit 2
+        ;;
+esac
+
+mkdir -p "$AG"
 
 # Heartbeat runs in its own subshell so long dumps/restores don't make the
 # agent look dead; it dies with this script.

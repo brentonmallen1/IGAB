@@ -14,6 +14,7 @@ import './ReceiptScanTab.css'
 import { apiErrorMessage } from '../../../api/client'
 import { invalidateAfterTransactionChange } from '../../../api/invalidateAfterTransactionChange'
 import { ROOT } from '../../../api/queryKeys'
+import { sectionHref } from '../../../pages/SettingsPage/settingsSections'
 
 type Stage =
   | { kind: 'pick' }
@@ -141,8 +142,12 @@ export function ReceiptScanTab({
         <div className="receipt-scan__empty">
           <Sparkles size={20} />
           <p>Receipt scanning requires a configured Ollama server.</p>
-          <Link to="/settings" className="receipt-scan__link" onClick={onClose}>
-            Configure AI in Settings
+          <Link
+            to={sectionHref({ id: 'ai', page: 'system' })}
+            className="receipt-scan__link"
+            onClick={onClose}
+          >
+            Configure AI in System settings
           </Link>
         </div>
       </div>

@@ -1,8 +1,9 @@
 .budget-selector {
   /* Own scroll container, not min-height + document scroll: the document is
      overflow:hidden on mobile (see base.css) so drags outside scrollers
-     can't bounce the whole webview. */
-  height: 100dvh;
+     can't bounce the whole webview. The measured visible height, not 100dvh
+     — see --app-h in base.css. */
+  height: var(--app-h);
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
@@ -31,16 +32,25 @@
   margin-top: var(--spacing-xs);
 }
 
-.budget-selector__logout {
+.budget-selector__links {
+  display: flex;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-md);
+}
+
+/* One look for the header's quiet links, whether a <button> or a <Link>. */
+.budget-selector__link {
   display: inline-flex;
   align-items: center;
   gap: var(--spacing-xs);
-  margin-top: var(--spacing-md);
+  min-height: var(--tap-min);
   background: none;
   border: none;
   cursor: pointer;
   font-size: var(--font-size-sm);
   color: var(--text-muted);
+  text-decoration: none;
   padding: var(--spacing-xs) var(--spacing-sm);
   border-radius: var(--border-radius-sm);
   transition:
@@ -48,7 +58,7 @@
     background-color var(--transition-fast);
 }
 
-.budget-selector__logout:hover {
+.budget-selector__link:hover {
   color: var(--text-primary);
   background-color: var(--bg-hover);
 }
@@ -278,6 +288,31 @@
   display: flex;
   flex-direction: column;
   gap: var(--spacing-md);
+}
+
+/* The restore pointer: icon, words, one link — a row, not a form. */
+.selector-card__body--row {
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.selector-card__body--row > div {
+  flex: 1;
+  min-width: 200px;
+}
+
+.selector-card__icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.selector-card__link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  text-decoration: none;
+  white-space: nowrap;
 }
 
 .selector-field {

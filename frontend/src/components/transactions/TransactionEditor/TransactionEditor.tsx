@@ -54,6 +54,7 @@ import { Link } from 'react-router-dom'
 import { useReprocessAIJob } from '../../../api/aiJobs'
 import { Modal } from '../../common/Modal/Modal'
 import { isConfigFailure, scanFailureReason } from './scanFailure'
+import { sectionHref } from '../../../pages/SettingsPage/settingsSections'
 import { today } from '../../../utils/dates'
 import { useToastUndo } from '../../../utils/toastUndo'
 import { fromCents, parseApiDecimal, toCents } from '../../../utils/money'
@@ -66,6 +67,9 @@ import type { SplitDraft } from '../../../stores/transactionEditStore'
 import { randomUUID } from '../../../utils/uuid'
 import { Tooltip } from '../../common/Tooltip/Tooltip'
 import './TransactionEditor.css'
+
+/** Where the AI model is configured — the System page, not the budget's Settings. */
+const AI_SETTINGS = sectionHref({ id: 'ai', page: 'system' })
 
 /** Prefill for create mode — the shared shape every AI entry path (NL text,
  * voice) funnels into so there is exactly one add-transaction flow. */
@@ -707,14 +711,14 @@ export function TransactionEditor({
                 <AlertTriangle size={13} />
                 {/* The specific reason, not just "it failed". A model without
                     vision and a genuinely unreadable photo produce the same
-                    stub, and only one of them is fixable in Settings. */}
+                    stub, and only one of them is fixable in System → AI. */}
                 <span>
                   {scanFailureReason(aiJob!.error)}
                   {isConfigFailure(aiJob!.error) && (
                     <>
                       {' '}
-                      <Link to="/settings" className="txn-editor__ai-banner-link">
-                        Open Settings
+                      <Link to={AI_SETTINGS} className="txn-editor__ai-banner-link">
+                        Open System → AI
                       </Link>
                     </>
                   )}

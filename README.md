@@ -166,7 +166,7 @@ unreachable.
 - **AI Activity page** — every job with its model, prompt, and raw response, so
   you can see why it guessed what it did
 
-Configured in Settings → AI. Receipt scanning needs a **vision-capable** model;
+Configured in System → AI. Receipt scanning needs a **vision-capable** model;
 the text features work with any general model.
 
 ### Mobile & PWA
@@ -289,7 +289,7 @@ data lives in `/data` (database, attachments, backups) — just mount one volume
 | `WEB_PORT` | | `8080` | Web UI port |
 | `TZ` | | `UTC` | Timezone |
 | `OLLAMA_HOST` | | — | Ollama server URL for AI features |
-| `OLLAMA_MODEL` | | `llama3.2` | Seed LLM model; Settings → AI overrides it, and sets the vision model for receipts |
+| `OLLAMA_MODEL` | | `llama3.2` | Seed LLM model; System → AI overrides it, and sets the vision model for receipts |
 | `BACKUP_INTERVAL_HOURS` | | `24` | Hours between backups |
 | `BACKUP_KEEP_DAYS` | | `30` | Prune backups older than this |
 | `BACKUP_AGE_RECIPIENT` | | — | age public key for encrypted backups |
@@ -369,7 +369,7 @@ Two things to know:
   removed and set up again.
 
 On Unraid the field is on the container's edit page with **Advanced View**
-turned on. Settings → SimpleFIN reports what is wrong when the key is missing
+turned on. System → SimpleFIN reports what is wrong when the key is missing
 or malformed, and refuses to spend your (single-use) setup token until it is
 fixed.
 
@@ -381,7 +381,7 @@ fixed.
 
 Financial data needs a backup story before it needs anything else.
 
-- **In-app (Settings → Backups):** service status, every existing backup,
+- **In-app (System → Server Backups):** service status, every existing backup,
   schedule/retention/encryption settings (applied live, no restart), back up
   now, and restore from a dump. Restore offers to back up the current data
   first (`igab-prerestore-*.dump`), then restarts the app onto the restored
@@ -405,7 +405,7 @@ Financial data needs a backup story before it needs anything else.
   stretch of failed backups can't delete your last good ones. Writes are
   atomic, a failed dump skips pruning, and a failed cycle retries after 15
   minutes.
-- **Encryption (optional):** set the key in Settings → Backups (or
+- **Encryption (optional):** set the key in System → Server Backups (or
   `BACKUP_AGE_RECIPIENT`) to an [age](https://age-encryption.org) public key
   and both file kinds are written `.age`-encrypted. Keep the private key
   somewhere that isn't this server — which means encrypted backups can't be
@@ -424,7 +424,7 @@ Updates never touch the data volume, but back up first anyway — it takes two
 minutes and it's your money's history. The routine:
 
 ```sh
-# 1. Back up (Settings → Backups → "Back up now", or just backup)
+# 1. Back up (System → Server Backups → "Back up now", or just backup)
 # 2. Pull and restart
 docker compose -f docker-compose.aio.yml pull
 docker compose -f docker-compose.aio.yml up -d
@@ -438,7 +438,7 @@ one-time notes for specific releases.
 
 ### Update Notifications
 
-Settings → Updates has an opt-in check against this repo's GitHub releases —
+System → Updates has an opt-in check against this repo's GitHub releases —
 **off by default**, nothing is sent until you enable it. A newer release shows
 as a small dot next to Settings, with a link to the notes. Dev builds never
 nag.

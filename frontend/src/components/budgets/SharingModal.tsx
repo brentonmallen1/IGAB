@@ -125,7 +125,7 @@ export function SharingModal({
             <div className="sharing-modal__add">
               {addable.length === 0 ? (
                 <div className="sharing-modal__hint">
-                  Everyone in the household already has access. New people are added in Settings →
+                  Everyone in the household already has access. New people are added in System →
                   Users first.
                 </div>
               ) : (

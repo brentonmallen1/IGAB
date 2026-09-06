@@ -1,6 +1,6 @@
 """Default prompt templates for AI tasks.
 
-Users can override any of these via app settings (Settings → AI → Prompts);
+Users can override any of these via app settings (System → AI → Prompts);
 only overrides are stored, so deleting the setting row reverts to the default.
 
 Templates use {placeholder} tokens that are substituted with render_prompt().

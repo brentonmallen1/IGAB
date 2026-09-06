@@ -20,6 +20,7 @@ import {
   PenLine,
   RefreshCw,
   Sparkles,
+  Server,
   History,
   Compass,
   Heart,
@@ -307,10 +308,19 @@ export function Sidebar() {
           >
             <Settings size={16} />
             {!collapsed && <span>Settings</span>}
+          </NavLink>
+          <NavLink
+            to="/system"
+            className={({ isActive }) => `sidebar__nav-item ${isActive ? 'active' : ''}`}
+            title="System"
+            aria-label="System"
+          >
+            <Server size={16} />
+            {!collapsed && <span>System</span>}
             {updateAvailable && (
               <span
                 className="sidebar__update-badge"
-                title="Update available — see Settings → Updates"
+                title="Update available — see System → Updates"
               />
             )}
           </NavLink>
