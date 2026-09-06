@@ -16,6 +16,7 @@ import { AmortizationTable } from '../../components/liabilities/AmortizationTabl
 import { LiabilitySettingsModal } from '../../components/liabilities/LiabilitySettingsModal'
 import { PaydownChart } from '../../components/liabilities/PaydownChart'
 import { PaydownWhatIf } from '../../components/liabilities/PaydownWhatIf'
+import { paydownOutlook } from '../../components/liabilities/paydownOutlook'
 import { PayoffPill } from '../../components/liabilities/PayoffPill'
 import { Combobox } from '../../components/common/Combobox/Combobox'
 import { MetricCard } from '../../components/reports/MetricCard'
@@ -132,10 +133,10 @@ export function LiabilityPage() {
   // Unknown, not zero. With no terms on file the schedule is empty, and an
   // empty schedule counted as months would read "0 months remaining" — paid
   // off — which is the opposite of what is true.
-  const monthsRemaining =
-    !amortization || !amortization.terms_complete || amortization.baseline_never_pays_off
-      ? null
-      : amortization.baseline_schedule.length
+  // Which payoff to lead with — what you actually pay, or what the contract
+  // assumes. The decision is in paydownOutlook so it can be tested without
+  // mounting the page; both figures come from the server either way.
+  const outlook = paydownOutlook(amortization, formatMoney)
 
   async function handleLinkAsset(assetId: string | null) {
     if (!assetId) return
@@ -328,25 +329,15 @@ export function LiabilityPage() {
           variant="raised"
           label="Interest Remaining"
           value={
-            !amortization
-              ? '…'
-              : !amortization.terms_complete || amortization.baseline_never_pays_off
-                ? '—'
-                : formatMoney(Number(amortization.baseline_total_interest))
+            !amortization ? '…' : outlook.interest === null ? '—' : formatMoney(outlook.interest)
           }
-          sub={
-            amortization && !amortization.terms_complete
-              ? 'Needs APR and minimum payment'
-              : amortization?.baseline_never_pays_off
-                ? "Minimum doesn't cover interest"
-                : 'At minimum payment'
-          }
+          sub={outlook.interestNote}
         />
         <MetricCard
           variant="raised"
           label="Months Remaining"
-          value={monthsRemaining === null ? '—' : String(monthsRemaining)}
-          sub="At minimum payment"
+          value={outlook.months === null ? '—' : String(outlook.months)}
+          sub={outlook.monthsNote}
         />
       </MetricRow>
 

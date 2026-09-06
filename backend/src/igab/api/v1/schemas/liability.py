@@ -117,7 +117,7 @@ class LiabilityOut(ApiModel):
     # Average of recent positive payments (None until 2+ months of history).
     # Observed, not projected, so it survives missing terms. A payment is a
     # transfer INTO the liability's account — see LOAN_PAYMENT_ROW.
-    average_recent_payment: Decimal | None
+    typical_recent_payment: Decimal | None
     # What the ledger says interest and fees came to per month over the same
     # window (None until 2+ months carry any). The actual figure where one
     # exists; `monthly_interest_now` is the modelled one.
@@ -213,6 +213,12 @@ class AmortizationResponse(ApiModel):
     extra_total_interest: Decimal | None = None
     live_payoff_date: datetime.date | None = None
     live_never_pays_off: bool = False
-    live_average_payment: Decimal | None = None
+    live_typical_payment: Decimal | None = None
+    #: What the observed pace costs and how long it takes — the same two
+    #: figures the page reports for the contractual minimum, so it can lead
+    #: with what is actually happening instead of an assumption. None when
+    #: there is too little history, or when that pace never clears the debt.
+    live_total_interest: Decimal | None = None
+    live_months: int | None = None
     # Actual balance points before today; populated when from=origination
     history: list[BalancePointOut] = []

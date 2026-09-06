@@ -44,7 +44,7 @@ function liability(overrides: Partial<Liability> = {}): Liability {
     origination_date: null,
     original_principal: null,
     monthly_interest_now: null,
-    average_recent_payment: null,
+    typical_recent_payment: null,
     recent_interest_average: null,
     uncounted_deposits: 0,
     implied_term_months: null,

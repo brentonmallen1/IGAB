@@ -51,7 +51,10 @@ export interface Liability {
   /** Average of recent payments — transfers into the liability's account;
    * null until 2+ months of history. Observed from the ledger, so it
    * survives missing terms. */
-  average_recent_payment: number | null
+  /** The MEDIAN month that saw a payment, not the mean. A mortgage paid
+   *  with a separate curtailment row is ordinary months with occasional big
+   *  ones on top, and a mean reads one lump sum as a permanent raise. */
+  typical_recent_payment: number | null
   /** What the ledger itself says interest and fees came to per month over
    * the same window; null until 2+ months carry any. The actual figure where
    * one exists — `monthly_interest_now` is the modelled one. */
@@ -150,7 +153,12 @@ export interface AmortizationResponse {
   extra_total_interest: number | null
   live_payoff_date: string | null
   live_never_pays_off: boolean
-  live_average_payment: number | null
+  live_typical_payment: number | null
+  /** What the OBSERVED pace costs and how long it takes — the same pair the
+   *  page reports for the contractual minimum, so it can lead with what is
+   *  actually happening. Null when the pace never clears the debt. */
+  live_total_interest: number | null
+  live_months: number | null
   history: BalancePoint[]
 }
 

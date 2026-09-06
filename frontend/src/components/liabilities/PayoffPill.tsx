@@ -49,8 +49,8 @@ export function PayoffPill({ liability }: Props) {
   // Every branch below reads a projection that does not exist yet.
   if (!liability.terms_complete) {
     const paying =
-      liability.average_recent_payment !== null
-        ? formatMoney(liability.average_recent_payment)
+      liability.typical_recent_payment !== null
+        ? formatMoney(liability.typical_recent_payment)
         : null
     return (
       <div className="payoff-pill">
@@ -82,8 +82,8 @@ export function PayoffPill({ liability }: Props) {
   // alone reads as "won't pay it off early".
   if (liveNever) {
     const avg =
-      liability.average_recent_payment !== null
-        ? formatMoney(liability.average_recent_payment)
+      liability.typical_recent_payment !== null
+        ? formatMoney(liability.typical_recent_payment)
         : null
     return (
       <div className="payoff-pill payoff-pill--warning">
@@ -92,7 +92,7 @@ export function PayoffPill({ liability }: Props) {
           <div className="payoff-pill__main">Your recent payments won't pay this off</div>
           <div className="payoff-pill__sub">
             {avg
-              ? `Recent payments average ${avg}/mo (transfers into this account) — below this month's ~${interestNow} interest`
+              ? `A typical month is ${avg} (transfers into this account) — below this month's ~${interestNow} interest`
               : `Recent payments fall below this month's ~${interestNow} interest`}
             {!baselineNever && liability.baseline_payoff_date
               ? ` · at the ${minimum} minimum: ${formatMonth(liability.baseline_payoff_date)}`
@@ -131,8 +131,8 @@ export function PayoffPill({ liability }: Props) {
             Paid off around <strong>{formatMonth(liability.live_payoff_date)}</strong>
           </div>
           <div className="payoff-pill__sub">
-            {liability.average_recent_payment !== null
-              ? `Recent payments average ${formatMoney(liability.average_recent_payment)}/mo${interestLine ? `, ${interestLine}` : ''}`
+            {liability.typical_recent_payment !== null
+              ? `A typical month is ${formatMoney(liability.typical_recent_payment)}${interestLine ? `, ${interestLine}` : ''}`
               : 'Based on your recent payments'}
             {baselineNever
               ? ` · the ${minimum} minimum alone wouldn't cover interest`

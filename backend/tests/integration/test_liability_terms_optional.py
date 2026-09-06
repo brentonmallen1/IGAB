@@ -119,7 +119,7 @@ class TestStatusWithoutTerms:
         assert status.balance_source == "ledger"
         assert sum(status.recent_payments) == Decimal("1600.00")
 
-    async def test_average_payment_still_reported(self, db_session):
+    async def test_typical_payment_still_reported(self, db_session):
         """The pace is history, so it stands beside an empty terms form — the
         most useful thing there is to show while the fields are blank."""
         svc, budget, account, liability = await _managed_loan(db_session)
@@ -131,7 +131,7 @@ class TestStatusWithoutTerms:
 
         status = await svc.get_status(liability, as_of=AS_OF)
 
-        assert status.average_payment == Decimal("300.00")
+        assert status.typical_payment == Decimal("300.00")
         assert status.live is None  # known pace, still no projection
 
     async def test_promo_outlook_absent(self, db_session):

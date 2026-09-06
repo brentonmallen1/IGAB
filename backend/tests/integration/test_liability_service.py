@@ -136,10 +136,75 @@ class TestManagedPaymentHistory:
         # Balance owed: 1000 - 800 paid = 200; avg payment (300+500)/2 = 400
         assert status.current_balance == Decimal("200.00")
         assert status.live is not None
-        assert status.live.average_payment == Decimal("400.00")
+        assert status.live.typical_payment == Decimal("400.00")
         # 200 owed at 400/mo pays off in one payment
         assert status.live.payoff_date == date(2026, 8, 25)
         assert not status.baseline.never_pays_off  # 50/mo also retires 200
+
+
+class TestACurtailmentIsNotARaise:
+    """A mortgage paid with a SEPARATE curtailment row, which is how the
+    household that reported this actually files them.
+
+    Both rows land in the same month and the pace reads the month, so an
+    ordinary month is the regular payment and a curtailment month is much
+    larger. Averaging those together projected a pace never once sustained
+    and pulled the payoff date years closer for a payment already made.
+    """
+
+    async def _mortgage(self, db_session, extras: list[tuple[str, date]]):
+        services, budget = await _base(db_session)
+        checking = await create_account(db_session, budget, "Checking")
+        loan = await create_account(
+            db_session, budget, "Loan", account_type="loan", on_budget=False
+        )
+        await create_transaction(db_session, budget, loan, "-240000.00", date(2025, 12, 1))
+        # The regular payment, every complete month in the lookback window.
+        for month in range(1, 7):
+            await create_transfer(
+                db_session, budget, checking, loan, "1400.00", date(2026, month, 10)
+            )
+        for amount, when in extras:
+            await create_transfer(db_session, budget, checking, loan, amount, when)
+        liability = await create_liability(
+            db_session,
+            budget,
+            linked_account_id=loan.id,
+            interest_rate=Decimal("6.0000"),
+            minimum_payment=Decimal("1400.00"),
+        )
+        svc = make_liability_service(db_session, services)
+        return await svc.get_status(liability, as_of=AS_OF)
+
+    async def test_one_extra_payment_does_not_become_the_new_pace(self, db_session):
+        status = await self._mortgage(db_session, [("6000.00", date(2026, 4, 20))])
+        assert status.live is not None
+        # The mean would be 2,166.67 — a figure this household has never paid.
+        assert status.live.typical_payment == Decimal("1400.00")
+
+    async def test_the_extra_still_counts_where_it_actually_lands(self, db_session):
+        """It is not ignored — it came off the balance, which is what a
+        payment does. What it does not do is predict the future."""
+        without = await self._mortgage(db_session, [])
+        with_extra = await self._mortgage(db_session, [("6000.00", date(2026, 4, 20))])
+        assert without.current_balance - with_extra.current_balance == Decimal("6000.00")
+
+    async def test_curtailing_every_month_does_move_the_pace(self, db_session):
+        """The median is not a way of ignoring extra payments — it ignores
+        UNREPEATED ones."""
+        status = await self._mortgage(
+            db_session, [("600.00", date(2026, month, 20)) for month in range(1, 7)]
+        )
+        assert status.live is not None
+        assert status.live.typical_payment == Decimal("2000.00")
+
+    async def test_the_live_projection_reports_what_that_pace_costs(self, db_session):
+        """The page leads with "interest remaining" and "months remaining";
+        both used to come only from the contractual minimum."""
+        status = await self._mortgage(db_session, [])
+        assert status.live is not None
+        assert status.live.months is not None and status.live.months > 0
+        assert status.live.total_interest is not None
 
 
 class TestInterestRowsAreNotNegativePayments:
@@ -181,7 +246,7 @@ class TestInterestRowsAreNotNegativePayments:
         assert payments[-3:] == [Decimal("3000.00")] * 3
 
         status = await svc.get_status(liability, as_of=AS_OF)
-        assert status.average_payment == Decimal("3000.00")
+        assert status.typical_payment == Decimal("3000.00")
         assert status.live is not None
         assert status.live.never_pays_off is False
         # The ledger's own interest is reported beside the payment.
@@ -205,7 +270,7 @@ class TestInterestRowsAreNotNegativePayments:
         )
         svc = make_liability_service(db_session, services)
         status = await svc.get_status(liability, as_of=AS_OF)
-        assert status.average_payment == Decimal("3000.00")
+        assert status.typical_payment == Decimal("3000.00")
         assert status.recent_interest[-1] == Decimal("1618.00")
         assert status.uncounted_deposits == Decimal("1384.71")
 
@@ -244,7 +309,7 @@ class TestInterestRowsAreNotNegativePayments:
         svc = make_liability_service(db_session, services)
         status = await svc.get_status(liability, as_of=AS_OF)
         assert status.recent_payments == [Decimal("0")] * 6
-        assert status.average_payment is None
+        assert status.typical_payment is None
         assert status.uncounted_deposits == Decimal("800.00")
 
 

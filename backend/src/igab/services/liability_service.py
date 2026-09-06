@@ -38,10 +38,10 @@ from igab.services.amortization import (
     PromoOutlook,
     amortization_schedule,
     amortization_schedule_with_promo,
-    average_recent_payment,
     project_payoff,
     promo_outlook,
     quantize_cents,
+    typical_recent_payment,
 )
 from igab.utils.clock import today_utc
 
@@ -172,7 +172,9 @@ class LiabilityStatus:
     recent_payments: list[Decimal]
     # Pace from observed history, independent of the contract — so it survives
     # when there are no terms to project against.
-    average_payment: Decimal | None
+    #: The MEDIAN month, not the mean — see typical_recent_payment. What a
+    #: normal month looks like, which is the only thing worth extrapolating.
+    typical_payment: Decimal | None
     promo: PromoOutlook | None = None  # set when the liability has a promo window
     # What the ledger itself says was charged in interest and fees over the
     # same window (managed only; positive figures). Shown beside the payment
@@ -383,7 +385,7 @@ class LiabilityService:
         as_of = as_of or today_utc()
         balance, balance_source = await self.get_balance_with_source(liability)
         payments = await self.get_recent_monthly_payments(liability, as_of=as_of)
-        average = average_recent_payment(payments)
+        typical = typical_recent_payment(payments)
         interest, uncounted = await self.get_recent_monthly_interest(liability, as_of=as_of)
 
         rate = liability.interest_rate
@@ -415,7 +417,7 @@ class LiabilityService:
                     balance,
                     rate,
                     minimum,
-                    average,
+                    typical,
                     as_of,
                     liability.promo_end_date,
                     liability.promo_deferred_interest,
@@ -432,10 +434,10 @@ class LiabilityService:
             baseline=baseline,
             live=live,
             recent_payments=payments,
-            average_payment=average,
+            typical_payment=typical,
             promo=promo,
             recent_interest=interest,
-            average_interest=average_recent_payment(interest),
+            average_interest=typical_recent_payment(interest),
             uncounted_deposits=uncounted,
         )
 

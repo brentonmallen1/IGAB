@@ -158,7 +158,7 @@ async def _liability_out(
         ),
         # From observed payments, so it stands even with no terms on file —
         # useful precisely there, beside an empty minimum-payment field.
-        average_recent_payment=status_.average_payment,
+        typical_recent_payment=status_.typical_payment,
         recent_interest_average=status_.average_interest,
         uncounted_deposits=status_.uncounted_deposits,
         implied_term_months=implied_term_months,
@@ -603,7 +603,9 @@ async def get_amortization(
         extra_total_interest=extra_sched.total_interest if extra_sched else None,
         live_payoff_date=status_.live.payoff_date if status_.live else None,
         live_never_pays_off=status_.live.never_pays_off if status_.live else False,
-        live_average_payment=status_.live.average_payment if status_.live else None,
+        live_typical_payment=status_.live.typical_payment if status_.live else None,
+        live_total_interest=status_.live.total_interest if status_.live else None,
+        live_months=status_.live.months if status_.live else None,
         history=history,
     )
 
