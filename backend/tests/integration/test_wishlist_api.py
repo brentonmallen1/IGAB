@@ -122,6 +122,68 @@ class TestOwnEnvelope:
         cats = (await api_client.get(f"/api/v1/{budget.id}/categories")).json()
         assert next(c for c in cats if c["id"] == cat_id)["category_group_id"] == group["id"]
 
+    async def test_an_existing_wish_can_be_given_an_envelope_of_its_own(
+        self, db_session, api_client
+    ):
+        """The funding choice was a decision you made once and could never
+        revisit: update refused `own` outright, so a wish funded from a shared
+        category — or from nothing — could never get an envelope later."""
+        budget = await _budget(db_session, api_client)
+        wish = await _add(api_client, budget, cost="1800", funding={"mode": "none"})
+        assert wish["funding"]["owns_envelope"] is False
+
+        r = await api_client.patch(
+            f"{_url(budget)}/{wish['id']}",
+            json={"funding": {"mode": "own", "want_by": "2027-06-01"}},
+        )
+        assert r.status_code == 200, r.text
+        after = r.json()
+        assert after["funding"]["owns_envelope"] is True
+        assert after["funding"]["category_name"] == "Bike"
+
+        cat_id = after["funding"]["category_id"]
+        target = (await api_client.get(f"/api/v1/categories/{cat_id}/target")).json()
+        assert target["target_type"] == "savings_balance"
+        assert Decimal(target["target_amount"]) == Decimal("1800.00")
+        group = await _wishlist_group(api_client, budget)
+        cats = (await api_client.get(f"/api/v1/{budget.id}/categories")).json()
+        assert next(c for c in cats if c["id"] == cat_id)["category_group_id"] == group["id"]
+
+    async def test_asking_again_keeps_the_envelope_it_already_has(self, db_session, api_client):
+        """`own` on a wish that already owns one is "leave it alone", not
+        "make another". Re-running creation would clash on the name — and if
+        it did not, it would abandon whatever money is in the first."""
+        budget = await _budget(db_session, api_client)
+        wish = await _add(api_client, budget, funding={"mode": "own"})
+        original = wish["funding"]["category_id"]
+
+        r = await api_client.patch(
+            f"{_url(budget)}/{wish['id']}", json={"funding": {"mode": "own"}}
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["funding"]["category_id"] == original
+        assert r.json()["funding"]["owns_envelope"] is True
+
+    async def test_detaching_leaves_the_envelope_standing(self, db_session, api_client):
+        """The category is ordinary and may be holding money. Pointing the
+        wish elsewhere must never be a quiet way to lose one."""
+        budget = await _budget(db_session, api_client)
+        wish = await _add(api_client, budget, funding={"mode": "own"})
+        envelope = wish["funding"]["category_id"]
+        group = await create_category_group(db_session, budget, "Fun")
+        other = await create_category(db_session, budget, group, "Toys")
+
+        r = await api_client.patch(
+            f"{_url(budget)}/{wish['id']}",
+            json={"funding": {"mode": "existing", "category_id": str(other.id)}},
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["funding"]["owns_envelope"] is False
+        assert r.json()["funding"]["category_id"] == str(other.id)
+
+        cats = (await api_client.get(f"/api/v1/{budget.id}/categories")).json()
+        assert any(c["id"] == envelope for c in cats), "the old envelope was deleted"
+
     async def test_a_name_clash_is_refused_with_a_reason(self, db_session, api_client):
         budget = await _budget(db_session, api_client)
         group = await create_category_group(db_session, budget, "Fun")

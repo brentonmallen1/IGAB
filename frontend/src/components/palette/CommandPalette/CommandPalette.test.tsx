@@ -274,6 +274,30 @@ describe('CommandPalette derived destinations', () => {
     expect(await screen.findByText('Settings: Users')).toBeInTheDocument()
   })
 
+  it('narrows the budget grid from a filter: query', async () => {
+    // The same store field the filter bar's own text box writes — one
+    // filter, two ways in.
+    renderPalette()
+    await type('filter: rent')
+    await userEvent.click(await screen.findByText('Filter categories: rent'))
+    expect(useUIStore.getState().categorySearch).toBe('rent')
+    expect(navigate).toHaveBeenCalledWith('/budget')
+  })
+
+  it('offers to clear the filter on a bare filter:', async () => {
+    useUIStore.setState({ categorySearch: 'rent' })
+    renderPalette()
+    await type('filter:')
+    await userEvent.click(await screen.findByText('Clear the category filter'))
+    expect(useUIStore.getState().categorySearch).toBe('')
+  })
+
+  it('leaves the bare word "filter" to the saved filters', async () => {
+    renderPalette()
+    await type('filter')
+    await waitFor(() => expect(screen.queryByText(/^Filter categories:/)).not.toBeInTheDocument())
+  })
+
   it('reaches the wishlist page by name', async () => {
     renderPalette()
     await type('wishlist')

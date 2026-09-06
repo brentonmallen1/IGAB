@@ -3,14 +3,15 @@ import base64
 import json
 import time
 import uuid
+from collections.abc import Sequence
 from datetime import date
 from io import BytesIO
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from igab.db.models import Category, Transaction
-from igab.domain.payee_names import rank_match_patterns
+from igab.db.models import Category, Payee, Transaction
+from igab.domain.payee_names import derived_match_patterns, rank_match_patterns
 from igab.integrations.ollama.client import OllamaClient
 from igab.services.ai_prompts import DEFAULT_PROMPTS, render_prompt
 from igab.services.category_matching import match_category
@@ -431,18 +432,29 @@ class AIService:
         except Exception:
             return {"category_id": None, "category_name": None, "confidence": 0.0}
 
-    async def suggest_regex(self, names: list[str]) -> list[str]:
+    async def suggest_regex(self, budget_id: uuid.UUID, names: list[str]) -> list[str]:
         """Candidate match patterns generalizing a set of raw payee names,
-        widest coverage first.
+        best first.
 
-        The model's output is untrusted: `rank_match_patterns` keeps what
-        compiles and matches at least one name, ordered by how many. Nothing
-        usable is an empty list — the frontend has its own structural
-        heuristic to fall back on.
+        The model is a source of guesses, not of answers. Three things make
+        the result dependable rather than a coin flip, and all three are
+        verification rather than prompting:
+
+        - Every candidate is CHECKED against the names, by the same
+          `pattern_matches` the importer uses, and ranked by how many it
+          covers. A pattern that does not do the job cannot come first.
+        - Over-generality is measured, not guessed: the budget's other payees
+          go in as `avoid`, so `.*` and `^A` — which "match every name" — sink
+          below anything that does not also swallow the register.
+        - `derived_match_patterns` appends candidates computed from the names
+          themselves, the last of which matches all of them by construction.
+          So a model that returns nonsense, times out, or is not installed at
+          all still produces a working answer instead of an empty list.
         """
         cleaned = [n.strip() for n in names if n.strip()]
         if not cleaned:
             return []
+        candidates: list[object] = []
         prompt = await self._prompt("ai_prompt_suggest_regex", {"names": "\n".join(cleaned)})
         try:
             client = await self._client()
@@ -452,14 +464,36 @@ class AIService:
                 options=await self._merged_options(vision=False, task_defaults={"temperature": 0}),
             )
             data = _json_from_response(raw)
+            # A saved override of the older prompt still answers with one
+            # "pattern".
+            proposed = data.get("patterns")
+            candidates = list(proposed) if isinstance(proposed, list) else [data.get("pattern")]
         except Exception:
-            return []
+            # No model, no network, unparseable JSON — the derived patterns
+            # below are the whole answer, and they are still a usable one.
+            candidates = []
+        candidates.extend(derived_match_patterns(cleaned))
+        return rank_match_patterns(
+            candidates,
+            cleaned,
+            REGEX_CANDIDATES,
+            avoid=await self._other_payee_names(budget_id, cleaned),
+        )
 
-        # A saved override of the older prompt still answers with one "pattern".
-        candidates = data.get("patterns")
-        if not isinstance(candidates, list):
-            candidates = [data.get("pattern")]
-        return rank_match_patterns(candidates, cleaned, REGEX_CANDIDATES)
+    async def _other_payee_names(self, budget_id: uuid.UUID, names: Sequence[str]) -> list[str]:
+        """The budget's payees that are NOT the ones being merged.
+
+        What "too general" is checked against. Names only — the pattern is
+        judged on strings, and loading the rows keeps this one query.
+        """
+        chosen = {n.casefold() for n in names}
+        rows = await self.session.execute(
+            select(Payee.name).where(
+                Payee.budget_id == budget_id,
+                Payee.is_deleted == False,  # noqa: E712
+            )
+        )
+        return [name for (name,) in rows if name and name.casefold() not in chosen]
 
     async def spending_insights(self, budget_id: uuid.UUID, month: date) -> str:
         month_start = month.replace(day=1)

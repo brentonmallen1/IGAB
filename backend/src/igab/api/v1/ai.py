@@ -58,9 +58,14 @@ async def suggest_regex(
     current_user: CurrentUser,
     ai_svc: Annotated[AIService, Depends(get_ai_service)],
 ) -> SuggestRegexResponse:
-    """Candidate payee match patterns generalizing the given raw names,
-    most specific first."""
-    patterns = await ai_svc.suggest_regex(body.names)
+    """Candidate payee match patterns generalizing the given raw names.
+
+    Best first, and never empty for a non-empty request: the service checks
+    every candidate against the names, ranks down anything that also matches
+    the budget's other payees, and appends patterns derived from the names
+    themselves so a model that fails does not cost the user their answer.
+    """
+    patterns = await ai_svc.suggest_regex(budget_id, body.names)
     return SuggestRegexResponse(patterns=patterns)
 
 

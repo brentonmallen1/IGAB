@@ -189,22 +189,95 @@ def pattern_matches(pattern: str, name: str) -> bool:
     return re.search(pattern, name, re.IGNORECASE) is not None
 
 
+#: A derived stem shorter than this is not a merchant name, it is a letter.
+#: `^C` would match half the register.
+MIN_DERIVED_STEM = 4
+
+
+def _common_prefix(names: Sequence[str]) -> str:
+    r"""The longest prefix every name shares, cut back to a word boundary.
+
+    Cut back because half a word is a worse pattern than the word before it:
+    the shared prefix of `SQ *BLUE BOTTLE` and `SQ *BLUEBIRD` is `SQ *BLUE`,
+    and `^SQ \*BLUE` matches a third merchant nobody asked about. Ending at
+    the last boundary keeps `^SQ \*`, which is honest about what is actually
+    shared.
+    """
+    if not names:
+        return ""
+    shortest = min(names, key=len)
+    end = 0
+    for i, ch in enumerate(shortest):
+        if any(name[i] != ch for name in names):
+            break
+        end = i + 1
+    prefix = shortest[:end]
+    if end < len(shortest) and prefix and prefix[-1].isalnum():
+        cut = max(
+            (i for i, ch in enumerate(prefix) if not ch.isalnum()),
+            default=-1,
+        )
+        prefix = prefix[: cut + 1]
+    return prefix
+
+
+def derived_match_patterns(names: Sequence[str]) -> list[str]:
+    """Patterns computed from the names themselves, no model involved.
+
+    The suggester's answer used to be whatever the model said and nothing at
+    all when it said something unusable — which is most of what "the AI regex
+    is flaky" means in practice. These are the floor under it: the last one
+    is an alternation of the names, so *something* that matches every name is
+    always on offer, however the model behaved.
+
+    Most specific last, matching the caller's contract, because that is also
+    least useful: the alternation is a restatement of the list, correct and
+    dull. The shared stem above it is the pattern a person would have written.
+    """
+    cleaned = [n.strip() for n in names if n.strip()]
+    if not cleaned:
+        return []
+    out: list[str] = []
+    prefix = _common_prefix(cleaned)
+    if len(prefix.strip()) >= MIN_DERIVED_STEM:
+        out.append("^" + re.escape(prefix))
+    # Guaranteed full coverage. Escaped, so a name containing regex
+    # metacharacters (`AMZN Mktp US*1A2B3`) cannot make the pattern invalid.
+    out.append("^(?:" + "|".join(re.escape(n) for n in dict.fromkeys(cleaned)) + ")")
+    return out
+
+
 def rank_match_patterns(
-    candidates: Iterable[object], names: Sequence[str], limit: int
+    candidates: Iterable[object],
+    names: Sequence[str],
+    limit: int,
+    avoid: Sequence[str] = (),
 ) -> list[str]:
-    """The usable candidates among what a model proposed, widest coverage first.
+    """The usable candidates among what a model proposed, best first.
 
     A candidate survives if it is a non-blank string that compiles and matches
-    at least one name. Coverage — how many of `names` it matches — orders
-    them; the proposal order breaks ties, so a model asked for most-specific-
-    first keeps that order among equals. A candidate that misses a name is
-    ranked, not withheld: one stray sample (a bank name split on its own
-    comma) must not blank the whole answer, and the caller shows the count.
+    at least one name. Ordering, in order of importance:
+
+    1. **Coverage** — how many of `names` it matches. The whole request is
+       "one pattern for these", so one that leaves a name behind is worse
+       than one that does not.
+    2. **False hits** — how many of `avoid` it also matches. `avoid` is the
+       budget's OTHER payees, which is what "too general" can be checked
+       against instead of guessed at: `.*` and `^A` cover every name asked
+       for and would swallow the register with them. Ranked rather than
+       refused, because a pattern that catches one unrelated payee may still
+       be the best on offer, and the caller shows the alternatives.
+    3. **Proposal order** — so a model asked for most-specific-first keeps
+       that order among equals, and the derived fallbacks the caller appends
+       stay below anything the model got right.
+
+    A candidate that misses a name is ranked, not withheld: one stray sample
+    (a bank name split on its own comma) must not blank the whole answer.
 
     Newlines are trimmed but not spaces — a trailing space is significant
     ("^ACH DEPOSIT PAYROLL " must keep it).
     """
-    scored: list[tuple[int, int, str]] = []
+    scored: list[tuple[int, int, int, str]] = []
     seen: set[str] = set()
     for order, candidate in enumerate(candidates):
         if not isinstance(candidate, str) or not candidate.strip():
@@ -215,10 +288,11 @@ def rank_match_patterns(
         seen.add(pattern)
         try:
             hits = sum(pattern_matches(pattern, name) for name in names)
+            misfires = sum(pattern_matches(pattern, other) for other in avoid)
         except re.error:
             continue
         if hits == 0:
             continue
-        scored.append((hits, order, pattern))
-    scored.sort(key=lambda t: (-t[0], t[1]))
-    return [pattern for _, _, pattern in scored[:limit]]
+        scored.append((hits, misfires, order, pattern))
+    scored.sort(key=lambda t: (-t[0], t[1], t[2]))
+    return [pattern for _, _, _, pattern in scored[:limit]]

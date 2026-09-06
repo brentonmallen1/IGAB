@@ -17,7 +17,11 @@
   border-bottom: 1px solid var(--border-color);
   background-color: var(--bg-secondary);
   position: sticky;
-  top: 0;
+  /* Below the sticky filter bar, never under it. The offset is that bar's
+     measured height (it wraps, so no constant is right) published as
+     --budget-filter-bar-h; 0px until the first measurement, which is where
+     this header sat before the bar became sticky. */
+  top: var(--budget-filter-bar-h, 0px);
   z-index: var(--z-sticky);
 }
 

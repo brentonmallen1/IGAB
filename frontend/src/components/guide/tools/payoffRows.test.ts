@@ -1,6 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import type { Liability } from '../../../api/liabilities'
-import { blankRow, rowsToRequest, seedRows, type PlannerRow } from './payoffRows'
+import {
+  addableLiabilities,
+  blankRow,
+  rowFromLiability,
+  rowsToRequest,
+  seedRows,
+  type PlannerRow,
+} from './payoffRows'
 
 function liability(over: Partial<Liability>): Liability {
   return {
@@ -21,6 +28,7 @@ function row(over: Partial<PlannerRow>): PlannerRow {
     rate: '22.9',
     minimum: '85',
     fromLiability: false,
+    include: true,
     ...over,
   }
 }
@@ -36,6 +44,7 @@ describe('seedRows', () => {
         rate: '22.9',
         minimum: '85',
         fromLiability: true,
+        include: true,
       },
     ])
     expect(excluded).toEqual([])
@@ -101,5 +110,63 @@ describe('rowsToRequest', () => {
   it('a rate over 100 or a negative balance is an error', () => {
     const { errors } = rowsToRequest([row({ rate: '120', balance: '-5' })], '')
     expect(errors.r).toEqual(['balance', 'rate'])
+  })
+})
+
+describe('include', () => {
+  it('leaves an unticked row out of the plan without erroring on it', () => {
+    // The point of the tick: keep the figures on screen, out of the maths.
+    // Removing the row was the only way to do this, and it took them with it.
+    const { body, errors } = rowsToRequest(
+      [row({ key: 'a' }), row({ key: 'b', name: 'Car', include: false })],
+      ''
+    )
+    expect(body?.debts.map((d) => d.key)).toEqual(['a'])
+    expect(errors).toEqual({})
+  })
+
+  it('does not let a half-typed excluded row block the plan', () => {
+    const { body } = rowsToRequest(
+      [row({ key: 'a' }), row({ key: 'b', rate: 'not a number', include: false })],
+      ''
+    )
+    expect(body?.debts.map((d) => d.key)).toEqual(['a'])
+  })
+
+  it('has nothing to plan when every row is unticked', () => {
+    expect(rowsToRequest([row({ include: false })], '').body).toBeNull()
+  })
+})
+
+describe('rowFromLiability', () => {
+  it('fills in what is known and leaves the rest to type', () => {
+    // A mortgage with no APR on record is still worth adding by name.
+    expect(rowFromLiability(liability({ interest_rate: null, minimum_payment: null }))).toEqual({
+      key: 'l1',
+      name: 'Visa',
+      balance: '3410',
+      rate: '',
+      minimum: '',
+      fromLiability: true,
+      include: true,
+    })
+  })
+})
+
+describe('addableLiabilities', () => {
+  it('offers the ones the seed left out', () => {
+    const kept = liability({ id: 'l1' })
+    const missing = liability({ id: 'l2', name: 'Mortgage', interest_rate: null })
+    expect(addableLiabilities([kept, missing], [row({ key: 'l1' })]).map((l) => l.id)).toEqual([
+      'l2',
+    ])
+  })
+
+  it('offers one back after it was removed from the table', () => {
+    expect(addableLiabilities([liability({ id: 'l1' })], []).map((l) => l.id)).toEqual(['l1'])
+  })
+
+  it('never offers one already in the table', () => {
+    expect(addableLiabilities([liability({ id: 'l1' })], [row({ key: 'l1' })])).toEqual([])
   })
 })

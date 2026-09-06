@@ -1,13 +1,7 @@
-.category-txns-overlay {
-  position: fixed;
-  inset: 0;
-  background-color: rgba(0, 0, 0, 0.55);
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding-top: 80px;
-  z-index: var(--z-overlay);
-}
+/* No overlay rule here. This panel sits inside the shared `Modal`, which
+   owns the backdrop, the layering and the mobile stretch — the private copy
+   that used to live here is what kept the peek behind the dialog that
+   opened it. */
 
 .category-txns {
   background-color: var(--bg-primary);
@@ -223,12 +217,6 @@
 /* Full-screen on phones: a 620px panel with an 80px top pad does not fit a
    390px viewport, and the list inside needs a real scroll container. */
 @media (max-width: 768px) {
-  .category-txns-overlay {
-    padding: 0;
-    align-items: stretch;
-    justify-content: stretch;
-  }
-
   .category-txns {
     width: 100%;
     max-width: none;

@@ -669,6 +669,10 @@ a {
 .timeline__amount--income,
 .projection-event__amount--positive,
 .assign-preview-modal__delta--positive,
+/* Interest saved and months shaved off — a gain, and it renders in
+   --color-positive. It was in the NEGATIVE list under its old name, so in
+   every glow theme a green figure carried a red halo. */
+.paydown-whatif__result-gain,
 .target-pill-stat--funded {
   text-shadow: var(--glow-text-positive);
 }
@@ -685,8 +689,7 @@ a {
 .cover-modal__overspent,
 .liability-card__balance,
 .amort-table__interest,
-.anomaly-card__actual--high,
-.liability-page__whatif-result {
+.anomaly-card__actual--high {
   text-shadow: var(--glow-text-negative);
 }
 

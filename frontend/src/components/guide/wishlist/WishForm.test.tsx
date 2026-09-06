@@ -188,6 +188,45 @@ describe('WishForm', () => {
     })
   })
 
+  it('offers an envelope of its own to a wish that has none', async () => {
+    // The whole funding choice used to be a one-time decision: editing hid
+    // the "own" radio, and the server refused the mode anyway.
+    renderForm(wish({ mode: 'none' }), [])
+    const own = screen.getByRole('radio', { name: /An envelope of its own/ })
+    await userEvent.click(own)
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({ funding: { mode: 'own', category_id: null } })
+    )
+  })
+
+  it('lets a wish that owns an envelope point somewhere else', async () => {
+    // It showed a sentence and no controls at all, so this was unreachable.
+    renderForm(
+      wish({ mode: 'own', owns_envelope: true, category_id: 'c-own', category_name: 'Canoe' }),
+      []
+    )
+    await userEvent.click(screen.getByRole('radio', { name: /Not yet/ }))
+    expect(screen.getByText(/Canoe stays on the Budget page/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({ funding: { mode: 'none', category_id: null } })
+    )
+  })
+
+  it('sends no want_by for an envelope that already exists', async () => {
+    // The date sets the new envelope's goal. For one the budget page already
+    // owns, claiming to set it would be a lie.
+    renderForm(
+      wish({ mode: 'own', owns_envelope: true, category_id: 'c-own', category_name: 'Canoe' }),
+      []
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({ funding: { mode: 'own', category_id: null } })
+    )
+  })
+
   it('clearing the cooling date ends the cooling-off', async () => {
     const w = wish({ mode: 'none' }, { cooling_until: '2026-09-20', cooling: true })
     renderForm(w, [])

@@ -52,7 +52,10 @@ class WishUpdate(ApiModel):
     is_priority: bool | None = None
     status: Literal["open", "done", "dropped"] | None = None
     cooling_until: date | None = None
-    #: `existing` or `none` — an envelope of its own is chosen at creation.
+    #: Any of the three modes. `own` on a wish that has no envelope of its
+    #: own makes one (named for the wish, with a savings goal of its cost);
+    #: on one that already has an envelope it is a no-op, because the budget
+    #: page owns that category from the moment it exists.
     funding: FundingIn | None = None
 
 

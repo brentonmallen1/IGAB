@@ -1,12 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowUpRight, Plus, X } from 'lucide-react'
 import { usePayees, useTransactionsPeek } from '../../../api/transactions'
 import { useAccounts } from '../../../api/accounts'
 import { useUIStore } from '../../../stores/uiStore'
 import { useFormatters } from '../../../hooks/useFormatters'
-import { useIsMobile } from '../../../hooks/useMediaQuery'
-import { useHistoryDismissable } from '../../../hooks/useHistoryDismissable'
+import { Modal } from '../../common/Modal/Modal'
 import { transactionDisplayPayee } from '../../../utils/transferDisplay'
 import type { Transaction } from '../../../types'
 import './TransactionsPeekModal.css'
@@ -34,6 +33,16 @@ interface Props {
  * "View all" expands the list in place so the user stays in the budget
  * context; rows click through to the account register, and "Open in
  * Transactions" hands the same filter to the all-accounts register page.
+ *
+ * On the shared `Modal`, which is load-bearing rather than tidy. This drew
+ * its own fixed overlay — the seventh copy of `.overlay`, exactly the one
+ * `Dialog`'s docstring warned about — and an inline overlay is not portalled,
+ * so it stayed in the page's stacking context. Opened from inside a dialog
+ * that IS portalled (the hero's "Overspending on cards"), it rendered behind
+ * the thing that raised it at the same z-index, and the only way out looked
+ * like closing everything. `Modal` portals to `document.body` and pushes onto
+ * the overlay stack, so the newest overlay paints on top and Escape closes
+ * only that one.
  */
 export function TransactionsPeekModal({ budgetId, scope, onClose, onAddTransaction }: Props) {
   const [accountFilter, setAccountFilter] = useState('')
@@ -41,8 +50,6 @@ export function TransactionsPeekModal({ budgetId, scope, onClose, onAddTransacti
   const navigate = useNavigate()
   const setTransactionSearch = useUIStore((s) => s.setTransactionSearch)
   const { formatMoney, formatDate } = useFormatters()
-  const isMobile = useIsMobile()
-  useHistoryDismissable(isMobile, onClose, 'category-txns')
 
   const { data, isPending } = useTransactionsPeek(
     budgetId,
@@ -56,14 +63,6 @@ export function TransactionsPeekModal({ budgetId, scope, onClose, onAddTransacti
 
   const accountName = useMemo(() => new Map(accounts.map((a) => [a.id, a.name])), [accounts])
   const payeeName = useMemo(() => new Map(payees.map((p) => [p.id, p.name])), [payees])
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [onClose])
 
   const transactions = data?.transactions ?? []
   const totalCount = data?.total_count ?? 0
@@ -96,12 +95,7 @@ export function TransactionsPeekModal({ budgetId, scope, onClose, onAddTransacti
   }
 
   return (
-    <div
-      className="category-txns-overlay"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
-    >
+    <Modal onClose={onClose} historyKey="category-txns">
       <div className="category-txns" role="dialog" aria-modal aria-labelledby="category-txns-title">
         <div className="category-txns__header">
           <span id="category-txns-title" className="category-txns__title">
@@ -249,6 +243,6 @@ export function TransactionsPeekModal({ budgetId, scope, onClose, onAddTransacti
           )}
         </div>
       </div>
-    </div>
+    </Modal>
   )
 }

@@ -9,6 +9,7 @@ from rapidfuzz import fuzz
 
 from igab.domain.payee_names import (
     dedupe_samples,
+    derived_match_patterns,
     distinctive_key,
     pattern_matches,
     rank_match_patterns,
@@ -225,3 +226,71 @@ class TestSubsetMatchingStaysCorrect:
         # not have fixed it and why the guard has to run before the scoring.
         assert fuzz.token_set_ratio(similarity_key(raw), similarity_key(candidate)) == 100
         assert distinctive_key(raw) == ""
+
+
+class TestOverGenerality:
+    """ "Not too general" is checkable, once there is something to check against.
+
+    The merge dialog's whole job is one pattern for the names you picked. A
+    pattern that also matches the rest of the register does that job and ruins
+    the register, and until `avoid` existed nothing in the ranking could tell
+    the difference.
+    """
+
+    NAMES = ["ACH DEPOSIT PAYROLL 88", "ACH DEPOSIT PAYROLL 99"]
+    OTHERS = ["Amazon", "Aldi", "Apple"]
+
+    def test_a_pattern_that_only_matches_the_chosen_names_wins(self):
+        ranked = rank_match_patterns(
+            ["^A", "^ACH DEPOSIT PAYROLL "], self.NAMES, 3, avoid=self.OTHERS
+        )
+        assert ranked[0] == "^ACH DEPOSIT PAYROLL "
+
+    def test_coverage_still_outranks_tidiness(self):
+        """A pattern that misses a name is worse than one that catches a
+        stranger — the request was for a pattern covering all of them."""
+        ranked = rank_match_patterns(["PAYROLL 88", "^A"], self.NAMES, 3, avoid=self.OTHERS)
+        assert ranked[0] == "^A"
+
+    def test_without_an_avoid_list_nothing_changes(self):
+        assert rank_match_patterns(["^A"], self.NAMES, 3) == ["^A"]
+
+
+class TestDerivedMatchPatterns:
+    """The floor under a flaky model: patterns computed from the names."""
+
+    def test_the_last_one_matches_every_name_by_construction(self):
+        names = ["ACH DEPOSIT PAYROLL 88", "ACH DEPOSIT PAYROLL 99"]
+        derived = derived_match_patterns(names)
+        assert derived
+        assert all(pattern_matches(derived[-1], name) for name in names)
+
+    def test_it_offers_the_shared_stem_a_person_would_have_written(self):
+        derived = derived_match_patterns(["ACH DEPOSIT PAYROLL 88", "ACH DEPOSIT PAYROLL 99"])
+        assert derived[0] == r"^ACH\ DEPOSIT\ PAYROLL\ "
+
+    def test_the_stem_stops_at_a_word_boundary(self):
+        r"""Half a word is a worse pattern than the word before it: `^SQ \*BLUE`
+        would claim a third merchant nobody asked about."""
+        derived = derived_match_patterns(["SQ *BLUE BOTTLE", "SQ *BLUEBIRD"])
+        assert derived[0] == r"^SQ\ \*"
+
+    def test_names_sharing_nothing_still_get_a_working_pattern(self):
+        names = ["Corner Grocer", "Harborstone Fuel"]
+        derived = derived_match_patterns(names)
+        # No stem worth offering, but the alternation still covers both.
+        assert all(pattern_matches(derived[-1], name) for name in names)
+
+    def test_regex_metacharacters_in_a_name_are_escaped(self):
+        names = ["AMZN Mktp US*1A2B3", "AMZN Mktp US*9Z8Y7"]
+        for pattern in derived_match_patterns(names):
+            assert all(pattern_matches(pattern, name) for name in names)
+
+    def test_a_one_letter_stem_is_not_offered(self):
+        """`^C` would match half the register."""
+        derived = derived_match_patterns(["Costco 41", "Cvs 8812"])
+        assert not any(p == r"^C" for p in derived)
+
+    def test_no_names_no_patterns(self):
+        assert derived_match_patterns([]) == []
+        assert derived_match_patterns(["", "  "]) == []
