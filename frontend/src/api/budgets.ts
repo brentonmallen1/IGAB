@@ -469,6 +469,18 @@ export interface YnabAccountPreview {
    *  merge suggestion: measured on a real export, fuzzy similarity scores 100
    *  for "Redwood" vs "Redwood CC", which are different accounts. */
   related_group: string | null
+  /** The disposition to arrive pre-selected. Both are sent on every row so
+   *  this screen seeds all four fields from the server rather than hard-coding
+   *  false — which is what threw away a remembered "leave this one out" on
+   *  every import. Home: domain/import_mapping.resolve_account_suggestion. */
+  suggested_skip: boolean
+  suggested_close: boolean
+  /** Which of the three sources supplied `suggested_type`/`suggested_on_budget`
+   *  — not the disposition, which follows its own precedence. "export" = the
+   *  real type from an IGAB export's Accounts.csv, "remembered" = what you
+   *  chose the last time you imported an account with this name, "heuristic" =
+   *  read from the name. */
+  suggestion_source: 'export' | 'remembered' | 'heuristic'
 }
 
 export interface YnabPreviewResult {
@@ -515,6 +527,18 @@ export function usePreviewBudgetImport() {
         .post<BudgetImportPreview>('/budgets/import/preview', formData)
         .then((r) => r.data)
     },
+  })
+}
+
+/** Drop every remembered import choice for the signed-in user. Nothing
+ *  queries this, so there is no cache to invalidate — the caller re-runs the
+ *  preview to see the screen without the memory. */
+export function useForgetRememberedAccounts() {
+  return useMutation({
+    mutationFn: () =>
+      apiClient
+        .delete<{ forgotten: number }>('/budgets/import/remembered-accounts')
+        .then((r) => r.data),
   })
 }
 

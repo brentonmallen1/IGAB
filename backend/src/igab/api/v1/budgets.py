@@ -23,6 +23,7 @@ from igab.dependencies import (
     get_budget_service,
     get_category_group_repo,
     get_category_repo,
+    get_import_mapping_repo,
     get_liability_repo,
     get_payee_repo,
     get_reconciliation_repo,
@@ -41,6 +42,7 @@ from igab.repositories.category_repo import (
     CategoryGroupRepository,
     CategoryRepository,
 )
+from igab.repositories.import_mapping_repo import ImportMappingRepository
 from igab.repositories.liability_repo import LiabilityRepository
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.reconciliation_repo import ReconciliationRepository
@@ -93,18 +95,25 @@ class YNABImportBudgetResponse(BaseModel):
     import_result: YNABImportResult
 
 
-@router.post("/budgets/import-ynab/preview")
-async def preview_ynab_budget_import(
-    current_user: CurrentUser,
-    file: UploadFile = File(...),
-):
-    """Parse a YNAB export without creating anything: account list with
-    name-based type suggestions for the mapping step. Budget-less — this
-    flow runs BEFORE the budget exists."""
-    from igab.api.v1.imports import build_ynab_preview, parse_uploaded_ynab_zip
+class ForgottenAccountMappings(BaseModel):
+    forgotten: int
 
-    ynab_budget = await parse_uploaded_ynab_zip(file)
-    return build_ynab_preview(ynab_budget)
+
+@router.delete("/budgets/import/remembered-accounts", response_model=ForgottenAccountMappings)
+async def forget_remembered_accounts(
+    current_user: CurrentUser,
+    mapping_repo: ImportMappingRepository = Depends(get_import_mapping_repo),
+) -> ForgottenAccountMappings:
+    """Drop every remembered import choice for the signed-in user.
+
+    The off switch for the memory, and the only one — per person, in the screen
+    where the memory is visible, rather than a global flag someone else can set
+    for you. A 200 with the count instead of a 204: the screen says how many it
+    forgot, and CommitRoute commits only below 400.
+
+    Not change-logged, for the reason at the write site.
+    """
+    return ForgottenAccountMappings(forgotten=await mapping_repo.forget_all(current_user.id))
 
 
 class BudgetImportPreview(BaseModel):
@@ -122,6 +131,7 @@ async def preview_budget_import(
     current_user: CurrentUser,
     file: UploadFile = File(...),
     session: AsyncSession = Depends(get_session),
+    mapping_repo: ImportMappingRepository = Depends(get_import_mapping_repo),
 ) -> BudgetImportPreview:
     """One reader for "here is a budget file": says which importer takes it
     and returns that importer's preview, so the person uploading never has to
@@ -161,8 +171,13 @@ async def preview_budget_import(
                 kind="snapshot", snapshot=await inspect_snapshot_file(tmp_path, session)
             )
         if looks_like_ynab_export(member_names):
+            # What this person chose the last time they mapped an account with
+            # each of these names. Read here rather than inside the preview so
+            # that stays sync and pure — see build_ynab_preview.
+            remembered = await mapping_repo.get_for_user(current_user.id)
             return BudgetImportPreview(
-                kind="ynab", ynab=build_ynab_preview(parse_ynab_zip_path(tmp_path))
+                kind="ynab",
+                ynab=build_ynab_preview(parse_ynab_zip_path(tmp_path), remembered=remembered),
             )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -188,6 +203,7 @@ async def import_ynab_as_budget(
     account_types: Annotated[str | None, Form()] = None,
     session: AsyncSession = Depends(get_session),
     account_repo: AccountRepository = Depends(get_account_repo),
+    mapping_repo: ImportMappingRepository = Depends(get_import_mapping_repo),
     category_group_repo: CategoryGroupRepository = Depends(get_category_group_repo),
     category_repo: CategoryRepository = Depends(get_category_repo),
     payee_repo: PayeeRepository = Depends(get_payee_repo),
@@ -205,7 +221,7 @@ async def import_ynab_as_budget(
 
     # Validate the mapping and the zip BEFORE creating the budget so a bad
     # request doesn't leave an empty budget behind.
-    type_map, skip_accounts, close_accounts = parse_account_types_form(account_types)
+    form = parse_account_types_form(account_types)
     ynab_budget = await parse_uploaded_ynab_zip(file)
 
     budget_name = name.strip()
@@ -235,9 +251,9 @@ async def import_ynab_as_budget(
         transaction_repo=transaction_repo,
         transaction_service=txn_service,
         assignment_repo=assignment_repo,
-        account_types=type_map,
-        skip_accounts=skip_accounts,
-        close_accounts=close_accounts,
+        account_types=form.type_map,
+        skip_accounts=form.skip_accounts,
+        close_accounts=form.close_accounts,
     )
     # On failure this raises a 400; get_session rolls back, discarding the
     # budget created above along with every partial row.
@@ -249,10 +265,27 @@ async def import_ynab_as_budget(
         category_repo,
         budget.id,
         ynab_budget,
-        type_map=type_map,
-        skip_accounts=skip_accounts,
+        type_map=form.type_map,
+        skip_accounts=form.skip_accounts,
         anchor=result.anchored_at,
     )
+
+    # So the next import of a file carrying these names arrives already
+    # answered -- see db.models.ImportAccountMapping.
+    #
+    # Written from `form.choices` and not `form.type_map`, which drops the type
+    # of every skipped account: remembering from there would forget that
+    # "Vehicle A Loan" was typed auto_loan AND skipped, and pre-fill
+    # checking/on-budget the moment it was un-skipped.
+    #
+    # Sharing the import's transaction is deliberate. An import that raises
+    # unwinds to the session rollback and remembers nothing, which is right --
+    # the choices were never acted on.
+    #
+    # Not change-logged, like app settings and SimpleFIN connections: this is a
+    # per-user preference with no budget to file it under, and change_log
+    # requires one. There is nothing here for undo to invert.
+    await mapping_repo.remember(current_user.id, form.choices)
 
     summary = YNABImportResult(
         accounts=result.accounts_imported,

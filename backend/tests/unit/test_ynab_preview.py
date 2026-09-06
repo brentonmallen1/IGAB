@@ -17,10 +17,10 @@ import pytest
 from fastapi import HTTPException
 
 from igab.api.v1.imports import (
-    assign_related_groups,
     build_ynab_preview,
     parse_account_types_form,
 )
+from igab.domain.import_mapping import assign_related_groups
 from igab.integrations.ynab.models import YNABBudget, YNABTransaction
 
 
@@ -38,7 +38,9 @@ def _txn(account: str, when: date, amount: str = "-5.00") -> YNABTransaction:
 
 
 def _preview(*transactions: YNABTransaction):
-    result = build_ynab_preview(YNABBudget(transactions=list(transactions), budget_entries=[]))
+    result = build_ynab_preview(
+        YNABBudget(transactions=list(transactions), budget_entries=[]), remembered={}
+    )
     return {a.name: a for a in result.accounts}
 
 
@@ -90,37 +92,43 @@ class TestTheImportChoice:
         )
 
     def test_close_round_trips(self):
-        _, skipped, closed = parse_account_types_form(self._form(Old={"close": True}))
-        assert closed == {"Old"}
-        assert skipped == set()
+        form = parse_account_types_form(self._form(Old={"close": True}))
+        assert form.close_accounts == {"Old"}
+        assert form.skip_accounts == set()
 
     def test_close_defaults_off_so_existing_clients_are_unaffected(self):
-        type_map, skipped, closed = parse_account_types_form(self._form(Checking={}))
-        assert closed == set()
-        assert skipped == set()
-        assert type_map == {"Checking": ("checking", True)}
+        form = parse_account_types_form(self._form(Checking={}))
+        assert form.close_accounts == set()
+        assert form.skip_accounts == set()
+        assert form.type_map == {"Checking": ("checking", True)}
 
     def test_a_closed_account_is_still_imported(self):
         """The distinction that matters: close is not a quiet skip. The account
         keeps its place in the type map, so it is created and its transactions
         arrive."""
-        type_map, _, closed = parse_account_types_form(self._form(Old={"close": True}))
-        assert "Old" in type_map
-        assert "Old" in closed
+        form = parse_account_types_form(self._form(Old={"close": True}))
+        assert "Old" in form.type_map
+        assert "Old" in form.close_accounts
 
     def test_skip_wins_when_a_caller_sends_both(self):
         """Nonsense input, but it must resolve one way rather than creating an
         account nobody asked for. A skipped account is never created, so there
         is nothing left to close."""
-        type_map, skipped, closed = parse_account_types_form(
-            self._form(Old={"skip": True, "close": True})
-        )
-        assert skipped == {"Old"}
-        assert closed == set()
-        assert "Old" not in type_map
+        form = parse_account_types_form(self._form(Old={"skip": True, "close": True}))
+        assert form.skip_accounts == {"Old"}
+        assert form.close_accounts == set()
+        assert "Old" not in form.type_map
+        # And the normalized view agrees, so nothing downstream can disagree.
+        assert form.choices["Old"].close is False
 
     def test_an_empty_form_asks_for_nothing(self):
-        assert parse_account_types_form(None) == ({}, set(), set())
+        form = parse_account_types_form(None)
+        assert (form.choices, form.type_map, form.skip_accounts, form.close_accounts) == (
+            {},
+            {},
+            set(),
+            set(),
+        )
 
     def test_an_unknown_type_is_still_rejected(self):
         with pytest.raises(HTTPException) as exc:

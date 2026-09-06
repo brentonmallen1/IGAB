@@ -4,6 +4,7 @@ from datetime import date
 from decimal import Decimal
 
 from igab.domain.dates import add_months, month_start
+from igab.domain.import_mapping import ExportedAccount
 
 
 @dataclass
@@ -67,11 +68,16 @@ class YNABBudget:
     #: dropped row is visible in the counts; a row imported with a silently
     #: invented zero is not.
     errors: list[str] = field(default_factory=list)
-    #: Account name -> (type key, on_budget), from an Accounts.csv member.
+    #: `account_key(name)` -> ExportedAccount, from an Accounts.csv member.
     #: Only IGAB's own export carries one; YNAB's does not, and then the
     #: preview falls back to guessing a type from the account's name. Empty
     #: rather than absent so every reader takes the same path.
-    account_types: dict[str, tuple[str, bool]] = field(default_factory=dict)
+    #:
+    #: Keyed by `account_key` and not the raw name: the register and
+    #: Accounts.csv are two files, and an account spelled "Checking" in one and
+    #: "checking" in the other used to fall through to the default here —
+    #: importing a tracked account ON budget, silently.
+    account_types: dict[str, ExportedAccount] = field(default_factory=dict)
 
 
 def plan_boundary(plan_rows: Sequence[YNABPlanRow], today: date) -> date | None:

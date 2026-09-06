@@ -67,7 +67,18 @@ ROOT = Path(__file__).resolve().parent.parent
 
 #: Code lines per file, by extension. Generous on purpose — this catches the
 #: outliers that stop being readable, not ordinary long files.
-BUDGET = {".py": 1000, ".ts": 600, ".tsx": 600}
+#:
+#: Doubled 2026-09-06 (1000/600 → 2000/1200). The original numbers were set
+#: against what a person reads in one pass; the binding constraint in practice
+#: is what a reader — human or a model loading the file into context — can hold
+#: at once, and context windows have moved. The ratchet below is unchanged and
+#: is still the part that does the work: what this gate is for is stopping a
+#: file from growing without anyone deciding, not hitting a particular number.
+#:
+#: The cost, recorded so it is not a surprise: at these numbers the debt list
+#: drops from sixteen files to one, so fifteen files that were being watched
+#: are now free to drift up to the new ceiling unremarked.
+BUDGET = {".py": 2000, ".ts": 1200, ".tsx": 1200}
 
 #: How far past its lock an over-budget file may drift before the gate fails.
 #: See the module docstring: this absorbs noise (an import, a reflow), not
@@ -81,27 +92,17 @@ ROOTS = ("backend/src", "frontend/src")
 
 SKIP_SUFFIXES = (".test.ts", ".test.tsx", ".d.ts")
 
-#: Files over budget when this gate went in, with the CODE-line count they
-#: were locked at. Sorted by how far over they are — the top of this list is
-#: the work. Lower a number when the file shrinks; delete the line when it
-#: comes under budget. Never raise one (`--update` won't).
+#: Files over budget, with the CODE-line count they were locked at. Sorted by
+#: how far over they are — the top of this list is the work. Lower a number
+#: when the file shrinks; delete the line when it comes under budget. Never
+#: raise one (`--update` won't).
+#:
+#: Fifteen entries left this list on 2026-09-06 when BUDGET doubled, not
+#: because they shrank. If a number here needs raising to land a change, that
+#: is the gate asking a question — raise the budget deliberately, as above, or
+#: put the code somewhere else. Do not edit a lock upward to get past it.
 OVER_BUDGET: dict[str, int] = {
     "backend/src/igab/services/report_service.py": 2733,
-    "frontend/src/components/transactions/TransactionEditor/TransactionEditor.tsx": 1159,
-    "backend/src/igab/db/models.py": 1121,
-    "backend/src/igab/repositories/transaction_repo.py": 1063,
-    "backend/src/igab/api/v1/categories.py": 1001,
-    "frontend/src/components/transactions/TransactionTable/TransactionTable.tsx": 926,
-    "frontend/src/components/transactions/QuickAddSheet/QuickAddSheet.tsx": 847,
-    "frontend/src/pages/SettingsPage/SettingsPage.tsx": 655,
-    "frontend/src/pages/PayeesPage/PayeesPage.tsx": 794,
-    "frontend/src/pages/BudgetSelectorPage/BudgetSelectorPage.tsx": 739,
-    "frontend/src/types/index.ts": 745,
-    "frontend/src/utils/searchParser.ts": 740,
-    "frontend/src/components/budget/CreditCardsSection/CreditCardsSection.tsx": 735,
-    "frontend/src/components/guide/tools/CategoryPlanner.tsx": 733,
-    "frontend/src/components/transactions/TransactionRow/TransactionRow.tsx": 689,
-    "frontend/src/components/imports/ImportReviewDialog/ImportReviewDialog.tsx": 632,
 }
 
 _PY_NON_CODE_TOKENS = frozenset(

@@ -25,6 +25,27 @@ reserve open at YNAB's own figures at the export's last complete month (the
 - **A register-only export imports unanchored** (there is no plan to read a
   position from); envelope history is then re-derived from transactions.
 
+## The mapping step remembers
+
+A YNAB export carries account names and nothing else — no types, no ids — so
+the preview asks you what each account is. It asks once. The next time you
+import a file with the same account names, every answer comes back the way you
+left it: the type, whether it belongs on budget, and whether you chose to skip
+it or import-and-close it. Those rows are marked **Remembered**.
+
+- **It outlives the budget.** Delete the budget an import built and the answers
+  are still there — which is the point, since re-importing is how you try
+  things out.
+- **Nothing is applied behind your back.** Every remembered value is on the
+  screen and editable before you confirm, and a row we could not read from its
+  name still shows **Check** even when it was answered last time. What is
+  remembered is a keystroke, and a keystroke can be a default nobody looked at.
+- **To start over**, use *Forget them* in the note above the account list. It
+  clears every remembered answer for your account.
+
+Answers are matched on the account's name, ignoring case. Rename an account in
+YNAB and it arrives as a new one.
+
 ## After the import
 
 The review dialog compares the imported budget against the export's own

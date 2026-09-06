@@ -1450,6 +1450,44 @@ class SimpleFINConnection(Base):
     user: Mapped["User"] = relationship()
 
 
+# ─── Import Account Mappings ──────────────────────────────────────────────────
+
+
+class ImportAccountMapping(Base):
+    """What a person decided about an account name the last time they imported.
+
+    Per user, and deliberately not derived from the accounts an import created:
+    a skipped account leaves no row, and budget delete would take the memory
+    with it. Never authoritative — it pre-fills a form the person still sees.
+    The full argument is in migration c4e7b2a91d63.
+    """
+
+    __tablename__ = "import_account_mappings"
+    __table_args__ = (
+        UniqueConstraint("user_id", "account_key", name="uq_import_mapping_user_account"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    #: No index of its own — uq_import_mapping_user_account leads with it.
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    #: `domain.import_mapping.account_key(name)`, NOT the matcher's
+    #: normalization — that one strips punctuation and would fold "Vehicle-A"
+    #: and "Vehicle A", which are two accounts, into one memory.
+    account_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    #: Casing as last seen, so nothing downstream has to title-case a name.
+    account_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    #: Names match YNABAccountTypeChoice's fields: one vocabulary, wire to disk.
+    account_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    on_budget: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    skip: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    close: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
 # ─── Import Batches ───────────────────────────────────────────────────────────
 
 

@@ -7,6 +7,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 
+from igab.domain.import_mapping import ExportedAccount, account_key
 from igab.domain.money import parse_csv_amount
 from igab.domain.snapshot_format import MANIFEST_MEMBER, is_snapshot_manifest
 from igab.integrations.ynab.models import (
@@ -22,6 +23,17 @@ from igab.integrations.ynab.models import (
 # older export that matched neither imported zero assignments in silence.
 _PLAN_MEMBER_SUFFIXES = ("- plan.csv", "- budget.csv")
 _ASSIGNED_COLUMNS = ("Assigned", "Budgeted")
+
+
+def _truthy(cell: str | None) -> bool:
+    """One reading of a boolean cell, for every boolean column in the export.
+
+    `On Budget` and `Closed` are written by the same writer and must be read
+    the same way; two spellings of "is this true" is how one column ends up
+    accepting "yes" and the other not.
+    """
+    return (cell or "").strip().lower() in ("true", "yes", "1")
+
 
 # The member that makes a zip a YNAB-shaped export at all — the one suffix
 # looks_like_ynab_export and parse_zip both mean.
@@ -233,7 +245,7 @@ class YNABParser:
             account_types=self.parse_accounts_csv(accounts_content) if accounts_content else {},
         )
 
-    def parse_accounts_csv(self, content: str) -> dict[str, tuple[str, bool]]:
+    def parse_accounts_csv(self, content: str) -> dict[str, ExportedAccount]:
         """An Accounts.csv member: the real account types, when the file has
         them.
 
@@ -241,15 +253,23 @@ class YNABParser:
         re-mapping chore into two clicks — without it the preview guesses a
         type from the account's name, which is right often and not always.
         An unreadable row is skipped rather than guessed at.
+
+        `Closed` is read here. The exporter has always written that column
+        (`services/budget_export.py`) and this reader ignored it, so every
+        account someone had closed came back open on a re-import — a column
+        written and never read is the same drift as a rule written twice.
         """
-        out: dict[str, tuple[str, bool]] = {}
+        out: dict[str, ExportedAccount] = {}
         for row in csv.DictReader(io.StringIO(content)):
             name = (row.get("Account") or "").strip()
             type_key = (row.get("Type") or "").strip()
             if not name or not type_key:
                 continue
-            on_budget = (row.get("On Budget") or "").strip().lower() in ("true", "yes", "1")
-            out[name] = (type_key, on_budget)
+            out[account_key(name)] = ExportedAccount(
+                account_type=type_key,
+                on_budget=_truthy(row.get("On Budget")),
+                is_closed=_truthy(row.get("Closed")),
+            )
         return out
 
     def parse_register_csv(self, content: str) -> list[YNABTransaction]:

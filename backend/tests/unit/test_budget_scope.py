@@ -65,7 +65,11 @@ class TestEveryTableIsClassified:
         assert counted[Scope.OWNED] == 26
         # 11: `asset_value_snapshots` rides in as its child.
         assert counted[Scope.CHILD] == 11
-        assert counted[Scope.GLOBAL] == 3
+        # 4: `import_account_mappings` joined as global (2026-09-06) — the
+        # import mapping step's memory, keyed by account name and per user. It
+        # exists to outlive the budget an import built, so budget scope is the
+        # one thing it must not have.
+        assert counted[Scope.GLOBAL] == 4
         assert counted[Scope.EXCLUDED] == 0
 
     def test_the_fixpoint_reaches_grandchildren(self):

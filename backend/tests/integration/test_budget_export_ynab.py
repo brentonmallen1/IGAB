@@ -196,17 +196,19 @@ class TestAccountsMember:
         """The whole point of the member. Without it build_ynab_preview reads
         the account's name and guesses, which is right often and not always."""
         from igab.api.v1.imports import build_ynab_preview
+        from igab.domain.import_mapping import account_key
 
         parsed = _parse(await _export(api_client, sample.id), tmp_path)
         assert parsed.account_types, "Accounts.csv was not read back"
 
-        preview = build_ynab_preview(parsed)
+        preview = build_ynab_preview(parsed, remembered={})
         for account in preview.accounts:
-            expected_type, expected_on_budget = parsed.account_types[account.name]
-            assert account.suggested_type == expected_type, account.name
-            assert account.suggested_on_budget == expected_on_budget, account.name
+            exported = parsed.account_types[account_key(account.name)]
+            assert account.suggested_type == exported.account_type, account.name
+            assert account.suggested_on_budget == exported.on_budget, account.name
             # Nothing to review: these are not guesses.
             assert account.needs_review is False, account.name
+            assert account.suggestion_source == "export", account.name
 
     async def test_a_file_without_the_member_still_guesses(self, api_client, sample, tmp_path):
         """A real YNAB export has no Accounts.csv, and must keep working."""
@@ -224,7 +226,7 @@ class TestAccountsMember:
 
         parsed = _parse(stripped.getvalue(), tmp_path)
         assert parsed.account_types == {}
-        assert build_ynab_preview(parsed).accounts
+        assert build_ynab_preview(parsed, remembered={}).accounts
 
     async def test_the_core_reader_ignores_it(self, api_client, sample, tmp_path):
         """An additive member must not disturb the parser — that is what makes

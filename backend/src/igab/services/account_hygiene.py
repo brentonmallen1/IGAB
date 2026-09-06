@@ -26,10 +26,10 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from igab.api.v1.imports import _TRACKED_HINTS, _matches, _normalize_for_match
 from igab.db.models import Account, Asset, Liability, Transaction
 from igab.domain.card_timeline import card_timeline, first_breach
 from igab.domain.cards import card_reserve, residual_is_pass_through
+from igab.domain.import_mapping import _TRACKED_HINTS, _matches, _normalize_for_match
 from igab.domain.matching import DATE_WINDOW_DAYS
 from igab.domain.transfers import PairableLeg, pair_legs
 from igab.guide.detection import budget_service_from

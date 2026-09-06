@@ -67,6 +67,11 @@ GLOBAL_TABLES: Mapping[str, str] = MappingProxyType(
         "simplefin_connections": "One bank connection serves every budget it "
         "has accounts in, and holds an encrypted credential no snapshot may "
         "carry.",
+        "import_account_mappings": "What a person answered in the import "
+        "mapping step, keyed by account name. It exists to outlive the budget "
+        "an import built -- deleting that budget is exactly when it is wanted "
+        "-- so it cannot be budget-scoped, and a snapshot must not carry one "
+        "person's answers into another install.",
     }
 )
 

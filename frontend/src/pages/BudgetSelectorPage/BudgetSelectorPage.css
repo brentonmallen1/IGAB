@@ -536,6 +536,23 @@
   cursor: help;
 }
 
+/* Deliberately not the warning colour: a remembered choice is not a problem,
+   and the two badges sit on the same row when a name we could not read was
+   answered by hand last time. Remembering pre-fills the value; it does not
+   silence the Check beside it. */
+.ynab-mapping__remembered {
+  margin-left: var(--spacing-xs);
+  padding: 0 var(--spacing-xs);
+  border: 1px solid var(--edge);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  cursor: help;
+}
+
 /* Shown next to the transaction count: the quickest way to tell a house from
    the mortgage secured against it, which no account name reliably does. */
 .ynab-mapping__balance {

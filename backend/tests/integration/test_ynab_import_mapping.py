@@ -26,11 +26,12 @@ def _ynab_zip() -> bytes:
 
 async def test_preview_lists_accounts_with_type_suggestions(api_client):
     resp = await api_client.post(
-        "/api/v1/budgets/import-ynab/preview",
+        "/api/v1/budgets/import/preview",
         files={"file": ("export.zip", _ynab_zip(), "application/zip")},
     )
     assert resp.status_code == 200
-    preview = resp.json()
+    assert resp.json()["kind"] == "ynab"
+    preview = resp.json()["ynab"]
     assert preview["transaction_count"] == 4
 
     by_name = {a["name"]: a for a in preview["accounts"]}
@@ -49,7 +50,7 @@ async def test_preview_does_not_import_anything(api_client, db_session):
     from igab.db.models import Account, Budget
 
     await api_client.post(
-        "/api/v1/budgets/import-ynab/preview",
+        "/api/v1/budgets/import/preview",
         files={"file": ("export.zip", _ynab_zip(), "application/zip")},
     )
     assert (await db_session.execute(select(Budget))).scalars().all() == []
@@ -132,11 +133,11 @@ async def test_budget_creation_flow_preview_and_mapped_import(api_client, db_ses
     from igab.repositories.account_repo import AccountRepository
 
     resp = await api_client.post(
-        "/api/v1/budgets/import-ynab/preview",
+        "/api/v1/budgets/import/preview",
         files={"file": ("export.zip", _ynab_zip(), "application/zip")},
     )
     assert resp.status_code == 200
-    assert {a["name"] for a in resp.json()["accounts"]} == {
+    assert {a["name"] for a in resp.json()["ynab"]["accounts"]} == {
         "Checking",
         "Home Mortgage",
         "Vanguard Brokerage",
@@ -279,3 +280,65 @@ class TestImportAlwaysMakesANewBudget:
         )
         assert again.status_code == 409
         assert "already exists" in again.json()["detail"]
+
+
+async def test_a_mapping_cased_differently_from_the_register_still_types_the_account(
+    api_client, db_session
+):
+    """The mapping and the register are two different strings arriving from
+    two different places — an Accounts.csv row on a re-import, a form field on
+    a fresh one. The importer matched the skip set, the close set and the
+    account lookup itself case-insensitively, and matched the *type* map
+    exactly, so a spelling difference fell through to the ("checking", True)
+    default and imported a tracked account ON budget without a word.
+
+    Off-budget is the half that protects to_be_assigned: were the mortgage on
+    budget here, TBA would read about -248,000 instead of 2,000.
+    """
+    services = make_services(db_session)
+
+    mapping = (
+        '{"HOME MORTGAGE": {"account_type": "mortgage", "on_budget": false},'
+        ' "vanguard brokerage": {"account_type": "investment", "on_budget": false},'
+        ' "Checking": {"account_type": "checking", "on_budget": true}}'
+    )
+    resp = await api_client.post(
+        "/api/v1/budgets/import-ynab",
+        files={"file": ("export.zip", _ynab_zip(), "application/zip")},
+        data={"name": "Cased differently", "account_types": mapping},
+    )
+    assert resp.status_code == 201
+    budget_id = uuid.UUID(resp.json()["budget"]["id"])
+
+    accounts = {a.name: a for a in await services.account_repo.get_all(budget_id)}
+    assert accounts["Home Mortgage"].account_type == "mortgage"
+    assert accounts["Home Mortgage"].on_budget is False
+    assert accounts["Vanguard Brokerage"].account_type == "investment"
+    assert accounts["Vanguard Brokerage"].on_budget is False
+
+    month = await services.budgets.get_budget_summary(budget_id, date(2026, 7, 1))
+    assert month.to_be_assigned == Decimal("2000.00")
+
+
+async def test_a_close_cased_differently_still_closes(api_client, db_session):
+    """Pinned beside it: this half already lowercased, and must keep doing so
+    now that both go through one spelling."""
+    services = make_services(db_session)
+
+    mapping = (
+        '{"home mortgage": {"account_type": "mortgage", "on_budget": false, "close": true},'
+        ' "Checking": {"account_type": "checking", "on_budget": true}}'
+    )
+    resp = await api_client.post(
+        "/api/v1/budgets/import-ynab",
+        files={"file": ("export.zip", _ynab_zip(), "application/zip")},
+        data={"name": "Closed differently", "account_types": mapping},
+    )
+    assert resp.status_code == 201
+    budget_id = uuid.UUID(resp.json()["budget"]["id"])
+
+    accounts = {
+        a.name: a for a in await services.account_repo.get_all(budget_id, include_closed=True)
+    }
+    assert accounts["Home Mortgage"].is_closed is True
+    assert accounts["Checking"].is_closed is False
