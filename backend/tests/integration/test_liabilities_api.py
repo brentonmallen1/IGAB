@@ -29,6 +29,110 @@ async def _refetch_category(db_session, category_id) -> Category:
     return result.scalar_one()
 
 
+class TestPaymentComposition:
+    """What the bill carries beside principal and interest.
+
+    Optional — a car loan has none — and it never reaches a projection: the
+    minimum payment is still the P&I figure the schedule runs on. What it buys
+    is that the app can finally show the bill you actually pay, and say when
+    your transfers disagree with it.
+    """
+
+    async def _mortgage(self, api_client, db_session, **over):
+        budget = await create_budget(db_session, api_client.test_user)
+        body = {
+            "name": "Maple St Mortgage",
+            "liability_type": "mortgage",
+            "interest_rate": "6.5",
+            "minimum_payment": "1896.20",
+            "manual_balance": "267000.00",
+            **over,
+        }
+        resp = await api_client.post(f"/api/v1/{budget.id}/liabilities", json=body)
+        assert resp.status_code == 201, resp.text
+        return budget, resp.json()
+
+    async def test_a_debt_without_one_says_so_rather_than_guessing(self, api_client, db_session):
+        _, body = await self._mortgage(api_client, db_session)
+        assert body["payment_components"] == []
+        assert Decimal(str(body["payment_components_total"])) == Decimal("0")
+        # The bill is just the payment when nothing rides beside it.
+        assert Decimal(str(body["full_monthly_payment"])) == Decimal("1896.20")
+
+    async def test_the_composition_round_trips_and_totals(self, api_client, db_session):
+        _, body = await self._mortgage(
+            api_client,
+            db_session,
+            payment_components=[
+                {"kind": "tax", "amount": "410.00"},
+                {"kind": "insurance", "label": "Flood + hazard", "amount": "95.00"},
+                {"kind": "pmi", "amount": "42.80"},
+            ],
+        )
+        kinds = [c["kind"] for c in body["payment_components"]]
+        assert kinds == ["tax", "insurance", "pmi"]
+        # A kind with no wording gets a sensible default; the user's own wins.
+        assert body["payment_components"][0]["label"] == "Property tax"
+        assert body["payment_components"][1]["label"] == "Flood + hazard"
+        assert Decimal(str(body["payment_components_total"])) == Decimal("547.80")
+        assert Decimal(str(body["full_monthly_payment"])) == Decimal("2444.00")
+
+    async def test_the_projection_still_runs_on_p_and_i_alone(self, api_client, db_session):
+        """The whole reason the split exists. Adding escrow must not move the
+        payoff date by a day."""
+        _, plain = await self._mortgage(api_client, db_session)
+        _, escrowed = await self._mortgage(
+            api_client, db_session, payment_components=[{"kind": "tax", "amount": "410.00"}]
+        )
+        assert plain["baseline_payoff_date"] == escrowed["baseline_payoff_date"]
+
+    async def test_it_can_be_edited_and_cleared(self, api_client, db_session):
+        budget, body = await self._mortgage(
+            api_client, db_session, payment_components=[{"kind": "tax", "amount": "410.00"}]
+        )
+        url = f"/api/v1/{budget.id}/liabilities/{body['id']}"
+
+        edited = await api_client.patch(
+            url, json={"payment_components": [{"kind": "hoa", "amount": "60.00"}]}
+        )
+        assert edited.status_code == 200, edited.text
+        assert [c["kind"] for c in edited.json()["payment_components"]] == ["hoa"]
+
+        # An empty list is "I have none" and must be storable — a mortgage
+        # whose escrow ends should not be stuck with a stale composition.
+        cleared = await api_client.patch(url, json={"payment_components": []})
+        assert cleared.json()["payment_components"] == []
+        assert Decimal(str(cleared.json()["full_monthly_payment"])) == Decimal("1896.20")
+
+    async def test_not_sending_it_leaves_it_alone(self, api_client, db_session):
+        budget, body = await self._mortgage(
+            api_client, db_session, payment_components=[{"kind": "tax", "amount": "410.00"}]
+        )
+        url = f"/api/v1/{budget.id}/liabilities/{body['id']}"
+        untouched = await api_client.patch(url, json={"name": "Maple Street"})
+        assert [c["kind"] for c in untouched.json()["payment_components"]] == ["tax"]
+
+    async def test_a_bad_component_is_refused_with_a_reason(self, api_client, db_session):
+        budget = await create_budget(db_session, api_client.test_user)
+        resp = await api_client.post(
+            f"/api/v1/{budget.id}/liabilities",
+            json={
+                "name": "Maple St Mortgage",
+                "liability_type": "mortgage",
+                "interest_rate": "6.5",
+                "minimum_payment": "1896.20",
+                "manual_balance": "267000.00",
+                "payment_components": [{"kind": "spaceship", "amount": "10.00"}],
+            },
+        )
+        assert resp.status_code == 422
+
+    async def test_with_no_payment_history_it_makes_no_claim(self, api_client, db_session):
+        _, body = await self._mortgage(api_client, db_session)
+        assert body["composition_check"] == "unknown"
+        assert body["composition_gap"] is None
+
+
 class TestLiabilityCrud:
     async def test_create_unmanaged_and_list(self, api_client, db_session):
         budget = await create_budget(db_session, api_client.test_user)

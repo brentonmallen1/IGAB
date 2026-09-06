@@ -17,6 +17,7 @@ from igab.api.v1.schemas.liability import (
     LiabilityOut,
     LiabilityUpdate,
     LinkLiabilityRequest,
+    PaymentComponentIn,
     PromoProjectionOut,
 )
 from igab.db.models import Liability
@@ -30,6 +31,13 @@ from igab.dependencies import (
     get_liability_repo,
     get_liability_service,
 )
+from igab.domain.payment_composition import (
+    CompositionError,
+    check_composition,
+    components_total,
+    full_monthly_payment,
+    parse_components,
+)
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.liability_repo import LiabilityRepository
@@ -41,6 +49,31 @@ from igab.utils.clock import recorded_on, today_utc
 router = APIRouter(route_class=CommitRoute)
 
 Recorder = Annotated[ChangeRecorder, Depends(get_change_recorder)]
+
+
+def _components_for_storage(
+    sent: list[PaymentComponentIn] | None,
+) -> list[dict[str, str]] | None:
+    """Validate an incoming component list into the shape the column holds.
+
+    None means "not sent" and leaves the stored composition alone; an empty
+    list means "I have none", and both round-trip. Refuses rather than
+    repairs — see parse_components: a composition is a figure the user checks
+    against a statement, so a silently-dropped row would produce a total that
+    matches nothing.
+
+    Pydantic has already checked the field types; the domain module owns the
+    rules (kinds, labels, the cap) so the write path and the read path cannot
+    disagree about what a stored component is.
+    """
+    if sent is None:
+        return None
+    try:
+        return [c.as_dict() for c in parse_components([c.model_dump() for c in sent])]
+    except CompositionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
 
 
 async def _get_owned_liability(
@@ -129,6 +162,18 @@ async def _liability_out(
         if not implied.never_pays_off:
             implied_term_months = len(implied.schedule)
 
+    # Stored components are already validated (the write path refuses a bad
+    # list), so a bad one here is corruption, not input — read as "none on
+    # file" rather than failing every liability listing.
+    try:
+        components = parse_components(liability.payment_components)
+    except CompositionError:
+        components = []
+    # Does the ledger agree with the declared bill? The two readings mean
+    # different things — a transfer of the WHOLE bill into the loan moves the
+    # balance by the escrow too — and only the user can say which is theirs.
+    composition = check_composition(liability.minimum_payment, components, status_.typical_payment)
+
     return LiabilityOut(
         id=liability.id,
         budget_id=liability.budget_id,
@@ -159,6 +204,13 @@ async def _liability_out(
         # From observed payments, so it stands even with no terms on file —
         # useful precisely there, beside an empty minimum-payment field.
         typical_recent_payment=status_.typical_payment,
+        payment_components=[c.as_dict() for c in components],
+        payment_components_total=components_total(components),
+        # P&I plus the escrowed parts: the number to hold against a mortgage
+        # statement. Only the P&I half ever reaches a projection.
+        full_monthly_payment=full_monthly_payment(liability.minimum_payment, components),
+        composition_check=composition.verdict,
+        composition_gap=composition.gap,
         recent_interest_average=status_.average_interest,
         uncounted_deposits=status_.uncounted_deposits,
         implied_term_months=implied_term_months,
@@ -246,6 +298,7 @@ async def create_liability(
             promo_deferred_interest=body.promo_deferred_interest,
             term_months=body.term_months,
             payment_due_day=body.payment_due_day,
+            payment_components=_components_for_storage(body.payment_components),
         )
         if liability.linked_account_id is None and body.manual_balance is not None:
             # Seed the snapshot trail so history starts at creation
@@ -291,6 +344,10 @@ async def update_liability(
     # exclude_unset (not exclude_none): PATCHing linked_account_id to null is
     # exactly how a liability switches from managed to unmanaged
     changes = body.model_dump(exclude_unset=True)
+    if "payment_components" in changes:
+        # Validated through the same helper as create, so a list that is
+        # storable one way is storable the other.
+        changes["payment_components"] = _components_for_storage(body.payment_components)
 
     new_account_id = changes.get("linked_account_id", liability.linked_account_id)
     if (

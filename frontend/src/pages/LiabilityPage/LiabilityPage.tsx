@@ -16,6 +16,7 @@ import { AmortizationTable } from '../../components/liabilities/AmortizationTabl
 import { LiabilitySettingsModal } from '../../components/liabilities/LiabilitySettingsModal'
 import { PaydownChart } from '../../components/liabilities/PaydownChart'
 import { PaydownWhatIf } from '../../components/liabilities/PaydownWhatIf'
+import { PaymentBreakdown } from '../../components/liabilities/PaymentBreakdown'
 import { paydownOutlook } from '../../components/liabilities/paydownOutlook'
 import { PayoffPill } from '../../components/liabilities/PayoffPill'
 import { Combobox } from '../../components/common/Combobox/Combobox'
@@ -482,6 +483,16 @@ export function LiabilityPage() {
           )}
         </div>
       )}
+
+      {/* What the bill is actually made of. Renders nothing without a
+          composition on file or a disagreement to report, so a car loan
+          never sees it. */}
+      <PaymentBreakdown
+        liability={liability}
+        assetValue={securedAsset?.current_value ?? null}
+        equity={assetEquity}
+        formatMoney={formatMoney}
+      />
 
       <Surface
         as="section"

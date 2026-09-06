@@ -7,10 +7,30 @@ from pydantic import Field
 
 from igab.api.v1.schemas.base import ApiModel, ClientDated
 from igab.domain.money import Money
+from igab.domain.payment_composition import MAX_LABEL
 
 LiabilityType = Literal[
     "mortgage", "auto", "student", "personal", "credit_card", "medical", "other"
 ]
+
+
+class PaymentComponentIn(ApiModel):
+    """One line of the monthly bill that is not principal and interest.
+
+    Optional and additive — a car loan has none. `kind` is what the app
+    reasons about (`pmi` is the one with a rule attached); `label` is the
+    user's own wording for it. See domain/payment_composition.py.
+    """
+
+    kind: Literal["tax", "insurance", "pmi", "hoa", "other"] = "other"
+    label: str = Field(default="", max_length=MAX_LABEL)
+    amount: Money = Field(ge=0)
+
+
+class PaymentComponentOut(ApiModel):
+    kind: Literal["tax", "insurance", "pmi", "hoa", "other"]
+    label: str
+    amount: Decimal
 
 
 class LiabilityCreate(ClientDated):
@@ -42,6 +62,9 @@ class LiabilityCreate(ClientDated):
     #: The card bill's due day of the month. Metadata for the card header;
     #: no projection reads it.
     payment_due_day: int | None = Field(default=None, ge=1, le=31)
+    #: What the bill carries BESIDE principal and interest. `minimum_payment`
+    #: stays the P&I figure every projection runs on; these never touch one.
+    payment_components: list[PaymentComponentIn] | None = None
 
 
 class LiabilityUpdate(ApiModel):
@@ -64,6 +87,8 @@ class LiabilityUpdate(ApiModel):
     term_months: int | None = None
     #: Explicit null clears it, like planned_extra_payment above.
     payment_due_day: int | None = Field(default=None, ge=1, le=31)
+    #: An empty list clears the composition; null leaves it as it was.
+    payment_components: list[PaymentComponentIn] | None = None
 
 
 class LiabilityOut(ApiModel):
@@ -136,6 +161,21 @@ class LiabilityOut(ApiModel):
     term_months: int | None
     #: The card bill's due day of the month — metadata, no projection reads it.
     payment_due_day: int | None
+    #: What the bill carries beside P&I, and what that comes to. Empty for
+    #: every debt with no composition on file, which is most of them.
+    payment_components: list[PaymentComponentOut]
+    payment_components_total: Decimal
+    #: P&I plus the components — the figure to check against a statement.
+    #: Null without a fixed P&I payment to add them to.
+    full_monthly_payment: Decimal | None
+    #: Whether the transfers actually seen agree with the declared bill.
+    #: 'matches_pi' is the healthy shape: only P&I reaches the loan, so the
+    #: balance means what the schedule assumes. 'matches_full' says the whole
+    #: bill lands on the loan, escrow included, so the balance falls faster
+    #: than the debt does. 'undeclared_gap' is the same drift, unexplained.
+    composition_check: Literal["matches_full", "matches_pi", "undeclared_gap", "unknown"]
+    #: What the transfers exceed P&I by, when there is such a gap.
+    composition_gap: Decimal | None
     promo_projection: "PromoProjectionOut | None"
     baseline_payoff_date: datetime.date | None
     baseline_never_pays_off: bool

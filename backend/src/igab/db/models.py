@@ -1857,6 +1857,13 @@ class Liability(Base):
     # and dateless by design. Meaningful for cards; the UI offers it nowhere
     # else.
     payment_due_day: Mapped[int | None] = mapped_column(Integer)
+    # What the monthly bill is made of BESIDE principal and interest: escrowed
+    # property tax, insurance, PMI, HOA dues. Optional and additive — a car
+    # loan has none — and it never touches a projection: `minimum_payment` is
+    # the P&I figure the schedule runs on, and these are the parts sitting
+    # next to it. Stored as a list so a servicer's own line items can be
+    # named; see domain/payment_composition.py for the shape and the rules.
+    payment_components: Mapped[list | None] = mapped_column(JSONB)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
