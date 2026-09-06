@@ -8,6 +8,7 @@ import { useParseNLTransaction, type NLDraft } from '../../api/aiJobs'
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition'
 import type { EditorDraft } from '../transactions/TransactionEditor/TransactionEditor'
 import './NLEntryForm.css'
+import { sectionHref } from '../../pages/SettingsPage/settingsSections'
 
 export function draftToEditorDraft(draft: NLDraft, jobId: string): EditorDraft {
   const amount = parseApiDecimal(draft.amount)
@@ -99,8 +100,12 @@ export function NLEntryForm({ budgetId, onDraft, onNavigate, autoFocus = true }:
       <div className="nl-form__unavailable">
         <Sparkles size={20} />
         <p>Describing a transaction requires a configured Ollama server.</p>
-        <Link to="/settings" className="nl-form__link" onClick={onNavigate}>
-          Configure AI in Settings
+        <Link
+          to={sectionHref({ id: 'ai', page: 'system' })}
+          className="nl-form__link"
+          onClick={onNavigate}
+        >
+          Configure AI in System settings
         </Link>
       </div>
     )

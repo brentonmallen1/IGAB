@@ -135,7 +135,7 @@ async def submit_receipt(
     if not await settings_svc.get("ollama_host"):
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Ollama is not configured — set a host in Settings → AI",
+            detail="Ollama is not configured — set a host in System → AI",
         )
 
     account = await account_repo.get(account_id)

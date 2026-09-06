@@ -175,13 +175,13 @@ settles on its own.
 - **Attachments path**: the API's attachments folder, mounted read-only
 
 Schedule, retention, and encryption are configured in the app under
-**Settings → Backups** and picked up by the agent within seconds; the template's
+**System → Server Backups** and picked up by the agent within seconds; the template's
 `BACKUP_*` variables are only fallbacks for when the database is unreachable.
 
 ## After install (any path)
 
 - **Log in** with `ADMIN_EMAIL` / `ADMIN_PASSWORD`, then change the password in-app.
-- **Backups**: verify in Settings → Backups that the agent shows as running, trigger a
+- **Backups**: verify in System → Server Backups that the agent shows as running, trigger a
   manual backup, and — once — practice a restore. Optionally set an
   [age](https://age-encryption.org) public key there to encrypt backups at rest (keep
   the private key off the server); details in the README's
@@ -191,7 +191,7 @@ Schedule, retention, and encryption are configured in the app under
   (SWAG, Nginx Proxy Manager, Traefik) or Tailscale — see
   [Install on Your Phone](../README.md#install-on-your-phone-pwa).
 - **Update notifications**: Unraid's Docker tab flags new image versions (Paths A & C).
-  The app also has its own opt-in check (Settings → Updates) that is **off by default** —
+  The app also has its own opt-in check (System → Updates) that is **off by default** —
   nothing contacts GitHub unless you enable it.
 - **Updating safely**: back up before pulling a new image — the two-minute routine
   (backup → pull → recreate → verify), rollback steps, and release-specific notes are

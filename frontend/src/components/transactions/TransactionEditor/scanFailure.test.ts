@@ -10,9 +10,9 @@ describe('scanFailureReason', () => {
   it('strips the exception class the worker prefixes onto job.error', () => {
     expect(
       scanFailureReason(
-        "NonRetryableJobError: Model 'gemma4:31b' does not support vision — set a vision model in Settings → AI"
+        "NonRetryableJobError: Model 'gemma4:31b' does not support vision — set a vision model in System → AI"
       )
-    ).toBe("Model 'gemma4:31b' does not support vision — set a vision model in Settings → AI")
+    ).toBe("Model 'gemma4:31b' does not support vision — set a vision model in System → AI")
   })
 
   it('falls back to generic guidance when the job recorded no reason', () => {
@@ -29,7 +29,11 @@ describe('scanFailureReason', () => {
 describe('isConfigFailure', () => {
   it('recognises the fixable causes', () => {
     expect(isConfigFailure("NonRetryableJobError: Model 'x' does not support vision")).toBe(true)
-    expect(isConfigFailure('Ollama is not configured — set a host in Settings → AI')).toBe(true)
+    expect(isConfigFailure('Ollama is not configured — set a host in System → AI')).toBe(true)
+  })
+
+  it('still recognises a job recorded before the AI section moved pages', () => {
+    expect(isConfigFailure('Pick a vision-capable model in Settings → AI.')).toBe(true)
   })
 
   it('does not offer a Settings link for something Settings cannot fix', () => {

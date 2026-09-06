@@ -34,6 +34,9 @@ const AllTransactionsPage = lazy(() =>
 const SettingsPage = lazy(() =>
   import('./pages/SettingsPage/SettingsPage').then((m) => ({ default: m.SettingsPage }))
 )
+const SystemPage = lazy(() =>
+  import('./pages/SystemPage/SystemPage').then((m) => ({ default: m.SystemPage }))
+)
 const ImportPage = lazy(() =>
   import('./pages/ImportPage/ImportPage').then((m) => ({ default: m.ImportPage }))
 )
@@ -171,6 +174,10 @@ function App() {
             <Route path="/login" element={page(<LoginPage />)} />
             <Route element={<ProtectedRoute />}>
               <Route path="/budgets" element={page(<BudgetSelectorPage />)} />
+              {/* Beside the picker, not inside MainLayout: the shell redirects
+                  to /budgets when there is no budget, and System is where you
+                  restore one. See SystemPage. */}
+              <Route path="/system" element={page(<SystemPage />)} />
               <Route element={<MainLayout />}>
                 <Route path="/budget" element={page(<BudgetPage />)} />
                 <Route path="/accounts" element={page(<AccountsOverviewPage />)} />

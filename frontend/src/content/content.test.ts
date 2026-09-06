@@ -443,7 +443,7 @@ describe('every destination has a palette row', () => {
 
   it('labels each row with its group, so 23 reports stay legible', () => {
     for (const command of ALL) {
-      expect(command.label).toMatch(/^(Report|Guide|Settings|Calculator): /)
+      expect(command.label).toMatch(/^(Report|Guide|Settings|System|Calculator): /)
     }
   })
 

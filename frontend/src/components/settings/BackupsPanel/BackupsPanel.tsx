@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import {
   AlertTriangle,
@@ -16,7 +16,6 @@ import {
   useRestoreBackup,
   useRunBackup,
   type BackupFile,
-  type BackupJob,
 } from '../../../api/backups'
 import { useSettings, useUpdateSetting } from '../../../api/settings'
 import { useFormatters } from '../../../hooks/useFormatters'
@@ -24,6 +23,14 @@ import { formatBytes } from '../../../utils/formatBytes'
 import { Dialog } from '../../common/Dialog/Dialog'
 import { Modal } from '../../common/Modal/Modal'
 import { Pill } from '../../common/Pill/Pill'
+import {
+  advanceRestore,
+  INITIAL_RESTORE_PROGRESS,
+  RESTORE_POLL_MS,
+  unansweredMinutes,
+  type RestorePoll,
+  type RestoreProgress,
+} from './restoreProgress'
 import './BackupsPanel.css'
 
 const KIND_LABEL: Record<BackupFile['kind'], string> = {
@@ -205,43 +212,42 @@ function RestoreModal({ file, onConfirm, onCancel, isPending, error }: RestoreMo
   )
 }
 
-/** Full-screen blocker shown from restore kickoff until the app is back. */
+/**
+ * Full-screen blocker shown from restore kickoff until the app is back — or
+ * until it is clear the app is not coming back. The decisions are in
+ * restoreProgress.ts; this polls and renders.
+ */
 function RestoringOverlay() {
-  const [job, setJob] = useState<BackupJob | null>(null)
-  const [phase, setPhase] = useState<'restoring' | 'restarting' | 'error'>('restoring')
-  // The API process exits when the agent reports a terminal state; once our
-  // polls reach a fresh process (maintenance flag reset), the restore is over.
-  const sawMaintenance = useRef(false)
+  const [progress, setProgress] = useState<RestoreProgress>(INITIAL_RESTORE_PROGRESS)
 
   useEffect(() => {
     let cancelled = false
     const timer = setInterval(async () => {
+      let poll: RestorePoll
       try {
-        const status = await fetchBackupStatus()
-        if (cancelled) return
-        setJob(status.job)
-        if (status.maintenance) {
-          sawMaintenance.current = true
-          return
-        }
-        const state = status.job?.state
-        if (state === 'done') {
-          clearInterval(timer)
-          window.location.reload()
-        } else if (state === 'error') {
-          clearInterval(timer)
-          setPhase('error')
-        }
+        poll = { kind: 'status', status: await fetchBackupStatus() }
       } catch {
-        // API is restarting — keep polling until it comes back
-        if (!cancelled && sawMaintenance.current) setPhase('restarting')
+        // The API is down — which is the restart we asked for, until it has
+        // gone on long enough that it is not.
+        poll = { kind: 'unreachable', elapsedMs: RESTORE_POLL_MS }
       }
-    }, 2000)
+      if (!cancelled) setProgress((prev) => advanceRestore(prev, poll))
+    }, RESTORE_POLL_MS)
     return () => {
       cancelled = true
       clearInterval(timer)
     }
   }, [])
+
+  useEffect(() => {
+    if (progress.phase === 'done') window.location.reload()
+  }, [progress.phase])
+
+  const reload = (
+    <button className="settings-btn settings-btn--primary" onClick={() => window.location.reload()}>
+      Reload app
+    </button>
+  )
 
   return (
     // Modal, not Dialog: Dialog always draws a close control, and there is no
@@ -249,30 +255,38 @@ function RestoringOverlay() {
     // veto keeps Escape and the backdrop from dismissing it too.
     <Modal onClose={() => {}} canClose={() => false} className="bkp-overlay--blocking">
       <div className="bkp-restoring" role="alert" aria-live="assertive">
-        {phase === 'error' ? (
+        {progress.phase === 'error' ? (
           <>
             <AlertTriangle size={28} className="bkp-restoring__error-icon" />
             <div className="bkp-restoring__title">Restore failed</div>
             <p className="bkp-restoring__detail">
-              {job?.detail ?? 'See the backup service container logs for details.'}
+              {progress.detail ?? 'See the backup service container logs for details.'}
             </p>
-            <button
-              className="settings-btn settings-btn--primary"
-              onClick={() => window.location.reload()}
-            >
-              Reload app
-            </button>
+            {reload}
+          </>
+        ) : progress.phase === 'stalled' ? (
+          <>
+            <AlertTriangle size={28} className="bkp-restoring__error-icon" />
+            <div className="bkp-restoring__title">The app has not come back</div>
+            <p className="bkp-restoring__detail">
+              The server has not answered for {unansweredMinutes(progress)} minute
+              {unansweredMinutes(progress) === 1 ? '' : 's'}. A restart takes seconds, so something
+              stopped it — most likely the API failing to start against the restored database. Check
+              the container logs. If you chose a pre-restore backup, it is in the backups folder and
+              can be restored from the command line.
+            </p>
+            {reload}
           </>
         ) : (
           <>
             <div className="bkp-restoring__spinner spin" aria-hidden="true" />
             <div className="bkp-restoring__title">
-              {phase === 'restarting' ? 'Restarting the app…' : 'Restoring from backup…'}
+              {progress.phase === 'restarting' ? 'Restarting the app…' : 'Restoring from backup…'}
             </div>
             <p className="bkp-restoring__detail">
-              {phase === 'restarting'
+              {progress.phase === 'restarting'
                 ? 'Almost there — the page will reload automatically.'
-                : (job?.detail ?? 'Starting…')}
+                : (progress.detail ?? 'Starting…')}
             </p>
           </>
         )}

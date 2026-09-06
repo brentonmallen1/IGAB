@@ -179,14 +179,14 @@ async def _process_receipt(session: AsyncSession, job: AIJob) -> None:
         if from_override:
             msg = (
                 f"Receipt scanning used your vision override '{model}', which does"
-                " not support vision. Pick a vision-capable model in Settings → AI."
+                " not support vision. Pick a vision-capable model in System → AI."
             )
         else:
             msg = (
                 f"Receipt scanning used your main model '{model}' (no vision"
                 " override is set), which does not support vision. Pick a"
                 " vision-capable main model, or set a vision override, in"
-                " Settings → AI."
+                " System → AI."
             )
         raise NonRetryableJobError(msg, model=model)
 
