@@ -48,10 +48,10 @@ export interface Liability {
   original_principal: number | null
   /** This month's interest at the current balance; null without a rate */
   monthly_interest_now: number | null
-  /** Average of recent payments — transfers into the liability's account;
-   * null until 2+ months of history. Observed from the ledger, so it
-   * survives missing terms. */
-  average_recent_payment: number | null
+  /** The MEDIAN month that saw a payment, not the mean. A mortgage paid
+   *  with a separate curtailment row is ordinary months with occasional big
+   *  ones on top, and a mean reads one lump sum as a permanent raise. */
+  typical_recent_payment: number | null
   /** What the ledger itself says interest and fees came to per month over
    * the same window; null until 2+ months carry any. The actual figure where
    * one exists — `monthly_interest_now` is the modelled one. */
@@ -74,6 +74,19 @@ export interface Liability {
   /** The card bill's due day of the month (1-31). Statement metadata for the
    * card header; no projection reads it. */
   payment_due_day: number | null
+  /** What the monthly bill carries BESIDE principal and interest — escrowed
+   *  tax, insurance, PMI, HOA. Optional and additive; a car loan has none,
+   *  and none of it ever reaches a projection. */
+  payment_components: PaymentComponent[]
+  payment_components_total: number
+  /** P&I plus the components — the figure to hold against a statement. */
+  full_monthly_payment: number | null
+  /** Whether the transfers seen agree with the declared bill. 'matches_pi'
+   *  is healthy: only P&I reaches the loan, so its balance means what the
+   *  schedule assumes. 'matches_full' and 'undeclared_gap' both mean escrow
+   *  is landing on the loan and the balance falls faster than the debt. */
+  composition_check: 'matches_full' | 'matches_pi' | 'undeclared_gap' | 'unknown'
+  composition_gap: number | null
   promo_projection: PromoProjection | null
   baseline_payoff_date: string | null
   baseline_never_pays_off: boolean
@@ -114,6 +127,8 @@ export interface LiabilityCreate {
   term_months?: number | null
   /** The card bill's due day of the month; explicit null clears it. */
   payment_due_day?: number | null
+  /** An empty list clears the composition; omitting it leaves it alone. */
+  payment_components?: PaymentComponentInput[]
   /** Explicit null clears the plan. */
   planned_extra_payment?: number | null
 }
@@ -125,6 +140,22 @@ export interface AmortizationMonth {
   principal_paid: number
   interest_paid: number
   balance: number
+}
+
+/** One line of the bill that is not principal and interest. `kind` is what
+ *  the app reasons about (PMI has a rule attached); `label` is the wording. */
+export type PaymentComponentKind = 'tax' | 'insurance' | 'pmi' | 'hoa' | 'other'
+
+export interface PaymentComponent {
+  kind: PaymentComponentKind
+  label: string
+  amount: number
+}
+
+export interface PaymentComponentInput {
+  kind: PaymentComponentKind
+  label?: string
+  amount: string
 }
 
 export interface BalancePoint {
@@ -150,7 +181,12 @@ export interface AmortizationResponse {
   extra_total_interest: number | null
   live_payoff_date: string | null
   live_never_pays_off: boolean
-  live_average_payment: number | null
+  live_typical_payment: number | null
+  /** What the OBSERVED pace costs and how long it takes — the same pair the
+   *  page reports for the contractual minimum, so it can lead with what is
+   *  actually happening. Null when the pace never clears the debt. */
+  live_total_interest: number | null
+  live_months: number | null
   history: BalancePoint[]
 }
 

@@ -18,7 +18,9 @@ class SuggestRegexRequest(ApiModel):
 
 
 class SuggestRegexResponse(ApiModel):
-    #: Most specific first; empty when the model produced nothing usable.
+    #: Best first — most names covered, fewest other payees swallowed. Empty
+    #: only for an empty request: the last candidate is derived from the names
+    #: themselves and matches all of them by construction.
     patterns: list[str]
 
 

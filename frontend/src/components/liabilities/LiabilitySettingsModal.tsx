@@ -13,7 +13,11 @@ import {
   useUpdateLiability,
   type Liability,
   type LiabilityType,
+  type PaymentComponentInput,
 } from '../../api/liabilities'
+import { PaymentComposition } from './PaymentComposition'
+import { invalidComponentIndexes, usableComponents } from './compositionRows'
+import { useFormatters } from '../../hooks/useFormatters'
 import './LiabilitySettingsModal.css'
 import { confirmAsync } from '../../stores/confirmStore'
 import { Dialog } from '../common/Dialog/Dialog'
@@ -94,6 +98,16 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
   const [termMonths, setTermMonths] = useState(
     liability?.term_months != null ? String(liability.term_months) : ''
   )
+  // What the bill carries beside P&I. Seeded from the served composition so
+  // editing shows what is on file; empty is the ordinary case.
+  const [components, setComponents] = useState<PaymentComponentInput[]>(() =>
+    (liability?.payment_components ?? []).map((c) => ({
+      kind: c.kind,
+      label: c.label,
+      amount: String(c.amount),
+    }))
+  )
+  const { formatMoney } = useFormatters()
   const [promoEnabled, setPromoEnabled] = useState(liability?.promo_end_date != null)
   const [promoEndDate, setPromoEndDate] = useState(liability?.promo_end_date ?? '')
   const [promoDeferred, setPromoDeferred] = useState(liability?.promo_deferred_interest ?? false)
@@ -167,6 +181,11 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
     if (promoEnabled && !promoEndDate) {
       return setError('Enter the promo end date (or turn promotional financing off)')
     }
+    if (invalidComponentIndexes(components).length > 0) {
+      // Never booked as zero — an unparseable amount here would silently
+      // understate the bill this feature exists to state correctly.
+      return setError('One of the payment parts is not a valid amount')
+    }
     const dueDayNum = dueDay ? parseInt(dueDay, 10) : null
     if (isCard && dueDayNum !== null && (isNaN(dueDayNum) || dueDayNum < 1 || dueDayNum > 31)) {
       return setError('The bill due day is a day of the month — 1 to 31')
@@ -191,6 +210,10 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
       // Null for a loan on purpose: retyping a card to a loan clears the day
       // rather than leaving a stale one behind.
       payment_due_day: isCard ? dueDayNum : null,
+      // Always sent, so clearing the last row clears the composition. A
+      // percentage rule has no fixed P&I for them to sit beside, so it
+      // carries none.
+      payment_components: minimumKind === 'fixed' ? usableComponents(components) : [],
     }
 
     try {
@@ -350,6 +373,16 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
 
         <div className="liability-modal__field">
           <span>Minimum payment</span>
+          {/* The one sentence that decides whether every payoff figure on
+              this liability is right. Entering the whole mortgage bill here
+              projects a payoff years early, and the app used to say nothing
+              until the number was so wrong it could not have amortized the
+              original loan at all. */}
+          <p className="liability-modal__guidance">
+            {isCard
+              ? "What the issuer asks for each month. It's the minimum, not what you intend to pay — the paydown page is where you plan more."
+              : 'Principal and interest only. If your servicer also collects tax, insurance or PMI, leave those out here and add them below — every payoff figure is computed from P&I.'}
+          </p>
           <div
             className="liability-modal__segmented"
             role="radiogroup"
@@ -424,6 +457,20 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
             </div>
           )}
         </div>
+
+        {/* Only beside a fixed P&I figure: there is nothing for these to be
+            "the rest of" when the payment is a percentage of the balance. */}
+        {minimumKind === 'fixed' && !isCard && (
+          <div className="liability-modal__field">
+            <span>The rest of the bill</span>
+            <PaymentComposition
+              rows={components}
+              onChange={setComponents}
+              principalAndInterest={minimumPayment}
+              formatMoney={formatMoney}
+            />
+          </div>
+        )}
 
         {isCompanion ? (
           <label className="liability-modal__field">

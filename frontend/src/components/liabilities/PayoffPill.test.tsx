@@ -34,7 +34,7 @@ function liability(overrides: Partial<Liability> = {}): Liability {
     origination_date: null,
     original_principal: null,
     monthly_interest_now: 45,
-    average_recent_payment: null,
+    typical_recent_payment: null,
     recent_interest_average: null,
     uncounted_deposits: 0,
     implied_term_months: null,
@@ -43,6 +43,11 @@ function liability(overrides: Partial<Liability> = {}): Liability {
     promo_deferred_interest: false,
     term_months: null,
     payment_due_day: null,
+    payment_components: [],
+    payment_components_total: 0,
+    full_monthly_payment: null,
+    composition_check: 'unknown',
+    composition_gap: null,
     promo_projection: null,
     baseline_payoff_date: '2028-04-15',
     baseline_never_pays_off: false,
@@ -76,7 +81,7 @@ describe('PayoffPill', () => {
   it('reports the pace it can see while the terms are blank', () => {
     // Payment history is observed, not projected, so it survives the gap —
     // and it is the most useful thing to show beside an empty form.
-    render(<PayoffPill liability={liability({ ...blankTerms, average_recent_payment: 325 })} />)
+    render(<PayoffPill liability={liability({ ...blankTerms, typical_recent_payment: 325 })} />)
 
     expect(screen.getByText(/paying about \$325(\.00)?\/mo/)).toBeInTheDocument()
   })
@@ -101,7 +106,7 @@ describe('PayoffPill', () => {
     render(
       <PayoffPill
         liability={liability({
-          average_recent_payment: 3000,
+          typical_recent_payment: 3000,
           recent_interest_average: 1619,
           has_live_projection: true,
           live_payoff_date: '2051-03-01',
@@ -110,7 +115,9 @@ describe('PayoffPill', () => {
     )
 
     expect(
-      screen.getByText(/average \$3,000(\.00)?\/mo, of which ~\$1,619(\.00)? was interest/)
+      // "A typical month", not "average": the figure is a median, so a lone
+      // curtailment does not read as a permanent raise.
+      screen.getByText(/typical month is \$3,000(\.00)?, of which ~\$1,619(\.00)? was interest/)
     ).toBeInTheDocument()
     expect(screen.queryByText(/won't pay this off/i)).not.toBeInTheDocument()
   })

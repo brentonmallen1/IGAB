@@ -20,6 +20,11 @@ export interface PlannerRow {
   /** Seeded from a liability (as opposed to typed). Edits are scenario
    *  inputs either way — nothing is written back. */
   fromLiability: boolean
+  /** In the comparison. Unticking keeps the row and its figures on screen and
+   *  leaves it out of the plan, which is how you ask "what if this one were
+   *  not my problem" without retyping it afterwards. Removing the row was the
+   *  only way to do that, and it took the figures with it. */
+  include: boolean
 }
 
 export interface Seed {
@@ -38,16 +43,35 @@ export function seedRows(liabilities: Liability[]): Seed {
       excluded.push(l.name)
       continue
     }
-    rows.push({
-      key: l.id,
-      name: l.name,
-      balance: String(l.current_balance),
-      rate: String(l.interest_rate),
-      minimum: String(l.minimum_payment),
-      fromLiability: true,
-    })
+    rows.push(rowFromLiability(l))
   }
   return { rows, excluded }
+}
+
+/**
+ * One liability as a row, with whatever it knows filled in.
+ *
+ * Also used by the add menu, which offers the ones the seed left out — so a
+ * mortgage with no APR on record arrives named and with its balance, and only
+ * the missing figure is left to type. That is why the blanks are empty
+ * strings rather than a refusal: a partly-known debt is still worth adding.
+ */
+export function rowFromLiability(l: Liability): PlannerRow {
+  return {
+    key: l.id,
+    name: l.name,
+    balance: l.current_balance > 0 ? String(l.current_balance) : '',
+    rate: l.interest_rate === null ? '' : String(l.interest_rate),
+    minimum: l.minimum_payment === null ? '' : String(l.minimum_payment),
+    fromLiability: true,
+    include: true,
+  }
+}
+
+/** The liabilities not already in `rows` — what the add menu can offer. */
+export function addableLiabilities(liabilities: Liability[], rows: PlannerRow[]): Liability[] {
+  const present = new Set(rows.map((r) => r.key))
+  return liabilities.filter((l) => !present.has(l.id))
 }
 
 let manualCounter = 0
@@ -61,6 +85,7 @@ export function blankRow(): PlannerRow {
     rate: '',
     minimum: '',
     fromLiability: false,
+    include: true,
   }
 }
 
@@ -86,6 +111,10 @@ export function rowsToRequest(rows: PlannerRow[], extra: string): RowValidation 
 
   for (const row of rows) {
     if (isBlank(row)) continue
+    // Left out on purpose: not a debt for this run, and not an error either.
+    // Checked before validation so an excluded row with a half-typed figure
+    // does not block the plan it is not part of.
+    if (!row.include) continue
     const bad: RowField[] = []
     const balance = parseAmountInput(row.balance)
     const rate = parseAmountInput(row.rate)

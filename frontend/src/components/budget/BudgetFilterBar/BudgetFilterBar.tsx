@@ -22,6 +22,9 @@ import './BudgetFilterBar.css'
 interface Props {
   budgetId: string
   categoryBalances: CategoryBalance[]
+  /** The grid measures this bar to offset the column header below it — the
+   *  two are stacked sticky rows and this one wraps. See useMeasuredHeight. */
+  barRef?: (node: HTMLDivElement | null) => void
 }
 
 //: Shown once, to whoever had saved views before the rename. Renaming someone's
@@ -33,7 +36,7 @@ const RENAME_NOTICE_KEY = 'igab-filters-rename-seen'
 //: column for a notice that should disappear in a release or two.
 const RENAME_SHIPPED_AT = '2026-08-21'
 
-export function BudgetFilterBar({ budgetId, categoryBalances }: Props) {
+export function BudgetFilterBar({ budgetId, categoryBalances, barRef }: Props) {
   const { data: filters } = useBudgetFilters(budgetId)
   const { data: views } = useBudgetViews(budgetId)
   const activeViewId = useUIStore((s) => s.activeViewId)
@@ -126,7 +129,7 @@ export function BudgetFilterBar({ budgetId, categoryBalances }: Props) {
   const isAllActive = activeFilterId === null && activeQuickFilter === null
 
   return (
-    <div className="budget-filter-bar surface surface--chrome">
+    <div className="budget-filter-bar surface surface--chrome" ref={barRef}>
       {/* How categories are grouped. Separate control from the filter chips
           because it is a separate question — a view decides the arrangement,
           a filter decides which of those categories show. Both can be on. */}

@@ -21,6 +21,7 @@ import {
 import { canReorderCategories, canReorderGroups } from '../reorderAvailability'
 import { CreditCardsSection } from '../CreditCardsSection/CreditCardsSection'
 import { useDragReorder } from '../../../hooks/useDragReorder'
+import { useMeasuredHeight } from '../../../hooks/useMeasuredHeight'
 import { moveItem } from '../../../utils/listOrder'
 import { CategoryGroupRow } from '../CategoryGroupRow/CategoryGroupRow'
 import { BudgetFilterBar } from '../BudgetFilterBar/BudgetFilterBar'
@@ -46,6 +47,11 @@ export function BudgetTable() {
   // app has one delete dialog rather than a second that could disagree with
   // it about what a delete does.
   const { requestDelete, modal: deleteModal } = useDeleteCategoryFlow(budgetId ?? '')
+  // The filter bar and the column header are both sticky at the top of the
+  // grid's scroll container, so the header has to start where the bar ends —
+  // and the bar wraps, so that offset is measured, never assumed.
+  const [filterBarRef, filterBarHeight] = useMeasuredHeight<HTMLDivElement>()
+
   const [isAddingGroup, setIsAddingGroup] = useState(false)
   const [newGroupName, setNewGroupName] = useState('')
   const addGroupRef = useRef<HTMLInputElement>(null)
@@ -219,8 +225,11 @@ export function BudgetTable() {
   }
 
   return (
-    <div className="budget-table">
-      <BudgetFilterBar budgetId={budgetId} categoryBalances={chipBalances} />
+    <div
+      className="budget-table"
+      style={{ '--budget-filter-bar-h': `${filterBarHeight}px` } as React.CSSProperties}
+    >
+      <BudgetFilterBar budgetId={budgetId} categoryBalances={chipBalances} barRef={filterBarRef} />
       {/* Above the category headers so the cards read as part of the month,
           not an afterthought below the fold; folds shut and stays folded. */}
       <CreditCardsSection budgetId={budgetId} month={month} />

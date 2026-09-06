@@ -230,7 +230,8 @@ def promo_outlook(
     balance: Decimal,
     annual_rate: Decimal,
     minimum_payment: Decimal,
-    average_payment: Decimal | None,
+    #: The observed pace — a MEDIAN month, see typical_recent_payment.
+    typical_payment: Decimal | None,
     as_of: date,
     promo_end_date: date,
     deferred_interest: bool,
@@ -240,8 +241,8 @@ def promo_outlook(
     months_left = max(0, _month_diff(as_of, promo_end_date))
     bal_min = _balance_at(balance, minimum_payment, as_of, promo_end_date)
     bal_live = (
-        _balance_at(balance, average_payment, as_of, promo_end_date)
-        if average_payment is not None and average_payment > ZERO
+        _balance_at(balance, typical_payment, as_of, promo_end_date)
+        if typical_payment is not None and typical_payment > ZERO
         else None
     )
     effective_end_balance = bal_live if bal_live is not None else bal_min
@@ -255,8 +256,8 @@ def promo_outlook(
             basis = original_principal if original_principal is not None else balance
             estimate += basis * monthly_rate * elapsed
         pace = (
-            average_payment
-            if average_payment is not None and average_payment > ZERO
+            typical_payment
+            if typical_payment is not None and typical_payment > ZERO
             else minimum_payment
         )
         remaining = balance
@@ -278,25 +279,47 @@ def promo_outlook(
 
 @dataclass(frozen=True)
 class LiveProjection:
-    """Payoff projection from actual payment velocity, not the contract."""
+    """Payoff projection from actual payment velocity, not the contract.
+
+    Carries the whole outcome, not just the date: a page that reports "months
+    remaining" and "interest remaining" at the CONTRACTUAL minimum, to someone
+    who plainly pays more than that every month, is answering a question
+    nobody asked. These are the same figures for the pace actually observed.
+    """
 
     payoff_date: date | None
     never_pays_off: bool
-    average_payment: Decimal
+    typical_payment: Decimal
+    #: None when the pace never retires the debt — there is no total to give.
+    total_interest: Decimal | None
+    months: int | None
 
 
-def average_recent_payment(recent_payments: list[Decimal]) -> Decimal | None:
-    """Mean of the months that saw a payment, or None below two of them.
+def typical_recent_payment(recent_payments: list[Decimal]) -> Decimal | None:
+    """MEDIAN of the months that saw a payment, or None below two of them.
+
+    The median, not the mean, because of the shape of the data. A mortgage
+    paid with a separate curtailment row is a run of ordinary payments with
+    occasional large ones on top, and a mean reads one lump sum as a permanent
+    raise: six months containing a single extra payment projected a pace the
+    household had never sustained, and the payoff date moved years closer for
+    a payment already made. The median says what a normal month looks like,
+    which is the only thing a projection can honestly extrapolate.
+
+    Somebody who curtails EVERY month is unaffected — every month is a normal
+    month, and the median tracks the rise as the mean would.
 
     One payment is an event, not a pace, so two is the floor everywhere this
-    average is used. Split out from `project_payoff` because the average is
-    observed history: it stays reportable when the contract terms a projection
-    needs are missing.
+    is used. Split out from `project_payoff` because it is observed history:
+    it stays reportable when the contract terms a projection needs are missing.
     """
-    positive = [p for p in recent_payments if p > ZERO]
+    positive = sorted(p for p in recent_payments if p > ZERO)
     if len(positive) < 2:
         return None
-    return quantize_cents(sum(positive, ZERO) / len(positive))
+    middle = len(positive) // 2
+    if len(positive) % 2:
+        return quantize_cents(positive[middle])
+    return quantize_cents((positive[middle - 1] + positive[middle]) / 2)
 
 
 def project_payoff(
@@ -311,14 +334,19 @@ def project_payoff(
     falls back to the contractual schedule rather than fabricating a date
     from insufficient history.
     """
-    average = average_recent_payment(recent_payments)
-    if average is None:
+    typical = typical_recent_payment(recent_payments)
+    if typical is None:
         return None
-    result = amortization_schedule(balance, annual_rate, average, as_of)
+    result = amortization_schedule(balance, annual_rate, typical, as_of)
     return LiveProjection(
         payoff_date=result.payoff_date,
         never_pays_off=result.never_pays_off,
-        average_payment=average,
+        typical_payment=typical,
+        # A pace that never clears the debt has no finite interest bill; the
+        # schedule stops at the cap, and reporting its running total as "what
+        # this will cost you" would understate an unbounded number.
+        total_interest=None if result.never_pays_off else result.total_interest,
+        months=None if result.never_pays_off else len(result.schedule),
     )
 
 

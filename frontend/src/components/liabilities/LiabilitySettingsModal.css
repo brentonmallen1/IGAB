@@ -252,3 +252,12 @@
   align-items: center;
   gap: var(--spacing-xs);
 }
+
+/* The sentence that decides whether every payoff figure is right: what to put
+   in the payment field, said where the field is, not in a warning afterwards. */
+.liability-modal__guidance {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  line-height: 1.5;
+}

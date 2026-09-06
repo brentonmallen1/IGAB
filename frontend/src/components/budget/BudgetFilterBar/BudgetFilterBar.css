@@ -4,6 +4,14 @@
   gap: var(--spacing-xs);
   padding: var(--spacing-xs) var(--spacing-md);
   flex-wrap: wrap;
+  /* Stays reachable however far down the grid you are: changing the view or
+     typing a name is a thing you do BECAUSE the list is long, and it used to
+     scroll away exactly when it became useful. Ranked one step above the
+     column header below it, which is offset by this bar's measured height —
+     see useMeasuredHeight in BudgetTable. */
+  position: sticky;
+  top: 0;
+  z-index: calc(var(--z-sticky) + 1);
 }
 
 .budget-filter-bar__btn {

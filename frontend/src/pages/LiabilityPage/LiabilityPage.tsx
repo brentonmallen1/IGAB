@@ -15,6 +15,9 @@ import { useCreateTransaction } from '../../api/transactions'
 import { AmortizationTable } from '../../components/liabilities/AmortizationTable'
 import { LiabilitySettingsModal } from '../../components/liabilities/LiabilitySettingsModal'
 import { PaydownChart } from '../../components/liabilities/PaydownChart'
+import { PaydownWhatIf } from '../../components/liabilities/PaydownWhatIf'
+import { PaymentBreakdown } from '../../components/liabilities/PaymentBreakdown'
+import { paydownOutlook } from '../../components/liabilities/paydownOutlook'
 import { PayoffPill } from '../../components/liabilities/PayoffPill'
 import { Combobox } from '../../components/common/Combobox/Combobox'
 import { MetricCard } from '../../components/reports/MetricCard'
@@ -131,10 +134,10 @@ export function LiabilityPage() {
   // Unknown, not zero. With no terms on file the schedule is empty, and an
   // empty schedule counted as months would read "0 months remaining" — paid
   // off — which is the opposite of what is true.
-  const monthsRemaining =
-    !amortization || !amortization.terms_complete || amortization.baseline_never_pays_off
-      ? null
-      : amortization.baseline_schedule.length
+  // Which payoff to lead with — what you actually pay, or what the contract
+  // assumes. The decision is in paydownOutlook so it can be tested without
+  // mounting the page; both figures come from the server either way.
+  const outlook = paydownOutlook(amortization, formatMoney)
 
   async function handleLinkAsset(assetId: string | null) {
     if (!assetId) return
@@ -327,25 +330,15 @@ export function LiabilityPage() {
           variant="raised"
           label="Interest Remaining"
           value={
-            !amortization
-              ? '…'
-              : !amortization.terms_complete || amortization.baseline_never_pays_off
-                ? '—'
-                : formatMoney(Number(amortization.baseline_total_interest))
+            !amortization ? '…' : outlook.interest === null ? '—' : formatMoney(outlook.interest)
           }
-          sub={
-            amortization && !amortization.terms_complete
-              ? 'Needs APR and minimum payment'
-              : amortization?.baseline_never_pays_off
-                ? "Minimum doesn't cover interest"
-                : 'At minimum payment'
-          }
+          sub={outlook.interestNote}
         />
         <MetricCard
           variant="raised"
           label="Months Remaining"
-          value={monthsRemaining === null ? '—' : String(monthsRemaining)}
-          sub="At minimum payment"
+          value={outlook.months === null ? '—' : String(outlook.months)}
+          sub={outlook.monthsNote}
         />
       </MetricRow>
 
@@ -491,6 +484,16 @@ export function LiabilityPage() {
         </div>
       )}
 
+      {/* What the bill is actually made of. Renders nothing without a
+          composition on file or a disagreement to report, so a car loan
+          never sees it. */}
+      <PaymentBreakdown
+        liability={liability}
+        assetValue={securedAsset?.current_value ?? null}
+        equity={assetEquity}
+        formatMoney={formatMoney}
+      />
+
       <Surface
         as="section"
         className="liability-page__section"
@@ -512,78 +515,30 @@ export function LiabilityPage() {
                   Beginning
                 </button>
               </div>
-              <label className="liability-page__whatif">
-                <span>Extra monthly:</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="10"
-                  inputMode="decimal"
-                  placeholder="0"
-                  value={effectiveExtra}
-                  onChange={(e) => setExtraInput(e.target.value)}
-                />
-              </label>
-              <label className="liability-page__whatif">
-                <span>One-off to principal:</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="100"
-                  inputMode="decimal"
-                  placeholder="0"
-                  value={curtailInput}
-                  onChange={(e) => setCurtailInput(e.target.value)}
-                />
-              </label>
             </div>
           </div>
         }
       >
         <div className="liability-page__section-body">
-          {whatIfSavings && (
-            <div className="liability-page__whatif-result">
-              {[
-                extraPayment > 0 ? `+${formatMoney(extraPayment)}/mo` : null,
-                curtailment > 0 ? `${formatMoney(curtailment)} once` : null,
-              ]
-                .filter(Boolean)
-                .join(' and ')}{' '}
-              →{' '}
-              {whatIfSavings.monthsSooner !== null
-                ? `paid off ${whatIfSavings.monthsSooner} month${whatIfSavings.monthsSooner === 1 ? '' : 's'} sooner`
-                : 'actually pays off'}
-              {' · '}
-              {formatMoney(whatIfSavings.interestSaved)} interest saved
-              {/* Curtailment IS principal — interest accrues on the balance,
-                  so a lump sum can only shrink what next month's interest is
-                  computed on. Said here because the question keeps coming. */}
-              {curtailment > 0 && <span> — every cent of the one-off is principal</span>}
-              {extraPayment > 0 && extraPayment !== storedPlan && (
-                <button
-                  type="button"
-                  className="liability-page__plan-btn"
-                  onClick={handleSavePlan}
-                  disabled={updateLiability.isPending}
-                >
-                  Save as my plan
-                </button>
-              )}
-              {storedPlan !== null && extraPayment === storedPlan && (
-                <span className="liability-page__plan-note">
-                  Your plan
-                  <button
-                    type="button"
-                    className="liability-page__plan-btn"
-                    onClick={handleClearPlan}
-                    disabled={updateLiability.isPending}
-                  >
-                    Clear
-                  </button>
-                </span>
-              )}
-            </div>
-          )}
+          {/* Its own block, above the chart it drives. These two figures used
+              to be bare number boxes in the header above, which is how the
+              person who shipped curtailment came to report that there was
+              nowhere to enter one. */}
+          <PaydownWhatIf
+            extra={effectiveExtra}
+            onExtraChange={setExtraInput}
+            curtailment={curtailInput}
+            onCurtailmentChange={setCurtailInput}
+            extraPayment={extraPayment}
+            curtailmentAmount={curtailment}
+            storedPlan={storedPlan}
+            savings={whatIfSavings}
+            onSavePlan={handleSavePlan}
+            onClearPlan={handleClearPlan}
+            saving={updateLiability.isPending}
+            formatMoney={formatMoney}
+            disabled={!!amortization && !amortization.terms_complete}
+          />
           {amortization ? (
             liability.current_balance === 0 ? (
               <div className="liability-page__empty">Nothing left to pay down.</div>

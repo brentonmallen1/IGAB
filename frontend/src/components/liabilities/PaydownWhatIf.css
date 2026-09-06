@@ -1,0 +1,129 @@
+/* The scenario panel above the paydown chart. A block of its own rather than
+   two number boxes in the section header — the controls were unfindable
+   there, which is the bug this exists to fix. */
+.paydown-whatif {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+  background: var(--surface-sunken);
+  border: 1px solid var(--edge);
+  border-radius: var(--border-radius-sm);
+}
+
+.paydown-whatif__head {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  color: var(--text-secondary);
+}
+
+.paydown-whatif__title {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.paydown-whatif__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--spacing-md);
+}
+
+.paydown-whatif__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.paydown-whatif__label {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.paydown-whatif__field input {
+  width: 100%;
+  min-height: var(--tap-min);
+  padding: 5px var(--spacing-sm);
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.paydown-whatif__field input:focus {
+  outline: none;
+  border-color: var(--input-focus-ring);
+}
+
+.paydown-whatif__field input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.paydown-whatif__hint {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.paydown-whatif__result {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs) var(--spacing-sm);
+  font-size: var(--font-size-sm);
+  padding-top: var(--spacing-xs);
+  border-top: 1px solid var(--edge);
+}
+
+.paydown-whatif__result-ask {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.paydown-whatif__result-gain {
+  color: var(--color-positive);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.paydown-whatif__plan-btn {
+  margin-left: var(--spacing-xs);
+  padding: 1px 8px;
+  border-radius: var(--border-radius-sm);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  background: none;
+}
+
+.paydown-whatif__plan-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.paydown-whatif__plan-note {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+/* The empty state carries the invitation, so the panel says something useful
+   before anything is typed. Muted: it is a prompt, not an answer. */
+.paydown-whatif__empty {
+  margin: 0;
+  padding-top: var(--spacing-xs);
+  border-top: 1px solid var(--edge);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  line-height: 1.5;
+}

@@ -168,7 +168,7 @@ async def test_no_promo_projection_without_promo_date(api_client, db_session):
     assert resp.json()["promo_end_date"] is None
 
 
-async def test_average_recent_payment_from_ledger(api_client, db_session):
+async def test_typical_recent_payment_from_ledger(api_client, db_session):
     budget = await create_budget(db_session, api_client.test_user)
     checking = await create_account(db_session, budget, "Checking")
     loan = await create_account(
@@ -195,7 +195,7 @@ async def test_average_recent_payment_from_ledger(api_client, db_session):
     assert resp.status_code == 201
     body = resp.json()
     assert body["has_live_projection"] is True
-    assert money(body["average_recent_payment"]) == Decimal("275.00")
+    assert money(body["typical_recent_payment"]) == Decimal("275.00")
     # 6450 owed × 6% / 12
     assert money(body["monthly_interest_now"]) == Decimal("32.25")
     assert body["balance_source"] == "ledger"

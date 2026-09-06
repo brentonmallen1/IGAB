@@ -172,11 +172,40 @@
   gap: var(--spacing-sm);
 }
 
+/* A strategy's card wears the colour of its line in the chart above, so the
+   two halves of the answer are matched by eye. The border-top colour itself
+   is set inline from the same SERIES table the lines read. */
+.tool__card--strategy {
+  border-top-width: 3px;
+  border-top-style: solid;
+}
+
 .tool__card-title {
   margin: 0;
   font-size: var(--font-size-sm);
   font-weight: 600;
   color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.tool__swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+/* Unticked: still readable, plainly not counted. Opacity alone would make the
+   figures hard to read at the moment you are deciding whether to re-tick. */
+.tool__row--excluded td input {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.tool__row--excluded td input[type="checkbox"] {
+  text-decoration: none;
 }
 
 .tool__card-hint {

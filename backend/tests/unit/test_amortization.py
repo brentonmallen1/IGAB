@@ -16,10 +16,10 @@ from igab.domain.minimum_payment import PERCENT_OF_BALANCE, MinimumPaymentRule, 
 from igab.services.amortization import (
     add_months,
     amortization_schedule,
-    average_recent_payment,
     interest_over,
     project_payoff,
     quantize_cents,
+    typical_recent_payment,
 )
 
 
@@ -199,32 +199,53 @@ class TestAddMonths:
         assert add_months(date(2024, 1, 30), 1) == date(2024, 2, 29)  # leap year
 
 
-class TestAverageRecentPayment:
+class TestTypicalRecentPayment:
     """Split out of project_payoff so the pace survives missing contract terms:
-    a liability with no APR on file can still say what is being paid."""
+    a liability with no APR on file can still say what is being paid.
+
+    The MEDIAN month. A mortgage paid with a separate curtailment row is a run
+    of ordinary payments with occasional large ones on top, and a mean reads
+    one lump sum as a permanent raise."""
 
     def test_below_two_positives_is_unknown(self):
         # One payment is an event, not a pace.
-        assert average_recent_payment([]) is None
-        assert average_recent_payment([D("400.00")]) is None
-        assert average_recent_payment([D("0"), D("400.00"), D("0")]) is None
+        assert typical_recent_payment([]) is None
+        assert typical_recent_payment([D("400.00")]) is None
+        assert typical_recent_payment([D("0"), D("400.00"), D("0")]) is None
 
-    def test_mean_of_the_months_that_saw_a_payment(self):
-        assert average_recent_payment([D("300.00"), D("500.00")]) == D("400.00")
+    def test_the_middle_month_of_an_odd_run(self):
+        assert typical_recent_payment([D("300.00"), D("500.00"), D("400.00")]) == D("400.00")
 
-    def test_skipped_months_do_not_dilute_the_average(self):
-        # Zero months are absence of evidence, not evidence of a $0 payment —
-        # averaging them in would halve the apparent pace.
-        assert average_recent_payment([D("0"), D("300.00"), D("0"), D("500.00")]) == D("400.00")
+    def test_the_two_middle_months_of_an_even_run(self):
+        assert typical_recent_payment([D("300.00"), D("500.00")]) == D("400.00")
+
+    def test_a_single_curtailment_does_not_become_the_new_pace(self):
+        """The reported bug, in one line. Five ordinary payments and one large
+        extra: the mean says $2,150/mo, a pace this household has never once
+        sustained, and the payoff date jumps years closer for a payment
+        already made. The median says what a normal month looks like."""
+        months = [D("1400"), D("1400"), D("1400"), D("6000"), D("1400"), D("1400")]
+        assert typical_recent_payment(months) == D("1400.00")
+
+    def test_curtailing_every_month_does_move_the_pace(self):
+        """The median is not a way of ignoring extra payments — it ignores
+        UNREPEATED ones. Someone who pays extra every month has no ordinary
+        month to fall back to, and the figure follows them up."""
+        months = [D("2000"), D("2100"), D("2000"), D("2200"), D("2100"), D("2000")]
+        assert typical_recent_payment(months) == D("2050.00")
+
+    def test_skipped_months_do_not_drag_the_figure_down(self):
+        # Zero months are absence of evidence, not evidence of a $0 payment.
+        assert typical_recent_payment([D("0"), D("300.00"), D("0"), D("500.00")]) == D("400.00")
 
     def test_quantized_to_cents(self):
-        assert average_recent_payment([D("100.00"), D("100.00"), D("101.00")]) == D("100.33")
+        assert typical_recent_payment([D("100.00"), D("101.00")]) == D("100.50")
 
     def test_agrees_with_the_projection_it_was_extracted_from(self):
         payments = [D("300.00"), D("500.00")]
         projection = project_payoff(D("1000.00"), D("12"), payments, START)
         assert projection is not None
-        assert projection.average_payment == average_recent_payment(payments)
+        assert projection.typical_payment == typical_recent_payment(payments)
 
 
 class TestProjectPayoff:
@@ -238,13 +259,31 @@ class TestProjectPayoff:
         payments = [D("0"), D("400.00"), D("0")]
         assert project_payoff(D("1000.00"), D("12"), payments, START) is None
 
-    def test_average_matches_hand_computed_schedule(self):
-        # Average of 300 and 500 is 400 → identical to the hand-computed case
+    def test_typical_matches_hand_computed_schedule(self):
+        # Median of 300 and 500 is 400 → identical to the hand-computed case
         projection = project_payoff(D("1000.00"), D("12"), [D("300.00"), D("500.00")], START)
         assert projection is not None
-        assert projection.average_payment == D("400.00")
+        assert projection.typical_payment == D("400.00")
         assert projection.payoff_date == date(2026, 10, 15)
         assert not projection.never_pays_off
+
+    def test_it_carries_what_the_pace_costs_and_how_long_it_takes(self):
+        """The page reports "interest remaining" and "months remaining"; both
+        used to come only from the contractual minimum, which is the wrong
+        answer for anyone who pays more than it."""
+        projection = project_payoff(D("1000.00"), D("12"), [D("300.00"), D("500.00")], START)
+        assert projection is not None
+        assert projection.months == 3
+        assert projection.total_interest is not None and projection.total_interest > D("0")
+
+    def test_a_pace_that_never_clears_reports_no_total(self):
+        """The schedule stops at the cap, so its running total is not "what
+        this will cost you" — it is where we gave up counting."""
+        projection = project_payoff(D("10000.00"), D("24"), [D("100.00"), D("100.00")], START)
+        assert projection is not None
+        assert projection.never_pays_off
+        assert projection.total_interest is None
+        assert projection.months is None
 
     def test_payments_below_interest_project_never_pays_off(self):
         projection = project_payoff(D("10000.00"), D("24"), [D("100.00"), D("100.00")], START)

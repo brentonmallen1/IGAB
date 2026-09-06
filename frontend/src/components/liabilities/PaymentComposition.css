@@ -1,0 +1,118 @@
+.payment-composition {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.payment-composition__intro {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.payment-composition__rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+/* kind · name · amount · remove. The name is the flexible one: the kind is a
+   fixed vocabulary and the amount is a fixed width of digits. */
+.payment-composition__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) 110px var(--tap-min);
+  gap: var(--spacing-xs);
+  align-items: center;
+}
+
+.payment-composition__row select,
+.payment-composition__row input {
+  min-width: 0;
+  min-height: var(--tap-min);
+  padding: 5px var(--spacing-sm);
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+}
+
+.payment-composition__row input[type="number"] {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.payment-composition__row select:focus,
+.payment-composition__row input:focus {
+  outline: none;
+  border-color: var(--input-focus-ring);
+}
+
+.payment-composition__row input.is-invalid {
+  border-color: var(--color-negative);
+}
+
+.payment-composition__row button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--tap-min);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.payment-composition__row button:hover {
+  color: var(--color-negative);
+  background: var(--bg-hover);
+}
+
+.payment-composition__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+}
+
+.payment-composition__add {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: var(--tap-min);
+  padding: 2px var(--spacing-sm);
+  margin-left: calc(-1 * var(--spacing-sm));
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: var(--font-size-xs);
+  color: var(--color-accent);
+}
+
+.payment-composition__add:disabled {
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.payment-composition__total {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 640px) {
+  /* The amount and its remove button stay on one line; the kind and name
+     take the row above, because three inputs plus a button will not fit. */
+  .payment-composition__row {
+    grid-template-columns: minmax(0, 1fr) 110px var(--tap-min);
+  }
+
+  .payment-composition__row select {
+    grid-column: 1 / -1;
+  }
+}

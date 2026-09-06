@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Plus, X } from 'lucide-react'
-import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useAppStore } from '../../../stores/appStore'
 import { useLiabilities } from '../../../api/liabilities'
 import {
@@ -12,7 +12,28 @@ import {
 import { useFormatters } from '../../../hooks/useFormatters'
 import { useDebouncedValue } from '../../../hooks/useDebouncedValue'
 import { CHART_COLORS, TOOLTIP_STYLE } from '../../reports/charts/chartColors'
-import { blankRow, rowsToRequest, seedRows, type PlannerRow, type RowField } from './payoffRows'
+import { ContextMenu } from '../../common/ContextMenu/ContextMenu'
+import {
+  addableLiabilities,
+  blankRow,
+  rowFromLiability,
+  rowsToRequest,
+  seedRows,
+  type PlannerRow,
+  type RowField,
+} from './payoffRows'
+
+/**
+ * One colour per strategy, assigned once and read by both the chart lines and
+ * the cards below them. Two hand-written orderings is how a legend ends up
+ * naming the wrong line — and until there was a legend at all, the only way to
+ * tell avalanche from snowball was to already know which was drawn first.
+ */
+const SERIES = [
+  { key: 'avalanche', label: 'Avalanche', color: CHART_COLORS[0] },
+  { key: 'snowball', label: 'Snowball', color: CHART_COLORS[1] },
+  { key: 'minimums_only', label: 'Minimums only', color: CHART_COLORS[2] },
+] as const
 
 /**
  * Avalanche against snowball over the household's real debts.
@@ -32,6 +53,10 @@ export function PayoffPlanner() {
   const [empty] = useState(() => [blankRow()])
   const [edited, setEdited] = useState<PlannerRow[] | null>(null)
   const [extra, setExtra] = useState('')
+  // The menu's anchor, captured from the click that opened it. Measuring a
+  // ref during render is what the sibling filter bar does and it is why that
+  // file carries lint debt; there is no reason to add more of it.
+  const [addAt, setAddAt] = useState<{ x: number; y: number } | null>(null)
   const { formatMoney, formatDate } = useFormatters()
 
   const current = edited ?? (seed.rows.length ? seed.rows : empty)
@@ -51,8 +76,19 @@ export function PayoffPlanner() {
   function remove(key: string) {
     setEdited(current.filter((row) => row.key !== key))
   }
+  function toggleInclude(key: string) {
+    setEdited(current.map((row) => (row.key === key ? { ...row, include: !row.include } : row)))
+  }
   function add() {
     setEdited([...current, blankRow()])
+  }
+  // Liabilities the seed skipped (no APR or no minimum on record) and any the
+  // user removed. Offered by name, prefilled with whatever is known, so the
+  // nudge naming them is something you can act on rather than only read.
+  const addable = addableLiabilities(liabilities ?? [], current)
+  function addLiability(id: string) {
+    const found = (liabilities ?? []).find((l) => l.id === id)
+    if (found) setEdited([...current, rowFromLiability(found)])
   }
 
   return (
@@ -61,6 +97,7 @@ export function PayoffPlanner() {
         <table className="tool__table">
           <thead>
             <tr>
+              <th aria-label="In the plan" />
               <th>Debt</th>
               <th>Balance</th>
               <th>APR %</th>
@@ -72,7 +109,15 @@ export function PayoffPlanner() {
             {current.map((row) => {
               const bad = validation.errors[row.key] ?? []
               return (
-                <tr key={row.key}>
+                <tr key={row.key} className={row.include ? undefined : 'tool__row--excluded'}>
+                  <td>
+                    <input
+                      type="checkbox"
+                      checked={row.include}
+                      onChange={() => toggleInclude(row.key)}
+                      aria-label={`Include ${row.name || 'this debt'} in the plan`}
+                    />
+                  </td>
                   <td>
                     <input
                       aria-label="Debt name"
@@ -125,13 +170,41 @@ export function PayoffPlanner() {
           </tbody>
         </table>
         <div className="tool__row-actions">
-          <button type="button" className="guide-link-button tool__add" onClick={add}>
+          <button
+            type="button"
+            className="guide-link-button tool__add"
+            onClick={(e) => {
+              if (addable.length === 0) return add()
+              if (addAt) return setAddAt(null)
+              const rect = e.currentTarget.getBoundingClientRect()
+              setAddAt({ x: rect.left, y: rect.bottom + 4 })
+            }}
+            aria-haspopup={addable.length > 0 ? 'menu' : undefined}
+            aria-expanded={addable.length > 0 ? addAt !== null : undefined}
+          >
             <Plus size={12} aria-hidden /> Add a debt
           </button>
+          {addAt && (
+            <ContextMenu
+              items={[
+                ...addable.map((l) => ({ id: l.id, label: l.name })),
+                { id: 'sep', label: '', separator: true },
+                { id: 'blank', label: 'Something else…' },
+              ]}
+              position={addAt}
+              onClose={() => setAddAt(null)}
+              onSelect={(id) => {
+                setAddAt(null)
+                if (id === 'blank') add()
+                else addLiability(id)
+              }}
+            />
+          )}
           {excluded.length > 0 && (
             <p className="tool__nudge">
-              Left out — no rate or minimum on record for {excluded.join(', ')}. Add the terms on
-              the liability and it will be here.
+              No rate or minimum on record for {excluded.join(', ')} — add them from{' '}
+              <em>Add a debt</em> and fill in what is missing, or put the terms on the liability and
+              they will seed themselves.
             </p>
           )}
         </div>
@@ -157,6 +230,7 @@ export function PayoffPlanner() {
             <StrategyCard
               title="Avalanche"
               hint="Highest rate first — the least interest."
+              color={SERIES[0].color}
               result={data.avalanche}
               baseline={data.minimums_only}
               formatMoney={formatMoney}
@@ -165,6 +239,7 @@ export function PayoffPlanner() {
             <StrategyCard
               title="Snowball"
               hint="Smallest balance first — the earliest win."
+              color={SERIES[1].color}
               result={data.snowball}
               baseline={data.minimums_only}
               formatMoney={formatMoney}
@@ -225,6 +300,7 @@ function Comparison({
 function StrategyCard({
   title,
   hint,
+  color,
   result,
   baseline,
   formatMoney,
@@ -232,6 +308,9 @@ function StrategyCard({
 }: {
   title: string
   hint: string
+  /** The colour this strategy is drawn in above. Carried onto the card so the
+   *  two halves of the answer are matched by eye rather than by memory. */
+  color: string
   result: CascadeOut
   baseline: CascadeOut
   formatMoney: (n: number) => string
@@ -240,8 +319,11 @@ function StrategyCard({
   const saved = Number(baseline.total_interest) - Number(result.total_interest)
   const sooner = baseline.months.length - result.months.length
   return (
-    <div className="tool__card">
-      <h3 className="tool__card-title">{title}</h3>
+    <div className="tool__card tool__card--strategy" style={{ borderTopColor: color }}>
+      <h3 className="tool__card-title">
+        <span className="tool__swatch" style={{ backgroundColor: color }} aria-hidden />
+        {title}
+      </h3>
       <p className="tool__card-hint">{hint}</p>
       <dl className="tool__facts">
         <dt>Debt-free</dt>
@@ -279,14 +361,7 @@ function BalanceChart({
   plan: PayoffPlanResponse
   formatMoney: (n: number) => string
 }) {
-  const series: {
-    key: keyof PayoffPlanResponse & ('avalanche' | 'snowball' | 'minimums_only')
-    label: string
-  }[] = [
-    { key: 'avalanche', label: 'Avalanche' },
-    { key: 'snowball', label: 'Snowball' },
-    { key: 'minimums_only', label: 'Minimums only' },
-  ]
+  const series = SERIES
   const length = Math.max(...series.map((s) => plan[s.key].months.length))
   if (length === 0) return null
   const points = Array.from({ length }, (_, i) => {
@@ -322,12 +397,16 @@ function BalanceChart({
             formatter={(v) => formatMoney(Number(v))}
             labelFormatter={(d) => String(d).slice(0, 7)}
           />
-          {series.map((s, i) => (
+          {/* Three lines with no key at all: which curve was which was
+              guesswork, and the whole point of the chart is telling them
+              apart. */}
+          <Legend wrapperStyle={{ fontSize: 11 }} />
+          {series.map((s) => (
             <Line
               key={s.key}
               type="monotone"
               dataKey={s.label}
-              stroke={CHART_COLORS[i]}
+              stroke={s.color}
               dot={false}
               strokeWidth={s.key === 'minimums_only' ? 1 : 2}
               strokeDasharray={s.key === 'minimums_only' ? '4 3' : undefined}

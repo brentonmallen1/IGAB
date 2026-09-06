@@ -52,7 +52,32 @@ describe('PayoffPlanner', () => {
     renderPlanner()
     expect(screen.getByDisplayValue('Visa')).toBeInTheDocument()
     expect(screen.getByDisplayValue('22.9')).toBeInTheDocument()
-    expect(screen.getByText(/Left out/)).toHaveTextContent('Unknown card')
+    // Named, and now actionable: the same liability is in the add menu with
+    // its balance already filled in.
+    expect(screen.getByText(/No rate or minimum on record/)).toHaveTextContent('Unknown card')
+  })
+
+  it('offers a liability the seed skipped, rather than only naming it', async () => {
+    vi.mocked(useLiabilities).mockReturnValue({
+      data: [liability({}), liability({ id: 'l2', name: 'Unknown card', interest_rate: null })],
+    } as never)
+    renderPlanner()
+    await userEvent.click(screen.getByRole('button', { name: /Add a debt/ }))
+    await userEvent.click(await screen.findByText('Unknown card'))
+    // Arrives named and with what is on record; only the APR is left to type.
+    expect(screen.getByDisplayValue('Unknown card')).toBeInTheDocument()
+  })
+
+  it('keeps an unticked debt on screen and out of the plan', async () => {
+    vi.mocked(useLiabilities).mockReturnValue({ data: [liability({})] } as never)
+    renderPlanner()
+    const tick = screen.getByLabelText('Include Visa in the plan')
+    expect(tick).toBeChecked()
+    await userEvent.click(tick)
+    expect(tick).not.toBeChecked()
+    // Still there to re-tick — removing the row was the old way to do this,
+    // and it took the figures with it.
+    expect(screen.getByDisplayValue('Visa')).toBeInTheDocument()
   })
 
   it('offers an empty row when there is nothing to seed', () => {

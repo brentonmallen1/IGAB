@@ -10,6 +10,7 @@ import {
   Search,
   User,
   Bookmark,
+  ListFilter,
   X,
 } from 'lucide-react'
 import { apiClient } from '../../../api/client'
@@ -29,6 +30,7 @@ import { useSyncAllAccounts } from '../../../hooks/useSyncAllAccounts'
 import { addMonths, currentMonthStart } from '../../../utils/dates'
 import { THEMES } from '../../../stores/appStore'
 import { STATIC_COMMANDS, derivedCommands, type CommandCtx } from '../commands'
+import { categoryFilterLabel, parseCategoryFilterCommand } from '../categoryFilterCommand'
 import { searchGlossary } from '../../../content/glossary'
 import { useGuideOverview } from '../../../api/guide'
 import { useCurrentUser } from '../../../api/auth'
@@ -58,6 +60,7 @@ export function CommandPalette() {
   const setCoverOverspentOpen = useUIStore((s) => s.setCoverOverspentOpen)
   const setTbaDrawerOpen = useUIStore((s) => s.setTbaDrawerOpen)
   const setActiveFilter = useUIStore((s) => s.setActiveFilter)
+  const setCategorySearch = useUIStore((s) => s.setCategorySearch)
 
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const selectedMonth = useAppStore((s) => s.selectedMonth)
@@ -205,6 +208,10 @@ export function CommandPalette() {
     ? matchSuggestions(query).slice(0, 5)
     : []
 
+  // `filter: rent` narrows the budget grid. It writes the same store field
+  // the filter bar's own text box writes — one filter, reachable two ways.
+  const categoryFilter = parseCategoryFilterCommand(query)
+
   return (
     <div
       className="palette-overlay"
@@ -255,6 +262,21 @@ export function CommandPalette() {
 
           {sections.map((section) => (
             <Command.Group key={section} heading={section}>
+              {section === 'Actions' && categoryFilter && (
+                <Command.Item
+                  value="filter-categories"
+                  keywords={['filter', 'categories', 'budget', categoryFilter.term]}
+                  onSelect={() =>
+                    run(() => {
+                      setCategorySearch(categoryFilter.term)
+                      navigate('/budget')
+                    })
+                  }
+                >
+                  <ListFilter size={14} className="palette__item-icon" />
+                  {categoryFilterLabel(categoryFilter)}
+                </Command.Item>
+              )}
               {visibleCommands
                 .filter((c) => c.section === section)
                 .map((c) => (

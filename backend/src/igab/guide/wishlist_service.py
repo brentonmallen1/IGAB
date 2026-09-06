@@ -503,18 +503,7 @@ class WishlistService:
                     await self._get_project(budget_id, data["project_id"])
                 item.project_id = data["project_id"]
             if "funding" in data and data["funding"] is not None:
-                mode = data["funding"].get("mode", "none")
-                if mode == "own":
-                    raise InvariantViolation(
-                        "An envelope of its own is chosen when a wish is added"
-                    )
-                if mode == "existing":
-                    item.category_id = await self._checked_category(
-                        budget_id, data["funding"].get("category_id")
-                    )
-                else:
-                    item.category_id = None
-                item.owns_envelope = False
+                await self._apply_funding(budget_id, item, data["funding"])
             if "status" in data and data["status"] is not None:
                 self._apply_status(item, data["status"])
             if "is_priority" in data and data["is_priority"] is not None:
@@ -534,6 +523,38 @@ class WishlistService:
         after_envelope = await self._envelope_of(budget_id, item)
         await self._sync_tags(budget_id, [before_envelope, after_envelope])
         return await self.item_out(budget_id, item.id)
+
+    async def _apply_funding(
+        self, budget_id: uuid.UUID, item: WishlistItem, funding: dict[str, Any]
+    ) -> None:
+        """Move a wish's money to where the form says it lives.
+
+        All three modes are allowed after creation. `own` used to be refused
+        outright ("chosen when a wish is added"), which left a wish funded
+        from a shared category — or from nothing — with no way to ever get an
+        envelope of its own.
+
+        The one thing that stays fixed is the envelope itself. Once that
+        category exists the budget page owns its name and goal and it may be
+        holding money, so `own` on a wish that already has one means "leave it
+        alone", and switching away detaches the wish and leaves the category
+        standing rather than deleting it.
+        """
+        mode = funding.get("mode", "none")
+        if mode == "own":
+            if item.owns_envelope and item.category_id is not None:
+                return
+            envelope = await self._create_envelope(
+                budget_id, item.name, item.cost, funding.get("want_by")
+            )
+            item.category_id = envelope.id
+            item.owns_envelope = True
+            return
+        if mode == "existing":
+            item.category_id = await self._checked_category(budget_id, funding.get("category_id"))
+        else:
+            item.category_id = None
+        item.owns_envelope = False
 
     @staticmethod
     def _apply_status(item: WishlistItem, status: str) -> None:
