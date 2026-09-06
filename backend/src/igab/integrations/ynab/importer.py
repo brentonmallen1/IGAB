@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from igab.db.models import Account, Category, CategoryGroup
 from igab.domain.dates import add_months
 from igab.domain.import_identity import disambiguate_in_batch, generate_import_id
+from igab.domain.import_mapping import account_key
 from igab.domain.tag_hints import suggest_system_tag
 from igab.domain.transfers import linking_breaks_category_rule
 from igab.integrations.ynab.models import YNABBudget, anchor_month, plan_boundary
@@ -187,20 +188,27 @@ class YNABImporter:
         self.assignment_repo = assignment_repo
         self.tag_repo = TagRepository(session)
         self.anchor_repo = ImportAnchorRepository(session)
-        # account name → (account_type, on_budget) override; YNAB register
+        # Every collection keyed by account name is keyed through
+        # `account_key`, the one spelling of "the same account" this file uses
+        # — the DB lookup in _get_or_create_account matches on
+        # `func.lower(Account.name)`, and a second, case-sensitive spelling
+        # here meant an Accounts.csv row reading "Checking" against a register
+        # reading "checking" fell through to the ("checking", True) default,
+        # importing a tracked account ON budget without a word.
+        #
+        # account_key → (account_type, on_budget) override; YNAB register
         # exports carry no type info, so callers may supply the mapping.
-        self.account_types = account_types or {}
-        # Accounts to leave out entirely (matched case-insensitively, like
-        # _get_or_create_account). YNAB exports include archived accounts with
-        # no marker, so exclusion is a per-account user decision.
-        self.skip_accounts = {name.lower() for name in (skip_accounts or set())}
+        self.account_types = {account_key(k): v for k, v in (account_types or {}).items()}
+        # Accounts to leave out entirely. YNAB exports include archived
+        # accounts with no marker, so exclusion is a per-account user decision.
+        self.skip_accounts = {account_key(name) for name in (skip_accounts or set())}
         # Accounts to import in full and then close. Unlike skip_accounts this
         # changes nothing about what is created: every transaction arrives and
         # counts toward net worth, history and reports, and transfers still
         # pair up. The account is simply hidden from pickers and report
         # filters, which is what a 2019-dormant account wants.
-        self.close_accounts = {name.lower() for name in (close_accounts or set())}
-        # name → Account
+        self.close_accounts = {account_key(name) for name in (close_accounts or set())}
+        # account_key → Account
         self._account_cache: dict[str, Account] = {}
         # group name → CategoryGroup
         self._group_cache: dict[str, CategoryGroup] = {}
@@ -259,19 +267,20 @@ class YNABImporter:
             )
 
     async def _get_or_create_account(self, name: str, result: ImportResult) -> Account:
-        if name in self._account_cache:
-            return self._account_cache[name]
+        key = account_key(name)
+        if key in self._account_cache:
+            return self._account_cache[key]
 
         row = await self.session.execute(
             select(Account).where(
                 Account.budget_id == self.budget_id,
-                func.lower(Account.name) == name.lower(),
+                func.lower(Account.name) == key,
                 Account.is_deleted == False,  # noqa: E712
             )
         )
         account = row.scalar_one_or_none()
         if account is None:
-            account_type, on_budget = self.account_types.get(name, ("checking", True))
+            account_type, on_budget = self.account_types.get(key, ("checking", True))
             # Through the shared derivation so account_type_id/classification
             # are always set — imported accounts must not fall out of the
             # sidebar or net worth for lack of a classification.
@@ -279,7 +288,7 @@ class YNABImporter:
             account = await self.account_repo.create(
                 budget_id=self.budget_id,
                 name=name,
-                is_closed=name.lower() in self.close_accounts,
+                is_closed=key in self.close_accounts,
                 **apply_type(type_row, on_budget),
             )
             # Importing a budget with a mortgage is the scenario the loan
@@ -291,7 +300,7 @@ class YNABImporter:
             if account.is_closed:
                 result.accounts_closed += 1
 
-        self._account_cache[name] = account
+        self._account_cache[key] = account
         return account
 
     def _may_link(self, a: dict, b: dict) -> bool:
@@ -424,15 +433,15 @@ class YNABImporter:
         account_names: list[str] = []
         seen: set[str] = set()
         for txn in budget.transactions:
-            lowered = txn.account_name.lower()
-            if lowered in self.skip_accounts or lowered in seen:
+            key = account_key(txn.account_name)
+            if key in self.skip_accounts or key in seen:
                 continue
-            seen.add(lowered)
+            seen.add(key)
             account_names.append(txn.account_name)
         for name in account_names:
             await self._get_or_create_account(name, result)
 
-        by_lower = {name.lower(): name for name in account_names}
+        by_key = {account_key(name): name for name in account_names}
 
         payee_map: dict[str, uuid.UUID] = {}
         plain_names: list[str] = []
@@ -441,7 +450,7 @@ class YNABImporter:
                 plain_names.append(name)
                 continue
             target = name[len(_TRANSFER_PREFIX) :]
-            actual = by_lower.get(target.lower())
+            actual = by_key.get(account_key(target))
             if actual is None:
                 # Names an account the user chose to skip (or one that never
                 # appears in the register). There is no account to point at, so
@@ -449,7 +458,7 @@ class YNABImporter:
                 # that these rows are not recognised as transfers.
                 plain_names.append(name)
                 continue
-            account = self._account_cache[actual]
+            account = self._account_cache[account_key(actual)]
             payee = await self.payee_repo.find_or_create_transfer(
                 self.budget_id, account.id, account.name
             )
@@ -491,19 +500,19 @@ class YNABImporter:
         payee_names = {
             txn.payee
             for txn in budget.transactions
-            if txn.payee and txn.account_name.lower() not in self.skip_accounts
+            if txn.payee and account_key(txn.account_name) not in self.skip_accounts
         }
         payee_map = await self._resolve_payees(budget, payee_names, result)
 
         skipped_account_names: set[str] = set()
         for txn in budget.transactions:
             try:
-                if txn.account_name.lower() in self.skip_accounts:
+                if account_key(txn.account_name) in self.skip_accounts:
                     # Neither the account nor any of its rows is created. A
                     # kept account's transfer leg pointing here simply never
                     # finds a partner and imports unlinked — the existing
                     # missing-partner path — so kept balances stay correct.
-                    skipped_account_names.add(txn.account_name.lower())
+                    skipped_account_names.add(account_key(txn.account_name))
                     result.transactions_excluded += 1
                     continue
 
@@ -629,7 +638,7 @@ class YNABImporter:
                 if txn.payee.startswith(_TRANSFER_PREFIX):
                     target_name = txn.payee[len(_TRANSFER_PREFIX) :]
                     pair_key = (
-                        *sorted((txn.account_name.lower(), target_name.lower())),
+                        *sorted((account_key(txn.account_name), account_key(target_name))),
                         txn.date,
                         abs(txn.amount),
                     )
@@ -737,13 +746,14 @@ class YNABImporter:
             if account.on_budget and account.classification == "liability":
                 linked = await self.category_repo.get_by_linked_account(account.id)
                 if linked is not None:
-                    # Lowercased like the account lookup itself: YNAB names
-                    # the reserve category exactly after the card.
-                    linked_by_name[name.lower()] = linked
+                    # `name` is already an account_key. YNAB names the reserve
+                    # category exactly after the card, so the entry's category
+                    # is normalized the same way to meet it.
+                    linked_by_name[name] = linked
 
         for entry in budget.budget_entries:
             if is_credit_card_payments_group(entry.category_group):
-                linked = linked_by_name.get(entry.category.lower())
+                linked = linked_by_name.get(account_key(entry.category))
                 if linked is None:
                     result.credit_card_payment_assignments_skipped += 1
                     result.credit_card_payment_reserves_skipped += entry.assigned
@@ -806,7 +816,7 @@ class YNABImporter:
         kept = {
             t.account_name
             for t in budget.transactions
-            if t.account_name.lower() not in self.skip_accounts
+            if account_key(t.account_name) not in self.skip_accounts
         }
         cards = {
             name
@@ -850,8 +860,8 @@ class YNABImporter:
         for name, account in self._account_cache.items():
             if not (account.on_budget and account.classification == "liability"):
                 continue
-            ccp = seed.ccp_available_by_card.get(name.lower(), zero)
-            balance = seed.card_balances_by_card.get(name.lower(), zero)
+            ccp = seed.ccp_available_by_card.get(name, zero)
+            balance = seed.card_balances_by_card.get(name, zero)
             reserve[account.id] = ccp
             uncovered[account.id] = max(zero, -balance - ccp)
         anchors = anchor_rows(

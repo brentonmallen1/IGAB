@@ -8,6 +8,7 @@ import {
   useCreateBudget,
   useCreateSampleBudget,
   useImportYnabAsBudget,
+  useForgetRememberedAccounts,
   usePreviewBudgetImport,
   useRenameBudget,
   useDeleteBudget,
@@ -37,8 +38,10 @@ import {
   dormantOpenCount,
   groupAccounts,
   isDormant,
+  seedChoices,
   type Disposition,
 } from './accountMapping'
+import { MappingNotes } from './MappingNotes'
 
 const CARD_MENU_ITEMS: ContextMenuItem[] = [
   { id: 'rename', label: 'Rename', icon: Pencil },
@@ -93,6 +96,7 @@ export function BudgetSelectorPage() {
   const importFileRef = useRef<HTMLInputElement>(null)
   const [importError, setImportError] = useState<string | null>(null)
   const previewImport = usePreviewBudgetImport()
+  const forgetRemembered = useForgetRememberedAccounts()
   const importSnapshot = useImportSnapshot()
   const [previewAccounts, setPreviewAccounts] = useState<YnabAccountPreview[] | null>(null)
   // B for the file being previewed — see YnabPreviewResult.anchor_month.
@@ -191,6 +195,14 @@ export function BudgetSelectorPage() {
 
   async function handlePreview(e: React.FormEvent) {
     e.preventDefault()
+    await runPreview()
+  }
+
+  /** Re-read the chosen file and rebuild the mapping form from the server.
+   *  Split out so forgetting the remembered choices can show the screen
+   *  without them — the DELETE has committed by the time it answers, so this
+   *  reads the state it just wrote. */
+  async function runPreview() {
     const file = importFileRef.current?.files?.[0]
     if (!file) return
     setImportError(null)
@@ -203,19 +215,7 @@ export function BudgetSelectorPage() {
       }
       setPreviewAccounts(preview.ynab.accounts)
       setPreviewAnchorMonth(preview.ynab.anchor_month)
-      setAccountChoices(
-        Object.fromEntries(
-          preview.ynab.accounts.map((a) => [
-            a.name,
-            {
-              account_type: a.suggested_type,
-              on_budget: a.suggested_on_budget,
-              skip: false,
-              close: false,
-            },
-          ])
-        )
-      )
+      setAccountChoices(seedChoices(preview.ynab.accounts))
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
       setImportError(detail ?? (err instanceof Error ? err.message : 'Could not read the file'))
@@ -553,36 +553,16 @@ export function BudgetSelectorPage() {
                     transfers to it won't match up. Need a type that isn't listed? You can add
                     custom ones after the import.
                   </p>
-                  {!previewAccounts.some((a) => a.needs_review) && (
-                    <p className="ynab-mapping__note">
-                      An IGAB export carries the real account types, so there is nothing to guess
-                      here. A YNAB export does not, and the types below would be read from account
-                      names instead.
-                    </p>
-                  )}
-                  {previewAccounts.some((a) => a.needs_review) && (
-                    <p className="ynab-mapping__review-note">
-                      We couldn't tell what {previewAccounts.filter((a) => a.needs_review).length}{' '}
-                      of these are from their names — they're marked <strong>Check</strong> below.
-                      The balance is the clue: a large one usually means something you own (a house,
-                      a car, a brokerage), which belongs <em>off</em> budget. An account left on
-                      budget by mistake throws off every total.
-                    </p>
-                  )}
-                  {dormantCount > 0 && (
-                    <p className="ynab-mapping__note">
-                      {dormantCount} of these {dormantCount === 1 ? 'has' : 'have'} seen no activity
-                      in over a year.{' '}
-                      <button
-                        type="button"
-                        className="ynab-mapping__note-action"
-                        onClick={closeDormantAccounts}
-                      >
-                        Import &amp; close {dormantCount === 1 ? 'it' : 'them'}
-                      </button>{' '}
-                      to keep every transaction while leaving them out of your account pickers.
-                    </p>
-                  )}
+                  <MappingNotes
+                    accounts={previewAccounts}
+                    dormantCount={dormantCount}
+                    forgetPending={forgetRemembered.isPending}
+                    onForgetRemembered={async () => {
+                      await forgetRemembered.mutateAsync()
+                      await runPreview()
+                    }}
+                    onCloseDormant={closeDormantAccounts}
+                  />
                   <Surface
                     variant="sunken"
                     className="ynab-mapping"
@@ -643,6 +623,14 @@ export function BudgetSelectorPage() {
                                     title="We couldn't identify this account from its name — confirm the type and whether it belongs on budget"
                                   >
                                     Check
+                                  </span>
+                                )}
+                                {a.suggestion_source === 'remembered' && !skipped && (
+                                  <span
+                                    className="ynab-mapping__remembered"
+                                    title="Set the way you left it the last time you imported an account with this name"
+                                  >
+                                    Remembered
                                   </span>
                                 )}
                                 <span className="ynab-mapping__count">

@@ -34,6 +34,42 @@ export function choiceForDisposition(
   return { skip: d === 'skip', close: d === 'close' }
 }
 
+/** Seed the mapping form from the server's suggestion.
+ *
+ *  All four fields come from the preview. `skip` and `close` used to be
+ *  hard-coded false here, which threw away a remembered "leave this one out"
+ *  on every import — and, for an IGAB export, reopened every closed account.
+ */
+export function seedChoices(accounts: YnabAccountPreview[]): Record<string, YnabAccountTypeChoice> {
+  return Object.fromEntries(
+    accounts.map((a) => [
+      a.name,
+      {
+        account_type: a.suggested_type,
+        on_budget: a.suggested_on_budget,
+        skip: a.suggested_skip,
+        close: a.suggested_close,
+      },
+    ])
+  )
+}
+
+/** How many rows arrived set the way this person left them last time. */
+export function rememberedCount(accounts: YnabAccountPreview[]): number {
+  return accounts.filter((a) => a.suggestion_source === 'remembered').length
+}
+
+/** Whether every type on the screen came from the file's own Accounts.csv.
+ *
+ *  The screen used to ask "did nothing need review?" instead, which is a
+ *  proxy for two different things: it is also true of a plain YNAB export
+ *  whose names all happen to read confidently, and the note it guards claims
+ *  the file carried real types. Asking the actual question is one comparison.
+ */
+export function allTypesFromExport(accounts: YnabAccountPreview[]): boolean {
+  return accounts.length > 0 && accounts.every((a) => a.suggestion_source === 'export')
+}
+
 export function isDormant(lastActivity: string | null, monthsAgoISO?: string): boolean {
   if (!lastActivity) return false
   return lastActivity < (monthsAgoISO ?? monthsAgoStartISO(DORMANT_AFTER_MONTHS))

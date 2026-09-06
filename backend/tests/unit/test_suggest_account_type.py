@@ -15,7 +15,7 @@ from decimal import Decimal
 
 import pytest
 
-from igab.api.v1.imports import suggest_account_type
+from igab.domain.import_mapping import suggest_account_type
 
 POS = Decimal("1000")
 NEG = Decimal("-1000")

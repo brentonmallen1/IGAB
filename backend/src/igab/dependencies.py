@@ -23,6 +23,7 @@ from igab.repositories.category_repo import (
 )
 from igab.repositories.change_log_repo import ChangeLogRepository
 from igab.repositories.import_anchor_repo import ImportAnchorRepository
+from igab.repositories.import_mapping_repo import ImportMappingRepository
 from igab.repositories.liability_repo import LiabilityRepository
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.reconciliation_repo import ReconciliationRepository
@@ -68,6 +69,10 @@ def get_user_repo(session: SessionDep) -> UserRepository:
 
 def get_settings_repo(session: SessionDep) -> SettingsRepository:
     return SettingsRepository(session)
+
+
+def get_import_mapping_repo(session: SessionDep) -> ImportMappingRepository:
+    return ImportMappingRepository(session)
 
 
 def get_settings_service(

@@ -10,12 +10,15 @@
 import { describe, expect, it } from 'vitest'
 import {
   activityLabel,
+  allTypesFromExport,
   classificationWarning,
   choiceForDisposition,
   dispositionOf,
   dormantOpenCount,
   groupAccounts,
   isDormant,
+  rememberedCount,
+  seedChoices,
 } from './accountMapping'
 import type { YnabAccountPreview, YnabAccountTypeChoice } from '../../api/budgets'
 
@@ -32,6 +35,9 @@ function preview(over: Partial<YnabAccountPreview> = {}): YnabAccountPreview {
     first_activity: '2020-01-01',
     last_activity: '2026-08-01',
     related_group: null,
+    suggested_skip: false,
+    suggested_close: false,
+    suggestion_source: 'heuristic',
     ...over,
   }
 }
@@ -200,5 +206,60 @@ describe('groupAccounts', () => {
 
   it('handles an empty preview', () => {
     expect(groupAccounts([])).toEqual([])
+  })
+})
+
+describe('seeding the form from the server', () => {
+  it('carries skip and close through', () => {
+    // These were hard-coded false in the page, so a remembered "leave this one
+    // out" was thrown away on every import and an IGAB export reopened every
+    // account the user had closed.
+    const seeded = seedChoices([
+      preview({ name: 'Old Cascade Point HYSA', suggested_skip: true }),
+      preview({ name: 'Sapphire Visa', suggested_close: true, suggested_type: 'credit_card' }),
+    ])
+    expect(dispositionOf(seeded['Old Cascade Point HYSA'])).toBe('skip')
+    expect(dispositionOf(seeded['Sapphire Visa'])).toBe('close')
+    expect(seeded['Sapphire Visa'].account_type).toBe('credit_card')
+  })
+
+  it('offers nothing to close when memory already closed them', () => {
+    // Otherwise the dormant prompt reappears every import, offering to do
+    // again what was done last time.
+    const accounts = [preview({ name: 'Old Cascade Point HYSA', last_activity: '2019-04-01' })]
+    expect(dormantOpenCount(accounts, seedChoices(accounts), A_YEAR_AGO)).toBe(1)
+
+    const remembered = [
+      preview({
+        name: 'Old Cascade Point HYSA',
+        last_activity: '2019-04-01',
+        suggested_close: true,
+      }),
+    ]
+    expect(dormantOpenCount(remembered, seedChoices(remembered), A_YEAR_AGO)).toBe(0)
+  })
+})
+
+describe('what the notes above the list may claim', () => {
+  it('counts only the rows that came from memory', () => {
+    expect(
+      rememberedCount([
+        preview({ name: 'Harborstone Checking', suggestion_source: 'remembered' }),
+        preview({ name: 'Vehicle A Loan', suggestion_source: 'heuristic' }),
+      ])
+    ).toBe(1)
+  })
+
+  it('cannot claim an IGAB export when the types came from memory', () => {
+    // The screen used to ask "did nothing need review?", which is also true of
+    // a plain YNAB export whose names all read confidently — and then claimed
+    // the file carried real types.
+    expect(allTypesFromExport([preview({ suggestion_source: 'remembered' })])).toBe(false)
+    expect(allTypesFromExport([preview({ suggestion_source: 'heuristic' })])).toBe(false)
+    expect(allTypesFromExport([preview({ suggestion_source: 'export' })])).toBe(true)
+  })
+
+  it('claims nothing about an empty list', () => {
+    expect(allTypesFromExport([])).toBe(false)
   })
 })
