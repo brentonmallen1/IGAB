@@ -295,3 +295,20 @@
     font-size: 10px;
   }
 }
+
+/* The pending total, stated below the balance partition rather than inside
+   it — see the comment at its render site. Muted and small: it is context for
+   the register, not a fourth balance competing with the three above. */
+.account-page__pending {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  margin-top: var(--spacing-xs);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.account-page__pending-value {
+  color: var(--text-secondary);
+  font-weight: 600;
+}

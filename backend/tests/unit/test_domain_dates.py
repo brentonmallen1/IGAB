@@ -10,7 +10,7 @@ from datetime import date
 
 import pytest
 
-from igab.domain.dates import add_months, month_end, month_start, months_between
+from igab.domain.dates import add_months, month_end, month_start, months_between, months_spanned
 
 
 class TestAddMonths:
@@ -95,3 +95,30 @@ class TestMonthsBetween:
 
     def test_crosses_a_year(self):
         assert months_between(date(2025, 11, 1), date(2026, 2, 1)) == 3
+
+
+class TestMonthsSpanned:
+    """How many months a report can draw — not the same question as
+    `months_between`, which is a funding horizon and floors at 1."""
+
+    def test_counts_both_ends(self):
+        assert months_spanned(date(2026, 1, 15), date(2026, 3, 2)) == 3
+
+    def test_a_single_month_is_one(self):
+        # months_between says 1 here too, but by its floor rather than by
+        # counting — the two agree by accident on this case only.
+        assert months_spanned(date(2026, 3, 1), date(2026, 3, 31)) == 1
+
+    def test_differs_from_months_between_by_the_inclusive_end(self):
+        # The divergence, stated: 13 months touched, 12 months of horizon.
+        start, end = date(2025, 3, 1), date(2026, 3, 1)
+        assert months_spanned(start, end) == 13
+        assert months_between(start, end) == 12
+
+    def test_crosses_years(self):
+        assert months_spanned(date(2024, 11, 30), date(2026, 2, 1)) == 16
+
+    def test_a_reversed_range_is_one_month_not_negative(self):
+        # A clock skew or a future-dated row must never produce a negative
+        # window for a picker to render.
+        assert months_spanned(date(2026, 6, 1), date(2026, 1, 1)) == 1

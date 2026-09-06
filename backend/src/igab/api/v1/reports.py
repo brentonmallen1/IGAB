@@ -40,6 +40,7 @@ from igab.api.v1.schemas.report import (
     PlanRealityCategory,
     PlanRealityResponse,
     ReportDrains,
+    ReportRangeResponse,
     SankeyLink,
     SankeyNode,
     SavingsCategory,
@@ -78,7 +79,37 @@ def _spending_classes(include_savings: bool) -> list[ActivityClass] | None:
     return [ActivityClass.SPENDING, ActivityClass.SAVINGS, ActivityClass.DEBT_PRINCIPAL]
 
 
+#: One bound for every report's month window.
+#:
+#: There were three: no validation at all on most endpoints, `ge=3, le=24` on
+#: plan-vs-reality and `ge=1, le=60` on essentials. The 24 was invisible until
+#: the range picker learned to offer longer windows, and then it was a 422 on
+#: one report out of nine. The ceiling is deliberately far past any real
+#: budget — it exists to refuse an absurd number, not to decide a horizon;
+#: what a budget can actually show is `available_range`, served and used by
+#: the picker.
+MAX_REPORT_MONTHS = 600
+
+ReportMonths = Annotated[int, Query(ge=1, le=MAX_REPORT_MONTHS)]
+
+#: plan-vs-reality reads "chronic" as over-plan in 3+ of the window's last 6
+#: months, so a window shorter than 3 has nothing to say. That floor is the
+#: report's own rule and stays; only its old 24-month ceiling is gone.
+PlanRealityMonths = Annotated[int, Query(ge=3, le=MAX_REPORT_MONTHS)]
+
+
 router = APIRouter(route_class=CommitRoute)
+
+
+@router.get("/{budget_id}/reports/range", response_model=ReportRangeResponse)
+async def report_range(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    report_svc: Annotated[ReportService, Depends(get_report_service)],
+) -> ReportRangeResponse:
+    """How far back this budget's reports can look, so the range picker offers
+    only windows that exist — and can resolve "All" to a real number."""
+    return ReportRangeResponse(**await report_svc.available_range(budget_id))
 
 
 @router.get("/{budget_id}/reports/spending", response_model=SpendingReportResponse)
@@ -115,7 +146,7 @@ async def income_expense_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
-    months: int = 12,
+    months: ReportMonths = 12,
 ) -> IncomeExpenseResponse:
     data = await report_svc.income_vs_expense(budget_id, months)
     return IncomeExpenseResponse(months=[IncomeExpenseMonth.model_validate(m) for m in data])
@@ -164,7 +195,7 @@ async def net_worth_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
-    months: int = 12,
+    months: ReportMonths = 12,
 ) -> NetWorthResponse:
     data = await report_svc.net_worth_history(budget_id, months)
     return NetWorthResponse(
@@ -179,7 +210,7 @@ async def account_composition_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
-    months: int = 12,
+    months: ReportMonths = 12,
 ) -> AccountCompositionResponse:
     data = await report_svc.account_composition(budget_id, months)
     return AccountCompositionResponse(
@@ -192,7 +223,7 @@ async def burn_rate_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
-    months: int = 12,
+    months: ReportMonths = 12,
 ) -> BurnRateResponse:
     data = await report_svc.burn_rate(budget_id, months)
     return BurnRateResponse(points=[BurnRatePoint.model_validate(p) for p in data])
@@ -255,7 +286,7 @@ async def plan_vs_reality_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
-    months: Annotated[int, Query(ge=3, le=24)] = 12,
+    months: PlanRealityMonths = 12,
 ) -> PlanRealityResponse:
     data = await report_svc.plan_vs_reality(budget_id, months)
     return PlanRealityResponse(
@@ -272,7 +303,7 @@ async def variance_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
-    months: int = 12,
+    months: ReportMonths = 12,
 ) -> VarianceResponse:
     data = await report_svc.cumulative_variance(budget_id, months)
     return VarianceResponse(points=[VariancePoint.model_validate(p) for p in data])
@@ -283,7 +314,7 @@ async def volatility_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
-    months: int = 12,
+    months: ReportMonths = 12,
 ) -> VolatilityResponse:
     data = await report_svc.category_volatility(budget_id, months)
     return VolatilityResponse(categories=[VolatilityItem.model_validate(c) for c in data])
@@ -334,7 +365,7 @@ async def seasonality_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
-    months: int = 12,
+    months: ReportMonths = 12,
 ) -> SeasonalityResponse:
     data = await report_svc.seasonality(budget_id, months)
     return SeasonalityResponse(
@@ -349,7 +380,7 @@ async def essentials_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
-    months: int = Query(12, ge=1, le=60),
+    months: ReportMonths = 12,
 ) -> EssentialsReportResponse:
     return EssentialsReportResponse(**await report_svc.essentials_summary(budget_id, months))
 
@@ -461,7 +492,7 @@ async def subscriptions_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
-    months: int = 12,
+    months: ReportMonths = 12,
 ) -> SubscriptionsReportResponse:
     """Subscriptions report — aggregates transactions from payees tagged 'subscription'."""
     data = await report_svc.subscriptions_report(budget_id, months)
@@ -477,7 +508,7 @@ async def savings_rate_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
-    months: int = 12,
+    months: ReportMonths = 12,
 ) -> SavingsRateResponse:
     """How much of what came in was kept. Distinct from /reports/savings, which
     asks what you *budgeted* toward savings; this asks what actually left as
@@ -491,7 +522,7 @@ async def savings_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
-    months: int = 12,
+    months: ReportMonths = 12,
 ) -> SavingsReportResponse:
     """Savings report — aggregates categories tagged 'savings' or 'long_term_expense'."""
     data = await report_svc.savings_report(budget_id, months)
@@ -508,7 +539,7 @@ async def anomalies_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
-    months: int = 12,
+    months: ReportMonths = 12,
     threshold: float = 2.0,
 ) -> AnomalyReportResponse:
     """Anomaly detection — category-months with spending outside baseline z-score."""
@@ -524,7 +555,7 @@ async def payday_effect_report(
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
     window: int = 14,
-    months: int = 12,
+    months: ReportMonths = 12,
 ) -> PaydayEffectResponse:
     """Payday effect — average daily spending for N days after income events."""
     data = await report_svc.payday_effect(budget_id, window, months)

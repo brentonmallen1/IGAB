@@ -38,7 +38,7 @@ from igab.domain.activity_class import (
 # transfers to off-budget accounts count as real income/expense; internal
 # uncategorized transfers never do). For category-scoped queries the
 # predicate is vacuously true, keeping one uniform rule.
-from igab.domain.dates import add_months
+from igab.domain.dates import add_months, months_spanned
 from igab.domain.money import quantize_cents
 from igab.guide.concepts import (
     ESSENTIALS_WINDOW_DAYS,
@@ -208,6 +208,22 @@ class ReportService:
         self.txns = TransactionRepository(session)
         self.accounts = AccountRepository(session)
         self.session = session
+
+    async def available_range(self, budget_id: uuid.UUID) -> dict:
+        """How far back this budget's reports can look.
+
+        Served so the range picker offers only windows that exist: a budget
+        with eighteen months of history has no 24-month view to give, and
+        offering one draws six empty leading months that read as a data loss.
+        It is also what "All" resolves to — the client cannot know it, and the
+        alternative (asking for a very large number of months) is the same
+        empty-months problem with extra steps.
+        """
+        earliest = await self.txns.earliest_date(budget_id)
+        return {
+            "earliest_month": earliest.replace(day=1) if earliest else None,
+            "months_available": months_spanned(earliest, date.today()) if earliest else 0,
+        }
 
     # ─── Existing ─────────────────────────────────────────────────────────────
 

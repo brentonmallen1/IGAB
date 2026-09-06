@@ -50,3 +50,15 @@ def months_between(start: date, end: date) -> int:
     disagree about how many months are left.
     """
     return max(1, (end.year - start.year) * 12 + end.month - start.month)
+
+
+def months_spanned(start: date, end: date) -> int:
+    """How many calendar months the range touches, inclusive of both ends.
+
+    Not `months_between`: that one measures a funding horizon and floors at 1
+    because a target due this month must still be met once. This one counts
+    the months a report can actually draw — one, for a budget whose history
+    starts this month — so the two differ by exactly the inclusive end and the
+    floor. Both live here so neither gets rebuilt at a call site.
+    """
+    return max(0, (end.year - start.year) * 12 + end.month - start.month) + 1

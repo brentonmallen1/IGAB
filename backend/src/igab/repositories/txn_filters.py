@@ -44,6 +44,16 @@ PARENT_ROW = Transaction.parent_transaction_id.is_(None)
 #: disagree about whether a pending auth hold is money.
 BALANCE_ROW = and_(NOT_DELETED, PARENT_ROW, POSTED)
 
+#: The provisional counterpart of BALANCE_ROW: authorised by the bank, not
+#: posted. Written as the complement of POSTED rather than as a second
+#: `cleared == "pending"` so the two can never drift apart.
+#:
+#: Deliberately DISJOINT from BALANCE_ROW, not a subset — pending money is in
+#: no money aggregate at all (see the module docstring), so a sum over these
+#: rows is never a term in `balance = cleared + uncleared`. It answers the one
+#: question the partition cannot: how much is about to move.
+PENDING_ROW = and_(NOT_DELETED, PARENT_ROW, not_(POSTED))
+
 #: The bank has confirmed this row. Implies POSTED — 'pending' is not in the
 #: set — but the two are kept separate because they answer different
 #: questions: POSTED is "has this moved", CLEARED is "has the bank agreed".

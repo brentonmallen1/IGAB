@@ -64,6 +64,12 @@ class AccountResponse(ApiModel):
     balance: Decimal = Decimal("0")
     cleared_balance: Decimal = Decimal("0")
     uncleared_balance: Decimal = Decimal("0")
+    #: Authorised by the bank, not yet posted. NOT a term in
+    #: `balance = cleared + uncleared` — pending money is in no money
+    #: aggregate until it posts (see txn_filters.PENDING_ROW), which is
+    #: exactly why the register needs it stated: the rows are visible and
+    #: count for nothing.
+    pending_balance: Decimal = Decimal("0")
     uncategorized_count: int = 0
 
     model_config = {"from_attributes": True}

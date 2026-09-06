@@ -633,3 +633,15 @@ class CashProjectionResponse(ApiModel):
     points: list[CashProjectionPoint]
     events: list[CashProjectionEvent]
     goes_negative_date: date | None  # first date P50 goes negative, if any
+
+
+class ReportRangeResponse(ApiModel):
+    """How far back this budget's reports can look — see
+    `ReportService.available_range`."""
+
+    #: First of the month the budget's oldest transaction falls in; None for a
+    #: budget with no transactions at all.
+    earliest_month: date | None
+    #: Calendar months from that month to this one, inclusive. 0 means no
+    #: history, which is not the same as 1.
+    months_available: int

@@ -20,7 +20,7 @@ import { MetricCard } from '../MetricCard'
 import { MetricRow } from '../MetricRow'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
-import { ReportRangeButtons } from './rangeButtons'
+import { ReportRangeSelect } from './rangeSelect'
 
 interface Props {
   budgetId: string
@@ -81,7 +81,7 @@ export function SavingsRateReport({ budgetId }: Props) {
         </ReportInfoButton>
         <p className="report-section__subtitle">Share of income kept</p>
         <div className="flex-row ms-auto">
-          <ReportRangeButtons months={months} onChange={setMonths} />
+          <ReportRangeSelect months={months} onChange={setMonths} />
           <button
             className={`report-btn ${withDebt ? 'report-btn--active' : ''}`}
             aria-pressed={withDebt}
