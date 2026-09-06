@@ -44,12 +44,12 @@
   }
 
   .transaction-row--selected:hover {
-    background-color: color-mix(in srgb, var(--color-accent) 18%, transparent);
+    background-color: var(--row-selected-hover-bg);
   }
 }
 
 .transaction-row--selected {
-  background-color: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  background-color: var(--row-selected-bg);
 }
 
 .transaction-row--highlighted {
@@ -224,9 +224,32 @@
   background-color: transparent;
 }
 
+/* Pending: the bank has authorised it, nothing has moved. It gets its own
+   ground now rather than the dimming it used to share with `unapproved` —
+   the two were pixel-identical, and fading the text is what made a run of
+   pending rows hard to pick out of a long register in the first place.
+   Italic stays: a colour-only signal is not a signal for everyone. */
 .transaction-row.pending {
-  opacity: 0.7;
+  background-color: var(--row-pending-bg);
   font-style: italic;
+}
+
+/* Selection and hover outrank provisionality — a selected row must read as
+   selected whatever its cleared state. Spelled out because `.a.b` beats `.a`,
+   so the tint above would otherwise win against both rules. Same tokens they
+   use; no second recipe for either colour. */
+.transaction-row--selected.pending {
+  background-color: var(--row-selected-bg);
+}
+
+@media (hover: hover) {
+  .transaction-row.pending:hover {
+    background-color: var(--row-hover-bg);
+  }
+
+  .transaction-row--selected.pending:hover {
+    background-color: var(--row-selected-hover-bg);
+  }
 }
 
 .txn-cleared-btn--pending {
