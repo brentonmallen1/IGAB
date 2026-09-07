@@ -485,26 +485,44 @@ class LiabilitiesReportResponse(ApiModel):
 # ─── Subscriptions Report ────────────────────────────────────────────────────
 
 
-class SubscriptionPayee(ApiModel):
-    #: None for charges filed to a subscription category with no payee.
-    payee_id: uuid.UUID | None
-    payee_name: str
+class RecurringSpend(ApiModel):
+    """The figures a recurring line carries. One shape for a category and for
+    a payee inside it, because the arithmetic is the same."""
+
     monthly_amounts: list[Decimal]  # amounts per month in the period
+    #: True monthly burden: total / months since the FIRST charge, so a
+    #: quarterly $30 subscription reads $10/mo. Per payee that is a service's
+    #: cost; per category it is the envelope's recurring burn rate.
+    avg_monthly: Decimal
     total: Decimal
-    avg_monthly: Decimal  # true monthly burden: total / months since first charge
     avg_per_charge: Decimal  # typical charge: total / charge count
     last_charge_date: date | None
     transaction_count: int
 
 
+class SubscriptionPayee(RecurringSpend):
+    #: None for charges filed to a subscription category with no payee.
+    payee_id: uuid.UUID | None
+    payee_name: str
+
+
+class SubscriptionCategory(RecurringSpend):
+    #: Never null: the tag is on categories, so a row without one cannot be
+    #: in this report at all.
+    category_id: uuid.UUID
+    category_name: str
+    group_name: str
+    payees: list[SubscriptionPayee]
+
+
 class SubscriptionsSummary(ApiModel):
     total_monthly: Decimal  # average monthly total across all subscriptions
     total_annual: Decimal  # projected annual cost
-    active_count: int  # number of payees charging within subscription categories
+    active_count: int  # number of tagged categories with charges in the period
 
 
 class SubscriptionsReportResponse(ApiModel):
-    subscriptions: list[SubscriptionPayee]
+    subscriptions: list[SubscriptionCategory]
     summary: SubscriptionsSummary
     months: list[date]  # month labels for the period
 

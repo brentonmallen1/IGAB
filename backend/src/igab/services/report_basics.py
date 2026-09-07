@@ -14,12 +14,13 @@ import uuid
 from collections.abc import Sequence
 from datetime import date
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
+import polars as pl
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from igab.db.models import Payee, Transaction
+from igab.db.models import Category, CategoryGroup, Payee, Transaction
 from igab.domain.activity_class import (
     ACTIVITY_CLASS,
     SPENDING_CLASSES,
@@ -34,6 +35,7 @@ from igab.repositories.txn_filters import (
     NOT_DELETED,
     ON_BUDGET_ACCOUNT,
     POSTED,
+    category_tagged,
 )
 
 if TYPE_CHECKING:
@@ -188,19 +190,212 @@ async def income_by_source(session: AsyncSession, budget_id: uuid.UUID, months: 
 async def emergency_fund(
     session: AsyncSession, budget_id: uuid.UUID
 ) -> tuple[Decimal | None, str | None]:
-    """What the Guide reads as the emergency fund, and why — the bound
-    category or account if the person pointed at one, else the Guide's
-    own detection. One reader (GuideDetection.emergency_fund), so the
-    Essentials report and the roadmap quote the same balance."""
-    from igab.guide.bindings import resolve
+    """What the Guide reads as the emergency fund, and why.
+
+    Detection plus any self-reported amount, folded by the same rule the
+    roadmap uses. The docstring here used to promise "One reader ... so the
+    Essentials report and the roadmap quote the same balance" while reading
+    only the detection — so a household keeping most of its buffer at another
+    institution saw the roadmap say $10,240 and this report say $1,240 for one
+    figure. The promise is now kept by calling the same function.
+    """
+    from igab.guide.bindings import fold_external, resolve
     from igab.guide.detection import GuideDetection
     from igab.guide.repo import GuideRepository
 
     rows = await GuideRepository(session).bindings(budget_id)
     resolution = resolve("emergency_fund", rows)
-    if not resolution.runs_detection:
+    detected: Decimal | None = None
+    reason: str | None = None
+    if resolution.runs_detection:
+        finding = await GuideDetection(session).emergency_fund(
+            budget_id, resolution.entities or None
+        )
+        detected, reason = finding.value, finding.reason
+    total = fold_external(detected, resolution.external_amount)
+    if total is None:
         return None, None
-    finding = await GuideDetection(session).emergency_fund(budget_id, resolution.entities or None)
-    if finding.value is None:
-        return None, None
-    return quantize_cents(finding.value), finding.reason
+    if detected is None:
+        reason = "you told us what you have set aside"
+    return quantize_cents(total), reason
+
+
+class RecurringSpend(TypedDict):
+    """What a recurring line costs, whoever or whatever it is attached to.
+    Identical arithmetic for a category and for a payee inside one, so it is
+    written once and applied at both levels."""
+
+    monthly_amounts: list[Decimal]
+    total: Decimal
+    avg_monthly: Decimal
+    avg_per_charge: Decimal
+    last_charge_date: date | None
+    transaction_count: int
+
+
+class SubscriptionPayeeRow(RecurringSpend):
+    payee_id: str | None
+    payee_name: str
+
+
+class SubscriptionRow(RecurringSpend):
+    category_id: str
+    category_name: str
+    group_name: str
+    #: The services inside the envelope, biggest first. The category is the
+    #: headline because the tag is on categories; the payees are how you find
+    #: which one grew.
+    payees: list[SubscriptionPayeeRow]
+
+
+def _recurring_spend(frame: pl.DataFrame, month_list: list[date]) -> RecurringSpend:
+    """The per-line arithmetic, for a category or one payee inside it.
+
+    avg_monthly is the TRUE monthly burden: the total spread over the
+    months since the FIRST charge, not the average charged month — a
+    quarterly $30 subscription costs $10/mo, not $30/mo.
+    """
+    by_month = frame.group_by("month").agg(pl.col("amount").sum().alias("monthly_total"))
+    monthly_amounts: list[Decimal] = []
+    for m in month_list:
+        row = by_month.filter(pl.col("month") == m)
+        monthly_amounts.append(
+            Decimal(str(round(row["monthly_total"][0], 4))) if len(row) else Decimal("0")
+        )
+
+    total = sum(monthly_amounts, Decimal("0"))
+    txn_count = len(frame)
+    first_charged = next((i for i, a in enumerate(monthly_amounts) if a > 0), None)
+    avg_monthly = (
+        Decimal("0") if first_charged is None else total / (len(month_list) - first_charged)
+    )
+    return {
+        "monthly_amounts": monthly_amounts,
+        "total": total,
+        "avg_monthly": quantize_cents(avg_monthly),
+        "avg_per_charge": quantize_cents(total / txn_count if txn_count else Decimal("0")),
+        "last_charge_date": max(frame["date"].to_list()) if txn_count else None,
+        "transaction_count": txn_count,
+    }
+
+
+async def subscriptions_report(
+    session: AsyncSession, budget_id: uuid.UUID, months: int = 12
+) -> dict:
+    """Recurring charges: every posted outflow filed to a category tagged
+    Subscription, grouped BY CATEGORY, with the payees inside each one.
+
+    The tag is on categories (repositories/tag_repo.py
+    CATEGORY_ONLY_SYSTEM_KEYS). Drawing one line per payee made the tag
+    merely a filter and left the envelope — the thing actually tagged, and
+    the thing a budget is made of — unnamed. The payees are still here,
+    nested, because "which service grew" is the next question after
+    "which envelope grew".
+
+    Note what avg_monthly means at each level: per payee it is a service's
+    cost; per category it is that envelope's recurring burn rate.
+    """
+    from igab.repositories.tag_repo import TagRepository
+
+    empty = {
+        "subscriptions": [],
+        "summary": {
+            "total_monthly": Decimal("0"),
+            "total_annual": Decimal("0"),
+            "active_count": 0,
+        },
+        "months": [],
+    }
+
+    tag_repo = TagRepository(session)
+    tagged = await tag_repo.get_category_ids_by_system_keys(budget_id, ["subscription"])
+    if not tagged:
+        return empty
+
+    today = date.today()
+    end_date = today
+    start_date = _subtract_months(today, months).replace(day=1)
+    month_list = _months_in_range(start_date, end_date)
+
+    q = (
+        select(
+            Transaction.category_id,
+            Category.name.label("category_name"),
+            CategoryGroup.name.label("group_name"),
+            Transaction.payee_id,
+            Payee.name.label("payee_name"),
+            Transaction.date,
+            Transaction.amount,
+        )
+        .join(Category, Category.id == Transaction.category_id)
+        .join(CategoryGroup, CategoryGroup.id == Category.category_group_id)
+        .outerjoin(Payee, Payee.id == Transaction.payee_id)
+        .where(
+            Transaction.budget_id == budget_id,
+            category_tagged("subscription"),
+            NOT_DELETED,
+            POSTED,
+            Transaction.amount < 0,  # outflows only
+            Transaction.date >= start_date,
+            Transaction.date <= end_date,
+            LEAF,
+            ON_BUDGET_ACCOUNT,
+        )
+    )
+    rows = (await session.execute(q)).all()
+    if not rows:
+        return {**empty, "months": month_list}
+
+    # category_tagged guarantees category_id is not null, so there is no
+    # "no category" sentinel to keep here — only payee can be missing.
+    df = pl.DataFrame(
+        {
+            "category_id": [str(r.category_id) for r in rows],
+            "category_name": [r.category_name for r in rows],
+            "group_name": [r.group_name for r in rows],
+            "payee_id": [str(r.payee_id) if r.payee_id else "__none__" for r in rows],
+            "payee_name": [r.payee_name or "No payee" for r in rows],
+            "month": [r.date.replace(day=1) for r in rows],
+            "date": [r.date for r in rows],
+            "amount": [abs(float(r.amount)) for r in rows],
+        }
+    )
+
+    subscriptions: list[SubscriptionRow] = []
+    for category_id in df["category_id"].unique().to_list():
+        in_category = df.filter(pl.col("category_id") == category_id)
+
+        payees: list[SubscriptionPayeeRow] = []
+        for payee_id in in_category["payee_id"].unique().to_list():
+            for_payee = in_category.filter(pl.col("payee_id") == payee_id)
+            payees.append(
+                {
+                    "payee_id": None if payee_id == "__none__" else payee_id,
+                    "payee_name": for_payee["payee_name"][0],
+                    **_recurring_spend(for_payee, month_list),
+                }
+            )
+        payees.sort(key=lambda p: p["total"], reverse=True)
+
+        subscriptions.append(
+            {
+                "category_id": category_id,
+                "category_name": in_category["category_name"][0],
+                "group_name": in_category["group_name"][0],
+                "payees": payees,
+                **_recurring_spend(in_category, month_list),
+            }
+        )
+
+    subscriptions.sort(key=lambda x: x["total"], reverse=True)
+
+    total_monthly = sum((s["avg_monthly"] for s in subscriptions), Decimal("0"))
+    return {
+        "subscriptions": subscriptions,
+        "summary": {
+            "total_monthly": quantize_cents(total_monthly),
+            "total_annual": quantize_cents(total_monthly * 12),
+            "active_count": len(subscriptions),
+        },
+        "months": month_list,
+    }

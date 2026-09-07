@@ -17,7 +17,7 @@ from igab.db.models import Account, Category, Liability
 from igab.domain.credit import utilization_percent
 from igab.domain.dates import month_start
 from igab.domain.exceptions import InvariantViolation
-from igab.guide.bindings import Resolution, resolve_all
+from igab.guide.bindings import Resolution, fold_external, resolve_all
 from igab.guide.concepts import (
     CONCEPTS,
     CONCEPTS_BY_KEY,
@@ -293,11 +293,7 @@ class GuideService:
         """Fold detection and any self-reported amount into one answer."""
         detected = finding.value if finding else None
         external = resolution.external_amount
-        total: Decimal | None
-        if detected is None and external is None:
-            total = None
-        else:
-            total = (detected or Decimal("0")) + (external or Decimal("0"))
+        total = fold_external(detected, external)
 
         target = self._target(key, essentials)
         met = self._met(key, finding, resolution, total, target)

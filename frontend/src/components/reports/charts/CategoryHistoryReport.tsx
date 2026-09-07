@@ -18,6 +18,7 @@ import { getCurrencySymbol } from '../../../utils/money'
 import { groupedCategorySections } from '../../../utils/categoryPickers'
 import { GroupedCategoryOptions } from '../../common/GroupedCategoryOptions/GroupedCategoryOptions'
 import { ReportErrorState } from '../ReportErrorState'
+import { ReportRangeSelect } from './rangeSelect'
 import { MetricCard } from '../MetricCard'
 import { MetricRow } from '../MetricRow'
 import { ReportInfoButton } from '../ReportInfoButton'
@@ -29,8 +30,6 @@ interface Props {
   budgetId: string
 }
 
-const MONTH_OPTIONS = [6, 12, 24] as const
-
 /** One category, month by month: assigned, spent, and what was left — the
  *  budget page's own figures, from the same service. */
 export function CategoryHistoryReport({ budgetId }: Props) {
@@ -38,7 +37,7 @@ export function CategoryHistoryReport({ budgetId }: Props) {
   const currencySymbol = getCurrencySymbol(settings.currencyCode)
   const chartHeight = useChartHeight(320)
   const [categoryId, setCategoryId] = useState('')
-  const [months, setMonths] = useState<(typeof MONTH_OPTIONS)[number]>(12)
+  const [months, setMonths] = useState(12)
   const captureRef = useRef<HTMLDivElement>(null)
   const { data: categories = [] } = useCategories(budgetId)
   const { data: groups = [] } = useCategoryGroups(budgetId)
@@ -92,16 +91,7 @@ export function CategoryHistoryReport({ budgetId }: Props) {
             <option value="">Pick a category…</option>
             <GroupedCategoryOptions groups={sections} />
           </select>
-          {MONTH_OPTIONS.map((m) => (
-            <button
-              key={m}
-              className={`report-btn ${months === m ? 'report-btn--active' : ''}`}
-              onClick={() => setMonths(m)}
-              type="button"
-            >
-              {m}mo
-            </button>
-          ))}
+          <ReportRangeSelect months={months} onChange={setMonths} />
         </div>
         <div style={{ marginLeft: 'auto' }}>
           <ReportExportButton

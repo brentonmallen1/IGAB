@@ -185,27 +185,31 @@ class GuideDetection:
         named = [r for r in rows if EMERGENCY_NAME.search(r.name or "")]
 
         matched = [r.id for r in named if r.id in savings_tagged]
-        if matched:
-            total = await self._category_balance(budget_id, matched)
-            return Finding(
-                concept_key="emergency_fund",
-                met=total > 0,
-                value=total,
-                reason="the category is tagged Savings and its name mentions an emergency",
-                entities={"category": matched},
-            )
 
+        # Precedence, strongest signal first — but a signal that found NOTHING
+        # must not hide one that found money. An envelope called "Emergency
+        # Fund" sitting at zero because the money lives in a savings account
+        # used to end the search here and report $0, which the Essentials
+        # report renders as no emergency fund at all while the savings-rate
+        # report shows the same household saving steadily.
+        candidates: list[tuple[Decimal, str, dict[str, list[uuid.UUID]]]] = []
+        if matched:
+            candidates.append(
+                (
+                    await self._category_balance(budget_id, matched),
+                    "the category is tagged Savings and its name mentions an emergency",
+                    {"category": matched},
+                )
+            )
         if named:
             ids = [r.id for r in named]
-            total = await self._category_balance(budget_id, ids)
-            return Finding(
-                concept_key="emergency_fund",
-                met=total > 0,
-                value=total,
-                reason="the category name mentions an emergency",
-                entities={"category": ids},
+            candidates.append(
+                (
+                    await self._category_balance(budget_id, ids),
+                    "the category name mentions an emergency",
+                    {"category": ids},
+                )
             )
-
         accounts = (
             (
                 await self.session.execute(
@@ -220,13 +224,27 @@ class GuideDetection:
             .all()
         )
         if accounts:
-            total = await self._account_balance(list(accounts))
+            candidates.append(
+                (
+                    await self._account_balance(list(accounts)),
+                    "this is your savings account, which may also be holding other plans",
+                    {"account": list(accounts)},
+                )
+            )
+
+        # Not summed: an on-budget savings account's balance is the same money
+        # its envelopes hold, so adding the two counts it twice.
+        chosen = next((c for c in candidates if c[0] > 0), None) or (
+            candidates[0] if candidates else None
+        )
+        if chosen is not None:
+            total, reason, entities = chosen
             return Finding(
                 concept_key="emergency_fund",
                 met=total > 0,
                 value=total,
-                reason="this is your savings account, which may also be holding other plans",
-                entities={"account": list(accounts)},
+                reason=reason,
+                entities=entities,
             )
 
         return Finding(

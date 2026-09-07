@@ -17,7 +17,7 @@ from datetime import date
 from decimal import Decimal
 
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
-from igab.services.report_service import ReportService
+from igab.services.report_basics import subscriptions_report
 
 from .factories import (
     create_account,
@@ -97,11 +97,14 @@ async def test_monthly_subscription_counts_posted_leaf_outflows_only(db_session)
     rent = await create_payee(db_session, budget, "Rent")
     await create_transaction(db_session, budget, checking, "-1000.00", months_ago(1), payee=rent)
 
-    data = await ReportService(db_session).subscriptions_report(budget.id, months=12)
+    data = await subscriptions_report(db_session, budget.id, months=12)
 
     assert len(data["subscriptions"]) == 1
     sub = data["subscriptions"][0]
-    assert sub["payee_name"] == "Netflix"
+    # The tagged CATEGORY is the line; the payee is the detail inside it.
+    assert sub["category_name"] == "Streaming"
+    assert [p["payee_name"] for p in sub["payees"]] == ["Netflix"]
+    assert sub["payees"][0]["total"] == Decimal("47.97")
     assert sub["total"] == Decimal("47.97")
     assert sub["transaction_count"] == 3
     assert sub["last_charge_date"] == months_ago(0)
@@ -132,7 +135,7 @@ async def test_quarterly_subscription_normalizes_to_true_monthly_cost(db_session
             db_session, budget, checking, "-30.00", months_ago(k), payee=gym, category=sub_cat
         )
 
-    data = await ReportService(db_session).subscriptions_report(budget.id, months=12)
+    data = await subscriptions_report(db_session, budget.id, months=12)
 
     sub = data["subscriptions"][0]
     assert sub["total"] == Decimal("120.00")
@@ -155,7 +158,7 @@ async def test_monthly_buckets_are_exact_decimals(db_session):
         db_session, budget, checking, "-0.20", months_ago(0), payee=micro, category=sub_cat
     )
 
-    data = await ReportService(db_session).subscriptions_report(budget.id, months=12)
+    data = await subscriptions_report(db_session, budget.id, months=12)
 
     sub = data["subscriptions"][0]
     assert sub["monthly_amounts"][-1] == Decimal("0.30")
@@ -189,7 +192,7 @@ async def test_split_child_charge_counts_once_at_child_amount(db_session):
         parent_transaction_id=parent.id,
     )
 
-    data = await ReportService(db_session).subscriptions_report(budget.id, months=12)
+    data = await subscriptions_report(db_session, budget.id, months=12)
 
     sub = data["subscriptions"][0]
     assert sub["total"] == Decimal("9.99")
@@ -199,9 +202,7 @@ async def test_split_child_charge_counts_once_at_child_amount(db_session):
 async def test_no_subscription_tag_or_no_tagged_payees_is_empty(db_session):
     user = await create_user(db_session)
     untagged_budget = await create_budget(db_session, user)
-    reports = ReportService(db_session)
-
-    data = await reports.subscriptions_report(untagged_budget.id, months=12)
+    data = await subscriptions_report(db_session, untagged_budget.id, months=12)
     assert data == {
         "subscriptions": [],
         "summary": {
@@ -215,6 +216,55 @@ async def test_no_subscription_tag_or_no_tagged_payees_is_empty(db_session):
     # Tag exists but nothing is tagged with it
     seeded_budget = await create_budget(db_session, user)
     await seed_system_tags(db_session, seeded_budget.id)
-    data = await reports.subscriptions_report(seeded_budget.id, months=12)
+    data = await subscriptions_report(db_session, seeded_budget.id, months=12)
     assert data["subscriptions"] == []
     assert data["summary"]["active_count"] == 0
+
+
+async def test_several_tagged_categories_each_get_a_line(db_session):
+    """Tagging three categories used to produce a list of PAYEES with no sign
+    of which envelope any of them belonged to — the tag was on categories and
+    the report never mentioned one. Now each tagged category is a line, and
+    the services inside it are the detail."""
+    budget, checking, tag_repo, streaming = await _setup(db_session)
+    sub_tag = await tag_repo.get_system_tag(budget.id, "subscription")
+    group = await create_category_group(db_session, budget, "Digital")
+    software = await create_category(db_session, budget, group, "Software")
+    await tag_repo.set_category_tags(software.id, [sub_tag.id])
+
+    netflix = await create_payee(db_session, budget, "Netflix")
+    hulu = await create_payee(db_session, budget, "Hulu")
+    editor = await create_payee(db_session, budget, "Pixelworks")
+    for k in (1, 0):
+        await create_transaction(
+            db_session, budget, checking, "-20.00", months_ago(k), payee=netflix, category=streaming
+        )
+        await create_transaction(
+            db_session, budget, checking, "-10.00", months_ago(k), payee=hulu, category=streaming
+        )
+        await create_transaction(
+            db_session, budget, checking, "-45.00", months_ago(k), payee=editor, category=software
+        )
+
+    data = await subscriptions_report(db_session, budget.id, months=12)
+
+    lines = {s["category_name"]: s for s in data["subscriptions"]}
+    assert set(lines) == {"Streaming", "Software"}
+    # Biggest envelope first: Software at 90 over Streaming at 60.
+    assert [s["category_name"] for s in data["subscriptions"]] == ["Software", "Streaming"]
+
+    assert lines["Streaming"]["total"] == Decimal("60.00")
+    assert lines["Streaming"]["group_name"] == "Bills"
+    # Payees inside, biggest first — "which service grew" is the next question.
+    assert [p["payee_name"] for p in lines["Streaming"]["payees"]] == ["Netflix", "Hulu"]
+    assert lines["Streaming"]["payees"][0]["total"] == Decimal("40.00")
+
+    assert lines["Software"]["total"] == Decimal("90.00")
+    assert [p["payee_name"] for p in lines["Software"]["payees"]] == ["Pixelworks"]
+
+    # A category's own figures are the sum of its payees', not a separate walk.
+    for line in data["subscriptions"]:
+        assert line["total"] == sum(p["total"] for p in line["payees"])
+        assert line["transaction_count"] == sum(p["transaction_count"] for p in line["payees"])
+
+    assert data["summary"]["active_count"] == 2

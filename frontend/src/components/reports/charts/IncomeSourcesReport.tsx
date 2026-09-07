@@ -14,6 +14,7 @@ import { useFormatters } from '../../../hooks/useFormatters'
 import { useChartHeight } from '../../../hooks/useChartHeight'
 import { getCurrencySymbol } from '../../../utils/money'
 import { ReportErrorState } from '../ReportErrorState'
+import { ReportRangeSelect } from './rangeSelect'
 import { MetricCard } from '../MetricCard'
 import { MetricRow } from '../MetricRow'
 import { ReportInfoButton } from '../ReportInfoButton'
@@ -25,7 +26,6 @@ interface Props {
   budgetId: string
 }
 
-const MONTH_OPTIONS = [6, 12, 24] as const
 const MAX_SERIES = 8
 
 /** Income per payee per month, with a total line — pairs with the paycheck
@@ -34,7 +34,7 @@ export function IncomeSourcesReport({ budgetId }: Props) {
   const { formatMoney, formatMonth, settings } = useFormatters()
   const currencySymbol = getCurrencySymbol(settings.currencyCode)
   const chartHeight = useChartHeight(320)
-  const [months, setMonths] = useState<(typeof MONTH_OPTIONS)[number]>(12)
+  const [months, setMonths] = useState(12)
   const captureRef = useRef<HTMLDivElement>(null)
   const { data, isLoading, isError, error, refetch } = useIncomeBySourceReport(budgetId, months)
 
@@ -68,16 +68,7 @@ export function IncomeSourcesReport({ budgetId }: Props) {
           </p>
         </ReportInfoButton>
         <div className="flex-row">
-          {MONTH_OPTIONS.map((m) => (
-            <button
-              key={m}
-              className={`report-btn ${months === m ? 'report-btn--active' : ''}`}
-              onClick={() => setMonths(m)}
-              type="button"
-            >
-              {m}mo
-            </button>
-          ))}
+          <ReportRangeSelect months={months} onChange={setMonths} />
         </div>
         <div style={{ marginLeft: 'auto' }}>
           <ReportExportButton
