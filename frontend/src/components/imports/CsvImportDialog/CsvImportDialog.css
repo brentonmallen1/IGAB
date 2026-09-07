@@ -1,0 +1,139 @@
+.csv-import__drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xl) var(--spacing-lg);
+  border: 1px dashed var(--edge-strong);
+  border-radius: var(--border-radius);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.csv-import__drop:hover {
+  border-color: var(--color-accent);
+  color: var(--text-primary);
+}
+
+.csv-import__drop input {
+  display: none;
+}
+
+/* The counts, ahead of everything: what this file is about to do. */
+.csv-import__counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-md);
+  padding-bottom: var(--spacing-sm);
+  margin-bottom: var(--spacing-md);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.csv-import__counts strong {
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Not an error — a duplicate being skipped is the system working. Warning
+   tone only because it is the number most worth reading. */
+.csv-import__dupes strong {
+  color: var(--color-warning);
+}
+
+.csv-import__skipped-count strong {
+  color: var(--color-negative);
+}
+
+.csv-import__mapping {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-md);
+}
+
+.csv-import__field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.csv-import__field small {
+  display: block;
+  color: var(--text-muted);
+}
+
+.csv-import__note {
+  margin: 0 0 var(--spacing-md);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.csv-import__error {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  margin: 0 0 var(--spacing-md);
+  font-size: var(--font-size-sm);
+  color: var(--color-negative);
+}
+
+.csv-import__skipped {
+  margin-bottom: var(--spacing-md);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.csv-import__skipped summary {
+  cursor: pointer;
+}
+
+.csv-import__skipped ul {
+  margin: var(--spacing-xs) 0 0;
+  padding-left: var(--spacing-lg);
+}
+
+.csv-import__sample {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-xs);
+}
+
+.csv-import__sample th,
+.csv-import__sample td {
+  padding: 4px var(--spacing-xs);
+  border-bottom: 1px solid var(--border-subtle);
+  text-align: left;
+}
+
+.csv-import__sample th {
+  color: var(--text-muted);
+  font-weight: var(--font-weight-medium);
+}
+
+/* Dimmed rather than hidden: seeing WHICH rows were already here is how you
+   confirm the overlap is the overlap you expected. */
+.csv-import__row--dupe td {
+  color: var(--text-muted);
+}
+
+.csv-import__tag {
+  padding: 1px 6px;
+  border-radius: var(--border-radius-sm);
+  background: color-mix(in srgb, var(--color-warning) 16%, transparent);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.csv-import__muted {
+  color: var(--text-muted);
+}
+
+.csv-import__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-sm);
+}

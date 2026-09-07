@@ -162,15 +162,67 @@ export interface YnabImportResult {
   errors: string[]
 }
 
+/** The fields a CSV column can be mapped to. `amount` carries its own sign;
+ *  `debit`/`credit` are the other shape, where the sign is which column the
+ *  figure sits in. */
+export type CsvField = 'date' | 'payee' | 'amount' | 'debit' | 'credit' | 'memo' | 'category'
+
+export type CsvMapping = Partial<Record<CsvField, string>>
+
+export interface CsvPreviewRow {
+  line: number
+  date: string
+  amount: number
+  payee: string
+  memo: string | null
+  category: string | null
+  /** Already in this account. The reason the preview exists. */
+  duplicate: boolean
+}
+
+export interface CsvPreview {
+  headers: string[]
+  mapping: CsvMapping
+  date_format: string | null
+  total_rows: number
+  new_rows: number
+  duplicate_rows: number
+  skipped: { line: number; reason: string }[]
+  sample: CsvPreviewRow[]
+}
+
+function csvBody(file: File, accountId: string, mapping?: CsvMapping) {
+  const formData = new FormData()
+  formData.append('file', file)
+  const params: Record<string, string> = { account_id: accountId }
+  // Omitted entirely when unset, so the server falls back to its own guess
+  // rather than being handed an empty object meaning "map nothing".
+  if (mapping && Object.keys(mapping).length) params.mapping = JSON.stringify(mapping)
+  return { formData, params }
+}
+
+export async function previewCsv(
+  budgetId: string,
+  accountId: string,
+  file: File,
+  mapping?: CsvMapping
+): Promise<CsvPreview> {
+  const { formData, params } = csvBody(file, accountId, mapping)
+  const { data } = await apiClient.post<CsvPreview>(`/${budgetId}/import/csv/preview`, formData, {
+    params,
+  })
+  return data
+}
+
 export async function importCsv(
   budgetId: string,
   accountId: string,
-  file: File
+  file: File,
+  mapping?: CsvMapping
 ): Promise<CsvImportResult> {
-  const formData = new FormData()
-  formData.append('file', file)
+  const { formData, params } = csvBody(file, accountId, mapping)
   const { data } = await apiClient.post<CsvImportResult>(`/${budgetId}/import/csv`, formData, {
-    params: { account_id: accountId },
+    params,
   })
   return data
 }

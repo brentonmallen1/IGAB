@@ -9,9 +9,11 @@ import {
   Lock,
   Pencil,
   Telescope,
+  Upload,
   Wallet,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { CsvImportDialog } from '../../components/imports/CsvImportDialog/CsvImportDialog'
 import { TransactionTable } from '../../components/transactions/TransactionTable/TransactionTable'
 import { ReconcileModal } from '../../components/accounts/ReconcileModal'
 import { ReconcileStatusBar } from '../../components/accounts/ReconcileStatusBar'
@@ -78,6 +80,7 @@ export function AccountPage() {
   const { data: liabilities = [] } = useLiabilities(budgetId)
   const { data: pendingMatches = [] } = usePendingMatches(budgetId)
   const [showMatchModal, setShowMatchModal] = useState(false)
+  const [showCsvImport, setShowCsvImport] = useState(false)
 
   // The modal asks the opening question; once a statement balance is set the
   // floating bar takes over and tracks the difference live.
@@ -258,6 +261,17 @@ export function AccountPage() {
               {sync.isPending ? 'Syncing…' : 'Sync'}
             </button>
           )}
+          {/* The file a bank exports IS this account's transactions, so the
+              import belongs here rather than on a page that has to ask which
+              account you meant. */}
+          <button
+            className="account-page__action-btn"
+            onClick={() => setShowCsvImport(true)}
+            aria-label="Import transactions from CSV"
+            title="Import transactions from CSV"
+          >
+            <Upload size={16} />
+          </button>
           <button
             className="account-page__reconcile-btn"
             onClick={() => startReconciliation(accountId!)}
@@ -271,6 +285,15 @@ export function AccountPage() {
 
       {showReconcileModal && accountId && (
         <ReconcileModal accountId={accountId} accountName={account.name} />
+      )}
+
+      {showCsvImport && accountId && budgetId && (
+        <CsvImportDialog
+          budgetId={budgetId}
+          accountId={accountId}
+          accountName={account.name}
+          onClose={() => setShowCsvImport(false)}
+        />
       )}
 
       {showReconcileBar && accountId && <ReconcileStatusBar accountId={accountId} />}
