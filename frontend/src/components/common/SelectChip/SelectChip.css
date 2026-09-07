@@ -1,0 +1,93 @@
+/* A chip whose whole face is a native select. Shaped like the buttons it sits
+   beside — borderless, muted, same radius — because a control that looks like
+   a form input in a row of chips reads as belonging to a different screen.
+   Accent when it is carrying a choice. */
+.select-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--border-radius-md);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color var(--transition-fast),
+    background-color var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.select-chip:hover {
+  color: var(--text-primary);
+  background-color: color-mix(in srgb, var(--text-primary) 8%, transparent);
+}
+
+.select-chip.active {
+  color: var(--color-accent);
+  background-color: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+
+/* One ring around the whole chip. The select's own outline drew inside it,
+   which read as a stray box rather than a focus state. */
+.select-chip:has(.select-chip__select:focus-visible) {
+  border-color: var(--color-accent);
+  box-shadow: var(--input-focus-shadow);
+}
+
+/* The whole point of the chip: a fixed label box, so the control occupies the
+   same width whether it reads "All categories" or the longest name someone
+   has saved. Long names ellipsize and keep their full text in the tooltip. */
+.select-chip__label {
+  flex: 0 0 auto;
+  width: 8.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The native control, covering the chip so every pixel of it is the hit area.
+   Kept in the DOM rather than replaced by a custom menu so keyboard and
+   screen-reader behaviour comes for free. */
+.select-chip__select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  appearance: none;
+  border: none;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+/* Nothing on the chip's face takes the pointer — the select underneath does.
+   Includes whatever a caller renders as children, which is why those are
+   markers and never controls. */
+.select-chip > *:not(.select-chip__select) {
+  pointer-events: none;
+}
+
+.select-chip__icon,
+.select-chip__caret {
+  flex-shrink: 0;
+  opacity: 0.75;
+}
+
+@media (max-width: 768px) {
+  .select-chip {
+    min-height: var(--tap-min);
+    padding: 4px var(--spacing-sm);
+    font-size: var(--font-size-base);
+  }
+
+  /* Narrower where the row is tight, still fixed. */
+  .select-chip__label {
+    width: 7rem;
+  }
+}

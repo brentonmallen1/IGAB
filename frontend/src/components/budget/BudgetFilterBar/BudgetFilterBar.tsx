@@ -1,27 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
-import {
-  ArrowUpDown,
-  ChevronDown,
-  Layers,
-  ListFilter,
-  Plus,
-  Search,
-  Settings2,
-  X,
-} from 'lucide-react'
+import { ArrowUpDown, Funnel, Layers, ListFilter, Plus, Search, Settings2, X } from 'lucide-react'
 import { useBudgetFilters } from '../../../api/budgetFilters'
 import { useBudgetViews } from '../../../api/budgetViews'
-import {
-  useUIStore,
-  BUDGET_ROW_MODES,
-  QUICK_FILTER_LABELS,
-  QUICK_FILTER_VARIANTS,
-} from '../../../stores/uiStore'
+import { useUIStore, BUDGET_ROW_MODES } from '../../../stores/uiStore'
 import { ContextMenu } from '../../common/ContextMenu/ContextMenu'
+import { SelectChip } from '../../common/SelectChip/SelectChip'
 import type { CategoryBalance } from '../../../types'
 import { reorderBlock } from '../reorderAvailability'
 import './BudgetFilterBar.css'
-import { filterChips } from '../budgetFilterChips'
+import { filterMenu, parseChoice } from '../budgetFilterMenu'
 
 interface Props {
   budgetId: string
@@ -46,7 +33,6 @@ export function BudgetFilterBar({ budgetId, categoryBalances, barRef }: Props) {
   const activeViewId = useUIStore((s) => s.activeViewId)
   const setActiveView = useUIStore((s) => s.setActiveView)
   const openModal = useUIStore((s) => s.openModal)
-  const viaPointer = useRef(false)
   const [renameNoticeSeen, setRenameNoticeSeen] = useState(
     () => localStorage.getItem(RENAME_NOTICE_KEY) === '1'
   )
@@ -93,8 +79,8 @@ export function BudgetFilterBar({ budgetId, categoryBalances, barRef }: Props) {
   }, [filters, activeFilterId, setActiveFilter])
 
   // Funding status comes from the row, computed by the server's TargetService
-  // — the same function Fill Underfunded asks — so a chip's count always
-  // matches what the rows show and what the button will do.
+  // — the same function Fill Underfunded asks — so a count always matches what
+  // the rows show and what the button will do.
   const counts = {
     overspent: categoryBalances.filter((b) => (b.available ?? 0) < 0).length,
     underfunded: categoryBalances.filter((b) => b.target_status === 'underfunded').length,
@@ -108,11 +94,6 @@ export function BudgetFilterBar({ budgetId, categoryBalances, barRef }: Props) {
     else if (id === 'manage') openModal('manage-filters')
     else if (id === 'new-view') openModal('view')
     else if (id === 'manage-views') openModal('manage-views')
-  }
-
-  function handleAllClick() {
-    setActiveFilter(null)
-    setActiveQuickFilter(null)
   }
 
   // Why the drag handles are gone, from the module the grid gates on — so the
@@ -131,93 +112,79 @@ export function BudgetFilterBar({ budgetId, categoryBalances, barRef }: Props) {
     viewActive: views?.some((v) => v.id === activeViewId) ?? false,
   })
 
-  const isAllActive = activeFilterId === null && activeQuickFilter === null
+  // One control for a choice that was always one choice: the store clears
+  // either selection when the other is set, so the row of buttons this
+  // replaces could never have two of them on. `budgetFilterMenu` says what it
+  // offers; editing a saved filter moved to Manage Filters, which is where
+  // someone looks for it rather than double-clicking a chip that no longer
+  // exists.
+  const menu = filterMenu({
+    quickFilterOrder,
+    counts,
+    saved: filters ?? [],
+    activeQuickFilter,
+    activeFilterId,
+  })
 
-  // The active filter always gets a chip, pinned or not: the bar's job is to
-  // say what is narrowing the grid, and hiding that inside the picker would
-  // leave a short category list with no visible reason for it.
-  const { chips, overflow } = filterChips(filters ?? [], activeFilterId)
+  function handleFilterChange(value: string) {
+    const choice = parseChoice(value)
+    if (choice.kind === 'quick') setActiveQuickFilter(choice.filter)
+    else if (choice.kind === 'saved') setActiveFilter(choice.id)
+    else {
+      setActiveFilter(null)
+      setActiveQuickFilter(null)
+    }
+  }
 
   return (
     <div className="budget-filter-bar surface surface--chrome" ref={barRef}>
-      {/* How categories are grouped. Separate control from the filter chips
-          because it is a separate question — a view decides the arrangement,
-          a filter decides which of those categories show. Both can be on. */}
+      {/* How categories are grouped. Separate control from the filter beside
+          it because it is a separate question — a view decides the
+          arrangement, a filter decides which of those categories show. Both
+          can be on. */}
       {(views?.length ?? 0) > 0 && (
         <>
-          <span className={`budget-filter-bar__view ${activeViewId ? 'active' : ''}`}>
-            <Layers size={12} className="budget-filter-bar__view-icon" />
-            <span className="budget-filter-bar__view-label">
-              {views!.find((v) => v.id === activeViewId)?.name ?? 'Default groups'}
-            </span>
-            <ChevronDown size={12} className="budget-filter-bar__view-caret" />
-            {/* The real control, stretched invisibly over the whole chip. The
-                icon, label and caret above are only its appearance — as
-                siblings they were unclickable, leaving the chip's padding and
-                both icons dead to the pointer. */}
-            <select
-              className="budget-filter-bar__view-select"
-              value={activeViewId ?? ''}
-              onPointerDown={() => {
-                viaPointer.current = true
-              }}
-              onKeyDown={() => {
-                viaPointer.current = false
-              }}
-              onChange={(e) => {
-                setActiveView(e.target.value || null)
-                // A select keeps focus after a click, and browsers count that
-                // as focus-visible, so the ring lingered after the user was
-                // plainly finished. Only drop focus for pointer use — keyboard
-                // users change the value with arrow keys and must keep it.
-                if (viaPointer.current) e.currentTarget.blur()
-              }}
-              title="How categories are grouped"
-              aria-label="Category view"
-            >
-              <option value="">Default groups</option>
-              {views!.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.name}
-                </option>
-              ))}
-            </select>
-          </span>
-          {/* The grouping control answers a different question from the chips
-              beside it, so a rule keeps them from reading as one row of peers. */}
+          <SelectChip
+            value={activeViewId ?? ''}
+            onChange={(v) => setActiveView(v || null)}
+            groups={[{ label: '', options: views!.map((v) => ({ value: v.id, label: v.name })) }]}
+            placeholder="Default groups"
+            icon={Layers}
+            active={activeViewId != null}
+            title="How categories are grouped"
+            ariaLabel="Category view"
+          />
+          {/* The grouping control answers a different question from the filter
+              beside it, so a rule keeps them from reading as peers. */}
           <span className="budget-filter-bar__divider" aria-hidden="true" />
         </>
       )}
 
-      <button
-        className={`budget-filter-bar__btn ${isAllActive ? 'active' : ''}`}
-        onClick={handleAllClick}
+      <SelectChip
+        value={menu.value}
+        onChange={handleFilterChange}
+        groups={menu.groups}
+        placeholder="All categories"
+        icon={Funnel}
+        active={menu.value !== ''}
+        title={
+          menu.attention > 0
+            ? `${menu.attention} ${menu.attention === 1 ? 'category is' : 'categories are'} overspent`
+            : 'Which categories the grid shows'
+        }
+        ariaLabel="Filter categories"
       >
-        All
-      </button>
-
-      {quickFilterOrder.map((filter) => {
-        const count = counts[filter]
-        if (count === 0) return null
-        const variant = QUICK_FILTER_VARIANTS[filter]
-        const label =
-          filter === 'overspent'
-            ? `${count} Overspent`
-            : filter === 'underfunded'
-              ? `${count} Underfunded`
-              : filter === 'pending'
-                ? `${count} Pending`
-                : QUICK_FILTER_LABELS[filter]
-        return (
-          <button
-            key={filter}
-            className={`budget-filter-bar__btn budget-filter-bar__btn--${variant} ${activeQuickFilter === filter ? 'active' : ''}`}
-            onClick={() => setActiveQuickFilter(activeQuickFilter === filter ? null : filter)}
-          >
-            {label}
-          </button>
-        )
-      })}
+        {/* The one thing collapsing the row would otherwise stop saying out
+            loud. A fixed-size dot rather than a count, so the bar's width
+            still does not move with the budget's state. */}
+        {menu.attention > 0 && (
+          <span className="budget-filter-bar__attention">
+            <span className="sr-only">
+              {menu.attention} overspent {menu.attention === 1 ? 'category' : 'categories'}
+            </span>
+          </span>
+        )}
+      </SelectChip>
 
       {blocked && (
         <span className="budget-filter-bar__reorder-note" role="status" title={blocked.detail}>
@@ -239,56 +206,6 @@ export function BudgetFilterBar({ budgetId, categoryBalances, barRef }: Props) {
           >
             <X size={12} />
           </button>
-        </span>
-      )}
-
-      {/* A bounded number of chips. This drew one per saved filter, and the
-          grid offsets its sticky column header by this bar's measured height —
-          so every filter anyone saved pushed the register further down the
-          page. `filterChips` says which few stay out; the rest are one select
-          away, the same shape the view control has used all along. */}
-      {chips.map((saved) => (
-        <button
-          key={saved.id}
-          className={`budget-filter-bar__btn ${activeFilterId === saved.id ? 'active' : ''}`}
-          onClick={() => setActiveFilter(saved.id)}
-          onDoubleClick={() => openModal('filter', saved.id)}
-          title="Double-click to edit"
-        >
-          {saved.name}
-        </button>
-      ))}
-
-      {overflow.length > 0 && (
-        <span className="budget-filter-bar__more">
-          <span className="budget-filter-bar__more-label">{overflow.length} more</span>
-          <ChevronDown size={12} className="budget-filter-bar__more-caret" />
-          {/* The real control, stretched invisibly over the chip — the trick
-              the view chip documents: as siblings the label and caret leave
-              the chip's padding dead to the pointer. */}
-          <select
-            className="budget-filter-bar__more-select"
-            value=""
-            onChange={(e) => {
-              if (e.target.value) setActiveFilter(e.target.value)
-              if (viaPointer.current) e.currentTarget.blur()
-            }}
-            onPointerDown={() => {
-              viaPointer.current = true
-            }}
-            onKeyDown={() => {
-              viaPointer.current = false
-            }}
-            title="Your other saved filters"
-            aria-label="More saved filters"
-          >
-            <option value="">More filters…</option>
-            {overflow.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.name}
-              </option>
-            ))}
-          </select>
         </span>
       )}
 
