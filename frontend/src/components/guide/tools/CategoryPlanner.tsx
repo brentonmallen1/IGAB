@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Check, Copy, Link2, Pencil, Plus, RotateCcw, Trash2, X } from 'lucide-react'
+import { Check, Copy, FolderInput, Link2, Pencil, Plus, RotateCcw, Trash2, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAppStore } from '../../../stores/appStore'
 import { useGuideStore } from '../../../stores/guideStore'
@@ -18,6 +18,8 @@ import {
   type ApplyPreview,
   type PlanCadence,
 } from '../../../api/categoryPlans'
+import { ContextMenu } from '../../common/ContextMenu/ContextMenu'
+import { FloatingSelectionBar } from '../../common/FloatingSelectionBar/FloatingSelectionBar'
 import { useDebouncedValue } from '../../../hooks/useDebouncedValue'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { AmountInput } from '../../common/AmountInput/AmountInput'
@@ -85,6 +87,10 @@ export function CategoryPlanner() {
   // Row ids ticked for a bulk move. Kept by id rather than by position so a
   // move or a delete cannot silently reselect a different row.
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [moveOpen, setMoveOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
+  const [applyOpen, setApplyOpen] = useState(false)
+  const moveRef = useRef<HTMLButtonElement>(null)
   const [lastSavedJson, setLastSavedJson] = useState('')
   const [saveFailed, setSaveFailed] = useState(false)
   const [flushTick, setFlushTick] = useState(0)
@@ -334,6 +340,24 @@ export function CategoryPlanner() {
               </button>
             )}
           </span>
+          {/* The plan's two real actions. They were bare text links below the
+              columns — past the fold on any plan worth making, and reading as
+              footnotes rather than the things you came here to do. */}
+          <button
+            type="button"
+            className="guide-checkup__run guide-checkup__run--secondary"
+            onClick={() => setImportOpen(true)}
+          >
+            <Plus size={12} aria-hidden /> Pull in budget categories
+          </button>
+          <button
+            type="button"
+            className="guide-checkup__run"
+            onClick={() => setApplyOpen(true)}
+            disabled={applyOpen}
+          >
+            <Check size={12} aria-hidden /> Set targets on your budget
+          </button>
         </div>
       </div>
 
@@ -362,34 +386,33 @@ export function CategoryPlanner() {
       </Surface>
 
       {selected.size > 0 && count > 1 && (
-        <div className="planner__bulk" role="group" aria-label="Move the selected rows">
-          <span>
-            {selected.size} row{selected.size === 1 ? '' : 's'} selected
-          </span>
-          <select
-            aria-label="Move the selected rows to a paycheck"
-            value=""
-            onChange={(e) => {
-              if (e.target.value === '') return
-              moveSelected(Number(e.target.value))
-              e.currentTarget.value = ''
-            }}
-          >
-            <option value="">Move to…</option>
-            {draft.paychecks.map((p, i) => (
-              <option key={p.id} value={i}>
-                {p.label.trim() || `Paycheck ${i + 1}`}
-              </option>
-            ))}
-          </select>
+        // The app's one multi-select pattern (the register, Payees, the budget
+        // grid). This was a private bar wedged above the columns, which is the
+        // one place you are not looking after scrolling down a long plan.
+        <FloatingSelectionBar
+          label={`${selected.size} row${selected.size === 1 ? '' : 's'} selected`}
+          onClose={() => setSelected(new Set())}
+        >
           <button
+            ref={moveRef}
             type="button"
-            className="guide-link-button"
-            onClick={() => setSelected(new Set())}
+            className="fsb__btn"
+            onClick={() => setMoveOpen(true)}
           >
-            Clear
+            <FolderInput size={14} aria-hidden /> Move to paycheck
           </button>
-        </div>
+          {moveOpen && (
+            <ContextMenu
+              items={labels.map((label, i) => ({ id: String(i), label }))}
+              onSelect={(id) => {
+                moveSelected(Number(id))
+                setMoveOpen(false)
+              }}
+              onClose={() => setMoveOpen(false)}
+              anchor={moveRef}
+            />
+          )}
+        </FloatingSelectionBar>
       )}
 
       <div className="planner__columns">
@@ -560,6 +583,8 @@ export function CategoryPlanner() {
       </div>
 
       <ImportPanel
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
         budgetId={budgetId}
         linkedIds={
           new Set(
@@ -583,6 +608,8 @@ export function CategoryPlanner() {
       />
 
       <ApplyPanel
+        open={applyOpen}
+        onClose={() => setApplyOpen(false)}
         budgetId={budgetId}
         planId={resolvedId!}
         dirty={dirty}
@@ -798,6 +825,9 @@ function ApplyPanel(props: {
   planId: string
   dirty: boolean
   saving: boolean
+  /** Controlled by the planner, which renders the trigger in its header. */
+  open: boolean
+  onClose: () => void
   flush: () => void
   onApplied: (payload: Parameters<typeof payloadToDraft>[0]) => void
 }) {
@@ -826,11 +856,25 @@ function ApplyPanel(props: {
     previewMutation.mutate(props.planId, { onSuccess: setPreview })
   }
 
+  // Asking for the preview is what "open" means here — there is nothing to
+  // show until the server has said what applying would do.
+  useEffect(() => {
+    if (props.open && preview === null && !previewMutation.isPending && !pendingRef.current) {
+      openPreview()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.open])
+
+  function close() {
+    setPreview(null)
+    props.onClose()
+  }
+
   function confirmApply() {
     applyMutation.mutate(props.planId, {
       onSuccess: (result) => {
         props.onApplied(result.plan.payload)
-        setPreview(null)
+        close()
         const bits = [
           result.targets_set + result.targets_updated > 0
             ? `${result.targets_set + result.targets_updated} target${
@@ -852,18 +896,12 @@ function ApplyPanel(props: {
     ? preview.targets_set + preview.targets_updated + preview.categories_created
     : 0
 
+  if (!props.open) return null
   if (!preview) {
     return (
-      <div className="planner__panel-toggle">
-        <button
-          type="button"
-          className="guide-link-button"
-          onClick={openPreview}
-          disabled={previewMutation.isPending}
-        >
-          Set targets on your budget…
-        </button>
-      </div>
+      <Surface variant="sunken" className="planner__panel">
+        <p className="tool__hint">Checking what this plan would change…</p>
+      </Surface>
     )
   }
 
@@ -873,12 +911,7 @@ function ApplyPanel(props: {
       className="planner__panel"
       title="What applying this plan does"
       actions={
-        <button
-          type="button"
-          className="tool__icon-button"
-          aria-label="Close"
-          onClick={() => setPreview(null)}
-        >
+        <button type="button" className="tool__icon-button" aria-label="Close" onClick={close}>
           <X size={13} />
         </button>
       }
@@ -896,7 +929,7 @@ function ApplyPanel(props: {
         ))}
       </ul>
       <div className="planner__panel-actions">
-        <button type="button" className="guide-link-button" onClick={() => setPreview(null)}>
+        <button type="button" className="guide-link-button" onClick={close}>
           Cancel
         </button>
         <button

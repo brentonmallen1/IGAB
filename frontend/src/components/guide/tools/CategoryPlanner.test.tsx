@@ -92,8 +92,8 @@ describe('CategoryPlanner', () => {
       within(columns()[1] as HTMLElement).queryByLabelText('Name for paycheck 2')
     ).toHaveAttribute('placeholder', 'Paycheck 2')
     await userEvent.click(first.getByLabelText(/select rent/i))
-    expect(screen.getByLabelText(/move the selected rows to a paycheck/i)).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: 'Northwind, 1st' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /move to paycheck/i }))
+    expect(screen.getByRole('menuitem', { name: 'Northwind, 1st' })).toBeInTheDocument()
   })
 
   it('selecting rows moves them together', async () => {
@@ -101,10 +101,10 @@ describe('CategoryPlanner', () => {
     const first = within(columns()[0] as HTMLElement)
     await userEvent.click(first.getByLabelText(/select rent/i))
     expect(screen.getByText('1 row selected')).toBeInTheDocument()
-    await userEvent.selectOptions(
-      screen.getByLabelText(/move the selected rows to a paycheck/i),
-      '1'
-    )
+    // The shared floating selection bar, as on the register and the budget
+    // grid, with the destinations in a menu rather than a native select.
+    await userEvent.click(screen.getByRole('button', { name: /move to paycheck/i }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Paycheck 2' }))
     expect(within(columns()[1] as HTMLElement).getByDisplayValue('Rent')).toBeInTheDocument()
     // The selection clears with the move — a stale tick on a moved row is a
     // second move nobody asked for.

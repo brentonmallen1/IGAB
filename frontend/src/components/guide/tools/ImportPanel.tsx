@@ -27,9 +27,12 @@ export function ImportPanel(props: {
   budgetId: string
   linkedIds: Set<string>
   paycheckCount: number
+  /** Controlled by the planner, which renders the trigger in its header. */
+  open: boolean
+  onClose: () => void
   onImport: (items: DraftItem[], toPaycheck: number) => void
 }) {
-  const [open, setOpen] = useState(false)
+  const open = props.open
   const [picked, setPicked] = useState<string[]>([])
   const [destination, setDestination] = useState(0)
   const groups = useCategoryGroups(open ? props.budgetId : null)
@@ -72,7 +75,7 @@ export function ImportPanel(props: {
   )
 
   function close() {
-    setOpen(false)
+    props.onClose()
     setPicked([])
   }
 
@@ -94,15 +97,10 @@ export function ImportPanel(props: {
     close()
   }
 
-  if (!open) {
-    return (
-      <div className="planner__panel-toggle">
-        <button type="button" className="guide-link-button" onClick={() => setOpen(true)}>
-          Pull in budget categories
-        </button>
-      </div>
-    )
-  }
+  // The trigger lives in the planner's header, beside the other top-level
+  // action: both used to sit under the columns as bare text links, which is
+  // past the fold on any plan worth making.
+  if (!open) return null
 
   const loading = categories.isLoading || groups.isLoading
   const empty = !loading && candidates.length === 0
@@ -148,43 +146,36 @@ export function ImportPanel(props: {
     )
 
   return (
-    <>
-      <div className="planner__panel-toggle">
-        <button type="button" className="guide-link-button" onClick={() => setOpen(true)}>
-          Pull in budget categories
-        </button>
-      </div>
-      <Dialog
-        title="Pull in budget categories"
-        onClose={close}
-        historyKey="planner-import"
-        width="md"
-        footer={footer}
-      >
-        {loading ? (
-          <p className="tool__hint">Loading categories…</p>
-        ) : empty ? (
-          <p className="tool__hint">
-            Every category the budget offers is already in this plan — or the budget has none yet.
+    <Dialog
+      title="Pull in budget categories"
+      onClose={close}
+      historyKey="planner-import"
+      width="md"
+      footer={footer}
+    >
+      {loading ? (
+        <p className="tool__hint">Loading categories…</p>
+      ) : empty ? (
+        <p className="tool__hint">
+          Every category the budget offers is already in this plan — or the budget has none yet.
+        </p>
+      ) : (
+        <>
+          <p className="tool__hint planner__import-hint">
+            Amounts start from each category’s monthly target where it has one; everything else
+            starts blank.
           </p>
-        ) : (
-          <>
-            <p className="tool__hint planner__import-hint">
-              Amounts start from each category’s monthly target where it has one; everything else
-              starts blank.
-            </p>
-            <GroupedMultiSelect
-              options={options}
-              selectedIds={picked}
-              onChange={setPicked}
-              onEscape={close}
-              searchPlaceholder="Search categories…"
-              emptyText="No category by that name"
-              className="planner__import-picker"
-            />
-          </>
-        )}
-      </Dialog>
-    </>
+          <GroupedMultiSelect
+            options={options}
+            selectedIds={picked}
+            onChange={setPicked}
+            onEscape={close}
+            searchPlaceholder="Search categories…"
+            emptyText="No category by that name"
+            className="planner__import-picker"
+          />
+        </>
+      )}
+    </Dialog>
   )
 }

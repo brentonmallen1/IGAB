@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { useState } from 'react'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ImportPanel } from './ImportPanel'
@@ -54,11 +55,30 @@ beforeEach(async () => {
   } as never)
 })
 
+/**
+ * The panel is controlled: the planner owns whether it is open and renders
+ * the trigger in its own header, so the test stands in for that much.
+ */
+function Harness({ linked, onImport }: { linked: string[]; onImport: (...a: never[]) => void }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <button onClick={() => setOpen(true)}>Pull in budget categories</button>
+      <ImportPanel
+        budgetId="b1"
+        linkedIds={new Set(linked)}
+        paycheckCount={2}
+        open={open}
+        onClose={() => setOpen(false)}
+        onImport={onImport as never}
+      />
+    </>
+  )
+}
+
 function setup(linked: string[] = []) {
   const onImport = vi.fn()
-  const utils = render(
-    <ImportPanel budgetId="b1" linkedIds={new Set(linked)} paycheckCount={2} onImport={onImport} />
-  )
+  const utils = render(<Harness linked={linked} onImport={onImport} />)
   return { ...utils, onImport }
 }
 
