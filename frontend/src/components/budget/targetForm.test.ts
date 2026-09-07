@@ -48,8 +48,13 @@ describe('buildTargetPayload', () => {
     expect(r.ok && r.payload.weekday).toBeNull()
   })
 
-  it('bounds the check-after day to 1..28 and sends null for blank', () => {
-    expect(buildTargetPayload({ ...base, checkAfterDay: '29' }).ok).toBe(false)
+  it('bounds the check-after day to a real day of the month, and sends null for blank', () => {
+    // 31 is allowed now: is_pending clamps it to each month's own length, so
+    // "the 31st" means the last day of a month that has none. The old cap of
+    // 28 was guarding an unclamped comparison from the outside.
+    expect(buildTargetPayload({ ...base, checkAfterDay: '31' }).ok).toBe(true)
+    expect(buildTargetPayload({ ...base, checkAfterDay: '32' }).ok).toBe(false)
+    expect(buildTargetPayload({ ...base, checkAfterDay: '0' }).ok).toBe(false)
     const r = buildTargetPayload({ ...base, checkAfterDay: '15' })
     expect(r.ok && r.payload.check_after_day).toBe(15)
     const blank = buildTargetPayload(base)

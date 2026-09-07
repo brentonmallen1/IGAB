@@ -1,3 +1,4 @@
+import { MAX_FUNDING_DAY } from '../../utils/targets'
 /**
  * The target form's vocabulary and its validation rules.
  *
@@ -88,8 +89,8 @@ function parseWeekday(raw: string): Parsed<number | null> {
 function parseCheckAfterDay(raw: string): Parsed<number | null> {
   if (raw === '') return { ok: true, value: null }
   const n = Number(raw)
-  if (!Number.isInteger(n) || n < 1 || n > 28) {
-    return { ok: false, error: 'The check-after day must be between 1 and 28.' }
+  if (!Number.isInteger(n) || n < 1 || n > MAX_FUNDING_DAY) {
+    return { ok: false, error: `The check-after day must be between 1 and ${MAX_FUNDING_DAY}.` }
   }
   return { ok: true, value: n }
 }

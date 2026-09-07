@@ -6,9 +6,6 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# Canonical result schema lives with the import endpoints — a local copy here
-# drifted the moment imports.py gained fields (imports.py has no module-level
-# api.v1 imports, so this cannot cycle).
 from igab.api.route import CommitRoute
 from igab.api.v1.imports import (
     YNABHeldOutFuture,
@@ -39,6 +36,11 @@ from igab.dependencies import (
     get_transaction_service,
 )
 from igab.domain.snapshot_format import MANIFEST_MEMBER, is_snapshot_manifest
+
+# Canonical result schema lives with the import endpoints — a local copy here
+# drifted the moment imports.py gained fields (imports.py has no module-level
+# api.v1 imports, so this cannot cycle).
+from igab.domain.targets import MAX_FUNDING_DAY
 from igab.integrations.ynab.importer import YNABImporter
 from igab.integrations.ynab.parser import looks_like_ynab_export
 from igab.repositories.account_repo import AccountRepository
@@ -80,7 +82,7 @@ class BudgetUpdate(BaseModel):
     date_format: str | None = None
     time_format: str | None = None
     #: Day of the month before which an unmet target reads "pending".
-    funding_day: int | None = Field(default=None, ge=1, le=28)
+    funding_day: int | None = Field(default=None, ge=1, le=MAX_FUNDING_DAY)
 
 
 class BudgetResponse(BaseModel):

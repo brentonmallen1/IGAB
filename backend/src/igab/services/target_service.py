@@ -9,7 +9,7 @@ from igab.db.models import Category, CategoryTarget
 from igab.domain.dates import month_start, months_between, weekday_occurrences
 from igab.domain.enums import TargetStatus, TargetType
 from igab.domain.exceptions import InvariantViolation, NotFoundError
-from igab.domain.targets import is_pending
+from igab.domain.targets import MAX_FUNDING_DAY, is_pending
 from igab.repositories.target_repo import TargetRepository
 from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match
 
@@ -60,8 +60,8 @@ class TargetService:
             raise InvariantViolation("Weekday must be 0 (Monday) to 6 (Sunday)")
         if target_date is not None and kind is not TargetType.SAVINGS_BALANCE:
             raise InvariantViolation("Only a savings balance target takes a target date")
-        if check_after_day is not None and not 1 <= check_after_day <= 28:
-            raise InvariantViolation("Check-after day must be between 1 and 28")
+        if check_after_day is not None and not 1 <= check_after_day <= MAX_FUNDING_DAY:
+            raise InvariantViolation(f"Check-after day must be between 1 and {MAX_FUNDING_DAY}")
 
     async def upsert(
         self,

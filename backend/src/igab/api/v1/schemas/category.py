@@ -9,6 +9,7 @@ from igab.api.v1.schemas.base import ApiModel
 from igab.api.v1.schemas.tag import TagOutSimple
 from igab.domain.enums import TargetStatus, TargetType
 from igab.domain.money import Money
+from igab.domain.targets import MAX_FUNDING_DAY
 
 
 class CategoryGroupCreate(ApiModel):
@@ -273,7 +274,7 @@ class CategoryTargetCreate(ApiModel):
     target_date: datetime.date | None = None
     #: Before this day of the current month an unmet target reads "pending";
     #: None defers to the budget's funding_day.
-    check_after_day: int | None = Field(default=None, ge=1, le=28)
+    check_after_day: int | None = Field(default=None, ge=1, le=MAX_FUNDING_DAY)
     #: Weekly funding only, and required for it: 0=Monday … 6=Sunday.
     weekday: int | None = Field(default=None, ge=0, le=6)
 

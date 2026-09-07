@@ -313,7 +313,12 @@ class TestValidate:
             TargetService.validate("needed_for_spending", None, check_after_day=None, weekday=None)
 
     def test_day_fields_are_bounded(self):
+        # 31 is a real day of the month and is accepted; is_pending clamps it
+        # to each month's own length. 32 is not a day at all.
+        TargetService.validate("monthly_funding", None, check_after_day=31, weekday=None)
         with pytest.raises(InvariantViolation):
-            TargetService.validate("monthly_funding", None, check_after_day=29, weekday=None)
+            TargetService.validate("monthly_funding", None, check_after_day=32, weekday=None)
+        with pytest.raises(InvariantViolation):
+            TargetService.validate("monthly_funding", None, check_after_day=0, weekday=None)
         with pytest.raises(InvariantViolation):
             TargetService.validate("weekly_funding", None, check_after_day=None, weekday=7)

@@ -3,6 +3,7 @@ import { Pencil, Trash2 } from 'lucide-react'
 import { useTarget, useUpsertTarget, useDeleteTarget } from '../../../api/targets'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { TARGET_TYPES, WEEKDAYS, buildTargetPayload, targetTypeLabel } from '../targetForm'
+import { MAX_FUNDING_DAY } from '../../../utils/targets'
 
 interface Props {
   categoryId: string
@@ -115,7 +116,7 @@ export function TargetSection({ categoryId }: Props) {
               type="number"
               inputMode="numeric"
               min="1"
-              max="28"
+              max={MAX_FUNDING_DAY}
               step="1"
               className="inspector-input"
               value={checkAfterDay}
