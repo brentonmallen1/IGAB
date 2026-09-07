@@ -1,20 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { overspending, sumBalances } from './budgetTotals'
+import { makeCategoryBalance } from '../../test-utils/factories'
 import type { CategoryBalance } from '../../types'
 
 function bal(assigned: number, activity: number, available: number): CategoryBalance {
-  return {
-    category_id: 'c1',
-    month: '2026-08-01',
-    assigned,
-    activity,
-    available,
-    target_status: null,
-    needed_this_month: null,
-    is_card_payment: false,
-    repaid_uncovered_debt: 0,
-    credit_overspent: 0,
-  }
+  return makeCategoryBalance({ assigned, activity, available })
 }
 
 describe('sumBalances', () => {

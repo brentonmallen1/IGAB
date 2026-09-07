@@ -1,6 +1,4 @@
 .category-row {
-  display: grid;
-  grid-template-columns: 20px 1fr 120px 120px 120px;
   padding: 6px var(--spacing-md);
   border-bottom: 1px solid var(--border-subtle);
   background-color: var(--bg-primary);
@@ -70,8 +68,6 @@
 }
 
 .target-pill-row {
-  display: grid;
-  grid-template-columns: 20px 1fr 120px 120px 120px;
   padding: 0 var(--spacing-md) 5px;
   background-color: var(--bg-primary);
   border-bottom: 1px solid var(--border-subtle);
@@ -89,12 +85,10 @@
 }
 
 .target-pill-wrap {
-  grid-column: 2;
   padding-right: var(--spacing-md);
 }
 
 .target-pill-stats {
-  grid-column: 3 / -1;
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);

@@ -16,7 +16,7 @@
 // TransactionEditor. Those run before imports are bound, so they cannot call
 // an imported factory at all. They still have to gain a served field by hand —
 // which is a limitation of the mock hoisting, not a copy anyone chose.
-import type { Category, CategoryGroup } from '../types'
+import type { Category, CategoryBalance, CategoryGroup } from '../types'
 
 export function makeCategory(over: Partial<Category> = {}): Category {
   return {
@@ -51,4 +51,27 @@ export function makeCategoryGroup(over: Partial<CategoryGroup> = {}): CategoryGr
     system_key: null,
     ...over,
   } as CategoryGroup
+}
+
+/**
+ * A month's balance for one envelope. Defaults describe an ordinary spending
+ * envelope with no target: pass the three figures, override the rest by name.
+ *
+ * An income row is `assigned: null, available: null` — the one shape the
+ * summing rule treats differently — so a test that means income has to say so.
+ */
+export function makeCategoryBalance(over: Partial<CategoryBalance> = {}): CategoryBalance {
+  return {
+    category_id: 'c1',
+    month: '2026-08-01',
+    assigned: 0,
+    activity: 0,
+    available: 0,
+    target_status: null,
+    needed_this_month: null,
+    is_card_payment: false,
+    repaid_uncovered_debt: 0,
+    credit_overspent: 0,
+    ...over,
+  } as CategoryBalance
 }

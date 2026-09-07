@@ -38,15 +38,15 @@
  * fight over the cascade.
  */
 
+/* Do NOT name the trailing line `money-end`. A line named `<x>-end` declares
+   an implicit grid AREA called `<x>`, and `grid-column-end: <x>` then resolves
+   to `<x>-end` in preference to the line actually named `<x>` — so the name
+   cell below, ending at `money`, silently stretched across all three money
+   columns and pushed every figure onto a second row. Caught in a browser;
+   jsdom has no layout and cannot see it. The last line is `-1`. */
 :root {
-  --budget-grid-columns:
-    [rail] 20px
-    [gutter] 20px
-    [name] minmax(0, 1fr)
-    [money assigned] 120px
-    [activity] 120px
-    [available] 120px
-    [money-end];
+  --budget-grid-columns: [rail] 20px [gutter] 20px [name] minmax(0, 1fr) [money assigned] 120px
+    [activity] 120px [available] 120px;
 }
 
 .budget-grid {
@@ -94,6 +94,6 @@
   /* For a row that spans all three money columns rather than filling them —
      the target pill's stats. */
   .budget-grid__money {
-    grid-column: money / money-end;
+    grid-column: money / -1;
   }
 }

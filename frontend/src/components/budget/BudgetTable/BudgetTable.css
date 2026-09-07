@@ -4,10 +4,8 @@
 }
 
 .budget-table__header {
-  display: grid;
-  /* The group rows' own grid (checkbox, chevron, name, money×3), so the
-     master toggle in column 2 lines up over every group chevron. */
-  grid-template-columns: 20px 20px 1fr 120px 120px 120px;
+  /* Columns come from `.budget-grid` — the one place the budget page's
+     geometry is written. */
   padding: var(--spacing-xs) var(--spacing-md);
   font-size: var(--font-size-xs);
   font-weight: 600;
@@ -132,8 +130,9 @@
   }
 
   .budget-table__header {
-    /* Money columns hide on mobile; the toggle keeps its chevron column. */
-    grid-template-columns: 20px 20px 1fr;
+    /* Money columns hide on mobile; the toggle keeps its chevron column,
+       which is where every group's own chevron sits at this width too. */
+    grid-template-columns: 20px minmax(0, 1fr);
   }
 
   .budget-table__col--money {
