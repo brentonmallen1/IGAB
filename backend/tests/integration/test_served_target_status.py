@@ -280,7 +280,11 @@ class TestPending:
         r = await api_client.patch(f"/api/v1/budgets/{budget.id}", json={"funding_day": 15})
         assert r.status_code == 200, r.text
         assert r.json()["funding_day"] == 15
+        # Any real day of the month is allowed now — a household paid on the
+        # 30th should not have to say 28.
         r = await api_client.patch(f"/api/v1/budgets/{budget.id}", json={"funding_day": 31})
+        assert r.status_code == 200, r.text
+        r = await api_client.patch(f"/api/v1/budgets/{budget.id}", json={"funding_day": 32})
         assert r.status_code == 422
 
 

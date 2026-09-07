@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { useAppStore, THEMES, FONT_SCALES, type Theme, type FontScale } from '../../stores/appStore'
+import { MAX_FUNDING_DAY } from '../../utils/targets'
 import {
   useAccounts,
   useCreateAccount,
@@ -269,7 +270,7 @@ export function SettingsPage() {
                       })
                     }
                   >
-                    {Array.from({ length: 28 }, (_, i) => i + 1).map((day) => (
+                    {Array.from({ length: MAX_FUNDING_DAY }, (_, i) => i + 1).map((day) => (
                       <option key={day} value={day}>
                         {day}
                       </option>

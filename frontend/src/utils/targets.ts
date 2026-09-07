@@ -1,3 +1,8 @@
+/** The funding day a person may pick, 1–31 — matching MAX_FUNDING_DAY in
+ *  backend/src/igab/domain/targets.py, which clamps it to each month's real
+ *  length so "the 31st" means the last day in a month that has none. */
+export const MAX_FUNDING_DAY = 31
+
 /**
  * Target *presentation* — bar geometry, and nothing that decides money.
  *
