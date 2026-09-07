@@ -109,3 +109,33 @@ describe('samePlacement', () => {
     expect(samePlacement(placeAnchored(trigger(), VIEWPORT, {}), null)).toBe(false)
   })
 })
+
+describe('placeAnchored — align end', () => {
+  it("puts the panel's right edge on the trigger's right edge", () => {
+    // MoveMoneyPopover wrote this as `rect.right - 280` beside a CSS max-width
+    // of 320: the inline copy won, the stylesheet's was free to say anything.
+    const p = placeAnchored(trigger({ left: 600, width: 40 }), VIEWPORT, {
+      width: 320,
+      align: 'end',
+    })
+    expect(p.left).toBe(600 + 40 - 320)
+  })
+
+  it('still clamps inside the viewport on the left', () => {
+    const p = placeAnchored(trigger({ left: 100, width: 40 }), VIEWPORT, {
+      width: 320,
+      align: 'end',
+    })
+    expect(p.left).toBe(8)
+  })
+
+  it('flips above near the bottom like everything else', () => {
+    // The popover had no vertical clamp and no flip at all.
+    const p = placeAnchored(trigger({ top: 740, bottom: 764, left: 600, width: 40 }), VIEWPORT, {
+      width: 320,
+      align: 'end',
+    })
+    expect(p.top).toBeUndefined()
+    expect(p.bottom).toBe(800 - 740 + 2)
+  })
+})

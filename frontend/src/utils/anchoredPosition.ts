@@ -54,6 +54,11 @@ export interface AnchorOptions {
   /** Flip above the trigger when the room below is under this and the room
    *  above is greater. Below ~2 rows of options, "below" is not a placement. */
   flipThreshold?: number
+  /** Which edge of the trigger the panel lines up with. 'end' puts the
+   *  panel's right edge on the trigger's right edge — what a popover opened
+   *  from a button at the right of a row wants. Clamped to the viewport
+   *  either way. */
+  align?: 'start' | 'end'
 }
 
 const DEFAULTS = {
@@ -87,10 +92,15 @@ export function placeAnchored(
 
   const width = resolveWidth(trigger, viewport, options, margin)
 
-  // Aligned to the trigger's left edge, pulled back inside the viewport when
-  // that would overhang. Math.max last so a viewport narrower than the panel
-  // still yields a placement on screen rather than a negative left.
-  const left = Math.max(margin, Math.min(trigger.left, viewport.width - width - margin))
+  // Aligned to the trigger's left edge (or its right edge, for 'end'), pulled
+  // back inside the viewport when that would overhang. Math.max last so a
+  // viewport narrower than the panel still yields a placement on screen
+  // rather than a negative left. MoveMoneyPopover was the sixth copy of this
+  // arithmetic, and the one that expressed 'end' as `rect.right - 280` with
+  // no vertical clamp and no flip — a row near the bottom of the grid opened
+  // it below the fold.
+  const preferred = options.align === 'end' ? trigger.left + trigger.width - width : trigger.left
+  const left = Math.max(margin, Math.min(preferred, viewport.width - width - margin))
 
   const spaceBelow = viewport.height - trigger.bottom - margin
   const spaceAbove = trigger.top - margin

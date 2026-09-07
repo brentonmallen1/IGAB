@@ -26,6 +26,7 @@ from igab.db.models import (
     Budget,
     BudgetFilter,
     BudgetFilterCategory,
+    BudgetFilterTag,
     BudgetMove,
     BudgetSnapshotMeta,
     BudgetView,
@@ -258,6 +259,7 @@ async def build_full_budget(session: AsyncSession, owner: User) -> FullBudget:
     session.add_all(
         [
             BudgetFilterCategory(filter_id=saved_filter.id, category_id=category.id),
+            BudgetFilterTag(filter_id=saved_filter.id, tag_id=tag.id),
             BudgetViewPlacement(view_id=view.id, category_id=category.id, group_id=view_group.id),
             CategoryTarget(
                 category_id=category.id,

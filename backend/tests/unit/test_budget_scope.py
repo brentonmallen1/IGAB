@@ -63,8 +63,10 @@ class TestEveryTableIsClassified:
         # Carried by snapshots (a restore without them would silently change
         # every envelope figure) and cascaded by budget delete.
         assert counted[Scope.OWNED] == 26
-        # 11: `asset_value_snapshots` rides in as its child.
-        assert counted[Scope.CHILD] == 11
+        # 12: `asset_value_snapshots` rides in as its child, and
+        # `budget_filter_tags` joined (2026-09-06) — a filter's tag axis,
+        # scoped through its filter like `budget_filter_categories`.
+        assert counted[Scope.CHILD] == 12
         # 4: `import_account_mappings` joined as global (2026-09-06) — the
         # import mapping step's memory, keyed by account name and per user. It
         # exists to outlive the budget an import built, so budget scope is the

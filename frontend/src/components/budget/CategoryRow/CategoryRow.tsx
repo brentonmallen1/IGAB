@@ -1,9 +1,8 @@
 import React, { memo, useCallback, useRef, useState } from 'react'
 import { Pencil, Plus } from 'lucide-react'
-import { useSetAssignment } from '../../../api/budgets'
+import { useBudgets, useSetAssignment } from '../../../api/budgets'
 import { useTarget } from '../../../api/targets'
 import {
-  monthsUntil,
   targetMeasuresBalance,
   targetProgress as computeTargetProgress,
 } from '../../../utils/targets'
@@ -11,7 +10,8 @@ import { useUpdateCategory } from '../../../api/categories'
 import { useUIStore } from '../../../stores/uiStore'
 import { useIsMobile } from '../../../hooks/useMediaQuery'
 import { useLongPress } from '../../../hooks/useLongPress'
-import { TargetBadge, getTargetTooltip } from '../TargetBadge'
+import { TargetBadge } from '../TargetBadge'
+import { getTargetTooltip, ordinal, type BadgeStatus } from '../targetTooltip'
 import { TargetEditor } from '../TargetEditor'
 import { MoveMoneyPopover } from '../MoveMoneyPopover/MoveMoneyPopover'
 import { MoveMoneyForm } from '../MoveMoneyPopover/MoveMoneyForm'
@@ -57,7 +57,8 @@ export const CategoryRow = memo(function CategoryRow({
   const [isRenaming, setIsRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState('')
   const [subtitleValue, setSubtitleValue] = useState('')
-  const [movePopoverPos, setMovePopoverPos] = useState<{ x: number; y: number } | null>(null)
+  const [movePopoverOpen, setMovePopoverOpen] = useState(false)
+  const moveAnchorRef = useRef<HTMLElement | null>(null)
   const [moveSheetOpen, setMoveSheetOpen] = useState(false)
   const [showAddTxn, setShowAddTxn] = useState(false)
   const [showTxnList, setShowTxnList] = useState(false)
@@ -227,27 +228,27 @@ export const CategoryRow = memo(function CategoryRow({
   // The verdict is the server's — the same function Fill Underfunded asks.
   // Expiry stays here: "should we still nag" is presentation, not "how much is
   // owed". Overfunded renders as funded: the row only distinguishes "needs
-  // money" from "doesn't".
-  const targetStatus: 'funded' | 'underfunded' | null =
+  // money" from "doesn't" — and "pending", which is needs money but not yet.
+  const targetStatus: BadgeStatus | null =
     !target || isTargetExpired || !balance?.target_status
       ? null
-      : balance.target_status === 'underfunded'
-        ? 'underfunded'
+      : balance.target_status === 'underfunded' || balance.target_status === 'pending'
+        ? balance.target_status
         : 'funded'
 
   // What Fill Underfunded would move. Was computed two different ways in this
   // file — once per branch of the pill — and neither agreed with the server.
+  // For a dated savings goal the server already paces it by the date; the row
+  // used to divide it by the months left a second time.
   const amountRemaining = balance?.needed_this_month ?? 0
 
   const targetProgress =
     !target || isTargetExpired ? null : computeTargetProgress(target, assigned, available)
 
-  // A pacing hint for a dated savings goal: the server's shortfall spread over
-  // the months left. Display only — it suggests a rate, it does not decide one.
-  const monthlyNeeded =
-    target?.target_type === 'savings_balance' && target.target_date && amountRemaining > 0
-      ? amountRemaining / monthsUntil(String(target.target_date))
-      : null
+  // The day a pending target is checked on: its own, else the budget's.
+  const { data: budgets } = useBudgets()
+  const checkDay =
+    target?.check_after_day ?? budgets?.find((b) => b.id === budgetId)?.funding_day ?? undefined
 
   return (
     <>
@@ -279,7 +280,7 @@ export const CategoryRow = memo(function CategoryRow({
         />
       )}
       <div
-        className={`category-row drag-handle-host ${isSelected ? 'category-row--selected' : ''} ${anySelected ? 'category-row--any-selected' : ''} ${available < 0 && !overspentOnCardOnly ? 'category-row--overspent' : ''} ${targetProgress !== null && budgetRowMode === 'expanded' ? 'category-row--has-pill' : ''} ${budgetRowMode === 'compressed' ? 'category-row--compressed' : ''} ${reorder?.dragIndex === index ? 'drag-handle-host--dragging' : ''} ${reorder && reorder.overIndex === index && reorder.dragIndex !== index ? 'drag-handle-host--drag-over' : ''}`}
+        className={`category-row drag-handle-host ${isSelected ? 'category-row--selected' : ''} ${anySelected ? 'category-row--any-selected' : ''} ${available < 0 && !overspentOnCardOnly ? 'category-row--overspent' : ''} ${targetProgress !== null && budgetRowMode === 'expanded' ? 'category-row--has-pill' : ''} ${budgetRowMode === 'dense' ? 'category-row--dense' : ''} ${budgetRowMode === 'compact' ? 'category-row--compact' : ''} ${reorder?.dragIndex === index ? 'drag-handle-host--dragging' : ''} ${reorder && reorder.overIndex === index && reorder.dragIndex !== index ? 'drag-handle-host--drag-over' : ''}`}
         role="row"
         {...(isMobile ? longPress : { onClick: handleRowClick })}
         style={{ cursor: 'default' }}
@@ -378,11 +379,11 @@ export const CategoryRow = memo(function CategoryRow({
                   expired
                 </button>
               ) : targetStatus ? (
-                budgetRowMode === 'compressed' ? (
+                budgetRowMode !== 'expanded' ? (
                   <button
                     className={`category-row__target-led category-row__target-led--${targetStatus}`}
-                    title={getTargetTooltip(targetStatus, monthlyNeeded ?? undefined, formatMoney)}
-                    aria-label={`${category.name}: ${getTargetTooltip(targetStatus, monthlyNeeded ?? undefined, formatMoney)}`}
+                    title={getTargetTooltip(targetStatus, amountRemaining, formatMoney, checkDay)}
+                    aria-label={`${category.name}: ${getTargetTooltip(targetStatus, amountRemaining, formatMoney, checkDay)}`}
                     onClick={(e) => {
                       e.stopPropagation()
                       setShowTargetEditor(true)
@@ -391,7 +392,8 @@ export const CategoryRow = memo(function CategoryRow({
                 ) : (
                   <TargetBadge
                     status={targetStatus}
-                    monthlyNeeded={monthlyNeeded ?? undefined}
+                    needed={amountRemaining}
+                    checkDay={checkDay}
                     onClick={() => setShowTargetEditor(true)}
                   />
                 )
@@ -477,8 +479,8 @@ export const CategoryRow = memo(function CategoryRow({
               setMoveSheetOpen(true)
               return
             }
-            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-            setMovePopoverPos({ x: Math.max(8, rect.right - 280), y: rect.bottom + 4 })
+            moveAnchorRef.current = e.currentTarget as HTMLElement
+            setMovePopoverOpen(true)
           }}
           title={
             repaidUncoveredDebt > 0
@@ -509,14 +511,14 @@ export const CategoryRow = memo(function CategoryRow({
           )}
         </div>
 
-        {movePopoverPos && !isMobile && (
+        {movePopoverOpen && !isMobile && (
           <MoveMoneyPopover
             budgetId={budgetId}
             month={month}
             category={category}
             available={available}
-            position={movePopoverPos}
-            onClose={() => setMovePopoverPos(null)}
+            anchorRef={moveAnchorRef}
+            onClose={() => setMovePopoverOpen(false)}
           />
         )}
       </div>
@@ -573,11 +575,11 @@ export const CategoryRow = memo(function CategoryRow({
                     {isBalanceGoal
                       ? `Save ${formatMoney(amountRemaining)} more`
                       : `Need ${formatMoney(amountRemaining)} this month`}
+                    {targetStatus === 'pending' && checkDay
+                      ? ` · checked after the ${ordinal(checkDay)}`
+                      : ''}
                   </span>
                 ) : null}
-                {monthlyNeeded !== null && monthlyNeeded > 0 && (
-                  <span className="target-pill-stat">{formatMoney(monthlyNeeded)}/mo to goal</span>
-                )}
               </div>
             </div>
           )

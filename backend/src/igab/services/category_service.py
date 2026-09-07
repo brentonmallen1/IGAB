@@ -133,6 +133,12 @@ class CategoryDeletePreview:
     released_if_uncategorized: Decimal = Decimal("0")
     #: Non-empty only when something blocks the delete outright.
     blocked_by: list[str] = field(default_factory=list)
+    #: How many of these categories are archived, and whether that is all of
+    #: them. A group whose every envelope is archived is usually one the
+    #: person wants gone from the grid, not deleted with its history — the
+    #: dialog offers "Archive group instead" when this is true.
+    archived_count: int = 0
+    all_archived: bool = False
     #: Everything else still pointing at these categories. See
     #: `CategoryReference` for why the two halves are treated differently.
     references: list[CategoryReference] = field(default_factory=list)
@@ -537,7 +543,10 @@ class CategoryService:
         self, budget_id: uuid.UUID, group_id: uuid.UUID, month: date
     ) -> CategoryDeletePreview:
         cats = await self.category_repo.get_by_group(group_id)
-        return await self.preview_delete(budget_id, [c.id for c in cats], month)
+        preview = await self.preview_delete(budget_id, [c.id for c in cats], month)
+        preview.archived_count = sum(1 for c in cats if c.is_archived)
+        preview.all_archived = bool(cats) and preview.archived_count == len(cats)
+        return preview
 
     # ─── Archive ──────────────────────────────────────────────────────────────
 

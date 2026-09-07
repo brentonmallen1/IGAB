@@ -73,7 +73,7 @@ export function Header() {
             disabled={!!budgetAnchorMonth && selectedMonth <= budgetAnchorMonth}
             title={
               budgetAnchorMonth && selectedMonth <= budgetAnchorMonth
-                ? 'Your budget starts here — earlier months live in the register and reports'
+                ? 'Your budget starts here. Earlier months are in each account\u2019s register and in Reports.'
                 : undefined
             }
           >

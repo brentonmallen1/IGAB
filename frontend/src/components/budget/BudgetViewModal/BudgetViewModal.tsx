@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Plus, X } from 'lucide-react'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
-import { renderableCategories } from '../budgetGroups'
+import { renderableCategories, renderableGroups } from '../budgetGroups'
 import {
   useBudgetViews,
   useCreateBudgetView,
@@ -52,12 +52,19 @@ function ViewEditor({
   views,
   onClose,
 }: Props & { views: ReturnType<typeof useBudgetViews>['data'] }) {
-  const { data: groups = [] } = useCategoryGroups(budgetId, true)
+  const { data: allGroups = [] } = useCategoryGroups(budgetId, true)
   const { data: allCategories = [] } = useCategories(budgetId, true)
   // A view rearranges the grid's rows, and a card's set-aside envelope is
   // not one — placing it in a group would promise a row the grid will never
-  // draw. Hidden categories stay: a view may legitimately place one.
-  const categories = useMemo(() => renderableCategories(allCategories), [allCategories])
+  // draw. Hidden categories stay: a view may legitimately place one. A
+  // system (Income) group's category is not a grid row either — after a
+  // YNAB import it holds "Inflow", which this offered to place.
+  const groups = useMemo(() => renderableGroups(allGroups), [allGroups])
+  const groupIds = useMemo(() => new Set(groups.map((g) => g.id)), [groups])
+  const categories = useMemo(
+    () => renderableCategories(allCategories).filter((c) => groupIds.has(c.category_group_id)),
+    [allCategories, groupIds]
+  )
   const createView = useCreateBudgetView(budgetId)
   const updateView = useUpdateBudgetView(budgetId)
   const deleteView = useDeleteBudgetView(budgetId)

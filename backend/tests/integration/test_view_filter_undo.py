@@ -203,3 +203,29 @@ class TestFilterUndo:
         )
         r = await api_client.post(f"/api/v1/{budget.id}/changes/{delete_row['id']}/undo")
         assert r.status_code == 409, r.text
+
+
+class TestFilterTagUndo:
+    async def test_a_tag_change_undoes_back(self, db_session, api_client):
+        from .factories import create_tag
+
+        budget, cats = await _setup(db_session, api_client)
+        tag = await create_tag(db_session, budget, "Essential")
+        await db_session.commit()
+        r = await api_client.post(
+            f"/api/v1/{budget.id}/filters", json={"name": "Essentials", "category_ids": []}
+        )
+        filter_id = r.json()["id"]
+        r = await api_client.patch(f"/api/v1/filters/{filter_id}", json={"tag_ids": [str(tag.id)]})
+        assert r.status_code == 200, r.text
+        assert r.json()["tag_ids"] == [str(tag.id)]
+
+        await _undo(api_client, budget)
+
+        r = await api_client.get(f"/api/v1/filters/{filter_id}")
+        assert r.json()["tag_ids"] == []
+
+        r = await api_client.post(f"/api/v1/{budget.id}/changes/redo")
+        assert r.status_code == 200, r.text
+        r = await api_client.get(f"/api/v1/filters/{filter_id}")
+        assert r.json()["tag_ids"] == [str(tag.id)]

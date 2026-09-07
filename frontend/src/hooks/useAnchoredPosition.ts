@@ -28,7 +28,7 @@ export function useAnchoredPosition(
   // every caller does — without a new identity restarting the effect each
   // render. A ref would work too, but writing one during render is its own
   // lint violation and its own subtle bug.
-  const { width, minWidth, maxWidth, gap, margin, maxHeight, flipThreshold } = options
+  const { width, minWidth, maxWidth, gap, margin, maxHeight, flipThreshold, align } = options
 
   const measure = useCallback(() => {
     const el = triggerRef.current
@@ -36,12 +36,12 @@ export function useAnchoredPosition(
     const next = placeAnchored(
       el.getBoundingClientRect(),
       { width: window.innerWidth, height: window.innerHeight },
-      { width, minWidth, maxWidth, gap, margin, maxHeight, flipThreshold }
+      { width, minWidth, maxWidth, gap, margin, maxHeight, flipThreshold, align }
     )
     // Identical placements keep the SAME object, so scrolling a list inside an
     // open panel does not re-render the whole thing on every tick.
     setPlacement((prev) => (samePlacement(prev, next) ? prev : next))
-  }, [triggerRef, width, minWidth, maxWidth, gap, margin, maxHeight, flipThreshold])
+  }, [triggerRef, width, minWidth, maxWidth, gap, margin, maxHeight, flipThreshold, align])
 
   useLayoutEffect(() => {
     if (!open) return
