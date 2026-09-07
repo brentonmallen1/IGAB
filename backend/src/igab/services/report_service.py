@@ -57,6 +57,7 @@ from igab.repositories.txn_filters import (
     PARENT_ROW,
     PLANNED_SPEND_ROW,
     POSTED,
+    category_tagged,
 )
 from igab.services.report_basics import (
     _months_in_range,
@@ -2998,22 +2999,23 @@ class ReportService:
         end_date = date.today()
         start_date = _subtract_months(end_date, months)
 
-        # Get subscription-tagged payee ids to exclude
-        from igab.repositories.tag_repo import TagRepository
-
-        tag_repo = TagRepository(self.session)
-        subscription_payee_ids = await tag_repo.get_payee_ids_by_system_keys(
-            budget_id, system_keys=["subscription"]
-        )
-
         # All cash-flow rows in the period. CASH_FLOW_ROW keeps transfers out:
         # a transfer into checking is not a payday, and the outflow leg of a
         # transfer is not spending.
+        #
+        # Each row says whether it is a subscription charge, so the exclusion
+        # below can apply to spending WITHOUT dropping the row from the inflow
+        # side that detects paydays. Read from the CATEGORY: this asked
+        # `get_payee_ids_by_system_keys` until now, and migration b8e5d1c73a49
+        # deleted every payee-subscription row and made the routes refuse new
+        # ones — so the set has been empty since 2026-09-06 and this excluded
+        # nothing at all.
         q = (
             select(
                 Transaction.date,
                 Transaction.amount,
                 Transaction.payee_id,
+                category_tagged("subscription").label("is_subscription"),
             )
             .where(
                 Transaction.budget_id == budget_id,
@@ -3042,6 +3044,7 @@ class ReportService:
                 "date": [r.date for r in rows],
                 "amount": [float(r.amount) for r in rows],
                 "payee_id": [str(r.payee_id) if r.payee_id else None for r in rows],
+                "is_subscription": [bool(r.is_subscription) for r in rows],
             }
         )
 
@@ -3066,12 +3069,10 @@ class ReportService:
                 "event_count": 0,
             }
 
-        # Exclude subscription-tagged payees from spending
-        sub_ids = {str(pid) for pid in subscription_payee_ids}
-        outflows = df.filter(
-            (pl.col("amount") < 0)
-            & (~pl.col("payee_id").is_in(sub_ids) | pl.col("payee_id").is_null())
-        )
+        # Subscriptions are not payday behaviour: they land on their own
+        # schedule whatever the household does after being paid, so counting
+        # them would flatten the very effect this report is looking for.
+        outflows = df.filter((pl.col("amount") < 0) & ~pl.col("is_subscription"))
 
         # Group by date
         daily_spend = (
@@ -3132,7 +3133,6 @@ class ReportService:
         import random
 
         from igab.db.models import ScheduledTransaction
-        from igab.repositories.tag_repo import TagRepository
 
         today = date.today()
         end_date = today + timedelta(days=horizon_days)
@@ -3190,51 +3190,53 @@ class ReportService:
                 if occ_date is None:
                     break
 
-        # 3. Get subscription-tagged payees for expected subscription charges
-        tag_repo = TagRepository(self.session)
-        subscription_payee_ids = await tag_repo.get_payee_ids_by_system_keys(
-            budget_id, system_keys=["subscription"]
-        )
-
+        # 3. Recurring charges in categories tagged Subscription, by payee.
+        #
+        # Categories, not payees. This read `get_payee_ids_by_system_keys` —
+        # and migration b8e5d1c73a49 deleted every payee-subscription row and
+        # made the routes refuse new ones, so the set has been empty since
+        # 2026-09-06 and this projection has quietly contributed nothing. The
+        # Subscriptions report reads categories and groups the charges by
+        # payee within them; this now asks the same question the same way.
         subscription_events: list[tuple[date, str, Decimal]] = []
-        if subscription_payee_ids:
-            # Get last charge date and typical amount for each subscription payee
-            sub_q = (
-                select(
-                    Transaction.payee_id,
-                    Payee.name.label("payee_name"),
-                    func.max(Transaction.date).label("last_date"),
-                    func.avg(Transaction.amount).label("avg_amount"),
-                )
-                .join(Payee, Payee.id == Transaction.payee_id)
-                .join(Account, Account.id == Transaction.account_id)
-                .where(
-                    Transaction.budget_id == budget_id,
-                    NOT_DELETED,
-                    POSTED,
-                    LEAF,
-                    Transaction.payee_id.in_(subscription_payee_ids),
-                    Transaction.amount < 0,
-                    Account.is_closed == False,  # noqa: E712
-                    # Cash accounts only: a subscription charged to a card
-                    # consumes cash at payment time, not charge time.
-                    CASH_ACCOUNT,
-                )
-                .group_by(Transaction.payee_id, Payee.name)
+        # Last charge date and typical amount per payee inside those
+        # categories.
+        sub_q = (
+            select(
+                Transaction.payee_id,
+                Payee.name.label("payee_name"),
+                func.max(Transaction.date).label("last_date"),
+                func.avg(Transaction.amount).label("avg_amount"),
             )
-            sub_rows = (await self.session.execute(sub_q)).all()
+            .join(Payee, Payee.id == Transaction.payee_id)
+            .join(Account, Account.id == Transaction.account_id)
+            .where(
+                Transaction.budget_id == budget_id,
+                NOT_DELETED,
+                POSTED,
+                LEAF,
+                category_tagged("subscription"),
+                Transaction.amount < 0,
+                Account.is_closed == False,  # noqa: E712
+                # Cash accounts only: a subscription charged to a card
+                # consumes cash at payment time, not charge time.
+                CASH_ACCOUNT,
+            )
+            .group_by(Transaction.payee_id, Payee.name)
+        )
+        sub_rows = (await self.session.execute(sub_q)).all()
 
-            for row in sub_rows:
-                last_date = row.last_date
-                avg_amount = Decimal(str(row.avg_amount))
-                payee_name = row.payee_name or "Subscription"
+        for row in sub_rows:
+            last_date = row.last_date
+            avg_amount = Decimal(str(row.avg_amount))
+            payee_name = row.payee_name or "Subscription"
 
-                # Assume monthly cadence, project forward
-                next_date = last_date + timedelta(days=30)
-                while next_date <= end_date:
-                    if next_date >= today:
-                        subscription_events.append((next_date, payee_name, avg_amount))
-                    next_date = next_date + timedelta(days=30)
+            # Assume monthly cadence, project forward
+            next_date = last_date + timedelta(days=30)
+            while next_date <= end_date:
+                if next_date >= today:
+                    subscription_events.append((next_date, payee_name, avg_amount))
+                next_date = next_date + timedelta(days=30)
 
         # 4. Get historical daily net flows for stochastic layer — open CASH
         # accounts only, matching the balance being projected (a brokerage
