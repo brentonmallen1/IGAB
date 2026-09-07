@@ -228,3 +228,101 @@ def drain_impact(amount: Decimal, pace: Decimal | None) -> Decimal | None:
     if pace is None or pace <= ZERO or amount <= ZERO:
         return None
     return (amount / pace).quantize(Decimal("0.01"))
+
+
+@dataclass(frozen=True)
+class DisciplineInput:
+    """One wish, as the discipline stats read it."""
+
+    status: str
+    cost: Decimal
+    created_at: date
+    cooling_until: date | None
+    done_at: date | None
+    dropped_at: date | None
+
+
+@dataclass(frozen=True)
+class Discipline:
+    """What the cooling-off period actually did.
+
+    The headline is `resisted_total`: money that was wanted, waited on, and
+    then not spent. Every other figure here is context for it.
+    """
+
+    cooled_then_bought: int
+    cooled_then_dropped: int
+    bought_early: int
+    still_open: int
+    resisted_total: Decimal
+    bought_total: Decimal
+    open_total: Decimal
+    #: Mean days from adding a wish to buying it. None with nothing bought —
+    #: an average of no days is not zero days.
+    avg_days_to_buy: int | None
+    avg_wish_cost: Decimal | None
+    #: Wishes whose ending we cannot place against their cooling-off period,
+    #: because they predate `dropped_at` or never had a cooling period. Shown
+    #: rather than folded into a bucket they might not belong in.
+    unplaced: int
+
+
+def _ended_after_cooling(ended: date | None, cooling_until: date | None) -> bool | None:
+    """Whether an ending came after the cooling-off period. None when the
+    question does not apply — no ending, or no cooling period to be after."""
+    if ended is None or cooling_until is None:
+        return None
+    return ended >= cooling_until
+
+
+def discipline(wishes: Iterable[DisciplineInput]) -> Discipline:
+    """Cooling-off outcomes across every wish, open and closed.
+
+    `bought_early` counts a wish bought before its cooling-off period ended.
+    That is possible because the date is editable after the fact, and it is
+    worth seeing rather than hiding: the point of the number is honesty about
+    the habit, not a score.
+    """
+    cooled_bought = cooled_dropped = early = still_open = unplaced = 0
+    resisted = bought = open_total = ZERO
+    days: list[int] = []
+    costs: list[Decimal] = []
+
+    for w in wishes:
+        costs.append(w.cost)
+        if w.status == "open":
+            still_open += 1
+            open_total += w.cost
+            continue
+
+        ended = w.done_at if w.status == "done" else w.dropped_at
+        after = _ended_after_cooling(ended, w.cooling_until)
+        if w.status == "done":
+            bought += w.cost
+            if ended is not None:
+                days.append((ended - w.created_at).days)
+            if after is True:
+                cooled_bought += 1
+            elif after is False:
+                early += 1
+            else:
+                unplaced += 1
+        else:  # dropped
+            resisted += w.cost
+            if after is None:
+                unplaced += 1
+            else:
+                cooled_dropped += 1
+
+    return Discipline(
+        cooled_then_bought=cooled_bought,
+        cooled_then_dropped=cooled_dropped,
+        bought_early=early,
+        still_open=still_open,
+        resisted_total=quantize_cents(resisted),
+        bought_total=quantize_cents(bought),
+        open_total=quantize_cents(open_total),
+        avg_days_to_buy=round(sum(days) / len(days)) if days else None,
+        avg_wish_cost=quantize_cents(sum(costs, ZERO) / len(costs)) if costs else None,
+        unplaced=unplaced,
+    )

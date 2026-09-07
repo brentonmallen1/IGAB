@@ -30,6 +30,8 @@ export type ReportTab =
   | 'spending-breakdown'
   | 'category-history'
   | 'income-sources'
+  | 'cost-of-living'
+  | 'wishlist'
 
 export type TabGroup = 'overview' | 'financial' | 'cashflow' | 'budget' | 'spending' | 'insights'
 
@@ -49,6 +51,8 @@ export const REPORT_TABS: TabDef[] = [
   { id: 'essentials', label: 'Essentials', group: 'financial' },
   { id: 'income-expense', label: 'Income vs Expenses', group: 'cashflow' },
   { id: 'income-sources', label: 'Income by Source', group: 'cashflow' },
+  { id: 'cost-of-living', label: 'Cost of Living', group: 'spending' },
+  { id: 'wishlist', label: 'Wishlist', group: 'spending' },
   { id: 'burn-rate', label: 'Burn Rate', group: 'cashflow' },
   { id: 'cash-flow', label: 'Cash Flow', group: 'cashflow' },
   { id: 'projection', label: 'Projection', group: 'cashflow' },
@@ -222,6 +226,16 @@ export const TAB_FILTER_SUPPORT: Record<ReportTab, TabFilterSupport> = {
     accounts: false,
     groupBy: false,
   },
+  // Both drive their own window (or none at all), so the shared filter bar
+  // has nothing to offer either.
+  'cost-of-living': {
+    dates: false,
+    categories: false,
+    payees: false,
+    accounts: false,
+    groupBy: false,
+  },
+  wishlist: { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
   'day-patterns': { dates: true, categories: true, payees: false, accounts: true, groupBy: false },
   timeline: { dates: true, categories: true, payees: false, accounts: true, groupBy: false },
 }

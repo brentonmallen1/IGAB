@@ -724,3 +724,51 @@ class CategoryHistoryReportResponse(ApiModel):
     category_id: uuid.UUID
     category_name: str
     months: list[CategoryHistoryMonth]
+
+
+# ─── Cost of Living ──────────────────────────────────────────────────────────
+
+
+class CostOfLivingGroup(ApiModel):
+    group_name: str
+    monthly_amounts: list[Decimal]
+    total: Decimal
+    avg_monthly: Decimal
+    #: Share of the essentials total, 0-100 — not of income, so the shares
+    #: add to 100 and the bar is arithmetic a reader can check.
+    share: Decimal
+
+
+class CostOfLivingResponse(ApiModel):
+    months: list[date]
+    groups: list[CostOfLivingGroup]
+    avg_monthly_essentials: Decimal
+    avg_monthly_income: Decimal
+    #: Share of take-home already spoken for. None when no income is on
+    #: record: a ratio against zero is unknown, not 100%.
+    required_ratio: Decimal | None
+    #: 'bound' | 'tag' | 'all' — how "essential" was decided.
+    basis: str
+    #: False when nothing carries the Essential tag, so the page can say the
+    #: figure covers every category rather than a chosen few.
+    tagged: bool
+
+
+# ─── Wishlist discipline ─────────────────────────────────────────────────────
+
+
+class WishlistDisciplineResponse(ApiModel):
+    cooled_then_bought: int
+    cooled_then_dropped: int
+    bought_early: int
+    still_open: int
+    #: Wanted, waited on, and not spent — the figure the report is for.
+    resisted_total: Decimal
+    bought_total: Decimal
+    open_total: Decimal
+    #: None with nothing bought: an average of no days is not zero days.
+    avg_days_to_buy: int | None
+    avg_wish_cost: Decimal | None
+    #: Endings we cannot place against a cooling-off period — wishes that
+    #: predate the drop date, or never had one. Shown, not folded in.
+    unplaced: int

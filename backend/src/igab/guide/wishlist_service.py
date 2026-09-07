@@ -568,7 +568,10 @@ class WishlistService:
         if status not in STATUSES:
             raise InvariantViolation(f"Unknown status '{status}'")
         item.status = status
+        # Both stamps are set on every transition, so reopening a wish clears
+        # the old ending rather than leaving a date that contradicts the status.
         item.done_at = date.today() if status == "done" else None
+        item.dropped_at = date.today() if status == "dropped" else None
         if status != "open":
             # Only an open wish holds a spotlight slot; clearing here is what
             # keeps a reopened wish from silently busting the cap.

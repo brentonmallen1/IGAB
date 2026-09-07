@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { apiClient } from './client'
 import type {
+  CostOfLivingReport,
+  WishlistDisciplineReport,
   AccountCompositionReport,
   AnomalyReport,
   BudgetActualReport,
@@ -663,6 +665,37 @@ export function useCategoryHistoryReport(
       return data
     },
     enabled: !!budgetId && !!categoryId,
+    staleTime: 60_000,
+  })
+}
+
+export function useCostOfLivingReport(budgetId: string | null, months = 12) {
+  return useQuery({
+    queryKey: [ROOT.reports, 'cost-of-living', budgetId, months],
+    queryFn: async () => {
+      const { data } = await apiClient.get<CostOfLivingReport>(
+        `/${budgetId}/reports/cost-of-living`,
+        { params: { months } }
+      )
+      return data
+    },
+    enabled: !!budgetId,
+    staleTime: 60_000,
+  })
+}
+
+/** No months parameter: the wishlist report is all-time on purpose, because a
+ *  habit measured over twelve months forgets what you resisted two years ago. */
+export function useWishlistDisciplineReport(budgetId: string | null) {
+  return useQuery({
+    queryKey: [ROOT.reports, 'wishlist', budgetId],
+    queryFn: async () => {
+      const { data } = await apiClient.get<WishlistDisciplineReport>(
+        `/${budgetId}/reports/wishlist`
+      )
+      return data
+    },
+    enabled: !!budgetId,
     staleTime: 60_000,
   })
 }

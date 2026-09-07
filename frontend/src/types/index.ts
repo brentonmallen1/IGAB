@@ -1268,3 +1268,37 @@ export interface TransactionMatch {
   status: 'pending' | 'accepted' | 'rejected'
   created_at: string
 }
+
+export interface CostOfLivingGroup {
+  group_name: string
+  monthly_amounts: number[]
+  total: number
+  avg_monthly: number
+  /** Share of the essentials total, 0–100 — not of income, so shares add to 100. */
+  share: number
+}
+
+export interface CostOfLivingReport {
+  months: string[]
+  groups: CostOfLivingGroup[]
+  avg_monthly_essentials: number
+  avg_monthly_income: number
+  /** Null when there is no income on record: unknown, not 100%. */
+  required_ratio: number | null
+  basis: 'bound' | 'tag' | 'all'
+  /** False when nothing carries the Essential tag. */
+  tagged: boolean
+}
+
+export interface WishlistDisciplineReport {
+  cooled_then_bought: number
+  cooled_then_dropped: number
+  bought_early: number
+  still_open: number
+  resisted_total: number
+  bought_total: number
+  open_total: number
+  avg_days_to_buy: number | null
+  avg_wish_cost: number | null
+  unplaced: number
+}

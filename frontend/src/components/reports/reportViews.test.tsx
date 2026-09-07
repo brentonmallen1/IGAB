@@ -34,6 +34,8 @@ vi.mock('../../api/budgets', () => ({ useBudgetMonth: () => ({ data: undefined }
 vi.mock('../../api/accountTypes', () => ({ useAccountTypes: () => ({ data: undefined }) }))
 
 import { useReportStore } from '../../stores/reportStore'
+import { CostOfLivingReport } from './charts/CostOfLivingReport'
+import { WishlistDisciplineReport } from './charts/WishlistDisciplineReport'
 import { OverviewReport } from './OverviewReport'
 import { AccountCompositionReport } from './charts/AccountCompositionChart'
 import { AnomaliesReport } from './charts/AnomaliesReport'
@@ -59,6 +61,8 @@ import { VolatilityReport } from './charts/VolatilityChart'
 
 const ALL_REPORTS: [string, ComponentType<{ budgetId: string }>][] = [
   ['Overview', OverviewReport],
+  ['CostOfLiving', CostOfLivingReport],
+  ['WishlistDiscipline', WishlistDisciplineReport],
   ['NetWorth', NetWorthReport],
   ['AccountComposition', AccountCompositionReport],
   ['Liabilities', LiabilitiesReport],

@@ -184,6 +184,7 @@ SNAPSHOT_FIELDS: dict[str, tuple[str, ...]] = {
         "cooling_until",
         "last_affirmed_at",
         "done_at",
+        "dropped_at",
     ),
     "wishlist_project": ("name", "category_id", "notes", "sort_order"),
     "category_target": (

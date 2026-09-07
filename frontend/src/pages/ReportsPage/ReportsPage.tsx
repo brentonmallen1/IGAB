@@ -37,6 +37,8 @@ import { CashProjectionReport } from '../../components/reports/charts/CashProjec
 import { SpendingTrendsReport } from '../../components/reports/charts/SpendingTrendsReport'
 import { SpendingBreakdownReport } from '../../components/reports/charts/SpendingBreakdownReport'
 import { CategoryHistoryReport } from '../../components/reports/charts/CategoryHistoryReport'
+import { CostOfLivingReport } from '../../components/reports/charts/CostOfLivingReport'
+import { WishlistDisciplineReport } from '../../components/reports/charts/WishlistDisciplineReport'
 import { IncomeSourcesReport } from '../../components/reports/charts/IncomeSourcesReport'
 import { ChevronDown } from 'lucide-react'
 import { useEffect, useState, useRef } from 'react'
@@ -166,6 +168,10 @@ export function ReportsPage() {
         return <CategoryHistoryReport budgetId={budgetId!} />
       case 'income-sources':
         return <IncomeSourcesReport budgetId={budgetId!} />
+      case 'cost-of-living':
+        return <CostOfLivingReport budgetId={budgetId!} />
+      case 'wishlist':
+        return <WishlistDisciplineReport budgetId={budgetId!} />
     }
   }
 

@@ -22,6 +22,8 @@ from igab.api.v1.schemas.report import (
     CategoryHistoryMonth,
     CategoryHistoryReportResponse,
     CategoryPayee,
+    CostOfLivingGroup,
+    CostOfLivingResponse,
     DashboardMetrics,
     DayPatternItem,
     DayPatternsResponse,
@@ -69,6 +71,7 @@ from igab.api.v1.schemas.report import (
     VarianceResponse,
     VolatilityItem,
     VolatilityResponse,
+    WishlistDisciplineResponse,
 )
 from igab.dependencies import (
     BudgetAccess,
@@ -87,7 +90,12 @@ from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.tag_repo import TagRepository
 from igab.services.budget_service import BudgetService
 from igab.services.liability_service import LiabilityService
-from igab.services.report_basics import income_by_source, spending_trends
+from igab.services.report_basics import (
+    cost_of_living,
+    income_by_source,
+    spending_trends,
+    wishlist_discipline,
+)
 from igab.services.report_service import ReportService
 
 
@@ -707,3 +715,37 @@ def _parse_uuids(value: str | None) -> list[uuid.UUID] | None:
         return [uuid.UUID(v.strip()) for v in value.split(",") if v.strip()]
     except ValueError:
         return None
+
+
+@router.get("/{budget_id}/reports/cost-of-living", response_model=CostOfLivingResponse)
+async def cost_of_living_report(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    report_svc: Annotated[ReportService, Depends(get_report_service)],
+    months: ReportMonths = 12,
+) -> CostOfLivingResponse:
+    """Essential spending by category group, against take-home."""
+    data = await cost_of_living(report_svc.session, budget_id, months)
+    return CostOfLivingResponse(
+        months=data["months"],
+        groups=[CostOfLivingGroup.model_validate(g) for g in data["groups"]],
+        avg_monthly_essentials=data["avg_monthly_essentials"],
+        avg_monthly_income=data["avg_monthly_income"],
+        required_ratio=data["required_ratio"],
+        basis=data["basis"],
+        tagged=data["tagged"],
+    )
+
+
+@router.get("/{budget_id}/reports/wishlist", response_model=WishlistDisciplineResponse)
+async def wishlist_discipline_report(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    report_svc: Annotated[ReportService, Depends(get_report_service)],
+) -> WishlistDisciplineResponse:
+    """What the cooling-off period did. All time, because a habit measured
+    over twelve months forgets the wish you talked yourself out of two years
+    ago."""
+    return WishlistDisciplineResponse.model_validate(
+        await wishlist_discipline(report_svc.session, budget_id)
+    )
