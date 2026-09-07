@@ -61,6 +61,7 @@ import { countsAsPendingReview, inReviewSection, nextHeldForReview } from './rev
 import { registerPayAction } from './payButton'
 import './TransactionTable.css'
 import { Surface } from '../../common/Surface'
+import { accountNameMap, openAccounts } from '../../../utils/accountLists'
 
 interface Props {
   /** null renders the all-accounts register for the whole budget */
@@ -130,7 +131,20 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   const { data: payees = [] } = usePayees(budgetId)
   const { data: categories = [] } = useCategories(budgetId)
   const { data: categoryGroups = [] } = useCategoryGroups(budgetId)
-  const { data: accounts = [] } = useAccounts(budgetId)
+  // Two lists from one fetch, because the register asks two different
+  // questions of it. Naming a row's account, and deciding whether that account
+  // is on budget, are facts about rows that already exist — and a register
+  // window reaches back past an account's closing, so both must know about
+  // closed accounts. Offering an account to *pick* is a different question,
+  // and there the open list is right.
+  //
+  // This was one list, fetched without closed accounts, and the all-accounts
+  // register drew "—" in the account column for every row on a closed one —
+  // including transfer legs naming a closed counterpart. A YNAB import that
+  // closed its dormant accounts on the way in produced a register full of
+  // them.
+  const { data: everyAccount = [] } = useAccounts(budgetId, { includeClosed: true })
+  const accounts = useMemo(() => openAccounts(everyAccount), [everyAccount])
   const payAction = useMemo(() => registerPayAction(accounts, accountId), [accounts, accountId])
   const bulkSetCleared = useBulkUpdateCleared(budgetId)
   const bulkCategorize = useBulkCategorize(budgetId)
@@ -209,7 +223,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
 
   const payeeMap = useMemo(() => new Map(payees.map((p) => [p.id, p.name])), [payees])
   const categoryMap = useMemo(() => new Map(categories.map((c) => [c.id, c.name])), [categories])
-  const accountMap = useMemo(() => new Map(accounts.map((a) => [a.id, a.name])), [accounts])
+  const accountMap = useMemo(() => accountNameMap(everyAccount), [everyAccount])
   // Stable palette slot per account (position in the accounts list), so an
   // account keeps its identity color across sections, pages, and themes
   const accountColorMap = useMemo(
@@ -318,8 +332,8 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   // Off-budget accounts don't use categories — their rows never land in the
   // "Needs Review" section or wear the yellow chip
   const onBudgetAccountIds = useMemo(
-    () => new Set(accounts.filter((a) => a.on_budget).map((a) => a.id)),
-    [accounts]
+    () => new Set(everyAccount.filter((a) => a.on_budget).map((a) => a.id)),
+    [everyAccount]
   )
 
   // A row categorized mid-review is held in place until it's approved —

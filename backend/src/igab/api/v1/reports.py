@@ -731,12 +731,16 @@ async def cost_of_living_report(
     data = await cost_of_living(report_svc.session, budget_id, months)
     return CostOfLivingResponse(
         months=data["months"],
+        window_start=data["window_start"],
+        window_end=data["window_end"],
         groups=[CostOfLivingGroup.model_validate(g) for g in data["groups"]],
         avg_monthly_essentials=data["avg_monthly_essentials"],
         avg_monthly_income=data["avg_monthly_income"],
         required_ratio=data["required_ratio"],
         basis=data["basis"],
         tagged=data["tagged"],
+        class_excluded=[SpendingClassExcluded.model_validate(c) for c in data["class_excluded"]],
+        counted_classes=data["counted_classes"],
     )
 
 

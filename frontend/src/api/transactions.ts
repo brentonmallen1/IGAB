@@ -133,6 +133,8 @@ export interface BudgetTransactionParams {
   categoryIds?: string[]
   payeeIds?: string[]
   accountIds?: string[]
+  /** Rows the shared `NEEDS_CATEGORY` rule counts as unfiled. */
+  uncategorized?: boolean
   dayOfWeek?: number
   /** Restrict to these activity classes, so the panel totals what the chart
    *  that opened it counted rather than every row of the same sign. */
@@ -165,6 +167,7 @@ export function useBudgetTransactions(
       if (params!.payeeIds?.length) p.payee_ids = params!.payeeIds.join(',')
       if (params!.accountIds?.length) p.account_ids = params!.accountIds.join(',')
       if (params!.activityClasses?.length) p.activity_classes = params!.activityClasses.join(',')
+      if (params!.uncategorized) p.uncategorized = true
       const { data } = await apiClient.get<BudgetTransactionsResponse>(
         `/${budgetId}/transactions`,
         { params: p }

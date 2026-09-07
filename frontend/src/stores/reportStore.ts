@@ -276,6 +276,10 @@ export interface DrillDownContext {
   direction?: 'outflow' | 'inflow'
   categoryIds?: string[]
   payeeIds?: string[]
+  /** Rows with no category, for a bucket that is defined by their absence.
+   *  An empty `categoryIds` cannot say this — it filters nothing and lists the
+   *  whole window, which is worse than not offering the drill at all. */
+  uncategorized?: boolean
   dayOfWeek?: number
   /** Activity classes the originating chart counted. A chart that means
    *  "spending" must say so, or its drill lists savings and debt too — an

@@ -67,6 +67,7 @@ import type { SplitDraft } from '../../../stores/transactionEditStore'
 import { randomUUID } from '../../../utils/uuid'
 import { Tooltip } from '../../common/Tooltip/Tooltip'
 import './TransactionEditor.css'
+import { openAccounts } from '../../../utils/accountLists'
 
 /** Where the AI model is configured — the System page, not the budget's Settings. */
 const AI_SETTINGS = sectionHref({ id: 'ai', page: 'system' })
@@ -144,15 +145,15 @@ export function TransactionEditor({
   const lastPickedAccountId = useAppStore((s) => s.lastQuickAddAccountId)
   const setLastPickedAccountId = useAppStore((s) => s.setLastQuickAddAccountId)
   const [pickedAccountId, setPickedAccountId] = useState(transaction?.account_id ?? '')
-  const openAccounts = useMemo(() => accounts.filter((a) => !a.is_closed), [accounts])
+  const choosable = useMemo(() => openAccounts(accounts), [accounts])
   useEffect(() => {
-    if (fixedAccountId || transaction || pickedAccountId || openAccounts.length === 0) return
+    if (fixedAccountId || transaction || pickedAccountId || choosable.length === 0) return
     const preferred =
-      lastPickedAccountId && openAccounts.some((a) => a.id === lastPickedAccountId)
+      lastPickedAccountId && choosable.some((a) => a.id === lastPickedAccountId)
         ? lastPickedAccountId
-        : (openAccounts.find((a) => a.on_budget)?.id ?? openAccounts[0].id)
+        : (choosable.find((a) => a.on_budget)?.id ?? choosable[0].id)
     setPickedAccountId(preferred)
-  }, [fixedAccountId, transaction, pickedAccountId, openAccounts, lastPickedAccountId])
+  }, [fixedAccountId, transaction, pickedAccountId, choosable, lastPickedAccountId])
   // An existing row's account is the picker's, not the register's: opening a
   // row from an account page must still let it be moved OUT of that page.
   // A fresh row started from an account page keeps that account fixed.
@@ -671,7 +672,7 @@ export function TransactionEditor({
   const accountField =
     !fixedAccountId || isEdit ? (
       <AccountField
-        accounts={openAccounts}
+        accounts={choosable}
         value={pickedAccountId}
         onChange={setPickedAccountId}
         current={rowAccount ?? null}

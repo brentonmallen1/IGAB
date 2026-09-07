@@ -9,6 +9,7 @@ import { Modal } from '../../common/Modal/Modal'
 import { transactionDisplayPayee } from '../../../utils/transferDisplay'
 import type { Transaction } from '../../../types'
 import './TransactionsPeekModal.css'
+import { openAccounts } from '../../../utils/accountLists'
 
 const RECENT_LIMIT = 10
 const ALL_LIMIT = 1000
@@ -113,13 +114,11 @@ export function TransactionsPeekModal({ budgetId, scope, onClose, onAddTransacti
                 aria-label="Filter by account"
               >
                 <option value="">All accounts</option>
-                {accounts
-                  .filter((a) => !a.is_closed)
-                  .map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
+                {openAccounts(accounts).map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                  </option>
+                ))}
               </select>
             )}
             <button

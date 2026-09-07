@@ -459,6 +459,26 @@
   color: var(--text-primary);
 }
 
+/* A cell that opens the rows behind it. Reads as the text it replaces until
+   you reach for it — a report table full of link-blue would say every column
+   is a door, and only this one is. */
+.report-table__drill {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-bottom: 1px dotted var(--border-color);
+}
+
+.report-table__drill:hover,
+.report-table__drill:focus-visible {
+  color: var(--color-accent);
+  border-bottom-color: var(--color-accent);
+}
+
 .report-table tbody tr:hover {
   background: var(--bg-secondary);
 }

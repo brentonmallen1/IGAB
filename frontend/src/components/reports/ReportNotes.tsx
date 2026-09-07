@@ -26,6 +26,11 @@ interface Props {
    *  without that toggle pass false; the sentence would name a control the
    *  reader cannot find. */
   toggleAvailable: boolean
+  /** What this chart counts, for the sentence. The cost-of-living family
+   *  counts debt payments, so telling its reader that a mortgage is "not
+   *  counted as spending" would be false twice over — it is counted, and this
+   *  is not a spending report. */
+  counts?: string
 }
 
 /**
@@ -38,7 +43,7 @@ interface Props {
  * Renders nothing when there is nothing to explain: an empty wrapper would
  * still occupy a gap slot in the section column.
  */
-export function ReportNotes({ report, toggleAvailable }: Props) {
+export function ReportNotes({ report, toggleAvailable, counts = 'spending' }: Props) {
   const { formatMoney } = useFormatters()
   if (!report) return null
 
@@ -71,7 +76,7 @@ export function ReportNotes({ report, toggleAvailable }: Props) {
         <p className="report-notes__line" role="note">
           <Info size={12} aria-hidden />
           <span>
-            Not counted as spending here: {parts.join(' and ')}.
+            Not counted as {counts} here: {parts.join(' and ')}.
             {toggleAvailable && ' Tick “Include savings & debt payments” to add it.'}
           </span>
         </p>

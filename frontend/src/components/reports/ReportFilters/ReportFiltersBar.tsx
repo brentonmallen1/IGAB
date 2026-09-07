@@ -16,6 +16,7 @@ import { MultiSelectCombobox } from './MultiSelectCombobox'
 import type { MultiSelectOption } from './MultiSelectCombobox'
 import './ReportFiltersBar.css'
 import { Surface } from '../../common/Surface'
+import { openAccounts } from '../../../utils/accountLists'
 
 interface Props {
   budgetId: string
@@ -63,9 +64,7 @@ export function ReportFiltersBar({ budgetId }: Props) {
   }, [payees.data])
 
   const accountOptions = useMemo<MultiSelectOption[]>(() => {
-    return (accounts.data ?? [])
-      .filter((a) => !a.is_closed)
-      .map((a) => ({ id: a.id, label: a.name }))
+    return openAccounts(accounts.data ?? []).map((a) => ({ id: a.id, label: a.name }))
   }, [accounts.data])
 
   // viewId counts: it is sent on every request and changes what the report

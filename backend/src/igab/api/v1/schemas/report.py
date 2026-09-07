@@ -373,6 +373,9 @@ class EssentialsReportResponse(ApiModel):
     emergency_fund_balance: Decimal | None = None
     emergency_fund_source: str | None = None
     runway_months: Decimal | None = None
+    #: Tagged Essential and still not counted, by class — see
+    #: `CostOfLivingResponse.class_excluded`.
+    class_excluded: list[SpendingClassExcluded] = []
 
 
 # ─── Payee Analysis ───────────────────────────────────────────────────────────
@@ -755,10 +758,17 @@ class CostOfLivingGroup(ApiModel):
     #: Share of the essentials total, 0-100 — not of income, so the shares
     #: add to 100 and the bar is arithmetic a reader can check.
     share: Decimal
+    #: The categories behind the bar, so it can be opened. Empty on the
+    #: Uncategorized bucket — that one drills by "no category", not by ids.
+    category_ids: list[uuid.UUID] = []
 
 
 class CostOfLivingResponse(ApiModel):
     months: list[date]
+    #: The window the figures cover. Served so a drill-down asks for the same
+    #: days rather than re-deriving them from `months`.
+    window_start: date
+    window_end: date
     groups: list[CostOfLivingGroup]
     avg_monthly_essentials: Decimal
     avg_monthly_income: Decimal
@@ -770,6 +780,13 @@ class CostOfLivingResponse(ApiModel):
     #: False when nothing carries the Essential tag, so the page can say the
     #: figure covers every category rather than a chosen few.
     tagged: bool
+    #: Tagged Essential and still not counted, by class. Tagging a category is
+    #: pointing at it, so this fires wherever the basis is a tag or a Guide
+    #: binding — the case being "I tagged ten and two showed up".
+    class_excluded: list[SpendingClassExcluded] = []
+    #: The activity classes these figures count, so a drill-down opened from a
+    #: bar totals what the bar says.
+    counted_classes: list[str] = []
 
 
 # ─── Wishlist discipline ─────────────────────────────────────────────────────

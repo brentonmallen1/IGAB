@@ -58,7 +58,12 @@ from igab.repositories.txn_filters import (
     PLANNED_SPEND_ROW,
     POSTED,
 )
-from igab.services.report_basics import _months_in_range, _subtract_months, emergency_fund
+from igab.services.report_basics import (
+    _months_in_range,
+    _subtract_months,
+    class_excluded_note,
+    emergency_fund,
+)
 
 # Report payload shapes.
 #
@@ -173,15 +178,6 @@ _DRAWDOWN_LABELS: dict[str, str] = {
 #: Classes worth explaining when a spending report leaves them out. Internal
 #: transfers and market movement are not "money you spent somewhere else" — a
 #: note about them would be noise, not reassurance.
-_EXPLAINED_EXCLUSIONS: frozenset[str] = frozenset(
-    {
-        ActivityClass.SAVINGS.value,
-        ActivityClass.DEBT_PRINCIPAL.value,
-        ActivityClass.DEBT_INTEREST.value,
-    }
-)
-
-
 def _magnitude(buckets: dict[str, Decimal], cls: ActivityClass) -> Decimal:
     """An outflow class's total for one month, as a positive number.
 
@@ -1894,7 +1890,7 @@ class ReportService:
 
         # A category the view deliberately hides is the view's story, so its
         # excluded activity is left out of this note too.
-        class_excluded = self._class_excluded_note(
+        class_excluded = class_excluded_note(
             _visible(other_class),
             scoped=bool(category_ids) or regroup is not None,
         )
@@ -1952,44 +1948,6 @@ class ReportService:
         ]
 
         return items, Decimal(str(round(grand_total, 4))), notes
-
-    @staticmethod
-    def _class_excluded_note(excluded_rows: list, *, scoped: bool) -> list[dict] | None:
-        """Savings / debt activity the report will not count, summarised.
-
-        Only when the user has *pointed at* categories — an explicit selection
-        or an active view — because that is when absence misleads: "I selected
-        Car Payment and it isn't here" reads as a bug, not as a definition.
-        The unfiltered report stays calm; the info panel covers the general
-        rule there.
-        """
-        if not scoped or not excluded_rows:
-            return None
-
-        by_class: dict[str, dict] = {}
-        for r in excluded_rows:
-            if r.cls not in _EXPLAINED_EXCLUSIONS:
-                continue
-            slot = by_class.setdefault(r.cls, {"categories": set(), "total": Decimal("0")})
-            slot["categories"].add(r.id)
-            slot["total"] += abs(r.amount)
-        if not by_class:
-            return None
-
-        return sorted(
-            (
-                {
-                    "activity_class": cls,
-                    "label": CLASS_LABEL[ActivityClass(cls)],
-                    "categories": len(v["categories"]),
-                    # Storage is 4dp; the note is user-facing copy, so cents.
-                    "total": quantize_cents(v["total"]),
-                }
-                for cls, v in by_class.items()
-            ),
-            key=lambda v: v["total"],
-            reverse=True,
-        )
 
     # ─── Seasonality ─────────────────────────────────────────────────────────
 
@@ -2127,6 +2085,10 @@ class ReportService:
                 "monthly_total_average": Decimal("0"),
                 "categories": [],
                 "monthly_series": [{"month": m, "total": Decimal("0")} for m in months_list],
+                # Nothing is tagged, so nothing was pointed at and nothing is
+                # missing — but the key is always present, or the client has to
+                # know which branch produced its response.
+                "class_excluded": [],
             }
 
         rows, _ = await self.txns.essential_spend_by_category_month(
@@ -2157,6 +2119,14 @@ class ReportService:
             c["total"] = quantize_cents(c["total"])
             c["monthly_average"] = quantize_cents(c["total"] / months)
         grand = sum((c["total"] for c in categories), Decimal("0"))
+        # What was tagged and still not counted. Tagging a category is pointing
+        # at it, which is the condition the note was written for — and the case
+        # that misled: a mortgage tagged Essential is now counted, but a
+        # category tagged Essential AND Savings still is not, and silence there
+        # would be the same bug wearing a different class.
+        excluded, _ = await self.txns.essential_excluded_by_class(
+            budget_id, window_start, window_end
+        )
         return {
             **base,
             "monthly_total_average": quantize_cents(grand / months),
@@ -2165,6 +2135,7 @@ class ReportService:
                 {"month": m, "total": quantize_cents(by_month.get(m, Decimal("0")))}
                 for m in months_list
             ],
+            "class_excluded": class_excluded_note(excluded, scoped=True) or [],
         }
 
     # ─── Payee Analysis ───────────────────────────────────────────────────────
@@ -2352,7 +2323,7 @@ class ReportService:
                 ActivityClass.DEBT_INTEREST.value,
             }
         rows = [r for r in scanned if r.cls in included]
-        class_excluded = self._class_excluded_note(
+        class_excluded = class_excluded_note(
             [r for r in scanned if r.cls not in included],
             scoped=bool(category_ids),
         )
