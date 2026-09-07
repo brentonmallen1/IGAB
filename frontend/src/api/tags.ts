@@ -180,3 +180,33 @@ export function useBulkAddPayeeTags(budgetId: string | null) {
     },
   })
 }
+
+/** System tags the payee routes refuse — home is CATEGORY_ONLY_SYSTEM_KEYS in
+ *  backend/src/igab/repositories/tag_repo.py; the payee pickers read this so
+ *  a tag is never offered on one side and refused by the other. */
+export const CATEGORY_ONLY_SYSTEM_KEYS = new Set(['subscription'])
+
+export interface TagNotice {
+  key: string
+  payload: Record<string, unknown>
+}
+
+/** One-time notices a migration left about tags (a membership it removed). */
+export function useTagNotices(budgetId: string | null) {
+  return useQuery({
+    queryKey: [ROOT.tags, budgetId, 'notices'],
+    queryFn: async () => {
+      const { data } = await apiClient.get<TagNotice[]>(`/${budgetId}/tags/notices`)
+      return data
+    },
+    enabled: !!budgetId,
+  })
+}
+
+export function useDismissTagNotice(budgetId: string | null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (key: string) => apiClient.delete(`/${budgetId}/tags/notices/${key}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [ROOT.tags, budgetId, 'notices'] }),
+  })
+}

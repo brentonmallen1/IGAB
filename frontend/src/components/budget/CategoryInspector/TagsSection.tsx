@@ -2,6 +2,7 @@ import { useTags, useSetCategoryTags, useCreateTag } from '../../../api/tags'
 import { TagChip } from '../../common/TagChip'
 import { TagPicker, type TagOption } from '../../common/TagPicker'
 import type { Category } from '../../../types'
+import { SystemTagsHelp } from '../../settings/TagsPanel/SystemTagsHelp'
 
 interface TagsSectionProps {
   category: Category
@@ -33,7 +34,12 @@ export function TagsSection({ category, budgetId }: TagsSectionProps) {
 
   return (
     <div className="inspector-section">
-      <div className="inspector-section__title">Tags</div>
+      <div className="inspector-section__header">
+        <span className="inspector-section__title">Tags</span>
+        {/* The same popover the Tags settings panel shows: what each system
+            tag does to the numbers, and which of them apply here. */}
+        <SystemTagsHelp />
+      </div>
       <div className="inspector-tags">
         {category.tags && category.tags.length > 0 ? (
           <div className="inspector-tags__list">

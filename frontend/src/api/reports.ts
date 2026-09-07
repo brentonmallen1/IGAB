@@ -23,6 +23,9 @@ import type {
   TimelineReport,
   VarianceReport,
   VolatilityReport,
+  SpendingTrendsReport,
+  IncomeBySourceReport,
+  CategoryHistoryReport,
 } from '../types'
 import { ROOT } from './queryKeys'
 
@@ -577,5 +580,89 @@ export function useCashProjectionReport(budgetId: string | null, days = 90) {
     },
     enabled: !!budgetId,
     staleTime: STALE,
+  })
+}
+
+// ─── Spending trends / income by source / category history ────────────────
+
+export function useSpendingTrendsReport(
+  budgetId: string | null,
+  startDate?: string,
+  endDate?: string,
+  categoryIds?: string[],
+  accountIds?: string[],
+  includeSavings?: boolean,
+  filterId?: string | null,
+  tagIds?: string[]
+) {
+  const catParam = categoryIds?.length ? categoryIds.join(',') : undefined
+  const acctParam = accountIds?.length ? accountIds.join(',') : undefined
+  const tagParam = tagIds?.length ? tagIds.join(',') : undefined
+  return useQuery({
+    queryKey: [
+      ROOT.reports,
+      'spending-trends',
+      budgetId,
+      startDate,
+      endDate,
+      catParam,
+      acctParam,
+      includeSavings,
+      filterId,
+      tagParam,
+    ],
+    queryFn: async () => {
+      const { data } = await apiClient.get<SpendingTrendsReport>(
+        `/${budgetId}/reports/spending-trends`,
+        {
+          params: params({
+            start_date: startDate,
+            end_date: endDate,
+            category_ids: catParam,
+            account_ids: acctParam,
+            include_savings: includeSavings ? 'true' : undefined,
+            filter_id: filterId ?? undefined,
+            tag_ids: tagParam,
+          }),
+        }
+      )
+      return data
+    },
+    enabled: !!budgetId,
+    staleTime: 60_000,
+  })
+}
+
+export function useIncomeBySourceReport(budgetId: string | null, months = 12) {
+  return useQuery({
+    queryKey: [ROOT.reports, 'income-by-source', budgetId, months],
+    queryFn: async () => {
+      const { data } = await apiClient.get<IncomeBySourceReport>(
+        `/${budgetId}/reports/income-by-source`,
+        { params: { months } }
+      )
+      return data
+    },
+    enabled: !!budgetId,
+    staleTime: 60_000,
+  })
+}
+
+export function useCategoryHistoryReport(
+  budgetId: string | null,
+  categoryId: string | null,
+  months = 12
+) {
+  return useQuery({
+    queryKey: [ROOT.reports, 'category-history', budgetId, categoryId, months],
+    queryFn: async () => {
+      const { data } = await apiClient.get<CategoryHistoryReport>(
+        `/${budgetId}/reports/category-history`,
+        { params: { category_id: categoryId, months } }
+      )
+      return data
+    },
+    enabled: !!budgetId && !!categoryId,
+    staleTime: 60_000,
   })
 }

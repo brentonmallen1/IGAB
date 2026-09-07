@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.api.route import CommitRoute
+from igab.api.v1.schemas.base import ApiModel
 from igab.api.v1.schemas.tag import (
     BulkSetCategoryTagsRequest,
     SetTagsRequest,
@@ -30,6 +31,7 @@ from igab.domain.tag_hints import DERIVED_KEYS, TAG_HINTS, suggest_review_tags
 from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.tag_repo import (
+    CATEGORY_ONLY_SYSTEM_KEYS,
     SYSTEM_TAGS,
     TAG_COLOR_SLOTS,
     TagRepository,
@@ -378,6 +380,17 @@ async def set_category_tags(
     return [TagOutSimple.model_validate(t) for t in tags_map.get(category_id, [])]
 
 
+def _refuse_category_only(tag) -> None:
+    """A tag that changes how money is COUNTED lives where the counting
+    happens. Subscription reads categories; a payee carrying it would be a
+    tag the report never consults."""
+    if tag.system_key in CATEGORY_ONLY_SYSTEM_KEYS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"{tag.name} applies to categories, not payees",
+        )
+
+
 @router.put("/{budget_id}/payees/{payee_id}/tags", response_model=list[TagOutSimple])
 async def set_payee_tags(
     budget_id: BudgetAccess,
@@ -395,6 +408,7 @@ async def set_payee_tags(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Tag {tag_id} not found",
             )
+        _refuse_category_only(tag)
     before_ids = await _membership(tag_repo.session, payee_tags, "payee_id", payee_id)
     await tag_repo.set_payee_tags(payee_id, body.tag_ids)
     after_ids = await _membership(tag_repo.session, payee_tags, "payee_id", payee_id)
@@ -422,8 +436,50 @@ async def add_payee_tags(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Tag {tag_id} not found",
             )
+        _refuse_category_only(tag)
         await tag_repo.add_payee_tag(payee_id, tag_id)
     after_ids = await _membership(tag_repo.session, payee_tags, "payee_id", payee_id)
     await _record_membership(recorder, budget_id, "payee_tags", payee_id, before_ids, after_ids)
     tags_map = await tag_repo.get_tags_for_payees([payee_id])
     return [TagOutSimple.model_validate(t) for t in tags_map.get(payee_id, [])]
+
+
+# ─── Notices ──────────────────────────────────────────────────────────────────
+#
+# A migration that removes memberships must not do it silently. It records a
+# Guide-state row per budget; the Tags panel shows it until dismissed.
+
+NOTICE_PREFIX = "notice:"
+
+
+class TagNoticeOut(ApiModel):
+    key: str
+    payload: dict
+
+
+@router.get("/{budget_id}/tags/notices", response_model=list[TagNoticeOut])
+async def list_tag_notices(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    tag_repo: Annotated[TagRepository, Depends(get_tag_repo)],
+) -> list[TagNoticeOut]:
+    from igab.guide.repo import GuideRepository
+
+    state = await GuideRepository(tag_repo.session).state(budget_id)
+    return [
+        TagNoticeOut(key=key[len(NOTICE_PREFIX) :], payload=value)
+        for key, value in state.items()
+        if key.startswith(NOTICE_PREFIX)
+    ]
+
+
+@router.delete("/{budget_id}/tags/notices/{key}", status_code=status.HTTP_204_NO_CONTENT)
+async def dismiss_tag_notice(
+    budget_id: BudgetAccess,
+    key: str,
+    current_user: CurrentUser,
+    tag_repo: Annotated[TagRepository, Depends(get_tag_repo)],
+) -> None:
+    from igab.guide.repo import GuideRepository
+
+    await GuideRepository(tag_repo.session).delete_state(budget_id, NOTICE_PREFIX + key)

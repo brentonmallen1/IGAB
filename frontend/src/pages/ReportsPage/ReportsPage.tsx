@@ -34,6 +34,10 @@ import { SavingsRateReport } from '../../components/reports/charts/SavingsRateCh
 import { AnomaliesReport } from '../../components/reports/charts/AnomaliesReport'
 import { PlanVsRealityReport } from '../../components/reports/charts/PlanVsRealityReport'
 import { CashProjectionReport } from '../../components/reports/charts/CashProjectionReport'
+import { SpendingTrendsReport } from '../../components/reports/charts/SpendingTrendsReport'
+import { SpendingBreakdownReport } from '../../components/reports/charts/SpendingBreakdownReport'
+import { CategoryHistoryReport } from '../../components/reports/charts/CategoryHistoryReport'
+import { IncomeSourcesReport } from '../../components/reports/charts/IncomeSourcesReport'
 import { ChevronDown } from 'lucide-react'
 import { useEffect, useState, useRef } from 'react'
 import './ReportsPage.css'
@@ -154,6 +158,14 @@ export function ReportsPage() {
         return <DayPatternsReport budgetId={budgetId!} />
       case 'timeline':
         return <TimelineReport budgetId={budgetId!} />
+      case 'spending-trends':
+        return <SpendingTrendsReport budgetId={budgetId!} />
+      case 'spending-breakdown':
+        return <SpendingBreakdownReport budgetId={budgetId!} />
+      case 'category-history':
+        return <CategoryHistoryReport budgetId={budgetId!} />
+      case 'income-sources':
+        return <IncomeSourcesReport budgetId={budgetId!} />
     }
   }
 

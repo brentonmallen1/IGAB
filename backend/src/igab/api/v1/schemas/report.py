@@ -366,6 +366,13 @@ class EssentialsReportResponse(ApiModel):
     reserve: list[ReserveTarget]
     #: The roadmap's full-emergency-fund range, in months.
     roadmap_range: tuple[int, int]
+    #: What the Guide reads as the emergency fund today — the bound
+    #: category or account, else its own detection — and how many lean months
+    #: that covers (`emergency_fund_balance / essentials_90d`). None when
+    #: nothing looks like a fund, or nothing is tagged Essential yet.
+    emergency_fund_balance: Decimal | None = None
+    emergency_fund_source: str | None = None
+    runway_months: Decimal | None = None
 
 
 # ─── Payee Analysis ───────────────────────────────────────────────────────────
@@ -479,7 +486,8 @@ class LiabilitiesReportResponse(ApiModel):
 
 
 class SubscriptionPayee(ApiModel):
-    payee_id: uuid.UUID
+    #: None for charges filed to a subscription category with no payee.
+    payee_id: uuid.UUID | None
     payee_name: str
     monthly_amounts: list[Decimal]  # amounts per month in the period
     total: Decimal
@@ -492,7 +500,7 @@ class SubscriptionPayee(ApiModel):
 class SubscriptionsSummary(ApiModel):
     total_monthly: Decimal  # average monthly total across all subscriptions
     total_annual: Decimal  # projected annual cost
-    active_count: int  # number of subscription payees
+    active_count: int  # number of payees charging within subscription categories
 
 
 class SubscriptionsReportResponse(ApiModel):
@@ -645,3 +653,74 @@ class ReportRangeResponse(ApiModel):
     #: Calendar months from that month to this one, inclusive. 0 means no
     #: history, which is not the same as 1.
     months_available: int
+
+
+# ─── Spending Trends ─────────────────────────────────────────────────────────
+
+
+class SpendingTrendSeries(ApiModel):
+    """One category's spending per month over the window."""
+
+    id: uuid.UUID
+    name: str
+    group_id: uuid.UUID | None
+    group_name: str | None
+    monthly: list[Decimal]
+    total: Decimal
+
+
+class SpendingTrendsResponse(ApiModel):
+    """Spending over time for a chosen set of categories — the basic report
+    that was missing. Same predicate set as the spending rollups
+    (`ReportService._spending_query`), bucketed by month."""
+
+    months: list[date]
+    series: list[SpendingTrendSeries]
+    #: Sum over every series per month, so a total line needs no client math.
+    monthly_totals: list[Decimal]
+    total: Decimal
+    #: Present only when the user scoped the report (categories, a filter, a
+    #: tag): activity in that scope a spending report will not count.
+    class_excluded: list[SpendingClassExcluded] = []
+    #: The saved filter no longer exists; the report fell back to unscoped.
+    filter_unavailable: bool = False
+
+
+# ─── Income by Source ────────────────────────────────────────────────────────
+
+
+class IncomeSource(ApiModel):
+    payee_id: uuid.UUID | None
+    payee_name: str
+    monthly: list[Decimal]
+    total: Decimal
+    count: int
+
+
+class IncomeBySourceResponse(ApiModel):
+    """Income per payee per month: on-budget inflows the activity classifier
+    reads as income (transfers, refunds and investment returns are not)."""
+
+    months: list[date]
+    sources: list[IncomeSource]
+    monthly_totals: list[Decimal]
+    total: Decimal
+
+
+# ─── Category History ────────────────────────────────────────────────────────
+
+
+class CategoryHistoryMonth(ApiModel):
+    month: date
+    assigned: Decimal
+    activity: Decimal
+    available: Decimal
+
+
+class CategoryHistoryReportResponse(ApiModel):
+    """One category month by month — assigned, activity, available — the
+    figures the budget page shows, read from the same BudgetService."""
+
+    category_id: uuid.UUID
+    category_name: str
+    months: list[CategoryHistoryMonth]

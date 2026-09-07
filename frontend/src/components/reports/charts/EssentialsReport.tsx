@@ -134,6 +134,20 @@ export function EssentialsReport({ budgetId }: Props) {
                   />
                 )
               })}
+              <MetricCard
+                label="Saved so far"
+                value={
+                  data.emergency_fund_balance === null
+                    ? '—'
+                    : formatMoney(data.emergency_fund_balance)
+                }
+                sub={
+                  data.runway_months === null
+                    ? 'No emergency fund found yet'
+                    : `${data.runway_months} month${data.runway_months === 1 ? '' : 's'} of essentials`
+                }
+                accent={data.runway_months !== null && data.runway_months >= rangeLow}
+              />
               {worst && (
                 <MetricCard
                   label="Worst month"
@@ -145,8 +159,11 @@ export function EssentialsReport({ budgetId }: Props) {
               )}
             </MetricRow>
             <p className="essentials-report__note">
-              Save targets, not balances — what you have set aside lives on the{' '}
-              <Link to="/guide">roadmap</Link>.
+              {data.emergency_fund_source
+                ? `“Saved so far” reads the Guide’s emergency fund — ${data.emergency_fund_source}. `
+                : 'Point the Guide at your emergency fund and “Saved so far” will read it. '}
+              The rest are targets, not balances; the <Link to="/guide">roadmap</Link> tracks
+              progress against them.
             </p>
 
             {/* Two windows on one screen, deliberately (see

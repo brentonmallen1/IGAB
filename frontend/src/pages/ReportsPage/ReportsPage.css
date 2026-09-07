@@ -753,3 +753,18 @@
     -webkit-overflow-scrolling: touch;
   }
 }
+
+/* A one-line caveat under a report header: what was left out, and why. */
+.report-note {
+  margin: 0 0 var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.report-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}

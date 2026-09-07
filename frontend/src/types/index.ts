@@ -937,6 +937,89 @@ export interface EssentialsReport {
   monthly_series: { month: string; total: number }[]
   reserve: { months: number; amount: number }[]
   roadmap_range: [number, number]
+  /** What the Guide reads as the emergency fund today, and how many lean
+   *  months it covers. Null when nothing looks like a fund. */
+  emergency_fund_balance: number | null
+  emergency_fund_source: string | null
+  runway_months: number | null
+}
+
+export interface SpendingTrendSeries {
+  id: string
+  name: string
+  group_id: string | null
+  group_name: string | null
+  monthly: number[]
+  total: number
+}
+
+export interface SpendingTrendsReport {
+  months: string[]
+  series: SpendingTrendSeries[]
+  monthly_totals: number[]
+  total: number
+  class_excluded: { activity_class: string; label: string; categories: number; total: number }[]
+  filter_unavailable: boolean
+}
+
+export interface IncomeSource {
+  payee_id: string | null
+  payee_name: string
+  monthly: number[]
+  total: number
+  count: number
+}
+
+export interface IncomeBySourceReport {
+  months: string[]
+  sources: IncomeSource[]
+  monthly_totals: number[]
+  total: number
+}
+
+export interface CategoryHistoryReport {
+  category_id: string
+  category_name: string
+  months: { month: string; assigned: number; activity: number; available: number }[]
+}
+
+export interface SpendingTrendSeries {
+  id: string
+  name: string
+  group_id: string | null
+  group_name: string | null
+  monthly: number[]
+  total: number
+}
+
+export interface SpendingTrendsReport {
+  months: string[]
+  series: SpendingTrendSeries[]
+  monthly_totals: number[]
+  total: number
+  class_excluded: { activity_class: string; label: string; categories: number; total: number }[]
+  filter_unavailable: boolean
+}
+
+export interface IncomeSource {
+  payee_id: string | null
+  payee_name: string
+  monthly: number[]
+  total: number
+  count: number
+}
+
+export interface IncomeBySourceReport {
+  months: string[]
+  sources: IncomeSource[]
+  monthly_totals: number[]
+  total: number
+}
+
+export interface CategoryHistoryReport {
+  category_id: string
+  category_name: string
+  months: { month: string; assigned: number; activity: number; available: number }[]
 }
 
 export interface PayeeSpending {
@@ -992,7 +1075,7 @@ export interface TimelineReport {
 }
 
 export interface SubscriptionPayee {
-  payee_id: string
+  payee_id: string | null
   payee_name: string
   monthly_amounts: number[]
   total: number
