@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from igab.api.route import CommitRoute
 from igab.api.v1.schemas.scheduled_transaction import (
@@ -14,6 +14,7 @@ from igab.dependencies import (
     ScheduledAccess,
     get_scheduled_transaction_service,
 )
+from igab.domain.exceptions import InvariantViolation, NotFoundError
 from igab.services.scheduled_transaction_service import (
     ScheduledTransactionCreate as ServiceCreate,
 )
@@ -59,9 +60,21 @@ async def create_scheduled_transaction(
         end_date=body.end_date,
         auto_create=body.auto_create,
         days_before_reminder=body.days_before_reminder,
+        second_day_of_month=body.second_day_of_month,
+        transfer_account_id=body.transfer_account_id,
     )
-    item = await svc.create(budget_id, data)
+    try:
+        item = await svc.create(budget_id, data)
+    except InvariantViolation as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     return ScheduledTransactionResponse.model_validate(item)
+
+
+#: Columns an explicit null may clear. Null on anything else is dropped,
+#: not written — the same rule accounts.py applies to its PATCH.
+_NULLABLE = frozenset(
+    {"payee_id", "category_id", "memo", "end_date", "second_day_of_month", "transfer_account_id"}
+)
 
 
 @router.patch(
@@ -74,8 +87,19 @@ async def update_scheduled_transaction(
     current_user: CurrentUser,
     svc: Annotated[ScheduledTransactionService, Depends(get_scheduled_transaction_service)],
 ) -> ScheduledTransactionResponse:
-    changes = body.model_dump(exclude_none=True)
-    item = await svc.update(id, **changes)
+    # exclude_unset (not exclude_none): fields the client omitted stay
+    # untouched, while an explicit null still clears the nullable ones.
+    changes = {
+        k: v
+        for k, v in body.model_dump(exclude_unset=True).items()
+        if v is not None or k in _NULLABLE
+    }
+    try:
+        item = await svc.update(id, **changes)
+    except InvariantViolation as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+    except NotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
     return ScheduledTransactionResponse.model_validate(item)
 
 
@@ -90,16 +114,21 @@ async def delete_scheduled_transaction(
 
 @router.post(
     "/scheduled-transactions/{id}/skip",
-    response_model=ScheduledTransactionResponse,
+    response_model=ScheduledTransactionResponse | None,
 )
 async def skip_scheduled_transaction(
     id: ScheduledAccess,
     current_user: CurrentUser,
     svc: Annotated[ScheduledTransactionService, Depends(get_scheduled_transaction_service)],
-) -> ScheduledTransactionResponse:
-    item = await svc.skip(id)
+) -> ScheduledTransactionResponse | Response:
+    """Advance past the next occurrence. 204 when skipping the last one
+    completed the schedule — there is no row left to return."""
+    try:
+        item = await svc.skip(id)
+    except NotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
     if item is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
     return ScheduledTransactionResponse.model_validate(item)
 
 

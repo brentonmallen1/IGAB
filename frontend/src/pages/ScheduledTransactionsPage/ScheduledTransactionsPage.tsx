@@ -10,15 +10,9 @@ import { usePayees } from '../../api/transactions'
 import { ScheduledTransactionEditor } from '../../components/scheduled/ScheduledTransactionEditor'
 import { useFormatters } from '../../hooks/useFormatters'
 import type { ScheduledTransaction } from '../../types'
+import { daysUntil, dueLabel, dueState, frequencyLabel } from '../../utils/schedule'
+import { today } from '../../utils/dates'
 import './ScheduledTransactionsPage.css'
-
-const FREQ_LABELS: Record<string, string> = {
-  daily: 'Daily',
-  weekly: 'Weekly',
-  biweekly: 'Every 2 weeks',
-  monthly: 'Monthly',
-  yearly: 'Yearly',
-}
 
 export function ScheduledTransactionsPage() {
   const { formatMoney } = useFormatters()
@@ -29,6 +23,7 @@ export function ScheduledTransactionsPage() {
   const skip = useSkipScheduledTransaction(budgetId ?? '')
   const enter = useEnterScheduledTransaction(budgetId ?? '')
   const [editing, setEditing] = useState<ScheduledTransaction | null | 'new'>(null)
+  const todayISO = today()
 
   if (!budgetId) {
     return (
@@ -100,8 +95,15 @@ export function ScheduledTransactionsPage() {
                 {formatMoney(Math.abs(s.amount))}
                 {s.amount < 0 ? ' out' : ' in'}
               </span>
-              <span className="sched-cell--freq">{FREQ_LABELS[s.frequency] ?? s.frequency}</span>
-              <span className="sched-cell--date">{s.next_occurrence_date}</span>
+              <span className="sched-cell--freq">{frequencyLabel(s.frequency)}</span>
+              <span className="sched-cell--date">
+                {s.next_occurrence_date}
+                {dueState(s, todayISO) && (
+                  <span className={`sched-due sched-due--${dueState(s, todayISO)}`}>
+                    {dueLabel(daysUntil(s.next_occurrence_date, todayISO))}
+                  </span>
+                )}
+              </span>
               <span className="sched-cell--auto">{s.auto_create ? 'Yes' : '—'}</span>
               <span className="sched-table__actions" onClick={(e) => e.stopPropagation()}>
                 <button

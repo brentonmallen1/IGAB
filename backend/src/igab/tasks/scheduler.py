@@ -16,6 +16,7 @@ async def process_due_scheduled_transactions() -> None:
     from igab.repositories.scheduled_transaction_repo import ScheduledTransactionRepository
     from igab.services.scheduled_transaction_service import ScheduledTransactionService
     from igab.services.transaction_service import build_transaction_service
+    from igab.utils.clock import today_utc
 
     async with AsyncSessionLocal() as session:
         try:
@@ -34,7 +35,7 @@ async def process_due_scheduled_transactions() -> None:
             # the work already done for every budget processed before it.
             for budget in budgets:
                 try:
-                    await sched_svc.process_due(budget.id)
+                    await sched_svc.process_due(budget.id, today_utc())
                     await session.commit()
                 except Exception:
                     await session.rollback()

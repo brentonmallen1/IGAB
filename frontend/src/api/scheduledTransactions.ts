@@ -14,7 +14,15 @@ export interface ScheduledTransactionCreate {
   end_date?: string
   auto_create?: boolean
   days_before_reminder?: number
+  second_day_of_month?: number
+  transfer_account_id?: string
 }
+
+/** PATCH body: omitted fields stay untouched, an explicit null clears one of
+ *  the nullable fields. The editor sends null, never undefined, to clear. */
+export type ScheduledTransactionUpdate = {
+  [K in keyof ScheduledTransactionCreate]?: ScheduledTransactionCreate[K] | null
+} & { next_occurrence_date?: string }
 
 export function useScheduledTransactions(budgetId: string | null) {
   return useQuery({
@@ -55,7 +63,7 @@ export function useCreateScheduledTransaction(budgetId: string) {
 export function useUpdateScheduledTransaction(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, ...data }: Partial<ScheduledTransactionCreate> & { id: string }) =>
+    mutationFn: ({ id, ...data }: ScheduledTransactionUpdate & { id: string }) =>
       apiClient
         .patch<ScheduledTransaction>(`/scheduled-transactions/${id}`, data)
         .then((r) => r.data),
@@ -76,8 +84,9 @@ export function useSkipScheduledTransaction(budgetId: string) {
   return useMutation({
     mutationFn: (id: string) =>
       apiClient
-        .post<ScheduledTransaction>(`/scheduled-transactions/${id}/skip`, {})
-        .then((r) => r.data),
+        // 204 (no body) when skipping the last occurrence completed the schedule.
+        .post<ScheduledTransaction | ''>(`/scheduled-transactions/${id}/skip`, {})
+        .then((r) => r.data || null),
     onSuccess: () => qc.invalidateQueries({ queryKey: [ROOT.scheduledTransactions, budgetId] }),
   })
 }

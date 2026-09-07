@@ -7,21 +7,17 @@ import {
   useCreateScheduledTransaction,
   useUpdateScheduledTransaction,
   useDeleteScheduledTransaction,
+  type ScheduledTransactionCreate,
+  type ScheduledTransactionUpdate,
 } from '../../api/scheduledTransactions'
 import { today } from '../../utils/dates'
+import { FREQUENCIES } from '../../utils/schedule'
 import type { ScheduledTransaction } from '../../types'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
 import { GroupedCategoryOptions } from '../common/GroupedCategoryOptions/GroupedCategoryOptions'
 import './ScheduledTransactionEditor.css'
 import { confirmAsync } from '../../stores/confirmStore'
-
-const FREQUENCIES = [
-  { value: 'daily', label: 'Daily' },
-  { value: 'weekly', label: 'Weekly' },
-  { value: 'biweekly', label: 'Every 2 weeks' },
-  { value: 'monthly', label: 'Monthly' },
-  { value: 'yearly', label: 'Yearly' },
-]
+import { apiErrorMessage } from '../../api/client'
 
 interface InitialValues {
   account_id?: string
@@ -59,9 +55,19 @@ export function ScheduledTransactionEditor({ budgetId, existing, initial, onClos
   )
   const [frequency, setFrequency] = useState(existing?.frequency ?? 'monthly')
   const [startDate, setStartDate] = useState(existing?.start_date ?? today())
+  const [endDate, setEndDate] = useState(existing?.end_date ?? '')
+  const [secondDay, setSecondDay] = useState(
+    existing?.second_day_of_month != null ? String(existing.second_day_of_month) : ''
+  )
+  // A schedule is a transfer or it files into a category; both is what the
+  // register allows for a transfer to a tracking account, so the picker
+  // clears the category when a transfer target is chosen but does not
+  // forbid re-adding one.
+  const [transferTo, setTransferTo] = useState(existing?.transfer_account_id ?? '')
   const [categoryId, setCategoryId] = useState(existing?.category_id ?? initial?.category_id ?? '')
   const [memo, setMemo] = useState(existing?.memo ?? initial?.memo ?? '')
   const [autoCreate, setAutoCreate] = useState(existing?.auto_create ?? false)
+  const [reminderDays, setReminderDays] = useState(String(existing?.days_before_reminder ?? 3))
   const [error, setError] = useState<string | null>(null)
   const trapRef = useFocusTrap<HTMLFormElement>(onClose)
 
@@ -71,6 +77,9 @@ export function ScheduledTransactionEditor({ budgetId, existing, initial, onClos
     categories.filter((c) => c.is_categorizable),
     categoryGroups
   )
+  const transferTargets = accounts.filter((a) => a.id !== accountId)
+  const isTwiceMonthly = frequency === 'twice_monthly'
+  const isOnce = frequency === 'once'
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -82,23 +91,57 @@ export function ScheduledTransactionEditor({ budgetId, existing, initial, onClos
       setError('Enter an amount.')
       return
     }
+    const secondDayNum = isTwiceMonthly ? Number(secondDay) : null
+    if (isTwiceMonthly && (!secondDay || !Number.isInteger(secondDayNum) || secondDayNum! < 1)) {
+      setError('Enter the second day of the month (1–31).')
+      return
+    }
+    const reminder = Number(reminderDays)
+    if (!Number.isInteger(reminder) || reminder < 0) {
+      setError('Reminder days must be a whole number.')
+      return
+    }
     setError(null)
     const finalAmount = isOutflow ? -numAmount : numAmount
-    const payload = {
-      account_id: accountId,
-      amount: finalAmount,
-      frequency,
-      start_date: startDate,
-      category_id: categoryId || undefined,
-      memo: memo || undefined,
-      auto_create: autoCreate,
+    try {
+      if (existing) {
+        // null, not undefined: the PATCH treats an omitted field as untouched
+        // and an explicit null as "clear it".
+        const payload: ScheduledTransactionUpdate & { id: string } = {
+          id: existing.id,
+          account_id: accountId,
+          amount: finalAmount,
+          frequency,
+          start_date: startDate,
+          end_date: isOnce ? null : endDate || null,
+          second_day_of_month: isTwiceMonthly ? secondDayNum : null,
+          transfer_account_id: transferTo || null,
+          category_id: categoryId || null,
+          memo: memo || null,
+          auto_create: autoCreate,
+          days_before_reminder: reminder,
+        }
+        await update.mutateAsync(payload)
+      } else {
+        const payload: ScheduledTransactionCreate = {
+          account_id: accountId,
+          amount: finalAmount,
+          frequency,
+          start_date: startDate,
+          end_date: !isOnce && endDate ? endDate : undefined,
+          second_day_of_month: isTwiceMonthly ? (secondDayNum ?? undefined) : undefined,
+          transfer_account_id: transferTo || undefined,
+          category_id: categoryId || undefined,
+          memo: memo || undefined,
+          auto_create: autoCreate,
+          days_before_reminder: reminder,
+        }
+        await create.mutateAsync(payload)
+      }
+      onClose()
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Could not save the schedule'))
     }
-    if (existing) {
-      await update.mutateAsync({ id: existing.id, ...payload })
-    } else {
-      await create.mutateAsync(payload)
-    }
-    onClose()
   }
 
   async function handleDelete() {
@@ -202,7 +245,7 @@ export function ScheduledTransactionEditor({ budgetId, existing, initial, onClos
               </select>
             </label>
             <label className="sched-editor__label">
-              Start Date
+              {isOnce ? 'Date' : 'Start Date'}
               <input
                 type="date"
                 className="sched-editor__input"
@@ -212,6 +255,56 @@ export function ScheduledTransactionEditor({ budgetId, existing, initial, onClos
               />
             </label>
           </div>
+
+          {isTwiceMonthly && (
+            <label className="sched-editor__label">
+              Second day of the month
+              <input
+                type="number"
+                inputMode="numeric"
+                min="1"
+                max="31"
+                step="1"
+                className="sched-editor__input"
+                value={secondDay}
+                onChange={(e) => setSecondDay(e.target.value)}
+                placeholder="e.g. 15 — the first is the start date's day"
+                required
+              />
+            </label>
+          )}
+
+          {!isOnce && (
+            <label className="sched-editor__label">
+              End Date
+              <input
+                type="date"
+                className="sched-editor__input"
+                value={endDate}
+                min={startDate}
+                onChange={(e) => setEndDate(e.target.value)}
+              />
+            </label>
+          )}
+
+          <label className="sched-editor__label">
+            Transfer to
+            <select
+              className="sched-editor__input"
+              value={transferTo}
+              onChange={(e) => {
+                setTransferTo(e.target.value)
+                if (e.target.value) setCategoryId('')
+              }}
+            >
+              <option value="">Not a transfer</option>
+              {transferTargets.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
+          </label>
 
           <label className="sched-editor__label">
             Category
@@ -236,14 +329,28 @@ export function ScheduledTransactionEditor({ budgetId, existing, initial, onClos
             />
           </label>
 
-          <label className="sched-editor__label sched-editor__label--inline">
-            <input
-              type="checkbox"
-              checked={autoCreate}
-              onChange={(e) => setAutoCreate(e.target.checked)}
-            />
-            Auto-create transaction when due
-          </label>
+          <div className="sched-editor__row">
+            <label className="sched-editor__label">
+              Remind days before
+              <input
+                type="number"
+                inputMode="numeric"
+                min="0"
+                step="1"
+                className="sched-editor__input"
+                value={reminderDays}
+                onChange={(e) => setReminderDays(e.target.value)}
+              />
+            </label>
+            <label className="sched-editor__label sched-editor__label--inline">
+              <input
+                type="checkbox"
+                checked={autoCreate}
+                onChange={(e) => setAutoCreate(e.target.checked)}
+              />
+              Auto-create transaction when due
+            </label>
+          </div>
         </div>
 
         <div className="sched-editor__footer">

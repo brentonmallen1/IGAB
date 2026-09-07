@@ -6,13 +6,14 @@ from decimal import Decimal
 
 from sqlalchemy import func, select
 
-from igab.db.models import Account, Transaction
+from igab.db.models import Account, ChangeLog, ScheduledTransaction, Transaction
 from igab.integrations.ynab.importer import YNABImporter
 from igab.integrations.ynab.models import (
     YNABBudget,
     YNABPlanRow,
     YNABSplitLeg,
     YNABTransaction,
+    hold_out_future,
 )
 from igab.repositories.category_repo import CategoryGroupRepository
 from igab.repositories.txn_filters import UNPAIRED_TRANSFER_LEG
@@ -1179,3 +1180,218 @@ async def test_a_register_row_filed_to_a_ccp_category_is_stripped_and_counted(db
     categorized = [r for r in rows if r.category_id is not None]
     # Only the inflow and the split's Groceries leg kept a category.
     assert len(categorized) == 2
+
+
+# ─── Future-dated rows become upcoming transactions ──────────────────────────
+#
+# YNAB exports a scheduled transaction as its next dated instance, with no
+# cadence. Imported as a posted row it moved Ready to Assign for money that
+# had not left. Held out, it becomes a one-off schedule the review can give
+# its real cadence to.
+
+TODAY = date(2026, 1, 10)
+FEB1 = date(2026, 2, 1)
+
+
+def _future(account, payee, amount, *, category=None, group=None, memo=None, splits=None):
+    row = _txn(account, payee, amount, category=category, group=group, memo=memo)
+    row.date = FEB1
+    if splits:
+        row.splits = splits
+        row.category_group = row.category = None
+    return row
+
+
+def _held(*rows) -> YNABBudget:
+    return hold_out_future(YNABBudget(transactions=list(rows)), TODAY)
+
+
+async def _schedules(db_session, budget_id) -> list[ScheduledTransaction]:
+    rows = await db_session.execute(
+        select(ScheduledTransaction).where(
+            ScheduledTransaction.budget_id == budget_id,
+            ScheduledTransaction.is_deleted == False,  # noqa: E712
+        )
+    )
+    return list(rows.scalars().all())
+
+
+async def test_a_future_row_becomes_a_once_schedule_not_a_register_row(db_session):
+    services = make_services(db_session)
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+    data = _held(
+        _txn("Checking", "Employer", "2000.00", group="Inflow", category="Ready to Assign"),
+        _future("Checking", "Oakwood Property Mgmt", "-1400.00", group="Bills", category="Rent"),
+    )
+
+    result = await _importer(services, db_session, budget).import_budget(data)
+
+    assert result.transactions_imported == 1
+    accounts = {a.name: a for a in await services.account_repo.get_all(budget.id)}
+    assert len(await _all_rows(db_session, accounts["Checking"].id)) == 1
+    [sched] = await _schedules(db_session, budget.id)
+    assert sched.frequency == "once"
+    assert sched.auto_create is False
+    assert sched.start_date == sched.next_occurrence_date == FEB1
+    assert sched.amount == Decimal("-1400.00")
+    assert sched.category_id is not None
+    assert sched.import_id is not None
+    [held] = result.held_out_future
+    assert held.scheduled_transaction_id == sched.id
+    assert (held.payee, held.category_name, held.is_transfer) == (
+        "Oakwood Property Mgmt",
+        "Rent",
+        False,
+    )
+    await assert_financial_invariants(db_session, budget.id)
+
+
+async def test_a_future_transfer_pair_becomes_one_scheduled_transfer_on_the_outflow_account(
+    db_session,
+):
+    services = make_services(db_session)
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+    data = _held(
+        _txn("Checking", "Employer", "2000.00", group="Inflow", category="Ready to Assign"),
+        _future("Savings", "Transfer : Checking", "500.00"),
+        _future("Checking", "Transfer : Savings", "-500.00"),
+    )
+
+    result = await _importer(services, db_session, budget).import_budget(data)
+
+    accounts = {a.name: a for a in await services.account_repo.get_all(budget.id)}
+    [sched] = await _schedules(db_session, budget.id)
+    assert sched.account_id == accounts["Checking"].id
+    assert sched.transfer_account_id == accounts["Savings"].id
+    assert sched.amount == Decimal("-500.00")
+    assert result.held_out_transfer_legs_unpaired == 0
+    [held] = result.held_out_future
+    assert held.is_transfer and held.account_name == "Checking"
+
+
+async def test_an_unpaired_future_transfer_leg_is_scheduled_and_counted(db_session):
+    services = make_services(db_session)
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+    data = _held(_future("Checking", "Transfer : Old Closed Account", "-75.00"))
+
+    result = await _importer(services, db_session, budget).import_budget(data)
+
+    [sched] = await _schedules(db_session, budget.id)
+    assert sched.transfer_account_id is None
+    assert result.held_out_transfer_legs_unpaired == 1
+
+
+async def test_a_future_split_is_scheduled_uncategorised_with_legs_in_the_memo_and_counted(
+    db_session,
+):
+    services = make_services(db_session)
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+    legs = [
+        YNABSplitLeg("Everyday", "Groceries", None, Decimal("-40.00")),
+        YNABSplitLeg("Everyday", "Household", None, Decimal("-20.00")),
+    ]
+    data = _held(_future("Checking", "Corner Market", "-60.00", memo="weekly run", splits=legs))
+
+    result = await _importer(services, db_session, budget).import_budget(data)
+
+    [sched] = await _schedules(db_session, budget.id)
+    assert sched.category_id is None
+    assert sched.amount == Decimal("-60.00")
+    assert sched.memo == "weekly run — Split: Groceries -40.00; Household -20.00"
+    assert result.held_out_splits_uncategorized == 1
+    [held] = result.held_out_future
+    assert held.split_legs == ["Groceries -40.00", "Household -20.00"]
+    # The legs' categories exist for filing by hand.
+    names = {c.name for c in await services.category_repo.get_all(budget.id)}
+    assert {"Groceries", "Household"} <= names
+
+
+async def test_a_future_row_on_a_skipped_account_is_excluded(db_session):
+    services = make_services(db_session)
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+    data = _held(
+        _txn("Checking", "Employer", "2000.00", group="Inflow", category="Ready to Assign"),
+        _future("Old Card", "Streaming Co", "-15.00", group="Everyday", category="Streaming"),
+    )
+
+    result = await _importer(
+        services, db_session, budget, skip_accounts={"Old Card"}
+    ).import_budget(data)
+
+    assert await _schedules(db_session, budget.id) == []
+    assert result.held_out_future == []
+    assert result.transactions_excluded == 1
+    assert {a.name for a in await services.account_repo.get_all(budget.id)} == {"Checking"}
+
+
+async def test_a_future_row_on_a_tracking_account_loses_its_category_and_is_counted(db_session):
+    services = make_services(db_session)
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+    data = _held(_future("Brokerage", "Vanguard", "-500.00", group="Savings", category="Investing"))
+
+    result = await _importer(
+        services, db_session, budget, account_types={"Brokerage": ("investment", False)}
+    ).import_budget(data)
+
+    [sched] = await _schedules(db_session, budget.id)
+    assert sched.category_id is None
+    assert result.tracking_account_categories_stripped == 1
+    [held] = result.held_out_future
+    assert held.category_name is None
+
+
+async def test_reimport_creates_no_duplicate_schedules(db_session):
+    """The Phase 4 idempotency spec, extended to the second table the
+    importer now writes."""
+    services = make_services(db_session)
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+
+    def data():
+        return _held(
+            _future(
+                "Checking", "Oakwood Property Mgmt", "-1400.00", group="Bills", category="Rent"
+            ),
+            _future("Savings", "Transfer : Checking", "500.00"),
+            _future("Checking", "Transfer : Savings", "-500.00"),
+        )
+
+    first = await _importer(services, db_session, budget).import_budget(data())
+    assert len(first.held_out_future) == 2
+    second = await _importer(services, db_session, budget).import_budget(data())
+
+    assert len(await _schedules(db_session, budget.id)) == 2
+    assert second.held_out_future == []
+    assert second.transactions_skipped == 2
+
+
+async def test_held_out_schedules_record_with_source_system(db_session):
+    services = make_services(db_session)
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+    data = _held(
+        _future("Checking", "Oakwood Property Mgmt", "-1400.00", group="Bills", category="Rent")
+    )
+
+    await _importer(services, db_session, budget).import_budget(data)
+
+    [sched] = await _schedules(db_session, budget.id)
+    await db_session.flush()
+    change = (
+        (
+            await db_session.execute(
+                select(ChangeLog).where(
+                    ChangeLog.entity_id == sched.id, ChangeLog.action == "create"
+                )
+            )
+        )
+        .scalars()
+        .one()
+    )
+    assert change.source == "system"

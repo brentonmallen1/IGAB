@@ -46,6 +46,17 @@ it or import-and-close it. Those rows are marked **Remembered**.
 Answers are matched on the account's name, ignoring case. Rename an account in
 YNAB and it arrives as a new one.
 
+## Future-dated rows become upcoming transactions
+
+YNAB exports a scheduled transaction as its next dated instance, with no
+cadence. A row dated after the day you import is therefore an upcoming bill,
+not history: the import holds it out of the register and creates a one-off
+scheduled transaction for it instead, so nothing moves Ready to Assign for
+money that has not left. The review's **Upcoming** step lists them and asks
+how often each repeats — set the cadence there, or leave it as a one-off. A
+future split arrives uncategorized (a schedule has one category) with its legs
+written into the memo; give it a category on the Scheduled page.
+
 ## After the import
 
 The review dialog compares the imported budget against the export's own

@@ -10,7 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # drifted the moment imports.py gained fields (imports.py has no module-level
 # api.v1 imports, so this cannot cycle).
 from igab.api.route import CommitRoute
-from igab.api.v1.imports import YNABImportResult, YNABPreviewResult, YNABTaggedCategory
+from igab.api.v1.imports import (
+    YNABHeldOutFuture,
+    YNABImportResult,
+    YNABPreviewResult,
+    YNABTaggedCategory,
+)
 from igab.api.v1.schemas.budget_snapshots import SnapshotInspection
 from igab.db.models import Budget, BudgetMember
 from igab.db.session import get_session
@@ -55,6 +60,7 @@ from igab.services.budget_provisioning import grant_owner, unique_budget_name
 from igab.services.budget_service import BudgetService
 from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match
 from igab.services.transaction_service import TransactionService
+from igab.utils.clock import today_utc
 
 router = APIRouter(route_class=CommitRoute)
 
@@ -177,7 +183,9 @@ async def preview_budget_import(
             remembered = await mapping_repo.get_for_user(current_user.id)
             return BudgetImportPreview(
                 kind="ynab",
-                ynab=build_ynab_preview(parse_ynab_zip_path(tmp_path), remembered=remembered),
+                ynab=build_ynab_preview(
+                    parse_ynab_zip_path(tmp_path, today_utc()), remembered=remembered
+                ),
             )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -222,7 +230,7 @@ async def import_ynab_as_budget(
     # Validate the mapping and the zip BEFORE creating the budget so a bad
     # request doesn't leave an empty budget behind.
     form = parse_account_types_form(account_types)
-    ynab_budget = await parse_uploaded_ynab_zip(file)
+    ynab_budget = await parse_uploaded_ynab_zip(file, today_utc())
 
     budget_name = name.strip()
     existing = await session.execute(
@@ -315,6 +323,21 @@ async def import_ynab_as_budget(
         parity=parity,
         anchored_at=result.anchored_at,
         anchor_skipped_reason=result.anchor_skipped_reason,
+        held_out_future=[
+            YNABHeldOutFuture(
+                scheduled_transaction_id=row.scheduled_transaction_id,
+                account_name=row.account_name,
+                date=row.date,
+                payee=row.payee,
+                amount=row.amount,
+                category_name=row.category_name,
+                is_transfer=row.is_transfer,
+                split_legs=row.split_legs,
+            )
+            for row in result.held_out_future
+        ],
+        held_out_splits_uncategorized=result.held_out_splits_uncategorized,
+        held_out_transfer_legs_unpaired=result.held_out_transfer_legs_unpaired,
         errors=result.errors,
     )
     # Kept, not just returned. This records an event -- counts, the parity

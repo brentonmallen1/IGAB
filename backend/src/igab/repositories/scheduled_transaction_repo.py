@@ -32,14 +32,32 @@ class ScheduledTransactionRepository:
         )
         return list(result.scalars().all())
 
-    async def get_due(self, as_of: date) -> list[ScheduledTransaction]:
+    async def get_due(
+        self, as_of: date, *, budget_id: uuid.UUID | None = None
+    ) -> list[ScheduledTransaction]:
+        stmt = select(ScheduledTransaction).where(
+            ScheduledTransaction.next_occurrence_date <= as_of,
+            ScheduledTransaction.is_deleted == False,  # noqa: E712
+        )
+        if budget_id is not None:
+            stmt = stmt.where(ScheduledTransaction.budget_id == budget_id)
         result = await self.session.execute(
-            select(ScheduledTransaction).where(
-                ScheduledTransaction.next_occurrence_date <= as_of,
+            stmt.order_by(ScheduledTransaction.next_occurrence_date)
+        )
+        return list(result.scalars().all())
+
+    async def get_existing_import_ids(self, budget_id: uuid.UUID, import_ids: set[str]) -> set[str]:
+        """Which of these import ids already name a live schedule in the budget."""
+        if not import_ids:
+            return set()
+        result = await self.session.execute(
+            select(ScheduledTransaction.import_id).where(
+                ScheduledTransaction.budget_id == budget_id,
+                ScheduledTransaction.import_id.in_(import_ids),
                 ScheduledTransaction.is_deleted == False,  # noqa: E712
             )
         )
-        return list(result.scalars().all())
+        return {row for row in result.scalars().all() if row is not None}
 
     async def create(self, **kwargs: Any) -> ScheduledTransaction:
         obj = ScheduledTransaction(**kwargs)

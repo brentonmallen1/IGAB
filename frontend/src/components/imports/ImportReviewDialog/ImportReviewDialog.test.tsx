@@ -82,6 +82,21 @@ vi.mock('../../../api/imports', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   useMarkImportReviewed: () => ({ mutateAsync: markReviewed, isPending: false }),
 }))
+const updateSchedule = vi.fn().mockResolvedValue(undefined)
+const schedules = [
+  {
+    id: 's-rent',
+    frequency: 'once',
+    second_day_of_month: null,
+    next_occurrence_date: '2026-10-01',
+    days_before_reminder: 3,
+    auto_create: false,
+  },
+]
+vi.mock('../../../api/scheduledTransactions', () => ({
+  useScheduledTransactions: () => ({ data: schedules }),
+  useUpdateScheduledTransaction: () => ({ mutateAsync: updateSchedule, isPending: false }),
+}))
 vi.mock('../../../hooks/useFocusTrap', () => ({ useFocusTrap: () => ({ current: null }) }))
 vi.mock('react-hot-toast', () => ({ default: { success: vi.fn(), error: vi.fn() } }))
 
@@ -354,5 +369,73 @@ describe('the anchor note', () => {
     open({ parity: parity() })
     expect(screen.queryByText(/start from YNAB's own position/)).not.toBeInTheDocument()
     expect(screen.queryByText(/could not be anchored/)).not.toBeInTheDocument()
+  })
+})
+
+describe('the upcoming step', () => {
+  const held = {
+    scheduled_transaction_id: 's-rent',
+    account_name: 'Checking',
+    date: '2026-10-01',
+    payee: 'Oakwood Property Mgmt',
+    amount: '-1400.00',
+    category_name: 'Rent',
+    is_transfer: false,
+    split_legs: [],
+  }
+
+  it('saves a cadence the moment it is chosen — an ordinary schedule edit', async () => {
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter>
+        <ImportReviewDialog
+          budgetId="b1"
+          summary={summary({ held_out_future: [held] })}
+          onClose={() => {}}
+        />
+      </MemoryRouter>
+    )
+    await user.click(screen.getByRole('button', { name: /upcoming/i }))
+    const select = screen.getByRole('combobox', {
+      name: /how often oakwood property mgmt repeats/i,
+    })
+    await user.selectOptions(select, 'monthly')
+    await waitFor(() =>
+      expect(updateSchedule).toHaveBeenCalledWith({
+        id: 's-rent',
+        frequency: 'monthly',
+        second_day_of_month: null,
+      })
+    )
+  })
+
+  it('waits for the second day before saving twice-monthly', async () => {
+    const user = userEvent.setup()
+    updateSchedule.mockClear()
+    render(
+      <MemoryRouter>
+        <ImportReviewDialog
+          budgetId="b1"
+          summary={summary({ held_out_future: [held] })}
+          onClose={() => {}}
+        />
+      </MemoryRouter>
+    )
+    await user.click(screen.getByRole('button', { name: /upcoming/i }))
+    const select = screen.getByRole('combobox', {
+      name: /how often oakwood property mgmt repeats/i,
+    })
+    await user.selectOptions(select, 'twice_monthly')
+    expect(updateSchedule).not.toHaveBeenCalled()
+    await user.type(screen.getByRole('spinbutton', { name: /second day/i }), '15')
+    expect(updateSchedule).not.toHaveBeenCalled()
+    await user.tab()
+    await waitFor(() =>
+      expect(updateSchedule).toHaveBeenCalledWith({
+        id: 's-rent',
+        frequency: 'twice_monthly',
+        second_day_of_month: 15,
+      })
+    )
   })
 })

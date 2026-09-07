@@ -245,3 +245,38 @@ async def test_card_history_names_the_first_divergent_month(db_session, tmp_path
     assert entry.ynab - entry.igab == Decimal("100.00")
     assert entry.months_compared == 3
     assert entry.months_differing == 3
+
+
+async def test_an_export_with_a_row_after_today_still_reaches_parity(db_session, tmp_path):
+    """The parity-breaking case: an upcoming paycheck YNAB exported as its
+    next dated instance. Held out, it is a schedule and not a posted row, so
+    the oracle and IGAB agree; imported as a row it used to be counted into
+    September's inflow by the oracle and into the register by IGAB alike,
+    and the review blamed the gap on whichever side read the calendar."""
+    from sqlalchemy import select
+
+    from igab.db.models import ScheduledTransaction
+
+    end_of_august = date(2026, 8, 31)
+    services, budget_id, ynab_budget = await _imported(db_session, tmp_path, today=end_of_august)
+    # Everything after August is upcoming now — the fixture's September rent.
+    assert [t.date for t in ynab_budget.held_out] == [SEP]
+    scheduled = await db_session.execute(
+        select(ScheduledTransaction).where(ScheduledTransaction.budget_id == budget_id)
+    )
+    [sched] = list(scheduled.scalars().all())
+    assert sched.frequency == "once" and sched.next_occurrence_date == SEP
+    assert sched.amount == Decimal("-1200.00")
+    report = await parity(
+        services,
+        budget_id,
+        ynab_budget,
+        AUG,
+        accounts=TYPES,
+        credit_card_accounts=CARDS,
+        tracking_accounts=TRACKING,
+    )
+    assert report.matches, report
+    # The header no longer shows September's rent leaving in August.
+    accounts = {a.name: a for a in await services.account_repo.get_all(budget_id)}
+    assert await services.account_repo.get_balance(accounts["Checking"].id) == cents("8880")

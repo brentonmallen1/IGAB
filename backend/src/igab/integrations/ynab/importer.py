@@ -13,7 +13,7 @@ from igab.domain.import_identity import disambiguate_in_batch, generate_import_i
 from igab.domain.import_mapping import account_key
 from igab.domain.tag_hints import suggest_system_tag
 from igab.domain.transfers import linking_breaks_category_rule
-from igab.integrations.ynab.models import YNABBudget, anchor_month, plan_boundary
+from igab.integrations.ynab.models import YNABBudget, YNABTransaction, anchor_month, plan_boundary
 from igab.integrations.ynab.oracle import ynab_rta
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import (
@@ -23,11 +23,16 @@ from igab.repositories.category_repo import (
 )
 from igab.repositories.import_anchor_repo import ImportAnchorRepository, anchor_rows
 from igab.repositories.payee_repo import PayeeRepository
+from igab.repositories.scheduled_transaction_repo import ScheduledTransactionRepository
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.account_type_service import apply_type, resolve_type
 from igab.services.card_payment import ensure_payment_category
 from igab.services.liability_service import ensure_for_account
+from igab.services.scheduled_transaction_service import (
+    ScheduledTransactionCreate,
+    ScheduledTransactionService,
+)
 from igab.services.transaction_service import TransactionService
 from igab.utils.clock import today_utc
 
@@ -88,6 +93,31 @@ class TaggedCategory:
     #: Shown in the review so a person can check the guess rather than take it
     #: on faith.
     matched_on: str
+
+
+@dataclass
+class HeldOutRow:
+    """A future-dated register row the import turned into a schedule."""
+
+    scheduled_transaction_id: uuid.UUID
+    account_name: str
+    date: date
+    payee: str
+    amount: Decimal
+    category_name: str | None
+    is_transfer: bool
+    split_legs: list[str] = field(default_factory=list)
+
+
+def transfer_pair_key(
+    account_name: str, target_name: str, when: date, amount: Decimal
+) -> tuple[str, str, date, Decimal]:
+    """The key two legs of one YNAB transfer share: both accounts (ordered),
+    the date, and the size of the move. One spelling for the register pairing
+    and for held-out rows, which pair the same way before becoming a
+    scheduled transfer."""
+    first, second = sorted((account_key(account_name), account_key(target_name)))
+    return (first, second, when, abs(amount))
 
 
 @dataclass
@@ -158,6 +188,20 @@ class ImportResult:
     #: fail, the anchor is not conditional on it.
     anchored_at: "date | None" = None
     anchor_skipped_reason: str | None = None
+    #: Register rows dated after the import's today. YNAB exports a
+    #: scheduled transaction as its next dated instance with no cadence, so
+    #: each becomes a one-off scheduled transaction rather than a posted row
+    #: — a posted row would move Ready to Assign for money that has not left.
+    #: Listed, not just counted: the review is where the cadence gets set.
+    held_out_future: list["HeldOutRow"] = field(default_factory=list)
+    #: A schedule has one category, so a future split is created without one
+    #: and its legs are written into the memo. Counted so the review can say
+    #: which upcoming rows still need filing.
+    held_out_splits_uncategorized: int = 0
+    #: Future transfer legs whose partner never appeared (skipped account, or
+    #: the export only carried one side); scheduled unlinked on their own
+    #: account, like an unpaired register leg.
+    held_out_transfer_legs_unpaired: int = 0
     errors: list[str] = field(default_factory=list)
 
 
@@ -188,6 +232,11 @@ class YNABImporter:
         self.assignment_repo = assignment_repo
         self.tag_repo = TagRepository(session)
         self.anchor_repo = ImportAnchorRepository(session)
+        # Held-out rows go through the service, not a bulk insert: there are
+        # few of them, and the service is what records them in the change log.
+        self.scheduled_service = ScheduledTransactionService(
+            ScheduledTransactionRepository(session), transaction_service
+        )
         # Every collection keyed by account name is keyed through
         # `account_key`, the one spelling of "the same account" this file uses
         # — the DB lookup in _get_or_create_account matches on
@@ -226,7 +275,17 @@ class YNABImporter:
         # only place a user would ever learn a row did not make it.
         result.errors.extend(budget.errors[:_MAX_ERRORS])
         await self._seed_arrangement(budget, result)
-        await self._import_transactions(budget, result)
+        # Payees only from rows that will import — otherwise every payee that
+        # appears solely in a skipped account becomes an orphan payee row.
+        # Held-out rows count: their transfer payees need the target account.
+        payee_names = {
+            txn.payee
+            for txn in [*budget.transactions, *budget.held_out]
+            if txn.payee and account_key(txn.account_name) not in self.skip_accounts
+        }
+        payee_map = await self._resolve_payees(budget, payee_names, result)
+        await self._import_transactions(budget, payee_map, result)
+        await self._import_held_out(budget, payee_map, result)
         await self._import_assignments(budget, result)
         await self._write_anchor(budget, result)
         return result
@@ -432,7 +491,7 @@ class YNABImporter:
         # Every account that will actually import, in first-seen order.
         account_names: list[str] = []
         seen: set[str] = set()
-        for txn in budget.transactions:
+        for txn in [*budget.transactions, *budget.held_out]:
             key = account_key(txn.account_name)
             if key in self.skip_accounts or key in seen:
                 continue
@@ -467,7 +526,36 @@ class YNABImporter:
         payee_map.update(await self.payee_repo.find_or_create_batch(self.budget_id, plain_names))
         return payee_map
 
-    async def _import_transactions(self, budget: YNABBudget, result: ImportResult) -> None:
+    async def _resolve_row_category(
+        self,
+        account: Account,
+        group_name: str | None,
+        category_name: str | None,
+        result: ImportResult,
+    ) -> uuid.UUID | None:
+        """The category a register line files into, or None — with the two
+        ways a named category is dropped counted, never silent.
+
+        Written twice inside `_import_transactions` (parent rows and split
+        legs) before held-out rows needed it a third time.
+        """
+        if not (group_name and category_name):
+            return None
+        if is_credit_card_payments_group(group_name):
+            # A register row cannot be filed to a card's reserve. Dropped —
+            # but counted: this was the one place the importer lost
+            # information without reporting it.
+            result.credit_card_payment_categories_stripped += 1
+            return None
+        if not account.on_budget:
+            result.tracking_account_categories_stripped += 1
+            return None
+        cat = await self._get_or_create_category(group_name, category_name, result)
+        return cat.id
+
+    async def _import_transactions(
+        self, budget: YNABBudget, payee_map: dict[str, uuid.UUID], result: ImportResult
+    ) -> None:
         """Import every register row — transfers included — as bulk rows with
         deterministic import_ids (fully idempotent re-import), then link
         transfer legs mutually via ids generated client-side.
@@ -494,15 +582,6 @@ class YNABImporter:
         # Pairing pool: (account_a, account_b, date, abs_amount) → unmatched
         # legs (either sign) awaiting their opposite-sign partner.
         unpaired_legs: dict[tuple, list[dict]] = {}
-
-        # Payees only from rows that will import — otherwise every payee that
-        # appears solely in a skipped account becomes an orphan payee row.
-        payee_names = {
-            txn.payee
-            for txn in budget.transactions
-            if txn.payee and account_key(txn.account_name) not in self.skip_accounts
-        }
-        payee_map = await self._resolve_payees(budget, payee_names, result)
 
         skipped_account_names: set[str] = set()
         for txn in budget.transactions:
@@ -541,21 +620,9 @@ class YNABImporter:
                     }
                     children: list[dict] = []
                     for leg in txn.splits:
-                        leg_category_id: uuid.UUID | None = None
-                        if leg.category_group and leg.category:
-                            if is_credit_card_payments_group(leg.category_group):
-                                # A register row cannot be filed to a card's
-                                # reserve. Dropped — but counted: this was the
-                                # one place the importer lost information
-                                # without reporting it.
-                                result.credit_card_payment_categories_stripped += 1
-                            elif account.on_budget:
-                                cat = await self._get_or_create_category(
-                                    leg.category_group, leg.category, result
-                                )
-                                leg_category_id = cat.id
-                            else:
-                                result.tracking_account_categories_stripped += 1
+                        leg_category_id = await self._resolve_row_category(
+                            account, leg.category_group, leg.category, result
+                        )
                         children.append(
                             {
                                 "id": uuid.uuid4(),
@@ -595,18 +662,9 @@ class YNABImporter:
                     split_children[parent_row["id"]] = children
                     continue
 
-                category_id: uuid.UUID | None = None
-                if txn.category_group and txn.category:
-                    if is_credit_card_payments_group(txn.category_group):
-                        # Same rule and same counter as the split leg above.
-                        result.credit_card_payment_categories_stripped += 1
-                    elif account.on_budget:
-                        cat = await self._get_or_create_category(
-                            txn.category_group, txn.category, result
-                        )
-                        category_id = cat.id
-                    else:
-                        result.tracking_account_categories_stripped += 1
+                category_id = await self._resolve_row_category(
+                    account, txn.category_group, txn.category, result
+                )
 
                 row = {
                     "id": uuid.uuid4(),
@@ -637,10 +695,8 @@ class YNABImporter:
                 # other account but never reach from this one.
                 if txn.payee.startswith(_TRANSFER_PREFIX):
                     target_name = txn.payee[len(_TRANSFER_PREFIX) :]
-                    pair_key = (
-                        *sorted((account_key(txn.account_name), account_key(target_name))),
-                        txn.date,
-                        abs(txn.amount),
+                    pair_key = transfer_pair_key(
+                        txn.account_name, target_name, txn.date, txn.amount
                     )
                     waiting = unpaired_legs.setdefault(pair_key, [])
                     partner = next(
@@ -733,6 +789,159 @@ class YNABImporter:
         await self.transaction_repo.bulk_create(new_children)
         await self.transaction_repo.bulk_link_transfers(links)
         result.transactions_imported += inserted
+
+    async def _import_held_out(
+        self, budget: YNABBudget, payee_map: dict[str, uuid.UUID], result: ImportResult
+    ) -> None:
+        """Turn every held-out (future-dated) row into a one-off schedule.
+
+        YNAB exports no cadence, only the next dated instance, so `once` is
+        the honest frequency and the review is where a person sets the real
+        one. `auto_create` stays off: an imported guess must not post rows by
+        itself. Accounts, payees and categories resolve through the same
+        functions as register rows; the category-stripping rules (card
+        reserve, tracking account) apply unchanged.
+
+        Two future legs of one transfer become one scheduled transfer on the
+        outflow leg's account — entering it later materializes both legs.
+        A split becomes one uncategorized schedule with its legs in the memo:
+        a schedule has one category, and silently filing the whole bill to
+        the first leg would be worse than saying it still needs filing.
+
+        Idempotent on `import_id`, like the register: importing the same file
+        twice must find these rather than add twins.
+        """
+        candidates: list[dict[str, Any]] = []
+        # Same pairing key as the register; an inflow leg that finds its
+        # outflow partner folds into it and is not scheduled on its own.
+        waiting: dict[tuple, list[dict[str, Any]]] = {}
+        for txn in budget.held_out:
+            try:
+                if account_key(txn.account_name) in self.skip_accounts:
+                    result.transactions_excluded += 1
+                    continue
+                account = await self._get_or_create_account(txn.account_name, result)
+                candidate = await self._held_out_candidate(account, txn, payee_map, result)
+                if txn.payee.startswith(_TRANSFER_PREFIX) and not txn.splits:
+                    target_name = txn.payee[len(_TRANSFER_PREFIX) :]
+                    key = transfer_pair_key(txn.account_name, target_name, txn.date, txn.amount)
+                    pool = waiting.setdefault(key, [])
+                    partner = next(
+                        (
+                            c
+                            for c in pool
+                            if c["amount"] == -txn.amount and self._may_link(c, candidate)
+                        ),
+                        None,
+                    )
+                    if partner is not None:
+                        pool.remove(partner)
+                        self._fold_transfer_pair(partner, candidate, candidates)
+                        continue
+                    pool.append(candidate)
+                candidates.append(candidate)
+            except Exception as e:
+                if len(result.errors) < _MAX_ERRORS:
+                    result.errors.append(f"Upcoming {txn.date} {txn.payee}: {e}")
+                result.transactions_skipped += 1
+
+        # Legs still waiting are unpaired: scheduled as they are, and counted.
+        result.held_out_transfer_legs_unpaired += sum(len(pool) for pool in waiting.values())
+
+        disambiguate_in_batch(candidates)
+        existing = await self.scheduled_service.repo.get_existing_import_ids(
+            self.budget_id, {c["import_id"] for c in candidates}
+        )
+        for c in candidates:
+            if c["import_id"] in existing:
+                result.transactions_skipped += 1
+                continue
+            sched = await self.scheduled_service.create(
+                self.budget_id,
+                ScheduledTransactionCreate(
+                    account_id=c["account_id"],
+                    amount=c["amount"],
+                    frequency="once",
+                    start_date=c["date"],
+                    payee_id=c["payee_id"],
+                    category_id=c["category_id"],
+                    memo=c["memo"],
+                    auto_create=False,
+                    transfer_account_id=c["transfer_account_id"],
+                    import_id=c["import_id"],
+                ),
+                # Not on the ⌘Z stack: the rest of the import is not undoable
+                # either, and half an undo would be worse than none.
+                source="system",
+            )
+            result.held_out_future.append(
+                HeldOutRow(
+                    scheduled_transaction_id=sched.id,
+                    account_name=c["account_name"],
+                    date=c["date"],
+                    payee=c["payee"],
+                    amount=c["amount"],
+                    category_name=c["category_name"],
+                    is_transfer=c["transfer_account_id"] is not None,
+                    split_legs=c["split_legs"],
+                )
+            )
+
+    async def _held_out_candidate(
+        self,
+        account: Account,
+        txn: YNABTransaction,
+        payee_map: dict[str, uuid.UUID],
+        result: ImportResult,
+    ) -> dict[str, Any]:
+        """The schedule a held-out row would become, before pairing."""
+        category_id: uuid.UUID | None = None
+        category_name: str | None = None
+        memo = txn.memo or None
+        split_legs: list[str] = []
+        if txn.splits:
+            for leg in txn.splits:
+                label = leg.category or "Uncategorized"
+                split_legs.append(f"{label} {leg.amount:+.2f}")
+                # Resolve every leg so its category exists for filing by hand,
+                # and so the stripping counters read the same as the register.
+                await self._resolve_row_category(account, leg.category_group, leg.category, result)
+            legs_text = "Split: " + "; ".join(split_legs)
+            memo = f"{memo} — {legs_text}" if memo else legs_text
+            result.held_out_splits_uncategorized += 1
+        else:
+            category_id = await self._resolve_row_category(
+                account, txn.category_group, txn.category, result
+            )
+            if category_id is not None:
+                category_name = map_ynab_names(txn.category_group or "", txn.category or "")[1]
+        return {
+            "id": uuid.uuid4(),
+            "account_id": account.id,
+            "account_name": account.name,
+            "date": txn.date,
+            "amount": txn.amount,
+            "payee": txn.payee,
+            "payee_id": payee_map.get(txn.payee) if txn.payee else None,
+            "category_id": category_id,
+            "category_name": category_name,
+            "memo": memo,
+            "transfer_account_id": None,
+            "split_legs": split_legs,
+            "import_id": generate_import_id(account.id, txn.date, txn.amount, txn.payee or ""),
+        }
+
+    def _fold_transfer_pair(
+        self, a: dict[str, Any], b: dict[str, Any], candidates: list[dict[str, Any]]
+    ) -> None:
+        """Two held-out legs of one transfer become one scheduled transfer on
+        the outflow leg's account. The inflow leg's candidate is dropped from
+        the list; `a` is already in it, `b` is the one just built."""
+        out_leg, in_leg = (a, b) if a["amount"] < 0 else (b, a)
+        out_leg["transfer_account_id"] = in_leg["account_id"]
+        if in_leg is a:
+            candidates.remove(a)
+            candidates.append(out_leg)
 
     async def _import_assignments(self, budget: YNABBudget, result: ImportResult) -> None:
         # YNAB's Credit Card Payments assignments are money set aside for

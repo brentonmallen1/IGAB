@@ -8,10 +8,12 @@ import {
   setTags,
   stepsFor,
   toggleTag,
+  upcomingRows,
   type Draft,
   type ReviewCategory,
 } from './importReview'
-import type { YnabImportResult } from '../../../api/imports'
+import type { YnabHeldOutFuture, YnabImportResult } from '../../../api/imports'
+import type { ScheduledTransaction } from '../../../types'
 
 const SAVINGS = 'tag-savings'
 const SUBSCRIPTION = 'tag-subscription'
@@ -64,6 +66,50 @@ describe('stepsFor', () => {
     // the review is most useful for, since those have no tags at all.
     expect(stepsFor(null)).toEqual(['tags', 'accounts'])
     expect(stepsFor(undefined)).toEqual(['tags', 'accounts'])
+  })
+
+  it('offers the upcoming step only when rows were held out', () => {
+    expect(stepsFor(summary({ held_out_future: [] }))).toEqual(['summary', 'tags', 'accounts'])
+    expect(stepsFor(summary({ held_out_future: [heldOut()] }))).toEqual([
+      'summary',
+      'upcoming',
+      'tags',
+      'accounts',
+    ])
+  })
+})
+
+function heldOut(over: Partial<YnabHeldOutFuture> = {}): YnabHeldOutFuture {
+  return {
+    scheduled_transaction_id: 's1',
+    account_name: 'Checking',
+    date: '2026-10-01',
+    payee: 'Oakwood Property Mgmt',
+    amount: '-1400.00',
+    category_name: 'Rent',
+    is_transfer: false,
+    split_legs: [],
+    ...over,
+  }
+}
+
+describe('upcomingRows', () => {
+  it('joins each held-out record to its live schedule', () => {
+    const live = { id: 's1', frequency: 'once' } as ScheduledTransaction
+    const [row] = upcomingRows(summary({ held_out_future: [heldOut()] }), [live])
+    expect(row.schedule).toBe(live)
+    expect(row.held.payee).toBe('Oakwood Property Mgmt')
+  })
+
+  it('marks a schedule that no longer exists rather than dropping the row', () => {
+    // The summary records an event; a schedule entered or deleted since
+    // still reads as "no longer upcoming" instead of vanishing.
+    const [row] = upcomingRows(summary({ held_out_future: [heldOut()] }), [])
+    expect(row.schedule).toBeNull()
+  })
+
+  it('treats a pre-feature summary as having nothing held out', () => {
+    expect(upcomingRows(summary(), [])).toEqual([])
   })
 })
 

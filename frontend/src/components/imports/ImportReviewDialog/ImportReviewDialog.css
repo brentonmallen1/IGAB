@@ -321,3 +321,40 @@
   gap: var(--spacing-xs);
   margin-top: var(--spacing-sm);
 }
+
+/* ── upcoming step ──────────────────────────────────────────────────────── */
+
+.import-review__row--upcoming {
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  align-items: center;
+}
+
+.import-review__cadence {
+  display: flex;
+  gap: var(--spacing-xs);
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.import-review__select {
+  padding: 4px var(--spacing-xs);
+  border: 1px solid var(--edge-strong);
+  border-radius: var(--border-radius);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  font-size: var(--font-size-xs);
+}
+
+.import-review__day {
+  width: 5.5em;
+}
+
+.import-review__link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-accent);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}

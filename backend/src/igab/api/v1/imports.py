@@ -191,6 +191,23 @@ class YNABTaggedCategory(BaseModel):
     matched_on: str
 
 
+class YNABHeldOutFuture(BaseModel):
+    """One register row dated after the import that became an upcoming
+    transaction instead of a posted one. The review lists these so the
+    cadence YNAB could not export can be set by hand."""
+
+    scheduled_transaction_id: uuid.UUID
+    account_name: str
+    date: date
+    payee: str
+    amount: Decimal
+    category_name: str | None = None
+    is_transfer: bool = False
+    #: Non-empty when the row was a split: a schedule has one category, so
+    #: it was created uncategorized with the legs written into the memo.
+    split_legs: list[str] = Field(default_factory=list)
+
+
 class YNABImportResult(BaseModel):
     accounts: int
     category_groups: int
@@ -243,6 +260,15 @@ class YNABImportResult(BaseModel):
     #: anchored (register-only, or no complete plan month).
     anchored_at: date | None = None
     anchor_skipped_reason: str | None = None
+    #: Register rows dated after the import, each now a one-off scheduled
+    #: transaction rather than a posted row. Defaulted, like every field
+    #: added since summaries were first stored: the stored document is
+    #: re-validated on read.
+    held_out_future: list[YNABHeldOutFuture] = Field(default_factory=list)
+    #: Of those, splits created uncategorized (legs in the memo) and transfer
+    #: legs whose partner never appeared.
+    held_out_splits_uncategorized: int = 0
+    held_out_transfer_legs_unpaired: int = 0
     errors: list[str]
 
 
@@ -284,7 +310,10 @@ class YNABAccountPreview(BaseModel):
 
 class YNABPreviewResult(BaseModel):
     accounts: list[YNABAccountPreview]
+    #: Posted rows only — the ones that will land in the register.
     transaction_count: int
+    #: Rows dated after today, which will become upcoming transactions.
+    held_out_future_count: int = 0
     budget_entry_count: int
     #: B — where this file will anchor if imported (integrations/ynab/models
     #: `plan_boundary`), so the preview can say "starts where YNAB left off"
@@ -390,6 +419,15 @@ def build_ynab_preview(
     balances: dict[str, Decimal] = {}
     first_seen: dict[str, date] = {}
     last_seen: dict[str, date] = {}
+    # Held-out rows still name their account — one that appears only in the
+    # future must still be offered for mapping — but count and balance from
+    # posted rows only: those are what the register will hold.
+    for txn in [*ynab_budget.transactions, *ynab_budget.held_out]:
+        counts.setdefault(txn.account_name, 0)
+        balances.setdefault(txn.account_name, Decimal("0"))
+        prev_last = last_seen.get(txn.account_name)
+        if prev_last is None or txn.date > prev_last:
+            last_seen[txn.account_name] = txn.date
     for txn in ynab_budget.transactions:
         counts[txn.account_name] = counts.get(txn.account_name, 0) + 1
         # Split parents carry the full amount and their legs are nested, so
@@ -401,9 +439,6 @@ def build_ynab_preview(
         prev_first = first_seen.get(txn.account_name)
         if prev_first is None or txn.date < prev_first:
             first_seen[txn.account_name] = txn.date
-        prev_last = last_seen.get(txn.account_name)
-        if prev_last is None or txn.date > prev_last:
-            last_seen[txn.account_name] = txn.date
 
     related = assign_related_groups(sorted(counts))
     accounts = []
@@ -440,6 +475,7 @@ def build_ynab_preview(
     return YNABPreviewResult(
         accounts=accounts,
         transaction_count=len(ynab_budget.transactions),
+        held_out_future_count=len(ynab_budget.held_out),
         budget_entry_count=len(ynab_budget.budget_entries),
         # `anchor_month`, not `plan_boundary`: the screen promises an anchor
         # only where `_write_anchor` will write one — same predicate, one
@@ -564,12 +600,15 @@ async def run_ynab_import(importer: YNABImporter, ynab_budget) -> YNABRunResult:
         ) from e
 
 
-def parse_ynab_zip_path(path):
+def parse_ynab_zip_path(path, today: date):
     """Parse a YNAB-shaped zip already on disk, turning reader complaints
     into 400s. The upload wrapper below and the unified import preview both
-    funnel through here."""
+    funnel through here — and so does the hold-out of future-dated rows,
+    exactly once, so the preview promises what the import writes."""
+    from igab.integrations.ynab.models import hold_out_future
+
     try:
-        return YNABParser().parse_zip(path)
+        return hold_out_future(YNABParser().parse_zip(path), today)
     except (ValueError, KeyError) as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -577,7 +616,7 @@ def parse_ynab_zip_path(path):
         ) from e
 
 
-async def parse_uploaded_ynab_zip(file: UploadFile):
+async def parse_uploaded_ynab_zip(file: UploadFile, today: date):
     import tempfile
     from pathlib import Path
 
@@ -586,7 +625,7 @@ async def parse_uploaded_ynab_zip(file: UploadFile):
         tmp.write(content)
         tmp_path = Path(tmp.name)
     try:
-        return parse_ynab_zip_path(tmp_path)
+        return parse_ynab_zip_path(tmp_path, today)
     finally:
         tmp_path.unlink(missing_ok=True)
 
