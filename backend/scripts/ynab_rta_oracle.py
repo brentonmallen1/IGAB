@@ -18,6 +18,7 @@ from datetime import date
 from pathlib import Path
 
 from igab.domain.dates import month_start
+from igab.integrations.ynab.models import hold_out_future
 from igab.integrations.ynab.oracle import export_consistency, ynab_rta
 from igab.integrations.ynab.parser import YNABParser
 
@@ -40,10 +41,17 @@ def main(argv: list[str] | None = None) -> int:
         "--tracking", action="append", default=[], help="account that is off budget (tracking)"
     )
     ap.add_argument("--categories", action="store_true", help="print YNAB's Available per category")
+    ap.add_argument(
+        "--today",
+        help="YYYY-MM-DD; rows after this are upcoming, not history (default: today)",
+    )
     args = ap.parse_args(argv)
 
     parser = YNABParser()
-    budget = parser.parse_zip(args.zip)
+    today = date.fromisoformat(args.today) if args.today else date.today()
+    # The same hold-out the import applies: a future-dated row is a scheduled
+    # transaction YNAB exported as its next instance, not money that moved.
+    budget = hold_out_future(parser.parse_zip(args.zip), today)
     if args.month:
         year, month = (int(x) for x in args.month.split("-"))
         month_date = date(year, month, 1)
@@ -92,7 +100,10 @@ def main(argv: list[str] | None = None) -> int:
         f"({consistency.activity_disagreement_rate:.1%})"
     )
     print()
-    print(f"Accounts in scope: {len(kept)}; parse errors: {len(budget.errors)}")
+    print(
+        f"Accounts in scope: {len(kept)}; parse errors: {len(budget.errors)}; "
+        f"upcoming rows held out: {len(budget.held_out)}"
+    )
     for message in budget.errors[:5]:
         print(f"  {message}")
     if args.categories:

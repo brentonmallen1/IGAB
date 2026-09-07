@@ -29,7 +29,7 @@ from pathlib import Path
 
 from igab.domain.money import quantize_cents
 from igab.integrations.ynab.importer import YNABImporter
-from igab.integrations.ynab.models import YNABBudget
+from igab.integrations.ynab.models import YNABBudget, hold_out_future
 from igab.integrations.ynab.oracle import ynab_rta
 from igab.integrations.ynab.parity import ParityReport, check_parity
 from igab.integrations.ynab.parser import YNABParser
@@ -38,6 +38,9 @@ from igab.repositories.category_repo import CategoryGroupRepository
 from .factories import Services, create_budget, create_user, make_services
 
 FIXTURES = Path(__file__).resolve().parent.parent / "fixtures" / "ynab"
+#: The day the fixture is imported "on". Its latest register row is 1 Sep
+#: 2026; anything the tests hold out is added deliberately, dated after this.
+FIXTURE_TODAY = date(2026, 9, 30)
 
 
 def fixture_zip(tmp_path: Path, name: str = "Parity Budget") -> Path:
@@ -69,11 +72,15 @@ async def import_export(
     skip_accounts: set[str] | None = None,
     close_accounts: set[str] | None = None,
     expect_errors: bool = False,
+    today: date = FIXTURE_TODAY,
 ) -> tuple[Services, uuid.UUID, YNABBudget]:
     services = make_services(db_session)
     user = await create_user(db_session)
     budget = await create_budget(db_session, user)
-    ynab_budget = YNABParser().parse_zip(zip_path)
+    # The hold-out the routes apply, keyed to a fixed day: the fixture
+    # carries a September row that must stay posted whatever the wall clock
+    # says.
+    ynab_budget = hold_out_future(YNABParser().parse_zip(zip_path), today)
     importer = YNABImporter(
         session=db_session,
         budget_id=budget.id,

@@ -62,6 +62,13 @@ class YNABPlanRow:
 @dataclass
 class YNABBudget:
     transactions: list[YNABTransaction] = field(default_factory=list)
+    #: Register rows dated after the import's today, set aside by
+    #: `hold_out_future`. YNAB exports a scheduled transaction as its next
+    #: dated instance with no cadence, so these are upcoming bills, not
+    #: history: the importer turns each into a one-off schedule instead of a
+    #: posted row. Everything else — preview counts, the oracle, parity, the
+    #: anchor — reads `transactions` and never sees them.
+    held_out: list[YNABTransaction] = field(default_factory=list)
     budget_entries: list[YNABBudgetEntry] = field(default_factory=list)
     plan_rows: list[YNABPlanRow] = field(default_factory=list)
     #: Rows dropped at parse time because their amount could not be read. A
@@ -127,3 +134,24 @@ def anchor_month(plan_rows: Sequence[YNABPlanRow], today: date) -> date | None:
         return None
     opening = add_months(boundary, -1)
     return boundary if any(month_start(row.month) == opening for row in plan_rows) else None
+
+
+def hold_out_future(budget: YNABBudget, today: date) -> YNABBudget:
+    """Move every register row dated after `today` into `held_out`, in place.
+
+    Applied exactly once, where the zip is parsed for the routes and the
+    oracle script, so no downstream reader needs a `today` of its own. That
+    is the point: `ynab_rta` used to bound rows by month end only, so a
+    future-dated row in the current month was counted into inflow and cash
+    and the parity line blamed IGAB for a gap the file itself carried.
+
+    A row dated today is not future — YNAB posts it. Order is preserved on
+    both sides. `today` is a parameter and never defaulted below the routes:
+    the agreement fixture carries a September row, and a hold-out keyed to
+    the wall clock would make every import test calendar-dependent.
+    """
+    posted = [t for t in budget.transactions if t.date <= today]
+    future = [t for t in budget.transactions if t.date > today]
+    budget.transactions = posted
+    budget.held_out.extend(future)
+    return budget

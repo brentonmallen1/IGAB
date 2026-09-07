@@ -126,3 +126,32 @@ class TestSeenOnce:
 
         resp = await api_client.get(f"/api/v1/{budget.id}/import-summary")
         assert resp.status_code in (403, 404)
+
+
+class TestHeldOutRows:
+    @pytest.mark.asyncio
+    async def test_held_out_future_defaults_to_empty_on_a_pre_feature_summary(
+        self, api_client, db_session
+    ):
+        """Stored summaries are re-validated on read; one written before
+        future rows were held out carries no such field and must still load."""
+        from sqlalchemy import select, update
+
+        from igab.db.models import Budget
+
+        body = await _import(api_client)
+        budget_id = body["budget"]["id"]
+        stored = (
+            await db_session.execute(select(Budget).where(Budget.id == uuid.UUID(budget_id)))
+        ).scalar_one()
+        old = {k: v for k, v in stored.import_summary.items() if not k.startswith("held_out")}
+        await db_session.execute(
+            update(Budget).where(Budget.id == uuid.UUID(budget_id)).values(import_summary=old)
+        )
+        await db_session.commit()
+
+        resp = await api_client.get(f"/api/v1/{budget_id}/import-summary")
+        assert resp.status_code == 200, resp.text
+        summary = resp.json()["summary"]
+        assert summary["held_out_future"] == []
+        assert summary["held_out_splits_uncategorized"] == 0
