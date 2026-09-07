@@ -20,10 +20,12 @@ from igab.dependencies import (
     BudgetAccess,
     CurrentUser,
     get_account_repo,
+    get_category_repo,
     get_payee_repo,
     get_transaction_repo,
 )
 from igab.domain.account_types import BUILTIN_ACCOUNT_TYPE_KEYS
+from igab.domain.csv_import import FIELDS, parse_csv, suggest_mapping
 from igab.domain.import_identity import disambiguate_in_batch, generate_import_id
 from igab.domain.import_mapping import (
     RememberedChoice,
@@ -31,11 +33,11 @@ from igab.domain.import_mapping import (
     assign_related_groups,
     resolve_account_suggestion,
 )
-from igab.domain.money import parse_csv_amount
 from igab.integrations.ynab.importer import ImportResult as YNABRunResult
 from igab.integrations.ynab.importer import YNABImporter
 from igab.integrations.ynab.parser import YNABParser
 from igab.repositories.account_repo import AccountRepository
+from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match
@@ -88,6 +90,45 @@ class ImportResult(BaseModel):
     errors: list[str]
     # Change-log batch covering the imported transactions, for undo
     batch_id: uuid.UUID | None = None
+
+
+#: How many parsed rows the preview shows. Enough to check the mapping by eye
+#: without turning a preview into the register.
+CSV_SAMPLE_ROWS = 12
+
+
+class CsvSkippedRow(BaseModel):
+    line: int  # 1-based, matching a spreadsheet — row 1 is the header
+    reason: str
+
+
+class CsvPreviewRow(BaseModel):
+    line: int
+    date: date
+    amount: Decimal
+    payee: str
+    memo: str | None
+    category: str | None
+    #: Already in this account under the same identity. Re-exporting from a
+    #: bank overlaps the previous export almost every time, so this is the
+    #: headline of a preview rather than a footnote of the result.
+    duplicate: bool
+
+
+class CsvPreview(BaseModel):
+    #: Every header in the file, in order — what the mapping step chooses from.
+    headers: list[str]
+    #: The mapping used. Echoed back because a guess the user did not make is
+    #: a guess they need to see.
+    mapping: dict[str, str]
+    #: strptime pattern that read every date, or null if none did.
+    date_format: str | None
+    total_rows: int
+    new_rows: int
+    duplicate_rows: int
+    skipped: list[CsvSkippedRow]
+    #: The first rows, for eyeballing the mapping before anything lands.
+    sample: list[CsvPreviewRow]
 
 
 class YNABParityDifference(BaseModel):
@@ -630,127 +671,172 @@ async def parse_uploaded_ynab_zip(file: UploadFile, today: date):
         tmp_path.unlink(missing_ok=True)
 
 
+async def _read_csv(
+    file: UploadFile, mapping_json: str | None
+) -> tuple[list[str], list[dict[str, str]], dict[str, str]]:
+    """The file as headers, string records, and the column mapping to use.
+
+    Everything is read as text and parsed by `domain/csv_import`: letting
+    Polars infer types would hand back floats for money, which is the one
+    thing this app never does.
+    """
+    content = await file.read()
+    try:
+        frame = pl.read_csv(io.BytesIO(content), infer_schema_length=0, try_parse_dates=False)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Cannot parse CSV: {exc}") from exc
+    if frame.is_empty():
+        raise HTTPException(status_code=400, detail="Empty CSV file")
+
+    headers = list(frame.columns)
+    records = [
+        {k: (v if v is not None else "") for k, v in row.items()}
+        for row in frame.iter_rows(named=True)
+    ]
+
+    if mapping_json:
+        try:
+            chosen = json.loads(mapping_json)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=400, detail="Column mapping is not valid JSON") from exc
+        if not isinstance(chosen, dict):
+            raise HTTPException(status_code=400, detail="Column mapping must be an object")
+        unknown = [c for c in chosen.values() if c not in headers]
+        if unknown:
+            raise HTTPException(
+                status_code=400, detail=f"No such column in this file: {', '.join(unknown)}"
+            )
+        mapping = {k: v for k, v in chosen.items() if k in FIELDS and v}
+    else:
+        mapping = suggest_mapping(headers)
+    return headers, records, mapping
+
+
+def _parse_or_400(records, mapping):
+    try:
+        return parse_csv(records, mapping)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/{budget_id}/import/csv/preview", response_model=CsvPreview)
+async def preview_csv(
+    budget_id: BudgetAccess,
+    account_id: AccountAccess,
+    current_user: CurrentUser,
+    file: UploadFile = File(...),
+    mapping: str | None = None,
+    account_repo: AccountRepository = Depends(get_account_repo),
+    transaction_repo: TransactionRepository = Depends(get_transaction_repo),
+) -> CsvPreview:
+    """What this file would do, before it does it.
+
+    The duplicate count is the point. A bank export overlaps the previous one
+    almost every time, so "128 rows, 12 already imported" is what a person
+    needs to see — not afterwards, in a number they cannot check.
+    """
+    account = await account_repo.get_or_raise(account_id)
+    if str(account.budget_id) != str(budget_id):
+        raise HTTPException(status_code=400, detail="Account does not belong to this budget")
+
+    headers, records, chosen = await _read_csv(file, mapping)
+    parsed = _parse_or_400(records, chosen)
+
+    identities = [
+        generate_import_id(account_id, row.date, row.amount, row.payee) for row in parsed.rows
+    ]
+    existing = await transaction_repo.get_existing_import_ids(budget_id, identities)
+    duplicate_flags = [i in existing for i in identities]
+
+    return CsvPreview(
+        headers=headers,
+        mapping=chosen,
+        date_format=parsed.date_format,
+        total_rows=parsed.total,
+        new_rows=sum(1 for d in duplicate_flags if not d),
+        duplicate_rows=sum(1 for d in duplicate_flags if d),
+        skipped=[CsvSkippedRow(line=s.line, reason=s.reason) for s in parsed.skipped],
+        sample=[
+            CsvPreviewRow(
+                line=row.line,
+                date=row.date,
+                amount=row.amount,
+                payee=row.payee,
+                memo=row.memo,
+                category=row.category,
+                duplicate=dup,
+            )
+            for row, dup in list(zip(parsed.rows, duplicate_flags, strict=True))[:CSV_SAMPLE_ROWS]
+        ],
+    )
+
+
 @router.post("/{budget_id}/import/csv", response_model=ImportResult)
 async def import_csv(
     budget_id: BudgetAccess,
     account_id: AccountAccess,
     current_user: CurrentUser,
     file: UploadFile = File(...),
+    mapping: str | None = None,
     account_repo: AccountRepository = Depends(get_account_repo),
     payee_repo: PayeeRepository = Depends(get_payee_repo),
+    category_repo: CategoryRepository = Depends(get_category_repo),
     transaction_repo: TransactionRepository = Depends(get_transaction_repo),
 ) -> ImportResult:
-    """
-    Import transactions from CSV.
-    Expected columns (case-insensitive): Date, Payee, Amount, Memo
-    Amount: positive = inflow, negative = outflow
+    """Import one account's own transactions from a CSV.
+
+    Parsing is `domain/csv_import`, the same function the preview calls — so
+    what the preview promised is what lands.
     """
     account = await account_repo.get_or_raise(account_id)
     if str(account.budget_id) != str(budget_id):
         raise HTTPException(status_code=400, detail="Account does not belong to this budget")
 
-    content = await file.read()
+    _, records, chosen = await _read_csv(file, mapping)
+    parsed = _parse_or_400(records, chosen)
 
-    try:
-        df = pl.read_csv(io.BytesIO(content), try_parse_dates=True, infer_schema_length=0)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Cannot parse CSV: {e}") from e
+    errors = [f"row {s.line}: {s.reason}" for s in parsed.skipped]
+    skipped = len(parsed.skipped)
 
-    if df.is_empty():
-        raise HTTPException(status_code=400, detail="Empty CSV file")
-
-    # Normalize column names: strip whitespace and lowercase
-    df = df.rename({c: c.strip().lower() for c in df.columns})
-
-    for required in ("date", "amount"):
-        if required not in df.columns:
-            raise HTTPException(status_code=400, detail=f"Missing required column: '{required}'")
-
-    errors: list[str] = []
-    skipped = 0
-
-    # Parse date column
-    if df["date"].dtype != pl.Date:
-        date_formats = ["%Y-%m-%d", "%m/%d/%Y", "%m/%d/%y", "%d/%m/%Y", "%d-%m-%Y", "%Y/%m/%d"]
-        parsed = None
-        for fmt in date_formats:
-            try:
-                parsed = df["date"].str.to_date(fmt, strict=False)
-                if parsed.null_count() < df.height:
-                    break
-            except Exception:
-                continue
-        if parsed is None:
-            raise HTTPException(status_code=400, detail="Cannot parse date column")
-        df = df.with_columns(parsed.alias("date"))
-
-    # Drop rows with null dates or amounts
-    null_date_mask = df["date"].is_null()
-    null_amount_mask = df["amount"].is_null() | (df["amount"].cast(pl.String) == "")
-    bad_mask = null_date_mask | null_amount_mask
-    bad_count = bad_mask.sum()
-    if bad_count:
-        skipped += int(bad_count)
-        df = df.filter(~bad_mask)
-
-    if df.is_empty():
-        return ImportResult(imported=0, skipped=skipped, errors=errors)
-
-    # Amounts are parsed string→Decimal in the row loop below (never through
-    # float — exactness is the point of a budgeting app).
-    df = df.with_columns(df["amount"].cast(pl.String).alias("amount_str"))
-
-    # Resolve payees in batch
-    payee_col = "payee" if "payee" in df.columns else None
-    payee_names: list[str] = []
-    if payee_col:
-        payee_names = df[payee_col].drop_nulls().cast(pl.String).unique().to_list()
-        payee_names = [p.strip() for p in payee_names if p.strip()]
-
-    payee_map: dict[str, str] = {}
+    payee_names = sorted({row.payee for row in parsed.rows if row.payee})
+    payee_map: dict[str, uuid.UUID] = {}
     if payee_names:
-        id_map = await payee_repo.find_or_create_batch(budget_id, payee_names)
-        payee_map = {name: str(pid) for name, pid in id_map.items()}
+        payee_map = await payee_repo.find_or_create_batch(budget_id, payee_names)
 
-    # Build insert rows
+    # A category column names an EXISTING category; it never creates one. A
+    # bank's idea of "Travel" is not this budget's envelope, and inventing
+    # envelopes from a file is how a category list becomes unusable.
+    category_ids: dict[str, uuid.UUID] = {}
+    wanted = {row.category.lower() for row in parsed.rows if row.category}
+    if wanted:
+        for cat in await category_repo.get_all(budget_id):
+            if cat.name.lower() in wanted:
+                category_ids[cat.name.lower()] = cat.id
+
     batch_id = uuid.uuid4()
-    rows_to_insert: list[InsertRow] = []
-    df_iter = df.iter_rows(named=True)
-    for row in df_iter:
-        payee_name = (row.get("payee") or "").strip() if payee_col else ""
-        payee_id = payee_map.get(payee_name) if payee_name else None
-        memo = (row.get("memo") or "").strip() or None
-
-        txn_date = row["date"]
-        try:
-            amount = parse_csv_amount(row["amount_str"])
-        except ValueError as e:
-            errors.append(str(e))
-            skipped += 1
-            continue
-        rows_to_insert.append(
-            {
-                "id": uuid.uuid4(),
-                "budget_id": budget_id,
-                "account_id": account_id,
-                "date": txn_date,
-                "amount": amount,
-                "payee_id": uuid.UUID(payee_id) if payee_id else None,
-                "category_id": None,
-                "memo": memo,
-                "cleared": "cleared",
-                "approved": False,
-                "import_batch_id": batch_id,
-                "is_split": False,
-                "is_deleted": False,
-                "created_via": "import",
-                "import_id": generate_import_id(account_id, txn_date, amount, payee_name),
-            }
-        )
+    rows_to_insert: list[InsertRow] = [
+        {
+            "id": uuid.uuid4(),
+            "budget_id": budget_id,
+            "account_id": account_id,
+            "date": row.date,
+            "amount": row.amount,
+            "payee_id": payee_map.get(row.payee) if row.payee else None,
+            "category_id": category_ids.get(row.category.lower()) if row.category else None,
+            "memo": row.memo,
+            "cleared": "cleared",
+            "approved": False,
+            "import_batch_id": batch_id,
+            "is_split": False,
+            "is_deleted": False,
+            "created_via": "import",
+            "import_id": generate_import_id(account_id, row.date, row.amount, row.payee),
+        }
+        for row in parsed.rows
+    ]
 
     disambiguate_in_batch(rows_to_insert)
 
-    # Deduplicate against existing import_ids before inserting
     all_import_ids = [r["import_id"] for r in rows_to_insert if r.get("import_id")]
     existing_ids = await transaction_repo.get_existing_import_ids(budget_id, all_import_ids)
     new_rows = [r for r in rows_to_insert if r.get("import_id") not in existing_ids]
