@@ -26,6 +26,9 @@ vi.mock('../../../api/categories', () => ({
   // The header's "See archived" button brings the delete flow with it, so the
   // mock has to answer for what that hook reaches for.
   useDeleteCategories: () => ({ mutateAsync: vi.fn() }),
+  // The body is wrapped in CategoryDragProvider, which owns the one way a
+  // category moves between groups.
+  useUpdateCategory: () => ({ mutate: vi.fn() }),
   deletePreviewOptions: () => ({ queryKey: ['noop'], queryFn: async () => ({}) }),
 }))
 vi.mock('../ArchivedCategoriesModal/ArchivedCategoriesModal', () => ({

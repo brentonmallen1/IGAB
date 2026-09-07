@@ -24,6 +24,7 @@ import { AmountInput } from '../../common/AmountInput/AmountInput'
 import { today } from '../../../utils/dates'
 import { useFormatters } from '../../../hooks/useFormatters'
 import type { DragReorder } from '../../../hooks/useDragReorder'
+import { useCategoryDrag } from '../CategoryDrag/CategoryDragContext'
 import { DragHandle } from '../../common/DragHandle/DragHandle'
 import type { Category, CategoryBalance } from '../../../types'
 import '../budgetGrid.css'
@@ -82,6 +83,9 @@ export const CategoryRow = memo(function CategoryRow({
   const inspectorUserClosed = useUIStore((s) => s.inspectorUserClosed)
   const openMobileInspector = useUIStore((s) => s.openMobileInspector)
   const budgetRowMode = useUIStore((s) => s.budgetRowMode)
+  // Null wherever the grid is not the budget's own arrangement (a view, the
+  // filter manager): there are no groups to move between there.
+  const categoryDrag = useCategoryDrag()
   const isSelected = selectedCategoryIds.has(category.id)
   const anySelected = selectedCategoryIds.size > 0
 
@@ -297,6 +301,13 @@ export const CategoryRow = memo(function CategoryRow({
           reorder
             ? (e) => {
                 e.preventDefault()
+                // A row from another group lands as a move; the group's own
+                // index-based reorder has no way to express one.
+                if (categoryDrag?.wouldMoveTo(category.category_group_id)) {
+                  categoryDrag.moveTo(category.category_group_id)
+                  reorder.end()
+                  return
+                }
                 reorder.drop(index)
               }
             : undefined
@@ -305,8 +316,17 @@ export const CategoryRow = memo(function CategoryRow({
         {reorder && (
           <DragHandle
             label={category.name}
-            onDragStart={() => reorder.start(index)}
-            onDragEnd={reorder.end}
+            onDragStart={() => {
+              reorder.start(index)
+              categoryDrag?.begin({
+                categoryId: category.id,
+                fromGroupId: category.category_group_id,
+              })
+            }}
+            onDragEnd={() => {
+              reorder.end()
+              categoryDrag?.end()
+            }}
             onMoveUp={index > 0 ? () => reorder.moveBy(index, -1) : undefined}
             onMoveDown={() => reorder.moveBy(index, 1)}
           />
