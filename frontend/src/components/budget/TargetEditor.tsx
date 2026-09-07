@@ -4,6 +4,7 @@ import type { CategoryTarget } from '../../types'
 import { TARGET_TYPES, WEEKDAYS, buildTargetPayload } from './targetForm'
 import { Dialog } from '../common/Dialog/Dialog'
 import './TargetEditor.css'
+import { MAX_FUNDING_DAY } from '../../utils/targets'
 
 interface Props {
   categoryId: string
@@ -118,7 +119,7 @@ export function TargetEditor({ categoryId, categoryName, existing, onClose }: Pr
             type="number"
             inputMode="numeric"
             min="1"
-            max="28"
+            max={MAX_FUNDING_DAY}
             step="1"
             className="target-editor__input"
             value={checkAfterDay}

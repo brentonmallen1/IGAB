@@ -95,7 +95,9 @@ export function BudgetSelectorPage() {
   } | null>(null)
   const [sharingBudget, setSharingBudget] = useState<{ id: string; name: string } | null>(null)
   const [cloningBudget, setCloningBudget] = useState<{ id: string; name: string } | null>(null)
-  const [menuPos, setMenuPos] = useState({ x: 0, y: 0 })
+  // One mutable ref rather than one per card: only a single menu is open at a
+  // time, and the ref's identity must stay stable for the placement hook.
+  const menuAnchorRef = useRef<HTMLButtonElement | null>(null)
 
   // Create form
   const [createName, setCreateName] = useState('')
@@ -401,8 +403,7 @@ export function BudgetSelectorPage() {
                         aria-label={`More actions for ${b.name}`}
                         onClick={(e) => {
                           e.stopPropagation()
-                          const rect = e.currentTarget.getBoundingClientRect()
-                          setMenuPos({ x: rect.right - 140, y: rect.bottom + 4 })
+                          menuAnchorRef.current = e.currentTarget
                           setMenuBudget({ id: b.id, name: b.name, role: b.role ?? null })
                         }}
                       >
@@ -421,7 +422,8 @@ export function BudgetSelectorPage() {
                   ? CARD_MENU_ITEMS.filter((i) => !OWNER_ONLY_ACTIONS.has(i.id))
                   : CARD_MENU_ITEMS
               }
-              position={menuPos}
+              anchor={menuAnchorRef}
+              alignRight
               onClose={() => setMenuBudget(null)}
               onSelect={(id) => {
                 const b = menuBudget

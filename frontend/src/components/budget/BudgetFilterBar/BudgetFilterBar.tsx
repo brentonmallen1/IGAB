@@ -302,27 +302,23 @@ export function BudgetFilterBar({ budgetId, categoryBalances, barRef }: Props) {
         >
           <ListFilter size={14} />
         </button>
-        {menuOpen &&
-          menuAnchorRef.current &&
-          (() => {
-            const rect = menuAnchorRef.current.getBoundingClientRect()
-            return (
-              <ContextMenu
-                items={[
-                  { id: 'new', label: 'New Filter', icon: Plus },
-                  { id: 'manage', label: 'Manage Filters', icon: Settings2 },
-                  // Views are a different axis from filters, so they sit below a
-                  // rule rather than reading as two more filter actions.
-                  { id: 'sep', label: '', separator: true },
-                  { id: 'new-view', label: 'New View', icon: Layers },
-                  { id: 'manage-views', label: 'Manage Views', icon: Settings2 },
-                ]}
-                onSelect={handleMenuSelect}
-                onClose={() => setMenuOpen(false)}
-                position={{ x: rect.right, y: rect.bottom + 4, alignRight: true }}
-              />
-            )
-          })()}
+        {menuOpen && (
+          <ContextMenu
+            items={[
+              { id: 'new', label: 'New Filter', icon: Plus },
+              { id: 'manage', label: 'Manage Filters', icon: Settings2 },
+              // Views are a different axis from filters, so they sit below a
+              // rule rather than reading as two more filter actions.
+              { id: 'sep', label: '', separator: true },
+              { id: 'new-view', label: 'New View', icon: Layers },
+              { id: 'manage-views', label: 'Manage Views', icon: Settings2 },
+            ]}
+            onSelect={handleMenuSelect}
+            onClose={() => setMenuOpen(false)}
+            anchor={menuAnchorRef}
+            alignRight
+          />
+        )}
       </div>
     </div>
   )

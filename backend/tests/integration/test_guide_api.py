@@ -251,6 +251,49 @@ class TestExternal:
         assert ef["source"] == "manual+external"
         assert ef["external_as_of"] == TODAY.isoformat()
 
+    async def test_the_essentials_report_quotes_the_same_total(self, db_session, api_client):
+        """One figure, two readers, and they had drifted.
+
+        report_basics.emergency_fund read the DETECTION alone and ignored the
+        self-reported amount, under a docstring promising "One reader ... so
+        the Essentials report and the roadmap quote the same balance". A
+        household keeping most of its buffer at another institution saw the
+        roadmap say $10,240 and the report say $1,240 for the same thing.
+        """
+        budget = await _budget(db_session, api_client)
+        group = await create_category_group(db_session, budget, "Savings")
+        cat = await create_category(db_session, budget, group, "Emergency Fund")
+        await create_budget_assignment(db_session, budget, cat, THIS_MONTH, "1240.00")
+        await api_client.put(
+            f"/api/v1/{budget.id}/guide/bindings/emergency_fund",
+            json={
+                "mode": "manual",
+                "entity_ids": {"category": [str(cat.id)]},
+                "external": True,
+                "external_amount": "9000",
+            },
+        )
+
+        signals = (await api_client.get(f"/api/v1/{budget.id}/guide/signals")).json()
+        roadmap = Decimal(_concept(signals, "emergency_fund")["value"])
+        report = (await api_client.get(f"/api/v1/{budget.id}/reports/essentials")).json()
+
+        assert roadmap == Decimal("10240.00")
+        assert Decimal(report["emergency_fund_balance"]) == roadmap
+
+    async def test_a_declared_amount_alone_reaches_the_report(self, db_session, api_client):
+        """Nothing in the budget to detect, and a figure the person gave us.
+        The report used to read None and show "No emergency fund found yet"."""
+        budget = await _budget(db_session, api_client)
+        await api_client.put(
+            f"/api/v1/{budget.id}/guide/bindings/emergency_fund",
+            json={"mode": "manual", "entity_ids": {}, "external": True, "external_amount": "4500"},
+        )
+
+        report = (await api_client.get(f"/api/v1/{budget.id}/reports/essentials")).json()
+
+        assert Decimal(report["emergency_fund_balance"]) == Decimal("4500")
+
     async def test_external_without_a_figure_still_counts_as_handled(self, db_session, api_client):
         budget = await _budget(db_session, api_client)
         await api_client.put(

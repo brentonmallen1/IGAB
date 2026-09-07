@@ -75,6 +75,9 @@
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  max-height: var(--panel-max-h);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .reports-nav__dropdown-item {
@@ -775,5 +778,37 @@
 .reports-note {
   margin: 0 0 var(--spacing-md);
   font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+/* ── Subscriptions: a category row that opens onto its payees ── */
+
+.subs-report__disclose {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+/* The group a category lives in, as an aside: two categories can share a
+   name across groups, and this is what tells them apart. */
+.subs-report__group {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+/* Indented and quieter: these are the detail of the row above, not peers of
+   it. The indent is on the first cell so the money columns stay aligned. */
+.subs-report__payee td:first-child {
+  padding-left: calc(var(--spacing-lg) + var(--spacing-xs));
+  color: var(--text-secondary);
+}
+
+.subs-report__payee td {
   color: var(--text-secondary);
 }

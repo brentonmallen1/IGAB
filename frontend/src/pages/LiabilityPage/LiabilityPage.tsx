@@ -63,6 +63,7 @@ export function LiabilityPage() {
   // contradict the chart above it.
   const [scheduleView, setScheduleView] = useState<'minimum' | 'extra'>('extra')
   const [showBalanceForm, setShowBalanceForm] = useState(false)
+  const [showOpeningForm, setShowOpeningForm] = useState(false)
   const [showLinkPicker, setShowLinkPicker] = useState(false)
   const [showAssetPicker, setShowAssetPicker] = useState(false)
 
@@ -173,15 +174,27 @@ export function LiabilityPage() {
 
   async function handleSeedOpeningBalance() {
     if (!liability?.linked_account_id) return
+    await seedOpeningBalance(
+      liability.current_balance,
+      liability.origination_date ?? new Date().toISOString().slice(0, 10)
+    )
+  }
+
+  /** The register is the one home for a managed liability's balance, so
+   *  "enter what you owe" writes a transaction rather than a second stored
+   *  figure the ledger would then contradict. */
+  async function seedOpeningBalance(owed: number, on: string) {
+    if (!liability?.linked_account_id) return
     try {
       await createTransaction.mutateAsync({
         account_id: liability.linked_account_id,
-        date: liability.origination_date ?? new Date().toISOString().slice(0, 10),
-        amount: -liability.current_balance,
+        date: on,
+        amount: -owed,
         payee_name: 'Starting Balance',
         memo: `Opening balance for ${liability.name}`,
         cleared: 'cleared',
       })
+      setShowOpeningForm(false)
       toast.success('Opening balance added — payments now track from the register')
     } catch {
       toast.error('Failed to add the opening balance')
@@ -253,6 +266,23 @@ export function LiabilityPage() {
       <div className="liability-page__pill-row">
         <PayoffPill liability={liability} />
       </div>
+
+      {liability.balance_source === 'empty' && (
+        <div className="liability-page__hint liability-page__hint--warning">
+          <span>
+            This account has no transactions yet, so there is nothing to read a balance from — the
+            zero above is "not answered", not "paid off". Enter what you owe and it becomes the
+            account's opening balance.
+          </span>
+          <button
+            className="liability-page__action"
+            onClick={() => setShowOpeningForm(true)}
+            disabled={createTransaction.isPending}
+          >
+            Enter the current balance
+          </button>
+        </div>
+      )}
 
       {liability.balance_source === 'manual_fallback' && (
         <div className="liability-page__hint liability-page__hint--warning">
@@ -661,6 +691,20 @@ export function LiabilityPage() {
           )}
         </div>
       </Surface>
+
+      {showOpeningForm && (
+        <DatedAmountForm
+          title="Opening balance"
+          amountLabel="Balance owed"
+          placeholder="24000.00"
+          pending={createTransaction.isPending}
+          // Blank date means today, as everywhere else this form is used.
+          onSubmit={(amount, on) =>
+            seedOpeningBalance(amount, on ?? new Date().toISOString().slice(0, 10))
+          }
+          onClose={() => setShowOpeningForm(false)}
+        />
+      )}
 
       {showBalanceForm && (
         <DatedAmountForm

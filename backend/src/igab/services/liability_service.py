@@ -49,7 +49,7 @@ ZERO = Decimal("0")
 
 PAYMENT_LOOKBACK_MONTHS = 6
 
-BalanceSource = Literal["ledger", "manual", "manual_fallback"]
+BalanceSource = Literal["ledger", "manual", "manual_fallback", "empty"]
 
 LIABILITY_CLASSIFICATION = "liability"
 
@@ -271,12 +271,16 @@ class LiabilityService:
         not report $0 owed ("Paid off") until the user seeds the register.
         """
         if liability.linked_account_id is not None:
-            if liability.manual_balance is not None:
-                txn_count = await self.transaction_repo.count_for_account(
-                    liability.linked_account_id
-                )
-                if txn_count == 0:
+            txn_count = await self.transaction_repo.count_for_account(liability.linked_account_id)
+            if txn_count == 0:
+                if liability.manual_balance is not None:
                     return max(ZERO, quantize_cents(liability.manual_balance)), "manual_fallback"
+                # Nothing to read and nothing remembered. Saying "ledger" here
+                # reported $0 owed, which the UI renders as "Paid off" — a
+                # student loan account created ten seconds ago claiming it was
+                # settled. "empty" is the honest answer and lets the page ask
+                # for an opening balance instead.
+                return ZERO, "empty"
             account_balance = await self.account_repo.get_balance(liability.linked_account_id)
             return max(ZERO, quantize_cents(-account_balance)), "ledger"
         return max(ZERO, quantize_cents(liability.manual_balance or ZERO)), "manual"

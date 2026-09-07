@@ -72,7 +72,15 @@ describe('targetMeasuresBalance is wording only', () => {
 
 describe('the server owns the verdict', () => {
   it('exports no status or shortfall function', async () => {
+    // The list is exact on purpose: a second opinion about whether a target is
+    // met is exactly what this module must never grow. MAX_FUNDING_DAY is a
+    // shared BOUND, not a verdict — the same number the server validates
+    // against, so the form refuses what the API would refuse.
     const mod = await import('./targets')
-    expect(Object.keys(mod).sort()).toEqual(['targetMeasuresBalance', 'targetProgress'])
+    expect(Object.keys(mod).sort()).toEqual([
+      'MAX_FUNDING_DAY',
+      'targetMeasuresBalance',
+      'targetProgress',
+    ])
   })
 })

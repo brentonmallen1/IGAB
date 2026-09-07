@@ -288,3 +288,11 @@
 /* Reordering: the grip, its placement and the dragging/drop-target states
    are `components/common/DragHandle` — one stylesheet for every row that
    can be dragged, so the group header and the category row cannot drift. */
+
+/* A category is being dragged and this heading would take it. The whole
+   heading lights, rather than the single insert line a reorder draws: the
+   category joins the group at the end, so there is no position to point at. */
+.category-group-row__header--accepts {
+  background-color: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  box-shadow: inset 0 0 0 1px var(--color-accent);
+}

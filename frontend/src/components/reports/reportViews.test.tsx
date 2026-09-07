@@ -297,14 +297,27 @@ describe('SubscriptionsReport table', () => {
       data: {
         subscriptions: [
           {
-            payee_id: 'p1',
-            payee_name: 'Quarterly Gym',
+            category_id: 'c1',
+            category_name: 'Fitness',
+            group_name: 'Wellbeing',
             monthly_amounts: [30, 0, 0, 30],
             total: 120,
             avg_monthly: 10,
             avg_per_charge: 30,
             last_charge_date: '2026-05-01',
             transaction_count: 4,
+            payees: [
+              {
+                payee_id: 'p1',
+                payee_name: 'Quarterly Gym',
+                monthly_amounts: [30, 0, 0, 30],
+                total: 120,
+                avg_monthly: 10,
+                avg_per_charge: 30,
+                last_charge_date: '2026-05-01',
+                transaction_count: 4,
+              },
+            ],
           },
         ],
         summary: { total_monthly: 10, total_annual: 120, active_count: 1 },
@@ -320,6 +333,53 @@ describe('SubscriptionsReport table', () => {
     expect(screen.getAllByText('$10.00').length).toBeGreaterThan(0)
     // projected annual (also the total column — both show $120.00)
     expect(screen.getAllByText('$120.00').length).toBeGreaterThan(0)
+  })
+
+  it('leads with the tagged category and opens onto its payees', () => {
+    // The tag is on categories, so the category is the line. Listing payees
+    // at the top level made the tag a filter and left the envelope unnamed.
+    setQuery({
+      data: {
+        subscriptions: [
+          {
+            category_id: 'c1',
+            category_name: 'Streaming',
+            group_name: 'Bills',
+            monthly_amounts: [30],
+            total: 30,
+            avg_monthly: 30,
+            avg_per_charge: 15,
+            last_charge_date: '2026-05-01',
+            transaction_count: 2,
+            payees: [
+              {
+                payee_id: 'p1',
+                payee_name: 'Northwind Stream',
+                monthly_amounts: [20],
+                total: 20,
+                avg_monthly: 20,
+                avg_per_charge: 20,
+                last_charge_date: '2026-05-01',
+                transaction_count: 1,
+              },
+            ],
+          },
+        ],
+        summary: { total_monthly: 30, total_annual: 360, active_count: 1 },
+        months: ['2026-05-01'],
+      },
+    })
+    renderReport(<SubscriptionsReport budgetId="b1" />)
+
+    expect(screen.getByText('Category')).toBeInTheDocument()
+    const row = screen.getByRole('button', { name: /Streaming/ })
+    expect(row).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByText('Northwind Stream')).toBeNull()
+
+    fireEvent.click(row)
+
+    expect(row).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByText('Northwind Stream')).toBeInTheDocument()
   })
 })
 

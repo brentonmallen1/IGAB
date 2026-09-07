@@ -11,6 +11,7 @@ import { CategoryRow } from '../CategoryRow/CategoryRow'
 import { useDeleteCategoryFlow } from '../DeleteCategoryModal/useDeleteCategoryFlow'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { useDragReorder, type DragReorder } from '../../../hooks/useDragReorder'
+import { useCategoryDrag } from '../CategoryDrag/CategoryDragContext'
 import { DragHandle } from '../../common/DragHandle/DragHandle'
 import { moveItem } from '../../../utils/listOrder'
 import { sumBalances } from '../budgetTotals'
@@ -88,6 +89,14 @@ export function CategoryGroupRow({
   )
   const categoryDrag = useDragReorder(categories.length, moveCategory)
   const categoriesReorderable = canReorderCategories && categories.length > 1
+
+  // A category dragged out of another group. `wouldMoveTo` is false inside
+  // its own group, where the index-based reorder above is the right handler,
+  // and false when a GROUP is the thing being dragged.
+  const crossGroupDrag = useCategoryDrag()
+  const [categoryOver, setCategoryOver] = useState(false)
+  const acceptsCategory = crossGroupDrag != null && crossGroupDrag.wouldMoveTo(group.id)
+  const isCategoryDropTarget = acceptsCategory && categoryOver
 
   // `sumBalances`, not a reduce of its own. This summed three times inline
   // with `?? 0`, which differs from the shared rule on exactly one row type:
@@ -181,26 +190,41 @@ export function CategoryGroupRow({
           (reorder?.dragIndex === index ? ' drag-handle-host--dragging' : '') +
           (reorder && reorder.overIndex === index && reorder.dragIndex !== index
             ? ' drag-handle-host--drag-over'
-            : '')
+            : '') +
+          // A category hovering over this heading lands in this group. Its
+          // own class, not the reorder one: that draws a line above the row,
+          // which means "insert here" — the wrong promise for a heading.
+          (isCategoryDropTarget ? ' category-group-row__header--accepts' : '')
         }
         // Only the handle starts a drag (see DragHandle); the header is where
         // a dragged group lands.
-        onDragOver={
-          reorder
-            ? (e) => {
-                e.preventDefault()
-                reorder.over(index)
-              }
-            : undefined
-        }
-        onDrop={
-          reorder
-            ? (e) => {
-                e.preventDefault()
-                reorder.drop(index)
-              }
-            : undefined
-        }
+        onDragOver={(e) => {
+          // A dragged category may land on a heading even when the groups
+          // themselves are not reorderable — they are separate gestures.
+          if (acceptsCategory) {
+            e.preventDefault()
+            setCategoryOver(true)
+            return
+          }
+          if (reorder) {
+            e.preventDefault()
+            reorder.over(index)
+          }
+        }}
+        onDragLeave={acceptsCategory ? () => setCategoryOver(false) : undefined}
+        onDrop={(e) => {
+          if (acceptsCategory) {
+            e.preventDefault()
+            setCategoryOver(false)
+            crossGroupDrag.moveTo(group.id)
+            reorder?.end()
+            return
+          }
+          if (reorder) {
+            e.preventDefault()
+            reorder.drop(index)
+          }
+        }}
       >
         {reorder && (
           <DragHandle

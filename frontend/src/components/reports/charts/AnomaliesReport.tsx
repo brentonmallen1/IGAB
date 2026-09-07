@@ -5,6 +5,7 @@ import { useAnomaliesReport } from '../../../api/reports'
 import { useReportStore } from '../../../stores/reportStore'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
+import { ReportRangeSelect } from './rangeSelect'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { Tooltip } from '../../common/Tooltip/Tooltip'
 
@@ -12,7 +13,6 @@ interface Props {
   budgetId: string
 }
 
-const MONTH_OPTIONS = [6, 12, 24] as const
 const SENSITIVITY_OPTIONS = [
   { value: 3.0, label: 'Strict', description: 'z ≥ 3' },
   { value: 2.5, label: 'Normal', description: 'z ≥ 2.5' },
@@ -20,7 +20,7 @@ const SENSITIVITY_OPTIONS = [
 ] as const
 
 export function AnomaliesReport({ budgetId }: Props) {
-  const [months, setMonths] = useState<(typeof MONTH_OPTIONS)[number]>(12)
+  const [months, setMonths] = useState(12)
   const [threshold, setThreshold] = useState(2.5)
   const { data, isLoading, isError, error, refetch } = useAnomaliesReport(
     budgetId,
@@ -101,16 +101,7 @@ export function AnomaliesReport({ budgetId }: Props) {
           <ReportScopeNote scope="categories" />
         </ReportInfoButton>
         <div className="flex-row">
-          {MONTH_OPTIONS.map((m) => (
-            <button
-              key={m}
-              className={`report-btn ${months === m ? 'report-btn--active' : ''}`}
-              onClick={() => setMonths(m)}
-              type="button"
-            >
-              {m}mo
-            </button>
-          ))}
+          <ReportRangeSelect months={months} onChange={setMonths} />
         </div>
         <div className="flex-row">
           {SENSITIVITY_OPTIONS.map((opt) => (

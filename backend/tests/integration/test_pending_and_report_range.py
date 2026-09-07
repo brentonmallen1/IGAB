@@ -172,12 +172,31 @@ class TestReportRange:
 
     async def test_every_report_shares_one_ceiling(self, db_session, api_client):
         """Three different bounds existed and only one of them was visible."""
-        budget, _, _ = await _budget(db_session, api_client)
+        budget, _, category = await _budget(db_session, api_client)
         await db_session.commit()
-        for path in ("net-worth", "burn-rate", "essentials", "account-composition"):
-            r = await api_client.get(f"/api/v1/{budget.id}/reports/{path}", params={"months": 120})
+        # Every report the range picker can drive. income-by-source and
+        # category-history kept a private `le=60` when the shared alias moved
+        # to 600, so giving them the picker would have 422'd any budget with
+        # more than five years of history — the exact windows the picker
+        # exists to offer.
+        for path in (
+            "net-worth",
+            "burn-rate",
+            "essentials",
+            "account-composition",
+            "subscriptions",
+            "savings",
+            "anomalies",
+            "income-by-source",
+            "category-history",
+        ):
+            # category-history is per-category; everything else takes months alone.
+            extra = {"category_id": str(category.id)} if path == "category-history" else {}
+            r = await api_client.get(
+                f"/api/v1/{budget.id}/reports/{path}", params={"months": 120, **extra}
+            )
             assert r.status_code == 200, f"{path}: {r.text}"
             over = await api_client.get(
-                f"/api/v1/{budget.id}/reports/{path}", params={"months": 601}
+                f"/api/v1/{budget.id}/reports/{path}", params={"months": 601, **extra}
             )
             assert over.status_code == 422, path

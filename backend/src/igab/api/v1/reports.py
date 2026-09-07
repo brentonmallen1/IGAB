@@ -61,7 +61,7 @@ from igab.api.v1.schemas.report import (
     SpendingReportResponse,
     SpendingTrendSeries,
     SpendingTrendsResponse,
-    SubscriptionPayee,
+    SubscriptionCategory,
     SubscriptionsReportResponse,
     SubscriptionsSummary,
     TimelineResponse,
@@ -95,6 +95,9 @@ from igab.services.report_basics import (
     income_by_source,
     spending_trends,
     wishlist_discipline,
+)
+from igab.services.report_basics import (
+    subscriptions_report as subscriptions_report_data,
 )
 from igab.services.report_service import ReportService
 
@@ -445,7 +448,7 @@ async def income_by_source_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
-    months: int = Query(12, ge=1, le=60),
+    months: ReportMonths = 12,
 ) -> IncomeBySourceResponse:
     data = await income_by_source(report_svc.session, budget_id, months)
     return IncomeBySourceResponse(
@@ -463,7 +466,7 @@ async def category_history_report(
     budget_service: Annotated[BudgetService, Depends(get_budget_service)],
     category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
     category_id: uuid.UUID = Query(...),
-    months: int = Query(12, ge=1, le=60),
+    months: ReportMonths = 12,
 ) -> CategoryHistoryReportResponse:
     """One category month by month, from the same BudgetService the budget
     page reads — this endpoint orchestrates, it computes nothing."""
@@ -619,10 +622,10 @@ async def subscriptions_report(
     report_svc: Annotated[ReportService, Depends(get_report_service)],
     months: ReportMonths = 12,
 ) -> SubscriptionsReportResponse:
-    """Subscriptions report — aggregates transactions from payees tagged 'subscription'."""
-    data = await report_svc.subscriptions_report(budget_id, months)
+    """Recurring charges filed to categories tagged 'subscription', by category."""
+    data = await subscriptions_report_data(report_svc.session, budget_id, months)
     return SubscriptionsReportResponse(
-        subscriptions=[SubscriptionPayee.model_validate(s) for s in data["subscriptions"]],
+        subscriptions=[SubscriptionCategory.model_validate(s) for s in data["subscriptions"]],
         summary=SubscriptionsSummary.model_validate(data["summary"]),
         months=data["months"],
     )

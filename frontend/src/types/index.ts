@@ -1078,17 +1078,30 @@ export interface TimelineReport {
   transactions: TimelineTransaction[]
 }
 
-export interface SubscriptionPayee {
-  payee_id: string | null
-  payee_name: string
+/** The figures a recurring line carries — same shape for a category and for
+ *  a payee inside it, because the arithmetic is the same. */
+export interface RecurringSpend {
   monthly_amounts: number[]
-  total: number
-  /** True monthly burden: total / months since first charge */
+  /** True monthly burden: total / months since the first charge. Per payee
+   *  that is a service's cost; per category it is the envelope's burn rate. */
   avg_monthly: number
+  total: number
   /** Typical charge: total / charge count */
   avg_per_charge: number
   last_charge_date: string | null
   transaction_count: number
+}
+
+export interface SubscriptionPayee extends RecurringSpend {
+  payee_id: string | null
+  payee_name: string
+}
+
+export interface SubscriptionCategory extends RecurringSpend {
+  category_id: string
+  category_name: string
+  group_name: string
+  payees: SubscriptionPayee[]
 }
 
 export interface SubscriptionsSummary {
@@ -1098,7 +1111,7 @@ export interface SubscriptionsSummary {
 }
 
 export interface SubscriptionsReport {
-  subscriptions: SubscriptionPayee[]
+  subscriptions: SubscriptionCategory[]
   summary: SubscriptionsSummary
   months: string[]
 }

@@ -157,7 +157,12 @@
   box-shadow: var(--shadow-md, 0 4px 16px rgba(0, 0, 0, 0.2));
   min-width: 160px;
   z-index: var(--z-dropdown);
-  overflow: hidden;
+  /* 19 palettes at ~31px is close to 600px of options. With `overflow:
+     hidden` and no cap, everything past the viewport edge was not merely
+     off-screen but unreachable — no scrollbar, no way down. */
+  max-height: var(--panel-max-h);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 4px 0;
 }
 

@@ -24,6 +24,7 @@ import { useDragReorder } from '../../../hooks/useDragReorder'
 import { useMeasuredHeight } from '../../../hooks/useMeasuredHeight'
 import { moveItem } from '../../../utils/listOrder'
 import { CategoryGroupRow } from '../CategoryGroupRow/CategoryGroupRow'
+import { CategoryDragProvider } from '../CategoryDrag/CategoryDragContext'
 import { BudgetFilterBar } from '../BudgetFilterBar/BudgetFilterBar'
 import { ArchivedCategoriesModal } from '../ArchivedCategoriesModal/ArchivedCategoriesModal'
 import { useDeleteCategoryFlow } from '../DeleteCategoryModal/useDeleteCategoryFlow'
@@ -305,22 +306,26 @@ export function BudgetTable() {
         </div>
       </div>
 
-      <div className="budget-table__body">
-        {visibleGroups?.map((group: CategoryGroup, index: number) => (
-          <CategoryGroupRow
-            key={group.id}
-            group={group}
-            categories={catsByGroup.get(group.id) ?? []}
-            balanceMap={balanceMap}
-            budgetId={budgetId}
-            month={month}
-            readOnlyGroup={activeView != null}
-            index={index}
-            reorder={groupsReorderable ? groupDrag : undefined}
-            canReorderCategories={categoriesReorderable}
-          />
-        ))}
-      </div>
+      {/* One drag state for the whole body: a category dragged out of one
+          group has to be recognisable when it lands in another. */}
+      <CategoryDragProvider budgetId={budgetId ?? ''}>
+        <div className="budget-table__body">
+          {visibleGroups?.map((group: CategoryGroup, index: number) => (
+            <CategoryGroupRow
+              key={group.id}
+              group={group}
+              categories={catsByGroup.get(group.id) ?? []}
+              balanceMap={balanceMap}
+              budgetId={budgetId}
+              month={month}
+              readOnlyGroup={activeView != null}
+              index={index}
+              reorder={groupsReorderable ? groupDrag : undefined}
+              canReorderCategories={categoriesReorderable}
+            />
+          ))}
+        </div>
+      </CategoryDragProvider>
       {archivedOpen && budgetId && (
         <ArchivedCategoriesModal
           budgetId={budgetId}

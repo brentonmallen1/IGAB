@@ -58,18 +58,11 @@ export function SelectionActionBar({
   const { formatMoney } = useFormatters()
   const [showCategoryPicker, setShowCategoryPicker] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
-  const [morePos, setMorePos] = useState({ x: 0, y: 0 })
   const moreRef = useRef<HTMLButtonElement>(null)
 
   // An explicit sign, both ways: formatMoney only writes the minus, and on
   // the accent fill the glyph is the whole signal (see SelectionActionBar.css).
   const signedTotal = `${selectedTotal > 0 ? '+' : ''}${formatMoney(selectedTotal)}`
-
-  function handleMoreClick() {
-    const rect = moreRef.current?.getBoundingClientRect()
-    if (rect) setMorePos({ x: rect.left, y: rect.top - 10 })
-    setMoreOpen(true)
-  }
 
   function handleMoreAction(id: string) {
     switch (id) {
@@ -155,7 +148,7 @@ export function SelectionActionBar({
 
       <FloatingSelectionBar.Divider />
 
-      <button ref={moreRef} className="fsb__btn" onClick={handleMoreClick}>
+      <button ref={moreRef} className="fsb__btn" onClick={() => setMoreOpen(true)}>
         <MoreHorizontal size={14} />
         More
       </button>
@@ -165,7 +158,7 @@ export function SelectionActionBar({
           items={MORE_ITEMS}
           onSelect={handleMoreAction}
           onClose={() => setMoreOpen(false)}
-          position={{ x: morePos.x, y: morePos.y - 160 }}
+          anchor={moreRef}
         />
       )}
     </FloatingSelectionBar>

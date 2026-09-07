@@ -5,11 +5,6 @@
   padding: var(--spacing-md);
 }
 
-.essentials-report__windows {
-  display: inline-flex;
-  gap: 2px;
-}
-
 .essentials-report__empty {
   padding: var(--spacing-lg) var(--spacing-md);
   color: var(--text-secondary);
