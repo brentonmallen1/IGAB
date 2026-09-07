@@ -17,7 +17,7 @@ import { LiabilitySettingsModal } from '../../components/liabilities/LiabilitySe
 import { PaydownChart } from '../../components/liabilities/PaydownChart'
 import { PaydownWhatIf } from '../../components/liabilities/PaydownWhatIf'
 import { PaymentBreakdown } from '../../components/liabilities/PaymentBreakdown'
-import { paydownOutlook } from '../../components/liabilities/paydownOutlook'
+import { formatMonthSpan, paydownOutlook } from '../../components/liabilities/paydownOutlook'
 import { PayoffPill } from '../../components/liabilities/PayoffPill'
 import { Combobox } from '../../components/common/Combobox/Combobox'
 import { MetricCard } from '../../components/reports/MetricCard'
@@ -336,10 +336,29 @@ export function LiabilityPage() {
         />
         <MetricCard
           variant="raised"
-          label="Months Remaining"
-          value={outlook.months === null ? '—' : String(outlook.months)}
+          label="Time to pay off"
+          value={outlook.months === null ? '—' : formatMonthSpan(outlook.months)}
           sub={outlook.monthsNote}
         />
+        {/* Its own card, beside the payoff span rather than inside it: the two
+            were easy to read as one thing — "how long is left" answered by a
+            promo date that ends the RATE, not the debt. */}
+        {liability.promo_end_date && liability.promo_projection && (
+          <MetricCard
+            variant="raised"
+            label={liability.promo_deferred_interest ? 'Promo ends (deferred)' : 'Promo ends'}
+            value={formatMonth(liability.promo_end_date)}
+            sub={
+              liability.promo_projection.months_until_promo_end === null
+                ? 'The promotional rate has ended'
+                : `in ${formatMonthSpan(liability.promo_projection.months_until_promo_end)} — the rate changes, the debt does not end`
+            }
+            warning={
+              !liability.promo_projection.clears_before_promo &&
+              (liability.promo_projection.months_until_promo_end ?? 0) > 0
+            }
+          />
+        )}
       </MetricRow>
 
       {liability.origination_date !== null &&
@@ -561,7 +580,12 @@ export function LiabilityPage() {
                 </button>
               </div>
             ) : (
-              <PaydownChart amortization={amortization} mode={chartMode} isMobile={isMobile} />
+              <PaydownChart
+                amortization={amortization}
+                mode={chartMode}
+                isMobile={isMobile}
+                promoEndDate={liability.promo_end_date}
+              />
             )
           ) : (
             <div className="liability-page__empty">Loading chart…</div>

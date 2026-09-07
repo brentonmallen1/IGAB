@@ -40,6 +40,10 @@ class PlanItem(ApiModel):
 
 class PlanPaycheck(ApiModel):
     id: uuid.UUID
+    #: What this paycheck is — "1st of the month", "Northwind, 15th" — so a
+    #: column reads as a real event rather than "Paycheck 2". Optional; the
+    #: header falls back to the position.
+    label: str | None = Field(default=None, max_length=60)
     #: None means "use the even split of the monthly take-home".
     income_override_cents: int | None = Field(default=None, ge=0, le=MAX_CENTS)
     items: list[PlanItem] = Field(default_factory=list, max_length=100)

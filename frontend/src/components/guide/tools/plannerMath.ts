@@ -30,6 +30,9 @@ export interface DraftItem {
 
 export interface DraftPaycheck {
   id: string
+  /** What this paycheck is — "1st", "Northwind, 15th". '' = unnamed, and the
+   *  header falls back to its position. */
+  label: string
   /** Raw text; '' = no override, the even split applies. */
   income: string
   items: DraftItem[]
@@ -131,7 +134,7 @@ export function resizePaychecks(
   if (nextCount === paychecks.length) return { paychecks, moved: 0 }
   if (nextCount > paychecks.length) {
     const grown = [...paychecks]
-    while (grown.length < nextCount) grown.push({ id: mkId(), income: '', items: [] })
+    while (grown.length < nextCount) grown.push({ id: mkId(), label: '', income: '', items: [] })
     return { paychecks: grown, moved: 0 }
   }
   const kept = paychecks.slice(0, nextCount).map((p) => ({ ...p, items: [...p.items] }))
@@ -150,6 +153,7 @@ export function payloadToDraft(payload: PlanPayload): PlanDraft {
     countOverride: payload.paycheck_count_override,
     paychecks: payload.paychecks.map((p) => ({
       id: p.id,
+      label: p.label ?? '',
       income: p.income_override_cents === null ? '' : centsToInputString(p.income_override_cents),
       items: p.items.map((i) => ({
         id: i.id,
@@ -175,6 +179,9 @@ export function draftToPayload(draft: PlanDraft): PlanPayload {
       const income = parseCentsField(p.income)
       return {
         id: p.id,
+        // An empty name is absent, not "": the column then reads by position,
+        // which is what an unnamed paycheck means.
+        label: p.label.trim() || null,
         income_override_cents: income === null || Number.isNaN(income) ? null : income,
         items: p.items.map((i) => {
           const cents = parseCentsField(i.amount)

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import {
   AlertTriangle,
@@ -297,7 +297,7 @@ function RestoringOverlay() {
 
 export function BackupsPanel() {
   const { formatDateTime } = useFormatters()
-  const { data, isLoading } = useBackups()
+  const { data, isLoading, refetch } = useBackups()
   const runBackup = useRunBackup()
   const restoreBackup = useRestoreBackup()
   const [restoreTarget, setRestoreTarget] = useState<BackupFile | null>(null)
@@ -313,6 +313,37 @@ export function BackupsPanel() {
   const queued = (data?.queued ?? false) && agentOnline
   const busy = queued || jobRunning || runBackup.isPending
   const files = data?.files ?? []
+
+  // "Backup queued" was the last thing the page said: the 3s poll refreshed
+  // the file list, but nothing announced the finish, so it read as needing a
+  // manual refresh. Watch a run leave queued/running and say how it went.
+  //
+  // Two refs, because the two things being remembered are different: whether
+  // a run was ever seen in flight (a job already finished when the page
+  // opened is old news, not an event), and which finish has been announced
+  // (the poll re-renders with the same job many times over).
+  const seenInFlight = useRef(false)
+  const announced = useRef<string | null>(null)
+  const inFlight = queued || jobRunning
+  const finishedAt = job?.finished_at ?? null
+  useEffect(() => {
+    if (inFlight) {
+      seenInFlight.current = true
+      return
+    }
+    if (!job || job.action !== 'backup' || !finishedAt) return
+    if (!seenInFlight.current) {
+      announced.current = finishedAt
+      return
+    }
+    if (announced.current === finishedAt) return
+    announced.current = finishedAt
+    if (job.state === 'done') toast.success('Backup finished')
+    else if (job.state === 'error') {
+      toast.error(`Backup failed — ${job.detail ?? 'see the service log'}`)
+    }
+    void refetch()
+  }, [inFlight, job, finishedAt, refetch])
 
   async function startRestore(preBackup: boolean) {
     if (!restoreTarget) return

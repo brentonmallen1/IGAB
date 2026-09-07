@@ -82,6 +82,9 @@ export function CategoryPlanner() {
 
   // ── draft + autosave ──────────────────────────────────────────────────
   const [draftState, setDraftState] = useState<{ planId: string; draft: PlanDraft } | null>(null)
+  // Row ids ticked for a bulk move. Kept by id rather than by position so a
+  // move or a delete cannot silently reselect a different row.
+  const [selected, setSelected] = useState<Set<string>>(new Set())
   const [lastSavedJson, setLastSavedJson] = useState('')
   const [saveFailed, setSaveFailed] = useState(false)
   const [flushTick, setFlushTick] = useState(0)
@@ -222,6 +225,29 @@ export function CategoryPlanner() {
   const drift = incomeTotal - doc.monthly_income_cents
   const money = (cents: number) => formatMoney(fromCents(cents))
 
+  // Column names for every "move to" picker, so a row and the bulk bar name
+  // the same paychecks the headers do.
+  const labels = draft.paychecks.map((p, i) => p.label.trim() || `Paycheck ${i + 1}`)
+
+  function moveSelected(to: number) {
+    const ids = selected
+    if (ids.size === 0) return
+    update(
+      (d) => {
+        const moving = d.paychecks.flatMap((p) => p.items.filter((i) => ids.has(i.id)))
+        return {
+          ...d,
+          paychecks: d.paychecks.map((p, i) => {
+            const kept = p.items.filter((x) => !ids.has(x.id))
+            return i === to ? { ...p, items: [...kept, ...moving] } : { ...p, items: kept }
+          }),
+        }
+      },
+      { flush: true }
+    )
+    setSelected(new Set())
+  }
+
   const saveStatus = savePlan.isPending
     ? 'Saving…'
     : saveFailed
@@ -311,6 +337,61 @@ export function CategoryPlanner() {
         </div>
       </div>
 
+      <Surface as="dl" variant="chrome" className="planner__summary">
+        <div>
+          <dt>Take-home</dt>
+          <dd className="tabular">{money(doc.monthly_income_cents)}</dd>
+        </div>
+        {drift !== 0 && (
+          <div className="planner__figure--drift">
+            <dt>Paychecks add up to</dt>
+            <dd className="tabular">
+              {money(incomeTotal)} ({drift > 0 ? '+' : '−'}
+              {money(Math.abs(drift))})
+            </dd>
+          </div>
+        )}
+        <div>
+          <dt>Planned</dt>
+          <dd className="tabular">{money(planned)}</dd>
+        </div>
+        <div className={leftToPlan < 0 ? 'planner__figure--over' : ''}>
+          <dt>{leftToPlan < 0 ? 'Over by' : 'Left to plan'}</dt>
+          <dd className="tabular">{money(Math.abs(leftToPlan))}</dd>
+        </div>
+      </Surface>
+
+      {selected.size > 0 && count > 1 && (
+        <div className="planner__bulk" role="group" aria-label="Move the selected rows">
+          <span>
+            {selected.size} row{selected.size === 1 ? '' : 's'} selected
+          </span>
+          <select
+            aria-label="Move the selected rows to a paycheck"
+            value=""
+            onChange={(e) => {
+              if (e.target.value === '') return
+              moveSelected(Number(e.target.value))
+              e.currentTarget.value = ''
+            }}
+          >
+            <option value="">Move to…</option>
+            {draft.paychecks.map((p, i) => (
+              <option key={p.id} value={i}>
+                {p.label.trim() || `Paycheck ${i + 1}`}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="guide-link-button"
+            onClick={() => setSelected(new Set())}
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
       <div className="planner__columns">
         {draft.paychecks.map((paycheck, pi) => {
           const income = paycheckIncomeCents(doc, pi)
@@ -320,7 +401,26 @@ export function CategoryPlanner() {
           return (
             <Surface key={paycheck.id} as="section" variant="sunken" className="planner__column">
               <header className="planner__column-head">
-                <h3>Paycheck {pi + 1}</h3>
+                <h3 className="sr-only">{paycheck.label.trim() || `Paycheck ${pi + 1}`}</h3>
+                <input
+                  className="planner__label"
+                  aria-label={`Name for paycheck ${pi + 1}`}
+                  value={paycheck.label}
+                  placeholder={`Paycheck ${pi + 1}`}
+                  title="What this paycheck is — the 1st, the 15th, whose it is"
+                  onChange={(e) =>
+                    update((d) => ({
+                      ...d,
+                      paychecks: d.paychecks.map((p, i) =>
+                        i === pi ? { ...p, label: e.target.value } : p
+                      ),
+                    }))
+                  }
+                />
+                <span className="planner__count tabular">
+                  {paycheck.items.length}
+                  <span className="sr-only"> categories</span>
+                </span>
                 <div
                   className={`planner__income ${overridden ? 'planner__income--overridden' : ''}`}
                 >
@@ -359,6 +459,21 @@ export function CategoryPlanner() {
                 </div>
               </header>
 
+              <dl className="planner__column-foot planner__column-foot--top">
+                <div>
+                  <dt>Income</dt>
+                  <dd className="tabular">{money(income)}</dd>
+                </div>
+                <div>
+                  <dt>Planned</dt>
+                  <dd className="tabular">{money(colPlanned)}</dd>
+                </div>
+                <div className={remaining < 0 ? 'planner__figure--over' : ''}>
+                  <dt>Left</dt>
+                  <dd className="tabular">{money(remaining)}</dd>
+                </div>
+              </dl>
+
               {paycheck.items.length > 0 && (
                 <div className="planner__rows">
                   {paycheck.items.map((item) => (
@@ -367,6 +482,16 @@ export function CategoryPlanner() {
                       item={item}
                       paycheckIndex={pi}
                       paycheckCount={count}
+                      paycheckLabels={labels}
+                      selected={selected.has(item.id)}
+                      onSelect={(on) =>
+                        setSelected((prev) => {
+                          const next = new Set(prev)
+                          if (on) next.add(item.id)
+                          else next.delete(item.id)
+                          return next
+                        })
+                      }
                       onChange={(next) =>
                         update((d) => ({
                           ...d,
@@ -429,49 +554,10 @@ export function CategoryPlanner() {
               >
                 <Plus size={12} aria-hidden /> Add a category
               </button>
-
-              <dl className="planner__column-foot">
-                <div>
-                  <dt>Income</dt>
-                  <dd className="tabular">{money(income)}</dd>
-                </div>
-                <div>
-                  <dt>Planned</dt>
-                  <dd className="tabular">{money(colPlanned)}</dd>
-                </div>
-                <div className={remaining < 0 ? 'planner__figure--over' : ''}>
-                  <dt>Left</dt>
-                  <dd className="tabular">{money(remaining)}</dd>
-                </div>
-              </dl>
             </Surface>
           )
         })}
       </div>
-
-      <Surface as="dl" variant="chrome" className="planner__summary">
-        <div>
-          <dt>Take-home</dt>
-          <dd className="tabular">{money(doc.monthly_income_cents)}</dd>
-        </div>
-        {drift !== 0 && (
-          <div className="planner__figure--drift">
-            <dt>Paychecks add up to</dt>
-            <dd className="tabular">
-              {money(incomeTotal)} ({drift > 0 ? '+' : '−'}
-              {money(Math.abs(drift))})
-            </dd>
-          </div>
-        )}
-        <div>
-          <dt>Planned</dt>
-          <dd className="tabular">{money(planned)}</dd>
-        </div>
-        <div className={leftToPlan < 0 ? 'planner__figure--over' : ''}>
-          <dt>{leftToPlan < 0 ? 'Over by' : 'Left to plan'}</dt>
-          <dd className="tabular">{money(Math.abs(leftToPlan))}</dd>
-        </div>
-      </Surface>
 
       <ImportPanel
         budgetId={budgetId}
@@ -613,6 +699,9 @@ function ItemRow(props: {
   item: DraftItem
   paycheckIndex: number
   paycheckCount: number
+  paycheckLabels: string[]
+  selected: boolean
+  onSelect: (on: boolean) => void
   onChange: (next: DraftItem) => void
   onRemove: () => void
   onMove: (to: number) => void
@@ -621,16 +710,28 @@ function ItemRow(props: {
   const amountBad = Number.isNaN(parseCentsField(item.amount))
   const dueBad = Number.isNaN(parseDueDayField(item.dueDay))
   return (
-    <div className="planner__row">
+    <div className={`planner__row ${props.selected ? 'planner__row--selected' : ''}`}>
+      {props.paycheckCount > 1 && (
+        <input
+          type="checkbox"
+          className="planner__select"
+          aria-label={`Select ${item.name || 'this row'}`}
+          checked={props.selected}
+          onChange={(e) => props.onSelect(e.target.checked)}
+        />
+      )}
       <div className="planner__row-name">
         {item.categoryId !== null && (
           <Link2 size={11} aria-label="Linked to a budget category" className="planner__link" />
         )}
+        {/* The title is the whole name: a long category is clipped by the
+            column, and the plan is where you check you have covered it. */}
         <input
           aria-label="Category name"
           value={item.name}
           readOnly={item.categoryId !== null}
           placeholder="Category"
+          title={item.name || undefined}
           onChange={(e) => props.onChange({ ...item, name: e.target.value })}
         />
       </div>
@@ -664,7 +765,7 @@ function ItemRow(props: {
             .filter((i) => i !== props.paycheckIndex)
             .map((i) => (
               <option key={i} value={i}>
-                To Paycheck {i + 1}
+                To {props.paycheckLabels[i]}
               </option>
             ))}
         </select>

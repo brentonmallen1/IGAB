@@ -27,10 +27,11 @@ function plan(): CategoryPlan {
       paychecks: [
         {
           id: 'p1',
+          label: null,
           income_override_cents: null,
           items: [{ id: 'i1', category_id: null, name: 'Rent', due_day: 1, amount_cents: 145000 }],
         },
-        { id: 'p2', income_override_cents: null, items: [] },
+        { id: 'p2', label: null, income_override_cents: null, items: [] },
       ],
     },
   }
@@ -80,6 +81,40 @@ describe('CategoryPlanner', () => {
     await userEvent.selectOptions(screen.getByLabelText('Move to another paycheck'), '1')
     const second = within(columns()[1] as HTMLElement)
     expect(second.getByDisplayValue('Rent')).toBeInTheDocument()
+  })
+
+  it('a paycheck can be named, and its name is what the move controls offer', async () => {
+    renderPlanner()
+    const first = within(columns()[0] as HTMLElement)
+    await userEvent.type(first.getByLabelText('Name for paycheck 1'), 'Northwind, 1st')
+    // The row's own move picker names the columns the headers do.
+    expect(
+      within(columns()[1] as HTMLElement).queryByLabelText('Name for paycheck 2')
+    ).toHaveAttribute('placeholder', 'Paycheck 2')
+    await userEvent.click(first.getByLabelText(/select rent/i))
+    expect(screen.getByLabelText(/move the selected rows to a paycheck/i)).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Northwind, 1st' })).toBeInTheDocument()
+  })
+
+  it('selecting rows moves them together', async () => {
+    renderPlanner()
+    const first = within(columns()[0] as HTMLElement)
+    await userEvent.click(first.getByLabelText(/select rent/i))
+    expect(screen.getByText('1 row selected')).toBeInTheDocument()
+    await userEvent.selectOptions(
+      screen.getByLabelText(/move the selected rows to a paycheck/i),
+      '1'
+    )
+    expect(within(columns()[1] as HTMLElement).getByDisplayValue('Rent')).toBeInTheDocument()
+    // The selection clears with the move — a stale tick on a moved row is a
+    // second move nobody asked for.
+    expect(screen.queryByText(/row selected/)).not.toBeInTheDocument()
+  })
+
+  it('each column counts its categories', () => {
+    renderPlanner()
+    const first = within(columns()[0] as HTMLElement)
+    expect(first.getByText('1')).toBeInTheDocument()
   })
 
   it('with no plans yet, offers to start one', () => {

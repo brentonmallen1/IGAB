@@ -101,3 +101,18 @@ export function paydownOutlook(
     typicalPayment: pace,
   }
 }
+
+/**
+ * A month count as years and months — "28 years 11 months", not "347".
+ *
+ * A mortgage's raw month count is unreadable, and it sat directly beside a
+ * promo end date on a card, where the two were easy to confuse. Under a
+ * year stays in months.
+ */
+export function formatMonthSpan(months: number): string {
+  if (months < 12) return `${months} month${months === 1 ? '' : 's'}`
+  const years = Math.floor(months / 12)
+  const rest = months % 12
+  const y = `${years} year${years === 1 ? '' : 's'}`
+  return rest === 0 ? y : `${y} ${rest} month${rest === 1 ? '' : 's'}`
+}

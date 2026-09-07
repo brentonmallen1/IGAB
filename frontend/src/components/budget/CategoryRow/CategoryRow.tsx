@@ -26,6 +26,7 @@ import { useFormatters } from '../../../hooks/useFormatters'
 import type { DragReorder } from '../../../hooks/useDragReorder'
 import { DragHandle } from '../../common/DragHandle/DragHandle'
 import type { Category, CategoryBalance } from '../../../types'
+import '../budgetGrid.css'
 import './CategoryRow.css'
 
 interface Props {
@@ -280,7 +281,7 @@ export const CategoryRow = memo(function CategoryRow({
         />
       )}
       <div
-        className={`category-row drag-handle-host ${isSelected ? 'category-row--selected' : ''} ${anySelected ? 'category-row--any-selected' : ''} ${available < 0 && !overspentOnCardOnly ? 'category-row--overspent' : ''} ${targetProgress !== null && budgetRowMode === 'expanded' ? 'category-row--has-pill' : ''} ${budgetRowMode === 'dense' ? 'category-row--dense' : ''} ${budgetRowMode === 'compact' ? 'category-row--compact' : ''} ${reorder?.dragIndex === index ? 'drag-handle-host--dragging' : ''} ${reorder && reorder.overIndex === index && reorder.dragIndex !== index ? 'drag-handle-host--drag-over' : ''}`}
+        className={`category-row budget-grid drag-handle-host ${isSelected ? 'category-row--selected' : ''} ${anySelected ? 'category-row--any-selected' : ''} ${available < 0 && !overspentOnCardOnly ? 'category-row--overspent' : ''} ${targetProgress !== null && budgetRowMode === 'expanded' ? 'category-row--has-pill' : ''} ${budgetRowMode === 'dense' ? 'category-row--dense' : ''} ${budgetRowMode === 'compact' ? 'category-row--compact' : ''} ${reorder?.dragIndex === index ? 'drag-handle-host--dragging' : ''} ${reorder && reorder.overIndex === index && reorder.dragIndex !== index ? 'drag-handle-host--drag-over' : ''}`}
         role="row"
         {...(isMobile ? longPress : { onClick: handleRowClick })}
         style={{ cursor: 'default' }}
@@ -311,7 +312,7 @@ export const CategoryRow = memo(function CategoryRow({
           />
         )}
         <div
-          className={`category-row__checkbox ${anySelected ? 'category-row__checkbox--visible' : ''}`}
+          className={`category-row__checkbox budget-grid__rail ${anySelected ? 'category-row__checkbox--visible' : ''}`}
         >
           <input
             type="checkbox"
@@ -322,7 +323,7 @@ export const CategoryRow = memo(function CategoryRow({
           />
         </div>
 
-        <div className="category-row__name">
+        <div className="category-row__name budget-grid__name--wide">
           {isRenaming ? (
             <div
               className="category-row__rename"
@@ -424,7 +425,7 @@ export const CategoryRow = memo(function CategoryRow({
           )}
         </div>
 
-        <div className="category-row__assigned" data-assign-id={category.id}>
+        <div className="category-row__assigned budget-grid__assigned" data-assign-id={category.id}>
           {isEditing ? (
             <AmountInput
               ref={inputRef}
@@ -451,7 +452,7 @@ export const CategoryRow = memo(function CategoryRow({
           )}
         </div>
 
-        <div className="category-row__activity tabular">
+        <div className="category-row__activity budget-grid__activity tabular">
           <button
             className="category-row__activity-btn"
             onClick={(e) => {
@@ -472,7 +473,7 @@ export const CategoryRow = memo(function CategoryRow({
         </div>
 
         <div
-          className={`category-row__available tabular ${availableClass} category-row__available--clickable`}
+          className={`category-row__available budget-grid__available tabular ${availableClass} category-row__available--clickable`}
           onClick={(e) => {
             e.stopPropagation()
             if (isMobile) {
@@ -552,8 +553,8 @@ export const CategoryRow = memo(function CategoryRow({
           const pctInside = targetProgress > 0.22
 
           return (
-            <div className="target-pill-row">
-              <div className="target-pill-wrap">
+            <div className="target-pill-row budget-grid">
+              <div className="target-pill-wrap budget-grid__name--wide">
                 <div className={`target-pill-track target-pill-track--${targetStatus}`}>
                   <div
                     className={`target-pill-fill target-pill-fill--${targetStatus}`}
@@ -567,7 +568,7 @@ export const CategoryRow = memo(function CategoryRow({
                   </span>
                 </div>
               </div>
-              <div className="target-pill-stats">
+              <div className="target-pill-stats budget-grid__money">
                 {targetStatus === 'funded' ? (
                   <span className="target-pill-stat target-pill-stat--funded">Funded</span>
                 ) : amountRemaining > 0 ? (

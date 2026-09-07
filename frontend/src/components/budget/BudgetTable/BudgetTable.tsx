@@ -28,6 +28,7 @@ import { BudgetFilterBar } from '../BudgetFilterBar/BudgetFilterBar'
 import { ArchivedCategoriesModal } from '../ArchivedCategoriesModal/ArchivedCategoriesModal'
 import { useDeleteCategoryFlow } from '../DeleteCategoryModal/useDeleteCategoryFlow'
 import type { CategoryBalance, CategoryGroup } from '../../../types'
+import '../budgetGrid.css'
 import './BudgetTable.css'
 
 export function BudgetTable() {
@@ -236,16 +237,19 @@ export function BudgetTable() {
       {/* Above the category headers so the cards read as part of the month,
           not an afterthought below the fold; folds shut and stays folded. */}
       <CreditCardsSection budgetId={budgetId} month={month} />
-      <div className="budget-table__header">
-        {/* Column 1 is the group rows' hover-checkbox column — empty here. */}
-        <span />
+      <div className="budget-table__header budget-grid">
         {/* The master fold sits in the CHEVRON column, directly above every
             group's own chevron, so it reads as their master control. It
             lived mid-header in the actions cluster, pushed to the far right
             by a margin — three buttons deep and nowhere near the things it
-            folds, where nobody found it. */}
+            folds, where nobody found it.
+
+            It then spent a while one column to the RIGHT of the chevrons,
+            over the hover-checkbox column, because an empty <span> held
+            column 1 and auto-flow did the rest. It says which column it is
+            in now; the checkbox column is simply left empty. */}
         <button
-          className="budget-table__master-toggle"
+          className="budget-table__master-toggle budget-grid__rail"
           onClick={() => (allCollapsed ? expandAll(allGroupIds) : collapseAll(allGroupIds))}
           disabled={allGroupIds.length === 0}
           aria-label={allCollapsed ? 'Expand all groups' : 'Collapse all groups'}
@@ -253,7 +257,7 @@ export function BudgetTable() {
         >
           {allCollapsed ? <ChevronsUpDown size={14} /> : <ChevronsDownUp size={14} />}
         </button>
-        <div className="budget-table__col budget-table__col--name">
+        <div className="budget-table__col budget-table__col--name budget-grid__name">
           Category
           <div className="budget-table__header-actions">
             {/* Add Group creates a group in the budget's own arrangement. With
@@ -290,9 +294,15 @@ export function BudgetTable() {
             </button>
           </div>
         </div>
-        <div className="budget-table__col budget-table__col--money">Assigned</div>
-        <div className="budget-table__col budget-table__col--money">Activity</div>
-        <div className="budget-table__col budget-table__col--money">Available</div>
+        <div className="budget-table__col budget-table__col--money budget-grid__assigned">
+          Assigned
+        </div>
+        <div className="budget-table__col budget-table__col--money budget-grid__activity">
+          Activity
+        </div>
+        <div className="budget-table__col budget-table__col--money budget-grid__available">
+          Available
+        </div>
       </div>
 
       <div className="budget-table__body">

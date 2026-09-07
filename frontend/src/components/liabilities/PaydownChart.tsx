@@ -19,6 +19,10 @@ interface Props {
   amortization: AmortizationResponse
   mode: 'now' | 'beginning'
   isMobile?: boolean
+  /** Drawn as a marked month: the curve does not change shape there, but the
+   *  rate does, and reading a payoff date without it is how a promo gets
+   *  mistaken for the end of the debt. */
+  promoEndDate?: string | null
 }
 
 interface ChartPoint {
@@ -36,7 +40,7 @@ interface ChartPoint {
  * historical balance (solid) before the projected curve (dashed), joined
  * at a "Today" reference line so fact and forecast are never ambiguous.
  */
-export function PaydownChart({ amortization, mode, isMobile = false }: Props) {
+export function PaydownChart({ amortization, mode, isMobile = false, promoEndDate }: Props) {
   const { formatMoney } = useFormatters()
   const points: ChartPoint[] = []
   const todayMonth = new Date().toISOString().slice(0, 7)
@@ -87,6 +91,10 @@ export function PaydownChart({ amortization, mode, isMobile = false }: Props) {
 
   const liveMonth = amortization.live_payoff_date?.slice(0, 7)
   const showLiveLine = liveMonth !== undefined && points.some((p) => p.month === liveMonth)
+  // Only when the month is on the axis: a line at a month the chart does not
+  // draw lands at the edge and reads as a payoff date.
+  const promoMonth = promoEndDate?.slice(0, 7)
+  const showPromoLine = promoMonth !== undefined && points.some((p) => p.month === promoMonth)
 
   return (
     <ResponsiveContainer width="100%" height={isMobile ? 240 : 320}>
@@ -149,6 +157,19 @@ export function PaydownChart({ amortization, mode, isMobile = false }: Props) {
             stroke="var(--text-muted)"
             strokeDasharray="3 3"
             label={{ value: 'Today', fontSize: 11, fill: 'var(--text-muted)', position: 'top' }}
+          />
+        )}
+        {showPromoLine && (
+          <ReferenceLine
+            x={promoMonth}
+            stroke="var(--color-warning)"
+            strokeDasharray="3 3"
+            label={{
+              value: 'Promo ends',
+              fontSize: 11,
+              fill: 'var(--color-warning)',
+              position: 'top',
+            }}
           />
         )}
         {showLiveLine && (

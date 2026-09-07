@@ -13,7 +13,9 @@ import { useFormatters } from '../../../hooks/useFormatters'
 import { useDragReorder, type DragReorder } from '../../../hooks/useDragReorder'
 import { DragHandle } from '../../common/DragHandle/DragHandle'
 import { moveItem } from '../../../utils/listOrder'
+import { sumBalances } from '../budgetTotals'
 import type { Category, CategoryBalance, CategoryGroup } from '../../../types'
+import '../budgetGrid.css'
 import './CategoryGroupRow.css'
 
 interface Props {
@@ -87,17 +89,25 @@ export function CategoryGroupRow({
   const categoryDrag = useDragReorder(categories.length, moveCategory)
   const categoriesReorderable = canReorderCategories && categories.length > 1
 
-  const groupAssigned = categories.reduce(
-    (sum, cat) => sum + Number(balanceMap.get(cat.id)?.assigned ?? 0),
-    0
-  )
-  const groupActivity = categories.reduce(
-    (sum, cat) => sum + Number(balanceMap.get(cat.id)?.activity ?? 0),
-    0
-  )
-  const groupAvailable = categories.reduce(
-    (sum, cat) => sum + Number(balanceMap.get(cat.id)?.available ?? 0),
-    0
+  // `sumBalances`, not a reduce of its own. This summed three times inline
+  // with `?? 0`, which differs from the shared rule on exactly one row type:
+  // an income row serves null assigned/available, and counting its activity
+  // puts income received into a group's spending total. The grid does not
+  // draw system groups today (`renderableGroups`), so the two agreed by
+  // accident — the kind of agreement that ends the day someone files income
+  // outside the Income group.
+  const {
+    assigned: groupAssigned,
+    activity: groupActivity,
+    available: groupAvailable,
+  } = useMemo(
+    () =>
+      sumBalances(
+        categories
+          .map((cat) => balanceMap.get(cat.id))
+          .filter((b): b is CategoryBalance => b !== undefined)
+      ),
+    [categories, balanceMap]
   )
 
   function startRename() {
@@ -167,7 +177,7 @@ export function CategoryGroupRow({
     >
       <div
         className={
-          'category-group-row__header drag-handle-host' +
+          'category-group-row__header budget-grid drag-handle-host' +
           (reorder?.dragIndex === index ? ' drag-handle-host--dragging' : '') +
           (reorder && reorder.overIndex === index && reorder.dragIndex !== index
             ? ' drag-handle-host--drag-over'
@@ -202,7 +212,7 @@ export function CategoryGroupRow({
           />
         )}
         <button
-          className="category-group-row__toggle"
+          className="category-group-row__toggle budget-grid__rail"
           onClick={() => toggleGroup(group.id)}
           aria-expanded={isExpanded}
           aria-label={isExpanded ? 'Collapse group' : 'Expand group'}
@@ -211,7 +221,7 @@ export function CategoryGroupRow({
         </button>
 
         <div
-          className={`category-group-row__checkbox ${anySelected ? 'category-group-row__checkbox--visible' : ''}`}
+          className={`category-group-row__checkbox budget-grid__gutter ${anySelected ? 'category-group-row__checkbox--visible' : ''}`}
         >
           <input
             type="checkbox"
@@ -225,73 +235,83 @@ export function CategoryGroupRow({
           />
         </div>
 
-        {isRenaming ? (
-          <input
-            ref={renameRef}
-            className="category-group-row__rename-input"
-            value={renameValue}
-            onChange={(e) => setRenameValue(e.target.value)}
-            onBlur={commitRename}
-            onKeyDown={handleRenameKey}
-          />
-        ) : (
-          <span
-            className="category-group-row__name"
-            onDoubleClick={canRenameOrDelete ? startRename : undefined}
-          >
-            {group.name}
-          </span>
-        )}
+        {/* Name and actions share ONE grid cell. They were siblings, so the
+            buttons took the ASSIGNED column and pushed all three totals a
+            column right — see budgetGrid.css. `CategoryRow` has always nested
+            its actions inside its name cell; this is that shape. */}
+        <div className="category-group-row__title budget-grid__name">
+          {isRenaming ? (
+            <input
+              ref={renameRef}
+              className="category-group-row__rename-input"
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onBlur={commitRename}
+              onKeyDown={handleRenameKey}
+            />
+          ) : (
+            <span
+              className="category-group-row__name"
+              onDoubleClick={canRenameOrDelete ? startRename : undefined}
+            >
+              {group.name}
+            </span>
+          )}
 
-        {!isRenaming && (
-          <div className="category-group-row__actions">
-            {canRenameOrDelete && (
-              <button
-                className="category-group-row__action-btn"
-                onClick={startRename}
-                aria-label={`Rename group ${group.name}`}
-                title="Rename"
-              >
-                <Pencil size={12} />
-              </button>
-            )}
-            {canEditGroup && (
-              <button
-                className="category-group-row__action-btn"
-                onClick={handleArchive}
-                aria-label={`Archive group ${group.name}`}
-                title="Archive group"
-              >
-                <Archive size={12} />
-              </button>
-            )}
-            {canRenameOrDelete && (
-              <button
-                className="category-group-row__action-btn category-group-row__action-btn--danger"
-                onClick={handleDelete}
-                aria-label={`Delete group ${group.name}`}
-                title="Delete group"
-              >
-                <Trash2 size={12} />
-              </button>
-            )}
-            {!readOnlyGroup && (
-              <button
-                className="category-group-row__action-btn"
-                onClick={startAddCategory}
-                aria-label={`Add category to ${group.name}`}
-                title="Add category"
-              >
-                <Plus size={12} />
-              </button>
-            )}
-          </div>
-        )}
+          {!isRenaming && (
+            <div className="category-group-row__actions">
+              {canRenameOrDelete && (
+                <button
+                  className="category-group-row__action-btn"
+                  onClick={startRename}
+                  aria-label={`Rename group ${group.name}`}
+                  title="Rename"
+                >
+                  <Pencil size={12} />
+                </button>
+              )}
+              {canEditGroup && (
+                <button
+                  className="category-group-row__action-btn"
+                  onClick={handleArchive}
+                  aria-label={`Archive group ${group.name}`}
+                  title="Archive group"
+                >
+                  <Archive size={12} />
+                </button>
+              )}
+              {canRenameOrDelete && (
+                <button
+                  className="category-group-row__action-btn category-group-row__action-btn--danger"
+                  onClick={handleDelete}
+                  aria-label={`Delete group ${group.name}`}
+                  title="Delete group"
+                >
+                  <Trash2 size={12} />
+                </button>
+              )}
+              {!readOnlyGroup && (
+                <button
+                  className="category-group-row__action-btn"
+                  onClick={startAddCategory}
+                  aria-label={`Add category to ${group.name}`}
+                  title="Add category"
+                >
+                  <Plus size={12} />
+                </button>
+              )}
+            </div>
+          )}
+        </div>
 
-        <span className="category-group-row__assigned tabular">{formatMoney(groupAssigned)}</span>
-        <span className="category-group-row__activity tabular">{formatMoney(groupActivity)}</span>
+        <span className="category-group-row__assigned budget-grid__assigned tabular">
+          {formatMoney(groupAssigned)}
+        </span>
+        <span className="category-group-row__activity budget-grid__activity tabular">
+          {formatMoney(groupActivity)}
+        </span>
         <span
-          className={`category-group-row__available tabular ${groupAvailable < 0 ? 'negative' : groupAvailable > 0 ? 'positive' : 'zero'}`}
+          className={`category-group-row__available budget-grid__available tabular ${groupAvailable < 0 ? 'negative' : groupAvailable > 0 ? 'positive' : 'zero'}`}
         >
           {formatMoney(groupAvailable)}
         </span>
@@ -320,11 +340,11 @@ export function CategoryGroupRow({
             />
           ))}
           {isAddingCategory && (
-            <div className="category-group-row__add-cat-row">
-              <div />
+            <div className="category-group-row__add-cat-row budget-grid">
+              <div className="budget-grid__rail" />
               <input
                 ref={addCatRef}
-                className="category-group-row__add-cat-input"
+                className="category-group-row__add-cat-input budget-grid__name--wide"
                 value={newCatName}
                 onChange={(e) => setNewCatName(e.target.value)}
                 onBlur={commitAddCategory}

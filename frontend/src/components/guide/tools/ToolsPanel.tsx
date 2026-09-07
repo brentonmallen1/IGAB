@@ -23,7 +23,9 @@ export function ToolsPanel() {
   const setActiveTool = useGuideStore((s) => s.setActiveTool)
 
   return (
-    <section className="guide-tools">
+    <section
+      className={`guide-tools ${activeTool === 'category-planner' ? 'guide-tools--wide' : ''}`}
+    >
       <header className="guide-tools__head">
         <div>
           <h2 className="guide-tools__title">Scenario tools</h2>

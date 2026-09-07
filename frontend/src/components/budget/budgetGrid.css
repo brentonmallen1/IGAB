@@ -1,0 +1,99 @@
+/*
+ * The budget grid — six columns, defined once.
+ *
+ * Every row on the budget page is its own CSS grid that has to agree with the
+ * others to the pixel: the sticky column header, each group header, each
+ * category row, the target pill beneath a row, and the inline add-category
+ * row. Five independent grids, one shared meaning.
+ *
+ *   rail │ gutter │ name ─────────── │ assigned │ activity │ available
+ *
+ * Two things were wrong with the way that was written, and together they
+ * shipped a bug:
+ *
+ * 1. The template was spelled out six times across three stylesheets, in two
+ *    shapes — a six-column one for group-level rows and a five-column one for
+ *    category-level rows — with no statement anywhere that the two had to line
+ *    up. They line up because the last three tracks are the same width, which
+ *    is a coincidence you have to re-notice every time you edit one.
+ *
+ * 2. Nothing said which column a money cell belonged in. Auto-flow decided,
+ *    which means the position of a total was a function of how many elements
+ *    happened to precede it. The group header had one more child than the
+ *    template had columns — its hover action buttons sat beside the name as a
+ *    seventh grid item — so every group header rendered its ASSIGNED total
+ *    under the ACTIVITY heading, its ACTIVITY total under AVAILABLE, and
+ *    wrapped its AVAILABLE total onto a second row off to the left. The three
+ *    figures were correct the whole time; they were one column to the right of
+ *    where they were labelled, and the group totals looked like they did not
+ *    add up because they were being read against the wrong headings.
+ *
+ * So the columns carry names, and every cell states the one it is in. An
+ * extra child added to any of these rows now lands in column 1 and looks
+ * wrong, instead of silently moving money sideways.
+ *
+ * Mobile (<= 768px) is a genuinely different shape per row type — a card with
+ * assigned/activity as a sub-line — and each row's own stylesheet places its
+ * cells there explicitly. These rules are desktop-scoped so the two never
+ * fight over the cascade.
+ */
+
+/* Do NOT name the trailing line `money-end`. A line named `<x>-end` declares
+   an implicit grid AREA called `<x>`, and `grid-column-end: <x>` then resolves
+   to `<x>-end` in preference to the line actually named `<x>` — so the name
+   cell below, ending at `money`, silently stretched across all three money
+   columns and pushed every figure onto a second row. Caught in a browser;
+   jsdom has no layout and cannot see it. The last line is `-1`. */
+:root {
+  --budget-grid-columns: [rail] 20px [gutter] 20px [name] minmax(0, 1fr) [money assigned] 120px
+    [activity] 120px [available] 120px;
+}
+
+.budget-grid {
+  display: grid;
+}
+
+@media (min-width: 769px) {
+  .budget-grid {
+    grid-template-columns: var(--budget-grid-columns);
+  }
+
+  /* The two control columns. Group-level rows use both — a chevron in the
+     rail, a select box in the gutter. Category-level rows are one level in:
+     their select box takes the rail and the name starts a column earlier. */
+  .budget-grid__rail {
+    grid-column: rail;
+  }
+
+  .budget-grid__gutter {
+    grid-column: gutter;
+  }
+
+  .budget-grid__name {
+    grid-column: name / money;
+  }
+
+  .budget-grid__name--wide {
+    grid-column: gutter / money;
+  }
+
+  /* The money block. Whatever else a row contains, a figure under a heading
+     is in the column that heading names. */
+  .budget-grid__assigned {
+    grid-column: assigned;
+  }
+
+  .budget-grid__activity {
+    grid-column: activity;
+  }
+
+  .budget-grid__available {
+    grid-column: available;
+  }
+
+  /* For a row that spans all three money columns rather than filling them —
+     the target pill's stats. */
+  .budget-grid__money {
+    grid-column: money / -1;
+  }
+}

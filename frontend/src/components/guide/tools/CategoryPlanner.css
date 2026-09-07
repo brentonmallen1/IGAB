@@ -368,3 +368,69 @@
     gap: var(--spacing-md);
   }
 }
+
+/* ── column names, counts, selection ── */
+
+/* The name is the header: an unnamed column shows its position as the
+   placeholder, so "Paycheck 2" still reads as a heading. */
+.planner__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 1px solid transparent;
+  background: transparent;
+  padding: 2px 4px;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.planner__label:hover,
+.planner__label:focus {
+  border-color: var(--edge-strong);
+  background: var(--surface-raised);
+}
+
+.planner__count {
+  flex-shrink: 0;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--text-muted) 12%, transparent);
+  font-size: var(--font-size-2xs);
+  color: var(--text-muted);
+}
+
+/* Totals above the rows: what the check has to cover is the question, and
+   it was below a column that scrolls. */
+.planner__column-foot--top {
+  border-top: none;
+  border-bottom: 1px solid var(--edge);
+  padding-top: 0;
+  padding-bottom: var(--spacing-xs);
+}
+
+.planner__select {
+  flex-shrink: 0;
+  margin-right: 4px;
+}
+
+.planner__row--selected {
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  border-radius: var(--border-radius);
+}
+
+.planner__bulk {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border: 1px solid var(--edge-strong);
+  border-radius: var(--border-radius);
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  font-size: var(--font-size-xs);
+  color: var(--text-primary);
+}
+
+/* The whole name, when the column cannot show it. */
+.planner__row-name input {
+  text-overflow: ellipsis;
+}
