@@ -15,7 +15,7 @@ the numbers has ``/{budget_id}/reports/export`` under BudgetAccess.
 """
 
 import tempfile
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Annotated
 
@@ -25,7 +25,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.background import BackgroundTask
 
 from igab.api.route import CommitRoute
+from igab.api.v1.schemas.base import ApiModel
 from igab.api.v1.schemas.budget_snapshots import (
+    CloneResult,
     SnapshotCreated,
     SnapshotFile,
     SnapshotImportResult,
@@ -38,11 +40,14 @@ from igab.dependencies import (
     SessionDep,
     get_budget_service,
     get_category_repo,
+    get_transaction_service,
 )
+from igab.domain.exceptions import InvariantViolation
 from igab.domain.snapshot_format import check_compatibility
 from igab.repositories.category_repo import CategoryRepository
-from igab.services import budget_export, budget_snapshot
+from igab.services import budget_clone, budget_export, budget_snapshot
 from igab.services.budget_service import BudgetService
+from igab.services.transaction_service import TransactionService
 from igab.services.update_service import current_version
 
 router = APIRouter(route_class=CommitRoute)
@@ -176,6 +181,57 @@ async def inspect_snapshot(
         return await inspect_snapshot_file(tmp_path, session)
     finally:
         tmp_path.unlink(missing_ok=True)
+
+
+class CloneRequest(ApiModel):
+    """What to call the copy, and how much of it to make."""
+
+    name: str | None = None
+    #: Keep the arrangement and drop what happened: every account opens on a
+    #: Starting Balance row dated `as_of` instead of its register.
+    structure_only: bool = False
+    #: The day a structure-only copy starts from. Defaults to today.
+    as_of: date | None = None
+
+
+@router.post(
+    "/budgets/{budget_id}/clone",
+    response_model=CloneResult,
+    status_code=status.HTTP_201_CREATED,
+)
+async def clone_budget(
+    budget_id: BudgetOwnerAccess,
+    body: CloneRequest,
+    current_user: CurrentUser,
+    session: SessionDep,
+    txn_service: Annotated[TransactionService, Depends(get_transaction_service)],
+) -> CloneResult:
+    """Copy this budget into a new one the caller owns.
+
+    Owner-only, like the snapshot it is built on: a copy is "create a budget
+    *I* own containing this data". The whole thing runs in this request's
+    transaction, so a failure leaves no half-built budget behind.
+    """
+    try:
+        report = await budget_clone.clone_budget(
+            session,
+            budget_id,
+            user_id=current_user.id,
+            name=body.name,
+            structure_only=body.structure_only,
+            as_of=body.as_of or date.today(),
+            app_version=current_version(),
+            txn_service=txn_service,
+        )
+    except InvariantViolation as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+    return CloneResult(
+        budget_id=str(report.budget_id),
+        budget_name=report.budget_name,
+        structure_only=report.structure_only,
+        opening_balances=report.opening_balances,
+        row_counts=report.row_counts,
+    )
 
 
 @router.post(

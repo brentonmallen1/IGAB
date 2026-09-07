@@ -59,3 +59,15 @@ class SnapshotImportResult(ApiModel):
     #: transaction they hung on is not in the snapshot.
     attachments_dropped: int = 0
     warnings: list[str] = []
+
+
+class CloneResult(ApiModel):
+    """What a clone produced. `opening_balances` is only ever non-zero for a
+    structure-only copy: it counts the accounts given a Starting Balance row,
+    which is how the copy keeps a position without keeping a register."""
+
+    budget_id: str
+    budget_name: str
+    structure_only: bool
+    opening_balances: int
+    row_counts: dict[str, int]
