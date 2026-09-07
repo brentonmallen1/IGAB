@@ -328,6 +328,46 @@ class TestDeletingACompanionIsRefused:
 
         assert resp.status_code == 204, resp.text
 
+    async def test_a_closed_account_releases_its_companion(self, api_client, db_session):
+        """Closing the account was a trap, not an escape.
+
+        The guard tested is_deleted only, so a closed account kept the 409 in
+        force AND disappeared from the default account list — a liability the
+        user could see, blocked by an account they could not. There was no way
+        out: release_for_account declines once any term is filled in, so
+        retyping the account did not free it either. A closed account has no
+        register left to feed the liability.
+        """
+        budget = await create_budget(db_session, api_client.test_user)
+        loan = await create_account(
+            db_session, budget, "Paid-Off Loan", account_type="loan", on_budget=False
+        )
+        companion = await ensure_for_account(db_session, loan)
+        assert companion is not None
+        # Terms filled in, which is what makes release_for_account decline.
+        companion.interest_rate = Decimal("6.25")
+        loan.is_closed = True
+        await db_session.flush()
+
+        resp = await api_client.delete(f"/api/v1/{budget.id}/liabilities/{companion.id}")
+
+        assert resp.status_code == 204, resp.text
+        assert await LiabilityRepository(db_session).get_all(budget.id) == []
+
+    async def test_an_open_account_still_refuses(self, api_client, db_session):
+        """The closed-account exception is narrow: an open one is unchanged."""
+        budget = await create_budget(db_session, api_client.test_user)
+        loan = await create_account(
+            db_session, budget, "Live Loan", account_type="loan", on_budget=False
+        )
+        companion = await ensure_for_account(db_session, loan)
+        assert companion is not None
+        await db_session.flush()
+
+        resp = await api_client.delete(f"/api/v1/{budget.id}/liabilities/{companion.id}")
+
+        assert resp.status_code == 409, resp.text
+
     async def test_a_liability_whose_account_is_gone_still_deletes(self, api_client, db_session):
         budget = await create_budget(db_session, api_client.test_user)
         loan = await create_account(

@@ -1,8 +1,11 @@
 """Loan-polish surface: manual-fallback balances, implied term, and the
 concrete numbers the payoff copy leans on."""
 
+import uuid
 from datetime import date, timedelta
 from decimal import Decimal
+
+from igab.repositories.account_repo import AccountRepository
 
 from .factories import (
     create_account,
@@ -25,6 +28,62 @@ async def _get_liability(api_client, budget_id, liability_id):
     resp = await api_client.get(f"/api/v1/{budget_id}/liabilities")
     assert resp.status_code == 200
     return next(item for item in resp.json() if item["id"] == str(liability_id))
+
+
+async def test_a_fresh_loan_account_says_empty_rather_than_paid_off(api_client, db_session):
+    """A companion created with its account has no ledger and no remembered
+    balance, and used to report `ledger` / $0 — which the page renders as
+    "Paid off". A student loan account created ten seconds ago is not settled;
+    it is unanswered, and `empty` is how the server says so.
+    """
+    budget = await create_budget(db_session, api_client.test_user)
+    # Through the API: the route is what gives a liability account its
+    # companion, which is the situation being described.
+    made = await api_client.post(
+        f"/api/v1/{budget.id}/accounts",
+        json={"name": "Student Loan", "account_type": "loan", "on_budget": False},
+    )
+    assert made.status_code == 201, made.text
+    account_id = made.json()["id"]
+
+    listed = await api_client.get(f"/api/v1/{budget.id}/liabilities")
+    assert listed.status_code == 200
+    companion = next(item for item in listed.json() if item["linked_account_id"] == account_id)
+
+    assert companion["balance_source"] == "empty"
+    assert money(companion["current_balance"]) == Decimal("0")
+    # Nothing was filled in, so nothing is claimed about the contract either.
+    assert companion["terms_complete"] is False
+
+    # The register answers it: one opening balance and the source is the ledger.
+    account = await AccountRepository(db_session).get(uuid.UUID(account_id))
+    assert account is not None
+    await create_transaction(db_session, budget, account, Decimal("-24000.00"), TODAY)
+    after = await _get_liability(api_client, budget.id, companion["id"])
+    assert after["balance_source"] == "ledger"
+    assert money(after["current_balance"]) == Decimal("24000.00")
+
+
+async def test_a_rate_alone_is_enough_to_record(api_client, db_session):
+    """The terms are optional in the model and were required by the create
+    schema — the one path that disagreed. A debt whose balance you know and
+    whose rate you do not is a real thing to want to record."""
+    budget = await create_budget(db_session, api_client.test_user)
+
+    created = await api_client.post(
+        f"/api/v1/{budget.id}/liabilities",
+        json={
+            "name": "Family Loan",
+            "liability_type": "other",
+            "manual_balance": "1200.00",
+        },
+    )
+
+    assert created.status_code == 201, created.text
+    body = created.json()
+    assert body["interest_rate"] is None
+    assert body["terms_complete"] is False
+    assert money(body["current_balance"]) == Decimal("1200.00")
 
 
 async def test_manual_fallback_until_register_has_transactions(api_client, db_session):

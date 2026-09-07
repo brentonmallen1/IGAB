@@ -8,6 +8,7 @@ from pydantic import Field
 from igab.api.v1.schemas.base import ApiModel, ClientDated
 from igab.domain.money import Money
 from igab.domain.payment_composition import MAX_LABEL
+from igab.services.liability_service import BalanceSource
 
 LiabilityType = Literal[
     "mortgage", "auto", "student", "personal", "credit_card", "medical", "other"
@@ -39,7 +40,13 @@ class LiabilityCreate(ClientDated):
     #: its account's type. Required for an unmanaged one, which has no account
     #: to ask.
     liability_type: LiabilityType | None = None
-    interest_rate: Decimal  # annual percent, e.g. 6.25
+    #: Annual percent, e.g. 6.25. Optional, like every other term: the column
+    #: has been nullable since a3f7c1d84e26, `terms_complete` exists precisely
+    #: to describe a liability whose contract is not filled in yet, and
+    #: `ensure_for_account` creates companions with none. Requiring it here
+    #: was the one path that disagreed — you could not record a debt you knew
+    #: the balance of but not the rate.
+    interest_rate: Decimal | None = None
     #: The whole payment for kind='fixed'; left blank for a percentage rule.
     minimum_payment: Money | None = None
     minimum_payment_kind: Literal["fixed", "percent_of_balance"] = "fixed"
@@ -112,10 +119,10 @@ class LiabilityOut(ApiModel):
     linked_asset_id: uuid.UUID | None
     linked_category_id: uuid.UUID | None
     current_balance: Decimal  # owed, positive
-    # 'ledger' | 'manual' | 'manual_fallback' — manual_fallback means the
-    # linked account's register is empty and the pre-link manual balance is
-    # standing in; the UI prompts for an opening balance in that state
-    balance_source: Literal["ledger", "manual", "manual_fallback"]
+    #: Where current_balance came from. The one definition is
+    #: liability_service.BalanceSource; this imports it rather than restating
+    #: the members, which is how 'empty' reached the service and 422'd here.
+    balance_source: BalanceSource
     # Null until someone fills the terms in. terms_complete is the one flag to
     # branch on: false means every projection below is absent, not zero.
     interest_rate: Decimal | None
