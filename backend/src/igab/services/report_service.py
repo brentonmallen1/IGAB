@@ -57,7 +57,9 @@ from igab.repositories.txn_filters import (
     PARENT_ROW,
     PLANNED_SPEND_ROW,
     POSTED,
+    category_tagged,
 )
+from igab.services.report_basics import _months_in_range, _subtract_months, emergency_fund
 
 # Report payload shapes.
 #
@@ -93,7 +95,7 @@ class ChronicCategory(TypedDict):
 
 
 class SubscriptionRow(TypedDict):
-    payee_id: str
+    payee_id: str | None
     payee_name: str
     monthly_amounts: list[Decimal]
     total: Decimal
@@ -1783,6 +1785,50 @@ class ReportService:
 
     # ─── Spending Grouped (Pareto + Treemap) ──────────────────────────────────
 
+    @staticmethod
+    def _spending_query(
+        budget_id: uuid.UUID,
+        start_date: date,
+        end_date: date,
+        category_ids: list[uuid.UUID] | None = None,
+        account_ids: list[uuid.UUID] | None = None,
+    ):
+        """Every posted spending row in the window, with its category, group
+        and activity class — the one predicate set the spending rollups and
+        the spending trends share, so a bar on one and a line on the other
+        cannot total differently."""
+        q = (
+            select(
+                Category.id,
+                Category.name,
+                CategoryGroup.id.label("group_id"),
+                CategoryGroup.name.label("group_name"),
+                Transaction.amount,
+                Transaction.date,
+                ACTIVITY_CLASS.label("cls"),
+            )
+            .join(Transaction, Transaction.category_id == Category.id)
+            .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
+            .where(
+                Transaction.budget_id == budget_id,
+                NOT_DELETED,
+                POSTED,
+                Transaction.amount < 0,
+                Transaction.date >= start_date,
+                Transaction.date <= end_date,
+                LEAF,
+                CASH_FLOW_ROW,
+                SPENT_ENVELOPE,
+            )
+        )
+        if category_ids:
+            q = q.where(Transaction.category_id.in_(category_ids))
+        if account_ids:
+            q = q.where(Transaction.account_id.in_(account_ids))
+        else:
+            q = q.where(ON_BUDGET_ACCOUNT)
+        return apply_class_joins(q)
+
     async def spending_grouped(
         self,
         budget_id: uuid.UUID,
@@ -1814,36 +1860,7 @@ class ReportService:
         The groups/total shape is identical either way, so the client-side
         rollup does not care which arrangement produced it.
         """
-        q = (
-            select(
-                Category.id,
-                Category.name,
-                CategoryGroup.id.label("group_id"),
-                CategoryGroup.name.label("group_name"),
-                Transaction.amount,
-                ACTIVITY_CLASS.label("cls"),
-            )
-            .join(Transaction, Transaction.category_id == Category.id)
-            .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
-            .where(
-                Transaction.budget_id == budget_id,
-                NOT_DELETED,
-                POSTED,
-                Transaction.amount < 0,
-                Transaction.date >= start_date,
-                Transaction.date <= end_date,
-                LEAF,
-                CASH_FLOW_ROW,
-                SPENT_ENVELOPE,
-            )
-        )
-        if category_ids:
-            q = q.where(Transaction.category_id.in_(category_ids))
-        if account_ids:
-            q = q.where(Transaction.account_id.in_(account_ids))
-        else:
-            q = q.where(ON_BUDGET_ACCOUNT)
-        q = apply_class_joins(q)
+        q = self._spending_query(budget_id, start_date, end_date, category_ids, account_ids)
         rows = (await self.session.execute(q)).all()
 
         # `_view_arrangement` returns None for a view that does not exist or
@@ -2098,6 +2115,12 @@ class ReportService:
             {"months": n, "amount": quantize_cents(headline * n)}
             for n in (1, FULL_EMERGENCY_FUND_MONTHS_LOW, FULL_EMERGENCY_FUND_MONTHS_HIGH, 12)
         ]
+        fund_balance, fund_source = await emergency_fund(self.session, budget_id)
+        runway = (
+            (fund_balance / headline).quantize(Decimal("0.1"))
+            if fund_balance is not None and headline > 0
+            else None
+        )
         base = {
             "tagged": tagged,
             "months": months,
@@ -2106,6 +2129,9 @@ class ReportService:
             "essentials_90d": headline,
             "reserve": reserve,
             "roadmap_range": (FULL_EMERGENCY_FUND_MONTHS_LOW, FULL_EMERGENCY_FUND_MONTHS_HIGH),
+            "emergency_fund_balance": fund_balance,
+            "emergency_fund_source": fund_source,
+            "runway_months": runway,
         }
         if not tagged:
             return {
@@ -2463,29 +2489,19 @@ class ReportService:
     # ─── Subscriptions Report ─────────────────────────────────────────────────
 
     async def subscriptions_report(self, budget_id: uuid.UUID, months: int = 12) -> dict:
-        """Aggregate transactions from payees tagged with 'subscription' system tag."""
+        """Recurring charges: every posted outflow filed to a category tagged
+        Subscription, grouped by payee so each service reads as its own line.
+
+        The tag lives on categories (repositories/tag_repo.py
+        CATEGORY_ONLY_SYSTEM_KEYS); it used to live on payees, and a payee
+        the household never got round to tagging simply vanished from here.
+        A row with no payee still counts, under "No payee".
+        """
         from igab.repositories.tag_repo import TagRepository
 
         tag_repo = TagRepository(self.session)
-
-        # Get the subscription system tag
-        subscription_tag = await tag_repo.get_system_tag(budget_id, "subscription")
-        if subscription_tag is None:
-            return {
-                "subscriptions": [],
-                "summary": {
-                    "total_monthly": Decimal("0"),
-                    "total_annual": Decimal("0"),
-                    "active_count": 0,
-                },
-                "months": [],
-            }
-
-        # Get payee IDs tagged with subscription
-        subscription_payee_ids = await tag_repo.get_payee_ids_by_tags(
-            budget_id, [subscription_tag.id]
-        )
-        if not subscription_payee_ids:
+        tagged = await tag_repo.get_category_ids_by_system_keys(budget_id, ["subscription"])
+        if not tagged:
             return {
                 "subscriptions": [],
                 "summary": {
@@ -2502,7 +2518,6 @@ class ReportService:
         start_date = _subtract_months(today, months).replace(day=1)
         month_list = _months_in_range(start_date, end_date)
 
-        # Query transactions for subscription-tagged payees
         q = (
             select(
                 Transaction.payee_id,
@@ -2510,10 +2525,10 @@ class ReportService:
                 Transaction.date,
                 Transaction.amount,
             )
-            .join(Payee, Payee.id == Transaction.payee_id)
+            .outerjoin(Payee, Payee.id == Transaction.payee_id)
             .where(
                 Transaction.budget_id == budget_id,
-                Transaction.payee_id.in_(subscription_payee_ids),
+                category_tagged("subscription"),
                 NOT_DELETED,
                 POSTED,
                 Transaction.amount < 0,  # outflows only
@@ -2536,11 +2551,12 @@ class ReportService:
                 "months": [m for m in month_list],
             }
 
-        # Build DataFrame for aggregation
+        # Build DataFrame for aggregation. The sentinel keeps a payee-less
+        # charge in the report; the schema's payee_id is optional for it.
         df = pl.DataFrame(
             {
-                "payee_id": [str(r.payee_id) for r in rows],
-                "payee_name": [r.payee_name for r in rows],
+                "payee_id": [str(r.payee_id) if r.payee_id else "__none__" for r in rows],
+                "payee_name": [r.payee_name or "No payee" for r in rows],
                 "month": [r.date.replace(day=1) for r in rows],
                 "date": [r.date for r in rows],
                 "amount": [abs(float(r.amount)) for r in rows],
@@ -2586,7 +2602,7 @@ class ReportService:
 
             subscriptions.append(
                 {
-                    "payee_id": payee_id,
+                    "payee_id": None if payee_id == "__none__" else payee_id,
                     "payee_name": payee_name,
                     "monthly_amounts": monthly_amounts,
                     "total": total,
@@ -3589,29 +3605,6 @@ def _empty_dashboard() -> dict:
         "expenses_prev_month": Decimal("0"),
         "top_categories": [],
     }
-
-
-def _months_in_range(start_date: date, end_date: date) -> list[date]:
-    months = []
-    cur = start_date.replace(day=1)
-    while cur <= end_date:
-        months.append(cur)
-        if cur.month == 12:
-            cur = cur.replace(year=cur.year + 1, month=1)
-        else:
-            cur = cur.replace(month=cur.month + 1)
-    return months
-
-
-def _subtract_months(d: date, months: int) -> date:
-    """The start of the month `months` before `d`'s.
-
-    Discarding the day is deliberate — every caller here is keying a month
-    bucket. `add_months` is the one that preserves it.
-    """
-    # `replace(day=1)` rather than domain.dates.month_start: `month_start` is
-    # a loop variable throughout this module and importing the name shadows it.
-    return add_months(d.replace(day=1), -months)
 
 
 def _last_day(d: date) -> date:

@@ -16,6 +16,7 @@ import { AutoAssignSection } from './AutoAssignSection'
 import { CategoryNotesSection } from './CategoryNotesSection'
 import { CategorySubtitleSection } from './CategorySubtitleSection'
 import { TagsSection } from './TagsSection'
+import { HistorySection } from './HistorySection'
 import { ClassificationSection } from './ClassificationSection'
 import { MonthSummary } from './MonthSummary'
 import './CategoryInspector.css'
@@ -183,6 +184,9 @@ export function CategoryInspector({ budgetId, forceOpen = false }: Props) {
 
                 {isSingle && singleCategory && (
                   <TagsSection category={singleCategory} budgetId={budgetId} />
+                )}
+                {isSingle && singleCategory && (
+                  <HistorySection categoryId={singleCategory.id} budgetId={budgetId} />
                 )}
 
                 {/* Mobile sheet gets these from CategoryMobileActions instead */}

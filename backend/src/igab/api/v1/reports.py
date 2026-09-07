@@ -3,7 +3,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
 from igab.api.route import CommitRoute
 from igab.api.v1.schemas.report import (
@@ -19,13 +19,17 @@ from igab.api.v1.schemas.report import (
     CashProjectionEvent,
     CashProjectionPoint,
     CashProjectionResponse,
+    CategoryHistoryMonth,
+    CategoryHistoryReportResponse,
     CategoryPayee,
     DashboardMetrics,
     DayPatternItem,
     DayPatternsResponse,
     EssentialsReportResponse,
+    IncomeBySourceResponse,
     IncomeExpenseMonth,
     IncomeExpenseResponse,
+    IncomeSource,
     LiabilitiesBalancePoint,
     LiabilitiesReportItem,
     LiabilitiesReportResponse,
@@ -53,6 +57,8 @@ from igab.api.v1.schemas.report import (
     SpendingGroupedResponse,
     SpendingGroupItem,
     SpendingReportResponse,
+    SpendingTrendSeries,
+    SpendingTrendsResponse,
     SubscriptionPayee,
     SubscriptionsReportResponse,
     SubscriptionsSummary,
@@ -64,9 +70,24 @@ from igab.api.v1.schemas.report import (
     VolatilityItem,
     VolatilityResponse,
 )
-from igab.dependencies import BudgetAccess, CurrentUser, get_liability_service, get_report_service
+from igab.dependencies import (
+    BudgetAccess,
+    CurrentUser,
+    get_budget_filter_repo,
+    get_budget_service,
+    get_category_repo,
+    get_liability_service,
+    get_report_service,
+    get_tag_repo,
+)
 from igab.domain.activity_class import ActivityClass
+from igab.domain.dates import add_months
+from igab.repositories.budget_filter_repo import BudgetFilterRepository
+from igab.repositories.category_repo import CategoryRepository
+from igab.repositories.tag_repo import TagRepository
+from igab.services.budget_service import BudgetService
 from igab.services.liability_service import LiabilityService
+from igab.services.report_basics import income_by_source, spending_trends
 from igab.services.report_service import ReportService
 
 
@@ -357,6 +378,102 @@ async def spending_grouped_report(
             SpendingClassExcluded.model_validate(c) for c in notes["class_excluded"] or []
         ],
         view_unavailable=notes["view_unavailable"],
+    )
+
+
+@router.get("/{budget_id}/reports/spending-trends", response_model=SpendingTrendsResponse)
+async def spending_trends_report(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    report_svc: Annotated[ReportService, Depends(get_report_service)],
+    filter_repo: Annotated[BudgetFilterRepository, Depends(get_budget_filter_repo)],
+    tag_repo: Annotated[TagRepository, Depends(get_tag_repo)],
+    start_date: date | None = None,
+    end_date: date | None = None,
+    category_ids: str | None = Query(None),
+    account_ids: str | None = Query(None),
+    include_savings: bool = False,
+    #: A saved filter: its effective category set (named + tagged) scopes
+    #: the report — the same resolution the budget page reads.
+    filter_id: uuid.UUID | None = None,
+    #: Categories carrying any of these tags join the scope.
+    tag_ids: str | None = Query(None),
+) -> SpendingTrendsResponse:
+    today = date.today()
+    start = start_date or today.replace(day=1)
+    end = end_date or today
+    scope: set[uuid.UUID] = set(_parse_uuids(category_ids) or [])
+    filter_unavailable = False
+    if filter_id is not None:
+        saved = await filter_repo.get_with_categories(filter_id)
+        if saved is None or saved.budget_id != budget_id:
+            filter_unavailable = True
+        else:
+            scope |= set((await filter_repo.effective_category_ids([saved]))[saved.id])
+    tags = _parse_uuids(tag_ids)
+    if tags:
+        scope |= await tag_repo.get_category_ids_by_tags(budget_id, tags)
+    data = await spending_trends(
+        report_svc,
+        budget_id,
+        start,
+        end,
+        sorted(scope, key=str) or None,
+        _parse_uuids(account_ids),
+        _spending_classes(include_savings),
+    )
+    return SpendingTrendsResponse(
+        months=data["months"],
+        series=[SpendingTrendSeries.model_validate(e) for e in data["series"]],
+        monthly_totals=data["monthly_totals"],
+        total=data["total"],
+        class_excluded=[SpendingClassExcluded.model_validate(c) for c in data["class_excluded"]],
+        filter_unavailable=filter_unavailable,
+    )
+
+
+@router.get("/{budget_id}/reports/income-by-source", response_model=IncomeBySourceResponse)
+async def income_by_source_report(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    report_svc: Annotated[ReportService, Depends(get_report_service)],
+    months: int = Query(12, ge=1, le=60),
+) -> IncomeBySourceResponse:
+    data = await income_by_source(report_svc.session, budget_id, months)
+    return IncomeBySourceResponse(
+        months=data["months"],
+        sources=[IncomeSource.model_validate(e) for e in data["sources"]],
+        monthly_totals=data["monthly_totals"],
+        total=data["total"],
+    )
+
+
+@router.get("/{budget_id}/reports/category-history", response_model=CategoryHistoryReportResponse)
+async def category_history_report(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    budget_service: Annotated[BudgetService, Depends(get_budget_service)],
+    category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
+    category_id: uuid.UUID = Query(...),
+    months: int = Query(12, ge=1, le=60),
+) -> CategoryHistoryReportResponse:
+    """One category month by month, from the same BudgetService the budget
+    page reads — this endpoint orchestrates, it computes nothing."""
+    category = await category_repo.get(category_id)
+    if category is None or category.budget_id != budget_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
+    today = date.today()
+    month_list = [add_months(today.replace(day=1), -i) for i in range(months - 1, -1, -1)]
+    out = []
+    for m in month_list:
+        bal = await budget_service.get_category_balance(category_id, m)
+        out.append(
+            CategoryHistoryMonth(
+                month=m, assigned=bal.assigned, activity=bal.activity, available=bal.available
+            )
+        )
+    return CategoryHistoryReportResponse(
+        category_id=category_id, category_name=category.name, months=out
     )
 
 

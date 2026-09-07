@@ -13,7 +13,13 @@ import {
 } from '../../api/payees'
 import { usePayeeTransactions } from '../../api/transactions'
 import { useFormatters } from '../../hooks/useFormatters'
-import { useTags, useBulkAddPayeeTags, useCreateTag, useSetPayeeTags } from '../../api/tags'
+import {
+  useTags,
+  useBulkAddPayeeTags,
+  useCreateTag,
+  useSetPayeeTags,
+  CATEGORY_ONLY_SYSTEM_KEYS,
+} from '../../api/tags'
 import { useAIStatus, useSuggestRegex } from '../../api/ai'
 import { PayeeMergeModal } from '../../components/payees/PayeeMergeModal/PayeeMergeModal'
 import type { MergeConfig } from '../../components/payees/PayeeMergeModal/PayeeMergeModal'
@@ -325,11 +331,16 @@ export function PayeesPage() {
   const selectedCount = selectedPayeeIds.size
   const hiddenSelected = selectedCount - selectedInFiltered.length
 
-  const tagOptions: TagOption[] = allTags.map((t) => ({
-    id: t.id,
-    name: t.name,
-    color_slot: t.color_slot,
-  }))
+  // A category-only system tag (Subscription) is not offered here: the
+  // server refuses it on a payee, and an option that always fails is worse
+  // than none.
+  const tagOptions: TagOption[] = allTags
+    .filter((t) => !t.system_key || !CATEGORY_ONLY_SYSTEM_KEYS.has(t.system_key))
+    .map((t) => ({
+      id: t.id,
+      name: t.name,
+      color_slot: t.color_slot,
+    }))
 
   async function handleBulkAddTags(tagIds: string[]) {
     if (tagIds.length === 0) return

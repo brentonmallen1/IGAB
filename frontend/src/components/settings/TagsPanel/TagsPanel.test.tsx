@@ -21,6 +21,8 @@ const TAGS = vi.hoisted(() => [
   },
 ])
 vi.mock('../../../api/tags', () => ({
+  useTagNotices: () => ({ data: [] }),
+  useDismissTagNotice: () => ({ mutate: vi.fn(), isPending: false }),
   useTags: () => ({ data: TAGS, isLoading: false }),
   useCreateTag: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useUpdateTag: () => ({ mutateAsync: updateMutate, isPending: false }),

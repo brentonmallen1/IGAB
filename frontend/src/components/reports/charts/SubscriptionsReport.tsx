@@ -66,12 +66,13 @@ export function SubscriptionsReport({ budgetId }: Props) {
         <h2 className="report-section__title">Subscriptions</h2>
         <ReportInfoButton title="Subscriptions">
           <p>
-            This report shows recurring charges from payees you&apos;ve tagged with the{' '}
-            <strong>Subscription</strong> tag.
+            This report shows every charge filed to a category you&apos;ve tagged{' '}
+            <strong>Subscription</strong>, listed by payee.
           </p>
           <p>
-            To track a subscription, go to the Payees page and add the Subscription tag to the
-            payee. The tag is a reserved system tag and cannot be deleted.
+            To track subscriptions, open the category they are filed to (Streaming, Software…) on
+            the Budget page and add the Subscription tag in the panel that opens. The tag is a
+            reserved system tag and cannot be deleted.
           </p>
           <p>
             <strong>Monthly (effective)</strong> spreads each subscription's cost over the months
@@ -115,8 +116,8 @@ export function SubscriptionsReport({ budgetId }: Props) {
         <div className="reports-empty">
           <p>No subscriptions tracked yet.</p>
           <p style={{ fontSize: 'var(--font-size-xs)', marginTop: 8 }}>
-            Tag payees with <strong>Subscription</strong> on the Payees page to track recurring
-            charges here.
+            Tag the categories your subscriptions are filed to with <strong>Subscription</strong> on
+            the Budget page to track recurring charges here.
           </p>
         </div>
       ) : (

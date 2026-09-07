@@ -26,6 +26,10 @@ export type ReportTab =
   | 'essentials'
   | 'anomalies'
   | 'plan-reality'
+  | 'spending-trends'
+  | 'spending-breakdown'
+  | 'category-history'
+  | 'income-sources'
 
 export type TabGroup = 'overview' | 'financial' | 'cashflow' | 'budget' | 'spending' | 'insights'
 
@@ -44,12 +48,16 @@ export const REPORT_TABS: TabDef[] = [
   { id: 'savings-rate', label: 'Savings Rate', group: 'financial' },
   { id: 'essentials', label: 'Essentials', group: 'financial' },
   { id: 'income-expense', label: 'Income vs Expenses', group: 'cashflow' },
+  { id: 'income-sources', label: 'Income by Source', group: 'cashflow' },
   { id: 'burn-rate', label: 'Burn Rate', group: 'cashflow' },
   { id: 'cash-flow', label: 'Cash Flow', group: 'cashflow' },
   { id: 'projection', label: 'Projection', group: 'cashflow' },
   { id: 'budget-actual', label: 'Budget vs Actual', group: 'budget' },
+  { id: 'category-history', label: 'Category History', group: 'budget' },
   { id: 'variance', label: 'Cumulative Variance', group: 'budget' },
   { id: 'volatility', label: 'Volatility', group: 'budget' },
+  { id: 'spending-trends', label: 'Spending Trends', group: 'spending' },
+  { id: 'spending-breakdown', label: 'Breakdown', group: 'spending' },
   { id: 'pareto', label: 'Pareto', group: 'spending' },
   { id: 'treemap', label: 'Treemap', group: 'spending' },
   { id: 'seasonality', label: 'Seasonality', group: 'spending' },
@@ -184,6 +192,36 @@ export const TAB_FILTER_SUPPORT: Record<ReportTab, TabFilterSupport> = {
     groupBy: false,
   },
   payees: { dates: true, categories: false, payees: true, accounts: true, groupBy: false },
+  'spending-trends': {
+    dates: true,
+    categories: true,
+    payees: false,
+    accounts: true,
+    groupBy: true,
+    groupByModes: ['group', 'category'],
+  },
+  'spending-breakdown': {
+    dates: true,
+    categories: true,
+    payees: false,
+    accounts: true,
+    groupBy: false,
+    views: true,
+  },
+  'category-history': {
+    dates: false,
+    categories: false,
+    payees: false,
+    accounts: false,
+    groupBy: false,
+  },
+  'income-sources': {
+    dates: false,
+    categories: false,
+    payees: false,
+    accounts: false,
+    groupBy: false,
+  },
   'day-patterns': { dates: true, categories: true, payees: false, accounts: true, groupBy: false },
   timeline: { dates: true, categories: true, payees: false, accounts: true, groupBy: false },
 }

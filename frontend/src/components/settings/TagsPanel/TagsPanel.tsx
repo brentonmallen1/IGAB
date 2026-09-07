@@ -1,6 +1,14 @@
 import { useState } from 'react'
 import { Lock } from 'lucide-react'
-import { useTags, useCreateTag, useUpdateTag, useDeleteTag, type Tag } from '../../../api/tags'
+import {
+  useTags,
+  useCreateTag,
+  useUpdateTag,
+  useDeleteTag,
+  useTagNotices,
+  useDismissTagNotice,
+  type Tag,
+} from '../../../api/tags'
 import { TagChip, type TagColorSlot } from '../../common/TagChip'
 import { Tooltip } from '../../common/Tooltip/Tooltip'
 import './TagsPanel.css'
@@ -23,6 +31,8 @@ interface TagsPanelProps {
 
 export function TagsPanel({ budgetId }: TagsPanelProps) {
   const { data: tags, isLoading } = useTags(budgetId)
+  const { data: notices = [] } = useTagNotices(budgetId)
+  const dismissNotice = useDismissTagNotice(budgetId)
   const createTag = useCreateTag(budgetId)
   const updateTag = useUpdateTag(budgetId)
   const deleteTag = useDeleteTag(budgetId)
@@ -82,6 +92,22 @@ export function TagsPanel({ budgetId }: TagsPanelProps) {
 
   return (
     <div className="tags-panel">
+      {notices.map((n) => (
+        <div key={n.key} className="tags-panel__notice" role="status">
+          <span>
+            {n.key === 'subscription_tag_moved'
+              ? `Subscription is now a category tag. ${Number(n.payload.payee_tags_removed ?? 0)} payee tag${Number(n.payload.payee_tags_removed ?? 0) === 1 ? ' was' : 's were'} removed — tag the categories your subscriptions are filed to (Streaming, Software…) and the report follows them.`
+              : n.key}
+          </span>
+          <button
+            type="button"
+            className="tags-panel__notice-dismiss"
+            onClick={() => dismissNotice.mutate(n.key)}
+          >
+            Got it
+          </button>
+        </div>
+      ))}
       {tags && tags.length > 0 ? (
         <div className="tags-panel__list">
           {tags.map((tag) => (

@@ -16,6 +16,10 @@ TAG_COLOR_SLOTS = frozenset({"red", "orange", "yellow", "green", "teal", "blue",
 #: inferred answer". Seeding is backfilled for existing budgets on first read
 #: (api/v1/tags.py), so adding an entry here needs no migration.
 SYSTEM_TAGS = [
+    # Categories only (see CATEGORY_ONLY_SYSTEM_KEYS): the Subscriptions
+    # report reads categories tagged Subscription and groups their charges by
+    # payee. It used to be a payee tag; a household files subscriptions into
+    # categories far more reliably than it tags each payee.
     ("subscription", "Subscription", "purple"),
     ("savings", "Savings", "green"),
     ("long_term_expense", "Long-term expense", "teal"),
@@ -30,6 +34,12 @@ SYSTEM_TAGS = [
     # hand-set, so reports that filter by it cannot disagree with the list.
     ("wishlist", "Wishlist", "pink"),
 ]
+
+
+#: System tags the payee tag routes refuse. One place, read by both payee
+#: routes and by the client's payee pickers (SYSTEM_TAG_HELP says "on
+#: categories"), so a tag cannot be offered on one and refused by the other.
+CATEGORY_ONLY_SYSTEM_KEYS = frozenset({"subscription"})
 
 
 class TagRepository(BaseRepository[Tag]):

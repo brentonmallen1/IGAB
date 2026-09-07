@@ -1,4 +1,7 @@
-"""Subscriptions report: only subscription-tagged payees, posted leaf outflows.
+"""Subscriptions report: posted leaf outflows filed to subscription-tagged
+categories, grouped by payee. The tag moved from payees to categories
+(repositories/tag_repo.py CATEGORY_ONLY_SYSTEM_KEYS); a payee the household
+never tagged used to vanish from here.
 
 Pins the money semantics decided in the reports audit:
 - `avg_monthly` is the TRUE monthly burden: total ÷ months from the first
@@ -19,6 +22,8 @@ from igab.services.report_service import ReportService
 from .factories import (
     create_account,
     create_budget,
+    create_category,
+    create_category_group,
     create_payee,
     create_transaction,
     create_user,
@@ -43,31 +48,51 @@ async def _setup(db_session):
     await seed_system_tags(db_session, budget.id)
     tag_repo = TagRepository(db_session)
     sub_tag = await tag_repo.get_system_tag(budget.id, "subscription")
-    return budget, checking, tag_repo, sub_tag
+    group = await create_category_group(db_session, budget, "Bills")
+    streaming = await create_category(db_session, budget, group, "Streaming")
+    await tag_repo.set_category_tags(streaming.id, [sub_tag.id])
+    return budget, checking, tag_repo, streaming
 
 
-async def _tag_payee(db_session, budget, tag_repo, sub_tag, name):
-    payee = await create_payee(db_session, budget, name)
-    await tag_repo.add_payee_tag(payee.id, sub_tag.id)
-    return payee
+async def _tag_payee(db_session, budget, tag_repo, streaming, name):
+    """A payee whose charges are filed to the subscription category. Kept
+    under its old name so the cases below read as they did: the payee is
+    still the line the report draws, the category is what qualifies it."""
+    return await create_payee(db_session, budget, name)
 
 
 async def test_monthly_subscription_counts_posted_leaf_outflows_only(db_session):
-    budget, checking, tag_repo, sub_tag = await _setup(db_session)
-    netflix = await _tag_payee(db_session, budget, tag_repo, sub_tag, "Netflix")
+    budget, checking, tag_repo, sub_cat = await _setup(db_session)
+    netflix = await _tag_payee(db_session, budget, tag_repo, sub_cat, "Netflix")
 
     for k in (2, 1, 0):
         await create_transaction(
-            db_session, budget, checking, "-15.99", months_ago(k), payee=netflix
+            db_session, budget, checking, "-15.99", months_ago(k), payee=netflix, category=sub_cat
         )
     # None of these may count: pending, deleted, refund (inflow)
     await create_transaction(
-        db_session, budget, checking, "-15.99", months_ago(0), payee=netflix, cleared="pending"
+        db_session,
+        budget,
+        checking,
+        "-15.99",
+        months_ago(0),
+        payee=netflix,
+        category=sub_cat,
+        cleared="pending",
     )
     await create_transaction(
-        db_session, budget, checking, "-15.99", months_ago(0), payee=netflix, is_deleted=True
+        db_session,
+        budget,
+        checking,
+        "-15.99",
+        months_ago(0),
+        payee=netflix,
+        category=sub_cat,
+        is_deleted=True,
     )
-    await create_transaction(db_session, budget, checking, "15.99", months_ago(0), payee=netflix)
+    await create_transaction(
+        db_session, budget, checking, "15.99", months_ago(0), payee=netflix, category=sub_cat
+    )
     # Untagged payee: never a subscription, no matter the cadence
     rent = await create_payee(db_session, budget, "Rent")
     await create_transaction(db_session, budget, checking, "-1000.00", months_ago(1), payee=rent)
@@ -98,12 +123,14 @@ async def test_monthly_subscription_counts_posted_leaf_outflows_only(db_session)
 
 
 async def test_quarterly_subscription_normalizes_to_true_monthly_cost(db_session):
-    budget, checking, tag_repo, sub_tag = await _setup(db_session)
-    gym = await _tag_payee(db_session, budget, tag_repo, sub_tag, "Quarterly Gym")
+    budget, checking, tag_repo, sub_cat = await _setup(db_session)
+    gym = await _tag_payee(db_session, budget, tag_repo, sub_cat, "Quarterly Gym")
 
     # 4 quarterly charges; first charge 11 months ago -> 12-month active span
     for k in (11, 8, 5, 2):
-        await create_transaction(db_session, budget, checking, "-30.00", months_ago(k), payee=gym)
+        await create_transaction(
+            db_session, budget, checking, "-30.00", months_ago(k), payee=gym, category=sub_cat
+        )
 
     data = await ReportService(db_session).subscriptions_report(budget.id, months=12)
 
@@ -117,12 +144,16 @@ async def test_quarterly_subscription_normalizes_to_true_monthly_cost(db_session
 
 
 async def test_monthly_buckets_are_exact_decimals(db_session):
-    budget, checking, tag_repo, sub_tag = await _setup(db_session)
-    micro = await _tag_payee(db_session, budget, tag_repo, sub_tag, "Micro")
+    budget, checking, tag_repo, sub_cat = await _setup(db_session)
+    micro = await _tag_payee(db_session, budget, tag_repo, sub_cat, "Micro")
 
     # 0.1 + 0.2 is the canonical float-artifact trap
-    await create_transaction(db_session, budget, checking, "-0.10", months_ago(0), payee=micro)
-    await create_transaction(db_session, budget, checking, "-0.20", months_ago(0), payee=micro)
+    await create_transaction(
+        db_session, budget, checking, "-0.10", months_ago(0), payee=micro, category=sub_cat
+    )
+    await create_transaction(
+        db_session, budget, checking, "-0.20", months_ago(0), payee=micro, category=sub_cat
+    )
 
     data = await ReportService(db_session).subscriptions_report(budget.id, months=12)
 
@@ -134,11 +165,18 @@ async def test_monthly_buckets_are_exact_decimals(db_session):
 
 
 async def test_split_child_charge_counts_once_at_child_amount(db_session):
-    budget, checking, tag_repo, sub_tag = await _setup(db_session)
-    spotify = await _tag_payee(db_session, budget, tag_repo, sub_tag, "Spotify")
+    budget, checking, tag_repo, sub_cat = await _setup(db_session)
+    spotify = await _tag_payee(db_session, budget, tag_repo, sub_cat, "Spotify")
 
     parent = await create_transaction(
-        db_session, budget, checking, "-50.00", months_ago(1), payee=spotify, is_split=True
+        db_session,
+        budget,
+        checking,
+        "-50.00",
+        months_ago(1),
+        payee=spotify,
+        category=sub_cat,
+        is_split=True,
     )
     await create_transaction(
         db_session,
@@ -147,6 +185,7 @@ async def test_split_child_charge_counts_once_at_child_amount(db_session):
         "-9.99",
         months_ago(1),
         payee=spotify,
+        category=sub_cat,
         parent_transaction_id=parent.id,
     )
 
