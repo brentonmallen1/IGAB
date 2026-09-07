@@ -207,7 +207,12 @@ class TransactionRepository(BaseRepository[Transaction]):
             q = q.where(Transaction.date >= start_date)
         if end_date:
             q = q.where(Transaction.date <= end_date)
-        if category_ids:
+        # `is not None`, not truthiness: None means no category scope was asked
+        # for, an empty list means one was and nothing matched. Conflating them
+        # hands back the whole window for a scope that should return nothing —
+        # the same distinction `report_service.scoped` states for the reports,
+        # and the drill-down panel reads this listing.
+        if category_ids is not None:
             q = q.where(Transaction.category_id.in_(category_ids))
         if payee_ids:
             q = q.where(Transaction.payee_id.in_(payee_ids))
@@ -307,7 +312,7 @@ class TransactionRepository(BaseRepository[Transaction]):
             where.append(Transaction.date >= start_date)
         if end_date:
             where.append(Transaction.date <= end_date)
-        if category_ids:
+        if category_ids is not None:
             where.append(Transaction.category_id.in_(category_ids))
         if payee_ids:
             where.append(Transaction.payee_id.in_(payee_ids))

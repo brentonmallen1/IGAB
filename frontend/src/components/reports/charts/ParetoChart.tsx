@@ -32,6 +32,8 @@ import { ReportInfoButton, ReportScopeNote, SpendingClassNote } from '../ReportI
 import { ReportNotes, IncludeSavingsToggle, emptySpendingMessage } from '../ReportNotes'
 import { LogScaleToggle, logAxisProps } from './logScale'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
+import { useReportScope } from '../../../stores/reportStore'
+import { drillScope } from '../drillScope'
 
 interface Props {
   budgetId: string
@@ -93,7 +95,7 @@ export function ParetoReport({ budgetId }: Props) {
   const [includeSavings, setIncludeSavings] = useState(false)
   const [logScale, setLogScale] = useState(false)
 
-  const catIds = filters.categoryIds.length > 0 ? filters.categoryIds : undefined
+  const reportScope = useReportScope()
   const payeeIds = filters.payeeIds.length > 0 ? filters.payeeIds : undefined
   const acctIds = filters.accountIds.length > 0 ? filters.accountIds : undefined
 
@@ -104,7 +106,7 @@ export function ParetoReport({ budgetId }: Props) {
     budgetId,
     filters.startDate,
     filters.endDate,
-    catIds,
+    reportScope,
     acctIds,
     withSavings,
     filters.viewId
@@ -164,6 +166,7 @@ export function ParetoReport({ budgetId }: Props) {
         scope: 'leaf',
         direction: 'outflow',
         payeeIds: [id],
+        ...drillScope(reportScope),
         activityClasses,
         ...window,
       })

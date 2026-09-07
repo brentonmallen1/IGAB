@@ -11,6 +11,7 @@ import { ReportInfoButton, ReportScopeNote, SpendingClassNote } from '../ReportI
 import { ReportNotes, IncludeSavingsToggle, emptySpendingMessage } from '../ReportNotes'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import './SpendingTreemap.css'
+import { useReportScope } from '../../../stores/reportStore'
 
 interface Props {
   budgetId: string
@@ -35,14 +36,14 @@ export function SpendingTreemapReport({ budgetId }: Props) {
   // The stored mode can be 'payee' (picked on the pareto); this tab has no
   // payee data, so draw the declared fallback instead.
   const groupBy = resolveGroupBy('treemap', filters.groupBy)
-  const catIds = filters.categoryIds.length > 0 ? filters.categoryIds : undefined
+  const reportScope = useReportScope()
   const acctIds = filters.accountIds.length > 0 ? filters.accountIds : undefined
   const [includeSavings, setIncludeSavings] = useState(false)
   const { data, isLoading, isError, error, refetch } = useSpendingGroupedReport(
     budgetId,
     filters.startDate,
     filters.endDate,
-    catIds,
+    reportScope,
     acctIds,
     includeSavings,
     filters.viewId

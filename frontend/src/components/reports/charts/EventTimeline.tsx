@@ -9,6 +9,8 @@ import { MetricRow } from '../MetricRow'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import './EventTimeline.css'
+import { useReportScope } from '../../../stores/reportStore'
+import { drillScope } from '../drillScope'
 
 /** Dot colour by what a row means, not which way the amount points. */
 const TONE_BY_CLASS: Record<string, string> = {
@@ -31,14 +33,14 @@ export function TimelineReport({ budgetId }: Props) {
   const { formatMoney } = useFormatters()
   const { filters, setDrillDown } = useReportStore()
   const [limit, setLimit] = useState<25 | 50 | 100>(25)
-  const catIds = filters.categoryIds.length > 0 ? filters.categoryIds : undefined
+  const reportScope = useReportScope()
   const acctIds = filters.accountIds.length > 0 ? filters.accountIds : undefined
   const { data, isLoading, isError, error, refetch } = useTimelineReport(
     budgetId,
     filters.startDate,
     filters.endDate,
     limit,
-    catIds,
+    reportScope,
     acctIds
   )
   const { data: payees } = usePayees(budgetId)
@@ -58,6 +60,7 @@ export function TimelineReport({ budgetId }: Props) {
       label: payeeName,
       scope: 'parent',
       payeeIds: [payeeId],
+      ...drillScope(reportScope),
       startDate: filters.startDate,
       endDate: filters.endDate,
     })

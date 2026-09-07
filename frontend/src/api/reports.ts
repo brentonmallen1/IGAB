@@ -41,6 +41,34 @@ function params(obj: Record<string, string | number | undefined | null>) {
   return p
 }
 
+/**
+ * Which categories a report is about, as the filter bar set it.
+ *
+ * One object rather than three arguments threaded through every hook. The
+ * three axes are one question — they UNION on the server
+ * (`services/report_scope.py`) — and a chart that happened to pass two of the
+ * three would quietly widen its own report with nothing on screen to say so.
+ * Passing them together also means a chart cannot forget the one that was
+ * added last.
+ */
+export interface ReportScope {
+  categoryIds?: string[]
+  tagIds?: string[]
+  /** A saved filter's effective set, resolved server-side. */
+  filterId?: string | null
+}
+
+/** The scope as query params. Also the cache key — `useQuery` keys on this
+ *  object, so a scope change refetches and two scopes never share a cache
+ *  entry. */
+export function scopeParams(scope: ReportScope | undefined) {
+  return {
+    category_ids: scope?.categoryIds?.length ? scope.categoryIds.join(',') : undefined,
+    tag_ids: scope?.tagIds?.length ? scope.tagIds.join(',') : undefined,
+    filter_id: scope?.filterId ?? undefined,
+  }
+}
+
 // ─── Existing ──────────────────────────────────────────────────────────────
 
 // `useSpendingReport` lived here, unused: /reports/spending is served but no
@@ -305,15 +333,16 @@ export function useSpendingGroupedReport(
   budgetId: string | null,
   startDate?: string,
   endDate?: string,
-  categoryIds?: string[],
+  scope?: ReportScope,
   accountIds?: string[],
   /** Spending reports mean money spent, so saving and debt principal are left
    *  out by default. Set to bring them back into the totals. */
   includeSavings?: boolean,
-  /** Roll up by this view's groups instead of the budget's own. */
+  /** Roll up by this view's groups instead of the budget's own. A view is an
+   *  arrangement and the scope is a predicate; both can be on. */
   viewId?: string | null
 ) {
-  const catParam = categoryIds?.length ? categoryIds.join(',') : undefined
+  const scopeQuery = scopeParams(scope)
   const acctParam = accountIds?.length ? accountIds.join(',') : undefined
   return useQuery({
     queryKey: [
@@ -322,7 +351,7 @@ export function useSpendingGroupedReport(
       budgetId,
       startDate,
       endDate,
-      catParam,
+      scopeQuery,
       acctParam,
       includeSavings,
       viewId,
@@ -334,7 +363,7 @@ export function useSpendingGroupedReport(
           params: params({
             start_date: startDate,
             end_date: endDate,
-            category_ids: catParam,
+            ...scopeQuery,
             account_ids: acctParam,
             include_savings: includeSavings ? 'true' : undefined,
             view_id: viewId ?? undefined,
@@ -427,19 +456,19 @@ export function useDayPatternsReport(
   budgetId: string | null,
   startDate?: string,
   endDate?: string,
-  categoryIds?: string[],
+  scope?: ReportScope,
   accountIds?: string[]
 ) {
-  const catParam = categoryIds?.length ? categoryIds.join(',') : undefined
+  const scopeQuery = scopeParams(scope)
   const acctParam = accountIds?.length ? accountIds.join(',') : undefined
   return useQuery({
-    queryKey: [ROOT.reports, 'day-patterns', budgetId, startDate, endDate, catParam, acctParam],
+    queryKey: [ROOT.reports, 'day-patterns', budgetId, startDate, endDate, scopeQuery, acctParam],
     queryFn: async () => {
       const { data } = await apiClient.get<DayPatternsReport>(`/${budgetId}/reports/day-patterns`, {
         params: params({
           start_date: startDate,
           end_date: endDate,
-          category_ids: catParam,
+          ...scopeQuery,
           account_ids: acctParam,
         }),
       })
@@ -457,13 +486,22 @@ export function useTimelineReport(
   startDate?: string,
   endDate?: string,
   limit = 50,
-  categoryIds?: string[],
+  scope?: ReportScope,
   accountIds?: string[]
 ) {
-  const catParam = categoryIds?.length ? categoryIds.join(',') : undefined
+  const scopeQuery = scopeParams(scope)
   const acctParam = accountIds?.length ? accountIds.join(',') : undefined
   return useQuery({
-    queryKey: [ROOT.reports, 'timeline', budgetId, startDate, endDate, limit, catParam, acctParam],
+    queryKey: [
+      ROOT.reports,
+      'timeline',
+      budgetId,
+      startDate,
+      endDate,
+      limit,
+      scopeQuery,
+      acctParam,
+    ],
     queryFn: async () => {
       const { data } = await apiClient.get<TimelineReport>(
         `/${budgetId}/reports/large-transactions`,
@@ -472,7 +510,7 @@ export function useTimelineReport(
             start_date: startDate,
             end_date: endDate,
             limit,
-            category_ids: catParam,
+            ...scopeQuery,
             account_ids: acctParam,
           }),
         }
@@ -591,15 +629,12 @@ export function useSpendingTrendsReport(
   budgetId: string | null,
   startDate?: string,
   endDate?: string,
-  categoryIds?: string[],
+  scope?: ReportScope,
   accountIds?: string[],
-  includeSavings?: boolean,
-  filterId?: string | null,
-  tagIds?: string[]
+  includeSavings?: boolean
 ) {
-  const catParam = categoryIds?.length ? categoryIds.join(',') : undefined
+  const scopeQuery = scopeParams(scope)
   const acctParam = accountIds?.length ? accountIds.join(',') : undefined
-  const tagParam = tagIds?.length ? tagIds.join(',') : undefined
   return useQuery({
     queryKey: [
       ROOT.reports,
@@ -607,11 +642,9 @@ export function useSpendingTrendsReport(
       budgetId,
       startDate,
       endDate,
-      catParam,
+      scopeQuery,
       acctParam,
       includeSavings,
-      filterId,
-      tagParam,
     ],
     queryFn: async () => {
       const { data } = await apiClient.get<SpendingTrendsReport>(
@@ -620,11 +653,9 @@ export function useSpendingTrendsReport(
           params: params({
             start_date: startDate,
             end_date: endDate,
-            category_ids: catParam,
+            ...scopeQuery,
             account_ids: acctParam,
             include_savings: includeSavings ? 'true' : undefined,
-            filter_id: filterId ?? undefined,
-            tag_ids: tagParam,
           }),
         }
       )

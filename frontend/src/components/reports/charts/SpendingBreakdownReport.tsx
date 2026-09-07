@@ -12,6 +12,7 @@ import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ChartTooltip } from './ChartTooltip'
 import { chartColor } from './chartColors'
+import { useReportScope } from '../../../stores/reportStore'
 
 interface Props {
   budgetId: string
@@ -29,11 +30,12 @@ export function SpendingBreakdownReport({ budgetId }: Props) {
   const [openGroup, setOpenGroup] = useState<string | null>(null)
   const captureRef = useRef<HTMLDivElement>(null)
 
+  const reportScope = useReportScope()
   const { data, isLoading, isError, error, refetch } = useSpendingGroupedReport(
     budgetId,
     filters.startDate,
     filters.endDate,
-    filters.categoryIds.length ? filters.categoryIds : undefined,
+    reportScope,
     filters.accountIds.length ? filters.accountIds : undefined,
     includeSavings,
     filters.viewId

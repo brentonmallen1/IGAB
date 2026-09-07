@@ -314,3 +314,63 @@ def test_the_list_covers_every_scoped_report():
         "these endpoints take category_ids but never resolve a filter or tag scope: "
         f"{sorted(scoped_endpoints - resolved)}"
     )
+
+
+class TestTheDrillDownListingHonoursTheSameScope:
+    """A panel opened from a scoped chart must list what the chart counted.
+
+    It reads `/transactions`, which had no idea a tag or a filter existed — so
+    a bar totalling one tag's spending opened a list of the whole window. Same
+    resolver, same answer.
+    """
+
+    async def test_a_tag_scopes_the_listing(self, db_session, api_client):
+        budget, groceries, _fuel, dining, essential, _tags = await _make_world(
+            db_session, api_client.test_user
+        )
+        await create_transaction_for(db_session, budget, groceries)
+        await create_transaction_for(db_session, budget, dining)
+        window = f"start_date={date.today().replace(day=1)}&end_date={date.today()}"
+
+        everything = await api_client.get(f"/api/v1/{budget.id}/transactions?{window}&scope=leaf")
+        tagged = await api_client.get(
+            f"/api/v1/{budget.id}/transactions?{window}&scope=leaf&tag_ids={essential.id}"
+        )
+        assert tagged.status_code == 200, tagged.text
+        assert everything.json()["total_count"] == 2
+        assert tagged.json()["total_count"] == 1
+
+    async def test_a_saved_filter_scopes_it_identically(self, db_session, api_client):
+        budget, groceries, _fuel, dining, essential, _tags = await _make_world(
+            db_session, api_client.test_user
+        )
+        await create_transaction_for(db_session, budget, groceries)
+        await create_transaction_for(db_session, budget, dining)
+        repo = BudgetFilterRepository(db_session)
+        saved = await repo.create(budget_id=budget.id, name="Fixed costs")
+        await repo.set_tags(saved.id, [essential.id])
+        window = f"start_date={date.today().replace(day=1)}&end_date={date.today()}"
+
+        by_tag = await api_client.get(
+            f"/api/v1/{budget.id}/transactions?{window}&scope=leaf&tag_ids={essential.id}"
+        )
+        by_filter = await api_client.get(
+            f"/api/v1/{budget.id}/transactions?{window}&scope=leaf&filter_id={saved.id}"
+        )
+        assert by_filter.status_code == 200, by_filter.text
+        assert by_filter.json()["total_count"] == by_tag.json()["total_count"] == 1
+
+    async def test_an_unapplied_tag_lists_nothing(self, db_session, api_client):
+        """The same None-vs-empty distinction, one layer down: the listing must
+        not read an empty scope as no scope and hand back the window."""
+        budget, groceries, *_rest, tags = await _make_world(db_session, api_client.test_user)
+        await create_transaction_for(db_session, budget, groceries)
+        unused = await tags.get_system_tag(budget.id, "wishlist")
+        assert unused is not None
+        window = f"start_date={date.today().replace(day=1)}&end_date={date.today()}"
+
+        resp = await api_client.get(
+            f"/api/v1/{budget.id}/transactions?{window}&scope=leaf&tag_ids={unused.id}"
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["total_count"] == 0

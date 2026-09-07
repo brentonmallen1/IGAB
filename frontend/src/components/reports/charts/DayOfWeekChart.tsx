@@ -21,6 +21,8 @@ import { CHART_COLORS, TOOLTIP_STYLE } from './chartColors'
 import { ReportInfoButton, ReportScopeNote, SpendingClassNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ReportNotes } from '../ReportNotes'
+import { useReportScope } from '../../../stores/reportStore'
+import { drillScope } from '../drillScope'
 
 interface Props {
   budgetId: string
@@ -32,13 +34,13 @@ export function DayPatternsReport({ budgetId }: Props) {
   const chartHeight = useChartHeight(320)
   const { formatMoney } = useFormatters()
   const { filters, setDrillDown } = useReportStore()
-  const catIds = filters.categoryIds.length > 0 ? filters.categoryIds : undefined
+  const reportScope = useReportScope()
   const acctIds = filters.accountIds.length > 0 ? filters.accountIds : undefined
   const { data, isLoading, isError, error, refetch } = useDayPatternsReport(
     budgetId,
     filters.startDate,
     filters.endDate,
-    catIds,
+    reportScope,
     acctIds
   )
   const captureRef = useRef<HTMLDivElement>(null)
@@ -78,7 +80,7 @@ export function DayPatternsReport({ budgetId }: Props) {
       scope: 'leaf',
       direction: 'outflow',
       dayOfWeek,
-      categoryIds: filters.categoryIds.length > 0 ? filters.categoryIds : undefined,
+      ...drillScope(reportScope),
       startDate: filters.startDate,
       endDate: filters.endDate,
     })

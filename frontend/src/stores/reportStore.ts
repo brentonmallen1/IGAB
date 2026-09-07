@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { PERSIST_KEYS } from './persistKeys'
+import { useMemo } from 'react'
+import type { ReportScope } from '../api/reports'
 
 export type ReportTab =
   | 'overview'
@@ -258,11 +260,25 @@ export function resolveGroupBy(tab: ReportTab, groupBy: GroupBy): GroupBy {
 export interface ReportFilters {
   startDate: string
   endDate: string
+  /** The three ways of saying which categories a report is about. They UNION
+   *  on the server (`services/report_scope.py`): each one adds to the scope,
+   *  because three controls side by side read as "and also this", and
+   *  narrowing twice by accident is a worse surprise than widening. */
   categoryIds: string[]
+  /** Categories carrying any of these tags join the scope. Dynamic by nature —
+   *  no saved row, so tagging a category later widens the report with nothing
+   *  to keep in step. */
+  tagIds: string[]
+  /** A saved filter's effective set: its named categories plus everything
+   *  carrying its tags, resolved server-side by the same call the budget page
+   *  makes. null = none chosen. */
+  filterId: string | null
   payeeIds: string[]
   accountIds: string[]
   groupBy: GroupBy
-  /** Roll up by this view's arrangement. null = the budget's own groups. */
+  /** Roll up by this view's arrangement. null = the budget's own groups.
+   *  Deliberately NOT part of the scope above: a view is an arrangement and a
+   *  scope is a predicate, and both can be on at once. */
   viewId: string | null
 }
 
@@ -276,6 +292,11 @@ export interface DrillDownContext {
   direction?: 'outflow' | 'inflow'
   categoryIds?: string[]
   payeeIds?: string[]
+  /** The other two scope axes, for a drill opened from a chart that had no
+   *  category ids of its own — see `components/reports/drillScope.ts` for why
+   *  a chart WITH its own ids must not send these. */
+  tagIds?: string[]
+  filterId?: string | null
   /** Rows with no category, for a bucket that is defined by their absence.
    *  An empty `categoryIds` cannot say this — it filters nothing and lists the
    *  whole window, which is worse than not offering the drill at all. */
@@ -307,6 +328,8 @@ function defaultFilters(): ReportFilters {
     startDate: start.toISOString().slice(0, 10),
     endDate: today.toISOString().slice(0, 10),
     categoryIds: [],
+    tagIds: [],
+    filterId: null,
     payeeIds: [],
     accountIds: [],
     groupBy: 'category',
@@ -332,6 +355,33 @@ export const useReportStore = create<ReportState>()(
     {
       name: PERSIST_KEYS.reports,
       partialize: (s) => ({ activeTab: s.activeTab, filters: s.filters }),
+      // A state persisted before a filter field existed arrives without it,
+      // and `filters.tagIds.length` on undefined is a blank Reports page for
+      // anyone who used the tab before upgrading. Filling from the defaults
+      // says that once, for every field added since — cheaper and safer than
+      // a version bump per field, and it cannot forget one.
+      merge: (persisted, current) => {
+        const saved = (persisted ?? {}) as Partial<ReportState>
+        return {
+          ...current,
+          ...saved,
+          filters: { ...defaultFilters(), ...(saved.filters ?? {}) },
+        }
+      },
     }
   )
 )
+
+/**
+ * The scope the filter bar has set, in the shape every report hook takes.
+ *
+ * One reader, so a chart cannot pass two of the three axes and quietly widen
+ * its own report — and so a fourth axis added later reaches every chart at
+ * once instead of the ones someone remembered. Memoised on the three fields,
+ * because the object is part of each query's cache key and a fresh identity
+ * every render would refetch on every render.
+ */
+export function useReportScope(): ReportScope {
+  const { categoryIds, tagIds, filterId } = useReportStore((s) => s.filters)
+  return useMemo(() => ({ categoryIds, tagIds, filterId }), [categoryIds, tagIds, filterId])
+}

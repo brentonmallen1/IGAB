@@ -12,8 +12,6 @@ import {
   YAxis,
 } from 'recharts'
 import { useSpendingTrendsReport } from '../../../api/reports'
-import { useBudgetFilters } from '../../../api/budgetFilters'
-import { useTags } from '../../../api/tags'
 import { useReportStore, resolveGroupBy } from '../../../stores/reportStore'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { useChartHeight } from '../../../hooks/useChartHeight'
@@ -26,6 +24,7 @@ import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ChartTooltip } from './ChartTooltip'
 import { chartColor } from './chartColors'
 import { rollupTrends } from './spendingTrends'
+import { useReportScope } from '../../../stores/reportStore'
 
 interface Props {
   budgetId: string
@@ -47,22 +46,17 @@ export function SpendingTrendsReport({ budgetId }: Props) {
   const { filters } = useReportStore()
   const groupBy = resolveGroupBy('spending-trends', filters.groupBy)
   const [includeSavings, setIncludeSavings] = useState(false)
-  const [filterId, setFilterId] = useState<string | null>(null)
-  const [tagIds, setTagIds] = useState<string[]>([])
   const [chart, setChart] = useState<'stacked' | 'lines'>('stacked')
   const captureRef = useRef<HTMLDivElement>(null)
 
-  const { data: savedFilters = [] } = useBudgetFilters(budgetId)
-  const { data: tags = [] } = useTags(budgetId)
+  const reportScope = useReportScope()
   const { data, isLoading, isError, error, refetch } = useSpendingTrendsReport(
     budgetId,
     filters.startDate,
     filters.endDate,
-    filters.categoryIds.length ? filters.categoryIds : undefined,
+    reportScope,
     filters.accountIds.length ? filters.accountIds : undefined,
-    includeSavings,
-    filterId,
-    tagIds
+    includeSavings
   )
 
   const rolled = useMemo(() => (data ? rollupTrends(data, groupBy) : []), [data, groupBy])
@@ -100,51 +94,6 @@ export function SpendingTrendsReport({ budgetId }: Props) {
           <ReportScopeNote scope="categories" />
         </ReportInfoButton>
         <div className="flex-row">
-          <select
-            className="report-btn"
-            value={filterId ?? ''}
-            onChange={(e) => setFilterId(e.target.value || null)}
-            aria-label="Saved filter"
-          >
-            <option value="">Any saved filter…</option>
-            {savedFilters.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.name}
-              </option>
-            ))}
-          </select>
-          <select
-            className="report-btn"
-            value=""
-            onChange={(e) => {
-              const id = e.target.value
-              if (id && !tagIds.includes(id)) setTagIds([...tagIds, id])
-            }}
-            aria-label="Add a tag to the scope"
-          >
-            <option value="">+ Tag…</option>
-            {tags
-              .filter((t) => !tagIds.includes(t.id))
-              .map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-          </select>
-          {tagIds.map((id) => {
-            const tag = tags.find((t) => t.id === id)
-            return (
-              <button
-                key={id}
-                type="button"
-                className="report-btn report-btn--active"
-                onClick={() => setTagIds(tagIds.filter((t) => t !== id))}
-                title="Remove from scope"
-              >
-                {tag?.name ?? 'Tag'} ×
-              </button>
-            )
-          })}
           <button
             type="button"
             className={`report-btn ${chart === 'stacked' ? 'report-btn--active' : ''}`}
