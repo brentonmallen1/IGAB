@@ -485,7 +485,12 @@ export interface YnabAccountPreview {
 
 export interface YnabPreviewResult {
   accounts: YnabAccountPreview[]
+  /** Posted rows only — what will land in the register. */
   transaction_count: number
+  /** Rows dated after today. YNAB exports a scheduled transaction as its
+   *  next dated instance, so these become upcoming transactions, not
+   *  history (server: YNABPreviewResult.held_out_future_count). */
+  held_out_future_count: number
   budget_entry_count: number
   /** B — where this file will anchor if imported (server:
    * YNABPreviewResult ← integrations/ynab/models.plan_boundary): envelope

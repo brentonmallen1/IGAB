@@ -7,9 +7,10 @@
  */
 
 import type { TagSuggestion } from '../../../api/tags'
-import type { YnabImportResult, YnabTaggedCategory } from '../../../api/imports'
+import type { YnabHeldOutFuture, YnabImportResult, YnabTaggedCategory } from '../../../api/imports'
+import type { ScheduledTransaction } from '../../../types'
 
-export type StepId = 'summary' | 'tags' | 'accounts'
+export type StepId = 'summary' | 'upcoming' | 'tags' | 'accounts'
 
 /**
  * Which steps this budget has.
@@ -17,9 +18,35 @@ export type StepId = 'summary' | 'tags' | 'accounts'
  * A budget with no stored summary — one created by hand, or imported before
  * IGAB kept a record — skips straight to what can still be changed. That is
  * the case the review is most useful for: those budgets have no tags at all.
+ *
+ * The upcoming step exists only when the import held rows out: YNAB exports
+ * a scheduled transaction as its next date with no cadence, and this is the
+ * one place the cadence gets asked for.
  */
 export function stepsFor(summary: YnabImportResult | null | undefined): StepId[] {
-  return summary ? ['summary', 'tags', 'accounts'] : ['tags', 'accounts']
+  if (!summary) return ['tags', 'accounts']
+  const upcoming = (summary.held_out_future ?? []).length > 0
+  return upcoming ? ['summary', 'upcoming', 'tags', 'accounts'] : ['summary', 'tags', 'accounts']
+}
+
+export interface UpcomingRow {
+  held: YnabHeldOutFuture
+  /** The live schedule, or null once it has been entered, skipped past or
+   *  deleted since the import — the stored summary records an event, and
+   *  the row still reads as "no longer upcoming" rather than vanishing. */
+  schedule: ScheduledTransaction | null
+}
+
+/** One row per held-out record, joined to the schedule it created. */
+export function upcomingRows(
+  summary: YnabImportResult,
+  schedules: ScheduledTransaction[]
+): UpcomingRow[] {
+  const byId = new Map(schedules.map((s) => [s.id, s]))
+  return (summary.held_out_future ?? []).map((held) => ({
+    held,
+    schedule: byId.get(held.scheduled_transaction_id) ?? null,
+  }))
 }
 
 export interface ReviewCategory {

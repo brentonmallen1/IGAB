@@ -36,20 +36,14 @@ describe('dueLabel', () => {
 describe('dueState', () => {
   const base = { days_before_reminder: 3, auto_create: false }
   it('is due-soon at the boundary of the reminder window and inside it', () => {
-    expect(dueState({ ...base, next_occurrence_date: '2026-09-09' }, '2026-09-06')).toBe(
-      'due-soon'
-    )
-    expect(dueState({ ...base, next_occurrence_date: '2026-09-06' }, '2026-09-06')).toBe(
-      'due-soon'
-    )
+    expect(dueState({ ...base, next_occurrence_date: '2026-09-09' }, '2026-09-06')).toBe('due-soon')
+    expect(dueState({ ...base, next_occurrence_date: '2026-09-06' }, '2026-09-06')).toBe('due-soon')
   })
   it('is nothing one day outside the window', () => {
     expect(dueState({ ...base, next_occurrence_date: '2026-09-10' }, '2026-09-06')).toBeNull()
   })
   it('is overdue once the date has passed', () => {
-    expect(dueState({ ...base, next_occurrence_date: '2026-09-05' }, '2026-09-06')).toBe(
-      'overdue'
-    )
+    expect(dueState({ ...base, next_occurrence_date: '2026-09-05' }, '2026-09-06')).toBe('overdue')
   })
   it('never calls an auto-entered schedule overdue — it posts itself', () => {
     expect(

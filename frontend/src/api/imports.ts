@@ -93,6 +93,21 @@ export interface YnabTaggedCategory {
   matched_on: string
 }
 
+/** A register row dated after the import that became an upcoming
+ *  transaction instead of a posted one (server: YNABHeldOutFuture). */
+export interface YnabHeldOutFuture {
+  scheduled_transaction_id: string
+  account_name: string
+  date: string
+  payee: string
+  amount: string
+  category_name: string | null
+  is_transfer: boolean
+  /** Non-empty for a split: scheduled uncategorized, legs written into the
+   *  memo, so the review can say it still needs a category. */
+  split_legs: string[]
+}
+
 export interface YnabImportResult {
   accounts: number
   category_groups: number
@@ -139,6 +154,11 @@ export interface YnabImportResult {
    * Absent on pre-feature summaries — render nothing then. */
   anchored_at?: string | null
   anchor_skipped_reason?: string | null
+  /** Rows dated after the import, each now a one-off scheduled transaction.
+   *  Absent on pre-feature summaries — treat as empty. */
+  held_out_future?: YnabHeldOutFuture[]
+  held_out_splits_uncategorized?: number
+  held_out_transfer_legs_unpaired?: number
   errors: string[]
 }
 

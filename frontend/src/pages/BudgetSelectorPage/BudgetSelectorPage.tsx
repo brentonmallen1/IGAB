@@ -101,6 +101,8 @@ export function BudgetSelectorPage() {
   const [previewAccounts, setPreviewAccounts] = useState<YnabAccountPreview[] | null>(null)
   // B for the file being previewed — see YnabPreviewResult.anchor_month.
   const [previewAnchorMonth, setPreviewAnchorMonth] = useState<string | null>(null)
+  // Rows dated after today — upcoming transactions, not register history.
+  const [previewHeldOut, setPreviewHeldOut] = useState(0)
   const [snapshotPreview, setSnapshotPreview] = useState<SnapshotInspection | null>(null)
   const [accountChoices, setAccountChoices] = useState<Record<string, YnabAccountTypeChoice>>({})
   const [showTypeInfo, setShowTypeInfo] = useState(false)
@@ -215,6 +217,7 @@ export function BudgetSelectorPage() {
       }
       setPreviewAccounts(preview.ynab.accounts)
       setPreviewAnchorMonth(preview.ynab.anchor_month)
+      setPreviewHeldOut(preview.ynab.held_out_future_count)
       setAccountChoices(seedChoices(preview.ynab.accounts))
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
@@ -533,6 +536,15 @@ export function BudgetSelectorPage() {
                       <p className="snapshot-verdict__headline">
                         No plan in this export — envelope history will be re-derived from the
                         transactions instead of starting from YNAB&apos;s own figures.
+                      </p>
+                    )}
+                    {previewHeldOut > 0 && (
+                      <p className="snapshot-verdict__headline">
+                        {previewHeldOut.toLocaleString()} future-dated row
+                        {previewHeldOut === 1 ? '' : 's'} will become upcoming transaction
+                        {previewHeldOut === 1 ? '' : 's'} rather than posted ones — YNAB exports a
+                        scheduled transaction as its next date only, so the import review will ask
+                        how often each repeats.
                       </p>
                     )}
                   </Surface>

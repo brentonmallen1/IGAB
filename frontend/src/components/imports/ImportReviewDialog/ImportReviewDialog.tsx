@@ -14,6 +14,12 @@ import {
 } from '../../../api/accounts'
 import { useBulkSetCategoryTags, useCreateTag, useTagSuggestions, useTags } from '../../../api/tags'
 import { useMarkImportReviewed, type YnabImportResult } from '../../../api/imports'
+import {
+  useScheduledTransactions,
+  useUpdateScheduledTransaction,
+} from '../../../api/scheduledTransactions'
+import { FREQUENCIES } from '../../../utils/schedule'
+import { useNavigate } from 'react-router-dom'
 import { apiErrorMessage } from '../../../api/client'
 import { renderableCategories, renderableGroups } from '../../budget/budgetGroups'
 import { useFormatters } from '../../../hooks/useFormatters'
@@ -27,11 +33,13 @@ import {
   setTags,
   stepsFor,
   toggleTag,
+  upcomingRows,
   type Draft,
   type ReviewCategory,
   type ReviewRow,
   type RowFilter,
   type StepId,
+  type UpcomingRow,
 } from './importReview'
 import './ImportReviewDialog.css'
 
@@ -184,6 +192,9 @@ export function ImportReviewDialog({
       <StepRail steps={steps} current={stepIndex} onPick={setStepIndex} />
 
       {step === 'summary' && summary && <SummaryStep summary={summary} />}
+      {step === 'upcoming' && summary && (
+        <UpcomingStep summary={summary} budgetId={budgetId} onNavigate={onClose} />
+      )}
       {step === 'tags' && (
         <TagsStep
           rows={rows}
@@ -232,8 +243,194 @@ export function ImportReviewDialog({
 
 const STEP_LABELS: Record<StepId, string> = {
   summary: 'What arrived',
+  upcoming: 'Upcoming',
   tags: 'Categories & tags',
   accounts: 'Accounts',
+}
+
+/**
+ * The rows YNAB dated after the import, now one-off scheduled transactions.
+ *
+ * A cadence saved here writes immediately — a stated divergence from the
+ * other steps' write-on-Done. Setting how often the rent repeats is an
+ * ordinary schedule edit with its own ⌘Z, not a classification override the
+ * review should hold back until everything is decided.
+ */
+function UpcomingStep({
+  summary,
+  budgetId,
+  onNavigate,
+}: {
+  summary: YnabImportResult
+  budgetId: string
+  onNavigate: () => void
+}) {
+  const { formatMoney, formatDate } = useFormatters()
+  const navigate = useNavigate()
+  const { data: schedules } = useScheduledTransactions(budgetId)
+  const update = useUpdateScheduledTransaction(budgetId)
+  // A twice-monthly cadence needs its second day before the server will
+  // take it; the choice waits here until the day is typed.
+  const [pendingTwice, setPendingTwice] = useState<Record<string, string>>({})
+  const rows = upcomingRows(summary, schedules ?? [])
+  const uncategorized = summary.held_out_splits_uncategorized ?? 0
+  const unpaired = summary.held_out_transfer_legs_unpaired ?? 0
+
+  async function save(id: string, frequency: string, secondDay: number | null) {
+    try {
+      await update.mutateAsync({ id, frequency, second_day_of_month: secondDay })
+      setPendingTwice((p) => {
+        const next = { ...p }
+        delete next[id]
+        return next
+      })
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Could not save that cadence'))
+    }
+  }
+
+  function onFrequency(row: UpcomingRow, frequency: string) {
+    const id = row.held.scheduled_transaction_id
+    if (frequency === 'twice_monthly') {
+      const known = row.schedule?.second_day_of_month
+      if (known != null) void save(id, frequency, known)
+      else setPendingTwice((p) => ({ ...p, [id]: '' }))
+      return
+    }
+    void save(id, frequency, null)
+  }
+
+  // Saved on blur or Enter, not per keystroke: "15" typed one digit at a
+  // time would otherwise save a 1st-of-the-month schedule on the way.
+  function commitSecondDay(row: UpcomingRow) {
+    const id = row.held.scheduled_transaction_id
+    const day = Number(pendingTwice[id] ?? row.schedule?.second_day_of_month ?? '')
+    if (Number.isInteger(day) && day >= 1 && day <= 31) void save(id, 'twice_monthly', day)
+  }
+
+  return (
+    <>
+      <p className="dialog__body dialog__body--muted">
+        YNAB dated these after the import, so they are upcoming transactions rather than posted ones
+        — nothing has left an account yet. YNAB exports a scheduled transaction as its next date
+        only; set how often each one repeats, or leave it as a one-off.
+      </p>
+
+      <Surface
+        variant="sunken"
+        title={`${n(rows.length)} upcoming transaction${rows.length === 1 ? '' : 's'}`}
+        className="import-review__block"
+      >
+        <div className="import-review__rows">
+          {rows.map((row) => {
+            const id = row.held.scheduled_transaction_id
+            const amount = parseApiDecimal(row.held.amount)
+            const frequency =
+              id in pendingTwice ? 'twice_monthly' : (row.schedule?.frequency ?? 'once')
+            const secondDay = pendingTwice[id] ?? String(row.schedule?.second_day_of_month ?? '')
+            return (
+              <div key={id} className="import-review__row import-review__row--upcoming">
+                <div className="import-review__cat">
+                  <span className="import-review__cat-n">
+                    {row.held.payee}
+                    {row.held.is_transfer && (
+                      <span className="import-review__hidden">transfer</span>
+                    )}
+                    {row.schedule === null && (
+                      <span className="import-review__hidden">no longer upcoming</span>
+                    )}
+                  </span>
+                  <span className="import-review__cat-g">
+                    {formatDate(row.held.date)} · {row.held.account_name} ·{' '}
+                    {amount < 0 ? formatMoney(-amount) + ' out' : formatMoney(amount) + ' in'}
+                  </span>
+                  <span className="import-review__why">
+                    {row.held.split_legs.length > 0
+                      ? `Needs a category — was a split: ${row.held.split_legs.join('; ')}`
+                      : (row.held.category_name ?? 'No category')}
+                  </span>
+                </div>
+                <div className="import-review__cadence">
+                  <select
+                    className="import-review__select"
+                    aria-label={`How often ${row.held.payee} repeats`}
+                    value={frequency}
+                    disabled={row.schedule === null || update.isPending}
+                    onChange={(e) => onFrequency(row, e.target.value)}
+                  >
+                    {FREQUENCIES.map((f) => (
+                      <option key={f.value} value={f.value}>
+                        {f.label}
+                      </option>
+                    ))}
+                  </select>
+                  {frequency === 'twice_monthly' && (
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min="1"
+                      max="31"
+                      step="1"
+                      className="import-review__select import-review__day"
+                      aria-label={`Second day of the month for ${row.held.payee}`}
+                      placeholder="2nd day"
+                      value={secondDay}
+                      disabled={row.schedule === null}
+                      onChange={(e) => setPendingTwice((p) => ({ ...p, [id]: e.target.value }))}
+                      onBlur={() => commitSecondDay(row)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          commitSecondDay(row)
+                        }
+                      }}
+                    />
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </Surface>
+
+      {(uncategorized > 0 || unpaired > 0) && (
+        <Surface variant="sunken" title="Worth a look" className="import-review__block">
+          <ul className="import-review__notes">
+            {uncategorized > 0 && (
+              <li>
+                {n(uncategorized)} of these {uncategorized === 1 ? 'was' : 'were'} a split. A
+                scheduled transaction has one category, so {uncategorized === 1 ? 'it' : 'they'}{' '}
+                arrived uncategorized with the legs written into the memo — give{' '}
+                {uncategorized === 1 ? 'it' : 'each'} a category on the Scheduled page.
+              </li>
+            )}
+            {unpaired > 0 && (
+              <li>
+                {n(unpaired)} upcoming transfer leg{unpaired === 1 ? '' : 's'} arrived without the
+                other side, so {unpaired === 1 ? 'it is' : 'they are'} scheduled as ordinary rows on
+                {unpaired === 1 ? ' its' : ' their'} own account.
+              </li>
+            )}
+          </ul>
+        </Surface>
+      )}
+
+      <p className="dialog__body dialog__body--muted">
+        Every upcoming transaction can be edited, entered or skipped from the{' '}
+        <button
+          type="button"
+          className="import-review__link"
+          onClick={() => {
+            onNavigate()
+            navigate('/scheduled')
+          }}
+        >
+          Scheduled page
+        </button>
+        .
+      </p>
+    </>
+  )
 }
 
 function StepRail({
