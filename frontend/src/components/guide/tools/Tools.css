@@ -11,6 +11,13 @@
   max-width: 960px;
 }
 
+/* The planner is a table of paycheck columns, not prose: at 960px a
+   four-paycheck plan scrolled sideways and clipped every category name. Its
+   own prose blocks keep their measure through .tool__field / 64ch caps. */
+.guide-tools--wide {
+  max-width: none;
+}
+
 .guide-tools__head {
   display: flex;
   justify-content: space-between;

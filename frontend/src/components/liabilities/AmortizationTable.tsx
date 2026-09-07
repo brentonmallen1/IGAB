@@ -132,7 +132,11 @@ export function AmortizationTable({ schedule }: Props) {
             <td data-label="Interest" className="amort-table__num amort-table__interest">
               {formatMoney(totals.interest)}
             </td>
-            <td />
+            {/* A labelled dash, not an empty cell: on mobile every cell becomes
+                a labelled row and an empty one rendered as a blank line. */}
+            <td data-label="Balance" className="amort-table__num amort-table__muted">
+              —
+            </td>
           </tr>
         </tfoot>
       </table>

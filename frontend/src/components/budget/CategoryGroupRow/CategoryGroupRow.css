@@ -3,8 +3,6 @@
 }
 
 .category-group-row__header {
-  display: grid;
-  grid-template-columns: 20px 20px 1fr 120px 120px 120px;
   width: 100%;
   padding: var(--spacing-xs) var(--spacing-md);
   background-color: var(--bg-secondary);
@@ -55,6 +53,15 @@
 
 .category-group-row__toggle:hover {
   background-color: var(--bg-hover);
+}
+
+/* One grid cell holding the name and the hover actions. Without it the
+   actions are a grid item of their own and the money columns shift — the bug
+   budgetGrid.css describes. */
+.category-group-row__title {
+  display: flex;
+  align-items: center;
+  min-width: 0;
 }
 
 .category-group-row__name {
@@ -148,8 +155,6 @@
 }
 
 .category-group-row__add-cat-row {
-  display: grid;
-  grid-template-columns: 20px 1fr 120px 120px 120px;
   padding: 4px var(--spacing-md);
   background-color: var(--bg-primary);
   border-bottom: 1px solid var(--border-subtle);
@@ -227,10 +232,10 @@
     grid-row: 1 / span 2;
   }
 
-  .category-group-row__name,
-  .category-group-row__rename-input {
+  .category-group-row__title {
     grid-column: 3;
     grid-row: 1;
+    min-width: 0;
   }
 
   .category-group-row__available {
@@ -260,7 +265,7 @@
   }
 
   .category-group-row__add-cat-row {
-    grid-template-columns: 20px 1fr;
+    grid-template-columns: 20px minmax(0, 1fr);
   }
 }
 

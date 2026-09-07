@@ -28,6 +28,9 @@ export interface PlanItem {
 
 export interface PlanPaycheck {
   id: string
+  /** What this paycheck is — "1st", "Northwind, 15th". Null = unnamed, and
+   *  the column header reads by position. */
+  label: string | null
   /** null means "use the even split of the monthly take-home". */
   income_override_cents: number | null
   items: PlanItem[]

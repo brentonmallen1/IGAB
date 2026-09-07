@@ -26,8 +26,8 @@ function payload(over: Partial<PlanPayload> = {}): PlanPayload {
     cadence: 'biweekly',
     paycheck_count_override: null,
     paychecks: [
-      { id: 'p1', income_override_cents: null, items: [] },
-      { id: 'p2', income_override_cents: null, items: [] },
+      { id: 'p1', label: null, income_override_cents: null, items: [] },
+      { id: 'p2', label: null, income_override_cents: null, items: [] },
     ],
     ...over,
   }
@@ -96,9 +96,9 @@ describe('paycheckIncomeCents', () => {
     const doc = payload({
       monthly_income_cents: 100001,
       paychecks: [
-        { id: 'p1', income_override_cents: null, items: [] },
-        { id: 'p2', income_override_cents: null, items: [] },
-        { id: 'p3', income_override_cents: null, items: [] },
+        { id: 'p1', label: null, income_override_cents: null, items: [] },
+        { id: 'p2', label: null, income_override_cents: null, items: [] },
+        { id: 'p3', label: null, income_override_cents: null, items: [] },
       ],
     })
     expect(paycheckIncomeCents(doc, 0)).toBe(33334)
@@ -107,8 +107,8 @@ describe('paycheckIncomeCents', () => {
   it('an override wins for its paycheck and leaves the others on the split', () => {
     const doc = payload({
       paychecks: [
-        { id: 'p1', income_override_cents: 300000, items: [] },
-        { id: 'p2', income_override_cents: null, items: [] },
+        { id: 'p1', label: null, income_override_cents: 300000, items: [] },
+        { id: 'p2', label: null, income_override_cents: null, items: [] },
       ],
     })
     expect(paycheckIncomeCents(doc, 0)).toBe(300000)
@@ -118,8 +118,8 @@ describe('paycheckIncomeCents', () => {
   it('a zero override is an override, not an absence', () => {
     const doc = payload({
       paychecks: [
-        { id: 'p1', income_override_cents: 0, items: [] },
-        { id: 'p2', income_override_cents: null, items: [] },
+        { id: 'p1', label: null, income_override_cents: 0, items: [] },
+        { id: 'p2', label: null, income_override_cents: null, items: [] },
       ],
     })
     expect(paycheckIncomeCents(doc, 0)).toBe(0)
@@ -131,6 +131,7 @@ describe('totals', () => {
     paychecks: [
       {
         id: 'p1',
+        label: null,
         income_override_cents: null,
         items: [
           { id: 'i1', category_id: null, name: 'Rent', due_day: 1, amount_cents: 145000 },
@@ -139,6 +140,7 @@ describe('totals', () => {
       },
       {
         id: 'p2',
+        label: null,
         income_override_cents: 200000,
         items: [
           { id: 'i3', category_id: null, name: 'Groceries', due_day: null, amount_cents: 45000 },
@@ -162,6 +164,7 @@ describe('totals', () => {
       paychecks: [
         {
           id: 'p1',
+          label: null,
           income_override_cents: null,
           items: [
             { id: 'i1', category_id: null, name: 'Rent', due_day: null, amount_cents: 145000 },
@@ -178,16 +181,19 @@ describe('resizePaychecks', () => {
   const base: DraftPaycheck[] = [
     {
       id: 'p1',
+      label: '',
       income: '',
       items: [{ id: 'i1', categoryId: null, name: 'Rent', dueDay: '', amount: '' }],
     },
     {
       id: 'p2',
+      label: '',
       income: '',
       items: [{ id: 'i2', categoryId: null, name: 'Groceries', dueDay: '', amount: '' }],
     },
     {
       id: 'p3',
+      label: '',
       income: '250',
       items: [{ id: 'i3', categoryId: null, name: 'Fun', dueDay: '', amount: '' }],
     },
@@ -221,13 +227,14 @@ describe('draft ↔ payload', () => {
       paychecks: [
         {
           id: 'p1',
+          label: null,
           income_override_cents: 300001,
           items: [
             { id: 'i1', category_id: 'c1', name: 'Rent', due_day: 1, amount_cents: 145000 },
             { id: 'i2', category_id: null, name: '', due_day: null, amount_cents: null },
           ],
         },
-        { id: 'p2', income_override_cents: null, items: [] },
+        { id: 'p2', label: null, income_override_cents: null, items: [] },
       ],
     })
     expect(draftToPayload(payloadToDraft(doc))).toEqual(doc)
@@ -240,6 +247,7 @@ describe('draft ↔ payload', () => {
       paychecks: [
         {
           id: 'p1',
+          label: '',
           income: 'garbage',
           items: [{ id: 'i1', categoryId: null, name: 'Rent', dueDay: '45', amount: 'oops' }],
         },
@@ -254,5 +262,32 @@ describe('draft ↔ payload', () => {
     const doc = payload({ monthly_income_cents: 0 })
     expect(payloadToDraft(doc).monthlyIncome).toBe('')
     expect(draftToPayload(payloadToDraft(doc)).monthly_income_cents).toBe(0)
+  })
+})
+
+describe('paycheck labels', () => {
+  it('round-trip: a name survives, and an empty one is absent rather than ""', () => {
+    const draft = payloadToDraft(
+      payload({
+        paychecks: [
+          { id: 'p1', label: 'Northwind, 1st', income_override_cents: null, items: [] },
+          { id: 'p2', label: null, income_override_cents: null, items: [] },
+        ],
+      })
+    )
+    expect(draft.paychecks.map((p) => p.label)).toEqual(['Northwind, 1st', ''])
+    const back = draftToPayload(draft)
+    expect(back.paychecks.map((p) => p.label)).toEqual(['Northwind, 1st', null])
+  })
+
+  it('a name of only spaces is absent too', () => {
+    const draft = payloadToDraft(payload())
+    draft.paychecks[0].label = '   '
+    expect(draftToPayload(draft).paychecks[0].label).toBeNull()
+  })
+
+  it('a paycheck added by a resize starts unnamed', () => {
+    const { paychecks } = resizePaychecks(payloadToDraft(payload()).paychecks, 3, mkId)
+    expect(paychecks[2].label).toBe('')
   })
 })

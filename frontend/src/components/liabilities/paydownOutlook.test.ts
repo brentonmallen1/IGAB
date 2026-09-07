@@ -10,7 +10,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import type { AmortizationResponse } from '../../api/liabilities'
-import { paydownOutlook } from './paydownOutlook'
+import { paydownOutlook, formatMonthSpan } from './paydownOutlook'
 
 const money = (n: number) => `$${n.toLocaleString('en-US')}`
 
@@ -116,5 +116,19 @@ describe('when there is nothing to project from', () => {
     expect(outlook.interest).toBeNull()
     expect(outlook.months).toBeNull()
     expect(outlook.interestNote).toBe('Needs APR and minimum payment')
+  })
+})
+
+describe('formatMonthSpan', () => {
+  it('reads a mortgage in years, not a raw month count', () => {
+    // 347 months was rendered as "347" beside a promo end date on cards.
+    expect(formatMonthSpan(347)).toBe('28 years 11 months')
+  })
+  it('keeps a short span in months and drops a zero remainder', () => {
+    expect(formatMonthSpan(1)).toBe('1 month')
+    expect(formatMonthSpan(11)).toBe('11 months')
+    expect(formatMonthSpan(12)).toBe('1 year')
+    expect(formatMonthSpan(24)).toBe('2 years')
+    expect(formatMonthSpan(13)).toBe('1 year 1 month')
   })
 })

@@ -74,10 +74,21 @@
   border-top: 1px solid var(--edge-strong);
   border-bottom: none;
   font-weight: 600;
-  text-align: left;
   padding: 6px 8px;
   color: var(--text-primary);
   font-size: var(--font-size-sm);
+}
+
+/* The row label sits under the Year column, left like the year rows; the
+   figures keep the numeric column alignment — `text-align: left` on every
+   foot cell was what pushed the totals off their columns. */
+.amort-table tfoot th {
+  text-align: left;
+}
+
+.amort-table__muted {
+  color: var(--text-muted);
+  font-weight: 400;
 }
 
 .amort-table__empty {
