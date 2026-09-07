@@ -16,18 +16,17 @@ TAG_COLOR_SLOTS = frozenset({"red", "orange", "yellow", "green", "teal", "blue",
 #: inferred answer". Seeding is backfilled for existing budgets on first read
 #: (api/v1/tags.py), so adding an entry here needs no migration.
 SYSTEM_TAGS = [
-    # Categories only (see CATEGORY_ONLY_SYSTEM_KEYS): the Subscriptions
-    # report reads categories tagged Subscription and groups their charges by
-    # payee. It used to be a payee tag; a household files subscriptions into
-    # categories far more reliably than it tags each payee.
+    # The Subscriptions report reads categories tagged Subscription and groups
+    # their charges by payee. It used to be a payee tag; a household files
+    # subscriptions into categories far more reliably than it tags each payee
+    # (migration b8e5d1c73a49). Every tag works that way now.
     ("subscription", "Subscription", "purple"),
     ("savings", "Savings", "green"),
     ("long_term_expense", "Long-term expense", "teal"),
     ("debt_principal", "Debt principal", "orange"),
-    # What a lean month costs. Drives the Essentials report, the Overview's
-    # essentials card and the Guide's emergency-fund target — one figure,
-    # three readers (see TransactionRepository.essential_spend). Applies to
-    # categories and payees alike.
+    # What a lean month costs. Drives the Essentials report, Cost of Living,
+    # the Overview's essentials card and the Guide's emergency-fund target —
+    # one figure, four readers (see TransactionRepository.essential_spend).
     ("essential", "Essential", "blue"),
     # Applied by the wishlist to every envelope that funds an open wish, and
     # removed when none does — derived from the wish→envelope link, never
@@ -39,9 +38,6 @@ SYSTEM_TAGS = [
 #: System tags the payee tag routes refuse. One place, read by both payee
 #: routes and by the client's payee pickers (SYSTEM_TAG_HELP says "on
 #: categories"), so a tag cannot be offered on one and refused by the other.
-CATEGORY_ONLY_SYSTEM_KEYS = frozenset({"subscription"})
-
-
 class TagRepository(BaseRepository[Tag]):
     model = Tag
 
@@ -53,7 +49,7 @@ class TagRepository(BaseRepository[Tag]):
         )
         return list(result.scalars().all())
 
-    async def list_for_budget_with_counts(self, budget_id: uuid.UUID) -> list[tuple[Tag, int, int]]:
+    async def list_for_budget_with_counts(self, budget_id: uuid.UUID) -> list[tuple[Tag, int]]:
         category_count_subq = (
             select(func.count())
             .select_from(category_tags)
@@ -61,19 +57,14 @@ class TagRepository(BaseRepository[Tag]):
             .correlate(Tag)
             .scalar_subquery()
         )
-        payee_count_subq = (
-            select(func.count())
-            .select_from(payee_tags)
-            .where(payee_tags.c.tag_id == Tag.id)
-            .correlate(Tag)
-            .scalar_subquery()
-        )
+        # No payee count: tags on payees are retired, so it would be a zero
+        # printed beside every tag forever.
         result = await self.session.execute(
-            select(Tag, category_count_subq, payee_count_subq)
+            select(Tag, category_count_subq)
             .where(Tag.budget_id == budget_id, Tag.is_deleted == False)  # noqa: E712
             .order_by(Tag.name)
         )
-        return [(row[0], row[1] or 0, row[2] or 0) for row in result.all()]
+        return [(row[0], row[1] or 0) for row in result.all()]
 
     async def get_by_name(self, budget_id: uuid.UUID, name: str) -> Tag | None:
         result = await self.session.execute(
@@ -105,12 +96,6 @@ class TagRepository(BaseRepository[Tag]):
             )
         await self.session.flush()
 
-    async def set_payee_tags(self, payee_id: uuid.UUID, tag_ids: Sequence[uuid.UUID]) -> None:
-        await self.session.execute(delete(payee_tags).where(payee_tags.c.payee_id == payee_id))
-        for tag_id in tag_ids:
-            await self.session.execute(payee_tags.insert().values(payee_id=payee_id, tag_id=tag_id))
-        await self.session.flush()
-
     async def add_category_tag(self, category_id: uuid.UUID, tag_id: uuid.UUID) -> None:
         existing = await self.session.execute(
             select(category_tags).where(
@@ -127,24 +112,6 @@ class TagRepository(BaseRepository[Tag]):
         await self.session.execute(
             delete(category_tags).where(
                 category_tags.c.category_id == category_id, category_tags.c.tag_id == tag_id
-            )
-        )
-        await self.session.flush()
-
-    async def add_payee_tag(self, payee_id: uuid.UUID, tag_id: uuid.UUID) -> None:
-        existing = await self.session.execute(
-            select(payee_tags).where(
-                payee_tags.c.payee_id == payee_id, payee_tags.c.tag_id == tag_id
-            )
-        )
-        if existing.first() is None:
-            await self.session.execute(payee_tags.insert().values(payee_id=payee_id, tag_id=tag_id))
-            await self.session.flush()
-
-    async def remove_payee_tag(self, payee_id: uuid.UUID, tag_id: uuid.UUID) -> None:
-        await self.session.execute(
-            delete(payee_tags).where(
-                payee_tags.c.payee_id == payee_id, payee_tags.c.tag_id == tag_id
             )
         )
         await self.session.flush()
@@ -184,25 +151,6 @@ class TagRepository(BaseRepository[Tag]):
             mapping[category_id].append(tag)
         return mapping
 
-    async def get_tags_for_payees(
-        self, payee_ids: Sequence[uuid.UUID]
-    ) -> dict[uuid.UUID, list[Tag]]:
-        if not payee_ids:
-            return {}
-        result = await self.session.execute(
-            select(payee_tags.c.payee_id, Tag)
-            .join(Tag, Tag.id == payee_tags.c.tag_id)
-            .where(
-                payee_tags.c.payee_id.in_(payee_ids),
-                Tag.is_deleted == False,  # noqa: E712
-            )
-            .order_by(Tag.name)
-        )
-        mapping: dict[uuid.UUID, list[Tag]] = {pid: [] for pid in payee_ids}
-        for payee_id, tag in result.all():
-            mapping[payee_id].append(tag)
-        return mapping
-
     async def delete_with_associations(self, tag_id: uuid.UUID) -> None:
         await self.session.execute(delete(category_tags).where(category_tags.c.tag_id == tag_id))
         await self.session.execute(delete(payee_tags).where(payee_tags.c.tag_id == tag_id))
@@ -220,24 +168,6 @@ class TagRepository(BaseRepository[Tag]):
             .where(
                 category_tags.c.tag_id.in_(tag_ids),
                 Category.budget_id == budget_id,
-            )
-        )
-        return {row[0] for row in result.all()}
-
-    async def get_payee_ids_by_tags(
-        self, budget_id: uuid.UUID, tag_ids: Sequence[uuid.UUID]
-    ) -> set[uuid.UUID]:
-        """Get all payee IDs that have any of the specified tags."""
-        if not tag_ids:
-            return set()
-        from igab.db.models import Payee
-
-        result = await self.session.execute(
-            select(payee_tags.c.payee_id)
-            .join(Payee, Payee.id == payee_tags.c.payee_id)
-            .where(
-                payee_tags.c.tag_id.in_(tag_ids),
-                Payee.budget_id == budget_id,
             )
         )
         return {row[0] for row in result.all()}
@@ -260,26 +190,6 @@ class TagRepository(BaseRepository[Tag]):
             .where(
                 Tag.system_key.in_(system_keys),
                 Category.budget_id == budget_id,
-                Tag.is_deleted == False,  # noqa: E712
-            )
-        )
-        return {row[0] for row in result.all()}
-
-    async def get_payee_ids_by_system_keys(
-        self, budget_id: uuid.UUID, system_keys: Sequence[str]
-    ) -> set[uuid.UUID]:
-        """Get all payee IDs that have tags with any of the specified system keys."""
-        if not system_keys:
-            return set()
-        from igab.db.models import Payee
-
-        result = await self.session.execute(
-            select(payee_tags.c.payee_id)
-            .join(Tag, Tag.id == payee_tags.c.tag_id)
-            .join(Payee, Payee.id == payee_tags.c.payee_id)
-            .where(
-                Tag.system_key.in_(system_keys),
-                Payee.budget_id == budget_id,
                 Tag.is_deleted == False,  # noqa: E712
             )
         )

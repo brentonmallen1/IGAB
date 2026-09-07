@@ -1,10 +1,12 @@
-"""The tag predicates over transaction rows — txn_filters.category_tagged and
-payee_tagged — as they compile. One SQL spelling: the activity classifier
-reads the first for savings/debt, the essentials report reads both."""
+"""The tag predicate over transaction rows — `txn_filters.category_tagged` — as
+it compiles. One SQL spelling: the activity classifier reads it for
+savings/debt, the Subscriptions report and the cash projection read it for
+subscriptions, and `ESSENTIAL_TAGGED` is it.
+"""
 
 from sqlalchemy.dialects import sqlite
 
-from igab.repositories.txn_filters import ESSENTIAL_TAGGED, category_tagged, payee_tagged
+from igab.repositories.txn_filters import ESSENTIAL_TAGGED, category_tagged
 
 
 def _sql(expr) -> str:
@@ -18,13 +20,12 @@ def test_category_tagged_keeps_the_null_guard():
     assert "category_tags" in sql and "payee_tags" not in sql
 
 
-def test_payee_tagged_mirrors_it():
-    sql = _sql(payee_tagged("essential"))
-    assert "payee_id IS NOT NULL" in sql
-    assert "payee_tags" in sql and "category_tags" not in sql
-
-
-def test_essential_is_category_or_payee():
+def test_essential_reads_categories_and_nothing_else():
+    """`ESSENTIAL_TAGGED` was `or_(category_tagged, payee_tagged)`, and the
+    payee arm was the last rule in the app that read a tag on a payee for
+    meaning. Tags on payees are retired; this is what makes that true rather
+    than merely intended, since a leftover OR would still count them."""
     sql = _sql(ESSENTIAL_TAGGED)
-    assert "category_tags" in sql and "payee_tags" in sql
-    assert " OR " in sql
+    assert "category_tags" in sql
+    assert "payee_tags" not in sql
+    assert " OR " not in sql

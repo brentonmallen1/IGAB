@@ -1,6 +1,6 @@
 import { useRef, useState, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { ChevronDown, ChevronUp, GitMerge, Regex, Sparkles, Tag } from 'lucide-react'
+import { ChevronDown, ChevronUp, GitMerge, Regex, Sparkles } from 'lucide-react'
 import { useAppStore } from '../../stores/appStore'
 import { useUIStore } from '../../stores/uiStore'
 import {
@@ -13,13 +13,6 @@ import {
 } from '../../api/payees'
 import { usePayeeTransactions } from '../../api/transactions'
 import { useFormatters } from '../../hooks/useFormatters'
-import {
-  useTags,
-  useBulkAddPayeeTags,
-  useCreateTag,
-  useSetPayeeTags,
-  CATEGORY_ONLY_SYSTEM_KEYS,
-} from '../../api/tags'
 import { useAIStatus, useSuggestRegex } from '../../api/ai'
 import { PayeeMergeModal } from '../../components/payees/PayeeMergeModal/PayeeMergeModal'
 import type { MergeConfig } from '../../components/payees/PayeeMergeModal/PayeeMergeModal'
@@ -35,8 +28,6 @@ import {
   NO_PATTERN_MESSAGE,
   patternCandidates,
 } from '../../components/payees/PatternSuggest/patternCandidates'
-import { TagChip } from '../../components/common/TagChip'
-import { TagPicker, type TagOption } from '../../components/common/TagPicker'
 import './PayeesPage.css'
 import { confirmAsync } from '../../stores/confirmStore'
 import toast from 'react-hot-toast'
@@ -85,10 +76,6 @@ export function PayeesPage() {
   const fetchDuplicates = useFetchPayeeDuplicates(budgetId)
   const aiStatus = useAIStatus()
   const suggestRegex = useSuggestRegex(budgetId ?? '')
-  const { data: allTags = [] } = useTags(budgetId)
-  const bulkAddTags = useBulkAddPayeeTags(budgetId)
-  const setPayeeTags = useSetPayeeTags(budgetId)
-  const createTag = useCreateTag(budgetId)
 
   const { selectedPayeeIds, togglePayeeSelection, selectAllPayees, clearPayeeSelection } =
     useUIStore()
@@ -109,7 +96,6 @@ export function PayeesPage() {
   const [wizardMergePayees, setWizardMergePayees] = useState<PayeeWithCount[] | null>(null)
   const [showCleanupModal, setShowCleanupModal] = useState(false)
   const [sensitivity, setSensitivity] = useState<'strict' | 'balanced' | 'loose'>('balanced')
-  const [showBulkTagPicker, setShowBulkTagPicker] = useState(false)
   const [sortColumn, setSortColumn] = useState<'name' | 'transactions'>('name')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
 
@@ -331,31 +317,6 @@ export function PayeesPage() {
   const selectedCount = selectedPayeeIds.size
   const hiddenSelected = selectedCount - selectedInFiltered.length
 
-  // A category-only system tag (Subscription) is not offered here: the
-  // server refuses it on a payee, and an option that always fails is worse
-  // than none.
-  const tagOptions: TagOption[] = allTags
-    .filter((t) => !t.system_key || !CATEGORY_ONLY_SYSTEM_KEYS.has(t.system_key))
-    .map((t) => ({
-      id: t.id,
-      name: t.name,
-      color_slot: t.color_slot,
-    }))
-
-  async function handleBulkAddTags(tagIds: string[]) {
-    if (tagIds.length === 0) return
-    await bulkAddTags.mutateAsync({
-      payeeIds: [...selectedPayeeIds],
-      tagIds,
-    })
-    setShowBulkTagPicker(false)
-  }
-
-  async function handleCreateTagOption(name: string): Promise<TagOption> {
-    const tag = await createTag.mutateAsync({ name })
-    return { id: tag.id, name: tag.name, color_slot: tag.color_slot }
-  }
-
   return (
     <div className={`payees-page ${selectedCount > 0 ? 'payees-page--with-bar' : ''}`}>
       <div className="payees-header surface surface--chrome">
@@ -574,7 +535,6 @@ export function PayeesPage() {
               Name
               {sortColumn === 'name' && <SortIcon size={12} className="payees-table__sort-icon" />}
             </span>
-            <span>Tags</span>
             <span
               className={`payees-table__head-sortable ${sortColumn === 'transactions' ? 'payees-table__head-sortable--active' : ''}`}
               onClick={() => handleSort('transactions')}
@@ -744,61 +704,6 @@ export function PayeesPage() {
                     </div>
                   )}
                 </span>
-                <span className="payees-table__tags">
-                  {editingId === p.id ? (
-                    <div className="payees-table__tags-list">
-                      {(p.tags ?? []).map((tag) => (
-                        <TagChip
-                          key={tag.id}
-                          name={tag.name}
-                          colorSlot={tag.color_slot}
-                          size="sm"
-                          onRemove={() =>
-                            setPayeeTags.mutate({
-                              payeeId: p.id,
-                              tagIds: (p.tags ?? [])
-                                .filter((t) => t.id !== tag.id)
-                                .map((t) => t.id),
-                            })
-                          }
-                        />
-                      ))}
-                      <TagPicker
-                        selectedTagIds={(p.tags ?? []).map((t) => t.id)}
-                        tags={tagOptions}
-                        onChange={(tagIds) => setPayeeTags.mutate({ payeeId: p.id, tagIds })}
-                        onCreateTag={handleCreateTagOption}
-                        allowCreate
-                        triggerLabel="+ Tag"
-                        ghost
-                      />
-                    </div>
-                  ) : p.tags && p.tags.length > 0 ? (
-                    <div className="payees-table__tags-list">
-                      {p.tags.slice(0, 2).map((tag) => (
-                        <TagChip
-                          key={tag.id}
-                          name={tag.name}
-                          colorSlot={tag.color_slot}
-                          size="sm"
-                        />
-                      ))}
-                      {p.tags.length > 2 && (
-                        <span
-                          className="payees-table__tags-overflow"
-                          title={p.tags
-                            .slice(2)
-                            .map((t) => t.name)
-                            .join(', ')}
-                        >
-                          +{p.tags.length - 2}
-                        </span>
-                      )}
-                    </div>
-                  ) : (
-                    <span className="payees-table__no-tags">—</span>
-                  )}
-                </span>
                 <span className="payees-table__count">{p.transaction_count}</span>
                 <span className="payees-table__actions">
                   {editingId === p.id ? null : (
@@ -831,24 +736,6 @@ export function PayeesPage() {
           sublabel={hiddenSelected > 0 ? `(${hiddenSelected} hidden by search)` : undefined}
           onClose={clearPayeeSelection}
         >
-          <div className="payees-bulk-tag-wrapper">
-            <FloatingSelectionBar.Button onClick={() => setShowBulkTagPicker(!showBulkTagPicker)}>
-              <Tag size={14} />
-              Tag
-            </FloatingSelectionBar.Button>
-            {showBulkTagPicker && (
-              <div className="payees-bulk-tag-picker">
-                <TagPicker
-                  selectedTagIds={[]}
-                  tags={tagOptions}
-                  onChange={handleBulkAddTags}
-                  onCreateTag={handleCreateTagOption}
-                  allowCreate
-                  triggerLabel="Select tags to add"
-                />
-              </div>
-            )}
-          </div>
           <FloatingSelectionBar.Button
             onClick={() => setShowMergeModal(true)}
             disabled={selectedCount < 2}

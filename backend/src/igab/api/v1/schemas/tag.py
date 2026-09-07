@@ -22,7 +22,6 @@ class TagOut(ApiModel):
     system_key: str | None
     color_slot: str | None
     category_count: int = 0
-    payee_count: int = 0
 
     model_config = {"from_attributes": True}
 

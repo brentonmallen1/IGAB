@@ -1,6 +1,6 @@
-"""Subscription is a category tag. The payee routes refuse it, and the
-migration that removed existing payee memberships left a notice the Tags
-panel shows until dismissed."""
+"""Tags apply to categories. The payee routes are gone, and each migration
+that removed payee memberships left a notice the Tags panel shows until
+dismissed."""
 
 from igab.guide.repo import GuideRepository
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
@@ -17,17 +17,20 @@ async def _setup(db_session, api_client):
     return budget, tag, payee
 
 
-async def test_the_payee_routes_refuse_a_category_only_tag(db_session, api_client):
+async def test_the_payee_tag_routes_are_gone(db_session, api_client):
+    """They used to exist and refuse the category-only tags. Now every tag is
+    category-only, so the routes went rather than refusing everything — an
+    endpoint that accepts writes nothing reads is worse than one that is not
+    there, because it looks like it works."""
     budget, tag, payee = await _setup(db_session, api_client)
     r = await api_client.put(
         f"/api/v1/{budget.id}/payees/{payee.id}/tags", json={"tag_ids": [str(tag.id)]}
     )
-    assert r.status_code == 400
-    assert "categories" in r.json()["detail"]
+    assert r.status_code == 404, r.text
     r = await api_client.post(
         f"/api/v1/{budget.id}/payees/{payee.id}/tags/add", json={"tag_ids": [str(tag.id)]}
     )
-    assert r.status_code == 400
+    assert r.status_code == 404, r.text
 
 
 async def test_a_notice_is_listed_until_dismissed(db_session, api_client):

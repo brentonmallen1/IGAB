@@ -28,7 +28,6 @@ from igab.db.models import (
     Tag,
     Transaction,
     category_tags,
-    payee_tags,
 )
 from igab.domain.payee_names import BALANCE_ADJUSTMENT_PAYEES
 from igab.repositories.category_filters import IN_SYSTEM_GROUP, SPENDABLE, SPENT_ENVELOPE
@@ -547,20 +546,21 @@ def category_tagged(*system_keys: str):
     )
 
 
-def payee_tagged(*system_keys: str):
-    """Rows whose payee carries any of these system tags."""
-    return and_(
-        Transaction.payee_id.isnot(None),
-        Transaction.payee_id.in_(
-            select(payee_tags.c.payee_id).where(payee_tags.c.tag_id.in_(_tag_ids(system_keys)))
-        ),
-    )
-
-
-#: Spending the household could not do without: the category OR the payee is
-#: tagged Essential. Evaluated only by TransactionRepository.essential_spend*
-#: — the Guide, the Overview card and the Essentials report all read those.
-ESSENTIAL_TAGGED = or_(category_tagged("essential"), payee_tagged("essential"))
+#: Spending the household could not do without. Evaluated only by
+#: TransactionRepository.essential_spend* — the Guide, the Overview card, the
+#: Essentials report and Cost of Living all read those.
+#:
+#: Categories only. This was `or_(category_tagged, payee_tagged)`, and the
+#: payee arm was the last thing reading a payee tag for meaning. Tags on payees
+#: are retired: the app had already reached this conclusion once for
+#: Subscription (migration b8e5d1c73a49 — "a household files its subscriptions
+#: into categories far more reliably than it tags each payee") and the live
+#: evidence agreed, with zero system payee tags applied across a real budget.
+#:
+#: What this drops in practice: an uncategorized row at a payee tagged
+#: Essential no longer counts as essential spending. That row now needs a
+#: category, which is the thing the app can actually act on.
+ESSENTIAL_TAGGED = category_tagged("essential")
 
 
 #: A row that spends planned money: what plan-vs-actual reports may count as

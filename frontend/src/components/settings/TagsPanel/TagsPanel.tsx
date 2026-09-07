@@ -29,6 +29,32 @@ interface TagsPanelProps {
   budgetId: string
 }
 
+/**
+ * What each migration notice says.
+ *
+ * Out of the JSX because there are two now, and a ternary chain in a render is
+ * where the third one gets written as a bare key. Falls back to the key rather
+ * than rendering nothing: a notice with no copy is a bug worth seeing.
+ */
+function noticeText(key: string, payload: Record<string, unknown>): string {
+  const removed = Number(payload.payee_tags_removed ?? 0)
+  const tags = `${removed} payee tag${removed === 1 ? ' was' : 's were'} removed`
+  if (key === 'subscription_tag_moved') {
+    return (
+      `Subscription is now a category tag. ${tags} — tag the categories your ` +
+      `subscriptions are filed to (Streaming, Software…) and the report follows them.`
+    )
+  }
+  if (key === 'payee_tags_retired') {
+    return (
+      `Tags now apply to categories only. ${tags} — nothing read them, so no ` +
+      `figure changes. Tag the categories those payees are filed to and every ` +
+      `report that uses tags follows.`
+    )
+  }
+  return key
+}
+
 export function TagsPanel({ budgetId }: TagsPanelProps) {
   const { data: tags, isLoading } = useTags(budgetId)
   const { data: notices = [] } = useTagNotices(budgetId)
@@ -94,11 +120,7 @@ export function TagsPanel({ budgetId }: TagsPanelProps) {
     <div className="tags-panel">
       {notices.map((n) => (
         <div key={n.key} className="tags-panel__notice" role="status">
-          <span>
-            {n.key === 'subscription_tag_moved'
-              ? `Subscription is now a category tag. ${Number(n.payload.payee_tags_removed ?? 0)} payee tag${Number(n.payload.payee_tags_removed ?? 0) === 1 ? ' was' : 's were'} removed — tag the categories your subscriptions are filed to (Streaming, Software…) and the report follows them.`
-              : n.key}
-          </span>
+          <span>{noticeText(n.key, n.payload)}</span>
           <button
             type="button"
             className="tags-panel__notice-dismiss"
@@ -170,7 +192,7 @@ export function TagsPanel({ budgetId }: TagsPanelProps) {
                     <TagChip name={tag.name} colorSlot={tag.color_slot} />
                   </div>
                   <span className="tags-panel__counts">
-                    {tag.category_count} categories · {tag.payee_count} payees
+                    {tag.category_count} categor{tag.category_count === 1 ? 'y' : 'ies'}
                   </span>
                   <div className="tags-panel__actions">
                     <button

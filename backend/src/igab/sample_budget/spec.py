@@ -100,9 +100,15 @@ class GroupSpec:
 
 @dataclass(frozen=True)
 class PayeeSpec:
+    """A payee the sample budget creates.
+
+    No `tags`: tags on payees are retired, and the three specs that carried
+    Subscription pointed at a `Streaming` category already tagged Subscription
+    — a second copy of the fact, which the report never read.
+    """
+
     name: str
     default_category: str | None = None
-    tags: tuple[str, ...] = ()
     tiers: tuple[str, ...] = BOTH_TIERS
 
 

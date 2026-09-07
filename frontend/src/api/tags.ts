@@ -150,41 +150,11 @@ export function useBulkSetCategoryTags(budgetId: string | null) {
   })
 }
 
-export function useSetPayeeTags(budgetId: string | null) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: ({ payeeId, tagIds }: { payeeId: string; tagIds: string[] }) =>
-      apiClient
-        .put<TagSimple[]>(`/${budgetId}/payees/${payeeId}/tags`, { tag_ids: tagIds })
-        .then((r) => r.data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: [ROOT.payees, budgetId] })
-      qc.invalidateQueries({ queryKey: [ROOT.tags, budgetId] })
-    },
-  })
-}
-
-export function useBulkAddPayeeTags(budgetId: string | null) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async ({ payeeIds, tagIds }: { payeeIds: string[]; tagIds: string[] }) => {
-      await Promise.all(
-        payeeIds.map((payeeId) =>
-          apiClient.post(`/${budgetId}/payees/${payeeId}/tags/add`, { tag_ids: tagIds })
-        )
-      )
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: [ROOT.payees, budgetId] })
-      qc.invalidateQueries({ queryKey: [ROOT.tags, budgetId] })
-    },
-  })
-}
-
-/** System tags the payee routes refuse — home is CATEGORY_ONLY_SYSTEM_KEYS in
- *  backend/src/igab/repositories/tag_repo.py; the payee pickers read this so
- *  a tag is never offered on one side and refused by the other. */
-export const CATEGORY_ONLY_SYSTEM_KEYS = new Set(['subscription'])
+// `useSetPayeeTags`, `useBulkAddPayeeTags` and `CATEGORY_ONLY_SYSTEM_KEYS`
+// lived here. Tags on payees are retired: `ESSENTIAL_TAGGED` was the last rule
+// that read one for meaning and it reads categories alone now, so the routes
+// they called are gone. The category-only set went with them — every tag is
+// category-only, so a list of the exceptions has nothing to say.
 
 export interface TagNotice {
   key: string

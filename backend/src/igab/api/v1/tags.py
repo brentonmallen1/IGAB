@@ -20,18 +20,14 @@ from igab.dependencies import (
     BudgetAccess,
     CategoryAccess,
     CurrentUser,
-    PayeeAccess,
     TagAccess,
     get_category_repo,
     get_change_recorder,
-    get_payee_repo,
     get_tag_repo,
 )
 from igab.domain.tag_hints import DERIVED_KEYS, TAG_HINTS, suggest_review_tags
 from igab.repositories.category_repo import CategoryRepository
-from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.tag_repo import (
-    CATEGORY_ONLY_SYSTEM_KEYS,
     SYSTEM_TAGS,
     TAG_COLOR_SLOTS,
     TagRepository,
@@ -87,7 +83,7 @@ async def list_tags(
     # all" was the bug: `debt_principal` was added to SYSTEM_TAGS after the
     # backfill migration was written, so every budget that already had the
     # other three was judged done and never got it.
-    present = {tag.system_key for tag, _, _ in tags_with_counts if tag.system_key}
+    present = {tag.system_key for tag, _ in tags_with_counts if tag.system_key}
     if any(key not in present for key, _, _ in SYSTEM_TAGS):
         await seed_system_tags(tag_repo.session, budget_id)
         tags_with_counts = await tag_repo.list_for_budget_with_counts(budget_id)
@@ -99,9 +95,8 @@ async def list_tags(
             system_key=tag.system_key,
             color_slot=tag.color_slot,
             category_count=cat_count,
-            payee_count=payee_count,
         )
-        for tag, cat_count, payee_count in tags_with_counts
+        for tag, cat_count in tags_with_counts
     ]
 
 
@@ -142,7 +137,6 @@ async def create_tag(
         system_key=tag.system_key,
         color_slot=tag.color_slot,
         category_count=0,
-        payee_count=0,
     )
 
 
@@ -195,7 +189,7 @@ async def update_tag(
                 after=after,
             )
     tags_with_counts = await tag_repo.list_for_budget_with_counts(budget_id)
-    for t, cat_count, payee_count in tags_with_counts:
+    for t, cat_count in tags_with_counts:
         if t.id == tag_id:
             return TagOut(
                 id=t.id,
@@ -203,7 +197,6 @@ async def update_tag(
                 system_key=t.system_key,
                 color_slot=t.color_slot,
                 category_count=cat_count,
-                payee_count=payee_count,
             )
     return TagOut.model_validate(tag)
 
@@ -380,68 +373,25 @@ async def set_category_tags(
     return [TagOutSimple.model_validate(t) for t in tags_map.get(category_id, [])]
 
 
-def _refuse_category_only(tag) -> None:
-    """A tag that changes how money is COUNTED lives where the counting
-    happens. Subscription reads categories; a payee carrying it would be a
-    tag the report never consults."""
-    if tag.system_key in CATEGORY_ONLY_SYSTEM_KEYS:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"{tag.name} applies to categories, not payees",
-        )
-
-
-@router.put("/{budget_id}/payees/{payee_id}/tags", response_model=list[TagOutSimple])
-async def set_payee_tags(
-    budget_id: BudgetAccess,
-    payee_id: PayeeAccess,
-    body: SetTagsRequest,
-    current_user: CurrentUser,
-    tag_repo: Annotated[TagRepository, Depends(get_tag_repo)],
-    payee_repo: Annotated[PayeeRepository, Depends(get_payee_repo)],
-    recorder: Recorder,
-) -> list[TagOutSimple]:
-    for tag_id in body.tag_ids:
-        tag = await tag_repo.get(tag_id)
-        if tag is None or tag.budget_id != budget_id:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Tag {tag_id} not found",
-            )
-        _refuse_category_only(tag)
-    before_ids = await _membership(tag_repo.session, payee_tags, "payee_id", payee_id)
-    await tag_repo.set_payee_tags(payee_id, body.tag_ids)
-    after_ids = await _membership(tag_repo.session, payee_tags, "payee_id", payee_id)
-    await _record_membership(recorder, budget_id, "payee_tags", payee_id, before_ids, after_ids)
-    tags_map = await tag_repo.get_tags_for_payees([payee_id])
-    return [TagOutSimple.model_validate(t) for t in tags_map.get(payee_id, [])]
-
-
-@router.post("/{budget_id}/payees/{payee_id}/tags/add", response_model=list[TagOutSimple])
-async def add_payee_tags(
-    budget_id: BudgetAccess,
-    payee_id: PayeeAccess,
-    body: SetTagsRequest,
-    current_user: CurrentUser,
-    tag_repo: Annotated[TagRepository, Depends(get_tag_repo)],
-    payee_repo: Annotated[PayeeRepository, Depends(get_payee_repo)],
-    recorder: Recorder,
-) -> list[TagOutSimple]:
-    """Add tags to a payee without removing existing ones (additive)."""
-    before_ids = await _membership(tag_repo.session, payee_tags, "payee_id", payee_id)
-    for tag_id in body.tag_ids:
-        tag = await tag_repo.get(tag_id)
-        if tag is None or tag.budget_id != budget_id:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Tag {tag_id} not found",
-            )
-        _refuse_category_only(tag)
-        await tag_repo.add_payee_tag(payee_id, tag_id)
-    after_ids = await _membership(tag_repo.session, payee_tags, "payee_id", payee_id)
-    await _record_membership(recorder, budget_id, "payee_tags", payee_id, before_ids, after_ids)
-    tags_map = await tag_repo.get_tags_for_payees([payee_id])
-    return [TagOutSimple.model_validate(t) for t in tags_map.get(payee_id, [])]
+# ─── Payee tags: retired ──────────────────────────────────────────────────────
+#
+# `PUT /payees/{id}/tags` and its additive twin are gone. Tags on payees are
+# retired, and the reasoning is the app's own, twice over:
+#
+# - Migration b8e5d1c73a49 already moved Subscription off payees — "a household
+#   files its subscriptions into categories far more reliably than it tags each
+#   payee" — and made these routes refuse it.
+# - `ESSENTIAL_TAGGED` was the last rule that read a payee tag for meaning, and
+#   it now reads categories alone.
+#
+# Nothing consulted a payee tag after that, so the routes offered a control
+# that changed no number anywhere. Removed rather than left refusing: an
+# endpoint that accepts writes nothing reads is worse than one that is not
+# there, because it looks like it works.
+#
+# The `payee_tags` TABLE stays this release. Undo records and budget snapshots
+# reference it, and dropping it would break restoring anything taken before
+# today. The migration empties it; a later release can drop it.
 
 
 # ─── Notices ──────────────────────────────────────────────────────────────────

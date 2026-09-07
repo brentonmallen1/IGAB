@@ -9,7 +9,6 @@ const TAGS = vi.hoisted(() => [
     system_key: 'savings',
     color_slot: 'green',
     category_count: 2,
-    payee_count: 0,
   },
   {
     id: 'mine',
@@ -17,7 +16,6 @@ const TAGS = vi.hoisted(() => [
     system_key: null,
     color_slot: 'pink',
     category_count: 0,
-    payee_count: 1,
   },
 ])
 vi.mock('../../../api/tags', () => ({
