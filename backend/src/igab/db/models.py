@@ -1345,6 +1345,11 @@ class WishlistItem(Base):
     cooling_until: Mapped[date | None] = mapped_column(Date)
     last_affirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     done_at: Mapped[date | None] = mapped_column(Date)
+    #: Mirror of done_at for the other ending. Without it, "talked yourself
+    #: out of it during the cooling-off period" — the one statistic that
+    #: reinforces the habit this feature exists for — cannot be stated: only
+    #: `updated_at` remained, which is last-touch, not drop time.
+    dropped_at: Mapped[date | None] = mapped_column(Date)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

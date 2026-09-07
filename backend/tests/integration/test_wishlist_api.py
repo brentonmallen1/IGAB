@@ -864,3 +864,49 @@ class TestTurningTheWishlistOffDoesNotStrandMoney:
         budget = await _budget(db_session, api_client)
         r = await api_client.get(f"/api/v1/{budget.id}/guide/wishlist/retire-preview")
         assert r.status_code == 200 and r.json()["is_empty"] is True
+
+
+async def test_the_discipline_report_counts_what_the_cooling_off_did(db_session, api_client):
+    """The figure the report exists for is money that was wanted, waited on,
+    and then not spent. Before dropped_at there was no honest way to say it —
+    only updated_at, which any later edit moves."""
+    budget = await create_budget(db_session, api_client.test_user)
+    await db_session.commit()
+
+    resisted = await _add(
+        api_client, budget, name="Espresso machine", cost="420.00", cooling_days=0
+    )
+    bought = await _add(api_client, budget, name="Winter boots", cost="180.00", cooling_days=0)
+    await _add(api_client, budget, name="Standing desk", cost="300.00", cooling_days=0)
+
+    for item, status in ((resisted, "dropped"), (bought, "done")):
+        r = await api_client.patch(f"{_url(budget)}/{item['id']}", json={"status": status})
+        assert r.status_code == 200, r.text
+
+    body = (await api_client.get(f"/api/v1/{budget.id}/reports/wishlist")).json()
+
+    assert Decimal(body["resisted_total"]) == Decimal("420.00")
+    assert Decimal(body["bought_total"]) == Decimal("180.00")
+    assert body["still_open"] == 1
+    assert Decimal(body["open_total"]) == Decimal("300.00")
+    # cooling_days 0 means the period is already over, so both endings placed.
+    assert body["cooled_then_dropped"] == 1
+    assert body["cooled_then_bought"] == 1
+    assert body["unplaced"] == 0
+    assert Decimal(body["avg_wish_cost"]) == Decimal("300.00")
+
+
+async def test_reopening_a_wish_clears_the_ending_it_had(db_session, api_client):
+    """Both stamps are set on every transition, so a reopened wish does not
+    keep a date that contradicts its status."""
+    budget = await create_budget(db_session, api_client.test_user)
+    await db_session.commit()
+    wish = await _add(api_client, budget, name="Bike", cost="600.00")
+
+    await api_client.patch(f"{_url(budget)}/{wish['id']}", json={"status": "dropped"})
+    await api_client.patch(f"{_url(budget)}/{wish['id']}", json={"status": "open"})
+
+    body = (await api_client.get(f"/api/v1/{budget.id}/reports/wishlist")).json()
+    assert body["still_open"] == 1
+    assert Decimal(body["resisted_total"]) == Decimal("0")
+    assert body["cooled_then_dropped"] == 0

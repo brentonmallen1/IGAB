@@ -227,3 +227,66 @@ class TestEssentialsRunway:
         body = r.json()
         assert body["emergency_fund_balance"] is None
         assert body["runway_months"] is None
+
+
+async def test_cost_of_living_rolls_essentials_up_by_group(db_session, api_client):
+    """Built on the Essential tag rather than a sixth system tag: the groups a
+    budget already has are the shape a household thinks in."""
+    budget = await create_budget(db_session, api_client.test_user)
+    checking = await create_account(db_session, budget, "Harborstone Checking")
+    tag_repo = TagRepository(db_session)
+    await seed_system_tags(db_session, budget.id)
+    essential = await tag_repo.get_system_tag(budget.id, "essential")
+
+    housing = await create_category_group(db_session, budget, "Housing")
+    rent = await create_category(db_session, budget, housing, "Rent")
+    utilities = await create_category_group(db_session, budget, "Utilities")
+    power = await create_category(db_session, budget, utilities, "Power")
+    fun = await create_category_group(db_session, budget, "Fun")
+    dining = await create_category(db_session, budget, fun, "Dining")
+    for cat in (rent, power):
+        await tag_repo.set_category_tags(cat.id, [essential.id])
+
+    today = date.today()
+
+    async def spend(amount: str, category):
+        await create_transaction(
+            db_session, budget, checking, Decimal(amount), today, category=category
+        )
+
+    await spend("-1400.00", rent)
+    await spend("-180.00", power)
+    # Untagged: not a cost of living, however regular.
+    await spend("-90.00", dining)
+    await db_session.commit()
+
+    r = await api_client.get(f"/api/v1/{budget.id}/reports/cost-of-living", params={"months": 3})
+    assert r.status_code == 200, r.text
+    body = r.json()
+
+    assert body["tagged"] is True
+    assert body["basis"] == "tag"
+    groups = {g["group_name"]: g for g in body["groups"]}
+    assert set(groups) == {"Housing", "Utilities"}
+    assert Decimal(groups["Housing"]["total"]) == Decimal("1400.00")
+    assert Decimal(groups["Utilities"]["total"]) == Decimal("180.00")
+    # Shares are of the essentials total, so they add to 100.
+    assert sum(Decimal(g["share"]) for g in body["groups"]) == Decimal("100.00")
+    # Biggest first.
+    assert [g["group_name"] for g in body["groups"]] == ["Housing", "Utilities"]
+
+
+async def test_cost_of_living_says_when_nothing_is_tagged(db_session, api_client):
+    """With no Essential tag applied the scope is every category, which equals
+    plain burn rate — the page has to say so rather than present it as a
+    chosen few."""
+    budget = await create_budget(db_session, api_client.test_user)
+    await db_session.commit()
+
+    r = await api_client.get(f"/api/v1/{budget.id}/reports/cost-of-living")
+
+    assert r.status_code == 200, r.text
+    assert r.json()["tagged"] is False
+    assert r.json()["basis"] == "all"
+    # No income on record: a ratio against zero is unknown, not 100%.
+    assert r.json()["required_ratio"] is None

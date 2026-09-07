@@ -772,6 +772,15 @@
   color: var(--text-secondary);
 }
 
+/* An aside a report makes about its own figures — "nothing is tagged yet",
+   "the average wish costs X". Quiet enough not to compete with the numbers,
+   present enough that a caveat is not hidden. */
+.reports-note {
+  margin: 0 0 var(--spacing-md);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
 /* ── Subscriptions: a category row that opens onto its payees ── */
 
 .subs-report__disclose {

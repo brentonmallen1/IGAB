@@ -399,3 +399,146 @@ async def subscriptions_report(
         },
         "months": month_list,
     }
+
+
+class CostOfLivingGroup(TypedDict):
+    group_name: str
+    monthly_amounts: list[Decimal]
+    total: Decimal
+    avg_monthly: Decimal
+    #: This group's share of the essentials total, 0-100. Not of income —
+    #: the shares have to add to 100 or the bar reads as arithmetic nobody
+    #: can check.
+    share: Decimal
+
+
+async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: int = 12) -> dict:
+    """What it costs to keep the lights on, by category group.
+
+    Built on the Essential tag rather than a new one. A sixth system tag whose
+    only job is grouping would be a permanent addition to a vocabulary that
+    otherwise changes how money is COUNTED, and the groups a budget already
+    has are the shape a household thinks in — Housing, Utilities, Groceries.
+
+    Nothing new is queried: `essential_spend_by_category_month` is the same
+    query the Essentials report and the Overview card read, so a category
+    counted here is counted there. Only the rollup is new.
+
+    `basis` says how "essential" was decided — bound categories, the tag, or
+    everything. "all" means nothing is tagged yet, and the caller must say so
+    rather than present a figure that equals plain burn rate.
+    """
+    from igab.repositories.transaction_repo import TransactionRepository
+
+    today = date.today()
+    start_date = _subtract_months(today, months - 1).replace(day=1)
+    month_list = _months_in_range(start_date, today)
+    index = {m: i for i, m in enumerate(month_list)}
+
+    repo = TransactionRepository(session)
+    rows, basis = await repo.essential_spend_by_category_month(budget_id, start_date, today)
+
+    #: Rows carry a null group where an essential PAYEE tagged a transaction
+    #: with no category. They are real spending and must not vanish.
+    by_group: dict[str, list[Decimal]] = {}
+    for row in rows:
+        name = row.group_name or "Uncategorized"
+        bucket = by_group.setdefault(name, [Decimal("0")] * len(month_list))
+        slot = index.get(date(row.month.year, row.month.month, 1))
+        if slot is not None:
+            # Outflows are negative in the ledger; a cost reads positive here.
+            bucket[slot] += -Decimal(row.total)
+
+    groups: list[CostOfLivingGroup] = []
+    essentials_total = Decimal("0")
+    for name, amounts in by_group.items():
+        total = sum(amounts, Decimal("0"))
+        essentials_total += total
+        groups.append(
+            {
+                "group_name": name,
+                "monthly_amounts": amounts,
+                "total": quantize_cents(total),
+                "avg_monthly": quantize_cents(total / len(month_list)),
+                "share": Decimal("0"),
+            }
+        )
+    for g in groups:
+        g["share"] = (
+            quantize_cents(g["total"] / essentials_total * 100)
+            if essentials_total
+            else Decimal("0")
+        )
+    groups.sort(key=lambda g: g["total"], reverse=True)
+
+    income = await income_by_source(session, budget_id, months)
+    income_total = Decimal(income["total"])
+    avg_income = quantize_cents(income_total / len(month_list)) if month_list else Decimal("0")
+    avg_essentials = (
+        quantize_cents(essentials_total / len(month_list)) if month_list else Decimal("0")
+    )
+
+    return {
+        "months": month_list,
+        "groups": groups,
+        "avg_monthly_essentials": avg_essentials,
+        "avg_monthly_income": avg_income,
+        #: What share of take-home is already spoken for before anything
+        #: discretionary. None when there is no income on record: a ratio
+        #: against zero is not 100%, it is unknown.
+        "required_ratio": (
+            quantize_cents(essentials_total / income_total * 100) if income_total > 0 else None
+        ),
+        "basis": basis,
+        #: False when nothing is tagged Essential, so the page can say the
+        #: figure is every category rather than a chosen few.
+        "tagged": basis != "all",
+    }
+
+
+async def wishlist_discipline(session: AsyncSession, budget_id: uuid.UUID) -> dict:
+    """Cooling-off outcomes across the whole wishlist, open and closed.
+
+    All time, deliberately: the point is the habit, and a habit measured over
+    the last twelve months forgets the wish you talked yourself out of two
+    years ago. The arithmetic is guide/wishlist.discipline — pure, and tested
+    a case at a time.
+    """
+    from igab.db.models import WishlistItem
+    from igab.guide.wishlist import DisciplineInput, discipline
+
+    rows = (
+        (
+            await session.execute(
+                select(WishlistItem).where(
+                    WishlistItem.budget_id == budget_id,
+                    WishlistItem.is_deleted == False,  # noqa: E712
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    stats = discipline(
+        DisciplineInput(
+            status=w.status,
+            cost=Decimal(w.cost or 0),
+            created_at=w.created_at.date(),
+            cooling_until=w.cooling_until,
+            done_at=w.done_at,
+            dropped_at=w.dropped_at,
+        )
+        for w in rows
+    )
+    return {
+        "cooled_then_bought": stats.cooled_then_bought,
+        "cooled_then_dropped": stats.cooled_then_dropped,
+        "bought_early": stats.bought_early,
+        "still_open": stats.still_open,
+        "resisted_total": stats.resisted_total,
+        "bought_total": stats.bought_total,
+        "open_total": stats.open_total,
+        "avg_days_to_buy": stats.avg_days_to_buy,
+        "avg_wish_cost": stats.avg_wish_cost,
+        "unplaced": stats.unplaced,
+    }
