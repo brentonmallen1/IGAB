@@ -197,6 +197,19 @@
      measurement. */
   --app-h: var(--vvh);
 
+  /* The tallest a floating panel may be before it must scroll instead of
+     running off the screen — modals, sheets and CSS-placed dropdowns alike.
+
+     Built from --app-h, never from vh: a raised keyboard shrinks the visible
+     area and leaves vh unchanged, so a panel capped in vh opens under the
+     keyboard on iOS. Six panels were written as 80vh, 84vh and 85vh — three
+     numbers for one intention, none of which survived the keyboard.
+
+     A panel positioned by useAnchoredPosition gets a tighter, measured cap
+     inline and does not need this; this is for the ones CSS places on its
+     own, where the only alternative is no cap at all. */
+  --panel-max-h: calc(var(--app-h) - 96px);
+
   /* Minimum comfortable touch target (WCAG 2.5.5 / Apple HIG). */
   --tap-min: 44px;
 

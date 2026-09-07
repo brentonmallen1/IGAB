@@ -42,10 +42,12 @@ export function MultiSelectCombobox({
 
   // 220 is this filter's floor: the trigger is narrow in the report bar but
   // the option labels (account and category names) are not.
-  const dropdownPos = useAnchoredPosition(triggerRef, open, {
-    width: 'trigger',
-    minWidth: 220,
-  })
+  const dropdownPos = useAnchoredPosition(
+    triggerRef,
+    open,
+    { width: 'trigger', minWidth: 220 },
+    listRef
+  )
 
   function measureAndOpen() {
     if (disabled) return

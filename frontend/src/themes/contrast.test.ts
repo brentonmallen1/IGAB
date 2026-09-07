@@ -2,6 +2,11 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+// Shared with overlayBounds.test.ts — one CSS reader, not two. The
+// prefers-contrast layer is an at-rule, which topLevelRules skips: those
+// overrides are conditional, so folding them into the base token maps would
+// test a state the default render never reaches.
+import { topLevelRules } from '../test-utils/cssRules'
 
 /**
  * Every theme ships its own palette, and a palette that looks right can still
@@ -30,32 +35,6 @@ const NEGATIVE_CHIP_TINT = 24
 type RGBA = [number, number, number, number]
 
 // ---------------------------------------------------------------- parsing
-
-/**
- * Top-level rules only. Anything wrapped in an at-rule (the prefers-contrast
- * layer) is skipped: those overrides are conditional, so folding them into the
- * base token maps would test a state the default render never reaches.
- */
-function topLevelRules(src: string): Array<[string, string]> {
-  const rules: Array<[string, string]> = []
-  let depth = 0
-  let selectorStart = 0
-  let bodyStart = 0
-  for (let i = 0; i < src.length; i++) {
-    if (src[i] === '{') {
-      if (depth === 0) bodyStart = i + 1
-      depth++
-    } else if (src[i] === '}') {
-      depth--
-      if (depth === 0) {
-        const selector = src.slice(selectorStart, bodyStart - 1)
-        if (!selector.trimStart().startsWith('@')) rules.push([selector, src.slice(bodyStart, i)])
-        selectorStart = i + 1
-      }
-    }
-  }
-  return rules
-}
 
 /** token maps per theme, plus the `:root` defaults every theme falls back to */
 function loadThemes(): { themes: Map<string, Map<string, string>>; root: Map<string, string> } {

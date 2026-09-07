@@ -12,7 +12,7 @@
 .view-editor {
   width: 100%;
   max-width: 640px;
-  max-height: 85vh;
+  max-height: var(--panel-max-h);
   display: flex;
   flex-direction: column;
   gap: var(--spacing-sm);

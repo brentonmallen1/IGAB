@@ -11,9 +11,13 @@
   min-width: 0;
 }
 
+/* Position and the height cap arrive inline from useAnchoredPosition: `left`
+   is a real left edge, not a centre point, so there is no transform to undo
+   when the panel is pulled back from a viewport edge. The old copy centred
+   with translate(-50%) and then clamped the centre, which is why a tooltip on
+   the inspector's right edge still hung half off. */
 .tooltip-popup {
   position: fixed;
-  transform: translate(-50%, -100%);
   background: var(--bg-elevated);
   color: var(--text-primary);
   border: 1px solid var(--border-subtle);
@@ -27,6 +31,7 @@
   width: max-content;
   max-width: min(280px, calc(100vw - 16px));
   white-space: normal;
+  overflow-y: auto;
   pointer-events: none;
   z-index: var(--z-tooltip);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);

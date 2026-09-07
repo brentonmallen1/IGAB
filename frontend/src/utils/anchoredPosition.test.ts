@@ -46,6 +46,80 @@ describe('placeAnchored — vertical', () => {
   })
 })
 
+describe('placeAnchored — the panel decides the side, not a constant', () => {
+  it('flips a tall panel that the room below cannot show (SystemTagsHelp)', () => {
+    // The tags ⓘ popover is ~700px of content. With 300px below the trigger it
+    // cleared the old 160px threshold, stayed below, and painted as a sliver
+    // jammed against the bottom edge — capped correctly and unreadable.
+    const p = placeAnchored(trigger({ top: 460, bottom: 484 }), VIEWPORT, {
+      width: 440,
+      desiredHeight: 700,
+    })
+    expect(p.top).toBeUndefined()
+    expect(p.bottom).toBe(800 - 460 + 2)
+    expect(p.maxHeight).toBe(460 - 8)
+  })
+
+  it('leaves a short menu below the same trigger (ContextMenu)', () => {
+    // Same anchor, three items. Height is the only difference, and it is the
+    // difference that decides — a menu is as tall as what it was given.
+    const p = placeAnchored(trigger({ top: 460, bottom: 484 }), VIEWPORT, { desiredHeight: 90 })
+    expect(p.top).toBe(486)
+  })
+
+  it('keeps below on a tie so a mid-page dropdown opens downward', () => {
+    // spaceAbove must BEAT spaceBelow, not merely match it: a control in the
+    // middle of the page flipping upward reads as a glitch.
+    const p = placeAnchored(trigger({ top: 396, bottom: 404 }), VIEWPORT, { desiredHeight: 700 })
+    expect(p.top).toBe(406)
+  })
+
+  it('falls back to the assumed height before the panel has been measured', () => {
+    // First paint: nothing has rendered, so flipThreshold stands in. This is
+    // the pre-existing behaviour and every unmeasured caller still gets it.
+    const p = placeAnchored(trigger({ top: 700, bottom: 724 }), VIEWPORT, { flipThreshold: 160 })
+    expect(p.bottom).toBe(800 - 700 + 2)
+  })
+
+  it('never asks for more room than the caller capped it at', () => {
+    // A 700px panel under a 200px cap needs 200px, so 300px below is plenty.
+    const p = placeAnchored(trigger({ top: 460, bottom: 484 }), VIEWPORT, {
+      desiredHeight: 700,
+      maxHeight: 200,
+    })
+    expect(p.top).toBe(486)
+    expect(p.maxHeight).toBe(200)
+  })
+})
+
+describe('placeAnchored — occluded viewport', () => {
+  const KEYBOARD = { width: 1200, height: 800, inset: { top: 0, bottom: 300 } }
+
+  it('does not open a panel under the keyboard', () => {
+    // 800px of layout viewport, 300px of it covered. A trigger at 470 has
+    // 22px of usable room below, not 322.
+    const p = placeAnchored(trigger({ top: 446, bottom: 470 }), KEYBOARD, { desiredHeight: 200 })
+    expect(p.top).toBeUndefined()
+    expect(p.maxHeight).toBe(446 - 8)
+  })
+
+  it('measures the top inset too, so a scrolled visual viewport is honoured', () => {
+    const shifted = { width: 1200, height: 800, inset: { top: 200, bottom: 0 } }
+    const p = placeAnchored(trigger({ top: 260, bottom: 284 }), shifted, { desiredHeight: 900 })
+    // Above holds 260-200-8 = 52; below holds 800-284-8 = 508. Below wins.
+    expect(p.top).toBe(286)
+    expect(p.maxHeight).toBe(508)
+  })
+
+  it('still measures `bottom` from the layout viewport when it flips', () => {
+    // CSS `bottom` on a fixed element is relative to the layout viewport, so
+    // the inset must not be subtracted here — that was the trap in expressing
+    // occlusion by shrinking `height`.
+    const p = placeAnchored(trigger({ top: 600, bottom: 624 }), KEYBOARD, { desiredHeight: 400 })
+    expect(p.bottom).toBe(800 - 600 + 2)
+  })
+})
+
 describe('placeAnchored — horizontal', () => {
   it('aligns to the trigger left edge', () => {
     expect(placeAnchored(trigger(), VIEWPORT, {}).left).toBe(300)

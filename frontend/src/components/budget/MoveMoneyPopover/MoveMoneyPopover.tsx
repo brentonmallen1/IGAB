@@ -31,12 +31,14 @@ export function MoveMoneyPopover({
   const ref = useRef<HTMLDivElement>(null)
   // The same geometry every dropdown and popover uses: viewport-clamped,
   // flipping above when the room below runs out. This was the sixth copy.
-  const placement = useAnchoredPosition(anchorRef, true, {
-    width: POPOVER_WIDTH,
-    align: 'end',
-    gap: 4,
-    flipThreshold: 260,
-  })
+  // It used to raise flipThreshold to 260 to guess its own height; passing
+  // the panel means the hook measures it instead, and the guess goes.
+  const placement = useAnchoredPosition(
+    anchorRef,
+    true,
+    { width: POPOVER_WIDTH, align: 'end', gap: 4 },
+    ref
+  )
 
   useEffect(() => {
     function handler(e: MouseEvent) {

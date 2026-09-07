@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Plus, X } from 'lucide-react'
 import { Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useAppStore } from '../../../stores/appStore'
@@ -56,7 +56,8 @@ export function PayoffPlanner() {
   // The menu's anchor, captured from the click that opened it. Measuring a
   // ref during render is what the sibling filter bar does and it is why that
   // file carries lint debt; there is no reason to add more of it.
-  const [addAt, setAddAt] = useState<{ x: number; y: number } | null>(null)
+  const [addOpen, setAddOpen] = useState(false)
+  const addRef = useRef<HTMLButtonElement>(null)
   const { formatMoney, formatDate } = useFormatters()
 
   const current = edited ?? (seed.rows.length ? seed.rows : empty)
@@ -173,28 +174,27 @@ export function PayoffPlanner() {
           <button
             type="button"
             className="guide-link-button tool__add"
-            onClick={(e) => {
+            ref={addRef}
+            onClick={() => {
               if (addable.length === 0) return add()
-              if (addAt) return setAddAt(null)
-              const rect = e.currentTarget.getBoundingClientRect()
-              setAddAt({ x: rect.left, y: rect.bottom + 4 })
+              setAddOpen((o) => !o)
             }}
             aria-haspopup={addable.length > 0 ? 'menu' : undefined}
-            aria-expanded={addable.length > 0 ? addAt !== null : undefined}
+            aria-expanded={addable.length > 0 ? addOpen : undefined}
           >
             <Plus size={12} aria-hidden /> Add a debt
           </button>
-          {addAt && (
+          {addOpen && (
             <ContextMenu
               items={[
                 ...addable.map((l) => ({ id: l.id, label: l.name })),
                 { id: 'sep', label: '', separator: true },
                 { id: 'blank', label: 'Something else…' },
               ]}
-              position={addAt}
-              onClose={() => setAddAt(null)}
+              anchor={addRef}
+              onClose={() => setAddOpen(false)}
               onSelect={(id) => {
-                setAddAt(null)
+                setAddOpen(false)
                 if (id === 'blank') add()
                 else addLiability(id)
               }}

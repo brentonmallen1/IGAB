@@ -1,10 +1,13 @@
-import { useState, useRef, useCallback, useEffect, useLayoutEffect } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { createPortal } from 'react-dom'
+import { useAnchoredPosition } from '../../../hooks/useAnchoredPosition'
 import { markTooltipHidden, tooltipDelayNow } from './tooltipDelay'
 import './Tooltip.css'
 
-/** Breathing room the popup keeps from every viewport edge. */
-const EDGE = 8
+/** Breathing room the popup keeps from its host. The distance it keeps from
+ *  the viewport edges is `margin` in anchoredPosition, which used to be
+ *  written here a second time as this same number. */
+const GAP = 8
 
 interface Props {
   content: React.ReactNode | null
@@ -28,10 +31,21 @@ interface Props {
  * styling; keep `title` for the incidental case.
  */
 export function Tooltip({ content, children, block = false, className }: Props) {
-  const [anchor, setAnchor] = useState<{ x: number; y: number } | null>(null)
+  const [open, setOpen] = useState(false)
   const ref = useRef<HTMLSpanElement>(null)
   const popupRef = useRef<HTMLSpanElement>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // A tooltip is the same placement problem as every dropdown: centre it on
+  // the host, keep it inside the viewport, and drop below when there is no
+  // headroom. This used to be its own copy — its own EDGE constant, its own
+  // horizontal clamp, its own flip, and no height cap at all.
+  const pos = useAnchoredPosition(
+    ref,
+    open,
+    { align: 'center', prefer: 'above', gap: GAP },
+    popupRef
+  )
 
   const cancel = useCallback(() => {
     if (timer.current !== null) {
@@ -44,41 +58,19 @@ export function Tooltip({ content, children, block = false, className }: Props) 
     cancel()
     timer.current = setTimeout(() => {
       timer.current = null
-      const rect = ref.current?.getBoundingClientRect()
-      if (rect) setAnchor({ x: rect.left + rect.width / 2, y: rect.top - EDGE })
+      setOpen(true)
     }, tooltipDelayNow())
   }, [cancel])
 
   const hide = useCallback(() => {
     cancel()
-    setAnchor((open) => {
-      if (open) markTooltipHidden()
-      return null
+    setOpen((wasOpen) => {
+      if (wasOpen) markTooltipHidden()
+      return false
     })
   }, [cancel])
 
   useEffect(() => cancel, [cancel])
-
-  // The anchor is where the popup *wants* to sit — centred over the host.
-  // Only once it has rendered do we know its size, so clamping to the
-  // viewport happens here, before paint: pull it back from either side
-  // edge, and flip it below the host when there is no headroom above.
-  // Hosts near a screen edge (the inspector hugs the right one) otherwise
-  // push half the popup off the screen.
-  useLayoutEffect(() => {
-    const host = ref.current
-    const pop = popupRef.current
-    if (!anchor || !host || !pop) return
-
-    const half = pop.offsetWidth / 2
-    const x = Math.min(Math.max(anchor.x, EDGE + half), window.innerWidth - EDGE - half)
-    pop.style.left = `${x}px`
-
-    if (anchor.y - pop.offsetHeight < EDGE) {
-      pop.style.top = `${host.getBoundingClientRect().bottom + EDGE}px`
-      pop.style.transform = 'translate(-50%, 0)'
-    }
-  }, [anchor])
 
   const hostClass = ['tooltip-host', block ? 'tooltip-host--block' : '', className ?? '']
     .filter(Boolean)
@@ -94,13 +86,19 @@ export function Tooltip({ content, children, block = false, className }: Props) 
       onBlur={hide}
     >
       {children}
-      {anchor &&
+      {open &&
         content != null &&
         createPortal(
           <span
             ref={popupRef}
             className="tooltip-popup"
-            style={{ left: anchor.x, top: anchor.y }}
+            style={{
+              top: pos?.top,
+              bottom: pos?.bottom,
+              left: pos?.left,
+              maxHeight: pos?.maxHeight,
+              visibility: pos ? undefined : 'hidden',
+            }}
             role="tooltip"
           >
             {content}

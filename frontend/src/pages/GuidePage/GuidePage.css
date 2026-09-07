@@ -1369,7 +1369,7 @@
 
 .flow-detail {
   width: min(560px, 100%);
-  max-height: 80vh;
+  max-height: var(--panel-max-h);
   overflow-y: auto;
   background: var(--surface-overlay);
   border: 1px solid var(--border-color);

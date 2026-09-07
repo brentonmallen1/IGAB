@@ -38,6 +38,7 @@ import { Combobox, type ComboboxOption } from '../../common/Combobox/Combobox'
 import { InlineInput } from '../../common/InlineInput/InlineInput'
 import { DatePicker } from '../../common/DatePicker/DatePicker'
 import { ContextMenu, type ContextMenuItem } from '../../common/ContextMenu/ContextMenu'
+import type { AnchorSource } from '../../../hooks/useAnchoredPosition'
 import { BankRecordIcon } from '../../simplefin/BankRecordIcon'
 import { Tooltip } from '../../common/Tooltip/Tooltip'
 import { RowAttachmentButton } from './RowAttachmentButton'
@@ -75,6 +76,9 @@ interface Props {
   /** Off-budget accounts don't use categories: no yellow chip, no editor */
   accountOnBudget?: boolean
 }
+
+/** Stand-in until the menu is opened; a closed menu is never placed. */
+const ORIGIN = { x: 0, y: 0 }
 
 const APPROVE_MENU_ITEMS: ContextMenuItem[] = [
   { id: 'approve', label: 'Approve', icon: CheckCircle },
@@ -192,13 +196,11 @@ export const TransactionRow = memo(function TransactionRow({
   const isMobile = useIsMobile()
   const anyTxnSelected = useUIStore((s) => s.selectedTransactionIds.size > 0)
   const [contextMenuOpen, setContextMenuOpen] = useState(false)
-  const [contextMenuPos, setContextMenuPos] = useState<{
-    x: number
-    y: number
-    alignRight?: boolean
-  }>({ x: 0, y: 0 })
+  // The same menu opens two ways: right-click anchors to the pointer, the
+  // "more" button to the button. Both are anchors the placement hook accepts.
+  const [contextAnchor, setContextAnchor] = useState<AnchorSource>(ORIGIN)
+  const [contextAlignRight, setContextAlignRight] = useState(false)
   const [approveMenuOpen, setApproveMenuOpen] = useState(false)
-  const [approveMenuPos, setApproveMenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const moreRef = useRef<HTMLButtonElement>(null)
   const eyeRef = useRef<HTMLButtonElement>(null)
 
@@ -291,7 +293,8 @@ export const TransactionRow = memo(function TransactionRow({
   function handleContextMenu(e: React.MouseEvent) {
     e.preventDefault()
     if (isMobile) return // long-press enters selection mode instead
-    setContextMenuPos({ x: e.clientX, y: e.clientY })
+    setContextAnchor({ x: e.clientX, y: e.clientY })
+    setContextAlignRight(false)
     setContextMenuOpen(true)
   }
 
@@ -313,15 +316,13 @@ export const TransactionRow = memo(function TransactionRow({
 
   function handleMoreClick(e: React.MouseEvent) {
     e.stopPropagation()
-    const rect = moreRef.current?.getBoundingClientRect()
-    if (rect) setContextMenuPos({ x: rect.right, y: rect.bottom + 4, alignRight: true })
+    setContextAnchor(moreRef)
+    setContextAlignRight(true)
     setContextMenuOpen(true)
   }
 
   function handleEyeClick(e: React.MouseEvent) {
     e.stopPropagation()
-    const rect = eyeRef.current?.getBoundingClientRect()
-    if (rect) setApproveMenuPos({ x: rect.left, y: rect.bottom + 4 })
     setApproveMenuOpen(true)
   }
 
@@ -503,7 +504,7 @@ export const TransactionRow = memo(function TransactionRow({
             items={APPROVE_MENU_ITEMS}
             onSelect={handleApproveAction}
             onClose={() => setApproveMenuOpen(false)}
-            position={approveMenuPos}
+            anchor={eyeRef}
           />
         )}
       </div>
@@ -769,7 +770,8 @@ export const TransactionRow = memo(function TransactionRow({
           items={contextItems}
           onSelect={handleContextAction}
           onClose={() => setContextMenuOpen(false)}
-          position={contextMenuPos}
+          anchor={contextAnchor}
+          alignRight={contextAlignRight}
         />
       )}
     </div>

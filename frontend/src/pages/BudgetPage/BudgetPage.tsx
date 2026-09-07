@@ -89,7 +89,6 @@ export function BudgetPage() {
 
   const [newName, setNewName] = useState('')
   const [moveMenuOpen, setMoveMenuOpen] = useState(false)
-  const [moveMenuPos, setMoveMenuPos] = useState({ x: 0, y: 0 })
   const moveRef = useRef<HTMLButtonElement>(null)
 
   // Auto-select first budget if none selected
@@ -103,12 +102,6 @@ export function BudgetPage() {
     const budget = await createBudget.mutateAsync({ name: newName.trim() })
     setBudgetId(budget.id)
     setNewName('')
-  }
-
-  function handleMoveToGroupClick() {
-    const rect = moveRef.current?.getBoundingClientRect()
-    if (rect) setMoveMenuPos({ x: rect.left, y: rect.top - 10 })
-    setMoveMenuOpen(true)
   }
 
   async function handleMoveToGroup(groupId: string) {
@@ -244,7 +237,7 @@ export function BudgetPage() {
           label={`${selectedCount} categor${selectedCount !== 1 ? 'ies' : 'y'} selected`}
           onClose={clearCategorySelection}
         >
-          <button ref={moveRef} className="fsb__btn" onClick={handleMoveToGroupClick}>
+          <button ref={moveRef} className="fsb__btn" onClick={() => setMoveMenuOpen(true)}>
             <FolderInput size={14} />
             Move to Group
           </button>
@@ -264,13 +257,15 @@ export function BudgetPage() {
           </FloatingSelectionBar.Button>
           {moveMenuOpen && (
             <ContextMenu
+              searchable
+              searchPlaceholder="Search groups…"
               items={groupMenuItems}
               onSelect={(id) => {
                 handleMoveToGroup(id)
                 setMoveMenuOpen(false)
               }}
               onClose={() => setMoveMenuOpen(false)}
-              position={{ x: moveMenuPos.x, y: moveMenuPos.y - 160 }}
+              anchor={moveRef}
             />
           )}
         </FloatingSelectionBar>

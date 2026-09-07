@@ -114,7 +114,7 @@ export function AssignDropdown({ anchorRef, onClose, ...contentProps }: Dropdown
   const panelRef = useRef<HTMLDivElement>(null)
   // Measured once on mount before, so the panel detached from the Assign
   // button the moment the budget table scrolled underneath it.
-  const pos = useAnchoredPosition(anchorRef, true, { width: PANEL_WIDTH, gap: PANEL_GAP })
+  const pos = useAnchoredPosition(anchorRef, true, { width: PANEL_WIDTH, gap: PANEL_GAP }, panelRef)
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {

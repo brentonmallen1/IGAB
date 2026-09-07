@@ -50,7 +50,7 @@ export function TagPicker({
   const listRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const dropdownPos = useAnchoredPosition(triggerRef, open, DROPDOWN)
+  const dropdownPos = useAnchoredPosition(triggerRef, open, DROPDOWN, listRef)
 
   const filtered = tags.filter((t) => t.name.toLowerCase().includes(query.toLowerCase()))
 
