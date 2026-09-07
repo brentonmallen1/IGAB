@@ -197,3 +197,41 @@ export function useRestoreSnapshot(budgetId: string | null) {
     },
   })
 }
+
+export interface CloneResult {
+  budget_id: string
+  budget_name: string
+  structure_only: boolean
+  /** Accounts given a Starting Balance row — only ever non-zero for a
+   *  structure-only copy. */
+  opening_balances: number
+  row_counts: Record<string, number>
+}
+
+export interface CloneRequest {
+  name?: string
+  structure_only?: boolean
+  /** The day a structure-only copy starts from; the server defaults to today. */
+  as_of?: string
+}
+
+export function useCloneBudget() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ budgetId, ...body }: CloneRequest & { budgetId: string }) => {
+      const { data } = await apiClient.post<CloneResult>(`/budgets/${budgetId}/clone`, body)
+      return data
+    },
+    onSuccess: (result) => {
+      invalidateAfterImport(qc, result.budget_id)
+      toast.success(
+        result.structure_only
+          ? `Copied as "${result.budget_name}" — ${result.opening_balances} account${
+              result.opening_balances === 1 ? '' : 's'
+            } opened on their current balance`
+          : `Copied as "${result.budget_name}"`
+      )
+    },
+    onError: (err) => toast.error(apiErrorMessage(err, 'Could not copy the budget')),
+  })
+}

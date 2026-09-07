@@ -2,7 +2,16 @@ import { useRef, useState } from 'react'
 import { Surface } from '../../components/common/Surface'
 import { Link, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { HelpCircle, LogOut, Server, MoreHorizontal, Pencil, Trash2, Users } from 'lucide-react'
+import {
+  Copy,
+  HelpCircle,
+  LogOut,
+  Server,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+  Users,
+} from 'lucide-react'
 import {
   useBudgets,
   useCreateBudget,
@@ -27,6 +36,7 @@ import { SETTINGS_PAGES } from '../SettingsPage/settingsSections'
 import './BudgetSelectorPage.css'
 import { confirmAsync } from '../../stores/confirmStore'
 import { SharingModal } from '../../components/budgets/SharingModal'
+import { CloneBudgetModal } from '../../components/budgets/CloneBudgetModal'
 import { useCurrentUser } from '../../api/auth'
 import { BUILTIN_ACCOUNT_TYPES } from '../../constants/accountTypes'
 import { AccountTypeInfoModal } from '../../components/accounts/AccountTypeInfoModal'
@@ -45,9 +55,14 @@ import { MappingNotes } from './MappingNotes'
 
 const CARD_MENU_ITEMS: ContextMenuItem[] = [
   { id: 'rename', label: 'Rename', icon: Pencil },
+  { id: 'clone', label: 'Copy…', icon: Copy },
   { id: 'sharing', label: 'Sharing', icon: Users },
   { id: 'delete', label: 'Delete', icon: Trash2, danger: true },
 ]
+
+/** Copying reads a whole budget out and writes a new one — the owner's
+ *  decision, like deleting, and what the endpoint enforces. */
+const OWNER_ONLY_ACTIONS = new Set(['clone', 'sharing', 'delete'])
 
 // The budget (and its type registry) doesn't exist yet at mapping time, so
 // the choices are the built-ins; custom types can be created after import.
@@ -73,8 +88,13 @@ export function BudgetSelectorPage() {
 
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
-  const [menuBudget, setMenuBudget] = useState<{ id: string; name: string } | null>(null)
+  const [menuBudget, setMenuBudget] = useState<{
+    id: string
+    name: string
+    role: string | null
+  } | null>(null)
   const [sharingBudget, setSharingBudget] = useState<{ id: string; name: string } | null>(null)
+  const [cloningBudget, setCloningBudget] = useState<{ id: string; name: string } | null>(null)
   const [menuPos, setMenuPos] = useState({ x: 0, y: 0 })
 
   // Create form
@@ -383,7 +403,7 @@ export function BudgetSelectorPage() {
                           e.stopPropagation()
                           const rect = e.currentTarget.getBoundingClientRect()
                           setMenuPos({ x: rect.right - 140, y: rect.bottom + 4 })
-                          setMenuBudget({ id: b.id, name: b.name })
+                          setMenuBudget({ id: b.id, name: b.name, role: b.role ?? null })
                         }}
                       >
                         <MoreHorizontal size={16} />
@@ -396,7 +416,11 @@ export function BudgetSelectorPage() {
           )}
           {menuBudget && (
             <ContextMenu
-              items={CARD_MENU_ITEMS}
+              items={
+                menuBudget.role === 'member'
+                  ? CARD_MENU_ITEMS.filter((i) => !OWNER_ONLY_ACTIONS.has(i.id))
+                  : CARD_MENU_ITEMS
+              }
               position={menuPos}
               onClose={() => setMenuBudget(null)}
               onSelect={(id) => {
@@ -404,9 +428,17 @@ export function BudgetSelectorPage() {
                 setMenuBudget(null)
                 if (!b) return
                 if (id === 'rename') startRename(b.id, b.name)
+                if (id === 'clone') setCloningBudget(b)
                 if (id === 'sharing') setSharingBudget(b)
                 if (id === 'delete') handleDelete(b.id, b.name)
               }}
+            />
+          )}
+          {cloningBudget && (
+            <CloneBudgetModal
+              budgetId={cloningBudget.id}
+              budgetName={cloningBudget.name}
+              onClose={() => setCloningBudget(null)}
             />
           )}
           {sharingBudget && (
