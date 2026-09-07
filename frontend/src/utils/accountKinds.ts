@@ -17,7 +17,7 @@
  * card / is this cash" reads these and nothing else.
  */
 
-interface AccountKindFields {
+export interface AccountKindFields {
   on_budget: boolean
   classification: 'asset' | 'liability' | null
 }
