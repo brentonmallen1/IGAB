@@ -236,6 +236,19 @@
   opacity: 0.8;
 }
 
+/* Reminder inside the schedule's own window; overdue once the date passed
+   with nobody entering or skipping it — a warning, not a negative. */
+.upcoming-row__due {
+  font-size: var(--font-size-2xs);
+  font-style: normal;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.upcoming-row__due--overdue {
+  color: var(--color-warning);
+}
+
 .upcoming-row__actions {
   display: flex;
   gap: 4px;

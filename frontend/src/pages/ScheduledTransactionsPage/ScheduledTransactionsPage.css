@@ -177,3 +177,22 @@
     min-height: 40px;
   }
 }
+
+/* Reminder: due-soon inside the schedule's own window, overdue once the date
+   has passed and nobody entered or skipped it. Overdue is a warning, not a
+   negative — no money has gone wrong, a bill is waiting on a person. */
+.sched-cell--date {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sched-due {
+  font-size: var(--font-size-2xs);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.sched-due--overdue {
+  color: var(--color-warning);
+}

@@ -47,6 +47,7 @@ import { usePendingMatchesForAccount, useRejectMatch } from '../../../api/simple
 import { useShortcut } from '../../../hooks/useShortcut'
 import { SHORTCUTS } from '../../../keyboard/shortcuts'
 import { today } from '../../../utils/dates'
+import { daysUntil, dueLabel, dueState, frequencyLabel } from '../../../utils/schedule'
 import { transactionDisplayPayee } from '../../../utils/transferDisplay'
 import { useFormatters } from '../../../hooks/useFormatters'
 import type {
@@ -85,14 +86,6 @@ const ALL_ACCOUNTS_HEADER_COLS: { key: SortColumn; label: string }[] = [
   { key: 'category', label: 'Category' },
   { key: 'memo', label: 'Memo' },
 ]
-
-const FREQ_LABELS: Record<string, string> = {
-  daily: 'Daily',
-  weekly: 'Weekly',
-  biweekly: 'Every 2 weeks',
-  monthly: 'Monthly',
-  yearly: 'Yearly',
-}
 
 type RowItem =
   | { kind: 'single'; key: string; txn: Transaction }
@@ -562,6 +555,8 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   function renderUpcomingRow(s: ScheduledTransaction) {
     const amount = s.amount
     const isOutflow = amount < 0
+    const todayISO = today()
+    const due = dueState(s, todayISO)
     const payeeName = transactionDisplayPayee(
       { payee_id: s.payee_id, counterpart_account_id: s.transfer_account_id },
       payeeMap,
@@ -586,7 +581,12 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
         <div className="txn-col txn-col--checkbox" />
         <div className="txn-col txn-col--date upcoming-row__date">
           {s.next_occurrence_date}
-          <span className="upcoming-row__freq">{FREQ_LABELS[s.frequency] ?? s.frequency}</span>
+          <span className="upcoming-row__freq">{frequencyLabel(s.frequency)}</span>
+          {due && (
+            <span className={`upcoming-row__due upcoming-row__due--${due}`}>
+              {dueLabel(daysUntil(s.next_occurrence_date, todayISO))}
+            </span>
+          )}
         </div>
         <div className="txn-col txn-col--payee txn-text-clip">{payeeName}</div>
         <div className="txn-col txn-col--category txn-text-clip">{catName}</div>

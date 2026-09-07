@@ -589,8 +589,13 @@ export interface ScheduledTransaction {
   auto_create: boolean
   days_before_reminder: number
   next_occurrence_date: string
+  last_created_date: string | null
+  /** Twice-monthly only: the other day of the month (the first is the start
+   *  date's day). */
+  second_day_of_month: number | null
   transfer_account_id: string | null
-  is_deleted: boolean
+  /** Non-null on a schedule an import created (a future-dated YNAB row). */
+  import_id: string | null
   created_at: string
   updated_at: string
 }
