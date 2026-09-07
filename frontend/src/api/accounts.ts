@@ -168,3 +168,15 @@ export function useRepairTransfers(budgetId: string) {
     },
   })
 }
+
+export interface AccountSecrets {
+  account_number: string | null
+  routing_number: string | null
+}
+
+/** The decrypted reference numbers, fetched only when the eye is clicked —
+ *  never cached in a listing. */
+export async function fetchAccountSecrets(accountId: string): Promise<AccountSecrets> {
+  const { data } = await apiClient.get<AccountSecrets>(`/accounts/${accountId}/secrets`)
+  return data
+}

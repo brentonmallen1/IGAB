@@ -47,7 +47,8 @@ function finding(kind: FindingKind): CheckupFinding {
 describe('checkup copy', () => {
   it('every explainer is complete and points at content that exists', () => {
     expect(checkCopyIntegrity()).toEqual([])
-    expect(METRIC_KEYS.length).toBe(8)
+    // 9: card_utilization joined (2026-09-06).
+    expect(METRIC_KEYS.length).toBe(9)
   })
 
   it('status: a fired finding wins, then the figure against its target', () => {

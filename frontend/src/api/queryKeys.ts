@@ -26,6 +26,7 @@
  * renaming them is a separate change from giving them one home.
  */
 export const ROOT = {
+  creditScores: 'credit-scores',
   accountHygiene: 'account-hygiene',
   accountTypes: 'account-types',
   accounts: 'accounts',

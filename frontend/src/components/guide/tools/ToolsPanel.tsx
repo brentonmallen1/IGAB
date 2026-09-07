@@ -6,6 +6,8 @@ import { PayoffPlanner } from './PayoffPlanner'
 import { PayVsSave } from './PayVsSave'
 import { LoanCompare } from './LoanCompare'
 import { EmergencyFundSizer } from './EmergencyFundSizer'
+import { CreditScoreTracker } from './CreditScoreTracker'
+import { BalanceTransfer } from './BalanceTransfer'
 import './Tools.css'
 
 /**
@@ -54,6 +56,8 @@ export function ToolsPanel() {
           {activeTool === 'pay-vs-save' && <PayVsSave />}
           {activeTool === 'loan-compare' && <LoanCompare />}
           {activeTool === 'emergency-fund' && <EmergencyFundSizer />}
+          {activeTool === 'credit-score' && <CreditScoreTracker />}
+          {activeTool === 'balance-transfer' && <BalanceTransfer />}
         </div>
       </Surface>
 

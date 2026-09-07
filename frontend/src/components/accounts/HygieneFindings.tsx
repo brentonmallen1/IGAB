@@ -81,6 +81,10 @@ export function HygieneFindings({
     if (f.kind === 'unlinked_card_payments' && f.account_ids.length > 0) {
       return `/accounts/${f.account_ids[0]}`
     }
+    // The quiet card's register, where a small charge would go.
+    if (f.kind === 'card_no_activity' && f.account_ids.length > 0) {
+      return `/accounts/${f.account_ids[0]}`
+    }
     // Asset findings lead to the asset — where the value can be restated,
     // or the double-counted thing deleted.
     if (

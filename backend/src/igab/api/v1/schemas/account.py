@@ -33,6 +33,10 @@ class AccountUpdate(ApiModel):
     is_closed: bool | None = None
     note: str | None = None
     sort_order: int | None = None
+    #: Reference numbers, sent in the clear over TLS and stored encrypted
+    #: (services/secrets.py). Null clears; omitted leaves as is.
+    account_number: str | None = Field(default=None, max_length=64)
+    routing_number: str | None = Field(default=None, max_length=64)
 
 
 class AccountResponse(ApiModel):
@@ -45,6 +49,10 @@ class AccountResponse(ApiModel):
     is_closed: bool
     sort_order: int
     note: str | None
+    #: The masked display's clear part; the numbers themselves come only from
+    #: GET /accounts/{id}/secrets.
+    account_number_last4: str | None = None
+    has_routing_number: bool = False
     last_reconciled_at: datetime | None
     last_reconciled_balance: Decimal | None
     #: Rows before this are opening position: not auto-categorized on first
@@ -73,3 +81,10 @@ class AccountResponse(ApiModel):
     uncategorized_count: int = 0
 
     model_config = {"from_attributes": True}
+
+
+class AccountSecretsResponse(ApiModel):
+    """The decrypted reference numbers, on demand and never in a list."""
+
+    account_number: str | None
+    routing_number: str | None

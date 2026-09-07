@@ -199,6 +199,8 @@ export type FindingKind =
   | 'retirement_below_target'
   | 'stale_external'
   | 'unknown_rates'
+  | 'card_utilization_very_high'
+  | 'card_utilization_high'
 
 export interface CheckupFinding {
   kind: FindingKind

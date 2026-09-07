@@ -44,6 +44,7 @@ from igab.db.models import (
     CategoryPlan,
     CategoryTarget,
     ChangeLog,
+    CreditScore,
     Liability,
     LiabilityBalanceSnapshot,
     Payee,
@@ -81,6 +82,7 @@ ENTITY_MODELS: dict[str, type] = {
     # snapshot — see undo_service.HARD_ROW_NATURAL_KEY.
     "category_target": CategoryTarget,
     "liability_snapshot": LiabilityBalanceSnapshot,
+    "credit_score": CreditScore,
     "asset_value": AssetValueSnapshot,
     "liability": Liability,
     "asset": Asset,
@@ -212,8 +214,10 @@ SNAPSHOT_FIELDS: dict[str, tuple[str, ...]] = {
         "promo_deferred_interest",
         "term_months",
         "payment_due_day",
+        "credit_limit",
     ),
     "liability_snapshot": ("liability_id", "date", "balance", "source"),
+    "credit_score": ("recorded_on", "score", "bureau", "source", "note"),
     # manual_value/value_as_of are derived from the newest surviving value
     # point, but they snapshot anyway: a value-point operation records the
     # pair's move as an explicit asset update in the same batch, so undo

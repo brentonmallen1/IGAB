@@ -6,7 +6,12 @@ from pydantic import BaseModel
 from sqlalchemy import select
 
 from igab.api.route import CommitRoute
-from igab.api.v1.schemas.account import AccountCreate, AccountResponse, AccountUpdate
+from igab.api.v1.schemas.account import (
+    AccountCreate,
+    AccountResponse,
+    AccountSecretsResponse,
+    AccountUpdate,
+)
 from igab.db.models import Category, Liability, LiabilityBalanceSnapshot, Transaction
 from igab.dependencies import (
     AccountAccess,
@@ -28,6 +33,13 @@ from igab.services.liability_service import (
     LIABILITY_CLASSIFICATION,
     ensure_for_account,
     release_for_account,
+)
+from igab.services.secrets import (
+    SimpleFINKeyMismatch,
+    SimpleFINNotConfigured,
+    decrypt,
+    encrypt,
+    last4,
 )
 from igab.services.transaction_matching_service import TransactionMatchingService
 from igab.services.transaction_service import TransactionService
@@ -266,12 +278,18 @@ async def update_account(
     # `budget_start_date` is nullable on purpose and both states mean something:
     # a date says "history before this is opening position", null says "treat
     # all of it as budgeted" — which is every account that has never been asked.
-    nullable = {"note", "budget_start_date"}
+    nullable = {"note", "budget_start_date", "account_number", "routing_number"}
     changes = {
         k: v
         for k, v in body.model_dump(exclude_unset=True).items()
         if v is not None or k in nullable
     }
+    # Reference numbers never reach the row in the clear, and never reach the
+    # change log at all (the account snapshot lists no secret column).
+    try:
+        changes.update(secret_columns(changes))
+    except SimpleFINNotConfigured as e:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e)) from e
     session = account_repo.session
     # One batch: the edit and the companion it conjures or retires as a unit.
     with recorder.batch():
@@ -478,3 +496,43 @@ async def scan_duplicates(
 ) -> ScanDuplicatesResponse:
     created = await matching_service.scan_for_duplicates(account_id)
     return ScanDuplicatesResponse(created=created)
+
+
+def secret_columns(changes: dict) -> dict:
+    """Turn the plaintext reference numbers a PATCH carried into the
+    encrypted columns, removing the plaintext keys from `changes` in place.
+    Null clears. One place, so the stored form cannot drift from the read."""
+    out: dict = {}
+    if "account_number" in changes:
+        raw = changes.pop("account_number")
+        out["account_number_encrypted"] = encrypt(raw.strip()) if raw else None
+        out["account_number_last4"] = last4(raw.strip()) if raw else None
+    if "routing_number" in changes:
+        raw = changes.pop("routing_number")
+        out["routing_number_encrypted"] = encrypt(raw.strip()) if raw else None
+    return out
+
+
+@router.get("/accounts/{account_id}/secrets", response_model=AccountSecretsResponse)
+async def get_account_secrets(
+    account_id: AccountAccess,
+    current_user: CurrentUser,
+    account_repo: Annotated[AccountRepository, Depends(get_account_repo)],
+) -> AccountSecretsResponse:
+    """The decrypted reference numbers, on demand — never in a listing."""
+    account = await account_repo.get_or_raise(account_id)
+    try:
+        return AccountSecretsResponse(
+            account_number=(
+                decrypt(account.account_number_encrypted)
+                if account.account_number_encrypted
+                else None
+            ),
+            routing_number=(
+                decrypt(account.routing_number_encrypted)
+                if account.routing_number_encrypted
+                else None
+            ),
+        )
+    except (SimpleFINNotConfigured, SimpleFINKeyMismatch) as e:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e)) from e

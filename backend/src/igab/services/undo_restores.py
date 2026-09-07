@@ -53,6 +53,7 @@ from igab.services.change_log import (
 HARD_ROW_NATURAL_KEY: dict[str, tuple[str, ...]] = {
     "category_target": ("category_id",),
     "liability_snapshot": ("liability_id", "date"),
+    "credit_score": ("budget_id", "recorded_on", "bureau"),
     "asset_value": ("asset_id", "date"),
     "account_type": ("budget_id", "key"),
     "reconciliation": ("account_id", "reconciled_at"),

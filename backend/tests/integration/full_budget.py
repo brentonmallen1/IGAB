@@ -36,6 +36,7 @@ from igab.db.models import (
     CategoryPlan,
     CategoryTarget,
     ChangeLog,
+    CreditScore,
     GuideBinding,
     GuideState,
     ImportAnchor,
@@ -238,6 +239,9 @@ async def build_full_budget(session: AsyncSession, owner: User) -> FullBudget:
     await session.execute(payee_tags.insert().values(payee_id=payee.id, tag_id=tag.id))
 
     saved_filter = BudgetFilter(budget_id=budget.id, name="Filter")
+    session.add(
+        CreditScore(budget_id=budget.id, recorded_on=date(2026, 8, 1), score=742, bureau="experian")
+    )
     session.add(saved_filter)
     view = BudgetView(budget_id=budget.id, name="View")
     session.add(view)

@@ -22,6 +22,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any, Literal
 
+from igab.domain.credit import UTILIZATION_HIGH, UTILIZATION_VERY_HIGH
 from igab.domain.dates import add_months
 from igab.domain.money import quantize_cents
 from igab.guide.concepts import (
@@ -45,6 +46,8 @@ FindingKind = Literal[
     "retirement_below_target",
     "stale_external",
     "unknown_rates",
+    "card_utilization_very_high",
+    "card_utilization_high",
 ]
 
 Unit = Literal["money", "months", "percent", "count"]
@@ -69,6 +72,9 @@ class CheckupInputs:
     #: checkup row can say "tagged Essential" or "all spending" on its face.
     essentials_tracked: bool = True
     essentials_reason: str = ""
+    #: Cards with a limit on record: (name, utilization percent). Empty when
+    #: no card has a limit — the finding cannot fire on a guess.
+    card_utilization: list[tuple[str, Decimal]] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -281,6 +287,46 @@ def _stale_external(inputs: CheckupInputs) -> list[Finding]:
     return out
 
 
+def _card_utilization_very_high(inputs: CheckupInputs) -> list[Finding]:
+    """A card carrying more than half its limit. Exclusive with the milder
+    rule by construction — one nag per card. Both read domain/credit.py."""
+    return [
+        Finding(
+            kind="card_utilization_very_high",
+            rank=3,
+            concept_key=None,
+            title=f"{name} is using {pct}% of its limit",
+            detail=(
+                "Above half the limit, scoring models mark the card down hard and the "
+                "issuer may read it as strain. Paying it under 30% helps more than almost "
+                "anything else you can do for the score."
+            ),
+            value=pct,
+        )
+        for name, pct in inputs.card_utilization
+        if pct >= UTILIZATION_VERY_HIGH
+    ]
+
+
+def _card_utilization_high(inputs: CheckupInputs) -> list[Finding]:
+    return [
+        Finding(
+            kind="card_utilization_high",
+            rank=5,
+            concept_key=None,
+            title=f"{name} is using {pct}% of its limit",
+            detail=(
+                "Over about 30% of the limit, utilization starts to count against the "
+                "score. Paying the balance down before the statement closes is what the "
+                "bureaus see."
+            ),
+            value=pct,
+        )
+        for name, pct in inputs.card_utilization
+        if UTILIZATION_HIGH <= pct < UTILIZATION_VERY_HIGH
+    ]
+
+
 def _unknown_rates(inputs: CheckupInputs) -> list[Finding]:
     if not inputs.unknown_rate_names:
         return []
@@ -307,7 +353,11 @@ RULES: tuple[Rule, ...] = (
     ("ef_not_started", 2, _ef_not_started),
     ("ef_below_starter", 2, _ef_below_starter),
     ("chronic_overspend", 3, _chronic),
+    # Same rank as chronic overspending; the table is in sorted order (rank,
+    # concept key, title) and "Categories overspent…" sorts before a card name.
+    ("card_utilization_very_high", 3, _card_utilization_very_high),
     ("ef_below_full", 4, _ef_below_full),
+    ("card_utilization_high", 5, _card_utilization_high),
     ("moderate_debt", 5, _moderate),
     ("retirement_below_target", 6, _retirement),
     ("stale_external", 7, _stale_external),
@@ -451,6 +501,25 @@ def metrics(inputs: CheckupInputs) -> list[Metric]:
             finding_kinds=["chronic_overspend"],
             report="plan-reality",
             names=list(inputs.chronic_names),
+        )
+    )
+    rows.append(
+        Metric(
+            key="card_utilization",
+            label="Card utilization",
+            value=max((pct for _, pct in inputs.card_utilization), default=None),
+            target=UTILIZATION_HIGH,
+            unit="percent",
+            detail=(
+                "The most-used card's balance as a share of its limit. "
+                + (
+                    "Set a card's limit on its liability page and this reads it."
+                    if not inputs.card_utilization
+                    else "Under 30% is where scoring models stop caring."
+                )
+            ),
+            finding_kinds=["card_utilization_very_high", "card_utilization_high"],
+            names=[name for name, _ in inputs.card_utilization],
         )
     )
     rows.append(

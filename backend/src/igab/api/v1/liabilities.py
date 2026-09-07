@@ -31,6 +31,7 @@ from igab.dependencies import (
     get_liability_repo,
     get_liability_service,
 )
+from igab.domain.credit import utilization_percent
 from igab.domain.payment_composition import (
     CompositionError,
     check_composition,
@@ -219,6 +220,8 @@ async def _liability_out(
         promo_deferred_interest=liability.promo_deferred_interest,
         term_months=liability.term_months,
         payment_due_day=liability.payment_due_day,
+        credit_limit=liability.credit_limit,
+        utilization=utilization_percent(status_.current_balance, liability.credit_limit),
         promo_projection=(
             PromoProjectionOut(
                 months_until_promo_end=status_.promo.months_until_promo_end,
@@ -298,6 +301,7 @@ async def create_liability(
             promo_deferred_interest=body.promo_deferred_interest,
             term_months=body.term_months,
             payment_due_day=body.payment_due_day,
+            credit_limit=body.credit_limit,
             payment_components=_components_for_storage(body.payment_components),
         )
         if liability.linked_account_id is None and body.manual_balance is not None:

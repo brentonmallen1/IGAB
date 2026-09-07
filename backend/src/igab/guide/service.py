@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, Category, Liability
+from igab.domain.credit import utilization_percent
 from igab.domain.dates import month_start
 from igab.domain.exceptions import InvariantViolation
 from igab.guide.bindings import Resolution, resolve_all
@@ -49,6 +50,7 @@ from igab.guide.scenarios import (
     payoff_plan,
 )
 from igab.repositories.category_repo import CategoryGroupRepository
+from igab.repositories.liability_repo import LiabilityRepository
 from igab.repositories.target_repo import TargetRepository
 from igab.services.amortization import CascadeDebt
 from igab.services.budget_service import BudgetService
@@ -423,6 +425,17 @@ class GuideService:
             not in ("underfunded", "pending")
         )
 
+        # Cards with a limit on record, at today's balance — the liability
+        # page's own figure (domain/credit.py).
+        card_utilization: list[tuple[str, Decimal]] = []
+        for liability in await LiabilityRepository(self.session).get_all(budget_id):
+            if liability.credit_limit is None or liability.credit_limit <= 0:
+                continue
+            status_ = await self.liabilities.get_status(liability)
+            pct = utilization_percent(status_.current_balance, liability.credit_limit)
+            if pct is not None:
+                card_utilization.append((liability.name, pct))
+
         essentials = by_key.get("essential_expenses", {})
         inputs = CheckupInputs(
             signals=by_key,
@@ -435,6 +448,7 @@ class GuideService:
             today=today,
             essentials_tracked=bool(essentials.get("tracked", True)),
             essentials_reason=essentials.get("reason", ""),
+            card_utilization=card_utilization,
         )
 
         if stamp:
