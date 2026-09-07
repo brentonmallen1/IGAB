@@ -265,6 +265,61 @@
    muted, same radius — because a control that looks like a form input in a row
    of chips reads as belonging to a different screen. Accent when a view is on,
    matching how an active chip behaves. */
+/* The overflow picker: the saved filters past the pinned few.
+   Same chip-with-an-invisible-select shape as the view control below, and
+   deliberately quieter than a filter chip — it is a way in, not a filter, and
+   styling it like one would read as a fourth filter called "5 more". */
+.budget-filter-bar__more {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 8px;
+  border: 1px dashed var(--border-color);
+  border-radius: var(--border-radius-md);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.budget-filter-bar__more:hover {
+  color: var(--text-primary);
+  border-color: var(--color-accent);
+}
+
+.budget-filter-bar__more:has(.budget-filter-bar__more-select:focus-visible) {
+  border-color: var(--color-accent);
+  box-shadow: var(--input-focus-shadow);
+}
+
+.budget-filter-bar__more-select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  appearance: none;
+  border: none;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.budget-filter-bar__more-label,
+.budget-filter-bar__more-caret {
+  pointer-events: none;
+}
+
+.budget-filter-bar__more-caret {
+  flex-shrink: 0;
+  opacity: 0.75;
+}
+
 .budget-filter-bar__view {
   position: relative;
   display: inline-flex;
