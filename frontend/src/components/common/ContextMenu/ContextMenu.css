@@ -10,9 +10,50 @@
   box-shadow: var(--shadow-lg);
   padding: var(--spacing-xs) 0;
   min-width: 180px;
+  /* The filter box stays put and the items scroll under it. The panel clips
+     rather than scrolling so the rounded corners survive an inner scrollbar
+     — the same shape Dialog uses. */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: var(--z-dropdown);
+}
+
+.context-menu__list {
   overflow-y: auto;
   overscroll-behavior: contain;
-  z-index: var(--z-dropdown);
+}
+
+.context-menu__search {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  flex-shrink: 0;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  margin-bottom: var(--spacing-xs);
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+}
+
+.context-menu__search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+}
+
+.context-menu__search input:focus {
+  outline: none;
+}
+
+.context-menu__empty {
+  margin: 0;
+  padding: var(--spacing-sm) var(--spacing-md);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
 }
 
 .context-menu__item {

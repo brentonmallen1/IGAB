@@ -30,6 +30,34 @@ function currentViewport(): Viewport {
   }
 }
 
+/**
+ * How tall the panel would be if nothing capped it.
+ *
+ * Reading `scrollHeight` directly is self-defeating for half the panels here,
+ * and silently so. Where the panel ITSELF scrolls (ContextMenu) it reports the
+ * full content height and all is well. Where the panel is a flex column whose
+ * BODY scrolls — InfoPopover, TagPicker, AssignDropdown, MoveMoneyPopover —
+ * the body shrinks into whatever cap this hook last handed down, so the panel
+ * measures exactly the cap. Feed that back in and the panel always appears to
+ * fit the room it was given, so it never flips: measured 300 against a 300px
+ * cap while the real content wanted 740.
+ *
+ * Lifting the cap for the read costs a synchronous reflow, and only when the
+ * panel opens or its content resizes. It happens inside a layout effect or a
+ * ResizeObserver callback, both of which run before paint, so nothing is drawn
+ * at the uncapped size.
+ */
+function naturalHeight(panel: HTMLElement | null | undefined): number | undefined {
+  if (!panel) return undefined
+  const capped = panel.style.maxHeight
+  panel.style.maxHeight = 'none'
+  const height = panel.scrollHeight
+  panel.style.maxHeight = capped
+  // A panel that has not painted yet measures 0; fall back rather than
+  // believe it.
+  return height || undefined
+}
+
 /** Where a right-click happened. Passed instead of a ref when the thing the
  *  panel hangs off is a point rather than a control — a context menu opened
  *  on a table row has no button to measure. */
@@ -83,12 +111,7 @@ export function useAnchoredPosition(
       ? elementRef.current?.getBoundingClientRect()
       : { top: pointY, bottom: pointY, left: pointX, width: 0 }
     if (!rect) return
-    // scrollHeight, not offsetHeight: the panel is already wearing the
-    // maxHeight this hook gave it, so its *rendered* height is the answer we
-    // handed down last time. scrollHeight is what the content actually wants,
-    // which is what decides the side. A panel that has not painted yet
-    // measures 0, so fall back rather than believe it.
-    const measured = panelRef?.current?.scrollHeight || undefined
+    const measured = naturalHeight(panelRef?.current)
     // Only when the caller states no width of its own: a menu sizes to its
     // longest label, so the horizontal clamp has nothing to work from until
     // the panel exists. Callers that pass a width keep it — measuring one they

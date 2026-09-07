@@ -257,6 +257,8 @@ export function BudgetPage() {
           </FloatingSelectionBar.Button>
           {moveMenuOpen && (
             <ContextMenu
+              searchable
+              searchPlaceholder="Search groups…"
               items={groupMenuItems}
               onSelect={(id) => {
                 handleMoveToGroup(id)
