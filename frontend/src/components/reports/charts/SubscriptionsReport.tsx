@@ -21,6 +21,7 @@ import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ChartTooltip } from './ChartTooltip'
 import { ReportRangeSelect } from './rangeSelect'
+import { useReportMonths } from '../../../stores/reportStore'
 
 interface Props {
   budgetId: string
@@ -29,7 +30,7 @@ interface Props {
 export function SubscriptionsReport({ budgetId }: Props) {
   const { formatMoney, formatDate, settings } = useFormatters()
   const currencySymbol = getCurrencySymbol(settings.currencyCode)
-  const [months, setMonths] = useState(12)
+  const months = useReportMonths()
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const { data, isLoading, isError, error, refetch } = useSubscriptionsReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
@@ -84,7 +85,7 @@ export function SubscriptionsReport({ budgetId }: Props) {
           </p>
           <ReportScopeNote scope="on-budget" />
         </ReportInfoButton>
-        <ReportRangeSelect months={months} onChange={setMonths} />
+        <ReportRangeSelect />
         <div style={{ marginLeft: 'auto' }}>
           <ReportExportButton
             reportId="subscriptions"

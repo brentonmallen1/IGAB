@@ -21,6 +21,7 @@ import { ReportInfoButton, ReportScopeNote, SpendingClassNote } from '../ReportI
 import { LogScaleToggle, logAxisProps } from './logScale'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ReportRangeSelect } from './rangeSelect'
+import { useReportMonths } from '../../../stores/reportStore'
 
 interface Props {
   budgetId: string
@@ -29,7 +30,7 @@ interface Props {
 export function BurnRateReport({ budgetId }: Props) {
   const chartHeight = useChartHeight(320)
   const { formatMoney } = useFormatters()
-  const [months, setMonths] = useState(12)
+  const months = useReportMonths()
   const [logScale, setLogScale] = useState(false)
   const { data, isLoading, isError, error, refetch } = useBurnRateReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
@@ -65,7 +66,7 @@ export function BurnRateReport({ budgetId }: Props) {
         </ReportInfoButton>
         <p className="report-section__subtitle">Monthly spending rolling averages</p>
         <div className="flex-row ms-auto">
-          <ReportRangeSelect months={months} onChange={setMonths} />
+          <ReportRangeSelect />
           <LogScaleToggle enabled={logScale} onToggle={() => setLogScale((v) => !v)} />
           <ReportExportButton
             reportId="burn-rate"

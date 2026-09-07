@@ -1,5 +1,6 @@
 import { useReportRange } from '../../../api/reports'
 import { useAppStore } from '../../../stores/appStore'
+import { useReportMonths, useReportStore } from '../../../stores/reportStore'
 
 /**
  * The month-range picker every report chart carries.
@@ -16,6 +17,11 @@ import { useAppStore } from '../../../stores/appStore'
  * as an empty window — and it is also why "All time" is resolved to a real
  * number here rather than sent as a sentinel the nine report endpoints would
  * each have to interpret.
+ *
+ * The window itself is SHARED, not a prop: it lives in `reportStore` so that
+ * choosing 6 months survives moving to another report. Sixteen reports each
+ * held it in `useState(12)`, and the tabs are separate components, so the one
+ * holding the choice was unmounted the moment you left it.
  *
  * Sits beside LogScaleToggle, which is the same idea for the same toolbar.
  */
@@ -51,13 +57,9 @@ export function rangeOptions(monthsAvailable: number, current: number): RangeOpt
   return options.some((o) => o.months === current) ? options : [...options, label(current)]
 }
 
-export function ReportRangeSelect({
-  months,
-  onChange,
-}: {
-  months: number
-  onChange: (months: number) => void
-}) {
+export function ReportRangeSelect() {
+  const months = useReportMonths()
+  const setMonths = useReportStore((s) => s.setRangeMonths)
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const { data: range } = useReportRange(budgetId)
   const options = rangeOptions(range?.months_available ?? 0, months)
@@ -66,7 +68,7 @@ export function ReportRangeSelect({
     <select
       className="report-select"
       value={months}
-      onChange={(e) => onChange(Number(e.target.value))}
+      onChange={(e) => setMonths(Number(e.target.value))}
       aria-label="Date range"
     >
       {options.map((o) => (

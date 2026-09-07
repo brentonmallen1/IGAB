@@ -25,6 +25,7 @@ import { ReportInfoButton } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ChartTooltip } from './ChartTooltip'
 import { COLOR_NEGATIVE, COLOR_NET, COLOR_POSITIVE } from './chartColors'
+import { useReportMonths } from '../../../stores/reportStore'
 
 interface Props {
   budgetId: string
@@ -37,7 +38,7 @@ export function CategoryHistoryReport({ budgetId }: Props) {
   const currencySymbol = getCurrencySymbol(settings.currencyCode)
   const chartHeight = useChartHeight(320)
   const [categoryId, setCategoryId] = useState('')
-  const [months, setMonths] = useState(12)
+  const months = useReportMonths()
   const captureRef = useRef<HTMLDivElement>(null)
   const { data: categories = [] } = useCategories(budgetId)
   const { data: groups = [] } = useCategoryGroups(budgetId)
@@ -91,7 +92,7 @@ export function CategoryHistoryReport({ budgetId }: Props) {
             <option value="">Pick a category…</option>
             <GroupedCategoryOptions groups={sections} />
           </select>
-          <ReportRangeSelect months={months} onChange={setMonths} />
+          <ReportRangeSelect />
         </div>
         <div style={{ marginLeft: 'auto' }}>
           <ReportExportButton

@@ -1,6 +1,6 @@
-import { useRef, useState } from 'react'
+import { useRef } from 'react'
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, XAxis, YAxis } from 'recharts'
-import { useReportStore } from '../../../stores/reportStore'
+import { useReportMonths, useReportStore } from '../../../stores/reportStore'
 import { useCostOfLivingReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { getCurrencySymbol } from '../../../utils/money'
@@ -34,7 +34,7 @@ const UNCATEGORIZED = 'Uncategorized'
 export function CostOfLivingReport({ budgetId }: Props) {
   const { formatMoney, settings } = useFormatters()
   const currencySymbol = getCurrencySymbol(settings.currencyCode)
-  const [months, setMonths] = useState(12)
+  const months = useReportMonths()
   const { data, isLoading, isError, error, refetch } = useCostOfLivingReport(budgetId, months)
   const setDrillDown = useReportStore((s) => s.setDrillDown)
   const captureRef = useRef<HTMLDivElement>(null)
@@ -99,7 +99,7 @@ export function CostOfLivingReport({ budgetId }: Props) {
           </p>
           <ReportScopeNote scope="on-budget" />
         </ReportInfoButton>
-        <ReportRangeSelect months={months} onChange={setMonths} />
+        <ReportRangeSelect />
         <div style={{ marginLeft: 'auto' }}>
           <ReportExportButton
             reportId="cost-of-living"

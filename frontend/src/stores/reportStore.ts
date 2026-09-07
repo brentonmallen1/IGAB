@@ -310,12 +310,29 @@ export interface DrillDownContext {
   endDate: string
 }
 
+/** The window a month-based report opens on before anyone has chosen one. */
+export const DEFAULT_RANGE_MONTHS = 12
+
 interface ReportState {
   activeTab: ReportTab
   filters: ReportFilters
+  /** How many months the month-windowed reports show.
+   *
+   *  Sixteen reports each held this in `useState(12)`, and the tabs are
+   *  separate components — so switching report unmounted the one holding the
+   *  choice and the next one initialised its own copy. Picking 6 months and
+   *  finding 12 again one tab later is not a preference being ignored, it is
+   *  sixteen preferences that never knew about each other.
+   *
+   *  It sits beside `filters` rather than inside it because it is not part of
+   *  the scope the server resolves: the reports that take it turn it into
+   *  their own window, and the ones that do not (`TAB_FILTER_SUPPORT.dates`)
+   *  never see it. */
+  rangeMonths: number
   drillDown: DrillDownContext | null
 
   setActiveTab: (tab: ReportTab) => void
+  setRangeMonths: (months: number) => void
   setFilters: (filters: Partial<ReportFilters>) => void
   setDrillDown: (ctx: DrillDownContext | null) => void
   resetFilters: () => void
@@ -342,9 +359,13 @@ export const useReportStore = create<ReportState>()(
     (set) => ({
       activeTab: 'overview',
       filters: defaultFilters(),
+      rangeMonths: DEFAULT_RANGE_MONTHS,
       drillDown: null,
 
       setActiveTab: (tab) => set({ activeTab: tab, drillDown: null }),
+      // Clears the drill for the same reason a filter change does: the open
+      // panel's window was resolved against the window that just moved.
+      setRangeMonths: (months) => set({ rangeMonths: months, drillDown: null }),
       // Filter changes invalidate the drill context (its window/ids were
       // resolved against the previous filters)
       setFilters: (partial) =>
@@ -354,7 +375,11 @@ export const useReportStore = create<ReportState>()(
     }),
     {
       name: PERSIST_KEYS.reports,
-      partialize: (s) => ({ activeTab: s.activeTab, filters: s.filters }),
+      partialize: (s) => ({
+        activeTab: s.activeTab,
+        filters: s.filters,
+        rangeMonths: s.rangeMonths,
+      }),
       // A state persisted before a filter field existed arrives without it,
       // and `filters.tagIds.length` on undefined is a blank Reports page for
       // anyone who used the tab before upgrading. Filling from the defaults
@@ -384,4 +409,16 @@ export const useReportStore = create<ReportState>()(
 export function useReportScope(): ReportScope {
   const { categoryIds, tagIds, filterId } = useReportStore((s) => s.filters)
   return useMemo(() => ({ categoryIds, tagIds, filterId }), [categoryIds, tagIds, filterId])
+}
+
+/**
+ * The shared month window a report draws.
+ *
+ * Read-only on purpose: `ReportRangeSelect` is the only thing that sets it,
+ * and every report renders that control rather than wiring its own. Sixteen
+ * of them used to own a `useState(12)` and hand it down, which is exactly how
+ * the window came to mean something different on each tab.
+ */
+export function useReportMonths(): number {
+  return useReportStore((s) => s.rangeMonths)
 }

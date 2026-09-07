@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef } from 'react'
 import {
   Area,
   AreaChart,
@@ -20,6 +20,7 @@ import { COLOR_NEGATIVE, COLOR_NET, COLOR_POSITIVE } from './chartColors'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ReportRangeSelect } from './rangeSelect'
+import { useReportMonths } from '../../../stores/reportStore'
 
 interface Props {
   budgetId: string
@@ -28,7 +29,7 @@ interface Props {
 export function NetWorthReport({ budgetId }: Props) {
   const chartHeight = useChartHeight(340)
   const { formatMoney } = useFormatters()
-  const [months, setMonths] = useState(12)
+  const months = useReportMonths()
   const { data, isLoading, isError, error, refetch } = useNetWorthReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
 
@@ -63,7 +64,7 @@ export function NetWorthReport({ budgetId }: Props) {
           <ReportScopeNote scope="all-accounts" />
         </ReportInfoButton>
         <div className="flex-row ms-auto">
-          <ReportRangeSelect months={months} onChange={setMonths} />
+          <ReportRangeSelect />
           <ReportExportButton
             reportId="net-worth"
             getRows={() =>

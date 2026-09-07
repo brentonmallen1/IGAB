@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react'
+import { useMemo, useRef } from 'react'
 import {
   Area,
   AreaChart,
@@ -22,6 +22,7 @@ import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ChartTooltip } from './ChartTooltip'
 import './SavingsReport.css'
+import { useReportMonths } from '../../../stores/reportStore'
 
 interface Props {
   budgetId: string
@@ -31,7 +32,7 @@ export function SavingsReport({ budgetId }: Props) {
   const navigate = useNavigate()
   const { formatMoney, formatDate, settings } = useFormatters()
   const currencySymbol = getCurrencySymbol(settings.currencyCode)
-  const [months, setMonths] = useState(12)
+  const months = useReportMonths()
   const { data, isLoading, isError, error, refetch } = useSavingsReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
 
@@ -88,7 +89,7 @@ export function SavingsReport({ budgetId }: Props) {
           <ReportScopeNote scope="categories" />
         </ReportInfoButton>
         <div className="flex-row">
-          <ReportRangeSelect months={months} onChange={setMonths} />
+          <ReportRangeSelect />
         </div>
         <div style={{ marginLeft: 'auto' }}>
           <ReportExportButton
