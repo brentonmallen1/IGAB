@@ -99,6 +99,7 @@ from igab.services.report_basics import (
 from igab.services.report_basics import (
     subscriptions_report as subscriptions_report_data,
 )
+from igab.services.report_scope import resolve_category_scope
 from igab.services.report_service import ReportService
 
 
@@ -413,23 +414,20 @@ async def spending_trends_report(
     today = date.today()
     start = start_date or today.replace(day=1)
     end = end_date or today
-    scope: set[uuid.UUID] = set(_parse_uuids(category_ids) or [])
-    filter_unavailable = False
-    if filter_id is not None:
-        saved = await filter_repo.get_with_categories(filter_id)
-        if saved is None or saved.budget_id != budget_id:
-            filter_unavailable = True
-        else:
-            scope |= set((await filter_repo.effective_category_ids([saved]))[saved.id])
-    tags = _parse_uuids(tag_ids)
-    if tags:
-        scope |= await tag_repo.get_category_ids_by_tags(budget_id, tags)
+    scope = await resolve_category_scope(
+        budget_id,
+        category_ids=_parse_uuids(category_ids),
+        filter_id=filter_id,
+        tag_ids=_parse_uuids(tag_ids),
+        filter_repo=filter_repo,
+        tag_repo=tag_repo,
+    )
     data = await spending_trends(
         report_svc,
         budget_id,
         start,
         end,
-        sorted(scope, key=str) or None,
+        scope.category_ids,
         _parse_uuids(account_ids),
         _spending_classes(include_savings),
     )
@@ -439,7 +437,7 @@ async def spending_trends_report(
         monthly_totals=data["monthly_totals"],
         total=data["total"],
         class_excluded=[SpendingClassExcluded.model_validate(c) for c in data["class_excluded"]],
-        filter_unavailable=filter_unavailable,
+        filter_unavailable=scope.filter_unavailable,
     )
 
 

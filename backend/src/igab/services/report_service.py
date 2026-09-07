@@ -190,6 +190,25 @@ def _magnitude(buckets: dict[str, Decimal], cls: ActivityClass) -> Decimal:
     return -buckets.get(cls.value, Decimal("0"))
 
 
+def scoped(q, column, ids: Sequence[uuid.UUID] | None):
+    """Apply a category (or account) scope to a report query.
+
+    The one statement of a distinction the reports have to keep: **None means
+    no scope was asked for; an empty list means a scope was asked for and
+    nothing matched.** `if ids:` conflates them, and the conflation is not
+    academic — scope a report to a tag nobody has applied yet and it answers
+    with the entire budget, which reads as the tag being ignored.
+
+    `in_([])` renders as a false predicate, so an empty scope correctly returns
+    no rows.
+
+    Written once because it was written five times: every report query builder
+    below had its own `if category_ids:`, and a sixth would have been written
+    the same way.
+    """
+    return q if ids is None else q.where(column.in_(ids))
+
+
 class ReportService:
     def __init__(self, session: AsyncSession) -> None:
         self.txns = TransactionRepository(session)
@@ -244,8 +263,7 @@ class ReportService:
                 _spending_classes(include_classes, scoped_accounts=bool(account_ids)),
             )
         )
-        if category_ids:
-            q = q.where(Transaction.category_id.in_(category_ids))
+        q = scoped(q, Transaction.category_id, category_ids)
         if account_ids:
             q = q.where(Transaction.account_id.in_(account_ids))
         else:
@@ -1409,9 +1427,8 @@ class ReportService:
             _spending_classes(),
         )
         spend_q = apply_class_joins(spend_q)
-        if category_ids:
-            assign_q = assign_q.where(BudgetAssignment.category_id.in_(category_ids))
-            spend_q = spend_q.where(Transaction.category_id.in_(category_ids))
+        assign_q = scoped(assign_q, BudgetAssignment.category_id, category_ids)
+        spend_q = scoped(spend_q, Transaction.category_id, category_ids)
 
         assignments = (await self.session.execute(assign_q)).all()
         spending = (await self.session.execute(spend_q)).all()
@@ -1806,8 +1823,7 @@ class ReportService:
                 SPENT_ENVELOPE,
             )
         )
-        if category_ids:
-            q = q.where(Transaction.category_id.in_(category_ids))
+        q = scoped(q, Transaction.category_id, category_ids)
         if account_ids:
             q = q.where(Transaction.account_id.in_(account_ids))
         else:
@@ -2303,8 +2319,7 @@ class ReportService:
             LEAF,
             CASH_FLOW_ROW,
         )
-        if category_ids:
-            q = q.where(Transaction.category_id.in_(category_ids))
+        q = scoped(q, Transaction.category_id, category_ids)
         if account_ids:
             q = q.where(Transaction.account_id.in_(account_ids))
         else:
@@ -2422,8 +2437,7 @@ class ReportService:
                 CASH_FLOW_ROW,
             )
         )
-        if category_ids:
-            q = q.where(Transaction.category_id.in_(category_ids))
+        q = scoped(q, Transaction.category_id, category_ids)
         if account_ids:
             q = q.where(Transaction.account_id.in_(account_ids))
         else:
