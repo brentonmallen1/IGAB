@@ -249,10 +249,24 @@ prod:
     docker compose --profile production up -d
 
 # Create a GitHub release (triggers CI to build and publish images)
-release VERSION:
+#   just release v2026.09.8 notes.md
+release VERSION NOTES:
     #!/usr/bin/env bash
     set -euo pipefail
     version="{{VERSION}}"
+    # Notes are written, never generated. --generate-notes emits a flat list of
+    # PR titles, which reads as a list of branches rather than as what changed:
+    # a reader cannot tell a new report from a dependency bump, and one feature
+    # split across four stacked PRs appears four times. The house style is
+    # feature sections, then Fixes, then Smaller things — see v2026.09.3 and
+    # v2026.09.4. Three releases in a row were cut flat because the recipe
+    # defaulted to generating them, so the recipe now asks.
+    if [ ! -f "{{NOTES}}" ]; then
+        echo "Error: notes file not found: {{NOTES}}"
+        echo "  Write the release notes first, then pass the file:"
+        echo "    just release $version notes.md"
+        exit 1
+    fi
     # Ensure version starts with 'v'
     [[ "$version" == v* ]] || version="v$version"
     # Validate version format (semver or calver)
@@ -283,8 +297,8 @@ release VERSION:
         echo "  Land the work via a PR, then: git pull --ff-only origin main"
         exit 1
     fi
-    # Create release (also creates the tag) with auto-generated notes
-    gh release create "$version" --generate-notes --latest
+    # Create release (also creates the tag)
+    gh release create "$version" --notes-file "{{NOTES}}" --latest
     echo "✓ Released $version"
     echo "  CI will build and publish images to ghcr.io"
     echo "  Release: https://github.com/brentonmallen1/IGAB/releases/tag/$version"
