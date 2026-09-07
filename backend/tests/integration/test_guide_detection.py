@@ -122,6 +122,53 @@ class TestEmergencyFund:
         assert "may also be holding other plans" in found.reason
         assert found.entities["account"] == [account.id]
 
+    async def test_an_empty_envelope_does_not_hide_a_funded_account(self, db_session):
+        """The reported case, and the one the precedence order got wrong.
+
+        Money moved into a savings ACCOUNT without ever being assigned to an
+        emergency envelope: the savings-rate report showed a household saving
+        steadily while Essentials read $0.00 — which is "we found it and it is
+        empty", not "we found nothing". The category matched first and ended
+        the search. Strongest-signal-first still holds; a signal that found
+        nothing simply no longer outranks one that found money.
+        """
+        budget = await _budget(db_session)
+        # The envelope exists and is empty — nothing was ever assigned to it.
+        await _savings_category(db_session, budget, "Emergency Fund", tagged=True)
+        account = await create_account(db_session, budget, account_type="savings")
+        await create_transaction(db_session, budget, account, "5000.00", TODAY)
+
+        found = await GuideDetection(db_session).emergency_fund(budget.id)
+
+        assert found.value == Decimal("5000.00")
+        assert "may also be holding other plans" in found.reason
+
+    async def test_a_funded_envelope_still_wins_over_an_account(self, db_session):
+        """The fallback is a fallback: it only applies where the better signal
+        came up empty."""
+        budget = await _budget(db_session)
+        cat = await _savings_category(db_session, budget, "Emergency Fund", tagged=True)
+        await create_budget_assignment(db_session, budget, cat, THIS_MONTH, "900.00")
+        account = await create_account(db_session, budget, account_type="savings")
+        await create_transaction(db_session, budget, account, "5000.00", TODAY)
+
+        found = await GuideDetection(db_session).emergency_fund(budget.id)
+
+        assert found.value == Decimal("900.00")
+        assert "tagged Savings" in found.reason
+
+    async def test_an_empty_envelope_with_nothing_else_still_reports_zero(self, db_session):
+        """Zero is an answer when it is the only one — distinct from "we could
+        not find anything", which is what the page tells the user."""
+        budget = await _budget(db_session)
+        await _savings_category(db_session, budget, "Emergency Fund", tagged=True)
+
+        found = await GuideDetection(db_session).emergency_fund(budget.id)
+
+        assert found.value == Decimal("0")
+        assert found.met is False
+        assert "tagged Savings" in found.reason
+
     async def test_admits_when_it_cannot_tell(self, db_session):
         budget = await _budget(db_session)
         group = await create_category_group(db_session, budget, "Bills")

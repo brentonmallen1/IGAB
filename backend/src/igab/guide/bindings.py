@@ -150,5 +150,22 @@ def resolve(concept_key: str, rows: Sequence[BindingRow]) -> Resolution:
     )
 
 
+def fold_external(detected: Decimal | None, external: Decimal | None) -> Decimal | None:
+    """What a concept is worth: what IGAB can see, plus what the person told it.
+
+    None only when neither exists — a declared amount with nothing detected is
+    still an answer, and so is the reverse.
+
+    This is one rule with two readers, and they had drifted. The Guide folded
+    both; `report_basics.emergency_fund` read the detection alone, under a
+    docstring promising "One reader ... so the Essentials report and the
+    roadmap quote the same balance". They could differ by exactly the declared
+    amount, and the report was the one that read low.
+    """
+    if detected is None and external is None:
+        return None
+    return (detected or Decimal("0")) + (external or Decimal("0"))
+
+
 def resolve_all(keys: Sequence[str], rows: Sequence[BindingRow]) -> dict[str, Resolution]:
     return {key: resolve(key, rows) for key in keys}

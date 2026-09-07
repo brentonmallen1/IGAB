@@ -16,6 +16,7 @@ import { MetricCard } from '../MetricCard'
 import { MetricRow } from '../MetricRow'
 import { ReportInfoButton } from '../ReportInfoButton'
 import { ReportErrorState } from '../ReportErrorState'
+import { ReportRangeSelect } from './rangeSelect'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ChartTooltip } from './ChartTooltip'
 import { CHART_COLORS, COLOR_NET } from './chartColors'
@@ -25,8 +26,6 @@ import './EssentialsReport.css'
 interface Props {
   budgetId: string
 }
-
-const WINDOWS = [6, 12, 24] as const
 
 /**
  * What a lean month costs, from what the household tagged Essential — and
@@ -40,7 +39,7 @@ const WINDOWS = [6, 12, 24] as const
  */
 export function EssentialsReport({ budgetId }: Props) {
   const { formatMoney, formatMonth } = useFormatters()
-  const [months, setMonths] = useState<(typeof WINDOWS)[number]>(12)
+  const [months, setMonths] = useState(12)
   const { data, isLoading, isError, error, refetch } = useEssentialsReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
 
@@ -73,19 +72,7 @@ export function EssentialsReport({ budgetId }: Props) {
             </p>
           </ReportInfoButton>
           <div className="flex-row ms-auto">
-            <div className="essentials-report__windows" role="group" aria-label="Months of history">
-              {WINDOWS.map((n) => (
-                <button
-                  key={n}
-                  type="button"
-                  className={`report-btn ${n === months ? 'report-btn--active' : ''}`}
-                  aria-pressed={n === months}
-                  onClick={() => setMonths(n)}
-                >
-                  {n}mo
-                </button>
-              ))}
-            </div>
+            <ReportRangeSelect months={months} onChange={setMonths} />
             <ReportExportButton
               reportId="essentials"
               getRows={() => [

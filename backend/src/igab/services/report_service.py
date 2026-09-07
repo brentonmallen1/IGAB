@@ -57,7 +57,6 @@ from igab.repositories.txn_filters import (
     PARENT_ROW,
     PLANNED_SPEND_ROW,
     POSTED,
-    category_tagged,
 )
 from igab.services.report_basics import _months_in_range, _subtract_months, emergency_fund
 
@@ -92,17 +91,6 @@ class ChronicCategory(TypedDict):
     total_spent: Decimal
     avg_overspend: Decimal
     chronic: bool
-
-
-class SubscriptionRow(TypedDict):
-    payee_id: str | None
-    payee_name: str
-    monthly_amounts: list[Decimal]
-    total: Decimal
-    avg_monthly: Decimal
-    avg_per_charge: Decimal
-    last_charge_date: date | None
-    transaction_count: int
 
 
 class SavingsCategory(TypedDict):
@@ -2487,148 +2475,6 @@ class ReportService:
         ]
 
     # ─── Subscriptions Report ─────────────────────────────────────────────────
-
-    async def subscriptions_report(self, budget_id: uuid.UUID, months: int = 12) -> dict:
-        """Recurring charges: every posted outflow filed to a category tagged
-        Subscription, grouped by payee so each service reads as its own line.
-
-        The tag lives on categories (repositories/tag_repo.py
-        CATEGORY_ONLY_SYSTEM_KEYS); it used to live on payees, and a payee
-        the household never got round to tagging simply vanished from here.
-        A row with no payee still counts, under "No payee".
-        """
-        from igab.repositories.tag_repo import TagRepository
-
-        tag_repo = TagRepository(self.session)
-        tagged = await tag_repo.get_category_ids_by_system_keys(budget_id, ["subscription"])
-        if not tagged:
-            return {
-                "subscriptions": [],
-                "summary": {
-                    "total_monthly": Decimal("0"),
-                    "total_annual": Decimal("0"),
-                    "active_count": 0,
-                },
-                "months": [],
-            }
-
-        # Date range
-        today = date.today()
-        end_date = today
-        start_date = _subtract_months(today, months).replace(day=1)
-        month_list = _months_in_range(start_date, end_date)
-
-        q = (
-            select(
-                Transaction.payee_id,
-                Payee.name.label("payee_name"),
-                Transaction.date,
-                Transaction.amount,
-            )
-            .outerjoin(Payee, Payee.id == Transaction.payee_id)
-            .where(
-                Transaction.budget_id == budget_id,
-                category_tagged("subscription"),
-                NOT_DELETED,
-                POSTED,
-                Transaction.amount < 0,  # outflows only
-                Transaction.date >= start_date,
-                Transaction.date <= end_date,
-                LEAF,
-                ON_BUDGET_ACCOUNT,
-            )
-        )
-        rows = (await self.session.execute(q)).all()
-
-        if not rows:
-            return {
-                "subscriptions": [],
-                "summary": {
-                    "total_monthly": Decimal("0"),
-                    "total_annual": Decimal("0"),
-                    "active_count": 0,
-                },
-                "months": [m for m in month_list],
-            }
-
-        # Build DataFrame for aggregation. The sentinel keeps a payee-less
-        # charge in the report; the schema's payee_id is optional for it.
-        df = pl.DataFrame(
-            {
-                "payee_id": [str(r.payee_id) if r.payee_id else "__none__" for r in rows],
-                "payee_name": [r.payee_name or "No payee" for r in rows],
-                "month": [r.date.replace(day=1) for r in rows],
-                "date": [r.date for r in rows],
-                "amount": [abs(float(r.amount)) for r in rows],
-            }
-        )
-
-        # Per-payee monthly aggregation
-        payee_monthly = df.group_by(["payee_id", "payee_name", "month"]).agg(
-            pl.col("amount").sum().alias("monthly_total")
-        )
-
-        # Build subscription items
-        subscriptions: list[SubscriptionRow] = []
-        for payee_id in df["payee_id"].unique().to_list():
-            payee_rows = payee_monthly.filter(pl.col("payee_id") == payee_id)
-            payee_name = payee_rows["payee_name"][0]
-
-            # Monthly amounts for each month in the range
-            monthly_amounts = []
-            for m in month_list:
-                row = payee_rows.filter(pl.col("month") == m)
-                if len(row) > 0:
-                    monthly_amounts.append(Decimal(str(round(row["monthly_total"][0], 4))))
-                else:
-                    monthly_amounts.append(Decimal("0"))
-
-            total = sum(monthly_amounts, Decimal("0"))
-
-            # Last charge date and count
-            payee_txns = df.filter(pl.col("payee_id") == payee_id)
-            last_charge = max(payee_txns["date"].to_list()) if len(payee_txns) > 0 else None
-            txn_count = len(payee_txns)
-
-            # avg_monthly is the TRUE monthly burden: total spread over the
-            # months since the first charge, not the average charged month —
-            # a quarterly $30 sub costs $10/mo, not $30/mo.
-            first_charged_idx = next((i for i, a in enumerate(monthly_amounts) if a > 0), None)
-            if first_charged_idx is None:
-                avg_monthly = Decimal("0")
-            else:
-                avg_monthly = total / (len(month_list) - first_charged_idx)
-            avg_per_charge = total / txn_count if txn_count else Decimal("0")
-
-            subscriptions.append(
-                {
-                    "payee_id": None if payee_id == "__none__" else payee_id,
-                    "payee_name": payee_name,
-                    "monthly_amounts": monthly_amounts,
-                    "total": total,
-                    "avg_monthly": quantize_cents(avg_monthly),
-                    "avg_per_charge": quantize_cents(avg_per_charge),
-                    "last_charge_date": last_charge,
-                    "transaction_count": txn_count,
-                }
-            )
-
-        # Sort by total descending
-        subscriptions.sort(key=lambda x: x["total"], reverse=True)
-
-        # Summary
-        total_monthly = sum((s["avg_monthly"] for s in subscriptions), Decimal("0"))
-        total_annual = total_monthly * 12
-
-        return {
-            "subscriptions": subscriptions,
-            "summary": {
-                "total_monthly": quantize_cents(total_monthly),
-                "total_annual": quantize_cents(total_annual),
-                "active_count": len(subscriptions),
-            },
-            "months": month_list,
-        }
 
     async def _class_frame(self, budget_id: uuid.UUID, start: date, end: date) -> pl.DataFrame:
         """(date, amount, class) for on-budget leaf rows, for window slicing.

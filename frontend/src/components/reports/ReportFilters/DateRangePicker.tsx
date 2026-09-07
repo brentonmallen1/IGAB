@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { Calendar } from 'lucide-react'
+import { useAppStore } from '../../../stores/appStore'
+import { useReportRange } from '../../../api/reports'
 import './DateRangePicker.css'
 
 interface Props {
@@ -82,8 +84,25 @@ const PRESETS: Preset[] = [
   },
 ]
 
+/** "All time" needs the budget's own history, so it cannot be a static preset
+ *  like the others. Resolved to a real date here, exactly as the months-based
+ *  picker resolves its own "All time" to a real month count — no sentinel
+ *  travels to the server either way. */
+function allTimePreset(earliestMonth: string): Preset {
+  return {
+    label: 'All Time',
+    getValue: () => ({ start: earliestMonth, end: toISO(new Date()) }),
+  }
+}
+
 export function DateRangePicker({ startDate, endDate, onChange }: Props) {
   const [showCustom, setShowCustom] = useState(false)
+  const budgetId = useAppStore((s) => s.currentBudgetId)
+  const { data: range } = useReportRange(budgetId)
+  // Absent on an empty budget, where "all time" would be an empty range.
+  const presets = range?.earliest_month
+    ? [...PRESETS, allTimePreset(range.earliest_month)]
+    : PRESETS
 
   function applyPreset(preset: Preset) {
     const { start, end } = preset.getValue()
@@ -92,7 +111,7 @@ export function DateRangePicker({ startDate, endDate, onChange }: Props) {
   }
 
   function activePreset() {
-    for (const p of PRESETS) {
+    for (const p of presets) {
       const { start, end } = p.getValue()
       if (start === startDate && end === endDate) return p.label
     }
@@ -104,7 +123,7 @@ export function DateRangePicker({ startDate, endDate, onChange }: Props) {
   return (
     <div className="drp">
       <div className="drp__presets">
-        {PRESETS.map((p) => (
+        {presets.map((p) => (
           <button
             key={p.label}
             className={`drp__preset ${active === p.label ? 'drp__preset--active' : ''}`}

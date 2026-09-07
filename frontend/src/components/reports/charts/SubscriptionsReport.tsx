@@ -1,4 +1,5 @@
-import { useState, useMemo, useRef } from 'react'
+import { Fragment, useState, useMemo, useRef } from 'react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import {
   Bar,
   BarChart,
@@ -19,17 +20,17 @@ import { chartColor } from './chartColors'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ChartTooltip } from './ChartTooltip'
+import { ReportRangeSelect } from './rangeSelect'
 
 interface Props {
   budgetId: string
 }
 
-const MONTH_OPTIONS = [6, 12, 24] as const
-
 export function SubscriptionsReport({ budgetId }: Props) {
   const { formatMoney, formatDate, settings } = useFormatters()
   const currencySymbol = getCurrencySymbol(settings.currencyCode)
-  const [months, setMonths] = useState<(typeof MONTH_OPTIONS)[number]>(12)
+  const [months, setMonths] = useState(12)
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const { data, isLoading, isError, error, refetch } = useSubscriptionsReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
 
@@ -46,7 +47,7 @@ export function SubscriptionsReport({ budgetId }: Props) {
       const entry: Record<string, string | number> = { month: label }
 
       for (const sub of subscriptions) {
-        entry[sub.payee_name] = sub.monthly_amounts[idx] ?? 0
+        entry[sub.category_name] = sub.monthly_amounts[idx] ?? 0
       }
 
       return entry
@@ -67,7 +68,8 @@ export function SubscriptionsReport({ budgetId }: Props) {
         <ReportInfoButton title="Subscriptions">
           <p>
             This report shows every charge filed to a category you&apos;ve tagged{' '}
-            <strong>Subscription</strong>, listed by payee.
+            <strong>Subscription</strong>, one line per category. Open a row to see which services
+            inside it are charging.
           </p>
           <p>
             To track subscriptions, open the category they are filed to (Streaming, Software…) on
@@ -82,30 +84,33 @@ export function SubscriptionsReport({ budgetId }: Props) {
           </p>
           <ReportScopeNote scope="on-budget" />
         </ReportInfoButton>
-        <div className="flex-row">
-          {MONTH_OPTIONS.map((m) => (
-            <button
-              key={m}
-              className={`report-btn ${months === m ? 'report-btn--active' : ''}`}
-              onClick={() => setMonths(m)}
-              type="button"
-            >
-              {m}mo
-            </button>
-          ))}
-        </div>
+        <ReportRangeSelect months={months} onChange={setMonths} />
         <div style={{ marginLeft: 'auto' }}>
           <ReportExportButton
             reportId="subscriptions"
             getRows={() =>
-              subscriptions.map((s) => ({
-                payee: s.payee_name,
-                avg_monthly: s.avg_monthly,
-                avg_per_charge: s.avg_per_charge,
-                total: s.total,
-                transaction_count: s.transaction_count,
-                last_charge: s.last_charge_date ?? '',
-              }))
+              // Both levels, flat: a spreadsheet wants the services as rows
+              // too, and the category column is what groups them there.
+              subscriptions.flatMap((s) => [
+                {
+                  category: s.category_name,
+                  payee: '',
+                  avg_monthly: s.avg_monthly,
+                  avg_per_charge: s.avg_per_charge,
+                  total: s.total,
+                  transaction_count: s.transaction_count,
+                  last_charge: s.last_charge_date ?? '',
+                },
+                ...s.payees.map((p) => ({
+                  category: s.category_name,
+                  payee: p.payee_name,
+                  avg_monthly: p.avg_monthly,
+                  avg_per_charge: p.avg_per_charge,
+                  total: p.total,
+                  transaction_count: p.transaction_count,
+                  last_charge: p.last_charge_date ?? '',
+                })),
+              ])
             }
             captureRef={captureRef}
           />
@@ -173,8 +178,8 @@ export function SubscriptionsReport({ budgetId }: Props) {
                 <Legend />
                 {subscriptions.slice(0, 10).map((sub, idx) => (
                   <Bar
-                    key={sub.payee_id}
-                    dataKey={sub.payee_name}
+                    key={sub.category_id}
+                    dataKey={sub.category_name}
                     stackId="stack"
                     fill={chartColor(idx)}
                   />
@@ -184,11 +189,13 @@ export function SubscriptionsReport({ budgetId }: Props) {
           </div>
 
           <table className="report-table">
-            <caption className="sr-only">Recurring charges by payee</caption>
+            <caption className="sr-only">
+              Recurring charges by category, expandable to the payees inside each one
+            </caption>
             <thead>
               <tr>
                 <th scope="col" style={{ textAlign: 'left' }}>
-                  Payee
+                  Category
                 </th>
                 <th scope="col" style={{ textAlign: 'right' }}>
                   Per Charge
@@ -208,18 +215,53 @@ export function SubscriptionsReport({ budgetId }: Props) {
               </tr>
             </thead>
             <tbody>
-              {subscriptions.map((sub) => (
-                <tr key={sub.payee_id}>
-                  <td>{sub.payee_name}</td>
-                  <td style={{ textAlign: 'right' }}>{formatMoney(sub.avg_per_charge)}</td>
-                  <td style={{ textAlign: 'right' }}>{formatMoney(sub.avg_monthly)}</td>
-                  <td style={{ textAlign: 'right' }}>{formatMoney(sub.total)}</td>
-                  <td style={{ textAlign: 'right' }}>{sub.transaction_count}</td>
-                  <td style={{ textAlign: 'right' }}>
-                    {sub.last_charge_date ? formatDate(sub.last_charge_date) : '—'}
-                  </td>
-                </tr>
-              ))}
+              {subscriptions.map((sub) => {
+                const open = expanded.has(sub.category_id)
+                return (
+                  <Fragment key={sub.category_id}>
+                    <tr>
+                      <td>
+                        <button
+                          type="button"
+                          className="subs-report__disclose"
+                          aria-expanded={open}
+                          onClick={() =>
+                            setExpanded((prev) => {
+                              const next = new Set(prev)
+                              if (!next.delete(sub.category_id)) next.add(sub.category_id)
+                              return next
+                            })
+                          }
+                        >
+                          {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                          {sub.category_name}
+                          <span className="subs-report__group">{sub.group_name}</span>
+                        </button>
+                      </td>
+                      <td style={{ textAlign: 'right' }}>{formatMoney(sub.avg_per_charge)}</td>
+                      <td style={{ textAlign: 'right' }}>{formatMoney(sub.avg_monthly)}</td>
+                      <td style={{ textAlign: 'right' }}>{formatMoney(sub.total)}</td>
+                      <td style={{ textAlign: 'right' }}>{sub.transaction_count}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        {sub.last_charge_date ? formatDate(sub.last_charge_date) : '—'}
+                      </td>
+                    </tr>
+                    {open &&
+                      sub.payees.map((p) => (
+                        <tr key={p.payee_id ?? '__none__'} className="subs-report__payee">
+                          <td>{p.payee_name}</td>
+                          <td style={{ textAlign: 'right' }}>{formatMoney(p.avg_per_charge)}</td>
+                          <td style={{ textAlign: 'right' }}>{formatMoney(p.avg_monthly)}</td>
+                          <td style={{ textAlign: 'right' }}>{formatMoney(p.total)}</td>
+                          <td style={{ textAlign: 'right' }}>{p.transaction_count}</td>
+                          <td style={{ textAlign: 'right' }}>
+                            {p.last_charge_date ? formatDate(p.last_charge_date) : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                  </Fragment>
+                )
+              })}
             </tbody>
           </table>
         </div>

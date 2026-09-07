@@ -14,6 +14,7 @@ import { useSavingsReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { getCurrencySymbol } from '../../../utils/money'
 import { ReportErrorState } from '../ReportErrorState'
+import { ReportRangeSelect } from './rangeSelect'
 import { MetricCard } from '../MetricCard'
 import { MetricRow } from '../MetricRow'
 import { chartColor } from './chartColors'
@@ -26,13 +27,11 @@ interface Props {
   budgetId: string
 }
 
-const MONTH_OPTIONS = [6, 12, 24] as const
-
 export function SavingsReport({ budgetId }: Props) {
   const navigate = useNavigate()
   const { formatMoney, formatDate, settings } = useFormatters()
   const currencySymbol = getCurrencySymbol(settings.currencyCode)
-  const [months, setMonths] = useState<(typeof MONTH_OPTIONS)[number]>(12)
+  const [months, setMonths] = useState(12)
   const { data, isLoading, isError, error, refetch } = useSavingsReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
 
@@ -89,16 +88,7 @@ export function SavingsReport({ budgetId }: Props) {
           <ReportScopeNote scope="categories" />
         </ReportInfoButton>
         <div className="flex-row">
-          {MONTH_OPTIONS.map((m) => (
-            <button
-              key={m}
-              className={`report-btn ${months === m ? 'report-btn--active' : ''}`}
-              onClick={() => setMonths(m)}
-              type="button"
-            >
-              {m}mo
-            </button>
-          ))}
+          <ReportRangeSelect months={months} onChange={setMonths} />
         </div>
         <div style={{ marginLeft: 'auto' }}>
           <ReportExportButton
