@@ -84,19 +84,31 @@ describe('LiabilitySettingsModal', () => {
     const account = screen.getByLabelText('Account') as HTMLInputElement
     expect(account.value).toBe('Car Loan')
     expect(account.readOnly).toBe(true)
-    expect(screen.queryByText('Where does the balance come from?')).not.toBeInTheDocument()
     expect(screen.queryByRole('combobox', { name: 'Account' })).not.toBeInTheDocument()
   })
 
-  it('offers only liability accounts when creating', () => {
+  it('asks for a balance when creating, and offers no account picker', () => {
+    // The picker it replaced could not offer anything. Every
+    // liability-classified account is given its companion when it is created,
+    // so "liability accounts not already backing a liability" was empty in
+    // every budget that has ever existed — and the form then refused to save
+    // without a selection from it. A liability created here is one the budget
+    // has no account for, which is the only kind this form can make.
     liabilities.splice(0, liabilities.length, companion())
     render(<LiabilitySettingsModal budgetId="b1" liability={null} onClose={() => {}} />)
 
-    screen.getByRole('radio', { name: /An account in this budget/ }).click()
-    const options = Array.from(
-      (screen.getByRole('combobox', { name: 'Account' }) as HTMLSelectElement).options
-    ).map((o) => o.textContent)
-    // Checking is an asset; Car Loan already backs a liability.
-    expect(options).toEqual(['Choose an account…', 'Visa'])
+    expect(screen.getByLabelText('Current balance owed')).toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: 'Account' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('radio', { name: /An account in this budget/ })).toBeNull()
+  })
+
+  it('lets a companion be cut loose from its account', () => {
+    // PATCH linked_account_id: null has always worked; the modal refused to
+    // send it, so the only route from managed to manual was deleting the
+    // account the liability was attached to.
+    liabilities.splice(0, liabilities.length, companion())
+    render(<LiabilitySettingsModal budgetId="b1" liability={companion()} onClose={() => {}} />)
+
+    expect(screen.getByRole('button', { name: /manage it by hand instead/i })).toBeInTheDocument()
   })
 })

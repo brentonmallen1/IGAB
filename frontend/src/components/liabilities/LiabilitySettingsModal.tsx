@@ -8,7 +8,6 @@ import { liabilityTypeLabel } from '../../utils/liabilityTypeLabel'
 import { isCardAccount } from '../../utils/accountKinds'
 import {
   useCreateLiability,
-  useLiabilities,
   useDeleteLiability,
   useUpdateLiability,
   type Liability,
@@ -51,7 +50,6 @@ interface Props {
 export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted }: Props) {
   const { data: accounts = [] } = useAccounts(budgetId)
   const { data: accountTypes } = useAccountTypes(budgetId)
-  const { data: liabilities = [] } = useLiabilities(budgetId)
   const createLiability = useCreateLiability(budgetId)
   const updateLiability = useUpdateLiability(budgetId)
   const deleteLiability = useDeleteLiability(budgetId)
@@ -63,11 +61,18 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
   const [liabilityType, setLiabilityType] = useState<LiabilityType>(
     (liability?.mode === 'unmanaged' ? liability.liability_type : null) ?? 'personal'
   )
-  const [mode, setMode] = useState<'managed' | 'unmanaged'>(liability?.mode ?? 'unmanaged')
-  const [accountId, setAccountId] = useState(liability?.linked_account_id ?? '')
+  // Not a choice any more. Every liability-classified account is given its
+  // companion when it is created (accounts.py `ensure_for_account`), so the
+  // set the old "An account in this budget" picker drew from — liability
+  // accounts not already backing a liability — was empty in every budget that
+  // has ever existed. It offered nothing and then refused to save without a
+  // selection. A liability created HERE is one the budget has no account for.
+  const mode: 'managed' | 'unmanaged' = liability?.mode ?? 'unmanaged'
+  const accountId = liability?.linked_account_id ?? ''
   const [balance, setBalance] = useState(
     liability && liability.mode === 'unmanaged' ? String(liability.current_balance) : ''
   )
+  const [unlinking, setUnlinking] = useState(false)
   // Nullable since the terms became optional: String(null) would have shown a
   // literal "null" in the field a companion row is created to have filled in.
   const [rate, setRate] = useState(
@@ -134,17 +139,6 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
       ? linkedAccount !== undefined && isCardAccount(linkedAccount)
       : liabilityType === 'credit_card'
 
-  // Creating: only accounts that are liabilities and are not already backing
-  // another one.
-  const linkedElsewhere = new Set(
-    liabilities
-      .filter((l) => l.id !== liability?.id && l.linked_account_id)
-      .map((l) => l.linked_account_id)
-  )
-  const linkableAccounts = accounts.filter(
-    (a) => a.classification === 'liability' && !linkedElsewhere.has(a.id)
-  )
-
   const isPending =
     createLiability.isPending || updateLiability.isPending || deleteLiability.isPending
 
@@ -153,16 +147,30 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
     if (!name.trim()) return setError('Give this liability a name')
     // parseAmountInput, not parseFloat: a rate is typed by a person and so
     // carries the same separator conventions money does — "5,5" is 5.5.
+    //
+    // Blank is allowed, and has to be: the columns became nullable, a
+    // companion is created with none, and `terms_complete` exists to describe
+    // exactly this state. Requiring them here meant a debt you knew the
+    // balance of but not the rate could not be recorded at all — and a
+    // companion could not be given its balance without also inventing an APR
+    // and a minimum payment. An unreadable figure still surfaces; only an
+    // empty one is accepted.
+    const hasRate = rate.trim() !== ''
     const rateNum = parseAmountInput(rate)
-    if (isNaN(rateNum) || rateNum < 0) return setError('Enter a non-negative interest rate')
+    if (hasRate && (isNaN(rateNum) || rateNum < 0)) {
+      return setError('Enter a non-negative interest rate, or leave it blank')
+    }
     // Never `|| 0` on a parsed amount: an unreadable figure has to surface,
     // and a silent zero here means "the debt never retires" in every
     // projection downstream.
     const paymentNum = parseAmountInput(minimumPayment)
     const percentNum = parseAmountInput(minimumPercent)
     const floorNum = parseAmountInput(minimumFloor)
+    const hasPayment = minimumPayment.trim() !== ''
     if (minimumKind === 'fixed') {
-      if (isNaN(paymentNum) || paymentNum < 0) return setError('Enter the minimum monthly payment')
+      if (hasPayment && (isNaN(paymentNum) || paymentNum < 0)) {
+        return setError('Enter the minimum monthly payment, or leave it blank')
+      }
     } else {
       if (isNaN(percentNum) || percentNum <= 0) {
         return setError('Enter the percentage of the balance this card asks for')
@@ -173,8 +181,6 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
         return setError('Enter the minimum dollar amount — without it the debt never pays off')
       }
     }
-    if (mode === 'managed' && !isCompanion && !accountId)
-      return setError('Choose the account this liability lives in')
     const balanceNum = parseAmountInput(balance)
     if (mode === 'unmanaged' && (isNaN(balanceNum) || balanceNum < 0)) {
       return setError('Enter the current balance owed')
@@ -199,9 +205,9 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
       // Dropped server-side for a managed liability; omitted here so the two
       // never disagree about what was asked for.
       ...(mode === 'unmanaged' ? { liability_type: liabilityType } : {}),
-      interest_rate: rateNum,
+      interest_rate: hasRate ? rateNum : null,
       minimum_payment_kind: minimumKind,
-      minimum_payment: minimumKind === 'fixed' ? paymentNum : null,
+      minimum_payment: minimumKind === 'fixed' && hasPayment ? paymentNum : null,
       minimum_payment_percent: minimumKind === 'fixed' ? null : percentNum,
       minimum_payment_floor: minimumKind === 'fixed' ? null : floorNum,
       minimum_payment_plus_interest: minimumKind === 'fixed' ? false : minimumPlusInterest,
@@ -244,9 +250,16 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
       toast.success(liability ? 'Liability updated' : `Now tracking ${name.trim()}`)
       onClose()
     } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      setError(typeof detail === 'string' ? detail : 'Save failed')
+      setError(detailOf(err, 'Save failed'))
     }
+  }
+
+  /** The server's own words when it refuses, or a fallback. A rejected
+   *  mutation used to go unhandled here, so the 409 that guards a companion
+   *  arrived as nothing at all: the dialog closed and the liability stayed. */
+  function detailOf(err: unknown, fallback: string) {
+    const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+    return typeof detail === 'string' ? detail : fallback
   }
 
   async function handleDelete() {
@@ -258,10 +271,47 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
       destructive: true,
     })
     if (!ok) return
-    await deleteLiability.mutateAsync(liability.id)
+    try {
+      await deleteLiability.mutateAsync(liability.id)
+    } catch (err: unknown) {
+      return setError(detailOf(err, 'Could not remove this liability'))
+    }
     toast.success('Liability removed')
     onClose()
     onDeleted?.()
+  }
+
+  /** Cut a companion loose from its account and freeze what it owes.
+   *
+   *  `PATCH linked_account_id: null` has always worked; the modal simply
+   *  refused to send it, so the only route from managed to manual was
+   *  deleting the account. The balance is carried across because the ledger
+   *  stops answering the moment the link goes. */
+  async function handleUnlink() {
+    if (!liability) return
+    const ok = await confirmAsync({
+      title: `Manage "${liability.name}" by hand?`,
+      message:
+        `Its balance stops following ${ownAccount?.name ?? 'the account'} and stays at ` +
+        `${formatMoney(liability.current_balance)} until you change it. The account and its ` +
+        `transactions are untouched.`,
+      confirmLabel: 'Manage by hand',
+    })
+    if (!ok) return
+    setUnlinking(true)
+    try {
+      await updateLiability.mutateAsync({
+        liabilityId: liability.id,
+        linked_account_id: null,
+        manual_balance: liability.current_balance,
+      })
+      toast.success('Now managed by hand')
+      onClose()
+    } catch (err: unknown) {
+      setError(detailOf(err, 'Could not unlink this liability'))
+    } finally {
+      setUnlinking(false)
+    }
   }
 
   return (
@@ -493,78 +543,50 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
         )}
 
         {isCompanion ? (
-          <label className="liability-modal__field">
+          <div className="liability-modal__field">
             <span>Account</span>
             <input
               type="text"
-              value={ownAccount?.name ?? ''}
+              aria-label="Account"
+              value={ownAccount?.name ?? 'A closed or deleted account'}
               readOnly
               title="Set by the account this liability lives in — its balance and payments come from that ledger"
             />
-          </label>
+            <small className="liability-modal__hint">
+              The balance follows this account's register.{' '}
+              <button
+                type="button"
+                className="liability-modal__inline-action"
+                onClick={handleUnlink}
+                disabled={unlinking || isPending}
+              >
+                {unlinking ? 'Unlinking…' : 'Manage it by hand instead'}
+              </button>
+            </small>
+          </div>
         ) : (
-          <fieldset className="liability-modal__mode">
-            <legend>Where does the balance come from?</legend>
-            <label
-              className={`liability-modal__mode-option ${mode === 'managed' ? 'liability-modal__mode-option--active' : ''}`}
-            >
+          <div className="liability-modal__field">
+            {/* The hint sits OUTSIDE the label: inside, its text joins the
+                field's accessible name and "Current balance owed" stops
+                matching. */}
+            <label>
+              <span>Current balance owed</span>
               <input
-                type="radio"
-                name="liability-mode"
-                checked={mode === 'managed'}
-                onChange={() => setMode('managed')}
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="0.01"
+                value={balance}
+                onChange={(e) => setBalance(e.target.value)}
+                placeholder="9480.00"
               />
-              <span>
-                <strong>An account in this budget</strong>
-                <small>Balance and payments track the account's ledger automatically</small>
-              </span>
             </label>
-            <label
-              className={`liability-modal__mode-option ${mode === 'unmanaged' ? 'liability-modal__mode-option--active' : ''}`}
-            >
-              <input
-                type="radio"
-                name="liability-mode"
-                checked={mode === 'unmanaged'}
-                onChange={() => setMode('unmanaged')}
-              />
-              <span>
-                <strong>I'll enter it myself</strong>
-                <small>
-                  For liabilities without an account here — update the balance as you pay
-                </small>
-              </span>
-            </label>
-
-            {mode === 'managed' ? (
-              <label className="liability-modal__field liability-modal__mode-detail">
-                <span>Account</span>
-                <select value={accountId} onChange={(e) => setAccountId(e.target.value)}>
-                  <option value="" disabled>
-                    Choose an account…
-                  </option>
-                  {linkableAccounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : (
-              <label className="liability-modal__field liability-modal__mode-detail">
-                <span>Current balance owed</span>
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  min="0"
-                  step="0.01"
-                  value={balance}
-                  onChange={(e) => setBalance(e.target.value)}
-                  placeholder="9480.00"
-                />
-              </label>
-            )}
-          </fieldset>
+            <small className="liability-modal__hint">
+              A debt with no account in this budget — update the balance as you pay it down. A loan
+              or card you DO have an account for gets its liability with the account, and reads its
+              balance from that register.
+            </small>
+          </div>
         )}
 
         <details className="liability-modal__optional">

@@ -261,3 +261,20 @@
   color: var(--text-muted);
   line-height: 1.5;
 }
+
+/* A verb inside a hint: it reads as part of the sentence, not as a control
+   competing with the dialog's own buttons. */
+.liability-modal__inline-action {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--color-accent);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.liability-modal__inline-action:disabled {
+  color: var(--text-muted);
+  cursor: default;
+}

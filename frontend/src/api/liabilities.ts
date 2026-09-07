@@ -22,7 +22,9 @@ export interface Liability {
   current_balance: number
   /** 'manual_fallback' = linked account's register is empty; the pre-link
    * manual balance stands in until an opening balance is added */
-  balance_source: 'ledger' | 'manual' | 'manual_fallback'
+  /** 'empty' = linked to an account with no transactions and no remembered
+   *  balance. Distinct from a real zero, which means paid off. */
+  balance_source: 'ledger' | 'manual' | 'manual_fallback' | 'empty'
   /** Null until the terms are filled in — see terms_complete */
   interest_rate: number | null
   minimum_payment: number | null
@@ -115,7 +117,8 @@ export interface LiabilityCreate {
   /** Only for an unmanaged liability. A managed one takes its kind from the
    *  linked account, and the server drops anything sent here. */
   liability_type?: LiabilityType
-  interest_rate: number
+  /** Optional, like every other term — see LiabilityCreate on the server. */
+  interest_rate?: number | null
   /** The whole payment for 'fixed'; omitted for a percentage rule. */
   minimum_payment?: number | null
   minimum_payment_kind?: MinimumPaymentKind

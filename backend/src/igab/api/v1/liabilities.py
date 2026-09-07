@@ -422,11 +422,20 @@ async def delete_liability(
     # Deleting it would leave a Loan account back in the dead-end state with no
     # way to notice. The real actions are on the account: retype it, or delete
     # it (which asks what to do with the debt).
+    #
+    # A CLOSED account is the exception, and its absence was a trap. The guard
+    # tested is_deleted only, so closing the account kept the 409 in force
+    # while hiding the account from the default list — leaving a liability the
+    # user could see, blocked by an account they could not, with no path out:
+    # release_for_account declines once any term is filled in, so retyping did
+    # not free it either. A closed account has no register left to feed the
+    # liability, so the liability may go.
     if liability.linked_account_id is not None:
         account = await account_repo.get(liability.linked_account_id)
         if (
             account is not None
             and not account.is_deleted
+            and not account.is_closed
             and account.classification == LIABILITY_CLASSIFICATION
         ):
             raise HTTPException(
