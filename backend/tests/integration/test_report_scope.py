@@ -36,7 +36,7 @@ from .factories import (
 async def create_transaction_for(db_session, budget, category):
     """One posted outflow in the current month, so a scoped report has
     something to include or leave out."""
-    checking = await create_account(db_session, budget, "Redwood Checking")
+    checking = await create_account(db_session, budget)
     return await create_transaction(
         db_session, budget, checking, "-120.00", date.today().replace(day=1), category=category
     )
@@ -215,3 +215,102 @@ class TestAnEmptyScopeReachesTheReport:
         resp = await api_client.get(f"/api/v1/{budget.id}/reports/spending-trends")
         assert resp.status_code == 200, resp.text
         assert float(resp.json()["total"]) == 120.0
+
+
+#: Every report the shared filter bar can scope, and how to read a total out of
+#: its response. One list, so a seventh scoped report either joins it or fails
+#: the coverage check below — which is the whole reason this file exists rather
+#: than one assertion per chart, written whenever someone remembers.
+SCOPED_REPORTS: list[tuple[str, str, object]] = [
+    ("spending-trends", "spending-trends", lambda body: float(body["total"])),
+    ("spending-grouped", "spending-grouped", lambda body: float(body["total"])),
+    ("day-patterns", "day-patterns", lambda body: sum(float(d["total"]) for d in body["days"])),
+    ("timeline", "large-transactions", lambda body: float(len(body["transactions"]))),
+]
+
+
+class TestEveryScopedReportHonoursTheSameScope:
+    """`spending-grouped` serves three tabs on its own (pareto, treemap,
+    spending breakdown), which is why four endpoints cover six."""
+
+    @pytest.mark.parametrize(
+        ("name", "path", "read"), SCOPED_REPORTS, ids=[r[0] for r in SCOPED_REPORTS]
+    )
+    async def test_a_tag_scopes_it(self, db_session, api_client, name, path, read):
+        budget, groceries, _fuel, dining, essential, _tags = await _make_world(
+            db_session, api_client.test_user
+        )
+        await create_transaction_for(db_session, budget, groceries)
+        await create_transaction_for(db_session, budget, dining)
+
+        everything = await api_client.get(f"/api/v1/{budget.id}/reports/{path}")
+        tagged = await api_client.get(f"/api/v1/{budget.id}/reports/{path}?tag_ids={essential.id}")
+        assert everything.status_code == 200, everything.text
+        assert tagged.status_code == 200, tagged.text
+        # Groceries is tagged, Dining is not: the scope must lose exactly one.
+        assert read(tagged.json()) < read(everything.json()), name
+
+    @pytest.mark.parametrize(
+        ("name", "path", "read"), SCOPED_REPORTS, ids=[r[0] for r in SCOPED_REPORTS]
+    )
+    async def test_a_saved_filter_scopes_it_the_same_way(
+        self, db_session, api_client, name, path, read
+    ):
+        budget, groceries, _fuel, dining, essential, _tags = await _make_world(
+            db_session, api_client.test_user
+        )
+        await create_transaction_for(db_session, budget, groceries)
+        await create_transaction_for(db_session, budget, dining)
+        repo = BudgetFilterRepository(db_session)
+        saved = await repo.create(budget_id=budget.id, name="Fixed costs")
+        await repo.set_tags(saved.id, [essential.id])
+
+        by_tag = await api_client.get(f"/api/v1/{budget.id}/reports/{path}?tag_ids={essential.id}")
+        by_filter = await api_client.get(f"/api/v1/{budget.id}/reports/{path}?filter_id={saved.id}")
+        assert by_filter.status_code == 200, by_filter.text
+        # A filter over the same tag is the same scope, or the two controls in
+        # the bar would answer one question differently.
+        assert read(by_filter.json()) == read(by_tag.json()), name
+
+    @pytest.mark.parametrize(
+        ("name", "path", "read"), SCOPED_REPORTS, ids=[r[0] for r in SCOPED_REPORTS]
+    )
+    async def test_a_tag_nobody_applied_reports_nothing(
+        self, db_session, api_client, name, path, read
+    ):
+        budget, groceries, *_rest, tags = await _make_world(db_session, api_client.test_user)
+        await create_transaction_for(db_session, budget, groceries)
+        unused = await tags.get_system_tag(budget.id, "wishlist")
+        assert unused is not None
+
+        resp = await api_client.get(f"/api/v1/{budget.id}/reports/{path}?tag_ids={unused.id}")
+        assert resp.status_code == 200, resp.text
+        assert read(resp.json()) == 0.0, name
+
+
+def test_the_list_covers_every_scoped_report():
+    """The coverage check. `TAB_FILTER_SUPPORT` on the client is the other half
+    of this contract; here we assert against the endpoints, so adding a scoped
+    report without wiring the resolver fails rather than silently ignoring the
+    scope a user set.
+    """
+    import inspect
+
+    from igab.api.v1 import reports as reports_module
+
+    scoped_endpoints = {
+        name
+        for name, fn in vars(reports_module).items()
+        if inspect.iscoroutinefunction(fn)
+        and "category_ids" in inspect.signature(fn).parameters
+        and "report_svc" in inspect.signature(fn).parameters
+    }
+    resolved = {
+        name
+        for name in scoped_endpoints
+        if "resolve_category_scope" in inspect.getsource(getattr(reports_module, name))
+    }
+    assert scoped_endpoints - resolved == set(), (
+        "these endpoints take category_ids but never resolve a filter or tag scope: "
+        f"{sorted(scoped_endpoints - resolved)}"
+    )
