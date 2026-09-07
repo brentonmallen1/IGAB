@@ -60,6 +60,13 @@ export function DeleteCategoryModal({ budgetId, target, month, onClose, onDelete
   // and what the person wants is for it to go from the grid, not for its
   // history to be moved. Archiving the group does exactly that.
   const groupAllArchived = target.kind === 'group' && !!preview?.all_archived
+  // How many of the envelopes named below the budget page does not draw. The
+  // grid shows no archived category, so a group of them reads as an empty
+  // header — and this dialog was then the first place they reappeared, named
+  // but unexplained, which reads as the app having lost track of a move rather
+  // than as the app being right. The count is served (`archived_count`); the
+  // sentence is the only thing computed here.
+  const archivedCount = target.kind === 'group' ? (preview?.archived_count ?? 0) : 0
 
   const doomed = useMemo(() => new Set(preview?.category_ids ?? []), [preview?.category_ids])
 
@@ -172,8 +179,18 @@ export function DeleteCategoryModal({ budgetId, target, month, onClose, onDelete
 
         {groupAllArchived && (
           <p className="delete-category-modal__note" role="status">
-            Every category in this group is already archived. Archiving the group takes it off the
-            budget page and keeps all of its history; deleting moves that history instead.
+            Every category in this group is already archived, which is why the group looks empty on
+            the budget page — the grid draws no archived envelope. Archiving the group takes it off
+            the page and keeps all of its history; deleting moves that history instead.
+          </p>
+        )}
+
+        {!groupAllArchived && archivedCount > 0 && (
+          <p className="delete-category-modal__note" role="status">
+            {archivedCount} of the categories below{' '}
+            {archivedCount === 1 ? 'is archived' : 'are archived'}, so the budget page does not draw{' '}
+            {archivedCount === 1 ? 'it' : 'them'}. Deleting the group takes{' '}
+            {archivedCount === 1 ? 'it' : 'them'} too.
           </p>
         )}
 
@@ -311,11 +328,15 @@ export function DeleteCategoryModal({ budgetId, target, month, onClose, onDelete
             type="button"
             className="delete-category-modal__archive"
             onClick={handleArchive}
+            // `may_archive` alone. This used to wave `groupAllArchived`
+            // through the gate, because the server refused a group whose
+            // envelopes were archived long ago over one of their stranded
+            // balances — so the button had to be offered against the server's
+            // answer and then failed when pressed. The server no longer asks
+            // that question of an envelope it is not moving, which makes the
+            // bypass a second, quieter copy of the same rule.
             disabled={
-              !preview ||
-              (!groupAllArchived && !mayArchive) ||
-              archiveCategories.isPending ||
-              archiveGroup.isPending
+              !preview || !mayArchive || archiveCategories.isPending || archiveGroup.isPending
             }
             title={
               groupAllArchived

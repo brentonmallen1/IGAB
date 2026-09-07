@@ -8,7 +8,6 @@ from .factories import (
     create_budget,
     create_category,
     create_category_group,
-    create_payee,
     create_tag,
     create_user,
 )
@@ -88,51 +87,6 @@ async def test_set_category_tags_replace_set(db_session):
 
 
 @pytest.mark.asyncio
-async def test_set_payee_tags_replace_set(db_session):
-    user = await create_user(db_session)
-    budget = await create_budget(db_session, user)
-    payee = await create_payee(db_session, budget)
-
-    tag1 = await create_tag(db_session, budget, "Tag1")
-    tag2 = await create_tag(db_session, budget, "Tag2")
-
-    repo = TagRepository(db_session)
-
-    await repo.set_payee_tags(payee.id, [tag1.id])
-    tags_map = await repo.get_tags_for_payees([payee.id])
-    assert len(tags_map[payee.id]) == 1
-
-    await repo.set_payee_tags(payee.id, [tag1.id, tag2.id])
-    tags_map = await repo.get_tags_for_payees([payee.id])
-    assert len(tags_map[payee.id]) == 2
-
-
-@pytest.mark.asyncio
-async def test_add_and_remove_payee_tag(db_session):
-    user = await create_user(db_session)
-    budget = await create_budget(db_session, user)
-    payee = await create_payee(db_session, budget)
-    tag = await create_tag(db_session, budget, "Subscription", system_key="subscription")
-
-    repo = TagRepository(db_session)
-
-    # Add tag
-    await repo.add_payee_tag(payee.id, tag.id)
-    tags_map = await repo.get_tags_for_payees([payee.id])
-    assert len(tags_map[payee.id]) == 1
-
-    # Add same tag again (no-op, no error)
-    await repo.add_payee_tag(payee.id, tag.id)
-    tags_map = await repo.get_tags_for_payees([payee.id])
-    assert len(tags_map[payee.id]) == 1
-
-    # Remove tag
-    await repo.remove_payee_tag(payee.id, tag.id)
-    tags_map = await repo.get_tags_for_payees([payee.id])
-    assert len(tags_map[payee.id]) == 0
-
-
-@pytest.mark.asyncio
 async def test_get_category_system_keys(db_session):
     user = await create_user(db_session)
     budget = await create_budget(db_session, user)
@@ -164,22 +118,19 @@ async def test_list_for_budget_with_counts(db_session):
     budget = await create_budget(db_session, user)
     group = await create_category_group(db_session, budget)
     category = await create_category(db_session, budget, group)
-    payee1 = await create_payee(db_session, budget, "Payee1")
-    payee2 = await create_payee(db_session, budget, "Payee2")
 
     tag = await create_tag(db_session, budget, "TestTag")
 
     repo = TagRepository(db_session)
     await repo.set_category_tags(category.id, [tag.id])
-    await repo.set_payee_tags(payee1.id, [tag.id])
-    await repo.set_payee_tags(payee2.id, [tag.id])
 
+    # No payee count: tags on payees are retired, so it would be a zero printed
+    # beside every tag in the Tags panel forever.
     tags_with_counts = await repo.list_for_budget_with_counts(budget.id)
     assert len(tags_with_counts) == 1
-    t, cat_count, payee_count = tags_with_counts[0]
+    t, cat_count = tags_with_counts[0]
     assert t.id == tag.id
     assert cat_count == 1
-    assert payee_count == 2
 
 
 @pytest.mark.asyncio
@@ -188,13 +139,11 @@ async def test_delete_tag_clears_associations(db_session):
     budget = await create_budget(db_session, user)
     group = await create_category_group(db_session, budget)
     category = await create_category(db_session, budget, group)
-    payee = await create_payee(db_session, budget)
 
     tag = await create_tag(db_session, budget, "ToDelete")
 
     repo = TagRepository(db_session)
     await repo.set_category_tags(category.id, [tag.id])
-    await repo.set_payee_tags(payee.id, [tag.id])
 
     await repo.delete_with_associations(tag.id)
 
@@ -204,9 +153,7 @@ async def test_delete_tag_clears_associations(db_session):
 
     # Associations should be cleared
     cat_tags = await repo.get_tags_for_categories([category.id])
-    payee_tags = await repo.get_tags_for_payees([payee.id])
     assert len(cat_tags[category.id]) == 0
-    assert len(payee_tags[payee.id]) == 0
 
 
 @pytest.mark.asyncio

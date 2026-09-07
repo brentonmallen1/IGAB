@@ -10,6 +10,7 @@ from igab.db.models import BudgetAssignment, Category, CategoryGroup
 from igab.domain.ordering import merge_reorder
 from igab.repositories.base import BaseRepository
 from igab.repositories.category_filters import (
+    GROUP_ARCHIVED_CATEGORY_COUNT,
     GROUP_IS_CARD_ONLY,
     IN_SYSTEM_GROUP,
     IS_ASSIGNABLE,
@@ -74,25 +75,27 @@ class CategoryGroupRepository(BaseRepository[CategoryGroup]):
         )
 
     @staticmethod
-    def with_card_only(stmt: Select[tuple[CategoryGroup]]) -> Select[tuple[CategoryGroup]]:
-        """Load `is_card_only` on a CategoryGroup statement.
+    def with_served_fields(stmt: Select[tuple[CategoryGroup]]) -> Select[tuple[CategoryGroup]]:
+        """Load every computed field a `CategoryGroupResponse` carries.
 
-        Every path that serializes a `CategoryGroupResponse` has to go through
-        here. The field is required in the schema, so a path that skips it
-        raises rather than quietly drawing "Credit Card Payments" as an empty
-        header — and rather than letting the grid and the reorder rule form two
-        opinions about which groups the grid draws, which is the bug this
-        field exists to end.
+        One loader for both, not one per field: they are populated together or
+        a path forgets exactly one of them, and both are required in the schema
+        precisely so that forgetting raises. A path that skips this raises
+        rather than quietly drawing "Credit Card Payments" as an empty header,
+        or reporting a group full of archived envelopes as holding nothing.
         """
-        return stmt.options(with_expression(CategoryGroup.is_card_only, GROUP_IS_CARD_ONLY))
+        return stmt.options(
+            with_expression(CategoryGroup.is_card_only, GROUP_IS_CARD_ONLY),
+            with_expression(CategoryGroup.archived_category_count, GROUP_ARCHIVED_CATEGORY_COUNT),
+        )
 
     async def get(self, id: uuid.UUID) -> CategoryGroup | None:
-        # Overrides BaseRepository.get to carry `is_card_only`.
+        # Overrides BaseRepository.get to carry the computed fields.
         # populate_existing is load-bearing: after a flush the row is already in
         # the identity map, and SQLAlchemy leaves a with_expression attribute
         # unset on an object it has seen before — which surfaces as None on
         # exactly the create/update responses.
-        stmt = self.with_card_only(
+        stmt = self.with_served_fields(
             select(CategoryGroup).where(
                 CategoryGroup.id == id,
                 CategoryGroup.is_deleted == False,  # noqa: E712
@@ -121,7 +124,7 @@ class CategoryGroupRepository(BaseRepository[CategoryGroup]):
             kwargs["sort_order"] = await self.next_sort_order(kwargs["budget_id"])
         created = await super().create(**kwargs)
         # Re-read through the loader: a freshly created group has no
-        # `is_card_only`, and the create endpoint serializes this very object.
+        # computed fields, and the create endpoint serializes this very object.
         return await self.get(created.id) or created
 
     async def reorder(self, budget_id: uuid.UUID, group_ids: list[uuid.UUID]) -> None:
@@ -156,7 +159,7 @@ class CategoryGroupRepository(BaseRepository[CategoryGroup]):
         live = list(
             (
                 await self.session.execute(
-                    self.with_card_only(
+                    self.with_served_fields(
                         select(CategoryGroup)
                         .where(
                             CategoryGroup.budget_id == budget_id,
@@ -183,14 +186,20 @@ class CategoryGroupRepository(BaseRepository[CategoryGroup]):
     async def get_all(
         self, budget_id: uuid.UUID, include_archived: bool = False
     ) -> list[CategoryGroup]:
-        q = self.with_card_only(select(CategoryGroup)).where(
+        q = self.with_served_fields(select(CategoryGroup)).where(
             CategoryGroup.budget_id == budget_id,
             CategoryGroup.is_deleted == False,  # noqa: E712
         )
         if not include_archived:
             q = q.where(CategoryGroup.is_archived == False)  # noqa: E712
         q = q.order_by(CategoryGroup.sort_order, CategoryGroup.name)
-        result = await self.session.execute(q)
+        # populate_existing is load-bearing, as it is in `get` and in
+        # `CategoryRepository.get_all`: SQLAlchemy leaves a with_expression
+        # attribute alone on a row the session already holds, so a group loaded
+        # before its categories were archived kept the count it was loaded
+        # with. Both served fields are answers about *other* rows, which is
+        # exactly the class of field the identity map cannot keep current.
+        result = await self.session.execute(q.execution_options(populate_existing=True))
         return list(result.scalars().all())
 
 

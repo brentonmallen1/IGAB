@@ -16,6 +16,9 @@ import { MultiSelectCombobox } from './MultiSelectCombobox'
 import type { MultiSelectOption } from './MultiSelectCombobox'
 import './ReportFiltersBar.css'
 import { Surface } from '../../common/Surface'
+import { openAccounts } from '../../../utils/accountLists'
+import { useTags } from '../../../api/tags'
+import { useBudgetFilters } from '../../../api/budgetFilters'
 
 interface Props {
   budgetId: string
@@ -35,6 +38,8 @@ export function ReportFiltersBar({ budgetId }: Props) {
   const payees = usePayees(budgetId)
   const accounts = useAccounts(budgetId)
   const views = useBudgetViews(budgetId)
+  const tags = useTags(budgetId)
+  const savedFilters = useBudgetFilters(budgetId)
 
   const groupMap = useMemo(() => {
     const m = new Map<string, string>()
@@ -56,6 +61,11 @@ export function ReportFiltersBar({ budgetId }: Props) {
     [categories.data, groupMap, activeView]
   )
 
+  const tagOptions = useMemo<MultiSelectOption[]>(
+    () => (tags.data ?? []).map((t) => ({ id: t.id, label: t.name })),
+    [tags.data]
+  )
+
   const payeeOptions = useMemo<MultiSelectOption[]>(() => {
     return (payees.data ?? [])
       .filter((p) => !p.transfer_account_id)
@@ -63,9 +73,7 @@ export function ReportFiltersBar({ budgetId }: Props) {
   }, [payees.data])
 
   const accountOptions = useMemo<MultiSelectOption[]>(() => {
-    return (accounts.data ?? [])
-      .filter((a) => !a.is_closed)
-      .map((a) => ({ id: a.id, label: a.name }))
+    return openAccounts(accounts.data ?? []).map((a) => ({ id: a.id, label: a.name }))
   }, [accounts.data])
 
   // viewId counts: it is sent on every request and changes what the report
@@ -74,6 +82,8 @@ export function ReportFiltersBar({ budgetId }: Props) {
   // and no Reset offered — unreachable dead state.
   const hasFilters =
     filters.categoryIds.length > 0 ||
+    filters.tagIds.length > 0 ||
+    filters.filterId !== null ||
     filters.payeeIds.length > 0 ||
     filters.accountIds.length > 0 ||
     filters.viewId !== null
@@ -140,6 +150,11 @@ export function ReportFiltersBar({ budgetId }: Props) {
       </div>
       {(support.categories || support.payees || support.accounts) && (
         <div className="rfb__selects">
+          {/* Three ways of saying which categories this report is about, kept
+              adjacent because they are one question. They UNION on the server
+              (services/report_scope.py): each adds to the scope. A tag needs no
+              saved row, so it stays dynamic; a saved filter is the one you
+              chose to name, and carries its own tag axis. */}
           {support.categories && (
             <MultiSelectCombobox
               label="Categories"
@@ -148,6 +163,33 @@ export function ReportFiltersBar({ budgetId }: Props) {
               onChange={(ids) => setFilters({ categoryIds: ids })}
               placeholder="All categories"
             />
+          )}
+          {support.categories && tagOptions.length > 0 && (
+            <MultiSelectCombobox
+              label="Tags"
+              selectedIds={filters.tagIds}
+              options={tagOptions}
+              onChange={(ids) => setFilters({ tagIds: ids })}
+              placeholder="Any tag"
+            />
+          )}
+          {support.categories && (savedFilters.data?.length ?? 0) > 0 && (
+            <label className="rfb__view">
+              <span className="rfb__view-label">Saved filter</span>
+              <select
+                className={`rfb__view-select ${filters.filterId ? 'rfb__view-select--active' : ''}`}
+                value={filters.filterId ?? ''}
+                onChange={(e) => setFilters({ filterId: e.target.value || null })}
+                title="Scope by a filter you saved on the budget page"
+              >
+                <option value="">Any saved filter</option>
+                {savedFilters.data!.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}
+                  </option>
+                ))}
+              </select>
+            </label>
           )}
           {support.payees && (
             <MultiSelectCombobox

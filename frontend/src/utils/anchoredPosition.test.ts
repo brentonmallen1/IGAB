@@ -37,7 +37,9 @@ describe('placeAnchored — vertical', () => {
 
   it('caps height at the space available, under the preferred cap', () => {
     const p = placeAnchored(trigger({ top: 600, bottom: 624 }), VIEWPORT, { maxHeight: 300 })
-    expect(p.maxHeight).toBe(800 - 624 - 8)
+    // Less the default 2px gap: the panel starts below it, so the gap is room
+    // the placement has already spent.
+    expect(p.maxHeight).toBe(800 - 624 - 8 - 2)
   })
 
   it('keeps the preferred cap when the space exceeds it', () => {
@@ -57,7 +59,7 @@ describe('placeAnchored — the panel decides the side, not a constant', () => {
     })
     expect(p.top).toBeUndefined()
     expect(p.bottom).toBe(800 - 460 + 2)
-    expect(p.maxHeight).toBe(460 - 8)
+    expect(p.maxHeight).toBe(460 - 8 - 2)
   })
 
   it('leaves a short menu below the same trigger (ContextMenu)', () => {
@@ -100,15 +102,15 @@ describe('placeAnchored — occluded viewport', () => {
     // 22px of usable room below, not 322.
     const p = placeAnchored(trigger({ top: 446, bottom: 470 }), KEYBOARD, { desiredHeight: 200 })
     expect(p.top).toBeUndefined()
-    expect(p.maxHeight).toBe(446 - 8)
+    expect(p.maxHeight).toBe(446 - 8 - 2)
   })
 
   it('measures the top inset too, so a scrolled visual viewport is honoured', () => {
     const shifted = { width: 1200, height: 800, inset: { top: 200, bottom: 0 } }
     const p = placeAnchored(trigger({ top: 260, bottom: 284 }), shifted, { desiredHeight: 900 })
-    // Above holds 260-200-8 = 52; below holds 800-284-8 = 508. Below wins.
+    // Above holds 260-200-8-2 = 50; below holds 800-284-8-2 = 506. Below wins.
     expect(p.top).toBe(286)
-    expect(p.maxHeight).toBe(508)
+    expect(p.maxHeight).toBe(506)
   })
 
   it('still measures `bottom` from the layout viewport when it flips', () => {
@@ -211,5 +213,40 @@ describe('placeAnchored — align end', () => {
     })
     expect(p.top).toBeUndefined()
     expect(p.bottom).toBe(800 - 740 + 2)
+  })
+})
+
+/**
+ * The margin is what the panel keeps clear of the screen edge, and it has to
+ * mean that on the side the panel actually lands on. `gap` used to be spent
+ * out of it: the tags ⓘ popover, which flips above and fills the room, ended
+ * `margin - gap` from the top — 2px, on the one panel large enough for anyone
+ * to notice.
+ */
+describe('placeAnchored — the margin is the margin', () => {
+  const MARGIN = 20
+  const GAP = 6
+
+  it('leaves the full margin above a panel that flipped and filled the room', () => {
+    const t = trigger({ top: 500, bottom: 524 })
+    const p = placeAnchored(t, VIEWPORT, { desiredHeight: 900, gap: GAP, margin: MARGIN })
+    // Bottom edge sits `gap` above the trigger; the top edge is that less the
+    // cap, and must not cross the margin.
+    const topEdge = t.top - GAP - p.maxHeight
+    expect(p.bottom).toBe(VIEWPORT.height - t.top + GAP)
+    expect(topEdge).toBe(MARGIN)
+  })
+
+  it('leaves the full margin below a panel that hung down and filled the room', () => {
+    const t = trigger({ top: 100, bottom: 124 })
+    const p = placeAnchored(t, VIEWPORT, { desiredHeight: 900, gap: GAP, margin: MARGIN })
+    expect(p.top! + p.maxHeight).toBe(VIEWPORT.height - MARGIN)
+  })
+
+  it('keeps the margin clear of an occluded edge too', () => {
+    const occluded = { width: 1200, height: 800, inset: { top: 0, bottom: 300 } }
+    const t = trigger({ top: 100, bottom: 124 })
+    const p = placeAnchored(t, occluded, { desiredHeight: 900, gap: GAP, margin: MARGIN })
+    expect(p.top! + p.maxHeight).toBe(800 - 300 - MARGIN)
   })
 })

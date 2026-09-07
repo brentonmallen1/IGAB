@@ -96,6 +96,16 @@ export interface CategoryGroup {
    *  card-only here and not there. It used to compute it anyway, and the two
    *  answers disagreed — which turned group dragging off entirely. */
   is_card_only: boolean
+  /** How many of this group's live categories are archived — envelopes the grid
+   *  does not draw. Served, not counted here: `useCategories` asks without
+   *  `include_archived`, so the client is missing the rows. Home is
+   *  `GROUP_ARCHIVED_CATEGORY_COUNT` in repositories/category_filters.py.
+   *
+   *  A group whose count equals its drawn rows of zero is an empty header on
+   *  the page and a group full of envelopes to the delete and archive
+   *  endpoints. The grid says so now instead of letting the dialog be the
+   *  first place anyone finds out. */
+  archived_category_count: number
   /** 'wishlist' for the group the Guide keeps: rename and delete are refused,
    *  hide is not. Served from `CategoryGroup.system_key`. */
   system_key: string | null
@@ -946,6 +956,9 @@ export interface EssentialsReport {
   emergency_fund_balance: number | null
   emergency_fund_source: string | null
   runway_months: number | null
+  /** Tagged Essential and still not counted, by class — see
+   *  `CostOfLivingReport.class_excluded`. */
+  class_excluded: SpendingClassExcluded[]
 }
 
 export interface SpendingTrendSeries {
@@ -1289,10 +1302,19 @@ export interface CostOfLivingGroup {
   avg_monthly: number
   /** Share of the essentials total, 0–100 — not of income, so shares add to 100. */
   share: number
+  /** The categories behind this bar, for the drill-down. Empty on the
+   *  Uncategorized bucket, which drills by "no category" instead — an empty
+   *  id list filters nothing and would list the whole budget. */
+  category_ids: string[]
 }
 
 export interface CostOfLivingReport {
   months: string[]
+  /** The window the figures cover. Served, not re-derived: "twelve months
+   *  back from the first of that month, to today" is the report's rule and
+   *  belongs on one side of the wire. */
+  window_start: string
+  window_end: string
   groups: CostOfLivingGroup[]
   avg_monthly_essentials: number
   avg_monthly_income: number
@@ -1301,6 +1323,13 @@ export interface CostOfLivingReport {
   basis: 'bound' | 'tag' | 'all'
   /** False when nothing carries the Essential tag. */
   tagged: boolean
+  /** Tagged Essential and still not counted, by class. Tagging a category is
+   *  pointing at it, so absence without this reads as a bug — which is
+   *  exactly how "I tagged ten and two showed up" was reported. */
+  class_excluded: SpendingClassExcluded[]
+  /** The activity classes these figures count, passed to the drill-down so a
+   *  bar and the panel it opens total the same. */
+  counted_classes: string[]
 }
 
 export interface WishlistDisciplineReport {

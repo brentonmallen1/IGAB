@@ -304,6 +304,10 @@ class SpendingGroupedResponse(ApiModel):
     #: persists viewId outside any budget scope and would otherwise show one
     #: arrangement while its selector claims another.
     view_unavailable: bool = False
+    #: The same, for a saved filter. Separate from `view_unavailable` because
+    #: they are separate things: a view is an arrangement, a filter is a
+    #: predicate, and losing one says nothing about the other.
+    filter_unavailable: bool = False
 
 
 # ─── Seasonality ─────────────────────────────────────────────────────────────
@@ -373,6 +377,9 @@ class EssentialsReportResponse(ApiModel):
     emergency_fund_balance: Decimal | None = None
     emergency_fund_source: str | None = None
     runway_months: Decimal | None = None
+    #: Tagged Essential and still not counted, by class — see
+    #: `CostOfLivingResponse.class_excluded`.
+    class_excluded: list[SpendingClassExcluded] = []
 
 
 # ─── Payee Analysis ───────────────────────────────────────────────────────────
@@ -421,6 +428,12 @@ class DayPatternsResponse(ApiModel):
     #: whose activity is all savings or debt payments otherwise draws an empty
     #: week with nothing to say why.
     class_excluded: list[SpendingClassExcluded] = []
+    #: The requested saved filter no longer exists (deleted, or another
+    #: budget's), so this report is unscoped. Said out loud for the reason
+    #: `view_unavailable` is: a stale id resolving to nothing WIDENS the
+    #: report, which reads as data appearing rather than a filter going
+    #: missing.
+    filter_unavailable: bool = False
 
 
 # ─── Large Transactions (Timeline) ────────────────────────────────────────────
@@ -446,6 +459,12 @@ class TimelineTransaction(ApiModel):
 
 class TimelineResponse(ApiModel):
     transactions: list[TimelineTransaction]
+    #: The requested saved filter no longer exists (deleted, or another
+    #: budget's), so this report is unscoped. Said out loud for the reason
+    #: `view_unavailable` is: a stale id resolving to nothing WIDENS the
+    #: report, which reads as data appearing rather than a filter going
+    #: missing.
+    filter_unavailable: bool = False
 
 
 # ─── Liabilities Report ──────────────────────────────────────────────────────
@@ -755,10 +774,17 @@ class CostOfLivingGroup(ApiModel):
     #: Share of the essentials total, 0-100 — not of income, so the shares
     #: add to 100 and the bar is arithmetic a reader can check.
     share: Decimal
+    #: The categories behind the bar, so it can be opened. Empty on the
+    #: Uncategorized bucket — that one drills by "no category", not by ids.
+    category_ids: list[uuid.UUID] = []
 
 
 class CostOfLivingResponse(ApiModel):
     months: list[date]
+    #: The window the figures cover. Served so a drill-down asks for the same
+    #: days rather than re-deriving them from `months`.
+    window_start: date
+    window_end: date
     groups: list[CostOfLivingGroup]
     avg_monthly_essentials: Decimal
     avg_monthly_income: Decimal
@@ -770,6 +796,13 @@ class CostOfLivingResponse(ApiModel):
     #: False when nothing carries the Essential tag, so the page can say the
     #: figure covers every category rather than a chosen few.
     tagged: bool
+    #: Tagged Essential and still not counted, by class. Tagging a category is
+    #: pointing at it, so this fires wherever the basis is a tag or a Guide
+    #: binding — the case being "I tagged ten and two showed up".
+    class_excluded: list[SpendingClassExcluded] = []
+    #: The activity classes these figures count, so a drill-down opened from a
+    #: bar totals what the bar says.
+    counted_classes: list[str] = []
 
 
 # ─── Wishlist discipline ─────────────────────────────────────────────────────

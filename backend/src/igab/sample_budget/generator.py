@@ -289,9 +289,6 @@ class SampleBudgetGenerator:
             )
             self._payees[payee_spec.name] = payee
             result.payees += 1
-            if payee_spec.tags:
-                await self.tag_repo.set_payee_tags(payee.id, tag_ids(payee_spec.tags))
-                result.tags_linked += len(payee_spec.tags)
 
         # Transfer payees, named the way TransactionService names them
         for acct in self.spec.accounts:

@@ -21,6 +21,7 @@ import { ContextMenu } from '../../common/ContextMenu/ContextMenu'
 import type { CategoryBalance } from '../../../types'
 import { reorderBlock } from '../reorderAvailability'
 import './BudgetFilterBar.css'
+import { filterChips } from '../budgetFilterChips'
 
 interface Props {
   budgetId: string
@@ -132,6 +133,11 @@ export function BudgetFilterBar({ budgetId, categoryBalances, barRef }: Props) {
 
   const isAllActive = activeFilterId === null && activeQuickFilter === null
 
+  // The active filter always gets a chip, pinned or not: the bar's job is to
+  // say what is narrowing the grid, and hiding that inside the picker would
+  // leave a short category list with no visible reason for it.
+  const { chips, overflow } = filterChips(filters ?? [], activeFilterId)
+
   return (
     <div className="budget-filter-bar surface surface--chrome" ref={barRef}>
       {/* How categories are grouped. Separate control from the filter chips
@@ -236,7 +242,12 @@ export function BudgetFilterBar({ budgetId, categoryBalances, barRef }: Props) {
         </span>
       )}
 
-      {filters?.map((saved) => (
+      {/* A bounded number of chips. This drew one per saved filter, and the
+          grid offsets its sticky column header by this bar's measured height —
+          so every filter anyone saved pushed the register further down the
+          page. `filterChips` says which few stay out; the rest are one select
+          away, the same shape the view control has used all along. */}
+      {chips.map((saved) => (
         <button
           key={saved.id}
           className={`budget-filter-bar__btn ${activeFilterId === saved.id ? 'active' : ''}`}
@@ -247,6 +258,39 @@ export function BudgetFilterBar({ budgetId, categoryBalances, barRef }: Props) {
           {saved.name}
         </button>
       ))}
+
+      {overflow.length > 0 && (
+        <span className="budget-filter-bar__more">
+          <span className="budget-filter-bar__more-label">{overflow.length} more</span>
+          <ChevronDown size={12} className="budget-filter-bar__more-caret" />
+          {/* The real control, stretched invisibly over the chip — the trick
+              the view chip documents: as siblings the label and caret leave
+              the chip's padding dead to the pointer. */}
+          <select
+            className="budget-filter-bar__more-select"
+            value=""
+            onChange={(e) => {
+              if (e.target.value) setActiveFilter(e.target.value)
+              if (viaPointer.current) e.currentTarget.blur()
+            }}
+            onPointerDown={() => {
+              viaPointer.current = true
+            }}
+            onKeyDown={() => {
+              viaPointer.current = false
+            }}
+            title="Your other saved filters"
+            aria-label="More saved filters"
+          >
+            <option value="">More filters…</option>
+            {overflow.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.name}
+              </option>
+            ))}
+          </select>
+        </span>
+      )}
 
       <div className={`budget-filter-bar__search ${categorySearch ? 'has-value' : ''}`}>
         <Search size={13} className="budget-filter-bar__search-icon" />

@@ -45,8 +45,10 @@ from igab.dependencies import (
     TransactionAccess,
     get_account_repo,
     get_ai_job_repo,
+    get_budget_filter_repo,
     get_change_recorder,
     get_payee_repo,
+    get_tag_repo,
     get_transaction_repo,
     get_transaction_service,
 )
@@ -61,10 +63,13 @@ from igab.domain.activity_class import (
 from igab.domain.exceptions import InvariantViolation, NotFoundError
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.ai_job_repo import AIJobRepository
+from igab.repositories.budget_filter_repo import BudgetFilterRepository
 from igab.repositories.payee_repo import PayeeRepository
+from igab.repositories.tag_repo import TagRepository
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match
 from igab.services.ownership import require_in_budget
+from igab.services.report_scope import resolve_category_scope
 from igab.services.transaction_service import (
     SplitSpec,
     TransactionService,
@@ -138,10 +143,19 @@ async def list_budget_transactions(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     txn_repo: Annotated[TransactionRepository, Depends(get_transaction_repo)],
+    filter_repo: Annotated[BudgetFilterRepository, Depends(get_budget_filter_repo)],
+    tag_repo: Annotated[TagRepository, Depends(get_tag_repo)],
     start_date: date | None = None,
     end_date: date | None = None,
     search: str | None = None,
     category_ids: str | None = None,
+    #: The other two ways of saying which categories — resolved by the same
+    #: helper every scoped report uses, so a drill-down opened from a report
+    #: scoped by tag lists the rows that report counted rather than the whole
+    #: window. Without these the panel silently WIDENS: a $400 bar opening a
+    #: $2,000 list.
+    filter_id: uuid.UUID | None = None,
+    tag_ids: str | None = None,
     payee_ids: str | None = None,
     account_ids: str | None = None,
     scope: Literal["parent", "leaf"] = "parent",
@@ -183,12 +197,23 @@ async def list_budget_transactions(
     mirror the per-account listing so the all-accounts register behaves
     identically to a single account's.
     """
+    # `category_scope`, not `scope`: this endpoint's `scope` is already the
+    # parent/leaf row scope, and two meanings of one word in one signature is
+    # how the wrong one gets passed.
+    category_scope = await resolve_category_scope(
+        budget_id,
+        category_ids=_parse_uuid_list(category_ids),
+        filter_id=filter_id,
+        tag_ids=_parse_uuid_list(tag_ids),
+        filter_repo=filter_repo,
+        tag_repo=tag_repo,
+    )
     txns, total_count, total_amount = await txn_repo.list_for_budget(
         budget_id,
         start_date=start_date,
         end_date=end_date,
         search=search,
-        category_ids=_parse_uuid_list(category_ids),
+        category_ids=category_scope.category_ids,
         payee_ids=_parse_uuid_list(payee_ids),
         account_ids=_parse_uuid_list(account_ids),
         scope=scope,

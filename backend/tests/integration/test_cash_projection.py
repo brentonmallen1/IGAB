@@ -20,6 +20,8 @@ from igab.services.report_service import ReportService
 from .factories import (
     create_account,
     create_budget,
+    create_category,
+    create_category_group,
     create_payee,
     create_scheduled_transaction,
     create_transaction,
@@ -174,18 +176,41 @@ async def test_a_closed_account_keeps_its_balance_but_generates_no_flows(db_sess
 
 
 async def test_subscription_charges_project_monthly_from_last_charge(db_session):
+    """The tag is read from the CATEGORY, and the charges are grouped by payee
+    within it — the same question the Subscriptions report asks.
+
+    This test used to tag a PAYEE, which is the only reason the projection
+    looked alive: migration b8e5d1c73a49 deleted every payee-subscription row
+    and made the routes refuse new ones, so in a real budget this had been
+    projecting nothing since 2026-09-06. The test reached past the guard the
+    product enforces, and so kept dead code green.
+    """
     budget, checking = await _budget_with_checking(db_session)
     await seed_system_tags(db_session, budget.id)
     tag_repo = TagRepository(db_session)
     sub_tag = await tag_repo.get_system_tag(budget.id, "subscription")
-    netflix = await create_payee(db_session, budget, "Netflix")
-    await tag_repo.add_payee_tag(netflix.id, sub_tag.id)
+    group = await create_category_group(db_session, budget, "Everyday")
+    streaming = await create_category(db_session, budget, group, "Streaming")
+    await tag_repo.set_category_tags(streaming.id, [sub_tag.id])
+    netflix = await create_payee(db_session, budget, "Northstar Stream")
 
     await create_transaction(
-        db_session, budget, checking, "-15.99", TODAY - timedelta(days=55), payee=netflix
+        db_session,
+        budget,
+        checking,
+        "-15.99",
+        TODAY - timedelta(days=55),
+        payee=netflix,
+        category=streaming,
     )
     await create_transaction(
-        db_session, budget, checking, "-15.99", TODAY - timedelta(days=25), payee=netflix
+        db_session,
+        budget,
+        checking,
+        "-15.99",
+        TODAY - timedelta(days=25),
+        payee=netflix,
+        category=streaming,
     )
     # A pending auth must shift neither the typical amount nor the cadence
     await create_transaction(
@@ -195,6 +220,7 @@ async def test_subscription_charges_project_monthly_from_last_charge(db_session)
         "-99.00",
         TODAY - timedelta(days=10),
         payee=netflix,
+        category=streaming,
         cleared="pending",
     )
 

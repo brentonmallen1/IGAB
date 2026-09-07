@@ -36,6 +36,7 @@ import { useSyncAllAccounts } from '../../hooks/useSyncAllAccounts'
 import { useFormatters } from '../../hooks/useFormatters'
 import type { Account } from '../../types'
 import './AccountsOverviewPage.css'
+import { openAccounts } from '../../utils/accountLists'
 
 function formatSyncAge(lastSyncAt: string | null): string {
   if (!lastSyncAt) return 'Never synced'
@@ -185,7 +186,7 @@ export function AccountsOverviewPage() {
   // list could not contain a closed account, so `hasClosedAccounts` was
   // always false and the only control that could turn it on never rendered.
   const { data: allAccounts } = useAccounts(budgetId, { includeClosed: true })
-  const accounts = showClosed ? allAccounts : allAccounts?.filter((a) => !a.is_closed)
+  const accounts = showClosed ? allAccounts : allAccounts && openAccounts(allAccounts)
   const { data: typeRows } = useAccountTypes(budgetId)
   const deleteAccount = useDeleteAccount(budgetId ?? '')
   const updateAccount = useUpdateAccount(budgetId ?? '')

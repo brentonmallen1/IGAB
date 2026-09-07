@@ -351,6 +351,131 @@ class TestArchivingAGroupRunsTheSameRefusal:
         assert cat.is_archived is False
 
 
+async def _archive_in_place(db_session, category):
+    """Archive a category without going through the refusal, and make it stick.
+
+    These cases are about envelopes archived *before* the refusal existed —
+    which is how a balance comes to be stranded in one — so the service route
+    is not available: it is the thing that would refuse. Flushed immediately,
+    because `set_assignment` expires the session and an unflushed change to the
+    row would be discarded with it.
+    """
+    category.is_archived = True
+    await db_session.flush()
+
+
+class TestAnAlreadyArchivedEnvelopeCannotBlockAnArchive:
+    """The dead end this closes, and why it is a dead end rather than a
+    nuisance.
+
+    Every refusal above says the same thing: an archived envelope is off the
+    budget, so anything left in it would be unreachable. For an envelope that
+    is *already* archived, that has already happened — and archiving the group
+    it sits in changes nothing about it. Asking the question of it anyway
+    produced a refusal naming a category that was already off the page, with no
+    action available that would clear it.
+
+    Reported on a real budget as "I would love for that group not to show
+    anymore": YNAB exports a `Hidden Categories` group, its envelopes import
+    archived, the grid draws the group as an empty heading, and hiding it means
+    archiving the group — which refused over one of those envelopes' stranded
+    balance. There was no way out.
+    """
+
+    async def test_a_stranded_balance_in_an_archived_envelope_does_not_refuse(self, db_session):
+        services, budget, _checking, group, cat = await _world(db_session)
+        svc = _svc(services, db_session)
+        # A balance archived before the refusal existed — exactly the shape the
+        # archived listing's "still holds money" banner warns about. The flag
+        # goes on last: `set_assignment` expires the session, which would throw
+        # away an unflushed change to the row.
+        await services.budgets.set_assignment(budget.id, cat.id, AUG, D("40.00"))
+        await _archive_in_place(db_session, cat)
+
+        preview = await svc.preview_archive_group(budget.id, group.id, AUG)
+        assert preview.blocked_by_balance == []
+        # Still reported, because it is worth knowing — just not a refusal.
+        assert preview.available == D("40.00")
+
+        await svc.archive_group(budget.id, group.id, month=AUG)
+        await db_session.refresh(group)
+        assert group.is_archived is True
+
+    async def test_a_live_envelope_beside_it_still_refuses(self, db_session):
+        """The rule narrows the question, it does not drop it."""
+        services, budget, _checking, group, cat = await _world(db_session)
+        live = await create_category(db_session, budget, group, "Dining")
+        svc = _svc(services, db_session)
+        await services.budgets.set_assignment(budget.id, cat.id, AUG, D("40.00"))
+        await services.budgets.set_assignment(budget.id, live.id, AUG, D("25.00"))
+        await _archive_in_place(db_session, cat)
+
+        preview = await svc.preview_archive_group(budget.id, group.id, AUG)
+        assert preview.blocked_by_balance == ["Dining"]
+        with pytest.raises(InvariantViolation) as e:
+            await svc.archive_group(budget.id, group.id, month=AUG)
+        assert "Dining" in str(e.value)
+
+    async def test_a_future_assignment_in_an_archived_envelope_does_not_refuse(self, db_session):
+        # The future-month fallback names every category when nothing is
+        # blocked in the viewed month; it must respect the same narrowing, or
+        # it re-blocks the whole group on the archived envelope's behalf.
+        services, budget, _checking, group, cat = await _world(db_session)
+        svc = _svc(services, db_session)
+        await services.budgets.set_assignment(budget.id, cat.id, SEP, D("75.00"))
+        await _archive_in_place(db_session, cat)
+
+        preview = await svc.preview_archive_group(budget.id, group.id, AUG)
+        assert preview.blocked_by_balance == []
+        assert preview.future_assigned == D("75.00")
+        await svc.archive_group(budget.id, group.id, month=AUG)
+        await db_session.refresh(group)
+        assert group.is_archived is True
+
+    async def test_a_schedule_filing_into_an_archived_envelope_does_not_refuse(self, db_session):
+        services, budget, checking, group, cat = await _world(db_session)
+        svc = _svc(services, db_session)
+        await create_scheduled_transaction(
+            db_session, budget, checking, "-15.00", "monthly", SEP, category=cat
+        )
+        await _archive_in_place(db_session, cat)
+
+        preview = await svc.preview_archive_group(budget.id, group.id, AUG)
+        assert preview.blocked_by_schedule == []
+        await svc.archive_group(budget.id, group.id, month=AUG)
+        await db_session.refresh(group)
+        assert group.is_archived is True
+
+    async def test_the_group_then_leaves_the_budget_page(self, db_session):
+        """The point of the whole exercise: the heading over nothing is gone,
+        and the listing that shows archived groups still has it."""
+        services, budget, _checking, group, cat = await _world(db_session)
+        svc = _svc(services, db_session)
+        await services.budgets.set_assignment(budget.id, cat.id, AUG, D("40.00"))
+        await _archive_in_place(db_session, cat)
+        await svc.archive_group(budget.id, group.id, month=AUG)
+
+        groups = CategoryGroupRepository(db_session)
+        assert "Everyday" not in [g.name for g in await groups.get_all(budget.id)]
+        assert "Everyday" in [
+            g.name for g in await groups.get_all(budget.id, include_archived=True)
+        ]
+
+    async def test_a_selection_of_archived_envelopes_archives_as_a_no_op(self, db_session):
+        """The same rule from the other direction: re-archiving what is already
+        archived must not raise, or a bulk action over a mixed selection dies
+        on the rows it had nothing to do."""
+        services, budget, _checking, group, cat = await _world(db_session)
+        svc = _svc(services, db_session)
+        await services.budgets.set_assignment(budget.id, cat.id, AUG, D("40.00"))
+        await _archive_in_place(db_session, cat)
+
+        preview = await svc.archive_categories(budget.id, [cat.id], month=AUG)
+        assert preview.blocked_by_balance == []
+        await db_session.refresh(cat)
+        assert cat.is_archived is True
+
+
 class TestTheListingSaysWhyARowIsThere:
     """A category under an archived group is listed but is not itself archived,
     so "Restore" on it cleared a flag that was already false and the row stayed

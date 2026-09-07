@@ -7,6 +7,7 @@ import { useCategories } from '../../../api/categories'
 import { usePayees } from '../../../api/payees'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { transactionDisplayPayee } from '../../../utils/transferDisplay'
+import { accountNameMap } from '../../../utils/accountLists'
 import './DrillDownPanel.css'
 
 const PAGE_SIZE = 200
@@ -39,7 +40,10 @@ function DrillDownPanelInner({ budgetId, drillDown }: Props & { drillDown: Drill
   const [limit, setLimit] = useState(PAGE_SIZE)
   const panelRef = useRef<HTMLDivElement>(null)
 
-  const { data: accounts } = useAccounts(budgetId)
+  // Closed included: this map only names rows. A drill-down window can
+  // reach back past an account's closing, and a row whose account is missing
+  // from the map renders blank — see TransactionTable for the same rule.
+  const { data: accounts } = useAccounts(budgetId, { includeClosed: true })
   const { data: categories } = useCategories(budgetId)
   const { data: payees } = usePayees(budgetId)
 
@@ -55,6 +59,9 @@ function DrillDownPanelInner({ budgetId, drillDown }: Props & { drillDown: Drill
       direction: drillDown.direction,
       categoryIds: drillDown.categoryIds,
       payeeIds: drillDown.payeeIds,
+      uncategorized: drillDown.uncategorized,
+      tagIds: drillDown.tagIds,
+      filterId: drillDown.filterId,
       dayOfWeek: drillDown.dayOfWeek,
       activityClasses: drillDown.activityClasses,
       accountIds: filters.accountIds.length > 0 ? filters.accountIds : undefined,
@@ -65,10 +72,7 @@ function DrillDownPanelInner({ budgetId, drillDown }: Props & { drillDown: Drill
 
   const { data, isLoading, isError } = useBudgetTransactions(budgetId, params)
 
-  const accountName = useMemo(
-    () => new Map((accounts ?? []).map((a) => [a.id, a.name])),
-    [accounts]
-  )
+  const accountName = useMemo(() => accountNameMap(accounts ?? []), [accounts])
   const categoryName = useMemo(
     () => new Map((categories ?? []).map((c) => [c.id, c.name])),
     [categories]

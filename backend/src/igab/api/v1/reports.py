@@ -99,6 +99,7 @@ from igab.services.report_basics import (
 from igab.services.report_basics import (
     subscriptions_report as subscriptions_report_data,
 )
+from igab.services.report_scope import resolve_category_scope
 from igab.services.report_service import ReportService
 
 
@@ -149,22 +150,36 @@ async def spending_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
+    filter_repo: Annotated[BudgetFilterRepository, Depends(get_budget_filter_repo)],
+    tag_repo: Annotated[TagRepository, Depends(get_tag_repo)],
     start_date: date | None = None,
     end_date: date | None = None,
     category_ids: str | None = Query(None),
     account_ids: str | None = Query(None),
     include_savings: bool = False,
+    #: A saved filter: its effective category set (named + tagged) scopes the
+    #: report — the same resolution the budget page reads.
+    filter_id: uuid.UUID | None = None,
+    #: Categories carrying any of these tags join the scope.
+    tag_ids: str | None = Query(None),
 ) -> SpendingReportResponse:
     today = date.today()
     start = start_date or today.replace(month=1, day=1)
     end = end_date or today
-    cat_ids = _parse_uuids(category_ids)
+    scope = await resolve_category_scope(
+        budget_id,
+        category_ids=_parse_uuids(category_ids),
+        filter_id=filter_id,
+        tag_ids=_parse_uuids(tag_ids),
+        filter_repo=filter_repo,
+        tag_repo=tag_repo,
+    )
     acct_ids = _parse_uuids(account_ids)
     categories, total = await report_svc.spending_by_category(
         budget_id,
         start,
         end,
-        cat_ids,
+        scope.category_ids,
         acct_ids,
         _spending_classes(include_savings),
     )
@@ -297,15 +312,29 @@ async def budget_actual_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
+    filter_repo: Annotated[BudgetFilterRepository, Depends(get_budget_filter_repo)],
+    tag_repo: Annotated[TagRepository, Depends(get_tag_repo)],
     start_date: date | None = None,
     end_date: date | None = None,
     category_ids: str | None = Query(None),
+    #: A saved filter: its effective category set (named + tagged) scopes the
+    #: report — the same resolution the budget page reads.
+    filter_id: uuid.UUID | None = None,
+    #: Categories carrying any of these tags join the scope.
+    tag_ids: str | None = Query(None),
 ) -> BudgetActualResponse:
     today = date.today()
     start = start_date or today.replace(day=1)
     end = end_date or today
-    cat_ids = _parse_uuids(category_ids)
-    data = await report_svc.budget_vs_actual(budget_id, start, end, cat_ids)
+    scope = await resolve_category_scope(
+        budget_id,
+        category_ids=_parse_uuids(category_ids),
+        filter_id=filter_id,
+        tag_ids=_parse_uuids(tag_ids),
+        filter_repo=filter_repo,
+        tag_repo=tag_repo,
+    )
+    data = await report_svc.budget_vs_actual(budget_id, start, end, scope.category_ids)
     return BudgetActualResponse(
         categories=[BudgetActualItem.model_validate(c) for c in data["categories"]],
         total_assigned=data["total_assigned"],
@@ -357,24 +386,39 @@ async def spending_grouped_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
+    filter_repo: Annotated[BudgetFilterRepository, Depends(get_budget_filter_repo)],
+    tag_repo: Annotated[TagRepository, Depends(get_tag_repo)],
     start_date: date | None = None,
     end_date: date | None = None,
     category_ids: str | None = Query(None),
     account_ids: str | None = Query(None),
     include_savings: bool = False,
-    #: Roll up by this view's groups instead of the budget's own.
+    #: Roll up by this view's groups instead of the budget's own. A view is an
+    #: ARRANGEMENT and the scope below is a PREDICATE — both can be on.
     view_id: uuid.UUID | None = None,
+    #: A saved filter: its effective category set (named + tagged) scopes the
+    #: report — the same resolution the budget page reads.
+    filter_id: uuid.UUID | None = None,
+    #: Categories carrying any of these tags join the scope.
+    tag_ids: str | None = Query(None),
 ) -> SpendingGroupedResponse:
     today = date.today()
     start = start_date or today.replace(day=1)
     end = end_date or today
-    cat_ids = _parse_uuids(category_ids)
+    scope = await resolve_category_scope(
+        budget_id,
+        category_ids=_parse_uuids(category_ids),
+        filter_id=filter_id,
+        tag_ids=_parse_uuids(tag_ids),
+        filter_repo=filter_repo,
+        tag_repo=tag_repo,
+    )
     acct_ids = _parse_uuids(account_ids)
     items, total, notes = await report_svc.spending_grouped(
         budget_id,
         start,
         end,
-        cat_ids,
+        scope.category_ids,
         acct_ids,
         _spending_classes(include_savings),
         view_id=view_id,
@@ -389,6 +433,7 @@ async def spending_grouped_report(
             SpendingClassExcluded.model_validate(c) for c in notes["class_excluded"] or []
         ],
         view_unavailable=notes["view_unavailable"],
+        filter_unavailable=scope.filter_unavailable,
     )
 
 
@@ -413,23 +458,20 @@ async def spending_trends_report(
     today = date.today()
     start = start_date or today.replace(day=1)
     end = end_date or today
-    scope: set[uuid.UUID] = set(_parse_uuids(category_ids) or [])
-    filter_unavailable = False
-    if filter_id is not None:
-        saved = await filter_repo.get_with_categories(filter_id)
-        if saved is None or saved.budget_id != budget_id:
-            filter_unavailable = True
-        else:
-            scope |= set((await filter_repo.effective_category_ids([saved]))[saved.id])
-    tags = _parse_uuids(tag_ids)
-    if tags:
-        scope |= await tag_repo.get_category_ids_by_tags(budget_id, tags)
+    scope = await resolve_category_scope(
+        budget_id,
+        category_ids=_parse_uuids(category_ids),
+        filter_id=filter_id,
+        tag_ids=_parse_uuids(tag_ids),
+        filter_repo=filter_repo,
+        tag_repo=tag_repo,
+    )
     data = await spending_trends(
         report_svc,
         budget_id,
         start,
         end,
-        sorted(scope, key=str) or None,
+        scope.category_ids,
         _parse_uuids(account_ids),
         _spending_classes(include_savings),
     )
@@ -439,7 +481,7 @@ async def spending_trends_report(
         monthly_totals=data["monthly_totals"],
         total=data["total"],
         class_excluded=[SpendingClassExcluded.model_validate(c) for c in data["class_excluded"]],
-        filter_unavailable=filter_unavailable,
+        filter_unavailable=scope.filter_unavailable,
     )
 
 
@@ -553,22 +595,37 @@ async def day_patterns_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
+    filter_repo: Annotated[BudgetFilterRepository, Depends(get_budget_filter_repo)],
+    tag_repo: Annotated[TagRepository, Depends(get_tag_repo)],
     start_date: date | None = None,
     end_date: date | None = None,
     category_ids: str | None = Query(None),
     account_ids: str | None = Query(None),
+    #: A saved filter: its effective category set (named + tagged) scopes the
+    #: report — the same resolution the budget page reads.
+    filter_id: uuid.UUID | None = None,
+    #: Categories carrying any of these tags join the scope.
+    tag_ids: str | None = Query(None),
 ) -> DayPatternsResponse:
     today = date.today()
     start = start_date or today.replace(month=1, day=1)
     end = end_date or today
-    cat_ids = _parse_uuids(category_ids)
+    scope = await resolve_category_scope(
+        budget_id,
+        category_ids=_parse_uuids(category_ids),
+        filter_id=filter_id,
+        tag_ids=_parse_uuids(tag_ids),
+        filter_repo=filter_repo,
+        tag_repo=tag_repo,
+    )
     acct_ids = _parse_uuids(account_ids)
-    data = await report_svc.day_patterns(budget_id, start, end, cat_ids, acct_ids)
+    data = await report_svc.day_patterns(budget_id, start, end, scope.category_ids, acct_ids)
     return DayPatternsResponse(
         days=[DayPatternItem.model_validate(d) for d in data["days"]],
         class_excluded=[
             SpendingClassExcluded.model_validate(c) for c in (data["class_excluded"] or [])
         ],
+        filter_unavailable=scope.filter_unavailable,
     )
 
 
@@ -577,19 +634,38 @@ async def timeline_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
+    filter_repo: Annotated[BudgetFilterRepository, Depends(get_budget_filter_repo)],
+    tag_repo: Annotated[TagRepository, Depends(get_tag_repo)],
     start_date: date | None = None,
     end_date: date | None = None,
     limit: int = 50,
     category_ids: str | None = Query(None),
     account_ids: str | None = Query(None),
+    #: A saved filter: its effective category set (named + tagged) scopes the
+    #: report — the same resolution the budget page reads.
+    filter_id: uuid.UUID | None = None,
+    #: Categories carrying any of these tags join the scope.
+    tag_ids: str | None = Query(None),
 ) -> TimelineResponse:
     today = date.today()
     start = start_date or today.replace(month=1, day=1)
     end = end_date or today
-    cat_ids = _parse_uuids(category_ids)
+    scope = await resolve_category_scope(
+        budget_id,
+        category_ids=_parse_uuids(category_ids),
+        filter_id=filter_id,
+        tag_ids=_parse_uuids(tag_ids),
+        filter_repo=filter_repo,
+        tag_repo=tag_repo,
+    )
     acct_ids = _parse_uuids(account_ids)
-    data = await report_svc.large_transactions(budget_id, start, end, limit, cat_ids, acct_ids)
-    return TimelineResponse(transactions=[TimelineTransaction.model_validate(t) for t in data])
+    data = await report_svc.large_transactions(
+        budget_id, start, end, limit, scope.category_ids, acct_ids
+    )
+    return TimelineResponse(
+        transactions=[TimelineTransaction.model_validate(t) for t in data],
+        filter_unavailable=scope.filter_unavailable,
+    )
 
 
 @router.get("/{budget_id}/reports/liabilities", response_model=LiabilitiesReportResponse)
@@ -731,12 +807,16 @@ async def cost_of_living_report(
     data = await cost_of_living(report_svc.session, budget_id, months)
     return CostOfLivingResponse(
         months=data["months"],
+        window_start=data["window_start"],
+        window_end=data["window_end"],
         groups=[CostOfLivingGroup.model_validate(g) for g in data["groups"]],
         avg_monthly_essentials=data["avg_monthly_essentials"],
         avg_monthly_income=data["avg_monthly_income"],
         required_ratio=data["required_ratio"],
         basis=data["basis"],
         tagged=data["tagged"],
+        class_excluded=[SpendingClassExcluded.model_validate(c) for c in data["class_excluded"]],
+        counted_classes=data["counted_classes"],
     )
 
 

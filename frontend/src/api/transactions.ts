@@ -133,6 +133,10 @@ export interface BudgetTransactionParams {
   categoryIds?: string[]
   payeeIds?: string[]
   accountIds?: string[]
+  tagIds?: string[]
+  filterId?: string | null
+  /** Rows the shared `NEEDS_CATEGORY` rule counts as unfiled. */
+  uncategorized?: boolean
   dayOfWeek?: number
   /** Restrict to these activity classes, so the panel totals what the chart
    *  that opened it counted rather than every row of the same sign. */
@@ -143,6 +147,38 @@ export interface BudgetTransactionParams {
 
 /** Budget-wide listing for report drill-downs. Always posted + cash-flow rows
  * so panel totals reconcile with the report aggregates being drilled into. */
+/**
+ * The drill-down listing's query string.
+ *
+ * Separate from the hook because it grew one `if` per axis until the linter
+ * called it out — and because every omitted key means something: the server
+ * reads an ABSENT `category_ids` as "no scope asked for" and an empty one as
+ * "a scope that matched nothing", so a blank must never be sent as an empty
+ * string. `csv` returns undefined for an empty list, and `params` drops
+ * undefined keys.
+ */
+function drillDownParams(p: BudgetTransactionParams): Record<string, unknown> {
+  const csv = (ids?: string[]) => (ids?.length ? ids.join(',') : undefined)
+  return {
+    start_date: p.startDate,
+    end_date: p.endDate,
+    scope: p.scope,
+    posted_only: true,
+    cash_flow_only: true,
+    limit: p.limit ?? 200,
+    offset: p.offset ?? 0,
+    direction: p.direction || undefined,
+    day_of_week: p.dayOfWeek ?? undefined,
+    category_ids: csv(p.categoryIds),
+    payee_ids: csv(p.payeeIds),
+    account_ids: csv(p.accountIds),
+    activity_classes: csv(p.activityClasses),
+    uncategorized: p.uncategorized || undefined,
+    tag_ids: csv(p.tagIds),
+    filter_id: p.filterId || undefined,
+  }
+}
+
 export function useBudgetTransactions(
   budgetId: string | null,
   params: BudgetTransactionParams | null
@@ -150,24 +186,9 @@ export function useBudgetTransactions(
   return useQuery({
     queryKey: [ROOT.budgetTransactions, budgetId, params],
     queryFn: async () => {
-      const p: Record<string, unknown> = {
-        start_date: params!.startDate,
-        end_date: params!.endDate,
-        scope: params!.scope,
-        posted_only: true,
-        cash_flow_only: true,
-        limit: params!.limit ?? 200,
-        offset: params!.offset ?? 0,
-      }
-      if (params!.direction) p.direction = params!.direction
-      if (params!.dayOfWeek != null) p.day_of_week = params!.dayOfWeek
-      if (params!.categoryIds?.length) p.category_ids = params!.categoryIds.join(',')
-      if (params!.payeeIds?.length) p.payee_ids = params!.payeeIds.join(',')
-      if (params!.accountIds?.length) p.account_ids = params!.accountIds.join(',')
-      if (params!.activityClasses?.length) p.activity_classes = params!.activityClasses.join(',')
       const { data } = await apiClient.get<BudgetTransactionsResponse>(
         `/${budgetId}/transactions`,
-        { params: p }
+        { params: drillDownParams(params!) }
       )
       return data
     },

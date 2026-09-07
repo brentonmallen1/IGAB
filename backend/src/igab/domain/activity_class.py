@@ -391,6 +391,29 @@ SPENDING_CLASSES = (ActivityClass.SPENDING,)
 #: Money that left the budget but stayed in the household's net worth.
 SAVINGS_CLASSES = (ActivityClass.SAVINGS, ActivityClass.DEBT_PRINCIPAL)
 
+#: What "a month costs to run" means: spending, plus the cash side of a payment
+#: into a tracked debt. Read by the Essentials report, Cost of Living, the
+#: Overview card and the Guide's emergency-fund target — one tuple, because a
+#: category counted in one of those must be counted in all of them.
+#:
+#: Deliberately NOT `SPENDING_CLASSES`. A spending report is right to leave
+#: DEBT_PRINCIPAL out: paying down principal moves net worth between columns
+#: rather than consuming it. But a household that stops paying its mortgage
+#: does not keep its house, so the payment is a cost of living whether or not
+#: it also buys equity — and until this existed, tagging a mortgage Essential
+#: did nothing at all, silently, because the payment classes DEBT_PRINCIPAL.
+#:
+#: DEBT_INTEREST is absent on purpose, and adding it would be theatre: the
+#: rules above only ever emit it on an OFF-budget liability account, which
+#: every reader here excludes with ON_BUDGET_ACCOUNT. The cash-side transfer is
+#: the whole payment anyway — principal, interest and escrow together — which
+#: is the figure someone means by "my mortgage is $3,000".
+#:
+#: The divergence from SPENDING_CLASSES is pinned by
+#: tests/integration/test_essentials_count_debt_payments.py, which fails if the
+#: two are ever made equal.
+COST_OF_LIVING_CLASSES = (ActivityClass.SPENDING, ActivityClass.DEBT_PRINCIPAL)
+
 
 def explain(reason: str) -> str:
     """Prose for a reason code, safe for an unknown value from an older row."""

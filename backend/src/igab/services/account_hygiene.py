@@ -124,6 +124,10 @@ class AccountHygieneService:
             # so a house inside the budget poisons every envelope figure.
             await self._tracked_name_on_budget(accounts),
             await self._liability_with_positive_balance(accounts),
+            # Same class of problem as the two above, and the same reason it
+            # ranks here: it corrupts to_be_assigned, from an account the user
+            # cannot see to check.
+            await self._closed_account_still_holds_money(accounts),
             await self._asset_beside_asset_account(budget_id, accounts),
             await self._unpaired_transfer_legs(budget_id),
             await self._unlinked_card_payments(budget_id),
@@ -204,6 +208,65 @@ class AccountHygieneService:
                 "overpaid loan is real, though, so this is worth a look rather than a fix."
             ),
             action="Check the balance, and change the account type if it is an asset.",
+            account_ids=[a.id for a in hits],
+        )
+
+    async def _closed_account_still_holds_money(
+        self, accounts: list[Account]
+    ) -> HygieneFinding | None:
+        """A closed ON-BUDGET account with a balance left in it.
+
+        Closed and on-budget is not a contradiction, and forcing them apart
+        would be worse than the gap this closes: `on_budget` is read at query
+        time by the activity classifier, so flipping it on close would
+        reclassify every historical row on the account — spending from an old
+        checking account would become activity inside a tracked account, and
+        transfers into it would become saving. Reports would change because
+        someone tidied up. The commonest closed account in any budget is a
+        checking account closed when its owner changed banks, and it was on
+        budget for its whole life.
+
+        What IS contradictory is a closed on-budget account holding money.
+        Closing moves none, so the balance goes on funding Ready to Assign
+        from an account that is no longer in the sidebar. The cards half of
+        this was already handled — `get_budget_summary` keeps a closed card's
+        row until its balance and set-aside both reach zero — and cash
+        accounts had nothing at all.
+
+        Cards are left to that mechanism rather than reported twice: a closed
+        card with a balance is already on the budget page, tagged, with the
+        actions next to it.
+        """
+        cash = [
+            a for a in accounts if a.is_closed and a.on_budget and a.classification != "liability"
+        ]
+        balances = await self._balances([a.id for a in cash])
+        # Any real amount, not SIGN_MISMATCH_FLOOR: that floor exists to keep a
+        # sign test quiet on small balances, and this is not a sign test. A
+        # tenner stranded in a closed account is still a tenner backing
+        # envelopes from somewhere nobody can see. Cents guard against float
+        # dust from the sum.
+        hits = [a for a in cash if abs(balances.get(a.id, 0.0)) >= 0.01]
+        if not hits:
+            return None
+        total = sum(balances.get(a.id, 0.0) for a in hits)
+        return HygieneFinding(
+            kind="closed_account_holds_money",
+            title=(
+                f"{len(hits)} closed account{'s' if len(hits) > 1 else ''} still "
+                f"hold{'' if len(hits) > 1 else 's'} money"
+            ),
+            detail=(
+                "Closing an account moves no money, so this balance is still on budget and "
+                "still funding Ready to Assign — from an account that is no longer in your "
+                f"sidebar. {total:,.2f} in total. That is usually a transfer that never "
+                "got recorded when the account was emptied."
+            ),
+            action=(
+                "Record the transfer that emptied it, or reopen the account to move the "
+                "money out. If the account is really something you own rather than "
+                "spendable cash, turn off 'on budget' instead."
+            ),
             account_ids=[a.id for a in hits],
         )
 

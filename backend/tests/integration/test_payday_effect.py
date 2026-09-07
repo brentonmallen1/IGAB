@@ -50,7 +50,7 @@ async def _setup_core_scenario(db_session):
     await create_transaction(
         db_session, budget, checking, "-75.00", TODAY - timedelta(days=5), category=groceries
     )
-    return budget, checking
+    return budget, checking, group
 
 
 def _assert_core_expectations(data):
@@ -64,7 +64,7 @@ def _assert_core_expectations(data):
 
 
 async def test_spending_averages_by_day_after_payday(db_session):
-    budget, checking = await _setup_core_scenario(db_session)
+    budget, checking, _group = await _setup_core_scenario(db_session)
 
     data = await ReportService(db_session).payday_effect(budget.id, window=14, months=12)
 
@@ -73,7 +73,7 @@ async def test_spending_averages_by_day_after_payday(db_session):
 
 
 async def test_transfers_are_neither_paydays_nor_spending(db_session):
-    budget, checking = await _setup_core_scenario(db_session)
+    budget, checking, _group = await _setup_core_scenario(db_session)
     services = make_services(db_session)
     savings = await create_account(db_session, budget, "Savings")
 
@@ -97,22 +97,61 @@ async def test_transfers_are_neither_paydays_nor_spending(db_session):
     _assert_core_expectations(data)
 
 
-async def test_subscription_payees_excluded_from_spending(db_session):
-    budget, checking = await _setup_core_scenario(db_session)
+async def test_subscription_charges_excluded_from_spending(db_session):
+    """A subscription lands on its own schedule whatever the household does
+    after being paid, so counting it flattens the effect this report looks for.
+
+    The tag is read from the CATEGORY. This test used to tag a PAYEE, which is
+    the only reason the exclusion looked alive: migration b8e5d1c73a49 deleted
+    every payee-subscription row and made the routes refuse new ones, so in a
+    real budget the reader had been returning an empty set — and excluding
+    nothing — since 2026-09-06. The test reached past the guard the product
+    enforces, and so kept dead code green.
+    """
+    budget, checking, group = await _setup_core_scenario(db_session)
     await seed_system_tags(db_session, budget.id)
     tag_repo = TagRepository(db_session)
     sub_tag = await tag_repo.get_system_tag(budget.id, "subscription")
-    netflix = await create_payee(db_session, budget, "Netflix")
-    await tag_repo.add_payee_tag(netflix.id, sub_tag.id)
+    streaming = await create_category(db_session, budget, group, "Streaming")
+    await tag_repo.set_category_tags(streaming.id, [sub_tag.id])
+    netflix = await create_payee(db_session, budget, "Northstar Stream")
 
-    # Fires one day after payday, but it's a subscription, not payday behavior
+    # Fires one day after payday, but it is a subscription, not payday behaviour
     await create_transaction(
-        db_session, budget, checking, "-15.99", TODAY - timedelta(days=19), payee=netflix
+        db_session,
+        budget,
+        checking,
+        "-15.99",
+        TODAY - timedelta(days=19),
+        payee=netflix,
+        category=streaming,
     )
 
     data = await ReportService(db_session).payday_effect(budget.id, window=14, months=12)
 
     _assert_core_expectations(data)
+
+
+async def test_an_untagged_charge_at_the_same_payee_still_counts(db_session):
+    """The complement, so the exclusion cannot quietly widen to "any payee that
+    ever bought a subscription"."""
+    budget, checking, group = await _setup_core_scenario(db_session)
+    await seed_system_tags(db_session, budget.id)
+    shopping = await create_category(db_session, budget, group, "Shopping")
+    payee = await create_payee(db_session, budget, "Northstar Stream")
+    await create_transaction(
+        db_session,
+        budget,
+        checking,
+        "-15.99",
+        TODAY - timedelta(days=19),
+        payee=payee,
+        category=shopping,
+    )
+
+    data = await ReportService(db_session).payday_effect(budget.id, window=14, months=12)
+    by_offset = {d["offset"]: d["avg_spend"] for d in data["days"]}
+    assert by_offset[1] == Decimal("65.99")
 
 
 async def test_overlapping_paydays_share_offset_days(db_session):

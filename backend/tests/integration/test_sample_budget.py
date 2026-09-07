@@ -126,13 +126,13 @@ async def test_generation_covers_every_entity_kind(db_session):
     assert snaps[0].statement_balance == reconciled_sum
     assert checking.last_reconciled_balance == reconciled_sum
 
-    # Tag links on categories and payees; Visa Payment linked to the card
+    # Tag links on categories; Visa Payment linked to the card. No payee tags:
+    # they are retired, and the three payee specs that carried Subscription
+    # pointed at a Streaming category already tagged Subscription — the second
+    # copy of a fact the report never read from the payee side.
     tag_repo = TagRepository(db_session)
     cat_tags = await tag_repo.get_tags_for_categories([c.id for c in categories])
     assert any(tags for tags in cat_tags.values())
-    payees = await PayeeRepository(db_session).get_all(budget.id)
-    payee_tags = await tag_repo.get_tags_for_payees([p.id for p in payees])
-    assert any(tags for tags in payee_tags.values())
     visa_payment = next(c for c in categories if c.name == "Visa Payment")
     visa_account = next(a for a in accounts if a.account_type == "credit_card")
     assert visa_payment.linked_account_id == visa_account.id

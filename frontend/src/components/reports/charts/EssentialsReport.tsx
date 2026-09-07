@@ -13,6 +13,7 @@ import {
 import { useEssentialsReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { MetricCard } from '../MetricCard'
+import { ReportNotes } from '../ReportNotes'
 import { MetricRow } from '../MetricRow'
 import { ReportInfoButton } from '../ReportInfoButton'
 import { ReportErrorState } from '../ReportErrorState'
@@ -103,6 +104,10 @@ export function EssentialsReport({ budgetId }: Props) {
           </div>
         ) : (
           <div ref={captureRef}>
+            {/* Tagged Essential and still not counted. The mortgage case is
+                counted now; a category tagged both Essential and Savings is
+                not, and silence there would be the same bug in a new class. */}
+            <ReportNotes report={data} toggleAvailable={false} counts="a cost of living" />
             <MetricRow>
               <MetricCard
                 label="Essentials / month"

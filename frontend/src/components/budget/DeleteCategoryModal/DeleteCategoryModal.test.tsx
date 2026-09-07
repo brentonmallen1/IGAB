@@ -115,6 +115,25 @@ function renderModal(over: Partial<CategoryDeletePreview> = {}) {
   return { onDeleted }
 }
 
+/** The same dialog opened on a whole group. `useArchiveCategoryGroup` is the
+ *  real hook here — nothing in these cases presses the button — but the target
+ *  shape is what decides which sentences render. */
+function renderGroupModal(over: Partial<CategoryDeletePreview> = {}) {
+  preview = makePreview(over)
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(
+    <QueryClientProvider client={qc}>
+      <DeleteCategoryModal
+        budgetId="b1"
+        target={{ kind: 'group', id: 'g1', name: 'Fitness' }}
+        month="2026-08-01"
+        onClose={vi.fn()}
+        onDeleted={vi.fn()}
+      />
+    </QueryClientProvider>
+  )
+}
+
 beforeEach(() => {
   deleteMutate.mockClear()
   refetchSpy.mockClear()
@@ -275,5 +294,86 @@ describe('DeleteCategoryModal', () => {
     renderModal({ transaction_count: 0 })
     expect(screen.queryByRole('radio')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Delete' })).toBeEnabled()
+  })
+})
+
+/**
+ * Why the dialog is naming envelopes that are nowhere on the budget page.
+ *
+ * The grid draws no archived category, so a group of them looks empty there
+ * and full here — and the dialog used to list the names with no explanation,
+ * which reads as the app having forgotten that they were moved out. Both
+ * figures are served (`archived_count`, `all_archived`); the sentences are the
+ * only thing this file adds.
+ */
+describe('a group whose envelopes are archived', () => {
+  it('explains why the group looked empty when every one of them is archived', () => {
+    renderGroupModal({
+      category_ids: ['c1', 'c2'],
+      category_names: ['Coaching', 'Equipment'],
+      archived_count: 2,
+      all_archived: true,
+    })
+    expect(screen.getByText(/why the group looks empty on the budget page/i)).toBeInTheDocument()
+    expect(screen.getByText('Coaching, Equipment')).toBeInTheDocument()
+  })
+
+  it('says how many are hidden when only some of them are', () => {
+    renderGroupModal({
+      category_ids: ['c1', 'c2', 'c3'],
+      category_names: ['Coaching', 'Equipment', 'Classes'],
+      archived_count: 1,
+      all_archived: false,
+    })
+    expect(screen.getByText(/1 of the categories below is archived/i)).toBeInTheDocument()
+  })
+
+  it('says nothing about archiving on a group with none', () => {
+    renderGroupModal({ archived_count: 0, all_archived: false })
+    expect(screen.queryByText(/archived/i)).toBeNull()
+  })
+
+  it('says nothing about it on a plain category selection either', () => {
+    // `archived_count` is a group figure; a multi-select delete of archived
+    // envelopes is started from the archived room, where they are on screen.
+    renderModal({ archived_count: 2, all_archived: true })
+    expect(screen.queryByText(/why the group looks empty/i)).toBeNull()
+  })
+})
+
+/**
+ * The button that had to be offered and then failed.
+ *
+ * A group whose envelopes were all archived long ago is a heading over nothing
+ * on the budget page, and the only way to take it off the page is to archive
+ * the group. The server refused that over one of those envelopes' stranded
+ * balances — an envelope already off the budget — so this dialog waved the
+ * button through its own gate and the press failed at the server. Now the
+ * server does not ask the question of an envelope it is not moving, and the
+ * gate is the server's answer and nothing else.
+ */
+describe('archiving a group of already-archived envelopes', () => {
+  it('offers the button on the served answer, not a client-side exception', () => {
+    archivePreview = {
+      may_archive: true,
+      blocked_by_balance: [],
+      blocked_by_link: [],
+      blocked_by_schedule: [],
+    }
+    renderGroupModal({ archived_count: 2, all_archived: true })
+    expect(screen.getByRole('button', { name: 'Archive group instead' })).toBeEnabled()
+  })
+
+  it('still refuses when a live envelope in the group holds money', () => {
+    archivePreview = {
+      may_archive: false,
+      blocked_by_balance: ['Dining'],
+      blocked_by_link: [],
+      blocked_by_schedule: [],
+    }
+    renderGroupModal({ archived_count: 1, all_archived: false })
+    const button = screen.getByRole('button', { name: 'Archive instead' })
+    expect(button).toBeDisabled()
+    expect(button).toHaveAttribute('title', 'Cannot archive: Dining')
   })
 })

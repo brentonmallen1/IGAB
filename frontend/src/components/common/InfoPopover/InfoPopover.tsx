@@ -18,6 +18,11 @@ interface Props {
 // Wider than the app's menus because this is prose, not a list of options.
 const PANEL_WIDTH = 320
 const PANEL_GAP = 6
+/** How close to the screen edge the panel may come — wider than the shared
+ *  8px default, which is a menu's margin. This panel is a page of text that
+ *  routinely fills the height available to it, and text ending 8px from the
+ *  top of the screen reads as clipped rather than as placed. */
+const PANEL_MARGIN = 20
 
 /**
  * One titled group inside a popover body.
@@ -66,7 +71,7 @@ export function InfoPopover({ title, label = 'More information', width, children
   const pos = useAnchoredPosition(
     triggerRef,
     open,
-    { width: width ?? PANEL_WIDTH, gap: PANEL_GAP },
+    { width: width ?? PANEL_WIDTH, gap: PANEL_GAP, margin: PANEL_MARGIN },
     panelRef
   )
 

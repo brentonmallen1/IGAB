@@ -57,8 +57,14 @@ from igab.repositories.txn_filters import (
     PARENT_ROW,
     PLANNED_SPEND_ROW,
     POSTED,
+    category_tagged,
 )
-from igab.services.report_basics import _months_in_range, _subtract_months, emergency_fund
+from igab.services.report_basics import (
+    _months_in_range,
+    _subtract_months,
+    class_excluded_note,
+    emergency_fund,
+)
 
 # Report payload shapes.
 #
@@ -173,15 +179,6 @@ _DRAWDOWN_LABELS: dict[str, str] = {
 #: Classes worth explaining when a spending report leaves them out. Internal
 #: transfers and market movement are not "money you spent somewhere else" — a
 #: note about them would be noise, not reassurance.
-_EXPLAINED_EXCLUSIONS: frozenset[str] = frozenset(
-    {
-        ActivityClass.SAVINGS.value,
-        ActivityClass.DEBT_PRINCIPAL.value,
-        ActivityClass.DEBT_INTEREST.value,
-    }
-)
-
-
 def _magnitude(buckets: dict[str, Decimal], cls: ActivityClass) -> Decimal:
     """An outflow class's total for one month, as a positive number.
 
@@ -191,6 +188,25 @@ def _magnitude(buckets: dict[str, Decimal], cls: ActivityClass) -> Decimal:
     keep the sign through a refactor and quietly report a negative savings rate.
     """
     return -buckets.get(cls.value, Decimal("0"))
+
+
+def scoped(q, column, ids: Sequence[uuid.UUID] | None):
+    """Apply a category (or account) scope to a report query.
+
+    The one statement of a distinction the reports have to keep: **None means
+    no scope was asked for; an empty list means a scope was asked for and
+    nothing matched.** `if ids:` conflates them, and the conflation is not
+    academic — scope a report to a tag nobody has applied yet and it answers
+    with the entire budget, which reads as the tag being ignored.
+
+    `in_([])` renders as a false predicate, so an empty scope correctly returns
+    no rows.
+
+    Written once because it was written five times: every report query builder
+    below had its own `if category_ids:`, and a sixth would have been written
+    the same way.
+    """
+    return q if ids is None else q.where(column.in_(ids))
 
 
 class ReportService:
@@ -247,8 +263,7 @@ class ReportService:
                 _spending_classes(include_classes, scoped_accounts=bool(account_ids)),
             )
         )
-        if category_ids:
-            q = q.where(Transaction.category_id.in_(category_ids))
+        q = scoped(q, Transaction.category_id, category_ids)
         if account_ids:
             q = q.where(Transaction.account_id.in_(account_ids))
         else:
@@ -1412,9 +1427,8 @@ class ReportService:
             _spending_classes(),
         )
         spend_q = apply_class_joins(spend_q)
-        if category_ids:
-            assign_q = assign_q.where(BudgetAssignment.category_id.in_(category_ids))
-            spend_q = spend_q.where(Transaction.category_id.in_(category_ids))
+        assign_q = scoped(assign_q, BudgetAssignment.category_id, category_ids)
+        spend_q = scoped(spend_q, Transaction.category_id, category_ids)
 
         assignments = (await self.session.execute(assign_q)).all()
         spending = (await self.session.execute(spend_q)).all()
@@ -1809,8 +1823,7 @@ class ReportService:
                 SPENT_ENVELOPE,
             )
         )
-        if category_ids:
-            q = q.where(Transaction.category_id.in_(category_ids))
+        q = scoped(q, Transaction.category_id, category_ids)
         if account_ids:
             q = q.where(Transaction.account_id.in_(account_ids))
         else:
@@ -1894,7 +1907,7 @@ class ReportService:
 
         # A category the view deliberately hides is the view's story, so its
         # excluded activity is left out of this note too.
-        class_excluded = self._class_excluded_note(
+        class_excluded = class_excluded_note(
             _visible(other_class),
             scoped=bool(category_ids) or regroup is not None,
         )
@@ -1952,44 +1965,6 @@ class ReportService:
         ]
 
         return items, Decimal(str(round(grand_total, 4))), notes
-
-    @staticmethod
-    def _class_excluded_note(excluded_rows: list, *, scoped: bool) -> list[dict] | None:
-        """Savings / debt activity the report will not count, summarised.
-
-        Only when the user has *pointed at* categories — an explicit selection
-        or an active view — because that is when absence misleads: "I selected
-        Car Payment and it isn't here" reads as a bug, not as a definition.
-        The unfiltered report stays calm; the info panel covers the general
-        rule there.
-        """
-        if not scoped or not excluded_rows:
-            return None
-
-        by_class: dict[str, dict] = {}
-        for r in excluded_rows:
-            if r.cls not in _EXPLAINED_EXCLUSIONS:
-                continue
-            slot = by_class.setdefault(r.cls, {"categories": set(), "total": Decimal("0")})
-            slot["categories"].add(r.id)
-            slot["total"] += abs(r.amount)
-        if not by_class:
-            return None
-
-        return sorted(
-            (
-                {
-                    "activity_class": cls,
-                    "label": CLASS_LABEL[ActivityClass(cls)],
-                    "categories": len(v["categories"]),
-                    # Storage is 4dp; the note is user-facing copy, so cents.
-                    "total": quantize_cents(v["total"]),
-                }
-                for cls, v in by_class.items()
-            ),
-            key=lambda v: v["total"],
-            reverse=True,
-        )
 
     # ─── Seasonality ─────────────────────────────────────────────────────────
 
@@ -2127,6 +2102,10 @@ class ReportService:
                 "monthly_total_average": Decimal("0"),
                 "categories": [],
                 "monthly_series": [{"month": m, "total": Decimal("0")} for m in months_list],
+                # Nothing is tagged, so nothing was pointed at and nothing is
+                # missing — but the key is always present, or the client has to
+                # know which branch produced its response.
+                "class_excluded": [],
             }
 
         rows, _ = await self.txns.essential_spend_by_category_month(
@@ -2157,6 +2136,14 @@ class ReportService:
             c["total"] = quantize_cents(c["total"])
             c["monthly_average"] = quantize_cents(c["total"] / months)
         grand = sum((c["total"] for c in categories), Decimal("0"))
+        # What was tagged and still not counted. Tagging a category is pointing
+        # at it, which is the condition the note was written for — and the case
+        # that misled: a mortgage tagged Essential is now counted, but a
+        # category tagged Essential AND Savings still is not, and silence there
+        # would be the same bug wearing a different class.
+        excluded, _ = await self.txns.essential_excluded_by_class(
+            budget_id, window_start, window_end
+        )
         return {
             **base,
             "monthly_total_average": quantize_cents(grand / months),
@@ -2165,6 +2152,7 @@ class ReportService:
                 {"month": m, "total": quantize_cents(by_month.get(m, Decimal("0")))}
                 for m in months_list
             ],
+            "class_excluded": class_excluded_note(excluded, scoped=True) or [],
         }
 
     # ─── Payee Analysis ───────────────────────────────────────────────────────
@@ -2331,8 +2319,7 @@ class ReportService:
             LEAF,
             CASH_FLOW_ROW,
         )
-        if category_ids:
-            q = q.where(Transaction.category_id.in_(category_ids))
+        q = scoped(q, Transaction.category_id, category_ids)
         if account_ids:
             q = q.where(Transaction.account_id.in_(account_ids))
         else:
@@ -2352,7 +2339,7 @@ class ReportService:
                 ActivityClass.DEBT_INTEREST.value,
             }
         rows = [r for r in scanned if r.cls in included]
-        class_excluded = self._class_excluded_note(
+        class_excluded = class_excluded_note(
             [r for r in scanned if r.cls not in included],
             scoped=bool(category_ids),
         )
@@ -2450,8 +2437,7 @@ class ReportService:
                 CASH_FLOW_ROW,
             )
         )
-        if category_ids:
-            q = q.where(Transaction.category_id.in_(category_ids))
+        q = scoped(q, Transaction.category_id, category_ids)
         if account_ids:
             q = q.where(Transaction.account_id.in_(account_ids))
         else:
@@ -3027,22 +3013,23 @@ class ReportService:
         end_date = date.today()
         start_date = _subtract_months(end_date, months)
 
-        # Get subscription-tagged payee ids to exclude
-        from igab.repositories.tag_repo import TagRepository
-
-        tag_repo = TagRepository(self.session)
-        subscription_payee_ids = await tag_repo.get_payee_ids_by_system_keys(
-            budget_id, system_keys=["subscription"]
-        )
-
         # All cash-flow rows in the period. CASH_FLOW_ROW keeps transfers out:
         # a transfer into checking is not a payday, and the outflow leg of a
         # transfer is not spending.
+        #
+        # Each row says whether it is a subscription charge, so the exclusion
+        # below can apply to spending WITHOUT dropping the row from the inflow
+        # side that detects paydays. Read from the CATEGORY: this asked
+        # `get_payee_ids_by_system_keys` until now, and migration b8e5d1c73a49
+        # deleted every payee-subscription row and made the routes refuse new
+        # ones — so the set has been empty since 2026-09-06 and this excluded
+        # nothing at all.
         q = (
             select(
                 Transaction.date,
                 Transaction.amount,
                 Transaction.payee_id,
+                category_tagged("subscription").label("is_subscription"),
             )
             .where(
                 Transaction.budget_id == budget_id,
@@ -3071,6 +3058,7 @@ class ReportService:
                 "date": [r.date for r in rows],
                 "amount": [float(r.amount) for r in rows],
                 "payee_id": [str(r.payee_id) if r.payee_id else None for r in rows],
+                "is_subscription": [bool(r.is_subscription) for r in rows],
             }
         )
 
@@ -3095,12 +3083,10 @@ class ReportService:
                 "event_count": 0,
             }
 
-        # Exclude subscription-tagged payees from spending
-        sub_ids = {str(pid) for pid in subscription_payee_ids}
-        outflows = df.filter(
-            (pl.col("amount") < 0)
-            & (~pl.col("payee_id").is_in(sub_ids) | pl.col("payee_id").is_null())
-        )
+        # Subscriptions are not payday behaviour: they land on their own
+        # schedule whatever the household does after being paid, so counting
+        # them would flatten the very effect this report is looking for.
+        outflows = df.filter((pl.col("amount") < 0) & ~pl.col("is_subscription"))
 
         # Group by date
         daily_spend = (
@@ -3161,7 +3147,6 @@ class ReportService:
         import random
 
         from igab.db.models import ScheduledTransaction
-        from igab.repositories.tag_repo import TagRepository
 
         today = date.today()
         end_date = today + timedelta(days=horizon_days)
@@ -3219,51 +3204,53 @@ class ReportService:
                 if occ_date is None:
                     break
 
-        # 3. Get subscription-tagged payees for expected subscription charges
-        tag_repo = TagRepository(self.session)
-        subscription_payee_ids = await tag_repo.get_payee_ids_by_system_keys(
-            budget_id, system_keys=["subscription"]
-        )
-
+        # 3. Recurring charges in categories tagged Subscription, by payee.
+        #
+        # Categories, not payees. This read `get_payee_ids_by_system_keys` —
+        # and migration b8e5d1c73a49 deleted every payee-subscription row and
+        # made the routes refuse new ones, so the set has been empty since
+        # 2026-09-06 and this projection has quietly contributed nothing. The
+        # Subscriptions report reads categories and groups the charges by
+        # payee within them; this now asks the same question the same way.
         subscription_events: list[tuple[date, str, Decimal]] = []
-        if subscription_payee_ids:
-            # Get last charge date and typical amount for each subscription payee
-            sub_q = (
-                select(
-                    Transaction.payee_id,
-                    Payee.name.label("payee_name"),
-                    func.max(Transaction.date).label("last_date"),
-                    func.avg(Transaction.amount).label("avg_amount"),
-                )
-                .join(Payee, Payee.id == Transaction.payee_id)
-                .join(Account, Account.id == Transaction.account_id)
-                .where(
-                    Transaction.budget_id == budget_id,
-                    NOT_DELETED,
-                    POSTED,
-                    LEAF,
-                    Transaction.payee_id.in_(subscription_payee_ids),
-                    Transaction.amount < 0,
-                    Account.is_closed == False,  # noqa: E712
-                    # Cash accounts only: a subscription charged to a card
-                    # consumes cash at payment time, not charge time.
-                    CASH_ACCOUNT,
-                )
-                .group_by(Transaction.payee_id, Payee.name)
+        # Last charge date and typical amount per payee inside those
+        # categories.
+        sub_q = (
+            select(
+                Transaction.payee_id,
+                Payee.name.label("payee_name"),
+                func.max(Transaction.date).label("last_date"),
+                func.avg(Transaction.amount).label("avg_amount"),
             )
-            sub_rows = (await self.session.execute(sub_q)).all()
+            .join(Payee, Payee.id == Transaction.payee_id)
+            .join(Account, Account.id == Transaction.account_id)
+            .where(
+                Transaction.budget_id == budget_id,
+                NOT_DELETED,
+                POSTED,
+                LEAF,
+                category_tagged("subscription"),
+                Transaction.amount < 0,
+                Account.is_closed == False,  # noqa: E712
+                # Cash accounts only: a subscription charged to a card
+                # consumes cash at payment time, not charge time.
+                CASH_ACCOUNT,
+            )
+            .group_by(Transaction.payee_id, Payee.name)
+        )
+        sub_rows = (await self.session.execute(sub_q)).all()
 
-            for row in sub_rows:
-                last_date = row.last_date
-                avg_amount = Decimal(str(row.avg_amount))
-                payee_name = row.payee_name or "Subscription"
+        for row in sub_rows:
+            last_date = row.last_date
+            avg_amount = Decimal(str(row.avg_amount))
+            payee_name = row.payee_name or "Subscription"
 
-                # Assume monthly cadence, project forward
-                next_date = last_date + timedelta(days=30)
-                while next_date <= end_date:
-                    if next_date >= today:
-                        subscription_events.append((next_date, payee_name, avg_amount))
-                    next_date = next_date + timedelta(days=30)
+            # Assume monthly cadence, project forward
+            next_date = last_date + timedelta(days=30)
+            while next_date <= end_date:
+                if next_date >= today:
+                    subscription_events.append((next_date, payee_name, avg_amount))
+                next_date = next_date + timedelta(days=30)
 
         # 4. Get historical daily net flows for stochastic layer — open CASH
         # accounts only, matching the balance being projected (a brokerage

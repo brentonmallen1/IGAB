@@ -239,6 +239,15 @@ class CategoryGroupResponse(ApiModel):
     #: Required, not optional: a path that forgets it must raise, not silently
     #: draw an empty "Credit Card Payments" header and turn reordering off.
     is_card_only: bool
+    #: How many of this group's live categories are archived — envelopes the
+    #: budget grid does not draw. Zero for almost every group; when it is not,
+    #: the grid can stop calling the group empty, and the delete dialog can say
+    #: why it is naming categories that are nowhere on the page.
+    #:
+    #: Served rather than counted on the client for `is_card_only`'s reason:
+    #: the client's category list filters archived rows, so it is missing the
+    #: input. Required, not optional — a path that forgets must raise.
+    archived_category_count: int
     #: 'wishlist' for the group the Guide keeps; rename and delete are refused.
     system_key: str | None = None
     created_at: datetime.datetime

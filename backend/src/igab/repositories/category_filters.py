@@ -50,7 +50,7 @@ back on a credit card — and is deliberately not an offering rule; see its own
 comment for why archived categories stay in it.
 """
 
-from sqlalchemy import and_, not_, or_, select
+from sqlalchemy import and_, func, not_, or_, select
 
 from igab.db.models import Category, CategoryGroup
 
@@ -231,6 +231,36 @@ GROUP_IS_CARD_ONLY = and_(
         .exists()
     ),
 )
+
+#: How many of this group's live categories are archived.
+#:
+#: The budget grid draws no archived category, so a group holding nothing else
+#: draws as an empty header — and every surface that acts on the group
+#: disagrees with what the page shows. Deleting one is refused-looking ("these
+#: categories go too", naming envelopes that are nowhere on screen); archiving
+#: it can be refused outright by an archived envelope's own balance. The grid
+#: said the group was empty; it was not, and there was no way to find that out
+#: from the grid.
+#:
+#: Served (`CategoryGroupResponse.archived_category_count`) for the reason
+#: `GROUP_IS_CARD_ONLY` is: the client's category list filters archived rows,
+#: so it is missing the input and cannot count them. A second request for the
+#: whole archived listing would be a second answer to the same question.
+#:
+#: Counts LIVE rows only — a soft-deleted category is gone, not hidden — and
+#: says nothing about the group's own `is_archived`, which is a separate fact
+#: the response already carries.
+GROUP_ARCHIVED_CATEGORY_COUNT = (
+    select(func.count(Category.id))
+    .where(
+        Category.category_group_id == CategoryGroup.id,
+        LIVE_CATEGORY,
+        Category.is_archived == True,  # noqa: E712
+    )
+    .correlate(CategoryGroup)
+    .scalar_subquery()
+)
+
 
 #: The category is live but its group is soft-deleted: gone from the grid
 #: (which renders only the groups it was given) yet still in the budget

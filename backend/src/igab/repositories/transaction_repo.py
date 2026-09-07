@@ -29,7 +29,11 @@ from igab.db.models import (
     category_tags,
     payee_tags,
 )
-from igab.domain.activity_class import ACTIVITY_CLASS, apply_class_joins
+from igab.domain.activity_class import (
+    ACTIVITY_CLASS,
+    COST_OF_LIVING_CLASSES,
+    apply_class_joins,
+)
 from igab.repositories.base import BaseRepository
 from igab.repositories.category_filters import IS_CATEGORIZABLE
 from igab.repositories.txn_filters import (
@@ -203,7 +207,12 @@ class TransactionRepository(BaseRepository[Transaction]):
             q = q.where(Transaction.date >= start_date)
         if end_date:
             q = q.where(Transaction.date <= end_date)
-        if category_ids:
+        # `is not None`, not truthiness: None means no category scope was asked
+        # for, an empty list means one was and nothing matched. Conflating them
+        # hands back the whole window for a scope that should return nothing —
+        # the same distinction `report_service.scoped` states for the reports,
+        # and the drill-down panel reads this listing.
+        if category_ids is not None:
             q = q.where(Transaction.category_id.in_(category_ids))
         if payee_ids:
             q = q.where(Transaction.payee_id.in_(payee_ids))
@@ -303,7 +312,7 @@ class TransactionRepository(BaseRepository[Transaction]):
             where.append(Transaction.date >= start_date)
         if end_date:
             where.append(Transaction.date <= end_date)
-        if category_ids:
+        if category_ids is not None:
             where.append(Transaction.category_id.in_(category_ids))
         if payee_ids:
             where.append(Transaction.payee_id.in_(payee_ids))
@@ -1137,9 +1146,14 @@ class TransactionRepository(BaseRepository[Transaction]):
         return [], "all"
 
     @staticmethod
-    def _essential_where(budget_id: uuid.UUID, since: date, until: date, scope: list) -> list:
-        from igab.domain.activity_class import ActivityClass
+    def _essential_rows_where(budget_id: uuid.UUID, since: date, until: date, scope: list) -> list:
+        """Which rows this family looks at, before class is considered.
 
+        Split from the class filter so "counted" and "left out and explained"
+        are built from one statement of the scope and two complementary class
+        terms. Written twice, they would drift into explaining an absence that
+        was never in scope to begin with.
+        """
         return [
             Transaction.budget_id == budget_id,
             NOT_DELETED,
@@ -1148,8 +1162,14 @@ class TransactionRepository(BaseRepository[Transaction]):
             ON_BUDGET_ACCOUNT,
             Transaction.date >= since,
             Transaction.date <= until,
-            ACTIVITY_CLASS == ActivityClass.SPENDING,
             *scope,
+        ]
+
+    @classmethod
+    def _essential_where(cls, budget_id: uuid.UUID, since: date, until: date, scope: list) -> list:
+        return [
+            *cls._essential_rows_where(budget_id, since, until, scope),
+            ACTIVITY_CLASS.in_(COST_OF_LIVING_CLASSES),
         ]
 
     async def essential_spend(
@@ -1198,6 +1218,43 @@ class TransactionRepository(BaseRepository[Transaction]):
             .outerjoin(CategoryGroup, CategoryGroup.id == Category.category_group_id)
             .where(*self._essential_where(budget_id, since, until, scope))
             .group_by(Transaction.category_id, Category.name, CategoryGroup.name, month)
+        )
+        rows = (await self.session.execute(apply_class_joins(q))).all()
+        return list(rows), basis
+
+    async def essential_excluded_by_class(
+        self,
+        budget_id: uuid.UUID,
+        since: date,
+        until: date,
+        bound_categories: Sequence[uuid.UUID] | None = None,
+    ) -> tuple[list, str]:
+        """(category_id, cls, amount) for rows this family scopes IN but does
+        not count — same window, same scope, complementary class filter.
+
+        The reports built on `_ESSENTIAL_CLASSES` are the ones people point at
+        a category and expect to see. When one is missing, absence is the only
+        signal, and absence reads as a bug — "I tagged ten and two showed up".
+        This is what lets those reports name what they left out and why,
+        instead of leaving the reader to guess.
+
+        The complement of `_ESSENTIAL_CLASSES`, not a hand-listed set: a class
+        added there must leave here on the same day, or a row could be counted
+        and explained-as-missing at once.
+        """
+        scope, basis = await self._essential_scope(budget_id, bound_categories)
+        q = (
+            select(
+                Transaction.category_id.label("id"),
+                ACTIVITY_CLASS.label("cls"),
+                func.sum(Transaction.amount).label("amount"),
+            )
+            .select_from(Transaction)
+            .where(
+                *self._essential_rows_where(budget_id, since, until, scope),
+                ACTIVITY_CLASS.notin_(COST_OF_LIVING_CLASSES),
+            )
+            .group_by(Transaction.category_id, ACTIVITY_CLASS)
         )
         rows = (await self.session.execute(apply_class_joins(q))).all()
         return list(rows), basis

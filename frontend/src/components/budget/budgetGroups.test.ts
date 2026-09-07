@@ -17,6 +17,7 @@ function group(id: string, is_system = false, is_card_only = false) {
     is_archived: false,
     is_system,
     is_card_only,
+    archived_category_count: 0,
     system_key: null,
   }
 }

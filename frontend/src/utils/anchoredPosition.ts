@@ -156,8 +156,13 @@ function resolveVertical(
   margin: number
 ): Pick<AnchoredPlacement, 'top' | 'bottom' | 'maxHeight'> {
   const cap = options.maxHeight ?? DEFAULTS.maxHeight
-  const spaceBelow = viewport.height - (viewport.inset?.bottom ?? 0) - trigger.bottom - margin
-  const spaceAbove = trigger.top - (viewport.inset?.top ?? 0) - margin
+  // `gap` is part of the room the panel costs, not room it may use. Leaving it
+  // out was worth `gap` pixels of the margin on whichever side the panel took:
+  // with the InfoPopover's 6px gap against an 8px margin, a flipped tags
+  // popover ended 2px from the top of the screen and read as pinned to the
+  // edge. The panel's far edge now lands exactly `margin` from the viewport.
+  const spaceBelow = viewport.height - (viewport.inset?.bottom ?? 0) - trigger.bottom - margin - gap
+  const spaceAbove = trigger.top - (viewport.inset?.top ?? 0) - margin - gap
 
   // Measured height when we have it, the assumed height when we do not.
   const needed = Math.min(

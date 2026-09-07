@@ -84,6 +84,95 @@ class TestATrackedThingInsideTheBudget:
         assert "tracked_name_on_budget" not in await _run(db_session, budget)
 
 
+class TestAClosedAccountStillHoldingMoney:
+    """Closed and on-budget is not a contradiction — the commonest closed
+    account in any budget is a checking account closed at a change of banks,
+    and it was on budget for its whole life. Forcing them apart would be worse
+    than the gap: `on_budget` is read at query time, so flipping it on close
+    would reclassify every historical row on the account.
+
+    What IS a contradiction is a closed on-budget account holding money.
+    Closing moves none, so the balance goes on funding Ready to Assign from an
+    account no longer in the sidebar, and nothing said so.
+    """
+
+    async def test_a_closed_checking_account_with_a_balance_is_reported(self, db_session):
+        services, budget = await _world(db_session)
+        old = await create_account(db_session, budget, "First National Checking", on_budget=True)
+        await create_transaction(db_session, budget, old, "400.00", RECENT)
+        old.is_closed = True
+        await db_session.flush()
+
+        findings = await _run(db_session, budget)
+        assert "closed_account_holds_money" in findings
+        assert "400.00" in findings["closed_account_holds_money"].detail
+
+    async def test_an_emptied_one_is_not(self, db_session):
+        """The normal close: transfer the money out, then close. A finding here
+        would fire on every tidy account anyone ever put away."""
+        services, budget = await _world(db_session)
+        old = await create_account(db_session, budget, "First National Checking", on_budget=True)
+        await create_transaction(db_session, budget, old, "400.00", RECENT)
+        await create_transaction(db_session, budget, old, "-400.00", RECENT)
+        old.is_closed = True
+        await db_session.flush()
+
+        assert "closed_account_holds_money" not in await _run(db_session, budget)
+
+    async def test_an_open_account_with_a_balance_is_not(self, db_session):
+        """Money in an open account is the ordinary state of a budget."""
+        services, budget = await _world(db_session)
+        live = await create_account(db_session, budget, "Redwood Checking", on_budget=True)
+        await create_transaction(db_session, budget, live, "400.00", RECENT)
+        await db_session.flush()
+
+        assert "closed_account_holds_money" not in await _run(db_session, budget)
+
+    async def test_a_closed_tracking_account_is_not(self, db_session):
+        """A brokerage holds no envelope money whatever its balance, so
+        closing one changes no budget figure. This is also the case that made
+        the whole question concrete — a closed asset account whose value never
+        belonged in the budget."""
+        services, budget = await _world(db_session)
+        brokerage = await create_account(
+            db_session,
+            budget,
+            "Cascade Point Brokerage",
+            account_type="investment",
+            on_budget=False,
+        )
+        await create_transaction(db_session, budget, brokerage, "52000.00", RECENT)
+        brokerage.is_closed = True
+        await db_session.flush()
+
+        assert "closed_account_holds_money" not in await _run(db_session, budget)
+
+    async def test_a_closed_card_is_left_to_the_cards_section(self, db_session):
+        """Not reported twice. `get_budget_summary` already keeps a closed
+        card's row on the budget page, tagged, until its balance and set-aside
+        both reach zero — with the actions sitting next to it."""
+        services, budget = await _world(db_session)
+        card = await create_account(
+            db_session, budget, "Sapphire Visa", account_type="credit_card", on_budget=True
+        )
+        await create_transaction(db_session, budget, card, "-950.00", RECENT)
+        card.is_closed = True
+        await db_session.flush()
+
+        assert "closed_account_holds_money" not in await _run(db_session, budget)
+
+    async def test_an_overdrawn_closed_account_counts_too(self, db_session):
+        """A negative balance is money the budget is counting against you, and
+        hiding the account does not settle it."""
+        services, budget = await _world(db_session)
+        old = await create_account(db_session, budget, "Harborview Cash", on_budget=True)
+        await create_transaction(db_session, budget, old, "-120.00", RECENT)
+        old.is_closed = True
+        await db_session.flush()
+
+        assert "closed_account_holds_money" in await _run(db_session, budget)
+
+
 class TestADebtHoldingAPositiveBalance:
     async def test_a_large_positive_balance_on_a_debt_type_is_reported(self, db_session):
         """The $2.8M case: an asset given a debt type is subtracted from net

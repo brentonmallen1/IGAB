@@ -609,33 +609,67 @@ class CategoryService:
             )
         )
         preview.future_assigned = await self._sum_assigned(ids, after=month_start)
+
+        # Only the envelopes this would actually change can stand in its way.
+        # An already-archived envelope is not archived again: nothing about it
+        # moves, so nothing in it can be stranded by an act that leaves it
+        # exactly where it was. Every refusal below says "…would be
+        # unreachable" — for these it already is, and there is no action the
+        # user could take that would clear the refusal.
+        #
+        # This is not a nicety. A group whose envelopes were all archived long
+        # ago is a heading over nothing on the budget page, and hiding it means
+        # archiving the group — which asked these same questions of those same
+        # envelopes and refused over one's stranded balance. The group could
+        # not be taken off the page at all, and the message named a category
+        # that was already off it. YNAB's "Hidden Categories" arrives in
+        # exactly that shape.
+        #
+        # The money is still counted in `available` and `future_assigned`. It
+        # is a thing to tell someone, not a thing to stop them with.
+        blocking = [c for c in cats if not c.is_archived]
+        blocking_ids = {c.id for c in blocking}
+
         for cat in cats:
             balance = await self.budget_service.get_category_balance(cat.id, month_start)
             preview.available += balance.available
+            if cat.id not in blocking_ids:
+                continue
             if balance.available != Decimal("0"):
                 preview.blocked_by_balance.append(cat.name)
             if cat.linked_account_id is not None or cat.linked_liability_id is not None:
                 preview.blocked_by_link.append(cat.name)
+
         # Money committed to a later month is stranded just as thoroughly, and
-        # the viewed month's `available` cannot see it.
-        if preview.future_assigned != Decimal("0") and not preview.blocked_by_balance:
-            preview.blocked_by_balance = list(preview.category_names)
-        by_id = {c.id: c.name for c in cats}
-        scheduled = (
-            await self.session.execute(
-                select(ScheduledTransaction.category_id)
-                .where(
-                    ScheduledTransaction.category_id.in_(ids),
-                    ScheduledTransaction.is_deleted == False,  # noqa: E712
-                )
-                .distinct()
+        # the viewed month's `available` cannot see it. Summed over the
+        # blocking set, which is the whole set unless some are already
+        # archived — so the common case costs no second query.
+        if blocking and not preview.blocked_by_balance:
+            future_blocking = (
+                preview.future_assigned
+                if len(blocking) == len(cats)
+                else await self._sum_assigned(list(blocking_ids), after=month_start)
             )
-        ).scalars()
-        # The `in_(ids)` above already excludes NULL, but the column is
-        # nullable and the type checker reads it as such.
-        preview.blocked_by_schedule = sorted(
-            by_id[cid] for cid in scheduled if cid is not None and cid in by_id
-        )
+            if future_blocking != Decimal("0"):
+                preview.blocked_by_balance = [c.name for c in blocking]
+
+        if blocking:
+            by_id = {c.id: c.name for c in blocking}
+            scheduled = (
+                await self.session.execute(
+                    select(ScheduledTransaction.category_id)
+                    .where(
+                        ScheduledTransaction.category_id.in_(blocking_ids),
+                        ScheduledTransaction.is_deleted == False,  # noqa: E712
+                    )
+                    .distinct()
+                )
+            ).scalars()
+            # The `in_` above already excludes NULL, but the column is nullable
+            # and the type checker reads it as such.
+            preview.blocked_by_schedule = sorted(
+                by_id[cid] for cid in scheduled if cid is not None and cid in by_id
+            )
         return preview
 
     async def preview_archive_group(

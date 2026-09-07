@@ -42,6 +42,7 @@ import {
   type UpcomingRow,
 } from './importReview'
 import './ImportReviewDialog.css'
+import { closedAccounts } from '../../../utils/accountLists'
 
 /**
  * What the import decided, and a chance to change it.
@@ -842,7 +843,7 @@ function AccountsStep({
 }) {
   const { data: accounts } = useAccounts(budgetId, { includeClosed: true })
   const update = useUpdateAccount(budgetId)
-  const closed = (accounts ?? []).filter((a) => a.is_closed)
+  const closed = closedAccounts(accounts ?? [])
 
   return (
     <>

@@ -75,6 +75,37 @@
   min-width: 0;
 }
 
+/* "2 archived" beside a group's name: the one thing the grid cannot show by
+   drawing rows. Muted, not a warning — an archived envelope is a tidy state,
+   not a problem; what is wrong is a header that reads as empty when it is not.
+   Sits at the name's size so it reads as part of the heading rather than as a
+   badge competing with the money columns. */
+.category-group-row__archived {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  margin-left: var(--spacing-xs);
+  padding: 1px 6px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: none;
+  color: var(--text-muted);
+  font-size: var(--font-size-2xs);
+  font-weight: 400;
+  line-height: 1.6;
+  cursor: pointer;
+}
+
+.category-group-row__archived:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: var(--color-accent);
+}
+
+.category-group-row__archived:disabled {
+  cursor: default;
+}
+
 .category-group-row__rename-input {
   margin-left: var(--spacing-xs);
   font-size: var(--font-size-sm);

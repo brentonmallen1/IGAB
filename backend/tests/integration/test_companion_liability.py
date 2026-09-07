@@ -65,6 +65,10 @@ MORTGAGE_LEDGER: list[tuple[date, str]] = [(add_months(TODAY, -12), "-300000.00"
 MORTGAGE_LEDGER_MONTHS = 12
 
 
+async def _budget(db_session):
+    return await create_budget(db_session, await create_user(db_session))
+
+
 async def _companion(db_session, account) -> Liability | None:
     """The row linked to this account, deleted or not — the unique constraint
     does not filter on is_deleted, so neither does this."""
@@ -505,6 +509,98 @@ class TestTheImporterPath:
         # Empty, so the import invents no terms — but present, so the account
         # page has somewhere to put them.
         assert liabilities[0].interest_rate is None
+
+
+class TestALoanUnderAClosedAccountIsNotStillOwed:
+    """Reported as "all my previous loans that I did import and close are
+    still showing up".
+
+    The importer attaches a companion to every liability-classified account it
+    creates, and it creates them closed when someone picks "import & close" —
+    so a paid-off car loan arrived as an account nobody could see and a live
+    loan in the sidebar, the Liabilities overview, both Guide planners and the
+    liabilities report.
+
+    The rule was already written, one file over: `DELETE /liabilities/{id}`
+    reasons that a closed account "has no register left to feed the liability,
+    so the liability may go". These are the listing side of that sentence.
+    """
+
+    async def test_the_listing_leaves_it_out(self, db_session):
+        budget = await _budget(db_session)
+        settled = await create_account(
+            db_session, budget, "Paid-Off Car Loan", account_type="auto_loan", on_budget=False
+        )
+        live = await create_account(
+            db_session, budget, "Harborstone Mortgage", account_type="mortgage", on_budget=False
+        )
+        for account in (settled, live):
+            assert await ensure_for_account(db_session, account) is not None
+        settled.is_closed = True
+        await db_session.flush()
+
+        names = [item.name for item in await LiabilityRepository(db_session).get_all(budget.id)]
+        assert names == ["Harborstone Mortgage"]
+
+    async def test_it_can_still_be_asked_for(self, db_session):
+        """Out of the default answer, not out of existence — the overview
+        offers a "show closed" toggle the way the accounts page does."""
+        budget = await _budget(db_session)
+        settled = await create_account(
+            db_session, budget, "Paid-Off Car Loan", account_type="auto_loan", on_budget=False
+        )
+        assert await ensure_for_account(db_session, settled) is not None
+        settled.is_closed = True
+        await db_session.flush()
+
+        repo = LiabilityRepository(db_session)
+        assert [i.name for i in await repo.get_all(budget.id, include_closed=True)] == [
+            "Paid-Off Car Loan"
+        ]
+
+    async def test_a_liability_with_no_account_survives(self, db_session):
+        """The NULL trap this predicate is written around. An unmanaged
+        liability has no linked account at all, and `NULL IN (...)` is UNKNOWN
+        — a naive negation drops exactly the rows with nothing to close."""
+        budget = await _budget(db_session)
+        standalone = Liability(
+            budget_id=budget.id, name="Family Loan", manual_balance=Decimal("4000.00")
+        )
+        db_session.add(standalone)
+        await db_session.flush()
+
+        names = [item.name for item in await LiabilityRepository(db_session).get_all(budget.id)]
+        assert names == ["Family Loan"]
+
+    async def test_reopening_the_account_brings_it_back(self, db_session):
+        budget = await _budget(db_session)
+        loan = await create_account(
+            db_session, budget, "Paid-Off Car Loan", account_type="auto_loan", on_budget=False
+        )
+        assert await ensure_for_account(db_session, loan) is not None
+        loan.is_closed = True
+        await db_session.flush()
+        assert await LiabilityRepository(db_session).get_all(budget.id) == []
+
+        loan.is_closed = False
+        await db_session.flush()
+        assert len(await LiabilityRepository(db_session).get_all(budget.id)) == 1
+
+    async def test_the_api_listing_agrees(self, api_client, db_session):
+        budget = await create_budget(db_session, api_client.test_user)
+        loan = await create_account(
+            db_session, budget, "Paid-Off Car Loan", account_type="auto_loan", on_budget=False
+        )
+        assert await ensure_for_account(db_session, loan) is not None
+        loan.is_closed = True
+        await db_session.flush()
+
+        resp = await api_client.get(f"/api/v1/{budget.id}/liabilities")
+        assert resp.status_code == 200, resp.text
+        assert resp.json() == []
+
+        shown = await api_client.get(f"/api/v1/{budget.id}/liabilities?include_closed=true")
+        assert [item["name"] for item in shown.json()] == ["Paid-Off Car Loan"]
 
 
 class TestSnapshotsAndCategoriesCountAsFilledIn:

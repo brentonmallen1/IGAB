@@ -23,6 +23,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from igab.db.models import Category, CategoryGroup, Payee, Transaction
 from igab.domain.activity_class import (
     ACTIVITY_CLASS,
+    CLASS_LABEL,
+    COST_OF_LIVING_CLASSES,
     SPENDING_CLASSES,
     ActivityClass,
     apply_class_joins,
@@ -118,7 +120,7 @@ async def spending_trends(
         "series": ordered,
         "monthly_totals": monthly_totals,
         "total": quantize_cents(sum(monthly_totals, Decimal("0"))),
-        "class_excluded": svc._class_excluded_note(other_class, scoped=bool(category_ids)) or [],
+        "class_excluded": class_excluded_note(other_class, scoped=bool(category_ids)) or [],
     }
 
 
@@ -410,6 +412,76 @@ class CostOfLivingGroup(TypedDict):
     #: the shares have to add to 100 or the bar reads as arithmetic nobody
     #: can check.
     share: Decimal
+    #: The categories behind this bar, so it can be opened. Empty on the
+    #: Uncategorized bucket, which is drilled by "no category" rather than by
+    #: a list of ids — an empty list would filter nothing and list the lot.
+    category_ids: list[str]
+
+
+#: The classes worth naming when a report leaves them out. A row that fell to
+#: TRANSFER_INTERNAL is not an absence anyone is looking for; a mortgage
+#: payment is.
+EXPLAINED_EXCLUSIONS: frozenset[str] = frozenset(
+    {
+        ActivityClass.SAVINGS.value,
+        ActivityClass.DEBT_PRINCIPAL.value,
+        ActivityClass.DEBT_INTEREST.value,
+    }
+)
+
+
+def class_excluded_note(excluded_rows: list, *, scoped: bool) -> list[dict] | None:
+    """Activity a report scoped in but will not count, summarised by class.
+
+    Only when the user has *pointed at* categories, because that is when
+    absence misleads: "I selected Car Payment and it isn't here" reads as a
+    bug, not as a definition. An unfiltered report stays calm; its info panel
+    covers the general rule.
+
+    Pointing takes more than one form. Pareto and the day-patterns chart mean
+    an explicit selection or an active view. The essentials family means the
+    Essential tag: tagging a category IS pointing at it, and it was the case
+    that misled — ten categories tagged, two in the report, and nothing on the
+    page saying why. Callers decide what pointing means; the summary is one
+    implementation.
+
+    Rows need `.cls`, `.id` and `.amount`. Shared by report_service (Pareto,
+    day patterns) and by the essentials reports below, which is why it lives
+    here rather than on either.
+    """
+    if not scoped or not excluded_rows:
+        return None
+
+    by_class: dict[str, dict] = {}
+    for r in excluded_rows:
+        if r.cls not in EXPLAINED_EXCLUSIONS:
+            continue
+        slot = by_class.setdefault(r.cls, {"categories": set(), "total": Decimal("0")})
+        slot["categories"].add(r.id)
+        slot["total"] += abs(r.amount)
+    if not by_class:
+        return None
+
+    return sorted(
+        (
+            {
+                "activity_class": cls,
+                "label": CLASS_LABEL[ActivityClass(cls)],
+                "categories": len(v["categories"]),
+                # Storage is 4dp; the note is user-facing copy, so cents.
+                "total": quantize_cents(v["total"]),
+            }
+            for cls, v in by_class.items()
+        ),
+        key=lambda v: v["total"],
+        reverse=True,
+    )
+
+
+#: What the null-group bucket is called. One spelling: the report labels the
+#: bar with it and the client tests it to decide that a drill-down means "no
+#: category at all" rather than "these ids".
+UNCATEGORIZED_GROUP = "Uncategorized"
 
 
 async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: int = 12) -> dict:
@@ -437,13 +509,24 @@ async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: in
 
     repo = TransactionRepository(session)
     rows, basis = await repo.essential_spend_by_category_month(budget_id, start_date, today)
+    excluded, _ = await repo.essential_excluded_by_class(budget_id, start_date, today)
 
     #: Rows carry a null group where an essential PAYEE tagged a transaction
     #: with no category. They are real spending and must not vanish.
+    #:
+    #: Their category ids ride along so a bar can be opened. A single
+    #: uncategorized row can dominate this chart — a $30,000 YNAB closing
+    #: adjustment on an account someone had imported on-budget did exactly
+    #: that — and the report had no drill-down at all, so the only honest
+    #: reading of an unexplainable block was "this report is broken".
     by_group: dict[str, list[Decimal]] = {}
+    ids_by_group: dict[str, set[str]] = {}
     for row in rows:
-        name = row.group_name or "Uncategorized"
+        name = row.group_name or UNCATEGORIZED_GROUP
         bucket = by_group.setdefault(name, [Decimal("0")] * len(month_list))
+        seen = ids_by_group.setdefault(name, set())
+        if row.category_id is not None:
+            seen.add(str(row.category_id))
         slot = index.get(date(row.month.year, row.month.month, 1))
         if slot is not None:
             # Outflows are negative in the ledger; a cost reads positive here.
@@ -461,6 +544,7 @@ async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: in
                 "total": quantize_cents(total),
                 "avg_monthly": quantize_cents(total / len(month_list)),
                 "share": Decimal("0"),
+                "category_ids": sorted(ids_by_group.get(name, set())),
             }
         )
     for g in groups:
@@ -480,6 +564,12 @@ async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: in
 
     return {
         "months": month_list,
+        #: The exact window the figures cover, so a drill-down opened from a
+        #: bar asks for the same days. The client used to have no way to know
+        #: it — and re-deriving "twelve months back, from the first of that
+        #: month, to today" on the other side is the same rule written twice.
+        "window_start": start_date,
+        "window_end": today,
         "groups": groups,
         "avg_monthly_essentials": avg_essentials,
         "avg_monthly_income": avg_income,
@@ -493,6 +583,15 @@ async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: in
         #: False when nothing is tagged Essential, so the page can say the
         #: figure is every category rather than a chosen few.
         "tagged": basis != "all",
+        #: What was in scope and not counted. Tagging a category IS pointing at
+        #: it, so this fires whenever the basis is a tag or a Guide binding —
+        #: the case the note was written for is exactly "I tagged ten and two
+        #: showed up".
+        "class_excluded": class_excluded_note(excluded, scoped=basis != "all") or [],
+        #: The classes the figures above DO count, so a drill-down opened from
+        #: a bar totals what the bar says. Without it a click on Housing lists
+        #: the savings transfers too.
+        "counted_classes": [c.value for c in COST_OF_LIVING_CLASSES],
     }
 
 

@@ -2,11 +2,14 @@
    tokens only — 40 palettes render this. Base input/select styling comes from
    the `.tool` rules in GuidePage.css; only layout lives here. */
 
+/* The strip and the actions that act on the *active* tab, together. They were
+   pushed to opposite ends with `space-between`, which on a full-width tool put
+   a metre of nothing between "Plan 1" and the pencil that renames it — the
+   buttons read as belonging to the page rather than to the plan. */
 .planner__tabs {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--spacing-sm);
+  gap: var(--spacing-md);
   flex-wrap: wrap;
 }
 
@@ -20,8 +23,35 @@
   max-width: 10rem;
 }
 
+/* Not `.tool__grid`. The two actions are not a form field, and standing in a
+   grid column they got one field's width to live in: both buttons wrapped to
+   two lines each and the save status was stranded on a third above them, which
+   made the actions cell twice the height of the fields — and `align-items: end`
+   then pushed the three real fields to the bottom of it, leaving the band of
+   dead space above them that made this header look unfinished. A trailing
+   empty column past the actions did the rest.
+
+   So: the fields size to their own content, the actions take what is left and
+   stay on one line. */
 .planner__header {
+  display: flex;
+  flex-wrap: wrap;
   align-items: end;
+  gap: var(--spacing-md);
+}
+
+.planner__header > .tool__field {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+/* `.tool__field input` is 100% wide, which is right in a grid cell and wrong
+   in a flex row that sizes to content — an amount and a cadence each need a
+   legible field, not a share of the page. */
+.planner__header > .tool__field input,
+.planner__header > .tool__field select {
+  width: auto;
+  min-width: 11rem;
 }
 
 .planner__stepper {
@@ -46,12 +76,22 @@
   cursor: default;
 }
 
+/* Pushed to the trailing edge by the space nothing else claimed, so the row
+   has a left group and a right group and no hole in between. */
 .planner__header-actions {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: var(--spacing-sm);
+  margin-left: auto;
+}
+
+/* A two-line button reads as a paragraph with a border. These are short
+   enough to stay on one line at every width the row survives at, and below
+   that the whole group wraps instead. */
+.planner__header-actions .guide-checkup__run {
+  white-space: nowrap;
 }
 
 .planner__save-status {
@@ -376,6 +416,23 @@
 
   .planner__summary {
     gap: var(--spacing-md);
+  }
+
+  /* No room for a left group and a right group: the fields go full width and
+     the actions become the row under them rather than a squeezed corner. */
+  .planner__header > .tool__field {
+    flex: 1 1 100%;
+  }
+
+  .planner__header > .tool__field input,
+  .planner__header > .tool__field select {
+    width: 100%;
+  }
+
+  .planner__header-actions {
+    width: 100%;
+    margin-left: 0;
+    justify-content: flex-start;
   }
 }
 

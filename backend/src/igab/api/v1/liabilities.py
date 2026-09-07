@@ -251,8 +251,12 @@ async def list_liabilities(
     liability_repo: Annotated[LiabilityRepository, Depends(get_liability_repo)],
     liability_service: Annotated[LiabilityService, Depends(get_liability_service)],
     category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
+    include_closed: bool = False,
 ) -> list[LiabilityOut]:
-    liabilities = await liability_repo.get_all(budget_id)
+    """What is still owed. A loan whose account has been closed is out unless
+    asked for — the Liabilities overview offers that as a toggle, the way the
+    Accounts overview does."""
+    liabilities = await liability_repo.get_all(budget_id, include_closed=include_closed)
     return [await _liability_out(item, liability_service, category_repo) for item in liabilities]
 
 

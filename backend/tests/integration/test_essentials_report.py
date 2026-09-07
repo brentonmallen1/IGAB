@@ -60,11 +60,15 @@ async def test_is_empty_without_tags(db_session):
     assert metrics["essentials_monthly"] is None and metrics["essentials_tagged"] is False
 
 
-async def test_counts_category_or_payee_tagged_spending(db_session):
+async def test_counts_category_tagged_spending(db_session):
+    """Categories only. This used to tag a PAYEE too and count the rows filed
+    at it — the last rule in the app that read a tag on a payee for meaning.
+    Tags on payees are retired, so a row at an "essential" payee filed to an
+    untagged category is ordinary spending now, which is the answer the app can
+    act on: give it a category."""
     services, budget, checking, rent, fun, tags, essential = await _world(db_session)
     await tags.set_category_tags(rent.id, [essential.id])
-    power_co = await create_payee(db_session, budget, "Power Co")
-    await tags.set_payee_tags(power_co.id, [essential.id])
+    power_co = await create_payee(db_session, budget, "Harborstone Power")
     last_month = _first_of_last_month() + timedelta(days=3)
     await create_transaction(db_session, budget, checking, "-1200.00", last_month, category=rent)
     await create_transaction(
@@ -77,9 +81,9 @@ async def test_counts_category_or_payee_tagged_spending(db_session):
     assert report["tagged"] is True
     by_name = {c["name"]: c for c in report["categories"]}
     assert by_name["Rent"]["total"] == Decimal("1200.00")
-    assert by_name["Dining"]["total"] == Decimal("90.00"), "payee-tagged, under its own category"
-    assert report["monthly_total_average"] == Decimal("1290.00")
-    assert [m["total"] for m in report["monthly_series"]] == [Decimal("1290.00")]
+    assert "Dining" not in by_name, "an untagged category is not essential, whoever was paid"
+    assert report["monthly_total_average"] == Decimal("1200.00")
+    assert [m["total"] for m in report["monthly_series"]] == [Decimal("1200.00")]
 
 
 async def test_uses_complete_months_only(db_session):

@@ -57,6 +57,7 @@ import { today, yesterday } from '../../../utils/dates'
 import { hapticTick } from '../../../utils/haptics'
 import './QuickAddSheet.css'
 import { apiErrorMessage } from '../../../api/client'
+import { openAccounts } from '../../../utils/accountLists'
 
 type Direction = 'outflow' | 'inflow'
 
@@ -137,11 +138,11 @@ export function QuickAddSheet() {
     return () => previews.forEach((url) => URL.revokeObjectURL(url))
   }, [previews])
 
-  const openAccounts = useMemo(() => accounts.filter((a) => !a.is_closed), [accounts])
+  const choosable = useMemo(() => openAccounts(accounts), [accounts])
   const defaultAccountId = useMemo(() => {
-    if (lastAccountId && openAccounts.some((a) => a.id === lastAccountId)) return lastAccountId
-    return openAccounts.find((a) => a.on_budget)?.id ?? openAccounts[0]?.id ?? null
-  }, [lastAccountId, openAccounts])
+    if (lastAccountId && choosable.some((a) => a.id === lastAccountId)) return lastAccountId
+    return choosable.find((a) => a.on_budget)?.id ?? choosable[0]?.id ?? null
+  }, [lastAccountId, choosable])
 
   // Fresh entry each time the sheet opens; account and date are sticky choices
   useEffect(() => {
@@ -207,12 +208,12 @@ export function QuickAddSheet() {
 
   const accountOptions = useMemo<SelectionSheetOption[]>(
     () =>
-      openAccounts.map((a) => ({
+      choosable.map((a) => ({
         id: a.id,
         label: a.name,
         group: a.on_budget ? 'Budget accounts' : 'Tracking',
       })),
-    [openAccounts]
+    [choosable]
   )
 
   const payeeName = payeeId ? (payees.find((p) => p.id === payeeId)?.name ?? '') : ''
