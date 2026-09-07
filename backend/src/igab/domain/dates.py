@@ -62,3 +62,20 @@ def months_spanned(start: date, end: date) -> int:
     floor. Both live here so neither gets rebuilt at a call site.
     """
     return max(0, (end.year - start.year) * 12 + end.month - start.month) + 1
+
+
+def weekday_occurrences(month: date, weekday: int) -> int:
+    """How many times `weekday` (0=Monday … 6=Sunday) falls in `month`'s
+    month: 4 or 5, and only ever 4 in a 28-day February.
+
+    A weekly target's duty for the month is its amount times this — "$50
+    every Friday" is five Fridays in some months and four in others, and a
+    flat ×4 under-asks a fifth week while a flat ×4.33 asks for money on no
+    Friday at all.
+    """
+    if not 0 <= weekday <= 6:
+        raise ValueError(f"weekday must be 0..6, got {weekday}")
+    first = month.replace(day=1)
+    days = calendar.monthrange(first.year, first.month)[1]
+    offset = (weekday - first.weekday()) % 7
+    return (days - offset + 6) // 7 if offset < days else 0

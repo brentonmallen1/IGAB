@@ -24,3 +24,10 @@
   background-color: color-mix(in srgb, var(--color-negative) 12%, transparent);
   color: var(--color-negative);
 }
+
+/* Pending: the same fact as underfunded, before the funding day. Muted on
+   purpose — nothing here should draw the eye until the day it is due. */
+.target-badge--pending {
+  background-color: color-mix(in srgb, var(--text-muted) 12%, transparent);
+  color: var(--text-muted);
+}

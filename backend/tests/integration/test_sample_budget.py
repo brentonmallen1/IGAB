@@ -13,6 +13,7 @@ from decimal import Decimal
 from sqlalchemy import select
 
 from igab.db.models import Budget, BudgetMember, ScheduledTransaction, Transaction
+from igab.domain.enums import TargetType
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import (
     BudgetAssignmentRepository,
@@ -96,14 +97,11 @@ async def test_generation_covers_every_entity_kind(db_session):
     assert partner.transfer_id == leg.id
     assert leg.amount == -partner.amount
 
-    # Targets: three distinct types
+    # Targets: both shapes the sample sets, and nothing outside the enum
     categories = await CategoryRepository(db_session).get_all(budget.id, include_archived=True)
     targets = await TargetRepository(db_session).get_by_category_ids([c.id for c in categories])
-    assert {t.target_type for t in targets} >= {
-        "needed_for_spending",
-        "savings_balance",
-        "monthly_funding",
-    }
+    assert {t.target_type for t in targets} >= {"savings_balance", "monthly_funding"}
+    assert {t.target_type for t in targets} <= {t.value for t in TargetType}
 
     # Scheduled transactions, incl. a transfer and a twice-monthly paycheck
     scheduled = await ScheduledTransactionRepository(db_session).get_all(budget.id)

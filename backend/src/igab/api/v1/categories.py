@@ -58,7 +58,7 @@ from igab.api.v1.schemas.category import (
     RecentPayeeResponse,
     RepairOrphansResponse,
 )
-from igab.db.models import CategoryGroup, Transaction
+from igab.db.models import Budget, CategoryGroup, Transaction
 from igab.dependencies import (
     BudgetAccess,
     CategoryAccess,
@@ -100,6 +100,7 @@ from igab.services.category_service import (
 from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match
 from igab.services.ownership import require_in_budget
 from igab.services.target_service import TargetService
+from igab.utils.clock import today_utc
 
 router = APIRouter(route_class=CommitRoute)
 
@@ -410,6 +411,8 @@ def _preview_out(preview: CategoryDeletePreview) -> CategoryDeletePreviewRespons
         released_if_uncategorized=preview.released_if_uncategorized,
         blocked_by=preview.blocked_by,
         is_empty=preview.is_empty,
+        archived_count=preview.archived_count,
+        all_archived=preview.all_archived,
     )
 
 
@@ -736,6 +739,12 @@ async def get_budget_month(
         )
     }
 
+    # The verdict needs the calendar: which month is on screen, what day it
+    # is, and the budget's funding day. One clock (today_utc) for all rows.
+    budget_row = await target_service.repo.session.get(Budget, budget_id)
+    today = today_utc()
+    funding_day = budget_row.funding_day if budget_row else 1
+
     return BudgetMonthResponse(
         month=month,
         to_be_assigned=summary.to_be_assigned,
@@ -758,12 +767,19 @@ async def get_budget_month(
                 activity=b.activity,
                 available=None if b.in_system_group else b.available,
                 target_status=(
-                    target_service.calculate_status(t, b.assigned, b.available)
+                    target_service.calculate_status(
+                        t,
+                        b.assigned,
+                        b.available,
+                        month=month,
+                        today=today,
+                        funding_day=funding_day,
+                    )
                     if not b.in_system_group and (t := targets.get(b.category_id))
                     else None
                 ),
                 needed_this_month=(
-                    target_service.calculate_needed(t, b.assigned, b.available)
+                    target_service.calculate_needed(t, b.assigned, b.available, month=month)
                     if not b.in_system_group and (t := targets.get(b.category_id))
                     else None
                 ),
@@ -824,7 +840,8 @@ async def upsert_category_target(
         target_type=body.target_type,
         target_amount=body.target_amount,
         target_date=body.target_date,
-        repeat_frequency=body.repeat_frequency,
+        check_after_day=body.check_after_day,
+        weekday=body.weekday,
     )
     return CategoryTargetResponse.model_validate(target)
 

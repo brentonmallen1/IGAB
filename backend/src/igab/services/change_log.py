@@ -189,7 +189,8 @@ SNAPSHOT_FIELDS: dict[str, tuple[str, ...]] = {
         "target_type",
         "target_amount",
         "target_date",
-        "repeat_frequency",
+        "check_after_day",
+        "weekday",
     ),
     "liability": (
         "name",
@@ -294,6 +295,7 @@ SNAPSHOT_FIELDS: dict[str, tuple[str, ...]] = {
         "number_format",
         "date_format",
         "time_format",
+        "funding_day",
         "import_reviewed_at",
     ),
     "guide_state": (),
@@ -340,9 +342,12 @@ def view_children_dump(groups: Any, placements: Any) -> dict[str, Any]:
     }
 
 
-def filter_selection_dump(selections: Any) -> dict[str, Any]:
-    """Bookkeeping dump of a filter's category set, sorted for ==."""
-    return {"_category_ids": sorted(str(s.category_id) for s in selections)}
+def filter_selection_dump(selections: Any, tag_selections: Any = ()) -> dict[str, Any]:
+    """Bookkeeping dump of a filter's category and tag sets, sorted for ==."""
+    return {
+        "_category_ids": sorted(str(s.category_id) for s in selections),
+        "_tag_ids": sorted(str(s.tag_id) for s in tag_selections),
+    }
 
 
 def binding_rows_dump(rows: Any) -> list[dict[str, Any]]:
@@ -410,6 +415,11 @@ def coerce_value(model: Any, field: str, value: Any) -> Any:
         return samples_from_legacy(value)
     if value is None:
         return None
+    if field not in model.__table__.columns:
+        # A snapshot recorded before a column was dropped (category_targets
+        # .repeat_frequency) still names it; there is nothing to restore it
+        # into. Callers skip such fields — see undo_service._restore_fields.
+        return None
     col_type = model.__table__.columns[field].type
     type_name = type(col_type).__name__
     if type_name == "UUID":
@@ -438,11 +448,20 @@ def values_equal(a: Any, b: Any) -> bool:
 
 def snapshots_match(current: dict[str, Any], recorded: dict[str, Any]) -> list[str]:
     """Fields where the entity's current state differs from the recorded
-    snapshot (undo bookkeeping keys ignored). Empty list = clean."""
+    snapshot (undo bookkeeping keys ignored). Empty list = clean.
+
+    A key the recorded snapshot carries and the current one does not is a
+    field the model no longer snapshots — a dropped column such as
+    category_targets.repeat_frequency — and not an edit; `snapshot()` always
+    emits every live field, so a missing key can mean nothing else. Without
+    this every pre-migration record read as "edited since" and refused undo.
+    """
     return [
         key
         for key, recorded_value in recorded.items()
-        if not key.startswith("_") and not values_equal(current.get(key), recorded_value)
+        if not key.startswith("_")
+        and key in current
+        and not values_equal(current.get(key), recorded_value)
     ]
 
 

@@ -42,11 +42,37 @@ async def _month(api_client, budget, month=MONTH):
     return {b["category_id"]: b for b in resp.json()["category_balances"]}
 
 
-async def _set_target(db_session, category, target_type, amount, target_date=None):
+async def _set_target(
+    db_session,
+    category,
+    target_type,
+    amount,
+    target_date=None,
+    *,
+    weekday=None,
+    check_after_day=None,
+):
     from igab.repositories.target_repo import TargetRepository
 
     svc = TargetService(TargetRepository(db_session))
-    return await svc.upsert(category.id, target_type, Decimal(amount), target_date=target_date)
+    return await svc.upsert(
+        category.id,
+        target_type,
+        Decimal(amount),
+        target_date=target_date,
+        weekday=weekday,
+        check_after_day=check_after_day,
+    )
+
+
+#: The verdict's calendar, pinned so the tests do not follow the wall clock.
+TODAY = date(2026, 8, 15)
+
+
+def _verdict(**over):
+    base = dict(month=MONTH, today=TODAY, funding_day=1)
+    base.update(over)
+    return base
 
 
 class TestTheFieldsAreServed:
@@ -110,14 +136,15 @@ class TestTheServedFieldIsTheOnlyRule:
             ("monthly_funding", "400.00", None, "500.00", None),
             ("savings_balance", "1000.00", None, "300.00", None),
             ("savings_balance", "1000.00", None, "1000.00", None),
-            ("weekly_funding", "50.00", None, "0.00", None),
-            ("needed_for_spending", "600.00", date(2026, 10, 1), "100.00", None),
-            ("needed_for_spending", "600.00", None, "600.00", None),
+            ("weekly_funding", "50.00", None, "0.00", 4),
+            ("savings_balance", "600.00", date(2026, 10, 1), "100.00", None),
         ]
         categories = []
-        for i, (ttype, amount, tdate, assigned, _) in enumerate(cases):
+        for i, (ttype, amount, tdate, assigned, weekday) in enumerate(cases):
             category = await create_category(db_session, budget, group, f"C{i}")
-            await _set_target(db_session, category, ttype, amount, target_date=tdate)
+            await _set_target(
+                db_session, category, ttype, amount, target_date=tdate, weekday=weekday
+            )
             if Decimal(assigned) != 0:
                 await services.budgets.set_assignment(
                     budget.id, category.id, MONTH, Decimal(assigned)
@@ -135,11 +162,13 @@ class TestTheServedFieldIsTheOnlyRule:
             target = await target_service.get(category.id)
             bal = balances[category.id]
             assert rows[str(category.id)]["target_status"] == target_service.calculate_status(
-                target, bal.assigned, bal.available
+                target, bal.assigned, bal.available, **_verdict()
             ), category.name
             assert Decimal(
                 str(rows[str(category.id)]["needed_this_month"])
-            ) == target_service.calculate_needed(target, bal.assigned, bal.available), category.name
+            ) == target_service.calculate_needed(
+                target, bal.assigned, bal.available, month=MONTH
+            ), category.name
 
     async def test_underfunded_means_fill_underfunded_would_move_money(
         self, db_session, api_client
@@ -165,7 +194,94 @@ class TestTheServedFieldIsTheOnlyRule:
             if row["target_status"] is None:
                 continue
             needed = Decimal(str(row["needed_this_month"]))
-            assert (row["target_status"] == "underfunded") == (needed > 0), row
+            assert (row["target_status"] in ("underfunded", "pending")) == (needed > 0), row
+
+
+class TestPending:
+    """Before the funding day an unmet target is served pending. The nag is
+    held back; the duty — and Fill Underfunded — are not."""
+
+    async def _pending_setup(self, db_session, api_client, monkeypatch, *, funding_day):
+        from sqlalchemy import update
+
+        from igab.api.v1 import categories as categories_module
+        from igab.db.models import Budget
+
+        monkeypatch.setattr(categories_module, "today_utc", lambda: TODAY)
+        services, budget, group, _ = await _setup(db_session, api_client.test_user)
+        await db_session.execute(
+            update(Budget).where(Budget.id == budget.id).values(funding_day=funding_day)
+        )
+        category = await create_category(db_session, budget, group, "Groceries")
+        await _set_target(db_session, category, "monthly_funding", "400.00")
+        await db_session.commit()
+        return services, budget, category
+
+    async def test_a_target_before_funding_day_is_served_pending(
+        self, db_session, api_client, monkeypatch
+    ):
+        _, budget, category = await self._pending_setup(
+            db_session, api_client, monkeypatch, funding_day=20
+        )
+        row = (await _month(api_client, budget))[str(category.id)]
+        assert row["target_status"] == "pending"
+        assert Decimal(str(row["needed_this_month"])) == Decimal("400.00")
+
+    async def test_on_the_funding_day_it_is_underfunded(self, db_session, api_client, monkeypatch):
+        _, budget, category = await self._pending_setup(
+            db_session, api_client, monkeypatch, funding_day=15
+        )
+        row = (await _month(api_client, budget))[str(category.id)]
+        assert row["target_status"] == "underfunded"
+
+    async def test_a_past_month_is_never_pending(self, db_session, api_client, monkeypatch):
+        _, budget, category = await self._pending_setup(
+            db_session, api_client, monkeypatch, funding_day=28
+        )
+        row = (await _month(api_client, budget, date(2026, 7, 1)))[str(category.id)]
+        assert row["target_status"] == "underfunded"
+
+    async def test_the_targets_own_day_overrides_the_budgets(
+        self, db_session, api_client, monkeypatch
+    ):
+        _, budget, category = await self._pending_setup(
+            db_session, api_client, monkeypatch, funding_day=28
+        )
+        await _set_target(db_session, category, "monthly_funding", "400.00", check_after_day=10)
+        await db_session.commit()
+        row = (await _month(api_client, budget))[str(category.id)]
+        assert row["target_status"] == "underfunded"
+
+    async def test_fill_underfunded_still_moves_money_to_a_pending_target(
+        self, db_session, api_client, monkeypatch
+    ):
+        from igab.repositories.category_repo import CategoryGroupRepository
+        from igab.repositories.target_repo import TargetRepository
+        from igab.services.assign_service import AssignService
+
+        services, budget, category = await self._pending_setup(
+            db_session, api_client, monkeypatch, funding_day=28
+        )
+        assign = AssignService(
+            services.budgets,
+            TargetRepository(db_session),
+            TargetService(TargetRepository(db_session)),
+            services.category_repo,
+            CategoryGroupRepository(db_session),
+        )
+        preview = await assign.preview(budget.id, MONTH, "underfunded")
+        by_id = {str(i.category_id): i for i in preview.items}
+        assert str(category.id) in by_id
+        assert by_id[str(category.id)].delta >= 0
+
+    async def test_the_funding_day_round_trips_through_patch(self, db_session, api_client):
+        _, budget, _, _ = await _setup(db_session, api_client.test_user)
+        await db_session.commit()
+        r = await api_client.patch(f"/api/v1/budgets/{budget.id}", json={"funding_day": 15})
+        assert r.status_code == 200, r.text
+        assert r.json()["funding_day"] == 15
+        r = await api_client.patch(f"/api/v1/budgets/{budget.id}", json={"funding_day": 31})
+        assert r.status_code == 422
 
 
 class TestOverspentCountMatchesItsAmount:

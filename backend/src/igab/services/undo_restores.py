@@ -19,6 +19,7 @@ from igab.db.models import (
     Account,
     Asset,
     BudgetFilterCategory,
+    BudgetFilterTag,
     BudgetMember,
     BudgetViewGroup,
     BudgetViewPlacement,
@@ -223,10 +224,23 @@ class UndoRestores:
                 )
             ).scalars()
         )
-        current = filter_selection_dump(rows)
+        tag_rows = list(
+            (
+                await self.session.execute(
+                    select(BudgetFilterTag).where(BudgetFilterTag.filter_id == change.entity_id)
+                )
+            ).scalars()
+        )
+        current = filter_selection_dump(rows, tag_rows)
         if not force and current["_category_ids"] != expected.get("_category_ids"):
             raise UndoConflict("The filter's categories have changed since this change")
+        # Records from before filters could name tags carry no `_tag_ids`;
+        # they are read as "no tags", which is what the filter had.
+        if not force and current["_tag_ids"] != (expected.get("_tag_ids") or []):
+            raise UndoConflict("The filter's tags have changed since this change")
         for row in rows:
+            await self.session.delete(row)
+        for row in tag_rows:
             await self.session.delete(row)
         await self.session.flush()
         cat_ids = [uuid.UUID(c) for c in payload.get("_category_ids") or []]
@@ -242,11 +256,27 @@ class UndoRestores:
                 self.session.add(
                     BudgetFilterCategory(filter_id=change.entity_id, category_id=cat_id)
                 )
+        tag_ids = [uuid.UUID(t) for t in payload.get("_tag_ids") or []]
+        live_tags: set[uuid.UUID] = set()
+        if tag_ids:
+            live_tags = set(
+                (
+                    await self.session.execute(
+                        select(Tag.id).where(
+                            Tag.id.in_(tag_ids),
+                            Tag.is_deleted == False,  # noqa: E712
+                        )
+                    )
+                ).scalars()
+            )
+        for tag_id in tag_ids:
+            if tag_id in live_tags:
+                self.session.add(BudgetFilterTag(filter_id=change.entity_id, tag_id=tag_id))
         await self.session.flush()
         # See _restore_view_children: same shared-session staleness rule.
         parent = await self.session.get(ENTITY_MODELS[change.entity_type], change.entity_id)
         if parent is not None:
-            self.session.expire(parent, ["category_selections"])
+            self.session.expire(parent, ["category_selections", "tag_selections"])
 
     async def _undo_reconcile(self, change: ChangeLog, entity) -> None:
         """Unreconcile: flip the locked rows back to cleared, put the
@@ -444,7 +474,15 @@ class UndoRestores:
         """
         model: Any = ENTITY_MODELS[change.entity_type]
         payload = getattr(change, side) or {}
-        fields = {f: coerce_value(model, f, v) for f, v in payload.items() if not f.startswith("_")}
+        # Skip fields the model no longer has: a record written before a
+        # column was dropped (category_targets.repeat_frequency) still names
+        # it, and the constructor would refuse the keyword.
+        columns = model.__table__.columns
+        fields = {
+            f: coerce_value(model, f, v)
+            for f, v in payload.items()
+            if not f.startswith("_") and f in columns
+        }
         if "budget_id" in model.__table__.columns and "budget_id" not in fields:
             fields["budget_id"] = change.budget_id
         parent = HARD_ROW_PARENT.get(change.entity_type)

@@ -18,6 +18,10 @@ export interface Budget {
   number_format: NumberFormat
   date_format: DateFormat
   time_format: TimeFormat
+  /** Day of the month (1–28) before which an unmet target reads "pending"
+   *  rather than "underfunded". A target may override it with its own
+   *  `check_after_day`. Server: Budget.funding_day. */
+  funding_day: number
 }
 
 export interface Account {
@@ -139,7 +143,16 @@ export interface BudgetFilter {
   budget_id: string
   name: string
   sort_order: number
+  /** The categories named outright. */
   category_ids: string[]
+  /** Any category carrying one of these tags is in the filter, now and as
+   *  tags change. */
+  tag_ids: string[]
+  /** What the filter includes right now — named categories plus every
+   *  category carrying one of its tags. The grid reads THIS; the union is
+   *  resolved on the server (BudgetFilterRepository.effective_category_ids)
+   *  so a report handed a filter_id agrees with the budget page. */
+  category_ids_effective: string[]
   created_at: string
   updated_at: string
 }
@@ -177,7 +190,7 @@ export interface BudgetView {
 
 /** The three answers the budget row's pill can show. Mirrors
  *  `TargetStatus` in backend/src/igab/domain/enums.py. */
-export type TargetStatus = 'funded' | 'underfunded' | 'overfunded'
+export type TargetStatus = 'funded' | 'underfunded' | 'overfunded' | 'pending'
 
 export interface CategoryBalance {
   category_id: string
@@ -569,10 +582,16 @@ export interface IncomeExpenseReport {
 export interface CategoryTarget {
   id: string
   category_id: string
+  /** monthly_funding | weekly_funding | savings_balance — see TargetType in
+   *  backend/src/igab/domain/enums.py. */
   target_type: string
   target_amount: number
+  /** Savings balance only: paces the shortfall over the months left. */
   target_date: string | null
-  repeat_frequency: string | null
+  /** Overrides the budget's funding_day for this target (1–28). */
+  check_after_day: number | null
+  /** Weekly funding only: 0=Monday … 6=Sunday. */
+  weekday: number | null
 }
 
 export interface ScheduledTransaction {

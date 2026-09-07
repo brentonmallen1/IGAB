@@ -65,6 +65,21 @@
   border-color: color-mix(in srgb, var(--color-warning) 12%, transparent);
 }
 
+/* Pending: underfunded before its funding day. Muted, never a colour that
+   asks to be acted on today. */
+.budget-filter-bar__btn--neutral {
+  color: var(--text-muted);
+}
+.budget-filter-bar__btn--neutral:hover {
+  color: var(--text-secondary);
+  background-color: color-mix(in srgb, var(--text-muted) 10%, transparent);
+}
+.budget-filter-bar__btn--neutral.active {
+  color: var(--text-primary);
+  background-color: color-mix(in srgb, var(--text-muted) 12%, transparent);
+  border-color: color-mix(in srgb, var(--text-muted) 12%, transparent);
+}
+
 .budget-filter-bar__btn--positive {
   color: var(--color-positive);
 }
@@ -323,4 +338,38 @@
   margin: 0 var(--spacing-xs);
   background-color: var(--border-color);
   flex-shrink: 0;
+}
+
+/* Row density: a three-way segmented control. Quiet — it is a reading
+   preference, not a state. */
+.budget-filter-bar__density {
+  display: inline-flex;
+  border: 1px solid var(--edge);
+  border-radius: var(--border-radius-md);
+  overflow: hidden;
+}
+
+.budget-filter-bar__density-btn {
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  color: var(--text-muted);
+  padding: 3px 8px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.budget-filter-bar__density-btn + .budget-filter-bar__density-btn {
+  border-left: 1px solid var(--edge);
+}
+
+.budget-filter-bar__density-btn:hover {
+  color: var(--text-primary);
+  background-color: color-mix(in srgb, var(--text-muted) 8%, transparent);
+}
+
+.budget-filter-bar__density-btn.active {
+  color: var(--text-primary);
+  background-color: color-mix(in srgb, var(--color-accent) 14%, transparent);
 }

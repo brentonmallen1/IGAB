@@ -97,7 +97,8 @@ export function BudgetTable() {
   budgetMonth?.category_balances.forEach((b) => balanceMap.set(b.category_id, b))
 
   const activeFilter = filters?.find((f) => f.id === activeFilterId) ?? null
-  const filterCategoryIds = activeFilter ? new Set(activeFilter.category_ids) : null
+  // The served union of named categories and tag members — never re-derived here.
+  const filterCategoryIds = activeFilter ? new Set(activeFilter.category_ids_effective) : null
 
   const groupNameById = new Map((groups ?? []).map((g) => [g.id, g.name]))
   const searchNeedle = categorySearch.trim().toLowerCase()
@@ -113,6 +114,8 @@ export function BudgetTable() {
         return (balance?.available ?? 0) < 0
       case 'underfunded':
         return balance?.target_status === 'underfunded'
+      case 'pending':
+        return balance?.target_status === 'pending'
       case 'money-available':
         return (balance?.available ?? 0) > 0
       case 'overfunded':

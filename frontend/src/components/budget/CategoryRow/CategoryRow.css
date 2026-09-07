@@ -44,6 +44,14 @@
   color: var(--color-warning);
 }
 
+/* Pending: needs money, but its funding day has not come. Muted, and no
+   glow rule in base.css on purpose — this is not a state that should draw
+   the eye. */
+.category-row__target-led--pending {
+  background-color: var(--text-muted);
+  color: var(--text-muted);
+}
+
 .category-row__target-expired {
   font-size: var(--font-size-2xs);
   color: var(--text-muted);
@@ -122,6 +130,10 @@
   background-color: color-mix(in srgb, var(--color-warning) 18%, transparent);
 }
 
+.target-pill-track--pending {
+  background-color: color-mix(in srgb, var(--text-muted) 12%, transparent);
+}
+
 .target-pill-track--overfunded {
   background-color: color-mix(in srgb, var(--color-positive) 18%, transparent);
 }
@@ -159,6 +171,10 @@
     var(--color-warning)
   );
   box-shadow: var(--glow-warning);
+}
+
+.target-pill-fill--pending::before {
+  background: color-mix(in srgb, var(--text-muted) 55%, transparent);
 }
 
 .target-pill-fill--overfunded::before {
@@ -392,26 +408,26 @@
 /* Desktop density mode: tighter rows, smaller text, no subtitle. Scoped above 768px —
    the mobile card layout keeps its full-size tap targets regardless. */
 @media (min-width: 769px) {
-  .category-row--compressed {
+  .category-row--dense {
     min-height: 24px;
     padding-top: 0;
     padding-bottom: 0;
   }
 
-  .category-row--compressed .category-row__name-text {
+  .category-row--dense .category-row__name-text {
     font-size: var(--font-size-xs);
   }
 
-  .category-row--compressed .category-row__subtitle {
+  .category-row--dense .category-row__subtitle {
     display: none;
   }
 
-  .category-row--compressed .category-row__editable {
+  .category-row--dense .category-row__editable {
     font-size: var(--font-size-xs);
     padding: 1px 4px;
   }
 
-  .category-row--compressed .category-row__input {
+  .category-row--dense .category-row__input {
     font-size: var(--font-size-xs);
     padding: 1px 4px;
   }

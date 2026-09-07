@@ -164,7 +164,7 @@ _HOUSEHOLD = SampleBudgetSpec(
             categories=(
                 CategorySpec(
                     "Rent",
-                    target=TargetSpec("needed_for_spending", _d("1400.00")),
+                    target=TargetSpec("monthly_funding", _d("1400.00")),
                     monthly_budget=_d("1400.00"),
                 ),
                 CategorySpec("Electric", tags=("Long-term expense",), monthly_budget=_d("150.00")),

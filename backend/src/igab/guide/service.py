@@ -410,7 +410,17 @@ class GuideService:
             for b in summary.category_balances
             if not b.in_system_group
             and (t := targets.get(b.category_id))
-            and self.targets.calculate_status(t, b.assigned, b.available, today) != "underfunded"
+            and self.targets.calculate_status(
+                t,
+                b.assigned,
+                b.available,
+                month=month_start(today),
+                today=today,
+                # The checkup counts what is funded, not what is nagged about:
+                # a pending target is unfunded here, so day 1 for the verdict.
+                funding_day=1,
+            )
+            not in ("underfunded", "pending")
         )
 
         essentials = by_key.get("essential_expenses", {})

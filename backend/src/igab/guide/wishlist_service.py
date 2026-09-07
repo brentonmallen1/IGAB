@@ -296,7 +296,13 @@ class WishlistService:
         month = month_start(today)
         balance = await self.budget.get_category_balance(category_id, month)
         target = await self.targets.get(category_id)
-        pace = self.targets.monthly_pace(target, balance.available, today) if target else None
+        pace = (
+            self.targets.monthly_pace(
+                target, assigned=balance.assigned, available=balance.available, month=month
+            )
+            if target
+            else None
+        )
         if pace is None:
             rows = await self.assignments.get_for_category(category_id, through_month=month)
             average = trailing_average({a.month: a.assigned for a in rows}, month)
@@ -495,7 +501,8 @@ class WishlistService:
                         target.target_type if target else "savings_balance",
                         item.cost,
                         target.target_date if target else None,
-                        target.repeat_frequency if target else None,
+                        check_after_day=target.check_after_day if target else None,
+                        weekday=target.weekday if target else None,
                         batch_id=self.changes.current_batch_id,
                     )
             if "project_id" in data:

@@ -54,7 +54,7 @@ def strategy_new_assigned(
     current_assigned: Decimal,
     available: Decimal,
     history: CategoryHistory,
-    target: CategoryTarget | None = None,
+    target_duty: Decimal | None = None,
 ) -> Decimal | None:
     """Target assigned value for one category under a bulk strategy.
 
@@ -62,6 +62,11 @@ def strategy_new_assigned(
     strategies SET assigned to the historical value (matching the existing
     per-category auto-assign semantics) — setting below current returns
     money to TBA.
+
+    `target_duty` is the month's duty from `TargetService.duty`, not the
+    target's raw amount: a weekly target's duty is the amount times the
+    weeks in the month, and pulling back to the weekly figure would strip
+    four fifths of a correctly funded envelope.
     """
     if strategy == "last_month_assigned":
         return history.last_month_assigned
@@ -88,9 +93,9 @@ def strategy_new_assigned(
         # category over its target with nothing left in it is over-*assigned*,
         # not over-funded, and there is nothing to pull back. Pinned by
         # `test_reduce_overfunded_never_pulls_back_spent_money`.
-        if target is None or available <= ZERO:
+        if target_duty is None or available <= ZERO:
             return None
-        pullback = min(current_assigned - target.target_amount, available)
+        pullback = min(current_assigned - target_duty, available)
         return current_assigned - pullback if pullback > ZERO else None
     if strategy == "reset_available":
         # Only positive available returns to TBA; overspent categories are
@@ -237,6 +242,17 @@ class AssignService:
             targets=target_map,
         )
 
+    def _duty_for(
+        self, ctx: _AssignContext, category_id: uuid.UUID, assigned: Decimal, available: Decimal
+    ) -> Decimal | None:
+        """The month's duty for a category's target, or None without one."""
+        target = ctx.targets.get(category_id)
+        if target is None:
+            return None
+        return self.target_service.duty(
+            target, assigned=assigned, available=available, month=ctx.month
+        )
+
     def _build_preview(self, ctx: _AssignContext, strategy: str) -> AssignPreview:
         total_needed: Decimal | None = None
         items: list[AssignPreviewItem] = []
@@ -248,7 +264,9 @@ class AssignService:
                 bal = ctx.balances.get(cat.id)
                 if target is None or bal is None:
                     continue
-                needed = self.target_service.calculate_needed(target, bal.assigned, bal.available)
+                needed = self.target_service.calculate_needed(
+                    target, bal.assigned, bal.available, month=ctx.month
+                )
                 if needed > ZERO:
                     shortfalls[cat.id] = needed
             proposed = distribute_fill(shortfalls, ctx.summary.to_be_assigned)
@@ -276,7 +294,11 @@ class AssignService:
                 current = bal.assigned if bal else ZERO
                 available = bal.available if bal else ZERO
                 new = strategy_new_assigned(
-                    strategy, current, available, ctx.histories[cat.id], ctx.targets.get(cat.id)
+                    strategy,
+                    current,
+                    available,
+                    ctx.histories[cat.id],
+                    self._duty_for(ctx, cat.id, current, available),
                 )
                 if new is None or new == current:
                     continue

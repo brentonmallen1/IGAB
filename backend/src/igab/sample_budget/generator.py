@@ -252,7 +252,8 @@ class SampleBudgetGenerator:
                         target_type=t.target_type,
                         target_amount=t.amount,
                         target_date=t.target_date.resolve(anchor) if t.target_date else None,
-                        repeat_frequency=t.repeat_frequency,
+                        check_after_day=t.check_after_day,
+                        weekday=t.weekday,
                     )
                     result.targets += 1
 

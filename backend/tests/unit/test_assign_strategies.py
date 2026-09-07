@@ -138,3 +138,29 @@ class TestDistributeFill:
 
     def test_empty_shortfalls(self):
         assert distribute_fill({}, D("100")) == {}
+
+
+class TestReduceOverfundedReadsTheDuty:
+    """`reduce_overfunded` pulls back to the month's DUTY, not the target's
+    raw amount. A $50-every-Friday target's May duty is $250 (five Fridays);
+    pulling a correctly funded envelope back to $50 stripped four fifths of
+    it. The caller passes the duty from TargetService; this function never
+    sees the target row."""
+
+    def test_pulls_back_to_the_duty(self):
+        new = strategy_new_assigned("reduce_overfunded", D("300"), D("300"), history(), D("250"))
+        assert new == D("250")
+
+    def test_nothing_to_pull_back_at_or_under_the_duty(self):
+        assert (
+            strategy_new_assigned("reduce_overfunded", D("250"), D("250"), history(), D("250"))
+            is None
+        )
+
+    def test_bounded_by_what_is_still_in_the_envelope(self):
+        # Assigned 300 over a duty of 100, but only 50 left unspent: 50 back.
+        new = strategy_new_assigned("reduce_overfunded", D("300"), D("50"), history(), D("100"))
+        assert new == D("250")
+
+    def test_no_duty_means_untouched(self):
+        assert strategy_new_assigned("reduce_overfunded", D("300"), D("300"), history()) is None

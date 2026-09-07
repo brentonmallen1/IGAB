@@ -10,7 +10,14 @@ from datetime import date
 
 import pytest
 
-from igab.domain.dates import add_months, month_end, month_start, months_between, months_spanned
+from igab.domain.dates import (
+    add_months,
+    month_end,
+    month_start,
+    months_between,
+    months_spanned,
+    weekday_occurrences,
+)
 
 
 class TestAddMonths:
@@ -122,3 +129,32 @@ class TestMonthsSpanned:
         # A clock skew or a future-dated row must never produce a negative
         # window for a picker to render.
         assert months_spanned(date(2026, 6, 1), date(2026, 1, 1)) == 1
+
+
+class TestWeekdayOccurrences:
+    """A weekly target's duty is its amount times this — 4 or 5 — so every
+    weekday of every month length is pinned."""
+
+    @pytest.mark.parametrize(
+        ("month", "expected"),
+        [
+            # Feb 2027: 28 days starting Monday — four of everything.
+            (date(2027, 2, 1), [4, 4, 4, 4, 4, 4, 4]),
+            # Feb 2028: 29 days starting Tuesday — five Tuesdays.
+            (date(2028, 2, 1), [4, 5, 4, 4, 4, 4, 4]),
+            # Jun 2026: 30 days starting Monday — five Mon and Tue.
+            (date(2026, 6, 1), [5, 5, 4, 4, 4, 4, 4]),
+            # May 2026: 31 days starting Friday — five Fri, Sat, Sun.
+            (date(2026, 5, 1), [4, 4, 4, 4, 5, 5, 5]),
+        ],
+        ids=["28-day", "29-day", "30-day", "31-day"],
+    )
+    def test_every_weekday_of_every_month_length(self, month, expected):
+        assert [weekday_occurrences(month, wd) for wd in range(7)] == expected
+
+    def test_any_day_of_the_month_names_the_same_month(self):
+        assert weekday_occurrences(date(2026, 5, 17), 4) == 5
+
+    def test_rejects_a_weekday_outside_the_week(self):
+        with pytest.raises(ValueError):
+            weekday_occurrences(date(2026, 5, 1), 7)
