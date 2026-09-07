@@ -39,6 +39,11 @@ interface Props {
   /** Whether the categories inside may be reordered — the same rule as the
    *  groups, minus "showing every group". */
   canReorderCategories?: boolean
+  /** Open the archived-envelopes room. The header's archived count is only
+   *  honest if there is somewhere to go and see them; absent (a view, where
+   *  the modal acts on the default arrangement) the count still shows and
+   *  simply does not click. */
+  onShowArchived?: () => void
 }
 
 export function CategoryGroupRow({
@@ -51,6 +56,7 @@ export function CategoryGroupRow({
   index,
   reorder,
   canReorderCategories = false,
+  onShowArchived,
 }: Props) {
   const { formatMoney } = useFormatters()
   const collapsedGroups = useUIStore((s) => s.collapsedGroups)
@@ -280,6 +286,32 @@ export function CategoryGroupRow({
             >
               {group.name}
             </span>
+          )}
+
+          {/* The grid draws no archived envelope, so a group holding only
+              archived ones drew as a bare heading — and then the delete dialog
+              named categories that were nowhere on the page, which reads as the
+              app having lost track of a move. The count is the server's
+              (`archived_category_count`); saying it here is what stops the
+              dialog being the first place anyone finds out. */}
+          {group.archived_category_count > 0 && (
+            <button
+              type="button"
+              className="category-group-row__archived"
+              onClick={onShowArchived}
+              disabled={!onShowArchived}
+              aria-label={`${group.archived_category_count} archived ${
+                group.archived_category_count === 1 ? 'category' : 'categories'
+              } in ${group.name}`}
+              title={
+                categories.length === 0
+                  ? 'This group is not empty — its envelopes are archived, so the grid does not draw them'
+                  : 'Archived envelopes in this group, which the grid does not draw'
+              }
+            >
+              <Archive size={10} aria-hidden />
+              {group.archived_category_count} archived
+            </button>
           )}
 
           {!isRenaming && (

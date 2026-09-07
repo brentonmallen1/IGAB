@@ -36,6 +36,7 @@ function group(id: string, name: string, sort_order: number, is_archived = false
     is_archived,
     is_system: false,
     is_card_only: false,
+    archived_category_count: 0,
     system_key: null,
   }
 }

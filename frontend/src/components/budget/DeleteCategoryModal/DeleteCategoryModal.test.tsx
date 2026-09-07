@@ -115,6 +115,25 @@ function renderModal(over: Partial<CategoryDeletePreview> = {}) {
   return { onDeleted }
 }
 
+/** The same dialog opened on a whole group. `useArchiveCategoryGroup` is the
+ *  real hook here — nothing in these cases presses the button — but the target
+ *  shape is what decides which sentences render. */
+function renderGroupModal(over: Partial<CategoryDeletePreview> = {}) {
+  preview = makePreview(over)
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(
+    <QueryClientProvider client={qc}>
+      <DeleteCategoryModal
+        budgetId="b1"
+        target={{ kind: 'group', id: 'g1', name: 'Fitness' }}
+        month="2026-08-01"
+        onClose={vi.fn()}
+        onDeleted={vi.fn()}
+      />
+    </QueryClientProvider>
+  )
+}
+
 beforeEach(() => {
   deleteMutate.mockClear()
   refetchSpy.mockClear()
@@ -275,5 +294,49 @@ describe('DeleteCategoryModal', () => {
     renderModal({ transaction_count: 0 })
     expect(screen.queryByRole('radio')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Delete' })).toBeEnabled()
+  })
+})
+
+/**
+ * Why the dialog is naming envelopes that are nowhere on the budget page.
+ *
+ * The grid draws no archived category, so a group of them looks empty there
+ * and full here — and the dialog used to list the names with no explanation,
+ * which reads as the app having forgotten that they were moved out. Both
+ * figures are served (`archived_count`, `all_archived`); the sentences are the
+ * only thing this file adds.
+ */
+describe('a group whose envelopes are archived', () => {
+  it('explains why the group looked empty when every one of them is archived', () => {
+    renderGroupModal({
+      category_ids: ['c1', 'c2'],
+      category_names: ['Coaching', 'Equipment'],
+      archived_count: 2,
+      all_archived: true,
+    })
+    expect(screen.getByText(/why the group looks empty on the budget page/i)).toBeInTheDocument()
+    expect(screen.getByText('Coaching, Equipment')).toBeInTheDocument()
+  })
+
+  it('says how many are hidden when only some of them are', () => {
+    renderGroupModal({
+      category_ids: ['c1', 'c2', 'c3'],
+      category_names: ['Coaching', 'Equipment', 'Classes'],
+      archived_count: 1,
+      all_archived: false,
+    })
+    expect(screen.getByText(/1 of the categories below is archived/i)).toBeInTheDocument()
+  })
+
+  it('says nothing about archiving on a group with none', () => {
+    renderGroupModal({ archived_count: 0, all_archived: false })
+    expect(screen.queryByText(/archived/i)).toBeNull()
+  })
+
+  it('says nothing about it on a plain category selection either', () => {
+    // `archived_count` is a group figure; a multi-select delete of archived
+    // envelopes is started from the archived room, where they are on screen.
+    renderModal({ archived_count: 2, all_archived: true })
+    expect(screen.queryByText(/why the group looks empty/i)).toBeNull()
   })
 })

@@ -322,6 +322,7 @@ export function BudgetTable() {
               index={index}
               reorder={groupsReorderable ? groupDrag : undefined}
               canReorderCategories={categoriesReorderable}
+              onShowArchived={() => setArchivedOpen(true)}
             />
           ))}
         </div>

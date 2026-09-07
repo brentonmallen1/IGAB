@@ -392,10 +392,26 @@ class CategoryGroup(Base):
     #: may restate it — the client used to, from a category list that filters
     #: hidden rows, so it could not have computed the same answer.
     #:
-    #: Populated only by `CategoryGroupRepository.with_card_only`. Left alone it
-    #: reads `None`, which `CategoryGroupResponse` rejects: a path that forgets
-    #: fails loudly instead of quietly drawing the card group as an empty header.
+    #: Populated only by `CategoryGroupRepository.with_served_fields`. Left
+    #: alone it reads `None`, which `CategoryGroupResponse` rejects: a path that
+    #: forgets fails loudly instead of quietly drawing the card group as an
+    #: empty header.
     is_card_only: Mapped[bool] = query_expression()
+
+    #: How many of this group's live categories are archived — the envelopes the
+    #: budget grid does not draw. A group whose categories are all archived is
+    #: an empty header on the page and a group full of envelopes everywhere
+    #: else, and nothing on the grid said so.
+    #:
+    #: Not a column, for `is_card_only`'s reason: archiving a category does not
+    #: touch this row. The rule is `GROUP_ARCHIVED_CATEGORY_COUNT`
+    #: (repositories/category_filters.py) and nothing else may restate it — the
+    #: client cannot, since its category list filters archived rows out.
+    #:
+    #: Populated by the same loader, and required in the response for the same
+    #: reason: a path that forgets must raise, not report a group as empty when
+    #: it is not.
+    archived_category_count: Mapped[int] = query_expression()
 
     budget: Mapped["Budget"] = relationship(back_populates="category_groups")
     categories: Mapped[list["Category"]] = relationship(

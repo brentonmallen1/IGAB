@@ -63,6 +63,10 @@ export function groupByView(
     is_card_only: false,
     is_archived: false,
     is_system: false,
+    // A view groups the categories the view was given, and the category list a
+    // view is built from has no archived rows in it — so there is nothing here
+    // for the count to be about. It belongs to the budget's own arrangement.
+    archived_category_count: 0,
     system_key: null,
   })
 

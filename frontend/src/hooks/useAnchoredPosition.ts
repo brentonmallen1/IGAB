@@ -47,15 +47,36 @@ function currentViewport(): Viewport {
  * ResizeObserver callback, both of which run before paint, so nothing is drawn
  * at the uncapped size.
  */
-function naturalHeight(panel: HTMLElement | null | undefined): number | undefined {
+export function measureNaturalHeight(panel: HTMLElement | null | undefined): number | undefined {
   if (!panel) return undefined
+  // Every scroll offset inside the panel, before the cap comes off. Lifting
+  // the cap stops the panel's body overflowing, and a container that no longer
+  // overflows has its scrollTop clamped to 0 by the browser — restoring the
+  // cap does not restore the offset. The measurement runs on every scroll tick
+  // (the listener below), so without this each wheel event inside an open
+  // popover measured the panel and snapped its body back to the top: the tags
+  // ⓘ explanation could be opened, and could not be read past its first
+  // screenful. `naturalHeight` has to be an observation, not an edit.
+  const offsets = scrollOffsets(panel)
   const capped = panel.style.maxHeight
   panel.style.maxHeight = 'none'
   const height = panel.scrollHeight
   panel.style.maxHeight = capped
+  for (const [el, top] of offsets) el.scrollTop = top
   // A panel that has not painted yet measures 0; fall back rather than
   // believe it.
   return height || undefined
+}
+
+/** The panel and its descendants that are scrolled away from the top, with
+ *  where they are. Only those: assigning `scrollTop = 0` to an element already
+ *  at 0 is free, but reading the whole subtree back afterwards is not. */
+function scrollOffsets(panel: HTMLElement): [Element, number][] {
+  const scrolled: [Element, number][] = panel.scrollTop ? [[panel, panel.scrollTop]] : []
+  for (const el of panel.querySelectorAll('*')) {
+    if (el.scrollTop) scrolled.push([el, el.scrollTop])
+  }
+  return scrolled
 }
 
 /** Where a right-click happened. Passed instead of a ref when the thing the
@@ -111,7 +132,7 @@ export function useAnchoredPosition(
       ? elementRef.current?.getBoundingClientRect()
       : { top: pointY, bottom: pointY, left: pointX, width: 0 }
     if (!rect) return
-    const measured = naturalHeight(panelRef?.current)
+    const measured = measureNaturalHeight(panelRef?.current)
     // Only when the caller states no width of its own: a menu sizes to its
     // longest label, so the horizontal clamp has nothing to work from until
     // the panel exists. Callers that pass a width keep it — measuring one they
@@ -153,7 +174,13 @@ export function useAnchoredPosition(
     measure()
     // Capture: triggers ride inside scroll containers (the register, a report
     // card, a modal body) that do not bubble scroll to window.
-    const onMove = () => measure()
+    const onMove = (e: Event) => {
+      // A scroll INSIDE the open panel cannot have moved the trigger, and
+      // measuring costs a forced reflow. The panel is portalled to <body>, so
+      // nothing but the panel's own scrollers can match.
+      if (e.target instanceof Node && panelRef?.current?.contains(e.target)) return
+      measure()
+    }
     document.addEventListener('scroll', onMove, { capture: true, passive: true })
     window.addEventListener('resize', onMove)
     window.visualViewport?.addEventListener('resize', onMove)
@@ -162,7 +189,7 @@ export function useAnchoredPosition(
       document.removeEventListener('scroll', onMove, { capture: true })
       window.removeEventListener('resize', onMove)
     }
-  }, [open, measure])
+  }, [open, measure, panelRef])
 
   // The panel does not exist when the effect above first runs — nothing is
   // rendered until a placement exists — so its measurement used the assumed

@@ -96,6 +96,16 @@ export interface CategoryGroup {
    *  card-only here and not there. It used to compute it anyway, and the two
    *  answers disagreed — which turned group dragging off entirely. */
   is_card_only: boolean
+  /** How many of this group's live categories are archived — envelopes the grid
+   *  does not draw. Served, not counted here: `useCategories` asks without
+   *  `include_archived`, so the client is missing the rows. Home is
+   *  `GROUP_ARCHIVED_CATEGORY_COUNT` in repositories/category_filters.py.
+   *
+   *  A group whose count equals its drawn rows of zero is an empty header on
+   *  the page and a group full of envelopes to the delete and archive
+   *  endpoints. The grid says so now instead of letting the dialog be the
+   *  first place anyone finds out. */
+  archived_category_count: number
   /** 'wishlist' for the group the Guide keeps: rename and delete are refused,
    *  hide is not. Served from `CategoryGroup.system_key`. */
   system_key: string | null

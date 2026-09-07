@@ -48,9 +48,14 @@ export function makeCategoryGroup(over: Partial<CategoryGroup> = {}): CategoryGr
     sort_order: 0,
     is_archived: false,
     is_system: false,
+    // Both served by the server and required in `CategoryGroup`. Spelled out
+    // rather than cast away: a fixture that omits a served field lets a
+    // component read `undefined` in a test and a real value in the app.
+    is_card_only: false,
+    archived_category_count: 0,
     system_key: null,
     ...over,
-  } as CategoryGroup
+  }
 }
 
 /**
