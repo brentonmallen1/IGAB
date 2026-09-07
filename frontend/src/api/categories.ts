@@ -207,6 +207,11 @@ export interface CategoryReference {
 export interface CategoryDeletePreview {
   category_ids: string[]
   category_names: string[]
+  /** Group deletes only: how many of the group's categories are archived,
+   *  and whether that is all of them — then archiving the group is the
+   *  move the person usually wants (server: CategoryDeletePreview). */
+  archived_count?: number
+  all_archived?: boolean
   transaction_count: number
   /** Of those, how many are reconciled — they cannot be re-filed by hand
    *  afterwards without unlocking them first, so the dialog says so. */

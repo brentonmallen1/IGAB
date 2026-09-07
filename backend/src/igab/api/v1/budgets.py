@@ -2,7 +2,7 @@ import uuid
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -79,6 +79,8 @@ class BudgetUpdate(BaseModel):
     number_format: str | None = None
     date_format: str | None = None
     time_format: str | None = None
+    #: Day of the month before which an unmet target reads "pending".
+    funding_day: int | None = Field(default=None, ge=1, le=28)
 
 
 class BudgetResponse(BaseModel):
@@ -88,6 +90,7 @@ class BudgetResponse(BaseModel):
     number_format: str
     date_format: str
     time_format: str
+    funding_day: int = 1
     #: The CALLER's role in this budget ('owner' | 'member') — lets the UI
     #: show sharing affordances and "shared with you" hints. None only in
     #: nested contexts that predate membership (e.g. import responses).
@@ -539,6 +542,8 @@ async def update_budget(
         budget.date_format = body.date_format
     if body.time_format:
         budget.time_format = body.time_format
+    if body.funding_day is not None:
+        budget.funding_day = body.funding_day
     await session.flush()
     after = snapshot("budget", budget)
     if snapshots_match(after, before):  # non-empty diff — something changed

@@ -68,3 +68,9 @@
   font-size: var(--font-size-xs);
   color: var(--color-negative);
 }
+
+.target-editor__help {
+  font-size: var(--font-size-xs);
+  font-weight: 400;
+  color: var(--text-muted);
+}

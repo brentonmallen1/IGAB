@@ -56,6 +56,8 @@ export function useUpdateTag(budgetId: string | null) {
       // Tags are a classification override, so the "Counts as" badge
       // changes with them. Its key is not under ['categories'].
       qc.invalidateQueries({ queryKey: [ROOT.categoryClassification] })
+      // A filter that names a tag changes membership with it.
+      qc.invalidateQueries({ queryKey: [ROOT.budgetFilters, budgetId] })
       qc.invalidateQueries({ queryKey: [ROOT.payees, budgetId] })
     },
   })
@@ -71,6 +73,8 @@ export function useDeleteTag(budgetId: string | null) {
       // Tags are a classification override, so the "Counts as" badge
       // changes with them. Its key is not under ['categories'].
       qc.invalidateQueries({ queryKey: [ROOT.categoryClassification] })
+      // A filter that names a tag changes membership with it.
+      qc.invalidateQueries({ queryKey: [ROOT.budgetFilters, budgetId] })
       qc.invalidateQueries({ queryKey: [ROOT.payees, budgetId] })
     },
   })
@@ -88,6 +92,8 @@ export function useSetCategoryTags(budgetId: string | null) {
       // Tags are a classification override, so the "Counts as" badge
       // changes with them. Its key is not under ['categories'].
       qc.invalidateQueries({ queryKey: [ROOT.categoryClassification] })
+      // A filter that names a tag changes membership with it.
+      qc.invalidateQueries({ queryKey: [ROOT.budgetFilters, budgetId] })
       qc.invalidateQueries({ queryKey: [ROOT.tags, budgetId] })
     },
   })
@@ -136,6 +142,8 @@ export function useBulkSetCategoryTags(budgetId: string | null) {
       // Tags are a classification override, so the "Counts as" badge
       // changes with them. Its key is not under ['categories'].
       qc.invalidateQueries({ queryKey: [ROOT.categoryClassification] })
+      // A filter that names a tag changes membership with it.
+      qc.invalidateQueries({ queryKey: [ROOT.budgetFilters, budgetId] })
       qc.invalidateQueries({ queryKey: [ROOT.tags, budgetId] })
       qc.invalidateQueries({ queryKey: [ROOT.tagSuggestions, budgetId] })
     },

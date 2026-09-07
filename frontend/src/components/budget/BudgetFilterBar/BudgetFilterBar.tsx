@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  AlignJustify,
-  AlignLeft,
   ArrowUpDown,
   ChevronDown,
   Layers,
@@ -13,7 +11,12 @@ import {
 } from 'lucide-react'
 import { useBudgetFilters } from '../../../api/budgetFilters'
 import { useBudgetViews } from '../../../api/budgetViews'
-import { useUIStore, QUICK_FILTER_LABELS, QUICK_FILTER_VARIANTS } from '../../../stores/uiStore'
+import {
+  useUIStore,
+  BUDGET_ROW_MODES,
+  QUICK_FILTER_LABELS,
+  QUICK_FILTER_VARIANTS,
+} from '../../../stores/uiStore'
 import { ContextMenu } from '../../common/ContextMenu/ContextMenu'
 import type { CategoryBalance } from '../../../types'
 import { reorderBlock } from '../reorderAvailability'
@@ -63,7 +66,7 @@ export function BudgetFilterBar({ budgetId, categoryBalances, barRef }: Props) {
   const setActiveFilter = useUIStore((s) => s.setActiveFilter)
   const setActiveQuickFilter = useUIStore((s) => s.setActiveQuickFilter)
   const budgetRowMode = useUIStore((s) => s.budgetRowMode)
-  const toggleBudgetRowMode = useUIStore((s) => s.toggleBudgetRowMode)
+  const setBudgetRowMode = useUIStore((s) => s.setBudgetRowMode)
   const categorySearch = useUIStore((s) => s.categorySearch)
   const setCategorySearch = useUIStore((s) => s.setCategorySearch)
 
@@ -94,6 +97,7 @@ export function BudgetFilterBar({ budgetId, categoryBalances, barRef }: Props) {
   const counts = {
     overspent: categoryBalances.filter((b) => (b.available ?? 0) < 0).length,
     underfunded: categoryBalances.filter((b) => b.target_status === 'underfunded').length,
+    pending: categoryBalances.filter((b) => b.target_status === 'pending').length,
     'money-available': categoryBalances.filter((b) => (b.available ?? 0) > 0).length,
     overfunded: categoryBalances.filter((b) => b.target_status === 'overfunded').length,
   }
@@ -195,7 +199,9 @@ export function BudgetFilterBar({ budgetId, categoryBalances, barRef }: Props) {
             ? `${count} Overspent`
             : filter === 'underfunded'
               ? `${count} Underfunded`
-              : QUICK_FILTER_LABELS[filter]
+              : filter === 'pending'
+                ? `${count} Pending`
+                : QUICK_FILTER_LABELS[filter]
         return (
           <button
             key={filter}
@@ -271,17 +277,20 @@ export function BudgetFilterBar({ budgetId, categoryBalances, barRef }: Props) {
       </div>
 
       <div className="budget-filter-bar__menu-wrap">
-        <button
-          className="budget-filter-bar__menu-btn"
-          onClick={toggleBudgetRowMode}
-          title={
-            budgetRowMode === 'expanded' ? 'Switch to compact rows' : 'Switch to expanded rows'
-          }
-          aria-label="Compact rows"
-          aria-pressed={budgetRowMode !== 'expanded'}
-        >
-          {budgetRowMode === 'expanded' ? <AlignLeft size={14} /> : <AlignJustify size={14} />}
-        </button>
+        <div className="budget-filter-bar__density" role="group" aria-label="Row density">
+          {BUDGET_ROW_MODES.map((mode) => (
+            <button
+              key={mode.value}
+              type="button"
+              className={`budget-filter-bar__density-btn ${budgetRowMode === mode.value ? 'active' : ''}`}
+              onClick={() => setBudgetRowMode(mode.value)}
+              aria-pressed={budgetRowMode === mode.value}
+              title={mode.hint}
+            >
+              {mode.label}
+            </button>
+          ))}
+        </div>
         <button
           ref={menuAnchorRef}
           className="budget-filter-bar__menu-btn"

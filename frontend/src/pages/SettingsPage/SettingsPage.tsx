@@ -249,6 +249,36 @@ export function SettingsPage() {
               </div>
 
               <div className="settings-subsection">
+                <div className="settings-subsection__title">Targets</div>
+
+                <div className="settings-row">
+                  <div>
+                    <div className="settings-row__label">Funding day</div>
+                    <div className="settings-row__desc">
+                      Targets show as pending until this day of the month, then as underfunded. A
+                      target can set its own day.
+                    </div>
+                  </div>
+                  <select
+                    className="settings-select"
+                    value={currentBudget.funding_day}
+                    onChange={(e) =>
+                      updateBudget.mutate({
+                        id: currentBudget.id,
+                        funding_day: Number(e.target.value),
+                      })
+                    }
+                  >
+                    {Array.from({ length: 28 }, (_, i) => i + 1).map((day) => (
+                      <option key={day} value={day}>
+                        {day}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="settings-subsection">
                 <div className="settings-subsection__title">Display Formats</div>
 
                 <div className="settings-row">

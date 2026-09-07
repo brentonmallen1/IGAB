@@ -21,7 +21,7 @@ import datetime
 import uuid
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -1164,5 +1164,10 @@ class UndoService(UndoRestores):
         model = ENTITY_MODELS[change.entity_type]
         for field, value in (change.before or {}).items():
             if field.startswith("_") or field in skip:
+                continue
+            # A record written before a column was dropped still names it
+            # (category_targets.repeat_frequency); there is nothing to put it
+            # back into, and the rest of the row still restores.
+            if field not in cast(Any, model).__table__.columns:
                 continue
             setattr(entity, field, coerce_value(model, field, value))

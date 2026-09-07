@@ -5,6 +5,7 @@ import { CategoryCombobox } from '../../common/CategoryCombobox/CategoryCombobox
 import {
   useCategories,
   useArchiveCategories,
+  useArchiveCategoryGroup,
   useArchivePreview,
   useCategoryDeletePreview,
   useCategoryGroups,
@@ -54,6 +55,11 @@ export function DeleteCategoryModal({ budgetId, target, month, onClose, onDelete
   const { data: groups = [] } = useCategoryGroups(budgetId)
   const deleteCategories = useDeleteCategories(budgetId)
   const archiveCategories = useArchiveCategories(budgetId)
+  const archiveGroup = useArchiveCategoryGroup(budgetId)
+  // Every envelope already archived: the group is a header over nothing,
+  // and what the person wants is for it to go from the grid, not for its
+  // history to be moved. Archiving the group does exactly that.
+  const groupAllArchived = target.kind === 'group' && !!preview?.all_archived
 
   const doomed = useMemo(() => new Set(preview?.category_ids ?? []), [preview?.category_ids])
 
@@ -110,6 +116,11 @@ export function DeleteCategoryModal({ budgetId, target, month, onClose, onDelete
 
   async function handleArchive() {
     if (!preview) return
+    if (target.kind === 'group' && groupAllArchived) {
+      await archiveGroup.mutateAsync({ id: target.id, month })
+      onClose()
+      return
+    }
     // Archiving a group means archiving what is in it, which is what the
     // preview already resolved the target to.
     await archiveCategories.mutateAsync({ ids: preview.category_ids, month })
@@ -157,6 +168,13 @@ export function DeleteCategoryModal({ budgetId, target, month, onClose, onDelete
               ))}
             </div>
           </div>
+        )}
+
+        {groupAllArchived && (
+          <p className="delete-category-modal__note" role="status">
+            Every category in this group is already archived. Archiving the group takes it off the
+            budget page and keeps all of its history; deleting moves that history instead.
+          </p>
         )}
 
         {preview && !blocked && (
@@ -293,14 +311,25 @@ export function DeleteCategoryModal({ budgetId, target, month, onClose, onDelete
             type="button"
             className="delete-category-modal__archive"
             onClick={handleArchive}
-            disabled={!preview || !mayArchive || archiveCategories.isPending}
+            disabled={
+              !preview ||
+              (!groupAllArchived && !mayArchive) ||
+              archiveCategories.isPending ||
+              archiveGroup.isPending
+            }
             title={
-              archiveBlockedBy
-                ? `Cannot archive: ${archiveBlockedBy}`
-                : 'Keep its history and stop new use, instead of deleting'
+              groupAllArchived
+                ? 'Take the group off the budget page and keep its history'
+                : archiveBlockedBy
+                  ? `Cannot archive: ${archiveBlockedBy}`
+                  : 'Keep its history and stop new use, instead of deleting'
             }
           >
-            {archiveCategories.isPending ? 'Archiving…' : 'Archive instead'}
+            {archiveCategories.isPending || archiveGroup.isPending
+              ? 'Archiving…'
+              : groupAllArchived
+                ? 'Archive group instead'
+                : 'Archive instead'}
           </button>
           <button
             type="button"

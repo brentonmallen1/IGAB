@@ -10,7 +10,7 @@
  * Fill Underfunded asks. The last describe block exists to keep it that way.
  */
 import { describe, expect, it } from 'vitest'
-import { monthsUntil, targetMeasuresBalance, targetProgress } from './targets'
+import { targetMeasuresBalance, targetProgress } from './targets'
 import type { CategoryTarget } from '../types'
 
 function target(overrides: Partial<CategoryTarget> = {}): CategoryTarget {
@@ -19,6 +19,8 @@ function target(overrides: Partial<CategoryTarget> = {}): CategoryTarget {
     target_type: 'monthly_funding',
     target_amount: 100,
     target_date: null,
+    check_after_day: null,
+    weekday: null,
     ...overrides,
   } as unknown as CategoryTarget
 }
@@ -28,23 +30,22 @@ describe('which number fills the bar', () => {
     expect(targetProgress(target(), 50, 0)).toBe(0.5)
   })
 
+  it('a weekly target fills by assigned too', () => {
+    expect(targetProgress(target({ target_type: 'weekly_funding', weekday: 4 }), 25, 0)).toBe(0.25)
+  })
+
   it('a savings-balance target fills by available', () => {
     const t = target({ target_type: 'savings_balance', target_amount: 1000 })
     expect(targetProgress(t, 0, 250)).toBe(0.25)
   })
 
-  it('a dated needed-for-spending target fills by available', () => {
+  it('a dated savings-balance target still fills by available — goal progress, not pace', () => {
     const t = target({
-      target_type: 'needed_for_spending',
+      target_type: 'savings_balance',
       target_amount: 600,
       target_date: '2026-12-01',
     })
     expect(targetProgress(t, 0, 300)).toBe(0.5)
-  })
-
-  it('an undated needed-for-spending target fills by assigned', () => {
-    const t = target({ target_type: 'needed_for_spending', target_amount: 600, target_date: null })
-    expect(targetProgress(t, 300, 0)).toBe(0.5)
   })
 
   it('clamps to 0..1 rather than overflowing the track', () => {
@@ -58,58 +59,20 @@ describe('which number fills the bar', () => {
   })
 })
 
-describe('targetMeasuresBalance', () => {
-  it('is true for the two balance-shaped targets', () => {
+describe('targetMeasuresBalance is wording only', () => {
+  it('is true for an undated savings balance and nothing else', () => {
     expect(targetMeasuresBalance(target({ target_type: 'savings_balance' }))).toBe(true)
     expect(
-      targetMeasuresBalance(
-        target({ target_type: 'needed_for_spending', target_date: '2026-12-01' })
-      )
-    ).toBe(true)
-  })
-
-  it('is false for funding duties', () => {
-    expect(targetMeasuresBalance(target({ target_type: 'monthly_funding' }))).toBe(false)
-    expect(targetMeasuresBalance(target({ target_type: 'weekly_funding' }))).toBe(false)
-    expect(
-      targetMeasuresBalance(target({ target_type: 'needed_for_spending', target_date: null }))
+      targetMeasuresBalance(target({ target_type: 'savings_balance', target_date: '2026-12-01' }))
     ).toBe(false)
-  })
-})
-
-describe('monthsUntil', () => {
-  const now = new Date('2026-08-15T12:00:00')
-
-  it('counts whole months', () => {
-    expect(monthsUntil('2026-11-01', now)).toBe(3)
-  })
-
-  it('ignores the day, like the backend does', () => {
-    expect(monthsUntil('2026-09-28', now)).toBe(1)
-  })
-
-  it('floors at one for this month', () => {
-    expect(monthsUntil('2026-08-01', now)).toBe(1)
-  })
-
-  it('floors at one for a date already past', () => {
-    expect(monthsUntil('2025-01-01', now)).toBe(1)
-  })
-
-  it('crosses a year', () => {
-    expect(monthsUntil('2027-02-01', now)).toBe(6)
+    expect(targetMeasuresBalance(target())).toBe(false)
+    expect(targetMeasuresBalance(target({ target_type: 'weekly_funding' }))).toBe(false)
   })
 })
 
 describe('the server owns the verdict', () => {
-  // The guard rail. If someone reintroduces a funded/needed rule here, these
-  // fail — the module must not grow a way to answer those questions.
-  it('exports no status rule', async () => {
+  it('exports no status or shortfall function', async () => {
     const mod = await import('./targets')
-    expect(Object.keys(mod).sort()).toEqual([
-      'monthsUntil',
-      'targetMeasuresBalance',
-      'targetProgress',
-    ])
+    expect(Object.keys(mod).sort()).toEqual(['targetMeasuresBalance', 'targetProgress'])
   })
 })

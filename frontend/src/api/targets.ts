@@ -19,7 +19,8 @@ export interface TargetUpsert {
   target_type: string
   target_amount: number
   target_date?: string | null
-  repeat_frequency?: string | null
+  check_after_day?: number | null
+  weekday?: number | null
 }
 
 export function useTarget(categoryId: string | null) {

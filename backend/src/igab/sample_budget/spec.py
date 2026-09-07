@@ -59,7 +59,9 @@ class TargetSpec:
     target_type: str
     amount: Decimal
     target_date: RelDate | None = None
-    repeat_frequency: str | None = None
+    check_after_day: int | None = None
+    #: Weekly targets only: 0=Monday … 6=Sunday.
+    weekday: int | None = None
 
 
 @dataclass(frozen=True)

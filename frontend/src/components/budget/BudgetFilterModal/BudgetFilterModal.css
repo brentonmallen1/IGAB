@@ -205,3 +205,16 @@
 .filter-modal__btn--danger:hover:not(:disabled) {
   background-color: color-mix(in srgb, var(--color-negative) 20%, transparent);
 }
+
+.filter-modal__tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.filter-modal__hint {
+  margin: var(--spacing-xs) 0 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}

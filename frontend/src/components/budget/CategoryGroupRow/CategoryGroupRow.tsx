@@ -163,7 +163,7 @@ export function CategoryGroupRow({
 
   return (
     <div
-      className={`category-group-row ${budgetRowMode === 'compressed' ? 'category-group-row--compressed' : ''}`}
+      className={`category-group-row ${budgetRowMode === 'dense' ? 'category-group-row--dense' : ''}`}
     >
       <div
         className={

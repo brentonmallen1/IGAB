@@ -363,6 +363,7 @@ export interface BudgetUpdate {
   number_format?: string
   date_format?: string
   time_format?: string
+  funding_day?: number
 }
 
 export function useUpdateBudget() {

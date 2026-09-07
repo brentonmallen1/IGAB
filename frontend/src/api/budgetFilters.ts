@@ -18,7 +18,7 @@ export function useBudgetFilters(budgetId: string | null) {
 export function useCreateBudgetFilter(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: { name: string; category_ids: string[] }) =>
+    mutationFn: (data: { name: string; category_ids: string[]; tag_ids?: string[] }) =>
       apiClient.post<BudgetFilter>(`/${budgetId}/filters`, data).then((r) => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: [ROOT.budgetFilters, budgetId] })
@@ -29,8 +29,15 @@ export function useCreateBudgetFilter(budgetId: string) {
 export function useUpdateBudgetFilter(budgetId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, ...data }: { id: string; name?: string; category_ids?: string[] }) =>
-      apiClient.patch<BudgetFilter>(`/filters/${id}`, data).then((r) => r.data),
+    mutationFn: ({
+      id,
+      ...data
+    }: {
+      id: string
+      name?: string
+      category_ids?: string[]
+      tag_ids?: string[]
+    }) => apiClient.patch<BudgetFilter>(`/filters/${id}`, data).then((r) => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: [ROOT.budgetFilters, budgetId] })
     },

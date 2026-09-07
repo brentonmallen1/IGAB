@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { useEffect, useRef, useState } from 'react'
 import { Archive, FolderInput, Trash2 } from 'lucide-react'
 import { BudgetTable } from '../../components/budget/BudgetTable/BudgetTable'
@@ -177,7 +178,9 @@ export function BudgetPage() {
       <ImportReviewGate budgetId={budgetId} />
       {anchorMonth === month && (
         <p className="budget-page__anchor-note">
-          Your budget&apos;s plan starts here — earlier months live in the register and reports.
+          Your budget&apos;s plan starts here. Earlier months are still in{' '}
+          <Link to="/transactions">the register</Link> and <Link to="/reports">Reports</Link>; the
+          envelopes and card reserves here begin from YNAB&apos;s own figures for the month before.
         </p>
       )}
       <TbaHero budgetId={budgetId} month={month} />

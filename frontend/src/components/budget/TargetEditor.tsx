@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useUpsertTarget, useDeleteTarget } from '../../api/targets'
 import type { CategoryTarget } from '../../types'
-import { TARGET_TYPES, buildTargetPayload } from './targetForm'
+import { TARGET_TYPES, WEEKDAYS, buildTargetPayload } from './targetForm'
 import { Dialog } from '../common/Dialog/Dialog'
 import './TargetEditor.css'
 
@@ -16,14 +16,19 @@ export function TargetEditor({ categoryId, categoryName, existing, onClose }: Pr
   const [targetType, setTargetType] = useState(existing?.target_type ?? 'monthly_funding')
   const [amount, setAmount] = useState(existing ? String(existing.target_amount) : '')
   const [targetDate, setTargetDate] = useState(existing?.target_date ?? '')
+  const [weekday, setWeekday] = useState(existing?.weekday != null ? String(existing.weekday) : '')
+  const [checkAfterDay, setCheckAfterDay] = useState(
+    existing?.check_after_day != null ? String(existing.check_after_day) : ''
+  )
   const [error, setError] = useState<string | null>(null)
 
   const upsert = useUpsertTarget(categoryId)
   const del = useDeleteTarget(categoryId)
+  const help = TARGET_TYPES.find((t) => t.value === targetType)?.help
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    const result = buildTargetPayload(targetType, amount, targetDate)
+    const result = buildTargetPayload({ targetType, amount, targetDate, weekday, checkAfterDay })
     if (!result.ok) {
       setError(result.error)
       return
@@ -59,6 +64,7 @@ export function TargetEditor({ categoryId, categoryName, existing, onClose }: Pr
               </option>
             ))}
           </select>
+          {help && <span className="target-editor__help">{help}</span>}
         </label>
 
         <label className="target-editor__label">
@@ -75,9 +81,28 @@ export function TargetEditor({ categoryId, categoryName, existing, onClose }: Pr
           />
         </label>
 
-        {(targetType === 'needed_for_spending' || targetType === 'savings_balance') && (
+        {targetType === 'weekly_funding' && (
           <label className="target-editor__label">
-            Target Date
+            Every
+            <select
+              className="target-editor__select"
+              value={weekday}
+              onChange={(e) => setWeekday(e.target.value)}
+              required
+            >
+              <option value="">Pick a day…</option>
+              {WEEKDAYS.map((d) => (
+                <option key={d.value} value={d.value}>
+                  {d.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+
+        {targetType === 'savings_balance' && (
+          <label className="target-editor__label">
+            By (optional)
             <input
               type="date"
               className="target-editor__input"
@@ -86,6 +111,24 @@ export function TargetEditor({ categoryId, categoryName, existing, onClose }: Pr
             />
           </label>
         )}
+
+        <label className="target-editor__label">
+          Check after day (optional)
+          <input
+            type="number"
+            inputMode="numeric"
+            min="1"
+            max="28"
+            step="1"
+            className="target-editor__input"
+            value={checkAfterDay}
+            onChange={(e) => setCheckAfterDay(e.target.value)}
+            placeholder="Budget's funding day"
+          />
+          <span className="target-editor__help">
+            Until this day of the month an unmet target reads pending, not underfunded.
+          </span>
+        </label>
 
         {error && (
           <div className="target-editor__error" role="alert">

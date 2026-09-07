@@ -63,6 +63,7 @@ from igab.domain.snapshot_format import (
     encode_row,
     exported_columns,
 )
+from igab.domain.targets import normalize_legacy_target
 from igab.repositories.tag_repo import seed_system_tags
 from igab.services.account_type_service import ensure_account_types_seeded
 from igab.services.budget_provisioning import grant_owner, unique_budget_name
@@ -614,6 +615,12 @@ def _translate(
 ) -> dict[str, Any]:
     """One row from the file, ready to insert."""
     row = decode_row(table, raw)
+    if table.name == "category_targets":
+        # A frozen snapshot may still carry the retired needed_for_spending
+        # type; the same mapping the migration applied to live rows.
+        row["target_type"] = normalize_legacy_target(row["target_type"], row.get("target_date"))
+        if row["target_type"] == "weekly_funding" and row.get("weekday") is None:
+            row["weekday"] = 0
 
     own = remap.get(table.name) or {}
     if "id" in row and own:

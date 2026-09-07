@@ -3,6 +3,8 @@ import uuid
 from decimal import Decimal
 from typing import Any
 
+from pydantic import Field
+
 from igab.api.v1.schemas.base import ApiModel
 from igab.api.v1.schemas.tag import TagOutSimple
 from igab.domain.enums import TargetStatus, TargetType
@@ -88,6 +90,12 @@ class CategoryDeletePreviewResponse(ApiModel):
     blocked_by: list[str]
     #: Nothing to decide — the client may delete without showing the dialog.
     is_empty: bool
+    #: Group deletes only: how many of the group's categories are archived,
+    #: and whether that is every one of them. The dialog then leads with
+    #: "Archive group instead" — a group of archived envelopes is usually one
+    #: the person wants off the grid, not one whose history should go.
+    archived_count: int = 0
+    all_archived: bool = False
 
 
 class CategoryDeleteResultResponse(ApiModel):
@@ -261,8 +269,13 @@ class CategoryUpdate(ApiModel):
 class CategoryTargetCreate(ApiModel):
     target_type: TargetType
     target_amount: Money
+    #: Savings balance only: paces the shortfall over the months left.
     target_date: datetime.date | None = None
-    repeat_frequency: str | None = None
+    #: Before this day of the current month an unmet target reads "pending";
+    #: None defers to the budget's funding_day.
+    check_after_day: int | None = Field(default=None, ge=1, le=28)
+    #: Weekly funding only, and required for it: 0=Monday … 6=Sunday.
+    weekday: int | None = Field(default=None, ge=0, le=6)
 
 
 class CategoryTargetResponse(ApiModel):
@@ -271,7 +284,8 @@ class CategoryTargetResponse(ApiModel):
     target_type: str
     target_amount: Decimal
     target_date: datetime.date | None
-    repeat_frequency: str | None
+    check_after_day: int | None
+    weekday: int | None
 
     model_config = {"from_attributes": True}
 

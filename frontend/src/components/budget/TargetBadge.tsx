@@ -1,30 +1,18 @@
 import { useFormatters } from '../../hooks/useFormatters'
+import { BADGE_LABELS, getTargetTooltip, type BadgeStatus } from './targetTooltip'
 import './TargetBadge.css'
 
-const LABELS = {
-  funded: 'Funded',
-  underfunded: 'Underfunded',
-}
-
-export function getTargetTooltip(
-  status: 'funded' | 'underfunded',
-  monthlyNeeded: number | undefined,
-  formatMoney: (amount: number) => string
-): string {
-  const showMonthly = monthlyNeeded !== undefined && monthlyNeeded > 0 && status !== 'funded'
-  return showMonthly ? `Need ${formatMoney(monthlyNeeded!)}/mo to reach goal` : LABELS[status]
-}
-
 interface Props {
-  status: 'funded' | 'underfunded'
-  monthlyNeeded?: number
+  status: BadgeStatus
+  needed?: number
+  checkDay?: number
   onClick?: () => void
 }
 
-export function TargetBadge({ status, monthlyNeeded, onClick }: Props) {
+export function TargetBadge({ status, needed, checkDay, onClick }: Props) {
   const { formatMoney } = useFormatters()
-  const showMonthly = monthlyNeeded !== undefined && monthlyNeeded > 0 && status !== 'funded'
-  const tooltip = getTargetTooltip(status, monthlyNeeded, formatMoney)
+  const tooltip = getTargetTooltip(status, needed, formatMoney, checkDay)
+  const showAmount = status === 'underfunded' && needed !== undefined && needed > 0
   return (
     <span
       className={`target-badge target-badge--${status}`}
@@ -33,7 +21,7 @@ export function TargetBadge({ status, monthlyNeeded, onClick }: Props) {
       tabIndex={onClick ? 0 : undefined}
       title={tooltip}
     >
-      {showMonthly ? `${formatMoney(monthlyNeeded!)}/mo` : LABELS[status]}
+      {showAmount ? formatMoney(needed!) : BADGE_LABELS[status]}
     </span>
   )
 }

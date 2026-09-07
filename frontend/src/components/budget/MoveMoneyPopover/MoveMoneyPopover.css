@@ -1,8 +1,9 @@
 .move-money-popover {
   position: fixed;
   z-index: var(--z-dropdown);
-  min-width: 260px;
-  max-width: 320px;
+  /* Width comes from the geometry (POPOVER_WIDTH in the component), never
+     restated here — the old min/max pair was the copy that silently lost. */
+  overflow-y: auto;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color, var(--bg-tertiary));
   border-radius: var(--border-radius-md);

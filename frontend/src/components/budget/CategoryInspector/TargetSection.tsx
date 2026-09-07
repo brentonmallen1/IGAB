@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Pencil, Trash2 } from 'lucide-react'
 import { useTarget, useUpsertTarget, useDeleteTarget } from '../../../api/targets'
 import { useFormatters } from '../../../hooks/useFormatters'
-import { TARGET_TYPES, buildTargetPayload } from '../targetForm'
+import { TARGET_TYPES, WEEKDAYS, buildTargetPayload, targetTypeLabel } from '../targetForm'
 
 interface Props {
   categoryId: string
@@ -14,6 +14,8 @@ export function TargetSection({ categoryId }: Props) {
   const [targetType, setTargetType] = useState('monthly_funding')
   const [amount, setAmount] = useState('')
   const [targetDate, setTargetDate] = useState('')
+  const [weekday, setWeekday] = useState('')
+  const [checkAfterDay, setCheckAfterDay] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   const { data: target } = useTarget(categoryId)
@@ -24,12 +26,14 @@ export function TargetSection({ categoryId }: Props) {
     setTargetType(target?.target_type ?? 'monthly_funding')
     setAmount(target ? String(target.target_amount) : '')
     setTargetDate(target?.target_date ?? '')
+    setWeekday(target?.weekday != null ? String(target.weekday) : '')
+    setCheckAfterDay(target?.check_after_day != null ? String(target.check_after_day) : '')
     setIsEditing(true)
   }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
-    const result = buildTargetPayload(targetType, amount, targetDate)
+    const result = buildTargetPayload({ targetType, amount, targetDate, weekday, checkAfterDay })
     if (!result.ok) {
       setError(result.error)
       return
@@ -76,9 +80,27 @@ export function TargetSection({ categoryId }: Props) {
               required
             />
           </label>
-          {(targetType === 'needed_for_spending' || targetType === 'savings_balance') && (
+          {targetType === 'weekly_funding' && (
             <label className="inspector-field">
-              <span>Target Date</span>
+              <span>Every</span>
+              <select
+                className="inspector-select"
+                value={weekday}
+                onChange={(e) => setWeekday(e.target.value)}
+                required
+              >
+                <option value="">Pick a day…</option>
+                {WEEKDAYS.map((d) => (
+                  <option key={d.value} value={d.value}>
+                    {d.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {targetType === 'savings_balance' && (
+            <label className="inspector-field">
+              <span>By (optional)</span>
               <input
                 type="date"
                 className="inspector-input"
@@ -87,6 +109,20 @@ export function TargetSection({ categoryId }: Props) {
               />
             </label>
           )}
+          <label className="inspector-field">
+            <span>Check after day</span>
+            <input
+              type="number"
+              inputMode="numeric"
+              min="1"
+              max="28"
+              step="1"
+              className="inspector-input"
+              value={checkAfterDay}
+              onChange={(e) => setCheckAfterDay(e.target.value)}
+              placeholder="Budget's funding day"
+            />
+          </label>
           {error && (
             <div className="inspector-error" role="alert">
               {error}
@@ -147,7 +183,10 @@ export function TargetSection({ categoryId }: Props) {
       {target ? (
         <div className="inspector-target-display">
           <div className="inspector-target-display__type">
-            {TARGET_TYPES.find((t) => t.value === target.target_type)?.label}
+            {targetTypeLabel(target.target_type)}
+            {target.target_type === 'weekly_funding' && target.weekday != null
+              ? ` · every ${WEEKDAYS[target.weekday]?.label ?? ''}`
+              : ''}
           </div>
           <div className="inspector-target-display__amount">
             {formatMoney(target.target_amount)}
@@ -155,6 +194,11 @@ export function TargetSection({ categoryId }: Props) {
           {target.target_date && (
             <div className="inspector-target-display__date">
               By {formatDate(target.target_date)}
+            </div>
+          )}
+          {target.check_after_day != null && (
+            <div className="inspector-target-display__date">
+              Checked after day {target.check_after_day}
             </div>
           )}
         </div>

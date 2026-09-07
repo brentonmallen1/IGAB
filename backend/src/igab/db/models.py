@@ -82,6 +82,11 @@ class Budget(Base):
     number_format: Mapped[str] = mapped_column(String(20), default="comma_dot", nullable=False)
     date_format: Mapped[str] = mapped_column(String(10), default="mdy", nullable=False)
     time_format: Mapped[str] = mapped_column(String(5), default="12h", nullable=False)
+    #: Day of the month (1–28) before which an unmet target reads "pending"
+    #: rather than "underfunded" — a household that funds across two
+    #: paychecks does not want every envelope red on the 2nd. A target may
+    #: override it with its own `check_after_day`.
+    funding_day: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     #: What an import decided, as it decided it. A YNAB import always creates
     #: exactly one budget (the route 409s on a name clash), so this is 1:1 and
     #: needs no table of its own.
@@ -480,8 +485,13 @@ class CategoryTarget(Base):
     )
     target_type: Mapped[str] = mapped_column(String(30), nullable=False)
     target_amount: Mapped[Decimal] = mapped_column(Numeric(19, 4), nullable=False)
+    #: Savings balance only: paces the shortfall over the months left.
     target_date: Mapped[date | None] = mapped_column(Date)
-    repeat_frequency: Mapped[str | None] = mapped_column(String(20))
+    #: Overrides the budget's `funding_day` for this target (1–28).
+    check_after_day: Mapped[int | None] = mapped_column(Integer)
+    #: Weekly funding only: 0=Monday … 6=Sunday. This month's duty is the
+    #: amount times the number of that weekday in the month.
+    weekday: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -1045,6 +1055,27 @@ class BudgetFilter(Base):
     category_selections: Mapped[list["BudgetFilterCategory"]] = relationship(
         back_populates="filter_", cascade="all, delete-orphan"
     )
+    #: The dynamic axis: any category carrying one of these tags is in the
+    #: filter, now and as tags change — a filter named "Essentials" follows
+    #: the tag rather than a list frozen the day it was saved.
+    tag_selections: Mapped[list["BudgetFilterTag"]] = relationship(
+        back_populates="filter_", cascade="all, delete-orphan"
+    )
+
+
+class BudgetFilterTag(Base):
+    __tablename__ = "budget_filter_tags"
+    __table_args__ = (UniqueConstraint("filter_id", "tag_id", name="uq_filter_tag"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    filter_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("budget_filters.id", ondelete="CASCADE"), nullable=False
+    )
+    tag_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tags.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+    filter_: Mapped["BudgetFilter"] = relationship(back_populates="tag_selections")
 
 
 class BudgetFilterCategory(Base):

@@ -126,3 +126,78 @@ class TestTargetUndo:
         changes = (await api_client.get(f"/api/v1/{budget.id}/changes")).json()["changes"]
         target_rows = [c for c in changes if c["entity_type"] == "category_target"]
         assert len(target_rows) == 1
+
+    async def test_check_after_day_and_weekday_round_trip_through_undo(
+        self, db_session, api_client
+    ):
+        budget, category = await _setup(db_session, api_client)
+        await _set_target(
+            api_client, category, target_type="weekly_funding", target_amount="50", weekday=4
+        )
+        await _set_target(
+            api_client,
+            category,
+            target_type="weekly_funding",
+            target_amount="50",
+            weekday=0,
+            check_after_day=15,
+        )
+        await _undo(api_client, budget)
+        after = await _read_target(api_client, category)
+        assert after["weekday"] == 4 and after["check_after_day"] is None
+
+    async def test_a_weekly_target_without_a_weekday_is_refused(self, db_session, api_client):
+        _, category = await _setup(db_session, api_client)
+        r = await api_client.post(
+            _target_url(category), json={"target_type": "weekly_funding", "target_amount": "50"}
+        )
+        assert r.status_code == 400
+        assert "day of the week" in r.json()["detail"]
+
+    async def test_undoing_a_target_change_recorded_before_repeat_frequency_was_dropped(
+        self, db_session, api_client
+    ):
+        """A change-log row from before the column drop still names
+        repeat_frequency in its snapshot. Undo skips it and restores the rest
+        — both on the update path and on the hard-row re-insert path."""
+        from sqlalchemy import select, update
+
+        from igab.db.models import ChangeLog
+
+        budget, category = await _setup(db_session, api_client)
+        await _set_target(api_client, category, target_amount="1200")
+        await _set_target(api_client, category, target_amount="1500")
+        rows = (
+            (
+                await db_session.execute(
+                    select(ChangeLog)
+                    .where(ChangeLog.entity_type == "category_target")
+                    .order_by(ChangeLog.created_at)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for row in rows:
+            for side in ("before", "after"):
+                payload = getattr(row, side)
+                if payload is not None:
+                    await db_session.execute(
+                        update(ChangeLog)
+                        .where(ChangeLog.id == row.id)
+                        .values({side: {**payload, "repeat_frequency": "monthly"}})
+                    )
+        await db_session.commit()
+
+        undone = await _undo(api_client, budget)  # the update → back to 1200
+        assert undone["action"] == "update"
+        assert await _read_target(api_client, category) == {
+            **(await _read_target(api_client, category)),
+            "target_amount": 1200.0,
+        }
+        undone = await _undo(api_client, budget)  # the create → gone
+        assert undone["action"] == "create"
+        assert await _read_target(api_client, category) is None
+        r = await api_client.post(f"/api/v1/{budget.id}/changes/redo")  # re-insert hard row
+        assert r.status_code == 200, r.text
+        assert (await _read_target(api_client, category))["target_amount"] == 1200.0

@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
-import { renderableCategories } from '../budgetGroups'
+import { useCreateTag, useTags } from '../../../api/tags'
+import { TagPicker, type TagOption } from '../../common/TagPicker'
+import { TagChip } from '../../common/TagChip'
+import { renderableCategories, renderableGroups } from '../budgetGroups'
 import {
   useBudgetFilters,
   useCreateBudgetFilter,
@@ -20,8 +23,13 @@ interface Props {
 
 export function BudgetFilterModal({ budgetId, filterId, onClose }: Props) {
   const { data: filters } = useBudgetFilters(budgetId)
-  const { data: groups = [] } = useCategoryGroups(budgetId, true)
+  const { data: allGroups = [] } = useCategoryGroups(budgetId, true)
   const { data: allCategories = [] } = useCategories(budgetId, true)
+  const { data: tags = [] } = useTags(budgetId)
+  const createTag = useCreateTag(budgetId)
+  // The same rule the grid draws by: a system (Income) group has no envelope
+  // rows, so offering its category here was a checkbox that changed nothing.
+  const groups = useMemo(() => renderableGroups(allGroups), [allGroups])
   // Hidden categories are offered here on purpose — a filter may name one.
   // A card's set-aside envelope is different: it is never a grid row, so
   // there is nothing to filter it into or out of. The same rule the grid
@@ -41,6 +49,12 @@ export function BudgetFilterModal({ budgetId, filterId, onClose }: Props) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(
     new Set(existingFilter?.category_ids ?? [])
   )
+  const [tagIds, setTagIds] = useState<string[]>(existingFilter?.tag_ids ?? [])
+  const tagOptions: TagOption[] = useMemo(
+    () => tags.map((t) => ({ id: t.id, name: t.name, color_slot: t.color_slot })),
+    [tags]
+  )
+  const tagById = useMemo(() => new Map(tags.map((t) => [t.id, t])), [tags])
   const nameRef = useRef<HTMLInputElement>(null)
   const trapRef = useFocusTrap<HTMLFormElement>(onClose)
 
@@ -87,9 +101,14 @@ export function BudgetFilterModal({ budgetId, filterId, onClose }: Props) {
         id: existingFilter.id,
         name: trimmed,
         category_ids: categoryIds,
+        tag_ids: tagIds,
       })
     } else {
-      const created = await createFilter.mutateAsync({ name: trimmed, category_ids: categoryIds })
+      const created = await createFilter.mutateAsync({
+        name: trimmed,
+        category_ids: categoryIds,
+        tag_ids: tagIds,
+      })
       setActiveFilter(created.id)
     }
     onClose()
@@ -153,7 +172,39 @@ export function BudgetFilterModal({ budgetId, filterId, onClose }: Props) {
           </div>
 
           <div className="filter-modal__field">
-            <label className="filter-modal__label">Select the categories below to include.</label>
+            <label className="filter-modal__label">Include every category tagged…</label>
+            <div className="filter-modal__tags">
+              {tagIds.map((id) => {
+                const tag = tagById.get(id)
+                return tag ? (
+                  <TagChip
+                    key={id}
+                    name={tag.name}
+                    colorSlot={tag.color_slot}
+                    onRemove={() => setTagIds((prev) => prev.filter((t) => t !== id))}
+                  />
+                ) : null
+              })}
+              <TagPicker
+                selectedTagIds={tagIds}
+                tags={tagOptions}
+                onChange={setTagIds}
+                allowCreate
+                onCreateTag={async (name) => {
+                  const tag = await createTag.mutateAsync({ name })
+                  return { id: tag.id, name: tag.name, color_slot: tag.color_slot }
+                }}
+                triggerLabel="+ Tag"
+              />
+            </div>
+            <p className="filter-modal__hint">
+              A tag follows its categories: tag one later and it joins this filter; untag it and it
+              leaves.
+            </p>
+          </div>
+
+          <div className="filter-modal__field">
+            <label className="filter-modal__label">…and these categories.</label>
             <div className="filter-modal__category-list">
               {groups.map((group) => {
                 const groupCats = categories.filter((c) => c.category_group_id === group.id)

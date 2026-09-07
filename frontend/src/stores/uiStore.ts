@@ -7,14 +7,47 @@ import type { AssignStrategy } from '../types'
 type TransactionSortColumn = 'date' | 'account' | 'payee' | 'category' | 'memo' | 'amount'
 type SortDirection = 'asc' | 'desc'
 type CollapsibleSection = 'pending' | 'uncategorized' | 'upcoming'
-export type QuickFilter = 'overspent' | 'underfunded' | 'money-available' | 'overfunded'
+/** How much a budget row shows. Expanded: everything. Compact: the row's
+ *  height and subtitle stay, the target's progress bar and status text go
+ *  and the badge becomes a dot — the mode for reading a long budget without
+ *  the bars. Dense: the old tiny rows, for fitting the most on a screen.
+ *  Persisted values from before 'compact' existed said 'compressed' and
+ *  meant what 'dense' means now; merge() maps them. */
+export type BudgetRowMode = 'expanded' | 'compact' | 'dense'
+
+export const BUDGET_ROW_MODES: { value: BudgetRowMode; label: string; hint: string }[] = [
+  { value: 'expanded', label: 'Expanded', hint: 'Progress bars and status text' },
+  { value: 'compact', label: 'Compact', hint: 'Bars hidden, subtitles kept' },
+  { value: 'dense', label: 'Dense', hint: 'Smallest rows' },
+]
+
+export function normalizeBudgetRowMode(saved: unknown): BudgetRowMode {
+  if (saved === 'compact' || saved === 'dense') return saved
+  if (saved === 'compressed') return 'dense'
+  return 'expanded'
+}
+
+export type QuickFilter = 'overspent' | 'underfunded' | 'pending' | 'money-available' | 'overfunded'
 
 export const ALL_QUICK_FILTERS: QuickFilter[] = [
   'overspent',
   'underfunded',
+  'pending',
   'money-available',
   'overfunded',
 ]
+
+/** A persisted chip order from before a filter existed must still show it:
+ *  anything missing is appended, in the canonical order, so existing users
+ *  see a new chip without resetting their arrangement. Pure, so the merge
+ *  rule is a one-line test. */
+export function mergeQuickFilterOrder(saved: readonly string[] | undefined): QuickFilter[] {
+  const known = (saved ?? []).filter((f): f is QuickFilter =>
+    (ALL_QUICK_FILTERS as string[]).includes(f)
+  )
+  const missing = ALL_QUICK_FILTERS.filter((f) => !known.includes(f))
+  return [...known, ...missing]
+}
 
 /** How a quick filter reads, and which state colour it carries. Here rather
  *  than in either component that draws them: the bar and the manage modal
@@ -23,6 +56,7 @@ export const ALL_QUICK_FILTERS: QuickFilter[] = [
 export const QUICK_FILTER_LABELS: Record<QuickFilter, string> = {
   overspent: 'Overspent',
   underfunded: 'Underfunded',
+  pending: 'Pending',
   'money-available': 'Money Available',
   overfunded: 'Overfunded',
 }
@@ -30,6 +64,9 @@ export const QUICK_FILTER_LABELS: Record<QuickFilter, string> = {
 export const QUICK_FILTER_VARIANTS: Record<QuickFilter, string> = {
   overspent: 'negative',
   underfunded: 'warning',
+  // Neutral on purpose: pending is underfunded before its funding day, and
+  // must not read as a state that needs acting on today.
+  pending: 'neutral',
   'money-available': 'positive',
   overfunded: 'positive',
 }
@@ -88,7 +125,7 @@ interface UIState {
   closeMoreSheet: () => void
   openMobileInspector: () => void
   closeMobileInspector: () => void
-  budgetRowMode: 'expanded' | 'compressed'
+  budgetRowMode: BudgetRowMode
   selectedCategoryIds: Set<string>
   categoryInspectorOpen: boolean
   inspectorUserClosed: boolean
@@ -114,7 +151,7 @@ interface UIState {
   toggleSidebarCollapsed: () => void
   setSidebarWidth: (px: number) => void
   toggleSidebarGroup: (groupId: string) => void
-  toggleBudgetRowMode: () => void
+  setBudgetRowMode: (mode: BudgetRowMode) => void
   toggleCategorySelection: (id: string, shiftKey?: boolean, orderedIds?: string[]) => void
   selectOnlyCategory: (id: string) => void
   selectGroupCategories: (ids: string[]) => void
@@ -254,8 +291,7 @@ export const useUIStore = create<UIState>()(
       closeMoreSheet: () => set({ moreSheetOpen: false }),
       openMobileInspector: () => set({ mobileInspectorOpen: true }),
       closeMobileInspector: () => set({ mobileInspectorOpen: false }),
-      toggleBudgetRowMode: () =>
-        set((s) => ({ budgetRowMode: s.budgetRowMode === 'expanded' ? 'compressed' : 'expanded' })),
+      setBudgetRowMode: (mode) => set({ budgetRowMode: mode }),
 
       toggleCategorySelection: (id, shiftKey = false, orderedIds = []) => {
         const { selectedCategoryIds, lastSelectedCategoryId } = get()
@@ -451,6 +487,8 @@ export const useUIStore = create<UIState>()(
         activeFilterId: s.activeFilterId,
         activeViewId: s.activeViewId,
         quickFilterOrder: s.quickFilterOrder,
+        // Row density is a standing choice, like a filter.
+        budgetRowMode: s.budgetRowMode,
         // A width someone dragged to is a deliberate choice, like a filter.
         sidebarWidth: s.sidebarWidth,
         // So is folding a section shut. A Set does not survive JSON — it
@@ -475,6 +513,8 @@ export const useUIStore = create<UIState>()(
         return {
           ...current,
           ...saved,
+          quickFilterOrder: mergeQuickFilterOrder(saved.quickFilterOrder),
+          budgetRowMode: normalizeBudgetRowMode(saved.budgetRowMode),
           collapsedSidebarGroups: new Set(saved.collapsedSidebarGroups ?? []),
           collapsedGroups: new Set(saved.collapsedGroups ?? []),
         }
