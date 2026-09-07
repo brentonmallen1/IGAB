@@ -328,11 +328,15 @@ export function DeleteCategoryModal({ budgetId, target, month, onClose, onDelete
             type="button"
             className="delete-category-modal__archive"
             onClick={handleArchive}
+            // `may_archive` alone. This used to wave `groupAllArchived`
+            // through the gate, because the server refused a group whose
+            // envelopes were archived long ago over one of their stranded
+            // balances — so the button had to be offered against the server's
+            // answer and then failed when pressed. The server no longer asks
+            // that question of an envelope it is not moving, which makes the
+            // bypass a second, quieter copy of the same rule.
             disabled={
-              !preview ||
-              (!groupAllArchived && !mayArchive) ||
-              archiveCategories.isPending ||
-              archiveGroup.isPending
+              !preview || !mayArchive || archiveCategories.isPending || archiveGroup.isPending
             }
             title={
               groupAllArchived

@@ -340,3 +340,40 @@ describe('a group whose envelopes are archived', () => {
     expect(screen.queryByText(/why the group looks empty/i)).toBeNull()
   })
 })
+
+/**
+ * The button that had to be offered and then failed.
+ *
+ * A group whose envelopes were all archived long ago is a heading over nothing
+ * on the budget page, and the only way to take it off the page is to archive
+ * the group. The server refused that over one of those envelopes' stranded
+ * balances — an envelope already off the budget — so this dialog waved the
+ * button through its own gate and the press failed at the server. Now the
+ * server does not ask the question of an envelope it is not moving, and the
+ * gate is the server's answer and nothing else.
+ */
+describe('archiving a group of already-archived envelopes', () => {
+  it('offers the button on the served answer, not a client-side exception', () => {
+    archivePreview = {
+      may_archive: true,
+      blocked_by_balance: [],
+      blocked_by_link: [],
+      blocked_by_schedule: [],
+    }
+    renderGroupModal({ archived_count: 2, all_archived: true })
+    expect(screen.getByRole('button', { name: 'Archive group instead' })).toBeEnabled()
+  })
+
+  it('still refuses when a live envelope in the group holds money', () => {
+    archivePreview = {
+      may_archive: false,
+      blocked_by_balance: ['Dining'],
+      blocked_by_link: [],
+      blocked_by_schedule: [],
+    }
+    renderGroupModal({ archived_count: 1, all_archived: false })
+    const button = screen.getByRole('button', { name: 'Archive instead' })
+    expect(button).toBeDisabled()
+    expect(button).toHaveAttribute('title', 'Cannot archive: Dining')
+  })
+})
