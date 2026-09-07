@@ -925,6 +925,17 @@ class ImportAnchor(Base):
 
 class ScheduledTransaction(Base):
     __tablename__ = "scheduled_transactions"
+    __table_args__ = (
+        # Same shape as transactions' import identity: an importer that runs
+        # twice over one file must find its earlier schedules, not add twins.
+        Index(
+            "uq_scheduled_transactions_budget_import_id",
+            "budget_id",
+            "import_id",
+            unique=True,
+            postgresql_where=text("import_id IS NOT NULL AND NOT is_deleted"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
     budget_id: Mapped[uuid.UUID] = mapped_column(
@@ -955,6 +966,9 @@ class ScheduledTransaction(Base):
     )
     last_created_date: Mapped[date | None] = mapped_column(Date)
     next_occurrence_date: Mapped[date] = mapped_column(Date, nullable=False)
+    #: Set only by an importer (a future-dated YNAB row becomes a schedule);
+    #: the identity rule is domain/import_identity.py's, shared with rows.
+    import_id: Mapped[str | None] = mapped_column(String(255))
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

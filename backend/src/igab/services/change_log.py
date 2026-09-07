@@ -234,6 +234,7 @@ SNAPSHOT_FIELDS: dict[str, tuple[str, ...]] = {
         "transfer_account_id",
         "last_created_date",
         "next_occurrence_date",
+        "import_id",
     ),
     # Child rows (groups/placements, selections) are hard-replaced on every
     # save, so update records carry them as bookkeeping dumps — see

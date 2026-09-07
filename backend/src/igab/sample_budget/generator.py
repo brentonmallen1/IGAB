@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from igab.db.models import Account, BudgetAssignment, Category, CategoryGroup, Payee
 from igab.domain.cards import card_funding, card_position, card_reserve
 from igab.domain.carryover import available_at, available_through, sum_through
+from igab.domain.schedule import first_occurrence_after, validate_schedule
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import (
     BudgetAssignmentRepository,
@@ -44,7 +45,6 @@ from igab.sample_budget.data import SAMPLE_BUDGET
 from igab.sample_budget.spec import (
     RelDate,
     SampleBudgetSpec,
-    ScheduledSpec,
     shift_months,
 )
 from igab.services.card_payment import ensure_payment_category
@@ -923,6 +923,25 @@ class SampleBudgetGenerator:
                 if s.frequency == "yearly"
                 else self.spec.months_of_history
             )
+            start_date = RelDate(start_months_ago, s.day).resolve(anchor)
+            # One arithmetic for "next occurrence" (domain/schedule.py). The
+            # generator had its own, and it disagreed with the service on
+            # twice-monthly — which is how the sample budget shipped a
+            # schedule the nightly job could not advance.
+            validate_schedule(
+                frequency=s.frequency,
+                start_date=start_date,
+                second_day_of_month=s.second_day_of_month,
+                end_date=None,
+                days_before_reminder=3,
+            )
+            next_date = first_occurrence_after(
+                s.frequency,
+                anchor,
+                start_date=start_date,
+                second_day_of_month=s.second_day_of_month,
+            )
+            assert next_date is not None, f"{s.payee or s.transfer_account}: schedule never recurs"
             await self.scheduled_repo.create(
                 budget_id=self.budget_id,
                 account_id=self._accounts[s.account].id,
@@ -931,13 +950,13 @@ class SampleBudgetGenerator:
                 category_id=self._categories[s.category].id if s.category else None,
                 memo=s.memo,
                 frequency=s.frequency,
-                start_date=RelDate(start_months_ago, s.day).resolve(anchor),
+                start_date=start_date,
                 second_day_of_month=s.second_day_of_month,
                 auto_create=False,
                 transfer_account_id=(
                     self._accounts[s.transfer_account].id if s.transfer_account else None
                 ),
-                next_occurrence_date=_next_occurrence(s, anchor),
+                next_occurrence_date=next_date,
             )
             count += 1
         return count
@@ -1013,33 +1032,3 @@ def _filter_spec(spec: SampleBudgetSpec, tier: str) -> SampleBudgetSpec:
         months_of_history=(overrides.months_of_history if overrides else spec.months_of_history),
         tba_target=overrides.tba_target if overrides else spec.tba_target,
     )
-
-
-def _next_occurrence(s: ScheduledSpec, anchor: date) -> date:
-    """First occurrence strictly after the anchor."""
-
-    def day_in(year: int, month: int, day: int) -> date:
-        return date(year, month, min(day, calendar.monthrange(year, month)[1]))
-
-    if s.frequency == "twice_monthly" and s.second_day_of_month is not None:
-        candidates = sorted((s.day, s.second_day_of_month))
-        for day in candidates:
-            candidate = day_in(anchor.year, anchor.month, day)
-            if candidate > anchor:
-                return candidate
-        year, month = shift_months(anchor, -1)
-        return day_in(year, month, candidates[0])
-
-    if s.frequency == "yearly":
-        last = RelDate(s.last_occurrence_months_ago, s.day).resolve(anchor)
-        nxt = day_in(last.year + 1, last.month, s.day)
-        while nxt <= anchor:
-            nxt = day_in(nxt.year + 1, nxt.month, s.day)
-        return nxt
-
-    # monthly (the only other frequency used by the sample data)
-    candidate = day_in(anchor.year, anchor.month, s.day)
-    if candidate > anchor:
-        return candidate
-    year, month = shift_months(anchor, -1)
-    return day_in(year, month, s.day)

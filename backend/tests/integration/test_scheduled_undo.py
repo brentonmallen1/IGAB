@@ -116,3 +116,55 @@ class TestScheduledUndo:
         [rolled_back] = await _schedules(api_client, budget)
         assert rolled_back["last_created_date"] is None
         assert rolled_back["next_occurrence_date"] == "2026-10-01"
+
+    async def test_undo_of_entering_a_once_schedule_restores_it_and_removes_the_row(
+        self, db_session, api_client
+    ):
+        """Completion is a soft delete inside the enter-now batch, so ⌘Z
+        after the final occurrence brings the schedule back with its row."""
+        budget, account = await _setup(db_session, api_client)
+        sched = await _add(api_client, budget, account, frequency="once")
+        r = await api_client.post(
+            f"/api/v1/scheduled-transactions/{sched['id']}/enter?budget_id={budget.id}"
+        )
+        assert r.status_code == 204, r.text
+        assert await _schedules(api_client, budget) == []
+        txns = (await api_client.get(f"/api/v1/accounts/{account.id}/transactions")).json()
+        assert len(txns) == 1 and txns[0]["date"] == "2026-10-01"
+
+        await _undo(api_client, budget)
+
+        txns = (await api_client.get(f"/api/v1/accounts/{account.id}/transactions")).json()
+        assert txns == []
+        [restored] = await _schedules(api_client, budget)
+        assert restored["id"] == sched["id"]
+        assert restored["last_created_date"] is None
+        assert restored["next_occurrence_date"] == "2026-10-01"
+
+    async def test_redo_completes_a_once_schedule_again(self, db_session, api_client):
+        budget, account = await _setup(db_session, api_client)
+        sched = await _add(api_client, budget, account, frequency="once")
+        await api_client.post(
+            f"/api/v1/scheduled-transactions/{sched['id']}/enter?budget_id={budget.id}"
+        )
+        await _undo(api_client, budget)
+
+        r = await api_client.post(f"/api/v1/{budget.id}/changes/redo")
+        assert r.status_code == 200, r.text
+        assert await _schedules(api_client, budget) == []
+        txns = (await api_client.get(f"/api/v1/accounts/{account.id}/transactions")).json()
+        assert len(txns) == 1
+
+    async def test_undo_of_the_last_end_dated_occurrence_restores_the_schedule(
+        self, db_session, api_client
+    ):
+        budget, account = await _setup(db_session, api_client)
+        sched = await _add(api_client, budget, account, end_date="2026-10-15")
+        r = await api_client.post(f"/api/v1/scheduled-transactions/{sched['id']}/skip")
+        assert r.status_code == 204, r.text
+        assert await _schedules(api_client, budget) == []
+
+        undone = await _undo(api_client, budget)
+        assert (undone["entity_type"], undone["action"]) == ("scheduled_transaction", "delete")
+        [restored] = await _schedules(api_client, budget)
+        assert restored["next_occurrence_date"] == "2026-10-01"

@@ -37,6 +37,10 @@ TargetStatus = Literal["funded", "underfunded", "overfunded"]
 
 
 class ScheduleFrequency(StrEnum):
+    #: A single dated occurrence — what a future-dated YNAB row becomes at
+    #: import, and what "remind me about this one bill" means. Completes
+    #: (soft-deletes) once entered or skipped; see domain/schedule.py.
+    ONCE = "once"
     DAILY = "daily"
     WEEKLY = "weekly"
     BIWEEKLY = "biweekly"
