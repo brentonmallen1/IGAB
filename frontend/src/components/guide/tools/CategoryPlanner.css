@@ -48,8 +48,10 @@
 
 .planner__header-actions {
   display: flex;
-  align-items: end;
+  align-items: center;
   justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
 }
 
 .planner__save-status {
@@ -69,16 +71,28 @@
 /* ── columns ── */
 
 .planner__columns {
+  --planner-col-w: 340px;
   display: flex;
   gap: var(--spacing-md);
   align-items: flex-start;
   overflow-x: auto;
+  overscroll-behavior-x: contain;
   padding-bottom: var(--spacing-xs);
 }
 
+/* `1 0` not `1 1`: columns share the space when there is spare, and stop
+   giving it back once there is not — past that the strip scrolls (the parent
+   is overflow-x: auto).
+
+   The floor is what the row's own controls cost, not a round number. A row
+   with more than one paycheck carries checkbox + name + due (3.2rem) + amount
+   (6rem) + move (2.4rem) + remove — most of a 250px column before the name
+   gets anything, and the name is the only elastic part. Measured in Chrome at
+   1100px: the name input held 77px at four paychecks and 67px at ten, against
+   118px at both here. Two thirds of a category name is not a category name. */
 .planner__column {
-  flex: 1 1 0;
-  min-width: 250px;
+  flex: 1 0 var(--planner-col-w);
+  min-width: var(--planner-col-w);
   display: flex;
   flex-direction: column;
   gap: var(--spacing-sm);
@@ -219,10 +233,6 @@
 }
 
 /* ── import / apply panels ── */
-
-.planner__panel-toggle {
-  display: flex;
-}
 
 /* The title row comes from Surface's header slot, which brings its own padding
    and hairline — so the panel pads its body, not itself. */
@@ -416,18 +426,6 @@
 .planner__row--selected {
   background: color-mix(in srgb, var(--color-accent) 10%, transparent);
   border-radius: var(--border-radius);
-}
-
-.planner__bulk {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-xs) var(--spacing-sm);
-  border: 1px solid var(--edge-strong);
-  border-radius: var(--border-radius);
-  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
-  font-size: var(--font-size-xs);
-  color: var(--text-primary);
 }
 
 /* The whole name, when the column cannot show it. */
