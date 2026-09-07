@@ -12,7 +12,7 @@
   border-radius: var(--border-radius-md);
   box-shadow: var(--shadow-lg);
   width: min(560px, calc(100vw - var(--spacing-lg)));
-  max-height: 84vh;
+  max-height: var(--panel-max-h);
   overflow-y: auto;
   padding: var(--spacing-lg);
   display: flex;

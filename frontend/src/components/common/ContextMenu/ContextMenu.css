@@ -1,3 +1,8 @@
+/* Position, and the max-height that bounds it, arrive inline from
+   useAnchoredPosition — the only thing that knows where the anchor is and how
+   tall the items came out. The scroll is the half that makes the cap mean
+   something: a menu squeezed into the room available must still reach its
+   last item. */
 .context-menu {
   background-color: var(--bg-elevated);
   border: 1px solid var(--border-color);
@@ -5,6 +10,8 @@
   box-shadow: var(--shadow-lg);
   padding: var(--spacing-xs) 0;
   min-width: 180px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   z-index: var(--z-dropdown);
 }
 

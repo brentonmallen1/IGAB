@@ -75,6 +75,9 @@
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  max-height: var(--panel-max-h);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .reports-nav__dropdown-item {

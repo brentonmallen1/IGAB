@@ -50,6 +50,39 @@ const NO_BARE_PARSE_FLOAT = {
     'parseApiDecimal for canonical server strings (both in utils/money), or expressionToCents.',
 }
 
+/**
+ * Overlay geometry has now been consolidated twice. The first round collapsed
+ * five copies into `utils/anchoredPosition.ts`; by the second, three more
+ * surfaces were again running off the bottom of the screen — ContextMenu
+ * clamping against `const menuHeight = 280`, two callers subtracting a magic
+ * 160 from their anchor, and a tooltip with its own EDGE constant, its own
+ * clamp and its own flip.
+ *
+ * Every one of those started with a component measuring the window for itself.
+ * So that is what is banned: read the viewport and the trigger through
+ * `useAnchoredPosition`, which measures the VISUAL viewport (a raised keyboard
+ * shrinks it and leaves `innerHeight` unchanged) and the panel's real height.
+ *
+ * Scoped to the two modules that own the rule plus `useAppViewport`, which
+ * publishes the insets everything else reads as CSS custom properties.
+ */
+const NO_HAND_ROLLED_VIEWPORT_MATH = [
+  {
+    selector: "MemberExpression[property.name='getBoundingClientRect']",
+    message:
+      'Measuring a trigger by hand is how overlays end up off-screen. Use useAnchoredPosition ' +
+      '(hooks/useAnchoredPosition.ts) — it measures the trigger, the panel and the visual viewport.',
+  },
+  {
+    selector:
+      "MemberExpression[object.name='window'][property.name=/^inner(Width|Height)$/]",
+    message:
+      'window.innerHeight is the LAYOUT viewport: on iOS a raised keyboard leaves it unchanged, ' +
+      'so a panel sized to it opens under the keyboard. Use useAnchoredPosition, or the ' +
+      '--vvh / --vv-bottom custom properties useAppViewport publishes.',
+  },
+]
+
 export default defineConfig([
   globalIgnores(['dist']),
   {
@@ -71,7 +104,7 @@ export default defineConfig([
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },
       ],
-      'no-restricted-syntax': ['error', NO_BARE_PARSE_FLOAT],
+      'no-restricted-syntax': ['error', NO_BARE_PARSE_FLOAT, ...NO_HAND_ROLLED_VIEWPORT_MATH],
     },
   },
   {
@@ -79,7 +112,37 @@ export default defineConfig([
     // at, and `utils/searchParser.ts` parses a search grammar rather than an
     // amount to store.
     files: ['src/utils/money.ts', 'src/utils/amountExpression.ts', 'src/utils/searchParser.ts'],
-    rules: { 'no-restricted-syntax': 'off' },
+    rules: { 'no-restricted-syntax': ['error', ...NO_HAND_ROLLED_VIEWPORT_MATH] },
+  },
+  {
+    // The geometry rule's own home, and the hook that publishes the viewport
+    // insets it reads. These are the implementations the ban points at.
+    //
+    // Beside them, four files that measure an element for something that is
+    // not overlay placement — the ban is about *anchoring a floating panel*,
+    // and these have no panel:
+    //   useMeasuredHeight  offsets one sticky row by the height of another,
+    //                      which is the one thing CSS cannot express.
+    //   useChartHeight     caps a chart on short phones; charts are not
+    //                      re-measured on keyboard show/hide, so the layout
+    //                      viewport is the right one and its comment says so.
+    //   RoadmapMap         converts a wheel event to a point inside a
+    //                      pan/zoom canvas.
+    //   TransactionTable   computes the virtualiser's scroll margin.
+    files: [
+      'src/hooks/useAnchoredPosition.ts',
+      'src/hooks/useAppViewport.ts',
+      'src/hooks/useMeasuredHeight.ts',
+      'src/hooks/useChartHeight.ts',
+      'src/components/guide/RoadmapMap.tsx',
+      'src/components/transactions/TransactionTable/TransactionTable.tsx',
+    ],
+    rules: { 'no-restricted-syntax': ['error', NO_BARE_PARSE_FLOAT] },
+  },
+  {
+    // Tests stub the viewport to state a case; that is the point of them.
+    files: ['**/*.test.ts', '**/*.test.tsx'],
+    rules: { 'no-restricted-syntax': ['error', NO_BARE_PARSE_FLOAT] },
   },
   {
     // ── Readability budget, .ts ONLY ────────────────────────────────────────

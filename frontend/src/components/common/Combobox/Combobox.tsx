@@ -65,7 +65,7 @@ export function Combobox({
   const listRef = useRef<HTMLUListElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
-  const dropdownPos = useAnchoredPosition(triggerRef, open, { width: 'trigger' })
+  const dropdownPos = useAnchoredPosition(triggerRef, open, { width: 'trigger' }, dropdownRef)
 
   const filtered = options.filter((o) => o.label.toLowerCase().includes(query.toLowerCase()))
 

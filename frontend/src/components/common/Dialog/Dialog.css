@@ -9,7 +9,7 @@
 
 .dialog {
   width: min(var(--dialog-w), 100%);
-  max-height: 80vh;
+  max-height: var(--panel-max-h);
   /* The panel no longer scrolls; its body does, so the header and footer stay
      put on a long list. `hidden` rather than `auto` is what keeps the rounded
      corners from being cut by an inner scrollbar. */

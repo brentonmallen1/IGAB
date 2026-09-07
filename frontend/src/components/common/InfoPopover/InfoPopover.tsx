@@ -59,10 +59,16 @@ export function InfoPopover({ title, label = 'More information', width, children
   const [open, setOpen] = useState(false)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
-  const pos = useAnchoredPosition(triggerRef, open, {
-    width: width ?? PANEL_WIDTH,
-    gap: PANEL_GAP,
-  })
+  // panelRef is what makes the placement depend on this popover's own height.
+  // Without it, System tags — the longest one in the app — took whatever room
+  // was below its ⓘ and squeezed ~700px of content into it, scrolling but
+  // effectively unreadable, while several hundred px sat free above.
+  const pos = useAnchoredPosition(
+    triggerRef,
+    open,
+    { width: width ?? PANEL_WIDTH, gap: PANEL_GAP },
+    panelRef
+  )
 
   useEffect(() => {
     if (!open) return
