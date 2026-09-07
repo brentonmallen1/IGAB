@@ -650,7 +650,15 @@ class TestStartupRecovery:
             budget,
             account,
             status="queued",
-            available_at=datetime.now(UTC) - timedelta(seconds=1),
+            # An hour, not a second. `claim_next` filters on `func.now()`,
+            # which in Postgres is the TRANSACTION start time — and this
+            # session holds one transaction for the whole test. A margin of
+            # one second against the client clock is therefore a race with
+            # however long the setup above took: on a loaded runner it can
+            # exceed a second, leaving available_at *after* the transaction
+            # began and the row unclaimable. The rule under test is "past is
+            # runnable, future is not", which an hour states just as well.
+            available_at=datetime.now(UTC) - timedelta(hours=1),
         )
         repo = AIJobRepository(db_session)
         claimed = await repo.claim_next()
