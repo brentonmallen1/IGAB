@@ -79,6 +79,8 @@ export const TOOL_IDS = [
   'pay-vs-save',
   'loan-compare',
   'emergency-fund',
+  'credit-score',
+  'balance-transfer',
 ] as const
 export type ToolId = (typeof TOOL_IDS)[number]
 
@@ -361,6 +363,9 @@ export const ROADMAP: RoadmapStage[] = [
     nodes: [
       {
         id: 'high-interest-question',
+        // The transfer calculator: the first question about a high-rate card
+        // is whether the interest can be stopped for a while.
+        tool: 'balance-transfer',
         kind: 'decision',
         title: 'Do you have any debt with an interest rate of 10% or higher?',
         body: 'Credit cards, store cards, payday loans and some personal loans usually land here.',
@@ -408,12 +413,13 @@ export const ROADMAP: RoadmapStage[] = [
       },
       {
         id: 'card-carries-again-note',
+        tool: 'credit-score',
         kind: 'note',
         title: 'When the card has to carry something again',
         body: "Put the expense in its real category and let it go red. At month end the shortfall becomes the card's Uncovered — the same paydown loop, just smaller.",
         detail:
           "The category does not stay negative waiting to heal. At the month boundary it resets to zero, and the part the envelope could not fund moves to the card's Uncovered column — visible, calm, charged to nothing until you cover it. Fund the category first when you can: Ready to pay picks that cash up automatically the moment the spending is covered.\n\nIf you notice after the month has turned, there are two ways back and the cheaper one is easy to miss. Assigning to the card covers the ride from any month — it costs you this month's money. But going back to the month that ended short and raising that envelope's assignment retires the ride outright, because the whole calculation is re-run from scratch every time you look at it. Funding the envelope in the FOLLOWING month does neither: it does not reach back. Only do the first if the earlier month has nothing to spare.\n\nNone of this is a failure state in the app. Uncovered exists to hold exactly this without alarms, so an emergency re-entering the card is a loop you already know how to run.",
-        glossary: ['credit-overspending', 'uncovered'],
+        glossary: ['credit-overspending', 'uncovered', 'credit-utilization', 'closing-a-card'],
         appLinks: [{ label: 'Open your budget', to: '/budget' }],
       },
     ],

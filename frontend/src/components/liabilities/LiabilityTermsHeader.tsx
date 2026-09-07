@@ -119,6 +119,24 @@ export function LiabilityTermsHeader({ budgetId, accountId, isLoan }: Props) {
             <span className="liability-terms__label">Bill due</span>
           </div>
         )}
+        {liability.credit_limit != null && liability.utilization != null && (
+          <div className="liability-terms__item">
+            <span
+              className={`liability-terms__value ${
+                liability.utilization >= 50
+                  ? 'liability-terms__value--negative'
+                  : liability.utilization >= 30
+                    ? 'liability-terms__value--warning'
+                    : ''
+              }`}
+            >
+              {liability.utilization}%
+            </span>
+            <span className="liability-terms__label">
+              of {formatMoney(liability.credit_limit)} limit
+            </span>
+          </div>
+        )}
         {liability.promo_end_date && (
           <div className="liability-terms__item">
             <span className="liability-terms__value">{formatMonth(liability.promo_end_date)}</span>

@@ -67,6 +67,9 @@ export const GLOSSARY_IDS = [
   'carried-balance',
   'card-payment',
   'refused-card-inflow',
+  'credit-utilization',
+  'balance-transfer',
+  'closing-a-card',
 ] as const
 
 export type GlossaryId = (typeof GLOSSARY_IDS)[number]
@@ -87,6 +90,37 @@ export interface GlossaryEntry {
 }
 
 export const GLOSSARY: GlossaryEntry[] = [
+  {
+    id: 'credit-utilization',
+    term: 'Credit utilization',
+    aliases: ['utilization', 'utilisation', 'credit usage', 'limit'],
+    short:
+      'A card\u2019s balance as a share of its limit, and the fastest lever on a credit score.',
+    body: 'Scoring models read how much of your available credit you are using, card by card and overall. Under about 30% is treated as comfortable; over half reads as strain. It is measured on the balance the issuer reports, usually the statement balance, so paying before the statement closes lowers what the bureaus see.',
+    inIgab:
+      'Set a card\u2019s limit on its liability page and IGAB shows the utilization beside its terms; the Guide\u2019s checkup names any card over 30% or 50%.',
+    related: ['balance-transfer', 'closing-a-card', 'apr'],
+  },
+  {
+    id: 'balance-transfer',
+    term: 'Balance transfer',
+    aliases: ['0% card', 'promotional rate', 'transfer fee'],
+    short: 'Moving a card balance to another card with a low promotional rate, for a fee.',
+    body: 'A transfer charges a fee up front \u2014 usually 3\u20135% of the amount \u2014 in exchange for a low or 0% rate for a fixed number of months. It saves money only when the interest avoided during the promo is larger than the fee, and only if the balance is paid down before the promo ends; what is left is charged at the card\u2019s ordinary rate afterwards.',
+    inIgab:
+      'The Guide\u2019s balance-transfer calculator compares staying put with transferring, on your payment, including the fee and what is left when the promo expires.',
+    related: ['credit-utilization', 'apr', 'high-interest-debt'],
+  },
+  {
+    id: 'closing-a-card',
+    term: 'Closing a card',
+    aliases: ['close a card', 'cancel a card', 'keep a card open'],
+    short: 'Usually worse for the score than keeping a paid-off card open.',
+    body: 'Closing a card removes its limit from your total available credit, which raises utilization on everything else, and can shorten the average age of your accounts. A paid-off card with no annual fee is generally worth keeping open with one small recurring charge on it, so the issuer does not close it for inactivity. Close a card when it carries a fee you no longer need, or when having it open is what keeps you spending.',
+    inIgab:
+      'The account hygiene panel points out an open card with nothing posted for three months, and the Guide\u2019s credit-score tool keeps the scores you type in.',
+    related: ['credit-utilization'],
+  },
   {
     id: 'archived-envelope',
     term: 'Archived envelope',

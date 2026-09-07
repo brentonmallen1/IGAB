@@ -34,6 +34,10 @@ export interface Account {
   is_closed: boolean
   sort_order: number
   note: string | null
+  /** The masked display's clear part; the numbers themselves come only from
+   *  GET /accounts/{id}/secrets. */
+  account_number_last4?: string | null
+  has_routing_number?: boolean
   simplefin_account_id: string | null
   simplefin_account_name: string | null
   simplefin_sync_enabled: boolean

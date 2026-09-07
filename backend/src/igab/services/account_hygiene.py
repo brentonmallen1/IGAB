@@ -50,6 +50,10 @@ from igab.utils.clock import today_utc
 #: Matches the import step's threshold so the two never disagree about the same
 #: account.
 DORMANT_AFTER_MONTHS = 12
+#: A card with nothing posted for this long is at risk of being closed by
+#: its issuer. Ninety days is shorter than dormancy on purpose: the fix is a
+#: coffee, and the cost of missing it is a closed line.
+CARD_QUIET_DAYS = 90
 
 #: How far back to look for two rows that are one card payment. The pairing
 #: pass only ever runs over rows a sync just created, so a budget that already
@@ -130,6 +134,7 @@ class AccountHygieneService:
             await self._categorized_tracking_rows(budget_id),
             await self._card_rows_filed_as_income(budget_id),
             await self._dormant_open_accounts(accounts, budget_id),
+            await self._card_no_activity(accounts),
             await self._stale_companion_liabilities(budget_id, accounts),
             await self._money_in_an_archived_envelope_from(budget_id, summary),
             await self._stale_asset_values(budget_id),
@@ -913,6 +918,43 @@ class AccountHygieneService:
                 "filters. You can reopen it whenever."
             ),
             action="Close the ones you have finished with.",
+            account_ids=[a.id for a in hits],
+        )
+
+    async def _card_no_activity(self, accounts: list[Account]) -> HygieneFinding | None:
+        """An open card with nothing posted for CARD_QUIET_DAYS.
+
+        Issuers close cards that sit unused, and a closed card shortens the
+        credit history and shrinks the total limit — both count against the
+        score. A small recurring charge keeps it alive. Only cards that HAVE
+        posted something count; a card just added is not quiet, it is new.
+        """
+        cards = [a for a in accounts if not a.is_closed and a.account_type == "credit_card"]
+        if not cards:
+            return None
+        cutoff = today_utc() - timedelta(days=CARD_QUIET_DAYS)
+        rows = await self.session.execute(
+            select(Transaction.account_id, func.max(Transaction.date))
+            .where(Transaction.account_id.in_([a.id for a in cards]), NOT_DELETED, POSTED)
+            .group_by(Transaction.account_id)
+        )
+        last_seen: dict[uuid.UUID, date] = {aid: seen for aid, seen in rows.all()}
+        hits = [a for a in cards if last_seen.get(a.id) and last_seen[a.id] < cutoff]
+        if not hits:
+            return None
+        names = ", ".join(a.name for a in hits)
+        return HygieneFinding(
+            kind="card_no_activity",
+            title=(
+                f"{names} {'have' if len(hits) > 1 else 'has'} not been used "
+                f"in {CARD_QUIET_DAYS} days"
+            ),
+            detail=(
+                "Issuers close cards that sit idle, and a closed card shortens your credit "
+                "history and shrinks your total limit — both count against the score. One "
+                "small recurring charge, paid in full, keeps it open."
+            ),
+            action="Put a small recurring charge on it, or close it on your own terms.",
             account_ids=[a.id for a in hits],
         )
 

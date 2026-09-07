@@ -118,3 +118,13 @@
   font-size: 11px;
   color: var(--text-secondary);
 }
+
+/* Utilization tinting: 30% is where scoring models start to care, 50% where
+   they mark a card down hard (domain/credit.py). */
+.liability-terms__value--warning {
+  color: var(--color-warning);
+}
+
+.liability-terms__value--negative {
+  color: var(--color-negative);
+}

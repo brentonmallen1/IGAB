@@ -114,6 +114,9 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
   const [dueDay, setDueDay] = useState(
     liability?.payment_due_day != null ? String(liability.payment_due_day) : ''
   )
+  const [creditLimit, setCreditLimit] = useState(
+    liability?.credit_limit != null ? String(liability.credit_limit) : ''
+  )
   const [error, setError] = useState<string | null>(null)
 
   // A companion liability belongs to its account: the account is where it
@@ -210,6 +213,8 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
       // Null for a loan on purpose: retyping a card to a loan clears the day
       // rather than leaving a stale one behind.
       payment_due_day: isCard ? dueDayNum : null,
+      // The limit is a card fact; a loan has none, and retyping clears it.
+      credit_limit: isCard && creditLimit ? parseAmountInput(creditLimit) : null,
       // Always sent, so clearing the last row clears the composition. A
       // percentage rule has no fixed P&I for them to sit beside, so it
       // carries none.
@@ -366,6 +371,21 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
                 onChange={(e) => setDueDay(e.target.value)}
                 placeholder="17"
                 title="Shown on the card page — a reminder, not a projection input"
+              />
+            </label>
+          )}
+          {isCard && (
+            <label className="liability-modal__field">
+              <span>Credit limit</span>
+              <input
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="0.01"
+                value={creditLimit}
+                onChange={(e) => setCreditLimit(e.target.value)}
+                placeholder="6000"
+                title="Utilization (balance ÷ limit) is shown on the card page and watched by the Guide"
               />
             </label>
           )}

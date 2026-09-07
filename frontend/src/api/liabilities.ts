@@ -74,6 +74,10 @@ export interface Liability {
   /** The card bill's due day of the month (1-31). Statement metadata for the
    * card header; no projection reads it. */
   payment_due_day: number | null
+  /** Cards: the issuer's limit, for utilization. Optional for older fixtures. */
+  credit_limit?: number | null
+  /** balance ÷ credit_limit as a percent (server: domain/credit.py). */
+  utilization?: number | null
   /** What the monthly bill carries BESIDE principal and interest — escrowed
    *  tax, insurance, PMI, HOA. Optional and additive; a car loan has none,
    *  and none of it ever reaches a projection. */
@@ -127,6 +131,7 @@ export interface LiabilityCreate {
   term_months?: number | null
   /** The card bill's due day of the month; explicit null clears it. */
   payment_due_day?: number | null
+  credit_limit?: number | null
   /** An empty list clears the composition; omitting it leaves it alone. */
   payment_components?: PaymentComponentInput[]
   /** Explicit null clears the plan. */

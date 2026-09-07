@@ -228,6 +228,20 @@ class Account(Base):
     is_closed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     note: Mapped[str | None] = mapped_column(Text)
+    #: Account and routing numbers, Fernet-encrypted at rest with the same key
+    #: bank sync uses (services/secrets.py). Never snapshotted into the change
+    #: log; served only through the secrets endpoint. The last four digits
+    #: are kept in the clear for the masked display.
+    account_number_encrypted: Mapped[str | None] = mapped_column(Text)
+    routing_number_encrypted: Mapped[str | None] = mapped_column(Text)
+    account_number_last4: Mapped[str | None] = mapped_column(String(4))
+
+    @property
+    def has_routing_number(self) -> bool:
+        """For the response: the masked display needs to know one exists
+        without the number ever leaving the secrets endpoint."""
+        return self.routing_number_encrypted is not None
+
     simplefin_account_id: Mapped[str | None] = mapped_column(String(255))
     simplefin_account_name: Mapped[str | None] = mapped_column(String(255))
     simplefin_sync_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -1443,6 +1457,36 @@ class BudgetViewPlacement(Base):
     category: Mapped["Category"] = relationship()
 
 
+# ─── Credit Scores ───────────────────────────────────────────────────────────
+
+
+class CreditScore(Base):
+    """A credit score the person typed in, on a date, optionally from a
+    named bureau. Nothing here is fetched: there is no API worth integrating
+    for a household, and a number you looked up yourself is the honest one.
+    Read by the Guide's credit-score tool as a line over time."""
+
+    __tablename__ = "credit_scores"
+    __table_args__ = (
+        UniqueConstraint("budget_id", "recorded_on", "bureau", name="uq_credit_score_day_bureau"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    budget_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    recorded_on: Mapped[date] = mapped_column(Date, nullable=False)
+    score: Mapped[int] = mapped_column(Integer, nullable=False)
+    #: 'equifax' | 'experian' | 'transunion' | a free label, or null.
+    bureau: Mapped[str | None] = mapped_column(String(40))
+    #: Where the number came from (a card issuer's dashboard, a bureau report).
+    source: Mapped[str | None] = mapped_column(String(100))
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 # ─── App Settings ────────────────────────────────────────────────────────────
 
 
@@ -1940,6 +1984,10 @@ class Liability(Base):
     # and dateless by design. Meaningful for cards; the UI offers it nowhere
     # else.
     payment_due_day: Mapped[int | None] = mapped_column(Integer)
+    #: Cards: the issuer's limit. Utilization (balance ÷ limit) is computed
+    #: from it — domain/credit.py — for the liability page and the Guide
+    #: checkup. Null when unknown; SimpleFIN does not carry it.
+    credit_limit: Mapped[Decimal | None] = mapped_column(Numeric(19, 4))
     # What the monthly bill is made of BESIDE principal and interest: escrowed
     # property tax, insurance, PMI, HOA dues. Optional and additive — a car
     # loan has none — and it never touches a projection: `minimum_payment` is

@@ -30,6 +30,7 @@ export const METRIC_KEYS = [
   'moderate_interest_debt',
   'retirement_contributions',
   'chronic_overspend',
+  'card_utilization',
   'categories_funded',
   'data_gaps',
 ] as const
@@ -47,6 +48,18 @@ export const CHECKUP_COPY: Record<MetricKey, CheckupExplainer> = {
     stage: 'full-emergency-fund',
     tool: 'emergency-fund',
     glossary: ['emergency-fund', 'essential-expenses'],
+  },
+  card_utilization: {
+    what: 'The most-used card\u2019s balance as a share of its limit. Set a card\u2019s limit on its liability page and this reads it against today\u2019s balance.',
+    why: 'Scoring models weigh utilization heavily. Over about 30% of a limit it starts to count against you; over half it counts hard, and an issuer may read it as strain. It is the fastest thing to move on a score \u2014 the balance on the statement date is what the bureaus see.',
+    decide: [
+      'Which card to pay down first for the score, separately from which costs the most in interest',
+      'Whether to pay before the statement closes so a lower balance is reported',
+      'Whether a balance transfer would help \u2014 the calculator works it through with the fee',
+    ],
+    stage: 'high-interest-debt',
+    tool: 'balance-transfer',
+    glossary: ['credit-utilization', 'balance-transfer'],
   },
   essential_expenses: {
     what: 'What a lean month costs: your spending on the things you could not do without, averaged over the last 90 days. It is the yardstick the emergency fund is measured against — three months of this is the target.',
@@ -139,6 +152,8 @@ export type FindingTone = 'warn' | 'danger'
  *  one case that is not "worth a look" but "nothing there yet". */
 export const FINDING_TONE: Record<Exclude<FindingKind, 'stale_external'>, FindingTone> = {
   high_interest_debt: 'warn',
+  card_utilization_very_high: 'warn',
+  card_utilization_high: 'warn',
   ef_not_started: 'danger',
   ef_below_starter: 'warn',
   chronic_overspend: 'warn',

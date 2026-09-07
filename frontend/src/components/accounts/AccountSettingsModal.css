@@ -359,3 +359,51 @@
   line-height: 1.45;
   color: var(--text-muted);
 }
+
+/* Account numbers: masked by default, revealed on demand. */
+.acct-modal__numbers,
+.acct-modal__numbers-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.acct-modal__numbers-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.acct-modal__numbers-label {
+  width: 4.5em;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.acct-modal__numbers-value {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  letter-spacing: 0.04em;
+}
+
+.acct-modal__numbers-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.acct-modal__icon-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 4px;
+  border: 1px solid var(--edge-strong);
+  border-radius: var(--border-radius);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.acct-modal__icon-btn:hover {
+  color: var(--text-primary);
+}

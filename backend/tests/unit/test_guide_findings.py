@@ -86,6 +86,11 @@ class TestRanking:
                 chronic_count=2,
                 chronic_names=["Dining Out", "Groceries"],
                 unknown_rate_names=["Unknown card"],
+                # One card over each utilization threshold, so both card rules fire.
+                card_utilization=[
+                    ("Harborstone Card", Decimal("65.0")),
+                    ("Sapphire Visa", Decimal("44.8")),
+                ],
             )
         )
         assert kinds(found)[0] == "high_interest_debt"

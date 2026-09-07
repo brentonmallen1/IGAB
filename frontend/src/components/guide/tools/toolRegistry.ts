@@ -44,6 +44,20 @@ export const TOOLS: Record<ToolId, ToolDef> = {
       'Two or more loans side by side: the payment, the interest, and what it all costs with fees.',
     linkLabel: 'Compare loans',
   },
+  'credit-score': {
+    id: 'credit-score',
+    label: 'Credit score',
+    blurb:
+      'Scores you look up yourself \u2014 an issuer\u2019s dashboard, a free bureau report \u2014 typed in by date and drawn over time. Nothing is fetched; the number you saw is the number kept.',
+    linkLabel: 'Track your credit score',
+  },
+  'balance-transfer': {
+    id: 'balance-transfer',
+    label: 'Balance transfer',
+    blurb:
+      'Stay put or move a card balance to a promotional rate? The fee against the interest avoided, on a payment you will actually make, and what is left when the promo ends.',
+    linkLabel: 'Work through a balance transfer',
+  },
   'emergency-fund': {
     id: 'emergency-fund',
     label: 'Emergency fund',

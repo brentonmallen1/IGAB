@@ -17,6 +17,7 @@ import { useAccountTypes } from '../../api/accountTypes'
 import { BUILTIN_ACCOUNT_TYPES } from '../../constants/accountTypes'
 import { AccountTypeInfoModal } from './AccountTypeInfoModal'
 import './AccountSettingsModal.css'
+import { AccountNumbersSection } from './AccountNumbersSection'
 import { confirmAsync } from '../../stores/confirmStore'
 
 interface Props {
@@ -35,8 +36,12 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
   const firstConnection = sfConnections?.[0] ?? null
 
   const [showLinkPicker, setShowLinkPicker] = useState(false)
-  const { data: remoteAccounts = [] } = useSimpleFINRemoteAccounts(
-    showLinkPicker ? (firstConnection?.id ?? null) : null
+  // Fetched from the moment the modal opens, not when the picker does: the
+  // list is a live round trip to the SimpleFIN bridge, and a native <select>
+  // whose options arrive while it is open closes itself — the picker used to
+  // open empty, snap shut, and only show accounts on the second try.
+  const { data: remoteAccounts = [], isFetching: remoteLoading } = useSimpleFINRemoteAccounts(
+    account?.simplefin_account_id ? null : (firstConnection?.id ?? null)
   )
   const link = useLinkSimpleFINAccount(accountId)
   const unlink = useUnlinkSimpleFINAccount(accountId)
@@ -224,6 +229,10 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
                   placeholder="Optional note…"
                 />
               </div>
+              <AccountNumbersSection
+                account={account}
+                onSave={(patch) => updateAccount.mutateAsync({ id: accountId, ...patch })}
+              />
               {/* The answer to "my card came in with three months of history
                   and now everything is red". That spending predates the
                   budget: it is opening debt, not overspending to cover. */}
@@ -295,11 +304,15 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
                         <select
                           className="acct-modal__input"
                           defaultValue=""
-                          disabled={link.isPending}
+                          disabled={link.isPending || remoteLoading}
                           onChange={(e) => e.target.value && handleLink(e.target.value)}
                         >
                           <option value="">
-                            {link.isPending ? 'Linking…' : 'Select account…'}
+                            {link.isPending
+                              ? 'Linking…'
+                              : remoteLoading
+                                ? 'Loading accounts…'
+                                : 'Select account…'}
                           </option>
                           {remoteAccounts.map((ra) => (
                             <option key={ra.id} value={ra.id}>

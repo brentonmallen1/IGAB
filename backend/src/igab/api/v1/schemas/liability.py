@@ -62,6 +62,8 @@ class LiabilityCreate(ClientDated):
     #: The card bill's due day of the month. Metadata for the card header;
     #: no projection reads it.
     payment_due_day: int | None = Field(default=None, ge=1, le=31)
+    #: Cards: the issuer's limit, for utilization. Null when unknown.
+    credit_limit: Money | None = None
     #: What the bill carries BESIDE principal and interest. `minimum_payment`
     #: stays the P&I figure every projection runs on; these never touch one.
     payment_components: list[PaymentComponentIn] | None = None
@@ -87,6 +89,8 @@ class LiabilityUpdate(ApiModel):
     term_months: int | None = None
     #: Explicit null clears it, like planned_extra_payment above.
     payment_due_day: int | None = Field(default=None, ge=1, le=31)
+    #: Cards: the issuer's limit, for utilization. Null when unknown.
+    credit_limit: Money | None = None
     #: An empty list clears the composition; null leaves it as it was.
     payment_components: list[PaymentComponentIn] | None = None
 
@@ -161,6 +165,11 @@ class LiabilityOut(ApiModel):
     term_months: int | None
     #: The card bill's due day of the month — metadata, no projection reads it.
     payment_due_day: int | None
+    credit_limit: Decimal | None
+    #: balance ÷ credit_limit as a percent (domain/credit.py), to one decimal;
+    #: None without a usable limit. Computed here because the server owns
+    #: the balance.
+    utilization: Decimal | None
     #: What the bill carries beside P&I, and what that comes to. Empty for
     #: every debt with no composition on file, which is most of them.
     payment_components: list[PaymentComponentOut]

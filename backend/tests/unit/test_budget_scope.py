@@ -62,7 +62,9 @@ class TestEveryTableIsClassified:
         # make an imported budget open on the numbers the user just left.
         # Carried by snapshots (a restore without them would silently change
         # every envelope figure) and cascaded by budget delete.
-        assert counted[Scope.OWNED] == 26
+        # 27: `credit_scores` joined (2026-09-06) — scores typed in by date
+        # and bureau, per budget, for the Guide's credit-score tool.
+        assert counted[Scope.OWNED] == 27
         # 12: `asset_value_snapshots` rides in as its child, and
         # `budget_filter_tags` joined (2026-09-06) — a filter's tag axis,
         # scoped through its filter like `budget_filter_categories`.

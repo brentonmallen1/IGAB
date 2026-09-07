@@ -22,6 +22,8 @@ export const FINDING_STAGES: Record<Exclude<FindingKind, 'stale_external'>, Stag
   moderate_debt: 'moderate-interest-debt',
   retirement_below_target: 'retirement-fifteen',
   unknown_rates: 'high-interest-debt',
+  card_utilization_very_high: 'high-interest-debt',
+  card_utilization_high: 'high-interest-debt',
 }
 
 /** Every stage with a node that reads this concept. Derived from the content
