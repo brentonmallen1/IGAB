@@ -26,6 +26,7 @@ export type ReportTab =
   | 'savings'
   | 'savings-rate'
   | 'essentials'
+  | 'emergency-fund'
   | 'anomalies'
   | 'plan-reality'
   | 'spending-trends'
@@ -51,6 +52,7 @@ export const REPORT_TABS: TabDef[] = [
   { id: 'savings', label: 'Savings', group: 'financial' },
   { id: 'savings-rate', label: 'Savings Rate', group: 'financial' },
   { id: 'essentials', label: 'Essentials', group: 'financial' },
+  { id: 'emergency-fund', label: 'Emergency Fund', group: 'financial' },
   { id: 'income-expense', label: 'Income vs Expenses', group: 'cashflow' },
   { id: 'income-sources', label: 'Income by Source', group: 'cashflow' },
   { id: 'cost-of-living', label: 'Cost of Living', group: 'spending' },
@@ -189,6 +191,17 @@ export const TAB_FILTER_SUPPORT: Record<ReportTab, TabFilterSupport> = {
   },
   savings: { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
   essentials: { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
+  // Its own months selector, like Essentials — and its scope is the Essential
+  // tag and the Guide's emergency-fund binding, neither of which the shared
+  // category/payee/account filters can narrow without making the coverage
+  // figure mean something else.
+  'emergency-fund': {
+    dates: false,
+    categories: false,
+    payees: false,
+    accounts: false,
+    groupBy: false,
+  },
   anomalies: { dates: false, categories: false, payees: false, accounts: false, groupBy: false },
   'plan-reality': {
     dates: false,

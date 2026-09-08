@@ -933,6 +933,41 @@ export interface SeasonalityReport {
 
 /** What a lean month costs — GET /reports/essentials. `essentials_90d` is the
  *  Guide's figure and the Overview card's; the table averages complete months. */
+/** One month of the emergency-fund coverage report. */
+export interface CoveragePoint {
+  month: string
+  fund_balance: number
+  /** Trailing three-month average of essential spending — the Guide's 90-day
+   *  window said in months, so this line and the roadmap's target cannot tell
+   *  different stories about the same household. */
+  essentials: number
+  /** Null, never zero, for a month with no essential spending to divide by. */
+  coverage_months: number | null
+  /** The band AT THIS MONTH. It moves: as spending grows the target grows
+   *  with it, and a fund standing still loses coverage without losing a cent. */
+  target_low: number
+  target_high: number
+  /** A self-reported balance is carried flat from the date it was given. */
+  external_counted: boolean
+}
+
+export interface EmergencyCoverageReport {
+  months: number
+  tagged: boolean
+  fund_balance: number | null
+  fund_source: string | null
+  /** The Essentials report's own runway, quoted rather than recomputed. */
+  coverage_months: number | null
+  essentials_monthly: number
+  target_low: number
+  target_high: number
+  target_range: [number, number]
+  series: CoveragePoint[]
+  external_amount: number | null
+  external_as_of: string | null
+  current_month: string
+}
+
 export interface EssentialsReport {
   tagged: boolean
   months: number

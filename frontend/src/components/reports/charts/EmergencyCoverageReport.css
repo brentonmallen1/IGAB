@@ -1,0 +1,81 @@
+/* Two charts of the same months, stacked: coverage in months above, dollars
+   below. Same x-axis, deliberately — the point of the second is that the
+   target line under the fund is moving, and that only reads against the
+   coverage line directly above it. */
+
+.coverage-report__section {
+  padding: var(--spacing-md);
+}
+
+.coverage-report__empty {
+  padding: var(--spacing-lg) var(--spacing-md);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  max-width: 56ch;
+}
+
+.coverage-report__empty p + p {
+  margin-top: var(--spacing-sm);
+}
+
+.coverage-report__note {
+  margin: var(--spacing-sm) 0 var(--spacing-md);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
+  max-width: 78ch;
+}
+
+.coverage-report__chart-title {
+  margin: var(--spacing-md) 0 var(--spacing-xs);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.coverage-report__chart {
+  width: 100%;
+}
+
+/* The table is the accessible view of both charts, and the one you read when
+   you want the figure rather than the shape. */
+.coverage-report__table {
+  width: 100%;
+  margin-top: var(--spacing-md);
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.coverage-report__table th,
+.coverage-report__table td {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  text-align: right;
+  border-bottom: 1px solid var(--edge);
+}
+
+.coverage-report__table thead th {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.coverage-report__table th:first-child,
+.coverage-report__table tbody th {
+  text-align: left;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.coverage-report__table tbody td {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 768px) {
+  .coverage-report__table {
+    display: block;
+    overflow-x: auto;
+  }
+}
