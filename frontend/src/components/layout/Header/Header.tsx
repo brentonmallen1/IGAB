@@ -24,6 +24,7 @@ import { useIsMobile } from '../../../hooks/useMediaQuery'
 import { UndoRedoButtons } from './UndoRedoButtons'
 import { IS_MAC } from '../../../keyboard/shortcuts'
 import { addMonths, currentMonthStart } from '../../../utils/dates'
+import { PAGE_HEADER_SLOT_ID } from '../../common/PageHeader/PageHeader'
 import './Header.css'
 
 export function Header() {
@@ -104,6 +105,11 @@ export function Header() {
           )}
         </div>
       )}
+
+      {/* On a phone, a page's PageHeader portals its title and back chevron
+          here, so the page spends no band of its own on a name the nav
+          already states. Empty on the budget route, which has the month. */}
+      {!onBudgetPage && isMobile && <div id={PAGE_HEADER_SLOT_ID} className="header__page-slot" />}
 
       <div className="header__palette-wrap">
         <button

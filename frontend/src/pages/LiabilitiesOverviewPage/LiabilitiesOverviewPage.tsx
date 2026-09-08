@@ -1,3 +1,4 @@
+import { PageHeader } from '../../components/common/PageHeader/PageHeader'
 import { useNavigate } from 'react-router-dom'
 import { AlertTriangle, Link2, PenLine, Plus } from 'lucide-react'
 import { useLiabilities } from '../../api/liabilities'
@@ -39,21 +40,23 @@ export function LiabilitiesOverviewPage() {
 
   return (
     <div className="liabilities-page">
-      <div className="liabilities-page__header">
-        <div>
-          <h1 className="liabilities-page__title">Liabilities</h1>
-          {liabilities.length > 0 && (
-            <div className="liabilities-page__total">
+      <PageHeader
+        title="Liabilities"
+        subtitle={
+          liabilities.length > 0 ? (
+            <span className="liabilities-page__total">
               {formatMoney(totalOwed)} owed across {liabilities.length} liabilit
               {liabilities.length !== 1 ? 'ies' : 'y'}
-            </div>
-          )}
-        </div>
-        <button className="liabilities-page__add" onClick={() => openModal('liability')}>
-          <Plus size={14} />
-          Track a liability
-        </button>
-      </div>
+            </span>
+          ) : undefined
+        }
+        actions={
+          <button className="liabilities-page__add" onClick={() => openModal('liability')}>
+            <Plus size={14} />
+            Track a liability
+          </button>
+        }
+      />
 
       {isLoading ? (
         <div className="liabilities-page__empty">Loading…</div>

@@ -1,3 +1,4 @@
+import { PageHeader } from '../../components/common/PageHeader/PageHeader'
 import { useRef, useState, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { ChevronDown, ChevronUp, GitMerge, Regex, Sparkles } from 'lucide-react'
@@ -320,15 +321,18 @@ export function PayeesPage() {
   return (
     <div className={`payees-page ${selectedCount > 0 ? 'payees-page--with-bar' : ''}`}>
       <div className="payees-header surface surface--chrome">
-        <div className="payees-title-wrap">
-          <h1 className="payees-title">Payees</h1>
-          {!isLoading && (
-            <span className="payees-count">
-              {totalPayees} payee{totalPayees !== 1 ? 's' : ''}
-              {search.trim() ? ` · ${filtered.length} shown` : ''}
-            </span>
-          )}
-        </div>
+        <PageHeader
+          title="Payees"
+          className="payees-title-wrap"
+          meta={
+            !isLoading ? (
+              <span className="payees-count">
+                {totalPayees} payee{totalPayees !== 1 ? 's' : ''}
+                {search.trim() ? ` · ${filtered.length} shown` : ''}
+              </span>
+            ) : undefined
+          }
+        />
         <div className="payees-actions">
           <input
             type="search"

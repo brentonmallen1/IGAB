@@ -7,19 +7,6 @@
   gap: var(--spacing-xl);
 }
 
-.sched-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.sched-title {
-  font-size: var(--font-size-xl);
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0;
-}
-
 .sched-btn {
   padding: var(--spacing-xs) var(--spacing-md);
   border: 1px solid var(--border-color);

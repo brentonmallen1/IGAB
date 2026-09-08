@@ -1,5 +1,4 @@
-import { ArrowLeft } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { PageHeader } from '../../components/common/PageHeader/PageHeader'
 import { useCurrentUser } from '../../api/auth'
 import { useSimpleFINConfig } from '../../api/simplefin'
 import { Surface } from '../../components/common/Surface'
@@ -46,16 +45,11 @@ export function SystemPage() {
   return (
     <div className="system-page">
       <header className="system-page__header">
-        <Link to={back.to} className="system-page__back">
-          <ArrowLeft size={15} />
-          <span>{back.label}</span>
-        </Link>
-        <div>
-          <h1 className="system-page__title">{SETTINGS_PAGES.system.label}</h1>
-          <div className="system-page__subtitle">
-            The whole installation — every budget, every user
-          </div>
-        </div>
+        <PageHeader
+          title={SETTINGS_PAGES.system.label}
+          back={back}
+          subtitle="The whole installation — every budget, every user"
+        />
       </header>
 
       <div className="system-page__body">

@@ -1,3 +1,4 @@
+import { PageHeader } from '../../components/common/PageHeader/PageHeader'
 import { useState } from 'react'
 import { useAppStore } from '../../stores/appStore'
 import {
@@ -46,12 +47,14 @@ export function ScheduledTransactionsPage() {
 
   return (
     <div className="sched-page page-fill">
-      <div className="sched-header">
-        <h1 className="sched-title">Scheduled Transactions</h1>
-        <button className="sched-btn sched-btn--primary" onClick={() => setEditing('new')}>
-          + New
-        </button>
-      </div>
+      <PageHeader
+        title="Scheduled Transactions"
+        actions={
+          <button className="sched-btn sched-btn--primary" onClick={() => setEditing('new')}>
+            + New
+          </button>
+        }
+      />
 
       {editing && (
         <ScheduledTransactionEditor

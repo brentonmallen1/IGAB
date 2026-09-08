@@ -29,6 +29,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useFormatters } from '../../hooks/useFormatters'
 import { confirmAsync } from '../../stores/confirmStore'
 import toast from 'react-hot-toast'
+import { PageHeader } from '../../components/common/PageHeader/PageHeader'
 import { groupChanges, redoHeadId, summarizeBatch } from './groupChanges'
 import { useUndoRedo } from '../../hooks/useUndoRedo'
 import { actionTypeLabel, entityTypeLabel } from './changeLabels'
@@ -148,10 +149,10 @@ export function ActivityPage() {
 
   return (
     <div className="activity-page page-fill">
-      <div className="activity-page__header">
-        <h1 className="activity-page__title">Activity</h1>
-        <span className="activity-page__count">{total} changes</span>
-      </div>
+      <PageHeader
+        title="Activity"
+        meta={<span className="activity-page__count">{total} changes</span>}
+      />
 
       {isLoading && <p className="activity-page__loading">Loading…</p>}
       {error && <p className="activity-page__error">Could not load activity.</p>}

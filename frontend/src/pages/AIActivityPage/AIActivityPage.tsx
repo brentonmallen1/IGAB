@@ -18,6 +18,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { PageHeader } from '../../components/common/PageHeader/PageHeader'
 import { useAppStore } from '../../stores/appStore'
 import {
   useAIJobCounts,
@@ -439,12 +440,15 @@ export function AIActivityPage() {
 
   return (
     <div className="ai-activity page-fill">
-      <div className="ai-activity__header">
-        <h1 className="ai-activity__page-title">
-          <Sparkles size={18} />
-          AI Activity
-        </h1>
-      </div>
+      <PageHeader
+        title="AI Activity"
+        titleNode={
+          <>
+            <Sparkles size={18} />
+            AI Activity
+          </>
+        }
+      />
 
       <p className="ai-activity__desc">
         Every receipt scan and AI text entry is logged here — the permanent record of what the AI

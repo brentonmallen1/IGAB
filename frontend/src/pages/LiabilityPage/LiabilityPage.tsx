@@ -1,3 +1,4 @@
+import { PageHeader } from '../../components/common/PageHeader/PageHeader'
 import { parseAmountInput } from '../../utils/money'
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
@@ -235,35 +236,44 @@ export function LiabilityPage() {
 
   return (
     <div className="liability-page">
-      <div className="liability-page__header">
-        <div className="liability-page__header-left">
-          <h1 className="liability-page__name">{liability.name}</h1>
-          <Pill caps>{liabilityTypeLabel(liability.liability_type, accountTypes)}</Pill>
-          <Pill caps tone="outline">
-            {liability.mode === 'managed' ? 'Managed' : 'Unmanaged'}
-          </Pill>
-          <button
-            className="liability-page__settings"
-            onClick={() => openModal('liability', liability.id)}
-            aria-label="Liability settings"
-            title="Liability settings"
-          >
-            <Settings size={14} />
-          </button>
-        </div>
-        <div className="liability-page__header-actions">
-          {liability.mode === 'managed' && liability.linked_account_id && (
-            <Link className="liability-page__link" to={`/accounts/${liability.linked_account_id}`}>
-              View account register
-            </Link>
-          )}
-          {liability.mode === 'unmanaged' && (
-            <button className="liability-page__action" onClick={() => setShowBalanceForm(true)}>
-              Update balance
+      <PageHeader
+        title={liability.name}
+        back
+        className="liability-page__header"
+        meta={
+          <>
+            <Pill caps>{liabilityTypeLabel(liability.liability_type, accountTypes)}</Pill>
+            <Pill caps tone="outline">
+              {liability.mode === 'managed' ? 'Managed' : 'Unmanaged'}
+            </Pill>
+            <button
+              className="liability-page__settings"
+              onClick={() => openModal('liability', liability.id)}
+              aria-label="Liability settings"
+              title="Liability settings"
+            >
+              <Settings size={14} />
             </button>
-          )}
-        </div>
-      </div>
+          </>
+        }
+        actions={
+          <>
+            {liability.mode === 'managed' && liability.linked_account_id && (
+              <Link
+                className="liability-page__link"
+                to={`/accounts/${liability.linked_account_id}`}
+              >
+                View account register
+              </Link>
+            )}
+            {liability.mode === 'unmanaged' && (
+              <button className="liability-page__action" onClick={() => setShowBalanceForm(true)}>
+                Update balance
+              </button>
+            )}
+          </>
+        }
+      />
 
       <div className="liability-page__pill-row">
         <PayoffPill liability={liability} />

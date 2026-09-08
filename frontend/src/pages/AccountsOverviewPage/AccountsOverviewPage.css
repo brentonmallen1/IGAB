@@ -6,20 +6,6 @@
   gap: var(--spacing-xl);
 }
 
-.accounts-overview__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--spacing-md);
-}
-
-.accounts-overview__title {
-  font-size: var(--font-size-lg);
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0;
-}
-
 .accounts-overview__header-actions {
   display: flex;
   align-items: center;
@@ -349,13 +335,6 @@
 @media (max-width: 768px) {
   .accounts-overview {
     padding: var(--spacing-md);
-  }
-
-  /* Title + three buttons in one non-wrapping row: "Add Account" was cut
-     at the screen edge (the sweep's first real crushed row). The actions
-     take a line of their own. */
-  .accounts-overview__header {
-    flex-wrap: wrap;
   }
 
   .accounts-overview__header-actions {

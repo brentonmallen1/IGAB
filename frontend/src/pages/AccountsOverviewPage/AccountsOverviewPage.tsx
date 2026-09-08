@@ -12,6 +12,7 @@ import {
   ArchiveRestore,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { PageHeader } from '../../components/common/PageHeader/PageHeader'
 import { useUndoToast } from '../../utils/toastUndo'
 import { useAccounts, useDeleteAccount, useUpdateAccount } from '../../api/accounts'
 import { useLiabilities } from '../../api/liabilities'
@@ -288,48 +289,50 @@ export function AccountsOverviewPage() {
 
   return (
     <div className="accounts-overview">
-      <div className="accounts-overview__header">
-        <h1 className="accounts-overview__title">Accounts</h1>
-        <div className="accounts-overview__header-actions">
-          {syncAllAccounts.lastSummary && (
-            <span className="accounts-overview__sync-msg">{syncAllAccounts.lastSummary}</span>
-          )}
-          {(hasClosedAccounts || showClosed) && (
-            <button
-              className="accounts-overview__toggle-closed-btn"
-              onClick={() => setShowClosed((v) => !v)}
-              title={showClosed ? 'Hide closed accounts' : 'Show closed accounts'}
-            >
-              {showClosed ? <EyeOff size={14} /> : <Eye size={14} />}
-              <span>{showClosed ? 'Hide closed' : 'Show closed'}</span>
+      <PageHeader
+        title="Accounts"
+        actions={
+          <div className="accounts-overview__header-actions">
+            {syncAllAccounts.lastSummary && (
+              <span className="accounts-overview__sync-msg">{syncAllAccounts.lastSummary}</span>
+            )}
+            {(hasClosedAccounts || showClosed) && (
+              <button
+                className="accounts-overview__toggle-closed-btn"
+                onClick={() => setShowClosed((v) => !v)}
+                title={showClosed ? 'Hide closed accounts' : 'Show closed accounts'}
+              >
+                {showClosed ? <EyeOff size={14} /> : <Eye size={14} />}
+                <span>{showClosed ? 'Hide closed' : 'Show closed'}</span>
+              </button>
+            )}
+            {hasSyncConnection && (
+              <button
+                className={`accounts-overview__sync-all-btn ${syncAllAccounts.isPending ? 'accounts-overview__sync-all-btn--spinning' : ''}`}
+                onClick={syncAllAccounts.syncAll}
+                disabled={!canSyncAll}
+                title={
+                  rateLimitStatus
+                    ? `Sync all accounts · ${rateLimitStatus.global_remaining}/12 remaining`
+                    : 'Sync all accounts'
+                }
+              >
+                <RefreshCw size={14} />
+                <span>Sync All</span>
+                {rateLimitStatus && (
+                  <span className="accounts-overview__sync-badge">
+                    {rateLimitStatus.global_remaining}
+                  </span>
+                )}
+              </button>
+            )}
+            <button className="accounts-overview__add-btn" onClick={() => setIsAddOpen(true)}>
+              <Plus size={14} />
+              <span>Add Account</span>
             </button>
-          )}
-          {hasSyncConnection && (
-            <button
-              className={`accounts-overview__sync-all-btn ${syncAllAccounts.isPending ? 'accounts-overview__sync-all-btn--spinning' : ''}`}
-              onClick={syncAllAccounts.syncAll}
-              disabled={!canSyncAll}
-              title={
-                rateLimitStatus
-                  ? `Sync all accounts · ${rateLimitStatus.global_remaining}/12 remaining`
-                  : 'Sync all accounts'
-              }
-            >
-              <RefreshCw size={14} />
-              <span>Sync All</span>
-              {rateLimitStatus && (
-                <span className="accounts-overview__sync-badge">
-                  {rateLimitStatus.global_remaining}
-                </span>
-              )}
-            </button>
-          )}
-          <button className="accounts-overview__add-btn" onClick={() => setIsAddOpen(true)}>
-            <Plus size={14} />
-            <span>Add Account</span>
-          </button>
-        </div>
-      </div>
+          </div>
+        }
+      />
 
       <AccountHygienePanel budgetId={budgetId} />
 

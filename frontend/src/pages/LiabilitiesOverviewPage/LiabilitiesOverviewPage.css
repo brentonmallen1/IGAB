@@ -5,19 +5,6 @@
   gap: var(--spacing-xl);
 }
 
-.liabilities-page__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--spacing-md);
-}
-
-.liabilities-page__title {
-  font-size: var(--font-size-xl);
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
 .liabilities-page__total {
   margin-top: 2px;
   font-size: var(--font-size-sm);

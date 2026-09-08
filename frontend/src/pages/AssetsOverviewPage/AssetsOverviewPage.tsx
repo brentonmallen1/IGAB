@@ -1,3 +1,4 @@
+import { PageHeader } from '../../components/common/PageHeader/PageHeader'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Link2, Plus } from 'lucide-react'
@@ -32,21 +33,23 @@ export function AssetsOverviewPage() {
 
   return (
     <div className="assets-page">
-      <div className="assets-page__header">
-        <div>
-          <h1 className="assets-page__title">Assets</h1>
-          {assets.length > 0 && (
-            <div className="assets-page__total">
+      <PageHeader
+        title="Assets"
+        subtitle={
+          assets.length > 0 ? (
+            <span className="assets-page__total">
               {formatMoney(totalValue)} across {assets.length} asset
               {assets.length !== 1 ? 's' : ''}
-            </div>
-          )}
-        </div>
-        <button className="assets-page__add" onClick={() => setCreating(true)}>
-          <Plus size={14} />
-          Track an asset
-        </button>
-      </div>
+            </span>
+          ) : undefined
+        }
+        actions={
+          <button className="assets-page__add" onClick={() => setCreating(true)}>
+            <Plus size={14} />
+            Track an asset
+          </button>
+        }
+      />
 
       {isLoading ? (
         <div className="assets-page__empty">Loading…</div>

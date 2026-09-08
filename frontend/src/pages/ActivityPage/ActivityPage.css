@@ -5,20 +5,6 @@
   padding: var(--spacing-lg);
 }
 
-.activity-page__header {
-  display: flex;
-  align-items: baseline;
-  gap: var(--spacing-md);
-  margin-bottom: var(--spacing-lg);
-}
-
-.activity-page__title {
-  margin: 0;
-  font-size: var(--font-size-xl);
-  font-weight: var(--font-weight-semibold);
-  color: var(--text-primary);
-}
-
 .activity-page__count {
   font-size: var(--font-size-sm);
   color: var(--text-muted);

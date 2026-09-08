@@ -8,23 +8,6 @@
   gap: var(--spacing-md);
 }
 
-.ai-activity__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--spacing-md);
-}
-
-.ai-activity__page-title {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  font-size: var(--font-size-lg);
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0;
-}
-
 .ai-activity__desc {
   margin: 0;
   font-size: var(--font-size-sm);
