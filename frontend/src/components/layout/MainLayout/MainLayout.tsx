@@ -10,6 +10,7 @@ import { QuickAddSheet } from '../../transactions/QuickAddSheet/QuickAddSheet'
 import { CommandPalette } from '../../palette/CommandPalette/CommandPalette'
 import { GlobalShortcuts } from '../GlobalShortcuts'
 import { useAppStore } from '../../../stores/appStore'
+import { useEdgeSwipeBack } from '../../../hooks/useEdgeSwipeBack'
 import './MainLayout.css'
 
 export function MainLayout() {
@@ -17,6 +18,8 @@ export function MainLayout() {
   const currentBudgetId = useAppStore((s) => s.currentBudgetId)
   const clearCurrentBudget = useAppStore((s) => s.clearCurrentBudget)
   const { data: budgets, isSuccess, isFetching } = useBudgets()
+  // The installed PWA has no back gesture; the shell supplies one.
+  const edgeBack = useEdgeSwipeBack()
   // A persisted budget id can outlive the budget itself (deleted budget,
   // recreated database). Without this check every page renders empty with
   // no way back to the selector. The !isFetching guard keeps a mid-refetch
@@ -46,7 +49,7 @@ export function MainLayout() {
         Skip to main content
       </a>
       <Sidebar />
-      <div className="main-layout__content">
+      <div className="main-layout__content" {...edgeBack}>
         <OfflineBanner />
         <Header />
         <main id="main-content" className="main-layout__main">

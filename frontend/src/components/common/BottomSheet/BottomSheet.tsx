@@ -6,7 +6,7 @@ import { useFocusTrap } from '../../../hooks/useFocusTrap'
 import { lockBodyScroll, unlockBodyScroll } from '../../../utils/scrollLock'
 import { isTopOverlay, popOverlay, pushOverlay } from '../../../utils/overlayStack'
 import { hapticTick } from '../../../utils/haptics'
-import { shouldDismissDrag } from './dismissDrag'
+import { shouldDismissDrag } from '../../../utils/gestures'
 import './BottomSheet.css'
 import { prefersReducedMotion } from '../../../utils/motion'
 

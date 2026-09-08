@@ -2,6 +2,7 @@ import { useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { X, ChevronLeft, ChevronRight, RotateCw, Download, Printer, Loader2 } from 'lucide-react'
 import { usePinchZoom } from '../../hooks/usePinchZoom'
+import { useSwipeNavigation } from '../../hooks/useSwipeNavigation'
 import { lockBodyScroll, unlockBodyScroll } from '../../utils/scrollLock'
 import { isTopOverlay, popOverlay, pushOverlay } from '../../utils/overlayStack'
 import { useHistoryDismissable } from '../../hooks/useHistoryDismissable'
@@ -13,8 +14,6 @@ import {
   type Attachment,
 } from '../../api/attachments'
 import './Lightbox.css'
-
-const SWIPE_THRESHOLD_PX = 60
 
 interface Props {
   src: string
@@ -38,8 +37,16 @@ export function Lightbox({
   hasNext,
   attachment,
 }: Props) {
-  const touchStartRef = useRef<{ x: number; y: number } | null>(null)
   const { scale, translateX, translateY, isZoomed, reset, handlers: zoomHandlers } = usePinchZoom()
+  // Left/right step through the images; down closes — the same rule the
+  // budget page and the shell use, so this stopped carrying its own copy of
+  // the threshold. Off while zoomed, when a drag is a pan.
+  const swipe = useSwipeNavigation({
+    onLeft: () => hasNext && onNext?.(),
+    onRight: () => hasPrev && onPrev?.(),
+    onDown: onClose,
+    enabled: !isZoomed,
+  })
   // On the overlay stack like every other overlay: it opens from inside a
   // sheet or drawer, and Escape must close the lightbox first, not both. The
   // history entry gives Android back and an installed PWA's swipe-back a
@@ -92,24 +99,6 @@ export function Lightbox({
     }
   }, [])
 
-  function handleTouchStart(e: React.TouchEvent) {
-    if (isZoomed) return
-    touchStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
-  }
-
-  function handleTouchEnd(e: React.TouchEvent) {
-    if (isZoomed) return
-    const start = touchStartRef.current
-    touchStartRef.current = null
-    if (!start) return
-    const dx = e.changedTouches[0].clientX - start.x
-    const dy = e.changedTouches[0].clientY - start.y
-    // Horizontal swipe navigates; ignore mostly-vertical gestures
-    if (Math.abs(dx) < SWIPE_THRESHOLD_PX || Math.abs(dy) > Math.abs(dx)) return
-    if (dx < 0 && hasNext && onNext) onNext()
-    if (dx > 0 && hasPrev && onPrev) onPrev()
-  }
-
   // Reset zoom when navigating to a different image
   useEffect(() => {
     reset()
@@ -119,12 +108,7 @@ export function Lightbox({
   // context, and rank it at --z-nested-overlay: it is opened from inside
   // another overlay and must sit above the one that raised it.
   return createPortal(
-    <div
-      className="lightbox-overlay"
-      onClick={onClose}
-      onTouchStart={handleTouchStart}
-      onTouchEnd={handleTouchEnd}
-    >
+    <div className="lightbox-overlay" onClick={onClose} {...swipe}>
       {/* `__close`, so base.css's one rule for every overlay's dismiss button
           gives it the tap floor on a phone — `lightbox-close` escaped it. */}
       <button className="lightbox__close" onClick={onClose} aria-label="Close">
