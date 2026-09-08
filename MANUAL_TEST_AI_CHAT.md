@@ -105,6 +105,12 @@ starts awaiting.
   keyboard should not push the composer off-screen.
 - Cycle a few themes with the panel open, light and dark. Nothing should be
   unreadable.
+- **New conversation** (the plus icon in the panel header) must clear the
+  previous question and answer and land the caret in the composer. Ask
+  something afterwards and confirm it shows up as a second row in Chats.
+- Amounts in answers should render as small figure chips (backticked in the
+  Markdown), the same size as the prose. If the model writes bare `$412.80`
+  instead, the prompt is being ignored — check which model is set.
 
 ## AI Activity
 
@@ -112,8 +118,10 @@ starts awaiting.
 their prompt and raw response, and still approve. This is the retrofit's main
 regression risk.
 
-**Chats** — past conversations; opening one puts it back in the panel; deleting
-one leaves its model calls behind.
+**Chats** — past conversations. Clicking a row opens the transcript in place,
+with each answer's lookups and grounding line, and expands only one at a time.
+The panel icon on the row puts that conversation back in the assistant, in
+place of whatever was there; deleting one leaves its model calls behind.
 
 **Model calls** — one row **per model round trip**, so a question that used a
 tool produces two rows. Check the token counts look sane (these are new — the

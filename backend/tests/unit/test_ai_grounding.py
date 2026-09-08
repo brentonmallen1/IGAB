@@ -26,6 +26,11 @@ class TestFindingMoneyInProse:
             ("The total was 1234.50 for the period", [Decimal("1234.50")]),
             ("£80.00 and €12.34", [Decimal("80.00"), Decimal("12.34")]),
             ("$ 55.20 with a space", [Decimal("55.20")]),
+            # The prompt asks for amounts in backticks and models bold them
+            # on their own; Markdown punctuation must not hide a figure.
+            ("Groceries was `$412.80` in September", [Decimal("412.80")]),
+            ("over by **$42.00** this month", [Decimal("42.00")]),
+            ("| Groceries | `$412.80` |", [Decimal("412.80")]),
         ],
     )
     def test_money_shapes(self, text, expected):

@@ -12,6 +12,8 @@ import type { PageContext } from './pageContext'
 export interface PendingTurn {
   /** What the user asked, echoed immediately. */
   question: string
+  /** The conversation the server filed this turn under, once it says. */
+  conversationId: string | null
   /** Prose so far. */
   answer: string
   thinking: string
@@ -36,6 +38,7 @@ export interface PendingTurn {
 
 const EMPTY: PendingTurn = {
   question: '',
+  conversationId: null,
   answer: '',
   thinking: '',
   tools: [],
@@ -57,7 +60,7 @@ const EMPTY: PendingTurn = {
 export function applyEvent(turn: PendingTurn, event: ChatStreamEvent): PendingTurn {
   switch (event.type) {
     case 'start':
-      return { ...turn, toolsAvailable: event.tools }
+      return { ...turn, toolsAvailable: event.tools, conversationId: event.conversation_id }
     case 'thinking':
       return { ...turn, thinking: turn.thinking + event.delta }
     case 'token':

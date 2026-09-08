@@ -55,11 +55,19 @@
   color: var(--text-primary);
 }
 
+/* The prompt asks for every amount in backticks, so inline code here is
+   almost always a figure: same size as the prose around it, lined-up digits,
+   and the primary colour rather than the dimmer tone a code span usually
+   gets — the amount is the part of the sentence to read. */
 .chat-md code {
-  padding: 1px 3px;
+  padding: 1px 4px;
   border-radius: var(--border-radius-sm);
   background-color: var(--surface-sunken);
-  font-size: 11px;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .chat-md pre {

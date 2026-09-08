@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { AlertTriangle, Loader2, MessageSquarePlus, Send, Square, X } from 'lucide-react'
+import { Loader2, MessageSquarePlus, Send, Square, X } from 'lucide-react'
 import { BottomSheet } from '../../common/BottomSheet/BottomSheet'
 import { useIsMobile, useIsTouch } from '../../../hooks/useMediaQuery'
 import { useAppStore } from '../../../stores/appStore'
@@ -11,7 +11,7 @@ import { useChatStream } from './useChatStream'
 import { describePage } from './pageContext'
 import { ToolTrace } from './ToolTrace'
 import { ChatMarkdown } from './ChatMarkdown'
-import { groundingNote } from './groundingNote'
+import { ChatTranscript, GroundingNote } from './ChatTranscript'
 import { useChatPanelResize } from './useChatPanelResize'
 import { isAtBottom } from './stickToBottom'
 import './ChatPanel.css'
@@ -23,27 +23,6 @@ import './ChatPanel.css'
  * here are about the figures on screen, and a panel that covers the register
  * hides the thing being discussed.
  */
-/**
- * Whether an answer's figures came from the budget.
- *
- * Sits under the answer rather than in the tool disclosure: it is about the
- * text you just read, and a warning folded behind a chevron is a warning
- * nobody sees.
- */
-function GroundingNote({ grounding }: { grounding: Parameters<typeof groundingNote>[0] }) {
-  const note = groundingNote(grounding)
-  if (note.tone === 'none') return null
-  return (
-    <p
-      className={`chat-grounding chat-grounding--${note.tone}`}
-      role={note.tone === 'warn' ? 'status' : undefined}
-    >
-      {note.tone === 'warn' && <AlertTriangle size={12} aria-hidden />}
-      <span>{note.text}</span>
-    </p>
-  )
-}
-
 export function ChatPanel() {
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const open = useUIStore((s) => s.chatPanelOpen)
@@ -59,7 +38,7 @@ export function ChatPanel() {
   const isTouch = useIsTouch()
 
   const [draft, setDraft] = useState('')
-  const { turn, send, cancel } = useChatStream(budgetId)
+  const { turn, send, cancel, reset } = useChatStream(budgetId)
   const { data: conversation } = useConversation(budgetId, conversationId)
   const composer = useRef<HTMLTextAreaElement>(null)
   const scroller = useRef<HTMLDivElement>(null)
@@ -87,6 +66,18 @@ export function ChatPanel() {
     if (open && !isTouch) composer.current?.focus()
   }, [open, isTouch])
 
+  // Keep the live turn and the selected conversation about the same chat.
+  // A fresh question gets its conversation id from the server's first event,
+  // so the selection follows it; when the selection moves away — the Chats
+  // tab opening an older one, or the store being cleared — the finished turn
+  // is dropped rather than drawn under someone else's history. Without this
+  // "New conversation" cleared the id and changed nothing on screen.
+  useEffect(() => {
+    if (!turn.conversationId || turn.conversationId === conversationId) return
+    if (turn.streaming) setConversation(turn.conversationId)
+    else reset()
+  }, [turn.conversationId, turn.streaming, conversationId, setConversation, reset])
+
   if (!open || status?.enabled !== true) return null
 
   async function submit(e: React.FormEvent) {
@@ -94,8 +85,7 @@ export function ChatPanel() {
     const message = draft.trim()
     if (!message || turn.streaming) return
     setDraft('')
-    const id = await send(message, { conversationId, pageContext })
-    if (id) setConversation(id)
+    await send(message, { conversationId, pageContext })
   }
 
   const history = conversation?.messages ?? []
@@ -120,7 +110,9 @@ export function ChatPanel() {
           className="chat-panel__icon"
           onClick={() => {
             cancel()
+            reset()
             setConversation(null)
+            if (!isTouch) composer.current?.focus()
           }}
           title="New conversation"
           aria-label="Start a new conversation"
@@ -184,32 +176,7 @@ export function ChatPanel() {
           </div>
         )}
 
-        {history.map((message) => (
-          <div key={message.id} className={`chat-msg chat-msg--${message.role}`}>
-            {message.role === 'assistant' && message.tool_calls && (
-              <ToolTrace
-                tools={message.tool_calls.map((t) => ({
-                  name: t.name,
-                  arguments: t.arguments,
-                  resolved_arguments: t.resolved_arguments,
-                  delegates_to: t.delegates_to,
-                  rows: t.row_count,
-                  truncated: t.truncated,
-                  duration_ms: t.duration_ms,
-                  error: t.error,
-                }))}
-              />
-            )}
-            <div className="chat-msg__body">
-              {message.role === 'assistant' ? (
-                <ChatMarkdown>{message.content}</ChatMarkdown>
-              ) : (
-                message.content
-              )}
-            </div>
-            {message.role === 'assistant' && <GroundingNote grounding={message.grounding} />}
-          </div>
-        ))}
+        <ChatTranscript messages={history} />
 
         {showPending && (
           <>
