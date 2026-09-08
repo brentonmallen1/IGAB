@@ -13,6 +13,7 @@ import {
   Heart,
   LogOut,
   Moon,
+  Bot,
   Palette,
   Redo2,
   Undo2,
@@ -25,6 +26,7 @@ import {
 } from 'lucide-react'
 import { BottomSheet } from '../../common/BottomSheet/BottomSheet'
 import { PALETTES, getPaletteForTheme, isLightTheme } from '../../../stores/appStore'
+import { useAIStatus } from '../../../api/ai'
 import { useGuideOverview } from '../../../api/guide'
 import { useUpdateStatus } from '../../../api/system'
 import { useCurrentUser, useLogout } from '../../../api/auth'
@@ -67,6 +69,8 @@ export function MoreSheet() {
   }
 
   const privacyMode = useAppStore((s) => s.privacyMode)
+  const setChatPanelOpen = useUIStore((s) => s.setChatPanelOpen)
+  const { data: aiStatus } = useAIStatus()
   const togglePrivacyMode = useAppStore((s) => s.togglePrivacyMode)
   const navigate = useNavigate()
   const logout = useLogout()
@@ -160,6 +164,21 @@ export function MoreSheet() {
             />
           )}
         </button>
+        {/* The header row stopped having space for a seventh 44px control, so
+            on a phone the assistant is opened from here, like the other
+            desktop-header actions. */}
+        {aiStatus?.enabled === true && (
+          <button
+            className="more-sheet__item press-scale"
+            onClick={() => {
+              closeMoreSheet()
+              setChatPanelOpen(true)
+            }}
+          >
+            <Bot size={18} />
+            <span>Ask about your budget</span>
+          </button>
+        )}
         <button
           className="more-sheet__item press-scale"
           onClick={togglePrivacyMode}

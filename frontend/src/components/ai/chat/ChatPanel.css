@@ -387,10 +387,9 @@
     min-height: var(--tap-min);
   }
 
-  .chat-panel__input {
-    /* 16px stops iOS zooming the viewport when the field takes focus. */
-    font-size: 16px;
-  }
+  /* No font-size floor here: base.css already sets max(16px, …) on every
+     input, select and textarea for touch phones, and inputZoom.test.ts fails
+     on a second copy. */
 }
 
 /* ── whether the figures came from the budget ───────────────────────── */
