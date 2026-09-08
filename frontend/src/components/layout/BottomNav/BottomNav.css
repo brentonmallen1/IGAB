@@ -14,8 +14,11 @@
     display: grid;
     grid-template-columns: repeat(5, 1fr);
     height: var(--nav-h);
-    /* No safe-bottom padding — flush to the screen edge by user decision;
-       see --nav-h in base.css. */
+    /* --nav-h already includes the inset (base.css); border-box keeps the
+       five cells at --bottom-nav-height and the bar's background fills the
+       inset under them. */
+    box-sizing: border-box;
+    padding-bottom: var(--safe-bottom);
     background: var(--header-bg);
     border-top: 1px solid var(--border-color);
   }

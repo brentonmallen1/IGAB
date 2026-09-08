@@ -1,7 +1,6 @@
 import { useMemo, useRef, useEffect, useLayoutEffect, useState, useCallback, memo } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { ChevronUp, ChevronDown, Info, Link2, GitMerge, X } from 'lucide-react'
-import toast from 'react-hot-toast'
 import { useShallow } from 'zustand/react/shallow'
 import {
   useInfiniteTransactions,
@@ -42,7 +41,7 @@ import { parseTransactionSearch } from '../../../utils/searchParser'
 
 /** Stable empty map: a fresh `new Map()` per render would defeat the memo. */
 const EMPTY_ACCOUNT_MAP = new Map<string, string>()
-import { useToastUndo } from '../../../utils/toastUndo'
+import { useUndoToast } from '../../../utils/toastUndo'
 import { usePendingMatchesForAccount, useRejectMatch } from '../../../api/simplefin'
 import { useShortcut } from '../../../hooks/useShortcut'
 import { SHORTCUTS } from '../../../keyboard/shortcuts'
@@ -149,7 +148,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   const bulkSetCleared = useBulkUpdateCleared(budgetId)
   const bulkCategorize = useBulkCategorize(budgetId)
   const bulkDelete = useBulkDeleteTransactions(budgetId)
-  const showUndo = useToastUndo(budgetId, accountId)
+  const notify = useUndoToast(accountId)
   const bulkApprove = useBulkApprove(budgetId)
   const mergeTxns = useMergeTransactions(budgetId)
   const [showMergeModal, setShowMergeModal] = useState(false)
@@ -457,7 +456,10 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
     clearTransactionSelection()
     const count = result.updated.length
     if (count > 0) {
-      showUndo(result.batch_id, `${count} transaction${count > 1 ? 's' : ''} deleted`)
+      notify(
+        `${count} transaction${count > 1 ? 's' : ''} deleted`,
+        result.batch_id ? { batch: result.batch_id } : null
+      )
     }
   }, [
     bulkDelete,
@@ -465,7 +467,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
     transactionMap,
     accountId,
     clearTransactionSelection,
-    showUndo,
+    notify,
   ])
 
   const duplicateTransaction = useCallback(
@@ -552,9 +554,9 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
       await mergeTxns.mutateAsync({ transactionIds: [...selectedTransactionIds], survivorId })
       setShowMergeModal(false)
       clearTransactionSelection()
-      toast.success('Transactions merged')
+      notify('Transactions merged', 'latest')
     },
-    [mergeTxns, selectedTransactionIds, clearTransactionSelection]
+    [mergeTxns, selectedTransactionIds, clearTransactionSelection, notify]
   )
 
   const categoryComboboxOptions = useMemo<ComboboxOption[]>(

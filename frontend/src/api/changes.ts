@@ -101,6 +101,63 @@ export const changesKeys = {
   budget: (budgetId: string) => [...changesKeys.all, budgetId] as const,
 }
 
+/**
+ * What an Undo button points at.
+ *
+ * `batch` and `change` are precise — the row(s) the action wrote, addressed
+ * by id. `latest` is the newest live manual change, which is what ⌘Z undoes;
+ * it is right only while nothing else has been done since, which is why a
+ * toast that carries it also carries the head it saw (see useUndoToast).
+ */
+export type UndoTarget = { batch: string } | { change: string } | 'latest'
+
+function undoPath(budgetId: string, target: UndoTarget): string {
+  if (target === 'latest') return `/${budgetId}/changes/undo`
+  if ('batch' in target) return `/${budgetId}/changes/batch/${target.batch}/undo`
+  return `/${budgetId}/changes/${target.change}/undo`
+}
+
+/**
+ * The one undo. ⌘Z, the header buttons, the More sheet and every toast's
+ * Undo call this; it owns the endpoints and the invalidation, so the four
+ * cannot drift apart the way the shadow stack once did (see useUndoRedo).
+ * Throws on a 409 like any other request — `conflictMessage` reads the
+ * server's sentence out of it.
+ */
+export async function performUndo(
+  qc: ReturnType<typeof useQueryClient>,
+  budgetId: string,
+  target: UndoTarget,
+  accountId?: string | null
+): Promise<UndoLatestResponse | UndoResponse> {
+  const { data } = await apiClient.post<UndoLatestResponse | UndoResponse>(
+    undoPath(budgetId, target)
+  )
+  qc.invalidateQueries({ queryKey: changesKeys.budget(budgetId) })
+  invalidateAfterUndo(qc, budgetId, accountId)
+  return data
+}
+
+/** The message inside a 409's structured detail, if the error carries one. */
+export function conflictMessage(err: unknown): string | undefined {
+  const detail = (err as { response?: { data?: { detail?: { message?: string } | string } } })
+    ?.response?.data?.detail
+  return typeof detail === 'string' ? detail : detail?.message
+}
+
+/**
+ * The newest change's `seq`, or 0 for an empty log. A toast whose Undo
+ * means "the latest change" remembers this when it is shown and refuses to
+ * fire once the head has moved — otherwise a 5-second-old Undo could take
+ * back an inline edit made a moment ago instead of the delete it names.
+ */
+export async function fetchChangeHead(budgetId: string): Promise<number> {
+  const { data } = await apiClient.get<ChangesResponse>(`/${budgetId}/changes`, {
+    params: { limit: 1, offset: 0 },
+  })
+  return data.changes.reduce((max, c) => Math.max(max, c.seq), 0)
+}
+
 export function useChanges(budgetId: string | null, limit = 50, offset = 0) {
   return useQuery({
     queryKey: [...changesKeys.budget(budgetId ?? ''), { limit, offset }],

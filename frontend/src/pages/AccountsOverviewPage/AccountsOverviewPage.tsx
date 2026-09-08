@@ -12,6 +12,7 @@ import {
   ArchiveRestore,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { useUndoToast } from '../../utils/toastUndo'
 import { useAccounts, useDeleteAccount, useUpdateAccount } from '../../api/accounts'
 import { useLiabilities } from '../../api/liabilities'
 import { confirmAccountDeletion } from '../../utils/confirmAccountDeletion'
@@ -169,6 +170,7 @@ function AccountRow({
 }
 
 export function AccountsOverviewPage() {
+  const notify = useUndoToast()
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const [showClosed, setShowClosed] = useState(false)
   const [isAddOpen, setIsAddOpen] = useState(false)
@@ -240,7 +242,7 @@ export function AccountsOverviewPage() {
     if (!ok) return
     try {
       await updateAccount.mutateAsync({ id: account.id, is_closed: false })
-      toast.success(`Reopened ${account.name}`)
+      notify(`Reopened ${account.name}`, 'latest')
     } catch {
       toast.error(`Failed to reopen ${account.name}`)
     }
@@ -252,10 +254,11 @@ export function AccountsOverviewPage() {
     if (!choice.proceed) return
     try {
       await deleteAccount.mutateAsync({ accountId: account.id, liability: choice.liability })
-      toast.success(
+      notify(
         choice.liability === 'keep' && liabilities.some((l) => l.linked_account_id === account.id)
           ? `Deleted ${account.name} — the debt is still tracked`
-          : `Deleted ${account.name}`
+          : `Deleted ${account.name}`,
+        'latest'
       )
     } catch {
       toast.error(`Failed to delete ${account.name}`)

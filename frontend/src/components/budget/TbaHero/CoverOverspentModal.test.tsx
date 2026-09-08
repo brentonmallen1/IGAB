@@ -18,7 +18,7 @@ vi.mock('../../../api/budgets', () => ({
   useCoverOverspentApply: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useBudgetMonth: () => ({ data: { cards: [] } }),
 }))
-vi.mock('../../../utils/toastUndo', () => ({ useToastUndo: () => vi.fn() }))
+vi.mock('../../../utils/toastUndo', () => ({ useUndoToast: () => vi.fn() }))
 vi.mock('../../../hooks/useMediaQuery', () => ({ useIsMobile: () => false }))
 
 import { CoverOverspentModal } from './CoverOverspentModal'

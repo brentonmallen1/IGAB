@@ -132,7 +132,9 @@ function AppToaster() {
         // them is visible but impossible to press. --vv-top additionally keeps
         // it on the visible viewport when the keyboard shifts things.
         top: 'calc(var(--vv-top) + var(--safe-top) + var(--spacing-sm))',
-        bottom: 'calc(var(--nav-h) + var(--safe-bottom) + var(--spacing-sm))',
+        // --nav-h includes the home-indicator inset on phones and is 0 on
+        // desktop, where the inset alone (an iPad in a tab, say) still applies.
+        bottom: 'calc(max(var(--nav-h), var(--safe-bottom)) + var(--spacing-sm))',
         left: 'calc(var(--safe-left) + var(--spacing-sm))',
         right: 'calc(var(--safe-right) + var(--spacing-sm))',
       }}

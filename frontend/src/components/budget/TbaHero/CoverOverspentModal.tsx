@@ -7,7 +7,7 @@ import {
 import { useFormatters } from '../../../hooks/useFormatters'
 import { Dialog } from '../../common/Dialog/Dialog'
 import './CoverOverspentModal.css'
-import { useToastUndo } from '../../../utils/toastUndo'
+import { useUndoToast } from '../../../utils/toastUndo'
 
 interface Props {
   budgetId: string
@@ -19,7 +19,7 @@ export function CoverOverspentModal({ budgetId, month, onClose }: Props) {
   const { formatMoney } = useFormatters()
   const { data: preview, isLoading, refetch } = useCoverOverspentPreview(budgetId, month, true)
   const apply = useCoverOverspentApply(budgetId)
-  const showUndo = useToastUndo(budgetId)
+  const notify = useUndoToast()
   const [error, setError] = useState<string | null>(null)
   // Which card carries the ridden red. Served on the card row (domain/cards.py
   // attributes it exactly), never re-derived here — the split is a running walk
@@ -40,9 +40,9 @@ export function CoverOverspentModal({ budgetId, month, onClose }: Props) {
           proposed_addition: i.proposed_addition,
         })),
       })
-      showUndo(
-        result.batch_id,
-        `Covered ${formatMoney(preview.total_addition)} of overspending across ${preview.items.length} ${preview.items.length === 1 ? 'category' : 'categories'}`
+      notify(
+        `Covered ${formatMoney(preview.total_addition)} of overspending across ${preview.items.length} ${preview.items.length === 1 ? 'category' : 'categories'}`,
+        result.batch_id ? { batch: result.batch_id } : null
       )
       onClose()
     } catch (err: unknown) {

@@ -29,14 +29,28 @@ describe('BottomSheet dismissal affordances', () => {
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
   })
 
-  it('offers a drag handle instead of a close button on a short sheet', () => {
+  it('offers a drag handle AND a close button on a short sheet with a title', () => {
+    // The handle is a gesture, not a visible exit. The More sheet shipped with
+    // only the handle and the backdrop; in an installed PWA, with no back
+    // gesture, a person who did not know to drag had no way out.
     const { container } = render(
       <BottomSheet open onClose={() => {}} title="Move money" height="auto">
         body
       </BottomSheet>
     )
-    expect(screen.queryByRole('button', { name: 'Close' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument()
     expect(container.ownerDocument.querySelector('.bottom-sheet__handle')).not.toBeNull()
+  })
+
+  it('closes a short sheet from its close button', () => {
+    const onClose = vi.fn()
+    render(
+      <BottomSheet open onClose={onClose} title="Move money" height="auto">
+        body
+      </BottomSheet>
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    expect(onClose).toHaveBeenCalledOnce()
   })
 
   it('closes on the close button', () => {

@@ -4,7 +4,7 @@ import { useAppStore } from '../../stores/appStore'
 import { useAccounts } from '../../api/accounts'
 import { importCsv, type CsvImportResult } from '../../api/imports'
 import { invalidateAfterImport } from '../../api/invalidateAfterImport'
-import { useToastUndo } from '../../utils/toastUndo'
+import { useUndoToast } from '../../utils/toastUndo'
 import './ImportPage.css'
 import { Surface } from '../../components/common/Surface'
 
@@ -12,7 +12,7 @@ export function ImportPage() {
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const qc = useQueryClient()
   const { data: accounts = [] } = useAccounts(budgetId)
-  const showUndo = useToastUndo(budgetId ?? '')
+  const notify = useUndoToast()
 
   const csvFileRef = useRef<HTMLInputElement>(null)
   const [csvAccountId, setCsvAccountId] = useState('')
@@ -33,10 +33,9 @@ export function ImportPage() {
       setCsvResult(result)
       if (csvFileRef.current) csvFileRef.current.value = ''
       if (result.batch_id && result.imported > 0) {
-        showUndo(
-          result.batch_id,
-          `Imported ${result.imported} transaction${result.imported > 1 ? 's' : ''}`
-        )
+        notify(`Imported ${result.imported} transaction${result.imported > 1 ? 's' : ''}`, {
+          batch: result.batch_id,
+        })
       }
       invalidateAfterImport(qc, budgetId)
     } catch (err: unknown) {

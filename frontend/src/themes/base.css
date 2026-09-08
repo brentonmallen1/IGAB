@@ -735,10 +735,14 @@ a {
 
 @media (max-width: 768px) {
   :root {
-    /* Deliberately NOT + var(--safe-bottom): the user wants the bar flush
-       with the physical screen edge; the iOS home indicator draws over the
-       nav background. Sheets/editors keep their own safe-bottom padding. */
-    --nav-h: var(--bottom-nav-height);
+    /* The bar plus the home-indicator inset, like a native tab bar: the
+       background runs to the physical screen edge and the tabs sit above the
+       indicator, so no tap target is under it. (It was flush for a while by
+       user decision — the indicator drew over the labels — reversed
+       2026-09-08.) Anything positioned against the nav reads this and needs
+       no safe-bottom term of its own; sheets, which cover the nav, keep
+       theirs. */
+    --nav-h: calc(var(--bottom-nav-height) + var(--safe-bottom));
   }
 
   /* The DOCUMENT is never the scroller on mobile: the app shell is

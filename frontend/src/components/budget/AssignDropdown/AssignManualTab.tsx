@@ -1,6 +1,6 @@
 import { groupedCategorySections } from '../../../utils/categoryPickers'
 import { useState } from 'react'
-import toast from 'react-hot-toast'
+import { useUndoToast } from '../../../utils/toastUndo'
 import { useMoveMoney } from '../../../api/budgets'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
 import { useFormatters } from '../../../hooks/useFormatters'
@@ -17,6 +17,7 @@ interface Props {
 /** Assign a dollar amount from Ready to Assign into one chosen category. */
 export function AssignManualTab({ budgetId, month, tba, onDone }: Props) {
   const { formatMoney } = useFormatters()
+  const notify = useUndoToast()
   const { data: categories = [] } = useCategories(budgetId)
   const { data: groups = [] } = useCategoryGroups(budgetId)
   const moveMoney = useMoveMoney(budgetId)
@@ -50,7 +51,7 @@ export function AssignManualTab({ budgetId, month, tba, onDone }: Props) {
         month,
       })
       const name = eligible.find((c) => c.id === categoryId)?.name ?? 'category'
-      toast.success(`Assigned ${formatMoney(cents / 100)} to ${name}`)
+      notify(`Assigned ${formatMoney(cents / 100)} to ${name}`, 'latest')
       onDone()
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail

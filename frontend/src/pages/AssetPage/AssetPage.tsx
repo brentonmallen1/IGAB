@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ArrowUpRight, Pencil, Settings2, Trash2 } from 'lucide-react'
-import toast from 'react-hot-toast'
+import { useUndoToast } from '../../utils/toastUndo'
 import {
   CartesianGrid,
   ComposedChart,
@@ -58,6 +58,7 @@ export function AssetPage() {
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const navigate = useNavigate()
   const { formatMoney, formatDate } = useFormatters()
+  const notify = useUndoToast()
 
   const { data: assets = [], isLoading } = useAssets(budgetId)
   const asset = assets.find((a) => a.id === assetId) ?? null
@@ -131,7 +132,7 @@ export function AssetPage() {
 
   async function handleAddValue(value: number, date: string | null) {
     await addValue.mutateAsync({ assetId: asset!.id, value, ...(date ? { date } : {}) })
-    toast.success('Value recorded')
+    notify('Value recorded', 'latest')
     setShowValueForm(false)
   }
 

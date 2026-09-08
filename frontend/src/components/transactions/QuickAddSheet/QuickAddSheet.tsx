@@ -2,6 +2,7 @@ import { flatCategoryOptions } from '../../../utils/categoryPickers'
 import { rowMayCarryCategory } from '../../../utils/rowCategoryRule'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
+import { useUndoToast } from '../../../utils/toastUndo'
 import {
   AlertTriangle,
   Camera,
@@ -80,6 +81,7 @@ function freshSplits(): SplitDraft[] {
  */
 export function QuickAddSheet() {
   const { formatMoney, settings } = useFormatters()
+  const notify = useUndoToast()
   const currencySymbol = getCurrencySymbol(settings.currencyCode).trim()
   const open = useUIStore((s) => s.quickAddOpen)
   const closeQuickAdd = useUIStore((s) => s.closeQuickAdd)
@@ -436,8 +438,9 @@ export function QuickAddSheet() {
         : categoryName
           ? ` · ${categoryName}`
           : ''
-      toast.success(
-        `Added ${direction === 'outflow' ? '−' : ''}${formatMoney(cents / 100)}${where}`
+      notify(
+        `Added ${direction === 'outflow' ? '−' : ''}${formatMoney(cents / 100)}${where}`,
+        'latest'
       )
       hapticTick()
       if (addAnother) {

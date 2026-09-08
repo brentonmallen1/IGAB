@@ -2,7 +2,13 @@ import { useCallback, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { apiClient } from '../api/client'
-import { changesKeys, invalidateAfterUndo, type UndoLatestResponse } from '../api/changes'
+import {
+  changesKeys,
+  conflictMessage,
+  invalidateAfterUndo,
+  performUndo,
+  type UndoLatestResponse,
+} from '../api/changes'
 import { useAppStore } from '../stores/appStore'
 import { actionTypeLabel, entityTypeLabel } from '../pages/ActivityPage/changeLabels'
 import { skippedNote } from '../utils/undoneMessage'
@@ -38,9 +44,7 @@ export function useUndoRedo() {
     if (!budgetId || inFlight.current) return
     inFlight.current = true
     try {
-      const { data } = await apiClient.post<UndoLatestResponse>(`/${budgetId}/changes/undo`)
-      qc.invalidateQueries({ queryKey: changesKeys.budget(budgetId) })
-      invalidateAfterUndo(qc, budgetId)
+      const data = (await performUndo(qc, budgetId, 'latest')) as UndoLatestResponse
       const others = data.undone_change_ids.length - 1
       const left = skippedNote(data)
       toast.success(
@@ -71,11 +75,4 @@ export function useUndoRedo() {
   }, [budgetId, qc])
 
   return { undo, redo, enabled: !!budgetId }
-}
-
-/** The message inside a 409's structured detail, if the error carries one. */
-function conflictMessage(err: unknown): string | undefined {
-  const detail = (err as { response?: { data?: { detail?: { message?: string } | string } } })
-    ?.response?.data?.detail
-  return typeof detail === 'string' ? detail : detail?.message
 }

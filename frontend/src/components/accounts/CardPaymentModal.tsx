@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import toast from 'react-hot-toast'
+import { useUndoToast } from '../../utils/toastUndo'
 import { useAccounts } from '../../api/accounts'
 import { useBudgetMonth } from '../../api/budgets'
 import { useLiabilities } from '../../api/liabilities'
@@ -41,6 +41,7 @@ interface Props {
  */
 export function CardPaymentModal({ budgetId, accountId, onClose }: Props) {
   const { formatMoney } = useFormatters()
+  const notify = useUndoToast(accountId)
   const { data: accounts = [] } = useAccounts(budgetId)
   const { data: liabilities = [] } = useLiabilities(budgetId)
   const { data: monthData } = useBudgetMonth(budgetId, currentMonthStart())
@@ -100,10 +101,11 @@ export function CardPaymentModal({ budgetId, accountId, onClose }: Props) {
         cleared: 'uncleared',
         approved: true,
       })
-      toast.success(
+      notify(
         extraValue > 0
           ? `Payment of ${formatMoney(total)} recorded — ${formatMoney(extraValue)} of it straight to principal`
-          : `Payment of ${formatMoney(value)} recorded`
+          : `Payment of ${formatMoney(value)} recorded`,
+        'latest'
       )
       onClose()
     } catch (err: unknown) {
