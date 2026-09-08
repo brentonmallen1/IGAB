@@ -29,11 +29,7 @@
  * at most one of them is ever on.
  */
 import type { SelectChipGroup } from '../common/SelectChip/SelectChip'
-import {
-  QUICK_FILTER_LABELS,
-  QUICK_FILTER_VARIANTS,
-  type QuickFilter,
-} from '../../stores/uiStore'
+import { QUICK_FILTER_LABELS, QUICK_FILTER_VARIANTS, type QuickFilter } from '../../stores/uiStore'
 
 export interface SavedFilter {
   id: string
