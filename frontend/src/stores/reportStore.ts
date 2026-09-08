@@ -329,10 +329,19 @@ interface ReportState {
    *  their own window, and the ones that do not (`TAB_FILTER_SUPPORT.dates`)
    *  never see it. */
   rangeMonths: number
+  /** Whether the nav is showing the starred reports rather than a group.
+   *
+   *  A stored flag rather than a seventh `TabGroup`, because a starred report
+   *  keeps its real group — the row has to survive picking a report that
+   *  belongs to Spending without flipping the nav to Spending. It holds only
+   *  while the active tab is actually starred (`reportNav`), so unstarring
+   *  the one you are on needs no separate cleanup. */
+  navFavorites: boolean
   drillDown: DrillDownContext | null
 
   setActiveTab: (tab: ReportTab) => void
   setRangeMonths: (months: number) => void
+  setNavFavorites: (on: boolean) => void
   setFilters: (filters: Partial<ReportFilters>) => void
   setDrillDown: (ctx: DrillDownContext | null) => void
   resetFilters: () => void
@@ -360,12 +369,14 @@ export const useReportStore = create<ReportState>()(
       activeTab: 'overview',
       filters: defaultFilters(),
       rangeMonths: DEFAULT_RANGE_MONTHS,
+      navFavorites: false,
       drillDown: null,
 
       setActiveTab: (tab) => set({ activeTab: tab, drillDown: null }),
       // Clears the drill for the same reason a filter change does: the open
       // panel's window was resolved against the window that just moved.
       setRangeMonths: (months) => set({ rangeMonths: months, drillDown: null }),
+      setNavFavorites: (on) => set({ navFavorites: on }),
       // Filter changes invalidate the drill context (its window/ids were
       // resolved against the previous filters)
       setFilters: (partial) =>
@@ -379,6 +390,7 @@ export const useReportStore = create<ReportState>()(
         activeTab: s.activeTab,
         filters: s.filters,
         rangeMonths: s.rangeMonths,
+        navFavorites: s.navFavorites,
       }),
       // A state persisted before a filter field existed arrives without it,
       // and `filters.tagIds.length` on undefined is a blank Reports page for

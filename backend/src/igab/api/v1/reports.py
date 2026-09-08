@@ -46,6 +46,8 @@ from igab.api.v1.schemas.report import (
     PlanRealityCategory,
     PlanRealityResponse,
     ReportDrains,
+    ReportFavoritesResponse,
+    ReportFavoritesUpdate,
     ReportRangeResponse,
     SankeyLink,
     SankeyNode,
@@ -80,6 +82,7 @@ from igab.dependencies import (
     get_budget_service,
     get_category_repo,
     get_liability_service,
+    get_report_favorites_service,
     get_report_service,
     get_tag_repo,
 )
@@ -99,6 +102,7 @@ from igab.services.report_basics import (
 from igab.services.report_basics import (
     subscriptions_report as subscriptions_report_data,
 )
+from igab.services.report_favorites import ReportFavoritesService
 from igab.services.report_scope import resolve_category_scope
 from igab.services.report_service import ReportService
 
@@ -132,6 +136,25 @@ PlanRealityMonths = Annotated[int, Query(ge=3, le=MAX_REPORT_MONTHS)]
 
 
 router = APIRouter(route_class=CommitRoute)
+
+
+@router.get("/{budget_id}/reports/favorites", response_model=ReportFavoritesResponse)
+async def report_favorites(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    service: Annotated[ReportFavoritesService, Depends(get_report_favorites_service)],
+) -> ReportFavoritesResponse:
+    return ReportFavoritesResponse(tabs=await service.favorites(budget_id))
+
+
+@router.put("/{budget_id}/reports/favorites", response_model=ReportFavoritesResponse)
+async def set_report_favorites(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    service: Annotated[ReportFavoritesService, Depends(get_report_favorites_service)],
+    payload: ReportFavoritesUpdate,
+) -> ReportFavoritesResponse:
+    return ReportFavoritesResponse(tabs=await service.set_favorites(budget_id, payload.tabs))
 
 
 @router.get("/{budget_id}/reports/range", response_model=ReportRangeResponse)
