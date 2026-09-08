@@ -2,6 +2,8 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
+from pydantic import Field
+
 from igab.api.v1.schemas.base import ApiModel
 
 # ─── Existing ─────────────────────────────────────────────────────────────────
@@ -823,3 +825,20 @@ class WishlistDisciplineResponse(ApiModel):
     #: Endings we cannot place against a cooling-off period — wishes that
     #: predate the drop date, or never had one. Shown, not folded in.
     unplaced: int
+
+
+# ─── Starred reports ─────────────────────────────────────────────────────────
+
+
+class ReportFavoritesResponse(ApiModel):
+    #: Report ids, in the order they should read. The server does not know
+    #: which ids are real — see `services/report_favorites.py` — so the client
+    #: drops any it no longer recognises.
+    tabs: list[str] = []
+
+
+class ReportFavoritesUpdate(ApiModel):
+    #: The whole list, not a delta: a star is a toggle on a short list, and a
+    #: PUT of the result cannot disagree with itself the way an add/remove
+    #: pair can when two tabs are open.
+    tabs: list[str] = Field(default_factory=list, max_length=64)

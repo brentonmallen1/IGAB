@@ -40,21 +40,29 @@ import { CategoryHistoryReport } from '../../components/reports/charts/CategoryH
 import { CostOfLivingReport } from '../../components/reports/charts/CostOfLivingReport'
 import { WishlistDisciplineReport } from '../../components/reports/charts/WishlistDisciplineReport'
 import { IncomeSourcesReport } from '../../components/reports/charts/IncomeSourcesReport'
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, Star } from 'lucide-react'
 import { useEffect, useState, useRef } from 'react'
 import './ReportsPage.css'
 import { Surface } from '../../components/common/Surface'
+import { useReportFavorites, useSetReportFavorites } from '../../api/reportFavorites'
+import { FAVORITES_LABEL, reportNav, toggleFavorite } from './reportNav'
 
 export function ReportsPage() {
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const { activeTab, setActiveTab } = useReportStore()
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const navFavorites = useReportStore((s) => s.navFavorites)
+  const setNavFavorites = useReportStore((s) => s.setNavFavorites)
+  const { data: favorites } = useReportFavorites(budgetId)
+  const setFavorites = useSetReportFavorites(budgetId)
 
-  // Derive active group from active tab
+  // Which row of reports to draw, and what the dropdown reads. `reportNav`
+  // owns the rule that a starred report keeps its real group — see there.
+  const starred = favorites ?? []
+  const nav = reportNav(activeTab, navFavorites, starred)
   const activeGroup = getTabGroup(activeTab)
-  const groupTabs = getGroupTabs(activeGroup)
-  const activeGroupLabel = TAB_GROUPS.find((g) => g.id === activeGroup)?.label ?? 'Reports'
+  const isStarred = starred.includes(activeTab)
 
   // Guard against stale persisted tab ids (e.g. 'debts' was renamed to 'liabilities')
   useEffect(() => {
@@ -101,7 +109,20 @@ export function ReportsPage() {
   function handleGroupSelect(groupId: TabGroup) {
     const firstTab = getGroupTabs(groupId)[0]
     if (firstTab) setActiveTab(firstTab.id)
+    setNavFavorites(false)
     setDropdownOpen(false)
+  }
+
+  function handleFavoritesSelect() {
+    setNavFavorites(true)
+    // Only jump if the report on screen is not already starred: arriving at
+    // the starred row should not move you off the report you were reading.
+    if (!starred.includes(activeTab) && starred[0]) setActiveTab(starred[0])
+    setDropdownOpen(false)
+  }
+
+  function handleToggleStar() {
+    setFavorites.mutate(toggleFavorite(starred, activeTab))
   }
 
   if (!budgetId) {
@@ -188,7 +209,7 @@ export function ReportsPage() {
               aria-haspopup="listbox"
               type="button"
             >
-              <span>{activeGroupLabel}</span>
+              <span>{nav.label}</span>
               <ChevronDown
                 size={16}
                 className={`reports-nav__dropdown-icon ${dropdownOpen ? 'reports-nav__dropdown-icon--open' : ''}`}
@@ -196,12 +217,25 @@ export function ReportsPage() {
             </button>
             {dropdownOpen && (
               <ul className="reports-nav__dropdown-menu" role="listbox">
+                {/* Only once something is starred — an empty row would be a
+                    dead end, and the star that fills it is on this same bar. */}
+                {starred.length > 0 && (
+                  <li
+                    role="option"
+                    aria-selected={nav.favorites}
+                    className={`reports-nav__dropdown-item reports-nav__dropdown-item--favorites ${nav.favorites ? 'reports-nav__dropdown-item--active' : ''}`}
+                    onClick={handleFavoritesSelect}
+                  >
+                    <Star size={13} aria-hidden="true" />
+                    {FAVORITES_LABEL}
+                  </li>
+                )}
                 {TAB_GROUPS.map((group) => (
                   <li
                     key={group.id}
                     role="option"
-                    aria-selected={group.id === activeGroup}
-                    className={`reports-nav__dropdown-item ${group.id === activeGroup ? 'reports-nav__dropdown-item--active' : ''}`}
+                    aria-selected={!nav.favorites && group.id === activeGroup}
+                    className={`reports-nav__dropdown-item ${!nav.favorites && group.id === activeGroup ? 'reports-nav__dropdown-item--active' : ''}`}
                     onClick={() => handleGroupSelect(group.id)}
                   >
                     {group.label}
@@ -215,7 +249,7 @@ export function ReportsPage() {
 
           {/* Horizontal tabs for the current group */}
           <div className="reports-nav__tabs">
-            {groupTabs.map((tab) => (
+            {nav.tabs.map((tab) => (
               <button
                 key={tab.id}
                 className={`reports-nav__tab ${tab.id === activeTab ? 'reports-nav__tab--active' : ''}`}
@@ -226,6 +260,20 @@ export function ReportsPage() {
               </button>
             ))}
           </div>
+
+          {/* Stars the report you are reading, which is when you know you
+              want it back. Outside the scrolling tab row so it stays put. */}
+          <button
+            type="button"
+            className={`reports-nav__star ${isStarred ? 'reports-nav__star--on' : ''}`}
+            onClick={handleToggleStar}
+            disabled={setFavorites.isPending}
+            aria-pressed={isStarred}
+            title={isStarred ? 'Remove from favorites' : 'Add to favorites'}
+            aria-label={isStarred ? 'Remove from favorites' : 'Add to favorites'}
+          >
+            <Star size={15} fill={isStarred ? 'currentColor' : 'none'} />
+          </button>
         </div>
       </Surface>
 

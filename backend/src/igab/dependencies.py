@@ -46,6 +46,7 @@ from igab.services.category_service import CategoryService
 from igab.services.change_log import ChangeRecorder
 from igab.services.liability_service import LiabilityService
 from igab.services.reconciliation_service import ReconciliationService
+from igab.services.report_favorites import ReportFavoritesService
 from igab.services.report_service import ReportService
 from igab.services.scheduled_transaction_service import ScheduledTransactionService
 from igab.services.settings_service import SettingsService
@@ -691,3 +692,12 @@ ViewAccess = Annotated[uuid.UUID, Depends(require_view_access)]
 ScheduledAccess = Annotated[uuid.UUID, Depends(require_scheduled_access)]
 MatchAccess = Annotated[uuid.UUID, Depends(require_match_access)]
 TagAccess = Annotated[uuid.UUID, Depends(require_tag_access)]
+
+
+def get_report_favorites_service(
+    session: SessionDep, current_user: "CurrentUser"
+) -> ReportFavoritesService:
+    service = ReportFavoritesService(session)
+    # Same actor stamping as get_budget_service — see there.
+    service.changes.actor_user_id = current_user.id
+    return service

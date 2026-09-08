@@ -103,6 +103,65 @@
   font-weight: 600;
 }
 
+/* The starred row's entry, above the groups. The icon says what the row is
+   without a second label, and separates it from the six groups below without
+   a rule — it is a different kind of thing, not a seventh group. */
+.reports-nav__dropdown-item--favorites {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  margin-bottom: var(--spacing-xs);
+  border-bottom: 1px solid var(--border-color);
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  padding-bottom: var(--spacing-sm);
+}
+
+/* ─── Star: favourites the report on screen ──────────────────────────────── */
+
+/* Outside the scrolling tab row so it holds its place however many tabs the
+   row carries — the row is `overflow-x: auto` and a star inside it would
+   scroll away exactly when someone reached for it. */
+.reports-nav__star {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  color: var(--text-muted);
+  background: none;
+  border: 0;
+  border-radius: var(--border-radius-sm);
+  cursor: pointer;
+  transition:
+    color 0.1s,
+    background 0.1s;
+}
+
+.reports-nav__star:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+}
+
+/* Accent, not gold: a star is a state this app records, and every theme owns
+   its own accent. */
+.reports-nav__star--on {
+  color: var(--accent-color);
+}
+
+.reports-nav__star:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+@media (max-width: 768px) {
+  .reports-nav__star {
+    width: var(--tap-min);
+    height: var(--tap-min);
+  }
+}
+
 /* ─── Separator between dropdown and tabs ────────────────────────────────── */
 
 .reports-nav__separator {
