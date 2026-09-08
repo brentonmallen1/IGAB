@@ -217,6 +217,11 @@
      own, where the only alternative is no cap at all. */
   --panel-max-h: calc(var(--app-h) - 96px);
 
+  /* Where a centred-at-the-top overlay begins. Five panels wrote it as 8vh,
+     12vh and 15vh — three numbers for one intention, and all of them blind
+     to the keyboard and to the standalone status bar, like every vh. */
+  --modal-top-gap: calc(var(--app-h) * 0.1);
+
   /* Minimum comfortable touch target (WCAG 2.5.5 / Apple HIG). */
   --tap-min: 44px;
 

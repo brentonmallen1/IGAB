@@ -194,7 +194,7 @@
 
 .tba-history-modal {
   width: min(560px, calc(100vw - 2 * var(--spacing-lg)));
-  max-height: min(70vh, 640px);
+  max-height: min(var(--panel-max-h), 640px);
   display: flex;
   flex-direction: column;
   background-color: var(--surface-overlay);

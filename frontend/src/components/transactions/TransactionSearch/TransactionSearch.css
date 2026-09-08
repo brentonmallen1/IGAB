@@ -91,7 +91,7 @@
   box-shadow: var(--shadow-md);
   z-index: var(--z-page-chrome);
   /* Cap the list so the full syntax reference doesn't cover the register */
-  max-height: min(320px, 45vh);
+  max-height: min(320px, var(--panel-max-h));
   /* Explicitly hidden, not left to compute from `visible`: paired auto axes
      put a scrollbar corner in the bottom-right that looks like a resize grip.
      Nothing here needs to scroll sideways — the width above sees to that. */

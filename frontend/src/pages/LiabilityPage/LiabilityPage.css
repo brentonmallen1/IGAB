@@ -236,7 +236,7 @@
 
 /* Update-balance mini modal */
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .liability-page {
     padding: var(--spacing-md);
   }

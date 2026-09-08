@@ -1174,7 +1174,7 @@
 .flow__viewport {
   position: relative;
   overflow: hidden;
-  height: min(72vh, 780px);
+  height: min(calc(var(--app-h) * 0.72), 780px);
   /* Inset from the card so its raised colour shows around the well. Fill,
      edge and radius come from `surface surface--sunken`, not from here. */
   margin: 0 var(--spacing-sm) var(--spacing-sm);
@@ -1410,7 +1410,7 @@
 
 @media (max-width: 768px) {
   .flow__viewport {
-    height: min(64vh, 560px);
+    height: min(calc(var(--app-h) * 0.64), 560px);
   }
   .flow__hint {
     display: none;
@@ -2108,7 +2108,7 @@
   text-decoration: none;
 }
 
-@media (max-width: 720px) {
+@media (max-width: 768px) {
   .checkup-block {
     grid-template-columns: 1fr;
     gap: var(--spacing-md);

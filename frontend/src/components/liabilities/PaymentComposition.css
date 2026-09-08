@@ -105,7 +105,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   /* The amount and its remove button stay on one line; the kind and name
      take the row above, because three inputs plus a button will not fit. */
   .payment-composition__row {

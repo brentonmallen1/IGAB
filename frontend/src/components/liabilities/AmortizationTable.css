@@ -99,7 +99,7 @@
 }
 
 /* Mobile: stacked cards */
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .amort-table thead {
     display: none;
   }

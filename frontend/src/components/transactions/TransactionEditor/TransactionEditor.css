@@ -615,7 +615,7 @@
 
   .txn-editor__receipt {
     flex: 0 0 auto;
-    max-height: 32dvh;
+    max-height: calc(var(--app-h) * 0.32);
     padding: var(--spacing-md) var(--spacing-md) 0;
   }
 

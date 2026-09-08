@@ -41,7 +41,8 @@
 
 /* Native drag never fires on touch; the phone reorders from its action sheet
    instead, so the grip would only be a dead affordance there. */
-@media (hover: none) and (pointer: coarse) {
+/* (hover: none) is the app's one touch test — useIsTouch() asks the same. */
+@media (hover: none) {
   .drag-handle {
     display: none;
   }

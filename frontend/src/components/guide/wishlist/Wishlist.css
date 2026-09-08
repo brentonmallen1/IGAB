@@ -560,7 +560,7 @@
   flex-wrap: wrap;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .guide-wishlist__status {
     align-items: flex-start;
   }

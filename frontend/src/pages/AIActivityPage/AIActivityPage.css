@@ -308,7 +308,7 @@
 .ai-activity--unavailable {
   align-items: center;
   text-align: center;
-  padding-top: 15vh;
+  padding-top: var(--modal-top-gap);
   color: var(--text-muted);
 }
 

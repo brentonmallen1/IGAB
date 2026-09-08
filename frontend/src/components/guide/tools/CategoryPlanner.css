@@ -402,7 +402,7 @@
 
 /* ── small screens: columns stack as cards, matching Tools.css's 640px ── */
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .planner__columns {
     flex-direction: column;
     overflow-x: visible;

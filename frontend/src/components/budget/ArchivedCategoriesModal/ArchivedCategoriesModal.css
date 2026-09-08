@@ -3,7 +3,7 @@
 
 .archived-modal__overlay {
   align-items: flex-start;
-  padding-top: 8vh;
+  padding-top: var(--modal-top-gap);
 }
 
 .archived-modal {
@@ -129,7 +129,7 @@
   color: var(--color-negative);
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .archived-modal__actions {
     margin-left: 0;
     width: 100%;

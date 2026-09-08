@@ -139,7 +139,7 @@
   color: var(--text-secondary);
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .asset-page {
     padding: var(--spacing-md);
   }
