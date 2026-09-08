@@ -223,8 +223,8 @@ export function BudgetFilterBar({ budgetId, categoryBalances, barRef }: Props) {
               searchRef.current?.blur()
             }
           }}
-          placeholder="Filter categories…"
-          aria-label="Filter categories by name"
+          placeholder="Filter categories… or tag:essential"
+          aria-label="Filter categories by name, group, or tag"
         />
         {categorySearch && (
           <button

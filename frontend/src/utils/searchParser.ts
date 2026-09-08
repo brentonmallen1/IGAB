@@ -805,7 +805,9 @@ export function parseTransactionSearch(
   return parseSearch(query, categoryMap, payeeMap, accountMap, now).filters
 }
 
-function tokenize(query: string): string[] {
+/** Quote-aware splitting, shared with the budget page's own small search
+ *  language — the tokens differ between the two, the quoting rule does not. */
+export function tokenize(query: string): string[] {
   const tokens: string[] = []
   let i = 0
   while (i < query.length) {
