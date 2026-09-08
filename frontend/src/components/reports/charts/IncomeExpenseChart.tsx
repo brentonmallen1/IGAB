@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef } from 'react'
 import {
   Bar,
   ComposedChart,
@@ -10,7 +10,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { useReportStore } from '../../../stores/reportStore'
+import { useReportMonths, useReportStore } from '../../../stores/reportStore'
 import { useIncomeExpenseReport } from '../../../api/reports'
 import { useChartHeight } from '../../../hooks/useChartHeight'
 import { useFormatters } from '../../../hooks/useFormatters'
@@ -32,7 +32,7 @@ export function IncomeExpenseReport({ budgetId }: Props) {
   const chartHeight = useChartHeight(340)
   const { formatMoney } = useFormatters()
   const setDrillDown = useReportStore((s) => s.setDrillDown)
-  const [months, setMonths] = useState(12)
+  const months = useReportMonths()
   const { data, isLoading, isError, error, refetch } = useIncomeExpenseReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
 
@@ -99,7 +99,7 @@ export function IncomeExpenseReport({ budgetId }: Props) {
           <ReportScopeNote scope="on-budget" />
         </ReportInfoButton>
         <div className="flex-row ms-auto">
-          <ReportRangeSelect months={months} onChange={setMonths} />
+          <ReportRangeSelect />
           <ReportExportButton
             reportId="income-expense"
             getRows={() =>

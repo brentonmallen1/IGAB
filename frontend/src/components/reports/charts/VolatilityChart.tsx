@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef } from 'react'
 import {
   Bar,
   BarChart,
@@ -9,7 +9,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { useReportStore } from '../../../stores/reportStore'
+import { useReportMonths, useReportStore } from '../../../stores/reportStore'
 import { useVolatilityReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
@@ -29,7 +29,7 @@ interface Props {
 export function VolatilityReport({ budgetId }: Props) {
   const { formatMoney } = useFormatters()
   const setDrillDown = useReportStore((s) => s.setDrillDown)
-  const [months, setMonths] = useState(12)
+  const months = useReportMonths()
   const { data, isLoading, isError, error, refetch } = useVolatilityReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
 
@@ -84,7 +84,7 @@ export function VolatilityReport({ budgetId }: Props) {
           Mean monthly spending with min/max range. High variation = unstable spending.
         </p>
         <div className="flex-row ms-auto">
-          <ReportRangeSelect months={months} onChange={setMonths} />
+          <ReportRangeSelect />
           <ReportExportButton
             reportId="volatility"
             getRows={() =>

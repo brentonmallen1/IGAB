@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { CheckCircle2 } from 'lucide-react'
 import { LineChart, Line, ReferenceLine, ResponsiveContainer } from 'recharts'
 import { useAnomaliesReport } from '../../../api/reports'
-import { useReportStore } from '../../../stores/reportStore'
+import { useReportMonths, useReportStore } from '../../../stores/reportStore'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
 import { ReportRangeSelect } from './rangeSelect'
@@ -20,7 +20,7 @@ const SENSITIVITY_OPTIONS = [
 ] as const
 
 export function AnomaliesReport({ budgetId }: Props) {
-  const [months, setMonths] = useState(12)
+  const months = useReportMonths()
   const [threshold, setThreshold] = useState(2.5)
   const { data, isLoading, isError, error, refetch } = useAnomaliesReport(
     budgetId,
@@ -101,7 +101,7 @@ export function AnomaliesReport({ budgetId }: Props) {
           <ReportScopeNote scope="categories" />
         </ReportInfoButton>
         <div className="flex-row">
-          <ReportRangeSelect months={months} onChange={setMonths} />
+          <ReportRangeSelect />
         </div>
         <div className="flex-row">
           {SENSITIVITY_OPTIONS.map((opt) => (

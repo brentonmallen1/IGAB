@@ -9,13 +9,16 @@
  */
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const range = vi.hoisted(() => ({ current: null as { months_available: number } | null }))
 vi.mock('../../../api/reports', () => ({ useReportRange: () => ({ data: range.current }) }))
 vi.mock('../../../stores/appStore', () => ({ useAppStore: () => 'b1' }))
 
 import { ReportRangeSelect, rangeOptions } from './rangeSelect'
+import { DEFAULT_RANGE_MONTHS, useReportStore } from '../../../stores/reportStore'
+
+beforeEach(() => useReportStore.setState({ rangeMonths: DEFAULT_RANGE_MONTHS }))
 
 describe('rangeOptions', () => {
   it('offers only windows the budget can fill, and names the longest "All time"', () => {
@@ -57,18 +60,27 @@ describe('rangeOptions', () => {
 describe('ReportRangeSelect', () => {
   it('shows what the budget can offer', () => {
     range.current = { months_available: 30 }
-    render(<ReportRangeSelect months={12} onChange={() => {}} />)
+    render(<ReportRangeSelect />)
     expect(screen.getByRole('combobox', { name: 'Date range' })).toHaveValue('12')
     expect(screen.getByRole('option', { name: 'All time (30 months)' })).toBeInTheDocument()
     expect(screen.queryByRole('option', { name: '36 months' })).not.toBeInTheDocument()
   })
 
-  it('reports the window that was chosen, as a number', () => {
+  it('records the chosen window as a number, for every report', () => {
+    // The store, not a prop: sixteen reports each held this in `useState(12)`,
+    // and the tabs are separate components — so the one holding a 6-month
+    // choice was unmounted the moment you left it, and the next initialised
+    // its own 12.
     range.current = { months_available: 30 }
-    const onChange = vi.fn()
-    render(<ReportRangeSelect months={12} onChange={onChange} />)
     return userEvent
-      .selectOptions(screen.getByRole('combobox'), '24')
-      .then(() => expect(onChange).toHaveBeenCalledWith(24))
+      .selectOptions(render(<ReportRangeSelect />).getByRole('combobox'), '24')
+      .then(() => expect(useReportStore.getState().rangeMonths).toBe(24))
+  })
+
+  it('opens on whatever window was last chosen', () => {
+    range.current = { months_available: 30 }
+    useReportStore.setState({ rangeMonths: 6 })
+    render(<ReportRangeSelect />)
+    expect(screen.getByRole('combobox', { name: 'Date range' })).toHaveValue('6')
   })
 })

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useRef } from 'react'
 import {
   Bar,
   BarChart,
@@ -21,6 +21,7 @@ import { ReportInfoButton } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ChartTooltip } from './ChartTooltip'
 import { chartColor } from './chartColors'
+import { useReportMonths } from '../../../stores/reportStore'
 
 interface Props {
   budgetId: string
@@ -34,7 +35,7 @@ export function IncomeSourcesReport({ budgetId }: Props) {
   const { formatMoney, formatMonth, settings } = useFormatters()
   const currencySymbol = getCurrencySymbol(settings.currencyCode)
   const chartHeight = useChartHeight(320)
-  const [months, setMonths] = useState(12)
+  const months = useReportMonths()
   const captureRef = useRef<HTMLDivElement>(null)
   const { data, isLoading, isError, error, refetch } = useIncomeBySourceReport(budgetId, months)
 
@@ -68,7 +69,7 @@ export function IncomeSourcesReport({ budgetId }: Props) {
           </p>
         </ReportInfoButton>
         <div className="flex-row">
-          <ReportRangeSelect months={months} onChange={setMonths} />
+          <ReportRangeSelect />
         </div>
         <div style={{ marginLeft: 'auto' }}>
           <ReportExportButton

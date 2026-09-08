@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { useReportStore } from '../../../stores/reportStore'
+import { useReportMonths, useReportStore } from '../../../stores/reportStore'
 import { usePlanVsRealityReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
@@ -40,7 +40,7 @@ function overspendStyle(variance: number, maxOver: number): React.CSSProperties 
 export function PlanVsRealityReport({ budgetId }: Props) {
   const { formatMoney } = useFormatters()
   const setDrillDown = useReportStore((s) => s.setDrillDown)
-  const [months, setMonths] = useState(12)
+  const months = useReportMonths()
   const [chronicOnly, setChronicOnly] = useState(false)
   const { data, isLoading, isError, error, refetch } = usePlanVsRealityReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
@@ -90,7 +90,7 @@ export function PlanVsRealityReport({ budgetId }: Props) {
         </ReportInfoButton>
         <p className="report-section__subtitle">Assigned vs spent per month — carryover ignored</p>
         <div className="flex-row ms-auto" style={{ flexWrap: 'wrap' }}>
-          <ReportRangeSelect months={months} onChange={setMonths} />
+          <ReportRangeSelect />
           <label className="report-toggle">
             <input
               type="checkbox"

@@ -21,6 +21,7 @@ import { MetricRow } from '../MetricRow'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ReportRangeSelect } from './rangeSelect'
+import { useReportMonths } from '../../../stores/reportStore'
 
 interface Props {
   budgetId: string
@@ -31,7 +32,7 @@ const pct = (v: number | null) => (v === null ? '—' : `${(v * 100).toFixed(1)}
 export function SavingsRateReport({ budgetId }: Props) {
   const chartHeight = useChartHeight(320)
   const { formatMoney } = useFormatters()
-  const [months, setMonths] = useState(12)
+  const months = useReportMonths()
   const [withDebt, setWithDebt] = useState(true)
   const { data, isLoading, isError, error, refetch } = useSavingsRateReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
@@ -81,7 +82,7 @@ export function SavingsRateReport({ budgetId }: Props) {
         </ReportInfoButton>
         <p className="report-section__subtitle">Share of income kept</p>
         <div className="flex-row ms-auto">
-          <ReportRangeSelect months={months} onChange={setMonths} />
+          <ReportRangeSelect />
           <button
             className={`report-btn ${withDebt ? 'report-btn--active' : ''}`}
             aria-pressed={withDebt}

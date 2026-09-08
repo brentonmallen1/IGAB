@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef } from 'react'
 import {
   Bar,
   ComposedChart,
@@ -22,6 +22,7 @@ import { MetricRow } from '../MetricRow'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ReportRangeSelect } from './rangeSelect'
+import { useReportMonths } from '../../../stores/reportStore'
 
 interface Props {
   budgetId: string
@@ -30,7 +31,7 @@ interface Props {
 export function VarianceReport({ budgetId }: Props) {
   const chartHeight = useChartHeight(340)
   const { formatMoney } = useFormatters()
-  const [months, setMonths] = useState(12)
+  const months = useReportMonths()
   const { data, isLoading, isError, error, refetch } = useVarianceReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
 
@@ -67,7 +68,7 @@ export function VarianceReport({ budgetId }: Props) {
         </ReportInfoButton>
         <p className="report-section__subtitle">Running budget drift over time</p>
         <div className="flex-row ms-auto">
-          <ReportRangeSelect months={months} onChange={setMonths} />
+          <ReportRangeSelect />
           <ReportExportButton
             reportId="variance"
             getRows={() =>

@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react'
-import { useReportStore } from '../../../stores/reportStore'
+import { useRef } from 'react'
+import { useReportMonths, useReportStore } from '../../../stores/reportStore'
 import { useSeasonalityReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
@@ -25,7 +25,7 @@ function intensityStyle(value: number, max: number): React.CSSProperties {
 export function SeasonalityReport({ budgetId }: Props) {
   const { formatMoney } = useFormatters()
   const setDrillDown = useReportStore((s) => s.setDrillDown)
-  const [months, setMonths] = useState(12)
+  const months = useReportMonths()
   const { data, isLoading, isError, error, refetch } = useSeasonalityReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
 
@@ -72,7 +72,7 @@ export function SeasonalityReport({ budgetId }: Props) {
         </ReportInfoButton>
         <p className="report-section__subtitle">Monthly spending intensity per category</p>
         <div className="flex-row ms-auto">
-          <ReportRangeSelect months={months} onChange={setMonths} />
+          <ReportRangeSelect />
           <ReportExportButton
             reportId="seasonality"
             getRows={() =>

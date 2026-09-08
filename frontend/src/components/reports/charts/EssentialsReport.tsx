@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Bar,
@@ -23,6 +23,7 @@ import { ChartTooltip } from './ChartTooltip'
 import { CHART_COLORS, COLOR_NET } from './chartColors'
 import { shareOfLeanMonth, worstMonth } from './essentialsView'
 import './EssentialsReport.css'
+import { useReportMonths } from '../../../stores/reportStore'
 
 interface Props {
   budgetId: string
@@ -40,7 +41,7 @@ interface Props {
  */
 export function EssentialsReport({ budgetId }: Props) {
   const { formatMoney, formatMonth } = useFormatters()
-  const [months, setMonths] = useState(12)
+  const months = useReportMonths()
   const { data, isLoading, isError, error, refetch } = useEssentialsReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
 
@@ -73,7 +74,7 @@ export function EssentialsReport({ budgetId }: Props) {
             </p>
           </ReportInfoButton>
           <div className="flex-row ms-auto">
-            <ReportRangeSelect months={months} onChange={setMonths} />
+            <ReportRangeSelect />
             <ReportExportButton
               reportId="essentials"
               getRows={() => [
