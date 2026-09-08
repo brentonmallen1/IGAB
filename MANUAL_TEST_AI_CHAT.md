@@ -112,13 +112,30 @@ before this change and swallow their own failures — so if one of them has been
 quietly failing, this is the first time you will see it. **An error row
 appearing here is a discovery, not a new bug.**
 
+## Fixed in the polish pass — worth re-checking
+
+These were found by review rather than by use, so they are the least
+hand-tested part:
+
+- **On a phone the panel is now the app's BottomSheet**, not a hand-rolled
+  full-screen div. Check: swipe-to-dismiss, Android back, the close button
+  under the notch, and that the keyboard does *not* come up the instant you
+  open it.
+- **Ranked results.** Ask "who did I pay the most?" on a budget with more than
+  25 payees. The answer must not state a total number of payees — the tool no
+  longer claims one. If it says "you paid 25 payees", the prompt needs work.
+- **Interrupt it again.** Closing the panel mid-answer should still record the
+  call *and* keep whatever the model had already said.
+- **Markdown.** Ask something whose answer wants a table. Check it scrolls
+  inside its own box rather than widening the panel, and that money columns
+  right-align.
+- **Try again** appears on a failed turn and re-sends the same question.
+
 ## Known and deliberate
 
 - **Read-only.** It advises; it never moves money. If it ever claims to have
   changed something, that is a prompt bug worth reporting.
 - **A dropped stream is a lost turn.** The assistant message is written once, at
   the end, so a half-answer never lands looking complete.
-- **Answers render as plain text.** No markdown renderer is installed; if the
-  model's lists and tables read badly, that is the next thing to add.
 - **Conversations are excluded from budget snapshots** on purpose — a snapshot
   is a file you might hand to someone else.
