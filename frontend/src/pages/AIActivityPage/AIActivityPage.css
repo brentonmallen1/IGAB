@@ -434,3 +434,224 @@
 .ai-activity__action--approve:hover:not(:disabled) {
   background-color: color-mix(in srgb, var(--color-accent) 12%, transparent);
 }
+
+/* ── tabs ───────────────────────────────────────────────────────────── */
+
+.ai-activity__tabs {
+  display: flex;
+  gap: var(--spacing-xs);
+  padding: 0 var(--spacing-md);
+  border-bottom: 1px solid var(--edge);
+  flex-shrink: 0;
+}
+
+.ai-activity__tab {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.ai-activity__tab:hover {
+  color: var(--text-primary);
+}
+
+.ai-activity__tab--active {
+  color: var(--text-primary);
+  border-bottom-color: var(--color-accent);
+}
+
+/* ── model calls ────────────────────────────────────────────────────── */
+
+.ai-calls__count {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.ai-calls__purge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding: 2px var(--spacing-xs);
+  border: 1px solid var(--edge-strong);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.ai-calls__purge:hover {
+  color: var(--color-negative);
+  border-color: var(--color-negative);
+}
+
+.ai-call {
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-sm);
+  background-color: var(--surface-raised);
+  margin-bottom: var(--spacing-xs);
+}
+
+.ai-call__head {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  width: 100%;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ai-call__feature {
+  flex: 1;
+  font-weight: 500;
+}
+
+.ai-call__model,
+.ai-call__ms,
+.ai-call__tokens,
+.ai-call__tools {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.ai-call__status--error {
+  color: var(--color-negative);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.ai-call__status--cancelled {
+  color: var(--color-warning);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.ai-call__error {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 var(--spacing-sm) var(--spacing-xs);
+  font-size: 11px;
+  color: var(--color-negative);
+}
+
+.ai-call__detail {
+  padding: var(--spacing-sm);
+  border-top: 1px solid var(--edge);
+  background-color: var(--surface-sunken);
+  font-size: 11px;
+}
+
+.ai-call__detail h4 {
+  margin: 0 0 4px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.ai-call__detail section + section {
+  margin-top: var(--spacing-sm);
+}
+
+.ai-call__detail pre {
+  margin: 0;
+  padding: var(--spacing-xs);
+  max-height: 260px;
+  overflow: auto;
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.ai-call__trace {
+  margin: 0;
+  padding-left: var(--spacing-md);
+  color: var(--text-secondary);
+}
+
+.ai-call__trace code {
+  word-break: break-all;
+}
+
+/* What actually ran, when it differs from what the model asked for. */
+.ai-call__changed {
+  color: var(--color-warning);
+}
+
+.ai-call__pruned {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+/* ── chats ──────────────────────────────────────────────────────────── */
+
+.ai-chat-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-sm);
+  background-color: var(--surface-raised);
+  margin-bottom: var(--spacing-xs);
+}
+
+.ai-chat-row__open {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  flex: 1;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ai-chat-row__title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-chat-row__meta {
+  font-size: 11px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.ai-chat-row__delete {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-right: var(--spacing-xs);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.ai-chat-row__delete:hover {
+  color: var(--color-negative);
+  background-color: var(--bg-hover);
+}
