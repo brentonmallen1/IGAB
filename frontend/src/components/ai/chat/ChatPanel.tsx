@@ -8,6 +8,7 @@ import { useConversation } from '../../../api/aiChat'
 import { useChatStream } from './useChatStream'
 import { describePage } from './pageContext'
 import { ToolTrace } from './ToolTrace'
+import { ChatMarkdown } from './ChatMarkdown'
 import { useChatPanelResize } from './useChatPanelResize'
 import './ChatPanel.css'
 
@@ -126,7 +127,13 @@ export function ChatPanel() {
                 }))}
               />
             )}
-            <div className="chat-msg__body">{message.content}</div>
+            <div className="chat-msg__body">
+              {message.role === 'assistant' ? (
+                <ChatMarkdown>{message.content}</ChatMarkdown>
+              ) : (
+                message.content
+              )}
+            </div>
           </div>
         ))}
 
@@ -137,7 +144,11 @@ export function ChatPanel() {
             </div>
             <div className="chat-msg chat-msg--assistant">
               <ToolTrace tools={turn.tools} />
-              {turn.answer && <div className="chat-msg__body">{turn.answer}</div>}
+              {turn.answer && (
+                <div className="chat-msg__body">
+                  <ChatMarkdown>{turn.answer}</ChatMarkdown>
+                </div>
+              )}
               {turn.streaming && !turn.answer && (
                 <div className="chat-msg__working">
                   <Loader2 size={13} className="chat-msg__spin" />
