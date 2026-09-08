@@ -40,11 +40,6 @@
   color: var(--text-muted);
 }
 
-.sched-btn--sm {
-  padding: 2px 8px;
-  font-size: var(--font-size-xs);
-}
-
 .sched-empty {
   color: var(--text-muted);
   text-align: center;
@@ -56,143 +51,8 @@
   overflow: hidden;
 }
 
-.sched-table__head {
-  position: sticky;
-  top: 0;
-  z-index: var(--z-sticky);
-  display: grid;
-  grid-template-columns: 1.2fr 1.2fr 1fr 1fr 1fr 60px auto;
-  padding: var(--spacing-xs) var(--spacing-md);
-  background: var(--bg-secondary);
-  font-size: var(--font-size-xs);
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.sched-table__row {
-  display: grid;
-  grid-template-columns: 1.2fr 1.2fr 1fr 1fr 1fr 60px auto;
-  padding: var(--spacing-sm) var(--spacing-md);
-  border-bottom: 1px solid var(--border-subtle, var(--border-color));
-  font-size: var(--font-size-sm);
-  color: var(--text-primary);
-  align-items: center;
-  cursor: pointer;
-  transition: background 0.1s;
-}
-
-.sched-table__row:hover {
-  background: var(--row-hover-bg, var(--bg-secondary));
-}
-
-.sched-table__row:last-child {
-  border-bottom: none;
-}
-
-.sched-table__actions {
-  display: flex;
-  gap: 4px;
-  justify-content: flex-end;
-}
-
-.positive {
-  color: var(--color-positive);
-}
-.negative {
-  color: var(--color-negative);
-}
-
 @media (max-width: 768px) {
   .sched-page {
     padding: var(--spacing-md);
   }
-
-  /* Seven columns can't fit — restack each row as a card instead of
-     scrolling sideways */
-  .sched-table__head {
-    display: none;
-  }
-
-  .sched-table__row {
-    grid-template-columns: 1fr auto;
-    grid-template-areas:
-      "payee amount"
-      "account freq"
-      "date auto"
-      "actions actions";
-    row-gap: var(--spacing-xs);
-    padding: var(--spacing-md);
-  }
-
-  .sched-cell--payee {
-    grid-area: payee;
-    font-weight: 600;
-  }
-
-  .sched-cell--amount {
-    grid-area: amount;
-    text-align: right;
-  }
-
-  .sched-cell--account {
-    grid-area: account;
-    color: var(--text-muted);
-    font-size: var(--font-size-xs);
-  }
-
-  .sched-cell--freq {
-    grid-area: freq;
-    color: var(--text-muted);
-    font-size: var(--font-size-xs);
-    text-align: right;
-  }
-
-  .sched-cell--date {
-    grid-area: date;
-    color: var(--text-muted);
-    font-size: var(--font-size-xs);
-  }
-
-  .sched-cell--auto {
-    grid-area: auto;
-    color: var(--text-muted);
-    font-size: var(--font-size-xs);
-    text-align: right;
-  }
-
-  .sched-cell--auto::before {
-    content: "Auto: ";
-  }
-
-  .sched-table__actions {
-    grid-area: actions;
-  }
-
-  /* Comfortable touch targets for the inline actions */
-  .sched-btn--sm {
-    padding: var(--spacing-sm) var(--spacing-md);
-    min-height: 40px;
-  }
-}
-
-/* Reminder: due-soon inside the schedule's own window, overdue once the date
-   has passed and nobody entered or skipped it. Overdue is a warning, not a
-   negative — no money has gone wrong, a bill is waiting on a person. */
-.sched-cell--date {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.sched-due {
-  font-size: var(--font-size-2xs);
-  font-weight: 600;
-  color: var(--text-muted);
-}
-
-.sched-due--overdue {
-  color: var(--color-warning);
 }

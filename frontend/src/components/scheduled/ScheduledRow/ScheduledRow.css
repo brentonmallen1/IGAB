@@ -1,0 +1,266 @@
+/* One row for a scheduled transaction; see ScheduledRow.tsx for why.
+   Desktop: two column sets, keyed by layout. Phone: one card, below. */
+
+.scheduled-row {
+  display: grid;
+  align-items: center;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.scheduled-row:hover {
+  background: var(--row-hover-bg);
+}
+
+/* ── Desktop, in the register ────────────────────────────────────────────
+   A provisional row among real ones: muted and italic, on a faint ground,
+   so it reads as "not yet" without a badge. Columns: spacer (where the
+   register's checkbox sits), date + frequency, payee, category, memo,
+   amount over the register's two money columns, actions. */
+.scheduled-row--register {
+  grid-template-columns: 32px 120px 1fr 1fr 1fr 180px 100px;
+  padding: 6px var(--spacing-sm);
+  color: var(--text-muted);
+  font-style: italic;
+  background-color: color-mix(in srgb, var(--bg-secondary) 60%, transparent);
+}
+
+.scheduled-row--register .scheduled-row__account,
+.scheduled-row--register .scheduled-row__auto {
+  display: none;
+}
+
+.scheduled-row--register .scheduled-row__date {
+  grid-column: 2;
+}
+
+.scheduled-row--register .scheduled-row__freq {
+  /* Under the date, in the date's column: the frequency is when, not what. */
+  grid-column: 2;
+  grid-row: 1;
+  align-self: end;
+  padding-top: 18px;
+}
+
+/* ── Desktop, on the Scheduled page ────────────────────────────────────── */
+.scheduled-row--table,
+.scheduled-row__head {
+  grid-template-columns: 1.2fr 1.2fr 1fr 1fr 1fr 60px auto;
+  padding: var(--spacing-sm) var(--spacing-md);
+}
+
+.scheduled-row--table .scheduled-row__category,
+.scheduled-row--table .scheduled-row__memo {
+  display: none;
+}
+
+.scheduled-row:last-child {
+  border-bottom: none;
+}
+
+.scheduled-row__head {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  display: grid;
+  padding-top: var(--spacing-xs);
+  padding-bottom: var(--spacing-xs);
+  background: var(--bg-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+/* ── Cells ──────────────────────────────────────────────────────────────── */
+.scheduled-row__amount.positive {
+  color: var(--color-positive);
+}
+
+.scheduled-row__amount.negative {
+  color: var(--color-negative);
+}
+
+.scheduled-row--register .scheduled-row__amount {
+  text-align: right;
+  padding-right: var(--spacing-md);
+}
+
+.scheduled-row--register .scheduled-row__direction {
+  display: none;
+}
+
+.scheduled-row__freq {
+  font-size: var(--font-size-2xs);
+  font-style: normal;
+  font-weight: 600;
+  color: var(--color-accent);
+  opacity: 0.8;
+}
+
+.scheduled-row--table .scheduled-row__freq {
+  font-size: var(--font-size-sm);
+  font-weight: 400;
+  color: var(--text-primary);
+  opacity: 1;
+}
+
+.scheduled-row__date {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Reminder inside the schedule's own window; overdue once the date passed
+   with nobody entering or skipping it — a warning, not a negative: no money
+   has gone wrong, a bill is waiting on a person. */
+.scheduled-row__due {
+  font-size: var(--font-size-2xs);
+  font-style: normal;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.scheduled-row__due--overdue {
+  color: var(--color-warning);
+}
+
+.scheduled-row__actions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.scheduled-row__btn {
+  padding: 2px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: var(--font-size-xs);
+  font-style: normal;
+  cursor: pointer;
+}
+
+.scheduled-row__btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.scheduled-row__btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.scheduled-row__btn--secondary {
+  color: var(--text-muted);
+}
+
+/* ── Phone: one card for both layouts ───────────────────────────────────
+   Seven (or eight) columns cannot fit 390px. Payee and amount lead; the
+   second line says which account (page) or which envelope (register); then
+   when and how often; then the two actions at the tap floor. */
+@media (max-width: 768px) {
+  .scheduled-row__head {
+    display: none;
+  }
+
+  .scheduled-row,
+  .scheduled-row--register,
+  .scheduled-row--table {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "payee amount"
+      "sub freq"
+      "date auto"
+      "actions actions";
+    row-gap: var(--spacing-xs);
+    padding: var(--spacing-md);
+  }
+
+  .scheduled-row__payee {
+    grid-area: payee;
+    font-weight: 600;
+  }
+
+  .scheduled-row__amount {
+    grid-area: amount;
+    text-align: right;
+    padding-right: 0;
+  }
+
+  .scheduled-row--register .scheduled-row__direction {
+    display: inline;
+  }
+
+  /* The second line is the account on the page and the envelope in the
+     register — the register already knows its account. */
+  .scheduled-row__account,
+  .scheduled-row__category {
+    grid-area: sub;
+    color: var(--text-muted);
+    font-size: var(--font-size-xs);
+  }
+
+  .scheduled-row--register .scheduled-row__account,
+  .scheduled-row--table .scheduled-row__category,
+  .scheduled-row__memo {
+    display: none;
+  }
+
+  .scheduled-row--register .scheduled-row__category {
+    display: block;
+  }
+
+  .scheduled-row__freq,
+  .scheduled-row--register .scheduled-row__freq,
+  .scheduled-row--table .scheduled-row__freq {
+    grid-area: freq;
+    grid-row: auto;
+    padding-top: 0;
+    align-self: center;
+    color: var(--text-muted);
+    font-size: var(--font-size-xs);
+    font-weight: 400;
+    opacity: 1;
+    text-align: right;
+  }
+
+  .scheduled-row__date,
+  .scheduled-row--register .scheduled-row__date {
+    grid-area: date;
+    grid-column: auto;
+    color: var(--text-muted);
+    font-size: var(--font-size-xs);
+  }
+
+  .scheduled-row__auto,
+  .scheduled-row--register .scheduled-row__auto {
+    grid-area: auto;
+    color: var(--text-muted);
+    font-size: var(--font-size-xs);
+    text-align: right;
+  }
+
+  .scheduled-row__auto::before {
+    content: "Auto: ";
+  }
+
+  .scheduled-row--register .scheduled-row__auto {
+    display: none;
+  }
+
+  .scheduled-row__actions {
+    grid-area: actions;
+  }
+
+  .scheduled-row__btn {
+    min-height: var(--tap-min);
+    padding-left: var(--spacing-md);
+    padding-right: var(--spacing-md);
+  }
+}

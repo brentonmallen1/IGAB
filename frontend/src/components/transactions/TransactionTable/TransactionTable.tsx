@@ -36,6 +36,7 @@ import { MatchReviewModal } from '../../simplefin/MatchReviewModal'
 import { SearchFilterChips } from '../SearchFilterChips/SearchFilterChips'
 import { RegisterToolbar } from './RegisterToolbar'
 import { AttachmentPanel } from '../../attachments/AttachmentPanel'
+import { ScheduledRow } from '../../scheduled/ScheduledRow/ScheduledRow'
 import { Collapsible } from '../../common/Collapsible/Collapsible'
 import { parseTransactionSearch } from '../../../utils/searchParser'
 
@@ -46,9 +47,7 @@ import { usePendingMatchesForAccount, useRejectMatch } from '../../../api/simple
 import { useShortcut } from '../../../hooks/useShortcut'
 import { SHORTCUTS } from '../../../keyboard/shortcuts'
 import { today } from '../../../utils/dates'
-import { daysUntil, dueLabel, dueState, frequencyLabel } from '../../../utils/schedule'
 import { transactionDisplayPayee } from '../../../utils/transferDisplay'
-import { useFormatters } from '../../../hooks/useFormatters'
 import type {
   Transaction,
   ClearedStatus,
@@ -126,7 +125,6 @@ const SortableHeader = memo(function SortableHeader({
 
 export function TransactionTable({ accountId, budgetId, highlightId, onInteraction }: Props) {
   const allAccounts = accountId === null
-  const { formatMoney } = useFormatters()
   const { data: payees = [] } = usePayees(budgetId)
   const { data: categories = [] } = useCategories(budgetId)
   const { data: categoryGroups = [] } = useCategoryGroups(budgetId)
@@ -568,73 +566,27 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
     [categories, categoryGroups]
   )
 
+  const todayISO = today()
   function renderUpcomingRow(s: ScheduledTransaction) {
-    const amount = s.amount
-    const isOutflow = amount < 0
-    const todayISO = today()
-    const due = dueState(s, todayISO)
-    const payeeName = transactionDisplayPayee(
-      { payee_id: s.payee_id, counterpart_account_id: s.transfer_account_id },
-      payeeMap,
-      accountMap
-    )
-    const catName = s.category_id ? (categoryMap.get(s.category_id) ?? '—') : '—'
-
     return (
-      <div
+      <ScheduledRow
         key={s.id}
-        className="upcoming-row"
-        role="button"
-        tabIndex={0}
-        onClick={() => setEditingScheduledTxn(s)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault()
-            setEditingScheduledTxn(s)
-          }
+        scheduled={s}
+        layout="register"
+        todayISO={todayISO}
+        names={{
+          payee: transactionDisplayPayee(
+            { payee_id: s.payee_id, counterpart_account_id: s.transfer_account_id },
+            payeeMap,
+            accountMap
+          ),
+          category: s.category_id ? (categoryMap.get(s.category_id) ?? '—') : '—',
         }}
-      >
-        <div className="txn-col txn-col--checkbox" />
-        <div className="txn-col txn-col--date upcoming-row__date">
-          {s.next_occurrence_date}
-          <span className="upcoming-row__freq">{frequencyLabel(s.frequency)}</span>
-          {due && (
-            <span className={`upcoming-row__due upcoming-row__due--${due}`}>
-              {dueLabel(daysUntil(s.next_occurrence_date, todayISO))}
-            </span>
-          )}
-        </div>
-        <div className="txn-col txn-col--payee txn-text-clip">{payeeName}</div>
-        <div className="txn-col txn-col--category txn-text-clip">{catName}</div>
-        <div className="txn-col txn-col--memo txn-text-clip">{s.memo ?? ''}</div>
-        <div className="txn-col txn-col--outflow tabular">
-          {isOutflow ? formatMoney(Math.abs(amount)) : ''}
-        </div>
-        <div className="txn-col txn-col--inflow tabular">
-          {!isOutflow ? formatMoney(amount) : ''}
-        </div>
-        <div
-          className="txn-col txn-col--cleared upcoming-row__actions"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button
-            className="upcoming-row__btn"
-            title="Enter now"
-            onClick={() => enterScheduled.mutate(s.id)}
-            disabled={enterScheduled.isPending}
-          >
-            Enter
-          </button>
-          <button
-            className="upcoming-row__btn upcoming-row__btn--secondary"
-            title="Skip next occurrence"
-            onClick={() => skipScheduled.mutate(s.id)}
-            disabled={skipScheduled.isPending}
-          >
-            Skip
-          </button>
-        </div>
-      </div>
+        onEdit={() => setEditingScheduledTxn(s)}
+        onEnter={() => enterScheduled.mutate(s.id)}
+        onSkip={() => skipScheduled.mutate(s.id)}
+        busy={enterScheduled.isPending || skipScheduled.isPending}
+      />
     )
   }
 
