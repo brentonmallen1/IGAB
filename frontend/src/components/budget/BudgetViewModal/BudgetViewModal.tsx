@@ -11,7 +11,7 @@ import {
 import { apiErrorMessage } from '../../../api/client'
 import { useUIStore } from '../../../stores/uiStore'
 import { confirmAsync } from '../../../stores/confirmStore'
-import { useFocusTrap } from '../../../hooks/useFocusTrap'
+import { Dialog } from '../../common/Dialog/Dialog'
 import { useDragReorder } from '../../../hooks/useDragReorder'
 import { moveItem } from '../../../utils/listOrder'
 import './BudgetViewModal.css'
@@ -101,7 +101,6 @@ function ViewEditor({
   const [error, setError] = useState<string | null>(null)
 
   const nameRef = useRef<HTMLInputElement>(null)
-  const trapRef = useFocusTrap<HTMLFormElement>(onClose)
   useEffect(() => {
     nameRef.current?.focus()
   }, [])
@@ -239,28 +238,42 @@ function ViewEditor({
   const isPending = createView.isPending || updateView.isPending
 
   return (
-    <div
-      className="view-editor-overlay"
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <form
-        ref={trapRef}
-        tabIndex={-1}
-        className="view-editor"
-        onSubmit={handleSubmit}
-        role="dialog"
-        aria-modal
-        aria-labelledby="view-editor-title"
-      >
-        <div className="view-editor__header">
-          <span id="view-editor-title" className="view-editor__title">
-            {isEdit ? 'Edit View' : 'New View'}
-          </span>
-          <button type="button" className="view-editor__close" onClick={onClose} aria-label="Close">
-            <X size={14} />
-          </button>
+    <Dialog
+      title={isEdit ? 'Edit View' : 'New View'}
+      onClose={onClose}
+      historyKey="budget-view"
+      className="view-editor"
+      width="lg"
+      footer={
+        <div className="view-editor__footer">
+          {isEdit ? (
+            <button
+              type="button"
+              className="view-editor__btn view-editor__btn--danger"
+              onClick={handleDelete}
+            >
+              Delete
+            </button>
+          ) : (
+            <span />
+          )}
+          <div className="view-editor__footer-actions">
+            <button type="button" className="view-editor__btn" onClick={onClose}>
+              Cancel
+            </button>
+            <button
+              type="submit"
+              form="view-editor-form"
+              className="view-editor__btn view-editor__btn--primary"
+              disabled={isPending}
+            >
+              {isEdit ? 'Save' : 'Create'}
+            </button>
+          </div>
         </div>
-
+      }
+    >
+      <form id="view-editor-form" className="view-editor__form" onSubmit={handleSubmit}>
         <p className="view-editor__hint">
           A view is a different way to arrange the same categories — group them by need and want, or
           however you think. It doesn’t change your budget’s own groups, so you can switch back any
@@ -466,33 +479,7 @@ function ViewEditor({
         </div>
 
         {error && <p className="view-editor__error">{error}</p>}
-
-        <div className="view-editor__footer">
-          {isEdit ? (
-            <button
-              type="button"
-              className="view-editor__btn view-editor__btn--danger"
-              onClick={handleDelete}
-            >
-              Delete
-            </button>
-          ) : (
-            <span />
-          )}
-          <div className="view-editor__footer-actions">
-            <button type="button" className="view-editor__btn" onClick={onClose}>
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="view-editor__btn view-editor__btn--primary"
-              disabled={isPending}
-            >
-              {isEdit ? 'Save' : 'Create'}
-            </button>
-          </div>
-        </div>
       </form>
-    </div>
+    </Dialog>
   )
 }

@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { X } from 'lucide-react'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
 import { useCreateTag, useTags } from '../../../api/tags'
 import { TagPicker, type TagOption } from '../../common/TagPicker'
@@ -12,7 +11,7 @@ import {
   useUpdateBudgetFilter,
 } from '../../../api/budgetFilters'
 import { useUIStore } from '../../../stores/uiStore'
-import { useFocusTrap } from '../../../hooks/useFocusTrap'
+import { Dialog } from '../../common/Dialog/Dialog'
 import './BudgetFilterModal.css'
 
 interface Props {
@@ -56,7 +55,6 @@ export function BudgetFilterModal({ budgetId, filterId, onClose }: Props) {
   )
   const tagById = useMemo(() => new Map(tags.map((t) => [t.id, t])), [tags])
   const nameRef = useRef<HTMLInputElement>(null)
-  const trapRef = useFocusTrap<HTMLFormElement>(onClose)
 
   useEffect(() => {
     nameRef.current?.focus()
@@ -124,33 +122,44 @@ export function BudgetFilterModal({ budgetId, filterId, onClose }: Props) {
   const isPending = createFilter.isPending || updateFilter.isPending || deleteFilter.isPending
 
   return (
-    <div
-      className="filter-modal-overlay"
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <form
-        ref={trapRef}
-        tabIndex={-1}
-        className="filter-modal"
-        onSubmit={handleSubmit}
-        role="dialog"
-        aria-modal
-        aria-labelledby="filter-modal-title"
-      >
-        <div className="filter-modal__header">
-          <span id="filter-modal-title" className="filter-modal__title">
-            {isEdit ? 'Edit Filter' : 'New Filter'}
-          </span>
-          <button
-            type="button"
-            className="filter-modal__close"
-            onClick={onClose}
-            aria-label="Close"
-          >
-            <X size={18} />
-          </button>
+    <Dialog
+      title={isEdit ? 'Edit Filter' : 'New Filter'}
+      onClose={onClose}
+      historyKey="budget-filter"
+      className="filter-modal"
+      footer={
+        <div className="filter-modal__footer">
+          {isEdit && (
+            <button
+              type="button"
+              className="filter-modal__btn filter-modal__btn--danger"
+              onClick={handleDelete}
+              disabled={isPending}
+            >
+              Delete
+            </button>
+          )}
+          <div className="filter-modal__footer-right">
+            <button
+              type="button"
+              className="filter-modal__btn filter-modal__btn--secondary"
+              onClick={onClose}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              form="filter-modal-form"
+              className="filter-modal__btn filter-modal__btn--primary"
+              disabled={isPending}
+            >
+              Save
+            </button>
+          </div>
         </div>
-
+      }
+    >
+      <form id="filter-modal-form" onSubmit={handleSubmit}>
         <div className="filter-modal__body">
           <p className="filter-modal__subtitle">
             Choose a set of categories to include in this custom filter.
@@ -236,37 +245,8 @@ export function BudgetFilterModal({ budgetId, filterId, onClose }: Props) {
             </div>
           </div>
         </div>
-
-        <div className="filter-modal__footer">
-          {isEdit && (
-            <button
-              type="button"
-              className="filter-modal__btn filter-modal__btn--danger"
-              onClick={handleDelete}
-              disabled={isPending}
-            >
-              Delete
-            </button>
-          )}
-          <div className="filter-modal__footer-right">
-            <button
-              type="button"
-              className="filter-modal__btn filter-modal__btn--secondary"
-              onClick={onClose}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="filter-modal__btn filter-modal__btn--primary"
-              disabled={isPending}
-            >
-              Save
-            </button>
-          </div>
-        </div>
       </form>
-    </div>
+    </Dialog>
   )
 }
 

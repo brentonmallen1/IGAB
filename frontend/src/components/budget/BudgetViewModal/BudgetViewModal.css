@@ -1,53 +1,3 @@
-.view-editor-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--spacing-lg);
-  z-index: 100;
-}
-
-.view-editor {
-  width: 100%;
-  max-width: 640px;
-  max-height: var(--panel-max-h);
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-lg);
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
-  overflow: hidden;
-}
-
-.view-editor__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.view-editor__title {
-  font-size: var(--font-size-md);
-  font-weight: var(--font-weight-semibold);
-  color: var(--text-primary);
-}
-
-.view-editor__close {
-  display: inline-flex;
-  padding: 4px;
-  border-radius: var(--border-radius-sm);
-  color: var(--text-muted);
-  cursor: pointer;
-}
-
-.view-editor__close:hover {
-  color: var(--text-primary);
-  background: var(--bg-hover);
-}
-
 .view-editor__hint {
   margin: 0;
   color: var(--text-muted);
@@ -243,6 +193,7 @@
 }
 
 .view-editor__footer {
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -352,4 +303,11 @@
 .view-editor__section-hint {
   font-weight: 400;
   color: var(--text-muted);
+}
+
+/* The form is the dialog's scroll region's only child; it keeps the panel's old rhythm. */
+.view-editor__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
 }

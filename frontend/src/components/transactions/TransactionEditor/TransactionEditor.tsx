@@ -1278,7 +1278,7 @@ export function TransactionEditor({
                   Receipts & attachments
                   {showAttachments ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
                 </button>
-                {showAttachments && <AttachmentPanel transactionId={transaction.id} embedded />}
+                {showAttachments && <AttachmentPanel transactionId={transaction.id} />}
               </div>
             )}
 

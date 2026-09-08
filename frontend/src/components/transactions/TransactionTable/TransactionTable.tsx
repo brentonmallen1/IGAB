@@ -35,7 +35,7 @@ import { MergePreviewModal } from '../MergePreviewModal/MergePreviewModal'
 import { MatchReviewModal } from '../../simplefin/MatchReviewModal'
 import { SearchFilterChips } from '../SearchFilterChips/SearchFilterChips'
 import { RegisterToolbar } from './RegisterToolbar'
-import { AttachmentPanel } from '../../attachments/AttachmentPanel'
+import { AttachmentsDrawer } from './AttachmentsDrawer'
 import { ScheduledRow } from '../../scheduled/ScheduledRow/ScheduledRow'
 import { Collapsible } from '../../common/Collapsible/Collapsible'
 import { parseTransactionSearch } from '../../../utils/searchParser'
@@ -1013,7 +1013,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
       )}
 
       {showAttachmentPanel && attachmentTxnId && (
-        <AttachmentPanel
+        <AttachmentsDrawer
           transactionId={attachmentTxnId}
           onClose={() => {
             setShowAttachmentPanel(false)

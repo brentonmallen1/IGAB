@@ -92,6 +92,9 @@ const TRIGGERS = {
   ],
   '/transactions': [{ name: 'editor', open: '.transaction-row' }],
   '/reports': [{ name: 'report-picker', open: '.reports-nav__dropdown-trigger' }],
+  '/scheduled': [{ name: 'editor', open: '.sched-btn--primary' }],
+  '/accounts': [{ name: 'account-settings', open: '.accounts-overview__action-btn' }],
+  '/liabilities/:id': [{ name: 'balance', open: 'button[class*="balance"], button[class*="update"]' }],
 }
 
 const TAP_MIN = 44

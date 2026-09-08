@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom'
 import { X, ChevronLeft, ChevronRight, RotateCw, Download, Printer, Loader2 } from 'lucide-react'
 import { usePinchZoom } from '../../hooks/usePinchZoom'
 import { lockBodyScroll, unlockBodyScroll } from '../../utils/scrollLock'
+import { isTopOverlay, popOverlay, pushOverlay } from '../../utils/overlayStack'
+import { useHistoryDismissable } from '../../hooks/useHistoryDismissable'
 import {
   downloadAttachment,
   isPdfAttachment,
@@ -38,6 +40,13 @@ export function Lightbox({
 }: Props) {
   const touchStartRef = useRef<{ x: number; y: number } | null>(null)
   const { scale, translateX, translateY, isZoomed, reset, handlers: zoomHandlers } = usePinchZoom()
+  // On the overlay stack like every other overlay: it opens from inside a
+  // sheet or drawer, and Escape must close the lightbox first, not both. The
+  // history entry gives Android back and an installed PWA's swipe-back a
+  // target instead of leaving the page.
+  const idRef = useRef<symbol | null>(null)
+  if (idRef.current === null) idRef.current = Symbol('lightbox')
+  useHistoryDismissable(true, onClose, 'lightbox')
   const rotate = useRotateAttachment()
   const canRotate = attachment !== undefined && !isPdfAttachment(attachment)
 
@@ -55,7 +64,10 @@ export function Lightbox({
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape' && isTopOverlay(idRef.current!)) {
+        e.stopPropagation()
+        onClose()
+      }
       if (e.key === 'ArrowLeft' && hasPrev && onPrev) onPrev()
       if (e.key === 'ArrowRight' && hasNext && onNext) onNext()
     },
@@ -71,8 +83,13 @@ export function Lightbox({
   // between images, and the lock must span the whole lightbox lifetime rather
   // than churning the shared refcount on each arrow press.
   useEffect(() => {
+    const id = idRef.current!
+    pushOverlay(id)
     lockBodyScroll()
-    return unlockBodyScroll
+    return () => {
+      unlockBodyScroll()
+      popOverlay(id)
+    }
   }, [])
 
   function handleTouchStart(e: React.TouchEvent) {
@@ -108,7 +125,9 @@ export function Lightbox({
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
-      <button className="lightbox-close" onClick={onClose} aria-label="Close">
+      {/* `__close`, so base.css's one rule for every overlay's dismiss button
+          gives it the tap floor on a phone — `lightbox-close` escaped it. */}
+      <button className="lightbox__close" onClick={onClose} aria-label="Close">
         <X size={24} />
       </button>
 

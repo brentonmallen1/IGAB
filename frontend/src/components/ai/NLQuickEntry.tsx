@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { Sparkles, X } from 'lucide-react'
 import { useAIStatus } from '../../api/ai'
+import { Dialog } from '../common/Dialog/Dialog'
 import { NLEntryForm } from './NLEntryForm'
 import {
   TransactionEditor,
@@ -16,9 +16,12 @@ interface Props {
 }
 
 /**
- * Natural-language transaction entry as a standalone overlay (mobile
- * quick-add): type or dictate, and the parsed draft opens in the normal
- * add-transaction editor — one flow regardless of how the words got here.
+ * Natural-language transaction entry as a dialog (mobile quick-add): type or
+ * dictate, and the parsed draft opens in the normal add-transaction editor —
+ * one flow regardless of how the words got here. A Dialog, so on a phone it
+ * is a sheet with a close button, a history entry and drag-to-dismiss like
+ * every other overlay, instead of a hand-rolled panel whose only exit was
+ * a 16px icon.
  */
 export function NLQuickEntry({ budgetId, accountId = null, onClose }: Props) {
   const aiStatus = useAIStatus()
@@ -42,22 +45,13 @@ export function NLQuickEntry({ budgetId, accountId = null, onClose }: Props) {
   if (aiStatus.data && !aiStatus.data.available) return null
 
   return (
-    <div
-      className="nl-entry-overlay"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
+    <Dialog
+      title="Describe a transaction"
+      onClose={onClose}
+      historyKey="nl-entry"
+      className="nl-entry"
     >
-      <div className="nl-entry" role="dialog" aria-modal aria-label="AI transaction entry">
-        <div className="nl-entry__header">
-          <Sparkles size={14} />
-          <span>Describe a transaction</span>
-          <button className="nl-entry__close" onClick={onClose} aria-label="Close">
-            <X size={16} />
-          </button>
-        </div>
-        <NLEntryForm budgetId={budgetId} onDraft={setEditorDraft} onNavigate={onClose} />
-      </div>
-    </div>
+      <NLEntryForm budgetId={budgetId} onDraft={setEditorDraft} onNavigate={onClose} />
+    </Dialog>
   )
 }
