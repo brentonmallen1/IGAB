@@ -1,6 +1,8 @@
 import { useNavigate } from 'react-router-dom'
 import { AlertTriangle, Link2, PenLine, Plus } from 'lucide-react'
 import { useLiabilities } from '../../api/liabilities'
+import { useAccounts } from '../../api/accounts'
+import { SyncStatusIcon } from '../../components/simplefin/SyncStatusIcon'
 import { LiabilitySettingsModal } from '../../components/liabilities/LiabilitySettingsModal'
 import { useAppStore } from '../../stores/appStore'
 import { useUIStore } from '../../stores/uiStore'
@@ -15,6 +17,7 @@ export function LiabilitiesOverviewPage() {
   const navigate = useNavigate()
   const { formatMoney, formatMonth } = useFormatters()
   const { data: liabilities = [], isLoading } = useLiabilities(budgetId)
+  const { data: accounts } = useAccounts(budgetId)
   const activeModal = useUIStore((s) => s.activeModal)
   const openModal = useUIStore((s) => s.openModal)
   const closeModal = useUIStore((s) => s.closeModal)
@@ -75,6 +78,9 @@ export function LiabilitiesOverviewPage() {
             const neverPays = liability.has_live_projection
               ? liability.live_never_pays_off
               : liability.baseline_never_pays_off
+            const linkedAccount = liability.linked_account_id
+              ? accounts?.find((a) => a.id === liability.linked_account_id)
+              : undefined
             return (
               <button
                 key={liability.id}
@@ -105,6 +111,14 @@ export function LiabilitiesOverviewPage() {
                     {liability.mode === 'managed' ? <Link2 size={12} /> : <PenLine size={12} />}
                     {liability.mode === 'managed' ? 'Linked' : 'Manual'}
                   </span>
+                  {/* Beside "Linked", not instead of it: that word means this
+                      liability tracks an internal account, which is a different
+                      question from whether the account talks to a bank. The two
+                      read alike, so the one that is about a bank shows the same
+                      cloud the accounts list uses. */}
+                  {linkedAccount?.simplefin_account_id && (
+                    <SyncStatusIcon account={linkedAccount} />
+                  )}
                 </div>
                 <div
                   className={`liability-card__payoff ${neverPays ? 'liability-card__payoff--warning' : ''}`}

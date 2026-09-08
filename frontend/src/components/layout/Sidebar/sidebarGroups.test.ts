@@ -5,6 +5,7 @@ import {
   accountTarget,
   accountsTotal,
   balanceTone,
+  buildAssetRows,
   buildLiabilityRows,
   groupLabel,
   isRowActive,
@@ -517,5 +518,50 @@ describe('isRowActive', () => {
     expect(isRowActive(row.target, row.registerAccountId, onLiability('liab-loan'))).toBe(true)
     expect(isRowActive(row.target, row.registerAccountId, onAccount('acct-loan'))).toBe(true)
     expect(isRowActive(row.target, row.registerAccountId, onAccount('acct-other'))).toBe(false)
+  })
+})
+
+/**
+ * The sidebar's Assets and Debts sections dropped the `Account` object when
+ * they projected it down to a row, so an off-budget brokerage that syncs with
+ * a bank looked exactly like one typed in by hand — while the on-budget
+ * section three rows above it drew a cloud. The id is what the section needs
+ * to look the account back up; these pin which rows carry one.
+ */
+describe('syncAccountId — which row shows a bank connection', () => {
+  it('carries the account id for an off-budget asset account', () => {
+    const brokerage = acct({ id: 'brokerage', on_budget: false, classification: 'asset' })
+    const [row] = buildAssetRows([brokerage], [])
+    expect(row.syncAccountId).toBe('brokerage')
+  })
+
+  it('is null for a valued asset, which is never an account', () => {
+    const [row] = buildAssetRows([], [{ id: 'house', name: 'House', current_value: 410_000 }])
+    expect(row.syncAccountId).toBeNull()
+  })
+
+  it('carries the account id for an off-budget liability account', () => {
+    const loanAccount = acct({
+      id: 'loan-acct',
+      on_budget: false,
+      classification: 'liability',
+      account_type: 'loan',
+    })
+    const [row] = buildLiabilityRows([loanAccount], [])
+    expect(row.syncAccountId).toBe('loan-acct')
+  })
+
+  it('carries the linked account id for a managed liability rendered from the entity', () => {
+    // The linked account is closed, so it is in neither the off-budget set nor
+    // the on-budget one — the liability renders from the entity and can still
+    // name the account whose connection it is showing.
+    const tracker = liab({ linked_account_id: 'closed-acct', current_balance: 12_000 })
+    const [row] = buildLiabilityRows([], [tracker], new Set())
+    expect(row.syncAccountId).toBe('closed-acct')
+  })
+
+  it('is null for a manually tracked liability', () => {
+    const [row] = buildLiabilityRows([], [liab({ linked_account_id: null })], new Set())
+    expect(row.syncAccountId).toBeNull()
   })
 })
