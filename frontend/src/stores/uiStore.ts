@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { PERSIST_KEYS } from './persistKeys'
 import { SIDEBAR_MIN_WIDTH, clampSidebarWidth } from '../components/layout/Sidebar/sidebarWidth'
+import { CHAT_PANEL_MIN_WIDTH, clampChatPanelWidth } from '../components/ai/chat/chatPanelWidth'
 import type { AssignStrategy } from '../types'
 
 type TransactionSortColumn = 'date' | 'account' | 'payee' | 'category' | 'memo' | 'amount'
@@ -108,6 +109,15 @@ interface UIState {
   sidebarCollapsed: boolean
   /** Resizable sidebar width in px; clamped by setSidebarWidth. */
   sidebarWidth: number
+  /** The AI chat panel, open beside the page. */
+  chatPanelOpen: boolean
+  chatPanelWidth: number
+  /** Which conversation the panel is showing; null starts a new one. */
+  activeConversationId: string | null
+  toggleChatPanel: () => void
+  setChatPanelOpen: (open: boolean) => void
+  setChatPanelWidth: (px: number) => void
+  setActiveConversation: (id: string | null) => void
   /** Which sidebar account groups are folded shut, by the ids in
    *  `SIDEBAR_SECTION_IDS` / `sidebarTypeGroupId`. Separate from
    *  `collapsedGroups`, which is the budget page's category groups: one Set
@@ -231,6 +241,9 @@ export const useUIStore = create<UIState>()(
       activeModal: null,
       sidebarCollapsed: false,
       sidebarWidth: SIDEBAR_MIN_WIDTH,
+      chatPanelOpen: false,
+      chatPanelWidth: CHAT_PANEL_MIN_WIDTH,
+      activeConversationId: null,
       budgetRowMode: 'expanded',
       selectedCategoryIds: new Set(),
       categoryInspectorOpen: true,
@@ -273,6 +286,10 @@ export const useUIStore = create<UIState>()(
 
       toggleSidebarCollapsed: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
       setSidebarWidth: (px) => set({ sidebarWidth: clampSidebarWidth(px) }),
+      toggleChatPanel: () => set((s) => ({ chatPanelOpen: !s.chatPanelOpen })),
+      setChatPanelOpen: (open) => set({ chatPanelOpen: open }),
+      setChatPanelWidth: (px) => set({ chatPanelWidth: clampChatPanelWidth(px) }),
+      setActiveConversation: (id) => set({ activeConversationId: id }),
 
       collapsedSidebarGroups: new Set<string>(),
       toggleSidebarGroup: (groupId) => {
@@ -491,6 +508,11 @@ export const useUIStore = create<UIState>()(
         budgetRowMode: s.budgetRowMode,
         // A width someone dragged to is a deliberate choice, like a filter.
         sidebarWidth: s.sidebarWidth,
+        // The panel being open, and how wide, are standing choices like the
+        // sidebar's. Which conversation is open is not: coming back tomorrow
+        // to a half-finished thread is worse than a fresh one.
+        chatPanelOpen: s.chatPanelOpen,
+        chatPanelWidth: s.chatPanelWidth,
         // So is folding a section shut. A Set does not survive JSON — it
         // stringifies to `{}` — so it is stored as an array and rebuilt in
         // merge() below. Persisting the Set directly rehydrates a plain

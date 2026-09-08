@@ -9,6 +9,7 @@ import { MoreSheet } from '../MoreSheet/MoreSheet'
 import { QuickAddSheet } from '../../transactions/QuickAddSheet/QuickAddSheet'
 import { CommandPalette } from '../../palette/CommandPalette/CommandPalette'
 import { GlobalShortcuts } from '../GlobalShortcuts'
+import { ChatPanel } from '../../ai/chat/ChatPanel'
 import { useAppStore } from '../../../stores/appStore'
 import { useEdgeSwipeBack } from '../../../hooks/useEdgeSwipeBack'
 import './MainLayout.css'
@@ -62,6 +63,10 @@ export function MainLayout() {
             possible by construction. */}
         <BottomNav />
       </div>
+      {/* A sibling of the content column, not a child: the panel is a third
+          column beside the page, so the register stays readable while you ask
+          about it. A floating drawer would cover the thing being discussed. */}
+      <ChatPanel />
       <MoreSheet />
       <QuickAddSheet />
       <CommandPalette />

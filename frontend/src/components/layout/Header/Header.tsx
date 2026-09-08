@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 import {
+  Bot,
   CalendarDays,
   ChevronLeft,
   ChevronRight,
@@ -19,6 +20,7 @@ import {
   isLightTheme,
 } from '../../../stores/appStore'
 import { useUIStore } from '../../../stores/uiStore'
+import { useAIStatus } from '../../../api/ai'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { useIsMobile } from '../../../hooks/useMediaQuery'
 import { UndoRedoButtons } from './UndoRedoButtons'
@@ -37,6 +39,11 @@ export function Header() {
   const privacyMode = useAppStore((s) => s.privacyMode)
   const togglePrivacyMode = useAppStore((s) => s.togglePrivacyMode)
   const openPalette = useUIStore((s) => s.openPalette)
+  const chatPanelOpen = useUIStore((s) => s.chatPanelOpen)
+  const toggleChatPanel = useUIStore((s) => s.toggleChatPanel)
+  // Render-gated, not hook-gated: react-hooks/rules-of-hooks is an error here,
+  // and a component whose hook count changes between renders is broken.
+  const { data: aiStatus } = useAIStatus()
   const { formatMonth } = useFormatters()
   const [themeOpen, setThemeOpen] = useState(false)
   const themeRef = useRef<HTMLDivElement>(null)
@@ -127,6 +134,21 @@ export function Header() {
       {!isMobile && (
         <>
           <UndoRedoButtons />
+
+          {/* Desktop only, like the controls beside it: on a phone the
+              assistant is opened from the More sheet, because this row stopped
+              having space for a seventh 44px target. */}
+          {aiStatus?.enabled === true && (
+            <button
+              className={`header__icon-btn ${chatPanelOpen ? 'header__icon-btn--active' : ''}`}
+              onClick={toggleChatPanel}
+              aria-pressed={chatPanelOpen}
+              aria-label={chatPanelOpen ? 'Close the assistant' : 'Ask about your budget'}
+              title={chatPanelOpen ? 'Close the assistant' : 'Ask about your budget'}
+            >
+              <Bot size={16} />
+            </button>
+          )}
 
           <button
             className={`header__icon-btn ${privacyMode ? 'header__icon-btn--active' : ''}`}
