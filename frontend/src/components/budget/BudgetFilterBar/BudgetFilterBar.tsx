@@ -8,7 +8,7 @@ import { SelectChip } from '../../common/SelectChip/SelectChip'
 import type { CategoryBalance } from '../../../types'
 import { reorderBlock } from '../reorderAvailability'
 import './BudgetFilterBar.css'
-import { filterMenu, parseChoice } from '../budgetFilterMenu'
+import { filterMenu, parseChoice, statusButtons } from '../budgetFilterMenu'
 
 interface Props {
   budgetId: string
@@ -112,24 +112,18 @@ export function BudgetFilterBar({ budgetId, categoryBalances, barRef }: Props) {
     viewActive: views?.some((v) => v.id === activeViewId) ?? false,
   })
 
-  // One control for a choice that was always one choice: the store clears
-  // either selection when the other is set, so the row of buttons this
-  // replaces could never have two of them on. `budgetFilterMenu` says what it
-  // offers; editing a saved filter moved to Manage Filters, which is where
-  // someone looks for it rather than double-clicking a chip that no longer
-  // exists.
-  const menu = filterMenu({
-    quickFilterOrder,
-    counts,
-    saved: filters ?? [],
-    activeQuickFilter,
-    activeFilterId,
-  })
+  // Two controls, still one choice: the store clears either selection when the
+  // other is set, so a status and a saved filter can never both be on.
+  // `budgetFilterMenu` says what each one offers — and, at the top of that
+  // file, why the button row's footprint has to stay put.
+  const statuses = statusButtons({ quickFilterOrder, counts, activeQuickFilter })
+  const menu = filterMenu({ saved: filters ?? [], activeFilterId })
 
   function handleFilterChange(value: string) {
     const choice = parseChoice(value)
-    if (choice.kind === 'quick') setActiveQuickFilter(choice.filter)
-    else if (choice.kind === 'saved') setActiveFilter(choice.id)
+    // Choosing a saved filter clears any active status, in the store — the two
+    // controls are one choice, and it is spelled once, there.
+    if (choice.kind === 'saved') setActiveFilter(choice.id)
     else {
       setActiveFilter(null)
       setActiveQuickFilter(null)
@@ -160,6 +154,33 @@ export function BudgetFilterBar({ budgetId, categoryBalances, barRef }: Props) {
         </>
       )}
 
+      {/* Five fixed things, on screen rather than behind a menu: the point of
+          a status is to be seen without asking. All five always render and the
+          count sits in a fixed slot, so this group's width is the same on an
+          empty budget as on an overspent one — see budgetFilterMenu's header.
+          One line that scrolls, never a second row. */}
+      <div className="budget-filter-bar__statuses" role="group" aria-label="Filter by status">
+        {statuses.map((status) => (
+          <button
+            key={status.filter}
+            type="button"
+            className={`budget-filter-bar__btn budget-filter-bar__btn--${status.variant} ${status.active ? 'active' : ''}`}
+            disabled={status.disabled}
+            aria-pressed={status.active}
+            onClick={() => setActiveQuickFilter(status.active ? null : status.filter)}
+            title={`${status.count} ${status.count === 1 ? 'category' : 'categories'}`}
+          >
+            <span className="budget-filter-bar__btn-label">{status.label}</span>
+            <span className="budget-filter-bar__btn-count tabular" aria-hidden="true">
+              {status.countLabel}
+            </span>
+            <span className="sr-only">
+              , {status.count} {status.count === 1 ? 'category' : 'categories'}
+            </span>
+          </button>
+        ))}
+      </div>
+
       <SelectChip
         value={menu.value}
         onChange={handleFilterChange}
@@ -167,24 +188,9 @@ export function BudgetFilterBar({ budgetId, categoryBalances, barRef }: Props) {
         placeholder="All categories"
         icon={Funnel}
         active={menu.value !== ''}
-        title={
-          menu.attention > 0
-            ? `${menu.attention} ${menu.attention === 1 ? 'category is' : 'categories are'} overspent`
-            : 'Which categories the grid shows'
-        }
+        title="Which categories the grid shows"
         ariaLabel="Filter categories"
-      >
-        {/* The one thing collapsing the row would otherwise stop saying out
-            loud. A fixed-size dot rather than a count, so the bar's width
-            still does not move with the budget's state. */}
-        {menu.attention > 0 && (
-          <span className="budget-filter-bar__attention">
-            <span className="sr-only">
-              {menu.attention} overspent {menu.attention === 1 ? 'category' : 'categories'}
-            </span>
-          </span>
-        )}
-      </SelectChip>
+      />
 
       {blocked && (
         <span className="budget-filter-bar__reorder-note" role="status" title={blocked.detail}>
