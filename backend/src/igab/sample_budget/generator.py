@@ -77,6 +77,8 @@ class SampleResult:
     scheduled: int = 0
     reconciliations: int = 0
     liabilities: int = 0
+    filters: int = 0
+    starred_reports: int = 0
 
 
 class SampleBudgetGenerator:
@@ -129,6 +131,8 @@ class SampleBudgetGenerator:
         await self._create_categories(anchor, result)
         await self._create_tags_and_payees(result)
         await self._create_liabilities(anchor, result)
+        await self._create_filters(result)
+        await self._create_starred_reports(result)
 
         inserted, projected = self._build_transaction_rows(anchor)
         cap = TIER_ROW_CAPS.get(self.tier, MAX_TRANSACTION_ROWS)
@@ -299,6 +303,49 @@ class SampleBudgetGenerator:
             )
             self._payees[payee.name] = payee
             result.payees += 1
+
+    async def _create_filters(self, result: SampleResult) -> None:
+        """Saved filters on the budget page.
+
+        Built from `self.session` rather than an injected repository, unlike
+        every entity above: these are preferences, not ledger rows, and adding
+        two more constructor arguments to reach them would touch five call
+        sites that have no other reason to know about them.
+
+        Tag-based, so a filter widens as the household tags more — and so the
+        Reports scope control, which resolves a saved filter through the same
+        `effective_category_ids` the budget page uses, has something to narrow
+        by.
+        """
+        from igab.repositories.budget_filter_repo import BudgetFilterRepository
+
+        repo = BudgetFilterRepository(self.session)
+        for order, spec in enumerate(self.spec.filters):
+            saved = await repo.create(budget_id=self.budget_id, name=spec.name, sort_order=order)
+            await self.session.flush()
+            if spec.tags:
+                await repo.set_tags(saved.id, [self._tags[name] for name in spec.tags])
+            if spec.categories:
+                await repo.set_categories(
+                    saved.id, [self._categories[name].id for name in spec.categories]
+                )
+            result.filters += 1
+
+    async def _create_starred_reports(self, result: SampleResult) -> None:
+        """The Reports nav's Favorites row.
+
+        Without these the row does not exist at all — the entry only appears
+        once something is starred — so a fresh demo would show no sign the
+        feature is there.
+        """
+        from igab.services.report_favorites import ReportFavoritesService
+
+        if not self.spec.starred_reports:
+            return
+        kept = await ReportFavoritesService(self.session).set_favorites(
+            self.budget_id, list(self.spec.starred_reports)
+        )
+        result.starred_reports = len(kept)
 
     async def _create_liabilities(self, anchor: date, result: SampleResult) -> None:
         for spec in self.spec.liabilities:
@@ -1024,6 +1071,7 @@ def _filter_spec(spec: SampleBudgetSpec, tier: str) -> SampleBudgetSpec:
         liabilities=keep(spec.liabilities),
         one_off_transfers=keep(spec.one_off_transfers),
         explicit_assignments=keep(spec.explicit_assignments),
+        filters=keep(spec.filters),
         # Filtered like everything else: a full-tier card's payment surviving
         # into the starter would pay an account that is not there.
         card_scenarios=keep(spec.card_scenarios),
