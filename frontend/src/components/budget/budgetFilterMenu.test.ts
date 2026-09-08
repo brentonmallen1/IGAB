@@ -1,13 +1,13 @@
 /**
- * What the budget bar's one filter control offers.
+ * What the budget bar's two controls offer.
  *
- * The bar drew a button per choice and grew with the number of saved filters;
- * the pixel half of why that had to stop is measured in headless Chrome
- * (`BudgetFilterBar` renders a fixed-width chip), and this is the rule that
- * decides what the chip says and what its list holds.
+ * Statuses are buttons and saved filters are a dropdown. The pixel half of why
+ * the button row is safe — a footprint that does not move with the budget's
+ * state — is measured in headless Chrome against the built stylesheet; this is
+ * the rule half, which decides what renders and what it says.
  */
 import { describe, expect, it } from 'vitest'
-import { choiceValue, filterMenu, parseChoice } from './budgetFilterMenu'
+import { choiceValue, filterMenu, parseChoice, statusButtons } from './budgetFilterMenu'
 import { ALL_QUICK_FILTERS, type QuickFilter } from '../../stores/uiStore'
 
 const NO_COUNTS: Record<QuickFilter, number> = {
@@ -21,27 +21,76 @@ const NO_COUNTS: Record<QuickFilter, number> = {
 const saved = (n: number) =>
   Array.from({ length: n }, (_, i) => ({ id: `f${i}`, name: `Filter ${i}` }))
 
-function menu(over: Partial<Parameters<typeof filterMenu>[0]> = {}) {
-  return filterMenu({
+function buttons(over: Partial<Parameters<typeof statusButtons>[0]> = {}) {
+  return statusButtons({
     quickFilterOrder: ALL_QUICK_FILTERS,
     counts: NO_COUNTS,
-    saved: [],
     activeQuickFilter: null,
-    activeFilterId: null,
     ...over,
   })
+}
+
+function menu(over: Partial<Parameters<typeof filterMenu>[0]> = {}) {
+  return filterMenu({ saved: [], activeFilterId: null, ...over })
 }
 
 const labels = (m: ReturnType<typeof filterMenu>, group: string) =>
   m.groups.find((g) => g.label === group)!.options.map((o) => o.label)
 
-describe('the values the control round-trips', () => {
-  it('carries each kind of choice through a select value', () => {
+describe('the status buttons', () => {
+  it('always draws all five, whatever the budget is doing', () => {
+    // THE rule. The old row dropped a status whose count hit zero, so the bar
+    // got narrower as the budget got healthier and the register slid up the
+    // page under it. Nothing here may depend on a count.
+    expect(buttons()).toHaveLength(5)
+    expect(buttons({ counts: { ...NO_COUNTS, overspent: 3 } })).toHaveLength(5)
+  })
+
+  it('disables the empty ones instead of removing them', () => {
+    const [overspent, underfunded] = buttons({ counts: { ...NO_COUNTS, overspent: 3 } })
+    expect(overspent.disabled).toBe(false)
+    expect(underfunded.disabled).toBe(true)
+  })
+
+  it('never disables the active one, even at zero', () => {
+    // A filter that empties its own list still has to say what it is doing, or
+    // the grid is narrowed with nothing on screen explaining it.
+    const [overspent] = buttons({ activeQuickFilter: 'overspent' })
+    expect(overspent.count).toBe(0)
+    expect(overspent.disabled).toBe(false)
+    expect(overspent.active).toBe(true)
+  })
+
+  it('clamps the count so a third digit cannot widen the slot', () => {
+    const [overspent] = buttons({ counts: { ...NO_COUNTS, overspent: 250 } })
+    expect(overspent.countLabel).toBe('99+')
+    // The exact figure survives for the tooltip and screen readers.
+    expect(overspent.count).toBe(250)
+  })
+
+  it('shows small counts exactly', () => {
+    expect(buttons({ counts: { ...NO_COUNTS, overspent: 99 } })[0].countLabel).toBe('99')
+    expect(buttons()[0].countLabel).toBe('0')
+  })
+
+  it('offers them in the order the user arranged', () => {
+    const order: QuickFilter[] = ['pending', 'overspent', 'underfunded']
+    expect(buttons({ quickFilterOrder: order }).map((b) => b.filter)).toEqual(order)
+  })
+
+  it('takes its tones from the shared variant map', () => {
+    const byFilter = Object.fromEntries(buttons().map((b) => [b.filter, b.variant]))
+    expect(byFilter.overspent).toBe('negative')
+    expect(byFilter.underfunded).toBe('warning')
+    // Pending is underfunded before its funding day — never a colour that asks
+    // to be acted on today.
+    expect(byFilter.pending).toBe('neutral')
+  })
+})
+
+describe('the values the dropdown round-trips', () => {
+  it('carries a saved choice through a select value', () => {
     expect(parseChoice(choiceValue({ kind: 'all' }))).toEqual({ kind: 'all' })
-    expect(parseChoice(choiceValue({ kind: 'quick', filter: 'money-available' }))).toEqual({
-      kind: 'quick',
-      filter: 'money-available',
-    })
     expect(parseChoice(choiceValue({ kind: 'saved', id: 'abc-123' }))).toEqual({
       kind: 'saved',
       id: 'abc-123',
@@ -49,67 +98,32 @@ describe('the values the control round-trips', () => {
   })
 
   it('reads an empty value as no filter', () => {
-    // What the placeholder option carries.
     expect(parseChoice('')).toEqual({ kind: 'all' })
   })
 })
 
-describe('which quick filters the list offers', () => {
-  it('leaves out the ones with nothing in them', () => {
-    // Same rule the chips had: a filter that would empty the grid is noise.
-    const m = menu({ counts: { ...NO_COUNTS, overspent: 3 } })
-    expect(labels(m, 'By status')).toEqual(['Overspent (3)'])
+describe('what the dropdown holds', () => {
+  it('offers every saved filter, however many are saved', () => {
+    // Unbounded is fine here and was not fine as buttons: a long list inside a
+    // menu costs no width at all.
+    expect(labels(menu({ saved: saved(20) }), 'Saved filters')).toHaveLength(20)
   })
 
-  it('keeps the chosen one even at zero', () => {
-    // The chips dropped it, which left the grid narrowed with nothing on
-    // screen saying why — and a select whose value has no option reads blank.
-    const m = menu({ activeQuickFilter: 'overspent' })
-    expect(labels(m, 'By status')).toEqual(['Overspent (0)'])
-    expect(m.value).toBe('quick:overspent')
+  it('offers statuses nowhere — they are buttons now', () => {
+    // Two readings of the overspent count, free to disagree the moment one is
+    // computed from a different list. There is one.
+    const m = menu({ saved: saved(2) })
+    expect(m.groups.map((g) => g.label)).toEqual(['Saved filters'])
   })
 
-  it('offers them in the order the user arranged', () => {
-    // Manage Filters reorders these; the list must not re-sort them.
-    const counts = { ...NO_COUNTS, overspent: 1, overfunded: 2 }
-    const m = menu({ quickFilterOrder: ['overfunded', 'overspent'], counts })
-    expect(labels(m, 'By status')).toEqual(['Overfunded (2)', 'Overspent (1)'])
-  })
-})
-
-describe('which saved filters the list offers', () => {
-  it('offers every one of them, however many are saved', () => {
-    // The point of the control: 25 filters cost the bar no width at all.
-    expect(labels(menu({ saved: saved(25) }), 'Saved filters')).toHaveLength(25)
-  })
-
-  it('names the chosen one as the chip value', () => {
-    expect(menu({ saved: saved(10), activeFilterId: 'f7' }).value).toBe('saved:f7')
+  it('names the chosen filter as the chip value', () => {
+    expect(menu({ saved: saved(3), activeFilterId: 'f1' }).value).toBe('saved:f1')
   })
 
   it('falls back to no filter for an id this budget does not have', () => {
-    // A filter deleted in another tab, or one persisted from another budget.
-    // The grid is not narrowed by a filter that does not exist, so the chip
-    // must not claim it is.
-    expect(menu({ saved: saved(3), activeFilterId: 'gone' }).value).toBe('')
-  })
-})
-
-describe('the overspent marker', () => {
-  it('shows the count when the chip is not already naming it', () => {
-    expect(menu({ counts: { ...NO_COUNTS, overspent: 4 } }).attention).toBe(4)
-    expect(
-      menu({ counts: { ...NO_COUNTS, overspent: 4 }, saved: saved(1), activeFilterId: 'f0' })
-        .attention
-    ).toBe(4)
-  })
-
-  it('goes quiet once the chip reads Overspent', () => {
-    const m = menu({ counts: { ...NO_COUNTS, overspent: 4 }, activeQuickFilter: 'overspent' })
-    expect(m.attention).toBe(0)
-  })
-
-  it('is absent when nothing is overspent', () => {
-    expect(menu().attention).toBe(0)
+    // Another budget's, or one deleted in another tab. Until the bar
+    // self-heals it, the chip must read "All categories" rather than blank —
+    // the grid is not narrowed by a filter that does not exist.
+    expect(menu({ saved: saved(2), activeFilterId: 'gone' }).value).toBe('')
   })
 })

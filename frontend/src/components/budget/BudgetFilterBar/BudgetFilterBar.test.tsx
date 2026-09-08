@@ -8,10 +8,17 @@
  * and did not fix it: the row still changed width as counts came and went,
  * and on a phone it was several rows deep before anyone saved anything.
  *
+ * Statuses came back as buttons, because five fixed things you reach for by
+ * eye do not belong behind a menu. The footprint rule did not go away with
+ * them — it moved into the markup these tests pin: five buttons always, an
+ * empty one disabled rather than removed, and saved filters still spending one
+ * control however many there are.
+ *
  * jsdom has no layout, so this cannot assert those pixels — see the
- * `css-layout-needs-a-browser` rule. What it CAN pin is the markup contract
- * the fixed width rests on: one control, whatever is saved.
- * `budgetFilterMenu.test.ts` covers what that control offers.
+ * `css-layout-needs-a-browser` rule. That half is measured in headless Chrome
+ * against the built stylesheet when the CSS changes; the numbers are in the
+ * commit that brought the buttons back. `budgetFilterMenu.test.ts` covers the
+ * rule behind what renders.
  */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen } from '@testing-library/react'
@@ -81,29 +88,61 @@ describe('the bar with many saved filters', () => {
     expect(useUIStore.getState().activeQuickFilter).toBeNull()
   })
 
-  it('applies a quick filter from the same list', () => {
-    // The store clears either selection when the other is set, so these were
-    // never two independent controls to begin with.
+  it('offers no status in the list — those are buttons', () => {
     renderBar(overspent(3))
-    fireEvent.change(filterSelect(), { target: { value: 'quick:overspent' } })
-    expect(useUIStore.getState().activeQuickFilter).toBe('overspent')
+    const options = [...filterSelect().querySelectorAll('option')].map((o) => o.value)
+    expect(options.some((v) => v.startsWith('quick:'))).toBe(false)
+  })
+
+  it('clears an active status when a saved filter is chosen', () => {
+    // The store clears either selection when the other is set, so the buttons
+    // and the list remain one choice wearing two controls.
+    savedFilters = [{ id: 'f0', name: 'Bills' }]
+    useUIStore.setState({ activeQuickFilter: 'overspent' })
+    renderBar(overspent(3))
+
+    fireEvent.change(filterSelect(), { target: { value: 'saved:f0' } })
+    expect(useUIStore.getState().activeFilterId).toBe('f0')
+    expect(useUIStore.getState().activeQuickFilter).toBeNull()
   })
 })
 
-describe('what the bar still says out loud', () => {
-  it('marks overspent money the chip is not already naming', () => {
-    renderBar(overspent(3))
-    expect(screen.getByText('3 overspent categories')).toBeTruthy()
-  })
+const statusBtn = (name: string) =>
+  screen.getByRole('button', { name: new RegExp(`^${name}`) }) as HTMLButtonElement
 
-  it('drops the marker once the filter itself says Overspent', () => {
-    useUIStore.setState({ activeQuickFilter: 'overspent' })
-    renderBar(overspent(3))
-    expect(screen.queryByText('3 overspent categories')).toBeNull()
-  })
-
-  it('says nothing when nothing is overspent', () => {
+describe('the status buttons', () => {
+  it('draws all five whether or not the budget has anything in them', () => {
+    // The footprint rule, in markup. A row that sheds a button as a count
+    // reaches zero is a row that gets narrower as the budget gets healthier.
     renderBar()
-    expect(screen.queryByText(/overspent/)).toBeNull()
+    for (const label of ['Overspent', 'Underfunded', 'Pending', 'Money Available', 'Overfunded']) {
+      expect(statusBtn(label)).toBeTruthy()
+    }
+  })
+
+  it('disables an empty status instead of dropping it', () => {
+    renderBar(overspent(3))
+    expect(statusBtn('Overspent').disabled).toBe(false)
+    expect(statusBtn('Underfunded').disabled).toBe(true)
+  })
+
+  it('says the count out loud, next to the label', () => {
+    renderBar(overspent(3))
+    expect(statusBtn('Overspent').textContent).toContain('3')
+  })
+
+  it('applies and clears the status on click', () => {
+    renderBar(overspent(3))
+    fireEvent.click(statusBtn('Overspent'))
+    expect(useUIStore.getState().activeQuickFilter).toBe('overspent')
+    fireEvent.click(statusBtn('Overspent'))
+    expect(useUIStore.getState().activeQuickFilter).toBeNull()
+  })
+
+  it('stays clickable while it is the active one at zero', () => {
+    useUIStore.setState({ activeQuickFilter: 'overspent' })
+    renderBar()
+    expect(statusBtn('Overspent').disabled).toBe(false)
+    expect(statusBtn('Overspent').getAttribute('aria-pressed')).toBe('true')
   })
 })

@@ -217,16 +217,6 @@
    Pinned to the chip's corner rather than placed in its row, because an
    inline dot is still 10px of width that appears and disappears with the
    budget — the same fault in miniature. */
-.budget-filter-bar__attention {
-  position: absolute;
-  top: 1px;
-  right: 1px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background-color: var(--color-negative);
-}
-
 /* Separates the grouping control from the filter beside it: they are
    different questions, not peers in one list. */
 .budget-filter-bar__divider {
@@ -269,4 +259,154 @@
 .budget-filter-bar__density-btn.active {
   color: var(--text-primary);
   background-color: color-mix(in srgb, var(--color-accent) 14%, transparent);
+}
+
+/* ---- Status buttons -------------------------------------------------------
+
+   The row of buttons this replaces was collapsed into a dropdown because its
+   FOOTPRINT MOVED: it dropped a status whose count reached zero, so the bar
+   got narrower as the budget got healthier — and the grid offsets its sticky
+   column header by this bar's measured height, so the register slid up and
+   down the page under it.
+
+   Three rules keep that from coming back, and none of them is optional:
+
+     1. all five buttons always render (a zero count is :disabled, never
+        removed — see statusButtons);
+     2. the count sits in a fixed-width slot, clamped at 99+ upstream, so a
+        digit appearing cannot reflow the row;
+     3. the group is ONE line that scrolls horizontally, never a second row.
+
+   Measure before changing any of them; jsdom has no layout and will agree
+   with whatever you wrote. */
+
+.budget-filter-bar__statuses {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  /* Rule 3. The bar itself wraps; this group must not, or a narrow viewport
+     buys back the extra row the whole exercise was about. */
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  min-width: 0;
+}
+
+.budget-filter-bar__statuses::-webkit-scrollbar {
+  display: none;
+}
+
+.budget-filter-bar__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-muted);
+  padding: 4px 8px;
+  border-radius: var(--border-radius-md);
+  border: 1px solid transparent;
+  background: none;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition:
+    color var(--transition-fast),
+    background-color var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+/* Rule 2. `ch` on tabular figures is one digit wide, and the label is clamped
+   to 99+ upstream, so this slot holds every value the button can show. */
+.budget-filter-bar__btn-count {
+  min-width: 3ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}
+
+/* Rule 1. Present, legible, and plainly not worth clicking — the state that
+   used to be expressed by vanishing. */
+.budget-filter-bar__btn:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+@media (hover: hover) {
+  .budget-filter-bar__btn:not(:disabled):hover {
+    color: var(--text-primary);
+    background-color: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  }
+}
+
+.budget-filter-bar__btn.active {
+  color: var(--color-accent);
+  background-color: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+
+/* Tones come from QUICK_FILTER_VARIANTS, the same map the Manage Filters
+   badges read, so a status cannot be red in one place and amber in another. */
+.budget-filter-bar__btn--negative {
+  color: var(--color-negative);
+}
+
+.budget-filter-bar__btn--warning {
+  color: var(--color-warning);
+}
+
+.budget-filter-bar__btn--positive {
+  color: var(--color-positive);
+}
+
+/* Pending: underfunded before its funding day. Muted, never a colour that
+   asks to be acted on today. */
+.budget-filter-bar__btn--neutral {
+  color: var(--text-muted);
+}
+
+@media (hover: hover) {
+  .budget-filter-bar__btn--negative:not(:disabled):hover {
+    color: var(--color-negative);
+    background-color: color-mix(in srgb, var(--color-negative) 10%, transparent);
+  }
+
+  .budget-filter-bar__btn--warning:not(:disabled):hover {
+    color: var(--color-warning);
+    background-color: color-mix(in srgb, var(--color-warning) 10%, transparent);
+  }
+
+  .budget-filter-bar__btn--positive:not(:disabled):hover {
+    color: var(--color-positive);
+    background-color: color-mix(in srgb, var(--color-positive) 10%, transparent);
+  }
+
+  .budget-filter-bar__btn--neutral:not(:disabled):hover {
+    color: var(--text-secondary);
+    background-color: color-mix(in srgb, var(--text-muted) 10%, transparent);
+  }
+}
+
+.budget-filter-bar__btn--negative.active {
+  color: var(--color-negative);
+  background-color: color-mix(in srgb, var(--color-negative) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-negative) 12%, transparent);
+}
+
+.budget-filter-bar__btn--warning.active {
+  color: var(--color-warning);
+  background-color: color-mix(in srgb, var(--color-warning) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-warning) 12%, transparent);
+}
+
+.budget-filter-bar__btn--positive.active {
+  color: var(--color-positive);
+  background-color: color-mix(in srgb, var(--color-positive) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-positive) 12%, transparent);
+}
+
+.budget-filter-bar__btn--neutral.active {
+  color: var(--text-secondary);
+  background-color: color-mix(in srgb, var(--text-muted) 14%, transparent);
+  border-color: color-mix(in srgb, var(--text-muted) 14%, transparent);
 }

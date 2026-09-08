@@ -1,99 +1,134 @@
 /**
- * What the budget bar's one filter control offers, and which entry it reads.
+ * What the budget bar offers: five status buttons, and a dropdown of saved
+ * filters. Both rules live here so the two controls cannot come to disagree
+ * about a count or about which one is on.
  *
- * The bar drew a button per choice: `All`, up to five quick filters, and one
- * per saved filter — unbounded. It wraps, and the grid offsets its sticky
- * column header by this bar's *measured height*, so every filter someone saved
- * pushed the register further down the page. Bounding the chips helped and did
- * not fix it: the row still changed width as counts appeared and disappeared,
- * and on a phone it was several rows deep before anyone saved anything.
+ * **Why the statuses are buttons again.** They are five fixed things you reach
+ * for by eye; a dropdown makes you open it to find out whether anything is
+ * overspent. The reason they were collapsed into it was real, and is not about
+ * being buttons: the bar wraps, the grid offsets its sticky column header by
+ * this bar's *measured height*, and the old row's footprint moved with the
+ * budget's state — it dropped a status whose count hit zero, so the row got
+ * narrower as things got better and the register slid up and down the page.
+ * Saved filters made it worse by being unbounded.
  *
- * The buttons were never independent to begin with. `setActiveFilter` clears
+ * So the footprint is now static, and that is the property to preserve:
+ *
+ * - **All five render always.** A zero count is `disabled`, never removed.
+ *   This is the rule the old row got wrong.
+ * - **The count sits in a fixed slot**, clamped at `99+`, so a digit appearing
+ *   never reflows the row.
+ * - **Saved filters stay in the dropdown**, where an unbounded list costs no
+ *   width at all.
+ *
+ * The bar's width and height are then the same on an empty budget and a
+ * hundred-category one, which is what the grid below it needs.
+ *
+ * The two controls remain ONE choice: `setActiveFilter` clears
  * `activeQuickFilter` and `setActiveQuickFilter` clears `activeFilterId`, so
- * at most one of the eight was ever on — a single-valued choice wearing eight
- * controls. One `<select>` says the same thing in a fixed amount of space,
- * which is the property the bar needs.
- *
- * **A count of zero hides a quick filter, except the chosen one.** The old bar
- * dropped a chip at zero even while it was the active filter, leaving the grid
- * narrowed with nothing on screen saying so. Here the chosen entry is always
- * present, so the chip can always name what it is doing.
+ * at most one of them is ever on.
  */
 import type { SelectChipGroup } from '../common/SelectChip/SelectChip'
-import { QUICK_FILTER_LABELS, type QuickFilter } from '../../stores/uiStore'
+import { QUICK_FILTER_LABELS, QUICK_FILTER_VARIANTS, type QuickFilter } from '../../stores/uiStore'
 
 export interface SavedFilter {
   id: string
   name: string
 }
 
-export type FilterChoice =
-  { kind: 'all' } | { kind: 'quick'; filter: QuickFilter } | { kind: 'saved'; id: string }
+//: Statuses are buttons and no longer reach this control, so there is no
+//: `quick` arm here any more — a value shape nothing can emit is a second way
+//: to say the same thing, waiting to disagree with the first.
+export type FilterChoice = { kind: 'all' } | { kind: 'saved'; id: string }
 
 export interface FilterMenu {
   /** The `<select>` value — `''` when nothing narrows the grid. */
   value: string
   groups: SelectChipGroup[]
-  /** Overspent categories the chip is not already naming. Zero means draw no
-   *  marker. The count is the one thing the collapsed row would otherwise
-   *  stop saying out loud, and it is the one worth interrupting someone for. */
-  attention: number
+}
+
+/** One status button. `disabled` rather than absent at zero — see the note at
+ *  the top about why the row's footprint must not move. */
+export interface StatusButton {
+  filter: QuickFilter
+  label: string
+  count: number
+  /** What the count slot shows. Clamped, so three digits cannot widen it. */
+  countLabel: string
+  /** Tone class suffix, from the one map the Manage Filters badges also read. */
+  variant: string
+  active: boolean
+  disabled: boolean
+}
+
+/** Above this the slot would grow a character. A budget with a hundred
+ *  overspent categories is not asking for the exact figure. */
+const COUNT_CEILING = 99
+
+/**
+ * The five status buttons, always all five, in the user's arranged order.
+ *
+ * A status with nothing in it is disabled rather than dropped — and the active
+ * one is never disabled, so a filter that empties its own list still says what
+ * it is doing rather than leaving a narrowed grid with no visible reason.
+ */
+export function statusButtons({
+  quickFilterOrder,
+  counts,
+  activeQuickFilter,
+}: {
+  quickFilterOrder: readonly QuickFilter[]
+  counts: Record<QuickFilter, number>
+  activeQuickFilter: QuickFilter | null
+}): StatusButton[] {
+  return quickFilterOrder.map((filter) => {
+    const count = counts[filter] ?? 0
+    const active = activeQuickFilter === filter
+    return {
+      filter,
+      label: QUICK_FILTER_LABELS[filter],
+      count,
+      countLabel: count > COUNT_CEILING ? `${COUNT_CEILING}+` : String(count),
+      variant: QUICK_FILTER_VARIANTS[filter],
+      active,
+      disabled: count === 0 && !active,
+    }
+  })
 }
 
 export function choiceValue(choice: FilterChoice): string {
-  if (choice.kind === 'all') return ''
-  return choice.kind === 'quick' ? `quick:${choice.filter}` : `saved:${choice.id}`
+  return choice.kind === 'all' ? '' : `saved:${choice.id}`
 }
 
-/** Ids are UUIDs and quick-filter keys are dash-separated, so neither carries
- *  the separator; split on the first one all the same. */
+/** Ids are UUIDs, so they never carry the separator; split on the first one
+ *  all the same. */
 export function parseChoice(value: string): FilterChoice {
   const at = value.indexOf(':')
-  if (at === -1) return { kind: 'all' }
-  const rest = value.slice(at + 1)
-  return value.slice(0, at) === 'quick'
-    ? { kind: 'quick', filter: rest as QuickFilter }
-    : { kind: 'saved', id: rest }
+  return at === -1 ? { kind: 'all' } : { kind: 'saved', id: value.slice(at + 1) }
 }
 
 interface MenuInput {
-  quickFilterOrder: readonly QuickFilter[]
-  counts: Record<QuickFilter, number>
   saved: readonly SavedFilter[]
-  activeQuickFilter: QuickFilter | null
   activeFilterId: string | null
 }
 
-export function filterMenu({
-  quickFilterOrder,
-  counts,
-  saved,
-  activeQuickFilter,
-  activeFilterId,
-}: MenuInput): FilterMenu {
-  const quick = quickFilterOrder
-    .filter((f) => counts[f] > 0 || f === activeQuickFilter)
-    .map((f) => ({
-      value: choiceValue({ kind: 'quick', filter: f }),
-      label: `${QUICK_FILTER_LABELS[f]} (${counts[f]})`,
-    }))
-
+/**
+ * The dropdown: saved filters, and nothing else.
+ *
+ * Statuses left it for the button row. Offering them in both places would put
+ * the overspent count on screen twice — two readings of the same number, free
+ * to disagree the moment one of them is computed from a different list.
+ */
+export function filterMenu({ saved, activeFilterId }: MenuInput): FilterMenu {
   // A persisted id can point at a filter this budget does not have — another
   // budget's, or one deleted in another tab. The bar self-heals it, but until
   // that runs the chip must not read blank: the grid is not narrowed by a
   // filter that does not exist, so `All categories` is the true answer.
   const activeSaved = saved.find((f) => f.id === activeFilterId)
 
-  const value = activeQuickFilter
-    ? choiceValue({ kind: 'quick', filter: activeQuickFilter })
-    : activeSaved
-      ? choiceValue({ kind: 'saved', id: activeSaved.id })
-      : ''
-
   return {
-    value,
+    value: activeSaved ? choiceValue({ kind: 'saved', id: activeSaved.id }) : '',
     groups: [
-      { label: 'By status', options: quick },
       {
         label: 'Saved filters',
         options: saved.map((f) => ({
@@ -102,6 +137,5 @@ export function filterMenu({
         })),
       },
     ],
-    attention: activeQuickFilter === 'overspent' ? 0 : counts.overspent,
   }
 }
