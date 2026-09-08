@@ -65,3 +65,15 @@
     box-shadow: var(--shadow-md, 0 4px 12px rgba(0, 0, 0, 0.3));
   }
 }
+
+/* Anchor for the More button's rollup dot. */
+.bottom-nav__icon-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.bottom-nav__rollup {
+  position: absolute;
+  top: -1px;
+  right: -3px;
+}

@@ -48,10 +48,26 @@ router = APIRouter(route_class=CommitRoute)
 
 
 async def _get_owned_job(repo: AIJobRepository, job_id: uuid.UUID, budget_id: uuid.UUID) -> AIJob:
-    job = await repo.get(job_id)
+    # `get_with_review` rather than `get`: every caller here either serialises
+    # the job or mutates and then serialises it, and `AIJobResponse` requires
+    # `needs_review`.
+    job = await repo.get_with_review(job_id)
     if job is None or str(job.budget_id) != str(budget_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="AI job not found")
     return job
+
+
+async def _reloaded(repo: AIJobRepository, job: AIJob) -> AIJob:
+    """Re-read a just-committed job so its computed field is current.
+
+    Submit, retry and reprocess all write and then serialise. The commit
+    expires the instance, and `needs_review` is not a column that comes back
+    with it — it has to be asked for again.
+    """
+    reloaded = await repo.get_with_review(job.id)
+    if reloaded is None:  # pragma: no cover - the row was just committed
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="AI job not found")
+    return reloaded
 
 
 async def _removed_transaction_ids(repo: AIJobRepository, jobs: list[AIJob]) -> set[uuid.UUID]:
@@ -201,7 +217,7 @@ async def submit_receipt(
     # `igab.api.route`.
     await session.commit()
     ai_worker.notify()
-    return AIJobResponse.from_job(job)
+    return AIJobResponse.from_job(await _reloaded(job_repo, job))
 
 
 @router.get("/{budget_id}/ai/jobs", response_model=AIJobListResponse)
@@ -212,14 +228,20 @@ async def list_jobs(
     status_filter: str | None = None,
     kind: str | None = None,
     transaction_id: uuid.UUID | None = None,
+    needs_review: bool | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> AIJobListResponse:
+    """The AI log. `needs_review` splits it into the page's two sections —
+    true for the work waiting on the user, false for everything else — so
+    "Needs your approval" is complete rather than whatever landed on the
+    current page of History."""
     jobs, total = await job_repo.list_for_budget(
         budget_id,
         status=status_filter,
         kind=kind,
         transaction_id=transaction_id,
+        needs_review=needs_review,
         limit=min(limit, 200),
         offset=offset,
     )
@@ -280,7 +302,7 @@ async def retry_job(
     session.add(job)
     await session.commit()
     ai_worker.notify()
-    return AIJobResponse.from_job(job)
+    return AIJobResponse.from_job(await _reloaded(job_repo, job))
 
 
 @router.post("/{budget_id}/ai/jobs/{job_id}/reprocess", response_model=AIJobResponse)
@@ -310,7 +332,7 @@ async def reprocess_job(
     session.add(job)
     await session.commit()
     ai_worker.notify()
-    return AIJobResponse.from_job(job)
+    return AIJobResponse.from_job(await _reloaded(job_repo, job))
 
 
 # The job lifecycle (retry, reprocess, delete) is deliberately absent from

@@ -20,7 +20,6 @@ import {
 } from '../../../stores/appStore'
 import { useUIStore } from '../../../stores/uiStore'
 import { useFormatters } from '../../../hooks/useFormatters'
-import { AIActivityBadge } from '../../ai/AIActivityBadge'
 import { UndoRedoButtons } from './UndoRedoButtons'
 import { IS_MAC } from '../../../keyboard/shortcuts'
 import { addMonths, currentMonthStart } from '../../../utils/dates'
@@ -99,8 +98,6 @@ export function Header() {
           )}
         </div>
       )}
-
-      <AIActivityBadge />
 
       <div className="header__palette-wrap">
         <button

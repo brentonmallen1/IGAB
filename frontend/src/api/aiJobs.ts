@@ -64,6 +64,13 @@ export interface AIJob {
   transaction_id: string | null
   /** The linked transaction was deleted after this job ran */
   transaction_removed?: boolean
+  /** Is the transaction this job created still waiting for approval?
+   *  Served — the rule is `AI_NEEDS_REVIEW` in
+   *  `backend/.../repositories/txn_filters.py`, the same expression the nav
+   *  badge's count sums, so the badge and this page describe one population.
+   *  The client cannot compute it: it has a transaction id and nothing else
+   *  about that row. */
+  needs_review: boolean
   attachment_id: string | null
   created_at: string
   started_at: string | null
@@ -87,7 +94,16 @@ export interface NLDraft {
 
 export function useAIJobs(
   budgetId: string | null,
-  opts: { status?: AIJobStatus; kind?: AIJobKind; limit?: number; offset?: number } = {}
+  opts: {
+    status?: AIJobStatus
+    kind?: AIJobKind
+    /** true = the work waiting on the user; false = everything else. The
+     *  page's two sections are this filter and its negation, so every job
+     *  appears in exactly one of them. */
+    needsReview?: boolean
+    limit?: number
+    offset?: number
+  } = {}
 ) {
   return useQuery({
     queryKey: [ROOT.aiJobs, budgetId, opts],
@@ -95,6 +111,7 @@ export function useAIJobs(
       const params = new URLSearchParams()
       if (opts.status) params.set('status_filter', opts.status)
       if (opts.kind) params.set('kind', opts.kind)
+      if (opts.needsReview !== undefined) params.set('needs_review', String(opts.needsReview))
       if (opts.limit) params.set('limit', String(opts.limit))
       if (opts.offset) params.set('offset', String(opts.offset))
       const { data } = await apiClient.get<AIJobListResponse>(

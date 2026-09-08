@@ -382,6 +382,26 @@ NEEDS_CATEGORY = and_(
 )
 
 
+#: An AI-created transaction still waiting for the user to look at it.
+#:
+#: Two surfaces read this and they must not be able to disagree: the count
+#: behind the AI Activity nav badge, and the field that decides which rows the
+#: page files under "Needs your approval". They were one inline `where` and one
+#: thing the client could not compute, which is the arrangement that produced
+#: "the badge said 3 while the register drew 930" for the category rule.
+#:
+#: `created_via LIKE 'ai%'` covers both `ai_receipt` and `ai_nl`. The
+#: exclusions mirror `_count_pending_review`: a soft-deleted row, a split child
+#: and a pending row are not things the user can act on.
+AI_NEEDS_REVIEW = and_(
+    NOT_DELETED,
+    PARENT_ROW,
+    POSTED,
+    Transaction.approved == False,  # noqa: E712
+    Transaction.created_via.like("ai%"),
+)
+
+
 #: The rows a liability's own ledger is made of, by kind. The line is the one
 #: `domain/activity_class.py` already draws for reports: a transfer leg on a
 #: tracked debt is principal moving (`TRANSFER_INTERNAL` / `DEBT_PRINCIPAL`),

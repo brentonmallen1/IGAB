@@ -37,6 +37,7 @@ from igab.domain.activity_class import (
 from igab.repositories.base import BaseRepository
 from igab.repositories.category_filters import IS_CATEGORIZABLE
 from igab.repositories.txn_filters import (
+    AI_NEEDS_REVIEW,
     BALANCE_ROW,
     BANK_UNLINKED,
     CARD_PAYMENT_FROM_CASH,
@@ -423,20 +424,15 @@ class TransactionRepository(BaseRepository[Transaction]):
         transaction was deleted must not keep a badge lit, and the AI pipeline
         already tracks that case separately (transaction_removed).
 
-        Exclusions mirror _count_pending_review — soft-deleted rows, split
-        children, and 'pending' rows are not things the user can act on.
+        The population is `AI_NEEDS_REVIEW`, and it is spelled once: the job
+        rows the AI Activity page files under "Needs your approval" are chosen
+        by that same expression, so this number and that list cannot describe
+        two different sets.
         """
         result = await self.session.execute(
             select(func.count())
             .select_from(Transaction)
-            .where(
-                Transaction.budget_id == budget_id,
-                Transaction.is_deleted == False,  # noqa: E712
-                Transaction.parent_transaction_id.is_(None),
-                Transaction.cleared != "pending",
-                Transaction.approved == False,  # noqa: E712
-                Transaction.created_via.like("ai%"),
-            )
+            .where(Transaction.budget_id == budget_id, AI_NEEDS_REVIEW)
         )
         return result.scalar_one() or 0
 

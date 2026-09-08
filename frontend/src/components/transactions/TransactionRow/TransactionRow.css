@@ -52,6 +52,14 @@
   background-color: var(--row-selected-bg);
 }
 
+/* An AI row waiting for review, readable across the table rather than by
+   inspecting a 12px glyph. An inset shadow rather than a border, so the grid
+   columns do not shift by 2px on half the rows — and it clears on approve with
+   the sparkle, from the same flag: this marks work, not provenance. */
+.transaction-row--ai-review {
+  box-shadow: inset 2px 0 0 var(--color-accent);
+}
+
 .transaction-row--highlighted {
   animation: highlight-fade 2s ease-out;
 }
@@ -135,9 +143,14 @@
 /* Accent, matching every other AI surface. Sits beside the warning eye rather
    than replacing it — the eye says "needs review", this says why. Read-only,
    so no hover or pointer affordance. */
+/* Filled, not outlined. At 12px in a cluster of up to five glyphs an outline
+   sparkle at 0.85 opacity was the quietest thing in the row, and it is the one
+   that means "this needs you". The size stays 12px — the cluster's density is
+   the reason the fill does the work instead. */
 .txn-status-icon--ai {
-  color: var(--color-accent);
-  opacity: 0.85;
+  background-color: var(--color-accent);
+  color: var(--bg-primary);
+  border-radius: 3px;
   cursor: inherit;
   pointer-events: none;
 }

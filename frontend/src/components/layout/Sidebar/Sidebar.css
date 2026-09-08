@@ -372,31 +372,6 @@ button.sidebar__group-label:hover {
   white-space: nowrap;
 }
 
-.sidebar__uncategorized-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
-  border-radius: 8px;
-  background-color: var(--color-warning);
-  color: var(--text-inverse);
-  font-size: var(--font-size-xs);
-  font-weight: 600;
-  flex-shrink: 0;
-  line-height: 1;
-}
-
-/* Update-available dot on the Settings nav entry (opt-in update check) */
-.sidebar__update-badge {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background-color: var(--color-accent);
-  flex-shrink: 0;
-}
-
 .sidebar__account-right {
   display: flex;
   align-items: center;

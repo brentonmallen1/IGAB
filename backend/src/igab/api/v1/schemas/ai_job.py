@@ -22,6 +22,13 @@ class AIJobResponse(ApiModel):
     transaction_id: uuid.UUID | None
     # The linked transaction has since been deleted — the log entry outlives it
     transaction_removed: bool = False
+    #: Is the transaction this job created still waiting for the user?
+    #:
+    #: Required, not optional. The AI Activity page files rows into "Needs your
+    #: approval" or History by this, and a default would file waiting work as
+    #: done — silently, which is the failure worth being loud about. Populate
+    #: it with `AIJobRepository.with_review` (or `get_with_review`).
+    needs_review: bool
     attachment_id: uuid.UUID | None
     created_at: datetime
     started_at: datetime | None
@@ -30,6 +37,12 @@ class AIJobResponse(ApiModel):
     @classmethod
     def from_job(cls, job, *, transaction_removed: bool = False) -> "AIJobResponse":
         payload = job.payload or {}
+        if job.needs_review is None:
+            raise RuntimeError(
+                "AIJob.needs_review was not loaded — query through "
+                "AIJobRepository.with_review or get_with_review. Serving a "
+                "default here would report waiting work as done."
+            )
         return cls(
             id=job.id,
             budget_id=job.budget_id,
@@ -43,6 +56,7 @@ class AIJobResponse(ApiModel):
             max_attempts=job.max_attempts,
             transaction_id=job.transaction_id,
             transaction_removed=transaction_removed,
+            needs_review=job.needs_review,
             attachment_id=job.attachment_id,
             created_at=job.created_at,
             started_at=job.started_at,
