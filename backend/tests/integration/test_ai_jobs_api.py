@@ -337,6 +337,155 @@ class TestAINeedsReviewCount:
         assert (await self._count(api_client, other_budget))["needs_review"] == 1
 
 
+class TestServedNeedsReview:
+    """`needs_review` on a job row.
+
+    The page lists jobs; approval is a fact about the transaction a job
+    created. The client has a transaction id and nothing else about that row,
+    so the server answers — with `AI_NEEDS_REVIEW`, the same expression the
+    badge's count sums. That is the point: the number on the nav item and the
+    rows filed under "Needs your approval" are one population.
+    """
+
+    async def _job_for(self, db_session, budget, txn_id, status="done"):
+        job = AIJob(
+            budget_id=budget.id,
+            kind="receipt",
+            status=status,
+            payload={},
+            transaction_id=txn_id,
+        )
+        db_session.add(job)
+        await db_session.commit()
+        return job
+
+    async def _ai_txn(self, db_session, budget, account, **over):
+        return await create_transaction(
+            db_session,
+            budget,
+            account,
+            "-12.50",
+            date(2026, 8, 2),
+            **{
+                "approved": False,
+                "created_via": "ai_receipt",
+                "cleared": "uncleared",
+                **over,
+            },
+        )
+
+    async def _list(self, api_client, budget, **params):
+        resp = await api_client.get(f"/api/v1/{budget.id}/ai/jobs", params=params)
+        assert resp.status_code == 200, resp.text
+        return resp.json()
+
+    async def test_true_while_the_transaction_waits(self, api_client, db_session, attachments_dir):
+        budget, account = await _setup(api_client, db_session)
+        txn = await self._ai_txn(db_session, budget, account)
+        await self._job_for(db_session, budget, txn.id)
+
+        body = await self._list(api_client, budget)
+        assert [j["needs_review"] for j in body["jobs"]] == [True]
+
+    async def test_flips_when_the_transaction_is_approved(
+        self, api_client, db_session, attachments_dir
+    ):
+        budget, account = await _setup(api_client, db_session)
+        txn = await self._ai_txn(db_session, budget, account)
+        await self._job_for(db_session, budget, txn.id)
+
+        resp = await api_client.post(f"/api/v1/transactions/{txn.id}/approve")
+        assert resp.status_code == 200, resp.text
+
+        body = await self._list(api_client, budget)
+        assert [j["needs_review"] for j in body["jobs"]] == [False]
+        # And the badge agrees, because it reads the same expression.
+        count = await api_client.get(f"/api/v1/{budget.id}/ai/jobs/active-count")
+        assert count.json()["needs_review"] == 0
+
+    async def test_false_for_a_job_with_no_transaction(
+        self, api_client, db_session, attachments_dir
+    ):
+        # A queued job has created nothing yet. It must still appear in the
+        # log — an EXISTS rather than a join, so nothing drops out of the list.
+        budget, _ = await _setup(api_client, db_session)
+        await self._job_for(db_session, budget, None, status="queued")
+
+        body = await self._list(api_client, budget)
+        assert len(body["jobs"]) == 1
+        assert body["jobs"][0]["needs_review"] is False
+
+    async def test_false_once_the_transaction_is_deleted(
+        self, api_client, db_session, attachments_dir
+    ):
+        budget, account = await _setup(api_client, db_session)
+        txn = await self._ai_txn(db_session, budget, account)
+        await self._job_for(db_session, budget, txn.id)
+
+        resp = await api_client.delete(
+            f"/api/v1/transactions/{txn.id}", params={"budget_id": str(budget.id)}
+        )
+        assert resp.status_code in (200, 204), resp.text
+
+        body = await self._list(api_client, budget)
+        assert body["jobs"][0]["needs_review"] is False
+
+    async def test_pending_rows_are_not_waiting_work(self, api_client, db_session, attachments_dir):
+        # Mirrors the badge's population: a pending amount is provisional, so
+        # it is not something the user can act on yet.
+        budget, account = await _setup(api_client, db_session)
+        txn = await self._ai_txn(db_session, budget, account, cleared="pending")
+        await self._job_for(db_session, budget, txn.id)
+
+        body = await self._list(api_client, budget)
+        assert body["jobs"][0]["needs_review"] is False
+
+    async def test_the_filter_splits_the_log_in_two(self, api_client, db_session, attachments_dir):
+        budget, account = await _setup(api_client, db_session)
+        waiting = await self._ai_txn(db_session, budget, account)
+        done = await self._ai_txn(db_session, budget, account, approved=True)
+        await self._job_for(db_session, budget, waiting.id)
+        await self._job_for(db_session, budget, done.id)
+
+        pending = await self._list(api_client, budget, needs_review="true")
+        history = await self._list(api_client, budget, needs_review="false")
+
+        assert [j["transaction_id"] for j in pending["jobs"]] == [str(waiting.id)]
+        assert [j["transaction_id"] for j in history["jobs"]] == [str(done.id)]
+        # Two sections, every job in exactly one of them.
+        assert pending["total_count"] + history["total_count"] == 2
+
+    async def test_every_serving_path_carries_the_field(
+        self, api_client, db_session, attachments_dir
+    ):
+        """The schema requires it, so a path that forgets to load it raises.
+
+        Detail, retry and reprocess all serialise a job they have just read or
+        written; this is the checklist that says each of them still asks for
+        the computed field.
+        """
+        budget, account = await _setup(api_client, db_session)
+        txn = await self._ai_txn(db_session, budget, account)
+        job = await self._job_for(db_session, budget, txn.id, status="error")
+
+        detail = await api_client.get(f"/api/v1/{budget.id}/ai/jobs/{job.id}")
+        assert detail.status_code == 200, detail.text
+        assert detail.json()["needs_review"] is True
+
+        retry = await api_client.post(f"/api/v1/{budget.id}/ai/jobs/{job.id}/retry")
+        assert retry.status_code == 200, retry.text
+        assert retry.json()["needs_review"] is True
+
+    async def test_reprocess_still_carries_it(self, api_client, db_session, attachments_dir):
+        budget, account = await _setup(api_client, db_session)
+        txn = await self._ai_txn(db_session, budget, account)
+        job = await self._job_for(db_session, budget, txn.id, status="done")
+
+        resp = await api_client.post(f"/api/v1/{budget.id}/ai/jobs/{job.id}/reprocess")
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["needs_review"] is True
+
+
 class TestJobListingAndLifecycle:
     async def test_list_detail_active_count(self, api_client, db_session, attachments_dir):
         budget, account = await _setup(api_client, db_session)

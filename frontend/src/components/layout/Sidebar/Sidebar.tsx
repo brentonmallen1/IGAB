@@ -27,6 +27,7 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useAccounts } from '../../../api/accounts'
+import { AIActivityNavBadge } from '../../ai/AIActivityNavBadge'
 import { useAccountTypes } from '../../../api/accountTypes'
 import {
   SIDEBAR_SECTION_IDS,
@@ -303,6 +304,7 @@ export function Sidebar() {
           >
             <Sparkles size={16} />
             {!collapsed && <span>AI Activity</span>}
+            <AIActivityNavBadge />
           </NavLink>
           <NavLink
             to="/activity"
@@ -341,7 +343,7 @@ export function Sidebar() {
             {!collapsed && <span>System</span>}
             {updateAvailable && (
               <span
-                className="sidebar__update-badge"
+                className="count-badge count-badge--dot count-badge--accent"
                 title="Update available — see System → Updates"
               />
             )}

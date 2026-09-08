@@ -986,3 +986,65 @@ html[data-keyboard="open"] {
 .toast-undo-button:hover {
   opacity: 0.85;
 }
+
+/* Count badges and status dots on nav items and rows.
+ *
+ * Written four times before this: the sidebar's uncategorized pill, and a 7px
+ * accent dot on the sidebar's System entry, on the More sheet's System entry,
+ * and about to be a fourth on AI Activity. Same geometry every time, in four
+ * stylesheets, free to disagree — the same reason `.spin` is up there.
+ *
+ * `--dot` is the same badge with nothing to say: a state worth noticing whose
+ * number is not worth reading. */
+.count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  color: var(--text-inverse);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.count-badge--dot {
+  min-width: 7px;
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  border-radius: 50%;
+}
+
+.count-badge--warning {
+  background-color: var(--color-warning);
+}
+
+.count-badge--accent {
+  background-color: var(--color-accent);
+}
+
+/* Something is happening right now. Paired with a count it says "and more is
+   coming"; on its own dot it is the whole message. */
+.count-badge--working {
+  animation: count-badge-pulse 2s ease-in-out infinite;
+}
+
+@keyframes count-badge-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .count-badge--working {
+    animation: none;
+  }
+}

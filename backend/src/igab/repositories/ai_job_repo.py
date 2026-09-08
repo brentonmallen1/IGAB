@@ -1,12 +1,29 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, exists, func, select, update
+from sqlalchemy.orm import with_expression
 
 from igab.db.models import AIJob, Transaction
 from igab.repositories.base import BaseRepository
+from igab.repositories.txn_filters import AI_NEEDS_REVIEW
 
 ACTIVE_STATUSES = ("queued", "processing")
+
+#: Whether this job's transaction is still waiting for the user.
+#:
+#: A correlated EXISTS rather than a join, so a job with no transaction (one
+#: still queued, or one whose row was deleted) reads False instead of dropping
+#: out of the list — the log outlives what it created.
+#:
+#: The predicate itself is `AI_NEEDS_REVIEW`, the same one
+#: `count_ai_needs_review` sums. That is the whole point of the field: the nav
+#: badge's number and this page's sections are one population, not two.
+NEEDS_REVIEW_EXPR = exists(
+    select(1)
+    .select_from(Transaction)
+    .where(Transaction.id == AIJob.transaction_id, AI_NEEDS_REVIEW)
+)
 
 
 class AIJobRepository(BaseRepository[AIJob]):
@@ -27,12 +44,38 @@ class AIJobRepository(BaseRepository[AIJob]):
         )
         return result.scalar_one_or_none()
 
+    @staticmethod
+    def with_review(stmt):
+        """Populate `AIJob.needs_review`. The only way to do it.
+
+        Every path that serializes an `AIJobResponse` must go through here or
+        through `get_with_review` — the schema requires the field, so one that
+        forgets raises rather than reporting waiting work as done.
+        """
+        return stmt.options(with_expression(AIJob.needs_review, NEEDS_REVIEW_EXPR))
+
+    async def get_with_review(self, job_id: uuid.UUID) -> AIJob | None:
+        """Re-read a job with `needs_review` populated.
+
+        `populate_existing` is load-bearing: retry and reprocess have just
+        mutated the row, so it is already in the identity map with the field
+        unset, and without this the loader would hand back that instance
+        untouched.
+        """
+        result = await self.session.execute(
+            self.with_review(select(AIJob).where(AIJob.id == job_id)).execution_options(
+                populate_existing=True
+            )
+        )
+        return result.scalar_one_or_none()
+
     async def list_for_budget(
         self,
         budget_id: uuid.UUID,
         status: str | None = None,
         kind: str | None = None,
         transaction_id: uuid.UUID | None = None,
+        needs_review: bool | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[AIJob], int]:
@@ -43,16 +86,22 @@ class AIJobRepository(BaseRepository[AIJob]):
             conditions.append(AIJob.kind == kind)
         if transaction_id:
             conditions.append(AIJob.transaction_id == transaction_id)
+        if needs_review is not None:
+            # The page's two sections are this filter and its negation, so
+            # every job lands in exactly one of them.
+            conditions.append(NEEDS_REVIEW_EXPR if needs_review else ~NEEDS_REVIEW_EXPR)
 
         total = await self.session.scalar(
             select(func.count()).select_from(AIJob).where(*conditions)
         )
         result = await self.session.execute(
-            select(AIJob)
-            .where(*conditions)
-            .order_by(AIJob.created_at.desc())
-            .limit(limit)
-            .offset(offset)
+            self.with_review(
+                select(AIJob)
+                .where(*conditions)
+                .order_by(AIJob.created_at.desc())
+                .limit(limit)
+                .offset(offset)
+            )
         )
         return list(result.scalars().all()), int(total or 0)
 

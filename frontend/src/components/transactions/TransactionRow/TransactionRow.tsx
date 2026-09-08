@@ -222,6 +222,10 @@ export const TransactionRow = memo(function TransactionRow({
   const isReconciled = txn.cleared === 'reconciled'
   const accountLock = accountCellLock(txn, accountLabel !== undefined)
   const isPending = txn.cleared === 'pending'
+  /** The AI wrote this row and nobody has looked at it yet. Drives the row's
+   *  accent edge AND the sparkle in the status cluster — one spelling, because
+   *  an edge that outlives its glyph is a row that looks unfinished forever. */
+  const isAIReview = !txn.approved && !!txn.created_via?.startsWith('ai')
 
   const dateProvenance =
     [
@@ -421,7 +425,7 @@ export const TransactionRow = memo(function TransactionRow({
   return (
     <div
       data-txn-id={txn.id}
-      className={`transaction-row ${isSelected ? 'transaction-row--selected' : ''} ${anyTxnSelected ? 'transaction-row--any-selected' : ''} ${!txn.approved ? 'unapproved' : ''} ${isReconciled ? 'reconciled' : ''} ${isPending ? 'pending' : ''} ${highlighted ? 'transaction-row--highlighted' : ''}`}
+      className={`transaction-row ${isSelected ? 'transaction-row--selected' : ''} ${anyTxnSelected ? 'transaction-row--any-selected' : ''} ${!txn.approved ? 'unapproved' : ''} ${isAIReview ? 'transaction-row--ai-review' : ''} ${isReconciled ? 'reconciled' : ''} ${isPending ? 'pending' : ''} ${highlighted ? 'transaction-row--highlighted' : ''}`}
       role="row"
       onDoubleClick={() => !isMobile && onEdit(txn)}
       onContextMenu={handleContextMenu}
@@ -460,7 +464,7 @@ export const TransactionRow = memo(function TransactionRow({
             review banner). Non-interactive — tapping the row already opens
             the review modal, and the cluster is crowded enough. Drops away on
             approve, like every other glyph here: it means "this needs you". */}
-        {!txn.approved && txn.created_via?.startsWith('ai') && (
+        {isAIReview && (
           <Tooltip content="Extracted from an image by AI — needs review">
             <span
               className="txn-status-icon txn-status-icon--ai"

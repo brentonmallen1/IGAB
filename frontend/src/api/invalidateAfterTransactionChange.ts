@@ -50,6 +50,12 @@ export function invalidateAfterTransactionChange(
     [ROOT.transferCandidates],
     // Counts and status the header and the account list render.
     [ROOT.pendingReviewCount],
+    // The AI nav badge and its log. Approving an AI row is what makes that
+    // badge go down, and approving happens in the register far more often
+    // than on the AI page — so this belongs here rather than at one call
+    // site, or the badge keeps a number the register has already cleared.
+    [ROOT.aiJobs],
+    [ROOT.aiJobsActive],
     [ROOT.reconcileStatus],
     [ROOT.accountHygiene, budgetId],
     ...(accountId

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { AIActivityNavBadge } from '../../ai/AIActivityNavBadge'
 import {
   UserCircle2,
   Users,
@@ -112,6 +113,7 @@ export function MoreSheet() {
         <button className="more-sheet__item press-scale" onClick={() => go('/ai-activity')}>
           <Sparkles size={18} />
           <span>AI Activity</span>
+          <AIActivityNavBadge />
         </button>
         <button className="more-sheet__item press-scale" onClick={() => go('/import')}>
           <Upload size={18} />
@@ -126,7 +128,7 @@ export function MoreSheet() {
           <span>System</span>
           {updateAvailable && (
             <span
-              className="more-sheet__update-badge"
+              className="count-badge count-badge--dot count-badge--accent"
               title="Update available — see System → Updates"
             />
           )}

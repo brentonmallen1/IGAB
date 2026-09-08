@@ -20,12 +20,14 @@ import {
 import toast from 'react-hot-toast'
 import { useAppStore } from '../../stores/appStore'
 import {
+  useAIJobCounts,
   useAIJobs,
   useDeleteAIJob,
   useReprocessAIJob,
   type AIJob,
   type AIJobStatus,
 } from '../../api/aiJobs'
+import { useBulkApprove } from '../../api/transactions'
 import { fetchAttachmentBlob, useAttachmentUrl } from '../../api/attachments'
 import { AttachmentLightbox } from '../../components/attachments/Lightbox'
 import { useFormatters } from '../../hooks/useFormatters'
@@ -99,6 +101,7 @@ function JobRow({ job, budgetId }: { job: AIJob; budgetId: string }) {
   const navigate = useNavigate()
   const { formatMoney, formatDateTime } = useFormatters()
   const reprocess = useReprocessAIJob(budgetId)
+  const approve = useBulkApprove(budgetId)
   const remove = useDeleteAIJob(budgetId)
   const [errorOpen, setErrorOpen] = useState(false)
   const [responseOpen, setResponseOpen] = useState(false)
@@ -137,6 +140,19 @@ function JobRow({ job, budgetId }: { job: AIJob; budgetId: string }) {
     job.payload.original_filename ??
     (job.kind === 'receipt' ? 'Receipt' : 'Text entry')
   const amount = draft ? parseApiDecimal(draft.amount) : null
+
+  async function handleApprove() {
+    if (!job.transaction_id) return
+    try {
+      // The same hook the register's bulk bar uses, with one id: approval has
+      // one client path, and it is the one that already invalidates every
+      // cache a transaction change touches — the nav badge included.
+      await approve.mutateAsync({ transactionIds: [job.transaction_id], accountId: null })
+      toast.success('Approved')
+    } catch {
+      toast.error('Could not approve')
+    }
+  }
 
   async function handleReprocess() {
     try {
@@ -300,14 +316,25 @@ function JobRow({ job, budgetId }: { job: AIJob; budgetId: string }) {
       </div>
 
       <div className="ai-activity__actions">
+        {job.needs_review && job.transaction_id && (
+          <button
+            className="ai-activity__action ai-activity__action--approve"
+            onClick={handleApprove}
+            disabled={approve.isPending}
+            title="Approve this transaction"
+          >
+            <Check size={14} />
+            <span>Approve</span>
+          </button>
+        )}
         {job.transaction_id && !job.transaction_removed && (
           <button
             className="ai-activity__action"
             onClick={() => navigate(`/transactions?highlight=${job.transaction_id}`)}
-            title="View transaction"
+            title={job.needs_review ? 'Open in the register to edit' : 'View transaction'}
           >
             <ExternalLink size={14} />
-            <span>View</span>
+            <span>{job.needs_review ? 'Edit' : 'View'}</span>
           </button>
         )}
         {(job.status === 'done' || job.status === 'error') && (
@@ -340,13 +367,69 @@ function JobRow({ job, budgetId }: { job: AIJob; budgetId: string }) {
   )
 }
 
+/**
+ * The work waiting on the user, complete and at the top.
+ *
+ * Its own query rather than a slice of History's page: the log is paginated at
+ * 50 and a queue that only shows what happened to land on the current page is
+ * not a queue. `needsReview: true` is the served predicate — the same one the
+ * nav badge counts — so this list and that number are one population.
+ */
+function NeedsApprovalSection({ budgetId }: { budgetId: string }) {
+  const { data, isLoading } = useAIJobs(budgetId, { needsReview: true, limit: 200 })
+  const { data: counts } = useAIJobCounts(budgetId)
+
+  const jobs = data?.jobs ?? []
+  // Falls back to what is on screen rather than to zero. The counts query is
+  // gated on the AI being *enabled*, so a budget with unapproved AI rows and
+  // the feature since switched off has rows here and no served number — and a
+  // heading reading 0 over a list of four is the failure this section exists
+  // to avoid, pointed the other way.
+  const waiting = counts?.needsReview ?? jobs.length
+  // Deliberate, bounded divergence, said out loud rather than hidden.
+  //
+  // The badge counts TRANSACTIONS; this lists JOBS. "Remove from log" deletes
+  // a job and leaves the transaction it created — on purpose, the transaction
+  // is yours — so an unapproved AI row can outlive its log entry and the two
+  // numbers legitimately differ. Reporting the smaller one silently would be
+  // the badge saying 3 over a list of 2 with nothing to explain the gap.
+  const orphaned = Math.max(0, waiting - jobs.length)
+
+  if (isLoading || (jobs.length === 0 && orphaned === 0)) return null
+
+  return (
+    <section className="ai-activity__section">
+      <h2 className="ai-activity__section-title">
+        Needs your approval
+        <span className="count-badge count-badge--accent">{waiting}</span>
+      </h2>
+      <div className="ai-activity__list">
+        {jobs.map((job) => (
+          <JobRow key={job.id} job={job} budgetId={budgetId} />
+        ))}
+      </div>
+      {orphaned > 0 && (
+        <p className="ai-activity__orphaned">
+          {orphaned} more {orphaned === 1 ? 'transaction is' : 'transactions are'} waiting without a
+          log entry — removed from this log, but never from your budget.{' '}
+          <a href="/transactions?q=is%3A+unapproved">Review in the register</a>
+        </p>
+      )}
+    </section>
+  )
+}
+
 export function AIActivityPage() {
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const [statusFilter, setStatusFilter] = useState<AIJobStatus | ''>('')
   const [offset, setOffset] = useState(0)
+  const [historyOpen, setHistoryOpen] = useState(false)
 
+  // History is everything NOT waiting on the user, so a job appears in exactly
+  // one of the two sections.
   const { data, isLoading } = useAIJobs(budgetId, {
     status: statusFilter || undefined,
+    needsReview: false,
     limit: PAGE_SIZE,
     offset,
   })
@@ -361,21 +444,6 @@ export function AIActivityPage() {
           <Sparkles size={18} />
           AI Activity
         </h1>
-        <select
-          className="ai-activity__filter"
-          value={statusFilter}
-          onChange={(e) => {
-            setStatusFilter(e.target.value as AIJobStatus | '')
-            setOffset(0)
-          }}
-          aria-label="Filter by status"
-        >
-          <option value="">All statuses</option>
-          <option value="queued">Queued</option>
-          <option value="processing">Processing</option>
-          <option value="done">Done</option>
-          <option value="error">Failed</option>
-        </select>
       </div>
 
       <p className="ai-activity__desc">
@@ -383,41 +451,80 @@ export function AIActivityPage() {
         created, so nothing lands in your budget unseen.
       </p>
 
-      {isLoading ? (
-        <div className="ai-activity__empty">Loading…</div>
-      ) : jobs.length === 0 ? (
-        <div className="ai-activity__empty">
-          {statusFilter
-            ? 'No jobs with this status.'
-            : 'No AI activity yet. Scan a receipt from the mobile quick-add to get started.'}
-        </div>
-      ) : (
-        <div className="ai-activity__list scroll-fill">
-          {jobs.map((job) => (
-            <JobRow key={job.id} job={job} budgetId={budgetId!} />
-          ))}
-        </div>
-      )}
+      {budgetId && <NeedsApprovalSection budgetId={budgetId} />}
 
-      {total > PAGE_SIZE && (
-        <div className="ai-activity__pager">
-          <button
-            disabled={offset === 0}
-            onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
-          >
-            Newer
-          </button>
-          <span>
-            {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} of {total}
-          </span>
-          <button
-            disabled={offset + PAGE_SIZE >= total}
-            onClick={() => setOffset(offset + PAGE_SIZE)}
-          >
-            Older
-          </button>
-        </div>
-      )}
+      {/* Collapsed by default: what has already been dealt with is a record to
+          consult, not a list to read past on the way to the work. */}
+      <section className="ai-activity__section">
+        <button
+          type="button"
+          className="ai-activity__history-toggle"
+          onClick={() => setHistoryOpen((open) => !open)}
+          aria-expanded={historyOpen}
+        >
+          {historyOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          <span>History</span>
+          <span className="ai-activity__history-count">{total}</span>
+        </button>
+
+        {historyOpen && (
+          <>
+            <div className="ai-activity__history-bar">
+              <select
+                className="ai-activity__filter"
+                value={statusFilter}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value as AIJobStatus | '')
+                  setOffset(0)
+                }}
+                aria-label="Filter by status"
+              >
+                <option value="">All statuses</option>
+                <option value="queued">Queued</option>
+                <option value="processing">Processing</option>
+                <option value="done">Done</option>
+                <option value="error">Failed</option>
+              </select>
+            </div>
+
+            {isLoading ? (
+              <div className="ai-activity__empty">Loading…</div>
+            ) : jobs.length === 0 ? (
+              <div className="ai-activity__empty">
+                {statusFilter
+                  ? 'No jobs with this status.'
+                  : 'No AI activity yet. Scan a receipt from the mobile quick-add to get started.'}
+              </div>
+            ) : (
+              <div className="ai-activity__list scroll-fill">
+                {jobs.map((job) => (
+                  <JobRow key={job.id} job={job} budgetId={budgetId!} />
+                ))}
+              </div>
+            )}
+
+            {total > PAGE_SIZE && (
+              <div className="ai-activity__pager">
+                <button
+                  disabled={offset === 0}
+                  onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
+                >
+                  Newer
+                </button>
+                <span>
+                  {offset + 1}–{Math.min(offset + PAGE_SIZE, total)} of {total}
+                </span>
+                <button
+                  disabled={offset + PAGE_SIZE >= total}
+                  onClick={() => setOffset(offset + PAGE_SIZE)}
+                >
+                  Older
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </section>
     </div>
   )
 }

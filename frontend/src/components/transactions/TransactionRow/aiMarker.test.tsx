@@ -108,3 +108,31 @@ describe('AI needs-review marker', () => {
     expect(screen.getByLabelText('Unapproved transaction')).toBeInTheDocument()
   })
 })
+
+/**
+ * The row's accent edge. The glyph alone was 12px in a cluster of up to five
+ * of them and got lost; the edge is what makes the row legible across the
+ * table. Both come from ONE flag, so an edge cannot outlive its sparkle and
+ * leave a row looking permanently unfinished.
+ *
+ * jsdom has no layout, so this asserts the class and not the pixels.
+ */
+describe('the AI review row edge', () => {
+  const row = () => document.querySelector('.transaction-row')!
+
+  it('marks the row while it is waiting', () => {
+    renderRow(txn())
+    expect(row().classList.contains('transaction-row--ai-review')).toBe(true)
+  })
+
+  it('clears with the glyph on approve', () => {
+    renderRow(txn({ approved: true }))
+    expect(row().classList.contains('transaction-row--ai-review')).toBe(false)
+    expect(screen.queryByLabelText(MARKER)).not.toBeInTheDocument()
+  })
+
+  it('leaves an unapproved bank import alone', () => {
+    renderRow(txn({ created_via: null }))
+    expect(row().classList.contains('transaction-row--ai-review')).toBe(false)
+  })
+})

@@ -1753,6 +1753,21 @@ class AIJob(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
 
+    #: Whether the transaction this job created is still waiting for the user.
+    #: The rule is `AI_NEEDS_REVIEW` (repositories/txn_filters.py) — the SAME
+    #: expression the nav badge's count reads, so the badge's number and the
+    #: page's "Needs your approval" list cannot describe two different sets.
+    #:
+    #: Not a column: it is a fact about a row in another table, and that row
+    #: changes (approved, deleted, posted) without this job changing at all.
+    #: The client cannot compute it either — `AIJobResponse` carries a
+    #: transaction id and nothing else about the transaction.
+    #:
+    #: Populated only by queries that ask, via `AIJobRepository.with_review`.
+    #: Left alone it reads `None`, which `AIJobResponse` rejects — a path that
+    #: forgets fails loudly instead of quietly reporting waiting work as done.
+    needs_review: Mapped[bool] = query_expression()
+
     transaction: Mapped["Transaction | None"] = relationship(foreign_keys=[transaction_id])
     attachment: Mapped["TransactionAttachment | None"] = relationship(foreign_keys=[attachment_id])
 

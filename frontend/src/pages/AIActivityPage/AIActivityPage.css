@@ -375,3 +375,79 @@
     justify-content: flex-end;
   }
 }
+
+/* ---- Sections: work waiting, then the record ---------------------------- */
+
+.ai-activity__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-lg);
+}
+
+.ai-activity__section-title {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin: 0;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* The badge count comes from the served number, not from the rows below it —
+   see the note in NeedsApprovalSection about why those can differ. */
+.ai-activity__orphaned {
+  margin: 0;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: var(--border-radius-md);
+  background-color: color-mix(in srgb, var(--color-warning) 10%, transparent);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
+}
+
+.ai-activity__orphaned a {
+  color: var(--color-accent);
+}
+
+.ai-activity__history-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.ai-activity__history-toggle:hover {
+  color: var(--text-primary);
+}
+
+.ai-activity__history-count {
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.ai-activity__history-bar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Approve is the affirmative action on this page — the one that makes the nav
+   badge go down — so it carries the accent while Edit and Reprocess stay
+   quiet. */
+.ai-activity__action--approve {
+  color: var(--color-accent);
+  border-color: color-mix(in srgb, var(--color-accent) 30%, transparent);
+}
+
+.ai-activity__action--approve:hover:not(:disabled) {
+  background-color: color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
