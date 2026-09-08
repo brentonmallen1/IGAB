@@ -129,9 +129,12 @@ export default defineConfig([
     //   RoadmapMap         converts a wheel event to a point inside a
     //                      pan/zoom canvas.
     //   TransactionTable   computes the virtualiser's scroll margin.
+    //   useViewportDiagnostics reads every raw viewport number to DISPLAY it
+    //                      on Settings → Mobile; it positions nothing.
     files: [
       'src/hooks/useAnchoredPosition.ts',
       'src/hooks/useAppViewport.ts',
+      'src/hooks/useViewportDiagnostics.ts',
       'src/hooks/useMeasuredHeight.ts',
       'src/hooks/useChartHeight.ts',
       'src/components/guide/RoadmapMap.tsx',

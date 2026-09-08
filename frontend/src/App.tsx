@@ -5,6 +5,7 @@ import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom
 import { FormatProvider } from './contexts/FormatContext'
 import { MainLayout } from './components/layout/MainLayout/MainLayout'
 import { UpdateToast } from './components/pwa/UpdateToast'
+import { ViewportRuler } from './components/pwa/ViewportRuler'
 import { useIsMobile } from './hooks/useMediaQuery'
 import { useAppViewport } from './hooks/useAppViewport'
 import { ConfirmHost } from './components/common/ConfirmSheet/ConfirmHost'
@@ -165,6 +166,7 @@ function App() {
       <FormatProvider>
         <AppToaster />
         <UpdateToast />
+        <ViewportRuler />
         {/* Above the router: LoginPage and BudgetSelectorPage render outside
             MainLayout, and confirmAsync() must resolve for them too — an
             unrendered host leaves the caller awaiting forever. */}

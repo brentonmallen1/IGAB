@@ -179,6 +179,8 @@ interface AppState {
   locationEnabled: boolean
   /** Device-local: mask all amounts (screen-share / over-the-shoulder privacy) */
   privacyMode: boolean
+  /** Device-local diagnostic: draw the viewport ruler over every page (see ViewportRuler) */
+  viewportRulerOn: boolean
 
   setTheme: (theme: Theme) => void
   toggleThemeMode: () => void
@@ -191,6 +193,7 @@ interface AppState {
   setLastQuickAddAccountId: (id: string) => void
   setLocationEnabled: (val: boolean) => void
   togglePrivacyMode: () => void
+  setViewportRuler: (on: boolean) => void
 }
 
 function currentMonthString(): string {
@@ -210,6 +213,7 @@ export const useAppStore = create<AppState>()(
       lastQuickAddAccountId: null,
       locationEnabled: false,
       privacyMode: false,
+      viewportRulerOn: false,
 
       setTheme: (theme) => {
         document.documentElement.setAttribute('data-theme', theme)
@@ -251,6 +255,7 @@ export const useAppStore = create<AppState>()(
       setLastQuickAddAccountId: (id) => set({ lastQuickAddAccountId: id }),
       setLocationEnabled: (val) => set({ locationEnabled: val }),
       togglePrivacyMode: () => set((s) => ({ privacyMode: !s.privacyMode })),
+      setViewportRuler: (on) => set({ viewportRulerOn: on }),
     }),
     {
       name: PERSIST_KEYS.app,
@@ -269,6 +274,7 @@ export const useAppStore = create<AppState>()(
         lastQuickAddAccountId: s.lastQuickAddAccountId,
         locationEnabled: s.locationEnabled,
         privacyMode: s.privacyMode,
+        viewportRulerOn: s.viewportRulerOn,
       }),
       migrate: (persisted: unknown, from: number) => {
         const state = persisted as { fontScale?: string } | null

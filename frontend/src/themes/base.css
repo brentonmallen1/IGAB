@@ -195,6 +195,11 @@
      inset, the shell ended at 873pt and left a 59pt band of bare page
      background under the bottom nav.
 
+     Measured on device again on 2026-09-08 with --app-h already reading
+     --vvh: the same 59pt band. visualViewport.height is short by the inset
+     too. The hook now folds that inset back in (standaloneStatusBarGap in
+     useAppViewport.ts), gated on the arithmetic so nothing else changes.
+
      So: never rebuild this from dvh. The hook measures it; read the
      measurement. */
   --app-h: var(--vvh);
