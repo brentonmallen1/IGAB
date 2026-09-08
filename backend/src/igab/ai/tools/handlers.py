@@ -9,7 +9,7 @@ from datetime import date
 from typing import Any
 
 from igab.ai.tools.context import ToolContext
-from igab.ai.tools.shape import DEFAULT_ROW_LIMIT, clip, money, summarize_if_large
+from igab.ai.tools.shape import DEFAULT_ROW_LIMIT, clip, money, ranked, summarize_if_large
 from igab.domain.activity_class import SPENDING_WITH_SAVINGS_CLASSES
 
 #: Ceiling on any `months` argument, matching the reports router's own bound.
@@ -299,7 +299,9 @@ async def payee_analysis(ctx: ToolContext, args: dict) -> dict:
         }
         for r in rows
     ]
-    return clip(shaped, total_amount=total)
+    # A ranked top-N, not a page: the service caps at 25 and never counts the
+    # rest, so `clip` would report "25 rows, not truncated".
+    return ranked(shaped, measure="amount spent", total_amount=total)
 
 
 async def large_transactions(ctx: ToolContext, args: dict) -> dict:
@@ -315,7 +317,7 @@ async def large_transactions(ctx: ToolContext, args: dict) -> dict:
         }
         for r in rows
     ]
-    return clip(shaped)
+    return ranked(shaped, measure="size")
 
 
 async def guide_checkup(ctx: ToolContext, args: dict) -> dict:

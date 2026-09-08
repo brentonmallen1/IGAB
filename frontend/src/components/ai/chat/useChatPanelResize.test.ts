@@ -99,4 +99,17 @@ describe('useChatPanelResize', () => {
     expect(result.current.handleProps['aria-orientation']).toBe('vertical')
     expect(result.current.handleProps.tabIndex).toBe(0)
   })
+
+  it('reports its width, so an arrow key is audible', () => {
+    // A separator with no value announces "separator" and nothing else, and a
+    // screen-reader user cannot tell whether the key did anything.
+    const { result, rerender } = renderHook(() => useChatPanelResize())
+    expect(result.current.handleProps['aria-valuenow']).toBe(400)
+    expect(result.current.handleProps['aria-valuemin']).toBe(CHAT_PANEL_MIN_WIDTH)
+    expect(result.current.handleProps['aria-valuemax']).toBe(CHAT_PANEL_MAX_WIDTH)
+
+    act(() => result.current.handleProps.onKeyDown(key('ArrowLeft')))
+    rerender()
+    expect(result.current.handleProps['aria-valuenow']).toBe(416)
+  })
 })

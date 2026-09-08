@@ -13,12 +13,14 @@ bound it gets one more turn with the tools removed, so it must answer in prose:
 a stream that simply stops reads to the user as a crash.
 """
 
+import asyncio
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any
 
 from igab.ai.context import (
+    STATUS_CANCELLED,
     STATUS_ERROR,
     STATUS_OK,
     AICallContext,
@@ -118,7 +120,16 @@ async def run_turn(
                 options=options,
                 timeout=timeout,
             )
-        except BaseException as exc:
+        except asyncio.CancelledError:
+            # The user closed the panel. Record it as what it is and let the
+            # cancellation continue — swallowing it would both fabricate an
+            # error and stop the request unwinding.
+            result.status = STATUS_CANCELLED
+            result.error = "cancelled"
+            result.duration_ms = int((time.monotonic() - call_started) * 1000)
+            outcome.call_results.append(result)
+            raise
+        except Exception as exc:
             result.status = STATUS_ERROR
             result.error = f"{type(exc).__name__}: {exc}"[:2000]
             result.duration_ms = int((time.monotonic() - call_started) * 1000)
@@ -129,16 +140,7 @@ async def run_turn(
 
         result.duration_ms = int((time.monotonic() - call_started) * 1000)
         message = body.get("message") or {}
-        text = (message.get("content") or "").strip()
-        thinking = (client.last_meta or {}).get("thinking")
-        result.response = text
-        result.thinking = thinking if isinstance(thinking, str) else None
-        meta = client.last_meta or {}
-        if isinstance(meta.get("prompt_eval_count"), int):
-            result.prompt_tokens = meta["prompt_eval_count"]
-        if isinstance(meta.get("eval_count"), int):
-            result.completion_tokens = meta["eval_count"]
-        result.status = STATUS_OK
+        text = _absorb(result, message, client)
 
         if result.thinking:
             outcome.thinking = result.thinking
@@ -164,6 +166,8 @@ async def run_turn(
         working.append({"role": "assistant", "content": text, "tool_calls": tool_calls})
 
         for raw in tool_calls:
+            if _out_of_budget(outcome, started, timeout, working):
+                break
             async for event in _dispatch(raw, tool_ctx, seen, working, outcome, result):
                 yield event
 
@@ -175,6 +179,56 @@ async def run_turn(
         "Try asking about one month or one envelope at a time."
     )
     yield ChatEvent("token", {"delta": outcome.content})
+
+
+def _absorb(result: AICallResult, message: dict, client: OllamaClient) -> str:
+    """Copy what came back onto the record, and return the prose.
+
+    Thinking and token counts arrive on the client's `last_meta` rather than in
+    the message body, so both are read here in one place.
+    """
+    text = (message.get("content") or "").strip()
+    meta = client.last_meta or {}
+    thinking = meta.get("thinking")
+    result.response = text
+    result.thinking = thinking if isinstance(thinking, str) else None
+    if isinstance(meta.get("prompt_eval_count"), int):
+        result.prompt_tokens = meta["prompt_eval_count"]
+    if isinstance(meta.get("eval_count"), int):
+        result.completion_tokens = meta["eval_count"]
+    result.status = STATUS_OK
+    return text
+
+
+def _out_of_budget(
+    outcome: ChatOutcome,
+    started: float,
+    timeout: float,
+    working: list[dict],
+) -> bool:
+    """Whether this turn has spent its allowance of lookups or its clock.
+
+    Checked before every call rather than between turns: a model can ask for a
+    dozen tools in one message, and reading the cap only between turns let all
+    of them run — `guide_checkup`, which fans out across the whole budget,
+    included.
+
+    Says so in the transcript rather than going quiet, so the model answers
+    with what it has instead of waiting for a result that is not coming.
+    """
+    if len(outcome.tool_invocations) >= executor.MAX_TOOL_CALLS:
+        working.append(
+            {
+                "role": "tool",
+                "content": (
+                    '{"error": "No more lookups are allowed for this question. '
+                    'Answer with what you already have."}'
+                ),
+                "tool_name": "budget",
+            }
+        )
+        return True
+    return (time.monotonic() - started) > timeout
 
 
 async def _dispatch(

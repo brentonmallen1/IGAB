@@ -110,6 +110,52 @@ class TestSubmitDoesNotAwait:
         call_log.submit(_result())
 
 
+class TestEnqueueIsTheOnlyWriteMechanism:
+    """The stream's `finally` may not await, so anything that must survive a
+    disconnect goes through `enqueue` — the assistant turn included."""
+
+    def test_enqueue_is_not_a_coroutine_function(self):
+        assert not inspect.iscoroutinefunction(call_log.enqueue)
+
+    async def test_enqueue_runs_the_write_after_returning(self):
+        ran = asyncio.Event()
+
+        async def write():
+            ran.set()
+
+        call_log.enqueue(write(), what="test")
+        assert not ran.is_set()
+        await asyncio.sleep(0)
+        assert ran.is_set()
+
+    async def test_enqueue_survives_generator_close(self):
+        """The real case: the panel is closed and the generator is finalised."""
+        ran: list[str] = []
+
+        async def write():
+            ran.append("landed")
+
+        async def stream():
+            try:
+                yield "chunk"
+            finally:
+                call_log.enqueue(write(), what="interrupted answer")
+
+        gen = stream()
+        assert await anext(gen) == "chunk"
+        await gen.aclose()
+        await asyncio.sleep(0)
+        assert ran == ["landed"]
+
+    def test_no_loop_closes_the_coroutine_rather_than_orphaning_it(self):
+        async def write():
+            pass
+
+        # An unawaited coroutine is a RuntimeWarning, and this module must
+        # never be louder than the work it observes.
+        call_log.enqueue(write(), what="test")
+
+
 class TestDebugViewShape:
     async def test_a_cancelled_call_still_records(self, monkeypatch):
         from igab.ai.context import STATUS_CANCELLED

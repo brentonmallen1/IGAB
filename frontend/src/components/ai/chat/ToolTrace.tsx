@@ -30,8 +30,11 @@ export function ToolTrace({ tools }: { tools: ToolCallEvent[] }) {
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         <Wrench size={12} />
         <span>
-          Looked up {tools.length} {tools.length === 1 ? 'thing' : 'things'}
-          {failed > 0 ? ` · ${failed} failed` : ''}
+          {/* The count alone reads as reassurance. What matters is whether one
+              of them failed, so that is said in the summary rather than three
+              clicks in. */}
+          Checked your budget {tools.length} {tools.length === 1 ? 'time' : 'times'}
+          {failed > 0 ? ` — ${failed} didn't work` : ''}
         </span>
       </button>
 
@@ -59,7 +62,9 @@ export function ToolTrace({ tools }: { tools: ToolCallEvent[] }) {
                   {tool.truncated ? ' (showing some)' : ''}
                 </div>
               )}
-              {tool.error && <div className="chat-tools__error">{tool.error}</div>}
+              {/* Not the raw exception: a Python class name explains nothing to
+                  the person reading it, and the detail is in Model calls. */}
+              {tool.error && <div className="chat-tools__error">This lookup didn’t work.</div>}
             </li>
           ))}
         </ul>

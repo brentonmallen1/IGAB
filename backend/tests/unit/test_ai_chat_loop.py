@@ -4,6 +4,8 @@ What matters here is not that a model answers well — it is that the loop stays
 bounded, records what it did, and never lets a tool failure end the stream.
 """
 
+import asyncio
+
 import pytest
 
 from igab.ai import chat as chat_engine
@@ -184,9 +186,59 @@ class TestTheLoopIsBounded:
         assert outcome.content  # it says something
         assert events[-1].type == "token"
 
+    async def test_the_call_cap_is_checked_per_call_not_per_turn(self, monkeypatch):
+        """A model can ask for a dozen tools in one message. Reading the cap
+        only between turns let every one of them run."""
+        runs: list[str] = []
+
+        async def counting(ctx, name, arguments):
+            from igab.ai.context import ToolInvocation
+
+            runs.append(name)
+            return ToolInvocation(name=name, arguments=arguments, result={"n": len(runs)})
+
+        monkeypatch.setattr(executor, "run", counting)
+        many = {
+            "message": {
+                "content": "",
+                "tool_calls": [
+                    {"function": {"name": "list_categories", "arguments": {"i": i}}}
+                    for i in range(20)
+                ],
+            }
+        }
+        client = FakeClient([many, _text("done")])
+        await _run(client, tool_ctx=object())
+        assert len(runs) <= executor.MAX_TOOL_CALLS
+
     async def test_turn_and_call_caps_are_real(self):
         assert executor.MAX_TURNS >= 2
         assert executor.MAX_TOOL_CALLS >= 4
+
+
+class TestCancellation:
+    async def test_a_cancelled_call_is_recorded_and_re_raised(self):
+        """Closing the panel is not an error. Recording it as one fabricates a
+        failure, and swallowing it stops the request unwinding."""
+
+        class Cancelling(FakeClient):
+            async def chat(self, *a, **k):
+                raise asyncio.CancelledError()
+
+        outcome = chat_engine.ChatOutcome()
+        with pytest.raises(asyncio.CancelledError):
+            async for _ in chat_engine.run_turn(
+                gateway=AIGateway(settings=None),  # type: ignore[arg-type]
+                client=Cancelling([]),
+                tool_ctx=None,
+                messages=[{"role": "user", "content": "q"}],
+                context=AICallContext(feature="chat"),
+                use_tools=False,
+                outcome=outcome,
+            ):
+                pass
+        assert outcome.call_results[0].status == "cancelled"
+        assert outcome.error is None
 
 
 class TestFailure:

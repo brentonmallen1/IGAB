@@ -57,7 +57,7 @@
   width: 26px;
   height: 26px;
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: var(--border-radius-sm);
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
@@ -97,9 +97,46 @@
   line-height: 1.5;
 }
 
-.chat-panel__empty-hint {
+.chat-panel__empty-lead {
+  margin: 0 0 var(--spacing-xs);
+}
+
+.chat-panel__examples {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.chat-panel__examples button {
+  width: 100%;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border: 1px solid var(--edge);
+  border-radius: var(--border-radius-sm);
+  background-color: var(--surface-sunken);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chat-panel__examples button:hover {
+  border-color: var(--color-accent);
+}
+
+/* The standing note. Not in the empty state, which the first question
+   destroys — "it cannot move your money" is worth reading beside an answer
+   that suggests you do. */
+.chat-panel__standing-note {
+  margin: 0;
+  padding: var(--spacing-xs) var(--spacing-sm);
   font-size: 11px;
-  opacity: 0.8;
+  line-height: 1.4;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--edge);
 }
 
 /* ── messages ───────────────────────────────────────────────────────── */
@@ -110,8 +147,11 @@
 }
 
 .chat-msg--user .chat-msg__body {
+  /* Same break as the assistant's: a pasted URL in your own question would
+     otherwise run off the panel. */
+  word-break: break-word;
   padding: var(--spacing-xs) var(--spacing-sm);
-  border-radius: var(--radius-md);
+  border-radius: var(--border-radius-md);
   background-color: var(--surface-sunken);
   color: var(--text-primary);
   /* The question sits right, the answer full-width: a budget answer is often
@@ -149,11 +189,27 @@
 }
 
 .chat-msg__error {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
   padding: var(--spacing-xs) var(--spacing-sm);
-  border-radius: var(--radius-sm);
+  border-radius: var(--border-radius-sm);
   font-size: 11px;
   color: var(--color-negative);
   background-color: var(--surface-sunken);
+}
+
+.chat-msg__retry {
+  margin-left: auto;
+  padding: 2px var(--spacing-xs);
+  border: 1px solid currentColor;
+  border-radius: var(--border-radius-sm);
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  flex-shrink: 0;
 }
 
 /* ── what it looked up ──────────────────────────────────────────────── */
@@ -168,7 +224,7 @@
   gap: 4px;
   padding: 2px 4px;
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: var(--border-radius-sm);
   background: transparent;
   color: var(--text-secondary);
   font-size: 11px;
@@ -185,7 +241,7 @@
   padding: var(--spacing-xs);
   list-style: none;
   border: 1px solid var(--edge);
-  border-radius: var(--radius-sm);
+  border-radius: var(--border-radius-sm);
   background-color: var(--surface-sunken);
   display: flex;
   flex-direction: column;
@@ -258,8 +314,8 @@
   resize: none;
   padding: var(--spacing-xs);
   border: 1px solid var(--input-border);
-  border-radius: var(--radius-sm);
-  background-color: var(--bg-input);
+  border-radius: var(--border-radius-sm);
+  background-color: var(--input-bg);
   color: var(--text-primary);
   font-family: inherit;
   font-size: 12px;
@@ -278,7 +334,7 @@
   width: 30px;
   height: 30px;
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: var(--border-radius-sm);
   background-color: var(--color-accent);
   color: var(--bg-primary);
   cursor: pointer;
@@ -290,145 +346,49 @@
   cursor: default;
 }
 
-/* On a phone the panel is the whole screen: a 360px column beside a 390px
-   viewport leaves neither usable. */
-@media (max-width: 768px) {
-  .chat-panel {
-    position: fixed;
-    inset: 0;
-    top: var(--vv-top);
-    width: 100%;
-    min-width: 0;
-    height: var(--app-h);
-    z-index: var(--z-overlay);
-    border-left: none;
-  }
-
-  .chat-panel__resize {
-    display: none;
-  }
-}
-
-/* ── rendered answers ───────────────────────────────────────────────── */
-
-/* Answers are lists of envelopes and small tables of figures. The type scale
-   here is the panel's, not the document's: everything stays at 12px so a
-   heading does not shout across a 360px column. */
-
-.chat-md > :first-child {
-  margin-top: 0;
-}
-
-.chat-md > :last-child {
-  margin-bottom: 0;
-}
-
-.chat-md p {
-  margin: 0 0 var(--spacing-xs);
-  line-height: 1.55;
-}
-
-.chat-md h3,
-.chat-md h4 {
-  margin: var(--spacing-sm) 0 var(--spacing-xs);
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.chat-md ul,
-.chat-md ol {
-  margin: 0 0 var(--spacing-xs);
-  /* Enough to hang a marker, not enough to lose a line of figures. */
-  padding-left: 1.15rem;
-}
-
-.chat-md li {
-  margin-bottom: 2px;
-  line-height: 1.5;
-}
-
-.chat-md li::marker {
-  color: var(--text-secondary);
-}
-
-.chat-md strong {
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.chat-md code {
-  padding: 1px 3px;
-  border-radius: var(--radius-sm);
-  background-color: var(--surface-sunken);
-  font-size: 11px;
-}
-
-.chat-md pre {
-  margin: 0 0 var(--spacing-xs);
-  padding: var(--spacing-xs);
-  overflow-x: auto;
-  border-radius: var(--radius-sm);
-  background-color: var(--surface-sunken);
-}
-
-.chat-md pre code {
-  padding: 0;
+/* On a phone the panel renders inside the app's BottomSheet, which already
+   owns the full-screen geometry, the safe-area insets and the keyboard-aware
+   height. All this needs to do is fill the space the sheet gives it — the
+   hand-rolled `position: fixed` block that used to live here duplicated the
+   sheet's layout and none of its behaviour. */
+.chat-panel--sheet {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  border-left: none;
   background: transparent;
 }
 
-.chat-md blockquote {
-  margin: 0 0 var(--spacing-xs);
-  padding-left: var(--spacing-sm);
-  border-left: 2px solid var(--edge-strong);
-  color: var(--text-secondary);
-}
-
-.chat-md hr {
-  margin: var(--spacing-sm) 0;
-  border: none;
-  border-top: 1px solid var(--edge);
-}
-
-.chat-md a {
-  color: var(--color-accent);
-}
-
-/* A table of figures is the answer's densest shape and the panel is narrow, so
-   it scrolls inside its own box rather than widening the column. */
-.chat-md__table-wrap {
-  margin: 0 0 var(--spacing-xs);
-  overflow-x: auto;
-}
-
-.chat-md table {
-  border-collapse: collapse;
-  font-size: 11px;
-  /* Not 100%: a two-column table should not stretch to fill the panel. */
-  min-width: min(100%, 240px);
-}
-
-.chat-md th,
-.chat-md td {
-  padding: 2px var(--spacing-xs);
-  border-bottom: 1px solid var(--edge);
-  text-align: left;
-  white-space: nowrap;
-}
-
-.chat-md th {
-  color: var(--text-secondary);
-  font-weight: 600;
-}
-
-/* Money reads right-aligned. GFM alignment is the only attribute the
-   sanitiser keeps, and this is why. */
-.chat-md th[align="right"],
-.chat-md td[align="right"] {
-  text-align: right;
-}
-
-.chat-md tbody tr:last-child th,
-.chat-md tbody tr:last-child td {
+.chat-panel--sheet .chat-panel__header {
+  height: auto;
+  padding: 0 var(--spacing-sm) var(--spacing-xs);
+  background: transparent;
   border-bottom: none;
+  justify-content: flex-end;
+}
+
+/* The composer is the last thing above the keyboard; the sheet's own body
+   padding already clears the home indicator. */
+.chat-panel--sheet .chat-panel__composer {
+  background: transparent;
+}
+
+@media (max-width: 768px) {
+  /* Touch targets, matching the header's own mobile sizing. */
+  .chat-panel__icon,
+  .chat-panel__send {
+    width: var(--tap-min);
+    height: var(--tap-min);
+  }
+
+  /* The control the panel's whole trust story rests on was the hardest thing
+     in it to hit: ~20px around an 11px label. */
+  .chat-tools__toggle {
+    min-height: var(--tap-min);
+  }
+
+  .chat-panel__input {
+    /* 16px stops iOS zooming the viewport when the field takes focus. */
+    font-size: 16px;
+  }
 }

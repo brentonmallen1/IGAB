@@ -201,6 +201,7 @@ async def chat(
 
         outcome = chat_engine.ChatOutcome()
         gateway = AIGateway(settings)
+        persisted = False
         yield _sse("start", {"conversation_id": str(conversation_id), "tools": supports_tools})
         try:
             # Its own session: the request's has been committed and handed back.
@@ -223,14 +224,24 @@ async def chat(
                     outcome=outcome,
                 ):
                     yield _sse(event.type, event.data)
+
+            # The normal path, where awaiting and yielding both still work.
+            message_id = await _persist_answer(conversation_id, outcome)
+            persisted = True
+            yield _sse("done", {"message_id": str(message_id) if message_id else None})
         finally:
-            # Runs on a client disconnect too, which is why the persist below
-            # must not be the only record — call_log.submit enqueues without
-            # awaiting for exactly this reason.
+            # This also runs while the generator is being closed after a client
+            # disconnect, where an `await` re-raises and a `yield` raises
+            # outright. So nothing here may do either: every write is enqueued.
             for result in outcome.call_results:
                 call_log.submit(result)
-            message_id = await _persist_answer(conversation_id, outcome)
-            yield _sse("done", {"message_id": str(message_id) if message_id else None})
+            if not persisted:
+                # The user closed the panel mid-answer. What the model had
+                # already said is still worth keeping.
+                call_log.enqueue(
+                    _persist_answer(conversation_id, outcome),
+                    what="interrupted chat answer",
+                )
 
     return StreamingResponse(
         stream(),

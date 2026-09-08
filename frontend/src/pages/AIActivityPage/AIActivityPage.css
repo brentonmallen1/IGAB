@@ -479,7 +479,7 @@
   margin-left: auto;
   padding: 2px var(--spacing-xs);
   border: 1px solid var(--edge-strong);
-  border-radius: var(--radius-sm);
+  border-radius: var(--border-radius-sm);
   background: transparent;
   color: var(--text-secondary);
   font-size: 11px;
@@ -493,7 +493,7 @@
 
 .ai-call {
   border: 1px solid var(--edge);
-  border-radius: var(--radius-sm);
+  border-radius: var(--border-radius-sm);
   background-color: var(--surface-raised);
   margin-bottom: var(--spacing-xs);
 }
@@ -570,8 +570,8 @@
   padding: var(--spacing-xs);
   max-height: 260px;
   overflow: auto;
-  border-radius: var(--radius-sm);
-  background-color: var(--bg-input);
+  border-radius: var(--border-radius-sm);
+  background-color: var(--input-bg);
   color: var(--text-primary);
   font-size: 11px;
   white-space: pre-wrap;
@@ -605,7 +605,7 @@
   align-items: center;
   gap: var(--spacing-xs);
   border: 1px solid var(--edge);
-  border-radius: var(--radius-sm);
+  border-radius: var(--border-radius-sm);
   background-color: var(--surface-raised);
   margin-bottom: var(--spacing-xs);
 }
@@ -645,7 +645,7 @@
   height: 28px;
   margin-right: var(--spacing-xs);
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: var(--border-radius-sm);
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;

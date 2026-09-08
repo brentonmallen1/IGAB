@@ -316,16 +316,28 @@ class TestTheStreamsOwnSession:
     """
 
     @staticmethod
-    def _own_session(monkeypatch, db_session):
+    def _own_session(monkeypatch, db_session, *, quiet_log: bool = True):
+        """Point the generator's session factory at the test session.
+
+        Production opens two independent sessions here — one for the assistant
+        turn, one per call-log row — and they never contend. Handing both the
+        *same* session, as this must to make the writes visible to assertions,
+        puts two operations on one asyncpg connection at once. So the call log
+        is silenced by default; it is asserted at its own boundary below and
+        against a real database in test_ai_call_log_writes.py.
+        """
         from contextlib import asynccontextmanager
 
         import igab.db.session as session_module
+        from igab.ai import call_log
 
         @asynccontextmanager
         async def factory():
             yield db_session
 
         monkeypatch.setattr(session_module, "AsyncSessionLocal", factory)
+        if quiet_log:
+            monkeypatch.setattr(call_log, "submit", lambda result: None)
 
     async def test_the_assistant_turn_lands_after_the_stream_ends(
         self, api_client, db_session, monkeypatch
@@ -373,7 +385,8 @@ class TestTheStreamsOwnSession:
         await _enable_ai(api_client)
         budget = await _budget(api_client, db_session)
         _fake_model(monkeypatch, [{"message": {"content": "ok"}}])
-        self._own_session(monkeypatch, db_session)
+        # This test owns the submit patch, so the helper must not replace it.
+        self._own_session(monkeypatch, db_session, quiet_log=False)
 
         await api_client.post(f"/api/v1/{budget.id}/ai/chat", json={"message": "hi"})
 

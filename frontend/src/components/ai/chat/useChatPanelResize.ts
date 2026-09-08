@@ -1,6 +1,11 @@
 import { useCallback, useRef } from 'react'
 import { useUIStore } from '../../../stores/uiStore'
-import { CHAT_PANEL_KEY_STEP, CHAT_PANEL_MIN_WIDTH, clampChatPanelWidth } from './chatPanelWidth'
+import {
+  CHAT_PANEL_KEY_STEP,
+  CHAT_PANEL_MAX_WIDTH,
+  CHAT_PANEL_MIN_WIDTH,
+  clampChatPanelWidth,
+} from './chatPanelWidth'
 
 /**
  * Dragging the panel's left edge.
@@ -64,6 +69,11 @@ export function useChatPanelResize() {
       role: 'separator' as const,
       'aria-orientation': 'vertical' as const,
       'aria-label': 'Resize chat panel',
+      // A separator without these announces "separator" and nothing else, so
+      // a screen-reader user cannot tell whether an arrow key did anything.
+      'aria-valuenow': width,
+      'aria-valuemin': CHAT_PANEL_MIN_WIDTH,
+      'aria-valuemax': CHAT_PANEL_MAX_WIDTH,
       tabIndex: 0,
     },
   }

@@ -25,6 +25,7 @@ request's session belongs to a response that has already been sent, and
 
 import asyncio
 import logging
+from collections.abc import Coroutine
 
 from igab.ai.context import AICallResult
 from igab.db.models import AICall, AICallPayload
@@ -37,13 +38,16 @@ logger = logging.getLogger(__name__)
 _pending: set[asyncio.Task] = set()
 
 
-def submit(result: AICallResult) -> None:
-    """Queue a call record to be written. Never blocks, never raises.
+def enqueue(coro: Coroutine, *, what: str) -> None:
+    """Run a write without awaiting it. Never blocks, never raises.
 
-    Safe to call from a `finally` that is unwinding under cancellation, which
-    is the whole reason it exists.
+    The primitive this module exists for. Safe to call from a `finally` that is
+    unwinding under cancellation — `create_task` schedules on the loop and
+    returns synchronously, outside the cancel scope that is collapsing.
+
+    Anything that must survive a client disconnect goes through here: the call
+    log, and the assistant turn the stream was in the middle of writing.
     """
-    coro = _write(result)
     try:
         task = asyncio.create_task(coro)
     except RuntimeError:
@@ -52,10 +56,15 @@ def submit(result: AICallResult) -> None:
         # coroutine is a RuntimeWarning, and this module must never make noise
         # louder than the work it observes.
         coro.close()
-        logger.warning("ai: no event loop to record call for %s", result.context.feature)
+        logger.warning("ai: no event loop to write %s", what)
         return
     _pending.add(task)
     task.add_done_callback(_pending.discard)
+
+
+def submit(result: AICallResult) -> None:
+    """Queue a call record to be written."""
+    enqueue(_write(result), what=f"{result.context.feature} call")
 
 
 async def drain(timeout: float = 5.0) -> None:

@@ -12,6 +12,7 @@ source, fail on the pattern.
 
 import ast
 import json
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -23,6 +24,7 @@ from igab.ai.tools.shape import (
     clip,
     fits,
     money,
+    ranked,
     summarize_if_large,
 )
 
@@ -274,6 +276,29 @@ class TestTruncationIsHonest:
 
     def test_the_cap_is_a_real_number(self):
         assert TOOL_RESULT_MAX_CHARS > 1000
+
+
+class TestARankedResultDoesNotInventACount:
+    def test_it_refuses_to_state_a_total_it_never_counted(self):
+        """payee_analysis caps at 25 in the service and never counts the rest.
+        Passing that through clip told the model "25 rows, not truncated", so
+        it would answer "you paid 25 payees" for a budget with three hundred."""
+        rows = [{"payee": f"P{i}"} for i in range(25)]
+        result = ranked(rows, measure="amount spent", total_amount=Decimal("1000"))
+        assert result["total_rows"] is None
+        assert result["truncated"] is True
+        assert "largest" in result["ranking"]
+        assert "does not say" in result["note"]
+
+    def test_the_total_still_covers_everything(self):
+        # The grand total IS computed over every row, so it is honest to state.
+        result = ranked([{"payee": "P"}], measure="amount spent", total_amount=Decimal("42.50"))
+        assert result["total_amount"] == 42.5
+
+    def test_a_ranking_with_no_total(self):
+        result = ranked([{"a": 1}], measure="size")
+        assert "total_amount" not in result
+        assert result["shown"] == 1
 
 
 class TestLoopBounds:

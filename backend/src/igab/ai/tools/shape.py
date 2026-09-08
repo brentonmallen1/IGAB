@@ -64,6 +64,40 @@ def clip(
     return result
 
 
+def ranked(
+    rows: list[dict],
+    *,
+    measure: str,
+    total_amount: Any = None,
+) -> dict:
+    """A "top N by spend" result, said as what it is.
+
+    Distinct from `clip`, and the distinction is the point. `clip` describes a
+    *page* of a list whose true length is known. These reports are ranked: the
+    service returns the biggest N and a total computed over **everything**, and
+    there is no count of the rest to report.
+
+    Passing one through `clip` told the model "25 rows, not truncated", so it
+    would answer "you paid 25 payees" for a budget with three hundred — the
+    badge-says-3-register-draws-930 failure, one table over.
+    """
+    return {
+        "rows": rows,
+        "shown": len(rows),
+        "ranking": f"the {len(rows)} largest by {measure}",
+        # No total_rows: the report never counted the rest, and inventing a
+        # number here is exactly what went wrong.
+        "total_rows": None,
+        "truncated": True,
+        **({"total_amount": money(total_amount)} if total_amount is not None else {}),
+        "note": (
+            f"These are only the {len(rows)} largest by {measure}, not every row. "
+            "Any total above covers them all, not just the ones shown. Do not "
+            "state how many there were in total — this result does not say."
+        ),
+    }
+
+
 def fits(payload: Any) -> bool:
     """Whether a serialized result is small enough to hand to a model."""
     import json

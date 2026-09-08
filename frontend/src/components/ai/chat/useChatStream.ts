@@ -17,6 +17,14 @@ export interface PendingTurn {
   /** False when the model cannot look anything up. */
   toolsAvailable: boolean
   streaming: boolean
+  /**
+   * The persisted assistant message, once the server names it.
+   *
+   * The panel keeps drawing this turn until that id appears in the refetched
+   * conversation. Hiding it the moment the stream ended made the answer vanish
+   * for a whole round trip while the query caught up.
+   */
+  messageId: string | null
 }
 
 const EMPTY: PendingTurn = {
@@ -28,6 +36,7 @@ const EMPTY: PendingTurn = {
   error: null,
   toolsAvailable: true,
   streaming: false,
+  messageId: null,
 }
 
 /**
@@ -115,7 +124,7 @@ export function useChatStream(budgetId: string | null) {
               setTurn((t) => ({ ...t, error: event.message }))
               break
             case 'done':
-              setTurn((t) => ({ ...t, streaming: false }))
+              setTurn((t) => ({ ...t, streaming: false, messageId: event.message_id }))
               break
           }
         }
@@ -131,6 +140,9 @@ export function useChatStream(budgetId: string | null) {
           setTurn((t) => ({ ...t, streaming: false }))
         }
       } finally {
+        // Also covers a body that ended without a `done` frame, which would
+        // otherwise latch `streaming` true and leave a spinner forever.
+        setTurn((t) => (t.streaming ? { ...t, streaming: false } : t))
         abort.current = null
         qc.invalidateQueries({ queryKey: [ROOT.aiConversations] })
         qc.invalidateQueries({ queryKey: [ROOT.aiConversation] })
