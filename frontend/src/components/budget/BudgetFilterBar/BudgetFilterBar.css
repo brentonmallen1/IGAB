@@ -14,85 +14,6 @@
   z-index: calc(var(--z-sticky) + 1);
 }
 
-.budget-filter-bar__btn {
-  font-size: var(--font-size-sm);
-  font-weight: 500;
-  color: var(--text-muted);
-  padding: 4px 10px;
-  border-radius: var(--border-radius-md);
-  border: 1px solid transparent;
-  transition:
-    color var(--transition-fast),
-    background-color var(--transition-fast),
-    border-color var(--transition-fast);
-  white-space: nowrap;
-}
-
-.budget-filter-bar__btn:hover {
-  color: var(--text-primary);
-  background-color: color-mix(in srgb, var(--text-primary) 8%, transparent);
-}
-
-.budget-filter-bar__btn.active {
-  color: var(--color-accent);
-  background-color: color-mix(in srgb, var(--color-accent) 12%, transparent);
-  border-color: color-mix(in srgb, var(--color-accent) 12%, transparent);
-}
-
-.budget-filter-bar__btn--negative {
-  color: var(--color-negative);
-}
-.budget-filter-bar__btn--negative:hover {
-  color: var(--color-negative);
-  background-color: color-mix(in srgb, var(--color-negative) 10%, transparent);
-}
-.budget-filter-bar__btn--negative.active {
-  color: var(--color-negative);
-  background-color: color-mix(in srgb, var(--color-negative) 12%, transparent);
-  border-color: color-mix(in srgb, var(--color-negative) 12%, transparent);
-}
-
-.budget-filter-bar__btn--warning {
-  color: var(--color-warning);
-}
-.budget-filter-bar__btn--warning:hover {
-  color: var(--color-warning);
-  background-color: color-mix(in srgb, var(--color-warning) 10%, transparent);
-}
-.budget-filter-bar__btn--warning.active {
-  color: var(--color-warning);
-  background-color: color-mix(in srgb, var(--color-warning) 12%, transparent);
-  border-color: color-mix(in srgb, var(--color-warning) 12%, transparent);
-}
-
-/* Pending: underfunded before its funding day. Muted, never a colour that
-   asks to be acted on today. */
-.budget-filter-bar__btn--neutral {
-  color: var(--text-muted);
-}
-.budget-filter-bar__btn--neutral:hover {
-  color: var(--text-secondary);
-  background-color: color-mix(in srgb, var(--text-muted) 10%, transparent);
-}
-.budget-filter-bar__btn--neutral.active {
-  color: var(--text-primary);
-  background-color: color-mix(in srgb, var(--text-muted) 12%, transparent);
-  border-color: color-mix(in srgb, var(--text-muted) 12%, transparent);
-}
-
-.budget-filter-bar__btn--positive {
-  color: var(--color-positive);
-}
-.budget-filter-bar__btn--positive:hover {
-  color: var(--color-positive);
-  background-color: color-mix(in srgb, var(--color-positive) 10%, transparent);
-}
-.budget-filter-bar__btn--positive.active {
-  color: var(--color-positive);
-  background-color: color-mix(in srgb, var(--color-positive) 12%, transparent);
-  border-color: color-mix(in srgb, var(--color-positive) 12%, transparent);
-}
-
 .budget-filter-bar__search {
   display: flex;
   align-items: center;
@@ -179,12 +100,6 @@
     padding: var(--spacing-sm) var(--spacing-md);
   }
 
-  .budget-filter-bar__btn {
-    min-height: var(--tap-min);
-    padding: 4px var(--spacing-md);
-    font-size: var(--font-size-base);
-  }
-
   .budget-filter-bar__search {
     height: var(--tap-min);
     flex: 1;
@@ -200,14 +115,44 @@
   }
 }
 
-/* One-time note that saved views are now called filters. Quiet and inline with
-   the chips rather than a banner — it is a reassurance, not an alert. */
+/* Below this the bar cannot hold its row: the two controls, the search and the
+   row-density group come to about 730px between them. Rather than let it fall
+   to three rows on a phone, the controls take the first row and share it
+   evenly — independent of what they are named, which is the point of the fixed
+   label — and the search and density take the second. Basis 45% is what makes
+   the search wrap: its own hypothetical width no longer fits beside them. */
+@media (max-width: 620px) {
+  .budget-filter-bar .select-chip {
+    flex: 1 1 45%;
+    /* Capped so a wide phone does not spend 280px of a row on a two-word
+       label; the slack goes to the row, not to the chip. */
+    max-width: 12rem;
+    min-width: 0;
+  }
+
+  .budget-filter-bar .select-chip__label {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+  }
+
+  .budget-filter-bar__divider {
+    margin: 0;
+  }
+
+  .budget-filter-bar__search {
+    flex: 1 1 0;
+    min-width: 96px;
+    width: auto;
+  }
+}
+
 /* Why the drag handles are not there. Deliberately quieter than
    `__notice`, which announces an event and can be dismissed: this is ambient
    state, it is true for as long as it is shown, and it clears itself when the
-   filter or view does. So no border and no fill — a caption among the chips,
-   not another control competing with them. It earns its place only by being
-   absent the rest of the time. */
+   filter or view does. So no border and no fill — a caption beside the
+   controls, not another control competing with them. It earns its place only
+   by being absent the rest of the time. */
 .budget-filter-bar__reorder-note {
   display: inline-flex;
   align-items: center;
@@ -227,6 +172,8 @@
   }
 }
 
+/* One-time note that saved views are now called filters. Quiet and inline
+   rather than a banner — it is a reassurance, not an alert. */
 .budget-filter-bar__notice {
   display: inline-flex;
   align-items: center;
@@ -261,132 +208,27 @@
   background: var(--bg-hover);
 }
 
-/* Grouping control. Shaped like the filter chips beside it — borderless,
-   muted, same radius — because a control that looks like a form input in a row
-   of chips reads as belonging to a different screen. Accent when a view is on,
-   matching how an active chip behaves. */
-/* The overflow picker: the saved filters past the pinned few.
-   Same chip-with-an-invisible-select shape as the view control below, and
-   deliberately quieter than a filter chip — it is a way in, not a filter, and
-   styling it like one would read as a fourth filter called "5 more". */
-.budget-filter-bar__more {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  padding: 4px 8px;
-  border: 1px dashed var(--border-color);
-  border-radius: var(--border-radius-md);
-  color: var(--text-muted);
-  font-size: var(--font-size-sm);
-  font-weight: 500;
-  white-space: nowrap;
-  cursor: pointer;
-  transition:
-    color var(--transition-fast),
-    border-color var(--transition-fast);
-}
+/* There is money overspent that the chip's own label is not already naming.
+   A dot, not a count: the reason the row of buttons became one control is
+   that its width stopped depending on the budget's state, and a number would
+   hand that back. The figure itself is in the chip's tooltip, in the option
+   list, and read out by the screen-reader text inside this span.
 
-.budget-filter-bar__more:hover {
-  color: var(--text-primary);
-  border-color: var(--color-accent);
-}
-
-.budget-filter-bar__more:has(.budget-filter-bar__more-select:focus-visible) {
-  border-color: var(--color-accent);
-  box-shadow: var(--input-focus-shadow);
-}
-
-.budget-filter-bar__more-select {
+   Pinned to the chip's corner rather than placed in its row, because an
+   inline dot is still 10px of width that appears and disappears with the
+   budget — the same fault in miniature. */
+.budget-filter-bar__attention {
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 0;
-  appearance: none;
-  border: none;
-  margin: 0;
-  padding: 0;
-  cursor: pointer;
+  top: 1px;
+  right: 1px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--color-negative);
 }
 
-.budget-filter-bar__more-label,
-.budget-filter-bar__more-caret {
-  pointer-events: none;
-}
-
-.budget-filter-bar__more-caret {
-  flex-shrink: 0;
-  opacity: 0.75;
-}
-
-.budget-filter-bar__view {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 8px;
-  border: 1px solid transparent;
-  border-radius: var(--border-radius-md);
-  color: var(--text-muted);
-  font-size: var(--font-size-sm);
-  font-weight: 500;
-  white-space: nowrap;
-  cursor: pointer;
-  transition:
-    color var(--transition-fast),
-    background-color var(--transition-fast),
-    border-color var(--transition-fast);
-}
-
-.budget-filter-bar__view:hover {
-  color: var(--text-primary);
-  background-color: color-mix(in srgb, var(--text-primary) 8%, transparent);
-}
-
-.budget-filter-bar__view.active {
-  color: var(--color-accent);
-  background-color: color-mix(in srgb, var(--color-accent) 12%, transparent);
-  border-color: color-mix(in srgb, var(--color-accent) 12%, transparent);
-}
-
-/* One ring around the whole chip. The select's own outline drew inside it,
-   which read as a stray box rather than a focus state. */
-.budget-filter-bar__view:has(.budget-filter-bar__view-select:focus-visible) {
-  border-color: var(--color-accent);
-  box-shadow: var(--input-focus-shadow);
-}
-
-/* The native control, covering the chip so every pixel of it is the hit area.
-   Kept in the DOM rather than replaced by a custom menu so keyboard and
-   screen-reader behaviour comes for free. */
-.budget-filter-bar__view-select {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 0;
-  appearance: none;
-  border: none;
-  margin: 0;
-  padding: 0;
-  cursor: pointer;
-}
-
-.budget-filter-bar__view-label,
-.budget-filter-bar__view-icon,
-.budget-filter-bar__view-caret {
-  pointer-events: none;
-}
-
-.budget-filter-bar__view-icon,
-.budget-filter-bar__view-caret {
-  flex-shrink: 0;
-  opacity: 0.75;
-}
-
-/* Separates the grouping control from the filter chips: they are different
-   questions, not peers in one list. */
+/* Separates the grouping control from the filter beside it: they are
+   different questions, not peers in one list. */
 .budget-filter-bar__divider {
   width: 1px;
   height: 16px;
