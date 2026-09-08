@@ -22,6 +22,7 @@ from decimal import Decimal
 from igab.sample_budget.card_scenarios import ALL_SCENARIOS, STARTING_BALANCE_PAYEE, merge_into
 from igab.sample_budget.spec import (
     AccountSpec,
+    BudgetFilterSpec,
     CategorySpec,
     GroupSpec,
     LiabilitySnapshotSpec,
@@ -165,27 +166,48 @@ _HOUSEHOLD = SampleBudgetSpec(
                 CategorySpec(
                     "Rent",
                     target=TargetSpec("monthly_funding", _d("1400.00")),
+                    tags=("Essential",),
                     monthly_budget=_d("1400.00"),
                 ),
-                CategorySpec("Electric", tags=("Long-term expense",), monthly_budget=_d("150.00")),
-                CategorySpec("Internet", monthly_budget=_d("80.00")),
-                CategorySpec("Phone", monthly_budget=_d("65.00")),
+                # Essential, NOT Long-term expense. It carried that tag and
+                # is paid every month with a seasonal amount — which is a
+                # bill, not money set aside for a periodic one. The tag
+                # classifies a row as SAVINGS (activity_class.py), so the
+                # sample's whole power bill was invisible to every spending
+                # report, and tagging it Essential as well would only have
+                # moved that into the "tagged and still not counted" note.
+                CategorySpec("Electric", tags=("Essential",), monthly_budget=_d("150.00")),
+                CategorySpec("Internet", tags=("Essential",), monthly_budget=_d("80.00")),
+                CategorySpec("Phone", tags=("Essential",), monthly_budget=_d("65.00")),
+                # Deliberately NOT Essential, next to five that are: the
+                # Essentials report is only interesting if something in the
+                # same group is cuttable.
                 CategorySpec("Streaming", tags=("Subscription",), monthly_budget=_d("30.00")),
-                # Funded to exactly what the mortgage transfer spends
-                CategorySpec(CAT_MORTGAGE, tiers=FULL),
-                CategorySpec("Water & Trash", tiers=FULL),
+                # Funded to exactly what the mortgage transfer spends.
+                # Essential ONLY — no Debt principal tag, though its rows are
+                # principal. The payment is a transfer to a tracked loan
+                # account, so `transfer_to_tracked_debt` already classifies it;
+                # adding the tag makes the earlier `tagged_debt` arm of the
+                # CASE fire instead and the specific rule stops being exercised
+                # anywhere (test_class_agreement_harness caught exactly that).
+                #
+                # This is the case Cost of Living was changed for: a mortgage
+                # is the biggest thing a household cannot cut, and it counted
+                # for nothing while the essentials family read SPENDING alone.
+                CategorySpec(CAT_MORTGAGE, tags=("Essential",), tiers=FULL),
+                CategorySpec("Water & Trash", tags=("Essential",), tiers=FULL),
                 CategorySpec("Baby Prep", is_archived=True, tiers=FULL),
             ),
         ),
         GroupSpec(
             "Everyday",
             categories=(
-                CategorySpec("Groceries", monthly_budget=_d("560.00")),
+                CategorySpec("Groceries", tags=("Essential",), monthly_budget=_d("560.00")),
                 # monthly_budget=None ⇒ funded to exactly what's spent, so the
                 # current-month shortfall below is the only overspend anywhere
                 CategorySpec("Dining Out", overspend_this_month=_d("45.00")),
                 CategorySpec("Coffee", monthly_budget=_d("110.00")),
-                CategorySpec("Gas", monthly_budget=_d("120.00")),
+                CategorySpec("Gas", tags=("Essential",), monthly_budget=_d("120.00")),
                 CategorySpec("Shopping", monthly_budget=_d("160.00")),
                 CategorySpec("Entertainment", monthly_budget=_d("60.00")),
                 CategorySpec("Household", monthly_budget=_d("160.00")),
@@ -199,11 +221,27 @@ _HOUSEHOLD = SampleBudgetSpec(
         GroupSpec(
             "Savings Goals",
             categories=(
+                # $300/mo and nothing else, so the balance stays a plausible
+                # fund and its target still means something. The surplus used
+                # to sweep in here, which pushed the full tier's fund to
+                # $43,270 against a $10,000 target — four times its own goal,
+                # which reads as a bug in the demo rather than a household.
+                # It is also the denominator of every coverage figure on the
+                # new Emergency Fund report.
                 CategorySpec(
                     "Emergency Fund",
                     target=TargetSpec("savings_balance", _d("10000.00")),
                     tags=("Savings",),
                     monthly_budget=_d("300.00"),
+                ),
+                # Where the leftovers go. Named so it does NOT match
+                # `GuideDetection.EMERGENCY_NAME` (/emergency|rainy.?day|
+                # buffer/i) — "Rainy Day" or "Buffer" here would be detected
+                # as a second emergency fund and quietly double the coverage
+                # every report quotes.
+                CategorySpec(
+                    "General Savings",
+                    tags=("Savings",),
                     sweep_remainder=True,
                 ),
                 CategorySpec(
@@ -227,6 +265,13 @@ _HOUSEHOLD = SampleBudgetSpec(
             "Long Term – $513/mo",
             tiers=FULL,
             categories=(
+                # Long-term expense and NOT Essential, though car insurance
+                # and property tax plainly are things a household cannot cut.
+                # The two tags are mutually exclusive in effect: long_term_expense
+                # classifies a row as SAVINGS, and the essentials family counts
+                # SPENDING and DEBT_PRINCIPAL only. Tagging both would put
+                # these in the report's "tagged Essential and still not
+                # counted" note — a demo that teaches a mistake.
                 CategorySpec(CAT_CAR_INS, tags=("Long-term expense",), monthly_budget=_d("118.00")),
                 CategorySpec(
                     CAT_PROP_TAX, tags=("Long-term expense",), monthly_budget=_d("195.00")
@@ -240,6 +285,8 @@ _HOUSEHOLD = SampleBudgetSpec(
         GroupSpec(
             "Debt",
             categories=(
+                # No tag, for the mortgage's reason: the payment is a transfer
+                # to the tracked loan account, which classifies it already.
                 CategorySpec("Car Payment"),
                 # Showcase-only CC payment category: linked, $0 assigned, no rows
                 CategorySpec("Visa Payment", linked_account=VISA),
@@ -798,6 +845,32 @@ _HOUSEHOLD = SampleBudgetSpec(
         ),
     ),
     custom_tags=(("Travel", "blue"),),
+    # Saved filters, in the order the budget bar draws them: `sort_order` is
+    # what pins the first few, so this is the demo. All tag-based, because a
+    # tag-based filter widens as the household tags more — and because the
+    # Reports scope control resolves one through the same
+    # `effective_category_ids` the budget page uses.
+    filters=(
+        BudgetFilterSpec("Essentials", tags=("Essential",)),
+        BudgetFilterSpec("Savings goals", tags=("Savings",)),
+        BudgetFilterSpec("Subscriptions", tags=("Subscription",)),
+        # Full only: the starter's control opens on three, the full tier's on
+        # five, so the demo shows a list that is plainly a list.
+        BudgetFilterSpec("Set aside monthly", tags=("Long-term expense",), tiers=FULL),
+        # The one filter built from named categories rather than a tag, so
+        # the demo shows both shapes. It cannot be tag-based: the payments it
+        # names are transfers to tracked loan accounts, which the classifier
+        # already reads as principal without anything being tagged.
+        BudgetFilterSpec(
+            "Debt payments",
+            categories=("Car Payment", "Visa Payment", CAT_MORTGAGE),
+            tiers=FULL,
+        ),
+    ),
+    # The Favorites row, so it is not an empty state on a fresh demo. Three:
+    # enough to read as a list someone built, few enough to still be a
+    # shortlist.
+    starred_reports=("overview", "essentials", "emergency-fund"),
     tier_overrides=(("full", TierConfig(months_of_history=30, tba_target=_d("150"))),),
 )
 

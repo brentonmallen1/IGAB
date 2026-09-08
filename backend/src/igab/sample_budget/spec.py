@@ -267,6 +267,22 @@ class LiabilitySpec:
 
 
 @dataclass(frozen=True)
+class BudgetFilterSpec:
+    """A saved filter on the budget page's filter control.
+
+    A budget with none of these demos an empty control. Tag-based ones matter
+    most: the reports' scope control resolves a saved filter through the same
+    `effective_category_ids` the budget page uses, so one saved here is one
+    the Reports page can narrow by.
+    """
+
+    name: str
+    tags: tuple[str, ...] = ()
+    categories: tuple[str, ...] = ()
+    tiers: tuple[str, ...] = BOTH_TIERS
+
+
+@dataclass(frozen=True)
 class TierConfig:
     """Per-tier window and TBA target overriding the spec defaults."""
 
@@ -295,6 +311,13 @@ class SampleBudgetSpec:
     liabilities: tuple[LiabilitySpec, ...] = ()
     # (name, color_slot) tags created beyond the seeded system tags
     custom_tags: tuple[tuple[str, str], ...] = ()
+    #: Saved filters on the budget page, in the order they should read —
+    #: `sort_order` is what pins the first few, so this order is the demo.
+    filters: tuple[BudgetFilterSpec, ...] = ()
+    #: Report ids starred into the Reports nav's Favorites row. Plain strings
+    #: because which reports exist is a client fact — the server stores the
+    #: list and does not interpret it (`services/report_favorites.py`).
+    starred_reports: tuple[str, ...] = ()
     months_of_history: int = 12
     tba_target: Decimal = Decimal("150")
     # Per-tier overrides of months_of_history / tba_target
