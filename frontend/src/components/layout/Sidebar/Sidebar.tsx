@@ -133,6 +133,28 @@ export function Sidebar() {
     )
   }
 
+  /** The bank-connection cloud for whichever account backs a row, or nothing
+   *  when none does. One renderer for all three sections: the on-budget list
+   *  had the only copy, which is why an off-budget brokerage looked exactly
+   *  like a hand-entered one. Assets and Debts project their accounts down to
+   *  rows, so they pass the id (`syncAccountId`) rather than the account.
+   *
+   *  Distinct from a Debt row's `managed` link icon, which says the liability
+   *  tracks an internal account and nothing about a bank. */
+  function syncIconFor(accountId: string | null | undefined) {
+    if (!accountId) return undefined
+    const acc = accounts?.find((a) => a.id === accountId)
+    if (!acc?.simplefin_account_id) return undefined
+    return (
+      <SyncStatusIcon
+        account={acc}
+        isSyncing={syncMutation.isPending && syncingAccountId === acc.simplefin_account_id}
+        onSyncClick={(e) => handleAccountSync(acc, e)}
+        lastSyncError={primaryConnection?.last_sync_error}
+      />
+    )
+  }
+
   const currentBudgetName = budgets.find((b) => b.id === budgetId)?.name ?? null
 
   function handleAllBudgets() {
@@ -436,19 +458,7 @@ export function Sidebar() {
                           badgeCount={acc.uncategorized_count}
                           onClick={() => handleAccountClick(acc)}
                           isActive={isRowActive(accountTarget(acc.id), null, sidebarLocation)}
-                          trailing={
-                            acc.simplefin_account_id ? (
-                              <SyncStatusIcon
-                                account={acc}
-                                isSyncing={
-                                  syncMutation.isPending &&
-                                  syncingAccountId === acc.simplefin_account_id
-                                }
-                                onSyncClick={(e) => handleAccountSync(acc, e)}
-                                lastSyncError={primaryConnection?.last_sync_error}
-                              />
-                            ) : undefined
-                          }
+                          trailing={syncIconFor(acc.id)}
                         />
                       ))}
                   </div>
@@ -503,6 +513,7 @@ export function Sidebar() {
                       </span>
                     ) : undefined
                   }
+                  trailing={syncIconFor(row.syncAccountId)}
                 />
               ))}
           </div>
@@ -563,19 +574,22 @@ export function Sidebar() {
                     ) : undefined
                   }
                   trailing={
-                    row.registerAccountId ? (
-                      <button
-                        className="sidebar__register-btn"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          navigate(`/accounts/${row.registerAccountId}`)
-                        }}
-                        aria-label={`Open ${row.name} register`}
-                        title="Open account register"
-                      >
-                        <List size={12} />
-                      </button>
-                    ) : undefined
+                    <>
+                      {syncIconFor(row.syncAccountId)}
+                      {row.registerAccountId && (
+                        <button
+                          className="sidebar__register-btn"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            navigate(`/accounts/${row.registerAccountId}`)
+                          }}
+                          aria-label={`Open ${row.name} register`}
+                          title="Open account register"
+                        >
+                          <List size={12} />
+                        </button>
+                      )}
+                    </>
                   }
                 />
               ))}

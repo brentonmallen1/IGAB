@@ -122,6 +122,10 @@ export interface LiabilityRow {
   /** Managed rows keep a shortcut to the underlying account register */
   registerAccountId: string | null
   icon: 'managed' | 'manual' | null
+  /** Which account's bank connection this row shows, or null when no account
+   *  backs it. See the note on `AssetRow.syncAccountId` — deliberately NOT the
+   *  same question as `icon: 'managed'`, which is about an internal link. */
+  syncAccountId: string | null
 }
 
 /** Every debt, exactly once:
@@ -157,6 +161,7 @@ export function buildLiabilityRows(
         : { kind: 'account', accountId: acc.id },
       registerAccountId: tracker ? acc.id : null,
       icon: tracker ? 'managed' : null,
+      syncAccountId: acc.id,
     })
   }
 
@@ -170,6 +175,9 @@ export function buildLiabilityRows(
       target: { kind: 'liability', liabilityId: liability.id },
       registerAccountId: null,
       icon: liability.linked_account_id ? 'managed' : 'manual',
+      // A managed liability whose account is not rendered above still has one
+      // (a closed account, most often), and that account can be bank-linked.
+      syncAccountId: liability.linked_account_id,
     })
   }
   return rows
@@ -190,6 +198,12 @@ export interface AssetRow {
   target: SidebarRowTarget
   /** Stated (manually valued) rows carry the pen icon, like unmanaged debts. */
   icon: 'manual' | null
+  /** Which account's bank connection this row shows, or null when no account
+   *  backs it. The row builders drop the `Account` object, which is why the
+   *  sidebar's Assets and Debts sections showed no cloud while the on-budget
+   *  section did — the data was on the client the whole time. Carrying the id
+   *  rather than the account keeps this module free of that shape. */
+  syncAccountId: string | null
 }
 
 interface ValuedAssetLike {
@@ -219,6 +233,7 @@ export function buildAssetRows(
     balance: acc.balance,
     target: { kind: 'account', accountId: acc.id },
     icon: null,
+    syncAccountId: acc.id,
   }))
   for (const asset of assets) {
     rows.push({
@@ -227,6 +242,8 @@ export function buildAssetRows(
       balance: asset.current_value ?? 0,
       target: { kind: 'asset', assetId: asset.id },
       icon: 'manual',
+      // A valued Asset is never an account, so there is no connection to show.
+      syncAccountId: null,
     })
   }
   return rows

@@ -27,7 +27,11 @@ import {
   useSyncSimpleFIN,
   useSimpleFINRateLimitStatus,
 } from '../../api/simplefin'
-import { SyncStatusIcon, getSyncState } from '../../components/simplefin/SyncStatusIcon'
+import {
+  SyncStatusIcon,
+  getSyncState,
+  formatSyncAge,
+} from '../../components/simplefin/SyncStatusIcon'
 import { AddAccountModal } from '../../components/accounts/AddAccountModal'
 import { AccountSettingsModal } from '../../components/accounts/AccountSettingsModal'
 import { AccountTypesPanel } from '../../components/accounts/AccountTypesPanel'
@@ -37,17 +41,6 @@ import { useFormatters } from '../../hooks/useFormatters'
 import type { Account } from '../../types'
 import './AccountsOverviewPage.css'
 import { openAccounts } from '../../utils/accountLists'
-
-function formatSyncAge(lastSyncAt: string | null): string {
-  if (!lastSyncAt) return 'Never synced'
-  const ageMs = Date.now() - new Date(lastSyncAt).getTime()
-  const ageMin = Math.floor(ageMs / 60_000)
-  if (ageMin < 2) return 'Just synced'
-  if (ageMin < 60) return `${ageMin}m ago`
-  const ageH = Math.floor(ageMin / 60)
-  if (ageH < 24) return `${ageH}h ago`
-  return `${Math.floor(ageH / 24)}d ago`
-}
 
 function formatReconciled(
   lastReconciledAt: string | null,
