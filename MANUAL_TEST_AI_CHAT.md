@@ -105,9 +105,15 @@ starts awaiting.
   keyboard should not push the composer off-screen.
 - Cycle a few themes with the panel open, light and dark. Nothing should be
   unreadable.
-- **New conversation** (the plus icon in the panel header) must clear the
-  previous question and answer and land the caret in the composer. Ask
-  something afterwards and confirm it shows up as a second row in Chats.
+- **Tabs.** The plus icon opens a new tab; the strip only appears once there
+  is more than one chat or the first has a question. Ask something slow in
+  one tab, switch to another and ask again: the first answer should keep
+  arriving in the background and be complete, scrolled to its end, when you
+  switch back. Closing the active tab lands on its neighbour; closing the
+  last one leaves a blank tab. Pressing plus with a blank tab already open
+  should reuse it rather than add another.
+- Closing the panel (or the sheet on a phone) does not stop an answer in
+  progress; the Stop button in the composer does.
 - Amounts in answers should render as small figure chips (backticked in the
   Markdown), the same size as the prose. If the model writes bare `$412.80`
   instead, the prompt is being ignored — check which model is set.
@@ -120,8 +126,9 @@ regression risk.
 
 **Chats** — past conversations. Clicking a row opens the transcript in place,
 with each answer's lookups and grounding line, and expands only one at a time.
-The panel icon on the row puts that conversation back in the assistant, in
-place of whatever was there; deleting one leaves its model calls behind.
+The panel icon on the row opens that conversation in the assistant, in its
+own tab (or focuses the tab it already has); deleting one closes its tab and
+leaves its model calls behind.
 
 **Model calls** — one row **per model round trip**, so a question that used a
 tool produces two rows. Check the token counts look sane (these are new — the

@@ -17,6 +17,7 @@ import { ChatTranscript } from '../../../components/ai/chat/ChatTranscript'
 export function ChatsTab({ budgetId }: { budgetId: string }) {
   const { data, isLoading } = useConversations(budgetId)
   const remove = useDeleteConversation(budgetId)
+  const closeTabs = useUIStore((s) => s.closeChatConversation)
   const { formatDate } = useFormatters()
   const [openId, setOpenId] = useState<string | null>(null)
 
@@ -69,7 +70,9 @@ export function ChatsTab({ budgetId }: { budgetId: string }) {
                     confirmLabel: 'Delete',
                     destructive: true,
                   })
-                  if (ok) await remove.mutateAsync(conversation.id)
+                  if (!ok) return
+                  await remove.mutateAsync(conversation.id)
+                  closeTabs(conversation.id)
                 }}
               >
                 <Trash2 size={13} />
@@ -83,9 +86,9 @@ export function ChatsTab({ budgetId }: { budgetId: string }) {
   )
 }
 
-/** Put the conversation back in the assistant panel, wherever it lives. */
+/** Show the conversation in the assistant panel, in its own tab. */
 function ContinueButton({ conversationId, title }: { conversationId: string; title: string }) {
-  const setConversation = useUIStore((s) => s.setActiveConversation)
+  const openConversation = useUIStore((s) => s.openChatConversation)
   const setPanelOpen = useUIStore((s) => s.setChatPanelOpen)
   return (
     <button
@@ -94,7 +97,7 @@ function ContinueButton({ conversationId, title }: { conversationId: string; tit
       aria-label={`Continue ${title} in the assistant`}
       title="Continue in the assistant"
       onClick={() => {
-        setConversation(conversationId)
+        openConversation(conversationId)
         setPanelOpen(true)
       }}
     >

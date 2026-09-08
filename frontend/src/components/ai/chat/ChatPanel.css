@@ -127,6 +127,96 @@
   border-color: var(--color-accent);
 }
 
+/* ── tabs ───────────────────────────────────────────────────────────── */
+
+/* One tab per open conversation, in the header's chrome. The strip scrolls
+   sideways rather than wrapping: a second row of tabs in a 360px column
+   would cost the height of an answer. */
+.chat-tabs {
+  display: flex;
+  flex-shrink: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--edge);
+  background-color: var(--surface-chrome);
+}
+
+.chat-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.chat-tab {
+  display: flex;
+  align-items: center;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 180px;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+}
+
+.chat-tab--active {
+  color: var(--text-primary);
+  border-bottom-color: var(--color-accent);
+}
+
+.chat-tab__select {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 4px 0 var(--spacing-sm);
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.chat-tab__close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-right: 2px;
+  border: none;
+  border-radius: var(--border-radius-sm);
+  background: transparent;
+  color: inherit;
+  opacity: 0.6;
+  cursor: pointer;
+}
+
+.chat-tab:hover .chat-tab__select,
+.chat-tab__close:hover {
+  color: var(--text-primary);
+}
+
+.chat-tab__close:hover {
+  opacity: 1;
+  background-color: var(--bg-hover);
+}
+
+/* ── one conversation ───────────────────────────────────────────────── */
+
+/* Every open tab's thread stays mounted so its stream keeps running; only
+   the active one takes up room. The explicit [hidden] rule is needed
+   because display: flex would otherwise beat the attribute's UA default. */
+.chat-thread {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.chat-thread[hidden] {
+  display: none;
+}
+
 /* The standing note. Not in the empty state, which the first question
    destroys — "it cannot move your money" is worth reading beside an answer
    that suggests you do. */
@@ -220,6 +310,15 @@
   .chat-panel__icon,
   .chat-panel__send {
     width: var(--tap-min);
+    height: var(--tap-min);
+  }
+
+  .chat-tab__select {
+    height: var(--tap-min);
+  }
+
+  .chat-tab__close {
+    width: 32px;
     height: var(--tap-min);
   }
 
