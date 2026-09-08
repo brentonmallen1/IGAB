@@ -162,7 +162,6 @@
   }
 
   .palette [cmdk-input] {
-    font-size: 16px; /* prevents iOS focus-zoom */
     min-height: var(--tap-min);
   }
 

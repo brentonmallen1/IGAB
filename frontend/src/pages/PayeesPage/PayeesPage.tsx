@@ -336,6 +336,7 @@ export function PayeesPage() {
         <div className="payees-actions">
           <input
             type="search"
+            enterKeyHint="search"
             className="payees-search"
             placeholder="Search…"
             value={search}

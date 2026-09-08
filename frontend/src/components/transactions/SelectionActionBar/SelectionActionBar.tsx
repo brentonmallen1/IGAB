@@ -24,6 +24,9 @@ interface Props {
   onSetCleared: (status: ClearedStatus) => void
   onDelete: () => void
   onDuplicate: () => void
+  /** One row selected: open the scheduled editor prefilled from it. The
+   *  shift+T shortcut and this share one handler in TransactionTable. */
+  onMakeRepeating?: () => void
   onClear: () => void
   onApprove?: () => void
   onMerge?: () => void
@@ -32,13 +35,18 @@ interface Props {
   onEdit?: () => void
 }
 
-const MORE_ITEMS: ContextMenuItem[] = [
-  { id: 'mark_cleared', label: 'Mark Cleared' },
-  { id: 'mark_uncleared', label: 'Mark Uncleared' },
-  { id: 'duplicate', label: 'Duplicate' },
-  { id: 'separator', label: '', separator: true },
-  { id: 'delete', label: 'Delete Selected', danger: true, icon: Trash2 },
-]
+function moreItems(canMakeRepeating: boolean): ContextMenuItem[] {
+  return [
+    { id: 'mark_cleared', label: 'Mark Cleared' },
+    { id: 'mark_uncleared', label: 'Mark Uncleared' },
+    { id: 'duplicate', label: 'Duplicate' },
+    // shift+T's only touch path was each row's own menu; a selected row's
+    // bar is where a phone looks for it.
+    ...(canMakeRepeating ? [{ id: 'make_repeating', label: 'Make Repeating' }] : []),
+    { id: 'separator', label: '', separator: true },
+    { id: 'delete', label: 'Delete Selected', danger: true, icon: Trash2 },
+  ]
+}
 
 export function SelectionActionBar({
   selectedCount,
@@ -48,6 +56,7 @@ export function SelectionActionBar({
   onSetCleared,
   onDelete,
   onDuplicate,
+  onMakeRepeating,
   onClear,
   onApprove,
   onMerge,
@@ -74,6 +83,9 @@ export function SelectionActionBar({
         break
       case 'duplicate':
         onDuplicate()
+        break
+      case 'make_repeating':
+        onMakeRepeating?.()
         break
       case 'delete':
         onDelete()
@@ -155,7 +167,7 @@ export function SelectionActionBar({
 
       {moreOpen && (
         <ContextMenu
-          items={MORE_ITEMS}
+          items={moreItems(!!onMakeRepeating && selectedCount === 1)}
           onSelect={handleMoreAction}
           onClose={() => setMoreOpen(false)}
           anchor={moreRef}

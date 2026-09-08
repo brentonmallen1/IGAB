@@ -100,7 +100,6 @@
 
   .sched-editor__input {
     min-height: 44px;
-    font-size: 16px; /* prevents iOS focus-zoom */
   }
 
   .sched-editor__btn {

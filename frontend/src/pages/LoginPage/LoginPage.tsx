@@ -53,6 +53,7 @@ export function LoginPage() {
             <input
               id="password"
               type="password"
+              enterKeyHint="go"
               className="login-card__input"
               value={password}
               onChange={(e) => setPassword(e.target.value)}

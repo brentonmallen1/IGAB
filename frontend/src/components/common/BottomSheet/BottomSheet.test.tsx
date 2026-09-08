@@ -134,4 +134,38 @@ describe('BottomSheet dismissal affordances', () => {
     unmount()
     expect(scrollLockDepth()).toBe(before)
   })
+
+  it('dismisses on a quick downward flick of its header', () => {
+    // The most intricate touch code in the repo, previously unpinned: a fast
+    // 200px drag on a short sheet's header closes it.
+    const onClose = vi.fn()
+    const { container } = render(
+      <BottomSheet open onClose={onClose} title="Pick" height="auto">
+        body
+      </BottomSheet>
+    )
+    const header = container.ownerDocument.querySelector('.bottom-sheet__header')!
+    fireEvent.touchStart(header, { touches: [{ clientY: 100 }] })
+    fireEvent.touchMove(header, { touches: [{ clientY: 200 }] })
+    fireEvent.touchMove(header, { touches: [{ clientY: 300 }] })
+    fireEvent.touchEnd(header, {})
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it('snaps back from a short, slow drag', () => {
+    const onClose = vi.fn()
+    const { container } = render(
+      <BottomSheet open onClose={onClose} title="Pick" height="auto">
+        body
+      </BottomSheet>
+    )
+    const header = container.ownerDocument.querySelector('.bottom-sheet__header')!
+    fireEvent.touchStart(header, { touches: [{ clientY: 100 }] })
+    fireEvent.touchMove(header, { touches: [{ clientY: 110 }] })
+    fireEvent.touchEnd(header, {})
+    expect(onClose).not.toHaveBeenCalled()
+    expect(
+      (container.ownerDocument.querySelector('.bottom-sheet') as HTMLElement).style.transform
+    ).toBe('')
+  })
 })

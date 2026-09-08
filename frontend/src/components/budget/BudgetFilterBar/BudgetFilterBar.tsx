@@ -245,6 +245,7 @@ export function BudgetFilterBar({ budgetId, categoryBalances, barRef }: Props) {
           ref={searchRef}
           className="budget-filter-bar__search-input"
           type="text"
+          enterKeyHint="search"
           value={categorySearch}
           onChange={(e) => setCategorySearch(e.target.value)}
           onKeyDown={(e) => {

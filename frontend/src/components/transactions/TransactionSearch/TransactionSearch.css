@@ -183,7 +183,6 @@
   }
 
   .txn-search__input {
-    font-size: 16px; /* prevents iOS focus-zoom */
     min-height: 44px;
   }
 

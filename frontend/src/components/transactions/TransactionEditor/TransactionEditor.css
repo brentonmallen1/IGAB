@@ -654,7 +654,6 @@
   .txn-editor__input,
   .txn-editor__select {
     min-height: 44px;
-    font-size: 16px; /* prevents iOS focus-zoom */
   }
 
   .txn-editor__payee-option {

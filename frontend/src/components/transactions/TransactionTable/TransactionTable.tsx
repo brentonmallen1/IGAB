@@ -498,15 +498,15 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   // selection bar, so menu hints and key behavior can never diverge
   const hasSelection = selectedTransactionIds.size > 0
   useShortcut(SHORTCUTS.duplicate.combo, handleBulkDuplicate, { enabled: hasSelection })
-  useShortcut(
-    SHORTCUTS.makeRepeating.combo,
-    () => {
-      const [onlyId] = [...selectedTransactionIds]
-      const txn = onlyId ? transactionMap.get(onlyId) : undefined
-      if (txn && !txn.parent_transaction_id) setMakeRepeatingTxn(txn)
-    },
-    { enabled: selectedTransactionIds.size === 1 }
-  )
+  // One handler for shift+T and the selection bar's Make Repeating.
+  const makeRepeatingFromSelection = useCallback(() => {
+    const [onlyId] = [...selectedTransactionIds]
+    const txn = onlyId ? transactionMap.get(onlyId) : undefined
+    if (txn && !txn.parent_transaction_id) setMakeRepeatingTxn(txn)
+  }, [selectedTransactionIds, transactionMap])
+  useShortcut(SHORTCUTS.makeRepeating.combo, makeRepeatingFromSelection, {
+    enabled: selectedTransactionIds.size === 1,
+  })
   useShortcut('delete', handleBulkDelete, { enabled: hasSelection })
   useShortcut('backspace', handleBulkDelete, { enabled: hasSelection })
 
@@ -864,6 +864,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
             onSetCleared={handleBulkSetCleared}
             onDelete={handleBulkDelete}
             onDuplicate={handleBulkDuplicate}
+            onMakeRepeating={makeRepeatingFromSelection}
             onClear={clearTransactionSelection}
             onApprove={canApprove ? handleBulkApprove : undefined}
             onMerge={() => setShowMergeModal(true)}
