@@ -414,6 +414,16 @@ SAVINGS_CLASSES = (ActivityClass.SAVINGS, ActivityClass.DEBT_PRINCIPAL)
 #: two are ever made equal.
 COST_OF_LIVING_CLASSES = (ActivityClass.SPENDING, ActivityClass.DEBT_PRINCIPAL)
 
+#: Everything that left the budget: spending, plus the money that merely moved
+#: or grew. This is what a spending report means when the reader opts in to the
+#: fuller picture — "where did it all go", rather than "what did I consume".
+#:
+#: Named here rather than built at each call site because it now has two: the
+#: reports router's `include_savings` flag and the chat's spending tool. Two
+#: places assembling the same tuple is how the badge and the register came to
+#: disagree.
+SPENDING_WITH_SAVINGS_CLASSES = SPENDING_CLASSES + SAVINGS_CLASSES
+
 
 def explain(reason: str) -> str:
     """Prose for a reason code, safe for an unknown value from an older row."""

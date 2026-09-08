@@ -28,12 +28,15 @@ export function AIAdvancedSettings() {
   const get = (key: string) => settings?.find((s) => s.key === key)?.value ?? ''
 
   const visionModel = get('ollama_vision_model')
+  const chatModel = get('ollama_chat_model')
   const [useVisionOverride, setUseVisionOverride] = useState(false)
   const [editVisionModel, setEditVisionModel] = useState('')
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [editOptions, setEditOptions] = useState('')
   const [editVisionOptions, setEditVisionOptions] = useState('')
   const [editTimeout, setEditTimeout] = useState('')
+  const [editChatTimeout, setEditChatTimeout] = useState('120')
+  const [editChatModel, setEditChatModel] = useState('')
 
   // Sync the vision pair whenever the SERVER value changes — initial load, a
   // completed save, or a change made on another device — while local edits
@@ -53,6 +56,8 @@ export function AIAdvancedSettings() {
     setEditOptions(get('ollama_options') || '{}')
     setEditVisionOptions(get('ollama_vision_options') || '{}')
     setEditTimeout(get('ai_vision_timeout_s') || '300')
+    setEditChatTimeout(get('ai_chat_timeout_s') || '120')
+    setEditChatModel(get('ollama_chat_model') || '')
     // Free-text editors sync from the server once loaded; local edits win
     // afterwards (unlike the vision pair above, they are inputs, not state
     // indicators).
@@ -177,6 +182,58 @@ export function AIAdvancedSettings() {
 
       {advancedOpen && (
         <div className="ai-settings__advanced">
+          <div className="settings-row settings-row--stacked">
+            <div>
+              <div className="settings-row__label">Assistant model</div>
+              <div className="settings-row__desc">
+                The model the chat panel uses. Leave empty to use the main model. It must support
+                tool calling, or the assistant can answer but cannot look anything up.
+                {chatModel ? ` Currently: ${chatModel}.` : ''}
+              </div>
+            </div>
+            <div className="ai-settings__inline">
+              <input
+                type="text"
+                className="settings-input"
+                placeholder="same as main model"
+                value={editChatModel}
+                onChange={(e) => setEditChatModel(e.target.value)}
+              />
+              <button
+                className="settings-btn settings-btn--secondary"
+                onClick={() => void save('ollama_chat_model', editChatModel.trim())}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+
+          <div className="settings-row settings-row--stacked">
+            <div>
+              <div className="settings-row__label">Assistant timeout (seconds)</div>
+              <div className="settings-row__desc">
+                A chat answer can take several round trips while it looks things up.
+              </div>
+            </div>
+            <div className="ai-settings__inline">
+              <input
+                type="number"
+                inputMode="numeric"
+                min={10}
+                className="settings-input ai-settings__timeout"
+                value={editChatTimeout}
+                onChange={(e) => setEditChatTimeout(e.target.value)}
+              />
+              <button
+                className="settings-btn settings-btn--secondary"
+                onClick={() => void save('ai_chat_timeout_s', editChatTimeout)}
+                disabled={!/^[1-9]\d*$/.test(editChatTimeout)}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+
           <div className="settings-row settings-row--stacked">
             <div>
               <div className="settings-row__label">Vision request timeout (seconds)</div>

@@ -22,6 +22,9 @@ EDITABLE_KEYS = {
     "ollama_options",
     "ollama_vision_options",
     "ai_vision_timeout_s",
+    "ollama_chat_model",
+    "ai_chat_timeout_s",
+    "ai_activity_retention_days",
     "backup_interval_hours",
     "backup_keep_days",
     "backup_keep_min",
@@ -41,7 +44,7 @@ _BACKUP_INT_BOUNDS = {
 
 # Settings that change which model the vision capability probe describes. A
 # stale probe outlives the fix that made it wrong, so drop it on any write.
-_CAPABILITY_KEYS = {"ollama_host", "ollama_model", "ollama_vision_model"}
+_CAPABILITY_KEYS = {"ollama_host", "ollama_model", "ollama_vision_model", "ollama_chat_model"}
 
 
 def _validate_setting(key: str, value: str) -> None:
@@ -58,11 +61,11 @@ def _validate_setting(key: str, value: str) -> None:
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"{key} must be a JSON object",
             )
-    elif key == "ai_vision_timeout_s":
+    elif key in ("ai_vision_timeout_s", "ai_chat_timeout_s"):
         if not value.isdigit() or int(value) <= 0:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="ai_vision_timeout_s must be a positive integer",
+                detail=f"{key} must be a positive integer",
             )
     elif key == "ai_thinking":
         if value not in ("auto", "on", "off"):

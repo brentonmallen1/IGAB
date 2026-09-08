@@ -1,0 +1,425 @@
+/* The chat panel sits beside the page as a third column of the shell.
+   Every colour is a role token: 40 theme variants are held to WCAG AA by
+   contrast.test.ts, and a hard-coded value would pass in one and fail in
+   thirty-nine. */
+
+.chat-panel {
+  position: relative;
+  width: var(--chat-panel-width, 360px);
+  min-width: var(--chat-panel-width, 360px);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-left: 1px solid var(--edge-strong);
+  background-color: var(--surface-raised);
+  /* No width transition: animating a layout property reflows the register on
+     every frame. The panel opens at its width, as the inspector does. */
+}
+
+.chat-panel__resize {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 5px;
+  cursor: col-resize;
+  z-index: 1;
+}
+
+.chat-panel__resize:hover,
+.chat-panel__resize:focus-visible {
+  background-color: var(--color-accent);
+  outline: none;
+}
+
+.chat-panel__header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 0 var(--spacing-sm);
+  height: var(--header-height);
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--edge);
+  background-color: var(--surface-chrome);
+}
+
+.chat-panel__title {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.chat-panel__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: var(--border-radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.chat-panel__icon:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.chat-panel__notice {
+  margin: 0;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+  background-color: var(--surface-sunken);
+  border-bottom: 1px solid var(--edge);
+}
+
+.chat-panel__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--spacing-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.chat-panel__empty {
+  margin: auto 0;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.chat-panel__empty-lead {
+  margin: 0 0 var(--spacing-xs);
+}
+
+.chat-panel__examples {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.chat-panel__examples button {
+  width: 100%;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border: 1px solid var(--edge);
+  border-radius: var(--border-radius-sm);
+  background-color: var(--surface-sunken);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chat-panel__examples button:hover {
+  border-color: var(--color-accent);
+}
+
+/* The standing note. Not in the empty state, which the first question
+   destroys — "it cannot move your money" is worth reading beside an answer
+   that suggests you do. */
+.chat-panel__standing-note {
+  margin: 0;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--edge);
+}
+
+/* ── messages ───────────────────────────────────────────────────────── */
+
+.chat-msg {
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.chat-msg--user .chat-msg__body {
+  /* Same break as the assistant's: a pasted URL in your own question would
+     otherwise run off the panel. */
+  word-break: break-word;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--border-radius-md);
+  background-color: var(--surface-sunken);
+  color: var(--text-primary);
+  /* The question sits right, the answer full-width: a budget answer is often
+     a short table, and indenting it wastes the width it needs. */
+  margin-left: var(--spacing-lg);
+}
+
+.chat-msg--assistant .chat-msg__body {
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.chat-msg__working {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.chat-msg__spin {
+  animation: chat-spin 1s linear infinite;
+}
+
+@keyframes chat-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-msg__spin {
+    animation: none;
+  }
+}
+
+.chat-msg__error {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--border-radius-sm);
+  font-size: 11px;
+  color: var(--color-negative);
+  background-color: var(--surface-sunken);
+}
+
+.chat-msg__retry {
+  margin-left: auto;
+  padding: 2px var(--spacing-xs);
+  border: 1px solid currentColor;
+  border-radius: var(--border-radius-sm);
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* ── what it looked up ──────────────────────────────────────────────── */
+
+.chat-tools {
+  margin-bottom: var(--spacing-xs);
+}
+
+.chat-tools__toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px;
+  border: none;
+  border-radius: var(--border-radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.chat-tools__toggle:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.chat-tools__list {
+  margin: var(--spacing-xs) 0 0;
+  padding: var(--spacing-xs);
+  list-style: none;
+  border: 1px solid var(--edge);
+  border-radius: var(--border-radius-sm);
+  background-color: var(--surface-sunken);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.chat-tools__item {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.chat-tools__name {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--spacing-xs);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.chat-tools__ms {
+  font-weight: 400;
+  opacity: 0.7;
+}
+
+.chat-tools__args {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.chat-tools__args code {
+  font-size: 10px;
+  word-break: break-all;
+}
+
+.chat-tools__args-label {
+  opacity: 0.75;
+}
+
+/* The arguments that actually ran, when they differ from what the model
+   asked for. That difference is the point of showing both. */
+.chat-tools__args--changed code {
+  color: var(--color-warning);
+}
+
+.chat-tools__via,
+.chat-tools__rows {
+  opacity: 0.75;
+  font-size: 10px;
+}
+
+.chat-tools__error {
+  color: var(--color-negative);
+}
+
+/* ── composer ───────────────────────────────────────────────────────── */
+
+.chat-panel__composer {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm);
+  border-top: 1px solid var(--edge);
+  background-color: var(--surface-chrome);
+  flex-shrink: 0;
+}
+
+.chat-panel__input {
+  flex: 1;
+  resize: none;
+  padding: var(--spacing-xs);
+  border: 1px solid var(--input-border);
+  border-radius: var(--border-radius-sm);
+  background-color: var(--input-bg);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.chat-panel__input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.chat-panel__send {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: var(--border-radius-sm);
+  background-color: var(--color-accent);
+  color: var(--bg-primary);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.chat-panel__send:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* On a phone the panel renders inside the app's BottomSheet, which already
+   owns the full-screen geometry, the safe-area insets and the keyboard-aware
+   height. All this needs to do is fill the space the sheet gives it — the
+   hand-rolled `position: fixed` block that used to live here duplicated the
+   sheet's layout and none of its behaviour. */
+.chat-panel--sheet {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  border-left: none;
+  background: transparent;
+}
+
+.chat-panel--sheet .chat-panel__header {
+  height: auto;
+  padding: 0 var(--spacing-sm) var(--spacing-xs);
+  background: transparent;
+  border-bottom: none;
+  justify-content: flex-end;
+}
+
+/* The composer is the last thing above the keyboard; the sheet's own body
+   padding already clears the home indicator. */
+.chat-panel--sheet .chat-panel__composer {
+  background: transparent;
+}
+
+@media (max-width: 768px) {
+  /* Touch targets, matching the header's own mobile sizing. */
+  .chat-panel__icon,
+  .chat-panel__send {
+    width: var(--tap-min);
+    height: var(--tap-min);
+  }
+
+  /* The control the panel's whole trust story rests on was the hardest thing
+     in it to hit: ~20px around an 11px label. */
+  .chat-tools__toggle {
+    min-height: var(--tap-min);
+  }
+
+  /* No font-size floor here: base.css already sets max(16px, …) on every
+     input, select and textarea for touch phones, and inputZoom.test.ts fails
+     on a second copy. */
+}
+
+/* ── whether the figures came from the budget ───────────────────────── */
+
+/* Under the answer, not folded into the tool disclosure: this is about the
+   text you just read, and a warning behind a chevron is a warning nobody
+   sees. Quiet when it agrees, plain when it does not — the confident tone is
+   deliberately the smaller of the two. */
+.chat-grounding {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  margin: var(--spacing-xs) 0 0;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.chat-grounding--ok {
+  color: var(--text-secondary);
+}
+
+.chat-grounding--warn {
+  padding: var(--spacing-xs);
+  border-radius: var(--border-radius-sm);
+  color: var(--color-warning);
+  background-color: var(--surface-sunken);
+  font-size: 11px;
+}
+
+.chat-grounding svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}

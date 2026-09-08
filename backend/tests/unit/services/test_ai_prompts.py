@@ -30,6 +30,7 @@ class TestRenderPrompt:
             "amount": "5.50",
             "memo": "",
             "names": "STARBUCKS #123\nSTARBUCKS #77",
+            "page_context": "The user is looking at the budget grid for 2026-08.",
         }
         for key, template in DEFAULT_PROMPTS.items():
             rendered = render_prompt(template, sample_values)

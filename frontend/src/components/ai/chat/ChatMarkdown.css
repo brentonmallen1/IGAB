@@ -1,0 +1,132 @@
+/* Answer typography, beside the component that emits it.
+ *
+ * Kept out of ChatPanel.css because the panel is geometry and this is type —
+ * and the two now render in different containers (a side column on desktop, a
+ * BottomSheet body on a phone). This file was lost once already when the panel
+ * geometry was rewritten; living next to ChatMarkdown.tsx, which imports it,
+ * makes that harder to repeat.
+ */
+
+/* ── rendered answers ───────────────────────────────────────────────── */
+
+/* Answers are lists of envelopes and small tables of figures. The type scale
+   here is the panel's, not the document's: everything stays at 12px so a
+   heading does not shout across a 360px column. */
+
+.chat-md > :first-child {
+  margin-top: 0;
+}
+
+.chat-md > :last-child {
+  margin-bottom: 0;
+}
+
+.chat-md p {
+  margin: 0 0 var(--spacing-xs);
+  line-height: 1.55;
+}
+
+.chat-md h3,
+.chat-md h4 {
+  margin: var(--spacing-sm) 0 var(--spacing-xs);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.chat-md ul,
+.chat-md ol {
+  margin: 0 0 var(--spacing-xs);
+  /* Enough to hang a marker, not enough to lose a line of figures. */
+  padding-left: 1.15rem;
+}
+
+.chat-md li {
+  margin-bottom: 2px;
+  line-height: 1.5;
+}
+
+.chat-md li::marker {
+  color: var(--text-secondary);
+}
+
+.chat-md strong {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.chat-md code {
+  padding: 1px 3px;
+  border-radius: var(--border-radius-sm);
+  background-color: var(--surface-sunken);
+  font-size: 11px;
+}
+
+.chat-md pre {
+  margin: 0 0 var(--spacing-xs);
+  padding: var(--spacing-xs);
+  overflow-x: auto;
+  border-radius: var(--border-radius-sm);
+  background-color: var(--surface-sunken);
+}
+
+.chat-md pre code {
+  padding: 0;
+  background: transparent;
+}
+
+.chat-md blockquote {
+  margin: 0 0 var(--spacing-xs);
+  padding-left: var(--spacing-sm);
+  border-left: 2px solid var(--edge-strong);
+  color: var(--text-secondary);
+}
+
+.chat-md hr {
+  margin: var(--spacing-sm) 0;
+  border: none;
+  border-top: 1px solid var(--edge);
+}
+
+.chat-md a {
+  color: var(--color-accent);
+}
+
+/* A table of figures is the answer's densest shape and the panel is narrow, so
+   it scrolls inside its own box rather than widening the column. */
+.chat-md__table-wrap {
+  margin: 0 0 var(--spacing-xs);
+  overflow-x: auto;
+}
+
+.chat-md table {
+  border-collapse: collapse;
+  font-size: 11px;
+  /* Not 100%: a two-column table should not stretch to fill the panel. */
+  min-width: min(100%, 240px);
+}
+
+.chat-md th,
+.chat-md td {
+  padding: 2px var(--spacing-xs);
+  border-bottom: 1px solid var(--edge);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.chat-md th {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+/* Money reads right-aligned. GFM alignment is the only attribute the
+   sanitiser keeps, and this is why. */
+.chat-md th[align="right"],
+.chat-md td[align="right"] {
+  text-align: right;
+}
+
+.chat-md tbody tr:last-child th,
+.chat-md tbody tr:last-child td {
+  border-bottom: none;
+}

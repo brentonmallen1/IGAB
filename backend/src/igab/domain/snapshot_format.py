@@ -114,6 +114,17 @@ SNAPSHOT_OMITTED: Mapping[str, str] = MappingProxyType(
         "has been computed.",
         "transaction_attachments": "The bytes are not in the file, and "
         "storage_path embeds the source transaction id.",
+        "ai_conversations": "Chat transcripts. Free prose the user typed about "
+        "their own accounts, employers and institutions, which a snapshot "
+        "would carry into whoever they hand the file to. Kept out of clones "
+        "for the same reason -- a duplicate budget is a fresh start, not a "
+        "copy of what someone asked the assistant.",
+        "ai_messages": "Rides out with its conversation, and carries the "
+        "verbatim prompts and model answers besides.",
+        "ai_calls": "The model-call log. A record of what this installation "
+        "did, not a part of the budget, and it is what retention prunes.",
+        "ai_call_payloads": "Whole prompts and whole model responses, with the "
+        "budget's real figures and payee names rendered into them.",
     }
 )
 

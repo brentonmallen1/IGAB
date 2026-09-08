@@ -2070,3 +2070,176 @@ class LiabilityBalanceSnapshot(Base):
     )
 
     liability: Mapped["Liability"] = relationship(back_populates="snapshots")
+
+
+# ─── AI chat and the model-call log ──────────────────────────────────────────
+
+
+class AIConversation(Base):
+    """One chat thread in the AI panel.
+
+    Budget-scoped because a conversation is about a budget's money and makes no
+    sense beside another one. `user_id` is SET NULL rather than CASCADE for the
+    same reason `ChangeLog` does it: the history is a record of what happened,
+    and it outlives the account that caused it.
+
+    Listed in `SNAPSHOT_OMITTED` — a snapshot is a file the user hands to
+    someone else, and a conversation is free prose they typed about their own
+    accounts.
+    """
+
+    __tablename__ = "ai_conversations"
+    __table_args__ = (Index("ix_ai_conversations_budget_updated", "budget_id", "updated_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    budget_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    #: Derived from the first user message. Null until one is sent.
+    title: Mapped[str | None] = mapped_column(String(200))
+    archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    messages: Mapped[list["AIMessage"]] = relationship(
+        back_populates="conversation", cascade="all, delete-orphan"
+    )
+
+
+class AIMessage(Base):
+    """One turn in a conversation — user, assistant, or a tool result.
+
+    **Column order is load-bearing.** This table has foreign keys to two tables
+    in the budget graph, and `budget_scope.anchor_column()` picks the first
+    NOT NULL foreign key in column order. `conversation_id` is declared before
+    `ai_call_id` and `ai_call_id` is nullable, so the anchor is the
+    conversation — the same trap `reconciliation_snapshots` documents.
+    """
+
+    __tablename__ = "ai_messages"
+    __table_args__ = (Index("ix_ai_messages_conversation_seq", "conversation_id", "seq"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("ai_conversations.id", ondelete="CASCADE"), nullable=False
+    )
+    # created_at is the transaction timestamp — identical for every row one
+    # request writes — so this identity column is the only total order, which
+    # is what replaying a conversation in order needs. Same reasoning as
+    # ChangeLog.seq.
+    seq: Mapped[int] = mapped_column(BigInteger, Identity(), nullable=False, unique=True)
+    role: Mapped[str] = mapped_column(String(16), nullable=False)  # user|assistant|tool
+    #: Empty for an assistant turn that only called tools and said nothing.
+    content: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    thinking: Mapped[str | None] = mapped_column(Text)
+    #: What the assistant asked for, verbatim from the model.
+    tool_calls: Mapped[dict | None] = mapped_column(JSONB)
+    tool_name: Mapped[str | None] = mapped_column(String(64))
+    #: Which page the user was on, as the typed union the client sends.
+    page_context: Mapped[dict | None] = mapped_column(JSONB)
+    #: Whether the figures in this answer trace back to what was looked up.
+    #: Stored rather than recomputed: the tool results it was checked against
+    #: are not kept forever, and a verdict that quietly changes on reload is
+    #: worse than one that is simply old.
+    grounding: Mapped[dict | None] = mapped_column(JSONB)
+    ai_call_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("ai_calls.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    conversation: Mapped["AIConversation"] = relationship(back_populates="messages")
+
+
+class AICall(Base):
+    """One model round trip — the light, permanent half of the call log.
+
+    Every call the app makes to a model lands here, whichever feature asked for
+    it, because they all go through `igab.ai.gateway`. A tool loop writes one
+    row per round, sharing a message id: collapsing a three-round loop into one
+    row would hide exactly the step where a small local model goes wrong.
+
+    `budget_id` is nullable because some calls belong to the installation
+    rather than a budget — the availability probe and the model listing.
+    """
+
+    __tablename__ = "ai_calls"
+    __table_args__ = (
+        Index("ix_ai_calls_budget_created", "budget_id", "created_at"),
+        Index("ix_ai_calls_feature_created", "feature", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    budget_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="CASCADE")
+    )
+    #: An id from `igab.ai.features.FEATURES`; a guard test rejects any other.
+    feature: Mapped[str] = mapped_column(String(40), nullable=False)
+    model: Mapped[str] = mapped_column(String(100), nullable=False)
+    host: Mapped[str] = mapped_column(String(200), nullable=False)
+    endpoint: Mapped[str] = mapped_column(String(20), nullable=False)  # generate|chat
+    status: Mapped[str] = mapped_column(String(20), nullable=False)  # ok|error|cancelled
+    error: Mapped[str | None] = mapped_column(Text)
+    #: Which round trip within one user turn, 0-based.
+    round: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    duration_ms: Mapped[int | None] = mapped_column(Integer)
+    #: Ollama reports these as prompt_eval_count / eval_count and the app used
+    #: to discard both.
+    prompt_tokens: Mapped[int | None] = mapped_column(Integer)
+    completion_tokens: Mapped[int | None] = mapped_column(Integer)
+    tool_call_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    thinking_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    conversation_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("ai_conversations.id", ondelete="CASCADE")
+    )
+    job_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("ai_jobs.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    payload: Mapped["AICallPayload | None"] = relationship(
+        back_populates="call", cascade="all, delete-orphan", uselist=False
+    )
+
+
+class AICallPayload(Base):
+    """The heavy, prunable half of a call record.
+
+    Split from `ai_calls` so listing the log stays cheap while the detail view
+    stays complete, and so retention can drop the bulk without losing the fact
+    that a call happened. `ai_activity_retention_days` already draws that line
+    for AI jobs: log rows age out, the user's own records do not.
+
+    The primary key **is** the foreign key, which makes "two payloads for one
+    call" unrepresentable rather than merely discouraged.
+    """
+
+    __tablename__ = "ai_call_payloads"
+
+    ai_call_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("ai_calls.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    #: system, messages, options and tools, exactly as sent.
+    request: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    response: Mapped[str | None] = mapped_column(Text)
+    thinking: Mapped[str | None] = mapped_column(Text)
+    #: One entry per tool the model called: what it asked for, what actually
+    #: ran, and what came back.
+    tool_trace: Mapped[list | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    call: Mapped["AICall"] = relationship(back_populates="payload")

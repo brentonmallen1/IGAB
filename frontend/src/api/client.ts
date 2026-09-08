@@ -42,23 +42,45 @@ apiClient.interceptors.response.use(
       original._retry = true
       const refresh = localStorage.getItem('refresh_token')
       if (refresh) {
-        try {
-          const { data } = await axios.post(`${BASE_URL}/auth/refresh`, {
-            refresh_token: refresh,
-          })
-          localStorage.setItem('access_token', data.access_token)
-          original.headers.Authorization = `Bearer ${data.access_token}`
+        const token = await refreshAccessToken()
+        if (token) {
+          original.headers.Authorization = `Bearer ${token}`
           return apiClient(original)
-        } catch {
-          localStorage.removeItem('access_token')
-          localStorage.removeItem('refresh_token')
-          window.location.href = '/login'
         }
       }
     }
     return Promise.reject(error)
   }
 )
+
+/**
+ * Swap the refresh token for a new access token, or sign out.
+ *
+ * Extracted from the 401 interceptor because the chat stream needs it too:
+ * that call goes out through `fetch` rather than axios (axios cannot read a
+ * stream), so without this there would be two answers to "how do we
+ * authenticate" and only one of them would recover from an expired token.
+ *
+ * Returns the new token, or null when the session is over — in which case it
+ * has already cleared storage and sent the browser to /login.
+ */
+export async function refreshAccessToken(): Promise<string | null> {
+  const refresh = localStorage.getItem('refresh_token')
+  if (!refresh) return null
+  try {
+    const { data } = await axios.post(`${BASE_URL}/auth/refresh`, { refresh_token: refresh })
+    localStorage.setItem('access_token', data.access_token)
+    return data.access_token as string
+  } catch {
+    localStorage.removeItem('access_token')
+    localStorage.removeItem('refresh_token')
+    window.location.href = '/login'
+    return null
+  }
+}
+
+/** The base URL every request goes to, for callers that bypass axios. */
+export const API_BASE_URL = BASE_URL
 
 /**
  * Human-readable message from an API error.

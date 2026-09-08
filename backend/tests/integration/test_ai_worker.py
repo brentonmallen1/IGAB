@@ -14,6 +14,7 @@ import pytest
 from PIL import Image
 
 import igab.config
+from igab.ai.context import AICallContext, AICallResult
 from igab.db.models import AIJob, Transaction, TransactionAttachment
 from igab.repositories.ai_job_repo import AIJobRepository
 from igab.services.ai_service import AIService
@@ -539,13 +540,17 @@ class TestRequestLogging:
         monkeypatch.setattr(AIService, "is_receipt_image", AsyncMock(return_value=True))
 
         async def fake_extract(self, budget_id, image_b64, client_today):
-            self.last_request = {
-                "prompt": "PROMPT",
-                "system": "SYSTEM",
-                "model": "gemma4",
-                "think": True,
-                "format": None,
-            }
+            # Stand in for what the gateway would have recorded. The worker
+            # reads the call off the gateway now, not off the service.
+            self.gateway.last_result = AICallResult(
+                context=AICallContext(feature="receipt_extract", budget_id=budget_id),
+                model="gemma4",
+                host="http://localhost:11434",
+                endpoint="generate",
+                system="SYSTEM",
+                messages=[{"role": "user", "content": "PROMPT"}],
+                thinking_enabled=True,
+            )
             if fail:
                 raise httpx.ConnectError("refused")
             return GOOD_EXTRACTION
