@@ -1,5 +1,5 @@
-import { useRef } from 'react'
-import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, XAxis, YAxis } from 'recharts'
+import { useRef, useState } from 'react'
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useReportMonths, useReportStore } from '../../../stores/reportStore'
 import { useCostOfLivingReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
@@ -12,7 +12,8 @@ import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ReportNotes } from '../ReportNotes'
 import type { CostOfLivingGroup } from '../../../types'
 import { chartColor } from './chartColors'
-import { chartSeries, rolledUpCount } from './costOfLivingChart'
+import { ChartLegend } from './ChartLegend'
+import { ChartTooltip } from './ChartTooltip'
 import { ReportRangeSelect } from './rangeSelect'
 
 interface Props {
@@ -34,6 +35,9 @@ const UNCATEGORIZED = 'Uncategorized'
 
 export function CostOfLivingReport({ budgetId }: Props) {
   const { formatMoney, settings } = useFormatters()
+  // Which group the legend is pointing at, if any. The palette repeats past
+  // eight slots, so this is what tells two same-coloured bands apart.
+  const [highlight, setHighlight] = useState<string | null>(null)
   const currencySymbol = getCurrencySymbol(settings.currencyCode)
   const months = useReportMonths()
   const { data, isLoading, isError, error, refetch } = useCostOfLivingReport(budgetId, months)
@@ -72,17 +76,18 @@ export function CostOfLivingReport({ budgetId }: Props) {
     })
   }
 
-  // What the stack draws: every group while they fit, otherwise the big ones
-  // plus one "Other" carrying the rest — so the bars still total what the
-  // table says and the legend stays a fixed length. The table below is
-  // untouched and remains the place to read the detail.
-  const series = chartSeries(data.groups)
-  const rolled = rolledUpCount(data.groups)
+  // Every group is drawn. Capping the bars at eight left the stack short by
+  // whatever it dropped while the table below listed the lot, so one screen
+  // said two different things about what a month cost.
+  //
+  // The palette repeats past its eighth slot, so identity moves to the legend:
+  // it lists the groups in stack order and dims the rest on hover. That is
+  // what makes a repeated colour unambiguous rather than merely tolerated.
   const chartData = data.months.map((monthStr, idx) => {
     const entry: Record<string, string | number> = {
       month: new Date(monthStr).toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
     }
-    for (const g of series) entry[g.group_name] = g.monthly_amounts[idx] ?? 0
+    for (const g of data.groups) entry[g.group_name] = g.monthly_amounts[idx] ?? 0
     return entry
   })
 
@@ -178,26 +183,42 @@ export function CostOfLivingReport({ budgetId }: Props) {
                   axisLine={false}
                   tickLine={false}
                 />
-                <Legend />
-                {series.map((g, idx) => (
+                {/* `shared={false}` names the ONE band under the cursor.
+                    Shared, a stacked chart lists every group for that month —
+                    twelve rows to answer "what is this block", which is the
+                    same overwhelm the legend was fixed for. It is also what
+                    makes a repeated colour readable from the chart side: the
+                    legend resolves group→band, this resolves band→group. */}
+                <Tooltip
+                  shared={false}
+                  content={<ChartTooltip formatter={formatMoney} />}
+                  offset={16}
+                  isAnimationActive={false}
+                  cursor={{ fill: 'var(--row-hover-bg)' }}
+                />
+                {data.groups.map((g, idx) => (
                   <Bar
                     key={g.group_name}
                     dataKey={g.group_name}
                     stackId="stack"
                     fill={chartColor(idx)}
+                    fillOpacity={highlight && highlight !== g.group_name ? 0.25 : 1}
+                    isAnimationActive={false}
                   />
                 ))}
               </BarChart>
             </ResponsiveContainer>
           </div>
 
-          {rolled > 0 && (
-            <p className="reports-note">
-              The chart stacks the largest groups and gathers the remaining {rolled} into{' '}
-              <strong>Other</strong>, so the bars still total the month. Every group is listed
-              below.
-            </p>
-          )}
+          <ChartLegend
+            series={data.groups.map((g, idx) => ({
+              name: g.group_name,
+              color: chartColor(idx),
+              value: formatMoney(g.avg_monthly),
+            }))}
+            active={highlight}
+            onHover={setHighlight}
+          />
 
           <table className="report-table">
             <caption className="sr-only">Essential spending by category group</caption>

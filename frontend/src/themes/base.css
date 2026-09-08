@@ -107,7 +107,9 @@
 
   /* Chart palette — categorical series slots in a fixed order (blue, orange,
      teal, yellow, pink, green, purple, red). Slots are assigned in order and
-     never cycled; series beyond eight fold into --chart-other. These
+     REPEAT past the eighth — see chartColors.ts for why, and for what has to
+     carry identity once they do. --chart-other is for a real "Other" bucket a
+     report has actually rolled up, not for the ninth series. These
      fallbacks alias the tag hues so any future theme gets themed charts for
      free; every shipped theme overrides all eight with values validated for
      chart use (lightness band, chroma floor, colorblind + normal-vision
