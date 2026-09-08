@@ -96,6 +96,13 @@ async def run_turn(
             model=client.model,
             host=client.host,
             endpoint="chat",
+            # Lifted out of the message list as well as left in it: the
+            # transparency view has a section for the system prompt, and it
+            # reads this field rather than digging through the transcript.
+            system=next(
+                (m.get("content") for m in working if m.get("role") == "system"),
+                None,
+            ),
             messages=list(working),
             options=dict(options or {}),
             tools=turn_tools or [],

@@ -67,6 +67,25 @@ class TestAPlainAnswer:
         assert "token" in kinds and "usage" in kinds
         assert outcome.content == "Two shops posted late."
 
+    async def test_the_system_prompt_is_lifted_onto_the_record(self):
+        """The transparency view has a section for it and reads this field
+        rather than digging through the transcript."""
+        outcome = chat_engine.ChatOutcome()
+        async for _ in chat_engine.run_turn(
+            gateway=AIGateway(settings=None),  # type: ignore[arg-type]
+            client=FakeClient([_text("hi")]),
+            tool_ctx=None,
+            messages=[
+                {"role": "system", "content": "You are the assistant."},
+                {"role": "user", "content": "hello"},
+            ],
+            context=AICallContext(feature="chat"),
+            use_tools=False,
+            outcome=outcome,
+        ):
+            pass
+        assert outcome.call_results[0].system == "You are the assistant."
+
     async def test_token_counts_reach_the_record(self):
         _, outcome = await _run(FakeClient([_text("hi")]))
         assert outcome.call_results[0].prompt_tokens == 10
