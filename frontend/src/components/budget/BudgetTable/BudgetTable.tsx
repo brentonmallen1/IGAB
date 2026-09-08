@@ -19,6 +19,7 @@ import {
   drawnGroups,
 } from '../budgetGroups'
 import { canReorderCategories, canReorderGroups } from '../reorderAvailability'
+import { parseBudgetSearch, isBudgetSearchActive, matchesBudgetSearch } from '../budgetSearch'
 import { CreditCardsSection } from '../CreditCardsSection/CreditCardsSection'
 import { useDragReorder } from '../../../hooks/useDragReorder'
 import { useMeasuredHeight } from '../../../hooks/useMeasuredHeight'
@@ -28,7 +29,7 @@ import { CategoryDragProvider } from '../CategoryDrag/CategoryDragContext'
 import { BudgetFilterBar } from '../BudgetFilterBar/BudgetFilterBar'
 import { ArchivedCategoriesModal } from '../ArchivedCategoriesModal/ArchivedCategoriesModal'
 import { useDeleteCategoryFlow } from '../DeleteCategoryModal/useDeleteCategoryFlow'
-import type { CategoryBalance, CategoryGroup } from '../../../types'
+import type { Category, CategoryBalance, CategoryGroup } from '../../../types'
 import '../budgetGrid.css'
 import './BudgetTable.css'
 
@@ -103,7 +104,7 @@ export function BudgetTable() {
   const filterCategoryIds = activeFilter ? new Set(activeFilter.category_ids_effective) : null
 
   const groupNameById = new Map((groups ?? []).map((g) => [g.id, g.name]))
-  const searchNeedle = categorySearch.trim().toLowerCase()
+  const search = parseBudgetSearch(categorySearch)
 
   function categoryMatchesFilter(catId: string): boolean {
     if (filterCategoryIds) return filterCategoryIds.has(catId)
@@ -125,12 +126,12 @@ export function BudgetTable() {
     }
   }
 
-  // Text search matches the category name or its group's name, and stacks
-  // with the active view / quick filter
-  function categoryMatchesSearch(cat: { id: string; name: string; category_group_id: string }) {
-    if (!searchNeedle) return true
-    if (cat.name.toLowerCase().includes(searchNeedle)) return true
-    return (groupNameById.get(cat.category_group_id) ?? '').toLowerCase().includes(searchNeedle)
+  // What the box means — names, group names and `tag:` — lives in
+  // `budgetSearch`, so the palette's `filter:` route and this one cannot come
+  // to different conclusions about the same string. Stacks with the active
+  // view / quick filter.
+  function categoryMatchesSearch(cat: Category) {
+    return matchesBudgetSearch(cat, search, groupNameById.get(cat.category_group_id) ?? '')
   }
 
   // A view replaces how categories are grouped; a filter still decides which
@@ -170,7 +171,8 @@ export function BudgetTable() {
       renderableIds.has(b.category_id) && (!viewVisibleIds || viewVisibleIds.has(b.category_id))
   )
 
-  const isFiltered = filterCategoryIds != null || activeQuickFilter != null || searchNeedle !== ''
+  const isFiltered =
+    filterCategoryIds != null || activeQuickFilter != null || isBudgetSearchActive(search)
   // "Credit Card Payments" never renders as a bare header, even with hidden
   // groups shown. The server decides it (`is_card_only`) and the server's
   // reorder rule reads the same expression, so the grid and the write cannot
