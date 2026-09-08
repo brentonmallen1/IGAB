@@ -842,3 +842,47 @@ class ReportFavoritesUpdate(ApiModel):
     #: PUT of the result cannot disagree with itself the way an add/remove
     #: pair can when two tabs are open.
     tabs: list[str] = Field(default_factory=list, max_length=64)
+
+
+# ─── Emergency fund coverage ─────────────────────────────────────────────────
+
+
+class CoveragePoint(ApiModel):
+    month: date
+    #: What the fund held at the end of this month.
+    fund_balance: Decimal
+    #: The trailing three-month average of essential spending — the Guide's
+    #: 90-day window said in months, so this line and the roadmap's target
+    #: cannot tell different stories about the same household.
+    essentials: Decimal
+    #: None, never zero, for a month with no essential spending to divide by.
+    coverage_months: Decimal | None
+    #: The 3- and 6-month bands AT THIS MONTH. They move: as spending grows
+    #: the target grows with it, and a fund standing still loses coverage
+    #: without losing a cent.
+    target_low: Decimal
+    target_high: Decimal
+    #: A self-reported balance is carried flat from the date it was given.
+    #: Said per point, because a flat line drawn without a word reads as a
+    #: fund that did not move.
+    external_counted: bool
+
+
+class EmergencyCoverageResponse(ApiModel):
+    months: int
+    #: False when nothing carries the Essential tag — there is no denominator,
+    #: so the report explains itself instead of drawing zeroes.
+    tagged: bool
+    #: None when no fund has been found or declared.
+    fund_balance: Decimal | None
+    fund_source: str | None
+    #: The Essentials report's own runway, quoted rather than recomputed.
+    coverage_months: Decimal | None
+    essentials_monthly: Decimal
+    target_low: Decimal
+    target_high: Decimal
+    target_range: tuple[int, int]
+    series: list[CoveragePoint] = []
+    external_amount: Decimal | None = None
+    external_as_of: date | None = None
+    current_month: date

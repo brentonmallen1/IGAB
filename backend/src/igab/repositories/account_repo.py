@@ -84,8 +84,19 @@ class AccountRepository(BaseRepository[Account]):
         sums = {account_id: total for account_id, total in result.all()}
         return {account_id: sums.get(account_id, Decimal("0")) for account_id in account_ids}
 
-    async def balances_for(self, account_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, Decimal]:
-        return await self._sums_by_account(account_ids, BALANCE_ROW)
+    async def balances_for(
+        self, account_ids: Sequence[uuid.UUID], *, as_of: date | None = None
+    ) -> dict[uuid.UUID, Decimal]:
+        """What these accounts hold, optionally as of the end of a past day.
+
+        `as_of` is the same balance over the same rows with a date cutoff, not
+        a different reading — which is why it is a parameter here rather than
+        a second function that could come to disagree about what counts as a
+        balance row. The emergency-fund coverage report walks it month by
+        month.
+        """
+        cutoff = (Transaction.date <= as_of,) if as_of is not None else ()
+        return await self._sums_by_account(account_ids, BALANCE_ROW, *cutoff)
 
     async def cleared_balances_for(
         self, account_ids: Sequence[uuid.UUID]

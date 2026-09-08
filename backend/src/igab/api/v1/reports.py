@@ -27,6 +27,7 @@ from igab.api.v1.schemas.report import (
     DashboardMetrics,
     DayPatternItem,
     DayPatternsResponse,
+    EmergencyCoverageResponse,
     EssentialsReportResponse,
     IncomeBySourceResponse,
     IncomeExpenseMonth,
@@ -78,6 +79,7 @@ from igab.api.v1.schemas.report import (
 from igab.dependencies import (
     BudgetAccess,
     CurrentUser,
+    SessionDep,
     get_budget_filter_repo,
     get_budget_service,
     get_category_repo,
@@ -92,6 +94,7 @@ from igab.repositories.budget_filter_repo import BudgetFilterRepository
 from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.tag_repo import TagRepository
 from igab.services.budget_service import BudgetService
+from igab.services.emergency_coverage import EmergencyCoverageService
 from igab.services.liability_service import LiabilityService
 from igab.services.report_basics import (
     cost_of_living,
@@ -136,6 +139,17 @@ PlanRealityMonths = Annotated[int, Query(ge=3, le=MAX_REPORT_MONTHS)]
 
 
 router = APIRouter(route_class=CommitRoute)
+
+
+@router.get("/{budget_id}/reports/emergency-fund", response_model=EmergencyCoverageResponse)
+async def emergency_coverage_report(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    session: SessionDep,
+    months: ReportMonths = 12,
+) -> EmergencyCoverageResponse:
+    data = await EmergencyCoverageService(session).coverage(budget_id, months=months)
+    return EmergencyCoverageResponse(**data)
 
 
 @router.get("/{budget_id}/reports/favorites", response_model=ReportFavoritesResponse)

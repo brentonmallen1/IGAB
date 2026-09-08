@@ -13,6 +13,7 @@ import { ReportFiltersBar } from '../../components/reports/ReportFilters/ReportF
 import { DrillDownPanel } from '../../components/reports/DrillDownPanel/DrillDownPanel'
 import { OverviewReport } from '../../components/reports/OverviewReport'
 import { EssentialsReport } from '../../components/reports/charts/EssentialsReport'
+import { EmergencyCoverageReport } from '../../components/reports/charts/EmergencyCoverageReport'
 import { NetWorthReport } from '../../components/reports/charts/NetWorthChart'
 import { AccountCompositionReport } from '../../components/reports/charts/AccountCompositionChart'
 import { IncomeExpenseReport } from '../../components/reports/charts/IncomeExpenseChart'
@@ -149,6 +150,8 @@ export function ReportsPage() {
         return <SavingsRateReport budgetId={budgetId!} />
       case 'essentials':
         return <EssentialsReport budgetId={budgetId!} />
+      case 'emergency-fund':
+        return <EmergencyCoverageReport budgetId={budgetId!} />
       case 'income-expense':
         return <IncomeExpenseReport budgetId={budgetId!} />
       case 'burn-rate':
