@@ -1,6 +1,11 @@
 import { useCallback, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { streamChat, type ToolCallEvent } from '../../../api/chatStream'
+import {
+  streamChat,
+  type ChatStreamEvent,
+  type Grounding,
+  type ToolCallEvent,
+} from '../../../api/chatStream'
 import { ROOT } from '../../../api/queryKeys'
 import type { PageContext } from './pageContext'
 
@@ -13,6 +18,8 @@ export interface PendingTurn {
   /** Tool calls in flight or finished, in order. */
   tools: ToolCallEvent[]
   usage: { prompt: number | null; eval: number | null } | null
+  /** Whether the figures in the answer came from the budget. */
+  grounding: Grounding | null
   error: string | null
   /** False when the model cannot look anything up. */
   toolsAvailable: boolean
@@ -33,10 +40,61 @@ const EMPTY: PendingTurn = {
   thinking: '',
   tools: [],
   usage: null,
+  grounding: null,
   error: null,
   toolsAvailable: true,
   streaming: false,
   messageId: null,
+}
+
+/**
+ * Fold one stream event into the turn.
+ *
+ * A table rather than a switch inside the loop: each case is independently
+ * readable, and an event kind this client does not know about leaves the turn
+ * untouched instead of needing a default branch.
+ */
+export function applyEvent(turn: PendingTurn, event: ChatStreamEvent): PendingTurn {
+  switch (event.type) {
+    case 'start':
+      return { ...turn, toolsAvailable: event.tools }
+    case 'thinking':
+      return { ...turn, thinking: turn.thinking + event.delta }
+    case 'token':
+      return { ...turn, answer: turn.answer + event.delta }
+    case 'tool_call':
+      return {
+        ...turn,
+        tools: [...turn.tools, { name: event.name, arguments: event.arguments }],
+      }
+    case 'tool_result':
+      return { ...turn, tools: withResult(turn.tools, event.result) }
+    case 'usage':
+      return { ...turn, usage: { prompt: event.prompt_tokens, eval: event.eval_tokens } }
+    case 'grounding':
+      return { ...turn, grounding: event.grounding }
+    case 'error':
+      return { ...turn, error: event.message }
+    case 'done':
+      return { ...turn, streaming: false, messageId: event.message_id }
+  }
+}
+
+/**
+ * Replace an announced tool call with its finished form.
+ *
+ * Matched from the end on name plus "has not resolved yet", so a model calling
+ * the same tool twice in one turn updates the right one.
+ */
+function withResult(tools: ToolCallEvent[], result: ToolCallEvent): ToolCallEvent[] {
+  const next = [...tools]
+  for (let i = next.length - 1; i >= 0; i -= 1) {
+    if (next[i].name === result.name && !next[i].resolved_arguments) {
+      next[i] = result
+      return next
+    }
+  }
+  return [...next, result]
 }
 
 /**
@@ -83,50 +141,8 @@ export function useChatStream(budgetId: string | null) {
           clientToday: new Date().toISOString().slice(0, 10),
           signal: controller.signal,
         })) {
-          switch (event.type) {
-            case 'start':
-              conversationId = event.conversation_id
-              setTurn((t) => ({ ...t, toolsAvailable: event.tools }))
-              break
-            case 'thinking':
-              setTurn((t) => ({ ...t, thinking: t.thinking + event.delta }))
-              break
-            case 'token':
-              setTurn((t) => ({ ...t, answer: t.answer + event.delta }))
-              break
-            case 'tool_call':
-              setTurn((t) => ({
-                ...t,
-                tools: [...t.tools, { name: event.name, arguments: event.arguments }],
-              }))
-              break
-            case 'tool_result':
-              // Replace the announced call with the finished one, matching on
-              // the last entry with that name and no result yet.
-              setTurn((t) => {
-                const tools = [...t.tools]
-                for (let i = tools.length - 1; i >= 0; i -= 1) {
-                  if (tools[i].name === event.result.name && !tools[i].resolved_arguments) {
-                    tools[i] = event.result
-                    return { ...t, tools }
-                  }
-                }
-                return { ...t, tools: [...tools, event.result] }
-              })
-              break
-            case 'usage':
-              setTurn((t) => ({
-                ...t,
-                usage: { prompt: event.prompt_tokens, eval: event.eval_tokens },
-              }))
-              break
-            case 'error':
-              setTurn((t) => ({ ...t, error: event.message }))
-              break
-            case 'done':
-              setTurn((t) => ({ ...t, streaming: false, messageId: event.message_id }))
-              break
-          }
+          setTurn((t) => applyEvent(t, event))
+          if (event.type === 'start') conversationId = event.conversation_id
         }
       } catch (err) {
         // An abort is the user closing the panel, not a failure to report.

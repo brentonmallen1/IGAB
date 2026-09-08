@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { Loader2, MessageSquarePlus, Send, Square, X } from 'lucide-react'
+import { AlertTriangle, Loader2, MessageSquarePlus, Send, Square, X } from 'lucide-react'
 import { BottomSheet } from '../../common/BottomSheet/BottomSheet'
 import { useIsMobile, useIsTouch } from '../../../hooks/useMediaQuery'
 import { useAppStore } from '../../../stores/appStore'
@@ -11,6 +11,7 @@ import { useChatStream } from './useChatStream'
 import { describePage } from './pageContext'
 import { ToolTrace } from './ToolTrace'
 import { ChatMarkdown } from './ChatMarkdown'
+import { groundingNote } from './groundingNote'
 import { useChatPanelResize } from './useChatPanelResize'
 import { isAtBottom } from './stickToBottom'
 import './ChatPanel.css'
@@ -22,6 +23,27 @@ import './ChatPanel.css'
  * here are about the figures on screen, and a panel that covers the register
  * hides the thing being discussed.
  */
+/**
+ * Whether an answer's figures came from the budget.
+ *
+ * Sits under the answer rather than in the tool disclosure: it is about the
+ * text you just read, and a warning folded behind a chevron is a warning
+ * nobody sees.
+ */
+function GroundingNote({ grounding }: { grounding: Parameters<typeof groundingNote>[0] }) {
+  const note = groundingNote(grounding)
+  if (note.tone === 'none') return null
+  return (
+    <p
+      className={`chat-grounding chat-grounding--${note.tone}`}
+      role={note.tone === 'warn' ? 'status' : undefined}
+    >
+      {note.tone === 'warn' && <AlertTriangle size={12} aria-hidden />}
+      <span>{note.text}</span>
+    </p>
+  )
+}
+
 export function ChatPanel() {
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const open = useUIStore((s) => s.chatPanelOpen)
@@ -185,6 +207,7 @@ export function ChatPanel() {
                 message.content
               )}
             </div>
+            {message.role === 'assistant' && <GroundingNote grounding={message.grounding} />}
           </div>
         ))}
 
@@ -208,6 +231,7 @@ export function ChatPanel() {
                   <span>{turn.tools.length > 0 ? 'Reading your budget…' : 'Thinking…'}</span>
                 </div>
               )}
+              {!turn.streaming && <GroundingNote grounding={turn.grounding} />}
               {turn.error && (
                 <div className="chat-msg__error">
                   <span>{turn.error}</span>

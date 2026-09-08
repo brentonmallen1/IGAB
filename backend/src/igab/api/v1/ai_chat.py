@@ -271,6 +271,9 @@ async def _persist_answer(
                 content=outcome.content,
                 thinking=outcome.thinking,
                 tool_calls=[t.as_record() for t in outcome.tool_invocations] or None,
+                # Kept with the message: reopening a conversation tomorrow
+                # should show the same verdict it showed when it was written.
+                grounding=outcome.grounding.as_record() if outcome.grounding else None,
             )
             conversation = await session.get(AIConversation, conversation_id)
             if conversation is not None:
@@ -335,6 +338,7 @@ async def get_conversation(
                 content=m.content,
                 thinking=m.thinking,
                 tool_calls=m.tool_calls,
+                grounding=m.grounding,
                 created_at=m.created_at,
                 ai_call_id=m.ai_call_id,
             )

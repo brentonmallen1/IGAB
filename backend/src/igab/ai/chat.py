@@ -28,6 +28,8 @@ from igab.ai.context import (
     ToolInvocation,
 )
 from igab.ai.gateway import AIGateway
+from igab.ai.grounding import GroundingReport
+from igab.ai.grounding import check as check_grounding
 from igab.ai.tools import executor
 from igab.ai.tools.context import ToolContext
 from igab.ai.tools.registry import ollama_schema
@@ -51,6 +53,8 @@ class ChatOutcome:
     tool_invocations: list[ToolInvocation] = field(default_factory=list)
     call_results: list[AICallResult] = field(default_factory=list)
     error: str | None = None
+    #: Whether the figures in the answer trace back to what was looked up.
+    grounding: GroundingReport | None = None
 
 
 async def run_turn(
@@ -86,15 +90,8 @@ async def run_turn(
         # answer. Stopping instead would end the stream with no assistant text.
         turn_tools = None if (last_turn or over_budget) else tools
 
-        call = AICallContext(
-            feature=context.feature,
-            budget_id=context.budget_id,
-            conversation_id=context.conversation_id,
-            message_id=context.message_id,
-            round=turn,
-        )
         result = AICallResult(
-            context=call,
+            context=_round_context(context, turn),
             model=client.model,
             host=client.host,
             endpoint="chat",
@@ -152,6 +149,11 @@ async def run_turn(
             outcome.call_results.append(result)
             if text:
                 yield ChatEvent("token", {"delta": text})
+            # Check the answer against what was actually looked up before
+            # saying it is finished. The prompt asks the model not to invent a
+            # figure; this is the part that checks whether it did.
+            outcome.grounding = check_grounding(text, [t.result for t in outcome.tool_invocations])
+            yield ChatEvent("grounding", outcome.grounding.as_record())
             yield ChatEvent(
                 "usage",
                 {
@@ -179,6 +181,33 @@ async def run_turn(
         "Try asking about one month or one envelope at a time."
     )
     yield ChatEvent("token", {"delta": outcome.content})
+    yield _grounding_event(outcome, outcome.content)
+
+
+def _round_context(context: AICallContext, turn: int) -> AICallContext:
+    """The same call context, stamped with which round trip this is.
+
+    A tool loop writes one row per round sharing a message id; the round is
+    what makes the sequence readable in the activity log.
+    """
+    return AICallContext(
+        feature=context.feature,
+        budget_id=context.budget_id,
+        conversation_id=context.conversation_id,
+        message_id=context.message_id,
+        round=turn,
+    )
+
+
+def _grounding_event(outcome: ChatOutcome, answer: str) -> ChatEvent:
+    """Check the answer against what was actually looked up, and say so.
+
+    The prompt asks the model not to invent a figure; this is the part that
+    checks whether it did. Recorded on the outcome as well as streamed, so the
+    verdict is stored with the message rather than only seen once.
+    """
+    outcome.grounding = check_grounding(answer, [t.result for t in outcome.tool_invocations])
+    return ChatEvent("grounding", outcome.grounding.as_record())
 
 
 def _absorb(result: AICallResult, message: dict, client: OllamaClient) -> str:

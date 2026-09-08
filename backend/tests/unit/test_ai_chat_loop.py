@@ -184,7 +184,10 @@ class TestTheLoopIsBounded:
         events, outcome = await _run(client, tool_ctx=[])
         assert client.calls[-1]["tools"] is None
         assert outcome.content  # it says something
-        assert events[-1].type == "token"
+        kinds = [e.type for e in events]
+        assert "token" in kinds
+        # The answer is checked before the turn is called finished.
+        assert kinds[-1] == "grounding"
 
     async def test_the_call_cap_is_checked_per_call_not_per_turn(self, monkeypatch):
         """A model can ask for a dozen tools in one message. Reading the cap
@@ -214,6 +217,58 @@ class TestTheLoopIsBounded:
     async def test_turn_and_call_caps_are_real(self):
         assert executor.MAX_TURNS >= 2
         assert executor.MAX_TOOL_CALLS >= 4
+
+
+class TestTheAnswerIsChecked:
+    """The prompt asks the model not to invent a figure. This is the part that
+    checks whether it did."""
+
+    async def test_a_grounded_answer_is_reported_clean(self, monkeypatch):
+        async def lookup(ctx, name, arguments):
+            from igab.ai.context import ToolInvocation
+
+            return ToolInvocation(
+                name=name, arguments=arguments, result={"rows": [{"total": 120.0}]}
+            )
+
+        monkeypatch.setattr(executor, "run", lookup)
+        client = FakeClient(
+            [_tool("spending_by_category", {}), _text("Groceries came to $120.00.")]
+        )
+        events, outcome = await _run(client, tool_ctx=object())
+        grounding = next(e for e in events if e.type == "grounding")
+        assert grounding.data["unsupported"] == []
+        assert grounding.data["grounded"] == 1
+        assert outcome.grounding is not None
+
+    async def test_an_invented_figure_is_named(self, monkeypatch):
+        async def lookup(ctx, name, arguments):
+            from igab.ai.context import ToolInvocation
+
+            return ToolInvocation(
+                name=name, arguments=arguments, result={"rows": [{"total": 120.0}]}
+            )
+
+        monkeypatch.setattr(executor, "run", lookup)
+        client = FakeClient(
+            [_tool("spending_by_category", {}), _text("Groceries came to $4,182.33.")]
+        )
+        events, _ = await _run(client, tool_ctx=object())
+        grounding = next(e for e in events if e.type == "grounding")
+        assert grounding.data["unsupported"] == ["$4,182.33"]
+
+    async def test_figures_with_no_lookups_are_reported(self):
+        """The worst case: numbers with nothing behind them."""
+        events, _ = await _run(FakeClient([_text("You spent $500.00.")]), use_tools=False)
+        grounding = next(e for e in events if e.type == "grounding")
+        assert grounding.data["lookups"] == 0
+        assert grounding.data["unsupported"] == ["$500.00"]
+
+    async def test_an_answer_with_no_figures_claims_nothing(self):
+        events, _ = await _run(FakeClient([_text("I could not find that.")]), use_tools=False)
+        grounding = next(e for e in events if e.type == "grounding")
+        assert grounding.data["figures"] == 0
+        assert grounding.data["unsupported"] == []
 
 
 class TestCancellation:

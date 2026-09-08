@@ -17,6 +17,14 @@ export interface ChatMessage {
   thinking: string | null
   /** One entry per tool the model called, with raw and resolved arguments. */
   tool_calls: ToolTraceEntry[] | null
+  /** The grounding verdict, as it stood when the answer was written. */
+  grounding: {
+    figures: number
+    grounded: number
+    derived: number
+    unsupported: string[]
+    lookups: number
+  } | null
   created_at: string
   ai_call_id: string | null
 }

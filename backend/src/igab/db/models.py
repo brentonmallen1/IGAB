@@ -2144,6 +2144,11 @@ class AIMessage(Base):
     tool_name: Mapped[str | None] = mapped_column(String(64))
     #: Which page the user was on, as the typed union the client sends.
     page_context: Mapped[dict | None] = mapped_column(JSONB)
+    #: Whether the figures in this answer trace back to what was looked up.
+    #: Stored rather than recomputed: the tool results it was checked against
+    #: are not kept forever, and a verdict that quietly changes on reload is
+    #: worse than one that is simply old.
+    grounding: Mapped[dict | None] = mapped_column(JSONB)
     ai_call_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("ai_calls.id", ondelete="SET NULL")
     )

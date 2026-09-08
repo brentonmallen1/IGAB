@@ -49,19 +49,43 @@ Then check, **in this order**:
 There is no obviously right tool here, so this is where a 7–8B model reaches
 for the wrong one or invents a date range. Check the trace, not just the prose.
 
-### 3. Ask something it cannot answer
+### 3. Watch the grounding line under each answer
+
+Every money figure in an answer is matched against the numbers the tools
+actually returned. Under the answer you should see either a quiet "All N
+figures here came from your budget", or a warning naming the ones that were
+not — **by figure, not by count**, so you can find them.
+
+Three things worth provoking:
+
+- Ask a question whose answer needs arithmetic ("Groceries and Dining
+  together"). A sum of two real figures is *derived*, not invention, and must
+  come back clean. If adding two envelopes trips the warning, the check is
+  crying wolf and will stop being read.
+- Ask something vague enough that a small model may answer without looking
+  anything up. Stating figures with zero lookups gets its own, blunter
+  warning.
+- If you see a warning on a figure that is genuinely right, tell me — the
+  check is deliberately narrow (money only, not counts or percentages) and a
+  false positive is worth fixing quickly.
+
+**What it does not prove.** It shows a number appeared in the data, not that
+the answer reasons about it correctly. The wording avoids "verified" for that
+reason.
+
+### 4. Ask something it cannot answer
 
 > What did I spend at a shop I have never been to?
 
 It should say it found nothing, not invent a plausible figure.
 
-### 4. Page context
+### 5. Page context
 
 Open the panel on several pages and ask "what am I looking at?". It should know
 the budget month, which report tab, that you are in an account register. On a
 page it does not recognise it should say nothing rather than guess.
 
-### 5. Interrupt it
+### 6. Interrupt it
 
 Send a question, then **Stop** mid-answer, or close the panel. Then open
 **AI Activity → Model calls**: the interrupted call should be recorded, not

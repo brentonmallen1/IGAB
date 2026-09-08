@@ -26,6 +26,16 @@ export interface ToolCallEvent {
   error?: string | null
 }
 
+/** Whether the figures in an answer trace back to what was looked up. */
+export interface Grounding {
+  figures: number
+  grounded: number
+  derived: number
+  /** Figures the tools never returned, as the answer wrote them. */
+  unsupported: string[]
+  lookups: number
+}
+
 export type ChatStreamEvent =
   | { type: 'start'; conversation_id: string; tools: boolean }
   | { type: 'thinking'; delta: string }
@@ -33,6 +43,7 @@ export type ChatStreamEvent =
   | { type: 'tool_call'; name: string; arguments: Record<string, unknown> }
   | { type: 'tool_result'; result: ToolCallEvent }
   | { type: 'usage'; prompt_tokens: number | null; eval_tokens: number | null }
+  | { type: 'grounding'; grounding: Grounding }
   | { type: 'error'; message: string }
   | { type: 'done'; message_id: string | null }
 
@@ -141,6 +152,7 @@ const PARSERS: Record<string, (d: Record<string, unknown>) => ChatStreamEvent> =
     prompt_tokens: (d.prompt_tokens as number | null) ?? null,
     eval_tokens: (d.eval_tokens as number | null) ?? null,
   }),
+  grounding: (d) => ({ type: 'grounding', grounding: d as unknown as Grounding }),
   error: (d) => ({ type: 'error', message: String(d.message ?? 'Something went wrong.') }),
   done: (d) => ({ type: 'done', message_id: (d.message_id as string | null) ?? null }),
 }

@@ -73,6 +73,7 @@ class ChatMessageResponse(ApiModel):
     content: str
     thinking: str | None = None
     tool_calls: list[dict] | None = None
+    grounding: dict | None = None
     created_at: datetime
     ai_call_id: uuid.UUID | None = None
 

@@ -392,3 +392,35 @@
     font-size: 16px;
   }
 }
+
+/* ── whether the figures came from the budget ───────────────────────── */
+
+/* Under the answer, not folded into the tool disclosure: this is about the
+   text you just read, and a warning behind a chevron is a warning nobody
+   sees. Quiet when it agrees, plain when it does not — the confident tone is
+   deliberately the smaller of the two. */
+.chat-grounding {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  margin: var(--spacing-xs) 0 0;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.chat-grounding--ok {
+  color: var(--text-secondary);
+}
+
+.chat-grounding--warn {
+  padding: var(--spacing-xs);
+  border-radius: var(--border-radius-sm);
+  color: var(--color-warning);
+  background-color: var(--surface-sunken);
+  font-size: 11px;
+}
+
+.chat-grounding svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
