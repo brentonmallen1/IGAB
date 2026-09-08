@@ -11,9 +11,15 @@
   min-height: 36px;
 }
 
-/* All-accounts register: extra account column after the date */
-.transaction-table--all-accounts .transaction-row {
-  grid-template-columns: 32px 54px 100px minmax(90px, 0.55fr) 1fr 1fr 1fr 90px 90px 60px;
+/* All-accounts register: extra account column after the date. Desktop only,
+   and scoped so, because at (0,2,0) this rule outranked the one-class mobile
+   card template below regardless of source order: /transactions kept the
+   ten-column desktop grid on phones while the mobile cell placement still
+   applied, and every row was scrambled and scrolled sideways. */
+@media (min-width: 769px) {
+  .transaction-table--all-accounts .transaction-row {
+    grid-template-columns: 32px 54px 100px minmax(90px, 0.55fr) 1fr 1fr 1fr 90px 90px 60px;
+  }
 }
 
 .transaction-row .txn-col--account {

@@ -6,19 +6,6 @@
   max-width: 960px;
 }
 
-.assets-page__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--spacing-md);
-}
-
-.assets-page__title {
-  font-size: var(--font-size-xl);
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
 .assets-page__total {
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
@@ -113,7 +100,7 @@
   color: var(--text-secondary);
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .assets-page {
     padding: var(--spacing-md);
   }

@@ -1,34 +1,11 @@
 /* Extracted verbatim from LiabilityPage's balance overlay — one form for a
-   dated stated figure, used for liability balances and asset values. */
-
-.daf__overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.55);
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding-top: 120px;
-  z-index: var(--z-overlay);
-}
+   dated stated figure, used for liability balances and asset values. The
+   Dialog supplies the panel; this is the form inside it. */
 
 .daf__form {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-md);
-  width: 320px;
-  max-width: calc(100vw - 32px);
-  padding: var(--spacing-lg);
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
-  box-shadow: var(--shadow-lg);
-}
-
-.daf__form h3 {
-  font-size: var(--font-size-base);
-  font-weight: 600;
-  color: var(--text-primary);
 }
 
 .daf__form label {
@@ -58,6 +35,7 @@
   display: flex;
   justify-content: flex-end;
   gap: var(--spacing-sm);
+  width: 100%;
 }
 
 .daf__actions button {
@@ -74,4 +52,11 @@
   color: var(--text-inverse);
   border: none;
   font-weight: 500;
+}
+
+@media (max-width: 768px) {
+  .daf__actions button {
+    min-height: var(--tap-min);
+    flex: 1;
+  }
 }

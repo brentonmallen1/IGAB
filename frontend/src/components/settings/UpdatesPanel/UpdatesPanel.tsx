@@ -4,6 +4,7 @@ import { useSettings, useUpdateSetting } from '../../../api/settings'
 import { useUpdateStatus } from '../../../api/system'
 import './UpdatesPanel.css'
 import { ROOT } from '../../../api/queryKeys'
+import { buildId } from '../../../hooks/useViewportDiagnostics'
 
 /** Opt-in update notification for self-hosted installs. Off by default —
  * the app never contacts GitHub until the toggle is switched on. */
@@ -45,6 +46,19 @@ export function UpdatesPanel() {
           <div className="settings-row__label">Running version</div>
         </div>
         <span className="updates-panel__version tabular">{status?.current_version ?? '…'}</span>
+      </div>
+
+      {/* The bundle this page was rendered from. A service worker can keep an
+          older one alive after the server has moved on, invisibly. */}
+      <div className="settings-row">
+        <div>
+          <div className="settings-row__label">Web build</div>
+          <div className="settings-row__desc">
+            The app code this device is running. If it lags the version above, close and reopen the
+            app to pick up the update.
+          </div>
+        </div>
+        <span className="updates-panel__version tabular">{buildId()}</span>
       </div>
 
       {status?.enabled && status.update_available && (

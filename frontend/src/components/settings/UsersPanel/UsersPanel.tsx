@@ -5,7 +5,7 @@ import { useCreateUser, useUpdateUser, useUsers, type ManagedUser } from '../../
 import { useCurrentUser } from '../../../api/auth'
 import { apiErrorMessage } from '../../../api/client'
 import { confirmAsync } from '../../../stores/confirmStore'
-import { useFocusTrap } from '../../../hooks/useFocusTrap'
+import { Dialog } from '../../common/Dialog/Dialog'
 import './UsersPanel.css'
 
 /**
@@ -191,62 +191,51 @@ function ResetPasswordDialog({
   pending: boolean
 }) {
   const [password, setPassword] = useState('')
-  const trapRef = useFocusTrap<HTMLDivElement>(onClose)
   return (
-    <div
-      className="users-panel__overlay"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
-    >
-      <div
-        ref={trapRef}
-        tabIndex={-1}
-        className="users-panel__dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-label={`Reset password for ${user.email}`}
-      >
-        <div className="users-panel__dialog-title">Reset password</div>
-        <div className="users-panel__dialog-desc">
-          Set a new password for <strong>{user.display_name || user.email}</strong>. Tell them
-          out-of-band; they can change it themselves afterwards in Settings → Account.
+    <Dialog
+      title="Reset password"
+      onClose={onClose}
+      historyKey="reset-password"
+      className="users-panel__dialog"
+      footer={
+        <div className="users-panel__dialog-actions">
+          <button type="button" className="settings-btn settings-btn--secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="submit"
+            form="reset-password-form"
+            className="settings-btn settings-btn--primary"
+            disabled={pending || password.length < 8}
+          >
+            {pending ? 'Saving…' : 'Set password'}
+          </button>
         </div>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault()
-            onSubmit(password)
-          }}
-        >
-          <input
-            className="settings-input users-panel__dialog-input"
-            type="password"
-            placeholder="New password (min 8)"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            minLength={8}
-            required
-            autoFocus
-            autoComplete="new-password"
-          />
-          <div className="users-panel__dialog-actions">
-            <button
-              type="button"
-              className="settings-btn settings-btn--secondary"
-              onClick={onClose}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="settings-btn settings-btn--primary"
-              disabled={pending || password.length < 8}
-            >
-              {pending ? 'Saving…' : 'Set password'}
-            </button>
-          </div>
-        </form>
+      }
+    >
+      <div className="users-panel__dialog-desc">
+        Set a new password for <strong>{user.display_name || user.email}</strong>. Tell them
+        out-of-band; they can change it themselves afterwards in Settings → Account.
       </div>
-    </div>
+      <form
+        id="reset-password-form"
+        onSubmit={(e) => {
+          e.preventDefault()
+          onSubmit(password)
+        }}
+      >
+        <input
+          className="settings-input users-panel__dialog-input"
+          type="password"
+          placeholder="New password (min 8)"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          minLength={8}
+          required
+          autoFocus
+          autoComplete="new-password"
+        />
+      </form>
+    </Dialog>
   )
 }

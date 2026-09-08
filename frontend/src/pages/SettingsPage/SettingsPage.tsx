@@ -26,6 +26,7 @@ import { SETTINGS_PAGES, visibleSettingsSections } from './settingsSections'
 import { SettingsShell } from '../../components/settings/SettingsShell/SettingsShell'
 import { TagsPanel } from '../../components/settings/TagsPanel'
 import { SystemTagsHelp } from '../../components/settings/TagsPanel/SystemTagsHelp'
+import { ViewportPanel } from '../../components/settings/ViewportPanel/ViewportPanel'
 import { ImportReviewButton } from '../../components/imports/ImportReviewDialog/ImportReviewButton'
 import { formatMoneyWithOptions } from '../../utils/money'
 import { formatDateWithOptions, formatTimeWithOptions } from '../../utils/dates'
@@ -489,6 +490,7 @@ export function SettingsPage() {
               onChange={(e) => setLocationEnabled(e.target.checked)}
             />
           </div>
+          <ViewportPanel />
         </div>
       </Surface>
 

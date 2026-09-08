@@ -12,6 +12,7 @@ import {
 import { useReportMonths, useReportStore } from '../../../stores/reportStore'
 import { useVolatilityReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { useMoneyAxis } from './useMoneyAxis'
 import { ReportErrorState } from '../ReportErrorState'
 import { COLOR_NEUTRAL, TOOLTIP_STYLE } from './chartColors'
 import { buildVolatilityChartRows, coefficientOfVariation, filterVolatile } from './volatilityData'
@@ -28,6 +29,7 @@ interface Props {
 
 export function VolatilityReport({ budgetId }: Props) {
   const { formatMoney } = useFormatters()
+  const moneyAxis = useMoneyAxis()
   const setDrillDown = useReportStore((s) => s.setDrillDown)
   const months = useReportMonths()
   const { data, isLoading, isError, error, refetch } = useVolatilityReport(budgetId, months)
@@ -122,7 +124,7 @@ export function VolatilityReport({ budgetId }: Props) {
               />
               <XAxis
                 type="number"
-                tickFormatter={(v) => formatMoney(v)}
+                tickFormatter={moneyAxis.tickFormatter}
                 tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
               />
               <YAxis

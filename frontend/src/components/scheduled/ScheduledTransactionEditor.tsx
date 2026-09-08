@@ -13,7 +13,7 @@ import {
 import { today } from '../../utils/dates'
 import { FREQUENCIES } from '../../utils/schedule'
 import type { ScheduledTransaction } from '../../types'
-import { useFocusTrap } from '../../hooks/useFocusTrap'
+import { Dialog } from '../common/Dialog/Dialog'
 import { GroupedCategoryOptions } from '../common/GroupedCategoryOptions/GroupedCategoryOptions'
 import './ScheduledTransactionEditor.css'
 import { confirmAsync } from '../../stores/confirmStore'
@@ -69,7 +69,6 @@ export function ScheduledTransactionEditor({ budgetId, existing, initial, onClos
   const [autoCreate, setAutoCreate] = useState(existing?.auto_create ?? false)
   const [reminderDays, setReminderDays] = useState(String(existing?.days_before_reminder ?? 3))
   const [error, setError] = useState<string | null>(null)
-  const trapRef = useFocusTrap<HTMLFormElement>(onClose)
 
   // Was `!is_archived` alone, which offered credit-card payment categories that
   // no other surface does.
@@ -157,33 +156,45 @@ export function ScheduledTransactionEditor({ budgetId, existing, initial, onClos
   }
 
   return (
-    <div
-      className="sched-editor-overlay"
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <form
-        ref={trapRef}
-        tabIndex={-1}
-        className="sched-editor"
-        onSubmit={handleSubmit}
-        role="dialog"
-        aria-modal
-        aria-labelledby="sched-editor-title"
-      >
-        <div className="sched-editor__header">
-          <span id="sched-editor-title">
-            {existing ? 'Edit Scheduled Transaction' : 'New Scheduled Transaction'}
-          </span>
-          <button
-            type="button"
-            onClick={onClose}
-            className="sched-editor__close"
-            aria-label="Close"
-          >
-            ×
-          </button>
+    <Dialog
+      title={existing ? 'Edit Scheduled Transaction' : 'New Scheduled Transaction'}
+      onClose={onClose}
+      historyKey="scheduled-editor"
+      className="sched-editor"
+      footer={
+        <div className="sched-editor__footer">
+          {existing ? (
+            <button
+              type="button"
+              className="sched-editor__btn sched-editor__btn--danger"
+              onClick={handleDelete}
+            >
+              Delete
+            </button>
+          ) : (
+            <span />
+          )}
+          {error && (
+            <div className="sched-editor__error" role="alert">
+              {error}
+            </div>
+          )}
+          <div className="sched-editor__footer-actions">
+            <button type="button" className="sched-editor__btn" onClick={onClose}>
+              Cancel
+            </button>
+            <button
+              type="submit"
+              form="sched-editor-form"
+              className="sched-editor__btn sched-editor__btn--primary"
+            >
+              {existing ? 'Save' : 'Create'}
+            </button>
+          </div>
         </div>
-
+      }
+    >
+      <form id="sched-editor-form" onSubmit={handleSubmit}>
         <div className="sched-editor__body">
           <label className="sched-editor__label">
             Account
@@ -352,34 +363,7 @@ export function ScheduledTransactionEditor({ budgetId, existing, initial, onClos
             </label>
           </div>
         </div>
-
-        <div className="sched-editor__footer">
-          {existing ? (
-            <button
-              type="button"
-              className="sched-editor__btn sched-editor__btn--danger"
-              onClick={handleDelete}
-            >
-              Delete
-            </button>
-          ) : (
-            <span />
-          )}
-          {error && (
-            <div className="sched-editor__error" role="alert">
-              {error}
-            </div>
-          )}
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button type="button" className="sched-editor__btn" onClick={onClose}>
-              Cancel
-            </button>
-            <button type="submit" className="sched-editor__btn sched-editor__btn--primary">
-              {existing ? 'Save' : 'Create'}
-            </button>
-          </div>
-        </div>
       </form>
-    </div>
+    </Dialog>
   )
 }

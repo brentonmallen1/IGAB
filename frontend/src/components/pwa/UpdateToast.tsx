@@ -13,16 +13,29 @@ const UPDATE_CHECK_MS = 60 * 60 * 1000 // hourly
  */
 export function UpdateToast() {
   const intervalRef = useRef<number | null>(null)
+  const registrationRef = useRef<ServiceWorkerRegistration | null>(null)
   const {
     needRefresh: [needRefresh, setNeedRefresh],
     updateServiceWorker,
   } = useRegisterSW({
     onRegisteredSW(_url, registration) {
+      registrationRef.current = registration ?? null
       if (registration && intervalRef.current === null) {
         intervalRef.current = window.setInterval(() => registration.update(), UPDATE_CHECK_MS)
       }
     },
   })
+
+  // An installed PWA is suspended between uses, so the hourly timer almost
+  // never fires: the app can run a build several releases old for weeks with
+  // the server saying it is current. Every return to the foreground asks.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') registrationRef.current?.update()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [])
 
   useEffect(() => {
     return () => {

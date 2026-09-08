@@ -20,9 +20,11 @@ import {
 } from '../../../stores/appStore'
 import { useUIStore } from '../../../stores/uiStore'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { useIsMobile } from '../../../hooks/useMediaQuery'
 import { UndoRedoButtons } from './UndoRedoButtons'
 import { IS_MAC } from '../../../keyboard/shortcuts'
 import { addMonths, currentMonthStart } from '../../../utils/dates'
+import { PAGE_HEADER_SLOT_ID } from '../../common/PageHeader/PageHeader'
 import './Header.css'
 
 export function Header() {
@@ -40,6 +42,11 @@ export function Header() {
   const themeRef = useRef<HTMLDivElement>(null)
   // selectedMonth only drives the budget view; elsewhere the nav is dead weight.
   const onBudgetPage = useLocation().pathname === '/budget'
+  // On a phone the header keeps the month nav and search, nothing else. Nine
+  // 44px controls in 342px shrank every one of them, hid the search button
+  // outright and clipped the theme picker at the edge; privacy, light/dark and
+  // the palette already live in the More sheet, and undo/redo join it there.
+  const isMobile = useIsMobile()
 
   const canToggleMode = hasBothModes(theme)
   const isLight = canToggleMode && isLightTheme(theme)
@@ -99,6 +106,11 @@ export function Header() {
         </div>
       )}
 
+      {/* On a phone, a page's PageHeader portals its title and back chevron
+          here, so the page spends no band of its own on a name the nav
+          already states. Empty on the budget route, which has the month. */}
+      {!onBudgetPage && isMobile && <div id={PAGE_HEADER_SLOT_ID} className="header__page-slot" />}
+
       <div className="header__palette-wrap">
         <button
           className="header__palette-btn"
@@ -112,57 +124,61 @@ export function Header() {
         </button>
       </div>
 
-      <UndoRedoButtons />
+      {!isMobile && (
+        <>
+          <UndoRedoButtons />
 
-      <button
-        className={`header__icon-btn ${privacyMode ? 'header__icon-btn--active' : ''}`}
-        onClick={togglePrivacyMode}
-        aria-pressed={privacyMode}
-        aria-label={privacyMode ? 'Show amounts' : 'Hide amounts (privacy mode)'}
-        title={privacyMode ? 'Show amounts' : 'Hide amounts (privacy mode)'}
-      >
-        {privacyMode ? <EyeOff size={16} /> : <Eye size={16} />}
-      </button>
+          <button
+            className={`header__icon-btn ${privacyMode ? 'header__icon-btn--active' : ''}`}
+            onClick={togglePrivacyMode}
+            aria-pressed={privacyMode}
+            aria-label={privacyMode ? 'Show amounts' : 'Hide amounts (privacy mode)'}
+            title={privacyMode ? 'Show amounts' : 'Hide amounts (privacy mode)'}
+          >
+            {privacyMode ? <EyeOff size={16} /> : <Eye size={16} />}
+          </button>
 
-      <button
-        className="header__icon-btn"
-        onClick={toggleThemeMode}
-        disabled={!canToggleMode}
-        aria-label={modeLabel}
-        title={modeLabel}
-      >
-        {isLight ? <Moon size={16} /> : <Sun size={16} />}
-      </button>
+          <button
+            className="header__icon-btn"
+            onClick={toggleThemeMode}
+            disabled={!canToggleMode}
+            aria-label={modeLabel}
+            title={modeLabel}
+          >
+            {isLight ? <Moon size={16} /> : <Sun size={16} />}
+          </button>
 
-      <div className="header__theme-picker" ref={themeRef}>
-        <button
-          className="header__icon-btn"
-          onClick={() => setThemeOpen((o) => !o)}
-          aria-label="Change theme"
-          title="Change theme"
-        >
-          <Palette size={16} />
-        </button>
-        {themeOpen && (
-          <div className="header__theme-dropdown">
-            {PALETTES.map((p) => (
-              <button
-                key={p.id}
-                className={`header__theme-option ${
-                  p.id === getPaletteForTheme(theme).id ? 'header__theme-option--active' : ''
-                }`}
-                onClick={() => {
-                  // Keep the mode the user is in — the palette list only swaps style
-                  setTheme(isLightTheme(theme) ? p.light : p.dark)
-                  setThemeOpen(false)
-                }}
-              >
-                {p.label}
-              </button>
-            ))}
+          <div className="header__theme-picker" ref={themeRef}>
+            <button
+              className="header__icon-btn"
+              onClick={() => setThemeOpen((o) => !o)}
+              aria-label="Change theme"
+              title="Change theme"
+            >
+              <Palette size={16} />
+            </button>
+            {themeOpen && (
+              <div className="header__theme-dropdown">
+                {PALETTES.map((p) => (
+                  <button
+                    key={p.id}
+                    className={`header__theme-option ${
+                      p.id === getPaletteForTheme(theme).id ? 'header__theme-option--active' : ''
+                    }`}
+                    onClick={() => {
+                      // Keep the mode the user is in — the palette list only swaps style
+                      setTheme(isLightTheme(theme) ? p.light : p.dark)
+                      setThemeOpen(false)
+                    }}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </>
+      )}
     </header>
   )
 }

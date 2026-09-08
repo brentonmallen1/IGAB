@@ -1,3 +1,4 @@
+import { PageHeader } from '../../components/common/PageHeader/PageHeader'
 import { useCallback, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { TransactionTable } from '../../components/transactions/TransactionTable/TransactionTable'
@@ -51,13 +52,15 @@ export function AllTransactionsPage() {
 
   return (
     <div className="all-txns-page">
-      <div className="all-txns-page__header">
-        <div className="all-txns-page__name">All Transactions</div>
-        <span className="all-txns-page__hint">
-          Every account in this budget — filter with <code>account:</code>, <code>category:</code>,
-          or <code>payee:</code>
-        </span>
-      </div>
+      <PageHeader
+        title="All Transactions"
+        subtitle={
+          <span className="all-txns-page__hint">
+            Every account in this budget — filter with <code>account:</code>, <code>category:</code>
+            , or <code>payee:</code>
+          </span>
+        }
+      />
       <div className="all-txns-page__body">
         <TransactionTable
           accountId={null}

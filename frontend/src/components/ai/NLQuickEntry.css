@@ -1,56 +1,5 @@
-.nl-entry-overlay {
-  position: fixed;
-  inset: 0;
-  background-color: rgba(0, 0, 0, 0.55);
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding-top: 120px;
-  z-index: var(--z-overlay);
-}
-
+/* The Dialog supplies the panel; the form (NLEntryForm.css) supplies the rest.
+   Kept for the class the Dialog carries, so a caller can scope tokens. */
 .nl-entry {
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
-  box-shadow: var(--shadow-lg);
-  width: 480px;
-  max-width: calc(100vw - 32px);
-  padding: var(--spacing-md) var(--spacing-lg) var(--spacing-sm);
-  display: flex;
-  flex-direction: column;
   gap: var(--spacing-sm);
-}
-
-.nl-entry__header {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  color: var(--color-accent);
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-}
-
-.nl-entry__close {
-  margin-left: auto;
-  color: var(--text-muted);
-  display: flex;
-  padding: 2px;
-}
-
-.nl-entry__close:hover {
-  color: var(--text-primary);
-}
-
-@media (max-width: 768px) {
-  .nl-entry-overlay {
-    padding-top: 15vh;
-    padding-left: var(--spacing-md);
-    padding-right: var(--spacing-md);
-  }
-
-  .nl-entry__close {
-    min-width: var(--tap-min);
-    min-height: var(--tap-min);
-  }
 }

@@ -30,7 +30,8 @@ export function isTopOverlay(id: symbol) {
   return stack.length > 0 && stack[stack.length - 1] === id
 }
 
-/** Test-only: current depth. */
+/** Current depth — 0 means no overlay is up (the edge-swipe-back gesture
+ *  reads this so it never navigates underneath one). */
 export function overlayStackDepth() {
   return stack.length
 }

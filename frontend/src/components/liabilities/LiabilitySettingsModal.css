@@ -197,7 +197,7 @@
   cursor: not-allowed;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .liability-modal__row {
     flex-direction: column;
   }

@@ -1,48 +1,10 @@
+/* Content only: the editor inlines this, the register's AttachmentsDrawer
+   puts it in a sheet or a side drawer. It used to be its own fixed panel
+   with no backdrop and a 14px close icon under the notch. */
 .attachment-panel {
-  position: fixed;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  width: 300px;
-  background: var(--surface-overlay);
-  border-left: 1px solid var(--edge-strong);
   display: flex;
   flex-direction: column;
-  z-index: var(--z-overlay);
-  box-shadow: var(--shadow-lg);
-}
-
-.attachment-panel__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--spacing-sm) var(--spacing-md);
-  border-bottom: 1px solid var(--border-color);
-}
-
-.attachment-panel__title {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-xs);
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.attachment-panel__close {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--text-muted);
   padding: 4px;
-  border-radius: var(--border-radius-sm);
-  display: flex;
-  align-items: center;
-}
-
-.attachment-panel__close:hover {
-  color: var(--text-primary);
-  background: var(--bg-secondary);
 }
 
 .attachment-panel__drop-zone {
@@ -211,35 +173,4 @@
 
 .attachment-panel__camera-btn:active {
   background: var(--bg-hover);
-}
-
-.attachment-panel--embedded {
-  padding: 4px;
-  border: none;
-  background: transparent;
-  backdrop-filter: blur(30px);
-}
-
-/* On a 390px screen a 300px side drawer leaves a 90px sliver of page. Take
-   the full width and anchor to the visible viewport like every other overlay. */
-@media (max-width: 768px) {
-  /* Standalone drawer only — the --embedded variant renders inside the
-     transaction editor and must keep its own geometry. */
-  .attachment-panel:not(.attachment-panel--embedded) {
-    top: var(--vv-top);
-    height: var(--app-h);
-    bottom: auto;
-    width: 100%;
-    border-left: none;
-    padding-top: var(--safe-top);
-    padding-bottom: var(--safe-bottom);
-  }
-
-  .attachment-panel__close {
-    min-width: var(--tap-min);
-    min-height: var(--tap-min);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
 }

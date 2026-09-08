@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
+import { useUndoToast } from '../utils/toastUndo'
 import { apiClient, apiErrorMessage } from './client'
 import { invalidateAfterCategoryChange } from './invalidateAfterCategoryChange'
 import { reorderMembers } from '../utils/listOrder'
@@ -321,6 +322,7 @@ export function useArchivePreview(budgetId: string, categoryIds: string[], month
 
 function useArchiveMutation(budgetId: string, path: 'archive' | 'unarchive', done: string) {
   const qc = useQueryClient()
+  const notify = useUndoToast()
   return useMutation({
     mutationFn: async ({ ids, month }: { ids: string[]; month: string }) => {
       const { data } = await apiClient.post<ArchivePreview>(`/${budgetId}/categories/${path}`, {
@@ -331,7 +333,7 @@ function useArchiveMutation(budgetId: string, path: 'archive' | 'unarchive', don
     },
     onSuccess: async () => {
       await invalidateAfterCategoryChange(qc, budgetId)
-      toast.success(done)
+      notify(done, 'latest')
     },
     // The server's sentence names which envelope still holds money and what to
     // do about it. A generic fallback here would throw that away, which is the
@@ -358,6 +360,7 @@ export function useUnarchiveCategories(budgetId: string) {
  */
 function useGroupArchiveMutation(budgetId: string, path: 'archive' | 'unarchive', done: string) {
   const qc = useQueryClient()
+  const notify = useUndoToast()
   return useMutation({
     mutationFn: async ({ id, month }: { id: string; month: string }) => {
       const { data } = await apiClient.post<ArchivePreview>(
@@ -368,7 +371,7 @@ function useGroupArchiveMutation(budgetId: string, path: 'archive' | 'unarchive'
     },
     onSuccess: async () => {
       await invalidateAfterCategoryChange(qc, budgetId)
-      toast.success(done)
+      notify(done, 'latest')
     },
     onError: (e) => toast.error(apiErrorMessage(e, 'Could not update the archive')),
   })

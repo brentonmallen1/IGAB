@@ -2,9 +2,29 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import { execSync } from 'node:child_process'
+
+/**
+ * Identifies the JS actually running on a device. The server reports its
+ * own version; a stale service worker can serve an older bundle against it
+ * with no visible sign, and a mobile bug report cannot be read without
+ * knowing which one the screenshot shows. Shown on Settings → Mobile and
+ * System → Updates.
+ */
+function buildId(): string {
+  try {
+    const sha = execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString()
+      .trim()
+    return `${sha}.${Date.now().toString(36)}`
+  } catch {
+    return 'dev'
+  }
+}
 
 // https://vite.dev/config/
 export default defineConfig({
+  define: { __BUILD_ID__: JSON.stringify(buildId()) },
   plugins: [
     react(),
     VitePWA({

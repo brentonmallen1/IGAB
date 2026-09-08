@@ -103,6 +103,9 @@ vi.mock('../../../utils/haptics', () => ({ hapticTick: vi.fn() }))
 vi.mock('react-hot-toast', () => ({
   default: { success: vi.fn(), error: vi.fn() },
 }))
+// The undoable toast reaches the real useQueryClient; there is no provider
+// here and the split maths does not care what the toast says.
+vi.mock('../../../utils/toastUndo', () => ({ useUndoToast: () => vi.fn() }))
 
 import { QuickAddSheet } from './QuickAddSheet'
 

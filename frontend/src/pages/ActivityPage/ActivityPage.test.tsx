@@ -10,10 +10,14 @@
  * prompt comes from a dry run of the same query that does the work.
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render as rtlRender, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import userEvent from '@testing-library/user-event'
 import { ActivityPage } from './ActivityPage'
 import type { Change } from '../../api/changes'
+
+// PageHeader reads the route for its back link; the page needs a router.
+const render = (ui: React.ReactElement) => rtlRender(<MemoryRouter>{ui}</MemoryRouter>)
 
 const undoNewer = vi.hoisted(() =>
   vi.fn((_args: { changeId: string; dryRun?: boolean; force?: boolean }) =>

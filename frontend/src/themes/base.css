@@ -195,6 +195,11 @@
      inset, the shell ended at 873pt and left a 59pt band of bare page
      background under the bottom nav.
 
+     Measured on device again on 2026-09-08 with --app-h already reading
+     --vvh: the same 59pt band. visualViewport.height is short by the inset
+     too. The hook now folds that inset back in (standaloneStatusBarGap in
+     useAppViewport.ts), gated on the arithmetic so nothing else changes.
+
      So: never rebuild this from dvh. The hook measures it; read the
      measurement. */
   --app-h: var(--vvh);
@@ -211,6 +216,11 @@
      inline and does not need this; this is for the ones CSS places on its
      own, where the only alternative is no cap at all. */
   --panel-max-h: calc(var(--app-h) - 96px);
+
+  /* Where a centred-at-the-top overlay begins. Five panels wrote it as 8vh,
+     12vh and 15vh — three numbers for one intention, and all of them blind
+     to the keyboard and to the standalone status bar, like every vh. */
+  --modal-top-gap: calc(var(--app-h) * 0.1);
 
   /* Minimum comfortable touch target (WCAG 2.5.5 / Apple HIG). */
   --tap-min: 44px;
@@ -730,10 +740,14 @@ a {
 
 @media (max-width: 768px) {
   :root {
-    /* Deliberately NOT + var(--safe-bottom): the user wants the bar flush
-       with the physical screen edge; the iOS home indicator draws over the
-       nav background. Sheets/editors keep their own safe-bottom padding. */
-    --nav-h: var(--bottom-nav-height);
+    /* The bar plus the home-indicator inset, like a native tab bar: the
+       background runs to the physical screen edge and the tabs sit above the
+       indicator, so no tap target is under it. (It was flush for a while by
+       user decision — the indicator drew over the labels — reversed
+       2026-09-08.) Anything positioned against the nav reads this and needs
+       no safe-bottom term of its own; sheets, which cover the nav, keep
+       theirs. */
+    --nav-h: calc(var(--bottom-nav-height) + var(--safe-bottom));
   }
 
   /* The DOCUMENT is never the scroller on mobile: the app shell is

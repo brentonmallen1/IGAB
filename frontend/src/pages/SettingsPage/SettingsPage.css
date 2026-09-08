@@ -49,6 +49,25 @@
   gap: var(--spacing-sm);
 }
 
+/* Name + type on the left, balance + two buttons on the right, no wrap:
+   the buttons ran past the card on every row of the Settings account list. */
+@media (max-width: 768px) {
+  .settings-account-item {
+    flex-wrap: wrap;
+    gap: var(--spacing-xs) var(--spacing-md);
+  }
+
+  .settings-account-item__actions {
+    flex: 1 1 100%;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+
+  .settings-account-item__actions .settings-btn {
+    min-height: var(--tap-min);
+  }
+}
+
 .settings-account-item--closed .settings-account-item__name {
   color: var(--text-muted);
 }

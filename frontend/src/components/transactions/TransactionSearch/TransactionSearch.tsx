@@ -144,6 +144,7 @@ export function TransactionSearch({
         onBlur={() => setFocused(false)}
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
+        enterKeyHint="search"
         autoComplete="off"
         spellCheck={false}
       />

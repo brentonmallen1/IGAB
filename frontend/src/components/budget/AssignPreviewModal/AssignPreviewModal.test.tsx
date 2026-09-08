@@ -16,7 +16,7 @@ vi.mock('../../../api/assign', () => ({
   useAssignPreview: () => ({ data: preview.current, isLoading: false }),
   useAssignApply: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }))
-vi.mock('../../../utils/toastUndo', () => ({ useToastUndo: () => vi.fn() }))
+vi.mock('../../../utils/toastUndo', () => ({ useUndoToast: () => vi.fn() }))
 vi.mock('../../../hooks/useMediaQuery', () => ({ useIsMobile: () => false }))
 
 import { AssignPreviewModal } from './AssignPreviewModal'

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { parseAmountInput } from '../../../utils/money'
+import { Dialog } from '../Dialog/Dialog'
 import './DatedAmountForm.css'
 
 interface Props {
@@ -41,14 +42,23 @@ export function DatedAmountForm({
   }
 
   return (
-    <div
-      className="daf__overlay"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
+    <Dialog
+      title={title}
+      onClose={onClose}
+      historyKey="dated-amount"
+      className="daf"
+      footer={
+        <div className="daf__actions">
+          <button type="button" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" form="daf-form" className="primary" disabled={pending}>
+            {pending ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      }
     >
-      <form className="daf__form" onSubmit={handleSubmit}>
-        <h3>{title}</h3>
+      <form id="daf-form" className="daf__form" onSubmit={handleSubmit}>
         <label>
           <span>{amountLabel}</span>
           <input
@@ -66,15 +76,7 @@ export function DatedAmountForm({
           <span>As of (optional — defaults to today)</span>
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </label>
-        <div className="daf__actions">
-          <button type="button" onClick={onClose}>
-            Cancel
-          </button>
-          <button type="submit" className="primary" disabled={pending}>
-            {pending ? 'Saving…' : 'Save'}
-          </button>
-        </div>
       </form>
-    </div>
+    </Dialog>
   )
 }

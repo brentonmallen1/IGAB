@@ -49,6 +49,8 @@ vi.mock('../../hooks/useFormatters', () => ({
 vi.mock('react-hot-toast', () => ({
   default: { success: vi.fn(), error: vi.fn() },
 }))
+// The undoable toast reaches the real useQueryClient; no provider here.
+vi.mock('../../utils/toastUndo', () => ({ useUndoToast: () => vi.fn() }))
 
 const confirmAsync = vi.hoisted(() => vi.fn(() => Promise.resolve(true)))
 vi.mock('../../stores/confirmStore', () => ({ confirmAsync }))

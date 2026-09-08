@@ -254,3 +254,13 @@
     gap: var(--spacing-sm);
   }
 }
+
+/* A settings row is label-and-description on the left, control on the
+   right. Where the control is itself a group (the sync interval's select +
+   unit), it ran past the card on a phone; a row that cannot fit wraps and
+   the control takes the next line. */
+@media (max-width: 768px) {
+  .settings-row {
+    flex-wrap: wrap;
+  }
+}

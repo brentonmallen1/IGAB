@@ -1,7 +1,6 @@
 import { useMemo, useRef, useEffect, useLayoutEffect, useState, useCallback, memo } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { ChevronUp, ChevronDown, Info, Link2, GitMerge, X } from 'lucide-react'
-import toast from 'react-hot-toast'
 import { useShallow } from 'zustand/react/shallow'
 import {
   useInfiniteTransactions,
@@ -36,20 +35,19 @@ import { MergePreviewModal } from '../MergePreviewModal/MergePreviewModal'
 import { MatchReviewModal } from '../../simplefin/MatchReviewModal'
 import { SearchFilterChips } from '../SearchFilterChips/SearchFilterChips'
 import { RegisterToolbar } from './RegisterToolbar'
-import { AttachmentPanel } from '../../attachments/AttachmentPanel'
+import { AttachmentsDrawer } from './AttachmentsDrawer'
+import { ScheduledRow } from '../../scheduled/ScheduledRow/ScheduledRow'
 import { Collapsible } from '../../common/Collapsible/Collapsible'
 import { parseTransactionSearch } from '../../../utils/searchParser'
 
 /** Stable empty map: a fresh `new Map()` per render would defeat the memo. */
 const EMPTY_ACCOUNT_MAP = new Map<string, string>()
-import { useToastUndo } from '../../../utils/toastUndo'
+import { useUndoToast } from '../../../utils/toastUndo'
 import { usePendingMatchesForAccount, useRejectMatch } from '../../../api/simplefin'
 import { useShortcut } from '../../../hooks/useShortcut'
 import { SHORTCUTS } from '../../../keyboard/shortcuts'
 import { today } from '../../../utils/dates'
-import { daysUntil, dueLabel, dueState, frequencyLabel } from '../../../utils/schedule'
 import { transactionDisplayPayee } from '../../../utils/transferDisplay'
-import { useFormatters } from '../../../hooks/useFormatters'
 import type {
   Transaction,
   ClearedStatus,
@@ -127,7 +125,6 @@ const SortableHeader = memo(function SortableHeader({
 
 export function TransactionTable({ accountId, budgetId, highlightId, onInteraction }: Props) {
   const allAccounts = accountId === null
-  const { formatMoney } = useFormatters()
   const { data: payees = [] } = usePayees(budgetId)
   const { data: categories = [] } = useCategories(budgetId)
   const { data: categoryGroups = [] } = useCategoryGroups(budgetId)
@@ -149,7 +146,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   const bulkSetCleared = useBulkUpdateCleared(budgetId)
   const bulkCategorize = useBulkCategorize(budgetId)
   const bulkDelete = useBulkDeleteTransactions(budgetId)
-  const showUndo = useToastUndo(budgetId, accountId)
+  const notify = useUndoToast(accountId)
   const bulkApprove = useBulkApprove(budgetId)
   const mergeTxns = useMergeTransactions(budgetId)
   const [showMergeModal, setShowMergeModal] = useState(false)
@@ -457,7 +454,10 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
     clearTransactionSelection()
     const count = result.updated.length
     if (count > 0) {
-      showUndo(result.batch_id, `${count} transaction${count > 1 ? 's' : ''} deleted`)
+      notify(
+        `${count} transaction${count > 1 ? 's' : ''} deleted`,
+        result.batch_id ? { batch: result.batch_id } : null
+      )
     }
   }, [
     bulkDelete,
@@ -465,7 +465,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
     transactionMap,
     accountId,
     clearTransactionSelection,
-    showUndo,
+    notify,
   ])
 
   const duplicateTransaction = useCallback(
@@ -498,15 +498,15 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   // selection bar, so menu hints and key behavior can never diverge
   const hasSelection = selectedTransactionIds.size > 0
   useShortcut(SHORTCUTS.duplicate.combo, handleBulkDuplicate, { enabled: hasSelection })
-  useShortcut(
-    SHORTCUTS.makeRepeating.combo,
-    () => {
-      const [onlyId] = [...selectedTransactionIds]
-      const txn = onlyId ? transactionMap.get(onlyId) : undefined
-      if (txn && !txn.parent_transaction_id) setMakeRepeatingTxn(txn)
-    },
-    { enabled: selectedTransactionIds.size === 1 }
-  )
+  // One handler for shift+T and the selection bar's Make Repeating.
+  const makeRepeatingFromSelection = useCallback(() => {
+    const [onlyId] = [...selectedTransactionIds]
+    const txn = onlyId ? transactionMap.get(onlyId) : undefined
+    if (txn && !txn.parent_transaction_id) setMakeRepeatingTxn(txn)
+  }, [selectedTransactionIds, transactionMap])
+  useShortcut(SHORTCUTS.makeRepeating.combo, makeRepeatingFromSelection, {
+    enabled: selectedTransactionIds.size === 1,
+  })
   useShortcut('delete', handleBulkDelete, { enabled: hasSelection })
   useShortcut('backspace', handleBulkDelete, { enabled: hasSelection })
 
@@ -552,9 +552,9 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
       await mergeTxns.mutateAsync({ transactionIds: [...selectedTransactionIds], survivorId })
       setShowMergeModal(false)
       clearTransactionSelection()
-      toast.success('Transactions merged')
+      notify('Transactions merged', 'latest')
     },
-    [mergeTxns, selectedTransactionIds, clearTransactionSelection]
+    [mergeTxns, selectedTransactionIds, clearTransactionSelection, notify]
   )
 
   const categoryComboboxOptions = useMemo<ComboboxOption[]>(
@@ -566,73 +566,27 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
     [categories, categoryGroups]
   )
 
+  const todayISO = today()
   function renderUpcomingRow(s: ScheduledTransaction) {
-    const amount = s.amount
-    const isOutflow = amount < 0
-    const todayISO = today()
-    const due = dueState(s, todayISO)
-    const payeeName = transactionDisplayPayee(
-      { payee_id: s.payee_id, counterpart_account_id: s.transfer_account_id },
-      payeeMap,
-      accountMap
-    )
-    const catName = s.category_id ? (categoryMap.get(s.category_id) ?? '—') : '—'
-
     return (
-      <div
+      <ScheduledRow
         key={s.id}
-        className="upcoming-row"
-        role="button"
-        tabIndex={0}
-        onClick={() => setEditingScheduledTxn(s)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault()
-            setEditingScheduledTxn(s)
-          }
+        scheduled={s}
+        layout="register"
+        todayISO={todayISO}
+        names={{
+          payee: transactionDisplayPayee(
+            { payee_id: s.payee_id, counterpart_account_id: s.transfer_account_id },
+            payeeMap,
+            accountMap
+          ),
+          category: s.category_id ? (categoryMap.get(s.category_id) ?? '—') : '—',
         }}
-      >
-        <div className="txn-col txn-col--checkbox" />
-        <div className="txn-col txn-col--date upcoming-row__date">
-          {s.next_occurrence_date}
-          <span className="upcoming-row__freq">{frequencyLabel(s.frequency)}</span>
-          {due && (
-            <span className={`upcoming-row__due upcoming-row__due--${due}`}>
-              {dueLabel(daysUntil(s.next_occurrence_date, todayISO))}
-            </span>
-          )}
-        </div>
-        <div className="txn-col txn-col--payee txn-text-clip">{payeeName}</div>
-        <div className="txn-col txn-col--category txn-text-clip">{catName}</div>
-        <div className="txn-col txn-col--memo txn-text-clip">{s.memo ?? ''}</div>
-        <div className="txn-col txn-col--outflow tabular">
-          {isOutflow ? formatMoney(Math.abs(amount)) : ''}
-        </div>
-        <div className="txn-col txn-col--inflow tabular">
-          {!isOutflow ? formatMoney(amount) : ''}
-        </div>
-        <div
-          className="txn-col txn-col--cleared upcoming-row__actions"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button
-            className="upcoming-row__btn"
-            title="Enter now"
-            onClick={() => enterScheduled.mutate(s.id)}
-            disabled={enterScheduled.isPending}
-          >
-            Enter
-          </button>
-          <button
-            className="upcoming-row__btn upcoming-row__btn--secondary"
-            title="Skip next occurrence"
-            onClick={() => skipScheduled.mutate(s.id)}
-            disabled={skipScheduled.isPending}
-          >
-            Skip
-          </button>
-        </div>
-      </div>
+        onEdit={() => setEditingScheduledTxn(s)}
+        onEnter={() => enterScheduled.mutate(s.id)}
+        onSkip={() => skipScheduled.mutate(s.id)}
+        busy={enterScheduled.isPending || skipScheduled.isPending}
+      />
     )
   }
 
@@ -910,6 +864,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
             onSetCleared={handleBulkSetCleared}
             onDelete={handleBulkDelete}
             onDuplicate={handleBulkDuplicate}
+            onMakeRepeating={makeRepeatingFromSelection}
             onClear={clearTransactionSelection}
             onApprove={canApprove ? handleBulkApprove : undefined}
             onMerge={() => setShowMergeModal(true)}
@@ -1059,7 +1014,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
       )}
 
       {showAttachmentPanel && attachmentTxnId && (
-        <AttachmentPanel
+        <AttachmentsDrawer
           transactionId={attachmentTxnId}
           onClose={() => {
             setShowAttachmentPanel(false)

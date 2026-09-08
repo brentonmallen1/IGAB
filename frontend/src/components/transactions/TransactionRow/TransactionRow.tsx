@@ -31,7 +31,7 @@ import { useTransactionEditStore, type EditableField } from '../../../stores/tra
 import { nextEditableField } from './fieldOrder'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { SHORTCUTS, formatCombo } from '../../../keyboard/shortcuts'
-import { useToastUndo } from '../../../utils/toastUndo'
+import { useUndoToast } from '../../../utils/toastUndo'
 import { parseAmountExpressionInput } from '../../../utils/amountExpression'
 import { transactionDisplayPayee } from '../../../utils/transferDisplay'
 import { Combobox, type ComboboxOption } from '../../common/Combobox/Combobox'
@@ -188,7 +188,7 @@ export const TransactionRow = memo(function TransactionRow({
   const { formatMoney, formatDate } = useFormatters()
   const updateTxn = useUpdateTransaction(budgetId)
   const deleteTxn = useDeleteTransaction(budgetId)
-  const showUndo = useToastUndo(budgetId, txn.account_id)
+  const notify = useUndoToast(txn.account_id)
   const unreconcileTxn = useUnreconcileTransaction(budgetId)
   const createCat = useCreateCategory(budgetId)
   const createPayee = useCreatePayee(budgetId)
@@ -333,7 +333,7 @@ export const TransactionRow = memo(function TransactionRow({
   async function handleDelete() {
     if (!(await confirmDeleteTransaction(txn.id))) return
     const { batchId } = await deleteTxn.mutateAsync({ id: txn.id, accountId: txn.account_id })
-    showUndo(batchId, 'Transaction deleted')
+    notify('Transaction deleted', batchId ? { batch: batchId } : null)
   }
 
   function handleApproveAction(id: string) {

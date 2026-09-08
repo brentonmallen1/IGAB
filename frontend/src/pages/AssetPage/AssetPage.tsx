@@ -1,7 +1,8 @@
+import { PageHeader } from '../../components/common/PageHeader/PageHeader'
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ArrowUpRight, Pencil, Settings2, Trash2 } from 'lucide-react'
-import toast from 'react-hot-toast'
+import { useUndoToast } from '../../utils/toastUndo'
 import {
   CartesianGrid,
   ComposedChart,
@@ -58,6 +59,7 @@ export function AssetPage() {
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const navigate = useNavigate()
   const { formatMoney, formatDate } = useFormatters()
+  const notify = useUndoToast()
 
   const { data: assets = [], isLoading } = useAssets(budgetId)
   const asset = assets.find((a) => a.id === assetId) ?? null
@@ -131,7 +133,7 @@ export function AssetPage() {
 
   async function handleAddValue(value: number, date: string | null) {
     await addValue.mutateAsync({ assetId: asset!.id, value, ...(date ? { date } : {}) })
-    toast.success('Value recorded')
+    notify('Value recorded', 'latest')
     setShowValueForm(false)
   }
 
@@ -155,25 +157,29 @@ export function AssetPage() {
 
   return (
     <div className="asset-page">
-      <div className="asset-page__header">
-        <div className="asset-page__header-left">
-          <h1 className="asset-page__name">{asset.name}</h1>
-          <Pill>{TYPE_LABEL[asset.asset_type ?? 'other'] ?? 'Asset'}</Pill>
-          <button
-            className="asset-page__settings"
-            onClick={() => setShowSettings(true)}
-            title="Asset settings"
-            aria-label="Asset settings"
-          >
-            <Settings2 size={15} />
-          </button>
-        </div>
-        <div className="asset-page__header-actions">
+      <PageHeader
+        title={asset.name}
+        back
+        className="asset-page__header"
+        meta={
+          <>
+            <Pill>{TYPE_LABEL[asset.asset_type ?? 'other'] ?? 'Asset'}</Pill>
+            <button
+              className="asset-page__settings"
+              onClick={() => setShowSettings(true)}
+              title="Asset settings"
+              aria-label="Asset settings"
+            >
+              <Settings2 size={15} />
+            </button>
+          </>
+        }
+        actions={
           <button className="asset-page__action" onClick={() => setShowValueForm(true)}>
             Update value
           </button>
-        </div>
-      </div>
+        }
+      />
 
       <MetricRow>
         <MetricCard

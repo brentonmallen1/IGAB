@@ -1,0 +1,57 @@
+.side-drawer {
+  position: fixed;
+  right: 0;
+  /* The visible viewport, like every fixed panel — see useAppViewport. */
+  top: var(--vv-top);
+  height: var(--app-h);
+  width: 320px;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-overlay);
+  border-left: 1px solid var(--edge-strong);
+  box-shadow: var(--shadow-lg);
+  z-index: var(--z-overlay);
+  outline: none;
+}
+
+.side-drawer__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.side-drawer__title {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.side-drawer__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: var(--border-radius-sm);
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.side-drawer__close:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.side-drawer__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}

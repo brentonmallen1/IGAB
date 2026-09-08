@@ -9,7 +9,7 @@
   cursor: pointer;
 }
 
-.lightbox-close {
+.lightbox__close {
   position: absolute;
   /* max(), not a plain inset: in a standalone PWA the status bar overlays
      the top of the viewport and a fixed --spacing-md puts this under it. */
@@ -25,7 +25,7 @@
   transition: opacity 0.15s;
 }
 
-.lightbox-close:hover {
+.lightbox__close:hover {
   opacity: 1;
 }
 
@@ -113,7 +113,7 @@
 }
 
 @media (max-width: 768px) {
-  .lightbox-close,
+  .lightbox__close,
   .lightbox-toolbar__btn,
   .lightbox-nav {
     min-width: var(--tap-min);

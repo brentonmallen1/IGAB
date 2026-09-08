@@ -5,7 +5,7 @@
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding-top: min(12vh, 96px);
+  padding-top: min(var(--modal-top-gap), 96px);
   z-index: var(--z-overlay);
 }
 
@@ -162,7 +162,6 @@
   }
 
   .palette [cmdk-input] {
-    font-size: 16px; /* prevents iOS focus-zoom */
     min-height: var(--tap-min);
   }
 

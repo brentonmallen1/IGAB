@@ -617,3 +617,112 @@
   color: var(--text-primary);
   border-left: 2px solid var(--color-accent);
 }
+
+/* ── Phones ──────────────────────────────────────────────────────────────────
+   Five columns need ~520px and the strip clipped with overflow-x hidden, so
+   the last two — including Uncovered, the figure that asks for action — were
+   off the screen with no way to reach them. The row becomes a card: name and
+   Uncovered on the first line, the three working figures under their own
+   captions on the second. Cells are addressed by position because the four
+   numeric cells share one class; the head row is hidden and each cell
+   captions itself instead. */
+@media (max-width: 768px) {
+  .credit-cards__head {
+    display: none;
+  }
+
+  .credit-cards__row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-areas:
+      "name name uncovered"
+      "balance assigned ready";
+    row-gap: var(--spacing-xs);
+    padding: var(--spacing-sm) var(--spacing-md);
+  }
+
+  .credit-cards__row > :nth-child(1) {
+    grid-area: name;
+  }
+  .credit-cards__row > :nth-child(2) {
+    grid-area: balance;
+  }
+  .credit-cards__row > :nth-child(3) {
+    grid-area: assigned;
+  }
+  .credit-cards__row > :nth-child(4) {
+    grid-area: ready;
+  }
+  .credit-cards__row > :nth-child(5) {
+    grid-area: uncovered;
+  }
+
+  /* The three working figures read left-aligned under their captions; the
+     amounts are no longer in a column with a header to align to. */
+  .credit-cards__row > :nth-child(2),
+  .credit-cards__row > :nth-child(3),
+  .credit-cards__row > :nth-child(4) {
+    text-align: left;
+    min-width: 0;
+  }
+
+  .credit-cards__row > :nth-child(2)::before,
+  .credit-cards__row > :nth-child(3)::before,
+  .credit-cards__row > :nth-child(4)::before,
+  .credit-cards__row > :nth-child(5)::before {
+    display: block;
+    font-size: var(--font-size-2xs);
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  .credit-cards__row > :nth-child(2)::before {
+    content: "Balance";
+  }
+  .credit-cards__row > :nth-child(3)::before {
+    content: "Assigned";
+  }
+  .credit-cards__row > :nth-child(4)::before {
+    content: "Ready to pay";
+  }
+  .credit-cards__row > :nth-child(5)::before {
+    content: "Uncovered";
+  }
+
+  /* Captions were nowrap so a desktop column never broke mid-phrase; in a
+     third of a phone's width they overflowed the well by 10px and dragged the
+     whole strip sideways. */
+  .credit-cards__note,
+  .credit-cards__hint,
+  .credit-cards__movement,
+  .credit-cards__drift {
+    white-space: normal;
+  }
+
+  .credit-cards__assign-btn {
+    text-align: left;
+    padding-left: 0;
+  }
+
+  .credit-cards__peek-btn {
+    text-align: left;
+  }
+
+  /* The two doors on the name line (paydown target, payoff projection) —
+     the hover reveal cannot fire, and a 12px icon is not a target. Real
+     size rather than .tap-expand: they sit side by side, and two expanded
+     hit areas would eat each other. */
+  .credit-cards__target-btn,
+  .credit-cards__payoff-btn {
+    opacity: 1;
+    justify-content: center;
+    min-width: var(--tap-min);
+    min-height: var(--tap-min);
+  }
+}
+
+@media (hover: none) {
+  .credit-cards__target-btn,
+  .credit-cards__payoff-btn {
+    opacity: 1;
+  }
+}

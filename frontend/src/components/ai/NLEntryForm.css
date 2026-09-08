@@ -117,10 +117,9 @@
 }
 
 @media (max-width: 768px) {
-  /* The input often autofocuses; under 16px iOS zooms the whole viewport to
-     it — and the app's viewport tokens deliberately freeze while zoomed. */
+  /* The 16px floor that stops iOS zooming into a focused field lives once in
+     base.css for every input on a phone; this only sets the height. */
   .nl-form__input {
-    font-size: 16px;
     min-height: var(--tap-min);
   }
 

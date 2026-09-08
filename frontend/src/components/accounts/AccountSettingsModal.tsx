@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { HelpCircle, X } from 'lucide-react'
+import { HelpCircle } from 'lucide-react'
 import { useAccounts, useUpdateAccount, useScanDuplicates } from '../../api/accounts'
 import {
   useLinkSimpleFINAccount,
@@ -9,7 +9,7 @@ import {
   useSimpleFINRemoteAccounts,
 } from '../../api/simplefin'
 import { formatSyncAge } from '../simplefin/SyncStatusIcon'
-import { useFocusTrap } from '../../hooks/useFocusTrap'
+import { Dialog } from '../common/Dialog/Dialog'
 import { useFormatters } from '../../hooks/useFormatters'
 import { useAppStore } from '../../stores/appStore'
 import { useAccountTypes } from '../../api/accountTypes'
@@ -63,7 +63,6 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
   const [showTypeInfo, setShowTypeInfo] = useState(false)
 
   const nameRef = useRef<HTMLInputElement>(null)
-  const trapRef = useFocusTrap<HTMLDivElement>(onClose)
 
   useEffect(() => {
     if (account) {
@@ -151,25 +150,44 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
   const isLinked = !!account.simplefin_account_id
 
   return (
-    <div className="acct-modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div
-        ref={trapRef}
-        tabIndex={-1}
+    <>
+      <Dialog
+        title="Account Settings"
+        onClose={onClose}
+        historyKey="account-settings"
         className="acct-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="acct-modal-title"
+        footer={
+          <div className="acct-modal__footer">
+            <button
+              type="button"
+              className={`acct-modal__btn acct-modal__btn--danger`}
+              onClick={handleToggleClosed}
+              disabled={updateAccount.isPending}
+            >
+              {account.is_closed ? 'Reopen Account' : 'Close Account'}
+            </button>
+            {(saveError || closeError) && (
+              <span className="acct-modal__save-error">{saveError ?? closeError}</span>
+            )}
+            <button
+              type="button"
+              className="acct-modal__btn acct-modal__btn--cancel"
+              onClick={onClose}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              form="acct-settings-form"
+              className="acct-modal__btn acct-modal__btn--save"
+              disabled={updateAccount.isPending || !name.trim()}
+            >
+              {updateAccount.isPending ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        }
       >
-        <div className="acct-modal__header">
-          <span id="acct-modal-title" className="acct-modal__title">
-            Account Settings
-          </span>
-          <button className="acct-modal__close" onClick={onClose} aria-label="Close">
-            <X size={16} />
-          </button>
-        </div>
-
-        <form onSubmit={handleSave}>
+        <form id="acct-settings-form" onSubmit={handleSave}>
           <div className="acct-modal__body">
             {/* Basic fields */}
             <div className="acct-modal__section">
@@ -363,39 +381,11 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
               )}
             </div>
           </div>
-
-          <div className="acct-modal__footer">
-            <button
-              type="button"
-              className={`acct-modal__btn acct-modal__btn--danger`}
-              onClick={handleToggleClosed}
-              disabled={updateAccount.isPending}
-            >
-              {account.is_closed ? 'Reopen Account' : 'Close Account'}
-            </button>
-            {(saveError || closeError) && (
-              <span className="acct-modal__save-error">{saveError ?? closeError}</span>
-            )}
-            <button
-              type="button"
-              className="acct-modal__btn acct-modal__btn--cancel"
-              onClick={onClose}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="acct-modal__btn acct-modal__btn--save"
-              disabled={updateAccount.isPending || !name.trim()}
-            >
-              {updateAccount.isPending ? 'Saving…' : 'Save'}
-            </button>
-          </div>
         </form>
-      </div>
+      </Dialog>
       {showTypeInfo && (
         <AccountTypeInfoModal types={typeRows} onClose={() => setShowTypeInfo(false)} />
       )}
-    </div>
+    </>
   )
 }

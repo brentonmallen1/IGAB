@@ -12,7 +12,7 @@ import {
   type CsvPreview,
 } from '../../../api/imports'
 import { invalidateAfterImport } from '../../../api/invalidateAfterImport'
-import { useToastUndo } from '../../../utils/toastUndo'
+import { useUndoToast } from '../../../utils/toastUndo'
 import { applicableMapping, rememberMapping } from './csvMappingMemory'
 import './CsvImportDialog.css'
 
@@ -45,7 +45,7 @@ interface Props {
 export function CsvImportDialog({ budgetId, accountId, accountName, onClose }: Props) {
   const { formatMoney, formatDate } = useFormatters()
   const queryClient = useQueryClient()
-  const showUndo = useToastUndo(budgetId)
+  const notify = useUndoToast()
   const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<CsvPreview | null>(null)
   const [mapping, setMapping] = useState<CsvMapping>({})
@@ -105,10 +105,9 @@ export function CsvImportDialog({ budgetId, accountId, accountName, onClose }: P
       rememberMapping(accountId, mapping)
       invalidateAfterImport(queryClient, budgetId)
       if (result.batch_id && result.imported > 0) {
-        showUndo(
-          result.batch_id,
-          `Imported ${result.imported} transaction${result.imported === 1 ? '' : 's'}`
-        )
+        notify(`Imported ${result.imported} transaction${result.imported === 1 ? '' : 's'}`, {
+          batch: result.batch_id,
+        })
       } else {
         toast.success('Nothing new to import — every row was already here')
       }

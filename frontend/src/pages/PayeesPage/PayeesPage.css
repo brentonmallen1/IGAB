@@ -27,19 +27,6 @@
   padding: var(--payees-pad) var(--payees-pad) var(--spacing-md);
 }
 
-.payees-title-wrap {
-  display: flex;
-  align-items: baseline;
-  gap: var(--spacing-md);
-}
-
-.payees-title {
-  font-size: var(--font-size-xl);
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0;
-}
-
 .payees-count {
   font-size: var(--font-size-sm);
   color: var(--text-muted);
@@ -484,5 +471,22 @@
 
   .payees-table__row {
     min-height: 44px;
+  }
+
+  /* The sticky header's own controls were desktop density (a 30px search,
+     28px buttons) while the rows under them had been raised to 44. */
+  .payees-search {
+    flex: 1;
+    min-width: 0;
+    width: auto;
+    min-height: var(--tap-min);
+  }
+
+  .payees-actions {
+    flex: 1 1 100%;
+  }
+
+  .payees-btn {
+    min-height: var(--tap-min);
   }
 }

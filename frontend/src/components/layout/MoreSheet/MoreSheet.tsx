@@ -14,6 +14,8 @@ import {
   LogOut,
   Moon,
   Palette,
+  Redo2,
+  Undo2,
   Landmark,
   Compass,
   Sparkles,
@@ -28,6 +30,7 @@ import { useUpdateStatus } from '../../../api/system'
 import { useCurrentUser, useLogout } from '../../../api/auth'
 import { useAppStore } from '../../../stores/appStore'
 import { useUIStore } from '../../../stores/uiStore'
+import { useUndoRedo } from '../../../hooks/useUndoRedo'
 import './MoreSheet.css'
 
 /** Everything that doesn't earn a bottom-nav tab: secondary pages, budget switch, theme, sign out. */
@@ -68,6 +71,7 @@ export function MoreSheet() {
   const navigate = useNavigate()
   const logout = useLogout()
   const { data: me } = useCurrentUser()
+  const { undo, redo } = useUndoRedo()
   const updateAvailable = useUpdateStatus().data?.update_available === true
   const budgetId = useAppStore((s) => s.currentBudgetId)
   // Optimistic while loading, like the sidebar: the wishlist ships on.
@@ -80,7 +84,7 @@ export function MoreSheet() {
   }
 
   return (
-    <BottomSheet open={open} onClose={closeMoreSheet} historyKey="more">
+    <BottomSheet open={open} onClose={closeMoreSheet} historyKey="more" title="More">
       <div className="more-sheet">
         {me && (
           <div className="more-sheet__whoami">
@@ -88,6 +92,29 @@ export function MoreSheet() {
             <span>{me.display_name || me.email}</span>
           </div>
         )}
+        {/* Undo and redo left the phone header (it had nine controls in 342px);
+            the sheet closes first so the toast that says what was undone is
+            seen. Mutation toasts carry their own Undo button as well. */}
+        <button
+          className="more-sheet__item press-scale"
+          onClick={() => {
+            closeMoreSheet()
+            void undo()
+          }}
+        >
+          <Undo2 size={18} />
+          <span>Undo last change</span>
+        </button>
+        <button
+          className="more-sheet__item press-scale"
+          onClick={() => {
+            closeMoreSheet()
+            void redo()
+          }}
+        >
+          <Redo2 size={18} />
+          <span>Redo</span>
+        </button>
         <button className="more-sheet__item press-scale" onClick={() => go('/payees')}>
           <Users size={18} />
           <span>Payees</span>

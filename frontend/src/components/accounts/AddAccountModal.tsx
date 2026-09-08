@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { HelpCircle, X } from 'lucide-react'
+import { HelpCircle } from 'lucide-react'
 import { useCreateAccount } from '../../api/accounts'
 import { apiErrorMessage } from '../../api/client'
 import { useAccountTypes } from '../../api/accountTypes'
 import { BUILTIN_ACCOUNT_TYPES } from '../../constants/accountTypes'
 import { AccountTypeInfoModal } from './AccountTypeInfoModal'
 import { useAppStore } from '../../stores/appStore'
-import { useFocusTrap } from '../../hooks/useFocusTrap'
+import { Dialog } from '../common/Dialog/Dialog'
 import './AccountSettingsModal.css'
 
 interface Props {
@@ -32,7 +32,6 @@ export function AddAccountModal({ onClose, initialTypeKey }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [showTypeInfo, setShowTypeInfo] = useState(false)
   const nameRef = useRef<HTMLInputElement>(null)
-  const trapRef = useFocusTrap<HTMLDivElement>(onClose)
 
   useEffect(() => {
     nameRef.current?.focus()
@@ -67,25 +66,34 @@ export function AddAccountModal({ onClose, initialTypeKey }: Props) {
   }
 
   return (
-    <div className="acct-modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div
-        ref={trapRef}
-        tabIndex={-1}
+    <>
+      <Dialog
+        title="New Account"
+        onClose={onClose}
+        historyKey="add-account"
         className="acct-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="add-acct-title"
+        footer={
+          <div className="acct-modal__footer">
+            {error && <span className="acct-modal__save-error">{error}</span>}
+            <button
+              type="button"
+              className="acct-modal__btn acct-modal__btn--cancel"
+              onClick={onClose}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              form="add-account-form"
+              className="acct-modal__btn acct-modal__btn--save"
+              disabled={createAccount.isPending || !name.trim()}
+            >
+              {createAccount.isPending ? 'Creating…' : 'Create Account'}
+            </button>
+          </div>
+        }
       >
-        <div className="acct-modal__header">
-          <span id="add-acct-title" className="acct-modal__title">
-            New Account
-          </span>
-          <button className="acct-modal__close" onClick={onClose} aria-label="Close">
-            <X size={16} />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit}>
+        <form id="add-account-form" onSubmit={handleSubmit}>
           <div className="acct-modal__body">
             <div className="acct-modal__section">
               <div className="acct-modal__field">
@@ -143,29 +151,11 @@ export function AddAccountModal({ onClose, initialTypeKey }: Props) {
               </div>
             </div>
           </div>
-
-          <div className="acct-modal__footer">
-            {error && <span className="acct-modal__save-error">{error}</span>}
-            <button
-              type="button"
-              className="acct-modal__btn acct-modal__btn--cancel"
-              onClick={onClose}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="acct-modal__btn acct-modal__btn--save"
-              disabled={createAccount.isPending || !name.trim()}
-            >
-              {createAccount.isPending ? 'Creating…' : 'Create Account'}
-            </button>
-          </div>
         </form>
-      </div>
+      </Dialog>
       {showTypeInfo && (
         <AccountTypeInfoModal types={typeRows} onClose={() => setShowTypeInfo(false)} />
       )}
-    </div>
+    </>
   )
 }

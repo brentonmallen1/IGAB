@@ -1,8 +1,10 @@
+import { PageHeader } from '../../components/common/PageHeader/PageHeader'
 import { parseAmountInput } from '../../utils/money'
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Settings } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { useUndoToast } from '../../utils/toastUndo'
 import { useCategories } from '../../api/categories'
 import {
   useCreateLiabilitySnapshot,
@@ -38,6 +40,7 @@ import { Surface } from '../../components/common/Surface'
 
 export function LiabilityPage() {
   const { formatMoney, formatMonth } = useFormatters()
+  const notify = useUndoToast()
   const { liabilityId } = useParams<{ liabilityId: string }>()
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const { data: accountTypes } = useAccountTypes(budgetId)
@@ -144,7 +147,7 @@ export function LiabilityPage() {
     if (!assetId) return
     await linkAsset.mutateAsync({ liabilityId: liability!.id, assetId })
     setShowAssetPicker(false)
-    toast.success('Linked')
+    notify('Linked', 'latest')
   }
 
   async function handleSavePlan() {
@@ -153,13 +156,13 @@ export function LiabilityPage() {
       planned_extra_payment: extraPayment,
     })
     setExtraInput(null) // back to following the stored plan
-    toast.success(`Plan saved: +${formatMoney(extraPayment)}/mo to principal`)
+    notify(`Plan saved: +${formatMoney(extraPayment)}/mo to principal`, 'latest')
   }
 
   async function handleClearPlan() {
     await updateLiability.mutateAsync({ liabilityId: liability!.id, planned_extra_payment: null })
     setExtraInput(null)
-    toast.success('Plan cleared')
+    notify('Plan cleared', 'latest')
   }
 
   async function handleSaveBalance(balance: number, date: string | null) {
@@ -168,7 +171,7 @@ export function LiabilityPage() {
       balance,
       ...(date ? { date } : {}),
     })
-    toast.success('Balance updated')
+    notify('Balance updated', 'latest')
     setShowBalanceForm(false)
   }
 
@@ -195,7 +198,7 @@ export function LiabilityPage() {
         cleared: 'cleared',
       })
       setShowOpeningForm(false)
-      toast.success('Opening balance added — payments now track from the register')
+      notify('Opening balance added — payments now track from the register', 'latest')
     } catch {
       toast.error('Failed to add the opening balance')
     }
@@ -205,14 +208,14 @@ export function LiabilityPage() {
     if (!categoryId) return
     await linkCategory.mutateAsync({ categoryId, liabilityId: liability!.id })
     const name = categories.find((c) => c.id === categoryId)?.name
-    toast.success(`Payments now tracked from ${name ?? 'category'}`)
+    notify(`Payments now tracked from ${name ?? 'category'}`, 'latest')
     setShowLinkPicker(false)
   }
 
   async function handleUnlinkCategory() {
     if (!linkedCategory) return
     await linkCategory.mutateAsync({ categoryId: linkedCategory.id, liabilityId: null })
-    toast.success('Category unlinked')
+    notify('Category unlinked', 'latest')
   }
 
   // "Sooner" and "saved" are both differences against the contractual
@@ -233,35 +236,44 @@ export function LiabilityPage() {
 
   return (
     <div className="liability-page">
-      <div className="liability-page__header">
-        <div className="liability-page__header-left">
-          <h1 className="liability-page__name">{liability.name}</h1>
-          <Pill caps>{liabilityTypeLabel(liability.liability_type, accountTypes)}</Pill>
-          <Pill caps tone="outline">
-            {liability.mode === 'managed' ? 'Managed' : 'Unmanaged'}
-          </Pill>
-          <button
-            className="liability-page__settings"
-            onClick={() => openModal('liability', liability.id)}
-            aria-label="Liability settings"
-            title="Liability settings"
-          >
-            <Settings size={14} />
-          </button>
-        </div>
-        <div className="liability-page__header-actions">
-          {liability.mode === 'managed' && liability.linked_account_id && (
-            <Link className="liability-page__link" to={`/accounts/${liability.linked_account_id}`}>
-              View account register
-            </Link>
-          )}
-          {liability.mode === 'unmanaged' && (
-            <button className="liability-page__action" onClick={() => setShowBalanceForm(true)}>
-              Update balance
+      <PageHeader
+        title={liability.name}
+        back
+        className="liability-page__header"
+        meta={
+          <>
+            <Pill caps>{liabilityTypeLabel(liability.liability_type, accountTypes)}</Pill>
+            <Pill caps tone="outline">
+              {liability.mode === 'managed' ? 'Managed' : 'Unmanaged'}
+            </Pill>
+            <button
+              className="liability-page__settings"
+              onClick={() => openModal('liability', liability.id)}
+              aria-label="Liability settings"
+              title="Liability settings"
+            >
+              <Settings size={14} />
             </button>
-          )}
-        </div>
-      </div>
+          </>
+        }
+        actions={
+          <>
+            {liability.mode === 'managed' && liability.linked_account_id && (
+              <Link
+                className="liability-page__link"
+                to={`/accounts/${liability.linked_account_id}`}
+              >
+                View account register
+              </Link>
+            )}
+            {liability.mode === 'unmanaged' && (
+              <button className="liability-page__action" onClick={() => setShowBalanceForm(true)}>
+                Update balance
+              </button>
+            )}
+          </>
+        }
+      />
 
       <div className="liability-page__pill-row">
         <PayoffPill liability={liability} />

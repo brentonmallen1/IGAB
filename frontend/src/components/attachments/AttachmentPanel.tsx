@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react'
-import { Camera, Paperclip, Upload, Trash2, X, Loader2 } from 'lucide-react'
+import { Camera, Upload, Trash2, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import {
   ATTACHMENT_ACCEPT,
@@ -52,12 +52,14 @@ function AttachmentThumb({
 
 interface Props {
   transactionId: string
-  onClose?: () => void
-  /** Rendered inside another surface (transaction editor): no header chrome */
-  embedded?: boolean
 }
 
-export function AttachmentPanel({ transactionId, onClose, embedded = false }: Props) {
+/**
+ * The attachments for one transaction: upload, camera, thumbnails, lightbox.
+ * Content only — whoever shows it supplies the surface: the transaction
+ * editor inlines it, the register wraps it in AttachmentsDrawer.
+ */
+export function AttachmentPanel({ transactionId }: Props) {
   const { data: attachments = [], isLoading } = useAttachments(transactionId)
   // Lightbox prev/next navigates images only; PDFs open in a new tab
   const imageAttachments = attachments.filter((a) => !isPdfAttachment(a))
@@ -111,19 +113,7 @@ export function AttachmentPanel({ transactionId, onClose, embedded = false }: Pr
   }
 
   return (
-    <div className={`attachment-panel ${embedded ? 'attachment-panel--embedded' : ''}`}>
-      {!embedded && (
-        <div className="attachment-panel__header">
-          <span className="attachment-panel__title">
-            <Paperclip size={14} />
-            Attachments
-          </span>
-          <button className="attachment-panel__close" onClick={onClose} aria-label="Close">
-            <X size={14} />
-          </button>
-        </div>
-      )}
-
+    <div className="attachment-panel">
       <div
         className={`attachment-panel__drop-zone ${dragOver ? 'attachment-panel__drop-zone--active' : ''}`}
         onDragOver={(e) => {

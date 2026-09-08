@@ -1,4 +1,4 @@
-import { useToastUndo } from '../../../utils/toastUndo'
+import { useUndoToast } from '../../../utils/toastUndo'
 import { useAssignApply, useAssignPreview } from '../../../api/assign'
 import { useFormatters } from '../../../hooks/useFormatters'
 import type { AssignStrategy } from '../../../types'
@@ -23,7 +23,7 @@ export function AssignPreviewModal({ budgetId, month, strategy, onClose }: Props
   const { formatMoney } = useFormatters()
   const { data: preview, isLoading } = useAssignPreview(budgetId, month, strategy)
   const apply = useAssignApply(budgetId)
-  const showUndo = useToastUndo(budgetId)
+  const notify = useUndoToast()
   const meta = STRATEGY_META[strategy]
   const tbaAfter = Number(preview?.tba_after ?? 0)
   const toAssign = Number(preview?.to_assign ?? 0)
@@ -38,11 +38,11 @@ export function AssignPreviewModal({ budgetId, month, strategy, onClose }: Props
     const parts = []
     if (assigned > 0) parts.push(`${formatMoney(assigned)} assigned`)
     if (returned > 0) parts.push(`${formatMoney(returned)} returned to TBA`)
-    showUndo(
-      result.categories_changed > 0 ? result.batch_id : null,
+    notify(
       parts.length > 0
         ? `${meta.label}: ${parts.join(', ')} across ${result.categories_changed} categories`
-        : `${meta.label}: nothing to change`
+        : `${meta.label}: nothing to change`,
+      result.categories_changed > 0 && result.batch_id ? { batch: result.batch_id } : null
     )
     onClose()
   }

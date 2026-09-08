@@ -1,7 +1,9 @@
 .login-page {
   /* Own scroll container — the document is overflow:hidden on mobile (see
-     base.css), so any page outside the app shell must scroll itself. */
-  height: 100dvh;
+     base.css), so any page outside the app shell must scroll itself. Sized
+     by the measured height, not dvh: useAppViewport is mounted above the
+     router, and dvh is short by the top inset in the installed iOS PWA. */
+  height: var(--app-h);
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;

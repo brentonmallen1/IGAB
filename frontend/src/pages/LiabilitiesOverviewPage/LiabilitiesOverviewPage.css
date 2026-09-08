@@ -5,19 +5,6 @@
   gap: var(--spacing-xl);
 }
 
-.liabilities-page__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--spacing-md);
-}
-
-.liabilities-page__title {
-  font-size: var(--font-size-xl);
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
 .liabilities-page__total {
   margin-top: 2px;
   font-size: var(--font-size-sm);
@@ -205,4 +192,13 @@
 .liability-suggestion__track:hover {
   background: var(--color-accent);
   color: var(--text-inverse);
+}
+
+@media (max-width: 768px) {
+  /* The page kept its 32px desktop gutters on a phone while every sibling
+     page dropped to --spacing-md. */
+  .liabilities-page {
+    padding: var(--spacing-md);
+    gap: var(--spacing-lg);
+  }
 }

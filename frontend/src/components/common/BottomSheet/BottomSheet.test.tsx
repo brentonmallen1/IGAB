@@ -29,14 +29,28 @@ describe('BottomSheet dismissal affordances', () => {
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
   })
 
-  it('offers a drag handle instead of a close button on a short sheet', () => {
+  it('offers a drag handle AND a close button on a short sheet with a title', () => {
+    // The handle is a gesture, not a visible exit. The More sheet shipped with
+    // only the handle and the backdrop; in an installed PWA, with no back
+    // gesture, a person who did not know to drag had no way out.
     const { container } = render(
       <BottomSheet open onClose={() => {}} title="Move money" height="auto">
         body
       </BottomSheet>
     )
-    expect(screen.queryByRole('button', { name: 'Close' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument()
     expect(container.ownerDocument.querySelector('.bottom-sheet__handle')).not.toBeNull()
+  })
+
+  it('closes a short sheet from its close button', () => {
+    const onClose = vi.fn()
+    render(
+      <BottomSheet open onClose={onClose} title="Move money" height="auto">
+        body
+      </BottomSheet>
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    expect(onClose).toHaveBeenCalledOnce()
   })
 
   it('closes on the close button', () => {
@@ -119,5 +133,39 @@ describe('BottomSheet dismissal affordances', () => {
     expect(scrollLockDepth()).toBe(before + 1)
     unmount()
     expect(scrollLockDepth()).toBe(before)
+  })
+
+  it('dismisses on a quick downward flick of its header', () => {
+    // The most intricate touch code in the repo, previously unpinned: a fast
+    // 200px drag on a short sheet's header closes it.
+    const onClose = vi.fn()
+    const { container } = render(
+      <BottomSheet open onClose={onClose} title="Pick" height="auto">
+        body
+      </BottomSheet>
+    )
+    const header = container.ownerDocument.querySelector('.bottom-sheet__header')!
+    fireEvent.touchStart(header, { touches: [{ clientY: 100 }] })
+    fireEvent.touchMove(header, { touches: [{ clientY: 200 }] })
+    fireEvent.touchMove(header, { touches: [{ clientY: 300 }] })
+    fireEvent.touchEnd(header, {})
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it('snaps back from a short, slow drag', () => {
+    const onClose = vi.fn()
+    const { container } = render(
+      <BottomSheet open onClose={onClose} title="Pick" height="auto">
+        body
+      </BottomSheet>
+    )
+    const header = container.ownerDocument.querySelector('.bottom-sheet__header')!
+    fireEvent.touchStart(header, { touches: [{ clientY: 100 }] })
+    fireEvent.touchMove(header, { touches: [{ clientY: 110 }] })
+    fireEvent.touchEnd(header, {})
+    expect(onClose).not.toHaveBeenCalled()
+    expect(
+      (container.ownerDocument.querySelector('.bottom-sheet') as HTMLElement).style.transform
+    ).toBe('')
   })
 })

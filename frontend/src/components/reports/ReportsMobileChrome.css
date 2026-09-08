@@ -1,0 +1,102 @@
+/* One row of chrome for reports on a phone — see ReportsMobileChrome.tsx. */
+.reports-chrome {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--surface-chrome);
+  border-bottom: 1px solid var(--edge);
+  flex-shrink: 0;
+}
+
+.reports-chrome__picker {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  min-height: var(--tap-min);
+  padding: 0 var(--spacing-md);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  text-align: left;
+}
+
+.reports-chrome__picker-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reports-chrome__star,
+.reports-chrome__filters {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
+  min-width: var(--tap-min);
+  min-height: var(--tap-min);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  flex-shrink: 0;
+}
+
+.reports-chrome__filters {
+  padding: 0 var(--spacing-md);
+}
+
+.reports-chrome__star--on {
+  color: var(--color-warning);
+}
+
+.reports-chrome__filters--active {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.reports-chrome__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--color-accent);
+  color: var(--text-inverse);
+  font-size: var(--font-size-2xs);
+  font-weight: 700;
+}
+
+.reports-chrome__filters-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md);
+}
+
+/* Inside the sheet the bar's rows stack; every control takes the full width. */
+.reports-chrome__filters-body .rfb__row,
+.reports-chrome__filters-body .rfb__selects {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.reports-chrome__done {
+  width: 100%;
+  min-height: var(--tap-min);
+  border: none;
+  border-radius: var(--border-radius-md);
+  background: var(--color-accent);
+  color: var(--text-inverse);
+  font-size: var(--font-size-md);
+  font-weight: 600;
+}

@@ -6,20 +6,6 @@
   gap: var(--spacing-xl);
 }
 
-.accounts-overview__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--spacing-md);
-}
-
-.accounts-overview__title {
-  font-size: var(--font-size-lg);
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0;
-}
-
 .accounts-overview__header-actions {
   display: flex;
   align-items: center;
@@ -349,5 +335,28 @@
 @media (max-width: 768px) {
   .accounts-overview {
     padding: var(--spacing-md);
+  }
+
+  .accounts-overview__header-actions {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+  }
+
+  .accounts-overview__header-actions > * {
+    min-height: var(--tap-min);
+  }
+}
+
+/* Hover-revealed row actions do not exist on a touch screen: edit, settings
+   and delete for every account were unreachable on a phone. Shown, at the
+   tap floor. */
+@media (hover: none) {
+  .accounts-overview__row-actions {
+    opacity: 1;
+  }
+
+  .accounts-overview__action-btn {
+    width: var(--tap-min);
+    height: var(--tap-min);
   }
 }

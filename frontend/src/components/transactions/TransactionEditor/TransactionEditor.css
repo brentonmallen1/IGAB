@@ -615,7 +615,7 @@
 
   .txn-editor__receipt {
     flex: 0 0 auto;
-    max-height: 32dvh;
+    max-height: calc(var(--app-h) * 0.32);
     padding: var(--spacing-md) var(--spacing-md) 0;
   }
 
@@ -654,7 +654,6 @@
   .txn-editor__input,
   .txn-editor__select {
     min-height: 44px;
-    font-size: 16px; /* prevents iOS focus-zoom */
   }
 
   .txn-editor__payee-option {

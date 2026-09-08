@@ -5,22 +5,6 @@
   overflow: hidden;
 }
 
-.all-txns-page__header {
-  display: flex;
-  align-items: baseline;
-  gap: var(--spacing-md);
-  padding: var(--spacing-md) var(--spacing-lg);
-  background-color: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-color);
-  flex-shrink: 0;
-}
-
-.all-txns-page__name {
-  font-size: var(--font-size-base);
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
 .all-txns-page__hint {
   font-size: var(--font-size-xs);
   color: var(--text-muted);

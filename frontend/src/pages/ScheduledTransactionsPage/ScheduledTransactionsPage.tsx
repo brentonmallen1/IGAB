@@ -1,3 +1,4 @@
+import { PageHeader } from '../../components/common/PageHeader/PageHeader'
 import { useState } from 'react'
 import { useAppStore } from '../../stores/appStore'
 import {
@@ -8,14 +9,15 @@ import {
 import { useAccounts } from '../../api/accounts'
 import { usePayees } from '../../api/transactions'
 import { ScheduledTransactionEditor } from '../../components/scheduled/ScheduledTransactionEditor'
-import { useFormatters } from '../../hooks/useFormatters'
+import {
+  ScheduledRow,
+  ScheduledTableHead,
+} from '../../components/scheduled/ScheduledRow/ScheduledRow'
 import type { ScheduledTransaction } from '../../types'
-import { daysUntil, dueLabel, dueState, frequencyLabel } from '../../utils/schedule'
 import { today } from '../../utils/dates'
 import './ScheduledTransactionsPage.css'
 
 export function ScheduledTransactionsPage() {
-  const { formatMoney } = useFormatters()
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const { data: scheduled = [] } = useScheduledTransactions(budgetId)
   const { data: accounts = [] } = useAccounts(budgetId)
@@ -45,12 +47,14 @@ export function ScheduledTransactionsPage() {
 
   return (
     <div className="sched-page page-fill">
-      <div className="sched-header">
-        <h1 className="sched-title">Scheduled Transactions</h1>
-        <button className="sched-btn sched-btn--primary" onClick={() => setEditing('new')}>
-          + New
-        </button>
-      </div>
+      <PageHeader
+        title="Scheduled Transactions"
+        actions={
+          <button className="sched-btn sched-btn--primary" onClick={() => setEditing('new')}>
+            + New
+          </button>
+        }
+      />
 
       {editing && (
         <ScheduledTransactionEditor
@@ -66,64 +70,19 @@ export function ScheduledTransactionsPage() {
         </div>
       ) : (
         <div className="sched-table surface scroll-fill">
-          <div className="sched-table__head">
-            <span>Account</span>
-            <span>Payee</span>
-            <span>Amount</span>
-            <span>Frequency</span>
-            <span>Next Date</span>
-            <span>Auto</span>
-            <span></span>
-          </div>
+          <ScheduledTableHead />
           {scheduled.map((s) => (
-            <div
+            <ScheduledRow
               key={s.id}
-              className="sched-table__row"
-              role="button"
-              tabIndex={0}
-              onClick={() => setEditing(s)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault()
-                  setEditing(s)
-                }
-              }}
-            >
-              <span className="sched-cell--account">{accountName(s.account_id)}</span>
-              <span className="sched-cell--payee">{payeeName(s)}</span>
-              <span className={`sched-cell--amount ${s.amount < 0 ? 'negative' : 'positive'}`}>
-                {formatMoney(Math.abs(s.amount))}
-                {s.amount < 0 ? ' out' : ' in'}
-              </span>
-              <span className="sched-cell--freq">{frequencyLabel(s.frequency)}</span>
-              <span className="sched-cell--date">
-                {s.next_occurrence_date}
-                {dueState(s, todayISO) && (
-                  <span className={`sched-due sched-due--${dueState(s, todayISO)}`}>
-                    {dueLabel(daysUntil(s.next_occurrence_date, todayISO))}
-                  </span>
-                )}
-              </span>
-              <span className="sched-cell--auto">{s.auto_create ? 'Yes' : '—'}</span>
-              <span className="sched-table__actions" onClick={(e) => e.stopPropagation()}>
-                <button
-                  className="sched-btn sched-btn--sm"
-                  title="Enter now"
-                  onClick={() => enter.mutate(s.id)}
-                  disabled={enter.isPending}
-                >
-                  Enter
-                </button>
-                <button
-                  className="sched-btn sched-btn--sm sched-btn--secondary"
-                  title="Skip to next"
-                  onClick={() => skip.mutate(s.id)}
-                  disabled={skip.isPending}
-                >
-                  Skip
-                </button>
-              </span>
-            </div>
+              scheduled={s}
+              layout="table"
+              todayISO={todayISO}
+              names={{ payee: payeeName(s), account: accountName(s.account_id) }}
+              onEdit={() => setEditing(s)}
+              onEnter={() => enter.mutate(s.id)}
+              onSkip={() => skip.mutate(s.id)}
+              busy={enter.isPending || skip.isPending}
+            />
           ))}
         </div>
       )}

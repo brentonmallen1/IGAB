@@ -194,7 +194,7 @@
 
 .tba-history-modal {
   width: min(560px, calc(100vw - 2 * var(--spacing-lg)));
-  max-height: min(70vh, 640px);
+  max-height: min(var(--panel-max-h), 640px);
   display: flex;
   flex-direction: column;
   background-color: var(--surface-overlay);
@@ -368,21 +368,37 @@
     padding: var(--spacing-sm) var(--spacing-md);
   }
 
+  /* Two rows, not one. As a single flex row the actions group (Assign,
+     overspent, of-it-on-cards, history) refused to shrink and the figure —
+     `.tba-hero__info`, flex: 1 with min-width: 0 — was crushed to ~40pt: the
+     label wrapped, the amount showed only its "$", and the Assign button
+     painted over it. The figure is what this band exists to show, so it gets
+     a row of its own and the actions wrap beneath it. */
   .tba-hero__pill {
     width: 100%;
     padding: 0;
-    gap: var(--spacing-sm);
+    gap: var(--spacing-xs);
+    flex-direction: column;
+    align-items: stretch;
     background: none;
     border: none;
     border-radius: 0;
     box-shadow: none;
   }
 
+  /* Label left, amount right, on one baseline; the future-months note takes
+     the next line on its own. */
   .tba-hero__info {
-    flex: 1;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    column-gap: var(--spacing-sm);
+    row-gap: 0;
+  }
+
+  .tba-hero__label {
+    white-space: nowrap;
   }
 
   .tba-hero__amount {
@@ -391,7 +407,26 @@
   }
 
   .tba-hero__future {
+    flex-basis: 100%;
     white-space: normal;
+  }
+
+  .tba-hero__actions {
+    flex-wrap: wrap;
+    row-gap: var(--spacing-xs);
+  }
+
+  /* The chips are actions here: hold them to the tap floor. */
+  .tba-hero__overspent-chip,
+  .tba-hero__on-cards,
+  .tba-hero__history-btn {
+    min-height: var(--tap-min);
+  }
+
+  .tba-hero__history-btn {
+    min-width: var(--tap-min);
+    justify-content: center;
+    margin-left: auto;
   }
 
   /* Keep the word — a bare red amount next to the TBA number is ambiguous */
@@ -407,11 +442,6 @@
 
   .tba-hero__assign-main {
     min-height: 44px;
-  }
-
-  .tba-hero__overspent-chip,
-  .tba-hero__on-cards {
-    min-height: 32px;
   }
 
   /* Drawer renders in a BottomSheet on mobile; remove inline chrome */

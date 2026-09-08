@@ -70,10 +70,12 @@ export function BudgetPage() {
   const canReorder =
     !activeViewId && !activeFilterId && !activeQuickFilter && !categorySearch.trim()
   const isMobile = useIsMobile()
-  const swipeHandlers = useSwipeNavigation(
-    () => setSelectedMonth(addMonths(month, -1)),
-    () => setSelectedMonth(addMonths(month, 1))
-  )
+  // Swipe right = earlier month, left = later; a swipe that starts at the
+  // screen edge is the shell's back gesture and never reaches these.
+  const swipeHandlers = useSwipeNavigation({
+    onRight: () => setSelectedMonth(addMonths(month, -1)),
+    onLeft: () => setSelectedMonth(addMonths(month, 1)),
+  })
 
   const { data: budgets } = useBudgets()
   const { data: categoryGroups = [] } = useCategoryGroups(budgetId)

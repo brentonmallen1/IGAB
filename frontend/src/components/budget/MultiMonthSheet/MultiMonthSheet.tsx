@@ -10,6 +10,7 @@ import { addMonths } from '../../../utils/dates'
 import { toCents } from '../../../utils/money'
 import { parseAssignmentCommit } from '../../../utils/amountExpression'
 import { AmountInput } from '../../common/AmountInput/AmountInput'
+import { Modal } from '../../common/Modal/Modal'
 import type { BudgetMonth, Category, CategoryBalance } from '../../../types'
 import { renderableGroups } from '../budgetGroups'
 import './MultiMonthSheet.css'
@@ -164,184 +165,195 @@ export function MultiMonthSheet({ budgetId }: Props) {
   }
 
   return (
-    <div className="mm-sheet" role="dialog" aria-modal="true" aria-label="Multi-month view">
-      <div className="mm-sheet__toolbar">
-        <h2 className="mm-sheet__title">Multi-Month View</h2>
+    // Modal supplies the focus trap, Escape via the overlay stack, scroll lock
+    // and the history entry; this used to hand-roll a fixed full-screen panel
+    // with none of them.
+    <Modal
+      onClose={() => setMultiMonthOpen(false)}
+      historyKey="multi-month"
+      className="mm-sheet__overlay"
+    >
+      <div className="mm-sheet" role="dialog" aria-modal="true" aria-label="Multi-month view">
+        <div className="mm-sheet__toolbar">
+          <h2 className="mm-sheet__title">Multi-Month View</h2>
 
-        <div className="mm-sheet__nav">
-          <button
-            className="mm-sheet__nav-btn"
-            onClick={() => {
-              // Months before the import anchor are never requested — there
-              // is no budget month to show there.
-              const prev = addMonths(anchor, -1)
-              setAnchor(budgetAnchorMonth && prev < budgetAnchorMonth ? budgetAnchorMonth : prev)
-            }}
-            disabled={!!budgetAnchorMonth && anchor <= budgetAnchorMonth}
-            title="Earlier month"
-            aria-label="Shift window one month earlier"
-          >
-            <ChevronLeft size={16} />
-          </button>
-          <span className="mm-sheet__range">
-            {formatMonth(months[0])} – {formatMonth(months[months.length - 1])}
-          </span>
-          <button
-            className="mm-sheet__nav-btn"
-            onClick={() => setAnchor(addMonths(anchor, 1))}
-            title="Later month"
-            aria-label="Shift window one month later"
-          >
-            <ChevronRight size={16} />
-          </button>
-        </div>
-
-        <div className="mm-sheet__counts">
-          {COUNTS.map((n) => (
+          <div className="mm-sheet__nav">
             <button
-              key={n}
-              className={`mm-sheet__count-btn ${count === n ? 'mm-sheet__count-btn--active' : ''}`}
-              onClick={() => setCount(n)}
-              type="button"
+              className="mm-sheet__nav-btn"
+              onClick={() => {
+                // Months before the import anchor are never requested — there
+                // is no budget month to show there.
+                const prev = addMonths(anchor, -1)
+                setAnchor(budgetAnchorMonth && prev < budgetAnchorMonth ? budgetAnchorMonth : prev)
+              }}
+              disabled={!!budgetAnchorMonth && anchor <= budgetAnchorMonth}
+              title="Earlier month"
+              aria-label="Shift window one month earlier"
             >
-              {n}
+              <ChevronLeft size={16} />
             </button>
-          ))}
+            <span className="mm-sheet__range">
+              {formatMonth(months[0])} – {formatMonth(months[months.length - 1])}
+            </span>
+            <button
+              className="mm-sheet__nav-btn"
+              onClick={() => setAnchor(addMonths(anchor, 1))}
+              title="Later month"
+              aria-label="Shift window one month later"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+
+          <div className="mm-sheet__counts">
+            {COUNTS.map((n) => (
+              <button
+                key={n}
+                className={`mm-sheet__count-btn ${count === n ? 'mm-sheet__count-btn--active' : ''}`}
+                onClick={() => setCount(n)}
+                type="button"
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+
+          <div className="mm-sheet__search">
+            <Search size={13} />
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Filter categories…"
+              aria-label="Filter categories"
+            />
+          </div>
+
+          <button
+            className="mm-sheet__close"
+            onClick={() => setMultiMonthOpen(false)}
+            title="Close"
+            aria-label="Close multi-month view"
+          >
+            <X size={18} />
+          </button>
         </div>
 
-        <div className="mm-sheet__search">
-          <Search size={13} />
-          <input
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Filter categories…"
-            aria-label="Filter categories"
-          />
-        </div>
-
-        <button
-          className="mm-sheet__close"
-          onClick={() => setMultiMonthOpen(false)}
-          title="Close"
-          aria-label="Close multi-month view"
-        >
-          <X size={18} />
-        </button>
-      </div>
-
-      <div className="mm-sheet__scroll">
-        <table className="mm-sheet__table">
-          <thead>
-            <tr className="mm-sheet__month-row">
-              <th scope="col" className="mm-sheet__corner" />
-              {months.map((m, i) => {
-                const data = monthQueries[i].data
-                return (
-                  <th scope="colgroup" colSpan={3} key={m} className="mm-sheet__month-header">
-                    <span className="mm-sheet__month-name">{formatMonth(m)}</span>
-                    <span
-                      className={`mm-sheet__month-tba tabular ${data ? moneyClass(data.to_be_assigned) : ''}`}
-                    >
-                      {data ? `${formatMoney(data.to_be_assigned)} to assign` : '…'}
-                    </span>
-                  </th>
-                )
-              })}
-            </tr>
-            <tr className="mm-sheet__label-row">
-              <th scope="col" className="mm-sheet__cat-header">
-                Category
-              </th>
-              {months.map((m) => (
-                <Fragment key={m}>
-                  <th scope="col" className="mm-sheet__col-label mm-sheet__col-label--first">
-                    Assigned
-                  </th>
-                  <th scope="col" className="mm-sheet__col-label">
-                    Activity
-                  </th>
-                  <th scope="col" className="mm-sheet__col-label">
-                    Available
-                  </th>
-                </Fragment>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {visibleGroups.map(({ group, cats }) => (
-              <Fragment key={group.id}>
-                <tr className="mm-sheet__group-row">
-                  <th scope="row" className="mm-sheet__group-name">
-                    {group.name}
-                  </th>
-                  {months.map((m, i) => {
-                    const s = subtotal(cats, i)
-                    return (
-                      <Fragment key={m}>
-                        <td className="mm-sheet__group-cell tabular mm-sheet__cell--first">
-                          {formatMoney(s.assigned)}
-                        </td>
-                        <td className="mm-sheet__group-cell tabular">{formatMoney(s.activity)}</td>
-                        <td className={`mm-sheet__group-cell tabular ${moneyClass(s.available)}`}>
-                          {formatMoney(s.available)}
-                        </td>
-                      </Fragment>
-                    )
-                  })}
-                </tr>
-                {cats.map((cat) => (
-                  <tr key={cat.id} className="mm-sheet__cat-row">
-                    <th scope="row" className="mm-sheet__cat-name" title={cat.name}>
-                      {cat.name}
+        <div className="mm-sheet__scroll">
+          <table className="mm-sheet__table">
+            <thead>
+              <tr className="mm-sheet__month-row">
+                <th scope="col" className="mm-sheet__corner" />
+                {months.map((m, i) => {
+                  const data = monthQueries[i].data
+                  return (
+                    <th scope="colgroup" colSpan={3} key={m} className="mm-sheet__month-header">
+                      <span className="mm-sheet__month-name">{formatMonth(m)}</span>
+                      <span
+                        className={`mm-sheet__month-tba tabular ${data ? moneyClass(data.to_be_assigned) : ''}`}
+                      >
+                        {data ? `${formatMoney(data.to_be_assigned)} to assign` : '…'}
+                      </span>
+                    </th>
+                  )
+                })}
+              </tr>
+              <tr className="mm-sheet__label-row">
+                <th scope="col" className="mm-sheet__cat-header">
+                  Category
+                </th>
+                {months.map((m) => (
+                  <Fragment key={m}>
+                    <th scope="col" className="mm-sheet__col-label mm-sheet__col-label--first">
+                      Assigned
+                    </th>
+                    <th scope="col" className="mm-sheet__col-label">
+                      Activity
+                    </th>
+                    <th scope="col" className="mm-sheet__col-label">
+                      Available
+                    </th>
+                  </Fragment>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {visibleGroups.map(({ group, cats }) => (
+                <Fragment key={group.id}>
+                  <tr className="mm-sheet__group-row">
+                    <th scope="row" className="mm-sheet__group-name">
+                      {group.name}
                     </th>
                     {months.map((m, i) => {
-                      const b = balanceMaps[i]?.get(cat.id)
-                      const activity = Number(b?.activity ?? 0)
-                      const available = Number(b?.available ?? 0)
+                      const s = subtotal(cats, i)
                       return (
                         <Fragment key={m}>
-                          <td className="mm-sheet__cell mm-sheet__cell--first">
-                            {balanceMaps[i] ? (
-                              <AssignCell
-                                budgetId={budgetId}
-                                categoryId={cat.id}
-                                month={m}
-                                assigned={Number(b?.assigned ?? 0)}
-                              />
-                            ) : (
-                              <span className="mm-sheet__zero">…</span>
-                            )}
+                          <td className="mm-sheet__group-cell tabular mm-sheet__cell--first">
+                            {formatMoney(s.assigned)}
                           </td>
-                          <td className="mm-sheet__cell tabular">
-                            {activity === 0 ? (
-                              <span className="mm-sheet__zero">—</span>
-                            ) : (
-                              <span className={activity < 0 ? 'negative' : 'positive'}>
-                                {formatMoney(activity)}
-                              </span>
-                            )}
+                          <td className="mm-sheet__group-cell tabular">
+                            {formatMoney(s.activity)}
                           </td>
-                          <td className={`mm-sheet__cell tabular ${moneyClass(available)}`}>
-                            {balanceMaps[i] ? formatMoney(available) : ''}
+                          <td className={`mm-sheet__group-cell tabular ${moneyClass(s.available)}`}>
+                            {formatMoney(s.available)}
                           </td>
                         </Fragment>
                       )
                     })}
                   </tr>
-                ))}
-              </Fragment>
-            ))}
-            {visibleGroups.length === 0 && (
-              <tr>
-                <td className="mm-sheet__empty" colSpan={1 + months.length * 3}>
-                  {query ? 'No categories match the filter.' : 'No categories yet.'}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+                  {cats.map((cat) => (
+                    <tr key={cat.id} className="mm-sheet__cat-row">
+                      <th scope="row" className="mm-sheet__cat-name" title={cat.name}>
+                        {cat.name}
+                      </th>
+                      {months.map((m, i) => {
+                        const b = balanceMaps[i]?.get(cat.id)
+                        const activity = Number(b?.activity ?? 0)
+                        const available = Number(b?.available ?? 0)
+                        return (
+                          <Fragment key={m}>
+                            <td className="mm-sheet__cell mm-sheet__cell--first">
+                              {balanceMaps[i] ? (
+                                <AssignCell
+                                  budgetId={budgetId}
+                                  categoryId={cat.id}
+                                  month={m}
+                                  assigned={Number(b?.assigned ?? 0)}
+                                />
+                              ) : (
+                                <span className="mm-sheet__zero">…</span>
+                              )}
+                            </td>
+                            <td className="mm-sheet__cell tabular">
+                              {activity === 0 ? (
+                                <span className="mm-sheet__zero">—</span>
+                              ) : (
+                                <span className={activity < 0 ? 'negative' : 'positive'}>
+                                  {formatMoney(activity)}
+                                </span>
+                              )}
+                            </td>
+                            <td className={`mm-sheet__cell tabular ${moneyClass(available)}`}>
+                              {balanceMaps[i] ? formatMoney(available) : ''}
+                            </td>
+                          </Fragment>
+                        )
+                      })}
+                    </tr>
+                  ))}
+                </Fragment>
+              ))}
+              {visibleGroups.length === 0 && (
+                <tr>
+                  <td className="mm-sheet__empty" colSpan={1 + months.length * 3}>
+                    {query ? 'No categories match the filter.' : 'No categories yet.'}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
-    </div>
+    </Modal>
   )
 }

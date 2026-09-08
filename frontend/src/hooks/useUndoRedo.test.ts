@@ -16,11 +16,10 @@ import { useUndoRedo } from './useUndoRedo'
 const post = vi.hoisted(() => vi.fn())
 vi.mock('../api/client', () => ({ apiClient: { post } }))
 
-const invalidateAfterUndo = vi.hoisted(() => vi.fn())
-vi.mock('../api/changes', () => ({
-  invalidateAfterUndo,
-  changesKeys: { budget: (id: string) => ['changes', id] },
-}))
+// The real module: performUndo and its invalidation are the thing under
+// test now that ⌘Z and the toasts share them.
+import { changesKeys } from '../api/changes'
+import { ROOT } from '../api/queryKeys'
 
 const invalidateQueries = vi.hoisted(() => vi.fn())
 vi.mock('@tanstack/react-query', () => ({
@@ -39,7 +38,6 @@ beforeEach(() => {
   post.mockReset()
   toast.mockClear()
   toast.success.mockClear()
-  invalidateAfterUndo.mockClear()
   invalidateQueries.mockClear()
 })
 
@@ -55,7 +53,8 @@ describe('useUndoRedo', () => {
     await act(() => result.current.undo())
 
     expect(post).toHaveBeenCalledExactlyOnceWith('/b1/changes/undo')
-    expect(invalidateAfterUndo).toHaveBeenCalledWith(expect.anything(), 'b1')
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: changesKeys.budget('b1') })
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: [ROOT.transactions] })
     expect(toast.success).toHaveBeenCalledWith(
       'Undid: deleted transaction — and the other 1 in that batch'
     )
@@ -70,7 +69,7 @@ describe('useUndoRedo', () => {
     await act(() => result.current.undo())
 
     expect(toast).toHaveBeenCalledWith('Nothing to undo')
-    expect(invalidateAfterUndo).not.toHaveBeenCalled()
+    expect(invalidateQueries).not.toHaveBeenCalled()
   })
 
   it('redoes through the server and relays its refusal', async () => {

@@ -266,7 +266,7 @@
   padding: var(--spacing-sm) 0 0;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .tool__table thead {
     display: none;
   }

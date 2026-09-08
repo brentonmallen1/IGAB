@@ -5,20 +5,6 @@
   padding: var(--spacing-lg);
 }
 
-.activity-page__header {
-  display: flex;
-  align-items: baseline;
-  gap: var(--spacing-md);
-  margin-bottom: var(--spacing-lg);
-}
-
-.activity-page__title {
-  margin: 0;
-  font-size: var(--font-size-xl);
-  font-weight: var(--font-weight-semibold);
-  color: var(--text-primary);
-}
-
 .activity-page__count {
   font-size: var(--font-size-sm);
   color: var(--text-muted);
@@ -378,6 +364,16 @@
   opacity: 1;
 }
 
+/* No pointer, no hover: the page's one action was invisible on a phone, and
+   a blind tap could still fire it. Shown, and tall enough to hit on purpose. */
+@media (hover: none) {
+  .activity-revert-line {
+    opacity: 1;
+    min-height: var(--tap-min);
+    margin: 0;
+  }
+}
+
 .activity-revert-line:disabled {
   cursor: wait;
 }
@@ -404,4 +400,38 @@
 .activity-group--reverting {
   opacity: 0.45;
   transition: opacity var(--transition-fast);
+}
+
+/* ─── Phones ──────────────────────────────────────────────────────────────
+   The entry header was one flex row — action, actor, time — with the actor
+   the only child allowed to shrink: on a 390pt screen it read "A…" while the
+   action wrapped beside it. The action takes the first line; who and when
+   share the second. Same for a batch header. */
+@media (max-width: 768px) {
+  .change-card__header {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+
+  .change-card__action {
+    flex: 1 1 100%;
+  }
+
+  .change-card__actor {
+    margin-left: 0;
+    max-width: none;
+  }
+
+  .batch-header {
+    flex-wrap: wrap;
+    row-gap: var(--spacing-xs);
+  }
+
+  .batch-header__toggle {
+    flex: 1 1 100%;
+  }
+
+  .batch-header__actor {
+    max-width: none;
+  }
 }

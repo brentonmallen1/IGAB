@@ -13,6 +13,7 @@ import {
 import { useSavingsRateReport } from '../../../api/reports'
 import { useChartHeight } from '../../../hooks/useChartHeight'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { useMoneyAxis } from './useMoneyAxis'
 import { ReportErrorState } from '../ReportErrorState'
 import { ChartTooltip } from './ChartTooltip'
 import { COLOR_NEGATIVE, COLOR_NET, COLOR_NEUTRAL, COLOR_POSITIVE } from './chartColors'
@@ -32,6 +33,7 @@ const pct = (v: number | null) => (v === null ? '—' : `${(v * 100).toFixed(1)}
 export function SavingsRateReport({ budgetId }: Props) {
   const chartHeight = useChartHeight(320)
   const { formatMoney } = useFormatters()
+  const moneyAxis = useMoneyAxis()
   const months = useReportMonths()
   const [withDebt, setWithDebt] = useState(true)
   const { data, isLoading, isError, error, refetch } = useSavingsRateReport(budgetId, months)
@@ -138,9 +140,9 @@ export function SavingsRateReport({ budgetId }: Props) {
               <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
               <YAxis
                 yAxisId="money"
-                tickFormatter={(v) => formatMoney(v)}
+                tickFormatter={moneyAxis.tickFormatter}
                 tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
-                width={90}
+                width={moneyAxis.width}
               />
               <YAxis
                 yAxisId="rate"

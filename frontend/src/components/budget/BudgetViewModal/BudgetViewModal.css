@@ -1,53 +1,3 @@
-.view-editor-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--spacing-lg);
-  z-index: 100;
-}
-
-.view-editor {
-  width: 100%;
-  max-width: 640px;
-  max-height: var(--panel-max-h);
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-lg);
-  background: var(--bg-primary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
-  overflow: hidden;
-}
-
-.view-editor__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.view-editor__title {
-  font-size: var(--font-size-md);
-  font-weight: var(--font-weight-semibold);
-  color: var(--text-primary);
-}
-
-.view-editor__close {
-  display: inline-flex;
-  padding: 4px;
-  border-radius: var(--border-radius-sm);
-  color: var(--text-muted);
-  cursor: pointer;
-}
-
-.view-editor__close:hover {
-  color: var(--text-primary);
-  background: var(--bg-hover);
-}
-
 .view-editor__hint {
   margin: 0;
   color: var(--text-muted);
@@ -105,6 +55,37 @@
   background: var(--bg-secondary);
   color: var(--text-primary);
   font-size: var(--font-size-xs);
+}
+
+/* Reorder by button. Desktop has the drag and keeps the chip tidy; a touch
+   screen has no drag at all, so the arrows show there at the tap floor. */
+.view-editor__chip-move {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.view-editor__chip-move:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+@media (hover: none) {
+  .view-editor__chip-move {
+    display: inline-flex;
+    min-width: var(--tap-min);
+    min-height: var(--tap-min);
+  }
+
+  .view-editor__chip-remove {
+    min-width: var(--tap-min);
+    min-height: var(--tap-min);
+  }
 }
 
 .view-editor__chip-remove {
@@ -212,6 +193,7 @@
 }
 
 .view-editor__footer {
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -321,4 +303,11 @@
 .view-editor__section-hint {
   font-weight: 400;
   color: var(--text-muted);
+}
+
+/* The form is the dialog's scroll region's only child; it keeps the panel's old rhythm. */
+.view-editor__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
 }

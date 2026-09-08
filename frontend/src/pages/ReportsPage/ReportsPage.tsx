@@ -10,6 +10,9 @@ import {
   type TabGroup,
 } from '../../stores/reportStore'
 import { ReportFiltersBar } from '../../components/reports/ReportFilters/ReportFiltersBar'
+import { ReportsMobileChrome } from '../../components/reports/ReportsMobileChrome'
+import { PageHeader } from '../../components/common/PageHeader/PageHeader'
+import { useIsMobile } from '../../hooks/useMediaQuery'
 import { DrillDownPanel } from '../../components/reports/DrillDownPanel/DrillDownPanel'
 import { OverviewReport } from '../../components/reports/OverviewReport'
 import { EssentialsReport } from '../../components/reports/charts/EssentialsReport'
@@ -57,6 +60,7 @@ export function ReportsPage() {
   const setNavFavorites = useReportStore((s) => s.setNavFavorites)
   const { data: favorites } = useReportFavorites(budgetId)
   const setFavorites = useSetReportFavorites(budgetId)
+  const isMobile = useIsMobile()
 
   // Which row of reports to draw, and what the dropdown reads. `reportNav`
   // owns the rule that a starred report keeps its real group — see there.
@@ -197,6 +201,25 @@ export function ReportsPage() {
       case 'wishlist':
         return <WishlistDisciplineReport budgetId={budgetId!} />
     }
+  }
+
+  if (isMobile) {
+    // One row of chrome instead of up to seven bands — see ReportsMobileChrome.
+    return (
+      <div className="reports-page">
+        <PageHeader title="Reports" />
+        <ReportsMobileChrome
+          budgetId={budgetId}
+          starred={starred}
+          onToggleStar={handleToggleStar}
+          starPending={setFavorites.isPending}
+        />
+        <main className="reports-content">
+          {renderReport()}
+          <DrillDownPanel budgetId={budgetId} />
+        </main>
+      </div>
+    )
   }
 
   return (

@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAppStore } from '../../../stores/appStore'
-import { useToastUndoChange } from '../../../utils/toastUndo'
+import { useUndoToast } from '../../../utils/toastUndo'
 import { DeleteCategoryModal } from './DeleteCategoryModal'
 import {
   deletePreviewOptions,
@@ -32,7 +32,7 @@ import {
 export function useDeleteCategoryFlow(budgetId: string, onDeleted?: () => void) {
   const month = useAppStore((s) => s.selectedMonth)
   const [target, setTarget] = useState<DeleteTarget | null>(null)
-  const showUndo = useToastUndoChange(budgetId)
+  const notify = useUndoToast()
   const qc = useQueryClient()
   const deleteCategories = useDeleteCategories(budgetId)
   const inFlight = useRef(false)
@@ -49,7 +49,7 @@ export function useDeleteCategoryFlow(budgetId: string, onDeleted?: () => void) 
             moveTo: null,
             month,
           })
-          showUndo(result.change_id, `${t.name} deleted`)
+          notify(`${t.name} deleted`, result.change_id ? { change: result.change_id } : null)
           onDeleted?.()
           return
         }
@@ -62,7 +62,7 @@ export function useDeleteCategoryFlow(budgetId: string, onDeleted?: () => void) 
       }
       setTarget(t)
     },
-    [budgetId, month, qc, deleteCategories, showUndo, onDeleted]
+    [budgetId, month, qc, deleteCategories, notify, onDeleted]
   )
 
   const modal = target ? (
@@ -72,7 +72,7 @@ export function useDeleteCategoryFlow(budgetId: string, onDeleted?: () => void) 
       month={month}
       onClose={() => setTarget(null)}
       onDeleted={(changeId) => {
-        showUndo(changeId, `${target.name} deleted`)
+        notify(`${target.name} deleted`, changeId ? { change: changeId } : null)
         onDeleted?.()
       }}
     />

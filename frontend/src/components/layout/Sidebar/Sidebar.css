@@ -21,7 +21,7 @@
   position: relative;
   width: var(--sidebar-width);
   min-width: var(--sidebar-width);
-  height: 100dvh;
+  height: var(--app-h);
   background-color: var(--sidebar-bg);
   border-right: 1px solid var(--border-color);
   display: flex;

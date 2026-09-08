@@ -1,6 +1,6 @@
 .delete-category-modal__overlay {
   align-items: flex-start;
-  padding-top: 8vh;
+  padding-top: var(--modal-top-gap);
 }
 
 .delete-category-modal {

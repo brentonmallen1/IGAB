@@ -1,0 +1,69 @@
+/* Diagnostic overlay — pointer-transparent, never in a screenshot unless
+   someone turned it on. The toast layer: above every modal and sheet, and
+   not one of the "floating panel" layers overlayBounds.test.ts audits —
+   this is a full-bleed ruler with nothing to bound or scroll. */
+.viewport-ruler {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: var(--z-toast);
+}
+
+.viewport-ruler__line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: 2px dashed currentColor;
+}
+
+.viewport-ruler__line--negative {
+  color: var(--color-negative);
+}
+
+.viewport-ruler__line--accent {
+  color: var(--color-accent);
+}
+
+.viewport-ruler__line--warning {
+  color: var(--color-warning);
+}
+
+.viewport-ruler__line--positive {
+  color: var(--color-positive);
+}
+
+.viewport-ruler__label {
+  position: absolute;
+  right: var(--spacing-sm);
+  top: 2px;
+  padding: 1px 6px;
+  border-radius: var(--border-radius-sm);
+  background: currentColor;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+/* Inverted on the line's own colour: readable on any theme without a second
+   token per tone. */
+.viewport-ruler__line--negative .viewport-ruler__label,
+.viewport-ruler__line--accent .viewport-ruler__label,
+.viewport-ruler__line--warning .viewport-ruler__label,
+.viewport-ruler__line--positive .viewport-ruler__label {
+  color: var(--bg-primary);
+}
+
+.viewport-ruler__badge {
+  position: absolute;
+  left: var(--spacing-sm);
+  top: calc(var(--safe-top) + var(--spacing-sm));
+  padding: 2px 6px;
+  border-radius: var(--border-radius-sm);
+  background: var(--surface-overlay);
+  border: 1px solid var(--edge-strong);
+  color: var(--text-primary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}

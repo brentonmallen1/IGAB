@@ -120,6 +120,7 @@ export function NLEntryForm({ budgetId, onDraft, onNavigate, autoFocus = true }:
           ref={inputRef}
           className={`nl-form__input ${speech.interim ? 'nl-form__input--interim' : ''}`}
           type="text"
+          enterKeyHint="send"
           value={display}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {

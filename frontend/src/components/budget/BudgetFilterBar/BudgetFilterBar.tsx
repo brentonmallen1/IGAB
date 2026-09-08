@@ -1,5 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowUpDown, Funnel, Layers, ListFilter, Plus, Search, Settings2, X } from 'lucide-react'
+import { useIsMobile } from '../../../hooks/useMediaQuery'
+import {
+  ArrowUpDown,
+  Funnel,
+  Layers,
+  ListFilter,
+  Plus,
+  Search,
+  Settings2,
+  X,
+  Rows3,
+} from 'lucide-react'
 import { useBudgetFilters } from '../../../api/budgetFilters'
 import { useBudgetViews } from '../../../api/budgetViews'
 import { useUIStore, BUDGET_ROW_MODES } from '../../../stores/uiStore'
@@ -58,6 +69,8 @@ export function BudgetFilterBar({ budgetId, categoryBalances, barRef }: Props) {
   const setCategorySearch = useUIStore((s) => s.setCategorySearch)
 
   const [menuOpen, setMenuOpen] = useState(false)
+
+  const isMobile = useIsMobile()
   const menuAnchorRef = useRef<HTMLButtonElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
 
@@ -90,6 +103,17 @@ export function BudgetFilterBar({ budgetId, categoryBalances, barRef }: Props) {
   }
 
   function handleMenuSelect(id: string) {
+    // Row density lives in this menu on a phone (the segmented control is hidden
+
+    // there — see the stylesheet), so the bar holds two rows instead of three.
+
+    if (id.startsWith('density:')) {
+      setBudgetRowMode(id.slice('density:'.length) as (typeof BUDGET_ROW_MODES)[number]['value'])
+
+      setMenuOpen(false)
+
+      return
+    }
     if (id === 'new') openModal('filter')
     else if (id === 'manage') openModal('manage-filters')
     else if (id === 'new-view') openModal('view')
@@ -221,6 +245,7 @@ export function BudgetFilterBar({ budgetId, categoryBalances, barRef }: Props) {
           ref={searchRef}
           className="budget-filter-bar__search-input"
           type="text"
+          enterKeyHint="search"
           value={categorySearch}
           onChange={(e) => setCategorySearch(e.target.value)}
           onKeyDown={(e) => {
@@ -272,6 +297,16 @@ export function BudgetFilterBar({ budgetId, categoryBalances, barRef }: Props) {
         {menuOpen && (
           <ContextMenu
             items={[
+              ...(isMobile
+                ? [
+                    ...BUDGET_ROW_MODES.map((mode) => ({
+                      id: `density:${mode.value}`,
+                      label: `${mode.label} rows${budgetRowMode === mode.value ? ' ✓' : ''}`,
+                      icon: Rows3,
+                    })),
+                    { id: 'sep-density', label: '', separator: true },
+                  ]
+                : []),
               { id: 'new', label: 'New Filter', icon: Plus },
               { id: 'manage', label: 'Manage Filters', icon: Settings2 },
               // Views are a different axis from filters, so they sit below a

@@ -14,6 +14,7 @@ import { AlertTriangle, Calendar } from 'lucide-react'
 import { useCashProjectionReport } from '../../../api/reports'
 import { useChartHeight } from '../../../hooks/useChartHeight'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { useMoneyAxis } from './useMoneyAxis'
 import { ReportErrorState } from '../ReportErrorState'
 import { MetricCard } from '../MetricCard'
 import { MetricRow } from '../MetricRow'
@@ -31,6 +32,7 @@ export function CashProjectionReport({ budgetId }: Props) {
   const [horizon, setHorizon] = useState<(typeof HORIZON_OPTIONS)[number]>(90)
   const { data, isLoading, isError, error, refetch } = useCashProjectionReport(budgetId, horizon)
   const { formatMoney, formatDate, settings } = useFormatters()
+  const moneyAxis = useMoneyAxis()
 
   const formatShortDate = useCallback(
     (dateStr: string) => {
@@ -145,9 +147,9 @@ export function CashProjectionReport({ budgetId }: Props) {
               interval={Math.floor(chartData.length / 8)}
             />
             <YAxis
-              tickFormatter={(v) => formatMoney(v)}
+              tickFormatter={moneyAxis.tickFormatter}
               tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
-              width={80}
+              width={moneyAxis.width}
             />
             {goesNegativeDate && (
               <ReferenceLine y={0} stroke="var(--color-negative)" strokeWidth={1} />

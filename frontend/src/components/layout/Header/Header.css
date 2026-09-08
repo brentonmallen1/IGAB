@@ -198,6 +198,26 @@
 }
 
 @media (max-width: 768px) {
+  /* Two things on a phone: the month nav (budget route) and search. The
+     search sits at the right edge and the month label takes what is left,
+     so it never truncates. */
+  .header__palette-wrap {
+    flex: 0 0 auto;
+    margin-left: auto;
+  }
+
+  .header__month-nav,
+  .header__page-slot {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+  }
+
+  .header__month-label {
+    flex: 1;
+  }
+
   /* Icon-only palette trigger — search stays reachable without the wide bar */
   .header__palette-btn {
     min-width: 0;

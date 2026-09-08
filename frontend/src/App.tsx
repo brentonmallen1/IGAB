@@ -5,6 +5,7 @@ import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom
 import { FormatProvider } from './contexts/FormatContext'
 import { MainLayout } from './components/layout/MainLayout/MainLayout'
 import { UpdateToast } from './components/pwa/UpdateToast'
+import { ViewportRuler } from './components/pwa/ViewportRuler'
 import { useIsMobile } from './hooks/useMediaQuery'
 import { useAppViewport } from './hooks/useAppViewport'
 import { ConfirmHost } from './components/common/ConfirmSheet/ConfirmHost'
@@ -131,7 +132,9 @@ function AppToaster() {
         // them is visible but impossible to press. --vv-top additionally keeps
         // it on the visible viewport when the keyboard shifts things.
         top: 'calc(var(--vv-top) + var(--safe-top) + var(--spacing-sm))',
-        bottom: 'calc(var(--nav-h) + var(--safe-bottom) + var(--spacing-sm))',
+        // --nav-h includes the home-indicator inset on phones and is 0 on
+        // desktop, where the inset alone (an iPad in a tab, say) still applies.
+        bottom: 'calc(max(var(--nav-h), var(--safe-bottom)) + var(--spacing-sm))',
         left: 'calc(var(--safe-left) + var(--spacing-sm))',
         right: 'calc(var(--safe-right) + var(--spacing-sm))',
       }}
@@ -165,6 +168,7 @@ function App() {
       <FormatProvider>
         <AppToaster />
         <UpdateToast />
+        <ViewportRuler />
         {/* Above the router: LoginPage and BudgetSelectorPage render outside
             MainLayout, and confirmAsync() must resolve for them too — an
             unrendered host leaves the caller awaiting forever. */}

@@ -32,7 +32,7 @@ vi.mock('../../../api/categories', async () => {
     useDeleteCategories: () => ({ mutateAsync: deleteMutate, isPending: false }),
   }
 })
-vi.mock('../../../utils/toastUndo', () => ({ useToastUndoChange: () => showUndo }))
+vi.mock('../../../utils/toastUndo', () => ({ useUndoToast: () => showUndo }))
 vi.mock('./DeleteCategoryModal', () => ({
   DeleteCategoryModal: () => <div data-testid="delete-dialog" />,
 }))
@@ -91,7 +91,7 @@ describe('useDeleteCategoryFlow', () => {
     await userEvent.click(screen.getByText('go'))
 
     await waitFor(() => expect(deleteMutate).toHaveBeenCalled())
-    expect(showUndo).toHaveBeenCalledWith('chg-9', 'Empty deleted')
+    expect(showUndo).toHaveBeenCalledWith('Empty deleted', { change: 'chg-9' })
     expect(screen.queryByTestId('delete-dialog')).not.toBeInTheDocument()
   })
 

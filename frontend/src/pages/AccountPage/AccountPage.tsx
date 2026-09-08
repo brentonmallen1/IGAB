@@ -11,6 +11,8 @@ import {
   Telescope,
   Upload,
   Wallet,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { CsvImportDialog } from '../../components/imports/CsvImportDialog/CsvImportDialog'
@@ -32,6 +34,8 @@ import { useFormatters } from '../../hooks/useFormatters'
 import './AccountPage.css'
 import { Pill } from '../../components/common/Pill/Pill'
 import { Surface } from '../../components/common/Surface'
+import { PageHeader } from '../../components/common/PageHeader/PageHeader'
+import { useIsMobile } from '../../hooks/useMediaQuery'
 
 function formatReconcileAge(lastReconciledAt: string | null): string {
   if (!lastReconciledAt) return 'Never reconciled'
@@ -44,6 +48,7 @@ function formatReconcileAge(lastReconciledAt: string | null): string {
 
 export function AccountPage() {
   const { formatMoney, formatDate } = useFormatters()
+  const isMobile = useIsMobile()
   const { accountId } = useParams<{ accountId: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
   const highlightId = searchParams.get('highlight')
@@ -81,6 +86,7 @@ export function AccountPage() {
   const { data: pendingMatches = [] } = usePendingMatches(budgetId)
   const [showMatchModal, setShowMatchModal] = useState(false)
   const [showCsvImport, setShowCsvImport] = useState(false)
+  const [balancesOpen, setBalancesOpen] = useState(false)
 
   // The modal asks the opening question; once a statement balance is set the
   // floating bar takes over and tracks the difference live.
@@ -136,55 +142,84 @@ export function AccountPage() {
         {/* Left: Account identity + balances stacked */}
         <div className="account-page__header-left">
           <div className="account-page__identity">
-            <h1 className="account-page__name">{account.name}</h1>
-            <div className="account-page__status-row">
-              {account.on_budget ? (
-                <Pill
-                  tone="outline"
-                  title="On budget — spending here comes out of your envelope categories"
-                >
-                  <Wallet size={12} />
-                  On budget
-                </Pill>
-              ) : (
-                <Pill
-                  tone="outline"
-                  title="Tracking — counted in net worth only; transactions here don't need categories"
-                >
-                  <Telescope size={12} />
-                  Tracking
-                </Pill>
-              )}
-              {isConnected && (
-                <Pill tone="positive">
-                  <LinkIcon size={12} />
-                  Connected
-                </Pill>
-              )}
-              <Pill tone="outline">
-                <Lock size={12} />
-                {formatReconcileAge(account.last_reconciled_at)}
-              </Pill>
-              {/* Rows before this date are deliberately not flagged as needing
+            {/* The name goes to the app header on a phone, with a back chevron
+                to Accounts; the pills stay as the page's own first line. */}
+            <PageHeader
+              title={account.name}
+              back
+              className="account-page__name-header"
+              meta={
+                <div className="account-page__status-row">
+                  {account.on_budget ? (
+                    <Pill
+                      tone="outline"
+                      title="On budget — spending here comes out of your envelope categories"
+                    >
+                      <Wallet size={12} />
+                      On budget
+                    </Pill>
+                  ) : (
+                    <Pill
+                      tone="outline"
+                      title="Tracking — counted in net worth only; transactions here don't need categories"
+                    >
+                      <Telescope size={12} />
+                      Tracking
+                    </Pill>
+                  )}
+                  {isConnected && (
+                    <Pill tone="positive">
+                      <LinkIcon size={12} />
+                      Connected
+                    </Pill>
+                  )}
+                  <Pill tone="outline">
+                    <Lock size={12} />
+                    {formatReconcileAge(account.last_reconciled_at)}
+                  </Pill>
+                  {/* Rows before this date are deliberately not flagged as needing
                   a category, so the date has to be visible somewhere. An
                   unexplained absence of nagging is as confusing as the nagging
                   it replaced. */}
-              {account.budget_start_date && (
-                <Pill
-                  tone="outline"
-                  title={
-                    'Anything before this date is opening balance: kept in the register, left ' +
-                    'uncategorized on purpose, and not counted as needing a category. On a card ' +
-                    'it shows as Uncovered and is paid down by assigning to the card.'
-                  }
-                >
-                  <CalendarClock size={12} />
-                  Budget starts {formatDate(account.budget_start_date)}
-                </Pill>
-              )}
-            </div>
+                  {account.budget_start_date && (
+                    <Pill
+                      tone="outline"
+                      title={
+                        'Anything before this date is opening balance: kept in the register, left ' +
+                        'uncategorized on purpose, and not counted as needing a category. On a card ' +
+                        'it shows as Uncovered and is paid down by assigning to the card.'
+                      }
+                    >
+                      <CalendarClock size={12} />
+                      Budget starts {formatDate(account.budget_start_date)}
+                    </Pill>
+                  )}
+                </div>
+              }
+            />
           </div>
-          <div className="account-page__balances">
+          {/* Three figures on a desktop; on a phone the working balance alone,
+              with the equation behind a caret — a 200px header on a 390pt
+              screen left the register one row tall. */}
+          {isMobile && (
+            <button
+              type="button"
+              className="account-page__balances-toggle"
+              onClick={() => setBalancesOpen((v) => !v)}
+              aria-expanded={balancesOpen}
+              aria-controls="account-balances"
+            >
+              <span className={`account-page__balance-value ${workingClass}`}>
+                {formatMoney(account.balance)}
+              </span>
+              <span className="account-page__balance-label">Working balance</span>
+              {balancesOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            </button>
+          )}
+          <div
+            id="account-balances"
+            className={`account-page__balances ${isMobile && !balancesOpen ? 'account-page__balances--collapsed' : ''}`}
+          >
             <div className="account-page__balance-item">
               <span className={`account-page__balance-value ${clearedClass}`}>
                 {formatMoney(account.cleared_balance)}
@@ -298,39 +333,43 @@ export function AccountPage() {
 
       {showReconcileBar && accountId && <ReconcileStatusBar accountId={accountId} />}
 
-      {/* A debt account has APR and a minimum payment whether or not anyone has
+      {/* Everything the page wants to say before the register, as one stack
+          with one rhythm — terms, a review count, possible duplicates. */}
+      <div className="account-page__notices">
+        {/* A debt account has APR and a minimum payment whether or not anyone has
           entered them, so the page has a place for them either way. Cards get
           the same header loans do — one pattern, no "add your APR" banner. */}
-      {account.classification === 'liability' && budgetId && accountId && (
-        <LiabilityTermsHeader
-          budgetId={budgetId}
-          accountId={accountId}
-          isLoan={!account.on_budget}
-        />
-      )}
+        {account.classification === 'liability' && budgetId && accountId && (
+          <LiabilityTermsHeader
+            budgetId={budgetId}
+            accountId={accountId}
+            isLoan={!account.on_budget}
+          />
+        )}
 
-      {!isReconcilingHere && budgetId && (
-        <PendingReviewBanner
-          budgetId={budgetId}
-          accountId={accountId ?? undefined}
-          onView={setTransactionSearch}
-        />
-      )}
+        {!isReconcilingHere && budgetId && (
+          <PendingReviewBanner
+            budgetId={budgetId}
+            accountId={accountId ?? undefined}
+            onView={setTransactionSearch}
+          />
+        )}
 
-      {pendingMatches.length > 0 && (
-        <div className="account-page__match-banner">
-          <span>
-            {pendingMatches.length} possible duplicate{pendingMatches.length !== 1 ? 's' : ''} found
-            — may match a manually entered transaction
-          </span>
-          <button
-            className="account-page__match-btn account-page__match-btn--review"
-            onClick={() => setShowMatchModal(true)}
-          >
-            Review
-          </button>
-        </div>
-      )}
+        {pendingMatches.length > 0 && (
+          <div className="account-page__match-banner">
+            <span>
+              {pendingMatches.length} possible duplicate{pendingMatches.length !== 1 ? 's' : ''}{' '}
+              found — may match a manually entered transaction
+            </span>
+            <button
+              className="account-page__match-btn account-page__match-btn--review"
+              onClick={() => setShowMatchModal(true)}
+            >
+              Review
+            </button>
+          </div>
+        )}
+      </div>
 
       {showMatchModal && pendingMatches.length > 0 && (
         <MatchReviewModal

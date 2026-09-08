@@ -56,7 +56,7 @@ import { Modal } from '../../common/Modal/Modal'
 import { isConfigFailure, scanFailureReason } from './scanFailure'
 import { sectionHref } from '../../../pages/SettingsPage/settingsSections'
 import { today } from '../../../utils/dates'
-import { useToastUndo } from '../../../utils/toastUndo'
+import { useUndoToast } from '../../../utils/toastUndo'
 import { fromCents, parseApiDecimal, toCents } from '../../../utils/money'
 import { expressionToCents, parseAmountExpressionInput } from '../../../utils/amountExpression'
 import { checkSplit, draftsFromLines } from '../../../utils/splits'
@@ -117,7 +117,7 @@ export function TransactionEditor({
   const updateTxn = useUpdateTransaction(budgetId)
   const deleteTxn = useDeleteTransaction(budgetId)
   // accountId for undo resolved after hooks; toastUndo called with final value
-  const showUndo = useToastUndo(budgetId)
+  const notify = useUndoToast()
   const convertToSplit = useConvertToSplit(budgetId)
   const replaceSplits = useReplaceSplits(budgetId)
   const suggestCategory = useSuggestCategory(budgetId)
@@ -586,7 +586,7 @@ export function TransactionEditor({
     try {
       const { batchId } = await deleteTxn.mutateAsync({ id: transaction.id, accountId })
       onClose()
-      showUndo(batchId, 'Transaction deleted')
+      notify('Transaction deleted', batchId ? { batch: batchId } : null)
     } catch (err) {
       toast.error(apiErrorMessage(err, 'Could not delete'))
     }
@@ -1278,7 +1278,7 @@ export function TransactionEditor({
                   Receipts & attachments
                   {showAttachments ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
                 </button>
-                {showAttachments && <AttachmentPanel transactionId={transaction.id} embedded />}
+                {showAttachments && <AttachmentPanel transactionId={transaction.id} />}
               </div>
             )}
 

@@ -6,7 +6,7 @@ import { useFocusTrap } from '../../../hooks/useFocusTrap'
 import { lockBodyScroll, unlockBodyScroll } from '../../../utils/scrollLock'
 import { isTopOverlay, popOverlay, pushOverlay } from '../../../utils/overlayStack'
 import { hapticTick } from '../../../utils/haptics'
-import { shouldDismissDrag } from './dismissDrag'
+import { shouldDismissDrag } from '../../../utils/gestures'
 import './BottomSheet.css'
 import { prefersReducedMotion } from '../../../utils/motion'
 
@@ -231,18 +231,20 @@ function BottomSheetPanel({
           {draggable && <div className="bottom-sheet__handle" aria-hidden />}
           {/* Omitted entirely for a handle-only sheet, which would otherwise
               reserve a tap-target's worth of empty header. */}
+          {/* Wherever there is a bar there is a close button, draggable or
+              not. A drag handle is a gesture, not a visible exit: the More
+              sheet had only the handle and the backdrop, and an installed PWA
+              has no back gesture — the only way out was to know the trick. */}
           {(!draggable || title) && (
             <div className="bottom-sheet__bar">
-              {!draggable && (
-                <button
-                  type="button"
-                  className="bottom-sheet__close"
-                  onClick={() => requestClose()}
-                  aria-label={closeLabel}
-                >
-                  <X size={20} />
-                </button>
-              )}
+              <button
+                type="button"
+                className="bottom-sheet__close"
+                onClick={() => requestClose()}
+                aria-label={closeLabel}
+              >
+                <X size={20} />
+              </button>
               {title && <div className="bottom-sheet__title">{title}</div>}
             </div>
           )}

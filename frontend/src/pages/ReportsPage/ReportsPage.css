@@ -203,6 +203,12 @@
     color 0.12s;
 }
 
+@media (max-width: 768px) {
+  .reports-nav__tab {
+    min-height: var(--tap-min);
+  }
+}
+
 .reports-nav__tab:hover {
   background: var(--bg-secondary);
   color: var(--text-primary);
@@ -828,11 +834,34 @@
     flex-wrap: wrap;
   }
 
-  /* Wide tables scroll within their card instead of pushing the page sideways */
+  /* Wide tables scroll within their card instead of pushing the page
+     sideways — and say so: a shadow at the right edge while there is more,
+     painted by the classic local/scroll background pair, gone at the end. */
   .report-table {
     display: block;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+    background:
+      linear-gradient(to left, var(--surface-raised) 30%, transparent) right / 40px 100% no-repeat,
+      linear-gradient(
+          to left,
+          color-mix(in srgb, var(--text-primary) 14%, transparent),
+          transparent
+        )
+        right / 18px 100% no-repeat;
+    background-attachment: local, scroll;
+  }
+
+  /* A report header's own row of controls (a select, a toggle) wraps rather
+     than running past the card — the sweep's last overflow outside the nav. */
+  .report-section__header .flex-row {
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+
+  /* The desktop nav (group dropdown + tab strip) yields to the phone chrome. */
+  .reports-nav {
+    display: none;
   }
 }
 
