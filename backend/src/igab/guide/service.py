@@ -49,6 +49,7 @@ from igab.guide.scenarios import (
     pay_vs_save,
     payoff_plan,
 )
+from igab.repositories.category_filters import IS_ASSIGNABLE, LIVE_CATEGORY
 from igab.repositories.category_repo import CategoryGroupRepository
 from igab.repositories.liability_repo import LiabilityRepository
 from igab.repositories.target_repo import TargetRepository
@@ -516,14 +517,16 @@ class GuideService:
         out: dict[str, list[dict]] = {}
 
         if "category" in concept.binds_to:
+            # `IS_ASSIGNABLE` is the app's one answer to "what may a picker
+            # offer", and this had spelled its own: deleted and archived only.
+            # That let through every category in an ARCHIVED GROUP, every
+            # income and internal category, and every card set-aside envelope —
+            # so "How we got this" opened on a list of what looked like every
+            # category the budget had ever had.
             rows = (
                 await self.session.execute(
                     select(Category.id, Category.name)
-                    .where(
-                        Category.budget_id == budget_id,
-                        Category.is_deleted == False,  # noqa: E712
-                        Category.is_archived == False,  # noqa: E712
-                    )
+                    .where(Category.budget_id == budget_id, LIVE_CATEGORY, IS_ASSIGNABLE)
                     .order_by(Category.name)
                 )
             ).all()

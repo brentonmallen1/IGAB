@@ -12,6 +12,7 @@ import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ReportNotes } from '../ReportNotes'
 import type { CostOfLivingGroup } from '../../../types'
 import { chartColor } from './chartColors'
+import { chartSeries, rolledUpCount } from './costOfLivingChart'
 import { ReportRangeSelect } from './rangeSelect'
 
 interface Props {
@@ -71,11 +72,17 @@ export function CostOfLivingReport({ budgetId }: Props) {
     })
   }
 
+  // What the stack draws: every group while they fit, otherwise the big ones
+  // plus one "Other" carrying the rest — so the bars still total what the
+  // table says and the legend stays a fixed length. The table below is
+  // untouched and remains the place to read the detail.
+  const series = chartSeries(data.groups)
+  const rolled = rolledUpCount(data.groups)
   const chartData = data.months.map((monthStr, idx) => {
     const entry: Record<string, string | number> = {
       month: new Date(monthStr).toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
     }
-    for (const g of data.groups) entry[g.group_name] = g.monthly_amounts[idx] ?? 0
+    for (const g of series) entry[g.group_name] = g.monthly_amounts[idx] ?? 0
     return entry
   })
 
@@ -172,7 +179,7 @@ export function CostOfLivingReport({ budgetId }: Props) {
                   tickLine={false}
                 />
                 <Legend />
-                {data.groups.slice(0, 8).map((g, idx) => (
+                {series.map((g, idx) => (
                   <Bar
                     key={g.group_name}
                     dataKey={g.group_name}
@@ -183,6 +190,14 @@ export function CostOfLivingReport({ budgetId }: Props) {
               </BarChart>
             </ResponsiveContainer>
           </div>
+
+          {rolled > 0 && (
+            <p className="reports-note">
+              The chart stacks the largest groups and gathers the remaining {rolled} into{' '}
+              <strong>Other</strong>, so the bars still total the month. Every group is listed
+              below.
+            </p>
+          )}
 
           <table className="report-table">
             <caption className="sr-only">Essential spending by category group</caption>

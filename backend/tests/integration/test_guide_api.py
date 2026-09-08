@@ -362,6 +362,35 @@ class TestCandidates:
         ).json()
         assert set(debt["options"]) == {"liability"}
 
+    async def test_offers_only_categories_still_on_the_budget(self, db_session, api_client):
+        """ "How we got this" opened on what looked like every category ever.
+
+        It spelled its own offering rule — deleted and archived only — so an
+        archived GROUP, the system groups and a card's set-aside envelope all
+        came through. `IS_ASSIGNABLE` is the app's one answer to what a picker
+        may offer, and this reads it now.
+        """
+        budget = await _budget(db_session, api_client)
+        live_group = await create_category_group(db_session, budget, "Bills")
+        await create_category(db_session, budget, live_group, "Rent")
+
+        archived_cat = await create_category(db_session, budget, live_group, "Landline")
+        archived_cat.is_archived = True
+
+        shelved = await create_category_group(db_session, budget, "Old")
+        shelved.is_archived = True
+        await create_category(db_session, budget, shelved, "Storage Unit")
+
+        system = await create_category_group(db_session, budget, "Internal", is_system=True)
+        await create_category(db_session, budget, system, "Ready to Assign")
+        await db_session.flush()
+
+        body = (
+            await api_client.get(f"/api/v1/{budget.id}/guide/candidates/essential_expenses")
+        ).json()
+        names = [c["name"] for c in body["options"]["category"]]
+        assert names == ["Rent"], names
+
 
 class TestPreferencesAndProgress:
     async def test_turning_personalization_off_also_turns_off_the_checkup(

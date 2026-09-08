@@ -35,7 +35,11 @@ from igab.domain.activity_class import (
     apply_class_joins,
 )
 from igab.repositories.base import BaseRepository
-from igab.repositories.category_filters import IS_CATEGORIZABLE
+from igab.repositories.category_filters import (
+    IS_CATEGORIZABLE,
+    LIVE_CATEGORY,
+    NOT_ARCHIVED_ANYWHERE,
+)
 from igab.repositories.txn_filters import (
     AI_NEEDS_REVIEW,
     BALANCE_ROW,
@@ -1188,6 +1192,53 @@ class TransactionRepository(BaseRepository[Transaction]):
             )
         ).scalar_one()
         return Decimal(total), basis
+
+    async def essential_tagged_categories(self, budget_id: uuid.UUID) -> list:
+        """(id, name, group_name) for every category tagged Essential that is
+        still on the budget.
+
+        The reports built on `essential_spend_by_category_month` are built from
+        TRANSACTION rows, so a tagged category that has not been spent in the
+        window produces no row and vanishes from the list entirely. Sorted by
+        total, the survivors look exactly like a top-N — "I tagged 8 and the
+        report shows 5, and the total only adds up those 5". It was adding up
+        all of them; three of them were nothing.
+
+        A category with no spending is a real answer to "what does a lean month
+        cost": it costs nothing this window, which is different from not being
+        essential, and different again from being missing. So the list is
+        seeded from here and the rows fill it in.
+
+        `NOT_ARCHIVED_ANYWHERE` rather than `Category.is_archived`: a live
+        category inside an archived group is off the budget too, and it is the
+        half that gets forgotten.
+        """
+        tagged = select(category_tags.c.category_id).where(
+            category_tags.c.tag_id.in_(
+                select(Tag.id).where(
+                    Tag.budget_id == budget_id,
+                    Tag.system_key == "essential",
+                    Tag.is_deleted == False,  # noqa: E712
+                )
+            )
+        )
+        q = (
+            select(
+                Category.id,
+                Category.name,
+                CategoryGroup.name.label("group_name"),
+            )
+            .select_from(Category)
+            .outerjoin(CategoryGroup, CategoryGroup.id == Category.category_group_id)
+            .where(
+                Category.budget_id == budget_id,
+                Category.id.in_(tagged),
+                LIVE_CATEGORY,
+                NOT_ARCHIVED_ANYWHERE,
+            )
+            .order_by(Category.name)
+        )
+        return list((await self.session.execute(q)).all())
 
     async def essential_spend_by_category_month(
         self,
