@@ -510,7 +510,21 @@ async def run_retention_cleanup(session: AsyncSession) -> list[uuid.UUID]:
     if days <= 0:
         return []
     cutoff = datetime.now(UTC) - timedelta(days=days)
+    # The heavy half of the model-call log ages out on the same setting, and
+    # for the same reason. The light `ai_calls` row stays: "this call happened,
+    # and it failed" is worth keeping long after the prompt is not.
+    await prune_call_payloads(session, cutoff)
     return await AIJobRepository(session).delete_finished_before(cutoff)
+
+
+async def prune_call_payloads(session: AsyncSession, cutoff: datetime) -> int:
+    """Drop stored prompts and responses older than the cutoff."""
+    from sqlalchemy import delete
+
+    from igab.db.models import AICallPayload
+
+    result = await session.execute(delete(AICallPayload).where(AICallPayload.created_at < cutoff))
+    return int(getattr(result, "rowcount", 0) or 0)
 
 
 async def cleanup_old_jobs() -> None:

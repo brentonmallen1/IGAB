@@ -35,6 +35,12 @@ DEFAULTS: dict[str, str] = {
     # their attachments are never touched — only the log rows and any
     # job-owned staging files.
     "ai_activity_retention_days": "30",
+    # Optional model for the chat panel. Empty means "use ollama_model". The
+    # chat model needs the `tools` capability the way the vision model needs
+    # `vision`, so it gets its own override for the same reason.
+    "ollama_chat_model": "",
+    # Chat with a tool loop is several round trips, not one completion.
+    "ai_chat_timeout_s": "120",
     **DEFAULT_PROMPTS,
 }
 

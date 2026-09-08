@@ -5,6 +5,7 @@ from igab.api.v1 import (
     account_types,
     accounts,
     ai,
+    ai_chat,
     ai_jobs,
     assets,
     attachments,
@@ -56,6 +57,7 @@ api_router.include_router(guide.router, tags=["guide"])
 api_router.include_router(wishlist.router, tags=["wishlist"])
 api_router.include_router(ai.router, tags=["ai"])
 api_router.include_router(ai_jobs.router, tags=["ai-jobs"])
+api_router.include_router(ai_chat.router, tags=["ai-chat"])
 api_router.include_router(simplefin.router, tags=["simplefin"])
 api_router.include_router(scheduled_transactions.router, tags=["scheduled-transactions"])
 api_router.include_router(reconciliation.router, tags=["reconciliation"])

@@ -16,6 +16,7 @@ PROMPT_PLACEHOLDERS: dict[str, list[str]] = {
     "ai_prompt_nl_parse": ["{text}", "{categories}", "{today}"],
     "ai_prompt_suggest_category": ["{payee_name}", "{amount}", "{memo}", "{categories}"],
     "ai_prompt_suggest_regex": ["{names}"],
+    "ai_prompt_chat_system": ["{today}", "{page_context}"],
 }
 
 DEFAULT_PROMPTS: dict[str, str] = {
@@ -147,3 +148,11 @@ def render_prompt(template: str, values: dict[str, str]) -> str:
     for key, value in values.items():
         out = out.replace("{" + key + "}", value)
     return out
+
+
+# Appended rather than inlined above: the chat prompt is long, and it is the
+# one prompt whose text is a behaviour contract rather than an instruction for
+# a single extraction.
+from igab.ai.prompts import CHAT_SYSTEM_PROMPT  # noqa: E402
+
+DEFAULT_PROMPTS["ai_prompt_chat_system"] = CHAT_SYSTEM_PROMPT

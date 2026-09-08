@@ -53,6 +53,45 @@ class OllamaClient:
             self.last_meta = {key: body[key] for key in _META_KEYS if key in body}
             return body["response"]
 
+    async def chat(
+        self,
+        messages: list[dict],
+        *,
+        tools: list[dict] | None = None,
+        think: bool | None = None,
+        options: dict | None = None,
+        timeout: float = 120.0,
+    ) -> dict:
+        """Call /api/chat and return the whole response body.
+
+        A separate method rather than a flag on `generate`: that one posts to
+        a different endpoint, hardcodes `stream: False`, and returns a string.
+        This returns the body because the caller needs `message.tool_calls`
+        alongside the text, and the token counts beside both.
+
+        Non-streaming on purpose. A tool round trip has nothing to show until
+        the model has decided which tool to call, and the chat endpoint streams
+        its own typed events rather than passing tokens straight through.
+        """
+        payload: dict = {"model": self.model, "messages": messages, "stream": False}
+        if tools:
+            payload["tools"] = tools
+        if think is not None:
+            payload["think"] = think
+        if options:
+            payload["options"] = options
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.post(f"{self.host}/api/chat", json=payload)
+            resp.raise_for_status()
+            body = resp.json()
+            self.last_meta = {key: body[key] for key in _META_KEYS if key in body}
+            message = body.get("message") or {}
+            # Ollama puts a thinking model's reasoning on the message, not at
+            # the top level as /api/generate does.
+            if message.get("thinking"):
+                self.last_meta["thinking"] = message["thinking"]
+            return body
+
     async def show(self, model: str | None = None) -> dict:
         """Call /api/show for model metadata. Returns {} when unavailable.
 
