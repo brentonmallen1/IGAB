@@ -380,7 +380,12 @@ function NeedsApprovalSection({ budgetId }: { budgetId: string }) {
   const { data: counts } = useAIJobCounts(budgetId)
 
   const jobs = data?.jobs ?? []
-  const waiting = counts?.needsReview ?? 0
+  // Falls back to what is on screen rather than to zero. The counts query is
+  // gated on the AI being *enabled*, so a budget with unapproved AI rows and
+  // the feature since switched off has rows here and no served number — and a
+  // heading reading 0 over a list of four is the failure this section exists
+  // to avoid, pointed the other way.
+  const waiting = counts?.needsReview ?? jobs.length
   // Deliberate, bounded divergence, said out loud rather than hidden.
   //
   // The badge counts TRANSACTIONS; this lists JOBS. "Remove from log" deletes
