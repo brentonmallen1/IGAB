@@ -296,6 +296,31 @@
   }
 }
 
+/* Touch density for the header actions and the match banner: 28px icon
+   buttons and a 22px accept/reject pair were the smallest targets on the
+   page, and the banner did not wrap, so a long match sentence pushed its
+   buttons off the right edge. */
+@media (max-width: 768px) {
+  .account-page__action-btn {
+    min-width: var(--tap-min);
+    min-height: var(--tap-min);
+  }
+
+  .account-page__match-banner {
+    flex-wrap: wrap;
+  }
+
+  .account-page__match-actions {
+    flex-wrap: wrap;
+  }
+
+  .account-page__match-btn {
+    min-height: var(--tap-min);
+    padding-left: var(--spacing-md);
+    padding-right: var(--spacing-md);
+  }
+}
+
 /* The pending total, stated below the balance partition rather than inside
    it — see the comment at its render site. Muted and small: it is context for
    the register, not a fourth balance competing with the three above. */

@@ -173,9 +173,12 @@
   font-size: 16px;
 }
 
-/* Chips take the middle of the date row; the native picker keeps its intrinsic width */
+/* Chips take the middle of the date row; the native picker keeps its
+   intrinsic width where there is room and shrinks where there is not — at
+   390px it ran 30px past the row and the year was cut off. */
 .quick-add__row--date input {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
   margin-left: auto;
 }
 

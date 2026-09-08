@@ -203,6 +203,12 @@
     color 0.12s;
 }
 
+@media (max-width: 768px) {
+  .reports-nav__tab {
+    min-height: var(--tap-min);
+  }
+}
+
 .reports-nav__tab:hover {
   background: var(--bg-secondary);
   color: var(--text-primary);

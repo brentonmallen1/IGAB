@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Plus, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, X } from 'lucide-react'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
 import { renderableCategories, renderableGroups } from '../budgetGroups'
 import {
@@ -302,7 +302,7 @@ function ViewEditor({
         <div className="view-editor__section-title">
           Groups in this view
           {groupNames.length > 1 && (
-            <span className="view-editor__section-hint"> — drag to reorder</span>
+            <span className="view-editor__section-hint"> — drag or use the arrows to reorder</span>
           )}
         </div>
         <div className="view-editor__groups">
@@ -355,6 +355,29 @@ function ViewEditor({
                 aria-label={`Rename group ${g}`}
                 maxLength={100}
               />
+              {/* Native HTML5 drag never fires on a touch screen. The same
+                  moveBy the drag uses, as buttons — the ManageFiltersModal
+                  pattern — shown where there is no pointer. */}
+              <button
+                type="button"
+                className="view-editor__chip-move"
+                onClick={() => drag.moveBy(index, -1)}
+                disabled={index === 0}
+                aria-label={`Move group ${g} earlier`}
+                title="Move earlier"
+              >
+                <ChevronLeft size={11} />
+              </button>
+              <button
+                type="button"
+                className="view-editor__chip-move"
+                onClick={() => drag.moveBy(index, 1)}
+                disabled={index === groupNames.length - 1}
+                aria-label={`Move group ${g} later`}
+                title="Move later"
+              >
+                <ChevronRight size={11} />
+              </button>
               <button
                 type="button"
                 onClick={() => removeGroup(g)}

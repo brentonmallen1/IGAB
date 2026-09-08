@@ -77,7 +77,11 @@ html[data-keyboard="open"] .bottom-sheet {
    button is present. */
 .bottom-sheet__bar {
   display: grid;
-  grid-template-columns: var(--tap-min) 1fr var(--tap-min);
+  /* The outer tracks include the close button's inset margin, so the
+     title's track starts where the button ends rather than 4px inside it. */
+  grid-template-columns: calc(var(--tap-min) + var(--spacing-xs)) 1fr calc(
+      var(--tap-min) + var(--spacing-xs)
+    );
   align-items: center;
   min-height: var(--tap-min);
   padding-top: var(--spacing-xs);

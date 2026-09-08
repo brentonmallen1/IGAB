@@ -714,3 +714,41 @@
   color: var(--text-muted);
   line-height: 1.45;
 }
+
+/* ── Phones ──────────────────────────────────────────────────────────────────
+   250px of fixed columns plus a badge column that never wraps left the
+   account name — the one thing the person is deciding about — a few pixels
+   wide on a 390pt screen. This is the first-run flow; it restacks: the
+   name across the top, the disposition and type pickers under it, the
+   on-budget toggle on its own line. */
+@media (max-width: 768px) {
+  .ynab-mapping__row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      "name name"
+      "disposition type"
+      "toggle toggle";
+    row-gap: var(--spacing-xs);
+    padding: var(--spacing-sm) var(--spacing-xs);
+  }
+
+  .ynab-mapping__disposition {
+    grid-area: disposition;
+    min-height: var(--tap-min);
+  }
+
+  .ynab-mapping__name {
+    grid-area: name;
+    flex-wrap: wrap;
+  }
+
+  .ynab-mapping__type {
+    grid-area: type;
+    min-height: var(--tap-min);
+  }
+
+  .ynab-mapping__budget-toggle {
+    grid-area: toggle;
+    min-height: var(--tap-min);
+  }
+}

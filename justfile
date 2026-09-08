@@ -34,7 +34,7 @@ dev-frontend:
 
 # Phone-width screenshot sweep with geometry checks (needs the dev stack + IGAB_USER/IGAB_PASS)
 mobile-sweep *ARGS:
-    cd frontend && node ../scripts/mobile-sweep.mjs {{ARGS}}
+    cd frontend && node scripts/mobile-sweep.mjs {{ARGS}}
 
 # Run Alembic migrations against the local database
 dev-migrate:

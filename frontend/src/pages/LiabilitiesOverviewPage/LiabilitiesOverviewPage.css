@@ -206,3 +206,12 @@
   background: var(--color-accent);
   color: var(--text-inverse);
 }
+
+@media (max-width: 768px) {
+  /* The page kept its 32px desktop gutters on a phone while every sibling
+     page dropped to --spacing-md. */
+  .liabilities-page {
+    padding: var(--spacing-md);
+    gap: var(--spacing-lg);
+  }
+}

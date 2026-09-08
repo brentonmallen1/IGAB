@@ -107,6 +107,37 @@
   font-size: var(--font-size-xs);
 }
 
+/* Reorder by button. Desktop has the drag and keeps the chip tidy; a touch
+   screen has no drag at all, so the arrows show there at the tap floor. */
+.view-editor__chip-move {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.view-editor__chip-move:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+@media (hover: none) {
+  .view-editor__chip-move {
+    display: inline-flex;
+    min-width: var(--tap-min);
+    min-height: var(--tap-min);
+  }
+
+  .view-editor__chip-remove {
+    min-width: var(--tap-min);
+    min-height: var(--tap-min);
+  }
+}
+
 .view-editor__chip-remove {
   display: inline-flex;
   color: var(--text-muted);

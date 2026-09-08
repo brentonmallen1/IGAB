@@ -54,6 +54,12 @@
     color var(--transition-fast);
 }
 
+@media (max-width: 768px) {
+  .guide-nav__tab {
+    min-height: var(--tap-min);
+  }
+}
+
 .guide-nav__tab:hover {
   background: var(--surface-raised);
   color: var(--text-primary);
@@ -1474,6 +1480,9 @@
   align-items: center;
   gap: var(--spacing-sm);
   flex-shrink: 0;
+  /* Zoom buttons plus the view switch outgrew a phone; wrap rather than
+     push the switch past the edge. */
+  flex-wrap: wrap;
 }
 
 .guide-icon-button {

@@ -8,6 +8,15 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
+  /* Select + "at" + time picker: wider than a phone's settings card even
+     on a line of its own, so the pieces wrap too. */
+  flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.sync-schedule__interval > * {
+  max-width: 100%;
 }
 
 .sync-schedule__times {

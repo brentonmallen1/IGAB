@@ -350,6 +350,22 @@
   .accounts-overview {
     padding: var(--spacing-md);
   }
+
+  /* Title + three buttons in one non-wrapping row: "Add Account" was cut
+     at the screen edge (the sweep's first real crushed row). The actions
+     take a line of their own. */
+  .accounts-overview__header {
+    flex-wrap: wrap;
+  }
+
+  .accounts-overview__header-actions {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+  }
+
+  .accounts-overview__header-actions > * {
+    min-height: var(--tap-min);
+  }
 }
 
 /* Hover-revealed row actions do not exist on a touch screen: edit, settings

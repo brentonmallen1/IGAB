@@ -415,3 +415,37 @@
   opacity: 0.45;
   transition: opacity var(--transition-fast);
 }
+
+/* ─── Phones ──────────────────────────────────────────────────────────────
+   The entry header was one flex row — action, actor, time — with the actor
+   the only child allowed to shrink: on a 390pt screen it read "A…" while the
+   action wrapped beside it. The action takes the first line; who and when
+   share the second. Same for a batch header. */
+@media (max-width: 768px) {
+  .change-card__header {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+
+  .change-card__action {
+    flex: 1 1 100%;
+  }
+
+  .change-card__actor {
+    margin-left: 0;
+    max-width: none;
+  }
+
+  .batch-header {
+    flex-wrap: wrap;
+    row-gap: var(--spacing-xs);
+  }
+
+  .batch-header__toggle {
+    flex: 1 1 100%;
+  }
+
+  .batch-header__actor {
+    max-width: none;
+  }
+}

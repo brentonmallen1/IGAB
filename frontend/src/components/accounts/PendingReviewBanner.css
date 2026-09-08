@@ -45,3 +45,15 @@
 .pending-review-banner__btn:hover {
   background: var(--color-info-border);
 }
+
+@media (max-width: 768px) {
+  .pending-review-banner {
+    flex-wrap: wrap;
+  }
+
+  .pending-review-banner__btn {
+    min-height: var(--tap-min);
+    padding-left: var(--spacing-md);
+    padding-right: var(--spacing-md);
+  }
+}
