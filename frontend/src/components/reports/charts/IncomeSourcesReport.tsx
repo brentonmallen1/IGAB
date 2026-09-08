@@ -20,7 +20,7 @@ import { MetricRow } from '../MetricRow'
 import { ReportInfoButton } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ChartTooltip } from './ChartTooltip'
-import { chartColor } from './chartColors'
+import { chartColor, COLOR_OTHER } from './chartColors'
 import { useReportMonths } from '../../../stores/reportStore'
 
 interface Props {
@@ -137,7 +137,7 @@ export function IncomeSourcesReport({ budgetId }: Props) {
                     fill={chartColor(idx)}
                   />
                 ))}
-                {hasOther && <Bar dataKey="Other" stackId="stack" fill="var(--chart-other)" />}
+                {hasOther && <Bar dataKey="Other" stackId="stack" fill={COLOR_OTHER} />}
               </BarChart>
             </ResponsiveContainer>
           </div>

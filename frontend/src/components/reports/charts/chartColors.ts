@@ -6,9 +6,25 @@
  * colorblind + normal-vision separation). Recharts accepts var() strings
  * directly as SVG fill/stroke values.
  *
- * Rules: assign slots in order, never cycle. A ninth-plus series carries no
- * distinguishable identity — fold it into "Other" (COLOR_OTHER). Semantic
- * colors mark meaning (positive/negative/net), never series identity.
+ * Rules: assign slots in order. Semantic colors mark meaning
+ * (positive/negative/net), never series identity.
+ *
+ * **Past the eighth series the palette repeats, and identity stops being the
+ * colour's job.** This used to fold every ninth-plus series into one grey
+ * "Other", which is a fine rule for a chart whose tail is noise and the wrong
+ * one for a chart whose tail is money: Cost of Living stacked eight groups and
+ * silently dropped the rest, so the bars and the table under them disagreed
+ * about what a month cost.
+ *
+ * Repetition is the lesser cost, and only because something else carries the
+ * identity: `ChartLegend` lists every series in stack order and highlights one
+ * on hover, and the tooltip names the segment under the cursor. A chart that
+ * repeats a colour without one of those is ambiguous — add the legend, or cap
+ * the series before they reach here.
+ *
+ * Eight is the palette because each theme hand-picks eight slots that separate
+ * for normal and colourblind vision on that theme's surface. A ninth token
+ * would have to be authored forty times.
  */
 export const CHART_COLORS = [
   'var(--chart-1)',
@@ -27,9 +43,10 @@ export const COLOR_NEUTRAL = 'var(--chart-neutral)'
 export const COLOR_NET = 'var(--chart-net)'
 export const COLOR_OTHER = 'var(--chart-other)'
 
-/** Color for the series at `index`; series past the palette read as "Other". */
+/** Colour for the series at `index`, cycling once the palette runs out. See
+ *  the note above: past the eighth, the legend carries identity, not the hue. */
 export function chartColor(index: number): string {
-  return index < CHART_COLORS.length ? CHART_COLORS[index] : COLOR_OTHER
+  return CHART_COLORS[index % CHART_COLORS.length]
 }
 
 /** Shared tooltip style config for recharts Tooltip component.
