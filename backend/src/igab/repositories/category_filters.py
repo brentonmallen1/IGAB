@@ -96,6 +96,12 @@ LINKED_TO_CARD = Category.linked_account_id.isnot(None)
 #: payment category, or a debt category owned by a liability.
 LINKED = or_(LINKED_TO_CARD, Category.linked_liability_id.isnot(None))
 
+#: Archived in either sense. Written inline three times below, and the trap is
+#: that only one of the two halves is obvious: a live category inside an
+#: ARCHIVED GROUP is off the budget just as surely as an archived one, and a
+#: rule that checks only `Category.is_archived` offers it anyway.
+NOT_ARCHIVED_ANYWHERE = and_(NOT_ARCHIVED, not_(IN_ARCHIVED_GROUP))
+
 #: **What a picker may OFFER.** Not where money may go — see `IS_FUNDABLE`.
 #:
 #: These were one rule, and the comment that lived here argued the conflation
@@ -110,9 +116,7 @@ LINKED = or_(LINKED_TO_CARD, Category.linked_liability_id.isnot(None))
 #:
 #: So a card envelope is excluded here outright. The cards section is its only
 #: face, which is what `card_payment.py` says it is.
-IS_ASSIGNABLE = and_(
-    NOT_ARCHIVED, not_(IN_ARCHIVED_GROUP), not_(IN_SYSTEM_GROUP), not_(LINKED_TO_CARD)
-)
+IS_ASSIGNABLE = and_(NOT_ARCHIVED_ANYWHERE, not_(IN_SYSTEM_GROUP), not_(LINKED_TO_CARD))
 
 #: **Where money may ENTER.** A strictly different question from what a picker
 #: offers, and keeping them apart is what lets a card envelope be funded
@@ -132,12 +136,12 @@ IS_ASSIGNABLE = and_(
 #: `IS_ASSIGNABLE`.
 IS_FUNDABLE = and_(
     not_(IN_SYSTEM_GROUP),
-    or_(and_(NOT_ARCHIVED, not_(IN_ARCHIVED_GROUP)), LINKED_TO_CARD),
+    or_(NOT_ARCHIVED_ANYWHERE, LINKED_TO_CARD),
 )
 
 #: A transaction leg may be filed here. System groups stay in — that is where
 #: income goes.
-IS_CATEGORIZABLE = and_(NOT_ARCHIVED, not_(IN_ARCHIVED_GROUP), not_(LINKED))
+IS_CATEGORIZABLE = and_(NOT_ARCHIVED_ANYWHERE, not_(LINKED))
 
 #: A category whose own money can come back on a card: the envelopes
 #: `sum_credit_outflows_by_category` releases against, and so exactly the set

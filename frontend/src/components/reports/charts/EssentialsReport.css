@@ -108,3 +108,10 @@
   padding-top: var(--spacing-sm);
   border-top: 1px solid var(--edge);
 }
+
+/* Tagged Essential, nothing spent in this window. Present — absence is what
+   made the report look capped at five — but not competing with the rows that
+   cost something. */
+.essentials-report__row--quiet {
+  color: var(--text-muted);
+}

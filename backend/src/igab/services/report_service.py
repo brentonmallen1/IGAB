@@ -2112,6 +2112,20 @@ class ReportService:
             budget_id, window_start, window_end
         )
         by_category: dict[str | None, dict] = {}
+        # Seeded with every tagged category BEFORE the rows are read, so one
+        # that was not spent in this window lands at zero instead of vanishing.
+        # Built from rows alone, the list silently became "the tagged
+        # categories that happened to have transactions", which sorted by total
+        # is indistinguishable from a top-N — the report showed 5 of 8 and
+        # looked capped.
+        for tagged_cat in await self.txns.essential_tagged_categories(budget_id):
+            by_category[str(tagged_cat.id)] = {
+                "category_id": tagged_cat.id,
+                "name": tagged_cat.name,
+                "group_name": tagged_cat.group_name,
+                "total": Decimal("0"),
+                "months_with_spend": 0,
+            }
         by_month: dict[date, Decimal] = {m: Decimal("0") for m in months_list}
         for r in rows:
             key = str(r.category_id) if r.category_id else None
@@ -2131,7 +2145,9 @@ class ReportService:
             month = r.month.date() if hasattr(r.month, "date") else r.month
             by_month[month] = by_month.get(month, Decimal("0")) + magnitude
 
-        categories = sorted(by_category.values(), key=lambda c: c["total"], reverse=True)
+        # By spend, then by name — so the zero rows sort to the bottom in a
+        # readable order rather than in whatever order they were seeded.
+        categories = sorted(by_category.values(), key=lambda c: (-c["total"], c["name"]))
         for c in categories:
             c["total"] = quantize_cents(c["total"])
             c["monthly_average"] = quantize_cents(c["total"] / months)

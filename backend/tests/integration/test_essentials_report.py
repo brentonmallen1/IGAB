@@ -121,8 +121,17 @@ async def test_excludes_transfers_and_savings_classes(db_session):
     assert pending.cleared == "pending"
 
     report = await ReportService(db_session).essentials_summary(budget.id, 1)
-    assert {c["name"] for c in report["categories"]} == {"Rent"}
+    # Both tagged categories are listed — a tagged category the reader pointed
+    # at must not simply be absent, which is the complaint
+    # `essential_excluded_by_class` was written for ("I tagged ten and two
+    # showed up"). The savings row is listed at ZERO and named by the
+    # class-excluded note; what it must never do is contribute money here.
+    assert {c["name"] for c in report["categories"]} == {"Rent", "Emergency Fund"}
+    assert report["categories"][0]["name"] == "Rent"
     assert report["categories"][0]["total"] == Decimal("1200.00"), "pending and savings excluded"
+    savings_row = next(c for c in report["categories"] if c["name"] == "Emergency Fund")
+    assert savings_row["total"] == Decimal("0")
+    assert report["class_excluded"], "the note has to say why its money is missing"
 
 
 async def test_split_lines_count_under_their_own_category(db_session):
@@ -183,3 +192,69 @@ async def test_guide_overview_and_report_agree_on_the_ninety_day_figure(db_sessi
     assert metrics["essentials_monthly"] == guide.value and metrics["essentials_tagged"] is True
     assert report["essentials_90d"] == guide.value
     assert "tagged Essential" in guide.reason
+
+
+async def test_lists_every_tagged_category_even_with_no_spending(db_session):
+    """Eight tagged, three of them quiet — the report shows eight.
+
+    Built from transaction rows alone, the list was silently "the tagged
+    categories that happened to have spending", which sorted by total is
+    indistinguishable from a top-N: the report showed 5 of 8 and the totals
+    only added up those 5, because the other three were nothing.
+
+    A category with no spending this window is a real answer — it cost nothing
+    — and is a different statement from not being essential.
+    """
+    services, budget, checking, rent, fun, tags, essential = await _world(db_session)
+    group = await create_category_group(db_session, budget, "Fixed")
+    quiet = []
+    for name in ("Water", "Sewer", "Insurance"):
+        cat = await create_category(db_session, budget, group, name)
+        await tags.set_category_tags(cat.id, [essential.id])
+        quiet.append(cat)
+    await tags.set_category_tags(rent.id, [essential.id])
+    await create_transaction(
+        db_session, budget, checking, "-1200.00", _first_of_last_month(), category=rent
+    )
+
+    report = await ReportService(db_session).essentials_summary(budget.id, 6)
+    names = [c["name"] for c in report["categories"]]
+    assert sorted(names) == ["Insurance", "Rent", "Sewer", "Water"]
+
+    # The quiet ones read zero rather than being absent, and sort below the
+    # ones that cost something.
+    assert names[0] == "Rent"
+    quiet_rows = [c for c in report["categories"] if c["name"] != "Rent"]
+    assert all(c["total"] == Decimal("0") for c in quiet_rows)
+    assert all(c["months_with_spend"] == 0 for c in quiet_rows)
+
+    # Adding zeros changes no total: the figure was always the sum of all of
+    # them, which is what made the apparent cap so convincing.
+    assert report["monthly_total_average"] == Decimal("200.00")  # 1200 / 6
+
+
+async def test_archived_categories_leave_the_essentials_list(db_session):
+    """Not archived in EITHER sense — its own flag, or its group's.
+
+    A live category inside an archived group is off the budget just as surely
+    as an archived one, and it is the half that gets forgotten.
+    """
+    services, budget, checking, rent, fun, tags, essential = await _world(db_session)
+    await tags.set_category_tags(rent.id, [essential.id])
+    await create_transaction(
+        db_session, budget, checking, "-1200.00", _first_of_last_month(), category=rent
+    )
+
+    shelved_group = await create_category_group(db_session, budget, "Old")
+    shelved_group.is_archived = True
+    in_shelved = await create_category(db_session, budget, shelved_group, "Storage Unit")
+    await tags.set_category_tags(in_shelved.id, [essential.id])
+
+    own_group = await create_category_group(db_session, budget, "Still Here")
+    archived = await create_category(db_session, budget, own_group, "Landline")
+    archived.is_archived = True
+    await db_session.flush()
+    await tags.set_category_tags(archived.id, [essential.id])
+
+    report = await ReportService(db_session).essentials_summary(budget.id, 6)
+    assert [c["name"] for c in report["categories"]] == ["Rent"]

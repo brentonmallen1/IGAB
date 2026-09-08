@@ -166,6 +166,11 @@ export function EssentialsReport({ budgetId }: Props) {
                 "per month" figures with no explanation read as a bug, so the
                 gap is said here rather than only in the info panel. */}
             <p className="essentials-report__note">
+              Every category tagged <strong>Essential</strong> is listed, including any with no
+              spending in this window — those read zero rather than going missing.
+            </p>
+
+            <p className="essentials-report__note">
               The table averages the last {months} <strong>complete</strong> months (
               {formatMoney(data.monthly_total_average)}/mo); the headline is the rolling 90 days.
               The two differ when recent spending has shifted.
@@ -197,8 +202,16 @@ export function EssentialsReport({ budgetId }: Props) {
                     // category: the old max-scaled bar only restated "this
                     // is the biggest number" beside the number itself.
                     const share = shareOfLeanMonth(avg, data.monthly_total_average)
+                    // Tagged Essential and not spent in this window. It is
+                    // listed rather than dropped — absence is what made the
+                    // report look capped at five — but it is not competing for
+                    // attention with the things that cost money.
+                    const quiet = c.total === 0
                     return (
-                      <tr key={c.category_id ?? 'uncategorized'}>
+                      <tr
+                        key={c.category_id ?? 'uncategorized'}
+                        className={quiet ? 'essentials-report__row--quiet' : undefined}
+                      >
                         <td>
                           <span className="essentials-report__name">{c.name}</span>
                           {c.group_name && (
