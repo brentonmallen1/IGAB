@@ -378,6 +378,16 @@
   opacity: 1;
 }
 
+/* No pointer, no hover: the page's one action was invisible on a phone, and
+   a blind tap could still fire it. Shown, and tall enough to hit on purpose. */
+@media (hover: none) {
+  .activity-revert-line {
+    opacity: 1;
+    min-height: var(--tap-min);
+    margin: 0;
+  }
+}
+
 .activity-revert-line:disabled {
   cursor: wait;
 }

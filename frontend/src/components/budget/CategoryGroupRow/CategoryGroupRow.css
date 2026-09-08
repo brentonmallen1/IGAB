@@ -239,6 +239,9 @@
   .category-group-row__add-cat-btn {
     opacity: 1;
   }
+  .category-group-row__checkbox {
+    opacity: 1;
+  }
 }
 
 @media (max-width: 768px) {

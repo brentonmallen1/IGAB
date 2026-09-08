@@ -351,3 +351,17 @@
     padding: var(--spacing-md);
   }
 }
+
+/* Hover-revealed row actions do not exist on a touch screen: edit, settings
+   and delete for every account were unreachable on a phone. Shown, at the
+   tap floor. */
+@media (hover: none) {
+  .accounts-overview__row-actions {
+    opacity: 1;
+  }
+
+  .accounts-overview__action-btn {
+    width: var(--tap-min);
+    height: var(--tap-min);
+  }
+}

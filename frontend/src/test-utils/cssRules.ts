@@ -40,3 +40,48 @@ export function topLevelRules(src: string): Array<[string, string]> {
   }
   return rules
 }
+
+export interface ContextRule {
+  selector: string
+  body: string
+  /** The at-rule preludes enclosing this rule, outermost first — e.g.
+   *  `['@media (hover: none)']`. Empty for a top-level rule. */
+  atRules: string[]
+}
+
+/**
+ * Every rule, with the at-rules that wrap it. The complement of
+ * `topLevelRules`: that one asks "what does the default render get", this
+ * one lets a test ask "is there a `(hover: none)` variant of that rule" —
+ * the question the hover-reveal guard needs. Recursive descent, kept simple
+ * over fast; the stylesheets are small.
+ */
+export function rulesWithContext(
+  src: string,
+  atRules: string[] = [],
+  out: ContextRule[] = []
+): ContextRule[] {
+  let i = 0
+  while (i < src.length) {
+    const open = src.indexOf('{', i)
+    if (open < 0) break
+    // A prelude never carries the declaration before it: inside an at-rule
+    // body the text between the last `;`/`}` and this `{` is the selector.
+    const prelude = src.slice(i, open).split(';').pop()!.trim()
+    let depth = 1
+    let j = open + 1
+    while (j < src.length && depth > 0) {
+      if (src[j] === '{') depth++
+      else if (src[j] === '}') depth--
+      j++
+    }
+    const body = src.slice(open + 1, j - 1)
+    if (prelude.startsWith('@')) {
+      rulesWithContext(body, [...atRules, prelude], out)
+    } else if (prelude) {
+      out.push({ selector: prelude, body, atRules })
+    }
+    i = j
+  }
+  return out
+}
