@@ -22,7 +22,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import (
     AccountType,
+    AICall,
+    AICallPayload,
+    AIConversation,
     AIJob,
+    AIMessage,
     Budget,
     BudgetFilter,
     BudgetFilterCategory,
@@ -417,6 +421,74 @@ async def build_full_budget(session: AsyncSession, owner: User) -> FullBudget:
     deleted_filter = BudgetFilter(budget_id=budget.id, name="Old Filter", is_deleted=True)
     deleted_view = BudgetView(budget_id=budget.id, name="Old View", is_deleted=True)
     session.add_all([deleted_filter, deleted_view])
+    await session.flush()
+
+    # A chat thread and the model calls behind it. Every figure and name here
+    # is invented, per the personal-data rule: a fixture that looks like a bank
+    # feed is exactly where a real payee slips in.
+    #
+    # These four tables are SNAPSHOT_OMITTED, so the snapshot suites assert
+    # they arrive EMPTY in a copy. Budget delete must still take them, which is
+    # what having rows here proves.
+    conversation = AIConversation(
+        budget_id=budget.id,
+        user_id=owner.id,
+        title="Why is Groceries overspent?",
+    )
+    session.add(conversation)
+    await session.flush()
+
+    tool_call = AICall(
+        budget_id=budget.id,
+        feature="chat",
+        model="gemma4:31b",
+        host="http://localhost:11434",
+        endpoint="chat",
+        status="ok",
+        round=0,
+        duration_ms=1200,
+        prompt_tokens=820,
+        completion_tokens=140,
+        tool_call_count=1,
+        conversation_id=conversation.id,
+    )
+    # An installation-level call: budget_id is null, so a budget delete must
+    # leave it standing while taking the one above.
+    probe_call = AICall(
+        budget_id=None,
+        feature="receipt_gate",
+        model="gemma4:31b",
+        host="http://localhost:11434",
+        endpoint="generate",
+        status="error",
+        error="TimeoutError: probe",
+        round=0,
+    )
+    session.add_all([tool_call, probe_call])
+    await session.flush()
+
+    session.add_all(
+        [
+            AICallPayload(
+                ai_call_id=tool_call.id,
+                request={"system": "You are a budgeting assistant.", "messages": []},
+                response="Groceries is over because two shops landed late.",
+                tool_trace=[{"name": "spending_by_category", "arguments": {"months": 1}}],
+            ),
+            AIMessage(
+                conversation_id=conversation.id,
+                role="user",
+                content="Why is Groceries overspent?",
+                page_context={"kind": "budget", "month": "2026-09-01"},
+            ),
+            AIMessage(
+                conversation_id=conversation.id,
+                role="assistant",
+                content="Two shops posted after the month turned.",
+                ai_call_id=tool_call.id,
+            ),
+        ]
+    )
     await session.flush()
 
     return FullBudget(

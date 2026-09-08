@@ -4,6 +4,7 @@ These are the model-agnostic mechanisms that replace per-model code paths —
 any model's quirks flow through settings, not through the codebase.
 """
 
+import asyncio
 import json
 import uuid
 from datetime import date
@@ -14,6 +15,7 @@ import pytest
 import respx
 
 import igab.services.ai_service as ai_service_module
+from igab.ai.context import debug_view
 from igab.integrations.ollama.client import OllamaClient
 from igab.services.ai_service import AIService, _json_from_response
 from igab.services.settings_service import DEFAULTS
@@ -173,12 +175,18 @@ class TestFormatThinkConflict:
         assert captured["format"] is None
 
 
-class TestLastRequestRecording:
-    """The exact prompt/flags are recorded on the service BEFORE the model is
-    invoked, so callers can persist them for debugging even on failure."""
+class TestTheCallIsRecorded:
+    """Every model call lands on the gateway's record, whatever happens to it.
+
+    This used to be two fields on AIService that only the receipt and NL paths
+    set, so the three other features recorded nothing at all. The gateway
+    records all of them, and `debug_view` is the one shape the job row and the
+    call log both render.
+    """
 
     def capture_service(self, monkeypatch, *, generate=None) -> AIService:
         async def default_generate(self, prompt, system=None, **kwargs):
+            self.last_meta = {"prompt_eval_count": 11, "eval_count": 7}
             return '{"total": 1}'
 
         monkeypatch.setattr(OllamaClient, "generate", generate or default_generate)
@@ -190,32 +198,82 @@ class TestLastRequestRecording:
         )
         return svc
 
-    async def test_extract_records_request(self, monkeypatch):
+    async def test_extract_records_the_call(self, monkeypatch):
         svc = self.capture_service(monkeypatch)
         await svc.extract_receipt(uuid.uuid4(), "aW1n", date(2026, 8, 16))
-        req = svc.last_request
-        assert req is not None
-        assert req["model"] == "gemma4:test"
-        assert req["think"] is True
-        assert req["format"] is None
-        assert "Groceries (Everyday)" in req["prompt"]
-        assert "2026-08-16" in req["prompt"]
+        result = svc.gateway.last_result
+        assert result is not None
+        assert result.context.feature == "receipt_extract"
+        assert result.model == "gemma4:test"
+        assert result.thinking_enabled is True
+        assert result.status == "ok"
+        assert "Groceries (Everyday)" in result.messages[0]["content"]
+        assert "2026-08-16" in result.messages[0]["content"]
 
-    async def test_recorded_even_when_call_fails(self, monkeypatch):
+    async def test_token_counts_are_kept(self, monkeypatch):
+        """Ollama reports these on every call and the client used to drop them."""
+        svc = self.capture_service(monkeypatch)
+        await svc.extract_receipt(uuid.uuid4(), "aW1n", date(2026, 8, 16))
+        result = svc.gateway.last_result
+        assert result is not None
+        assert result.prompt_tokens == 11
+        assert result.completion_tokens == 7
+
+    async def test_recorded_even_when_the_call_fails(self, monkeypatch):
         async def failing_generate(self, prompt, system=None, **kwargs):
             raise ConnectionError("refused")
 
         svc = self.capture_service(monkeypatch, generate=failing_generate)
         with pytest.raises(ConnectionError):
             await svc.extract_receipt(uuid.uuid4(), "aW1n", date(2026, 8, 16))
-        assert svc.last_request is not None
-        assert "Groceries (Everyday)" in svc.last_request["prompt"]
+        result = svc.gateway.last_result
+        assert result is not None
+        assert result.status == "error"
+        assert "ConnectionError" in (result.error or "")
+        assert "Groceries (Everyday)" in result.messages[0]["content"]
 
-    async def test_nl_parse_records_request(self, monkeypatch):
+    async def test_a_cancelled_call_is_recorded_as_cancelled(self, monkeypatch):
+        """Closing the chat panel mid-answer is normal, not an error — and
+        "what did it do before I stopped it" is the question the log answers."""
+
+        async def cancelled_generate(self, prompt, system=None, **kwargs):
+            raise asyncio.CancelledError()
+
+        svc = self.capture_service(monkeypatch, generate=cancelled_generate)
+        with pytest.raises(asyncio.CancelledError):
+            await svc.extract_receipt(uuid.uuid4(), "aW1n", date(2026, 8, 16))
+        result = svc.gateway.last_result
+        assert result is not None
+        assert result.status == "cancelled"
+
+    async def test_nl_parse_records_the_call(self, monkeypatch):
         svc = self.capture_service(monkeypatch)
         await svc.parse_nl_transaction(uuid.uuid4(), "coffee 5.50", date(2026, 8, 16))
-        assert svc.last_request is not None
-        assert "coffee 5.50" in svc.last_request["prompt"]
+        result = svc.gateway.last_result
+        assert result is not None
+        assert result.context.feature == "nl_parse"
+        assert "coffee 5.50" in result.messages[0]["content"]
+
+    async def test_features_that_recorded_nothing_now_do(self, monkeypatch):
+        """suggest_category swallows its own failures and returned a fallback,
+        so a wrong answer left no evidence at all. It does now."""
+        svc = self.capture_service(monkeypatch)
+        await svc.suggest_category(uuid.uuid4(), "Harborstone Market", -42.0)
+        result = svc.gateway.last_result
+        assert result is not None
+        assert result.context.feature == "suggest_category"
+        assert "Harborstone Market" in result.messages[0]["content"]
+
+    async def test_debug_view_is_what_the_job_row_shows(self, monkeypatch):
+        svc = self.capture_service(monkeypatch)
+        await svc.parse_nl_transaction(uuid.uuid4(), "coffee 5.50", date(2026, 8, 16))
+        view = debug_view(svc.gateway.last_result)
+        assert view["request"]["model"] == "gemma4:test"
+        assert "coffee 5.50" in view["request"]["prompt"]
+        assert view["raw_response"] == '{"total": 1}'
+
+    def test_debug_view_of_nothing_is_empty(self):
+        assert debug_view(None) == {}
 
 
 class TestJsonFromResponse:

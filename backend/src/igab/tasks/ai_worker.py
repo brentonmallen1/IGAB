@@ -23,6 +23,7 @@ from pathlib import Path
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from igab.ai.context import debug_view
 from igab.config import settings as app_settings
 from igab.db.models import AIJob, Transaction
 from igab.domain.exceptions import InvariantViolation
@@ -54,15 +55,12 @@ def _attach_ai_debug(exc: Exception, ai) -> None:
     and record_job_failure runs in a fresh session — the exception is the
     only bridge across. Without this a failed extraction kept no prompt and
     no response, making "structured output issue or something else?"
-    unanswerable."""
-    debug: dict = {}
-    if ai.last_request is not None:
-        debug["request"] = ai.last_request
-    if ai.last_response is not None:
-        debug["raw_response"] = ai.last_response.get("response")
-        for key in ("thinking", "done_reason"):
-            if ai.last_response.get(key):
-                debug[key] = ai.last_response[key]
+    unanswerable.
+
+    The evidence comes from the gateway's record of the call, which is the
+    same object the call log stores. The worker used to assemble its own copy
+    from fields on AIService; two captures of one call is one too many."""
+    debug = debug_view(ai.gateway.last_result)
     if debug:
         # setattr, not attribute syntax: the payload rides on arbitrary
         # exception types and ty rejects the unresolved attribute.
@@ -216,8 +214,9 @@ async def _process_receipt(session: AsyncSession, job: AIJob) -> None:
     finally:
         # Success path only — on failure this in-session write is rolled back
         # and record_job_failure re-persists the payload from the exception.
-        if svcs["ai"].last_request is not None:
-            job.result = {"request": svcs["ai"].last_request}
+        debug = debug_view(svcs["ai"].gateway.last_result)
+        if debug:
+            job.result = {"request": debug["request"]}
 
     categories = await svcs["transactions"].category_repo.get_all_with_group_names(job.budget_id)
     try:
@@ -257,15 +256,9 @@ async def _process_receipt(session: AsyncSession, job: AIJob) -> None:
         job.attachment_id = attachment.id
 
     result = _draft_result_json(draft)
-    if svcs["ai"].last_request is not None:
-        result["request"] = svcs["ai"].last_request
     # Raw response on success too: "extraction" is the parsed object, and a
     # thinking transcript exists only here.
-    if svcs["ai"].last_response is not None:
-        result["raw_response"] = svcs["ai"].last_response.get("response")
-        for key in ("thinking", "done_reason"):
-            if svcs["ai"].last_response.get(key):
-                result[key] = svcs["ai"].last_response[key]
+    result.update(debug_view(svcs["ai"].gateway.last_result))
     job.result = result
     job.transaction_id = txn.id
     job.status = "done"

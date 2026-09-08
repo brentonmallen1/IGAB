@@ -64,11 +64,20 @@ class TestEveryTableIsClassified:
         # every envelope figure) and cascaded by budget delete.
         # 27: `credit_scores` joined (2026-09-06) — scores typed in by date
         # and bureau, per budget, for the Guide's credit-score tool.
-        assert counted[Scope.OWNED] == 27
+        # 29: `ai_conversations` and `ai_calls` joined (2026-09-08) — the chat
+        # panel's threads, and one row per model round trip for the activity
+        # log. Both cascade on budget delete and both are SNAPSHOT_OMITTED: a
+        # transcript is prose the user typed about their own accounts, and a
+        # snapshot is a file they hand to someone else.
+        assert counted[Scope.OWNED] == 29
         # 12: `asset_value_snapshots` rides in as its child, and
         # `budget_filter_tags` joined (2026-09-06) — a filter's tag axis,
         # scoped through its filter like `budget_filter_categories`.
-        assert counted[Scope.CHILD] == 12
+        # 14: `ai_messages` and `ai_call_payloads` joined (2026-09-08), each
+        # anchored through its parent. `ai_messages` has FKs to two in-graph
+        # tables, so its column order is what makes the conversation the
+        # anchor rather than the call — see the note on the model.
+        assert counted[Scope.CHILD] == 14
         # 4: `import_account_mappings` joined as global (2026-09-06) — the
         # import mapping step's memory, keyed by account name and per user. It
         # exists to outlive the budget an import built, so budget scope is the

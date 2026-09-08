@@ -6,6 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
+from igab.ai.context import debug_view
 from igab.api.route import CommitRoute
 from igab.api.v1.attachments import (
     ALLOWED_CONTENT_TYPES,
@@ -404,8 +405,9 @@ async def parse_nl_transaction(
     except Exception as exc:
         job.status = "error"
         job.error = f"{type(exc).__name__}: {exc}"[:2000]
-        if ai_svc.last_request is not None:
-            job.result = {"request": ai_svc.last_request}
+        debug = debug_view(ai_svc.gateway.last_result)
+        if debug:
+            job.result = {"request": debug["request"]}
         job.finished_at = datetime.now(UTC)
         session.add(job)
         await session.commit()
@@ -428,8 +430,7 @@ async def parse_nl_transaction(
             "confidence": draft.confidence,
         },
     }
-    if ai_svc.last_request is not None:
-        result["request"] = ai_svc.last_request
+    result.update(debug_view(ai_svc.gateway.last_result))
     job.result = result
     session.add(job)
     await session.commit()

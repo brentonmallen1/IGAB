@@ -10,6 +10,8 @@ from io import BytesIO
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from igab.ai.context import AICallContext
+from igab.ai.gateway import AIGateway
 from igab.db.models import Category, Payee, Transaction
 from igab.domain.payee_names import derived_match_patterns, rank_match_patterns
 from igab.integrations.ollama.client import OllamaClient
@@ -93,14 +95,15 @@ class AIService:
     def __init__(self, session: AsyncSession, settings: SettingsService) -> None:
         self.session = session
         self.settings = settings
-        # The exact request of the last extraction/parse call — recorded
-        # before the model is invoked so callers can persist it for
-        # debugging even when the call itself fails.
-        self.last_request: dict | None = None
-        # The raw text of the last model response (plus thinking, when the
-        # model produced any), captured BEFORE parsing — a JSON-parse failure
-        # must leave evidence of what the model actually said.
-        self.last_response: dict | None = None
+        # Every model call goes through here, and the gateway records it. The
+        # `last_request` / `last_response` fields this class used to carry are
+        # gone: they were a second, partial copy of what the call log now holds
+        # for every feature rather than only for the two that remembered to set
+        # them.
+        self.gateway = AIGateway(settings)
+        #: Set by the receipt and NL paths so the job row can link to the call
+        #: the worker just made. The record itself lives in `ai_calls`.
+        self.last_call: AICallContext | None = None
 
     async def _client(self) -> OllamaClient:
         host = await self.settings.get("ollama_host") or "http://localhost:11434"
@@ -165,18 +168,6 @@ class AIService:
             if isinstance(parsed, dict):
                 options.update(parsed)
         return options
-
-    # Thinking transcripts can be enormous; cap what we keep for the log.
-    _RESPONSE_KEEP_CHARS = 100_000
-
-    def _record_response(self, raw: str, client: OllamaClient) -> None:
-        self.last_response = {
-            "response": raw[: self._RESPONSE_KEEP_CHARS],
-            **{
-                k: (v[: self._RESPONSE_KEEP_CHARS] if isinstance(v, str) else v)
-                for k, v in (client.last_meta or {}).items()
-            },
-        }
 
     async def _prompt(self, key: str, values: dict[str, str]) -> str:
         template = await self.settings.get(key) or DEFAULT_PROMPTS[key]
@@ -298,8 +289,10 @@ class AIService:
         """
         prompt = await self._prompt("ai_prompt_receipt_gate", {})
         client = await self._vision_client()
-        raw = await client.generate(
-            prompt,
+        raw = await self.gateway.complete(
+            context=AICallContext(feature="receipt_gate"),
+            client=client,
+            prompt=prompt,
             system="You are an image classifier. Return only valid JSON.",
             images=[image_b64],
             format="json",
@@ -329,16 +322,11 @@ class AIService:
         client = await self._vision_client()
         think = await self._resolve_think(client)
         system = "You are a receipt data extraction engine. Return only valid JSON."
-        self.last_request = {
-            "prompt": prompt,
-            "system": system,
-            "model": client.model,
-            "think": think,
-            "format": None if think else "json",
-        }
-        self.last_response = None
-        raw = await client.generate(
-            prompt,
+        self.last_call = AICallContext(feature="receipt_extract", budget_id=budget_id)
+        raw = await self.gateway.complete(
+            context=self.last_call,
+            client=client,
+            prompt=prompt,
             system=system,
             images=[image_b64],
             # The JSON grammar constrains decoding from the first token, which
@@ -349,7 +337,6 @@ class AIService:
             options=await self._merged_options(vision=True, task_defaults={"temperature": 0}),
             timeout=float(await self.settings.get("ai_vision_timeout_s") or "300"),
         )
-        self._record_response(raw, client)
         return _json_from_response(raw)
 
     async def parse_nl_transaction(
@@ -366,23 +353,17 @@ class AIService:
         client = await self._client()
         think = await self._resolve_think(client)
         system = "You are a transaction parser. Return only valid JSON."
-        self.last_request = {
-            "prompt": prompt,
-            "system": system,
-            "model": client.model,
-            "think": think,
-            "format": None if think else "json",
-        }
-        self.last_response = None
-        raw = await client.generate(
-            prompt,
+        self.last_call = AICallContext(feature="nl_parse", budget_id=budget_id)
+        raw = await self.gateway.complete(
+            context=self.last_call,
+            client=client,
+            prompt=prompt,
             system=system,
             # Same think/format conflict as extract_receipt: grammar kills thinking.
             format=None if think else "json",
             think=think,
             options=await self._merged_options(vision=False, task_defaults={"temperature": 0}),
         )
-        self._record_response(raw, client)
         return _json_from_response(raw)
 
     async def suggest_category(
@@ -410,9 +391,11 @@ class AIService:
 
         try:
             client = await self._client()
-            raw = await client.generate(
-                prompt,
-                system,
+            raw = await self.gateway.complete(
+                context=AICallContext(feature="suggest_category", budget_id=budget_id),
+                client=client,
+                prompt=prompt,
+                system=system,
                 format="json",
                 options=await self._merged_options(vision=False, task_defaults={"temperature": 0}),
             )
@@ -458,8 +441,10 @@ class AIService:
         prompt = await self._prompt("ai_prompt_suggest_regex", {"names": "\n".join(cleaned)})
         try:
             client = await self._client()
-            raw = await client.generate(
-                prompt,
+            raw = await self.gateway.complete(
+                context=AICallContext(feature="suggest_regex", budget_id=budget_id),
+                client=client,
+                prompt=prompt,
                 format="json",
                 options=await self._merged_options(vision=False, task_defaults={"temperature": 0}),
             )
@@ -538,7 +523,12 @@ class AIService:
         system = "You are a helpful personal finance advisor."
         try:
             client = await self._client()
-            return await client.generate(prompt, system)
+            return await self.gateway.complete(
+                context=AICallContext(feature="spending_insights", budget_id=budget_id),
+                client=client,
+                prompt=prompt,
+                system=system,
+            )
         except Exception:
             return "Unable to generate insights — check Ollama connection in Settings."
 
