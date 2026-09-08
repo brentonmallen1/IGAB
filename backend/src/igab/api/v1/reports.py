@@ -88,7 +88,7 @@ from igab.dependencies import (
     get_report_service,
     get_tag_repo,
 )
-from igab.domain.activity_class import ActivityClass
+from igab.domain.activity_class import SPENDING_WITH_SAVINGS_CLASSES, ActivityClass
 from igab.domain.dates import add_months
 from igab.repositories.budget_filter_repo import BudgetFilterRepository
 from igab.repositories.category_repo import CategoryRepository
@@ -116,7 +116,7 @@ from igab.services.report_service import ReportService
 def _spending_classes(include_savings: bool) -> list[ActivityClass] | None:
     if not include_savings:
         return None  # service default: spending only
-    return [ActivityClass.SPENDING, ActivityClass.SAVINGS, ActivityClass.DEBT_PRINCIPAL]
+    return list(SPENDING_WITH_SAVINGS_CLASSES)
 
 
 #: One bound for every report's month window.
