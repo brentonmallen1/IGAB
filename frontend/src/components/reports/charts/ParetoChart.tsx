@@ -16,6 +16,7 @@ import { spendingDrillClasses, useReportStore, type GroupBy } from '../../../sto
 import { useSpendingGroupedReport, usePayeeAnalysisReport } from '../../../api/reports'
 import { useChartHeight } from '../../../hooks/useChartHeight'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { useMoneyAxis } from './useMoneyAxis'
 import { DrillDownTable } from '../DrillDownTable'
 import { MetricCard } from '../MetricCard'
 import { MetricRow } from '../MetricRow'
@@ -89,6 +90,7 @@ function ParetoTooltip({
 export function ParetoReport({ budgetId }: Props) {
   const chartHeight = useChartHeight(340)
   const { formatMoney } = useFormatters()
+  const moneyAxis = useMoneyAxis()
   const { filters, setDrillDown } = useReportStore()
   const groupBy = filters.groupBy
   const captureRef = useRef<HTMLDivElement>(null)
@@ -308,9 +310,9 @@ export function ParetoReport({ budgetId }: Props) {
                 />
                 <YAxis
                   yAxisId="left"
-                  tickFormatter={(v) => formatMoney(v)}
+                  tickFormatter={moneyAxis.tickFormatter}
                   tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
-                  width={90}
+                  width={moneyAxis.width}
                   {...logAxisProps(logScale)}
                 />
                 <YAxis

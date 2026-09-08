@@ -12,6 +12,7 @@ import {
 } from 'recharts'
 import { useEssentialsReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { useMoneyAxis } from './useMoneyAxis'
 import { MetricCard } from '../MetricCard'
 import { ReportNotes } from '../ReportNotes'
 import { MetricRow } from '../MetricRow'
@@ -41,6 +42,7 @@ interface Props {
  */
 export function EssentialsReport({ budgetId }: Props) {
   const { formatMoney, formatMonth } = useFormatters()
+  const moneyAxis = useMoneyAxis()
   const months = useReportMonths()
   const { data, isLoading, isError, error, refetch } = useEssentialsReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
@@ -274,9 +276,9 @@ export function EssentialsReport({ budgetId }: Props) {
                   />
                   <XAxis dataKey="month" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
                   <YAxis
-                    tickFormatter={(v) => formatMoney(v)}
+                    tickFormatter={moneyAxis.tickFormatter}
                     tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
-                    width={90}
+                    width={moneyAxis.width}
                   />
                   <Tooltip
                     content={<ChartTooltip showTotal={false} />}

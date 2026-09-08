@@ -12,6 +12,7 @@ import {
 import { useBurnRateReport } from '../../../api/reports'
 import { useChartHeight } from '../../../hooks/useChartHeight'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { useMoneyAxis } from './useMoneyAxis'
 import { ReportErrorState } from '../ReportErrorState'
 import { ChartTooltip } from './ChartTooltip'
 import { COLOR_NEGATIVE, COLOR_NEUTRAL } from './chartColors'
@@ -30,6 +31,7 @@ interface Props {
 export function BurnRateReport({ budgetId }: Props) {
   const chartHeight = useChartHeight(320)
   const { formatMoney } = useFormatters()
+  const moneyAxis = useMoneyAxis()
   const months = useReportMonths()
   const [logScale, setLogScale] = useState(false)
   const { data, isLoading, isError, error, refetch } = useBurnRateReport(budgetId, months)
@@ -98,9 +100,9 @@ export function BurnRateReport({ budgetId }: Props) {
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
               <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
               <YAxis
-                tickFormatter={(v) => formatMoney(v)}
+                tickFormatter={moneyAxis.tickFormatter}
                 tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
-                width={90}
+                width={moneyAxis.width}
                 {...logAxisProps(logScale)}
               />
               <Tooltip

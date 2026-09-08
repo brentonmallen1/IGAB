@@ -16,6 +16,7 @@ import { useAccountTypes } from '../../../api/accountTypes'
 import { accountTypeLabel } from '../../../constants/accountTypes'
 import { useChartHeight } from '../../../hooks/useChartHeight'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { useMoneyAxis } from './useMoneyAxis'
 import { ReportErrorState } from '../ReportErrorState'
 import { ChartTooltip } from './ChartTooltip'
 import { COLOR_NET, chartColor } from './chartColors'
@@ -31,6 +32,7 @@ interface Props {
 export function AccountCompositionReport({ budgetId }: Props) {
   const chartHeight = useChartHeight(340)
   const { formatMoney } = useFormatters()
+  const moneyAxis = useMoneyAxis()
   const months = useReportMonths()
   const { data, isLoading, isError, error, refetch } = useAccountCompositionReport(budgetId, months)
   const { data: typeRows } = useAccountTypes(budgetId)
@@ -109,9 +111,9 @@ export function AccountCompositionReport({ budgetId }: Props) {
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
               <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
               <YAxis
-                tickFormatter={(v) => formatMoney(v)}
+                tickFormatter={moneyAxis.tickFormatter}
                 tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
-                width={90}
+                width={moneyAxis.width}
               />
               {/* showTotal would sum the stack AND the net line — the Net row
                   already is the total, served rather than re-derived. */}

@@ -12,6 +12,7 @@ import {
 import { useReportStore } from '../../../stores/reportStore'
 import { usePayeeAnalysisReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { useMoneyAxis } from './useMoneyAxis'
 import { ReportErrorState } from '../ReportErrorState'
 import { DrillDownTable } from '../DrillDownTable'
 import { MetricCard } from '../MetricCard'
@@ -27,6 +28,7 @@ interface Props {
 
 export function PayeeReport({ budgetId }: Props) {
   const { formatMoney } = useFormatters()
+  const moneyAxis = useMoneyAxis()
   const { filters, setDrillDown } = useReportStore()
   const payeeIds = filters.payeeIds.length > 0 ? filters.payeeIds : undefined
   const acctIds = filters.accountIds.length > 0 ? filters.accountIds : undefined
@@ -160,7 +162,7 @@ export function PayeeReport({ budgetId }: Props) {
                 />
                 <XAxis
                   type="number"
-                  tickFormatter={(v) => formatMoney(v)}
+                  tickFormatter={moneyAxis.tickFormatter}
                   tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
                   {...logAxisProps(logScale)}
                 />

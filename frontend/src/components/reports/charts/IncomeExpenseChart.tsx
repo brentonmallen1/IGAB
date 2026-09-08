@@ -14,6 +14,7 @@ import { useReportMonths, useReportStore } from '../../../stores/reportStore'
 import { useIncomeExpenseReport } from '../../../api/reports'
 import { useChartHeight } from '../../../hooks/useChartHeight'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { useMoneyAxis } from './useMoneyAxis'
 import { ReportErrorState } from '../ReportErrorState'
 import { monthWindow } from '../../../utils/dateWindow'
 import { DrillDownTable } from '../DrillDownTable'
@@ -31,6 +32,7 @@ interface Props {
 export function IncomeExpenseReport({ budgetId }: Props) {
   const chartHeight = useChartHeight(340)
   const { formatMoney } = useFormatters()
+  const moneyAxis = useMoneyAxis()
   const setDrillDown = useReportStore((s) => s.setDrillDown)
   const months = useReportMonths()
   const { data, isLoading, isError, error, refetch } = useIncomeExpenseReport(budgetId, months)
@@ -125,9 +127,9 @@ export function IncomeExpenseReport({ budgetId }: Props) {
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
               <XAxis dataKey="month" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
               <YAxis
-                tickFormatter={(v) => formatMoney(v)}
+                tickFormatter={moneyAxis.tickFormatter}
                 tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
-                width={90}
+                width={moneyAxis.width}
               />
               <Tooltip
                 content={<ChartTooltip showTotal={false} />}

@@ -14,6 +14,7 @@ import { useReportStore } from '../../../stores/reportStore'
 import { useDayPatternsReport, usePaydayEffectReport } from '../../../api/reports'
 import { useChartHeight } from '../../../hooks/useChartHeight'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { useMoneyAxis } from './useMoneyAxis'
 import { ReportErrorState } from '../ReportErrorState'
 import { MetricCard } from '../MetricCard'
 import { MetricRow } from '../MetricRow'
@@ -33,6 +34,7 @@ const WINDOW_OPTIONS = [7, 14, 21] as const
 export function DayPatternsReport({ budgetId }: Props) {
   const chartHeight = useChartHeight(320)
   const { formatMoney } = useFormatters()
+  const moneyAxis = useMoneyAxis()
   const { filters, setDrillDown } = useReportStore()
   const reportScope = useReportScope()
   const acctIds = filters.accountIds.length > 0 ? filters.accountIds : undefined
@@ -170,9 +172,9 @@ export function DayPatternsReport({ budgetId }: Props) {
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
                 <XAxis dataKey="name" tick={{ fontSize: 12, fill: 'var(--text-muted)' }} />
                 <YAxis
-                  tickFormatter={(v) => formatMoney(v)}
+                  tickFormatter={moneyAxis.tickFormatter}
                   tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
-                  width={80}
+                  width={moneyAxis.width}
                 />
                 <Tooltip
                   formatter={(v: unknown, name: unknown) =>
@@ -284,9 +286,9 @@ export function DayPatternsReport({ budgetId }: Props) {
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
                 <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
                 <YAxis
-                  tickFormatter={(v) => formatMoney(v)}
+                  tickFormatter={moneyAxis.tickFormatter}
                   tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
-                  width={80}
+                  width={moneyAxis.width}
                 />
                 <ReferenceLine
                   y={paydayBaseline}

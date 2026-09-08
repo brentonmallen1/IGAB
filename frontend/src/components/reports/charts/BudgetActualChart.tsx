@@ -13,6 +13,7 @@ import {
 import { useReportStore } from '../../../stores/reportStore'
 import { useBudgetActualReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { useMoneyAxis } from './useMoneyAxis'
 import { ReportErrorState } from '../ReportErrorState'
 import { COLOR_NEGATIVE, COLOR_NEUTRAL, COLOR_POSITIVE } from './chartColors'
 import { DrillDownTable } from '../DrillDownTable'
@@ -62,6 +63,7 @@ function BudgetActualTooltip({
 
 export function BudgetActualReport({ budgetId }: Props) {
   const { formatMoney } = useFormatters()
+  const moneyAxis = useMoneyAxis()
   const { filters, setDrillDown } = useReportStore()
   const [showOverspent, setShowOverspent] = useState(false)
   const [sortBy, setSortBy] = useState<SortMode>('default')
@@ -207,7 +209,7 @@ export function BudgetActualReport({ budgetId }: Props) {
                 />
                 <XAxis
                   type="number"
-                  tickFormatter={(v) => formatMoney(v)}
+                  tickFormatter={moneyAxis.tickFormatter}
                   tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
                   width={80}
                 />

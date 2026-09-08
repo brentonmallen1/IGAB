@@ -19,6 +19,7 @@ import { Surface } from '../../common/Surface'
 import { openAccounts } from '../../../utils/accountLists'
 import { useTags } from '../../../api/tags'
 import { useBudgetFilters } from '../../../api/budgetFilters'
+import { countActiveFilters, hasAnyFilterSupport } from './activeFilters'
 
 interface Props {
   budgetId: string
@@ -30,7 +31,23 @@ const GROUP_BY_OPTIONS: { value: GroupBy; label: string }[] = [
   { value: 'payee', label: 'Payee' },
 ]
 
+/** The bar as the desktop draws it: one chrome band above the report. */
 export function ReportFiltersBar({ budgetId }: Props) {
+  const { activeTab } = useReportStore()
+  if (!hasAnyFilterSupport(activeTab)) return null
+  return (
+    <Surface variant="chrome" className="rfb">
+      <ReportFiltersContent budgetId={budgetId} />
+    </Surface>
+  )
+}
+
+/**
+ * The controls themselves, container-free: the desktop bar wraps them in a
+ * chrome band, the phone puts them in a sheet behind a Filters chip. One
+ * implementation of the pickers either way.
+ */
+export function ReportFiltersContent({ budgetId }: Props) {
   const { filters, setFilters, resetFilters, activeTab } = useReportStore()
   const support = TAB_FILTER_SUPPORT[activeTab]
   const categories = useCategories(budgetId)
@@ -80,30 +97,12 @@ export function ReportFiltersBar({ budgetId }: Props) {
   // shows. Leaving it out meant a view carried over from another budget was
   // narrowing reports with no selector rendered (that budget has no views)
   // and no Reset offered — unreachable dead state.
-  const hasFilters =
-    filters.categoryIds.length > 0 ||
-    filters.tagIds.length > 0 ||
-    filters.filterId !== null ||
-    filters.payeeIds.length > 0 ||
-    filters.accountIds.length > 0 ||
-    filters.viewId !== null
+  const hasFilters = countActiveFilters(filters) > 0
 
-  // Check if any filters are supported for this tab
-  const hasAnySupport =
-    support.dates ||
-    support.categories ||
-    support.payees ||
-    support.accounts ||
-    support.groupBy ||
-    support.views
-
-  // If no filters apply, don't render the bar
-  if (!hasAnySupport) {
-    return null
-  }
+  if (!hasAnyFilterSupport(activeTab)) return null
 
   return (
-    <Surface variant="chrome" className="rfb">
+    <>
       <div className="rfb__row">
         {support.dates && (
           <DateRangePicker
@@ -222,6 +221,6 @@ export function ReportFiltersBar({ budgetId }: Props) {
           )}
         </div>
       )}
-    </Surface>
+    </>
   )
 }

@@ -15,6 +15,7 @@ import {
 } from 'recharts'
 import { useLiabilitiesReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { useMoneyAxis } from './useMoneyAxis'
 import { ReportErrorState } from '../ReportErrorState'
 import { ChartTooltip } from './ChartTooltip'
 import { chartColor } from './chartColors'
@@ -34,6 +35,7 @@ type SortKey = 'balance' | 'rate' | 'baseline' | 'live' | 'interest'
 export function LiabilitiesReport({ budgetId }: Props) {
   const navigate = useNavigate()
   const { formatMoney, formatMonth } = useFormatters()
+  const moneyAxis = useMoneyAxis()
   const [typeFilter, setTypeFilter] = useState<string | null>(null)
   const [modeFilter, setModeFilter] = useState<string | null>(null)
   const [sortKey, setSortKey] = useState<SortKey>('balance')
@@ -213,9 +215,9 @@ export function LiabilitiesReport({ budgetId }: Props) {
                     minTickGap={40}
                   />
                   <YAxis
-                    tickFormatter={(v) => formatMoney(v)}
+                    tickFormatter={moneyAxis.tickFormatter}
                     tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
-                    width={85}
+                    width={moneyAxis.width}
                     {...logAxisProps(logScale)}
                   />
                   <Tooltip
