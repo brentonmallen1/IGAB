@@ -58,6 +58,27 @@
   --spacing-lg: 24px;
   --spacing-xl: 32px;
 
+  /* ── The register's column geometry ──────────────────────────────────────
+     One track list, drawn by three components: the transaction row, the
+     sticky header that captions it, and the scheduled rows that sit above
+     the register in an "Upcoming" section.
+
+     It lived in each of their stylesheets instead, five declarations of it,
+     and the scheduled row drifted to a seven-column list of its own — no
+     icon column, a wider date, one money column instead of two. Every cell
+     in an upcoming row therefore sat one column left of the header it was
+     captioned by, and the payee landed in the 32px checkbox spacer, drawn
+     as "Acm…" at full desktop width.
+
+     Columns: checkbox, icon, date, payee, category, memo, outflow, inflow,
+     cleared. */
+  --register-cols: 32px 54px 100px 1fr 1fr 1fr 90px 90px 60px;
+  /* The all-accounts register names each row's account, after the date. */
+  --register-cols-all-accounts: 32px 54px 100px minmax(90px, 0.55fr) 1fr 1fr 1fr 90px 90px 60px;
+  /* Rows, header and upcoming rows must share this too, or the tracks line
+     up and the content inside them does not. */
+  --register-pad-x: var(--spacing-md);
+
   /* rem-based (1rem = 16px default) so the scale follows the user's browser
      font-size preference; pixel equivalents noted for reference */
   --font-size-2xs: 0.625rem; /* 10px */

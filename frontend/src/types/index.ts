@@ -792,9 +792,11 @@ export interface CashFlowReport {
    *  this. `total_spending` + `total_savings` + `total_debt_principal` is how
    *  it splits; a card labelled "Expenses" must use the first, not this. */
   total_expense: number
-  total_spending: number | string
-  total_savings: number | string
-  total_debt_principal: number | string
+  /** null in budgeted mode, which draws from assignments and has no activity
+   *  class to split by — "not claimed", never zero. */
+  total_spending: number | string | null
+  total_savings: number | string | null
+  total_debt_principal: number | string | null
   category_payees: Record<string, CategoryPayee[]>
   group_categories: Record<string, CategoryPayee[]>
 }

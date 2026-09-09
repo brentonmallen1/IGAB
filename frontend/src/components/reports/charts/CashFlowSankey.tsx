@@ -414,23 +414,29 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
               trunks now drawn as their own branches — labelling it "Expenses"
               put $5,000 above a diagram showing $3,000 into expense groups,
               and disagreed with Income vs Expenses for the same window. */}
-            <MetricCard
-              label="Spent"
-              value={formatMoney(Number(data.total_spending))}
-              sub={
-                compare && prevData
-                  ? formatDelta(
-                      Number(data.total_spending),
-                      Number(prevData.total_spending),
-                      formatMoney
-                    )
-                  : undefined
-              }
-            />
-            {Number(data.total_savings) > 0 && (
+            {/* null in budgeted mode: no activity class to split by, so the
+              split is not drawn at all. Number(null) is 0, so testing the
+              value rather than the null is how "Spent $0.00" would come
+              back the moment the server stops claiming the figure. */}
+            {data.total_spending !== null && (
+              <MetricCard
+                label="Spent"
+                value={formatMoney(Number(data.total_spending))}
+                sub={
+                  compare && prevData && prevData.total_spending !== null
+                    ? formatDelta(
+                        Number(data.total_spending),
+                        Number(prevData.total_spending),
+                        formatMoney
+                      )
+                    : undefined
+                }
+              />
+            )}
+            {data.total_savings !== null && Number(data.total_savings) > 0 && (
               <MetricCard label="Saved" value={formatMoney(Number(data.total_savings))} />
             )}
-            {Number(data.total_debt_principal) > 0 && (
+            {data.total_debt_principal !== null && Number(data.total_debt_principal) > 0 && (
               <MetricCard
                 label="Debt Paid"
                 value={formatMoney(Number(data.total_debt_principal))}

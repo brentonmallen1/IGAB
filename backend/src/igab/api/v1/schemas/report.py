@@ -167,11 +167,17 @@ class CashFlowResponse(ApiModel):
     #: Everything that left the budget. The links off the budget node sum to
     #: this — flow conservation, whatever the branches are.
     total_expense: Decimal
-    #: How that outflow splits. Spent mode only; budgeted mode draws from
-    #: assignments, where activity class has no meaning.
-    total_spending: Decimal = Decimal("0")
-    total_savings: Decimal = Decimal("0")
-    total_debt_principal: Decimal = Decimal("0")
+    #: How that outflow splits. Required, and None only in budgeted mode,
+    #: which draws from assignments where activity class has no meaning —
+    #: None is "this mode does not claim the figure", never zero.
+    #:
+    #: These defaulted to Decimal("0") and the route that builds this response
+    #: never passed them, so the Cash Flow report drew "Spent $0.00" above a
+    #: diagram of $83,716 in outflows for as long as the fields existed. A
+    #: default is what let a path forget and still look like it had answered.
+    total_spending: Decimal | None
+    total_savings: Decimal | None
+    total_debt_principal: Decimal | None
     category_payees: dict[str, list[CategoryPayee]]
     group_categories: dict[str, list[CategoryPayee]]
 

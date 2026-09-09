@@ -55,7 +55,7 @@ Your financial data is deeply personal. IGAB keeps it that way:
 
 ### Reports That Actually Help
 
-Twenty-one reports across six groups give you the visibility you need to plan and understand your finances:
+Thirty reports across six groups give you the visibility you need to plan and understand your finances:
 
 | Group | Reports |
 | --- | --- |
