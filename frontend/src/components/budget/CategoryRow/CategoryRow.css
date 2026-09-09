@@ -556,10 +556,29 @@
     margin: -8px 0;
   }
 
-  /* Keep LED visually small but expand hit area */
+  /* Keep the LED visually small but expand its hit area.
+     
+     Padding cannot do that here, and the version that tried is why the dot
+     sat on top of the category name: this element PAINTS its background, so
+     padding inflates the circle itself. Under the global border-box the 8px
+     width is the border box, 20px of padding overrides it, and the result is
+     a 20px disc occupying 0px of layout (margin: -10px) — a coloured circle
+     over the text on both sides of it.
+     
+     The hit area goes on a pseudo-element instead, where it costs no paint
+     and no layout. 10px each side, matching what the padding meant to buy.
+     Deliberately not the 44px floor: this sits inside a row that is itself
+     tappable, and an overlay that wide would swallow taps meant for the
+     category. The sibling .category-row__activity-btn may keep using padding
+     because it paints no background. */
   .category-row__target-led {
-    padding: 10px;
-    margin: -10px;
+    position: relative;
+  }
+
+  .category-row__target-led::after {
+    content: "";
+    position: absolute;
+    inset: -10px;
   }
 
   .category-row__target-expired {
@@ -581,6 +600,46 @@
 
   .category-row__move-sheet {
     padding: 0 var(--spacing-md) var(--spacing-md);
+  }
+
+  /* ── Dense, on a phone ──────────────────────────────────────────────────
+     The density control offers three modes and, until now, the phone drew
+     two: the --dense rules were scoped to (min-width: 769px), so Compact and
+     Dense rendered identically and the picker said something untrue.
+
+     Dense here means what the store promises — "smallest rows" — so the card
+     collapses to the one line that is read while scanning: the category and
+     what is Available. Assigned and Activity, which are the second line of
+     the card, come back in Compact and in the inspector; they are two taps
+     away, not gone.
+
+     The row stays a --tap-min target. This mode makes rows shorter, never
+     harder to hit; that is the line the desktop rules also hold. */
+  .category-row--dense {
+    min-height: var(--tap-min);
+    padding-top: 4px;
+    padding-bottom: 4px;
+    row-gap: 0;
+  }
+
+  .category-row--dense .category-row__assigned,
+  .category-row--dense .category-row__activity,
+  .category-row--dense .category-row__subtitle {
+    display: none;
+  }
+
+  .category-row--dense .category-row__name {
+    font-size: var(--font-size-sm);
+  }
+
+  /* Both cells spanned two rows; with the second row gone they are single. */
+  .category-row--dense .category-row__available,
+  .category-row--dense .category-row__checkbox {
+    grid-row: 1;
+  }
+
+  .category-row--dense .category-row__available {
+    font-size: var(--font-size-base);
   }
 }
 
