@@ -36,6 +36,13 @@ dev-frontend:
 mobile-sweep *ARGS:
     cd frontend && node scripts/mobile-sweep.mjs {{ARGS}}
 
+# Regenerate the README screenshot tour from the sample budget (needs the dev stack)
+screenshots *ARGS:
+    #!/usr/bin/env bash
+    set -a && source .env && set +a
+    unset CORS_ORIGINS
+    cd frontend && node scripts/screenshots.mjs {{ARGS}}
+
 # Run Alembic migrations against the local database
 dev-migrate:
     #!/usr/bin/env bash

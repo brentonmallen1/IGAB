@@ -24,21 +24,9 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import puppeteer from 'puppeteer-core'
+import { BASE, CHROME, api, flag, login, opt, sampleBudget, seedPage } from './lib/igabSession.mjs'
 
-const BASE = process.env.IGAB_URL ?? 'http://localhost:5173'
-const API = process.env.IGAB_API ?? `${BASE}/api/v1`
-const USER = process.env.IGAB_USER
-const PASS = process.env.IGAB_PASS
-const CHROME =
-  process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 const OUT = resolve(process.env.IGAB_SWEEP_OUT ?? '../mobile-sweep')
-
-const args = process.argv.slice(2)
-const flag = (name) => args.includes(name)
-const opt = (name) => {
-  const i = args.indexOf(name)
-  return i >= 0 ? args[i + 1] : undefined
-}
 
 const VIEWPORTS = [
   { name: 'phone', width: 390, height: 844 },
@@ -94,46 +82,15 @@ const TRIGGERS = {
   '/reports': [{ name: 'report-picker', open: '.reports-nav__dropdown-trigger' }],
   '/scheduled': [{ name: 'editor', open: '.sched-btn--primary' }],
   '/accounts': [{ name: 'account-settings', open: '.accounts-overview__action-btn' }],
-  '/liabilities/:id': [{ name: 'balance', open: 'button[class*="balance"], button[class*="update"]' }],
+  '/liabilities/:id': [
+    { name: 'balance', open: 'button[class*="balance"], button[class*="update"]' },
+  ],
 }
 
 const TAP_MIN = 44
 
-async function login() {
-  if (!USER || !PASS) throw new Error('Set IGAB_USER and IGAB_PASS')
-  const res = await fetch(`${API}/auth/login`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ email: USER, password: PASS }),
-  })
-  if (!res.ok) throw new Error(`login failed: ${res.status}`)
-  return res.json()
-}
-
-async function api(path, token) {
-  const res = await fetch(`${API}${path}`, { headers: { authorization: `Bearer ${token}` } })
-  if (!res.ok) throw new Error(`${path}: ${res.status}`)
-  return res.json()
-}
-
 async function routesFor(token) {
-  let budgets = await api('/budgets', token)
-  let budget = budgets.find((b) => b.name?.toLowerCase().includes('sample'))
-  // Never sweep a real budget by accident: the screenshots and the report
-  // carry payee names and amounts. Without a sample budget, either make one
-  // (--create-sample: the full demo, so liabilities and assets have pages)
-  // or stop.
-  if (!budget && flag('--create-sample')) {
-    const res = await fetch(`${API}/budgets/create-sample`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-      body: JSON.stringify({ tier: 'full' }),
-    })
-    if (!res.ok) throw new Error(`create-sample failed: ${res.status}`)
-    budget = (await res.json()).budget
-    budgets = await api('/budgets', token)
-  }
-  if (!budget) throw new Error('no sample budget; pass --create-sample to make one')
+  const budget = await sampleBudget(token, { create: flag('--create-sample') })
   const [accounts, liabilities, assets] = await Promise.all([
     api(`/${budget.id}/accounts`, token),
     api(`/${budget.id}/liabilities`, token).catch(() => []),
@@ -313,18 +270,7 @@ async function main() {
         isMobile: true,
         hasTouch: true,
       })
-      await page.evaluateOnNewDocument(
-        (t, budgetId) => {
-          localStorage.setItem('access_token', t.access_token)
-          localStorage.setItem('refresh_token', t.refresh_token)
-          const key = 'igab-app'
-          const cur = JSON.parse(localStorage.getItem(key) || '{"state":{},"version":1}')
-          cur.state = { ...cur.state, currentBudgetId: budgetId, autoOpenLastBudget: true }
-          localStorage.setItem(key, JSON.stringify(cur))
-        },
-        tokens,
-        budget.id
-      )
+      await seedPage(page, tokens, budget.id)
       for (const route of routes) {
         const slug = `${vp.name}${route.replace(/[/?=:]+/g, '_')}`
         try {
