@@ -328,3 +328,86 @@ class TestCategoryNodesCarryTheirEntityId:
         result = await self._spent(db_session)
         budget_node = next(n for n in result["nodes"] if n["type"] == "budget")
         assert budget_node["entity_id"] is None
+
+
+# ─── The response the client actually receives ───────────────────────────────
+#
+# Every test above calls the service. The service was right the whole time: the
+# route hand-listed the fields it copied into CashFlowResponse, never copied the
+# three class totals, and they had schema defaults of Decimal("0") to fall back
+# on — so the report drew "Spent $0.00" over a diagram of real outflows, and no
+# service-level test could see it. These go through HTTP.
+
+
+async def _budget_with_a_split_outflow(db_session, user):
+    """Income, plain spending, and a categorized transfer out to a tracked
+    account — one row in each of the classes the tiles name."""
+    services = make_services(db_session)
+    budget = await create_budget(db_session, user)
+    checking = await create_account(db_session, budget, "Checking")
+    brokerage = await create_account(db_session, budget, "Brokerage", on_budget=False)
+    everyday = await create_category_group(db_session, budget, "Everyday")
+    groceries = await create_category(db_session, budget, everyday, "Groceries")
+    employer = await create_payee(db_session, budget, "Employer")
+
+    await create_transaction(
+        db_session, budget, checking, "3000.00", TODAY - timedelta(days=5), payee=employer
+    )
+    await create_transaction(
+        db_session, budget, checking, "-200.00", TODAY - timedelta(days=4), category=groceries
+    )
+    await services.transactions.create(
+        budget.id,
+        TransactionCreate(
+            account_id=checking.id,
+            date=TODAY - timedelta(days=3),
+            amount=Decimal("-150.00"),
+            transfer_account_id=brokerage.id,
+            category_id=groceries.id,
+            cleared="cleared",
+        ),
+    )
+    return budget
+
+
+async def test_spent_mode_response_carries_the_class_split(api_client, db_session):
+    budget = await _budget_with_a_split_outflow(db_session, api_client.test_user)
+
+    res = await api_client.get(
+        f"/api/v1/{budget.id}/reports/cash-flow",
+        params={"start_date": START.isoformat(), "end_date": TODAY.isoformat(), "mode": "spent"},
+    )
+    assert res.status_code == 200
+    body = res.json()
+
+    # The whole outflow, and the split of it — the split is what the tiles read.
+    assert body["total_expense"] == 350.0
+    assert body["total_spending"] == 200.0
+    assert body["total_savings"] == 150.0
+    assert body["total_debt_principal"] == 0.0
+    # And it still adds up on the way out.
+    assert (
+        body["total_spending"] + body["total_savings"] + body["total_debt_principal"]
+        == body["total_expense"]
+    )
+
+
+async def test_budgeted_mode_declines_to_split_rather_than_reporting_zero(api_client, db_session):
+    """Assignments carry no activity class, so budgeted mode has no split.
+
+    null, never 0.0: a zero here is indistinguishable from "nothing was spent",
+    which is the bug this pair exists to prevent, and the client hides the
+    tiles on null rather than drawing $0.00.
+    """
+    budget = await _budget_with_a_split_outflow(db_session, api_client.test_user)
+
+    res = await api_client.get(
+        f"/api/v1/{budget.id}/reports/cash-flow",
+        params={"start_date": START.isoformat(), "end_date": TODAY.isoformat(), "mode": "budgeted"},
+    )
+    assert res.status_code == 200
+    body = res.json()
+
+    assert body["total_spending"] is None
+    assert body["total_savings"] is None
+    assert body["total_debt_principal"] is None

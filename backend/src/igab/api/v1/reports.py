@@ -21,7 +21,6 @@ from igab.api.v1.schemas.report import (
     CashProjectionResponse,
     CategoryHistoryMonth,
     CategoryHistoryReportResponse,
-    CategoryPayee,
     CostOfLivingGroup,
     CostOfLivingResponse,
     DashboardMetrics,
@@ -50,8 +49,6 @@ from igab.api.v1.schemas.report import (
     ReportFavoritesResponse,
     ReportFavoritesUpdate,
     ReportRangeResponse,
-    SankeyLink,
-    SankeyNode,
     SavingsCategory,
     SavingsRateResponse,
     SavingsReportResponse,
@@ -328,20 +325,11 @@ async def cash_flow_report(
     end = end_date or today
     acct_ids = _parse_uuids(account_ids)
     data = await report_svc.cash_flow_sankey(budget_id, start, end, mode, acct_ids)
-    return CashFlowResponse(
-        nodes=[SankeyNode.model_validate(n) for n in data["nodes"]],
-        links=[SankeyLink.model_validate(lnk) for lnk in data["links"]],
-        total_income=data["total_income"],
-        total_expense=data["total_expense"],
-        category_payees={
-            cat_id: [CategoryPayee.model_validate(p) for p in payees]
-            for cat_id, payees in data["category_payees"].items()
-        },
-        group_categories={
-            grp_id: [CategoryPayee.model_validate(p) for p in cats]
-            for grp_id, cats in data["group_categories"].items()
-        },
-    )
+    # Validated whole rather than field by field: the hand-built version listed
+    # the keys it knew about and silently dropped the three the service had
+    # added beside them. Pydantic builds the nested models from the same dicts,
+    # and a missing key now raises here instead of shipping a default.
+    return CashFlowResponse.model_validate(data)
 
 
 @router.get("/{budget_id}/reports/budget-actual", response_model=BudgetActualResponse)

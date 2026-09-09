@@ -1035,6 +1035,10 @@ class ReportService:
                 "links": [],
                 "total_income": total_income,
                 "total_expense": Decimal("0"),
+                # Budgeted mode never claims the split, empty or not.
+                "total_spending": None,
+                "total_savings": None,
+                "total_debt_principal": None,
                 "category_payees": {},
                 "group_categories": {},
             }
@@ -1110,6 +1114,12 @@ class ReportService:
             "links": links,
             "total_income": total_income,
             "total_expense": Decimal(str(round(total_budgeted, 4))),
+            # Assignments carry no activity class, so this mode has no split to
+            # report. None, not zero: "not claimed here" rather than "nothing
+            # was spent".
+            "total_spending": None,
+            "total_savings": None,
+            "total_debt_principal": None,
             "category_payees": {},  # No payees in budgeted mode
             "group_categories": group_categories,
         }
