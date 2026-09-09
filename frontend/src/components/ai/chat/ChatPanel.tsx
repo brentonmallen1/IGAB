@@ -71,40 +71,38 @@ export function ChatPanel() {
         )}
       </header>
 
-      {/* Hidden while there is only one, unnamed chat: a strip with a single
-          "New chat" tab is chrome explaining nothing. */}
-      {(tabs.length > 1 || tabs[0]?.label || tabs[0]?.conversationId) && (
-        <div className="chat-tabs" role="tablist" aria-label="Open conversations">
-          {tabs.map((tab) => {
-            const active = tab.key === activeKey
-            const title = titleOf(tab)
-            return (
-              <div key={tab.key} className={`chat-tab ${active ? 'chat-tab--active' : ''}`}>
-                <button
-                  type="button"
-                  role="tab"
-                  id={`chat-tab-${tab.key}`}
-                  className="chat-tab__select"
-                  aria-selected={active}
-                  aria-controls={`chat-thread-${tab.key}`}
-                  title={title}
-                  onClick={() => selectTab(tab.key)}
-                >
-                  {title}
-                </button>
-                <button
-                  type="button"
-                  className="chat-tab__close"
-                  aria-label={`Close ${title}`}
-                  onClick={() => closeTab(tab.key)}
-                >
-                  <X size={11} />
-                </button>
-              </div>
-            )
-          })}
-        </div>
-      )}
+      {/* Always drawn, even for one blank tab: with the strip hidden, the
+          first press of the plus button changed nothing on screen. */}
+      <div className="chat-tabs" role="tablist" aria-label="Open conversations">
+        {tabs.map((tab) => {
+          const active = tab.key === activeKey
+          const title = titleOf(tab)
+          return (
+            <div key={tab.key} className={`chat-tab ${active ? 'chat-tab--active' : ''}`}>
+              <button
+                type="button"
+                role="tab"
+                id={`chat-tab-${tab.key}`}
+                className="chat-tab__select"
+                aria-selected={active}
+                aria-controls={`chat-thread-${tab.key}`}
+                title={title}
+                onClick={() => selectTab(tab.key)}
+              >
+                {title}
+              </button>
+              <button
+                type="button"
+                className="chat-tab__close"
+                aria-label={`Close ${title}`}
+                onClick={() => closeTab(tab.key)}
+              >
+                <X size={11} />
+              </button>
+            </div>
+          )
+        })}
+      </div>
 
       {/* Stays put rather than living in an empty state the first question
           destroys: "it cannot move your money" is a trust property, and it is

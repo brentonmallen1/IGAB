@@ -20,19 +20,17 @@ const two: ChatTabsState = {
 }
 
 describe('newTab', () => {
-  it('reuses an untouched blank tab instead of adding a second', () => {
-    expect(newTab(one, 'z')).toEqual(one)
-  })
-
   it('adds and activates a tab beside real conversations', () => {
     const next = newTab(two, 'z')
     expect(next.tabs.map((t) => t.key)).toEqual(['a', 'b', 'z'])
     expect(next.activeKey).toBe('z')
   })
 
-  it('does not treat a labelled tab whose first answer is in flight as blank', () => {
-    const inFlight = labelTab(one, 'a', 'Why is Groceries overspent?')
-    expect(newTab(inFlight, 'z').tabs).toHaveLength(2)
+  it('adds a tab even when a blank one is already open', () => {
+    // Pressing the button must always show something happening.
+    const next = newTab(one, 'z')
+    expect(next.tabs).toHaveLength(2)
+    expect(next.activeKey).toBe('z')
   })
 })
 

@@ -105,13 +105,12 @@ starts awaiting.
   keyboard should not push the composer off-screen.
 - Cycle a few themes with the panel open, light and dark. Nothing should be
   unreadable.
-- **Tabs.** The plus icon opens a new tab; the strip only appears once there
-  is more than one chat or the first has a question. Ask something slow in
+- **Tabs.** The plus icon always opens a new tab, and the strip is always
+  there, even for one blank chat. Ask something slow in
   one tab, switch to another and ask again: the first answer should keep
   arriving in the background and be complete, scrolled to its end, when you
   switch back. Closing the active tab lands on its neighbour; closing the
-  last one leaves a blank tab. Pressing plus with a blank tab already open
-  should reuse it rather than add another.
+  last one leaves a blank tab.
 - Closing the panel (or the sheet on a phone) does not stop an answer in
   progress; the Stop button in the composer does.
 - Amounts in answers should render as small figure chips (backticked in the

@@ -31,12 +31,11 @@ function isBlank(tab: ChatTab): boolean {
 }
 
 /**
- * Start a new chat. An untouched blank tab is reused rather than joined by a
- * second one — two empty tabs is not two conversations.
+ * Start a new chat: a new tab, every time, as a browser does. An earlier
+ * version reused an existing blank tab, which made the button do nothing
+ * visible the first time anyone pressed it.
  */
 export function newTab(state: ChatTabsState, key: string): ChatTabsState {
-  const blank = state.tabs.find(isBlank)
-  if (blank) return { ...state, activeKey: blank.key }
   return { tabs: [...state.tabs, blankTab(key)], activeKey: key }
 }
 
