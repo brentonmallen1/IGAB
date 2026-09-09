@@ -51,3 +51,15 @@
    sit BELOW pages that set height: 100% to own their scrolling, recreating in
    miniature the very dead band this change removed. Pages that want breathing
    room add it to their own scroll container. */
+
+@media (max-width: 768px) {
+  /* The shell-level rule: a phone page never pans sideways. This element is
+     the scroller for every route that does not own its own, and an
+     unspecified overflow-x computes to auto beside overflow-y: auto — so one
+     escaped absolute box anywhere on a page turns the whole route into a
+     horizontal scroller. Content that is genuinely wider than a phone scrolls
+     inside its own container instead. */
+  .main-layout__main {
+    overflow-x: hidden;
+  }
+}

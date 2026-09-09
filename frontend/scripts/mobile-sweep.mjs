@@ -201,6 +201,29 @@ function audit(tapMin) {
   if (scroller && scroller.scrollWidth > scroller.clientWidth + 1) {
     findings.push({ kind: 'page-overflow-x', by: scroller.scrollWidth - scroller.clientWidth })
   }
+  // A vertical scroller that is also scrollable sideways. This is the check
+  // that would have caught the budget page sliding 46px left and back: a
+  // .sr-only span inside the status strip took the sticky filter bar as its
+  // containing block, escaped the strip's clip, and widened the page. The
+  // symptom is invisible to the checks below, which skip anything under an
+  // overflow-x scroller as "wide by design".
+  //
+  // overflow-x hidden still counts: it clips the paint but the box is still
+  // over-wide, so this reports the cause after a fix has hidden the effect.
+  // Only a container that opted INTO sideways scrolling (auto/scroll) is
+  // exempt, and only when it is not also the page's vertical scroller.
+  for (const el of document.querySelectorAll('body *')) {
+    const cs = getComputedStyle(el)
+    const scrollsY = cs.overflowY === 'auto' || cs.overflowY === 'scroll'
+    const wantsX = cs.overflowX === 'auto' || cs.overflowX === 'scroll'
+    if (!scrollsY || wantsX) continue
+    if (el.scrollWidth <= el.clientWidth + 1) continue
+    findings.push({
+      kind: 'scroller-overflow-x',
+      el: name(el),
+      by: el.scrollWidth - el.clientWidth,
+    })
+  }
   const all = Array.from(document.querySelectorAll('body *')).filter(
     (el) => visible(el) && !ignored(el)
   )

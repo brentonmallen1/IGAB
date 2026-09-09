@@ -10,13 +10,12 @@ export const RULER_LINES = [
     style: { bottom: '0px' },
     tone: 'negative',
   },
+  /* The line that answers the question. With an opaque status bar it should
+     sit ON layout-bottom; any daylight between them is the band. There used
+     to be an `app-h + safe-top` line beside it, from when the shell had to
+     add the top inset back to reach the screen — with the web view starting
+     below the status bar it coincides with app-h and says nothing. */
   { id: 'app-h', label: 'app-h', style: { top: 'var(--app-h)' }, tone: 'accent' },
-  {
-    id: 'app-h-plus-safe-top',
-    label: 'app-h + safe-top',
-    style: { top: 'calc(var(--app-h) + var(--safe-top))' },
-    tone: 'warning',
-  },
   {
     id: 'safe-bottom',
     label: 'safe-bottom',

@@ -41,7 +41,10 @@ describe('ViewportRuler', () => {
     // The three lines that decide the diagnosis, pinned by name so the
     // screenshot-reading instructions in the plan stay true.
     const ids = RULER_LINES.map((l) => l.id)
-    expect(ids).toEqual(expect.arrayContaining(['layout-bottom', 'app-h', 'app-h-plus-safe-top']))
+    expect(ids).toEqual(expect.arrayContaining(['layout-bottom', 'app-h']))
+    // app-h against layout-bottom IS the diagnosis; a ruler without both
+    // cannot be read from a screenshot.
+    expect(ids).not.toContain('app-h-plus-safe-top')
     const css = readFileSync(resolve(__dirname, 'ViewportRuler.css'), 'utf8')
     expect(css).toMatch(/\.viewport-ruler\s*{[^}]*pointer-events:\s*none/)
   })

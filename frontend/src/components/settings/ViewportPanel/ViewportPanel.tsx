@@ -1,6 +1,10 @@
 import { useState } from 'react'
 import { useAppStore } from '../../../stores/appStore'
-import { diagnoseGap, useViewportDiagnostics } from '../../../hooks/useViewportDiagnostics'
+import {
+  diagnoseGap,
+  shellShortfall,
+  useViewportDiagnostics,
+} from '../../../hooks/useViewportDiagnostics'
 import './ViewportPanel.css'
 
 /**
@@ -12,10 +16,9 @@ import './ViewportPanel.css'
  */
 
 const VERDICT_TEXT = {
-  none: 'The shell fills the screen.',
-  'status-bar-hidden':
-    'Short by the status bar: every reported height excludes the top inset while the screen paints it. The shell corrects for this; if a band still shows, screenshot the ruler.',
-  other: 'Short by something that is not the top inset. Turn the ruler on and screenshot /budget.',
+  none: 'The shell fills the web view. With an opaque status bar the web view begins below it, so screen − layout being the status bar’s height is expected, not a defect.',
+  short:
+    'The shell stops above the web view’s bottom edge, which is a bare band under the nav. Turn the ruler on and screenshot /budget.',
 } as const
 
 type SwState = 'idle' | 'checking' | 'current' | 'waiting' | 'unsupported'
@@ -61,7 +64,9 @@ export function ViewportPanel() {
         ['--nav-h / --kb', `${snap.tokens['--nav-h']} / ${snap.tokens['--kb']}`],
         ['screen − layout', snap.screenH - snap.clientH],
         ['screen − visual', snap.screenH - snap.vvH],
-        ['screen − app-h', snap.screenH - snap.tokens['--app-h']],
+        // The verdict's own arithmetic: web view minus shell. `screen − …`
+        // rows stay because they name the status bar, but they are context now.
+        ['layout − app-h (the band)', shellShortfall(snap)],
       ]
     : []
 

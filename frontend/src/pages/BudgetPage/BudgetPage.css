@@ -21,6 +21,20 @@
   min-width: 0;
 }
 
+@media (max-width: 768px) {
+  /* A phone page never pans sideways. The overflow-x above is a desktop
+     affordance for .budget-table's 600px min-width — which BudgetTable.css
+     resets to 0 on mobile, where the rows are single-column cards. So on a
+     phone the rule could only ever grant unwanted scroll, and it did: an
+     escaped .sr-only span made the whole budget slide 46px left and back.
+     Anything genuinely wide here scrolls inside its own container (the status
+     strip does). Clipping also lets the sweep see this subtree — its
+     "already inside a horizontal scroller" exclusion used to swallow it. */
+  .budget-page__table-container {
+    overflow-x: hidden;
+  }
+}
+
 /* Let the last rows scroll clear of the floating selection bar. No --nav-h
    term: this container already ends at the in-flow nav's top edge, so the
    bar's offset from the viewport bottom is measured from here too. */
