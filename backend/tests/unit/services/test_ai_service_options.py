@@ -451,3 +451,40 @@ class TestModelCapabilities:
     async def test_status_vision_unknown_when_ai_is_disabled(self):
         svc = make_service({"ai_enabled": "false", "ollama_model": "gemma4:latest"})
         assert (await svc.check_availability())["receipt_model_vision"] is None
+
+
+class TestTheAssistantWindow:
+    """The chat asks for a context window sized from the model, and the
+    status endpoint reports the same numbers the chat route will use."""
+
+    def client_reporting(self, context_length, caps=("completion", "tools")):
+        client = OllamaClient("http://x:11434", "m")
+        client.capabilities = AsyncMock(return_value=list(caps))  # type: ignore[method-assign]
+        client.context_length = AsyncMock(return_value=context_length)  # type: ignore[method-assign]
+        return client
+
+    async def test_auto_sizes_from_the_model(self):
+        svc = make_service({"ai_chat_num_ctx": "auto"})
+        num_ctx, model_max = await svc.chat_window(self.client_reporting(131_072))
+        assert model_max == 131_072
+        assert num_ctx == 32_768
+
+    async def test_an_explicit_window_is_honoured(self):
+        svc = make_service({"ai_chat_num_ctx": "65536"})
+        num_ctx, _ = await svc.chat_window(self.client_reporting(131_072))
+        assert num_ctx == 65_536
+
+    async def test_the_chat_model_falls_back_to_the_main_one(self):
+        svc = make_service({"ollama_model": "gemma4:31b", "ollama_chat_model": ""})
+        assert await svc._resolve_chat_model() == ("gemma4:31b", False)
+        svc = make_service({"ollama_model": "gemma4:31b", "ollama_chat_model": "qwen3:8b"})
+        assert await svc._resolve_chat_model() == ("qwen3:8b", True)
+
+    async def test_context_length_is_read_from_model_info_by_suffix(self):
+        client = OllamaClient("http://x:11434", "gemma4:latest")
+        client.show = AsyncMock(  # type: ignore[method-assign]
+            return_value={"model_info": {"gemma4.context_length": 131072, "gemma4.x": 1}}
+        )
+        assert await client.context_length() == 131072
+        client.show = AsyncMock(return_value={})  # type: ignore[method-assign]
+        assert await client.context_length() is None

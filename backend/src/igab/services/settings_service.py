@@ -41,6 +41,11 @@ DEFAULTS: dict[str, str] = {
     "ollama_chat_model": "",
     # Chat with a tool loop is several round trips, not one completion.
     "ai_chat_timeout_s": "120",
+    # The context window (num_ctx) the assistant asks Ollama for. "auto"
+    # sizes it from what the model reports, capped — see
+    # igab.ai.context_window. A number is used as written. Ollama's own
+    # default is small enough to drop the system prompt on a big budget.
+    "ai_chat_num_ctx": "auto",
     **DEFAULT_PROMPTS,
 }
 

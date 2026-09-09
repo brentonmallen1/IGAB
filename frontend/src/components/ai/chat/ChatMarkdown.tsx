@@ -2,6 +2,7 @@ import { memo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
+import { normalizeFigures } from './figures'
 import './ChatMarkdown.css'
 
 const SCHEMA = {
@@ -75,7 +76,7 @@ export const ChatMarkdown = memo(function ChatMarkdown({ children }: { children:
           ),
         }}
       >
-        {children}
+        {normalizeFigures(children)}
       </ReactMarkdown>
     </div>
   )

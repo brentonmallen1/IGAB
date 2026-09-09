@@ -16,8 +16,11 @@ from typing import Any
 #: the scarce resource, and the aggregate below is exact regardless.
 DEFAULT_ROW_LIMIT = 25
 
-#: A whole serialized result larger than this is replaced by a summary. Guards
-#: the case a row cap cannot: one report with no row list and 200 categories.
+#: The floor for a whole serialized result before it is replaced by a summary.
+#: The real budget is sized from the model's context window — see
+#: ``igab.ai.context_window`` — and this is what a caller gets when it has
+#: not said. It once stood alone at this value and silently turned a month
+#: grid of 188 envelopes into "too many categories to list".
 TOOL_RESULT_MAX_CHARS = 6000
 
 
@@ -98,24 +101,29 @@ def ranked(
     }
 
 
-def fits(payload: Any) -> bool:
+def fits(payload: Any, max_chars: int = TOOL_RESULT_MAX_CHARS) -> bool:
     """Whether a serialized result is small enough to hand to a model."""
     import json
 
     try:
-        return len(json.dumps(payload, default=str)) <= TOOL_RESULT_MAX_CHARS
+        return len(json.dumps(payload, default=str)) <= max_chars
     except (TypeError, ValueError):
         return False
 
 
-def summarize_if_large(payload: dict, *, keep: tuple[str, ...] = ()) -> dict:
+def summarize_if_large(
+    payload: dict, *, keep: tuple[str, ...] = (), max_chars: int = TOOL_RESULT_MAX_CHARS
+) -> dict:
     """Fall back to a summary when a result is too big to send whole.
 
     `keep` names the fields worth preserving verbatim — usually the totals.
     Everything else is replaced by a count, and the result says so, because a
     quietly emptied field reads to the model as "there is nothing there".
+
+    `max_chars` comes from the context window the call was given
+    (``context_window.result_char_budget``); the default is only the floor.
     """
-    if fits(payload):
+    if fits(payload, max_chars):
         return payload
     summary: dict[str, Any] = {k: payload[k] for k in keep if k in payload}
     dropped: list[str] = []

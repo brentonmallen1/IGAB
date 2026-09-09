@@ -600,14 +600,17 @@
 
 /* ── chats ──────────────────────────────────────────────────────────── */
 
-.ai-chat-row {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-xs);
+.ai-chat {
   border: 1px solid var(--edge);
   border-radius: var(--border-radius-sm);
   background-color: var(--surface-raised);
   margin-bottom: var(--spacing-xs);
+}
+
+.ai-chat-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
 }
 
 .ai-chat-row__open {
@@ -637,6 +640,18 @@
   flex-shrink: 0;
 }
 
+/* The transcript reads at the panel's width, not the page's: an answer
+   written for a 400px column looks lost across 1200px. */
+.ai-chat__detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  max-width: 640px;
+  padding: var(--spacing-xs) var(--spacing-sm) var(--spacing-sm) var(--spacing-lg);
+  border-top: 1px solid var(--edge);
+}
+
+.ai-chat-row__continue,
 .ai-chat-row__delete {
   display: flex;
   align-items: center;
@@ -649,6 +664,11 @@
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
+}
+
+.ai-chat-row__continue:hover {
+  color: var(--text-primary);
+  background-color: var(--bg-hover);
 }
 
 .ai-chat-row__delete:hover {

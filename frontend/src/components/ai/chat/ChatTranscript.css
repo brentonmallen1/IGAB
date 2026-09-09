@@ -1,0 +1,205 @@
+/* One conversation as a list of messages.
+ *
+ * Beside ChatTranscript.tsx, which imports it, because that component now
+ * renders in two places — the assistant panel and the Chats tab of AI
+ * Activity — and a stylesheet that lived with only one of them would leave
+ * the other unstyled whenever the panel was not mounted first.
+ */
+
+/* ── messages ───────────────────────────────────────────────────────── */
+
+.chat-msg {
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.chat-msg--user .chat-msg__body {
+  /* Same break as the assistant's: a pasted URL in your own question would
+     otherwise run off the panel. */
+  word-break: break-word;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--border-radius-md);
+  background-color: var(--surface-sunken);
+  color: var(--text-primary);
+  /* The question sits right, the answer full-width: a budget answer is often
+     a short table, and indenting it wastes the width it needs. */
+  margin-left: var(--spacing-lg);
+}
+
+.chat-msg--assistant .chat-msg__body {
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.chat-msg__working {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.chat-msg__spin {
+  animation: chat-spin 1s linear infinite;
+}
+
+@keyframes chat-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-msg__spin {
+    animation: none;
+  }
+}
+
+.chat-msg__error {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--border-radius-sm);
+  font-size: 11px;
+  color: var(--color-negative);
+  background-color: var(--surface-sunken);
+}
+
+.chat-msg__retry {
+  margin-left: auto;
+  padding: 2px var(--spacing-xs);
+  border: 1px solid currentColor;
+  border-radius: var(--border-radius-sm);
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* ── what it looked up ──────────────────────────────────────────────── */
+
+.chat-tools {
+  margin-bottom: var(--spacing-xs);
+}
+
+.chat-tools__toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px;
+  border: none;
+  border-radius: var(--border-radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.chat-tools__toggle:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.chat-tools__list {
+  margin: var(--spacing-xs) 0 0;
+  padding: var(--spacing-xs);
+  list-style: none;
+  border: 1px solid var(--edge);
+  border-radius: var(--border-radius-sm);
+  background-color: var(--surface-sunken);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.chat-tools__item {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.chat-tools__name {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--spacing-xs);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.chat-tools__ms {
+  font-weight: 400;
+  opacity: 0.7;
+}
+
+.chat-tools__args {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.chat-tools__args code {
+  font-size: 10px;
+  word-break: break-all;
+}
+
+.chat-tools__args-label {
+  opacity: 0.75;
+}
+
+/* The arguments that actually ran, when they differ from what the model
+   asked for. That difference is the point of showing both. */
+.chat-tools__args--changed code {
+  color: var(--color-warning);
+}
+
+.chat-tools__via,
+.chat-tools__rows {
+  opacity: 0.75;
+  font-size: 10px;
+}
+
+.chat-tools__error {
+  color: var(--color-negative);
+}
+
+@media (max-width: 768px) {
+  /* The control the panel's whole trust story rests on was the hardest thing
+     in it to hit: ~20px around an 11px label. */
+  .chat-tools__toggle {
+    min-height: var(--tap-min);
+  }
+}
+
+/* ── whether the figures came from the budget ───────────────────────── */
+
+/* Under the answer, not folded into the tool disclosure: this is about the
+   text you just read, and a warning behind a chevron is a warning nobody
+   sees. Quiet when it agrees, plain when it does not — the confident tone is
+   deliberately the smaller of the two. */
+.chat-grounding {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  margin: var(--spacing-xs) 0 0;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.chat-grounding--ok {
+  color: var(--text-secondary);
+}
+
+.chat-grounding--warn {
+  padding: var(--spacing-xs);
+  border-radius: var(--border-radius-sm);
+  color: var(--color-warning);
+  background-color: var(--surface-sunken);
+  font-size: 11px;
+}
+
+.chat-grounding svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}

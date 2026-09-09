@@ -4,7 +4,9 @@ The system prompt tells the model never to invent a figure. This is the part
 that checks, because an instruction to a 7-8B model is a request.
 """
 
+import json
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
@@ -15,40 +17,18 @@ from igab.ai.grounding import (
     extract_figures,
 )
 
+_SHARED = json.loads(
+    (Path(__file__).resolve().parents[3] / "shared" / "money_figures.json").read_text()
+)
+
 
 class TestFindingMoneyInProse:
-    @pytest.mark.parametrize(
-        ("text", "expected"),
-        [
-            ("You spent $120.00 on Groceries", [Decimal("120.00")]),
-            ("$1,234.56 across the month", [Decimal("1234.56")]),
-            ("Groceries is over by $42", [Decimal("42")]),
-            ("The total was 1234.50 for the period", [Decimal("1234.50")]),
-            ("£80.00 and €12.34", [Decimal("80.00"), Decimal("12.34")]),
-            ("$ 55.20 with a space", [Decimal("55.20")]),
-        ],
-    )
-    def test_money_shapes(self, text, expected):
-        assert [f.value for f in extract_figures(text)] == expected
-
-    @pytest.mark.parametrize(
-        "text",
-        [
-            "You had 12 transactions",  # a count is not an amount
-            "In 2026 you saved more",  # a year
-            "That is 32% of your income",  # a rate
-            "The 3 largest payees",  # an ordinal
-            "Check envelope 4 for details",
-            "version 1.2.3 of the app",
-        ],
-    )
-    def test_things_that_are_not_money(self, text):
-        """Deliberately narrow. Widening the net to catch every integer would
-        flag dates and counts until nobody read the result."""
-        assert extract_figures(text) == []
-
-    def test_a_percentage_with_cents_is_still_a_rate(self):
-        assert extract_figures("that is 12.50% of income") == []
+    @pytest.mark.parametrize("case", _SHARED["cases"], ids=[c["note"] for c in _SHARED["cases"]])
+    def test_shared_money_shapes(self, case):
+        """One rule, two languages: the frontend styles the same figures this
+        module checks, from the same cases. See shared/money_figures.json."""
+        values = [f.value for f in extract_figures(case["text"])]
+        assert values == [Decimal(v) for v in case["figures"]]
 
     def test_empty_and_none_safe(self):
         assert extract_figures("") == []

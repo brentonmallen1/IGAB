@@ -69,31 +69,6 @@
   background: var(--bg-primary);
 }
 
-.ai-settings__collapse-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  align-self: flex-start;
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  background: none;
-  border: none;
-  padding: 4px 0;
-  cursor: pointer;
-}
-
-.ai-settings__collapse-toggle:hover {
-  color: var(--text-primary);
-}
-
-.ai-settings__advanced {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-md);
-  padding-left: var(--spacing-md);
-  border-left: 2px solid var(--border-subtle);
-}
-
 .settings-row--stacked {
   flex-direction: column;
   align-items: stretch;
@@ -211,30 +186,144 @@
   min-height: 140px;
 }
 
-/* Ground truth for "which model reads my receipts" — always visible under the
-   vision toggle, whatever the controls above claim. */
-.ai-settings__receipt-model {
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  padding: var(--spacing-xs) 0;
-}
-
-.ai-settings__receipt-model strong {
-  color: var(--text-primary);
-  font-weight: 600;
-}
-
-.ai-settings__receipt-model-warning {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-left: var(--spacing-sm);
-  color: var(--color-warning);
-}
-
 /* The AI section title carries an icon; the surface title is otherwise text-only */
 .settings-section__title--icon {
   display: inline-flex;
   align-items: center;
   gap: var(--spacing-sm);
+}
+
+/* ── which model does the job ───────────────────────────────────────── */
+
+.model-select {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  min-width: 0;
+}
+
+.model-select__control {
+  max-width: 100%;
+}
+
+.model-select__caps {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+/* The capability the job needs, when the chosen model has it. */
+.ai-panel__cap--required {
+  color: var(--color-positive);
+  background: color-mix(in srgb, var(--color-positive) 12%, transparent);
+}
+
+/* The picker an override opens, indented under its toggle. */
+.ai-settings__override-pick {
+  padding-left: var(--spacing-md);
+  border-left: 2px solid var(--border-subtle);
+}
+
+/* Ground truth for which model does a job — always visible under its
+   toggle, whatever the controls above claim. */
+.ai-settings__ground-truth {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  padding: 0 0 var(--spacing-xs) var(--spacing-md);
+}
+
+.ai-settings__ground-truth strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.ai-settings__ground-truth-warning,
+.ai-settings__ground-truth-ok {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: var(--spacing-sm);
+}
+
+.ai-settings__ground-truth-warning {
+  color: var(--color-warning);
+}
+
+.ai-settings__ground-truth-ok {
+  color: var(--color-positive);
+}
+
+.ai-settings__ground-truth-extra {
+  color: var(--text-muted);
+}
+
+/* ── advanced ───────────────────────────────────────────────────────── */
+
+/* A bordered row, not a text link: the link was invisible in a column of
+   rows, and people asked where the model options were while looking at
+   the page that had them. */
+.ai-settings__disclosure {
+  margin-top: var(--spacing-md);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--border-radius-sm);
+  overflow: hidden;
+}
+
+.ai-settings__disclosure-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--bg-secondary);
+  border: none;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.ai-settings__disclosure-toggle:hover {
+  background: var(--bg-hover);
+}
+
+.ai-settings__disclosure-label {
+  font-weight: 500;
+}
+
+.ai-settings__disclosure-hint {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.ai-settings__disclosure-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md);
+  border-top: 1px solid var(--border-subtle);
+}
+
+@media (max-width: 768px) {
+  /* Rows stack on a phone: a select beside a two-line description had
+     nowhere to go but off the edge. */
+  .settings-section#ai .settings-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .settings-section#ai .ai-panel__actions,
+  .settings-section#ai .ai-settings__inline {
+    justify-content: flex-end;
+  }
+
+  .model-select {
+    align-items: stretch;
+  }
+
+  .model-select__caps {
+    justify-content: flex-start;
+  }
 }

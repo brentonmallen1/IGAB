@@ -1,7 +1,6 @@
-import { useEffect, useState } from 'react'
-import { AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react'
+import { useState } from 'react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { useAIStatus } from '../../api/ai'
 import { useSettings, useUpdateSetting } from '../../api/settings'
 import './AISettings.css'
 
@@ -15,241 +14,103 @@ function isJsonObject(value: string): boolean {
 }
 
 /**
- * Model-agnostic knobs: a vision-model override for receipt scanning, the
- * thinking mode (auto follows the model's advertised capabilities), and
- * pass-through Ollama options JSON — how model-specific tuning (image
- * tokens, num_ctx, ...) works without model-specific code.
+ * The knobs most households never touch, behind one disclosure: thinking
+ * mode, the receipt timeout, and pass-through Ollama options JSON — how
+ * model-specific tuning works without model-specific code.
+ *
+ * A full-width row with a border rather than a text link, because the link
+ * version was invisible: people asked where the model options had gone
+ * while standing on the page that had them.
  */
 export function AIAdvancedSettings() {
   const { data: settings } = useSettings()
   const updateSetting = useUpdateSetting()
-  const aiStatus = useAIStatus()
-
   const get = (key: string) => settings?.find((s) => s.key === key)?.value ?? ''
 
-  const visionModel = get('ollama_vision_model')
-  const chatModel = get('ollama_chat_model')
-  const [useVisionOverride, setUseVisionOverride] = useState(false)
-  const [editVisionModel, setEditVisionModel] = useState('')
-  const [advancedOpen, setAdvancedOpen] = useState(false)
-  const [editOptions, setEditOptions] = useState('')
-  const [editVisionOptions, setEditVisionOptions] = useState('')
-  const [editTimeout, setEditTimeout] = useState('')
-  const [editChatTimeout, setEditChatTimeout] = useState('120')
-  const [editChatModel, setEditChatModel] = useState('')
+  const [open, setOpen] = useState(false)
+  // Drafts that are null until typed in: each field shows the server value,
+  // and a local edit wins until it is saved. No sync effect, so nothing can
+  // freeze at a first render.
+  const [drafts, setDrafts] = useState<Record<string, string>>({})
+  const draft = (key: string, fallback: string) => drafts[key] ?? (get(key) || fallback)
+  const setDraft = (key: string, value: string) => setDrafts((d) => ({ ...d, [key]: value }))
+  const editOptions = draft('ollama_options', '{}')
+  const editVisionOptions = draft('ollama_vision_options', '{}')
+  const editTimeout = draft('ai_vision_timeout_s', '300')
 
-  // Sync the vision pair whenever the SERVER value changes — initial load, a
-  // completed save, or a change made on another device — while local edits
-  // win in between (same pattern as Combobox). The old once-only effect left
-  // this state frozen at its first value, which could render the toggle OFF
-  // with a vision model silently set in the DB: the exact lie that let a
-  // non-vision model process receipts unnoticed.
-  const [lastServerVisionModel, setLastServerVisionModel] = useState<string | null>(null)
-  if (settings && visionModel !== lastServerVisionModel) {
-    setLastServerVisionModel(visionModel)
-    setUseVisionOverride(!!visionModel)
-    setEditVisionModel(visionModel)
-  }
-
-  useEffect(() => {
-    if (!settings) return
-    setEditOptions(get('ollama_options') || '{}')
-    setEditVisionOptions(get('ollama_vision_options') || '{}')
-    setEditTimeout(get('ai_vision_timeout_s') || '300')
-    setEditChatTimeout(get('ai_chat_timeout_s') || '120')
-    setEditChatModel(get('ollama_chat_model') || '')
-    // Free-text editors sync from the server once loaded; local edits win
-    // afterwards (unlike the vision pair above, they are inputs, not state
-    // indicators).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings === undefined])
-
-  async function save(key: string, value: string): Promise<boolean> {
+  async function save(key: string, value: string) {
     try {
       await updateSetting.mutateAsync({ key, value })
+      setDrafts(({ [key]: _saved, ...rest }) => rest)
       toast.success('Saved')
-      return true
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
       toast.error(detail ?? 'Save failed')
-      return false
     }
   }
-
-  async function toggleVisionOverride(enabled: boolean) {
-    setUseVisionOverride(enabled)
-    if (!enabled) {
-      const previous = editVisionModel
-      setEditVisionModel('')
-      if (!(await save('ollama_vision_model', ''))) {
-        // The DB still holds the old value — showing OFF would be a lie.
-        setUseVisionOverride(true)
-        setEditVisionModel(previous)
-      }
-    }
-  }
-
-  // What will actually scan receipts, resolved server-side through the real
-  // fallback chain (override → main model), with the vision verdict from the
-  // same /api/show probe the worker gates on. It must come from there and not
-  // from the model list: /api/tags under-reports capabilities (gemma4 lists
-  // no "vision" there, and /api/show says otherwise), which had this line
-  // calling a working vision model unsupported. null = unknown (Ollama down,
-  // older server) — a different problem, and never rendered as misconfigured.
-  const receiptModel = aiStatus.data?.receipt_model ?? null
-  const receiptModelLacksVision = aiStatus.data?.receipt_model_vision === false
 
   const optionsValid = isJsonObject(editOptions)
   const visionOptionsValid = isJsonObject(editVisionOptions)
 
   return (
-    <div className="ai-settings">
-      <div className="settings-row">
-        <div>
-          <div className="settings-row__label">Use a different model for vision tasks</div>
-          <div className="settings-row__desc">
-            Receipt scanning needs a vision-capable model. Off = the main model handles everything;
-            on = pick a dedicated one (e.g. a small OCR model).
-          </div>
-        </div>
-        <label className="ai-settings__toggle">
-          <input
-            type="checkbox"
-            checked={useVisionOverride}
-            onChange={(e) => void toggleVisionOverride(e.target.checked)}
-          />
-          <span />
-        </label>
-      </div>
-      {/* Always visible, not gated on the toggle: this line is the ground
-          truth for "which model reads my receipts", whatever the controls
-          above claim. */}
-      {receiptModel && (
-        <div className="ai-settings__receipt-model" data-testid="receipt-model-line">
-          Receipts are scanned by <strong>{receiptModel}</strong>
-          {receiptModelLacksVision && (
-            <span className="ai-settings__receipt-model-warning">
-              <AlertTriangle size={12} aria-hidden />
-              this model does not support vision
-            </span>
-          )}
-        </div>
-      )}
-      {useVisionOverride && (
-        <div className="settings-row">
-          <div className="settings-row__label">Vision model</div>
-          <div className="ai-settings__inline">
-            <input
-              type="text"
-              className="settings-input"
-              value={editVisionModel}
-              onChange={(e) => setEditVisionModel(e.target.value)}
-              placeholder="e.g. gemma4, moondream"
-            />
-            <button
-              className="settings-btn settings-btn--secondary"
-              onClick={() => void save('ollama_vision_model', editVisionModel.trim())}
-              disabled={updateSetting.isPending}
-            >
-              Save
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div className="settings-row">
-        <div>
-          <div className="settings-row__label">Thinking</div>
-          <div className="settings-row__desc">
-            Auto enables thinking only when the model reports supporting it.
-          </div>
-        </div>
-        <select
-          className="ai-settings__select"
-          value={get('ai_thinking') || 'auto'}
-          onChange={(e) => void save('ai_thinking', e.target.value)}
-        >
-          <option value="auto">Auto (recommended)</option>
-          <option value="on">Always on</option>
-          <option value="off">Off</option>
-        </select>
-      </div>
-
-      <button className="ai-settings__collapse-toggle" onClick={() => setAdvancedOpen((v) => !v)}>
-        {advancedOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-        Advanced model options
+    <div className="ai-settings__disclosure">
+      <button
+        type="button"
+        className="ai-settings__disclosure-toggle"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-controls="ai-advanced-body"
+      >
+        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        <span className="ai-settings__disclosure-label">Advanced</span>
+        <span className="ai-settings__disclosure-hint">
+          Thinking mode, receipt timeout, raw Ollama options
+        </span>
       </button>
 
-      {advancedOpen && (
-        <div className="ai-settings__advanced">
-          <div className="settings-row settings-row--stacked">
+      {open && (
+        <div className="ai-settings__disclosure-body" id="ai-advanced-body">
+          <div className="settings-row">
             <div>
-              <div className="settings-row__label">Assistant model</div>
+              <label className="settings-row__label" htmlFor="ai-thinking">
+                Thinking
+              </label>
               <div className="settings-row__desc">
-                The model the chat panel uses. Leave empty to use the main model. It must support
-                tool calling, or the assistant can answer but cannot look anything up.
-                {chatModel ? ` Currently: ${chatModel}.` : ''}
+                Auto enables thinking only when the model reports supporting it.
               </div>
             </div>
-            <div className="ai-settings__inline">
-              <input
-                type="text"
-                className="settings-input"
-                placeholder="same as main model"
-                value={editChatModel}
-                onChange={(e) => setEditChatModel(e.target.value)}
-              />
-              <button
-                className="settings-btn settings-btn--secondary"
-                onClick={() => void save('ollama_chat_model', editChatModel.trim())}
-              >
-                Save
-              </button>
-            </div>
+            <select
+              id="ai-thinking"
+              className="settings-select"
+              value={get('ai_thinking') || 'auto'}
+              onChange={(e) => void save('ai_thinking', e.target.value)}
+            >
+              <option value="auto">Auto (recommended)</option>
+              <option value="on">Always on</option>
+              <option value="off">Off</option>
+            </select>
           </div>
 
-          <div className="settings-row settings-row--stacked">
+          <div className="settings-row">
             <div>
-              <div className="settings-row__label">Assistant timeout (seconds)</div>
-              <div className="settings-row__desc">
-                A chat answer can take several round trips while it looks things up.
-              </div>
-            </div>
-            <div className="ai-settings__inline">
-              <input
-                type="number"
-                inputMode="numeric"
-                min={10}
-                className="settings-input ai-settings__timeout"
-                value={editChatTimeout}
-                onChange={(e) => setEditChatTimeout(e.target.value)}
-              />
-              <button
-                className="settings-btn settings-btn--secondary"
-                onClick={() => void save('ai_chat_timeout_s', editChatTimeout)}
-                disabled={!/^[1-9]\d*$/.test(editChatTimeout)}
-              >
-                Save
-              </button>
-            </div>
-          </div>
-
-          <div className="settings-row settings-row--stacked">
-            <div>
-              <div className="settings-row__label">Vision request timeout (seconds)</div>
+              <label className="settings-row__label" htmlFor="ai-vision-timeout">
+                Receipt scan timeout
+              </label>
               <div className="settings-row__desc">
                 Bigger models on modest hardware need more patience.
               </div>
             </div>
             <div className="ai-settings__inline">
               <input
+                id="ai-vision-timeout"
                 type="number"
                 inputMode="numeric"
                 min={10}
                 className="settings-input ai-settings__timeout"
                 value={editTimeout}
-                onChange={(e) => setEditTimeout(e.target.value)}
+                onChange={(e) => setDraft('ai_vision_timeout_s', e.target.value)}
               />
+              <span className="ai-panel__retention-unit">seconds</span>
               <button
                 className="settings-btn settings-btn--secondary"
                 onClick={() => void save('ai_vision_timeout_s', editTimeout)}
@@ -262,16 +123,20 @@ export function AIAdvancedSettings() {
 
           <div className="settings-row settings-row--stacked">
             <div>
-              <div className="settings-row__label">Ollama options (all tasks)</div>
+              <label className="settings-row__label" htmlFor="ai-options">
+                Ollama options (all tasks)
+              </label>
               <div className="settings-row__desc">
                 JSON passed straight to Ollama's options — see your model's page for supported keys,
-                e.g. {'{"num_ctx": 8192}'}.
+                e.g. {'{"temperature": 0.2}'}. The assistant's context window is set above and wins
+                over a num_ctx here.
               </div>
             </div>
             <textarea
+              id="ai-options"
               className={`ai-settings__json ${optionsValid ? '' : 'ai-settings__json--invalid'}`}
               value={editOptions}
-              onChange={(e) => setEditOptions(e.target.value)}
+              onChange={(e) => setDraft('ollama_options', e.target.value)}
               rows={3}
               spellCheck={false}
             />
@@ -289,15 +154,18 @@ export function AIAdvancedSettings() {
 
           <div className="settings-row settings-row--stacked">
             <div>
-              <div className="settings-row__label">Extra options for vision tasks</div>
+              <label className="settings-row__label" htmlFor="ai-vision-options">
+                Extra options for receipt scans
+              </label>
               <div className="settings-row__desc">
                 Merged on top for receipt scans only — e.g. image-token settings.
               </div>
             </div>
             <textarea
+              id="ai-vision-options"
               className={`ai-settings__json ${visionOptionsValid ? '' : 'ai-settings__json--invalid'}`}
               value={editVisionOptions}
-              onChange={(e) => setEditVisionOptions(e.target.value)}
+              onChange={(e) => setDraft('ollama_vision_options', e.target.value)}
               rows={3}
               spellCheck={false}
             />

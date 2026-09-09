@@ -108,6 +108,23 @@ class OllamaClient:
         except Exception:
             return {}
 
+    async def context_length(self, model: str | None = None) -> int | None:
+        """The model's maximum context, from /api/show's model_info, or None.
+
+        The key is architecture-prefixed ("gemma4.context_length",
+        "llama.context_length"), so it is found by suffix. This is what the
+        model *can* take, not what the server will allocate — that is
+        ``num_ctx``, which the caller decides.
+        """
+        info = await self.show(model)
+        model_info = info.get("model_info")
+        if not isinstance(model_info, dict):
+            return None
+        for key, value in model_info.items():
+            if str(key).endswith(".context_length") and isinstance(value, int) and value > 0:
+                return value
+        return None
+
     async def capabilities(self, model: str | None = None) -> list[str] | None:
         """Model capabilities, or None when the server doesn't report them."""
         info = await self.show(model)

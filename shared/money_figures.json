@@ -1,0 +1,20 @@
+{
+  "_comment": "What a money figure looks like in prose. One rule, two languages: `cases` is run by BOTH backend/tests/unit/test_ai_grounding.py (which checks an answer's figures against tool results) and frontend/src/components/ai/chat/figures.test.ts (which styles them). A change to one regex only fails on the other. `figures` are the numeric values matched, in order, as strings.",
+  "cases": [
+    { "text": "You spent $120.00 on Groceries", "figures": ["120.00"], "note": "the ordinary case" },
+    { "text": "$1,234.56 across the month", "figures": ["1234.56"], "note": "thousands separator" },
+    { "text": "Groceries is over by $42", "figures": ["42"], "note": "a symbol needs no cents" },
+    { "text": "The total was 1234.50 for the period", "figures": ["1234.50"], "note": "cents need no symbol" },
+    { "text": "£80.00 and €12.34", "figures": ["80.00", "12.34"], "note": "other currencies" },
+    { "text": "$ 55.20 with a space", "figures": ["55.20"], "note": "a space after the symbol" },
+    { "text": "Groceries was `$412.80` in September", "figures": ["412.80"], "note": "inside a code span" },
+    { "text": "over by **$42.00** this month", "figures": ["42.00"], "note": "inside bold" },
+    { "text": "| Groceries | `$412.80` |", "figures": ["412.80"], "note": "inside a table cell" },
+    { "text": "You had 12 transactions", "figures": [], "note": "a count is not an amount" },
+    { "text": "In 2026 you saved more", "figures": [], "note": "a year" },
+    { "text": "That is 32% of your income", "figures": [], "note": "a rate" },
+    { "text": "12.50% of income", "figures": [], "note": "a rate with cents is still a rate" },
+    { "text": "The 3 largest payees", "figures": [], "note": "an ordinal" },
+    { "text": "version 1.2.3 of the app", "figures": [], "note": "a version number" }
+  ]
+}

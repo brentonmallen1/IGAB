@@ -100,9 +100,11 @@ class TestTheFiguresMatchTheApp:
         """The summary has neither; without the join the chat would advise
         moving money into an envelope that cannot take it."""
         result = await handlers.get_budget_month(ctx, {})
-        groceries = next(r for r in result["categories"] if r["category"] == "Groceries")
-        assert groceries["group"] == "Everyday"
-        assert "is_assignable" in groceries
+        everyday = next(g for g in result["groups"] if g["group"] == "Everyday")
+        groceries = next(r for r in everyday["categories"] if r["category"] == "Groceries")
+        # Only the unusual flag is spelled out; an ordinary envelope carries
+        # neither, which halves the size of a large grid.
+        assert "not_assignable" not in groceries
         assert groceries["assigned"] == 400.0
 
     async def test_spending_matches_the_report_the_charts_use(self, ctx):

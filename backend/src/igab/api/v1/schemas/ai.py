@@ -43,12 +43,21 @@ class AIStatusResponse(ApiModel):
     #: worker gates receipt scans on. None = unknown (Ollama unreachable, or
     #: too old to report capabilities) — never render that as "unsupported".
     receipt_model_vision: bool | None = None
+    #: The assistant's model through its own fallback chain (override → main).
+    chat_model: str
+    #: Whether it can call tools, from the same probe the chat route gates
+    #: on. None = unknown, never "unsupported".
+    chat_model_tools: bool | None = None
+    #: What the model advertises it can take, and what the app will ask for.
+    chat_model_context_length: int | None = None
+    chat_num_ctx: int | None = None
 
 
 class OllamaModelInfo(ApiModel):
     name: str
     size: int
     capabilities: list[str]
+    context_length: int | None = None
 
 
 class OllamaModelsResponse(ApiModel):

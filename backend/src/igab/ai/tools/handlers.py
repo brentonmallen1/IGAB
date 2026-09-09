@@ -5,6 +5,7 @@ call a service, and shape the reply. No queries. See `registry` for why, and
 `tests/unit/test_ai_tools.py` for the check that keeps it true.
 """
 
+from collections import defaultdict
 from datetime import date
 from typing import Any
 
@@ -56,7 +57,7 @@ async def get_budget_month(ctx: ToolContext, args: dict) -> dict:
     month = _date(args, "month", ctx.today).replace(day=1)
     summary = await ctx.budgets.get_budget_summary(ctx.budget_id, month)
     pairs = await ctx.categories.get_all_with_group_names(ctx.budget_id)
-    meta = {
+    meta: dict[Any, dict[str, Any]] = {
         cat.id: {
             "name": cat.name,
             "group": group,
@@ -65,7 +66,12 @@ async def get_budget_month(ctx: ToolContext, args: dict) -> dict:
         for cat, group in pairs
     }
 
-    rows = []
+    # Grouped, and only the unusual flags spelled out. A flat row per
+    # envelope repeating its group name and two booleans was ~150 characters
+    # each, and a budget with 188 envelopes tripped the size fallback — the
+    # model was told "too large, ask narrower" and said there were too many
+    # categories to list. Half the characters say the same thing.
+    groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for balance in summary.category_balances:
         info = meta.get(balance.category_id)
         if info is None:
@@ -75,17 +81,17 @@ async def get_budget_month(ctx: ToolContext, args: dict) -> dict:
         # rather than a month's budget. A tool that reported it would show
         # something the user has never seen in the app.
         system = balance.in_system_group
-        rows.append(
-            {
-                "category": info["name"],
-                "group": info["group"],
-                "assigned": None if system else money(balance.assigned),
-                "activity": money(balance.activity),
-                "available": None if system else money(balance.available),
-                "is_assignable": info["is_assignable"],
-                "overspent": (not system) and balance.available < 0,
-            }
-        )
+        row: dict[str, Any] = {
+            "category": info["name"],
+            "assigned": None if system else money(balance.assigned),
+            "activity": money(balance.activity),
+            "available": None if system else money(balance.available),
+        }
+        if not info["is_assignable"]:
+            row["not_assignable"] = True
+        if (not system) and balance.available < 0:
+            row["overspent"] = True
+        groups[info["group"]].append(row)
 
     return summarize_if_large(
         {
@@ -95,9 +101,15 @@ async def get_budget_month(ctx: ToolContext, args: dict) -> dict:
             "total_activity": money(summary.total_activity),
             "total_overspent": money(summary.total_overspent),
             "overspent_count": summary.overspent_count,
-            "categories": rows,
+            "note": (
+                "Envelopes are listed under their group. An envelope marked "
+                "not_assignable cannot receive money; one marked overspent "
+                "has a negative available."
+            ),
+            "groups": [{"group": name, "categories": rows} for name, rows in groups.items()],
         },
         keep=("month", "ready_to_assign", "total_overspent", "overspent_count"),
+        max_chars=ctx.result_max_chars,
     )
 
 
@@ -357,4 +369,5 @@ async def guide_checkup(ctx: ToolContext, args: dict) -> dict:
             ],
         },
         keep=("enabled", "as_of", "findings"),
+        max_chars=ctx.result_max_chars,
     )

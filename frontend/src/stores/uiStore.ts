@@ -3,6 +3,17 @@ import { persist } from 'zustand/middleware'
 import { PERSIST_KEYS } from './persistKeys'
 import { SIDEBAR_MIN_WIDTH, clampSidebarWidth } from '../components/layout/Sidebar/sidebarWidth'
 import { CHAT_PANEL_MIN_WIDTH, clampChatPanelWidth } from '../components/ai/chat/chatPanelWidth'
+import {
+  assignConversation,
+  blankTab,
+  closeConversation,
+  closeTab,
+  labelTab,
+  newTab,
+  openConversation,
+  type ChatTab,
+} from '../components/ai/chat/chatTabs'
+import { randomUUID } from '../utils/uuid'
 import type { AssignStrategy } from '../types'
 
 type TransactionSortColumn = 'date' | 'account' | 'payee' | 'category' | 'memo' | 'amount'
@@ -112,12 +123,22 @@ interface UIState {
   /** The AI chat panel, open beside the page. */
   chatPanelOpen: boolean
   chatPanelWidth: number
-  /** Which conversation the panel is showing; null starts a new one. */
-  activeConversationId: string | null
+  /** The panel's open conversations, one tab each. Never empty. */
+  chatTabs: ChatTab[]
+  activeChatTab: string | null
   toggleChatPanel: () => void
   setChatPanelOpen: (open: boolean) => void
   setChatPanelWidth: (px: number) => void
-  setActiveConversation: (id: string | null) => void
+  /** Start a blank chat in its own tab (or the blank tab already there). */
+  newChatTab: () => void
+  /** Show a conversation in the panel, in its tab if it has one. */
+  openChatConversation: (conversationId: string) => void
+  selectChatTab: (key: string) => void
+  closeChatTab: (key: string) => void
+  /** A conversation was deleted; drop any tab still showing it. */
+  closeChatConversation: (conversationId: string) => void
+  assignChatConversation: (key: string, conversationId: string) => void
+  labelChatTab: (key: string, label: string) => void
   /** Which sidebar account groups are folded shut, by the ids in
    *  `SIDEBAR_SECTION_IDS` / `sidebarTypeGroupId`. Separate from
    *  `collapsedGroups`, which is the budget page's category groups: one Set
@@ -233,6 +254,19 @@ interface UIState {
   cancelReconciliation: () => void
 }
 
+// The panel always has somewhere to type, so the store starts with one tab.
+const FIRST_CHAT_TAB = blankTab(randomUUID())
+
+// The tab rules live in chatTabs.ts; these two adapt the store's flat fields
+// to the shape they take and back.
+function toTabs(s: { chatTabs: ChatTab[]; activeChatTab: string | null }) {
+  return { tabs: s.chatTabs, activeKey: s.activeChatTab }
+}
+
+function fromTabs(t: { tabs: ChatTab[]; activeKey: string | null }) {
+  return { chatTabs: t.tabs, activeChatTab: t.activeKey }
+}
+
 export const useUIStore = create<UIState>()(
   persist(
     (set, get) => ({
@@ -243,7 +277,8 @@ export const useUIStore = create<UIState>()(
       sidebarWidth: SIDEBAR_MIN_WIDTH,
       chatPanelOpen: false,
       chatPanelWidth: CHAT_PANEL_MIN_WIDTH,
-      activeConversationId: null,
+      chatTabs: [FIRST_CHAT_TAB],
+      activeChatTab: FIRST_CHAT_TAB.key,
       budgetRowMode: 'expanded',
       selectedCategoryIds: new Set(),
       categoryInspectorOpen: true,
@@ -289,7 +324,16 @@ export const useUIStore = create<UIState>()(
       toggleChatPanel: () => set((s) => ({ chatPanelOpen: !s.chatPanelOpen })),
       setChatPanelOpen: (open) => set({ chatPanelOpen: open }),
       setChatPanelWidth: (px) => set({ chatPanelWidth: clampChatPanelWidth(px) }),
-      setActiveConversation: (id) => set({ activeConversationId: id }),
+      newChatTab: () => set((s) => fromTabs(newTab(toTabs(s), randomUUID()))),
+      openChatConversation: (id) =>
+        set((s) => fromTabs(openConversation(toTabs(s), id, randomUUID()))),
+      selectChatTab: (key) => set({ activeChatTab: key }),
+      closeChatTab: (key) => set((s) => fromTabs(closeTab(toTabs(s), key, randomUUID()))),
+      closeChatConversation: (id) =>
+        set((s) => fromTabs(closeConversation(toTabs(s), id, randomUUID()))),
+      assignChatConversation: (key, id) =>
+        set((s) => fromTabs(assignConversation(toTabs(s), key, id))),
+      labelChatTab: (key, label) => set((s) => fromTabs(labelTab(toTabs(s), key, label))),
 
       collapsedSidebarGroups: new Set<string>(),
       toggleSidebarGroup: (groupId) => {

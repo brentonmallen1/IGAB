@@ -208,6 +208,21 @@ describe('useChatStream', () => {
     await waitFor(() => expect(result.current.turn.streaming).toBe(false))
   })
 
+  it('learns the conversation id from the start event', async () => {
+    streamChat.mockImplementation(
+      scripted([
+        { type: 'start', conversation_id: 'c9', tools: true },
+        { type: 'done', message_id: null },
+      ])
+    )
+    const { result } = renderHook(() => useChatStream('b1'), { wrapper })
+    expect(result.current.turn.conversationId).toBeNull()
+    await act(async () => {
+      await result.current.send('q', { conversationId: null, pageContext: null })
+    })
+    expect(result.current.turn.conversationId).toBe('c9')
+  })
+
   it('reset clears the turn', async () => {
     streamChat.mockImplementation(
       scripted([

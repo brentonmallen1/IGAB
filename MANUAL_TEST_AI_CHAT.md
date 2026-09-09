@@ -105,6 +105,36 @@ starts awaiting.
   keyboard should not push the composer off-screen.
 - Cycle a few themes with the panel open, light and dark. Nothing should be
   unreadable.
+- **Tabs.** The plus icon always opens a new tab, and the strip is always
+  there, even for one blank chat. Ask something slow in
+  one tab, switch to another and ask again: the first answer should keep
+  arriving in the background and be complete, scrolled to its end, when you
+  switch back. Closing the active tab lands on its neighbour; closing the
+  last one leaves a blank tab.
+- Closing the panel (or the sheet on a phone) does not stop an answer in
+  progress; the Stop button in the composer does.
+- Amounts in answers render as small figure chips the same size as the
+  prose. The renderer finds them itself, so this holds however the model
+  wrote them — including gemma's `` `$`4,182.33` `` habit, which used to
+  show a lone `$` chip and a stray backtick.
+
+## Settings → AI
+
+- The section reads top to bottom: enable, host, **Models**, **Assistant**,
+  **Activity log**, then an **Advanced** row with a border, then prompts.
+- **Models** has three pickers of one shape. The main model is a dropdown;
+  receipts and the assistant each have a toggle that reveals a dropdown. In
+  the assistant's dropdown a model without tool calling is listed but greyed
+  out and says "no tools". Under each toggle a line names the model that
+  will actually do the job, with a green capability mark or an amber warning
+  from the server's own probe. Unknown (Ollama down) shows neither.
+- **Assistant → Context window** defaults to Auto, which reads as
+  "Auto (32k)" for a gemma4. The sizes offered stop at what the model
+  reports. Pick 64k, ask the assistant which envelope has the most assigned,
+  and check in Model calls that the request options carry `num_ctx: 65536`.
+- With Auto, a budget with ~200 envelopes should now get the whole grid: ask
+  the same question and confirm the answer names an envelope rather than
+  saying there were too many to list.
 
 ## AI Activity
 
@@ -112,8 +142,11 @@ starts awaiting.
 their prompt and raw response, and still approve. This is the retrofit's main
 regression risk.
 
-**Chats** — past conversations; opening one puts it back in the panel; deleting
-one leaves its model calls behind.
+**Chats** — past conversations. Clicking a row opens the transcript in place,
+with each answer's lookups and grounding line, and expands only one at a time.
+The panel icon on the row opens that conversation in the assistant, in its
+own tab (or focuses the tab it already has); deleting one closes its tab and
+leaves its model calls behind.
 
 **Model calls** — one row **per model round trip**, so a question that used a
 tool produces two rows. Check the token counts look sane (these are new — the
