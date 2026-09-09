@@ -1,7 +1,7 @@
 .transaction-row {
   display: grid;
-  grid-template-columns: 32px 54px 100px 1fr 1fr 1fr 90px 90px 60px;
-  padding: 7px var(--spacing-md);
+  grid-template-columns: var(--register-cols);
+  padding: 7px var(--register-pad-x);
   border-bottom: 1px solid var(--border-subtle);
   font-size: var(--font-size-sm);
   color: var(--text-primary);
@@ -18,7 +18,7 @@
    applied, and every row was scrambled and scrolled sideways. */
 @media (min-width: 769px) {
   .transaction-table--all-accounts .transaction-row {
-    grid-template-columns: 32px 54px 100px minmax(90px, 0.55fr) 1fr 1fr 1fr 90px 90px 60px;
+    grid-template-columns: var(--register-cols-all-accounts);
   }
 }
 

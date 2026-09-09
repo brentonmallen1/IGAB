@@ -1,7 +1,7 @@
 /**
  * Which row of reports the nav draws, and what starring does to it.
  *
- * Twenty-nine reports sit behind a group dropdown and a row of tabs — good
+ * Thirty reports sit behind a group dropdown and a row of tabs — good
  * for finding one you have never opened, poor for returning to the three you
  * read every week. Starred reports become a row of their own, reached from
  * the same dropdown as the groups.

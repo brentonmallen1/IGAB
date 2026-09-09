@@ -17,15 +17,23 @@
 
 /* ── Desktop, in the register ────────────────────────────────────────────
    A provisional row among real ones: muted and italic, on a faint ground,
-   so it reads as "not yet" without a badge. Columns: spacer (where the
-   register's checkbox sits), date + frequency, payee, category, memo,
-   amount over the register's two money columns, actions. */
+   so it reads as "not yet" without a badge.
+
+   It draws the register's own grid (--register-cols, defined once in
+   base.css) so each cell sits under the header that captions it. Every cell
+   is placed explicitly: two of them used to be, and the rest auto-flowed
+   around those, which put the payee in the 32px checkbox spacer and shifted
+   the whole row one column left of its header. */
 .scheduled-row--register {
-  grid-template-columns: 32px 120px 1fr 1fr 1fr 180px 100px;
-  padding: 6px var(--spacing-sm);
+  grid-template-columns: var(--register-cols);
+  padding: 6px var(--register-pad-x);
   color: var(--text-muted);
   font-style: italic;
   background-color: color-mix(in srgb, var(--bg-secondary) 60%, transparent);
+}
+
+.transaction-table--all-accounts .scheduled-row--register {
+  grid-template-columns: var(--register-cols-all-accounts);
 }
 
 .scheduled-row--register .scheduled-row__account,
@@ -33,16 +41,51 @@
   display: none;
 }
 
+/* Columns 1 and 2 (checkbox, icon) stay empty: a scheduled row is not
+   selectable and has no attachment. */
 .scheduled-row--register .scheduled-row__date {
-  grid-column: 2;
+  grid-column: 3;
 }
 
 .scheduled-row--register .scheduled-row__freq {
   /* Under the date, in the date's column: the frequency is when, not what. */
-  grid-column: 2;
+  grid-column: 3;
   grid-row: 1;
   align-self: end;
   padding-top: 18px;
+}
+
+.scheduled-row--register .scheduled-row__payee {
+  grid-column: 4;
+}
+
+.scheduled-row--register .scheduled-row__category {
+  grid-column: 5;
+}
+
+.scheduled-row--register .scheduled-row__memo {
+  grid-column: 6;
+}
+
+/* The money goes in the money column it will land in once entered — an
+   upcoming charge under OUTFLOW, a paycheque under INFLOW. The register
+   splits the two, so a single amount column above it would sit under
+   whichever header it happened to reach. */
+.scheduled-row--register .scheduled-row__amount.negative {
+  grid-column: 7;
+}
+
+.scheduled-row--register .scheduled-row__amount.positive {
+  grid-column: 8;
+}
+
+.scheduled-row--register .scheduled-row__actions {
+  /* Where the cleared toggle sits on a real row: 60px, so the two buttons
+     stack rather than widen the column and break the alignment above. */
+  grid-column: 9;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
 }
 
 /* ── Desktop, on the Scheduled page ────────────────────────────────────── */
