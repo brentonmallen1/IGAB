@@ -23,8 +23,7 @@ const EDITABLE =
   'textarea:not([readonly]),select,[contenteditable]:not([contenteditable="false"])'
 
 export interface ViewportMetrics {
-  /** Height the app shell must fill, in CSS px: the visible height plus any
-   *  region the platform paints but does not report (see standaloneStatusBarGap). */
+  /** Height the app shell must fill, in CSS px: the visible height. */
   height: number
   /** Visual viewport's top edge, measured inside the layout viewport. */
   offsetTop: number
@@ -42,55 +41,26 @@ export interface ViewportMetrics {
  * the keyboard and by browser chrome identically. That question has an exact
  * answer and needs no heuristic.
  *
+ * Every reported height is trusted as-is. That is only sound because
+ * index.html asks for an OPAQUE status bar: the web view then begins below it
+ * and the layout viewport is the frame. Under a translucent one the platform
+ * paints a strip it reports to nobody, and no arithmetic here can reach it —
+ * see the comment on the meta tag.
+ *
  * @param layoutHeight  documentElement.clientHeight — the ICB for position:fixed
  * @param visualHeight  visualViewport.height
  * @param visualOffsetTop visualViewport.offsetTop
- * @param hiddenTopInset  height the web view paints beyond every reported
- *   viewport — 0 everywhere except the standalone iOS case below
  */
 export function computeViewportMetrics(
   layoutHeight: number,
   visualHeight: number,
-  visualOffsetTop: number,
-  hiddenTopInset = 0
+  visualOffsetTop: number
 ): ViewportMetrics {
   return {
-    height: Math.round(visualHeight + hiddenTopInset),
+    height: Math.round(visualHeight),
     offsetTop: Math.max(0, Math.round(visualOffsetTop)),
     bottomInset: Math.max(0, Math.round(layoutHeight - visualHeight - visualOffsetTop)),
   }
-}
-
-/**
- * The band under the bottom nav in the installed iOS PWA.
- *
- * With viewport-fit=cover and a black-translucent status bar, the web view
- * paints the full screen — the header genuinely runs under the status bar —
- * but every height the platform reports (100dvh, innerHeight,
- * documentElement.clientHeight AND visualViewport.height) comes back short by
- * exactly env(safe-area-inset-top). Sizing the shell to any of them leaves a
- * bare band of that height at the bottom. Measured off a screenshot of a
- * 932pt screen with a 59pt inset: shell bottom at 873pt, band 59pt.
- *
- * Gated on the arithmetic rather than on a platform sniff: the correction is
- * applied only when the layout viewport is short of the physical screen by
- * the top inset to within a pixel. A Safari tab (short by its toolbars, not
- * the inset), Android standalone (inset 0), landscape (inset 0), desktop
- * (screen ≠ window) and jsdom all compute 0 and are untouched.
- *
- * @param standalone  display-mode: standalone or navigator.standalone
- * @param screenHeight  window.screen.height (portrait-fixed on iOS)
- * @param layoutHeight  documentElement.clientHeight
- * @param safeTop  env(safe-area-inset-top), measured off a probe element
- */
-export function standaloneStatusBarGap(
-  standalone: boolean,
-  screenHeight: number,
-  layoutHeight: number,
-  safeTop: number
-): number {
-  if (!standalone || safeTop <= 0) return 0
-  return Math.abs(screenHeight - layoutHeight - safeTop) <= 1 ? Math.round(safeTop) : 0
 }
 
 /** True in an installed PWA on iOS (navigator.standalone) or anywhere else
@@ -101,28 +71,6 @@ export function isStandaloneDisplay(win: Window = window): boolean {
   return typeof win.matchMedia === 'function'
     ? win.matchMedia('(display-mode: standalone)').matches
     : false
-}
-
-/**
- * A zero-width fixed element whose height is the top safe-area inset — the
- * only way to read env() as a number. Reads the alias rather than env()
- * itself so base.css stays the single place that types the env() name.
- */
-export function mountSafeTopProbe(doc: Document): HTMLElement {
-  const el = doc.createElement('div')
-  el.setAttribute('data-viewport-probe', 'safe-top')
-  el.setAttribute('aria-hidden', 'true')
-  Object.assign(el.style, {
-    position: 'fixed',
-    top: '0',
-    left: '0',
-    width: '0',
-    height: 'var(--safe-top)',
-    visibility: 'hidden',
-    pointerEvents: 'none',
-  })
-  doc.body.appendChild(el)
-  return el
 }
 
 /**
@@ -137,6 +85,10 @@ export function mountSafeTopProbe(doc: Document): HTMLElement {
  * sheet slides out of view and the nav stops covering the page's bottom
  * padding, leaving a bare band. --vv-top / --vv-bottom cancel both exactly.
  *
+ * Status bar: index.html asks for an opaque one, so the web view starts below
+ * it and the heights read here describe the whole frame. See the meta tag's
+ * comment for what a translucent bar did instead.
+ *
  * Platform note: `interactive-widget=resizes-content` (set in index.html) is
  * honoured by Chrome, which shrinks the layout viewport so bottomInset
  * computes to 0 — and ignored by Safari, where it computes to the keyboard
@@ -146,7 +98,6 @@ export function useAppViewport() {
   useEffect(() => {
     const root = document.documentElement
     const vv = window.visualViewport
-    const safeTopProbe = mountSafeTopProbe(document)
     let frame = 0
     // Separate from `frame` because `frame = requestAnimationFrame(cb)` assigns
     // AFTER cb runs if the callback is invoked synchronously — which would
@@ -162,15 +113,9 @@ export function useAppViewport() {
       if (vv && Math.abs(vv.scale - 1) > 0.01) return
 
       const layoutHeight = root.clientHeight
-      const hiddenTop = standaloneStatusBarGap(
-        isStandaloneDisplay(window),
-        window.screen.height,
-        layoutHeight,
-        safeTopProbe.offsetHeight
-      )
       const m = vv
-        ? computeViewportMetrics(layoutHeight, vv.height, vv.offsetTop, hiddenTop)
-        : computeViewportMetrics(layoutHeight, layoutHeight, 0, hiddenTop)
+        ? computeViewportMetrics(layoutHeight, vv.height, vv.offsetTop)
+        : computeViewportMetrics(layoutHeight, layoutHeight, 0)
 
       const keyboard = editableFocused && m.bottomInset >= KEYBOARD_MIN_PX ? m.bottomInset : 0
 
@@ -238,7 +183,6 @@ export function useAppViewport() {
         root.style.removeProperty(prop)
       }
       root.removeAttribute('data-keyboard')
-      safeTopProbe.remove()
     }
   }, [])
 }

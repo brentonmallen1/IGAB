@@ -78,22 +78,27 @@ export function readViewportSnapshot(
 }
 
 export type GapVerdict =
-  | 'none' // the shell already fills the screen
-  | 'status-bar-hidden' // every reported height is short by the top inset — the iOS standalone case
-  | 'other' // short by something that is not the inset; needs the ruler
+  | 'none' // the shell fills the web view
+  | 'short' // the shell stops above the web view's bottom edge — a real band
 
 /**
  * What the numbers say about the band, so the panel can state it outright
  * instead of asking the reader to subtract.
  *
- * Only meaningful in standalone; a browser tab is short by its chrome and
- * that is not a bug.
+ * The comparison is the SHELL against the WEB VIEW, never against the screen.
+ * With an opaque status bar (index.html) the web view legitimately begins
+ * below it, so `screenH - clientH` is the status bar's height on a perfectly
+ * healthy phone — the earlier verdict read that as the defect it was named
+ * after. What cannot be healthy is --app-h falling short of the layout
+ * viewport, because that is exactly the strip the fixed shell leaves bare.
  */
 export function diagnoseGap(s: ViewportSnapshot): GapVerdict {
-  if (!s.standalone) return 'none'
-  const short = s.screenH - s.clientH
-  if (short <= 1) return 'none'
-  return Math.abs(short - s.tokens['--safe-top']) <= 1 ? 'status-bar-hidden' : 'other'
+  return shellShortfall(s) > 1 ? 'short' : 'none'
+}
+
+/** Pixels of web view the shell does not cover. 0 or less is healthy. */
+export function shellShortfall(s: ViewportSnapshot): number {
+  return Math.round(s.clientH - s.tokens['--app-h'])
 }
 
 function mountProbes(doc: Document): { host: HTMLElement; read: () => Record<ProbeToken, number> } {

@@ -207,22 +207,18 @@
      with it), so there is no --kb term and no branch.
 
      This used to reconstruct the same number as
-     `calc(100dvh - var(--kb) - var(--vv-top))`, which is right only while
-     100dvh equals the visible height. In an installed iOS PWA
-     (viewport-fit=cover + black-translucent) it does not: the web view's
-     origin is the physical top of the screen — the header genuinely paints
-     under the status bar — while 100dvh comes back SHORT by exactly
-     env(safe-area-inset-top). Measured on a 932pt screen with a 59pt top
-     inset, the shell ended at 873pt and left a 59pt band of bare page
-     background under the bottom nav.
+     `calc(100dvh - var(--kb) - var(--vv-top))`. Never rebuild it: the hook
+     measures it, and the measurement is the thing.
 
-     Measured on device again on 2026-09-08 with --app-h already reading
-     --vvh: the same 59pt band. visualViewport.height is short by the inset
-     too. The hook now folds that inset back in (standaloneStatusBarGap in
-     useAppViewport.ts), gated on the arithmetic so nothing else changes.
-
-     So: never rebuild this from dvh. The hook measures it; read the
-     measurement. */
+     Reading a measurement is only RIGHT while the web view begins below the
+     status bar, which is why index.html asks for an opaque one. Under
+     `black-translucent` the view starts at the physical top of the screen and
+     every reported height — dvh, innerHeight, clientHeight, visualViewport
+     alike — is short by env(safe-area-inset-top); the fixed shell is clipped
+     at the layout viewport and the strip below it is unpaintable from inside
+     the page. Two attempts computed that 59pt correctly and still could not
+     draw it, which is what settled the meta tag. The full account is on the
+     tag itself. */
   --app-h: var(--vvh);
 
   /* The tallest a floating panel may be before it must scroll instead of
@@ -782,6 +778,19 @@ a {
   body {
     overflow: hidden;
     overscroll-behavior: none;
+  }
+
+  /* Belt and braces for the seam under the bottom nav. The shell is fixed and
+     paints --surface-canvas, and every full-bleed page outside it paints its
+     own ground (login: --bg-secondary; budget selector: --surface-canvas), so
+     the body's own colour is visible ONLY where the shell fails to reach the
+     bottom of the web view. Matching it to the nav means such a shortfall
+     reads as a slightly taller bar rather than a contrasting stripe — which
+     is what the 59pt band was. It changes no geometry and hides no
+     measurement: Settings → Mobile → Viewport reads numbers, and the ruler
+     draws lines. */
+  body {
+    background-color: var(--header-bg);
   }
 }
 

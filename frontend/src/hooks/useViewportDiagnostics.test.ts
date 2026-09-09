@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { diagnoseGap, readViewportSnapshot, type ViewportSnapshot } from './useViewportDiagnostics'
+import {
+  diagnoseGap,
+  readViewportSnapshot,
+  shellShortfall,
+  type ViewportSnapshot,
+} from './useViewportDiagnostics'
 
 const tokens = (safeTop: number) => ({
   '--safe-top': safeTop,
@@ -57,20 +62,35 @@ describe('diagnoseGap', () => {
     ...over,
   })
 
-  it('names the iOS standalone case: short by exactly the top inset', () => {
-    // The 2026-09-08 screenshot: 932pt screen, 873pt viewport, 59pt inset.
-    expect(diagnoseGap(snap({}))).toBe('status-bar-hidden')
+  // Every case is the shell against the WEB VIEW. The screen is context.
+  it('says none when the shell covers the layout viewport', () => {
+    // The opaque status bar: a 932pt screen, an 873pt web view below the bar,
+    // and a shell that fills it. `screen − layout` is 59 and healthy.
+    expect(diagnoseGap(snap({ clientH: 873, tokens: { ...tokens(0), '--app-h': 873 } }))).toBe(
+      'none'
+    )
   })
 
-  it('says none once the layout viewport reaches the screen', () => {
-    expect(diagnoseGap(snap({ clientH: 932 }))).toBe('none')
+  it('says short when the shell stops above the web view, which is the band', () => {
+    // The shipped bug, in its own arithmetic: the nav ended at 873 and the
+    // strip below it was bare.
+    const s = snap({ clientH: 932, tokens: { ...tokens(0), '--app-h': 873 } })
+    expect(diagnoseGap(s)).toBe('short')
+    expect(shellShortfall(s)).toBe(59)
   })
 
-  it('never diagnoses a browser tab, which is short by its chrome', () => {
-    expect(diagnoseGap(snap({ standalone: false, clientH: 780 }))).toBe('none')
+  it('tolerates a pixel of rounding', () => {
+    expect(diagnoseGap(snap({ clientH: 874, tokens: { ...tokens(0), '--app-h': 873 } }))).toBe(
+      'none'
+    )
   })
 
-  it('flags a shortfall that is not the inset for the ruler to explain', () => {
-    expect(diagnoseGap(snap({ clientH: 850 }))).toBe('other')
+  it('never calls a browser tab short: it is the chrome that takes the height, not the shell', () => {
+    // 780pt of web view under Safari's toolbars, filled to the last pixel.
+    expect(
+      diagnoseGap(
+        snap({ standalone: false, clientH: 780, tokens: { ...tokens(0), '--app-h': 780 } })
+      )
+    ).toBe('none')
   })
 })

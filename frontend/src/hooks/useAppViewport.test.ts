@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { computeViewportMetrics, standaloneStatusBarGap } from './useAppViewport'
+import { computeViewportMetrics } from './useAppViewport'
 
 /**
  * The viewport contract is the foundation every fixed-position element in the
@@ -76,68 +76,6 @@ describe('computeViewportMetrics', () => {
     expect(Number.isInteger(m.height)).toBe(true)
     expect(Number.isInteger(m.offsetTop)).toBe(true)
     expect(Number.isInteger(m.bottomInset)).toBe(true)
-  })
-})
-
-describe('standaloneStatusBarGap', () => {
-  // The user's screenshot, 2026-09-08: a 932pt screen, 59pt top inset, and a
-  // 59pt band of bare page background under the bottom nav — AFTER --app-h
-  // had been switched to visualViewport.height. The measured height is short
-  // by the inset too, so the correction has to come from the arithmetic.
-  it('is the top inset in an installed iOS PWA whose viewport is short by exactly that', () => {
-    expect(standaloneStatusBarGap(true, 932, 873, 59)).toBe(59)
-  })
-
-  it('tolerates a pixel of rounding between the three measurements', () => {
-    expect(standaloneStatusBarGap(true, 932, 874, 59)).toBe(59)
-    expect(standaloneStatusBarGap(true, 932, 872, 59)).toBe(59)
-  })
-
-  it('is zero on desktop, where the window is not the screen', () => {
-    expect(standaloneStatusBarGap(false, 1440, 900, 0)).toBe(0)
-    // Even an installed desktop PWA: no inset, nothing to correct.
-    expect(standaloneStatusBarGap(true, 1440, 900, 0)).toBe(0)
-  })
-
-  it('is zero in a Safari tab, which is short by its toolbars, not the inset', () => {
-    expect(standaloneStatusBarGap(false, 932, 780, 59)).toBe(0)
-    // Same numbers with standalone wrongly true: the equality still fails.
-    expect(standaloneStatusBarGap(true, 932, 780, 59)).toBe(0)
-  })
-
-  it('is zero in landscape, where the inset is zero', () => {
-    // screen.height stays the portrait value on iOS; the equality cannot hold.
-    expect(standaloneStatusBarGap(true, 932, 430, 0)).toBe(0)
-  })
-
-  it('is zero on Android standalone, where the status bar is outside the web view', () => {
-    // Layout viewport short by a 24px status bar, but the inset reports 0.
-    expect(standaloneStatusBarGap(true, 915, 891, 0)).toBe(0)
-  })
-
-  it('is zero while the keyboard is up, even in standalone', () => {
-    // clientHeight does not shrink for the keyboard on iOS, so the equality
-    // holds regardless; this pins that the correction is independent of it.
-    expect(standaloneStatusBarGap(true, 932, 873, 59)).toBe(59)
-    expect(computeViewportMetrics(873, 508, 0, 59)).toEqual({
-      height: 567,
-      offsetTop: 0,
-      bottomInset: 365,
-    })
-  })
-})
-
-describe('computeViewportMetrics with a hidden top inset', () => {
-  it('adds the inset to the height and nothing else', () => {
-    expect(computeViewportMetrics(873, 873, 0, 59)).toEqual({
-      height: 932,
-      offsetTop: 0,
-      bottomInset: 0,
-    })
-  })
-
-  it('defaults the inset to zero so every existing caller is unchanged', () => {
-    expect(computeViewportMetrics(844, 844, 0)).toEqual(computeViewportMetrics(844, 844, 0, 0))
   })
 })
 
@@ -301,61 +239,11 @@ describe('useAppViewport', () => {
   })
 })
 
-describe('useAppViewport in an installed iOS PWA', () => {
-  let vv: FakeVisualViewport
-
-  beforeEach(() => {
-    vv = new FakeVisualViewport()
-    vv.height = 873
-    Object.defineProperty(window, 'visualViewport', { value: vv, configurable: true })
-    Object.defineProperty(root(), 'clientHeight', { value: 873, configurable: true })
-    Object.defineProperty(window.screen, 'height', { value: 932, configurable: true })
-    Object.defineProperty(window.navigator, 'standalone', { value: true, configurable: true })
-    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
-      cb(0)
-      return 1
-    })
-    vi.stubGlobal('cancelAnimationFrame', () => {})
-    vi.stubGlobal('scrollTo', vi.fn())
-  })
-
-  afterEach(() => {
-    vi.unstubAllGlobals()
-    Object.defineProperty(window.navigator, 'standalone', { value: undefined, configurable: true })
-  })
-
-  it('publishes the full screen height once the safe-top probe measures the inset', async () => {
-    await mountHook()
-    // jsdom lays nothing out, so the probe reads 0 until told otherwise: the
-    // first write leaves --vvh at the reported 873px…
-    expect(prop('--vvh')).toBe('873px')
-    const probe = document.querySelector('[data-viewport-probe="safe-top"]') as HTMLElement
-    expect(probe).not.toBeNull()
-    Object.defineProperty(probe, 'offsetHeight', { value: 59, configurable: true })
-    // …and the next measurement folds the 59px the platform paints but never reports.
-    vv.emit('resize')
-    expect(prop('--vvh')).toBe('932px')
-    expect(prop('--vv-bottom')).toBe('0px')
-  })
-
-  it('removes the probe on unmount', async () => {
-    const { unmount } = await mountHook()
-    expect(document.querySelector('[data-viewport-probe]')).not.toBeNull()
-    unmount()
-    expect(document.querySelector('[data-viewport-probe]')).toBeNull()
-  })
-})
-
 describe('--app-h reads the measurement rather than rebuilding it', () => {
-  // The band under the bottom nav in the installed iOS PWA, reported three
+  // The band under the bottom nav in the installed iOS PWA, reported four
   // times. `--app-h` was `calc(100dvh - var(--kb) - var(--vv-top))` — a
   // reconstruction of the number this hook already measures, and one that is
-  // only correct while 100dvh equals the visible height. With
-  // viewport-fit=cover plus black-translucent it does not: the web view's
-  // origin is the physical top of the screen (the header really does paint
-  // under the status bar) while 100dvh comes back short by exactly
-  // env(safe-area-inset-top) — 59pt of bare page background below the nav on
-  // a 932pt screen.
+  // only correct while 100dvh equals the visible height.
   //
   // Read as source because the failure is invisible to jsdom: it has no
   // safe-area insets, so every reconstruction agrees there and disagrees only
@@ -377,5 +265,42 @@ describe('--app-h reads the measurement rather than rebuilding it', () => {
     // itself is the bug.
     // A length, not the tail of `--vvh`: `100dvh`, `100vh`, `100svh`.
     expect(declaration).not.toMatch(/\d\s*[dsl]?vh/)
+  })
+})
+
+describe('the status bar is opaque, which is what makes those heights true', () => {
+  // The pair is the contract. Reading a measured height is only correct while
+  // the web view begins BELOW the status bar; under `black-translucent` the
+  // view starts at the physical top of the screen and every height the
+  // platform reports — 100dvh, innerHeight, clientHeight and
+  // visualViewport.height alike — is short by env(safe-area-inset-top). The
+  // fixed shell is then clipped at the layout viewport and the inset-sized
+  // strip below it cannot be painted from inside the page: on a 932pt screen
+  // the nav was cut through its icons at 873pt. Two fixes computed 59
+  // correctly and neither could draw it.
+  //
+  // jsdom has no safe-area insets and no web view, so nothing but the source
+  // can hold this.
+  const html = readFileSync(resolve(__dirname, '../../index.html'), 'utf8')
+  const style = html.match(
+    /<meta\s+name="apple-mobile-web-app-status-bar-style"\s+content="([^"]+)"/
+  )?.[1]
+
+  it('is declared', () => {
+    expect(style).toBeDefined()
+  })
+
+  it('is not translucent', () => {
+    expect(style).not.toBe('black-translucent')
+  })
+
+  it('is default, so iOS paints the bar from theme-color', () => {
+    // `black` is the fallback if a device ignores theme-color; changing to it
+    // is a deliberate decision, not a drive-by edit.
+    expect(style).toBe('default')
+  })
+
+  it('still covers the viewport, which is where the bottom inset comes from', () => {
+    expect(html).toMatch(/viewport-fit=cover/)
   })
 })

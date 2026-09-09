@@ -292,6 +292,15 @@
   overflow-x: auto;
   scrollbar-width: none;
   min-width: 0;
+  /* Containing block for the buttons' .sr-only spans, which are
+     position:absolute. Without it their containing block is the nearest
+     positioned ancestor — the sticky bar — so a span belonging to a chip in
+     the scrolled-out tail is laid out at its static position OUTSIDE this
+     scroller, escapes its clip, and widens the page. Measured on a phone:
+     .budget-page__table-container scrollWidth 476 against clientWidth 430,
+     which is what let /budget pan sideways. Same rule, same reason, as
+     .main-layout__main in MainLayout.css. */
+  position: relative;
 }
 
 .budget-filter-bar__statuses::-webkit-scrollbar {

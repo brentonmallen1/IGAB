@@ -12,7 +12,24 @@
     <meta name="theme-color" content="#13161f" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!--
+      OPAQUE status bar, and this is load-bearing geometry rather than a style
+      choice. Under `black-translucent` the installed iOS web view paints from
+      the physical top of the screen, but every height it reports — 100dvh,
+      innerHeight, documentElement.clientHeight and visualViewport.height alike
+      — comes back short by env(safe-area-inset-top). The app shell is
+      position:fixed, so it is clipped at the layout viewport's bottom, and the
+      inset-sized strip below it is unpaintable from inside the page: measured
+      on a 932pt screen, the bottom nav was sliced through its icons at 873pt
+      with 59pt of bare body colour beneath. Two fixes computed the right
+      number there and still could not draw it.
+
+      With `default` the web view begins BELOW the status bar, so the layout
+      viewport is the frame, --safe-top is 0, and the shell reaches the
+      physical bottom edge. iOS paints the bar itself from <meta theme-color>,
+      which src/utils/themeColor.ts keeps synced to --header-bg per theme.
+    -->
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="IGAB" />
     <title>IGAB — I've Got A Budget</title>
   </head>
