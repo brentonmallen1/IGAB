@@ -22,6 +22,7 @@ from fastapi.responses import StreamingResponse
 
 from igab.ai import chat as chat_engine
 from igab.ai.context import AICallContext
+from igab.ai.context_window import result_char_budget
 from igab.ai.features import FEATURES
 from igab.ai.gateway import AIGateway
 from igab.ai.prompts import render_page_context
@@ -167,7 +168,7 @@ async def chat(
     ][-HISTORY_LIMIT:]
 
     ai = AIService(session, settings)
-    model = await settings.get("ollama_chat_model") or await settings.get("ollama_model")
+    model, _ = await ai._resolve_chat_model()
     client = await ai.gateway.client(model=model)
     caps = await ai._capabilities(client)
     # None means the server is too old to say. Unlike the vision path, which
@@ -175,7 +176,12 @@ async def chat(
     # error mid-stream in front of the user — so it declines instead.
     supports_tools = bool(caps and "tools" in caps)
     think = await ai._resolve_think(client)
-    options = await ai._merged_options(vision=False, task_defaults={})
+    # The window is stated on every call. Ollama's default is small enough
+    # that a month grid plus the tool schema overflowed it, and an overflow
+    # is truncated from the front — the system prompt goes first.
+    num_ctx, _ = await ai.chat_window(client)
+    options = await ai._merged_options(vision=False, task_defaults={"num_ctx": num_ctx})
+    result_max_chars = result_char_budget(int(options.get("num_ctx") or num_ctx))
     timeout = float(await settings.get("ai_chat_timeout_s") or "120")
 
     system = await ai._prompt(
@@ -207,6 +213,7 @@ async def chat(
             # Its own session: the request's has been committed and handed back.
             async with AsyncSessionLocal() as stream_session:
                 tool_ctx = await _tool_context(stream_session, budget_id, today)
+                tool_ctx.result_max_chars = result_max_chars
                 async for event in chat_engine.run_turn(
                     gateway=gateway,
                     client=client,

@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from datetime import date
 from typing import TYPE_CHECKING
 
+from igab.ai.tools.shape import TOOL_RESULT_MAX_CHARS
+
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,3 +40,6 @@ class ToolContext:
     accounts: "AccountRepository"
     transactions: "TransactionRepository"
     payees: "PayeeRepository"
+    #: How large one result may be before it is summarized, sized from the
+    #: context window this turn was given.
+    result_max_chars: int = TOOL_RESULT_MAX_CHARS

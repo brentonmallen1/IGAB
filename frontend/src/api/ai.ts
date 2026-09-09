@@ -17,6 +17,14 @@ export interface AIStatus {
    * worker gates receipt scans on. null = unknown (Ollama unreachable, or
    * too old to report capabilities) — never render that as "unsupported". */
   receipt_model_vision: boolean | null
+  /** The assistant's model through its own fallback chain (override → main). */
+  chat_model: string
+  /** Whether it can call tools, from the same probe the chat route gates on.
+   * null = unknown — never render that as "unsupported". */
+  chat_model_tools: boolean | null
+  /** What the model advertises it can take, and what the app will ask for. */
+  chat_model_context_length: number | null
+  chat_num_ctx: number | null
 }
 
 /**
@@ -63,6 +71,8 @@ export interface OllamaModel {
   name: string
   size: number
   capabilities: string[]
+  /** The model's maximum context in tokens, when the server reports it. */
+  context_length: number | null
 }
 
 export function useOllamaModels() {

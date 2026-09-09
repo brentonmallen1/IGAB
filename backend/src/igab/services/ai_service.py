@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.ai.context import AICallContext
+from igab.ai.context_window import resolve_num_ctx
 from igab.ai.gateway import AIGateway
 from igab.db.models import Category, Payee, Transaction
 from igab.domain.payee_names import derived_match_patterns, rank_match_patterns
@@ -34,6 +35,9 @@ _CAPS_TTL_S = 300
 _caps_cache: dict[tuple[str, str], tuple[list[str] | None, float]] = {}
 
 
+_ctx_cache: dict[tuple[str, str], tuple[int | None, float]] = {}
+
+
 def invalidate_capabilities() -> None:
     """Drop the cached /api/show probe.
 
@@ -43,6 +47,8 @@ def invalidate_capabilities() -> None:
     fail for a reason they already fixed.
     """
     _caps_cache.clear()
+    _ctx_cache.clear()
+    _ctx_cache.clear()
 
 
 def prepare_image_for_model(file_content: bytes) -> str:
@@ -141,6 +147,31 @@ class AIService:
         _caps_cache[key] = (caps, now + _CAPS_TTL_S)
         return caps
 
+    async def _context_length(self, client: OllamaClient) -> int | None:
+        """The model's advertised context, cached beside the capabilities."""
+        key = (client.host, client.model)
+        cached = _ctx_cache.get(key)
+        now = time.monotonic()
+        if cached and cached[1] > now:
+            return cached[0]
+        length = await client.context_length()
+        _ctx_cache[key] = (length, now + _CAPS_TTL_S)
+        return length
+
+    async def _resolve_chat_model(self) -> tuple[str, bool]:
+        """(model, from_override): the assistant's model through its fallback
+        chain, the same shape as the vision one."""
+        override = await self.settings.get("ollama_chat_model")
+        if override:
+            return override, True
+        return await self.settings.get("ollama_model") or "llama3.2", False
+
+    async def chat_window(self, client: OllamaClient) -> tuple[int, int | None]:
+        """(num_ctx to request, the model's own maximum or None)."""
+        model_max = await self._context_length(client)
+        setting = await self.settings.get("ai_chat_num_ctx")
+        return resolve_num_ctx(setting, model_max), model_max
+
     async def _resolve_think(self, client: OllamaClient) -> bool | None:
         """auto = think only when the model advertises it; on/off force.
         Returns None (field omitted) rather than False for off — older
@@ -182,35 +213,39 @@ class AIService:
         # Resolved through the real fallback chain so the settings UI can say
         # "receipts are scanned by X" without re-implementing the resolution.
         receipt_model, _ = await self._resolve_vision_model()
-
-        if not enabled or not host:
-            return {
-                "enabled": enabled,
-                "available": False,
-                "host": host,
-                "model": model,
-                "vision_model": vision_model,
-                "receipt_model": receipt_model,
-                "receipt_model_vision": None,
-            }
-
-        client = await self._client()
-        available = await client.health()
-        # Same /api/show probe the worker gates receipt scans on, so the
-        # settings UI cannot disagree with what actually happens. None =
-        # unknown (Ollama unreachable or too old to report capabilities).
-        receipt_model_vision = None
-        if available:
-            receipt_model_vision, _, _ = await self.check_vision_support()
-        return {
+        chat_model, _ = await self._resolve_chat_model()
+        result: dict = {
             "enabled": enabled,
-            "available": available,
+            "available": False,
             "host": host,
             "model": model,
             "vision_model": vision_model,
             "receipt_model": receipt_model,
-            "receipt_model_vision": receipt_model_vision,
+            "receipt_model_vision": None,
+            "chat_model": chat_model,
+            "chat_model_tools": None,
+            "chat_model_context_length": None,
+            "chat_num_ctx": None,
         }
+        if not enabled or not host:
+            return result
+
+        client = await self._client()
+        available = await client.health()
+        result["available"] = available
+        # Same /api/show probe the worker gates receipt scans on and the chat
+        # route gates tools on, so the settings UI cannot disagree with what
+        # actually happens. None = unknown (Ollama unreachable or too old to
+        # report capabilities).
+        if available:
+            result["receipt_model_vision"], _, _ = await self.check_vision_support()
+            chat_client = await self.gateway.client(model=chat_model)
+            caps = await self._capabilities(chat_client)
+            result["chat_model_tools"] = None if caps is None else "tools" in caps
+            num_ctx, model_max = await self.chat_window(chat_client)
+            result["chat_model_context_length"] = model_max
+            result["chat_num_ctx"] = num_ctx
+        return result
 
     # /api/show probes fan out one request per model; keep the burst small
     # so a remote Ollama isn't hammered just to render the settings page.
@@ -245,6 +280,7 @@ class AIService:
                 "name": m.get("name", ""),
                 "size": m.get("size", 0),
                 "capabilities": m.get("capabilities", []),
+                "context_length": None,
             }
             for m in data.get("models", [])
         ]
@@ -255,7 +291,9 @@ class AIService:
             if not entry["name"]:
                 return
             async with sem:
-                caps = await self._capabilities(OllamaClient(host, entry["name"]))
+                client = OllamaClient(host, entry["name"])
+                caps = await self._capabilities(client)
+                entry["context_length"] = await self._context_length(client)
             # None = the server didn't report capabilities; keep the tags
             # value rather than blanking the list.
             if caps is not None:

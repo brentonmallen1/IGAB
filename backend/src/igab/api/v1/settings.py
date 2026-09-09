@@ -4,6 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from igab.ai.context_window import CONTEXT_FLOOR
 from igab.api.route import CommitRoute
 from igab.api.v1.schemas.settings import SettingResponse, SettingUpdate
 from igab.dependencies import AdminUser, CurrentUser, get_settings_service
@@ -24,6 +25,7 @@ EDITABLE_KEYS = {
     "ai_vision_timeout_s",
     "ollama_chat_model",
     "ai_chat_timeout_s",
+    "ai_chat_num_ctx",
     "ai_activity_retention_days",
     "backup_interval_hours",
     "backup_keep_days",
@@ -47,6 +49,21 @@ _BACKUP_INT_BOUNDS = {
 _CAPABILITY_KEYS = {"ollama_host", "ollama_model", "ollama_vision_model", "ollama_chat_model"}
 
 
+def _validate_num_ctx(value: str) -> None:
+    """'auto', or a whole number of tokens the floor and a sane ceiling bound."""
+    if value.strip().lower() == "auto":
+        return
+    if value.isdigit() and CONTEXT_FLOOR <= int(value) <= 1_048_576:
+        return
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail=(
+            "ai_chat_num_ctx must be 'auto' or a whole number of tokens "
+            f"between {CONTEXT_FLOOR} and 1048576"
+        ),
+    )
+
+
 def _validate_setting(key: str, value: str) -> None:
     if key in ("ollama_options", "ollama_vision_options"):
         try:
@@ -67,6 +84,8 @@ def _validate_setting(key: str, value: str) -> None:
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"{key} must be a positive integer",
             )
+    elif key == "ai_chat_num_ctx":
+        _validate_num_ctx(value)
     elif key == "ai_thinking":
         if value not in ("auto", "on", "off"):
             raise HTTPException(

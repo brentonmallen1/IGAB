@@ -1,44 +1,40 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { CheckCircle, XCircle, Loader2, Zap } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { sameOllamaModel, useAIStatus, useTestAIConnection, useOllamaModels } from '../../api/ai'
+import { useAIStatus, useTestAIConnection, useOllamaModels } from '../../api/ai'
 import { useSettings, useUpdateSetting } from '../../api/settings'
+import { AIModelSettings } from './AIModelSettings'
+import { AIAssistantSettings } from './AIAssistantSettings'
 import { AIAdvancedSettings } from './AIAdvancedSettings'
 import { AIPromptSettings } from './AIPromptSettings'
 import './AISettingsPanel.css'
 import { Surface } from '../common/Surface'
-import { formatBytes } from '../../utils/formatBytes'
 
+/**
+ * The AI section, in the order a person sets it up: switch it on, point it
+ * at Ollama, choose models, tune the assistant, and only then the knobs
+ * most households never touch. Each group has a title, because one long
+ * column of rows hid the model overrides well enough that people asked
+ * where they were.
+ */
 export function AISettingsPanel() {
   const { data: appSettings } = useSettings()
   const updateSetting = useUpdateSetting()
   const aiStatus = useAIStatus()
   const testConnection = useTestAIConnection()
-  const { data: models, refetch: refetchModels, isFetching: modelsFetching } = useOllamaModels()
+  const { refetch: refetchModels } = useOllamaModels()
 
-  // Settings from DB
   const aiEnabled = appSettings?.find((s) => s.key === 'ai_enabled')?.value === 'true'
   const ollamaHost = appSettings?.find((s) => s.key === 'ollama_host')?.value ?? ''
-  const ollamaModel = appSettings?.find((s) => s.key === 'ollama_model')?.value ?? ''
 
-  // Edit state
   const [editHost, setEditHost] = useState('')
   const [editing, setEditing] = useState(false)
-  const [editRetention, setEditRetention] = useState('')
-
-  // Sync edit state when settings load
-  useEffect(() => {
-    if (!editing && ollamaHost) setEditHost(ollamaHost)
-  }, [ollamaHost, editing])
+  const [retentionDraft, setRetentionDraft] = useState<string | null>(null)
 
   const retentionDays =
     appSettings?.find((s) => s.key === 'ai_activity_retention_days')?.value ?? '30'
-  useEffect(() => {
-    if (appSettings) setEditRetention(retentionDays)
-    // Sync from server once loaded; local edits win afterwards
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appSettings === undefined])
-
+  // Shows the server value until typed in; the draft wins until saved.
+  const editRetention = retentionDraft ?? retentionDays
   const retentionValid = /^\d+$/.test(editRetention)
 
   async function saveRetention() {
@@ -46,6 +42,7 @@ export function AISettingsPanel() {
       key: 'ai_activity_retention_days',
       value: String(parseInt(editRetention, 10)),
     })
+    setRetentionDraft(null)
     toast.success('Saved')
   }
 
@@ -53,7 +50,6 @@ export function AISettingsPanel() {
     const newValue = aiEnabled ? 'false' : 'true'
     await updateSetting.mutateAsync({ key: 'ai_enabled', value: newValue })
     if (newValue === 'true') {
-      // Test connection when enabling
       const result = await testConnection.mutateAsync()
       if (result.available) {
         toast.success('AI connected')
@@ -68,7 +64,6 @@ export function AISettingsPanel() {
     if (!editHost.trim()) return
     await updateSetting.mutateAsync({ key: 'ollama_host', value: editHost.trim() })
     setEditing(false)
-    // Re-test connection
     const result = await testConnection.mutateAsync()
     if (result.available) {
       toast.success('Connected to Ollama')
@@ -88,12 +83,6 @@ export function AISettingsPanel() {
     }
   }
 
-  async function selectModel(modelName: string) {
-    await updateSetting.mutateAsync({ key: 'ollama_model', value: modelName })
-    toast.success(`Model set to ${modelName}`)
-  }
-
-  // Status indicator
   const statusIcon = !aiEnabled ? (
     <span className="ai-panel__status ai-panel__status--disabled">Disabled</span>
   ) : aiStatus.isLoading || testConnection.isPending ? (
@@ -126,12 +115,12 @@ export function AISettingsPanel() {
       }
     >
       <div className="settings-section__body">
-        {/* Enable toggle */}
         <div className="settings-row">
           <div>
             <div className="settings-row__label">Enable AI features</div>
             <div className="settings-row__desc">
-              Receipt scanning, category suggestions, natural-language entry
+              Receipt scanning, category suggestions, natural-language entry, and the budget
+              assistant. Everything runs on your own Ollama server.
             </div>
           </div>
           <label className="ai-panel__toggle">
@@ -140,6 +129,7 @@ export function AISettingsPanel() {
               checked={aiEnabled}
               onChange={toggleEnabled}
               disabled={updateSetting.isPending}
+              aria-label="Enable AI features"
             />
             <span className="ai-panel__toggle-slider" />
           </label>
@@ -147,14 +137,16 @@ export function AISettingsPanel() {
 
         {aiEnabled && (
           <>
-            {/* Host */}
             <div className="settings-row">
-              <div>
-                <div className="settings-row__label">Ollama Host</div>
+              <div className="ai-panel__host">
+                <label className="settings-row__label" htmlFor="ai-host">
+                  Ollama host
+                </label>
                 {!editing ? (
                   <div className="settings-row__desc">{ollamaHost || 'http://localhost:11434'}</div>
                 ) : (
                   <input
+                    id="ai-host"
                     type="text"
                     className="settings-input"
                     value={editHost}
@@ -168,7 +160,11 @@ export function AISettingsPanel() {
                 <div className="ai-panel__actions">
                   <button
                     className="settings-btn settings-btn--secondary"
-                    onClick={() => setEditing(true)}
+                    onClick={() => {
+                      // Seeded when editing starts, not synced by an effect.
+                      setEditHost(ollamaHost)
+                      setEditing(true)
+                    }}
                   >
                     Edit
                   </button>
@@ -177,7 +173,7 @@ export function AISettingsPanel() {
                     onClick={handleTestConnection}
                     disabled={testConnection.isPending}
                   >
-                    {testConnection.isPending ? 'Testing…' : 'Test Connection'}
+                    {testConnection.isPending ? 'Testing…' : 'Test connection'}
                   </button>
                 </div>
               ) : (
@@ -198,91 +194,41 @@ export function AISettingsPanel() {
               )}
             </div>
 
-            {/* Model picker */}
-            <div className="settings-row">
-              <div>
-                <div className="settings-row__label">Model</div>
-                <div className="settings-row__desc">
-                  {ollamaModel || 'Select a model'}
-                  {models?.find((m) => sameOllamaModel(m.name, ollamaModel))?.capabilities
-                    ?.length ? (
-                    <span className="ai-panel__caps">
-                      {models
-                        .find((m) => sameOllamaModel(m.name, ollamaModel))
-                        ?.capabilities.map((c) => (
-                          <span key={c} className="ai-panel__cap">
-                            {c}
-                          </span>
-                        ))}
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-              <button
-                className="settings-btn settings-btn--secondary"
-                onClick={() => refetchModels()}
-                disabled={modelsFetching}
-              >
-                {modelsFetching ? 'Loading…' : 'Refresh Models'}
-              </button>
-            </div>
+            <AIModelSettings />
+            <AIAssistantSettings />
 
-            {models && models.length > 0 && (
-              <div className="ai-panel__models surface surface--sunken scroll-list">
-                {models.map((m) => (
+            <div className="settings-subsection">
+              <div className="settings-subsection__title">Activity log</div>
+              <div className="settings-row">
+                <div>
+                  <label className="settings-row__label" htmlFor="ai-retention">
+                    Keep finished entries for
+                  </label>
+                  <div className="settings-row__desc">
+                    Scans, model calls and their stored prompts older than this are cleaned up
+                    nightly. 0 keeps them forever. Transactions, receipt images and chat history are
+                    never touched.
+                  </div>
+                </div>
+                <div className="ai-panel__actions">
+                  <input
+                    id="ai-retention"
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    className="settings-input ai-panel__retention-input"
+                    value={editRetention}
+                    onChange={(e) => setRetentionDraft(e.target.value)}
+                  />
+                  <span className="ai-panel__retention-unit">days</span>
                   <button
-                    key={m.name}
-                    className={`ai-panel__model ${sameOllamaModel(m.name, ollamaModel) ? 'ai-panel__model--selected' : ''}`}
-                    onClick={() => selectModel(m.name)}
+                    className="settings-btn settings-btn--secondary"
+                    onClick={() => void saveRetention()}
+                    disabled={!retentionValid || updateSetting.isPending}
                   >
-                    <span className="ai-panel__model-name">{m.name}</span>
-                    <span className="ai-panel__model-size">{formatBytes(m.size)}</span>
-                    {m.capabilities.length > 0 && (
-                      <span className="ai-panel__caps">
-                        {m.capabilities.map((c) => (
-                          <span key={c} className="ai-panel__cap">
-                            {c}
-                          </span>
-                        ))}
-                      </span>
-                    )}
+                    Save
                   </button>
-                ))}
-              </div>
-            )}
-
-            {aiStatus.data?.available && !models?.length && !modelsFetching && (
-              <div className="ai-panel__empty">
-                No models found. Make sure you have pulled at least one model in Ollama.
-              </div>
-            )}
-
-            <div className="settings-row">
-              <div>
-                <div className="settings-row__label">Activity log retention</div>
-                <div className="settings-row__desc">
-                  Finished entries older than this are cleaned up nightly. 0 keeps them forever.
-                  Transactions and receipt images are never touched.
                 </div>
-              </div>
-              <div className="ai-panel__actions">
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  min={0}
-                  className="settings-input ai-panel__retention-input"
-                  value={editRetention}
-                  onChange={(e) => setEditRetention(e.target.value)}
-                  aria-label="Retention in days"
-                />
-                <span className="ai-panel__retention-unit">days</span>
-                <button
-                  className="settings-btn settings-btn--secondary"
-                  onClick={() => void saveRetention()}
-                  disabled={!retentionValid || updateSetting.isPending}
-                >
-                  Save
-                </button>
               </div>
             </div>
 

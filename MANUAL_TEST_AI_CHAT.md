@@ -118,6 +118,24 @@ starts awaiting.
   wrote them — including gemma's `` `$`4,182.33` `` habit, which used to
   show a lone `$` chip and a stray backtick.
 
+## Settings → AI
+
+- The section reads top to bottom: enable, host, **Models**, **Assistant**,
+  **Activity log**, then an **Advanced** row with a border, then prompts.
+- **Models** has three pickers of one shape. The main model is a dropdown;
+  receipts and the assistant each have a toggle that reveals a dropdown. In
+  the assistant's dropdown a model without tool calling is listed but greyed
+  out and says "no tools". Under each toggle a line names the model that
+  will actually do the job, with a green capability mark or an amber warning
+  from the server's own probe. Unknown (Ollama down) shows neither.
+- **Assistant → Context window** defaults to Auto, which reads as
+  "Auto (32k)" for a gemma4. The sizes offered stop at what the model
+  reports. Pick 64k, ask the assistant which envelope has the most assigned,
+  and check in Model calls that the request options carry `num_ctx: 65536`.
+- With Auto, a budget with ~200 envelopes should now get the whole grid: ask
+  the same question and confirm the answer names an envelope rather than
+  saying there were too many to list.
+
 ## AI Activity
 
 **Scans** — unchanged. Confirm existing receipt scans still list, still show

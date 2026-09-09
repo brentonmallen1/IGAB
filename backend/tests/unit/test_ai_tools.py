@@ -277,6 +277,10 @@ class TestTruncationIsHonest:
     def test_the_cap_is_a_real_number(self):
         assert TOOL_RESULT_MAX_CHARS > 1000
 
+    def test_a_wider_budget_lets_a_larger_result_through(self):
+        payload = {"total": 5, "rows": [{"v": "x" * 50} for _ in range(400)]}
+        assert summarize_if_large(payload, keep=("total",), max_chars=100_000) == payload
+
 
 class TestARankedResultDoesNotInventACount:
     def test_it_refuses_to_state_a_total_it_never_counted(self):
