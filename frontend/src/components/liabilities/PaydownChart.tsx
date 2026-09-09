@@ -14,6 +14,7 @@ import type { AmortizationResponse, AmortizationMonth } from '../../api/liabilit
 import { useFormatters } from '../../hooks/useFormatters'
 import { ChartTooltip } from '../reports/charts/ChartTooltip'
 import { COLOR_NEGATIVE, COLOR_POSITIVE, CHART_COLORS } from '../reports/charts/chartColors'
+import { referenceLabel } from './paydownChartLabels'
 
 interface Props {
   amortization: AmortizationResponse
@@ -95,6 +96,9 @@ export function PaydownChart({ amortization, mode, isMobile = false, promoEndDat
   // draw lands at the edge and reads as a payoff date.
   const promoMonth = promoEndDate?.slice(0, 7)
   const showPromoLine = promoMonth !== undefined && points.some((p) => p.month === promoMonth)
+  // Every marker's label is clamped to the plot by the same rule; see
+  // paydownChartLabels.
+  const months = points.map((p) => p.month)
 
   return (
     <ResponsiveContainer width="100%" height={isMobile ? 240 : 320}>
@@ -156,7 +160,7 @@ export function PaydownChart({ amortization, mode, isMobile = false, promoEndDat
             x={todayMonth}
             stroke="var(--text-muted)"
             strokeDasharray="3 3"
-            label={{ value: 'Today', fontSize: 11, fill: 'var(--text-muted)', position: 'top' }}
+            label={referenceLabel('Today', todayMonth, months, 'var(--text-muted)')}
           />
         )}
         {showPromoLine && (
@@ -164,12 +168,7 @@ export function PaydownChart({ amortization, mode, isMobile = false, promoEndDat
             x={promoMonth}
             stroke="var(--color-warning)"
             strokeDasharray="3 3"
-            label={{
-              value: 'Promo ends',
-              fontSize: 11,
-              fill: 'var(--color-warning)',
-              position: 'top',
-            }}
+            label={referenceLabel('Promo ends', promoMonth, months, 'var(--color-warning)')}
           />
         )}
         {showLiveLine && (
@@ -177,12 +176,7 @@ export function PaydownChart({ amortization, mode, isMobile = false, promoEndDat
             x={liveMonth}
             stroke={COLOR_POSITIVE}
             strokeDasharray="3 3"
-            label={{
-              value: 'Live payoff',
-              fontSize: 11,
-              fill: COLOR_POSITIVE,
-              position: 'top',
-            }}
+            label={referenceLabel('Live payoff', liveMonth, months, COLOR_POSITIVE)}
           />
         )}
       </ComposedChart>
