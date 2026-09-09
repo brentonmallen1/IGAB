@@ -113,9 +113,10 @@ starts awaiting.
   last one leaves a blank tab.
 - Closing the panel (or the sheet on a phone) does not stop an answer in
   progress; the Stop button in the composer does.
-- Amounts in answers should render as small figure chips (backticked in the
-  Markdown), the same size as the prose. If the model writes bare `$412.80`
-  instead, the prompt is being ignored — check which model is set.
+- Amounts in answers render as small figure chips the same size as the
+  prose. The renderer finds them itself, so this holds however the model
+  wrote them — including gemma's `` `$`4,182.33` `` habit, which used to
+  show a lone `$` chip and a stray backtick.
 
 ## AI Activity
 

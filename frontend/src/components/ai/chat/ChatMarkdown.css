@@ -55,8 +55,8 @@
   color: var(--text-primary);
 }
 
-/* The prompt asks for every amount in backticks, so inline code here is
-   almost always a figure: same size as the prose around it, lined-up digits,
+/* The renderer puts every amount in a code span (figures.ts), so inline
+   code here is almost always a figure: same size as the prose, lined-up digits,
    and the primary colour rather than the dimmer tone a code span usually
    gets — the amount is the part of the sentence to read. */
 .chat-md code {

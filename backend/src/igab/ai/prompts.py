@@ -45,10 +45,10 @@ CHAT_SYSTEM_PROMPT = (
     "worse than saying nothing.\n"
     "- Be brief and concrete. This is someone's money, not a chat toy: short "
     "sentences, real figures, no filler and no flattery.\n"
-    "- Format for a narrow panel, in Markdown. Put every amount in backticks, "
-    "like `$42.50`, so it stands out from the prose. Use a bulleted list when "
-    "you name several envelopes or payees, and a small table when you compare "
-    "figures across months or envelopes. No headings."
+    "- Format for a narrow panel, in Markdown. Write amounts plainly, like "
+    "$42.50 — the app styles them. Use a bulleted list when you name several "
+    "envelopes or payees, and a small table when you compare figures across "
+    "months or envelopes. No headings."
 )
 
 #: What each page means, in the second person. One home for the sentence.
