@@ -461,7 +461,14 @@ class TimelineTransaction(ApiModel):
     #: What this row counts as. A large transfer into savings belongs on a
     #: timeline of large transactions, but calling it an expense because the
     #: amount is negative is the mislabelling this taxonomy exists to fix.
-    activity_class: str = "spending"
+    #:
+    #: None for a split whose legs do not agree on one class. The classifier is
+    #: defined on LEAF rows, so a split parent — which carries no category —
+    #: used to fall through every rule to the SPENDING default and an
+    #: all-savings split was drawn as a red "Spending" dot. Where the legs
+    #: agree, the parent takes their class; where they do not, the honest
+    #: answer is that there isn't one, and `activity_label` reads "Split".
+    activity_class: str | None = "spending"
     #: Its display label, served rather than mirrored. A local copy in the
     #: chart had already drifted ("Interest" vs the canonical "Interest &
     #: fees"), and a class added later would fall back to sign-based colouring

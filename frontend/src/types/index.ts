@@ -1122,7 +1122,10 @@ export interface TimelineTransaction {
   /** What this row counts as — 'savings', 'debt_principal', 'income', etc.
    *  A large transfer into savings belongs on this timeline, but drawing it
    *  as an expense because the amount is negative would misreport it. */
-  activity_class: string
+  /** Null for a split whose legs do not agree on one class: the parent
+   *  carries no category, so there is no honest single answer and
+   *  `activity_label` reads "Split". */
+  activity_class: string | null
   /** Its display label, served rather than mirrored — a local copy here had
    *  already drifted from the backend's wording. */
   activity_label: string

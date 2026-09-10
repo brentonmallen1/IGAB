@@ -5,6 +5,7 @@ children included wherever categories are aggregated.
 from datetime import date, timedelta
 from decimal import Decimal
 
+from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.services.report_service import ReportService
 from igab.services.transaction_service import TransactionCreate
 
@@ -286,3 +287,177 @@ async def test_card_debt_does_not_shrink_the_runway_pot(db_session):
     # cash 2,700 ÷ (300 / 30) = 270 days; net worth here is −200, which the
     # old numerator reported as no runway.
     assert metrics["days_until_zero"] == 270.0
+
+
+async def test_a_scoped_timeline_keeps_its_split_transactions(db_session):
+    """A split parent carries no category, so a plain `category_id IN (...)`
+    dropped every split the household had the moment a category, tag or saved
+    filter was applied. The report went quieter the more precisely you asked.
+    """
+    services, budget, checking, _savings, groceries, gas = await _setup(db_session)
+    reports = ReportService(db_session)
+
+    header = TransactionCreate(
+        account_id=checking.id,
+        date=TODAY - timedelta(days=3),
+        amount=Decimal("-250.00"),
+        cleared="cleared",
+    )
+    splits = [
+        TransactionCreate(
+            account_id=checking.id,
+            date=TODAY - timedelta(days=3),
+            amount=Decimal("-150.00"),
+            category_id=groceries.id,
+        ),
+        TransactionCreate(
+            account_id=checking.id,
+            date=TODAY - timedelta(days=3),
+            amount=Decimal("-100.00"),
+            category_id=gas.id,
+        ),
+    ]
+    await services.transactions.create_split(budget.id, header, splits)
+
+    unscoped = await reports.large_transactions(budget.id, START, TODAY)
+    scoped_to_groceries = await reports.large_transactions(
+        budget.id, START, TODAY, category_ids=[groceries.id]
+    )
+
+    # The split is one entry either way — parent-centric, one row per purchase
+    # — and scoping to a category one of its legs carries must keep it.
+    assert [Decimal(str(t["amount"])) for t in unscoped] == [Decimal("-250.00")]
+    assert [Decimal(str(t["amount"])) for t in scoped_to_groceries] == [Decimal("-250.00")]
+
+    # And a category no leg carries still excludes it.
+    other = await create_category(
+        db_session, budget, await create_category_group(db_session, budget, "Other"), "Holidays"
+    )
+    assert await reports.large_transactions(budget.id, START, TODAY, category_ids=[other.id]) == []
+
+
+async def test_an_all_savings_split_is_not_drawn_as_spending(db_session):
+    """The classifier is defined on LEAF rows, so a split parent — which
+    carries no category — fell through every rule to the SPENDING default. A
+    transfer to a brokerage itemised into legs was drawn as a red "Spending"
+    dot on the timeline.
+    """
+    services, budget, checking, _savings, _groceries, _gas = await _setup(db_session)
+    reports = ReportService(db_session)
+    goals = await create_category_group(db_session, budget, "Goals")
+    fund_a = await create_category(db_session, budget, goals, "Emergency Fund")
+    fund_b = await create_category(db_session, budget, goals, "New Roof")
+    await seed_system_tags(db_session, budget.id)
+    tags = TagRepository(db_session)
+    savings_tag = await tags.get_system_tag(budget.id, "savings")
+    await tags.set_category_tags(fund_a.id, [savings_tag.id])
+    await tags.set_category_tags(fund_b.id, [savings_tag.id])
+
+    header = TransactionCreate(
+        account_id=checking.id,
+        date=TODAY - timedelta(days=2),
+        amount=Decimal("-900.00"),
+        cleared="cleared",
+    )
+    splits = [
+        TransactionCreate(
+            account_id=checking.id,
+            date=TODAY - timedelta(days=2),
+            amount=Decimal("-600.00"),
+            category_id=fund_a.id,
+        ),
+        TransactionCreate(
+            account_id=checking.id,
+            date=TODAY - timedelta(days=2),
+            amount=Decimal("-300.00"),
+            category_id=fund_b.id,
+        ),
+    ]
+    await services.transactions.create_split(budget.id, header, splits)
+
+    (entry,) = await reports.large_transactions(budget.id, START, TODAY)
+    assert entry["activity_class"] == "savings"
+    assert entry["activity_label"] == "Savings"
+
+
+async def test_a_mixed_split_says_so_rather_than_guessing(db_session):
+    """Where the legs do not agree there is no single honest class, and the
+    client used to fall back to the amount's sign — the mislabelling this
+    taxonomy exists to end.
+    """
+    services, budget, checking, _savings, groceries, _gas = await _setup(db_session)
+    reports = ReportService(db_session)
+    goals = await create_category_group(db_session, budget, "Goals")
+    fund = await create_category(db_session, budget, goals, "Emergency Fund")
+    await seed_system_tags(db_session, budget.id)
+    tags = TagRepository(db_session)
+    savings_tag = await tags.get_system_tag(budget.id, "savings")
+    await tags.set_category_tags(fund.id, [savings_tag.id])
+
+    header = TransactionCreate(
+        account_id=checking.id,
+        date=TODAY - timedelta(days=1),
+        amount=Decimal("-500.00"),
+        cleared="cleared",
+    )
+    splits = [
+        TransactionCreate(
+            account_id=checking.id,
+            date=TODAY - timedelta(days=1),
+            amount=Decimal("-200.00"),
+            category_id=groceries.id,
+        ),
+        TransactionCreate(
+            account_id=checking.id,
+            date=TODAY - timedelta(days=1),
+            amount=Decimal("-300.00"),
+            category_id=fund.id,
+        ),
+    ]
+    await services.transactions.create_split(budget.id, header, splits)
+
+    (entry,) = await reports.large_transactions(budget.id, START, TODAY)
+    assert entry["activity_class"] is None
+    assert entry["activity_label"] == "Split"
+
+
+async def test_the_sankey_counts_a_split_inflow_once(db_session):
+    """Income came from PARENT rows while expenses came from leaves, and a
+    split straddles the two.
+
+    Legs of +1,000 of pay and -300 of fees net +700. The parent is
+    uncategorized and positive, so it classified INCOME and contributed 700 to
+    income — while the -300 leg contributed 300 to expense. The outflow was
+    subtracted twice, and income read 700 where the household earned 1,000.
+    """
+    services, budget, checking, _savings, groceries, _gas = await _setup(db_session)
+    reports = ReportService(db_session)
+    system = await create_category_group(db_session, budget, "Income", is_system=True)
+    salary = await create_category(db_session, budget, system, "Salary")
+
+    header = TransactionCreate(
+        account_id=checking.id,
+        date=TODAY - timedelta(days=4),
+        amount=Decimal("700.00"),
+        cleared="cleared",
+    )
+    splits = [
+        TransactionCreate(
+            account_id=checking.id,
+            date=TODAY - timedelta(days=4),
+            amount=Decimal("1000.00"),
+            category_id=salary.id,
+        ),
+        TransactionCreate(
+            account_id=checking.id,
+            date=TODAY - timedelta(days=4),
+            amount=Decimal("-300.00"),
+            category_id=groceries.id,
+        ),
+    ]
+    await services.transactions.create_split(budget.id, header, splits)
+
+    data = await reports.cash_flow_sankey(budget.id, START, TODAY, mode="spent")
+
+    assert Decimal(str(data["total_income"])) == Decimal("1000.00")
+    assert Decimal(str(data["total_expense"])) == Decimal("300.00")

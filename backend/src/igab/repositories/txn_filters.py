@@ -441,6 +441,33 @@ COUNTERPART_IS_CASH = (
 CARD_PAYMENT_FROM_CASH = and_(Transaction.amount > 0, TRANSFER_LEG, COUNTERPART_IS_CASH)
 
 
+#: A split parent's legs, for a rule that has to see through the parent.
+_leg = aliased(Transaction)
+
+
+def in_category_scope(category_ids) -> ColumnElement[bool]:
+    """A row is in a category scope if its OWN category is — or, for a split
+    parent, if any of its legs' categories are.
+
+    The plain `category_id.in_(...)` breaks on any report that is
+    parent-centric. A split parent carries no category, so scoping the Timeline
+    to a category — or a tag, or a saved filter — dropped every split
+    transaction the household had, silently and completely. The report went
+    quieter the more precisely you asked.
+
+    Only for `PARENT_ROW` queries. A LEAF query already has the category on the
+    row and wants `scoped()`; using this there would make a split CHILD match
+    on a sibling's category.
+    """
+    return or_(
+        Transaction.category_id.in_(category_ids),
+        select(_leg.id)
+        .where(_leg.parent_transaction_id == Transaction.id, _leg.category_id.in_(category_ids))
+        .correlate(Transaction)
+        .exists(),
+    )
+
+
 def row_category(predicate):
     """A row whose own category satisfies a `category_filters` predicate.
 

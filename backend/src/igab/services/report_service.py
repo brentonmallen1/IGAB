@@ -28,7 +28,6 @@ from igab.db.models import (
 )
 from igab.domain.activity_class import (
     ACTIVITY_CLASS,
-    CLASS_LABEL,
     SPENDING_CLASSES,
     ActivityClass,
     apply_class_joins,
@@ -62,6 +61,7 @@ from igab.repositories.txn_filters import (
     PLANNED_SPEND_ROW,
     POSTED,
     category_tagged,
+    in_category_scope,
 )
 from igab.services.report_basics import (
     _months_in_range,
@@ -69,7 +69,7 @@ from igab.services.report_basics import (
     class_excluded_note,
     emergency_fund,
 )
-from igab.services.report_stats import volatility_stats
+from igab.services.report_stats import timeline_rows, volatility_stats
 
 # Report payload shapes.
 #
@@ -1245,17 +1245,27 @@ class ReportService:
                 "group_categories": {},
             }
 
-        # Income at parent level (cash-flow view); expense category flows at
-        # leaf level so split children reach their categories.
+        # ONE row shape for both sides: LEAF.
+        #
+        # Income used to come from PARENT rows while expenses came from leaves,
+        # and a split straddles the two. A split whose legs are +1,000 of pay
+        # and -300 of fees nets +700; the parent is uncategorized and positive,
+        # so it classified INCOME and contributed 700 to income — while the
+        # -300 leg contributed 300 to expense. The outflow was subtracted
+        # twice, once inside the parent's net and once on its own, and the
+        # diagram's income read 700 where the household earned 1,000.
+        #
+        # LEAF loses nothing: a plain transaction is both a parent row and a
+        # leaf, so every ordinary inflow still counts. What it drops is
+        # precisely the split parent, whose amount is its legs restated.
+        #
         # Split by activity class, not by amount sign. Sign said a withdrawal
         # FROM a brokerage (+500 into checking) was income, which disagreed
         # with income_vs_expense over the same window and left the savings
         # branch missing the draw. Income is what classifies as income;
         # everything else that moved money out is outflow.
         income_rows = [
-            r
-            for r in rows
-            if r.parent_transaction_id is None and r.activity_class == ActivityClass.INCOME.value
+            r for r in rows if not r.is_split and r.activity_class == ActivityClass.INCOME.value
         ]
         expense_rows = [
             r
@@ -2507,6 +2517,7 @@ class ReportService:
                 Transaction.date,
                 Transaction.amount,
                 Transaction.memo,
+                Transaction.is_split,
                 Payee.name.label("payee_name"),
                 Category.name.label("category_name"),
                 # Not filtered by class: a large transfer into savings really is
@@ -2529,7 +2540,13 @@ class ReportService:
                 CASH_FLOW_ROW,
             )
         )
-        q = scoped(q, Transaction.category_id, category_ids)
+        # `in_category_scope`, not `scoped`: a split parent carries no
+        # category, so a plain `category_id IN (...)` dropped every split
+        # transaction the household had the moment a category, tag or saved
+        # filter was applied — the report went quieter the more precisely you
+        # asked. A parent is in scope when any of its legs is.
+        if category_ids is not None:
+            q = q.where(in_category_scope(category_ids))
         if account_ids is not None:
             q = scoped(q, Transaction.account_id, account_ids)
         else:
@@ -2538,19 +2555,33 @@ class ReportService:
         q = apply_class_joins(q)
         rows = (await self.session.execute(q)).all()
 
-        return [
-            {
-                "id": str(r.id),
-                "date": r.date,
-                "amount": Decimal(str(r.amount)),
-                "payee_name": r.payee_name,
-                "category_name": r.category_name,
-                "memo": r.memo,
-                "activity_class": r.activity_class,
-                "activity_label": CLASS_LABEL[ActivityClass(r.activity_class)],
-            }
-            for r in rows
-        ]
+        # A split parent's own class is meaningless and was being drawn anyway.
+        #
+        # The classifier is defined on LEAF rows — a parent carries no category
+        # — so a parent fell through every rule to the SPENDING default. An
+        # all-savings split, a transfer to a brokerage itemised into three
+        # legs, was drawn as a red "Spending" dot. Its class comes from its
+        # legs: one distinct class among them is the parent's class, and
+        # anything else is honestly mixed.
+        leg_classes = await self._split_leg_classes([r.id for r in rows if r.is_split])
+
+        return timeline_rows(rows, leg_classes)
+
+    async def _split_leg_classes(self, parent_ids: list) -> dict:
+        """{parent id: the distinct activity classes of its legs}.
+
+        One query for the page rather than one per row, and only for the
+        parents actually returned — at most `limit` of them.
+        """
+        if not parent_ids:
+            return {}
+        q = select(Transaction.parent_transaction_id, ACTIVITY_CLASS.label("cls")).where(
+            Transaction.parent_transaction_id.in_(parent_ids), NOT_DELETED
+        )
+        out: dict = {}
+        for row in (await self.session.execute(apply_class_joins(q))).all():
+            out.setdefault(row.parent_transaction_id, set()).add(row.cls)
+        return out
 
     # ─── Subscriptions Report ─────────────────────────────────────────────────
 
