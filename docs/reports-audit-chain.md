@@ -20,7 +20,8 @@ each other, starting from `origin/main` at `892922a0`.
 | 2 | `fix/reports-tooltip-and-axes` | `ChartTooltip` requires a formatter; eight money axes onto `useMoneyAxis`; privacy-mode leaks | done |
 | 3 | `fix/reports-projection-recurrence` | `cash_projection` reuses `domain/schedule.py`; subscription/schedule dedup; recency window | done |
 | 4 | `fix/reports-savings-carryover` | `savings_report` reuses `domain/carryover.py`; envelope set; window | done |
-| 5 | `fix/reports-one-spending-row-set` | One spending predicate + class filter + joins; convert every report | todo |
+| 5 | `fix/reports-one-spending-row-set` | Clear items: class rule, sign-vs-class, scope conflation, names, drained envelopes | done |
+| 5b | `fix/reports-tagged-envelope-spend` | Spending out of a savings-tagged envelope counts against its plan (decided) | todo |
 | 6 | `fix/reports-one-window` | One report window; partial-current-month rule; honest denominators | todo |
 | 7 | `fix/reports-payday-denominators` | payday-effect divisors and the P75 threshold | todo |
 | 8 | `fix/reports-split-parent-leaf` | Sankey income, timeline class + scope on split rows | todo |

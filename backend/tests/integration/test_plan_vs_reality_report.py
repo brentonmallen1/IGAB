@@ -198,3 +198,58 @@ async def test_months_window_bounds(api_client, db_session):
     assert (
         await api_client.get(f"/api/v1/{budget.id}/reports/plan-vs-reality", params={"months": 601})
     ).status_code == 422
+
+
+async def test_a_drained_envelope_is_not_a_chronic_overspender(db_session, api_client):
+    """`spent > assigned` read a NEGATIVE assignment as overspending.
+
+    A negative assignment is money moved back OUT of an envelope — a plan being
+    reduced, not a household overspending. Drain 300 from an envelope that
+    spent nothing and `0 > -300` flagged the month; do it in three of the last
+    six and the report named that envelope the household's worst habit, with no
+    spending in it at all.
+
+    The plan floors at zero, and the cell's `variance` uses the same floored
+    plan, because the matrix tints a negative variance red — a drained envelope
+    was being coloured as overspent while the chronic flag beside it disagreed.
+    """
+    budget = await create_budget(db_session, api_client.test_user)
+    await create_account(db_session, budget, "Checking")
+    group = await create_category_group(db_session, budget, "Goals")
+    drained = await create_category(db_session, budget, group, "Car Repairs")
+
+    for n in (0, 1, 2):
+        await create_budget_assignment(db_session, budget, drained, _months_back(n), "-300.00")
+    await db_session.commit()
+
+    body = await _fetch(api_client, budget.id, months=6)
+    cat = _cat(body, drained.id)
+
+    assert cat["chronic"] is False
+    assert cat["months_over"] == 0
+    assert body["chronic_count"] == 0
+    # The plan was nothing and nothing was spent, so the cell reads zero
+    # rather than -300 — which the matrix would have tinted as an overspend.
+    assert D(_cell(cat, _months_back(0))["variance"]) == D("0")
+
+
+async def test_real_overspending_of_a_drained_envelope_still_counts(db_session, api_client):
+    """The floor must not hide genuine overspending: with the plan at zero,
+    money actually spent out of the envelope is over by the whole amount.
+    """
+    budget = await create_budget(db_session, api_client.test_user)
+    checking = await create_account(db_session, budget, "Checking")
+    group = await create_category_group(db_session, budget, "Goals")
+    cat_obj = await create_category(db_session, budget, group, "Car Repairs")
+
+    await create_budget_assignment(db_session, budget, cat_obj, _months_back(0), "-300.00")
+    await create_transaction(db_session, budget, checking, "-120.00", TODAY, category=cat_obj)
+    await db_session.commit()
+
+    body = await _fetch(api_client, budget.id, months=6)
+    cat = _cat(body, cat_obj.id)
+
+    assert cat["months_over"] == 1
+    # Over by 120 against a floored plan of 0 — not by 420 against -300.
+    assert D(cat["avg_overspend"]) == D("120.00")
+    assert D(_cell(cat, _months_back(0))["variance"]) == D("-120.00")

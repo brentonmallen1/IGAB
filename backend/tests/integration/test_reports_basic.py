@@ -10,6 +10,8 @@ from decimal import Decimal
 
 from igab.domain.dates import add_months
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
+from igab.services.report_basics import income_by_source, spending_trends
+from igab.services.report_service import ReportService
 
 from .factories import (
     create_account,
@@ -290,3 +292,90 @@ async def test_cost_of_living_says_when_nothing_is_tagged(db_session, api_client
     assert r.json()["basis"] == "all"
     # No income on record: a ratio against zero is unknown, not 100%.
     assert r.json()["required_ratio"] is None
+
+
+class TestTheClassRuleIsOneRule:
+    """Three spending rollups widen their class set for an explicit account
+    selection, and the third copy of that rule did not have it.
+
+    `counted_classes` is now the one home. Pointing the account filter at a
+    tracked account used to draw nothing on Spending Trends beside a populated
+    Spending Breakdown over the identical selection — and the note that
+    explains an exclusion was suppressed too, because nothing had been
+    excluded: the rows were simply never counted.
+    """
+
+    async def test_a_tracked_account_selection_totals_the_same_on_both(
+        self, db_session, api_client
+    ):
+        budget, checking, group, groceries, fun = await _setup(db_session, api_client)
+        brokerage = await create_account(
+            db_session,
+            budget,
+            "Cascade Point Brokerage",
+            account_type="investment",
+            on_budget=False,
+        )
+        fees = await create_category(db_session, budget, group, "Brokerage Fees")
+        # An outflow on a tracking account classifies investment_return, never
+        # spending — which is why an explicit selection has to widen.
+        await create_transaction(db_session, budget, brokerage, "-180.00", THIS, category=fees)
+        await db_session.commit()
+
+        svc = ReportService(db_session)
+        window = (add_months(THIS, -1), TODAY)
+        trends = await spending_trends(svc, budget.id, *window, account_ids=[brokerage.id])
+        _items, grouped_total, _meta = await svc.spending_grouped(
+            budget.id, *window, account_ids=[brokerage.id]
+        )
+
+        assert trends["total"] == Decimal("180.00")
+        assert trends["total"] == grouped_total
+
+    async def test_an_empty_account_scope_returns_nothing_not_everything(
+        self, db_session, api_client
+    ):
+        """`None` means no scope was asked for; `[]` means one was asked for
+        and nothing matched. `if account_ids:` conflated them, so scoping to a
+        tag nobody has applied answered with the whole budget.
+        """
+        budget, checking, group, groceries, fun = await _setup(db_session, api_client)
+        svc = ReportService(db_session)
+        window = (add_months(THIS, -1), TODAY)
+
+        _u, unscoped_total, _um = await svc.spending_grouped(budget.id, *window)
+        _e, empty_total, _em = await svc.spending_grouped(budget.id, *window, account_ids=[])
+
+        assert unscoped_total == Decimal("290.00")
+        assert empty_total == Decimal("0")
+
+
+class TestIncomeIsDecidedByClassNotSign:
+    async def test_a_clawed_back_paycheque_reduces_its_payees_income(self, db_session, api_client):
+        """The classifier's income rule is "(amount > 0 AND uncategorized) OR
+        the category is in a system group", so a NEGATIVE row filed to an
+        inflow category is negative income. `Transaction.amount > 0` in the
+        WHERE dropped it, and this report's total then exceeded the income
+        Income vs Expenses serves for the same window.
+        """
+        budget, checking, group, groceries, fun = await _setup(db_session, api_client)
+        system = await create_category_group(db_session, budget, "Income", is_system=True)
+        inflow = await create_category(db_session, budget, system, "Ready to Assign")
+        payserv = await create_payee(db_session, budget, "Northwind Payserv")
+
+        await create_transaction(
+            db_session, budget, checking, "3000.00", THIS, payee=payserv, category=inflow
+        )
+        await create_transaction(
+            db_session, budget, checking, "-400.00", THIS, payee=payserv, category=inflow
+        )
+        await db_session.commit()
+
+        svc = ReportService(db_session)
+        by_source = await income_by_source(db_session, budget.id, months=2)
+        headline = await svc.income_vs_expense(budget.id, months=2)
+
+        # 2600, not 3000 — and the same figure the cash-flow report gives.
+        assert by_source["total"] == Decimal("2600.00")
+        assert sum(m["income"] for m in headline) == by_source["total"]
+        assert by_source["sources"][0]["total"] == Decimal("2600.00")

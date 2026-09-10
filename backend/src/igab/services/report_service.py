@@ -32,6 +32,7 @@ from igab.domain.activity_class import (
     SPENDING_CLASSES,
     ActivityClass,
     apply_class_joins,
+    counted_classes,
 )
 from igab.domain.carryover import available_at, monthly_end_balances
 
@@ -263,12 +264,20 @@ class ReportService:
                 Transaction.date <= end_date,
                 LEAF,
                 CASH_FLOW_ROW,
-                _spending_classes(include_classes, scoped_accounts=bool(account_ids)),
+                # SPENT_ENVELOPE, which this hand-spelled copy of the spending
+                # predicate set was missing: without it a row filed into a
+                # system-group category — a clawed-back paycheque — counted as
+                # spending here, while every on-screen spending chart excluded
+                # it. Both the served /reports/spending endpoint and the AI
+                # chat tool read this method, so the assistant answered a
+                # different number from the charts.
+                SPENT_ENVELOPE,
+                _spending_classes(include_classes, scoped_accounts=account_ids is not None),
             )
         )
         q = scoped(q, Transaction.category_id, category_ids)
-        if account_ids:
-            q = q.where(Transaction.account_id.in_(account_ids))
+        if account_ids is not None:
+            q = scoped(q, Transaction.account_id, account_ids)
         else:
             q = q.where(ON_BUDGET_ACCOUNT)
         q = apply_class_joins(q)
@@ -433,12 +442,15 @@ class ReportService:
             Transaction.account_id,
             Transaction.is_split,
             Transaction.parent_transaction_id,
+            # Only ever read on the LEAF-filtered frame below — the classifier
+            # is defined on leaf rows, and a split parent carries no category.
+            ACTIVITY_CLASS.label("cls"),
         ).where(
             Transaction.budget_id == budget_id,
             NOT_DELETED,
             POSTED,
         )
-        all_txns = (await self.session.execute(q)).all()
+        all_txns = (await self.session.execute(apply_class_joins(q))).all()
 
         # Category info for spending
         cat_q = (
@@ -446,7 +458,13 @@ class ReportService:
             .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
             .where(
                 Category.budget_id == budget_id,
-                BUDGETED_ENVELOPE,
+                # SPENT_ENVELOPE, not BUDGETED_ENVELOPE: the only thing this
+                # lookup feeds is "top spending categories", and a category
+                # deleted after the money left it did not unspend the money.
+                # Under BUDGETED_ENVELOPE such a row fell out of the lookup —
+                # and because the top 3 were taken BEFORE the lookup, the card
+                # then drew two categories instead of three.
+                SPENT_ENVELOPE,
             )
         )
         cats = {str(r.id): r for r in (await self.session.execute(cat_q)).all()}
@@ -464,6 +482,7 @@ class ReportService:
                 "is_transfer": [r.transfer_id is not None for r in all_txns],
                 "is_split": [r.is_split for r in all_txns],
                 "is_parent_row": [r.parent_transaction_id is None for r in all_txns],
+                "cls": [r.cls for r in all_txns],
             },
             schema_overrides={
                 "date": pl.Date,
@@ -586,24 +605,34 @@ class ReportService:
             float(cash_on_hand) / daily_burn if daily_burn > 0 and cash_on_hand > 0 else None
         )
 
-        # Top 3 categories in current period — leaf rows so splits count;
-        # categorized transfer legs (off-budget spending) count too
+        # Top 3 spending categories in the current period — leaf rows so splits
+        # count; categorized transfer legs (off-budget spending) count too.
+        #
+        # The class filter is what makes this "Top Spending" rather than "top
+        # outflows". It partitioned on `amount < 0` alone, under a comment two
+        # screens up claiming every figure below it uses the activity-class
+        # partition, so a transfer to a brokerage and a mortgage principal
+        # payment were listed as the household's biggest spending.
         cat_df = df.filter(
             ~pl.col("is_split")
             & (pl.col("amount") < 0)
             & (pl.col("date") >= start_date)
             & (pl.col("date") <= end_date)
             & (pl.col("category_id") != "")
+            & pl.col("cls").is_in([c.value for c in SPENDING_CLASSES])
         )
         top_cats: list[dict] = []
         if not cat_df.is_empty():
+            # No `.head(3)` here: the lookup below can drop a row, and taking
+            # the top 3 first meant the card silently showed fewer than 3.
             cat_agg = (
                 cat_df.group_by("category_id")
                 .agg(pl.col("amount").abs().sum().alias("total"))
                 .sort("total", descending=True)
-                .head(3)
             )
             for row in cat_agg.iter_rows(named=True):
+                if len(top_cats) == 3:
+                    break
                 cat_info = cats.get(row["category_id"])
                 if cat_info:
                     top_cats.append(
@@ -1026,8 +1055,8 @@ class ReportService:
             PARENT_ROW,
             CASH_FLOW_ROW,
         )
-        if account_ids:
-            income_q = income_q.where(Transaction.account_id.in_(account_ids))
+        if account_ids is not None:
+            income_q = scoped(income_q, Transaction.account_id, account_ids)
         else:
             income_q = income_q.where(ON_BUDGET_ACCOUNT)
         total_income = (await self.session.execute(income_q)).scalar() or Decimal("0")
@@ -1162,8 +1191,8 @@ class ReportService:
                 CASH_FLOW_ROW,
             )
         )
-        if account_ids:
-            q = q.where(Transaction.account_id.in_(account_ids))
+        if account_ids is not None:
+            q = scoped(q, Transaction.account_id, account_ids)
         else:
             q = q.where(ON_BUDGET_ACCOUNT)
         q = apply_class_joins(q)
@@ -1432,12 +1461,28 @@ class ReportService:
         # PLANNED_SPEND_ROW: one universe with the assigned side above; this
         # query was the byte-identical twin of cumulative_variance's before
         # the predicate was extracted.
-        spend_q = select(Transaction.category_id, Transaction.amount).where(
-            Transaction.budget_id == budget_id,
-            Transaction.date >= start_date,
-            Transaction.date <= end_date,
-            PLANNED_SPEND_ROW,
-            _spending_classes(),
+        # The names travel with the rows. This selected only the id and the
+        # amount, so a category that was spent from but never assigned to
+        # inside the window had no name to reach for and was served as
+        # "Unknown" with a blank group — on a report whose whole job is to
+        # name the envelope that went off plan. `SPENT_ENVELOPE` keeps a
+        # deleted category, which is exactly the row that has no assignment.
+        spend_q = (
+            select(
+                Transaction.category_id,
+                Transaction.amount,
+                Category.name.label("category_name"),
+                CategoryGroup.name.label("group_name"),
+            )
+            .join(Category, Category.id == Transaction.category_id)
+            .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
+            .where(
+                Transaction.budget_id == budget_id,
+                Transaction.date >= start_date,
+                Transaction.date <= end_date,
+                PLANNED_SPEND_ROW,
+                _spending_classes(),
+            )
         )
         spend_q = apply_class_joins(spend_q)
         assign_q = scoped(assign_q, BudgetAssignment.category_id, category_ids)
@@ -1469,8 +1514,8 @@ class ReportService:
             if cid not in assign_by_cat:
                 assign_by_cat[cid] = {
                     "category_id": cid,
-                    "category_name": "Unknown",
-                    "category_group_name": "",
+                    "category_name": r.category_name,
+                    "category_group_name": r.group_name,
                     "assigned": Decimal("0"),
                     "spent": Decimal("0"),
                 }
@@ -1511,8 +1556,11 @@ class ReportService:
             .where(
                 BudgetAssignment.budget_id == budget_id,
                 BudgetAssignment.month.in_(months_list),
+                # BUDGETED_ENVELOPE already carries LIVE_CATEGORY; the inline
+                # `Category.is_deleted == False` beside it was a restatement of
+                # the constant's own term, which is how a rule acquires a
+                # second definition that can later disagree with the first.
                 BUDGETED_ENVELOPE,
-                Category.is_deleted == False,  # noqa: E712
             )
         )
         assignments = (await self.session.execute(assign_q)).all()
@@ -1664,16 +1712,29 @@ class ReportService:
             for m in months_list:
                 assigned = entry["assigned"][m]
                 spent = entry["spent"][m]
-                over = spent > assigned
+                # The plan floors at zero. A NEGATIVE assignment is money moved
+                # back OUT of the envelope — a plan being reduced, not a
+                # household overspending — and `spent > assigned` read it as
+                # the latter: drain 300 from an envelope that spent nothing and
+                # `0 > -300` flagged it, so an envelope with no spending at all
+                # could be reported as a chronic overspender. Do it in three
+                # months and the report named it the household's worst habit.
+                #
+                # One definition, used by the chronic count AND by the cell's
+                # variance, because the matrix tints a negative variance red:
+                # a drained envelope was being coloured as overspent while the
+                # chronic flag beside it disagreed.
+                plan = max(assigned, zero)
+                over = spent > plan
                 if assigned != zero or spent != zero:
                     months_active += 1
                     if over:
                         months_over += 1
-                        over_total += spent - assigned
+                        over_total += spent - plan
                         if m in recent:
                             recent_over += 1
                 monthly.append(
-                    {"month": m, "assigned": assigned, "spent": spent, "variance": assigned - spent}
+                    {"month": m, "assigned": assigned, "spent": spent, "variance": plan - spent}
                 )
             cat_assigned = sum(entry["assigned"].values(), zero)
             cat_spent = sum(entry["spent"].values(), zero)
@@ -1837,8 +1898,12 @@ class ReportService:
             )
         )
         q = scoped(q, Transaction.category_id, category_ids)
-        if account_ids:
-            q = q.where(Transaction.account_id.in_(account_ids))
+        # `is not None`, not truthiness: an empty selection means "a scope was
+        # asked for and nothing matched", and must return no rows rather than
+        # falling through to every on-budget account. That is the distinction
+        # `scoped()` was extracted to keep, and this branch did not keep it.
+        if account_ids is not None:
+            q = scoped(q, Transaction.account_id, account_ids)
         else:
             q = q.where(ON_BUDGET_ACCOUNT)
         return apply_class_joins(q)
@@ -1891,12 +1956,7 @@ class ReportService:
         # complement — two full scans of the same window, each paying the
         # per-row subqueries ACTIVITY_CLASS compiles to, on exactly the
         # requests a view or a selection makes.
-        included = {c.value for c in (include_classes or SPENDING_CLASSES)}
-        if account_ids:
-            included |= {
-                ActivityClass.INVESTMENT_RETURN.value,
-                ActivityClass.DEBT_INTEREST.value,
-            }
+        included = counted_classes(include_classes, scoped_accounts=account_ids is not None)
         counted = [r for r in rows if r.cls in included]
         other_class = [r for r in rows if r.cls not in included]
 
@@ -2224,10 +2284,12 @@ class ReportService:
                 _spending_classes(scoped_accounts=bool(account_ids)),
             )
         )
-        if payee_ids:
-            q = q.where(PAYEE_OF_RECORD.in_(payee_ids))
-        if account_ids:
-            q = q.where(Transaction.account_id.in_(account_ids))
+        # PAYEE_OF_RECORD rather than the raw column, and `is not None` for
+        # the same reason as the account scope below.
+        if payee_ids is not None:
+            q = scoped(q, PAYEE_OF_RECORD, payee_ids)
+        if account_ids is not None:
+            q = scoped(q, Transaction.account_id, account_ids)
         else:
             q = q.where(ON_BUDGET_ACCOUNT)
         q = apply_class_joins(q)
@@ -2349,8 +2411,8 @@ class ReportService:
             CASH_FLOW_ROW,
         )
         q = scoped(q, Transaction.category_id, category_ids)
-        if account_ids:
-            q = q.where(Transaction.account_id.in_(account_ids))
+        if account_ids is not None:
+            q = scoped(q, Transaction.account_id, account_ids)
         else:
             q = q.where(ON_BUDGET_ACCOUNT)
         q = apply_class_joins(q)
@@ -2361,12 +2423,7 @@ class ReportService:
         # ACTIVITY_CLASS's per-row subqueries a second time. Same shape as
         # `spending_grouped`, and the same widening for an explicit account
         # selection — see `_spending_classes` for why that exists.
-        included = {c.value for c in SPENDING_CLASSES}
-        if account_ids:
-            included |= {
-                ActivityClass.INVESTMENT_RETURN.value,
-                ActivityClass.DEBT_INTEREST.value,
-            }
+        included = counted_classes(scoped_accounts=account_ids is not None)
         rows = [r for r in scanned if r.cls in included]
         class_excluded = class_excluded_note(
             [r for r in scanned if r.cls not in included],
@@ -2467,8 +2524,8 @@ class ReportService:
             )
         )
         q = scoped(q, Transaction.category_id, category_ids)
-        if account_ids:
-            q = q.where(Transaction.account_id.in_(account_ids))
+        if account_ids is not None:
+            q = scoped(q, Transaction.account_id, account_ids)
         else:
             q = q.where(ON_BUDGET_ACCOUNT)
         q = q.order_by(Transaction.amount).limit(limit)  # most negative first

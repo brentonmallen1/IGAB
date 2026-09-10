@@ -254,8 +254,10 @@ class TestBudgetVsActual:
             group_name=group_name,
         )
 
-    def _spend(self, cat_id, amount):
-        return row(category_id=cat_id, amount=amount)
+    def _spend(self, cat_id, amount, name="Groceries", group="Everyday"):
+        # The names travel with the spend rows now: a category spent from but
+        # never assigned to in the window used to be served as "Unknown".
+        return row(category_id=cat_id, amount=amount, category_name=name, group_name=group)
 
     async def test_basic_variance(self):
         assigns = [self._assignment(CAT_A, JAN, D("500.00"))]
@@ -302,12 +304,24 @@ class TestBudgetVsActual:
         assert result == {"categories": [], "total_assigned": D("0"), "total_spent": D("0")}
 
     async def test_variance_pct_zero_when_no_assignment(self):
-        """Category with spending but no assignment gets 0% variance_pct."""
+        """Category with spending but no assignment gets 0% variance_pct.
+
+        A percentage of nothing has no value, so 0.0 is a placeholder rather
+        than a measurement — `variance` carries the real answer (-100 here).
+        Stated because the same 0.0 also means "spent its plan to the cent";
+        the two are distinguishable only by looking at `assigned`.
+        """
         assigns = []
-        spends = [self._spend(CAT_A, D("-100.00"))]
+        spends = [self._spend(CAT_A, D("-100.00"), name="Cascade Point Dues")]
         svc = ReportService(make_session(mock_result(assigns), mock_result(spends)))
         result = await svc.budget_vs_actual(BUDGET, JAN, JAN)
-        assert result["categories"][0]["variance_pct"] == 0.0
+        cat = result["categories"][0]
+        assert cat["variance_pct"] == 0.0
+        assert cat["variance"] == D("-100.00")
+        assert cat["assigned"] == D("0")
+        # And it is named, not "Unknown" with a blank group.
+        assert cat["category_name"] == "Cascade Point Dues"
+        assert cat["category_group_name"] == "Everyday"
 
 
 # ─── cumulative_variance ──────────────────────────────────────────────────────
