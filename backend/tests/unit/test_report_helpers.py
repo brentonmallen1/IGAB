@@ -3,9 +3,14 @@ from datetime import date
 from igab.services.report_service import (
     _last_day,
     _months_in_range,
-    _next_occurrence,
     _subtract_months,
 )
+
+# TestNextOccurrence lived here, testing `report_service._next_occurrence` — a
+# fourth copy of recurrence stepping with no `twice_monthly` branch. The copy
+# is gone and `cash_projection` calls `domain.schedule.next_occurrence`, whose
+# 44 cases in tests/unit/test_calculate_next.py cover everything this class
+# asserted plus the branch it was missing.
 
 
 class TestSubtractMonths:
@@ -29,34 +34,6 @@ class TestSubtractMonths:
 
     def test_december_minus_one(self):
         assert _subtract_months(date(2024, 1, 1), 1) == date(2023, 12, 1)
-
-
-class TestNextOccurrence:
-    def test_daily_weekly_biweekly(self):
-        assert _next_occurrence(date(2024, 3, 1), "daily") == date(2024, 3, 2)
-        assert _next_occurrence(date(2024, 3, 1), "weekly") == date(2024, 3, 8)
-        assert _next_occurrence(date(2024, 3, 1), "biweekly") == date(2024, 3, 15)
-
-    def test_monthly_plain(self):
-        assert _next_occurrence(date(2024, 3, 15), "monthly") == date(2024, 4, 15)
-
-    def test_monthly_clamps_to_shorter_month(self):
-        assert _next_occurrence(date(2024, 1, 31), "monthly") == date(2024, 2, 29)
-        assert _next_occurrence(date(2023, 1, 31), "monthly") == date(2023, 2, 28)
-        assert _next_occurrence(date(2024, 3, 31), "monthly") == date(2024, 4, 30)
-
-    def test_monthly_december_rolls_year(self):
-        assert _next_occurrence(date(2024, 12, 15), "monthly") == date(2025, 1, 15)
-
-    def test_yearly_plain(self):
-        assert _next_occurrence(date(2024, 5, 10), "yearly") == date(2025, 5, 10)
-
-    def test_yearly_clamps_leap_day(self):
-        # Feb 29 + 1 year lands in a non-leap February — must clamp, not raise
-        assert _next_occurrence(date(2024, 2, 29), "yearly") == date(2025, 2, 28)
-
-    def test_unknown_frequency_is_none(self):
-        assert _next_occurrence(date(2024, 3, 1), "fortnightly") is None
 
 
 class TestMonthsInRange:
