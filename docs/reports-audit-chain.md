@@ -34,7 +34,7 @@ each other, starting from `origin/main` at `892922a0`.
 | 9 | [#188](https://github.com/brentonmallen1/IGAB/pull/188) `fix/reports-scope-plumbing` | One id parser; param bounds; `filter_unavailable` everywhere; view guard | done |
 | 10 | [#189](https://github.com/brentonmallen1/IGAB/pull/189) `fix/reports-contract-drift` | Duplicate interfaces; dead fields; empty paths; undrillable nodes | done |
 | 11 | `fix/reports-labels` | Labels that contradict the computation | done |
-| 12 | `fix/reports-totals-not-truncations` | A truncated set is not a total (payee_analysis, DrillDownTable, Pareto) | todo |
+| 12 | `fix/reports-totals-not-truncations` | A truncated set is not a total (payee_analysis, DrillDownTable, Pareto) | done |
 | 13 | `fix/reports-efficiency` | Per-month query loops; whole-register scans; CSV amount formatting | todo |
 
 Branches 1–4 are independent in content and could be reordered; 5 onward depend

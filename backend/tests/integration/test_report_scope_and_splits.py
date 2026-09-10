@@ -149,7 +149,7 @@ class TestSplitLegsClassifyIndividually:
 
     async def test_payee_analysis_counts_only_the_spending_leg(self, db_session):
         budget = await self._split_world(db_session)
-        payees, total = await ReportService(db_session).payee_analysis(
+        payees, total, _count = await ReportService(db_session).payee_analysis(
             budget.id, MONTH_START, TODAY
         )
         assert total == Decimal("100.00")
@@ -181,7 +181,7 @@ class TestSplitLegsClassifyIndividually:
             )
         await db_session.flush()
 
-        payees, total = await ReportService(db_session).payee_analysis(
+        payees, total, _count = await ReportService(db_session).payee_analysis(
             budget.id, MONTH_START, TODAY
         )
         assert total == Decimal("75.00")

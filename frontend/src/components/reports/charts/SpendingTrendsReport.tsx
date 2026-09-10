@@ -61,6 +61,15 @@ export function SpendingTrendsReport({ budgetId }: Props) {
 
   const rolled = useMemo(() => (data ? rollupTrends(data, groupBy) : []), [data, groupBy])
   const shown = rolled.slice(0, MAX_SERIES)
+  // Month label → the month's total across EVERY series, which is what the
+  // table's All row draws. Only the ten largest series are stacked, so the
+  // tooltip's own sum is a subtotal and must not be headed "Total".
+  const totalByMonth = useMemo(() => {
+    const m = new Map<string, number>()
+    if (!data) return m
+    data.months.forEach((month, i) => m.set(formatMonth(month), data.monthly_totals[i] ?? 0))
+    return m
+  }, [data, formatMonth])
   const chartData = useMemo(() => {
     if (!data) return []
     return data.months.map((m, i) => {
@@ -175,6 +184,10 @@ export function SpendingTrendsReport({ budgetId }: Props) {
                         }))}
                         label={String(label ?? '')}
                         showTotal
+                        wider={{
+                          total: totalByMonth.get(String(label ?? '')) ?? 0,
+                          label: 'All categories',
+                        }}
                         formatter={formatMoney}
                       />
                     )}

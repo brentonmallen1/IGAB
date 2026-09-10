@@ -69,7 +69,7 @@ from igab.services.report_basics import (
     class_excluded_note,
     emergency_fund,
 )
-from igab.services.report_stats import timeline_rows, volatility_stats
+from igab.services.report_stats import payee_breakdown, timeline_rows, volatility_stats
 
 # Report payload shapes.
 #
@@ -2290,7 +2290,15 @@ class ReportService:
         limit: int = 25,
         payee_ids: list[uuid.UUID] | None = None,
         account_ids: list[uuid.UUID] | None = None,
-    ) -> tuple[list[dict], Decimal]:
+    ) -> tuple[list[dict], Decimal, int]:
+        """The `limit` largest payees, the total over EVERY payee, and how many
+        there were.
+
+        The count is served because the report is a ranking, not a page: a
+        client that knows only "25 rows" cannot say whether that is all of
+        them, and both the Pareto card and the payee table were stating the
+        cap as a period-wide fact.
+        """
         q = (
             select(
                 Transaction.date,
@@ -2332,7 +2340,7 @@ class ReportService:
         rows = (await self.session.execute(q)).all()
 
         if not rows:
-            return [], Decimal("0")
+            return [], Decimal("0"), 0
 
         df = pl.DataFrame(
             {
@@ -2353,65 +2361,22 @@ class ReportService:
                 pl.col("amount").count().alias("count"),
             )
             .sort("total", descending=True)
-            .head(limit)
         )
-
+        # BEFORE the cap. The total and every `pct` used to be computed from
+        # the already-truncated frame, so "Total Spent" was the top-25
+        # subtotal and every share was inflated against it: on a budget with
+        # three hundred payees the report showed $4,120 of $9,850 spending and
+        # gave its biggest payee 31% of a number that was not the total.
+        # `ai/tools/shape.ranked` writes the opposite contract down — "the
+        # service returns the biggest N and a total computed over
+        # **everything**" — so the spec and the code disagreed in writing.
         grand_total = Decimal(str(round(payee_agg["total"].sum(), 4)))
+        payee_count = payee_agg.height
+        payee_agg = payee_agg.head(limit)
 
-        payees = []
-        for row in payee_agg.iter_rows(named=True):
-            pid = row["payee_id"]
-            payee_df = df.filter(pl.col("payee_id") == pid)
+        payees = payee_breakdown(df, payee_agg, grand_total)
 
-            # Monthly trend
-            trend = (
-                payee_df.with_columns(pl.col("date").dt.truncate("1mo").alias("month"))
-                .group_by("month")
-                .agg(pl.col("amount").sum().alias("total"))
-                .sort("month")
-            )
-            monthly_trend = [
-                {"month": r["month"], "total": Decimal(str(round(r["total"], 4)))}
-                for r in trend.iter_rows(named=True)
-            ]
-
-            # Top categories
-            top_cats = (
-                payee_df.filter(pl.col("category_name") != "Uncategorized")
-                .group_by("category_name")
-                .agg(pl.col("amount").sum().alias("total"))
-                .sort("total", descending=True)
-                .head(3)
-            )
-            top_categories = [
-                {"category_name": r["category_name"], "total": Decimal(str(round(r["total"], 4)))}
-                for r in top_cats.iter_rows(named=True)
-            ]
-
-            # Recurring: appears in >= 3 different months
-            months_active = payee_df.with_columns(pl.col("date").dt.truncate("1mo").alias("month"))[
-                "month"
-            ].n_unique()
-            is_recurring = months_active >= 3
-
-            payees.append(
-                {
-                    "payee_id": pid,
-                    "payee_name": row["payee_name"],
-                    "total": Decimal(str(round(row["total"], 4))),
-                    "count": int(row["count"]),
-                    "pct": (
-                        float(Decimal(str(row["total"])) / grand_total * 100)
-                        if grand_total
-                        else 0.0
-                    ),
-                    "monthly_trend": monthly_trend,
-                    "top_categories": top_categories,
-                    "is_recurring": is_recurring,
-                }
-            )
-
-        return payees, grand_total
+        return payees, grand_total, payee_count
 
     # ─── Day Patterns ─────────────────────────────────────────────────────────
 

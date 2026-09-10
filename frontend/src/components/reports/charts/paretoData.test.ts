@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildParetoItems,
   cumulativePercents,
+  paretoAdherence,
   paretoInsight,
   shareOfTotal,
   type ParetoItem,
@@ -43,10 +44,28 @@ describe('buildParetoItems', () => {
     ])
   })
 
-  it('payee mode sums visible payees as the grand total', () => {
-    const { sorted, grandTotal } = buildParetoItems('payee', spending, payees, undefined)
+  it('payee mode falls back to summing the visible payees', () => {
+    const { sorted, grandTotal, universeCount } = buildParetoItems(
+      'payee',
+      spending,
+      payees,
+      undefined
+    )
     expect(sorted.map((i) => i.name)).toEqual(['Landlord', 'MegaMart'])
     expect(grandTotal).toBe(850)
+    expect(universeCount).toBe(2)
+  })
+
+  it('payee mode prefers the served total and count over the ranked rows', () => {
+    // The server ranks the top 25 and totals every payee. Summing the ranked
+    // rows made concentration a fact about the cap, and disagreed with the
+    // `pct` on each row — which is a share of the served total.
+    const { grandTotal, universeCount } = buildParetoItems('payee', spending, payees, undefined, {
+      total: '4000',
+      count: 312,
+    })
+    expect(grandTotal).toBe(4000)
+    expect(universeCount).toBe(312)
   })
 })
 
@@ -66,10 +85,10 @@ describe('cumulativePercents', () => {
 
 describe('paretoInsight', () => {
   it('finds the item whose cumulative share reaches 80%', () => {
-    const { idx80, pct80coverage } = paretoInsight([50, 80, 100], 3)
+    const { idx80, coverage } = paretoInsight([50, 80, 100], 3)
     expect(idx80).toBe(1)
     // 2 of 3 items produce 80% of spending
-    expect(pct80coverage).toBe('67')
+    expect(coverage).toBeCloseTo(66.67, 2)
   })
 
   it('handles the exact-80 boundary inclusively', () => {
@@ -77,7 +96,20 @@ describe('paretoInsight', () => {
   })
 
   it('returns null coverage when nothing reaches 80%', () => {
-    expect(paretoInsight([10, 20], 40)).toEqual({ idx80: -1, pct80coverage: null })
+    expect(paretoInsight([10, 20], 40)).toEqual({ idx80: -1, coverage: null })
+  })
+
+  it('measures coverage against every item, not the ones drawn', () => {
+    // The chart draws twenty bars; the array it used to pass was those twenty,
+    // so a budget whose 80% point sits at item 34 got `idx80: -1` and no card
+    // at all — exactly the diffuse spending the card exists to name.
+    const spread = Array.from({ length: 40 }, (_, i) => ((i + 1) / 40) * 100)
+    const { idx80, coverage } = paretoInsight(spread, 40)
+    expect(idx80).toBe(31)
+    expect(coverage).toBeCloseTo(80, 5)
+
+    const drawnOnly = spread.slice(0, 20)
+    expect(paretoInsight(drawnOnly, 40).idx80).toBe(-1)
   })
 })
 
@@ -85,5 +117,20 @@ describe('shareOfTotal', () => {
   it('is the item share in percent, 0 for a zero denominator', () => {
     expect(shareOfTotal(25, 200)).toBe(12.5)
     expect(shareOfTotal(25, 0)).toBe(0)
+  })
+})
+
+describe('paretoAdherence', () => {
+  it('measures the threshold on the real coverage, not the rounded label', () => {
+    // The card renders `coverage.toFixed(0)`, so 30.4% displays as "30" — and
+    // the threshold used to be applied to that string, calling spread-thin
+    // spending concentrated on the strength of a rounding step.
+    expect(paretoAdherence(30.4, 100)?.adherent).toBe(false)
+    expect(paretoAdherence(30, 100)?.adherent).toBe(true)
+  })
+
+  it('claims nothing without a coverage figure or with too few items', () => {
+    expect(paretoAdherence(null, 100)).toBeNull()
+    expect(paretoAdherence(20, 2)).toBeNull()
   })
 })

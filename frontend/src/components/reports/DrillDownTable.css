@@ -50,3 +50,14 @@
   color: var(--text-primary);
   padding-top: var(--spacing-sm);
 }
+
+/* The wider set the rows were taken from — context under the total, not a
+   second total. Muted and unweighted so it cannot be misread as the figure
+   the column adds up to. */
+.ddt__of td {
+  border-top: none;
+  border-bottom: none;
+  color: var(--text-muted);
+  font-weight: 400;
+  font-size: var(--font-size-xs);
+}

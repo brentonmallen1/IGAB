@@ -1,7 +1,6 @@
 /** Pure math for the Pareto report: sorting/aggregation per group-by mode,
  * cumulative percentages, and the 80%-line insight. Extracted from
  * ParetoChart so the concentration math is unit-testable. */
-import { parseApiDecimal } from '../../../utils/money'
 import type { GroupBy } from '../../../stores/reportStore'
 
 export interface ParetoItem {
@@ -27,17 +26,26 @@ interface PayeeItemLike {
 }
 
 /** Sort + (for group mode) aggregate the raw report items, largest first.
- * Category mode trusts the backend total; payee/group totals are sums of
- * the visible items. */
+ *
+ * Category and payee mode trust the server's total, which spans everything;
+ * group totals are summed from the categories, which the same response
+ * carries in full. `universeCount` is how many things exist in the window —
+ * larger than `sorted.length` only in payee mode, where the server ranks the
+ * top 25 and the report used to state that cap as a period-wide fact. */
 export function buildParetoItems(
   groupBy: GroupBy,
   spendingItems: SpendingGroupItemLike[],
   payeeItems: PayeeItemLike[],
-  backendTotal: string | number | undefined
-): { sorted: ParetoItem[]; grandTotal: number } {
+  backendTotal: string | number | undefined,
+  payeeTotals?: { total: string | number; count: number }
+): { sorted: ParetoItem[]; grandTotal: number; universeCount: number } {
   if (groupBy === 'payee') {
     const items = [...payeeItems].sort((a, b) => Number(b.total) - Number(a.total))
-    const total = items.reduce((s, p) => s + Number(p.total), 0)
+    // The served total, not a sum of the ranked rows: it covers every payee
+    // in the window, and each row's `pct` is a share of it.
+    const total = payeeTotals
+      ? Number(payeeTotals.total)
+      : items.reduce((s, p) => s + Number(p.total), 0)
     return {
       sorted: items.map((p) => ({
         id: p.payee_id,
@@ -47,6 +55,7 @@ export function buildParetoItems(
         groupName: null,
       })),
       grandTotal: total,
+      universeCount: payeeTotals?.count ?? items.length,
     }
   }
   if (groupBy === 'group') {
@@ -69,6 +78,7 @@ export function buildParetoItems(
     return {
       sorted: items.map((i) => ({ ...i, groupKey: i.id, groupName: null })),
       grandTotal: total,
+      universeCount: items.length,
     }
   }
   const items = [...spendingItems].sort((a, b) => Number(b.total) - Number(a.total))
@@ -81,6 +91,7 @@ export function buildParetoItems(
       groupName: i.parent_name,
     })),
     grandTotal: Number(backendTotal ?? 0),
+    universeCount: items.length,
   }
 }
 
@@ -94,15 +105,20 @@ export function cumulativePercents(items: ParetoItem[], grandTotal: number): num
 }
 
 /** The 80/20 insight: index of the item whose cumulative share reaches 80%,
- * and what fraction of ALL items that prefix represents. */
+ * and what fraction of ALL items that prefix represents.
+ *
+ * `cumulativePcts` must span every item, not the twenty the chart draws — the
+ * chart passed its truncated array, so `findIndex` returned -1 whenever 80%
+ * sat past item twenty and the card vanished for exactly the diffuse budgets
+ * it exists to warn. `coverage` is unrounded, because a threshold applied to
+ * a display-rounded string calls 30.4% adherent. */
 export function paretoInsight(
   cumulativePcts: number[],
   totalItemCount: number
-): { idx80: number; pct80coverage: string | null } {
+): { idx80: number; coverage: number | null } {
   const idx80 = cumulativePcts.findIndex((pct) => pct >= 80)
-  const pct80coverage =
-    idx80 >= 0 && totalItemCount > 0 ? (((idx80 + 1) / totalItemCount) * 100).toFixed(0) : null
-  return { idx80, pct80coverage }
+  const coverage = idx80 >= 0 && totalItemCount > 0 ? ((idx80 + 1) / totalItemCount) * 100 : null
+  return { idx80, coverage }
 }
 
 /** Share of the grand total for one item (0–100). */
@@ -114,13 +130,17 @@ export function shareOfTotal(total: number, grandTotal: number): number {
  * Returns null if data is insufficient, or an object with:
  * - adherent: true if ≤30% of items account for 80% of spending
  * - pct: the actual percentage of items needed for 80%
- * - message: guidance for the user */
+ * - message: guidance for the user
+ *
+ * Takes the unrounded coverage. It used to take the string the card renders,
+ * so 30.4% of items — which `.toFixed(0)` shows as "30" — was reported as
+ * concentrated spending on the wrong side of the line. */
 export function paretoAdherence(
-  pct80coverage: string | null,
+  coverage: number | null,
   totalItemCount: number
 ): { adherent: boolean; pct: number; message: string } | null {
-  if (!pct80coverage || totalItemCount < 3) return null
-  const pct = parseApiDecimal(pct80coverage)
+  if (coverage === null || totalItemCount < 3) return null
+  const pct = coverage
   if (pct <= 30) {
     return {
       adherent: true,

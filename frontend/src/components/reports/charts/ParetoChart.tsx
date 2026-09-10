@@ -136,9 +136,19 @@ export function ParetoReport({ budgetId }: Props) {
     return map
   }, [spendingItems])
 
-  const { sorted, grandTotal } = useMemo(
-    () => buildParetoItems(groupBy, spendingItems, payeeItems, spendingQ.data?.total),
-    [groupBy, spendingItems, payeeItems, spendingQ.data]
+  const { sorted, grandTotal, universeCount } = useMemo(
+    () =>
+      buildParetoItems(
+        groupBy,
+        spendingItems,
+        payeeItems,
+        spendingQ.data?.total,
+        payeeQ.data && {
+          total: payeeQ.data.total,
+          count: payeeQ.data.payee_count,
+        }
+      ),
+    [groupBy, spendingItems, payeeItems, spendingQ.data, payeeQ.data]
   )
 
   // Group id → member category ids, for expanding a group drill client-side
@@ -198,8 +208,11 @@ export function ParetoReport({ budgetId }: Props) {
     }
   }
 
+  // Over every item, then sliced for the chart. Measuring concentration on
+  // the twenty drawn bars is how the 80% card came to disappear exactly for
+  // the budgets whose spending is spread thin.
+  const cumulativePcts = cumulativePercents(sorted, grandTotal)
   const top20 = sorted.slice(0, 20)
-  const cumulativePcts = cumulativePercents(top20, grandTotal)
   const chartData = top20.map((item, i) => ({
     name: truncateLabel(item.name, 14),
     fullName: item.name,
@@ -212,14 +225,18 @@ export function ParetoReport({ budgetId }: Props) {
         : (groupColorMap.get(item.groupKey ?? '__none__') ?? CHART_COLORS[0]),
   }))
 
-  const { idx80, pct80coverage } = paretoInsight(cumulativePcts, sorted.length)
-  const adherence = paretoAdherence(pct80coverage, sorted.length)
+  // `universeCount`, not `sorted.length`: in payee mode the server ranks the
+  // top 25, and "% of all payees" measured against the cap was the cap
+  // restated as a fact about the period.
+  const { idx80, coverage } = paretoInsight(cumulativePcts, universeCount)
+  const adherence = paretoAdherence(coverage, universeCount)
+  const rankedIsEverything = universeCount === sorted.length
 
   const tableRows = sorted.map((item) => ({
     id: item.id,
     name: item.name,
     subName: item.groupName ?? '',
-    amount: -item.total,
+    amount: item.total,
     pct: shareOfTotal(item.total, grandTotal),
   }))
 
@@ -284,7 +301,9 @@ export function ParetoReport({ budgetId }: Props) {
                 sub={
                   adherence
                     ? adherence.message
-                    : `${pct80coverage}% of all ${GROUP_PLURALS[groupBy]}`
+                    : coverage === null
+                      ? undefined
+                      : `${coverage.toFixed(0)}% of ${rankedIsEverything ? 'all' : 'the'} ${GROUP_PLURALS[groupBy]}`
                 }
                 warning={adherence ? !adherence.adherent : false}
               />
@@ -365,7 +384,8 @@ export function ParetoReport({ budgetId }: Props) {
             </ResponsiveContainer>
             <DrillDownTable
               rows={tableRows}
-              total={grandTotal}
+              wider={{ total: grandTotal, count: universeCount, label: GROUP_PLURALS[groupBy] }}
+              amountLabel="Spent"
               onRowClick={(row) => drillTo(row.id, row.name)}
             />
           </>

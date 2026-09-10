@@ -97,3 +97,47 @@ describe('ChartTooltip', () => {
  * worse implementation of a rule that already has a home is the thing this
  * whole change is removing. Required prop (tsc) + eslint rule are the guards.
  */
+
+describe('a stacked tooltip whose chart draws only some of the series', () => {
+  it('heads its own sum "Shown" and states the whole beside it', () => {
+    // Spending Trends stacks the ten largest series and printed their subtotal
+    // as "Total", inches above a table row headed All carrying a larger
+    // number. Same rule as `DrillDownTable`: the total is the sum of the rows
+    // listed, and a wider figure is drawn beside it.
+    render(
+      <ChartTooltip
+        active
+        payload={[
+          { name: 'Rent', value: 1800 },
+          { name: 'Groceries', value: 600 },
+        ]}
+        label="Sep 26"
+        showTotal
+        wider={{ total: 3200, label: 'All categories' }}
+        formatter={(v) => `$${v}`}
+      />
+    )
+    expect(screen.getByText('Shown')).toBeInTheDocument()
+    expect(screen.getByText('$2400')).toBeInTheDocument()
+    expect(screen.getByText('All categories')).toBeInTheDocument()
+    expect(screen.getByText('$3200')).toBeInTheDocument()
+    expect(screen.queryByText('Total')).toBeNull()
+  })
+
+  it('still says "Total" when the drawn series are every series', () => {
+    render(
+      <ChartTooltip
+        active
+        payload={[
+          { name: 'Rent', value: 1800 },
+          { name: 'Groceries', value: 600 },
+        ]}
+        showTotal
+        wider={{ total: 2400, label: 'All categories' }}
+        formatter={(v) => `$${v}`}
+      />
+    )
+    expect(screen.getByText('Total')).toBeInTheDocument()
+    expect(screen.queryByText('All categories')).toBeNull()
+  })
+})
