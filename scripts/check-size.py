@@ -102,7 +102,7 @@ SKIP_SUFFIXES = (".test.ts", ".test.tsx", ".d.ts")
 #: is the gate asking a question — raise the budget deliberately, as above, or
 #: put the code somewhere else. Do not edit a lock upward to get past it.
 OVER_BUDGET: dict[str, int] = {
-    "backend/src/igab/services/report_service.py": 2596,
+    "backend/src/igab/services/report_service.py": 2548,
 }
 
 _PY_NON_CODE_TOKENS = frozenset(

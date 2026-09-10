@@ -33,6 +33,7 @@ from igab.domain.activity_class import (
     ActivityClass,
     apply_class_joins,
 )
+from igab.domain.carryover import available_at, monthly_end_balances
 
 # CASH_FLOW_ROW: plain rows plus categorized transfer legs (spending
 # transfers to off-budget accounts count as real income/expense; internal
@@ -48,6 +49,7 @@ from igab.guide.concepts import (
 )
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_filters import BUDGETED_ENVELOPE, SPENT_ENVELOPE
+from igab.repositories.import_anchor_repo import ImportAnchorRepository, category_opening
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.repositories.txn_filters import (
     CASH_ACCOUNT,
@@ -2716,22 +2718,17 @@ class ReportService:
         )
 
         if not savings_cat_ids:
-            return {
-                "categories": [],
-                "summary": {
-                    "total_balance": Decimal("0"),
-                    "total_inflow": Decimal("0"),
-                    "avg_monthly_inflow": Decimal("0"),
-                    "category_count": 0,
-                },
-                "months": [],
-                "drains": {"total": Decimal("0"), "moves": []},
-            }
+            return _empty_savings_report([])
 
         # Date range
         today = date.today()
         end_date = today
-        start_date = _subtract_months(today, months).replace(day=1)
+        # months - 1: `_months_in_range` is inclusive of both ends, so
+        # subtracting `months` produced months + 1 buckets and "All time (18
+        # months)" drew 19 columns with an empty leader — which also divided
+        # the average inflow by 19. `available_range` exists to stop a report
+        # offering a window it cannot fill.
+        start_date = _subtract_months(today, months - 1).replace(day=1)
         month_list = _months_in_range(start_date, end_date)
 
         # What pulled from savings: moves out of these envelopes in the window,
@@ -2762,98 +2759,53 @@ class ReportService:
                 CategoryGroup.name.label("group_name"),
             )
             .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
-            .where(Category.id.in_(savings_cat_ids))
+            .where(
+                Category.id.in_(savings_cat_ids),
+                # A tag outlives the category it was on. Without these the
+                # report drew a row for a soft-deleted envelope, gave it the
+                # assignments it once held as a "balance", and counted it in
+                # category_count. SPENT_ENVELOPE is the wrong rule here: this
+                # is a question about where money IS, not where it went.
+                BUDGETED_ENVELOPE,
+            )
         )
         cat_info_rows = (await self.session.execute(cat_info_q)).all()
         cat_info = {str(r.id): {"name": r.name, "group_name": r.group_name} for r in cat_info_rows}
+        # Everything below walks only the envelopes that survived that filter.
+        savings_cat_ids = [c for c in savings_cat_ids if str(c) in cat_info]
+        if not savings_cat_ids:
+            return _empty_savings_report(month_list)
 
-        # Get assignments (inflows) per category per month
+        # Assignments with NO lower bound: the walk needs every month, not a
+        # lump sum of the months before the window. A pre-window overspend has
+        # to be floored where it happened.
         assign_q = select(
             BudgetAssignment.category_id,
             BudgetAssignment.month,
             BudgetAssignment.assigned,
         ).where(
             BudgetAssignment.category_id.in_(savings_cat_ids),
-            BudgetAssignment.month >= start_date,
             BudgetAssignment.month <= end_date,
         )
         assign_rows = (await self.session.execute(assign_q)).all()
 
-        # Build assignment map: category_id -> month -> assigned
-        assign_map: dict[str, dict[date, Decimal]] = {}
+        assign_map: dict[uuid.UUID, dict[date, Decimal]] = {}
         for r in assign_rows:
-            cid = str(r.category_id)
-            if cid not in assign_map:
-                assign_map[cid] = {}
-            assign_map[cid][r.month] = r.assigned
+            assign_map.setdefault(r.category_id, {})[r.month] = r.assigned
 
-        # Get category activity (transactions) per month for running balance.
-        # literal_column inlines 'month' so SELECT and GROUP BY render the
-        # same expression — as a bound parameter Postgres rejects the query.
-        month_col = func.date_trunc(literal_column("'month'"), Transaction.date).label("month")
-        txn_q = (
-            select(
-                Transaction.category_id,
-                month_col,
-                func.sum(Transaction.amount).label("activity"),
-            )
-            .where(
-                Transaction.budget_id == budget_id,
-                Transaction.category_id.in_(savings_cat_ids),
-                NOT_DELETED,
-                POSTED,
-                LEAF,
-                Transaction.date >= start_date,
-                Transaction.date <= end_date,
-            )
-            .group_by(Transaction.category_id, month_col)
+        # Activity through `sum_all_categories_by_month`, which carries
+        # ON_BUDGET_ACCOUNT. The inline query here did not, so a categorized
+        # row on an account since flipped off-budget moved this report's
+        # balance and not the grid's — and its docstring says the two "must
+        # stay predicate-identical".
+        activity_map = await self.txns.sum_all_categories_by_month(
+            list(savings_cat_ids), end_date=_last_day(month_list[-1]) if month_list else end_date
         )
-        txn_rows = (await self.session.execute(txn_q)).all()
 
-        # Build activity map: category_id -> month -> activity
-        activity_map: dict[str, dict[date, Decimal]] = {}
-        for r in txn_rows:
-            cid = str(r.category_id)
-            if cid not in activity_map:
-                activity_map[cid] = {}
-            # date_trunc returns timestamp, convert to date
-            month_date = r.month.date() if hasattr(r.month, "date") else r.month
-            activity_map[cid][month_date.replace(day=1)] = r.activity
-
-        # Get current balances for each category (use the budget months endpoint logic)
-        # For simplicity, compute cumulative: prior + assigned + activity
-        # We need prior balance before start_date
-        prior_assign_q = (
-            select(
-                BudgetAssignment.category_id,
-                func.sum(BudgetAssignment.assigned).label("total"),
-            )
-            .where(
-                BudgetAssignment.category_id.in_(savings_cat_ids),
-                BudgetAssignment.month < start_date,
-            )
-            .group_by(BudgetAssignment.category_id)
-        )
-        prior_assign_rows = (await self.session.execute(prior_assign_q)).all()
-        prior_assigned = {str(r.category_id): r.total or Decimal("0") for r in prior_assign_rows}
-
-        prior_activity_q = (
-            select(
-                Transaction.category_id,
-                func.sum(Transaction.amount).label("total"),
-            )
-            .where(
-                Transaction.budget_id == budget_id,
-                Transaction.category_id.in_(savings_cat_ids),
-                NOT_DELETED,
-                POSTED,
-                LEAF,
-                Transaction.date < start_date,
-            )
-            .group_by(Transaction.category_id)
-        )
-        prior_activity_rows = (await self.session.execute(prior_activity_q)).all()
-        prior_activity = {str(r.category_id): r.total or Decimal("0") for r in prior_activity_rows}
+        # The import anchor, loaded once for the budget. An anchored budget
+        # seeds each envelope at (B-1, YNAB's Available then); the raw sum of
+        # everything before that date is not the same number.
+        anchor = await ImportAnchorRepository(self.session).get_for_budget(budget_id)
 
         # Build category results
         categories: list[SavingsCategory] = []
@@ -2863,24 +2815,33 @@ class ReportService:
                 continue
 
             info = cat_info[cid_str]
-            prior_bal = prior_assigned.get(cid_str, Decimal("0")) + prior_activity.get(
-                cid_str, Decimal("0")
+
+            # The canonical walk, not a running total.
+            #
+            # This method summed prior assignments + prior activity into an
+            # opening figure and then added each month straight on top. That is
+            # not what an envelope balance is: `domain.carryover` floors the
+            # carryover BETWEEN months, because a month that ends negative is
+            # covered from To Be Assigned and the next month starts at zero.
+            # Only the month being viewed may show a negative. So a savings
+            # envelope that was once overspent carried its overspend forward
+            # forever here, and the report's "Balance" column disagreed with
+            # the Available the Budget page shows for the same envelope — the
+            # one number a savings report exists to state. It also ignored the
+            # import anchor, so every anchored budget was wrong from month one.
+            end_balances = monthly_end_balances(
+                assign_map.get(cid, {}),
+                activity_map.get(cid, {}),
+                opening=category_opening(anchor, cid),
             )
+            monthly_balances = [available_at(end_balances, m) for m in month_list]
+            current_balance = available_at(end_balances, today.replace(day=1))
 
-            # Compute monthly balances
-            monthly_balances = []
-            running_bal = prior_bal
             total_inflow = Decimal("0")
-
             for m in month_list:
-                assigned = assign_map.get(cid_str, {}).get(m, Decimal("0"))
-                activity = activity_map.get(cid_str, {}).get(m, Decimal("0"))
-                running_bal = running_bal + assigned + activity
-                monthly_balances.append(running_bal)
+                assigned = assign_map.get(cid, {}).get(m, Decimal("0"))
                 if assigned > 0:
                     total_inflow += assigned
-
-            current_balance = monthly_balances[-1] if monthly_balances else Decimal("0")
 
             categories.append(
                 {
@@ -3476,6 +3437,26 @@ class ReportService:
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
+
+
+def _empty_savings_report(month_list: list[date]) -> dict:
+    """The declared shape with nothing in it.
+
+    Two paths reach it: no tagged categories at all, and every tagged category
+    filtered out by BUDGETED_ENVELOPE. Written once so the second cannot serve
+    a slightly different empty.
+    """
+    return {
+        "categories": [],
+        "summary": {
+            "total_balance": Decimal("0"),
+            "total_inflow": Decimal("0"),
+            "avg_monthly_inflow": Decimal("0"),
+            "category_count": 0,
+        },
+        "months": month_list,
+        "drains": {"total": Decimal("0"), "moves": []},
+    }
 
 
 _DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
