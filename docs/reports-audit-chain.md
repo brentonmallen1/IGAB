@@ -29,7 +29,7 @@ each other, starting from `origin/main` at `892922a0`.
 | 5c | [#183](https://github.com/brentonmallen1/IGAB/pull/183) `feat/necessity-tiers` | Essentials ⊂ Cost of Living as two nested tiers, with the gap and a standing | done |
 | 6 | [#184](https://github.com/brentonmallen1/IGAB/pull/184) `fix/reports-one-window` | Window bounds: burn rate, net worth, volatility, seasonality, anomalies | done |
 | 6b | [#185](https://github.com/brentonmallen1/IGAB/pull/185) `feat/volatility-amortize` | Say what a lumpy bill does to volatility, and offer the amortized reading | done |
-| 7 | `fix/reports-payday-denominators` | payday-effect divisors and the P75 threshold | todo |
+| 7 | [#186](https://github.com/brentonmallen1/IGAB/pull/186) `fix/reports-payday-denominators` | payday-effect divisors, class filters and the P75 threshold | done |
 | 8 | `fix/reports-split-parent-leaf` | Sankey income, timeline class + scope on split rows | todo |
 | 9 | `fix/reports-totals-not-truncations` | A truncated set is not a total (payee_analysis, DrillDownTable, Pareto) | todo |
 | 10 | `fix/reports-scope-plumbing` | `_parse_uuids` widening; param bounds; `filter_unavailable` | todo |

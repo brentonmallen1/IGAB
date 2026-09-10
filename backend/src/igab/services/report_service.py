@@ -162,6 +162,15 @@ def _spending_classes(
     return ACTIVITY_CLASS.in_([c.value for c in classes])
 
 
+#: The smallest inflow that counts as a payday.
+#:
+#: Absolute, deliberately. `payday_effect` used the P75 of every inflow, so a
+#: relative quartile decided which paydays existed — and a quartile of a
+#: varying wage discards three quarters of them. A floor only has to be low
+#: enough to catch a real wage and high enough to ignore a refund.
+PAYDAY_FLOOR = Decimal("200")
+
+
 #: Payee of record for a leaf row: its own, falling back to its split parent's.
 #: Splits are one trip to the shop with the legs itemised, so the parent names
 #: where the money went — but the legs are what carry categories, and therefore
@@ -3081,6 +3090,13 @@ class ReportService:
                 Transaction.amount,
                 Transaction.payee_id,
                 category_tagged("subscription").label("is_subscription"),
+                # The class, because the comment above has been asserting for
+                # months that "a transfer into checking is not a payday, and
+                # the outflow leg of a transfer is not spending" with nothing
+                # implementing it. CASH_FLOW_ROW keeps out on-budget-to-
+                # on-budget transfers; a transfer IN from a savings account
+                # passed straight through and was counted as a payday.
+                ACTIVITY_CLASS.label("cls"),
             )
             .where(
                 Transaction.budget_id == budget_id,
@@ -3094,12 +3110,12 @@ class ReportService:
             )
             .order_by(Transaction.date)
         )
-        rows = (await self.session.execute(q)).all()
+        rows = (await self.session.execute(apply_class_joins(q))).all()
 
         if not rows:
             return {
                 "days": [{"offset": i, "avg_spend": Decimal("0")} for i in range(window)],
-                "baseline_daily": Decimal("0"),
+                "baseline_daily": None,
                 "event_count": 0,
             }
 
@@ -3110,34 +3126,50 @@ class ReportService:
                 "amount": [float(r.amount) for r in rows],
                 "payee_id": [str(r.payee_id) if r.payee_id else None for r in rows],
                 "is_subscription": [bool(r.is_subscription) for r in rows],
+                "cls": [r.cls for r in rows],
             }
         )
 
-        # Identify income events: inflows >= P75 of all inflows (floor $200)
-        inflows = df.filter(pl.col("amount") > 0)
+        # A payday is an INCOME-class inflow of at least PAYDAY_FLOOR.
+        #
+        # Not a quantile. This took the P75 of every inflow, which makes a
+        # RELATIVE threshold decide which paydays exist: pay varies — overtime,
+        # a bonus, a short month — and a quartile of a varying wage discards
+        # three quarters of the household's paydays, so the report described
+        # the behaviour after its best-paid weeks only. An absolute floor keeps
+        # every real payday and still ignores a small refund.
+        inflows = df.filter((pl.col("amount") > 0) & (pl.col("cls") == ActivityClass.INCOME.value))
         if inflows.is_empty():
             return {
                 "days": [{"offset": i, "avg_spend": Decimal("0")} for i in range(window)],
-                "baseline_daily": Decimal("0"),
+                "baseline_daily": None,
                 "event_count": 0,
             }
 
-        p75 = inflows["amount"].quantile(0.75)
-        threshold = max(float(p75) if p75 is not None else 0.0, 200.0)
-        income_events = inflows.filter(pl.col("amount") >= threshold)["date"].unique().to_list()
+        income_events = (
+            inflows.filter(pl.col("amount") >= float(PAYDAY_FLOOR))["date"].unique().to_list()
+        )
         income_dates = set(income_events)
 
         if not income_dates:
             return {
                 "days": [{"offset": i, "avg_spend": Decimal("0")} for i in range(window)],
-                "baseline_daily": Decimal("0"),
+                "baseline_daily": None,
                 "event_count": 0,
             }
 
         # Subscriptions are not payday behaviour: they land on their own
         # schedule whatever the household does after being paid, so counting
         # them would flatten the very effect this report is looking for.
-        outflows = df.filter((pl.col("amount") < 0) & ~pl.col("is_subscription"))
+        # SPENDING only. Without the class a payday savings sweep or a
+        # mortgage transfer counted as post-payday spending — which is the
+        # single loudest thing a household does right after being paid, and it
+        # is the opposite of the splurge this report looks for.
+        outflows = df.filter(
+            (pl.col("amount") < 0)
+            & ~pl.col("is_subscription")
+            & (pl.col("cls") == ActivityClass.SPENDING.value)
+        )
 
         # Group by date
         daily_spend = (
@@ -3151,20 +3183,38 @@ class ReportService:
         offset_totals: dict[int, list[float]] = {i: [] for i in range(window)}
         baseline_days: list[float] = []
 
-        all_dates = sorted(daily_map.keys())
         income_windows: set[date] = set()
 
+        # A payday with nothing spent on its day+3 is a ZERO for that offset,
+        # not an absent sample.
+        #
+        # This appended only when the day HAD spending, so each bar was divided
+        # by "paydays that happened to have spending" rather than by the number
+        # of paydays: one 300 purchase three days after one of six paydays read
+        # as a 300 average for day 3, and the peak-day ranking inverted
+        # whenever a quiet payday was dropped from one offset and not another.
+        #
+        # Days past `end_date` are skipped rather than zero-filled — the most
+        # recent payday's window may not have finished, and counting days that
+        # have not happened as days with no spending would drag every offset
+        # near the end of the window down.
         for inc_date in income_dates:
             for offset in range(window):
                 target_date = inc_date + timedelta(days=offset)
                 income_windows.add(target_date)
-                if target_date in daily_map:
-                    offset_totals[offset].append(daily_map[target_date])
+                if target_date <= end_date:
+                    offset_totals[offset].append(daily_map.get(target_date, 0.0))
 
-        # Baseline: days NOT in any income window
-        for d in all_dates:
-            if d not in income_windows and d in daily_map:
-                baseline_days.append(daily_map[d])
+        # Baseline: every day in the window outside an income window, spending
+        # or not. It collected only days present in `daily_map` — days that HAD
+        # spending — so `baseline_daily` was "average over spending days" while
+        # the schema promises "average daily spend outside the window". Those
+        # differ by exactly the household's quiet days, which is most of them.
+        span = (end_date - start_date).days
+        for i in range(span + 1):
+            d = start_date + timedelta(days=i)
+            if d not in income_windows:
+                baseline_days.append(daily_map.get(d, 0.0))
 
         # Compute averages
         days_result = []
@@ -3175,10 +3225,14 @@ class ReportService:
                 {"offset": offset, "avg_spend": quantize_cents(Decimal(str(avg_spend)))}
             )
 
+        # None, not 0.00, when the income windows cover every day in the range
+        # — which `window=14` guarantees for biweekly pay. A served 0.00 says
+        # "the household spends nothing outside payday", which is the opposite
+        # of "there is no outside".
         baseline_daily = (
             quantize_cents(Decimal(str(sum(baseline_days) / len(baseline_days))))
             if baseline_days
-            else Decimal("0")
+            else None
         )
 
         return {
