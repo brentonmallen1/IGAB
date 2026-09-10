@@ -6,23 +6,27 @@ confirmed narrower than first claimed). Almost all of them are one question
 answered from a different row set in a different report, so the work is ordered
 by root cause rather than by report.
 
-**These branches are deliberately local.** Nothing is pushed and no PR is opened
-until the repo owner says so outside work hours. Push in the order below; if
-opening a stacked PR set, each PR's base is the branch above it, and never
-`--delete-branch` a base while its child PR is open.
+**Pushed and opened as a stacked PR set, #177 through #183**, base of each being
+the branch above it. Merge bottom-up, #177 first.
+
+**Never `--delete-branch` a base while its child PR is open** — it auto-closes
+the child. Delete a branch only once every PR above it has merged.
+
+Branches created after #183 branch off `feat/necessity-tiers` and continue the
+stack.
 
 This file is the chain of record. All branches live in the `~/repos/IGAB-reports` worktree, cut sequentially off
 each other, starting from `origin/main` at `892922a0`.
 
 | # | Branch | Scope | State |
 |---|---|---|---|
-| 1 | `fix/reports-month-formatter` | One short-month and day-month formatter; kill the `toISOString` round-trip; Anomalies uses the shared month window | done |
-| 2 | `fix/reports-tooltip-and-axes` | `ChartTooltip` requires a formatter; eight money axes onto `useMoneyAxis`; privacy-mode leaks | done |
-| 3 | `fix/reports-projection-recurrence` | `cash_projection` reuses `domain/schedule.py`; subscription/schedule dedup; recency window | done |
-| 4 | `fix/reports-savings-carryover` | `savings_report` reuses `domain/carryover.py`; envelope set; window | done |
-| 5 | `fix/reports-one-spending-row-set` | Clear items: class rule, sign-vs-class, scope conflation, names, drained envelopes | done |
-| 5b | `fix/reports-lte-is-a-cost` | Long-term expense stops classifying a bill as saving; importer stops auto-writing it | done |
-| 5c | `feat/necessity-tiers` | Essentials ⊂ Cost of Living as two nested tiers, with the gap and a standing | done |
+| 1 | [#177](https://github.com/brentonmallen1/IGAB/pull/177) `fix/reports-month-formatter` | One short-month and day-month formatter; kill the `toISOString` round-trip; Anomalies uses the shared month window | done |
+| 2 | [#178](https://github.com/brentonmallen1/IGAB/pull/178) `fix/reports-tooltip-and-axes` | `ChartTooltip` requires a formatter; eight money axes onto `useMoneyAxis`; privacy-mode leaks | done |
+| 3 | [#179](https://github.com/brentonmallen1/IGAB/pull/179) `fix/reports-projection-recurrence` | `cash_projection` reuses `domain/schedule.py`; subscription/schedule dedup; recency window | done |
+| 4 | [#180](https://github.com/brentonmallen1/IGAB/pull/180) `fix/reports-savings-carryover` | `savings_report` reuses `domain/carryover.py`; envelope set; window | done |
+| 5 | [#181](https://github.com/brentonmallen1/IGAB/pull/181) `fix/reports-one-spending-row-set` | Clear items: class rule, sign-vs-class, scope conflation, names, drained envelopes | done |
+| 5b | [#182](https://github.com/brentonmallen1/IGAB/pull/182) `fix/reports-lte-is-a-cost` | Long-term expense stops classifying a bill as saving; importer stops auto-writing it | done |
+| 5c | [#183](https://github.com/brentonmallen1/IGAB/pull/183) `feat/necessity-tiers` | Essentials ⊂ Cost of Living as two nested tiers, with the gap and a standing | done |
 | 6 | `fix/reports-one-window` | One report window; partial-current-month rule; honest denominators | todo |
 | 7 | `fix/reports-payday-denominators` | payday-effect divisors and the P75 threshold | todo |
 | 8 | `fix/reports-split-parent-leaf` | Sankey income, timeline class + scope on split rows | todo |
