@@ -177,10 +177,16 @@ _HOUSEHOLD = SampleBudgetSpec(
                 CategorySpec("Electric", tags=("Essential",), monthly_budget=_d("150.00")),
                 CategorySpec("Internet", tags=("Essential",), monthly_budget=_d("80.00")),
                 CategorySpec("Phone", tags=("Essential",), monthly_budget=_d("65.00")),
-                # Deliberately NOT Essential, next to five that are: the
-                # Essentials report is only interesting if something in the
-                # same group is cuttable.
-                CategorySpec("Streaming", tags=("Subscription",), monthly_budget=_d("30.00")),
+                # The poster child for the gap: NOT Essential, next to five
+                # that are, but a Cost of living all the same — it leaves the
+                # account every month whether or not anyone feels like it. This
+                # is the category that makes "what could a lean month shed" a
+                # real number instead of an absence.
+                CategorySpec(
+                    "Streaming",
+                    tags=("Subscription", "Cost of living"),
+                    monthly_budget=_d("30.00"),
+                ),
                 # Funded to exactly what the mortgage transfer spends.
                 # Essential ONLY — no Debt principal tag, though its rows are
                 # principal. The payment is a transfer to a tracked loan
@@ -282,7 +288,11 @@ _HOUSEHOLD = SampleBudgetSpec(
                     monthly_budget=_d("195.00"),
                 ),
                 CategorySpec(
-                    CAT_HOME_MAINT, tags=("Long-term expense",), monthly_budget=_d("150.00")
+                    # A sinking fund AND a cost of living, but not Essential:
+                    # a household defers the gutters in a genuine emergency.
+                    CAT_HOME_MAINT,
+                    tags=("Long-term expense", "Cost of living"),
+                    monthly_budget=_d("150.00"),
                 ),
                 CategorySpec(CAT_CHRISTMAS, monthly_budget=_d("50.00")),
             ),
@@ -292,6 +302,10 @@ _HOUSEHOLD = SampleBudgetSpec(
             categories=(
                 # No tag, for the mortgage's reason: the payment is a transfer
                 # to the tracked loan account, which classifies it already.
+                # Deliberately UNTAGGED. Its rows classify DEBT_PRINCIPAL, so
+                # it enters Cost of Living by class with no tagging at all —
+                # which is the demo of that half of the tier, and the reason
+                # most budgets get a non-zero gap on day one.
                 CategorySpec("Car Payment"),
                 # Showcase-only CC payment category: linked, $0 assigned, no rows
                 CategorySpec("Visa Payment", linked_account=VISA),

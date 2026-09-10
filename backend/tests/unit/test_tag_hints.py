@@ -88,6 +88,9 @@ class TestWhatTheReviewProposes:
             ("Amazon Prime", "Monthly", "subscription"),
             ("Streaming", "Fun", "subscription"),
             ("Car Loan Payment", "Debt", "debt_principal"),
+            ("Gym Membership", "Fun", "cost_of_living"),
+            ("Storage Unit", "Bills", "cost_of_living"),
+            ("Home Maintenance", "Long Term", "cost_of_living"),
         ],
     )
     def test_proposes_the_keys_the_importer_never_assigns(self, category, group, expected):
@@ -96,7 +99,13 @@ class TestWhatTheReviewProposes:
     def test_every_proposed_key_has_at_least_one_case(self):
         """A hint nothing can match is a hint that does not exist."""
         proposed = {h.system_key for h in TAG_HINTS if not h.applied_on_import}
-        assert proposed == {"long_term_expense", "subscription", "essential", "debt_principal"}
+        assert proposed == {
+            "long_term_expense",
+            "subscription",
+            "essential",
+            "cost_of_living",
+            "debt_principal",
+        }
 
     def test_a_category_can_be_offered_more_than_one(self):
         # Real case from the dev database: the import used to WRITE

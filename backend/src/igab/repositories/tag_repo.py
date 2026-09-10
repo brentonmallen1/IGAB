@@ -29,10 +29,22 @@ SYSTEM_TAGS = [
     # telling the household it had saved that money (see activity_class rule 1).
     ("long_term_expense", "Long-term expense", "teal"),
     ("debt_principal", "Debt principal", "orange"),
-    # What a lean month costs. Drives the Essentials report, Cost of Living,
-    # the Overview's essentials card and the Guide's emergency-fund target —
-    # one figure, four readers (see TransactionRepository.essential_spend).
+    # The two necessity tiers, and Essentials is the strict subset.
+    #
+    # Essential is what a household could not cut: rent, utilities, groceries.
+    # It sizes the emergency fund, so it has to stay the LEAN figure.
+    #
+    # Cost of living is the wider, non-discretionary set — everything that
+    # leaves the account whether or not you feel like it. Subscriptions belong
+    # here and not in Essential; so does a home-maintenance sinking fund. Debt
+    # principal joins it by CLASS rather than by tag, so a household with a car
+    # loan gets a truthful figure without tagging each loan envelope.
+    #
+    # The gap between the two is the point: what a lean month could shed. See
+    # `domain.activity_class.NecessityTier`, which composes both predicates so
+    # the nesting cannot drift.
     ("essential", "Essential", "blue"),
+    ("cost_of_living", "Cost of living", "yellow"),
     # Applied by the wishlist to every envelope that funds an open wish, and
     # removed when none does — derived from the wish→envelope link, never
     # hand-set, so reports that filter by it cannot disagree with the list.

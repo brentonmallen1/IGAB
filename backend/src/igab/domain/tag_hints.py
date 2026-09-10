@@ -88,6 +88,16 @@ TAG_HINTS: tuple[TagHint, ...] = (
         ("rent", "mortgage", "groceries", "electric", "utilities", "insurance"),
         False,
     ),
+    # The wider tier. A real 100-category import produced zero `essential`
+    # tags, which is why an imported budget's Essentials report is empty — and
+    # a tier that a subscription- or membership-shaped category can be OFFERED
+    # is the only realistic path to a non-empty gap on an imported budget.
+    # Proposal only, like everything below the first entry.
+    TagHint(
+        "cost_of_living",
+        ("subscription", "membership", "streaming", "gym", "storage", "maintenance"),
+        False,
+    ),
     TagHint("debt_principal", ("loan payment", "debt payment", "principal"), False),
 )
 

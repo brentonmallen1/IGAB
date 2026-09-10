@@ -30,6 +30,7 @@ from igab.repositories.target_repo import TargetRepository
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.sample_budget.generator import SampleBudgetGenerator
 from igab.services.emergency_coverage import EmergencyCoverageService
+from igab.services.report_basics import cost_of_living
 from igab.services.report_favorites import ReportFavoritesService
 from igab.services.report_service import ReportService
 
@@ -169,3 +170,47 @@ async def test_the_reports_nav_opens_with_a_favorites_row(db_session):
     starred = await ReportFavoritesService(db_session).favorites(budget.id)
     assert result.starred_reports == len(starred) >= 2
     assert "emergency-fund" in starred
+
+
+async def test_the_demo_actually_shows_a_gap(db_session):
+    """A demo whose two necessity tiers are identical demonstrates the product
+    value not at all — and until the tiers existed they were identical by
+    construction, because Cost of Living was the Essentials table rolled up by
+    group.
+
+    So the sample has to earn a non-zero gap, and name what is in it:
+
+    - Streaming is tagged Cost of living, not Essential — the poster child.
+    - Home Maintenance is a sinking fund a household defers in an emergency.
+    - Car Payment carries NO tag at all and enters by activity class, which is
+      the half of the tier that needs no tagging.
+    """
+    budget, _ = await _world(db_session, "full")
+    report = await cost_of_living(db_session, budget.id, months=12)
+
+    assert report["avg_monthly_cost_of_living"] > report["avg_monthly_essentials"]
+    assert report["avg_monthly_non_essential"] > Decimal("0")
+
+    # The gap is nameable, not just non-zero: the wide tier must reach groups
+    # the lean one does not.
+    wide_groups = {g["group_name"] for g in report["groups"]}
+    lean = await ReportService(db_session).essentials_summary(budget.id, 12)
+    lean_groups = {c["group_name"] for c in lean["categories"]}
+    assert wide_groups - lean_groups, (
+        f"every group in the wide tier is also in the lean one: {sorted(wide_groups)}"
+    )
+
+
+async def test_the_debt_half_of_the_tier_needs_no_tag(db_session):
+    """`Car Payment` is deliberately untagged in the sample. Its rows classify
+    DEBT_PRINCIPAL, so it reaches Cost of Living by class — which is what makes
+    the figure truthful for a household that has tagged nothing yet, and what
+    "any debt payments" means when no tag can express it.
+    """
+    budget, _ = await _world(db_session, "full")
+    report = await cost_of_living(db_session, budget.id, months=12)
+    lean = await ReportService(db_session).essentials_summary(budget.id, 12)
+
+    wide_names = {cid for g in report["groups"] for cid in g["category_ids"]}
+    lean_names = {str(c["category_id"]) for c in lean["categories"]}
+    assert wide_names - lean_names, "the wide tier reaches no category the lean one misses"

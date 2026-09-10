@@ -794,11 +794,21 @@ class CostOfLivingResponse(ApiModel):
     window_start: date
     window_end: date
     groups: list[CostOfLivingGroup]
+    #: The wide tier: everything non-discretionary. Required, not optional — a
+    #: path that forgets must raise rather than report a zero gap.
+    avg_monthly_cost_of_living: Decimal
+    #: The lean tier, measured over the SAME window, which is what makes the
+    #: difference between them a real figure rather than a calendar artifact.
     avg_monthly_essentials: Decimal
+    #: Cost of living less essentials: what a lean month could shed.
+    avg_monthly_non_essential: Decimal
     avg_monthly_income: Decimal
-    #: Share of take-home already spoken for. None when no income is on
-    #: record: a ratio against zero is unknown, not 100%.
+    #: Share of take-home already spoken for, against the WIDE tier. None when
+    #: no income is on record: a ratio against zero is unknown, not 100%.
     required_ratio: Decimal | None
+    #: The lean tier against take-home. Above 100 the household cannot cover
+    #: what it could not cut.
+    essentials_ratio: Decimal | None
     #: 'bound' | 'tag' | 'all' — how "essential" was decided.
     basis: str
     #: False when nothing carries the Essential tag, so the page can say the

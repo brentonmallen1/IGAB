@@ -65,10 +65,11 @@ export function EssentialsReport({ budgetId }: Props) {
           <h2 className="report-section__title">Essentials</h2>
           <ReportInfoButton title="Essentials">
             <p>
-              Spending in categories and payees tagged <strong>Essential</strong> — the things you
-              could not cut in an emergency. The headline is the last 90 days averaged per month,
-              the same figure the Guide’s emergency-fund target uses; the table averages the last{' '}
-              {months} complete months.
+              Spending in categories tagged <strong>Essential</strong> — the things you could not
+              cut in an emergency. The narrower of the two necessity tiers: the Cost of Living
+              report adds what is committed but sheddable, and shows the difference. The headline is
+              the last 90 days averaged per month, the same figure the Guide’s emergency-fund target
+              uses; the table averages the last {months} complete months.
             </p>
             <p>
               A reserve is that monthly figure times the months you want covered. The roadmap
@@ -100,9 +101,8 @@ export function EssentialsReport({ budgetId }: Props) {
           <div className="essentials-report__empty">
             <p>
               Nothing is tagged <strong>Essential</strong> yet. Tag a category in its inspector on
-              the Budget page, or a payee on the Payees page, and this report — the Overview card
-              and the Guide’s emergency-fund target with it — narrows to what a lean month actually
-              costs.
+              the Budget page and this report — the Overview card and the Guide’s emergency-fund
+              target with it — narrows to what a lean month actually costs.
             </p>
           </div>
         ) : (

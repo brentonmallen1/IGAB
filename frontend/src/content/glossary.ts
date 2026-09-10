@@ -60,6 +60,7 @@ export const GLOSSARY_IDS = [
   'cleared',
   'reconciled',
   'essential-expenses',
+  'cost-of-living',
   'cooling-off',
   'ready-to-pay',
   'uncovered',
@@ -177,8 +178,18 @@ export const GLOSSARY: GlossaryEntry[] = [
     short: 'What a month costs if you cut everything you could do without.',
     body: 'Housing, groceries, utilities, transport to work, insurance, minimum debt payments, medical needs — the spending that continues whatever else stops. It is the figure an emergency fund is measured against: three months of essentials, not three months of everything.',
     inIgab:
-      'Tag the categories and payees you could not do without as Essential. The Essentials report, the Overview card and the Guide’s emergency-fund target all read that one figure, and the checkup states your emergency fund in months of it.',
-    related: ['emergency-fund', 'target'],
+      'Tag the categories you could not do without as Essential. The Essentials report, the Overview card and the Guide’s emergency-fund target all read that one figure, and the checkup states your emergency fund in months of it. It is the narrower of two tiers — see Cost of living for the wider one and the gap between them.',
+    related: ['emergency-fund', 'target', 'cost-of-living'],
+  },
+  {
+    id: 'cost-of-living',
+    term: 'Cost of living',
+    aliases: ['non-discretionary', 'committed spending', 'fixed costs'],
+    short: 'Everything that leaves your account whether or not you feel like it.',
+    body: 'Wider than essentials and containing them. Rent and utilities are both; a streaming subscription, a gym membership and a storage unit are cost of living but not essential — you pay them every month and you would cancel them in a genuine emergency. Debt payments belong here too. The gap between the two tiers is the useful part: it is what a lean month could shed, which is a different question from what you spend.',
+    inIgab:
+      'Tag a category Cost of living for the wider tier, Essential for the narrower one; Essential counts in both. Debt principal joins cost of living by its activity class, so a loan needs no tag at all. The Cost of Living report shows both figures over one window and the difference between them, against take-home.',
+    related: ['essential-expenses', 'emergency-fund'],
   },
   {
     id: 'cooling-off',

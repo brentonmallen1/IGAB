@@ -26,6 +26,7 @@ from igab.domain.activity_class import (
     CLASS_LABEL,
     COST_OF_LIVING_CLASSES,
     ActivityClass,
+    NecessityTier,
     apply_class_joins,
     counted_classes,
 )
@@ -523,8 +524,20 @@ async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: in
     index = {m: i for i, m in enumerate(month_list)}
 
     repo = TransactionRepository(session)
-    rows, basis = await repo.essential_spend_by_category_month(budget_id, start_date, today)
-    excluded, _ = await repo.essential_excluded_by_class(budget_id, start_date, today)
+    # The WIDE tier drives the groups, and the lean tier is measured over the
+    # SAME window so the gap between them is a difference of two figures across
+    # the same days. Three different windows in this family used to be the only
+    # visible difference between Cost of Living and Essentials — a calendar
+    # artifact wearing the gap's clothes.
+    rows, basis = await repo.essential_spend_by_category_month(
+        budget_id, start_date, today, tier=NecessityTier.COST_OF_LIVING
+    )
+    excluded, _ = await repo.essential_excluded_by_class(
+        budget_id, start_date, today, tier=NecessityTier.COST_OF_LIVING
+    )
+    essentials_signed, _ = await repo.essential_spend(
+        budget_id, start_date, today, tier=NecessityTier.ESSENTIAL
+    )
 
     #: Rows carry a null group where an essential PAYEE tagged a transaction
     #: with no category. They are real spending and must not vanish.
@@ -548,10 +561,10 @@ async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: in
             bucket[slot] += -Decimal(row.total)
 
     groups: list[CostOfLivingGroup] = []
-    essentials_total = Decimal("0")
+    cost_of_living_total = Decimal("0")
     for name, amounts in by_group.items():
         total = sum(amounts, Decimal("0"))
-        essentials_total += total
+        cost_of_living_total += total
         groups.append(
             {
                 "group_name": name,
@@ -564,18 +577,26 @@ async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: in
         )
     for g in groups:
         g["share"] = (
-            quantize_cents(g["total"] / essentials_total * 100)
-            if essentials_total
+            quantize_cents(g["total"] / cost_of_living_total * 100)
+            if cost_of_living_total
             else Decimal("0")
         )
     groups.sort(key=lambda g: g["total"], reverse=True)
 
     income = await income_by_source(session, budget_id, months)
     income_total = Decimal(income["total"])
-    avg_income = quantize_cents(income_total / len(month_list)) if month_list else Decimal("0")
-    avg_essentials = (
-        quantize_cents(essentials_total / len(month_list)) if month_list else Decimal("0")
-    )
+    n = len(month_list)
+    avg_income = quantize_cents(income_total / n) if n else Decimal("0")
+    # Outflows are negative in the ledger; a cost reads positive here, the same
+    # way the group buckets above flip theirs.
+    essentials_total = -essentials_signed
+    avg_essentials = quantize_cents(essentials_total / n) if n else Decimal("0")
+    avg_cost_of_living = quantize_cents(cost_of_living_total / n) if n else Decimal("0")
+    # The gap, and the reason the two tiers exist: what a lean month could shed.
+    # Floored at zero — the wide tier contains the lean one as a disjunct, so a
+    # negative here would mean the predicates had drifted apart, and reporting a
+    # negative "could shed" figure would be the first thing anyone noticed.
+    avg_non_essential = max(avg_cost_of_living - avg_essentials, Decimal("0"))
 
     return {
         "months": month_list,
@@ -586,12 +607,28 @@ async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: in
         "window_start": start_date,
         "window_end": today,
         "groups": groups,
+        "avg_monthly_cost_of_living": avg_cost_of_living,
         "avg_monthly_essentials": avg_essentials,
+        #: Cost of living less essentials: committed spending that is not
+        #: strictly necessary. Named for what it IS rather than for what to do
+        #: about it — a card labelled "could cut" beside a household's car
+        #: payment reads as advice to sell the car.
+        "avg_monthly_non_essential": avg_non_essential,
         "avg_monthly_income": avg_income,
         #: What share of take-home is already spoken for before anything
         #: discretionary. None when there is no income on record: a ratio
         #: against zero is not 100%, it is unknown.
+        #:
+        #: This is the WIDE tier now, and it rises for every household with a
+        #: tracked loan — debt principal joins cost of living by class, with no
+        #: tagging needed. The report has to say so on its face.
         "required_ratio": (
+            quantize_cents(cost_of_living_total / income_total * 100) if income_total > 0 else None
+        ),
+        #: The lean tier against take-home. Above 100 the household cannot
+        #: cover what it could not cut, which is a different and worse fact
+        #: than a high required ratio.
+        "essentials_ratio": (
             quantize_cents(essentials_total / income_total * 100) if income_total > 0 else None
         ),
         "basis": basis,
