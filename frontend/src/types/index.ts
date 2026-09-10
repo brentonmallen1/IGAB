@@ -659,7 +659,6 @@ export type AssignStrategy =
 // ─── Report Types ───────────────────────────────────────────────────────────
 
 export interface DashboardMetrics {
-  to_be_assigned: number
   net_worth: number
   net_worth_prev: number
   burn_rate_30: number
@@ -1045,46 +1044,6 @@ export interface CategoryHistoryReport {
   category_name: string
   months: { month: string; assigned: number; activity: number; available: number }[]
 }
-
-export interface SpendingTrendSeries {
-  id: string
-  name: string
-  group_id: string | null
-  group_name: string | null
-  monthly: number[]
-  total: number
-}
-
-export interface SpendingTrendsReport {
-  months: string[]
-  series: SpendingTrendSeries[]
-  monthly_totals: number[]
-  total: number
-  class_excluded: { activity_class: string; label: string; categories: number; total: number }[]
-  filter_unavailable: boolean
-}
-
-export interface IncomeSource {
-  payee_id: string | null
-  payee_name: string
-  monthly: number[]
-  total: number
-  count: number
-}
-
-export interface IncomeBySourceReport {
-  months: string[]
-  sources: IncomeSource[]
-  monthly_totals: number[]
-  total: number
-}
-
-export interface CategoryHistoryReport {
-  category_id: string
-  category_name: string
-  months: { month: string; assigned: number; activity: number; available: number }[]
-}
-
 export interface PayeeSpending {
   payee_id: string
   payee_name: string

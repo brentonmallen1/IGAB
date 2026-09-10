@@ -7,7 +7,12 @@ interface Props {
   value: ReactNode
   delta?: { value: number; label?: string }
   sub?: ReactNode
-  trend?: 'up' | 'down' | 'neutral'
+  // `trend?: 'up' | 'down' | 'neutral'` lived here, declared and never
+  // rendered. One caller passed it — the Emergency Fund's coverage card — and
+  // its `sub` already states the direction in words ("+1 months over 12
+  // months"), so nothing was lost on screen and nothing gained by keeping a
+  // prop that does nothing. Dead code encoding an unbuilt feature is worse
+  // than no code, because the next reader will pass it and expect an arrow.
   accent?: boolean
   warning?: boolean
   /**

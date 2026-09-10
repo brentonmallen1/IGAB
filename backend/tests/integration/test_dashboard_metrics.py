@@ -24,6 +24,8 @@ from .factories import (
     create_budget,
     create_category,
     create_category_group,
+    create_liability,
+    create_liability_snapshot,
     create_transaction,
     create_transfer,
     create_user,
@@ -112,7 +114,10 @@ class TestFiguresPreservedFromTheOldSuite:
         card = await ReportService(db_session).dashboard_metrics(budget.id, MONTH_START, TODAY)
         assert card["net_worth"] == Decimal("0")
         assert card["top_categories"] == []
-        assert card["savings_rate"] == 0.0
+        # None, not 0.0. The live path and the schema both say None when there
+        # is no income, and this path is the one a brand-new budget takes — so
+        # 0.0 told every new household it had saved none of its income.
+        assert card["savings_rate"] is None
 
     async def test_net_worth_spans_every_account(self, db_session):
         """Off-budget scopes envelope math, never the balance sheet."""
@@ -268,3 +273,30 @@ class TestTopSpendingIsSpending:
 
         assert len(data["top_categories"]) == 3
         assert [c["name"] for c in data["top_categories"]] == ["Rent", "Groceries", "Fun"]
+
+
+class TestABudgetWithNoTransactionsStillOwnsThings:
+    async def test_an_unmanaged_liability_is_net_worth_even_with_no_rows(self, db_session):
+        """The empty short-circuit returned a flat zero, so a household that
+        had entered its mortgage as an unmanaged liability read net worth 0 —
+        and `net_worth_history`, which counts it, disagreed with the card on a
+        surface where the two are asserted to agree.
+        """
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        # `manual_balance` is what the "now" figure reads; the snapshot feeds
+        # the historical series behind the chart's earlier points.
+        loan = await create_liability(
+            db_session,
+            budget,
+            "Harborstone Mortgage",
+            liability_type="mortgage",
+            manual_balance=Decimal("240000.00"),
+        )
+        await create_liability_snapshot(db_session, loan, TODAY, Decimal("240000.00"))
+
+        card = await ReportService(db_session).dashboard_metrics(budget.id, MONTH_START, TODAY)
+        chart = await ReportService(db_session).net_worth_history(budget.id, months=1)
+
+        assert card["net_worth"] == Decimal("-240000.00")
+        assert Decimal(str(chart[-1]["net_worth"])) == card["net_worth"]

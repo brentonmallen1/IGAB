@@ -281,7 +281,13 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
           // entity_id, not the node id: the id is a (group, category)
           // composite so one category can appear under both its own group and
           // the savings trunk, and stripping the prefix yielded a non-UUID.
-          categoryIds: [nodeData.entity_id ?? nodeData.id.replace(/^c_/, '')],
+          //
+          // A null entity_id is a pseudo-category — the Savings and Debt
+          // Payments trunks, and the Uncategorized bucket — which has no id to
+          // send. Falling back to the node id used to post
+          // `__uncategorized__` as a category id and 400 the panel.
+          categoryIds: nodeData.entity_id ? [nodeData.entity_id] : undefined,
+          uncategorized: nodeData.entity_id ? undefined : true,
           ...window,
         })
       }
