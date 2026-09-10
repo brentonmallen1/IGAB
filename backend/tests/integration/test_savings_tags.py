@@ -14,7 +14,7 @@ from decimal import Decimal
 from sqlalchemy import select
 
 from igab.db.models import Tag
-from igab.domain.tag_hints import suggest_system_tag
+from igab.domain.tag_hints import suggest_review_tags, suggest_system_tag
 from igab.integrations.ynab.models import YNABBudget, YNABTransaction
 from igab.repositories.tag_repo import SYSTEM_TAGS, TagRepository, seed_system_tags
 
@@ -37,8 +37,16 @@ class TestSuggestSystemTag:
     def test_reads_the_obvious_names(self):
         assert suggest_system_tag("Savings", "Goals").system_key == "savings"
         assert suggest_system_tag("Emergency Fund", "Goals").system_key == "savings"
-        assert suggest_system_tag("Car Repairs", "True Expenses").system_key == "long_term_expense"
-        assert suggest_system_tag("Sinking Fund", "Whatever").system_key == "long_term_expense"
+
+    def test_long_term_expense_is_offered_not_written(self):
+        """It used to be written on import, matching a GROUP name as well as a
+        category's — so YNAB's default "True Expenses" group tagged every
+        ordinary category inside it, and their spending was reported as saving.
+        """
+        assert suggest_system_tag("Car Repairs", "True Expenses") is None
+        assert suggest_system_tag("Sinking Fund", "Whatever") is None
+        offered = {t.system_key for t in suggest_review_tags("Sinking Fund", "Whatever")}
+        assert offered == {"long_term_expense"}
 
     def test_the_categorys_own_name_wins_over_its_group(self):
         # A "Savings" category inside "True Expenses" is savings.

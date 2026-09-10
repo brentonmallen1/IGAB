@@ -203,11 +203,32 @@ def _rules(c: _Inputs) -> list[Rule]:
     """(condition, class, reason) in priority order. Tags come first so a
     user's explicit statement always beats an inferred one."""
     return [
-        (
-            _tagged("savings", "long_term_expense"),
-            ActivityClass.SAVINGS,
-            ActivityReason.TAGGED_SAVINGS,
-        ),
+        # `savings` only. `long_term_expense` used to ride along here, and it
+        # inverted the sign of the one event in a sinking fund that is
+        # unambiguously a cost.
+        #
+        # A sinking fund's monthly set-aside is a BudgetAssignment — a budget
+        # row, not a transaction — so there is nothing for a classifier to
+        # protect from being counted as spending. The only transaction the
+        # envelope ever sees is the payout: the property-tax bill, the annual
+        # insurance premium. Tagging that SAVINGS said the household saved
+        # $2,340 in the month it paid its property tax, kept the bill out of
+        # every spending report, out of Cost of Living and out of the
+        # emergency-fund target, and left `budget_vs_actual` counting the
+        # envelope's assignments but not its spending — a permanent phantom
+        # underspend on Plan vs Reality.
+        #
+        # Nothing is lost by dropping it. A transfer from the envelope to a
+        # tracked savings account still classes SAVINGS by rule 3 below, which
+        # asks where the money went rather than what the category is called.
+        # The Savings report is unaffected: it reads the tag and the
+        # assignment rows, never the class.
+        #
+        # `savings` stays, because that behaviour was asked for directly — see
+        # `ReportService.savings_rate`. Tagging an envelope Savings means its
+        # outflows count as saving even with no transfer, which is a different
+        # claim from "this envelope holds money for a known future bill".
+        (_tagged("savings"), ActivityClass.SAVINGS, ActivityReason.TAGGED_SAVINGS),
         (_tagged("debt_principal"), ActivityClass.DEBT_PRINCIPAL, ActivityReason.TAGGED_DEBT),
         # Where the money went decides the class, not whether the user bothered to
         # categorize it. An uncategorized transfer to a brokerage is still saving:

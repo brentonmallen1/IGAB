@@ -73,10 +73,15 @@ async def _world(db_session):
     groceries = await create_category(db_session, budget, everyday, "Groceries")
     fund = await create_category(db_session, budget, everyday, "Car Replacement")
     payoff = await create_category(db_session, budget, everyday, "Debt Payoff")
+    sinking = await create_category(db_session, budget, everyday, "Property Tax")
 
     repo = TagRepository(db_session)
     tags = {t.system_key: t for t in await repo.list_for_budget(budget.id)}
-    for cat, key in ((fund, "savings"), (payoff, "debt_principal")):
+    for cat, key in (
+        (fund, "savings"),
+        (payoff, "debt_principal"),
+        (sinking, "long_term_expense"),
+    ):
         tag = tags.get(key) or await create_tag(db_session, budget, key, system_key=key)
         await repo.set_category_tags(cat.id, [tag.id])
 
@@ -92,6 +97,7 @@ async def _world(db_session):
         groceries=groceries,
         fund=fund,
         payoff=payoff,
+        sinking=sinking,
     )
 
 
@@ -126,6 +132,19 @@ CASES = [
     # ─ tag overrides beat everything ─────────────────────────────────────
     ("savings-tagged, no transfer", "checking", "-500.00", "fund", None, SAVINGS),
     ("debt-tagged, no transfer", "checking", "-275.00", "payoff", None, DEBT),
+    # The matrix had no long_term_expense line at all, which is how the tag
+    # spent a release classifying a property-tax bill as money saved. A
+    # sinking fund's payout is SPENDING; only where the money actually went
+    # can make it saving.
+    ("long-term-expense-tagged payout", "checking", "-2340.00", "sinking", None, SPENDING),
+    (
+        "long-term-expense-tagged, to a tracked asset",
+        "checking",
+        "-195.00",
+        "sinking",
+        "brokerage",
+        SAVINGS,
+    ),
     # ─ transfers, by where they point ────────────────────────────────────
     ("to a tracked asset, categorized", "checking", "-500.00", "groceries", "brokerage", SAVINGS),
     ("to a tracked asset, uncategorized", "checking", "-500.00", None, "brokerage", SAVINGS),

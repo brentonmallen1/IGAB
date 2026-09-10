@@ -22,6 +22,11 @@ SYSTEM_TAGS = [
     # (migration b8e5d1c73a49). Every tag works that way now.
     ("subscription", "Subscription", "purple"),
     ("savings", "Savings", "green"),
+    # Cadence, not classification. It marks an envelope that saves monthly
+    # toward a known annual bill, so the Savings report lists it beside real
+    # savings — but the bill itself is a cost, and classifying its payout as
+    # SAVINGS hid a property-tax payment from every spending report while
+    # telling the household it had saved that money (see activity_class rule 1).
     ("long_term_expense", "Long-term expense", "teal"),
     ("debt_principal", "Debt principal", "orange"),
     # What a lean month costs. Drives the Essentials report, Cost of Living,

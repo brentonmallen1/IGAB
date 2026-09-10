@@ -60,15 +60,24 @@ class TagHint:
 #: how proposals would turn into silent writes.
 TAG_HINTS: tuple[TagHint, ...] = (
     TagHint("savings", ("saving", "emergency fund", "rainy day", "nest egg"), True),
+    # Proposed only, from here down.
+    #
+    # `long_term_expense` was written on import until it stopped overriding
+    # classification. Its fragments match a GROUP name as well as a category's,
+    # and YNAB's default template ships a group called "True Expenses" — so
+    # every ordinary category inside it, "Clothing" included, silently acquired
+    # the tag on import. A tag whose remaining job is Savings-report membership
+    # is far too weak a signal to write into a user's budget unasked; the
+    # review can offer it and the household can say yes.
     TagHint(
         "long_term_expense",
         ("true expense", "long term", "long-term", "sinking fund"),
-        True,
+        False,
     ),
-    # Proposed only, from here down. These are the three the importer has never
-    # assigned — a real 100-category import produced zero of each — which is
-    # why an imported budget's Essentials report is empty and its emergency-fund
-    # target is measured against all spending instead.
+    # These three the importer has never assigned — a real 100-category import
+    # produced zero of each — which is why an imported budget's Essentials
+    # report is empty and its emergency-fund target is measured against all
+    # spending instead.
     TagHint(
         "subscription",
         ("subscription", "streaming", "membership", "prime", "netflix", "spotify"),
@@ -109,14 +118,15 @@ def _matched_name(hint: TagHint, category_name: str, group_name: str) -> str | N
 def suggest_system_tag(category_name: str, group_name: str) -> TagSuggestion | None:
     """The one system tag an imported category's names point at, if any.
 
-    The category's own name wins: a "Vacation" category inside a "True
-    Expenses" group is a long-term expense, but a "Savings" category in that
-    same group is savings. That precedence is why this cannot just be
-    `suggest_review_tags(...)[0]` — the two answer different questions, one
-    picking a single winner and one listing every candidate.
+    The category's own name wins over its group's, which is why this cannot
+    just be `suggest_review_tags(...)[0]` — the two answer different questions,
+    one picking a single winner and one listing every candidate.
 
     Applied hints only. The importer must never start writing what the review
-    exists to propose.
+    exists to propose — and only `savings` is applied now. The precedence used
+    to be illustrated with a "True Expenses" group, which was exactly the
+    problem: YNAB's default template ships that group, and matching on a GROUP
+    name wrote `long_term_expense` onto every ordinary category inside it.
     """
     for haystack in (category_name, group_name):
         for hint in TAG_HINTS:
@@ -133,6 +143,14 @@ def suggest_review_tags(category_name: str, group_name: str) -> list[TagSuggesti
     A category can be offered more than one — "Car Insurance" is plausibly
     both essential and a long-term expense, and picking one for the user would
     be guessing at the thing they opened the review to decide.
+
+    That pair used to defeat itself: `long_term_expense` classified the row
+    SAVINGS, and the essentials family counts SPENDING and DEBT_PRINCIPAL, so
+    accepting both put the category in the Essentials report's "tagged and
+    still not counted" note. Since the tag stopped overriding classification
+    it is the right answer for a sinking fund against a bill you cannot cut,
+    and the sample budget now demonstrates the combination instead of avoiding
+    it.
     """
     out: list[TagSuggestion] = []
     for hint in TAG_HINTS:

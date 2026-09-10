@@ -18,9 +18,9 @@ from igab.domain.tag_hints import (
 
 
 class TestWhatTheImporterApplies:
-    def test_only_savings_and_long_term_expense_are_ever_written(self):
+    def test_only_savings_is_ever_written(self):
         applied = {h.system_key for h in TAG_HINTS if h.applied_on_import}
-        assert applied == {"savings", "long_term_expense"}
+        assert applied == {"savings"}
 
     @pytest.mark.parametrize(
         ("category", "group", "expected"),
@@ -28,19 +28,13 @@ class TestWhatTheImporterApplies:
             ("Savings", "Goals", "savings"),
             ("Emergency Fund", "Goals", "savings"),
             ("Rainy Day", "Goals", "savings"),
-            ("Car Repairs", "True Expenses", "long_term_expense"),
-            ("Sinking Fund", "Whatever", "long_term_expense"),
-            ("Long-Term Care", "Whatever", "long_term_expense"),
         ],
     )
     def test_applied_hints_match(self, category, group, expected):
         assert suggest_system_tag(category, group).system_key == expected
 
     def test_the_categorys_own_name_wins_over_its_groups(self):
-        # The documented rule: a "Vacation" in "True Expenses" is a long-term
-        # expense, but a "Savings" in that same group is savings.
         assert suggest_system_tag("Savings", "True Expenses").system_key == "savings"
-        assert suggest_system_tag("Vacation", "True Expenses").system_key == "long_term_expense"
 
     @pytest.mark.parametrize(
         ("category", "group"),
@@ -54,6 +48,33 @@ class TestWhatTheImporterApplies:
     def test_proposed_only_keys_are_never_written(self, category, group):
         """The regression that would turn a proposal into a silent write."""
         assert suggest_system_tag(category, group) is None
+
+    @pytest.mark.parametrize(
+        ("category", "group"),
+        [
+            # YNAB's default template ships a "True Expenses" group, and the
+            # hint matches a GROUP name as well as a category's — so every
+            # ordinary category inside it silently acquired the tag, and its
+            # spending was then reported as saving. The tag is proposal-only
+            # now: the review offers it, the household says yes.
+            ("Clothing", "True Expenses"),
+            ("Car Repairs", "True Expenses"),
+            ("Vacation", "True Expenses"),
+            ("Sinking Fund", "Whatever"),
+            ("Long-Term Care", "Whatever"),
+        ],
+    )
+    def test_long_term_expense_is_never_written_on_import(self, category, group):
+        applied = suggest_system_tag(category, group)
+        assert applied is None or applied.system_key != "long_term_expense"
+
+    @pytest.mark.parametrize(
+        ("category", "group"),
+        [("Car Repairs", "True Expenses"), ("Sinking Fund", "Whatever")],
+    )
+    def test_but_the_review_still_offers_it(self, category, group):
+        keys = {t.system_key for t in suggest_review_tags(category, group)}
+        assert "long_term_expense" in keys
 
 
 class TestWhatTheReviewProposes:
@@ -75,12 +96,12 @@ class TestWhatTheReviewProposes:
     def test_every_proposed_key_has_at_least_one_case(self):
         """A hint nothing can match is a hint that does not exist."""
         proposed = {h.system_key for h in TAG_HINTS if not h.applied_on_import}
-        assert proposed == {"subscription", "essential", "debt_principal"}
+        assert proposed == {"long_term_expense", "subscription", "essential", "debt_principal"}
 
     def test_a_category_can_be_offered_more_than_one(self):
-        # Real case from the dev database: tagged Long-term expense by the
-        # import, but plainly a subscription. The review shows both rather
-        # than picking for the user.
+        # Real case from the dev database: the import used to WRITE
+        # Long-term expense here, on a category that is plainly a
+        # subscription. Now both are offered and neither is written.
         offered = {
             s.system_key: s.matched_on
             for s in suggest_review_tags("Amazon Prime", "Long Term Expenses")
