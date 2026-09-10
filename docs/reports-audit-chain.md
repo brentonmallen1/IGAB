@@ -27,7 +27,7 @@ each other, starting from `origin/main` at `892922a0`.
 | 5 | [#181](https://github.com/brentonmallen1/IGAB/pull/181) `fix/reports-one-spending-row-set` | Clear items: class rule, sign-vs-class, scope conflation, names, drained envelopes | done |
 | 5b | [#182](https://github.com/brentonmallen1/IGAB/pull/182) `fix/reports-lte-is-a-cost` | Long-term expense stops classifying a bill as saving; importer stops auto-writing it | done |
 | 5c | [#183](https://github.com/brentonmallen1/IGAB/pull/183) `feat/necessity-tiers` | Essentials ⊂ Cost of Living as two nested tiers, with the gap and a standing | done |
-| 6 | `fix/reports-one-window` | One report window; partial-current-month rule; honest denominators | todo |
+| 6 | [#184](https://github.com/brentonmallen1/IGAB/pull/184) `fix/reports-one-window` | Window bounds: burn rate, net worth, volatility, seasonality, anomalies | done |
 | 7 | `fix/reports-payday-denominators` | payday-effect divisors and the P75 threshold | todo |
 | 8 | `fix/reports-split-parent-leaf` | Sankey income, timeline class + scope on split rows | todo |
 | 9 | `fix/reports-totals-not-truncations` | A truncated set is not a total (payee_analysis, DrillDownTable, Pareto) | todo |

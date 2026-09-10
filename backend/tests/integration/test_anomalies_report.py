@@ -45,11 +45,27 @@ async def _setup(db_session):
     return budget, checking, group
 
 
+def newest_scorable() -> date:
+    """The most recent month the report will score: the last COMPLETE one.
+
+    The current month used to be scored as a full observation against a
+    baseline of complete ones, so on the 2nd of every month every established
+    category looked anomalously LOW. A partial month is not a small month, and
+    the report now leaves it out — so the newest month a test can place an
+    anomaly in is last month.
+    """
+    return months_ago(1)
+
+
 async def _spend_series(db_session, budget, account, category, series: dict[int, str]):
-    """Create one posted outflow per {months_ago: amount} entry."""
+    """Create one posted outflow per {months back from `newest_scorable`: amount}.
+
+    Offsets are relative to the newest SCORABLE month rather than to today, so
+    `0` means "the most recent month this report looks at" in every series.
+    """
     for k, amount in series.items():
         await create_transaction(
-            db_session, budget, account, f"-{amount}", months_ago(k), category=category
+            db_session, budget, account, f"-{amount}", months_ago(k + 1), category=category
         )
 
 
@@ -67,7 +83,7 @@ async def test_spike_flags_with_exact_leave_one_out_zscore(db_session):
     )
     # Spike month is built from split children + noise that must not count
     parent = await create_transaction(
-        db_session, budget, checking, "-300.00", months_ago(0), is_split=True
+        db_session, budget, checking, "-300.00", newest_scorable(), is_split=True
     )
     for child_amount in ("-150.00", "-150.00"):
         await create_transaction(
@@ -75,7 +91,7 @@ async def test_spike_flags_with_exact_leave_one_out_zscore(db_session):
             budget,
             checking,
             child_amount,
-            months_ago(0),
+            newest_scorable(),
             category=groceries,
             parent_transaction_id=parent.id,
         )
@@ -84,7 +100,7 @@ async def test_spike_flags_with_exact_leave_one_out_zscore(db_session):
         budget,
         checking,
         "-100.00",
-        months_ago(0),
+        newest_scorable(),
         category=groceries,
         cleared="pending",
     )
@@ -93,7 +109,7 @@ async def test_spike_flags_with_exact_leave_one_out_zscore(db_session):
         budget,
         checking,
         "-50.00",
-        months_ago(0),
+        newest_scorable(),
         category=groceries,
         is_deleted=True,
     )
@@ -113,7 +129,7 @@ async def test_spike_flags_with_exact_leave_one_out_zscore(db_session):
     assert len(data["anomalies"]) == 1
     a = data["anomalies"][0]
     assert a["category_name"] == "Groceries"
-    assert a["month"] == months_ago(0)
+    assert a["month"] == newest_scorable()
     assert a["actual"] == Decimal("300.00")
     assert a["baseline_mean"] == Decimal("100.00")
     assert a["z_score"] == pytest.approx(10.0)  # (300 - 100) / 20
@@ -212,3 +228,36 @@ async def test_fewer_than_six_category_months_never_flags(db_session):
 
     data = await ReportService(db_session).anomalies_report(budget.id, months=12)
     assert data["anomalies"] == []
+
+
+async def test_the_partial_current_month_is_not_scored(db_session):
+    """A partial month is not a small month.
+
+    The current month used to be scored as a full observation against a
+    baseline of complete ones, so on the 2nd of every month every established
+    category read anomalously LOW — a household spending 400 on groceries was
+    told its grocery spending had collapsed, every month, for most of the
+    month.
+    """
+    budget, checking, group = await _setup(db_session)
+    groceries = await create_category(db_session, budget, group, "Groceries")
+    # Six complete months around 400. Varied on purpose: the report skips any
+    # baseline whose standard deviation is under 5, so a perfectly flat history
+    # would make this test pass whatever the window did. The spread is kept
+    # small enough that no complete month clears the 25.00 deviation guard
+    # either, so the only candidate anomaly is the partial month.
+    await _spend_series(
+        db_session,
+        budget,
+        checking,
+        groceries,
+        {5: "380.00", 4: "420.00", 3: "390.00", 2: "410.00", 1: "400.00", 0: "400.00"},
+    )
+    await create_transaction(
+        db_session, budget, checking, "-12.00", months_ago(0), category=groceries
+    )
+
+    data = await ReportService(db_session).anomalies_report(budget.id, months=12)
+
+    assert data["anomalies"] == []
+    assert all(a["month"] != months_ago(0) for a in data["anomalies"])
