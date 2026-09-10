@@ -3,6 +3,7 @@ import { Calendar } from 'lucide-react'
 import { useAppStore } from '../../../stores/appStore'
 import { useReportRange } from '../../../api/reports'
 import './DateRangePicker.css'
+import { toISODate } from '../../../utils/dateWindow'
 
 interface Props {
   startDate: string
@@ -13,10 +14,6 @@ interface Props {
 interface Preset {
   label: string
   getValue: () => { start: string; end: string }
-}
-
-function toISO(d: Date) {
-  return d.toISOString().slice(0, 10)
 }
 
 function firstOfMonth(d: Date) {
@@ -36,7 +33,7 @@ const PRESETS: Preset[] = [
     label: 'This Month',
     getValue: () => {
       const today = new Date()
-      return { start: toISO(firstOfMonth(today)), end: toISO(today) }
+      return { start: toISODate(firstOfMonth(today)), end: toISODate(today) }
     },
   },
   {
@@ -44,35 +41,35 @@ const PRESETS: Preset[] = [
     getValue: () => {
       const today = new Date()
       const prev = subtractMonths(today, 1)
-      return { start: toISO(prev), end: toISO(lastOfMonth(prev)) }
+      return { start: toISODate(prev), end: toISODate(lastOfMonth(prev)) }
     },
   },
   {
     label: 'Last 3 Months',
     getValue: () => {
       const today = new Date()
-      return { start: toISO(subtractMonths(today, 2)), end: toISO(today) }
+      return { start: toISODate(subtractMonths(today, 2)), end: toISODate(today) }
     },
   },
   {
     label: 'Last 6 Months',
     getValue: () => {
       const today = new Date()
-      return { start: toISO(subtractMonths(today, 5)), end: toISO(today) }
+      return { start: toISODate(subtractMonths(today, 5)), end: toISODate(today) }
     },
   },
   {
     label: 'Last 12 Months',
     getValue: () => {
       const today = new Date()
-      return { start: toISO(subtractMonths(today, 11)), end: toISO(today) }
+      return { start: toISODate(subtractMonths(today, 11)), end: toISODate(today) }
     },
   },
   {
     label: 'This Year',
     getValue: () => {
       const today = new Date()
-      return { start: `${today.getFullYear()}-01-01`, end: toISO(today) }
+      return { start: `${today.getFullYear()}-01-01`, end: toISODate(today) }
     },
   },
   {
@@ -91,7 +88,7 @@ const PRESETS: Preset[] = [
 function allTimePreset(earliestMonth: string): Preset {
   return {
     label: 'All Time',
-    getValue: () => ({ start: earliestMonth, end: toISO(new Date()) }),
+    getValue: () => ({ start: earliestMonth, end: toISODate(new Date()) }),
   }
 }
 

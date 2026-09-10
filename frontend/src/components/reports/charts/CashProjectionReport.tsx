@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState } from 'react'
 import {
   Area,
   ComposedChart,
@@ -31,31 +31,8 @@ export function CashProjectionReport({ budgetId }: Props) {
   const chartHeight = useChartHeight(360)
   const [horizon, setHorizon] = useState<(typeof HORIZON_OPTIONS)[number]>(90)
   const { data, isLoading, isError, error, refetch } = useCashProjectionReport(budgetId, horizon)
-  const { formatMoney, formatDate, settings } = useFormatters()
+  const { formatMoney, formatDate, formatDayMonth } = useFormatters()
   const moneyAxis = useMoneyAxis()
-
-  const formatShortDate = useCallback(
-    (dateStr: string) => {
-      const d = new Date(dateStr + 'T00:00:00')
-      const day = d.getDate()
-      const month = [
-        'Jan',
-        'Feb',
-        'Mar',
-        'Apr',
-        'May',
-        'Jun',
-        'Jul',
-        'Aug',
-        'Sep',
-        'Oct',
-        'Nov',
-        'Dec',
-      ][d.getMonth()]
-      return settings.dateFormat === 'dmy' ? `${day} ${month}` : `${month} ${day}`
-    },
-    [settings.dateFormat]
-  )
 
   if (isLoading) {
     return <div className="report-loading">Loading...</div>
@@ -68,7 +45,7 @@ export function CashProjectionReport({ budgetId }: Props) {
   const goesNegativeDate = data?.goes_negative_date
 
   const chartData = points.map((p) => ({
-    date: formatShortDate(p.date),
+    date: formatDayMonth(p.date),
     fullDate: p.date,
     p10: p.p10,
     p25: p.p25,
@@ -257,7 +234,7 @@ export function CashProjectionReport({ budgetId }: Props) {
             {events.map((e, i) => (
               <div key={i} className="projection-event">
                 <Calendar size={14} className="projection-event__icon" />
-                <span className="projection-event__date">{formatShortDate(e.date)}</span>
+                <span className="projection-event__date">{formatDayMonth(e.date)}</span>
                 <span className="projection-event__payee">{e.payee}</span>
                 <span
                   className={`projection-event__amount ${e.amount >= 0 ? 'projection-event__amount--positive' : ''}`}

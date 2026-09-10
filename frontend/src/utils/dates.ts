@@ -75,6 +75,58 @@ export function formatMonthWithOptions(monthStr: string, dateFormat: DateFormat)
 }
 
 /**
+ * Format "YYYY-MM-DD" to a short day + month, no year ("Sep 10").
+ *
+ * For a dense axis where the year is already established by the surrounding
+ * labels. `CashProjectionReport` carried its own copy of MONTH_NAMES_SHORT to
+ * do this, and sent `ymd` down the US month-first branch; here `ymd` stays
+ * numeric, matching `formatDateWithOptions`, which returns the ISO string for
+ * that setting.
+ */
+export function formatDayMonthWithOptions(dateStr: string, dateFormat: DateFormat): string {
+  const d = new Date(dateStr.slice(0, 10) + 'T00:00:00')
+  const day = d.getDate()
+  const month = MONTH_NAMES_SHORT[d.getMonth()]
+
+  switch (dateFormat) {
+    case 'dmy':
+      return `${day} ${month}`
+    case 'ymd':
+      return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+    default:
+      return `${month} ${day}`
+  }
+}
+
+/**
+ * Format "YYYY-MM-01" to a short month + 2-digit year ("Sep 26").
+ *
+ * The axis labels on Savings, Subscriptions and Cost of Living each spelled
+ * this as `new Date(monthStr).toLocaleDateString('en-US', ...)`. A date-ONLY
+ * ISO string parses as UTC midnight, and toLocaleDateString renders in the
+ * viewer's zone, so every label west of UTC read one month early — and one
+ * YEAR early each January, where "2026-01-01" rendered "Dec 25". Appending
+ * "T00:00:00" is what forces the local parse, exactly as
+ * `formatMonthWithOptions` above already does; the three inline copies were
+ * written without it.
+ *
+ * Hard-coding 'en-US' also ignored the budget's date-format setting, so the
+ * `ymd` arm here matches `formatMonthWithOptions`.
+ */
+export function formatMonthShortWithOptions(monthStr: string, dateFormat: DateFormat): string {
+  const d = new Date(monthStr.slice(0, 10) + 'T00:00:00')
+  const month = MONTH_NAMES_SHORT[d.getMonth()]
+  const year = String(d.getFullYear()).slice(-2)
+
+  switch (dateFormat) {
+    case 'ymd':
+      return `${year} ${month}`
+    default:
+      return `${month} ${year}`
+  }
+}
+
+/**
  * Format a full ISO datetime (e.g. "2026-08-17T13:53:41+00:00") as local
  * date + time. Not formatDateWithOptions: that takes date-ONLY strings and
  * appends "T00:00:00" — fed a datetime it produced "undefined NaN, NaN".

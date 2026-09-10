@@ -8,6 +8,7 @@ import { ReportErrorState } from '../ReportErrorState'
 import { ReportRangeSelect } from './rangeSelect'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { Tooltip } from '../../common/Tooltip/Tooltip'
+import { monthWindow } from '../../../utils/dateWindow'
 
 interface Props {
   budgetId: string
@@ -43,11 +44,10 @@ export function AnomaliesReport({ budgetId }: Props) {
   }, [anomalies, formatMonth])
 
   function handleClick(a: (typeof anomalies)[0]) {
-    // Parse month as YYYY-MM-DD and get start/end of that month
-    const [year, month] = a.month.split('-').map(Number)
-    const startDate = `${year}-${String(month).padStart(2, '0')}-01`
-    const endOfMonth = new Date(year, month, 0) // day 0 of next month = last day of this month
-    const endDate = `${year}-${String(month).padStart(2, '0')}-${String(endOfMonth.getDate()).padStart(2, '0')}`
+    // monthWindow clamps the end to today, which this copy did not: for the
+    // current month it asked for days that have not happened, so the panel
+    // could total more than the card that opened it.
+    const { start: startDate, end: endDate } = monthWindow(a.month)
 
     setDrillDown({
       kind: 'category',

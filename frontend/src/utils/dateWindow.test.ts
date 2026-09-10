@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { addDaysISO, daysBetween, monthWindow, previousWindow } from './dateWindow'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { addDaysISO, daysBetween, monthWindow, previousWindow, toISODate } from './dateWindow'
 
 describe('addDaysISO', () => {
   it('adds within a month', () => {
@@ -67,5 +67,52 @@ describe('monthWindow', () => {
     const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
     const dd = String(now.getDate()).padStart(2, '0')
     expect(monthWindow(ym).end).toBe(`${ym}-${dd}`)
+  })
+})
+
+/**
+ * `toISODate` replaced `d.toISOString().slice(0, 10)` in DateRangePicker and in
+ * reportStore.defaultFilters. That round-trip converts to UTC first, so a
+ * LOCAL midnight ahead of Greenwich lands on the previous calendar day — which
+ * made "This month" ask the server for a window starting on the last day of
+ * the month before. Behind Greenwich the same round-trip pushes an afternoon
+ * "today" onto tomorrow.
+ *
+ * Both blocks pin a zone, because in UTC the broken and the fixed versions
+ * agree and the test would prove nothing.
+ */
+describe('toISODate ahead of Greenwich', () => {
+  const realTZ = process.env.TZ
+
+  beforeAll(() => {
+    process.env.TZ = 'Europe/Berlin'
+  })
+  afterAll(() => {
+    process.env.TZ = realTZ
+  })
+
+  it('keeps a local month-start on the 1st', () => {
+    // toISOString() gave '2026-08-31' for this Date.
+    expect(toISODate(new Date(2026, 8, 1))).toBe('2026-09-01')
+  })
+
+  it('keeps a local month-end on its last day', () => {
+    expect(toISODate(new Date(2026, 8, 30))).toBe('2026-09-30')
+  })
+})
+
+describe('toISODate behind Greenwich', () => {
+  const realTZ = process.env.TZ
+
+  beforeAll(() => {
+    process.env.TZ = 'America/Los_Angeles'
+  })
+  afterAll(() => {
+    process.env.TZ = realTZ
+  })
+
+  it('does not push an afternoon today onto tomorrow', () => {
+    // 18:00 PDT on 30 Sep is 01:00 UTC on 1 Oct; toISOString() said October.
+    expect(toISODate(new Date(2026, 8, 30, 18, 0))).toBe('2026-09-30')
   })
 })
