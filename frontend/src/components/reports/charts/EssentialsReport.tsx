@@ -253,7 +253,12 @@ export function EssentialsReport({ budgetId }: Props) {
                     </td>
                     <td />
                     <td className="essentials-report__num tabular">
-                      {formatMoney(data.monthly_total_average * months)}
+                      {/* The column's own total, not the rounded average
+                          times the month count — those differ by up to a
+                          penny per category per month, and a footer that does
+                          not add up to the column above it is the one number
+                          on the table a reader can check. */}
+                      {formatMoney(data.categories.reduce((sum, c) => sum + c.total, 0))}
                     </td>
                     <td />
                   </tr>

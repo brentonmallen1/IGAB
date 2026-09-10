@@ -171,6 +171,17 @@ export function LiabilitiesReport({ budgetId }: Props) {
             captureRef={captureRef}
           />
         </div>
+
+        {(data?.closed_with_balance_count ?? 0) > 0 && data && (
+          <p className="report-note">
+            {formatMoney(data.closed_with_balance_total)} is still owed on{' '}
+            {data.closed_with_balance_count === 1
+              ? 'an account that has been closed'
+              : `${data.closed_with_balance_count} accounts that have been closed`}
+            , so it is not in the total above — but net worth still counts it. Reopen the account,
+            or settle the balance, to bring the two figures together.
+          </p>
+        )}
       </div>
 
       <div ref={captureRef} className="report-capture">

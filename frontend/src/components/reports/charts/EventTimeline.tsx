@@ -55,6 +55,14 @@ export function TimelineReport({ budgetId }: Props) {
   // Timeline rows carry names only — resolve back to ids for the drill-down
   const payeeIdByName = useMemo(() => new Map((payees ?? []).map((p) => [p.name, p.id])), [payees])
 
+  // The server ranks by SIZE to pick the largest N; a timeline draws them in
+  // DATE order. The panel has been saying "displayed chronologically" while
+  // rendering the server's ranking, so the newest row could appear anywhere.
+  const transactions = useMemo(
+    () => [...(data?.transactions ?? [])].sort((a, b) => b.date.localeCompare(a.date)),
+    [data]
+  )
+
   if (isLoading) return <div className="report-loading">Loading…</div>
   if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
 
@@ -72,8 +80,11 @@ export function TimelineReport({ budgetId }: Props) {
     })
   }
 
-  const transactions = data?.transactions ?? []
-  const largestAmt = transactions.length > 0 ? Math.abs(transactions[0].amount) : 0
+  // Taken from the whole page rather than from row 0. The server ranks by size
+  // now, so row 0 IS the largest — but a scale that silently depends on the
+  // sort order is how this came to be wrong in the first place, and a max over
+  // the rows cannot be.
+  const largestAmt = transactions.reduce((m, t) => Math.max(m, Math.abs(t.amount)), 0)
 
   const dotSize = (amount: number) => {
     if (largestAmt === 0) return 8
@@ -87,9 +98,8 @@ export function TimelineReport({ budgetId }: Props) {
         <h2 className="report-section__title">Event Timeline</h2>
         <ReportInfoButton title="Event Timeline">
           <p>
-            Your largest transactions displayed chronologically. The <strong>dot size</strong>{' '}
-            reflects the transaction's magnitude relative to the largest in the set — bigger dot =
-            larger amount.
+            Your largest transactions, newest first. The <strong>dot size</strong> reflects the
+            transaction's magnitude relative to the largest in the set — bigger dot = larger amount.
           </p>
           <p>
             <strong>Red dots</strong> are spending; <strong>green dots</strong> are income. Money

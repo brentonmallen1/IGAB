@@ -2583,7 +2583,16 @@ class ReportService:
             q = scoped(q, Transaction.account_id, account_ids)
         else:
             q = q.where(ON_BUDGET_ACCOUNT)
-        q = q.order_by(Transaction.amount).limit(limit)  # most negative first
+        # Ranked by SIZE, not by signed amount.
+        #
+        # `order_by(amount)` puts the most negative first, which is right for
+        # outflows and wrong the moment an inflow makes the cut: a 4,000 refund
+        # sorted to the very END, so a "largest transactions" list could omit
+        # the largest transaction in the window while including a 20 coffee.
+        # The client reads `transactions[0]` as the largest and scales every
+        # dot against it, so the whole chart's proportions came from whichever
+        # row happened to sort first.
+        q = q.order_by(func.abs(Transaction.amount).desc()).limit(limit)
         q = apply_class_joins(q)
         rows = (await self.session.execute(q)).all()
 

@@ -29,7 +29,8 @@ export function WishlistDisciplineReport({ budgetId }: Props) {
   if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
   if (!data) return null
 
-  const decided = data.cooled_then_bought + data.cooled_then_dropped + data.bought_early
+  const decided =
+    data.cooled_then_bought + data.cooled_then_dropped + data.bought_early + data.dropped_early
   const empty = decided === 0 && data.still_open === 0 && data.unplaced === 0
 
   return (

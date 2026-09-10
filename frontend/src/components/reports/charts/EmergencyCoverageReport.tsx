@@ -142,7 +142,7 @@ export function EmergencyCoverageReport({ budgetId }: Props) {
                 value={data.coverage_months === null ? '—' : `${data.coverage_months} months`}
                 sub={
                   trend
-                    ? `${trend.delta >= 0 ? '+' : ''}${trend.delta} months over ${months} months`
+                    ? `${trend.delta >= 0 ? '+' : ''}${trend.delta} months over ${trend.months} months`
                     : undefined
                 }
                 accent={where === 'within' || where === 'above'}

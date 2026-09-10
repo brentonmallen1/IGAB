@@ -732,6 +732,11 @@ export interface LiabilitiesReport {
   /** How many rows were left out of that total */
   liabilities_missing_terms: number
   balance_over_time: LiabilitiesBalancePoint[]
+  /** Owed on accounts closed with a balance still on them, excluded from
+   *  `total_balance`. Net worth counts it, so the page says so rather than
+   *  letting two figures labelled Total Liabilities disagree in silence. */
+  closed_with_balance_count: number
+  closed_with_balance_total: number
 }
 
 export interface AccountCompositionPoint {
@@ -1042,7 +1047,15 @@ export interface IncomeBySourceReport {
 export interface CategoryHistoryReport {
   category_id: string
   category_name: string
-  months: { month: string; assigned: number; activity: number; available: number }[]
+  months: {
+    month: string
+    assigned: number
+    activity: number
+    /** Null for an income category: "Income categories do not hold money", so
+     *  their available is a lifetime carryover the budget page never draws.
+     *  Their monthly activity is meaningful and is still served. */
+    available: number | null
+  }[]
 }
 export interface PayeeSpending {
   payee_id: string
@@ -1367,6 +1380,9 @@ export interface WishlistDisciplineReport {
   cooled_then_bought: number
   cooled_then_dropped: number
   bought_early: number
+  /** Dropped before the cooling-off period ended — resisted money, but not
+   *  something the cooling-off period did. */
+  dropped_early: number
   still_open: number
   resisted_total: number
   bought_total: number

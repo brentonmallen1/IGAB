@@ -12,6 +12,13 @@ export interface CoverageTrend {
   to: number
   /** Positive means the fund now covers more months than it did. */
   delta: number
+  /** How many months the reading actually spans.
+   *
+   * Points with no coverage figure are dropped — a month with no essential
+   * spending has no answer — so the span is not the window the user picked.
+   * The card labelled the delta "over {months} months" regardless, which
+   * overstated the period on any budget with a gap in it. */
+  months: number
 }
 
 export function coverageTrend(series: readonly CoveragePoint[]): CoverageTrend | null {
@@ -20,7 +27,7 @@ export function coverageTrend(series: readonly CoveragePoint[]): CoverageTrend |
   if (known.length < 2) return null
   const from = known[0].coverage_months as number
   const to = known[known.length - 1].coverage_months as number
-  return { from, to, delta: Number((to - from).toFixed(1)) }
+  return { from, to, delta: Number((to - from).toFixed(1)), months: known.length }
 }
 
 /**

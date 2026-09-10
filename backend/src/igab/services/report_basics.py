@@ -685,6 +685,7 @@ async def wishlist_discipline(session: AsyncSession, budget_id: uuid.UUID) -> di
         "cooled_then_bought": stats.cooled_then_bought,
         "cooled_then_dropped": stats.cooled_then_dropped,
         "bought_early": stats.bought_early,
+        "dropped_early": stats.dropped_early,
         "still_open": stats.still_open,
         "resisted_total": stats.resisted_total,
         "bought_total": stats.bought_total,

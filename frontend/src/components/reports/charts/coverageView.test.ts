@@ -20,7 +20,7 @@ describe('the trend under the headline', () => {
       point({ coverage_months: 2 }),
       point({ coverage_months: 3.4 }),
     ])
-    expect(trend).toEqual({ from: 1.2, to: 3.4, delta: 2.2 })
+    expect(trend).toEqual({ from: 1.2, to: 3.4, delta: 2.2, months: 3 })
   })
 
   it('says nothing from a single point', () => {
@@ -36,7 +36,10 @@ describe('the trend under the headline', () => {
       point({ coverage_months: 2 }),
       point({ coverage_months: 4 }),
     ])
-    expect(trend).toEqual({ from: 2, to: 4, delta: 2 })
+    // `months` is the span MEASURED, not the window asked for: the null
+    // point is dropped, so this reading covers two months and the card must
+    // not label it with the twelve the user picked.
+    expect(trend).toEqual({ from: 2, to: 4, delta: 2, months: 2 })
   })
 
   it('reports a fall as a negative delta', () => {

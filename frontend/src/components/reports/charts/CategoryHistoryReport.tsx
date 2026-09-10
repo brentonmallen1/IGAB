@@ -62,12 +62,18 @@ export function CategoryHistoryReport({ budgetId }: Props) {
         month: formatMonth(m.month),
         Assigned: m.assigned,
         Spent: Math.abs(Math.min(m.activity, 0)),
-        Available: m.available,
+        // Null for an income category: no line rather than a false one.
+        Available: m.available ?? undefined,
       })),
     [data, formatMonth]
   )
 
   const rows = data?.months ?? []
+  // An em dash for an income category, which holds no money — its
+  // `available` is a lifetime carryover the budget page never draws.
+  const latestAvailable = rows[rows.length - 1]?.available ?? null
+  const availableNow = latestAvailable === null ? '—' : formatMoney(latestAvailable)
+
   const spent = rows.reduce((sum, m) => sum + Math.abs(Math.min(m.activity, 0)), 0)
   const assigned = rows.reduce((sum, m) => sum + m.assigned, 0)
 
@@ -132,10 +138,7 @@ export function CategoryHistoryReport({ budgetId }: Props) {
               value={formatMoney(rows.length ? spent / rows.length : 0)}
               sub="per month"
             />
-            <MetricCard
-              label="Available now"
-              value={formatMoney(rows[rows.length - 1]?.available ?? 0)}
-            />
+            <MetricCard label="Available now" value={availableNow} />
           </MetricRow>
           <div className="report-chart" style={{ height: chartHeight }}>
             <ResponsiveContainer width="100%" height="100%">
@@ -203,10 +206,10 @@ export function CategoryHistoryReport({ budgetId }: Props) {
                   <td
                     style={{
                       textAlign: 'right',
-                      color: m.available < 0 ? 'var(--color-negative)' : undefined,
+                      color: (m.available ?? 0) < 0 ? 'var(--color-negative)' : undefined,
                     }}
                   >
-                    {formatMoney(m.available)}
+                    {m.available === null ? '—' : formatMoney(m.available)}
                   </td>
                 </tr>
               ))}

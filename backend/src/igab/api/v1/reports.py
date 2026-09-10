@@ -570,6 +570,14 @@ async def category_history_report(
     category = await category_repo.get(category_id)
     if category is None or category.budget_id != budget_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
+    # "Income categories do not hold money" — the app's own rule, raised by
+    # `BudgetService._require_envelope`. Their `available` is a lifetime
+    # carryover the budget page never draws, and this report published it as
+    # an envelope balance under a docstring promising the budget page's own
+    # numbers. Their month-by-month ACTIVITY is meaningful and stays; the
+    # figure that is not is served as None rather than as a number.
+    group = await budget_service.category_group_repo.get(category.category_group_id)
+    holds_money = not (group is not None and group.is_system)
     today = date.today()
     month_list = [add_months(today.replace(day=1), -i) for i in range(months - 1, -1, -1)]
     out = []
@@ -577,7 +585,10 @@ async def category_history_report(
         bal = await budget_service.get_category_balance(category_id, m)
         out.append(
             CategoryHistoryMonth(
-                month=m, assigned=bal.assigned, activity=bal.activity, available=bal.available
+                month=m,
+                assigned=bal.assigned,
+                activity=bal.activity,
+                available=bal.available if holds_money else None,
             )
         )
     return CategoryHistoryReportResponse(
@@ -744,6 +755,8 @@ async def liabilities_report(
         balance_over_time=[
             LiabilitiesBalancePoint.model_validate(p) for p in data["balance_over_time"]
         ],
+        closed_with_balance_count=data["closed_with_balance_count"],
+        closed_with_balance_total=data["closed_with_balance_total"],
     )
 
 

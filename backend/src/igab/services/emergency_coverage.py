@@ -21,7 +21,10 @@ number is the point of the second chart.
 another bank last March, so an external figure is carried flat from the date
 it was reported and not before it, and the response says which months that
 touched — a flat line drawn without a word would read as a fund that did not
-move.
+move. "The date it was reported" is clamped to the newest month the chart
+draws: the stamp is always the day the app was told, the chart ends at the
+last complete month, so a literal comparison landed the figure one month
+beyond its own series and drew $0 under cards reading the real amount.
 """
 
 import uuid
@@ -97,15 +100,24 @@ async def fund_entities(session: AsyncSession, budget_id: uuid.UUID) -> FundEnti
     )
 
 
-def trailing_average(totals: list[Decimal], index: int, window: int = TRAILING_MONTHS) -> Decimal:
+def trailing_average(
+    totals: list[Decimal], index: int, window: int = TRAILING_MONTHS, *, first_data: int = 0
+) -> Decimal:
     """Mean of the `window` months ending at `index`, over what exists.
 
     Early months have less history behind them, and dividing three months of
     spending by three when only one has happened would halve the denominator
     and double the coverage — a chart that opens on a reassuring number it
     then walks back.
+
+    `first_data` is the index of the first month the budget has any essentials
+    history for. Months before it are not months a household spent nothing —
+    they are months the budget did not exist — and averaging their zeros in did
+    exactly what the paragraph above warns against from the other direction: a
+    young budget's chart opened at 6.0 months of runway against a headline of
+    2.0, because two thirds of its denominator was a period with no data.
     """
-    start = max(0, index - window + 1)
+    start = max(first_data, index - window + 1)
     span = totals[start : index + 1]
     return quantize_cents(sum(span, Decimal("0")) / len(span)) if span else Decimal("0")
 
@@ -159,6 +171,9 @@ class EmergencyCoverageService:
         )
         series = summary["monthly_series"]
         totals = [row["total"] for row in series]
+        # The first month with any essentials history. Everything before it is
+        # a month the budget did not exist, not a month nothing was spent.
+        first_data = next((i for i, t in enumerate(totals) if t != 0), 0)
 
         today = date.today()
         first_of_month = month_start(today)
@@ -168,17 +183,37 @@ class EmergencyCoverageService:
         # honest answer is that the app has not been told what to look at.
         if entities.empty:
             series = []
+        # The newest month the chart can draw. The series runs to the last
+        # COMPLETE month, so this is in the past — which is the whole reason
+        # the external figure needs clamping below.
+        newest_end = add_months(series[-1]["month"], 1) - timedelta(days=1) if series else None
         for i, row in enumerate(series):
             if i < lead_in:
                 continue
             month: date = row["month"]
             month_end = add_months(month, 1) - timedelta(days=1)
-            essentials = trailing_average(totals, i)
+            essentials = trailing_average(totals, i, first_data=first_data)
             balance = await self._fund_balance_at(budgets, entities, month, month_end)
+            # A self-reported figure is carried flat from the month it was
+            # reported, and "as of now" lands on the newest month the chart
+            # draws.
+            #
+            # `GuideService.set_binding` stamps `as_of` with the day the app
+            # was told — deliberately, since the age of the figure is the
+            # app's record and not the caller's claim — so through the only
+            # write path it is ALWAYS today. The series ends at the last
+            # complete month, so comparing the stamp literally put every
+            # self-reported fund one month in the future of its own chart:
+            # the report drew $0 and 0.0 months beneath cards reading the real
+            # amount. Clamping to the newest point is what "as of now" means
+            # on a chart of complete months.
+            reported = entities.external_as_of
+            if reported is None or (newest_end is not None and reported > newest_end):
+                reported = newest_end
             external_counted = (
                 entities.external_amount is not None
-                and entities.external_as_of is not None
-                and entities.external_as_of <= month_end
+                and reported is not None
+                and reported <= month_end
             )
             if external_counted:
                 balance = quantize_cents(balance + (entities.external_amount or Decimal("0")))
