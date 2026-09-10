@@ -265,6 +265,10 @@ class VolatilityItem(ApiModel):
 
 class VolatilityResponse(ApiModel):
     categories: list[VolatilityItem]
+    #: True when each charge was spread forward over the months until the
+    #: next one. Served so the page can say which reading it is showing —
+    #: the same numbers under two definitions is how a chart lies quietly.
+    amortized: bool = False
 
 
 # ─── Spending Grouped (Pareto + Treemap) ──────────────────────────────────────

@@ -401,9 +401,18 @@ async def volatility_report(
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
     months: ReportMonths = 12,
+    amortize: bool = False,
 ) -> VolatilityResponse:
-    data = await report_svc.category_volatility(budget_id, months)
-    return VolatilityResponse(categories=[VolatilityItem.model_validate(c) for c in data])
+    """How much each category's monthly spending varies.
+
+    `amortize` spreads each charge forward over the months until the next one,
+    which separates a bill with steady cost and irregular timing from a
+    category whose cost genuinely swings.
+    """
+    data = await report_svc.category_volatility(budget_id, months, amortize)
+    return VolatilityResponse(
+        categories=[VolatilityItem.model_validate(c) for c in data], amortized=amortize
+    )
 
 
 @router.get("/{budget_id}/reports/spending-grouped", response_model=SpendingGroupedResponse)
