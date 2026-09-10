@@ -35,10 +35,11 @@ The simplest option: everything runs in a single container.
 | --- | --- | --- |
 | `igab` | `ghcr.io/brentonmallen1/igab-aio` | PostgreSQL + API + nginx + backups |
 
-### 1. Install from Community Applications
+### 1. Install the template
 
-Search for "IGAB" in CA and install the **igab-aio** template, or add it manually from
-[`unraid/igab-aio.xml`](../unraid/igab-aio.xml).
+Add this repo under *Docker → Template Repositories* and pick **igab-aio** from the
+Add Container dropdown, or copy [`unraid/igab-aio.xml`](../unraid/igab-aio.xml) into
+`/boot/config/plugins/dockerMan/templates-user/` (see [`unraid/README.md`](../unraid/README.md)).
 
 ### 2. Configure
 
@@ -185,11 +186,11 @@ Schedule, retention, and encryption are configured in the app under
   manual backup, and — once — practice a restore. Optionally set an
   [age](https://age-encryption.org) public key there to encrypt backups at rest (keep
   the private key off the server); details in the README's
-  [Backups](../README.md#backups) section.
+  [Backups](deployment.md#backups) section.
 - **HTTPS / phone install**: the PWA install and camera-based receipt capture need a
   secure context. Front `http://<unraid-ip>:8480` with your existing reverse proxy
   (SWAG, Nginx Proxy Manager, Traefik) or Tailscale — see
-  [Install on Your Phone](../README.md#install-on-your-phone-pwa).
+  [Install on Your Phone](deployment.md#install-on-your-phone-pwa).
 - **Update notifications**: Unraid's Docker tab flags new image versions (Paths A & C).
   The app also has its own opt-in check (System → Updates) that is **off by default** —
   nothing contacts GitHub unless you enable it.
