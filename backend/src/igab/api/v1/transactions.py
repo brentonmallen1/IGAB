@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 
 from igab.api.route import CommitRoute
+from igab.api.v1.params import parse_csv, parse_uuid_list
 from igab.api.v1.schemas.transaction import (
     BudgetTransactionListResponse,
     BulkActionResult,
@@ -112,8 +113,10 @@ async def list_account_transactions(
     is_transfer: bool | None = None,
     unpaired_transfers: bool = False,
 ) -> list[TransactionResponse]:
-    parsed_cat_ids = [uuid.UUID(x) for x in category_ids.split(",") if x] if category_ids else None
-    parsed_pay_ids = [uuid.UUID(x) for x in payee_ids.split(",") if x] if payee_ids else None
+    # The guarded parser, not a bare `uuid.UUID()`: an id-construction slip
+    # here used to reach the catch-all handler as a 500.
+    parsed_cat_ids = parse_uuid_list(category_ids)
+    parsed_pay_ids = parse_uuid_list(payee_ids)
     txns = await txn_repo.get_for_account(
         account_id,
         limit=limit,
@@ -202,9 +205,9 @@ async def list_budget_transactions(
     # how the wrong one gets passed.
     category_scope = await resolve_category_scope(
         budget_id,
-        category_ids=_parse_uuid_list(category_ids),
+        category_ids=parse_uuid_list(category_ids),
         filter_id=filter_id,
-        tag_ids=_parse_uuid_list(tag_ids),
+        tag_ids=parse_uuid_list(tag_ids),
         filter_repo=filter_repo,
         tag_repo=tag_repo,
     )
@@ -214,12 +217,12 @@ async def list_budget_transactions(
         end_date=end_date,
         search=search,
         category_ids=category_scope.category_ids,
-        payee_ids=_parse_uuid_list(payee_ids),
-        account_ids=_parse_uuid_list(account_ids),
+        payee_ids=parse_uuid_list(payee_ids),
+        account_ids=parse_uuid_list(account_ids),
         scope=scope,
         posted_only=posted_only,
         cash_flow_only=cash_flow_only,
-        activity_classes=_parse_csv(activity_classes),
+        activity_classes=parse_csv(activity_classes),
         direction=direction,
         day_of_week=day_of_week,
         cleared=cleared,
@@ -236,7 +239,7 @@ async def list_budget_transactions(
         limit=limit,
         offset=offset,
     )
-    accounts = _parse_uuid_list(account_ids)
+    accounts = parse_uuid_list(account_ids)
     running: dict[str, Decimal] = {}
     if running_balance and accounts and len(accounts) == 1:
         # Keyed by row rather than accumulated by the client: the server owns
@@ -257,29 +260,6 @@ async def list_budget_transactions(
         total_amount=total_amount,
         running_balances=running,
     )
-
-
-def _parse_csv(value: str | None) -> list[str] | None:
-    if not value:
-        return None
-    return [v.strip() for v in value.split(",") if v.strip()] or None
-
-
-def _parse_uuid_list(value: str | None) -> list[uuid.UUID] | None:
-    """Parse a comma-separated id list, rejecting malformed entries with a 400.
-
-    Unguarded `uuid.UUID()` turns a client-side id-construction slip into a
-    500 from the catch-all handler, which reads as a server fault and tells
-    nobody which value was wrong.
-    """
-    if not value:
-        return None
-    try:
-        return [uuid.UUID(v.strip()) for v in value.split(",") if v.strip()]
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=f"Malformed id: {e}"
-        ) from e
 
 
 @router.get(

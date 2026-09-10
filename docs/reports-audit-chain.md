@@ -32,7 +32,7 @@ each other, starting from `origin/main` at `892922a0`.
 | 7 | [#186](https://github.com/brentonmallen1/IGAB/pull/186) `fix/reports-payday-denominators` | payday-effect divisors, class filters and the P75 threshold | done |
 | 8 | [#187](https://github.com/brentonmallen1/IGAB/pull/187) `fix/reports-split-parent-leaf` | Sankey income, timeline class + scope on split rows | done |
 | 9 | `fix/reports-totals-not-truncations` | A truncated set is not a total (payee_analysis, DrillDownTable, Pareto) | todo |
-| 10 | `fix/reports-scope-plumbing` | `_parse_uuids` widening; param bounds; `filter_unavailable` | todo |
+| 9 | [#188](https://github.com/brentonmallen1/IGAB/pull/188) `fix/reports-scope-plumbing` | One id parser; param bounds; `filter_unavailable` everywhere; view guard | done |
 | 11 | `fix/reports-contract-drift` | Duplicate interfaces; required served fields; empty paths | todo |
 | 12 | `fix/reports-labels` | Labels that contradict the computation | todo |
 | 13 | `fix/reports-efficiency` | Per-month query loops; whole-register scans; CSV amount formatting | todo |

@@ -6,6 +6,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
 from igab.api.route import CommitRoute
+from igab.api.v1.params import parse_uuid_list
 from igab.api.v1.schemas.report import (
     AccountCompositionPoint,
     AccountCompositionResponse,
@@ -135,6 +136,26 @@ ReportMonths = Annotated[int, Query(ge=1, le=MAX_REPORT_MONTHS)]
 PlanRealityMonths = Annotated[int, Query(ge=3, le=MAX_REPORT_MONTHS)]
 
 
+#: Bounds for every report parameter that is not a month window.
+#:
+#: These carried no `Query()` at all, so `limit=-1` was a 500 on one endpoint
+#: and a silently wrong 200 on the other, and `window`/`days` were unbounded
+#: allocations — `days=100000` asks the projection to build a hundred thousand
+#: daily buckets across five hundred simulations. Same reasoning as
+#: MAX_REPORT_MONTHS above: a ceiling exists to refuse an absurd number, not to
+#: decide a horizon.
+ReportLimit = Annotated[int, Query(ge=1, le=500)]
+#: A z-score. Below 1 every ordinary month is an anomaly and the report is
+#: noise; above 10 nothing is ever flagged.
+AnomalyThreshold = Annotated[float, Query(ge=1.0, le=10.0)]
+#: Days after a payday to follow. One is a single day; a pay cycle is rarely
+#: longer than a month, and the report draws one bar per day.
+PaydayWindow = Annotated[int, Query(ge=1, le=31)]
+#: Days to project. A year is already well past where a bootstrap of the last
+#: 180 days says anything useful.
+ProjectionDays = Annotated[int, Query(ge=1, le=365)]
+
+
 router = APIRouter(route_class=CommitRoute)
 
 
@@ -202,13 +223,13 @@ async def spending_report(
     end = end_date or today
     scope = await resolve_category_scope(
         budget_id,
-        category_ids=_parse_uuids(category_ids),
+        category_ids=parse_uuid_list(category_ids),
         filter_id=filter_id,
-        tag_ids=_parse_uuids(tag_ids),
+        tag_ids=parse_uuid_list(tag_ids),
         filter_repo=filter_repo,
         tag_repo=tag_repo,
     )
-    acct_ids = _parse_uuids(account_ids)
+    acct_ids = parse_uuid_list(account_ids)
     categories, total = await report_svc.spending_by_category(
         budget_id,
         start,
@@ -323,7 +344,7 @@ async def cash_flow_report(
     today = date.today()
     start = start_date or today.replace(day=1)
     end = end_date or today
-    acct_ids = _parse_uuids(account_ids)
+    acct_ids = parse_uuid_list(account_ids)
     data = await report_svc.cash_flow_sankey(budget_id, start, end, mode, acct_ids)
     # Validated whole rather than field by field: the hand-built version listed
     # the keys it knew about and silently dropped the three the service had
@@ -353,9 +374,9 @@ async def budget_actual_report(
     end = end_date or today
     scope = await resolve_category_scope(
         budget_id,
-        category_ids=_parse_uuids(category_ids),
+        category_ids=parse_uuid_list(category_ids),
         filter_id=filter_id,
-        tag_ids=_parse_uuids(tag_ids),
+        tag_ids=parse_uuid_list(tag_ids),
         filter_repo=filter_repo,
         tag_repo=tag_repo,
     )
@@ -441,13 +462,13 @@ async def spending_grouped_report(
     end = end_date or today
     scope = await resolve_category_scope(
         budget_id,
-        category_ids=_parse_uuids(category_ids),
+        category_ids=parse_uuid_list(category_ids),
         filter_id=filter_id,
-        tag_ids=_parse_uuids(tag_ids),
+        tag_ids=parse_uuid_list(tag_ids),
         filter_repo=filter_repo,
         tag_repo=tag_repo,
     )
-    acct_ids = _parse_uuids(account_ids)
+    acct_ids = parse_uuid_list(account_ids)
     items, total, notes = await report_svc.spending_grouped(
         budget_id,
         start,
@@ -494,9 +515,9 @@ async def spending_trends_report(
     end = end_date or today
     scope = await resolve_category_scope(
         budget_id,
-        category_ids=_parse_uuids(category_ids),
+        category_ids=parse_uuid_list(category_ids),
         filter_id=filter_id,
-        tag_ids=_parse_uuids(tag_ids),
+        tag_ids=parse_uuid_list(tag_ids),
         filter_repo=filter_repo,
         tag_repo=tag_repo,
     )
@@ -506,7 +527,7 @@ async def spending_trends_report(
         start,
         end,
         scope.category_ids,
-        _parse_uuids(account_ids),
+        parse_uuid_list(account_ids),
         _spending_classes(include_savings),
     )
     return SpendingTrendsResponse(
@@ -596,15 +617,15 @@ async def payee_analysis_report(
     report_svc: Annotated[ReportService, Depends(get_report_service)],
     start_date: date | None = None,
     end_date: date | None = None,
-    limit: int = 25,
+    limit: ReportLimit = 25,
     payee_ids: str | None = Query(None),
     account_ids: str | None = Query(None),
 ) -> PayeeAnalysisResponse:
     today = date.today()
     start = start_date or today.replace(year=today.year - 1, day=1)
     end = end_date or today
-    p_ids = _parse_uuids(payee_ids)
-    acct_ids = _parse_uuids(account_ids)
+    p_ids = parse_uuid_list(payee_ids)
+    acct_ids = parse_uuid_list(account_ids)
     payees, total = await report_svc.payee_analysis(budget_id, start, end, limit, p_ids, acct_ids)
     return PayeeAnalysisResponse(
         payees=[
@@ -646,13 +667,13 @@ async def day_patterns_report(
     end = end_date or today
     scope = await resolve_category_scope(
         budget_id,
-        category_ids=_parse_uuids(category_ids),
+        category_ids=parse_uuid_list(category_ids),
         filter_id=filter_id,
-        tag_ids=_parse_uuids(tag_ids),
+        tag_ids=parse_uuid_list(tag_ids),
         filter_repo=filter_repo,
         tag_repo=tag_repo,
     )
-    acct_ids = _parse_uuids(account_ids)
+    acct_ids = parse_uuid_list(account_ids)
     data = await report_svc.day_patterns(budget_id, start, end, scope.category_ids, acct_ids)
     return DayPatternsResponse(
         days=[DayPatternItem.model_validate(d) for d in data["days"]],
@@ -660,6 +681,7 @@ async def day_patterns_report(
             SpendingClassExcluded.model_validate(c) for c in (data["class_excluded"] or [])
         ],
         filter_unavailable=scope.filter_unavailable,
+        counted_classes=data["counted_classes"],
     )
 
 
@@ -672,7 +694,7 @@ async def timeline_report(
     tag_repo: Annotated[TagRepository, Depends(get_tag_repo)],
     start_date: date | None = None,
     end_date: date | None = None,
-    limit: int = 50,
+    limit: ReportLimit = 50,
     category_ids: str | None = Query(None),
     account_ids: str | None = Query(None),
     #: A saved filter: its effective category set (named + tagged) scopes the
@@ -686,13 +708,13 @@ async def timeline_report(
     end = end_date or today
     scope = await resolve_category_scope(
         budget_id,
-        category_ids=_parse_uuids(category_ids),
+        category_ids=parse_uuid_list(category_ids),
         filter_id=filter_id,
-        tag_ids=_parse_uuids(tag_ids),
+        tag_ids=parse_uuid_list(tag_ids),
         filter_repo=filter_repo,
         tag_repo=tag_repo,
     )
-    acct_ids = _parse_uuids(account_ids)
+    acct_ids = parse_uuid_list(account_ids)
     data = await report_svc.large_transactions(
         budget_id, start, end, limit, scope.category_ids, acct_ids
     )
@@ -778,7 +800,7 @@ async def anomalies_report(
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
     months: ReportMonths = 12,
-    threshold: float = 2.0,
+    threshold: AnomalyThreshold = 2.0,
 ) -> AnomalyReportResponse:
     """Anomaly detection — category-months with spending outside baseline z-score."""
     data = await report_svc.anomalies_report(budget_id, months, threshold)
@@ -792,7 +814,7 @@ async def payday_effect_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
-    window: int = 14,
+    window: PaydayWindow = 14,
     months: ReportMonths = 12,
 ) -> PaydayEffectResponse:
     """Payday effect — average daily spending for N days after income events."""
@@ -809,7 +831,7 @@ async def cash_projection_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     report_svc: Annotated[ReportService, Depends(get_report_service)],
-    days: int = 90,
+    days: ProjectionDays = 90,
 ) -> CashProjectionResponse:
     """Cash projection — fan chart with deterministic and stochastic layers."""
     data = await report_svc.cash_projection(budget_id, days)
@@ -819,15 +841,6 @@ async def cash_projection_report(
         events=[CashProjectionEvent.model_validate(e) for e in data["events"]],
         goes_negative_date=data.get("goes_negative_date"),
     )
-
-
-def _parse_uuids(value: str | None) -> list[uuid.UUID] | None:
-    if not value:
-        return None
-    try:
-        return [uuid.UUID(v.strip()) for v in value.split(",") if v.strip()]
-    except ValueError:
-        return None
 
 
 @router.get("/{budget_id}/reports/cost-of-living", response_model=CostOfLivingResponse)

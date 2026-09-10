@@ -907,6 +907,11 @@ export interface SpendingGroupedReport {
   /** Savings / debt activity in categories the user is looking at that a
    *  spending report will not count. Empty without a selection or view. */
   class_excluded: SpendingClassExcluded[]
+  /** A saved filter was named and could not be found — deleted in another tab,
+   *  or belonging to another budget. The scope then matches nothing, so the
+   *  report is EMPTY rather than unfiltered, and saying so is the whole point
+   *  of the flag. */
+  filter_unavailable: boolean
 }
 
 export interface CategoryClassSlice {
@@ -1110,6 +1115,14 @@ export interface DayPatternsReport {
   /** Savings / debt activity in the categories the user selected that this
    *  chart will not count. Empty without a selection. */
   class_excluded: SpendingClassExcluded[]
+  /** A saved filter was named and could not be found — deleted in another tab,
+   *  or belonging to another budget. The scope then matches nothing, so the
+   *  report is EMPTY rather than unfiltered, and saying so is the whole point
+   *  of the flag. */
+  filter_unavailable: boolean
+  /** The activity classes these figures count, passed to the drill-down so a
+   *  bar and the panel it opens total the same. */
+  counted_classes: string[]
 }
 
 export interface TimelineTransaction {
@@ -1133,6 +1146,11 @@ export interface TimelineTransaction {
 
 export interface TimelineReport {
   transactions: TimelineTransaction[]
+  /** A saved filter was named and could not be found — deleted in another tab,
+   *  or belonging to another budget. The scope then matches nothing, so the
+   *  report is EMPTY rather than unfiltered, and saying so is the whole point
+   *  of the flag. */
+  filter_unavailable: boolean
 }
 
 /** The figures a recurring line carries — same shape for a category and for

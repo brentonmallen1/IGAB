@@ -3,7 +3,6 @@ import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recha
 import { useSpendingGroupedReport } from '../../../api/reports'
 import { useReportStore, spendingDrillClasses } from '../../../stores/reportStore'
 import { useFormatters } from '../../../hooks/useFormatters'
-import { parseApiDecimal } from '../../../utils/money'
 import { useChartHeight } from '../../../hooks/useChartHeight'
 import { ReportErrorState } from '../ReportErrorState'
 import { MetricCard } from '../MetricCard'
@@ -13,6 +12,7 @@ import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ChartTooltip } from './ChartTooltip'
 import { chartColor } from './chartColors'
 import { useReportScope } from '../../../stores/reportStore'
+import { ReportNotes } from '../ReportNotes'
 
 interface Props {
   budgetId: string
@@ -106,13 +106,11 @@ export function SpendingBreakdownReport({ budgetId }: Props) {
         </div>
       </div>
 
-      {data.view_hidden_categories > 0 && (
-        <p className="report-note">
-          The active view hides {data.view_hidden_categories} categor
-          {data.view_hidden_categories === 1 ? 'y' : 'ies'} with{' '}
-          {formatMoney(parseApiDecimal(String(data.view_hidden_total)))} of spending.
-        </p>
-      )}
+      {/* `ReportNotes` owns all three caveats. This chart re-implemented the
+          view-hidden sentence, never rendered the served `class_excluded` note
+          at all, and had nothing for a missing saved filter — so money the
+          report deliberately left out simply went missing from the screen. */}
+      <ReportNotes report={data} toggleAvailable={false} />
 
       {slices.length === 0 ? (
         <div className="reports-empty">

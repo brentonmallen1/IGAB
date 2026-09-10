@@ -17,6 +17,11 @@ export interface ReportNotesSource {
   view_hidden_categories?: number
   view_hidden_total?: number | string
   class_excluded?: SpendingClassExcluded[] | null
+  /** A saved filter was named and could not be found — deleted in another tab,
+   *  or belonging to another budget. Served by four reports and, until now,
+   *  declared by one client type, so three of them turned it into a silent
+   *  $0.00. */
+  filter_unavailable?: boolean
 }
 
 interface Props {
@@ -49,7 +54,8 @@ export function ReportNotes({ report, toggleAvailable, counts = 'spending' }: Pr
 
   const hidden = (report.view_hidden_categories ?? 0) > 0
   const excluded: SpendingClassExcluded[] = report.class_excluded ?? []
-  if (!hidden && excluded.length === 0) return null
+  const filterGone = report.filter_unavailable === true
+  if (!hidden && excluded.length === 0 && !filterGone) return null
 
   const parts = excluded.map(
     (e) =>
@@ -59,6 +65,15 @@ export function ReportNotes({ report, toggleAvailable, counts = 'spending' }: Pr
 
   return (
     <div className="report-notes">
+      {filterGone && (
+        <p className="report-notes__line" role="note">
+          <Info size={12} aria-hidden />
+          <span>
+            That saved filter no longer exists, so this report has nothing to show. Pick another
+            filter or clear it.
+          </span>
+        </p>
+      )}
       {hidden && (
         <p className="report-notes__line" role="note">
           <EyeOff size={12} aria-hidden />

@@ -2461,7 +2461,11 @@ class ReportService:
         # The all-excluded case still carries the note: an empty chart with no
         # explanation is exactly the failure it exists to prevent.
         if not rows:
-            return {"days": _empty(), "class_excluded": class_excluded}
+            return {
+                "days": _empty(),
+                "class_excluded": class_excluded,
+                "counted_classes": sorted(included),
+            }
 
         df = pl.DataFrame(
             {
@@ -2498,7 +2502,15 @@ class ReportService:
             }
             for i in range(7)
         ]
-        return {"days": days, "class_excluded": class_excluded}
+        return {
+            "days": days,
+            "class_excluded": class_excluded,
+            # Served so the drill-down asks for the same classes the bar
+            # counted. Without it the panel opened from a Tuesday bar totalled
+            # more than the bar did — the chart filters to spending and the
+            # panel filtered to nothing.
+            "counted_classes": sorted(included),
+        }
 
     # ─── Large Transactions (Timeline) ────────────────────────────────────────
 
@@ -2720,7 +2732,14 @@ class ReportService:
             .scalars()
             .all()
         }
-        hide_unassigned = view.hide_unassigned
+        # A view with no groups puts every category in Unassigned, so
+        # honouring `hide_unassigned` there would empty the report entirely.
+        # The client's `viewGrouping` has carried this guard since the budget
+        # page hit it — "views saved before [the editor refused the
+        # combination] (or emptied of groups later) must still show something"
+        # — and the server did not, so the same view drew a populated budget
+        # page and a blank spending report.
+        hide_unassigned = view.hide_unassigned and bool(group_names)
 
         def arrange(category_id) -> tuple[str, str] | None:
             placement = placements.get(category_id)
