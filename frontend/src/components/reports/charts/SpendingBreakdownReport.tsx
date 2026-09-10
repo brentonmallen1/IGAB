@@ -157,6 +157,7 @@ export function SpendingBreakdownReport({ budgetId }: Props) {
                         fill: p.fill,
                       }))}
                       label=""
+                      formatter={formatMoney}
                     />
                   )}
                 />

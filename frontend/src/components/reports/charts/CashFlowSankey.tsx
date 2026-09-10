@@ -22,6 +22,7 @@ import {
   type SankeyViewNode,
 } from './sankeyView'
 import './CashFlowSankey.css'
+import { truncateLabel } from './chartLabel'
 
 interface Props {
   budgetId: string
@@ -62,7 +63,7 @@ function SankeyNodeRect(props: {
         fill="var(--text-primary)"
         fontWeight={500}
       >
-        {payload.name.length > 24 ? payload.name.slice(0, 22) + '…' : payload.name}
+        {truncateLabel(payload.name, 24)}
       </text>
       {hasDelta && (
         <text

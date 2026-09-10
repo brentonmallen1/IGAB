@@ -1,6 +1,8 @@
 /** Pure math for the volatility report: error-bar spans and the coefficient
  * of variation. Extracted from VolatilityChart so it is unit-testable. */
 
+import { truncateLabel } from './chartLabel'
+
 interface VolatilityCategoryLike {
   category_id: string
   category_name: string
@@ -40,7 +42,7 @@ export function buildVolatilityChartRows(
     const below = Number(c.mean) - Number(c.min_val)
     const above = Number(c.max_val) - Number(c.mean)
     return {
-      name: c.category_name.length > 16 ? c.category_name.slice(0, 14) + '…' : c.category_name,
+      name: truncateLabel(c.category_name, 16),
       Mean: Number(c.mean),
       errorY: [below, above] as [number, number],
       errorLow: [below, 0] as [number, number],

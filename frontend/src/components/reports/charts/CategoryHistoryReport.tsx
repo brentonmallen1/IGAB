@@ -14,7 +14,6 @@ import { useCategoryHistoryReport } from '../../../api/reports'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { useChartHeight } from '../../../hooks/useChartHeight'
-import { getCurrencySymbol } from '../../../utils/money'
 import { groupedCategorySections } from '../../../utils/categoryPickers'
 import { GroupedCategoryOptions } from '../../common/GroupedCategoryOptions/GroupedCategoryOptions'
 import { ReportErrorState } from '../ReportErrorState'
@@ -26,6 +25,7 @@ import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ChartTooltip } from './ChartTooltip'
 import { COLOR_NEGATIVE, COLOR_NET, COLOR_POSITIVE } from './chartColors'
 import { useReportMonths } from '../../../stores/reportStore'
+import { useMoneyAxis } from './useMoneyAxis'
 
 interface Props {
   budgetId: string
@@ -34,8 +34,8 @@ interface Props {
 /** One category, month by month: assigned, spent, and what was left — the
  *  budget page's own figures, from the same service. */
 export function CategoryHistoryReport({ budgetId }: Props) {
-  const { formatMoney, formatMonth, settings } = useFormatters()
-  const currencySymbol = getCurrencySymbol(settings.currencyCode)
+  const { formatMoney, formatMonth } = useFormatters()
+  const moneyAxis = useMoneyAxis()
   const chartHeight = useChartHeight(320)
   const [categoryId, setCategoryId] = useState('')
   const months = useReportMonths()
@@ -143,12 +143,8 @@ export function CategoryHistoryReport({ budgetId }: Props) {
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
                 <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
                 <YAxis
+                  {...moneyAxis}
                   tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
-                  tickFormatter={(v) =>
-                    Math.abs(v) >= 1000
-                      ? `${currencySymbol}${Math.round(v / 1000)}k`
-                      : `${currencySymbol}${Math.round(v)}`
-                  }
                   axisLine={false}
                   tickLine={false}
                 />
@@ -163,6 +159,7 @@ export function CategoryHistoryReport({ budgetId }: Props) {
                         fill: p.fill,
                       }))}
                       label={String(label ?? '')}
+                      formatter={formatMoney}
                     />
                   )}
                 />

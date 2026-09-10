@@ -35,6 +35,7 @@ import { LogScaleToggle, logAxisProps } from './logScale'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { useReportScope } from '../../../stores/reportStore'
 import { drillScope } from '../drillScope'
+import { truncateLabel } from './chartLabel'
 
 interface Props {
   budgetId: string
@@ -200,7 +201,7 @@ export function ParetoReport({ budgetId }: Props) {
   const top20 = sorted.slice(0, 20)
   const cumulativePcts = cumulativePercents(top20, grandTotal)
   const chartData = top20.map((item, i) => ({
-    name: item.name.length > 14 ? item.name.slice(0, 12) + '…' : item.name,
+    name: truncateLabel(item.name, 14),
     fullName: item.name,
     group: item.groupName,
     Amount: item.total,

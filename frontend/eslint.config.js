@@ -51,6 +51,28 @@ const NO_BARE_PARSE_FLOAT = {
 }
 
 /**
+ * `ChartTooltip` used to default its `formatter` to a hard-coded
+ * ``$${v.toLocaleString('en-US', ...)}``. Eighteen of its nineteen call sites
+ * passed nothing and so inherited three bugs each: the budget's currency and
+ * number format ignored, privacy mode defeated (its purpose is that "sign and
+ * digits hidden, so overspending can't be inferred"), and — on the two charts
+ * whose series are not money — a percentage and a month count rendered as
+ * dollars.
+ *
+ * The default is gone and the prop is required, so TypeScript already catches
+ * a missing one. This says why, in the error, at the moment someone reaches
+ * for a default again.
+ */
+const NO_UNFORMATTED_CHART_TOOLTIP = {
+  selector: "JSXOpeningElement[name.name='ChartTooltip']:not(:has(JSXAttribute[name.name='formatter']))",
+  message:
+    'ChartTooltip needs an explicit formatter. Pass formatMoney from useFormatters() for money ' +
+    '(it honours currency, number format and privacy mode), or a unit-specific formatter for ' +
+    'anything that is not money — a percentage or a month count rendered as dollars is the bug ' +
+    'the old default caused.',
+}
+
+/**
  * Overlay geometry has now been consolidated twice. The first round collapsed
  * five copies into `utils/anchoredPosition.ts`; by the second, three more
  * surfaces were again running off the bottom of the screen — ContextMenu
@@ -104,7 +126,12 @@ export default defineConfig([
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },
       ],
-      'no-restricted-syntax': ['error', NO_BARE_PARSE_FLOAT, ...NO_HAND_ROLLED_VIEWPORT_MATH],
+      'no-restricted-syntax': [
+        'error',
+        NO_BARE_PARSE_FLOAT,
+        NO_UNFORMATTED_CHART_TOOLTIP,
+        ...NO_HAND_ROLLED_VIEWPORT_MATH,
+      ],
     },
   },
   {

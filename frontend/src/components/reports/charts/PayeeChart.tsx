@@ -21,6 +21,7 @@ import { CHART_COLORS, TOOLTIP_STYLE } from './chartColors'
 import { ReportInfoButton, ReportScopeNote, SpendingClassNote } from '../ReportInfoButton'
 import { LogScaleToggle, logAxisProps } from './logScale'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
+import { truncateLabel } from './chartLabel'
 
 interface Props {
   budgetId: string
@@ -52,7 +53,7 @@ export function PayeeReport({ budgetId }: Props) {
   const displayed = view === 'recurring' ? recurring : payees.slice(0, 20)
 
   const chartData = displayed.map((p) => ({
-    name: p.payee_name.length > 18 ? p.payee_name.slice(0, 16) + '…' : p.payee_name,
+    name: truncateLabel(p.payee_name, 18),
     fullName: p.payee_name,
     payeeId: p.payee_id,
     Amount: p.total,

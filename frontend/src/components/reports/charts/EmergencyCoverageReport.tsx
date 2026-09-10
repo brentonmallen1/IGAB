@@ -43,6 +43,14 @@ interface Props {
  * quoted rather than recomputed: two pages that each divide the same pair of
  * numbers are two pages that can disagree.
  */
+/** The first chart's Y axis is months of runway, not money.
+ *
+ * The shared tooltip's old default rendered 3.4 months as "$3.40".
+ */
+function monthsCovered(value: number): string {
+  return `${value.toFixed(1)} months`
+}
+
 export function EmergencyCoverageReport({ budgetId }: Props) {
   const { formatMoney, formatMonth } = useFormatters()
   const months = useReportMonths()
@@ -225,7 +233,7 @@ export function EmergencyCoverageReport({ budgetId }: Props) {
                     fillOpacity={0.1}
                     stroke="none"
                   />
-                  <Tooltip content={<ChartTooltip />} />
+                  <Tooltip content={<ChartTooltip formatter={monthsCovered} />} />
                   <Line
                     type="monotone"
                     dataKey="Covered"
@@ -245,7 +253,7 @@ export function EmergencyCoverageReport({ budgetId }: Props) {
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
                   <XAxis dataKey="month" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
                   <YAxis tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
-                  <Tooltip content={<ChartTooltip />} />
+                  <Tooltip content={<ChartTooltip formatter={formatMoney} />} />
                   <Area
                     type="monotone"
                     dataKey="Fund"

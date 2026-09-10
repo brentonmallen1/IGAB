@@ -17,7 +17,7 @@ each other, starting from `origin/main` at `892922a0`.
 | # | Branch | Scope | State |
 |---|---|---|---|
 | 1 | `fix/reports-month-formatter` | One short-month and day-month formatter; kill the `toISOString` round-trip; Anomalies uses the shared month window | done |
-| 2 | `fix/reports-tooltip-and-axes` | `ChartTooltip` requires a formatter; eight money axes onto `useMoneyAxis`; privacy-mode leaks | todo |
+| 2 | `fix/reports-tooltip-and-axes` | `ChartTooltip` requires a formatter; eight money axes onto `useMoneyAxis`; privacy-mode leaks | done |
 | 3 | `fix/reports-projection-recurrence` | `cash_projection` reuses `domain/schedule.py`; subscription/schedule dedup; recency window | todo |
 | 4 | `fix/reports-savings-carryover` | `savings_report` reuses `domain/carryover.py`; envelope set; window | todo |
 | 5 | `fix/reports-one-spending-row-set` | One spending predicate + class filter + joins; convert every report | todo |

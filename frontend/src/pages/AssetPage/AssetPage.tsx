@@ -37,6 +37,7 @@ import { equityOf, liabilitiesSecuredBy } from '../../utils/equity'
 import { isStaleValue } from '../../utils/assetValues'
 import { parseAmountInput } from '../../utils/money'
 import './AssetPage.css'
+import { useMoneyAxis } from '../../components/reports/charts/useMoneyAxis'
 
 const TYPE_LABEL: Record<string, string> = {
   property: 'Property',
@@ -59,6 +60,7 @@ export function AssetPage() {
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const navigate = useNavigate()
   const { formatMoney, formatDate } = useFormatters()
+  const moneyAxis = useMoneyAxis()
   const notify = useUndoToast()
 
   const { data: assets = [], isLoading } = useAssets(budgetId)
@@ -227,13 +229,9 @@ export function AssetPage() {
             <ComposedChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
               <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
-              <YAxis
-                tickFormatter={(v) => formatMoney(v)}
-                tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
-                width={90}
-              />
+              <YAxis {...moneyAxis} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} width={90} />
               <Tooltip
-                content={<ChartTooltip showTotal={false} />}
+                content={<ChartTooltip showTotal={false} formatter={formatMoney} />}
                 offset={16}
                 isAnimationActive={false}
               />

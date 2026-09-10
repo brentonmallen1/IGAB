@@ -221,7 +221,7 @@ export function LiabilitiesReport({ budgetId }: Props) {
                     {...logAxisProps(logScale)}
                   />
                   <Tooltip
-                    content={<ChartTooltip showTotal />}
+                    content={<ChartTooltip showTotal formatter={formatMoney} />}
                     offset={16}
                     isAnimationActive={false}
                   />

@@ -107,7 +107,7 @@ export function PaydownChart({ amortization, mode, isMobile = false, promoEndDat
         <XAxis dataKey="month" tick={{ fontSize: 11 }} minTickGap={40} />
         <YAxis tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11 }} width={85} />
         <Tooltip
-          content={<ChartTooltip showTotal={false} />}
+          content={<ChartTooltip showTotal={false} formatter={formatMoney} />}
           offset={16}
           isAnimationActive={false}
         />

@@ -12,7 +12,6 @@ import {
 import { useNavigate } from 'react-router-dom'
 import { useSavingsReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
-import { getCurrencySymbol } from '../../../utils/money'
 import { ReportErrorState } from '../ReportErrorState'
 import { ReportRangeSelect } from './rangeSelect'
 import { MetricCard } from '../MetricCard'
@@ -23,6 +22,7 @@ import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ChartTooltip } from './ChartTooltip'
 import './SavingsReport.css'
 import { useReportMonths } from '../../../stores/reportStore'
+import { useMoneyAxis } from './useMoneyAxis'
 
 interface Props {
   budgetId: string
@@ -30,8 +30,8 @@ interface Props {
 
 export function SavingsReport({ budgetId }: Props) {
   const navigate = useNavigate()
-  const { formatMoney, formatDate, formatMonthShort, settings } = useFormatters()
-  const currencySymbol = getCurrencySymbol(settings.currencyCode)
+  const { formatMoney, formatDate, formatMonthShort } = useFormatters()
+  const moneyAxis = useMoneyAxis()
   const months = useReportMonths()
   const { data, isLoading, isError, error, refetch } = useSavingsReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
@@ -154,12 +154,8 @@ export function SavingsReport({ budgetId }: Props) {
                   tickLine={false}
                 />
                 <YAxis
+                  {...moneyAxis}
                   tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
-                  tickFormatter={(v) =>
-                    Math.abs(v) >= 1000
-                      ? `${currencySymbol}${Math.round(v / 1000)}k`
-                      : `${currencySymbol}${Math.round(v)}`
-                  }
                   axisLine={false}
                   tickLine={false}
                 />
@@ -175,6 +171,7 @@ export function SavingsReport({ budgetId }: Props) {
                       }))}
                       label={String(label ?? '')}
                       showTotal
+                      formatter={formatMoney}
                     />
                   )}
                 />
