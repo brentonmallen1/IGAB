@@ -34,6 +34,8 @@ from igab.domain.activity_class import (
     basis_is_chosen,
     counted_class_filter,
     counted_classes,
+    rolled_up_classes,
+    split_leg_classes,
 )
 
 # CASH_FLOW_ROW: plain rows plus categorized transfer legs (spending
@@ -2271,25 +2273,10 @@ class ReportService:
         # legs, was drawn as a red "Spending" dot. Its class comes from its
         # legs: one distinct class among them is the parent's class, and
         # anything else is honestly mixed.
-        leg_classes = await self._split_leg_classes([r.id for r in rows if r.is_split])
-
-        return timeline_rows(rows, leg_classes)
-
-    async def _split_leg_classes(self, parent_ids: list) -> dict:
-        """{parent id: the distinct activity classes of its legs}.
-
-        One query for the page rather than one per row, and only for the
-        parents actually returned — at most `limit` of them.
-        """
-        if not parent_ids:
-            return {}
-        q = select(Transaction.parent_transaction_id, ACTIVITY_CLASS.label("cls")).where(
-            Transaction.parent_transaction_id.in_(parent_ids), NOT_DELETED
-        )
-        out: dict = {}
-        for row in (await self.session.execute(apply_class_joins(q))).all():
-            out.setdefault(row.parent_transaction_id, set()).add(row.cls)
-        return out
+        # One query for the parents on this page, at most `limit` of them.
+        split_ids = [r.id for r in rows if r.is_split]
+        legs = (await self.session.execute(split_leg_classes(split_ids))).all() if split_ids else []
+        return timeline_rows(rows, rolled_up_classes(legs))
 
     # ─── Subscriptions Report ─────────────────────────────────────────────────
 

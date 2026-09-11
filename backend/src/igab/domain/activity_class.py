@@ -14,9 +14,11 @@ rather than a named class, so rows could fall through it unnoticed.
 Scope note: a row's class is read from its category, which lives on split
 *children*. Apply this to LEAF queries. A split parent has no category and can
 legitimately mix classes across its legs (groceries and a savings transfer in
-one bank row), so PARENT_ROW aggregates — account balances, cash flow — cannot
-use it as-is and still classify by amount sign. Splitting those correctly means
-rolling children up per class, which is not done here.
+one bank row), so ACTIVITY_CLASS on a parent row is a fall-through, not an
+answer. Where one parent row is shown with a class — the Timeline, the
+transaction editor's "Counts as" line — its class is rolled up from its legs by
+`split_leg_classes` and `rolled_up_classes` below. PARENT_ROW aggregates do not
+use the roll-up: a sum splits per class by reading the legs themselves.
 
 The rules are ordered and first-match-wins, so each one also carries a stable
 `ActivityReason`. That is what lets the UI answer "why is this savings?" with
@@ -473,10 +475,69 @@ SPENDING_WITH_SAVINGS_CLASSES = SPENDING_CLASSES + SAVINGS_CLASSES
 
 def explain(reason: str) -> str:
     """Prose for a reason code, safe for an unknown value from an older row."""
+    if reason in SPLIT_REASON_TEXT:
+        return SPLIT_REASON_TEXT[reason]
     try:
         return REASON_TEXT[ActivityReason(reason)]
     except (ValueError, KeyError):
         return "it did not match any specific rule"
+
+
+# ─── Split parents ───────────────────────────────────────────────────────────
+#
+# One home for "what does this split count as", because two places show a
+# split parent with a class. The Timeline rolled the legs up and the editor's
+# classification endpoint did not, so an all-savings split was a Savings dot on
+# the Timeline and "ordinary spending from a budget account" in the editor.
+
+#: The label of a split whose legs do not share one class. Served, never
+#: guessed at: falling back to the amount's sign is the mislabelling this
+#: taxonomy exists to end.
+SPLIT_LABEL = "Split"
+
+#: Reason codes for a split parent. Not `ActivityReason` members: no SQL rule
+#: emits them, and every member of that enum must fire on a leaf row.
+SPLIT_REASON_TEXT: dict[str, str] = {
+    "split_legs_agree": "every line of the split counts this way",
+    "split_legs_differ": "its lines count in different ways, and each is counted on its own",
+}
+
+
+def split_leg_classes(parent_ids: Sequence[Any]) -> Select:
+    """`(parent id, class)` for every live leg of these split parents.
+
+    One query for a page of parents rather than one per row. Live legs only:
+    editing or undoing a split soft-deletes its old legs and leaves them
+    pointing at the parent.
+    """
+    return apply_class_joins(
+        select(Transaction.parent_transaction_id, ACTIVITY_CLASS.label("cls")).where(
+            Transaction.parent_transaction_id.in_(parent_ids), NOT_DELETED
+        )
+    )
+
+
+def rolled_up_classes(leg_rows) -> dict[Any, str | None]:
+    """{parent id: its class} from `split_leg_classes` rows.
+
+    One distinct class among the legs IS the parent's class. Anything else is
+    honestly mixed, and the answer is None — shown as `SPLIT_LABEL`. A parent
+    with no live legs is absent, which reads the same.
+    """
+    found: dict[Any, set[str]] = {}
+    for parent_id, cls in leg_rows:
+        found.setdefault(parent_id, set()).add(cls)
+    return {pid: next(iter(c)) if len(c) == 1 else None for pid, c in found.items()}
+
+
+def class_label(cls: str | None) -> str:
+    """The display label for a class, or `SPLIT_LABEL` for a mixed split."""
+    return SPLIT_LABEL if cls is None else CLASS_LABEL[ActivityClass(cls)]
+
+
+def split_reason(cls: str | None) -> str:
+    """The reason code for a split parent whose rolled-up class is `cls`."""
+    return "split_legs_differ" if cls is None else "split_legs_agree"
 
 
 def counted_classes(

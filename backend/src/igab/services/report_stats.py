@@ -21,7 +21,7 @@ from typing import Any
 
 import polars as pl
 
-from igab.domain.activity_class import CLASS_LABEL, ActivityClass
+from igab.domain.activity_class import class_label
 from igab.domain.amortize import spread_forward
 
 
@@ -132,31 +132,17 @@ def volatility_stats(rows, month_grid: list[date], *, amortize: bool = False) ->
     ]
 
 
-def timeline_rows(rows, leg_classes: dict) -> list[dict]:
-    """Timeline entries, with a split parent's class taken from its legs.
+def timeline_rows(rows, parent_classes: dict) -> list[dict]:
+    """Timeline entries, with a split parent's class rolled up from its legs.
 
-    The classifier is defined on LEAF rows — a split parent carries no category
-    — so a parent fell through every rule to the SPENDING default. A transfer
-    to a brokerage itemised into three legs was drawn as a red "Spending" dot.
-
-    One distinct class among the legs IS the parent's class. Anything else is
-    honestly mixed: `activity_class` is None and the label reads "Split", which
-    is served rather than guessed at. The client used to fall back to the
-    amount's sign there, and falling back to the sign is the mislabelling this
-    taxonomy exists to end.
+    `parent_classes` is `activity_class.rolled_up_classes` for the split
+    parents among `rows`; the rule — one distinct class among the legs, else
+    None and "Split" — lives there, because the transaction editor's
+    classification shows the same row and must say the same thing.
     """
     out: list[dict] = []
     for r in rows:
-        cls: str | None = r.activity_class
-        label = CLASS_LABEL[ActivityClass(cls)]
-        if r.is_split:
-            found = leg_classes.get(r.id, set())
-            if len(found) == 1:
-                cls = next(iter(found))
-                label = CLASS_LABEL[ActivityClass(cls)]
-            else:
-                cls = None
-                label = "Split"
+        cls: str | None = parent_classes.get(r.id) if r.is_split else r.activity_class
         out.append(
             {
                 "id": str(r.id),
@@ -166,7 +152,7 @@ def timeline_rows(rows, leg_classes: dict) -> list[dict]:
                 "category_name": r.category_name,
                 "memo": r.memo,
                 "activity_class": cls,
-                "activity_label": label,
+                "activity_label": class_label(cls),
             }
         )
     return out

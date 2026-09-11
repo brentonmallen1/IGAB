@@ -56,11 +56,13 @@ from igab.dependencies import (
 from igab.domain.activity_class import (
     ACTIVITY_CLASS,
     ACTIVITY_REASON,
-    CLASS_LABEL,
-    ActivityClass,
     NecessityTier,
     apply_class_joins,
+    class_label,
     explain,
+    rolled_up_classes,
+    split_leg_classes,
+    split_reason,
 )
 from igab.domain.exceptions import InvariantViolation, NotFoundError
 from igab.repositories.account_repo import AccountRepository
@@ -404,7 +406,7 @@ async def get_transaction_classification(
         await session.execute(
             # Transaction.id is unused; the class joins chain from it.
             apply_class_joins(
-                select(Transaction.id, ACTIVITY_CLASS, ACTIVITY_REASON).where(
+                select(Transaction.id, ACTIVITY_CLASS, ACTIVITY_REASON, Transaction.is_split).where(
                     Transaction.id == transaction_id
                 )
             )
@@ -413,12 +415,19 @@ async def get_transaction_classification(
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found")
 
-    activity_class = ActivityClass(row[1])
+    activity_class: str | None = row[1]
+    reason: str = row[2]
+    if row[3]:
+        # A split parent's own class is a fall-through; its legs decide, by
+        # the same roll-up the Timeline draws with.
+        legs = (await session.execute(split_leg_classes([transaction_id]))).all()
+        activity_class = rolled_up_classes(legs).get(transaction_id)
+        reason = split_reason(activity_class)
     return TransactionClassification(
         activity_class=activity_class,
-        label=CLASS_LABEL[activity_class],
-        reason=row[2],
-        explanation=explain(row[2]),
+        label=class_label(activity_class),
+        reason=reason,
+        explanation=explain(reason),
     )
 
 

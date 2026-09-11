@@ -509,12 +509,16 @@ class TimelineTransaction(ApiModel):
     #: all-savings split was drawn as a red "Spending" dot. Where the legs
     #: agree, the parent takes their class; where they do not, the honest
     #: answer is that there isn't one, and `activity_label` reads "Split".
-    activity_class: str | None = "spending"
+    #:
+    #: Required, both of them: None now means "the legs disagree", so a
+    #: default of "spending" filled in for a path that forgot would draw an
+    #: all-savings split as a red Spending dot again, with no error.
+    activity_class: str | None
     #: Its display label, served rather than mirrored. A local copy in the
     #: chart had already drifted ("Interest" vs the canonical "Interest &
     #: fees"), and a class added later would fall back to sign-based colouring
     #: there — the exact mislabelling this taxonomy exists to fix.
-    activity_label: str = "Spending"
+    activity_label: str
 
 
 class TimelineResponse(ApiModel):

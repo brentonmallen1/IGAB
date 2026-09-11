@@ -119,8 +119,10 @@ class TransactionUpdate(ApiModel):
 class TransactionClassification(ApiModel):
     """Why a transaction counts the way it does in reports."""
 
-    activity_class: str
-    #: Short human label for the class, e.g. "Savings".
+    #: None for a split whose legs do not share one class — see
+    #: `activity_class.rolled_up_classes`, the same roll-up the Timeline reads.
+    activity_class: str | None
+    #: Short human label for the class, e.g. "Savings", or "Split".
     label: str
     #: Stable rule identifier — safe to branch on, unlike the prose.
     reason: str
