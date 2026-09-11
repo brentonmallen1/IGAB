@@ -276,6 +276,10 @@ class VolatilityResponse(ApiModel):
     #: next one. Served so the page can say which reading it is showing —
     #: the same numbers under two definitions is how a chart lies quietly.
     amortized: bool = False
+    #: The complete months the statistics read. The drill-down lists exactly
+    #: these; the chart used to compute its own, and it drifted.
+    window_start: date
+    window_end: date
 
 
 # ─── Spending Grouped (Pareto + Treemap) ──────────────────────────────────────

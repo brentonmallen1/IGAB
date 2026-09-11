@@ -433,7 +433,10 @@ async def volatility_report(
     """
     data = await report_svc.category_volatility(budget_id, months, amortize)
     return VolatilityResponse(
-        categories=[VolatilityItem.model_validate(c) for c in data], amortized=amortize
+        categories=[VolatilityItem.model_validate(c) for c in data["categories"]],
+        amortized=amortize,
+        window_start=data["window_start"],
+        window_end=data["window_end"],
     )
 
 

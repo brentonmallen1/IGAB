@@ -40,15 +40,16 @@ from igab.domain.activity_class import (
 # transfers to off-budget accounts count as real income/expense; internal
 # uncategorized transfers never do). For category-scoped queries the
 # predicate is vacuously true, keeping one uniform rule.
-from igab.domain.dates import add_months, months_spanned
+from igab.domain.dates import add_months, complete_month_window, months_spanned, trailing_start
 from igab.domain.dates import month_end as _month_end
 from igab.domain.money import format_csv_amount, quantize_cents
 from igab.domain.plan import plan_outcome
 from igab.domain.schedule import projected_occurrences, subscription_occurrences
 from igab.guide.concepts import (
-    ESSENTIALS_WINDOW_DAYS,
     FULL_EMERGENCY_FUND_MONTHS_HIGH,
     FULL_EMERGENCY_FUND_MONTHS_LOW,
+    essentials_per_month,
+    essentials_since,
 )
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_filters import BUDGETED_ENVELOPE, SPENT_ENVELOPE
@@ -248,6 +249,14 @@ class ReportService:
             "earliest_month": earliest.replace(day=1) if earliest else None,
             "months_available": months_spanned(earliest, date.today()) if earliest else 0,
         }
+
+    async def _complete_window(self, budget_id: uuid.UUID, months: int) -> tuple[date, date]:
+        """The last `months` complete months, never reaching before this
+        budget's history — the window volatility, seasonality and anomalies
+        all read. `complete_month_window` says why it clamps; this only
+        supplies where the history starts."""
+        earliest = await self.txns.earliest_date(budget_id)
+        return complete_month_window(date.today(), months, earliest)
 
     # ─── Existing ─────────────────────────────────────────────────────────────
 
@@ -542,14 +551,12 @@ class ReportService:
         # this card announce "Savings Rate 0% / Expenses $5,000" beside a
         # Savings Rate tab reading 40% and an Income vs Expenses tab reading
         # $3,000, for the same window and the same budget.
-        # 29 and 89, not 30 and 90. Both bounds below are inclusive, so
-        # `today - 30` spans THIRTY-ONE days — and `days_until_zero` divides
+        # `trailing_start`, not `today - 30`: both bounds below are inclusive,
+        # so that spans THIRTY-ONE days — and `days_until_zero` divides
         # burn_30 by 30 while burn_90 is divided by 3, so the card overstated
-        # daily burn by about 3.3% and understated runway by the same. The Burn
-        # Rate chart already used 29 and 89, so the two disagreed by
-        # construction.
-        thirty_ago = today - timedelta(days=29)
-        ninety_ago = today - timedelta(days=89)
+        # daily burn by about 3.3% and understated runway by the same.
+        thirty_ago = trailing_start(today, 30)
+        ninety_ago = trailing_start(today, 90)
         cdf = await self._class_frame(budget_id, min(prev_start, ninety_ago), today)
 
         def _cls_total(start: date, end: date, cls: ActivityClass) -> Decimal:
@@ -1018,14 +1025,14 @@ class ReportService:
             # genuine trailing thirty days — every day of the month.
             month_end = min(_month_end(month_start), today)
 
-            # Thirty days INCLUSIVE of month_end, which is why it is 29 and
-            # not 30. A rolling window deliberately does not tile the
-            # calendar: over a 31-day month one day falls in no window, and
+            # Thirty days INCLUSIVE of month_end (`trailing_start`). A rolling
+            # window deliberately does not tile the calendar: over a 31-day
+            # month one day falls in no window, and
             # over a 28-day month one falls in two. That is what "rolling"
             # means, and `rolling_30` says so — a per-calendar-month figure is
             # what Spending Trends is for.
-            d30 = month_end - timedelta(days=29)
-            d90 = month_end - timedelta(days=89)
+            d30 = trailing_start(month_end, 30)
+            d90 = trailing_start(month_end, 90)
 
             r30 = sum(abs(float(r.amount)) for r in txns if d30 <= r.date <= month_end)
             r90 = sum(abs(float(r.amount)) for r in txns if d90 <= r.date <= month_end) / 3
@@ -1848,20 +1855,23 @@ class ReportService:
         budget_id: uuid.UUID,
         months: int = 12,
         amortize: bool = False,
-    ) -> list[dict]:
-        today = date.today()
-        first_of_month = today.replace(day=1)
-        # COMPLETE months only, and bounded at both ends.
-        #
-        # There was no upper bound at all, so a future-dated row landed in a
-        # month bucket outside the window it is labelled with — and on the
-        # heatmap it set the colour scale for every real cell. And the current
-        # month was counted as though complete, which invents a historical
-        # minimum on the 2nd of every month and drags the coefficient of
-        # variation with it: a category that always spends 400 read a spread of
-        # 12-400 purely because today is early.
-        start = _subtract_months(first_of_month, months)
-        end = first_of_month - timedelta(days=1)
+    ) -> dict:
+        """Per-category spread over complete months, and the window it read.
+
+        COMPLETE months only, and bounded at both ends. There was no upper
+        bound at all, so a future-dated row landed in a month bucket outside
+        the window it is labelled with. And the current month was counted as
+        though complete, which invents a historical minimum on the 2nd of every
+        month: a category that always spends 400 read a spread of 12-400 purely
+        because today is early.
+
+        The window is SERVED because the drill-down must list the rows these
+        figures came from. The chart computed it for itself, under a comment
+        saying it was "the same window the backend aggregates over", and it
+        stopped being the same the day this one moved: the panel added the
+        partial current month the statistics leave out and dropped the oldest.
+        """
+        start, end = await self._complete_window(budget_id, months)
 
         q = (
             select(
@@ -1886,7 +1896,11 @@ class ReportService:
             )
         )
         rows = (await self.session.execute(q)).all()
-        return volatility_stats(rows, _months_in_range(start, end), amortize=amortize)
+        return {
+            "categories": volatility_stats(rows, _months_in_range(start, end), amortize=amortize),
+            "window_start": start,
+            "window_end": end,
+        }
 
     @staticmethod
     def _spending_query(
@@ -2073,19 +2087,17 @@ class ReportService:
         budget_id: uuid.UUID,
         months: int = 12,
     ) -> dict:
-        today = date.today()
-        first_of_month = today.replace(day=1)
-        # COMPLETE months only, and bounded at both ends.
+        # COMPLETE months only, bounded at both ends, and never before the
+        # budget's history (`complete_month_window`). With no upper bound a
+        # future-dated row set the heatmap's colour scale for every real cell.
         #
-        # There was no upper bound at all, so a future-dated row landed in a
-        # month bucket outside the window it is labelled with — and on the
-        # heatmap it set the colour scale for every real cell. And the current
-        # month was counted as though complete, which invents a historical
-        # minimum on the 2nd of every month and drags the coefficient of
-        # variation with it: a category that always spends 400 read a spread of
-        # 12-400 purely because today is early.
-        start = _subtract_months(first_of_month, months)
-        end = first_of_month - timedelta(days=1)
+        # The axis is built from the SAME bounds. It was built through the
+        # current month while the query stopped at the end of the last one, so
+        # the newest column was always blank and the oldest month's cells had
+        # no column at all — yet still set the colour scale and the top-20
+        # ranking, the undrawn-cell defect the window was moved to fix.
+        start, end = await self._complete_window(budget_id, months)
+        months_list = _months_in_range(start, end)
 
         q = (
             select(
@@ -2109,8 +2121,6 @@ class ReportService:
             )
         )
         rows = (await self.session.execute(q)).all()
-
-        months_list = [_subtract_months(first_of_month, i) for i in range(months - 1, -1, -1)]
 
         if not rows:
             return {"cells": [], "months": months_list, "categories": []}
@@ -2162,11 +2172,10 @@ class ReportService:
         self, budget_id: uuid.UUID, today: date
     ) -> tuple[Decimal | None, bool]:
         """(monthly essentials over the Guide's window, anything tagged?)."""
-        since = today - timedelta(days=ESSENTIALS_WINDOW_DAYS)
-        total, basis = await self.txns.essential_spend(budget_id, since, today)
+        total, basis = await self.txns.essential_spend(budget_id, essentials_since(today), today)
         if not basis_is_chosen(basis):
             return None, False
-        return quantize_cents(abs(total) / 3), True
+        return essentials_per_month(total), True
 
     async def essentials_summary(self, budget_id: uuid.UUID, months: int = 12) -> dict:
         """What a lean month costs, and what a reserve of N months would be.
@@ -2178,10 +2187,11 @@ class ReportService:
         down. That divergence is deliberate and pinned by test.
         """
         today = date.today()
-        first_of_month = today.replace(day=1)
-        window_start = _subtract_months(first_of_month, months)
-        window_end = first_of_month - timedelta(days=1)
-        months_list = [_subtract_months(first_of_month, i) for i in range(months, 0, -1)]
+        # Not clamped to the budget's history, unlike volatility: the table
+        # divides by `months` and Emergency Coverage reads it, so clamping is a
+        # change to both figures rather than to a window.
+        window_start, window_end = complete_month_window(today, months)
+        months_list = _months_in_range(window_start, window_end)
 
         essentials_90d, tagged = await self._essentials_monthly(budget_id, today)
         headline = essentials_90d or Decimal("0")
@@ -2966,10 +2976,7 @@ class ReportService:
         collapsed, every month, for most of the month. A partial month is not a
         small month.
         """
-        today = date.today()
-        first_of_month = today.replace(day=1)
-        end_date = first_of_month - timedelta(days=1)
-        start_date = _subtract_months(first_of_month, months)
+        start_date, end_date = await self._complete_window(budget_id, months)
 
         # Get spending per category per month
         month_col = func.date_trunc(literal_column("'month'"), Transaction.date).label("month")

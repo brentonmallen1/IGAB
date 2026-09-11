@@ -41,6 +41,14 @@ def scalar_result(value) -> MagicMock:
     return r
 
 
+def earliest_result(value: date | None) -> MagicMock:
+    """What `TransactionRepository.earliest_date` reads: when history starts.
+    The complete-month reports ask for it first, to clamp their window."""
+    r = MagicMock()
+    r.scalar_one_or_none.return_value = value
+    return r
+
+
 def make_session(*results) -> AsyncMock:
     """
     Session whose execute() calls return results in order.
@@ -924,8 +932,8 @@ class TestCategoryVolatility:
                 vrow(date(2026, 1, 15), D("-200.00")),
                 vrow(date(2026, 2, 15), D("-150.00")),
             ]
-            svc = ReportService(make_session(mock_result(rows)))
-            result = await svc.category_volatility(BUDGET, months=3)
+            svc = ReportService(make_session(earliest_result(None), mock_result(rows)))
+            result = (await svc.category_volatility(BUDGET, months=3))["categories"]
 
         assert len(result) == 1
         r = result[0]
@@ -960,8 +968,8 @@ class TestCategoryVolatility:
 
             # Two charges of 600 in a six-month window: Jan and Apr.
             rows = [vrow(date(2026, 1, 20), D("-600.00")), vrow(date(2026, 4, 20), D("-600.00"))]
-            svc = ReportService(make_session(mock_result(rows)))
-            result = await svc.category_volatility(BUDGET, months=6)
+            svc = ReportService(make_session(earliest_result(None), mock_result(rows)))
+            result = (await svc.category_volatility(BUDGET, months=6))["categories"]
 
         r = result[0]
         # 1,200 over six months, not 600 over two.
@@ -978,9 +986,14 @@ class TestCategoryVolatility:
         with patch("igab.services.report_service.date") as mock_date:
             mock_date.today.return_value = date(2026, 3, 31)
             mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
-            svc = ReportService(make_session(mock_result([])))
+            svc = ReportService(make_session(earliest_result(None), mock_result([])))
             result = await svc.category_volatility(BUDGET, months=3)
-        assert result == []
+        assert result["categories"] == []
+        # The window is served even when empty: the drill-down needs it.
+        assert (result["window_start"], result["window_end"]) == (
+            date(2025, 12, 1),
+            date(2026, 2, 28),
+        )
 
 
 # ─── seasonality ──────────────────────────────────────────────────────────────
@@ -995,27 +1008,41 @@ class TestSeasonality:
             def srow(d, amt):
                 return row(date=d, amount=amt, category_id=CAT_A, category_name="Groceries")
 
-            rows = [srow(date(2026, 1, 10), D("-100.00")), srow(date(2026, 2, 10), D("-120.00"))]
-            svc = ReportService(make_session(mock_result(rows)))
+            # Two complete months before February: December and January.
+            rows = [srow(date(2025, 12, 10), D("-120.00")), srow(date(2026, 1, 10), D("-100.00"))]
+            svc = ReportService(make_session(earliest_result(None), mock_result(rows)))
             result = await svc.seasonality(BUDGET, months=2)
 
-        assert len(result["months"]) == 2
+        # The axis is the query's window. It used to run through the current
+        # month — Jan/Feb here — while the query read Dec/Jan, so February was
+        # always a blank column and December's cells had none.
+        assert result["months"] == [date(2025, 12, 1), date(2026, 1, 1)]
+        assert {c["month"] for c in result["cells"]} <= set(result["months"])
         assert any(c["id"] == str(CAT_A) for c in result["categories"])
-        cells = result["cells"]
-        jan_cell = next((c for c in cells if c["month"].month == 1), None)
-        assert jan_cell is not None
+        jan_cell = next(c for c in result["cells"] if c["month"] == date(2026, 1, 1))
         assert jan_cell["total"] == D("100.0")
+
+    async def test_the_axis_starts_where_the_history_does(self):
+        """A budget three weeks old on "12 months" has one complete month. The
+        axis drew eleven blank columns before it, which reads as data loss."""
+        with patch("igab.services.report_service.date") as mock_date:
+            mock_date.today.return_value = date(2026, 2, 20)
+            mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
+            svc = ReportService(make_session(earliest_result(date(2026, 1, 28)), mock_result([])))
+            result = await svc.seasonality(BUDGET, months=12)
+
+        assert result["months"] == [date(2026, 1, 1)]
 
     async def test_empty_returns_months_no_cells(self):
         with patch("igab.services.report_service.date") as mock_date:
             mock_date.today.return_value = date(2026, 2, 28)
             mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
-            svc = ReportService(make_session(mock_result([])))
+            svc = ReportService(make_session(earliest_result(None), mock_result([])))
             result = await svc.seasonality(BUDGET, months=2)
 
         assert result["cells"] == []
         assert result["categories"] == []
-        assert len(result["months"]) == 2
+        assert result["months"] == [date(2025, 12, 1), date(2026, 1, 1)]
 
 
 # ─── large_transactions ───────────────────────────────────────────────────────

@@ -419,6 +419,42 @@ describe('SubscriptionsReport table', () => {
   })
 })
 
+describe('VolatilityReport drill-down', () => {
+  it('opens the window the statistics read, as served', () => {
+    // The chart computed its own window — `monthsAgoStartISO(months - 1)`
+    // through today — under a comment calling it the backend's. The backend
+    // reads complete months, so the panel added the partial current month and
+    // dropped the oldest one, and its total could not reconcile.
+    setQuery({
+      data: {
+        categories: [
+          {
+            category_id: 'c1',
+            category_name: 'Groceries',
+            category_group_name: 'Everyday',
+            mean: 400,
+            std_dev: 20,
+            min_val: 380,
+            max_val: 420,
+            p25: 390,
+            p75: 410,
+            months_included: 6,
+          },
+        ],
+        amortized: false,
+        window_start: '2026-03-01',
+        window_end: '2026-08-31',
+      },
+    })
+    renderReport(<VolatilityReport budgetId="b1" />)
+
+    fireEvent.click(screen.getByRole('cell', { name: 'Groceries' }))
+
+    const drill = useReportStore.getState().drillDown
+    expect(drill).toMatchObject({ startDate: '2026-03-01', endDate: '2026-08-31' })
+  })
+})
+
 describe('AnomaliesReport list', () => {
   it('shows the anomaly with its percent change vs baseline', () => {
     setQuery({

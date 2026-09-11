@@ -16,7 +16,7 @@ try/except around a calendar edge.
 
 import calendar
 from collections.abc import Sequence
-from datetime import date
+from datetime import date, timedelta
 
 
 def add_months(d: date, months: int) -> date:
@@ -76,12 +76,52 @@ def complete_months(months: Sequence[date], today: date) -> list[date]:
     the same query over its own window, quoted $3,000.
 
     The current month is never complete — not even on its last day, since the
-    day is not over. That is the rule `category_volatility` already applies by
-    ending its window at `first_of_month - 1 day`, said once so a report
-    cannot pick a different answer.
+    day is not over. `complete_month_window` applies the same rule to a
+    window, so a report cannot pick a different answer.
     """
     current = month_start(today)
     return [m for m in months if month_start(m) < current]
+
+
+def complete_month_window(
+    today: date, months: int, history_from: date | None = None
+) -> tuple[date, date]:
+    """The last `months` COMPLETE months: (first day of the oldest, last day of
+    the previous month). The current month is never in it — see
+    `complete_months` for why.
+
+    `history_from` is when the budget's history starts. The window never
+    reaches before that month: a zero-filled month before the first
+    transaction is not a month of zero spending, it is a month nobody
+    recorded. Volatility filled them in, so on "All time" — which counts the
+    current month the window leaves out, and so always asked for one month
+    too many — every category gained an invented zero, and a young budget on
+    the default twelve months had steady grocery spending reading as the most
+    volatile thing in it. A budget whose history starts this month has no
+    complete month, and the window comes back empty (start after end).
+
+    One helper because the window was spelled out four times — volatility,
+    seasonality, anomalies, essentials — and seasonality then drew its axis
+    from a fifth spelling that ran through the current month instead.
+    """
+    current = month_start(today)
+    start = add_months(current, -months)
+    if history_from is not None:
+        start = max(start, month_start(history_from))
+    return start, current - timedelta(days=1)
+
+
+def trailing_start(today: date, days: int) -> date:
+    """The first day of the `days`-day window that ends on `today`, both ends
+    inclusive.
+
+    `today - timedelta(days=days)` is the trap: with inclusive bounds it spans
+    `days + 1` days. The Overview's burn figures and the Burn Rate chart were
+    fixed to 29 and 89 while the Essentials figure kept `today - 90` — a 91-day
+    window, divided by three, beside a 90-day one — so on a register tagged
+    entirely Essential the "subset" read higher than the burn it is part of.
+    """
+    return today - timedelta(days=days - 1)
 
 
 def weekday_occurrences(month: date, weekday: int) -> int:

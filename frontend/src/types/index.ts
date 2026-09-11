@@ -884,6 +884,10 @@ export interface VolatilityReport {
    *  one. Served so the page can say which reading it is showing — the same
    *  numbers under two definitions is how a chart lies quietly. */
   amortized: boolean
+  /** The complete months the statistics read (server-decided). Drill with
+   *  these — a window computed here drifted from the backend's once already. */
+  window_start: string
+  window_end: string
 }
 
 export interface SpendingGroupItem {

@@ -37,8 +37,7 @@ export function previousWindow(start: string, end: string): { start: string; end
   return { start: prevStart, end: prevEnd }
 }
 
-/** First day of the month `monthsBack` months before the current one —
- * mirrors the backend's `_subtract_months(first_of_month, months - 1)`. */
+/** First day of the month `monthsBack` months before the current one. */
 export function monthsAgoStartISO(monthsBack: number): string {
   const now = new Date()
   return toISODate(new Date(now.getFullYear(), now.getMonth() - monthsBack, 1))
