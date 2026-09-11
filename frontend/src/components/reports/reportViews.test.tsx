@@ -486,6 +486,34 @@ describe('DayPatternsReport payday baseline', () => {
   })
 })
 
+describe('WishlistDisciplineReport resisted wishes', () => {
+  it('counts the wishes its Resisted figure sums, and lists the early drops', () => {
+    // Three wishes dropped on day three of a thirty-day wait. The card read
+    // "$300.00 — 0 talked yourself out of" and the table had no row for them.
+    setQuery({
+      data: {
+        cooled_then_bought: 0,
+        cooled_then_dropped: 0,
+        bought_early: 0,
+        dropped_early: 3,
+        still_open: 0,
+        resisted_total: 300,
+        resisted_count: 3,
+        bought_total: 0,
+        open_total: 0,
+        avg_days_to_buy: null,
+        avg_wish_cost: 100,
+        unplaced: 0,
+      },
+    })
+    renderReport(<WishlistDisciplineReport budgetId="b1" />)
+
+    expect(screen.getByText('3 talked yourself out of')).toBeInTheDocument()
+    const row = screen.getByText('Decided against before the wait was up').closest('tr')
+    expect(row).toHaveTextContent('3')
+  })
+})
+
 describe('AnomaliesReport list', () => {
   it('shows the anomaly with its percent change vs baseline', () => {
     setQuery({

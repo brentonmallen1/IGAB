@@ -1434,7 +1434,10 @@ export interface WishlistDisciplineReport {
    *  something the cooling-off period did. */
   dropped_early: number
   still_open: number
+  /** Every dropped wish's cost, waited on or not. */
   resisted_total: number
+  /** How many wishes `resisted_total` sums — the card's count. */
+  resisted_count: number
   bought_total: number
   open_total: number
   avg_days_to_buy: number | null

@@ -934,8 +934,11 @@ class WishlistDisciplineResponse(ApiModel):
     #: three of thirty under "waited, then decided against".
     dropped_early: int
     still_open: int
-    #: Wanted, waited on, and not spent — the figure the report is for.
+    #: Wanted and not spent — every dropped wish, whether the wait ran its
+    #: course or not. The figure the report is for.
     resisted_total: Decimal
+    #: How many wishes `resisted_total` sums; the card's count reads this.
+    resisted_count: int
     bought_total: Decimal
     open_total: Decimal
     #: None with nothing bought: an average of no days is not zero days.

@@ -149,3 +149,21 @@ def test_a_full_history_adds_up():
     assert closed == 5
     assert d.still_open == 1
     assert closed + d.still_open == len(wishes)
+
+
+def test_the_resisted_count_is_the_wishes_its_total_sums():
+    """Every dropped wish is resisted money — waited on, abandoned early, or
+    unplaceable. The card's count read `cooled_then_dropped` alone, so three
+    wishes dropped on day three read "$300 — 0 talked yourself out of"."""
+    d = discipline(
+        [
+            wish(status="dropped", dropped_at=COOLS + timedelta(days=5)),
+            wish(status="dropped", dropped_at=ADDED + timedelta(days=3)),
+            wish(status="dropped", dropped_at=ADDED + timedelta(days=4)),
+            wish(status="dropped", dropped_at=None),
+            wish(status="done", done_at=COOLS),
+        ]
+    )
+    assert d.resisted_total == Decimal("400.00")
+    assert d.resisted_count == 4
+    assert d.resisted_count == d.cooled_then_dropped + d.dropped_early + 1  # + the unplaced drop
