@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import TypedDict
 
 import polars as pl
-from sqlalchemy import func, literal_column, select
+from sqlalchemy import func, literal_column, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -40,6 +40,7 @@ from igab.domain.activity_class import (
 # predicate is vacuously true, keeping one uniform rule.
 from igab.domain.dates import add_months, months_spanned
 from igab.domain.money import quantize_cents
+from igab.domain.schedule import next_occurrence, subscription_occurrences
 from igab.guide.concepts import (
     ESSENTIALS_WINDOW_DAYS,
     FULL_EMERGENCY_FUND_MONTHS_HIGH,
@@ -3196,6 +3197,12 @@ class ReportService:
                 ScheduledTransaction.next_occurrence_date,
                 ScheduledTransaction.frequency,
                 ScheduledTransaction.end_date,
+                # start_date and second_day_of_month are what let
+                # domain.schedule.next_occurrence re-anchor a monthly schedule
+                # to its own day and step a twice-monthly one at all.
+                ScheduledTransaction.start_date,
+                ScheduledTransaction.second_day_of_month,
+                ScheduledTransaction.payee_id,
                 Payee.name.label("payee_name"),
             )
             .join(Account, Account.id == ScheduledTransaction.account_id)
@@ -3213,22 +3220,38 @@ class ReportService:
         )
         sched_rows = (await self.session.execute(sched_q)).all()
 
-        # Expand scheduled transactions into individual events
+        # Expand scheduled transactions into individual events.
+        #
+        # Stepping is `domain.schedule.next_occurrence`, the one home for it.
+        # This method had a fourth copy with no `twice_monthly` branch: it
+        # returned None, the loop read None as "schedule finished", and a
+        # twice-monthly schedule contributed ONE occurrence to a 90-day
+        # projection — including the demo budget's twice-monthly salary.
+        #
+        # An occurrence already due but not entered is booked on `today`, not
+        # its own past date. Before, it went into `det_by_date` under a date
+        # the path never visits (the path starts at today) while still showing
+        # in the events list: a bill no projected balance accounted for.
         scheduled_events: list[tuple[date, str, Decimal]] = []
+        scheduled_payee_ids: set[uuid.UUID] = set()
         for row in sched_rows:
             occ_date = row.next_occurrence_date
             amount = Decimal(str(row.amount))
             payee_name = row.payee_name or "Scheduled"
-            freq = row.frequency
-            row_end_date = row.end_date
+            if row.payee_id is not None:
+                scheduled_payee_ids.add(row.payee_id)
 
-            while occ_date <= end_date:
-                if row_end_date and occ_date > row_end_date:
+            while occ_date is not None and occ_date <= end_date:
+                if row.end_date and occ_date > row.end_date:
                     break
-                scheduled_events.append((occ_date, payee_name, amount))
-                occ_date = _next_occurrence(occ_date, freq)
-                if occ_date is None:
-                    break
+                scheduled_events.append((max(occ_date, today), payee_name, amount))
+                occ_date = next_occurrence(
+                    row.frequency,
+                    occ_date,
+                    start_day=row.start_date.day,
+                    second_day_of_month=row.second_day_of_month,
+                    end_date=row.end_date,
+                )
 
         # 3. Recurring charges in categories tagged Subscription, by payee.
         #
@@ -3239,6 +3262,7 @@ class ReportService:
         # Subscriptions report reads categories and groups the charges by
         # payee within them; this now asks the same question the same way.
         subscription_events: list[tuple[date, str, Decimal]] = []
+        subscription_payee_ids: set[uuid.UUID] = set()
         # Last charge date and typical amount per payee inside those
         # categories.
         sub_q = (
@@ -3246,6 +3270,8 @@ class ReportService:
                 Transaction.payee_id,
                 Payee.name.label("payee_name"),
                 func.max(Transaction.date).label("last_date"),
+                func.min(Transaction.date).label("first_date"),
+                func.count(Transaction.id).label("charge_count"),
                 func.avg(Transaction.amount).label("avg_amount"),
             )
             .join(Payee, Payee.id == Transaction.payee_id)
@@ -3267,21 +3293,47 @@ class ReportService:
         sub_rows = (await self.session.execute(sub_q)).all()
 
         for row in sub_rows:
-            last_date = row.last_date
+            # A payee already covered by a scheduled transaction is projected
+            # by the arm above. Both arms used to book it, so a subscription
+            # entered as a schedule was charged to the projection twice.
+            if row.payee_id is not None and row.payee_id in scheduled_payee_ids:
+                continue
+
+            last_date: date = row.last_date
             avg_amount = Decimal(str(row.avg_amount))
             payee_name = row.payee_name or "Subscription"
 
-            # Assume monthly cadence, project forward
-            next_date = last_date + timedelta(days=30)
-            while next_date <= end_date:
-                if next_date >= today:
-                    subscription_events.append((next_date, payee_name, avg_amount))
-                next_date = next_date + timedelta(days=30)
+            # Cadence and the missed-two-cycles rule both live in
+            # domain.schedule, beside the recurrence stepping.
+            occurrences = subscription_occurrences(
+                row.first_date, last_date, row.charge_count, today, end_date
+            )
+            if not occurrences:
+                continue
+            if row.payee_id is not None:
+                subscription_payee_ids.add(row.payee_id)
+            subscription_events.extend((d, payee_name, avg_amount) for d in occurrences)
 
         # 4. Get historical daily net flows for stochastic layer — open CASH
         # accounts only, matching the balance being projected (a brokerage
         # swing is not a cash flow, and a card purchase moves no cash; the
         # cash leg of the card payment is already on the cash side).
+        #
+        # **Minus the flows the deterministic layer re-applies.** The two
+        # layers have to partition the register: the deterministic events model
+        # the known bills, the sampled buckets model only the variation left
+        # over. Without the subtraction every scheduled bill and every
+        # subscription charge landed in a simulated path TWICE — once sampled
+        # out of its own history, once added from `det_by_date` — so p50 and
+        # `goes_negative_date` were both biased by the whole recurring load.
+        # R6 of docs/future-reports-roadmap.md specifies this as "trailing 180
+        # days ... minus transactions of deterministic payees"; only the first
+        # half was implemented.
+        #
+        # Two exclusions, because a recurring charge reaches the register two
+        # ways: rows the scheduler created carry `scheduled_transaction_id`,
+        # while a hand-entered one carries only its payee.
+        det_payee_ids = scheduled_payee_ids | subscription_payee_ids
         hist_start = today - timedelta(days=180)
         hist_q = (
             select(Transaction.date, Transaction.amount)
@@ -3295,6 +3347,9 @@ class ReportService:
                 Transaction.date < today,
                 Account.is_closed == False,  # noqa: E712
                 CASH_ACCOUNT,
+                Transaction.scheduled_transaction_id.is_(None),
+                # in_([]) renders false, so the empty case must not reach it.
+                true() if not det_payee_ids else Transaction.payee_id.not_in(det_payee_ids),
             )
         )
         hist_rows = (await self.session.execute(hist_q)).all()
@@ -3421,29 +3476,6 @@ class ReportService:
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
-
-
-def _next_occurrence(d: date, frequency: str) -> date | None:
-    """Calculate next occurrence date based on frequency."""
-    if frequency == "daily":
-        return d + timedelta(days=1)
-    elif frequency == "weekly":
-        return d + timedelta(weeks=1)
-    elif frequency == "biweekly":
-        return d + timedelta(weeks=2)
-    elif frequency == "monthly":
-        month = d.month + 1
-        year = d.year
-        if month > 12:
-            month = 1
-            year += 1
-        day = min(d.day, _last_day(date(year, month, 1)).day)
-        return date(year, month, day)
-    elif frequency == "yearly":
-        # Clamp like the monthly branch: Feb 29 -> Feb 28 in non-leap years
-        day = min(d.day, _last_day(date(d.year + 1, d.month, 1)).day)
-        return date(d.year + 1, d.month, day)
-    return None
 
 
 _DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]

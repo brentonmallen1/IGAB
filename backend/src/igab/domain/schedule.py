@@ -149,3 +149,73 @@ def validate_schedule(
         raise InvariantViolation("End date cannot be before the start date")
     if days_before_reminder < 0:
         raise InvariantViolation("Reminder days cannot be negative")
+
+
+# ─── Observed cadence ─────────────────────────────────────────────────────────
+#
+# A scheduled transaction states its frequency. A subscription inferred from a
+# tagged category does not — all the cash projection has is the charges it can
+# see — so the cadence has to be measured. This lives beside `next_occurrence`
+# because it is the same kind of arithmetic, and because the projection had its
+# own copy of the stepping once already.
+
+#: One charge says nothing about cadence, so it is assumed monthly: the tag is
+#: "Subscription" and monthly is what that overwhelmingly means.
+ASSUMED_INTERVAL_DAYS = 30
+#: A payee charged twice on one day would otherwise divide by zero days and
+#: project daily forever.
+MIN_INTERVAL_DAYS = 7
+MAX_INTERVAL_DAYS = 400
+
+
+def observed_interval_days(first: date, last: date, charge_count: int) -> int:
+    """The mean gap between charges, in days.
+
+    The cash projection used to step every subscription by a flat 30 days,
+    which charged an annual subscription twelve times a year and walked a
+    monthly one backwards through the calendar — twelve 30-day steps is 360
+    days, so a thirteenth charge appeared inside a year.
+    """
+    if charge_count < 2 or last <= first:
+        return ASSUMED_INTERVAL_DAYS
+    span = (last - first).days
+    return max(MIN_INTERVAL_DAYS, min(MAX_INTERVAL_DAYS, round(span / (charge_count - 1))))
+
+
+def step_cadence(d: date, interval_days: int) -> date:
+    """Advance one billing cycle.
+
+    A near-monthly interval steps a CALENDAR month, keeping the charge on its
+    day of the month, and a near-annual one steps a calendar year. Anything
+    else steps by days. Stepping 30 days for a monthly bill is what made a
+    subscription drift off its billing date, and the drift compounds across a
+    90-day horizon.
+    """
+    if 25 <= interval_days <= 35:
+        return add_months(d, 1)
+    if 350 <= interval_days <= MAX_INTERVAL_DAYS:
+        return add_months(d, 12)
+    return d + timedelta(days=interval_days)
+
+
+def subscription_occurrences(
+    first_charge: date, last_charge: date, charge_count: int, today: date, end_date: date
+) -> list[date]:
+    """Future charge dates for a subscription inferred from its own history.
+
+    Empty when the subscription has missed two cycles — treated as cancelled.
+    The cash projection had no recency bound at all, so a payee last charged
+    years ago was projected forward forever: the walk stepped from its final
+    charge up to today and then booked every future cycle.
+    """
+    interval = observed_interval_days(first_charge, last_charge, charge_count)
+    if last_charge < today - timedelta(days=2 * interval):
+        return []
+
+    out: list[date] = []
+    nxt = step_cadence(last_charge, interval)
+    while nxt <= end_date:
+        if nxt >= today:
+            out.append(nxt)
+        nxt = step_cadence(nxt, interval)
+    return out

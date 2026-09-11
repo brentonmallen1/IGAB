@@ -14,6 +14,8 @@ scheduled events — and pending transactions contribute nothing anywhere.
 from datetime import date, timedelta
 from decimal import Decimal
 
+from igab.domain.dates import add_months, month_end
+from igab.domain.schedule import next_occurrence
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.services.report_service import ReportService
 
@@ -226,13 +228,20 @@ async def test_subscription_charges_project_monthly_from_last_charge(db_session)
 
     data = await ReportService(db_session).cash_projection(budget.id, horizon_days=30)
 
-    # Last real charge 25 days ago + 30-day cadence -> next charge in 5 days
+    # Two charges 30 days apart, so the observed cadence is monthly — and
+    # "monthly" means a CALENDAR month from the last charge, keeping the
+    # subscription on its billing day. This used to step a flat 30 days, which
+    # walks a monthly bill backwards through the calendar and fits thirteen
+    # charges into a year. Derived rather than hardcoded, because the answer
+    # depends on the length of the month the test runs in.
+    last_charge = TODAY - timedelta(days=25)
+    next_charge = add_months(last_charge, 1)
     assert [(e["date"], e["amount"], e["source"]) for e in data["events"]] == [
-        (TODAY + timedelta(days=5), Decimal("-15.99"), "subscription"),
+        (next_charge, Decimal("-15.99"), "subscription"),
     ]
     start = data["start_balance"]
     assert start == Decimal("4968.02")  # 5000 - two posted charges
-    assert data["points"][5]["deterministic"] == start - Decimal("15.99")
+    assert data["points"][(next_charge - TODAY).days]["deterministic"] == start - Decimal("15.99")
 
 
 async def test_scheduled_end_date_and_event_cap_respected(db_session):
@@ -303,3 +312,239 @@ async def test_cards_contribute_neither_balance_nor_history_nor_schedules(db_ses
     assert result["events"] == []
     _assert_bands_collapsed(result["points"])
     assert result["points"][-1]["deterministic"] == Decimal("5000.00")
+
+
+async def test_a_twice_monthly_schedule_projects_every_occurrence(db_session):
+    """The projection had its own copy of the recurrence stepping, and that
+    copy had no `twice_monthly` branch: it returned None, the expansion loop
+    read None as "schedule finished", and a twice-monthly schedule contributed
+    exactly ONE occurrence to a 90-day projection.
+
+    This is not a hypothetical shape. The sample budget gives its demo
+    household a twice-monthly salary (`sample_budget/data.py`), so the demo
+    projection was short most of its income while projecting every monthly
+    bill in full — and `goes_negative_date` was computed off that.
+    """
+    budget, checking = await _budget_with_checking(db_session)
+    payee = await create_payee(db_session, budget, "Northwind Payserv")
+    # Paid on the 1st and the 15th. Anchored on a fixed pair of days rather
+    # than an offset from today so the count is arithmetic, not calendar luck.
+    first_occurrence = add_months(TODAY.replace(day=1), 1)
+    await create_scheduled_transaction(
+        db_session,
+        budget,
+        checking,
+        "1900.00",
+        "twice_monthly",
+        first_occurrence,
+        payee=payee,
+        start_date=first_occurrence,
+        second_day_of_month=15,
+    )
+
+    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=90)
+    _assert_bands_collapsed(data["points"])
+
+    # Every 1st and 15th inside the horizon, not just the first.
+    expected = []
+    occ = first_occurrence
+    while occ <= TODAY + timedelta(days=90):
+        expected.append(occ)
+        occ = next_occurrence("twice_monthly", occ, start_day=1, second_day_of_month=15)
+    assert len(expected) >= 5, "the horizon should span at least five paydays"
+
+    start = data["start_balance"]
+    final = data["points"][90]["deterministic"]
+    assert final == start + Decimal("1900.00") * len(expected)
+    # The old code produced exactly one, so pin that it is no longer one.
+    assert final != start + Decimal("1900.00")
+
+
+async def test_a_month_end_schedule_keeps_its_day(db_session):
+    """The old monthly branch stepped from the CLAMPED date, so a schedule
+    dated the 31st read 28 Feb and then stayed on the 28th forever.
+    `domain.schedule.next_occurrence` re-anchors to `start_date.day`.
+
+    The charge dates are read back off the deterministic path and compared with
+    a hand-written list. Walking the domain function to build the expectation
+    would make this a tautology — the stepping is the thing under test.
+    """
+    budget, checking = await _budget_with_checking(db_session)
+    payee = await create_payee(db_session, budget, "Harborstone Mortgage")
+    year = TODAY.year + 1
+    start = date(year, 1, 31)
+    horizon = (date(year, 4, 5) - TODAY).days
+    await create_scheduled_transaction(
+        db_session,
+        budget,
+        checking,
+        "-100.00",
+        "monthly",
+        start,
+        payee=payee,
+        start_date=start,
+    )
+
+    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=horizon)
+
+    # Dates where the deterministic path steps down are the charge dates.
+    charged = [
+        p["date"]
+        for i, p in enumerate(data["points"])
+        if i > 0 and p["deterministic"] != data["points"][i - 1]["deterministic"]
+    ]
+    # February has no 31st, so that one occurrence clamps; March must return to
+    # the 31st. The old code answered 28 Feb, then 28 Mar.
+    assert charged == [
+        date(year, 1, 31),
+        month_end(date(year, 2, 1)),
+        date(year, 3, 31),
+    ]
+
+
+async def test_an_overdue_occurrence_lands_on_the_projected_path(db_session):
+    """An occurrence already due but not yet entered used to appear in the
+    events list under its own past date while never reaching the path — the
+    path starts at today, so `det_by_date` held it under a date nobody visits.
+    The user was shown a bill that no projected balance accounted for.
+    """
+    budget, checking = await _budget_with_checking(db_session)
+    payee = await create_payee(db_session, budget, "Harborstone Insurance")
+    await create_scheduled_transaction(
+        db_session,
+        budget,
+        checking,
+        "-250.00",
+        "yearly",
+        TODAY - timedelta(days=3),
+        payee=payee,
+        start_date=TODAY - timedelta(days=3),
+    )
+
+    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=30)
+    start = data["start_balance"]
+
+    # Booked on today, so the events list and the path agree.
+    assert [e["date"] for e in data["events"]] == [TODAY]
+    assert data["points"][0]["deterministic"] == start - Decimal("250.00")
+    assert data["points"][30]["deterministic"] == start - Decimal("250.00")
+
+
+async def test_a_long_cancelled_subscription_is_not_projected_forever(db_session):
+    """The subscription query had no recency bound, so a payee last charged
+    years ago still had a `max(date)`, and the walk stepped from that charge up
+    to today and then booked every future cycle. A subscription that has missed
+    two cycles is treated as cancelled.
+    """
+    budget, checking = await _budget_with_checking(db_session)
+    await seed_system_tags(db_session, budget.id)
+    tag_repo = TagRepository(db_session)
+    sub_tag = await tag_repo.get_system_tag(budget.id, "subscription")
+    group = await create_category_group(db_session, budget, "Everyday")
+    streaming = await create_category(db_session, budget, group, "Streaming")
+    await tag_repo.set_category_tags(streaming.id, [sub_tag.id])
+    gone = await create_payee(db_session, budget, "Cascade Point Gym")
+
+    # Two charges a month apart, both well outside two cycles of today.
+    for days in (400, 370):
+        await create_transaction(
+            db_session,
+            budget,
+            checking,
+            "-42.00",
+            TODAY - timedelta(days=days),
+            payee=gone,
+            category=streaming,
+        )
+
+    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=90)
+    assert [e for e in data["events"] if e["source"] == "subscription"] == []
+    assert data["points"][90]["deterministic"] == data["start_balance"]
+
+
+async def test_a_subscription_with_a_schedule_is_charged_once(db_session):
+    """Both deterministic arms projected the same payee: the schedule arm from
+    the schedule, the subscription arm from the payee's own charge history. A
+    subscription the user had also entered as a scheduled transaction was
+    therefore charged to the projection twice.
+    """
+    budget, checking = await _budget_with_checking(db_session)
+    await seed_system_tags(db_session, budget.id)
+    tag_repo = TagRepository(db_session)
+    sub_tag = await tag_repo.get_system_tag(budget.id, "subscription")
+    group = await create_category_group(db_session, budget, "Everyday")
+    streaming = await create_category(db_session, budget, group, "Streaming")
+    await tag_repo.set_category_tags(streaming.id, [sub_tag.id])
+    payee = await create_payee(db_session, budget, "Northstar Stream")
+
+    for days in (55, 25):
+        await create_transaction(
+            db_session,
+            budget,
+            checking,
+            "-20.00",
+            TODAY - timedelta(days=days),
+            payee=payee,
+            category=streaming,
+        )
+    await create_scheduled_transaction(
+        db_session,
+        budget,
+        checking,
+        "-20.00",
+        "monthly",
+        TODAY + timedelta(days=6),
+        payee=payee,
+        start_date=TODAY + timedelta(days=6),
+    )
+
+    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=30)
+
+    sources = [e["source"] for e in data["events"]]
+    assert sources == ["scheduled"], f"the subscription arm booked it too: {sources}"
+    start = data["start_balance"]
+    # One charge in the window, not two.
+    assert data["points"][30]["deterministic"] == start - Decimal("20.00")
+
+
+async def test_a_scheduled_bill_is_not_also_sampled_from_history(db_session):
+    """The two layers have to partition the register. The sampled history had
+    no exclusion for the rows the deterministic layer re-applies, so every
+    scheduled bill landed in a simulated path twice — once sampled out of its
+    own history, once added from `det_by_date` — biasing p50 and
+    `goes_negative_date` by the whole recurring load.
+
+    Here the ONLY history is the bill itself, so before the fix the sampled
+    flow was a non-zero constant and the bands could not collapse onto the
+    deterministic path. After it, the residual history is empty and they do.
+    """
+    budget, checking = await _budget_with_checking(db_session)
+    payee = await create_payee(db_session, budget, "Harborstone Rent")
+
+    # Six monthly rent charges inside the 180-day history window.
+    for months_back in range(1, 7):
+        await create_transaction(
+            db_session,
+            budget,
+            checking,
+            "-1800.00",
+            add_months(TODAY, -months_back),
+            payee=payee,
+        )
+    await create_scheduled_transaction(
+        db_session,
+        budget,
+        checking,
+        "-1800.00",
+        "monthly",
+        add_months(TODAY, 1),
+        payee=payee,
+        start_date=add_months(TODAY, 1),
+    )
+
+    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=60)
+
+    # No residual variation left, so every band sits on the deterministic path.
+    _assert_bands_collapsed(data["points"])
+    for p in data["points"]:
+        assert p["p50"] == p["deterministic"]

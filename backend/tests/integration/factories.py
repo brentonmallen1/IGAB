@@ -318,6 +318,7 @@ async def create_scheduled_transaction(
     category: Category | None = None,
     start_date: date | None = None,
     end_date: date | None = None,
+    second_day_of_month: int | None = None,
     is_deleted: bool = False,
 ) -> ScheduledTransaction:
     sched = ScheduledTransaction(
@@ -329,6 +330,7 @@ async def create_scheduled_transaction(
         frequency=frequency,
         start_date=start_date or next_occurrence_date,
         end_date=end_date,
+        second_day_of_month=second_day_of_month,
         next_occurrence_date=next_occurrence_date,
         is_deleted=is_deleted,
     )
