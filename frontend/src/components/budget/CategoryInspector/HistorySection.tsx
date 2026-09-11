@@ -9,7 +9,7 @@ interface Props {
 /** The last six months of this envelope, as the Category History report
  *  serves them — the same endpoint, so the two cannot disagree. */
 export function HistorySection({ categoryId, budgetId }: Props) {
-  const { formatMoney, formatMonth } = useFormatters()
+  const { formatMoney, formatMoneyOrDash, formatMonth } = useFormatters()
   const { data } = useCategoryHistoryReport(budgetId, categoryId, 6)
   if (!data || data.months.length === 0) return null
   return (
@@ -33,7 +33,7 @@ export function HistorySection({ categoryId, budgetId }: Props) {
               {/* Null for an income category, which holds no money — an em
                   dash rather than a lifetime carryover dressed as a balance. */}
               <td className={(m.available ?? 0) < 0 ? 'inspector-history__neg' : ''}>
-                {m.available === null ? '—' : formatMoney(m.available)}
+                {formatMoneyOrDash(m.available)}
               </td>
             </tr>
           ))}

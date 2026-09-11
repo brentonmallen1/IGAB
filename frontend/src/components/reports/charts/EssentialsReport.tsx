@@ -41,7 +41,7 @@ interface Props {
  * every category down. Nothing self-reported from the Guide appears here.
  */
 export function EssentialsReport({ budgetId }: Props) {
-  const { formatMoney, formatMonth } = useFormatters()
+  const { formatMoney, formatMoneyOrDash, formatMonth } = useFormatters()
   const moneyAxis = useMoneyAxis()
   const months = useReportMonths()
   const { data, isLoading, isError, error, refetch } = useEssentialsReport(budgetId, months)
@@ -131,11 +131,7 @@ export function EssentialsReport({ budgetId }: Props) {
               })}
               <MetricCard
                 label="Saved so far"
-                value={
-                  data.emergency_fund_balance === null
-                    ? '—'
-                    : formatMoney(data.emergency_fund_balance)
-                }
+                value={formatMoneyOrDash(data.emergency_fund_balance)}
                 sub={
                   data.runway_months === null
                     ? 'No emergency fund found yet'

@@ -39,7 +39,7 @@ interface Props {
 const UNCATEGORIZED = 'Uncategorized'
 
 export function CostOfLivingReport({ budgetId }: Props) {
-  const { formatMoney, formatMonthShort } = useFormatters()
+  const { formatMoney, formatMoneyOrDash, formatMonthShort } = useFormatters()
   const moneyAxis = useMoneyAxis()
   // Which group the legend is pointing at, if any. The palette repeats past
   // eight slots, so this is what tells two same-coloured bands apart.
@@ -180,11 +180,7 @@ export function CostOfLivingReport({ budgetId }: Props) {
                 what a household could not cut, so the figure is unknown. */}
             <MetricCard
               label="Essentials"
-              value={
-                data.avg_monthly_essentials === null
-                  ? '—'
-                  : formatMoney(data.avg_monthly_essentials)
-              }
+              value={formatMoneyOrDash(data.avg_monthly_essentials)}
               sub={
                 data.avg_monthly_essentials === null
                   ? 'nothing tagged Essential'
@@ -196,11 +192,7 @@ export function CostOfLivingReport({ budgetId }: Props) {
                 car; this is an inventory, and the note below says so. */}
             <MetricCard
               label="Non-essential"
-              value={
-                data.avg_monthly_non_essential === null
-                  ? '—'
-                  : formatMoney(data.avg_monthly_non_essential)
-              }
+              value={formatMoneyOrDash(data.avg_monthly_non_essential)}
               sub={
                 data.avg_monthly_non_essential === null
                   ? 'needs Essentials tagged'

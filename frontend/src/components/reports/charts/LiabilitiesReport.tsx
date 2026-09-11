@@ -34,7 +34,7 @@ type SortKey = 'balance' | 'rate' | 'baseline' | 'live' | 'interest'
 
 export function LiabilitiesReport({ budgetId }: Props) {
   const navigate = useNavigate()
-  const { formatMoney, formatMonth } = useFormatters()
+  const { formatMoney, formatMoneyOrDash, formatMonth } = useFormatters()
   const moneyAxis = useMoneyAxis()
   const [typeFilter, setTypeFilter] = useState<string | null>(null)
   const [modeFilter, setModeFilter] = useState<string | null>(null)
@@ -314,11 +314,7 @@ export function LiabilitiesReport({ budgetId }: Props) {
                           '—'
                         )}
                       </td>
-                      <td className="num">
-                        {item.total_interest_remaining === null
-                          ? '—'
-                          : formatMoney(item.total_interest_remaining)}
-                      </td>
+                      <td className="num">{formatMoneyOrDash(item.total_interest_remaining)}</td>
                     </tr>
                   ))}
                 </tbody>

@@ -107,7 +107,7 @@ function SankeyTooltip({
   categoryPayees: Record<string, CategoryPayee[]>
   isDrilled: boolean
 }) {
-  const { formatMoney } = useFormatters()
+  const { formatMoney, formatMoneyOrDash } = useFormatters()
   if (!active || !payload?.length) return null
   const p = payload[0]?.payload
   const name = p?.name ?? ''
@@ -137,9 +137,7 @@ function SankeyTooltip({
         <>
           <div className="chart-tooltip__row">
             <span className="chart-tooltip__name">Previous</span>
-            <span className="chart-tooltip__value">
-              {p.prev == null ? '—' : formatMoney(p.prev)}
-            </span>
+            <span className="chart-tooltip__value">{formatMoneyOrDash(p.prev)}</span>
           </div>
           {p.prev != null && (
             <div className="chart-tooltip__row">

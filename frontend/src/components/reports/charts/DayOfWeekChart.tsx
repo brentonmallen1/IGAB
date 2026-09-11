@@ -33,7 +33,7 @@ const WINDOW_OPTIONS = [7, 14, 21] as const
 
 export function DayPatternsReport({ budgetId }: Props) {
   const chartHeight = useChartHeight(320)
-  const { formatMoney } = useFormatters()
+  const { formatMoney, formatMoneyOrDash } = useFormatters()
   const moneyAxis = useMoneyAxis()
   const { filters, setDrillDown } = useReportStore()
   const reportScope = useReportScope()
@@ -291,7 +291,7 @@ export function DayPatternsReport({ budgetId }: Props) {
             <MetricRow>
               <MetricCard
                 label="Baseline Daily"
-                value={paydayBaseline === null ? '—' : formatMoney(paydayBaseline)}
+                value={formatMoneyOrDash(paydayBaseline)}
                 sub={
                   paydayBaseline === null
                     ? 'No days fall outside a payday window'

@@ -50,7 +50,7 @@ export function TransactionsPeekModal({ budgetId, scope, onClose, onAddTransacti
   const [showAll, setShowAll] = useState(false)
   const navigate = useNavigate()
   const setTransactionSearch = useUIStore((s) => s.setTransactionSearch)
-  const { formatMoney, formatDate } = useFormatters()
+  const { formatMoney, formatMoneyOrDash, formatDate } = useFormatters()
 
   const { data, isPending } = useTransactionsPeek(
     budgetId,
@@ -193,7 +193,7 @@ export function TransactionsPeekModal({ budgetId, scope, onClose, onAddTransacti
                         <td className="category-txns__running tabular">
                           {/* A pending row has no entry: it has not moved the
                           balance, and a zero here would say it had. */}
-                          {running[t.id] === undefined ? '—' : formatMoney(running[t.id])}
+                          {formatMoneyOrDash(running[t.id])}
                         </td>
                       )}
                     </tr>

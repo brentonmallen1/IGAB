@@ -40,7 +40,7 @@ import { Pill } from '../../components/common/Pill/Pill'
 import { Surface } from '../../components/common/Surface'
 
 export function LiabilityPage() {
-  const { formatMoney, formatMonth } = useFormatters()
+  const { formatMoney, formatMoneyOrDash, formatMonth } = useFormatters()
   const notify = useUndoToast()
   const { liabilityId } = useParams<{ liabilityId: string }>()
   const budgetId = useAppStore((s) => s.currentBudgetId)
@@ -369,9 +369,7 @@ export function LiabilityPage() {
         <MetricCard
           variant="raised"
           label="Interest Remaining"
-          value={
-            !amortization ? '…' : outlook.interest === null ? '—' : formatMoney(outlook.interest)
-          }
+          value={!amortization ? '…' : formatMoneyOrDash(outlook.interest)}
           sub={outlook.interestNote}
         />
         <MetricCard

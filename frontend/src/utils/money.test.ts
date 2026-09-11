@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseAmountInput, sumToCents, toCents } from './money'
+import { formatMoney, moneyOrDash, NO_FIGURE, parseAmountInput, sumToCents, toCents } from './money'
 
 describe('parseAmountInput', () => {
   it('parses plain decimal amounts', () => {
@@ -95,5 +95,28 @@ describe('editor amount semantics', () => {
     const totalCents = Math.abs(toCents(parseAmountInput('10.00') || 0))
     expect(sumToCents(['3.33', '3.33', '3.34'])).toBe(totalCents)
     expect(sumToCents(['3.33', '3.33', '3.33'])).not.toBe(totalCents)
+  })
+})
+
+describe('moneyOrDash', () => {
+  const fmt = (n: number) => formatMoney(n)
+
+  it('shows a dash for a figure that does not exist, null or undefined', () => {
+    // An income category's balance (null) and a pending row's running balance
+    // (undefined) are gaps; `?? 0` would print them as $0.00.
+    expect(moneyOrDash(null, fmt)).toBe(NO_FIGURE)
+    expect(moneyOrDash(undefined, fmt)).toBe(NO_FIGURE)
+    expect(NO_FIGURE).toBe('—')
+  })
+
+  it('formats a zero as money, because zero is a figure', () => {
+    expect(moneyOrDash(0, fmt)).toBe('$0.00')
+  })
+
+  it('formats negatives and positives through the formatter it is given', () => {
+    expect(moneyOrDash(-12.5, fmt)).toBe('-$12.50')
+    expect(moneyOrDash(1200, fmt)).toBe('$1,200.00')
+    // Privacy mode passes a masking formatter; the dash reveals no amount.
+    expect(moneyOrDash(1200, () => '$••••')).toBe('$••••')
   })
 })
