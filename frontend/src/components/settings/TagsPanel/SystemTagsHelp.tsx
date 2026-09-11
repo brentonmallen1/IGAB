@@ -26,8 +26,8 @@ export function SystemTagsHelp() {
 
       <InfoSection title="Applying them">
         <p>
-          Tag a category from its inspector on the Budget page, or a payee from the Payees page. Any
-          other tag you create is a label for filtering and grouping — it changes no number.
+          Tag a category from its inspector on the Budget page. Any other tag you create is a label
+          for filtering and grouping — it changes no number.
         </p>
       </InfoSection>
     </InfoPopover>

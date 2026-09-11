@@ -1353,10 +1353,20 @@ export interface CostOfLivingReport {
   window_start: string
   window_end: string
   groups: CostOfLivingGroup[]
+  /** The wide tier: everything non-discretionary. */
+  avg_monthly_cost_of_living: number
+  /** The lean tier, over the SAME window — which is what makes the difference
+   *  between them a real figure rather than a calendar artifact. */
   avg_monthly_essentials: number
+  /** Cost of living less essentials: what a lean month could shed. */
+  avg_monthly_non_essential: number
   avg_monthly_income: number
-  /** Null when there is no income on record: unknown, not 100%. */
+  /** Share of take-home spoken for, against the WIDE tier. Null when there is
+   *  no income on record: unknown, not 100%. */
   required_ratio: number | null
+  /** The lean tier against take-home. Above 100 the household cannot cover
+   *  what it could not cut. */
+  essentials_ratio: number | null
   basis: 'bound' | 'tag' | 'all'
   /** False when nothing carries the Essential tag. */
   tagged: boolean

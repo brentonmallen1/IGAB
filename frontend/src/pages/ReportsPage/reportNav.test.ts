@@ -4,10 +4,10 @@ import type { ReportTab } from '../../stores/reportStore'
 
 describe('which row the nav draws', () => {
   it('draws the active report’s own group by default', () => {
-    const nav = reportNav('cost-of-living', false, [])
+    const nav = reportNav('seasonality', false, [])
     expect(nav.favorites).toBe(false)
     expect(nav.label).toBe('Spending')
-    expect(nav.tabs.map((t) => t.id)).toContain('cost-of-living')
+    expect(nav.tabs.map((t) => t.id)).toContain('seasonality')
   })
 
   it('draws the starred row when the nav is on favourites', () => {
@@ -20,16 +20,19 @@ describe('which row the nav draws', () => {
 
   it('keeps the starred row across reports from different groups', () => {
     // The whole point: a starred report keeps its real group, so following
-    // one from the starred row must not flip the nav to that group.
-    const favorites: ReportTab[] = ['essentials', 'cost-of-living']
-    expect(reportNav('cost-of-living', true, favorites).favorites).toBe(true)
+    // one from the starred row must not flip the nav to that group. The two
+    // here are genuinely in different groups — Essentials and Cost of Living
+    // are both Financial State now, since the pair is only useful read side
+    // by side.
+    const favorites: ReportTab[] = ['essentials', 'seasonality']
+    expect(reportNav('seasonality', true, favorites).favorites).toBe(true)
   })
 
   it('falls back to the group when the active report is not starred', () => {
     // Unstarring the one you are looking at, a `?tab=` deep link, or a
     // persisted flag from a budget whose stars are gone — one rule, no
     // cleanup.
-    const nav = reportNav('cost-of-living', true, ['essentials'])
+    const nav = reportNav('seasonality', true, ['essentials'])
     expect(nav.favorites).toBe(false)
     expect(nav.label).toBe('Spending')
   })

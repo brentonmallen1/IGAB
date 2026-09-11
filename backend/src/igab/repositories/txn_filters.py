@@ -582,6 +582,15 @@ def category_tagged(*system_keys: str):
 #: category, which is the thing the app can actually act on.
 ESSENTIAL_TAGGED = category_tagged("essential")
 
+#: The wider necessity tier's own tag. Non-discretionary but not strictly
+#: necessary: subscriptions, a home-maintenance sinking fund, a gym membership
+#: you would cancel in a genuine emergency but pay every month otherwise.
+#:
+#: Only half of the Cost of Living tier — debt principal joins it by class.
+#: `domain.activity_class.NecessityTier` composes both so Essentials is a
+#: structural subset rather than an asserted one.
+COST_OF_LIVING_TAGGED = category_tagged("cost_of_living")
+
 
 #: A row that spends planned money: what plan-vs-actual reports may count as
 #: "spent" against what `BUDGETED_ENVELOPE` counts as "assigned".

@@ -40,8 +40,10 @@ from igab.db.models import (
 )
 from igab.repositories.category_filters import IN_SYSTEM_GROUP
 from igab.repositories.txn_filters import (
+    COST_OF_LIVING_TAGGED,
     COUNTERPART_ACCOUNT_ID,
     COUNTERPART_OFF_BUDGET,
+    ESSENTIAL_TAGGED,
     TRANSFER_LEG,
     category_tagged,
     row_category,
@@ -478,3 +480,73 @@ def counted_classes(
     if scoped_accounts:
         values |= {ActivityClass.INVESTMENT_RETURN.value, ActivityClass.DEBT_INTEREST.value}
     return values
+
+
+# ─── Necessity tiers ─────────────────────────────────────────────────────────
+#
+# Two nested sets, from a design conversation with the household's second user:
+#
+#   "cost of living would be anything that comes out of my account on a monthly
+#    basis that's not discretionary, like utilities, mortgage payment, any debt
+#    payments, subscriptions, etc. essentials would only be the things that are
+#    100% necessary, so mortgage payment is in there but subscriptions aren't...
+#    seeing a report that shows the difference in those two could be a good way
+#    to identify areas to cut back and save on or things to shed in some kind
+#    of emergency event"
+#
+# The GAP is the product. Before this, both reports read one tag and one class
+# tuple — Cost of Living was the Essentials table rolled up by group, and its
+# own docstring said so ("Nothing new is queried... Only the rollup is new").
+# The only difference a user could see between the two screens was a calendar
+# artifact from three different windows.
+#
+# **The nesting is structural, not asserted.** The wider predicate contains the
+# narrower one as a disjunct, so Essentials ⊆ Cost of Living cannot drift and
+# needs no invariant policing it. An invariant that can only be satisfied is
+# decoration; this is the mechanism instead.
+#
+# The class tuple stays shared. `COST_OF_LIVING_CLASSES` answers what a row
+# does to net worth, which is the same question for both tiers — the tiers
+# differ in MEMBERSHIP, not in class. Expressing the nesting as a second class
+# tuple would fight `TestTheDivergenceIsDeliberate` for no gain.
+
+
+class NecessityTier(StrEnum):
+    """Which necessity question a figure answers."""
+
+    #: What a household could not cut. Sizes the emergency fund, so it stays
+    #: the lean figure — see the deliberate divergence pinned in
+    #: `tests/integration/test_necessity_tiers.py`.
+    ESSENTIAL = "essential"
+    #: Everything non-discretionary. Essentials plus the committed-but-sheddable,
+    #: plus debt principal by class.
+    COST_OF_LIVING = "cost_of_living"
+
+
+def tier_keys(tier: NecessityTier) -> list[str]:
+    """The system tag keys whose membership this tier reads.
+
+    Kept beside `tier_scope` so a tier cannot be given a predicate and a tag
+    set that disagree — the applied-count and the WHERE clause have to ask
+    about the same tags, and they did not: the count included payee tags long
+    after the predicate stopped reading them.
+    """
+    if tier is NecessityTier.ESSENTIAL:
+        return ["essential"]
+    return ["essential", "cost_of_living"]
+
+
+def tier_scope(tier: NecessityTier):
+    """The membership predicate for one tier.
+
+    Debt principal enters Cost of Living by CLASS rather than by tag, which is
+    what delivers "any debt payments" without asking a household to tag each
+    loan envelope — and what gives most budgets a non-zero gap on day one.
+    """
+    if tier is NecessityTier.ESSENTIAL:
+        return ESSENTIAL_TAGGED
+    return or_(
+        ESSENTIAL_TAGGED,
+        COST_OF_LIVING_TAGGED,
+        ACTIVITY_CLASS == ActivityClass.DEBT_PRINCIPAL.value,
+    )

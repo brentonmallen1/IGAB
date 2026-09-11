@@ -557,3 +557,75 @@ describe('BudgetActualReport values', () => {
     expect(screen.getAllByText(/\$450\.00/).length).toBeGreaterThan(0)
   })
 })
+
+describe('CostOfLivingReport tiers', () => {
+  const tiered = {
+    months: ['2026-08-01', '2026-09-01'],
+    window_start: '2026-08-01',
+    window_end: '2026-09-10',
+    groups: [
+      {
+        group_name: 'Bills',
+        monthly_amounts: [1400, 0],
+        total: 1400,
+        avg_monthly: 700,
+        share: 77.78,
+        category_ids: ['c1'],
+      },
+      {
+        group_name: 'Fun',
+        monthly_amounts: [400, 0],
+        total: 400,
+        avg_monthly: 200,
+        share: 22.22,
+        category_ids: ['c2'],
+      },
+    ],
+    avg_monthly_cost_of_living: 900,
+    avg_monthly_essentials: 700,
+    avg_monthly_non_essential: 200,
+    avg_monthly_income: 1800,
+    required_ratio: 50,
+    essentials_ratio: 38.89,
+    basis: 'tag' as const,
+    tagged: true,
+    class_excluded: [],
+    counted_classes: ['spending', 'debt_principal'],
+  }
+
+  it('shows both tiers and the gap between them', () => {
+    setQuery({ data: tiered })
+    renderReport(<CostOfLivingReport budgetId="b1" />)
+
+    expect(screen.getByText('Cost of living')).toBeInTheDocument()
+    expect(screen.getByText('Essentials')).toBeInTheDocument()
+    expect(screen.getByText('Non-essential')).toBeInTheDocument()
+    expect(screen.getAllByText(/\$900\.00/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/\$700\.00/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/\$200\.00/).length).toBeGreaterThan(0)
+  })
+
+  it('states the gap as a share of what is committed, not as advice', () => {
+    setQuery({ data: tiered })
+    renderReport(<CostOfLivingReport budgetId="b1" />)
+
+    // 200 of 900. And the card must not tell anyone to cancel anything.
+    expect(screen.getByText('22% of the above')).toBeInTheDocument()
+    expect(screen.queryByText(/could cut/i)).toBeNull()
+  })
+
+  it('reads the standing off the wide ratio', () => {
+    setQuery({ data: tiered })
+    renderReport(<CostOfLivingReport budgetId="b1" />)
+    expect(screen.getByText(/no more than half your take-home/i)).toBeInTheDocument()
+  })
+
+  it('says a household cannot cover its essentials, when it cannot', () => {
+    setQuery({
+      data: { ...tiered, required_ratio: 130, essentials_ratio: 108 },
+    })
+    renderReport(<CostOfLivingReport budgetId="b1" />)
+    // The worse fact, said as itself rather than as "no headroom".
+    expect(screen.getByText(/costs more than you take home/i)).toBeInTheDocument()
+  })
+})

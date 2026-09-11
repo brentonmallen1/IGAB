@@ -920,3 +920,19 @@
 .subs-report__payee td {
   color: var(--text-secondary);
 }
+
+/* ── Cost of Living: the standing sentence under the tier cards ──
+ *
+ * Colour only where there is genuine state, per the design principles. A
+ * comfortable or workable standing is the ordinary case and stays in the
+ * note's own muted colour; only "tight" and "no headroom" earn a tone, and
+ * "unknown" stays muted because an absence of income is not a warning.
+ *
+ * Tokens, never literals: forty theme variants read these. */
+.necessity-standing--tight {
+  color: var(--color-warning);
+}
+
+.necessity-standing--no-headroom {
+  color: var(--color-negative);
+}

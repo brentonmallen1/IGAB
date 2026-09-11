@@ -27,12 +27,14 @@ from igab.db.models import (
     Transaction,
     TransactionAttachment,
     category_tags,
-    payee_tags,
 )
 from igab.domain.activity_class import (
     ACTIVITY_CLASS,
     COST_OF_LIVING_CLASSES,
+    NecessityTier,
     apply_class_joins,
+    tier_keys,
+    tier_scope,
 )
 from igab.repositories.base import BaseRepository
 from igab.repositories.category_filters import (
@@ -48,7 +50,6 @@ from igab.repositories.txn_filters import (
     CASH_FLOW_ROW,
     COUNTERPART_ACCOUNT_ID,
     DEBT_INTEREST_ROW,
-    ESSENTIAL_TAGGED,
     LEAF,
     LOAN_PAYMENT_ROW,
     NEEDS_CATEGORY,
@@ -1113,22 +1114,32 @@ class TransactionRepository(BaseRepository[Transaction]):
 
     # ─── Essentials: one query, three readers ──────────────────────────────
 
-    async def _essential_scope(
-        self, budget_id: uuid.UUID, bound_categories: Sequence[uuid.UUID] | None
+    async def _necessity_scope(
+        self,
+        budget_id: uuid.UUID,
+        tier: NecessityTier,
+        bound_categories: Sequence[uuid.UUID] | None,
     ) -> tuple[list, str]:
-        """How "essential" is decided for this budget, and by which rule.
+        """How this tier's membership is decided for this budget, and by which
+        rule.
 
-        Precedence: categories the user bound in the Guide ("bound"); else
-        the Essential tag on categories or payees, when any is applied
-        ("tag"); else all spending ("all") — the Guide's original fallback,
-        which the report and the Overview card treat as "nothing tagged yet"
-        rather than show a figure that equals burn rate.
+        Precedence: categories the user bound in the Guide ("bound"); else the
+        tier's own tags, when any is applied ("tag"); else all spending ("all")
+        — the Guide's original fallback, which the reports treat as "nothing
+        tagged yet" rather than show a figure that equals burn rate.
+
+        **The applied-count asks about the same tags the predicate uses.** It
+        used to count `payee_tags` as well, while `ESSENTIAL_TAGGED` has been
+        categories-only since the payee arm was retired — so a household that
+        tagged only a payee got basis "tag", the burn-rate warning suppressed,
+        and a cost of living of 0.00. The Essentials empty state was still
+        telling people to tag a payee at the time.
         """
         if bound_categories:
             return [Transaction.category_id.in_(list(bound_categories))], "bound"
         tagged = select(Tag.id).where(
             Tag.budget_id == budget_id,
-            Tag.system_key == "essential",
+            Tag.system_key.in_(tier_keys(tier)),
             Tag.is_deleted == False,  # noqa: E712
         )
         applied = (
@@ -1136,17 +1147,13 @@ class TransactionRepository(BaseRepository[Transaction]):
             .select_from(category_tags)
             .where(category_tags.c.tag_id.in_(tagged))
             .scalar_subquery()
-            + select(func.count())
-            .select_from(payee_tags)
-            .where(payee_tags.c.tag_id.in_(tagged))
-            .scalar_subquery()
         )
         if (await self.session.execute(select(applied))).scalar_one() > 0:
-            return [ESSENTIAL_TAGGED], "tag"
+            return [tier_scope(tier)], "tag"
         return [], "all"
 
     @staticmethod
-    def _essential_rows_where(budget_id: uuid.UUID, since: date, until: date, scope: list) -> list:
+    def _necessity_rows_where(budget_id: uuid.UUID, since: date, until: date, scope: list) -> list:
         """Which rows this family looks at, before class is considered.
 
         Split from the class filter so "counted" and "left out and explained"
@@ -1166,9 +1173,9 @@ class TransactionRepository(BaseRepository[Transaction]):
         ]
 
     @classmethod
-    def _essential_where(cls, budget_id: uuid.UUID, since: date, until: date, scope: list) -> list:
+    def _necessity_where(cls, budget_id: uuid.UUID, since: date, until: date, scope: list) -> list:
         return [
-            *cls._essential_rows_where(budget_id, since, until, scope),
+            *cls._necessity_rows_where(budget_id, since, until, scope),
             ACTIVITY_CLASS.in_(COST_OF_LIVING_CLASSES),
         ]
 
@@ -1178,22 +1185,25 @@ class TransactionRepository(BaseRepository[Transaction]):
         since: date,
         until: date,
         bound_categories: Sequence[uuid.UUID] | None = None,
+        tier: NecessityTier = NecessityTier.ESSENTIAL,
     ) -> tuple[Decimal, str]:
         """Signed sum of essential spending in the window (outflows are
         negative), and the rule that scoped it — see `_essential_scope`."""
-        scope, basis = await self._essential_scope(budget_id, bound_categories)
+        scope, basis = await self._necessity_scope(budget_id, tier, bound_categories)
         total = (
             await self.session.execute(
                 apply_class_joins(
                     select(func.coalesce(func.sum(Transaction.amount), 0))
                     .select_from(Transaction)
-                    .where(*self._essential_where(budget_id, since, until, scope))
+                    .where(*self._necessity_where(budget_id, since, until, scope))
                 )
             )
         ).scalar_one()
         return Decimal(total), basis
 
-    async def essential_tagged_categories(self, budget_id: uuid.UUID) -> list:
+    async def essential_tagged_categories(
+        self, budget_id: uuid.UUID, tier: NecessityTier = NecessityTier.ESSENTIAL
+    ) -> list:
         """(id, name, group_name) for every category tagged Essential that is
         still on the budget.
 
@@ -1217,7 +1227,7 @@ class TransactionRepository(BaseRepository[Transaction]):
             category_tags.c.tag_id.in_(
                 select(Tag.id).where(
                     Tag.budget_id == budget_id,
-                    Tag.system_key == "essential",
+                    Tag.system_key.in_(tier_keys(tier)),
                     Tag.is_deleted == False,  # noqa: E712
                 )
             )
@@ -1246,11 +1256,12 @@ class TransactionRepository(BaseRepository[Transaction]):
         since: date,
         until: date,
         bound_categories: Sequence[uuid.UUID] | None = None,
+        tier: NecessityTier = NecessityTier.ESSENTIAL,
     ) -> tuple[list, str]:
         """(category_id, category_name, group_name, month, total) rows over the
         same predicate as `essential_spend`, grouped by calendar month. A
         payee-tagged row without a category groups under None."""
-        scope, basis = await self._essential_scope(budget_id, bound_categories)
+        scope, basis = await self._necessity_scope(budget_id, tier, bound_categories)
         month = func.date_trunc(literal_column("'month'"), Transaction.date).label("month")
         q = (
             select(
@@ -1263,7 +1274,7 @@ class TransactionRepository(BaseRepository[Transaction]):
             .select_from(Transaction)
             .outerjoin(Category, Category.id == Transaction.category_id)
             .outerjoin(CategoryGroup, CategoryGroup.id == Category.category_group_id)
-            .where(*self._essential_where(budget_id, since, until, scope))
+            .where(*self._necessity_where(budget_id, since, until, scope))
             .group_by(Transaction.category_id, Category.name, CategoryGroup.name, month)
         )
         rows = (await self.session.execute(apply_class_joins(q))).all()
@@ -1275,6 +1286,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         since: date,
         until: date,
         bound_categories: Sequence[uuid.UUID] | None = None,
+        tier: NecessityTier = NecessityTier.ESSENTIAL,
     ) -> tuple[list, str]:
         """(category_id, cls, amount) for rows this family scopes IN but does
         not count — same window, same scope, complementary class filter.
@@ -1289,7 +1301,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         added there must leave here on the same day, or a row could be counted
         and explained-as-missing at once.
         """
-        scope, basis = await self._essential_scope(budget_id, bound_categories)
+        scope, basis = await self._necessity_scope(budget_id, tier, bound_categories)
         q = (
             select(
                 Transaction.category_id.label("id"),
@@ -1298,7 +1310,7 @@ class TransactionRepository(BaseRepository[Transaction]):
             )
             .select_from(Transaction)
             .where(
-                *self._essential_rows_where(budget_id, since, until, scope),
+                *self._necessity_rows_where(budget_id, since, until, scope),
                 ACTIVITY_CLASS.notin_(COST_OF_LIVING_CLASSES),
             )
             .group_by(Transaction.category_id, ACTIVITY_CLASS)

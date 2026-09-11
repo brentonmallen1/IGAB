@@ -15,6 +15,7 @@ import { ChartLegend } from './ChartLegend'
 import { ChartTooltip } from './ChartTooltip'
 import { ReportRangeSelect } from './rangeSelect'
 import { useMoneyAxis } from './useMoneyAxis'
+import { necessityReading, sheddableShare } from './necessityView'
 
 interface Props {
   budgetId: string
@@ -47,6 +48,9 @@ export function CostOfLivingReport({ budgetId }: Props) {
   if (isLoading) return <div className="report-loading">Loading...</div>
   if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
   if (!data) return null
+
+  const reading = necessityReading(data.required_ratio, data.essentials_ratio)
+  const sheddable = sheddableShare(data.avg_monthly_cost_of_living, data.avg_monthly_non_essential)
 
   const report = data
 
@@ -97,17 +101,21 @@ export function CostOfLivingReport({ budgetId }: Props) {
         <h2 className="report-section__title">Cost of Living</h2>
         <ReportInfoButton title="Cost of Living">
           <p>
-            Your <strong>essential</strong> spending, grouped the way your budget already is —
-            Housing, Utilities, Groceries — so you can see what a month costs before anything
-            discretionary.
+            Everything that leaves your account whether or not you feel like it, grouped the way
+            your budget already is. Two tiers sit inside it: <strong>Essentials</strong> are the
+            things you could not cut, and <strong>Non-essential</strong> is the rest — committed,
+            but sheddable in a genuine emergency.
           </p>
           <p>
-            &ldquo;Essential&rdquo; is whatever you told the Guide, or whatever carries the{' '}
-            <strong>Essential</strong> tag. Tag a category from its panel on the Budget page.
+            Tag a category <strong>Essential</strong> or <strong>Cost of living</strong> from its
+            panel on the Budget page. Debt payments count here without any tag at all, so a
+            household with a loan sees a truthful figure straight away.
           </p>
           <p>
-            <strong>Required ratio</strong> is the share of take-home already spoken for. Each
-            group&apos;s share is of the essentials total, not of income, so the shares add to 100%.
+            <strong>Required</strong> is the share of take-home already spoken for. Both figures
+            cover the same window, which is what makes the difference between them a real number.
+            Each group&apos;s share is of the cost-of-living total, not of income, so the shares add
+            to 100%.
           </p>
           <ReportScopeNote scope="on-budget" />
         </ReportInfoButton>
@@ -130,9 +138,9 @@ export function CostOfLivingReport({ budgetId }: Props) {
 
       {!data.tagged && (
         <p className="reports-note">
-          Nothing is tagged <strong>Essential</strong> yet, so this counts every category — which is
-          your whole burn rate, not your cost of living. Tag the categories you could not stop
-          paying and this becomes a different number.
+          Nothing is tagged <strong>Essential</strong> or <strong>Cost of living</strong> yet, so
+          this counts every category — which is your whole burn rate, not your cost of living. Tag
+          the ones you could not stop paying and this becomes a different number.
         </p>
       )}
 
@@ -149,9 +157,26 @@ export function CostOfLivingReport({ budgetId }: Props) {
         <div ref={captureRef} className="report-capture">
           <MetricRow>
             <MetricCard
+              label="Cost of living"
+              value={formatMoney(data.avg_monthly_cost_of_living)}
+              sub="per month"
+            />
+            <MetricCard
               label="Essentials"
               value={formatMoney(data.avg_monthly_essentials)}
-              sub="per month"
+              sub="could not be cut"
+            />
+            {/* Named for what it IS, not for what to do about it. "Could cut"
+                beside a household's car payment reads as advice to sell the
+                car; this is an inventory, and the note below says so. */}
+            <MetricCard
+              label="Non-essential"
+              value={formatMoney(data.avg_monthly_non_essential)}
+              sub={
+                sheddable === null
+                  ? 'nothing committed yet'
+                  : `${Math.round(sheddable)}% of the above`
+              }
             />
             <MetricCard
               label="Take-home"
@@ -166,6 +191,8 @@ export function CostOfLivingReport({ budgetId }: Props) {
               sub={data.required_ratio === null ? 'no income on record' : 'of take-home'}
             />
           </MetricRow>
+
+          <p className={`reports-note necessity-standing--${reading.standing}`}>{reading.note}</p>
 
           <div className="report-chart" style={{ height: 300 }}>
             <ResponsiveContainer width="100%" height="100%">

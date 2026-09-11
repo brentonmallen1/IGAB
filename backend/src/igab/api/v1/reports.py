@@ -828,16 +828,19 @@ async def cost_of_living_report(
     report_svc: Annotated[ReportService, Depends(get_report_service)],
     months: ReportMonths = 12,
 ) -> CostOfLivingResponse:
-    """Essential spending by category group, against take-home."""
+    """The two necessity tiers and the gap between them, against take-home."""
     data = await cost_of_living(report_svc.session, budget_id, months)
     return CostOfLivingResponse(
         months=data["months"],
         window_start=data["window_start"],
         window_end=data["window_end"],
         groups=[CostOfLivingGroup.model_validate(g) for g in data["groups"]],
+        avg_monthly_cost_of_living=data["avg_monthly_cost_of_living"],
         avg_monthly_essentials=data["avg_monthly_essentials"],
+        avg_monthly_non_essential=data["avg_monthly_non_essential"],
         avg_monthly_income=data["avg_monthly_income"],
         required_ratio=data["required_ratio"],
+        essentials_ratio=data["essentials_ratio"],
         basis=data["basis"],
         tagged=data["tagged"],
         class_excluded=[SpendingClassExcluded.model_validate(c) for c in data["class_excluded"]],
