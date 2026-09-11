@@ -56,6 +56,7 @@ from igab.domain.dates import month_end as _month_end
 from igab.domain.money import format_csv_amount, quantize_cents
 from igab.domain.plan import plan_outcome
 from igab.domain.schedule import projected_occurrences, subscription_occurrences
+from igab.domain.view_arrangement import arrange_by_view
 from igab.guide.concepts import (
     FULL_EMERGENCY_FUND_MONTHS_HIGH,
     FULL_EMERGENCY_FUND_MONTHS_LOW,
@@ -151,11 +152,6 @@ class AnomalyRow(TypedDict):
     z_score: float
     direction: str
     history: list[Decimal]
-
-
-#: Bucket for categories a view has not placed. A string, not a UUID, so it
-#: cannot collide with a real group id.
-UNASSIGNED_VIEW_GROUP = "__unassigned__"
 
 
 #: The smallest inflow that counts as a payday.
@@ -2371,13 +2367,9 @@ class ReportService:
         return [(month, by_month.get(month, {})) for month in axis]
 
     async def _view_arrangement(self, budget_id: uuid.UUID, view_id: uuid.UUID):
-        """Return `category_id -> (group_id, group_name)` for one view, or None
-        for a category the view leaves out.
-
-        Mirrors the budget page's `groupByView` so a report and the grid never
-        disagree about where a category sits: hidden placements are dropped,
-        unplaced ones fall to "Unassigned" unless the view hides those too.
-        """
+        """The arranger for one view (`domain/view_arrangement.py`, the rule
+        the budget page's `groupByView` runs too), or None if there is no such
+        view in this budget."""
         view = (
             await self.session.execute(
                 select(BudgetView).where(
@@ -2410,27 +2402,9 @@ class ReportService:
             .scalars()
             .all()
         }
-        # A view with no groups puts every category in Unassigned, so
-        # honouring `hide_unassigned` there would empty the report entirely.
-        # The client's `viewGrouping` has carried this guard since the budget
-        # page hit it — "views saved before [the editor refused the
-        # combination] (or emptied of groups later) must still show something"
-        # — and the server did not, so the same view drew a populated budget
-        # page and a blank spending report.
-        hide_unassigned = view.hide_unassigned and bool(group_names)
-
-        def arrange(category_id) -> tuple[str, str] | None:
-            placement = placements.get(category_id)
-            if placement is not None and placement.is_hidden:
-                return None
-            group_id = placement.group_id if placement else None
-            if group_id is None:
-                if hide_unassigned:
-                    return None
-                return UNASSIGNED_VIEW_GROUP, "Unassigned"
-            return str(group_id), group_names.get(group_id, "Unassigned")
-
-        return arrange
+        return arrange_by_view(
+            hide_unassigned=view.hide_unassigned, group_names=group_names, placements=placements
+        )
 
     # ─── Savings Rate ─────────────────────────────────────────────────────────
 

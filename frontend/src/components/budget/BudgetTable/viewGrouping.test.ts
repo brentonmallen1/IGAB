@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { groupByView, UNASSIGNED_GROUP_ID, visibleCategoryIds } from './viewGrouping'
 import type { BudgetView, Category } from '../../../types'
 import { makeCategory } from '../../../test-utils/factories'
+import shared from '../../../../../shared/view_arrangement_cases.json'
 
 const BUDGET = 'b1'
 
@@ -205,5 +206,30 @@ describe('visibleCategoryIds', () => {
     v.hide_unassigned = true
     const ids = visibleCategoryIds(v, [cat('c-rent', 'Rent'), cat('c-new', 'New')], BUDGET)
     expect(ids).toEqual(new Set(['c-rent']))
+  })
+})
+
+/** The rule the server's `domain/view_arrangement.py` runs too: both suites
+ *  read `shared/view_arrangement_cases.json`, so a change to where a view puts
+ *  a category that lands on one side fails the other. */
+describe('the view arrangement the reports share', () => {
+  it.each(shared.cases.map((c) => [c.name, c] as const))('%s', (_name, c) => {
+    const v = {
+      ...view(
+        c.groups.map((g) => [g, g] as [string, string]),
+        c.placements
+      ),
+      hide_unassigned: c.hide_unassigned,
+    }
+    const { byGroup } = groupByView(
+      v,
+      c.categories.map((id) => cat(id, id)),
+      BUDGET
+    )
+    const placed: Record<string, string | null> = Object.fromEntries(
+      c.categories.map((id) => [id, null])
+    )
+    for (const [bucket, list] of byGroup) for (const each of list) placed[each.id] = bucket
+    expect(placed).toEqual(c.expected)
   })
 })

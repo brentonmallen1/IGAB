@@ -19,7 +19,10 @@ export interface ViewGrouping {
  *
  * `categories` should already have any filter and search applied — a view
  * decides the arrangement, a filter decides which categories show, and the two
- * are independent.
+ * are independent. *
+ * The reports arrange the same view on the server (`domain/view_arrangement.py`),
+ * so this rule exists twice; `shared/view_arrangement_cases.json` holds the two
+ * together and both suites run it.
  */
 export function groupByView(
   view: BudgetView,
