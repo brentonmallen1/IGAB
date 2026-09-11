@@ -22,13 +22,12 @@ import { ReportInfoButton, ReportScopeNote, SpendingClassNote } from '../ReportI
 import { LogScaleToggle, logAxisProps } from './logScale'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { truncateLabel } from '../../../utils/truncateLabel'
+import { PAYEE_RANKED } from './reportControls'
 
 interface Props {
   budgetId: string
 }
 
-/** How many payees the server ranks. Recurring mode reads all of them. */
-const RANKED = 25
 /** How many the Top view draws and lists. Every "shown" label reads this or
  *  the rows themselves: the help said 25 while the chart drew 20, and the
  *  Total Payees card said "top 25 shown" above a table footer saying "20". */
@@ -44,7 +43,8 @@ export function PayeeReport({ budgetId }: Props) {
     budgetId,
     filters.startDate,
     filters.endDate,
-    RANKED,
+    // The ranked top N; recurring mode reads all of them.
+    PAYEE_RANKED,
     payeeIds,
     acctIds
   )
@@ -109,9 +109,9 @@ export function PayeeReport({ budgetId }: Props) {
           </p>
           <p>
             The chart and table show the <strong>{TOP_SHOWN} largest</strong> payees (Recurring
-            mode: the recurring ones among the {RANKED} largest); the Total Payees card and Total
-            Spent cover <strong>every</strong> payee in the period, so the rows below can add up to
-            less than the total. Each row&apos;s percentage is a share of that whole.
+            mode: the recurring ones among the {PAYEE_RANKED} largest); the Total Payees card and
+            Total Spent cover <strong>every</strong> payee in the period, so the rows below can add
+            up to less than the total. Each row&apos;s percentage is a share of that whole.
           </p>
           <p>
             Use <em>Recurring</em> mode to focus only on fixed or habitual expenses — subscriptions,

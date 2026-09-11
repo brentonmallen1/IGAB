@@ -24,12 +24,11 @@ import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ReportNotes } from '../ReportNotes'
 import { useReportScope } from '../../../stores/reportStore'
 import { drillScope } from '../drillScope'
+import { PAYDAY_WINDOW_OPTIONS } from './reportControls'
 
 interface Props {
   budgetId: string
 }
-
-const WINDOW_OPTIONS = [7, 14, 21] as const
 
 export function DayPatternsReport({ budgetId }: Props) {
   const chartHeight = useChartHeight(320)
@@ -47,7 +46,7 @@ export function DayPatternsReport({ budgetId }: Props) {
   )
   const captureRef = useRef<HTMLDivElement>(null)
 
-  const [paydayWindow, setPaydayWindow] = useState<(typeof WINDOW_OPTIONS)[number]>(14)
+  const [paydayWindow, setPaydayWindow] = useState<(typeof PAYDAY_WINDOW_OPTIONS)[number]>(14)
   const { data: paydayData, isLoading: paydayLoading } = usePaydayEffectReport(
     budgetId,
     paydayWindow,
@@ -263,7 +262,7 @@ export function DayPatternsReport({ budgetId }: Props) {
             className="report-section__controls"
             style={{ gap: 4, marginLeft: 'var(--spacing-md)' }}
           >
-            {WINDOW_OPTIONS.map((w) => (
+            {PAYDAY_WINDOW_OPTIONS.map((w) => (
               <button
                 key={w}
                 className={`report-btn ${paydayWindow === w ? 'report-btn--active' : ''}`}

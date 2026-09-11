@@ -31,6 +31,7 @@ import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { useReportScope } from '../../../stores/reportStore'
 import { drillScope } from '../drillScope'
 import { truncateLabel } from '../../../utils/truncateLabel'
+import { PAYEE_RANKED } from './reportControls'
 
 interface Props {
   budgetId: string
@@ -113,7 +114,7 @@ export function ParetoReport({ budgetId }: Props) {
     budgetId,
     filters.startDate,
     filters.endDate,
-    25,
+    PAYEE_RANKED,
     payeeIds,
     acctIds
   )

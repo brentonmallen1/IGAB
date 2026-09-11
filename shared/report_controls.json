@@ -1,0 +1,10 @@
+{
+  "_comment": "Every value a report control in the UI can send the server. One list, two languages: frontend/src/components/reports/charts/reportControls.test.ts holds reportControls.ts to it, and backend/tests/integration/test_report_scope.py sends each value and requires a 200. The server's bounds (ProjectionDays, PaydayWindow, ReportLimit, AnomalyThreshold) were tested only at their defaults, so tightening one to the default would 422 the other options with every test green. MAX_REPORT_MONTHS records this repo shipping exactly that once.",
+  "controls": [
+    { "path": "cash-projection", "param": "days", "values": [30, 60, 90, 180] },
+    { "path": "payday-effect", "param": "window", "values": [7, 14, 21] },
+    { "path": "large-transactions", "param": "limit", "values": [25, 50, 100] },
+    { "path": "anomalies", "param": "threshold", "values": [3.0, 2.5, 2.0] },
+    { "path": "payee-analysis", "param": "limit", "values": [25] }
+  ]
+}

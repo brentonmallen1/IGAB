@@ -9,16 +9,11 @@ import { ReportRangeSelect } from './rangeSelect'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { Tooltip } from '../../common/Tooltip/Tooltip'
 import { monthWindow } from '../../../utils/dateWindow'
+import { SENSITIVITY_OPTIONS } from './reportControls'
 
 interface Props {
   budgetId: string
 }
-
-const SENSITIVITY_OPTIONS = [
-  { value: 3.0, label: 'Strict', description: 'z ≥ 3' },
-  { value: 2.5, label: 'Normal', description: 'z ≥ 2.5' },
-  { value: 2.0, label: 'Sensitive', description: 'z ≥ 2' },
-] as const
 
 export function AnomaliesReport({ budgetId }: Props) {
   const months = useReportMonths()

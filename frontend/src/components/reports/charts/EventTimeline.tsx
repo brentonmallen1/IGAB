@@ -13,17 +13,16 @@ import './EventTimeline.css'
 import { useReportScope } from '../../../stores/reportStore'
 import { drillScope } from '../drillScope'
 import { dotSize, largestMagnitude, newestFirst, timelineTone } from './timelineView'
+import { TIMELINE_LIMITS } from './reportControls'
 
 interface Props {
   budgetId: string
 }
 
-const LIMITS = [25, 50, 100] as const
-
 export function TimelineReport({ budgetId }: Props) {
   const { formatMoney } = useFormatters()
   const { filters, setDrillDown } = useReportStore()
-  const [limit, setLimit] = useState<25 | 50 | 100>(25)
+  const [limit, setLimit] = useState<(typeof TIMELINE_LIMITS)[number]>(25)
   const reportScope = useReportScope()
   const acctIds = filters.accountIds.length > 0 ? filters.accountIds : undefined
   const { data, isLoading, isError, error, refetch } = useTimelineReport(
@@ -82,7 +81,7 @@ export function TimelineReport({ budgetId }: Props) {
           Largest transactions — size indicates relative magnitude.
         </p>
         <div className="flex-row ms-auto">
-          {LIMITS.map((l) => (
+          {TIMELINE_LIMITS.map((l) => (
             <button
               key={l}
               className={`report-btn ${limit === l ? 'report-btn--active' : ''}`}

@@ -20,12 +20,11 @@ import { MetricCard } from '../MetricCard'
 import { MetricRow } from '../MetricRow'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { TOOLTIP_STYLE } from './chartColors'
+import { HORIZON_OPTIONS } from './reportControls'
 
 interface Props {
   budgetId: string
 }
-
-const HORIZON_OPTIONS = [30, 60, 90, 180] as const
 
 export function CashProjectionReport({ budgetId }: Props) {
   const chartHeight = useChartHeight(360)

@@ -14,8 +14,10 @@ The two cases worth stating loudest are the ones a naive resolver gets wrong:
   about an unused tag is answered with the whole budget.
 """
 
+import json
 import uuid
 from datetime import date
+from pathlib import Path
 
 import pytest
 
@@ -30,6 +32,10 @@ from .factories import (
     create_category_group,
     create_transaction,
     create_user,
+)
+
+_UI_CONTROLS = json.loads(
+    (Path(__file__).resolve().parents[3] / "shared" / "report_controls.json").read_text()
 )
 
 
@@ -487,3 +493,19 @@ class TestParameterBounds:
         for path in ("anomalies", "payday-effect", "cash-projection"):
             resp = await api_client.get(f"/api/v1/{budget.id}/reports/{path}")
             assert resp.status_code == 200, f"{path}: {resp.text}"
+
+    @pytest.mark.parametrize(
+        ("path", "param", "value"),
+        [(c["path"], c["param"], v) for c in _UI_CONTROLS["controls"] for v in c["values"]],
+    )
+    async def test_every_value_the_ui_sends_is_accepted(
+        self, db_session, api_client, path, param, value
+    ):
+        """The defaults passing said nothing about Cash Projection's 180-day
+        horizon or the 21-day payday window: tighten `ProjectionDays` to
+        `le=90` and those 422 in the app while the test above stays green
+        (PR188-14). `shared/report_controls.json` is the UI's own list —
+        reportControls.test.ts holds the chart constants to it."""
+        budget, *_ = await _make_world(db_session, api_client.test_user)
+        resp = await api_client.get(f"/api/v1/{budget.id}/reports/{path}?{param}={value}")
+        assert resp.status_code == 200, f"{path}?{param}={value}: {resp.text}"
