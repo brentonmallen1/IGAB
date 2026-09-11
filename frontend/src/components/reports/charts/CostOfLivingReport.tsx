@@ -51,6 +51,13 @@ export function CostOfLivingReport({ budgetId }: Props) {
 
   const reading = necessityReading(data.required_ratio, data.essentials_ratio)
   const sheddable = sheddableShare(data.avg_monthly_cost_of_living, data.avg_monthly_non_essential)
+  // The averages divide by finished months; the chart still draws the month in
+  // progress. Saying which is the difference between a figure a reader can
+  // check and one that just looks low at the start of a month.
+  const perMonth =
+    data.months_averaged < data.months.length
+      ? `per month, over ${data.months_averaged} complete`
+      : 'per month'
 
   const report = data
 
@@ -156,10 +163,14 @@ export function CostOfLivingReport({ budgetId }: Props) {
       ) : (
         <div ref={captureRef} className="report-capture">
           <MetricRow>
+            {/* "per complete month", because that is the divisor. The
+                averages used to divide by the whole window with its newest
+                month still running, which put this report's figure below the
+                Essentials report's for the same tag and the same query. */}
             <MetricCard
               label="Cost of living"
               value={formatMoney(data.avg_monthly_cost_of_living)}
-              sub="per month"
+              sub={perMonth}
             />
             <MetricCard
               label="Essentials"
@@ -181,7 +192,7 @@ export function CostOfLivingReport({ budgetId }: Props) {
             <MetricCard
               label="Take-home"
               value={formatMoney(data.avg_monthly_income)}
-              sub="per month"
+              sub={perMonth}
             />
             <MetricCard
               label="Required"

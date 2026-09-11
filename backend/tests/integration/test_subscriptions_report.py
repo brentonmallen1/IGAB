@@ -113,7 +113,14 @@ async def test_monthly_subscription_counts_posted_leaf_outflows_only(db_session)
     assert sub["avg_monthly"] == Decimal("15.99")
 
     months = data["months"]
-    assert len(months) == 13
+    # months=12 means TWELVE. This subtracted the full count from the current
+    # month and then included it too, so the chart drew thirteen columns with
+    # an empty leader and every effective-monthly figure divided by thirteen.
+    assert len(months) == 12
+    # The average divides by COMPLETE months, and the newest column is always
+    # the month in progress — on the 1st of October, September has finished
+    # and October has not — so this is eleven of the twelve on any day.
+    assert data["months_averaged"] == 11
     amounts = dict(zip(months, sub["monthly_amounts"]))
     assert amounts[months_ago(2)] == Decimal("15.99")
     assert amounts[months_ago(1)] == Decimal("15.99")
@@ -140,10 +147,18 @@ async def test_quarterly_subscription_normalizes_to_true_monthly_cost(db_session
     sub = data["subscriptions"][0]
     assert sub["total"] == Decimal("120.00")
     assert sub["avg_per_charge"] == Decimal("30.00")
-    # $120 over a 12-month span = $10/mo — NOT the $30 per-charge figure
-    assert sub["avg_monthly"] == Decimal("10.00")
-    assert data["summary"]["total_monthly"] == Decimal("10.00")
-    assert data["summary"]["total_annual"] == Decimal("120.00")
+    # $120 spread over the months since the first charge — NOT the $30
+    # per-charge figure, which is the whole point of the column.
+    #
+    # Eleven of the twelve months are complete on any day of any month (the
+    # twelfth is today's, still running) and the first charge lands in the
+    # first of them, so the figure is 120/11 = 10.91. It read a round 10.00
+    # while the window was thirteen months long and the divisor counted the
+    # month in progress — two errors cancelling into a number that looked
+    # right.
+    assert sub["avg_monthly"] == Decimal("10.91")
+    assert data["summary"]["total_monthly"] == Decimal("10.91")
+    assert data["summary"]["total_annual"] == Decimal("130.92")
 
 
 async def test_monthly_buckets_are_exact_decimals(db_session):
@@ -211,6 +226,9 @@ async def test_no_subscription_tag_or_no_tagged_payees_is_empty(db_session):
             "active_count": 0,
         },
         "months": [],
+        # No months were measured, so the divisor is none — not the window
+        # length, which would claim an average nothing produced.
+        "months_averaged": 0,
     }
 
     # Tag exists but nothing is tagged with it

@@ -15,6 +15,7 @@ try/except around a calendar edge.
 """
 
 import calendar
+from collections.abc import Sequence
 from datetime import date
 
 
@@ -62,6 +63,25 @@ def months_spanned(start: date, end: date) -> int:
     floor. Both live here so neither gets rebuilt at a call site.
     """
     return max(0, (end.year - start.year) * 12 + end.month - start.month) + 1
+
+
+def complete_months(months: Sequence[date], today: date) -> list[date]:
+    """The month buckets in `months` that have finished.
+
+    A per-month AVERAGE has to divide by months that happened. Dividing a
+    twelve-month total by twelve on the 3rd of the month spreads eleven months
+    of spending plus two days across twelve, and the figure is at its lowest
+    exactly when a household checks it at the start of a month: Cost of Living
+    quoted $2,750/month where the Essentials report, reading the same tag and
+    the same query over its own window, quoted $3,000.
+
+    The current month is never complete — not even on its last day, since the
+    day is not over. That is the rule `category_volatility` already applies by
+    ending its window at `first_of_month - 1 day`, said once so a report
+    cannot pick a different answer.
+    """
+    current = month_start(today)
+    return [m for m in months if month_start(m) < current]
 
 
 def weekday_occurrences(month: date, weekday: int) -> int:

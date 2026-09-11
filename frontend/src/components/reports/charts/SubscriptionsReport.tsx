@@ -76,10 +76,11 @@ export function SubscriptionsReport({ budgetId }: Props) {
             reserved system tag and cannot be deleted.
           </p>
           <p>
-            <strong>Monthly (effective)</strong> spreads each subscription's cost over the months
-            since its first charge — a quarterly $30 subscription reads as $10/mo.{' '}
-            <strong>Per Charge</strong> is the typical amount of a single charge.{' '}
-            <strong>Annual</strong> projects the yearly cost from the effective monthly total.
+            <strong>Monthly (effective)</strong> spreads each subscription's cost over the COMPLETE
+            months since its first charge — a quarterly $30 subscription reads as about $10/mo. The
+            month in progress is left out of that divisor, or every figure here would read at its
+            lowest on the 2nd of the month and <strong>Annual</strong> would multiply that by
+            twelve. <strong>Per Charge</strong> is the typical amount of a single charge.
           </p>
           <ReportScopeNote scope="on-budget" />
         </ReportInfoButton>
@@ -130,7 +131,11 @@ export function SubscriptionsReport({ budgetId }: Props) {
             <MetricCard
               label="Monthly"
               value={formatMoney(summary?.total_monthly ?? 0)}
-              sub="effective"
+              sub={
+                data && data.months_averaged < monthLabels.length
+                  ? `effective, over ${data.months_averaged} complete months`
+                  : 'effective'
+              }
             />
             <MetricCard
               label="Annual"

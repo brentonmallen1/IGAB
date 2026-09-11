@@ -12,6 +12,7 @@ import pytest
 
 from igab.domain.dates import (
     add_months,
+    complete_months,
     month_end,
     month_start,
     months_between,
@@ -158,3 +159,37 @@ class TestWeekdayOccurrences:
     def test_rejects_a_weekday_outside_the_week(self):
         with pytest.raises(ValueError):
             weekday_occurrences(date(2026, 5, 1), 7)
+
+
+class TestCompleteMonths:
+    """What a per-month AVERAGE is allowed to divide by."""
+
+    @staticmethod
+    def year(n: int = 12, *, end: date = date(2026, 9, 1)) -> list[date]:
+        return [add_months(end, -i) for i in range(n - 1, -1, -1)]
+
+    def test_the_month_in_progress_is_not_complete(self):
+        months = self.year()
+        assert complete_months(months, date(2026, 9, 10)) == months[:-1]
+
+    def test_not_even_on_its_last_day(self):
+        # The day is not over, and a month measured on its final morning is
+        # still short. The alternative — counting it — is what made a
+        # twelve-month average lowest on the days a household checks it.
+        months = self.year()
+        assert len(complete_months(months, date(2026, 9, 30))) == 11
+
+    def test_it_is_complete_the_moment_the_next_month_starts(self):
+        months = self.year()
+        assert complete_months(months, date(2026, 10, 1)) == months
+
+    def test_a_one_month_window_has_nothing_complete_in_it(self):
+        # The caller's problem, not this function's: `cost_of_living` falls
+        # back to the running month rather than dividing by zero, and says so
+        # through `months_averaged`.
+        assert complete_months([date(2026, 9, 1)], date(2026, 9, 10)) == []
+
+    def test_the_day_of_a_bucket_does_not_matter(self):
+        # Buckets are keyed on the first of the month, but a caller handing in
+        # a mid-month date means that month.
+        assert complete_months([date(2026, 8, 17)], date(2026, 9, 2)) == [date(2026, 8, 17)]

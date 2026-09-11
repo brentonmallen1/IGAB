@@ -36,6 +36,7 @@ each other, starting from `origin/main` at `892922a0`.
 | 11 | `fix/reports-labels` | Labels that contradict the computation | done |
 | 12 | `fix/reports-totals-not-truncations` | A truncated set is not a total (payee_analysis, DrillDownTable, Pareto) | done |
 | 13 | `fix/reports-efficiency` | Per-month query loops; whole-register scans; CSV amount formatting | done |
+| 14 | `fix/reports-complete-months` | A per-month average divides by months that finished | done |
 
 Branches 1–4 are independent in content and could be reordered; 5 onward depend
 on the extractions beneath them.
