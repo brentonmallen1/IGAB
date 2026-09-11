@@ -6,7 +6,7 @@ import { useSpendingGroupedReport } from '../../../api/reports'
 import { useChartHeight } from '../../../hooks/useChartHeight'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
-import { chartColor } from './chartColors'
+import { flatTiles, groupTiles, treemapGroups, type TreeNode } from './treemapTiles'
 import { ReportInfoButton, ReportScopeNote, SpendingClassNote } from '../ReportInfoButton'
 import { ReportNotes, IncludeSavingsToggle, emptySpendingMessage } from '../ReportNotes'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
@@ -16,20 +16,6 @@ import { shareOfTotal } from '../drillDownTotals'
 
 interface Props {
   budgetId: string
-}
-
-interface TreeNode {
-  name: string
-  id: string
-  parent_id: string | null
-  parent_name: string | null
-  size: number
-  /** Share of the grand total; null when there is no positive total to be
-   *  a share of (see `shareOfTotal`). */
-  pct: number | null
-  fill?: string
-  // Recharts' Treemap data points must satisfy TreemapDataType's index signature.
-  [key: string]: unknown
 }
 
 export function SpendingTreemapReport({ budgetId }: Props) {
@@ -70,75 +56,16 @@ export function SpendingTreemapReport({ budgetId }: Props) {
   const items = useMemo(() => data?.groups ?? [], [data])
   const grandTotal = Number(data?.total ?? 0)
 
-  const groups = useMemo(() => {
-    const map = new Map<
-      string,
-      { name: string; total: number; colorIdx: number; children: TreeNode[] }
-    >()
-    let colorIdx = 0
-    for (const item of items) {
-      const gid = item.parent_id ?? '__none__'
-      if (!map.has(gid)) {
-        map.set(gid, {
-          name: item.parent_name ?? 'Other',
-          total: 0,
-          colorIdx: colorIdx++,
-          children: [],
-        })
-      }
-      const g = map.get(gid)!
-      g.total += item.total
-      g.children.push({
-        name: item.name,
-        id: item.id,
-        parent_id: item.parent_id,
-        parent_name: item.parent_name,
-        size: item.total,
-        pct: item.pct,
-        // The GROUP's slot, not the running counter. `colorIdx++` above
-        // post-increments, so a child read the NEXT group's colour — none of
-        // a group's tiles matched the group tile you had just clicked, two
-        // categories in one group could land on the same colour, and flat
-        // mode disagreed with grouped mode about all of it.
-        fill: chartColor(g.colorIdx),
-      })
-    }
-    return map
-  }, [items])
+  const groups = useMemo(() => treemapGroups(items), [items])
 
   // groupBy=group → show only top-level groups (no drill-down)
   // groupBy=category → show all categories flat (colored by group)
   const visibleItems: TreeNode[] = useMemo(() => {
-    if (groupBy === 'category') {
-      // flat: all categories colored by their group
-      return items.map((item) => {
-        const gid = item.parent_id ?? '__none__'
-        const colorIdx = [...groups.keys()].indexOf(gid)
-        return {
-          name: item.name,
-          id: item.id,
-          parent_id: item.parent_id,
-          parent_name: item.parent_name,
-          size: item.total,
-          pct: item.pct,
-          fill: chartColor(colorIdx),
-        }
-      })
-    }
+    if (groupBy === 'category') return flatTiles(items, groups)
     // group (or payee fallback) → group-level boxes, or the selected group's
     // categories once drilled (category mode already returned above)
-    if (selectedGroup) {
-      return groups.get(selectedGroup)?.children ?? []
-    }
-    return [...groups.values()].map((g, i) => ({
-      name: g.name,
-      id: g.name,
-      parent_id: null,
-      parent_name: null,
-      size: g.total,
-      pct: shareOfTotal(g.total, grandTotal),
-      fill: chartColor(i),
-    }))
+    if (selectedGroup) return groups.get(selectedGroup)?.children ?? []
+    return groupTiles(groups, grandTotal)
   }, [groupBy, selectedGroup, groups, items, grandTotal])
 
   if (isLoading) return <div className="report-loading">Loading…</div>
