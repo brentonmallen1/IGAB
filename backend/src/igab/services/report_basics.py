@@ -220,8 +220,13 @@ async def emergency_fund(
 
 class RecurringSpend(TypedDict):
     """What a recurring line costs, whoever or whatever it is attached to.
-    Identical arithmetic for a category and for a payee inside one, so it is
-    written once and applied at both levels."""
+    One shape for a category and for a payee inside one, so it is written
+    once and applied at both levels.
+
+    One figure is not a second walk over the category's rows: `avg_monthly`
+    on a category is the SUM of its payees' (see `subscriptions_report`), so
+    the nested table adds up. Everything else here is the same arithmetic at
+    both levels."""
 
     monthly_amounts: list[Decimal]
     total: Decimal
@@ -250,8 +255,12 @@ def _recurring_spend(frame: pl.DataFrame, month_list: list[date]) -> RecurringSp
     """The per-line arithmetic, for a category or one payee inside it.
 
     avg_monthly is the monthly burden: the total spread over the months
-    since the FIRST charge, not the average charged month — a quarterly $30
-    subscription costs about $10/mo, not $30/mo.
+    since the FIRST charge of THIS frame, not the average charged month — a
+    quarterly $30 subscription costs about $10/mo, not $30/mo. Which is why a
+    category's figure is the sum of its payees' rather than this function's
+    answer for the whole envelope: one divisor per envelope would start every
+    service at the envelope's oldest charge and lose the newest one. See
+    `subscriptions_report`.
 
     "About", deliberately. The window's end can fall mid-cycle, and then the
     last charge is counted whole while only part of the period it pays for is
@@ -305,7 +314,18 @@ async def subscriptions_report(
     "which envelope grew".
 
     Note what avg_monthly means at each level: per payee it is a service's
-    cost; per category it is that envelope's recurring burn rate.
+    cost, spread over the complete months since that service's first charge;
+    per category it is the envelope's recurring burn rate, which is the SUM
+    of the services inside it. The summary's total_monthly is in turn the sum
+    of the categories, so every figure on the page is the payee rows added up
+    and the nested table agrees with its own headline.
+
+    Dividing at category level instead — the envelope's total over the months
+    since the ENVELOPE's first charge — quietly dropped a service that
+    started later: Streaming charged $15 for three complete months, gaining a
+    $10 service in the last one, read $18.33 beside payee rows of $15.00 and
+    $10.00, and the summary was short by the newcomer. Pinned in
+    test_subscriptions_report.
     """
     from igab.repositories.tag_repo import TagRepository
 
@@ -395,13 +415,20 @@ async def subscriptions_report(
             )
         payees.sort(key=lambda p: p["total"], reverse=True)
 
+        envelope = _recurring_spend(in_category, month_list)
+        # Monthly rolls up from the rows beneath it; see the docstring for the
+        # figure a shared divisor lost. The sum is of the CENT-quantized payee
+        # figures, so the column adds up as drawn rather than to within a cent
+        # of it.
+        envelope["avg_monthly"] = sum((p["avg_monthly"] for p in payees), Decimal("0"))
+
         subscriptions.append(
             {
                 "category_id": category_id,
                 "category_name": in_category["category_name"][0],
                 "group_name": in_category["group_name"][0],
                 "payees": payees,
-                **_recurring_spend(in_category, month_list),
+                **envelope,
             }
         )
 
@@ -417,8 +444,9 @@ async def subscriptions_report(
         },
         "months": month_list,
         #: The window's complete months: the most an effective-monthly figure
-        #: divides by, since each line divides by the months since its own
-        #: first charge.
+        #: divides by, since each SERVICE divides by the months since its own
+        #: first charge and the category and summary figures are sums of
+        #: those. Still a bound, not the divisor of anything on the page.
         "months_averaged": len(month_list),
     }
 

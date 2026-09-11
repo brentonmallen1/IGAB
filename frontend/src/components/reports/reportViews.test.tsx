@@ -505,7 +505,11 @@ describe('SubscriptionsReport table', () => {
     })
     renderReport(<SubscriptionsReport budgetId="b1" />)
 
-    expect(card('Monthly').sub).toBe('effective, over 4 complete months')
+    // The count is a bound, not a divisor: the figure is the services added
+    // up, each spread over the months since its own first charge.
+    expect(card('Monthly').sub).toBe(
+      'effective, each service since its first charge, at most 4 complete months'
+    )
     expect(screen.getByText('Per Charge')).toBeInTheDocument()
     expect(screen.getByText('Monthly (effective)')).toBeInTheDocument()
     // $30 per charge but only $10/mo effective — both perspectives visible
@@ -552,7 +556,9 @@ describe('SubscriptionsReport table', () => {
     })
     renderReport(<SubscriptionsReport budgetId="b1" />)
 
-    expect(card('Monthly').sub).toBe('effective, over 1 complete month')
+    expect(card('Monthly').sub).toBe(
+      'effective, each service since its first charge, at most 1 complete month'
+    )
 
     expect(screen.getByText('Category')).toBeInTheDocument()
     const row = screen.getByRole('button', { name: /Streaming/ })

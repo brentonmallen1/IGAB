@@ -1156,11 +1156,15 @@ export interface TimelineReport extends SavedFilterScope {
 }
 
 /** The figures a recurring line carries — same shape for a category and for
- *  a payee inside it, because the arithmetic is the same. */
+ *  a payee inside it, because the arithmetic is the same, except
+ *  `avg_monthly`, which a category rolls up from its payees. */
 export interface RecurringSpend {
   monthly_amounts: number[]
-  /** True monthly burden: total / months since the first charge. Per payee
-   *  that is a service's cost; per category it is the envelope's burn rate. */
+  /** True monthly burden, from the server
+   *  (`services/report_basics._recurring_spend`). Per payee: total / complete
+   *  months since THAT service's first charge. Per category: the sum of its
+   *  payees', so the nested table adds up and a service that started after
+   *  its envelope did is not lost to a shared divisor. */
   avg_monthly: number
   total: number
   /** Typical charge: total / charge count */
@@ -1182,6 +1186,8 @@ export interface SubscriptionCategory extends RecurringSpend {
 }
 
 export interface SubscriptionsSummary {
+  /** The sum of every category's `avg_monthly`, each of which is the sum of
+   *  its payees': the headline is the rows added up. */
   total_monthly: number
   total_annual: number
   active_count: number
@@ -1190,8 +1196,9 @@ export interface SubscriptionsSummary {
 export interface SubscriptionsReport {
   /** The complete months the window holds — every entry of `months`, on
    *  every day (backend `domain.dates.complete_month_window`). The MOST an
-   *  effective-monthly figure divides by: each line divides by the months
-   *  since its own first charge. 0 when nothing was charged in the window. */
+   *  effective-monthly figure divides by: each SERVICE divides by the months
+   *  since its own first charge, and the category and summary figures are
+   *  sums of those. 0 when nothing was charged in the window. */
   months_averaged: number
   subscriptions: SubscriptionCategory[]
   summary: SubscriptionsSummary

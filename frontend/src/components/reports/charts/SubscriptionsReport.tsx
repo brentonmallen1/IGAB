@@ -22,7 +22,7 @@ import { ChartTooltip } from './ChartTooltip'
 import { ReportRangeSelect } from './rangeSelect'
 import { useReportMonths } from '../../../stores/reportStore'
 import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
-import { averagedOver } from './averagedOver'
+import { averagedSinceEachFirstCharge } from './averagedOver'
 
 interface Props {
   budgetId: string
@@ -81,7 +81,9 @@ export function SubscriptionsReport({ budgetId }: Props) {
             months since its first charge — a quarterly $30 subscription reads as about $10/mo. The
             month in progress is left out of the window, or every figure here would read at its
             lowest on the 2nd of the month and <strong>Annual</strong> would multiply that by
-            twelve. <strong>Per Charge</strong> is the typical amount of a single charge.
+            twelve. A category&apos;s Monthly is the sum of the services inside it, and the figure
+            at the top is the sum of the categories, so every row adds up to the one above it.{' '}
+            <strong>Per Charge</strong> is the typical amount of a single charge.
           </p>
           <ReportScopeNote scope="on-budget" />
         </ReportInfoButton>
@@ -132,7 +134,7 @@ export function SubscriptionsReport({ budgetId }: Props) {
             <MetricCard
               label="Monthly"
               value={formatMoney(summary?.total_monthly ?? 0)}
-              sub={data ? averagedOver('effective', data.months_averaged) : 'effective'}
+              sub={data ? averagedSinceEachFirstCharge(data.months_averaged) : 'effective'}
             />
             <MetricCard
               label="Annual"

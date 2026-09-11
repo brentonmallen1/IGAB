@@ -7,7 +7,9 @@ Pins the money semantics decided in the reports audit:
 - `avg_monthly` is the monthly burden: total ÷ complete months from the
   first charged month through the end of the window (a quarterly $30 sub
   reads about $10/mo, not $30/mo; where the window's end falls in its cycle
-  moves it between $10.00 and $12.00, pinned below).
+  moves it between $10.00 and $12.00, pinned below). Per SERVICE — a
+  category's `avg_monthly` is the sum of the services inside it, and the
+  summary's is the sum of the categories, so the nested table adds up.
 - `avg_per_charge` is the typical charge: total ÷ charge count.
 - Refunds (inflows) are ignored — the report tracks subscription cost, and
   the `amount < 0` filter pins that choice.
@@ -253,6 +255,69 @@ async def test_a_service_charged_only_this_month_is_not_averaged_yet(db_session)
     assert len(data["months"]) == 12
     assert TODAY.replace(day=1) not in data["months"]
     assert data["months_averaged"] == 0
+
+
+async def test_a_newer_service_counts_in_its_category_and_in_the_summary(db_session):
+    """A category's Monthly is the SUM of the services inside it, and the
+    summary is the sum of the categories.
+
+    Dividing the envelope's own total by the months since the ENVELOPE's
+    first charge lost a service that started later: Streaming charged $15 a
+    month for three complete months, gaining a $10 service in the last one,
+    read $18.33 while its two payee rows read $15.00 and $10.00 — a nested
+    table that disagreed with itself — and the summary read $28.33 instead of
+    $35.00. Software, whose only service started in that same month, was
+    unaffected, which is what made the omission look like a rule rather than
+    the accident it was.
+    """
+    budget, checking, tag_repo, streaming = await _setup(db_session)
+    sub_tag = await tag_repo.get_system_tag(budget.id, "subscription")
+    group = await create_category_group(db_session, budget, "Digital")
+    software = await create_category(db_session, budget, group, "Software")
+    await tag_repo.set_category_tags(software.id, [sub_tag.id])
+
+    streamer = await create_payee(db_session, budget, "Nimbus Screen")
+    newcomer = await create_payee(db_session, budget, "Harbor Play")
+    editor = await create_payee(db_session, budget, "Pixelworks")
+
+    # Three complete months of an established service...
+    for k in (3, 2, 1):
+        await create_transaction(
+            db_session,
+            budget,
+            checking,
+            "-15.00",
+            months_ago(k),
+            payee=streamer,
+            category=streaming,
+        )
+    # ...and two services whose first charge is the last complete month, one
+    # sharing the envelope and one with an envelope of its own.
+    await create_transaction(
+        db_session, budget, checking, "-10.00", months_ago(1), payee=newcomer, category=streaming
+    )
+    await create_transaction(
+        db_session, budget, checking, "-10.00", months_ago(1), payee=editor, category=software
+    )
+
+    data = await subscriptions_report(db_session, budget.id, months=12)
+
+    lines = {s["category_name"]: s for s in data["subscriptions"]}
+    payees = {p["payee_name"]: p for p in lines["Streaming"]["payees"]}
+    # Each service over the complete months since its OWN first charge.
+    assert payees["Nimbus Screen"]["avg_monthly"] == Decimal("15.00")
+    assert payees["Harbor Play"]["avg_monthly"] == Decimal("10.00")
+
+    # The envelope is its services added up — 25.00, not 55/3 = 18.33.
+    assert lines["Streaming"]["avg_monthly"] == Decimal("25.00")
+    assert lines["Software"]["avg_monthly"] == Decimal("10.00")
+    for line in data["subscriptions"]:
+        assert line["avg_monthly"] == sum(p["avg_monthly"] for p in line["payees"])
+
+    # And the headline is the categories added up — 35.00, not 28.33.
+    assert data["summary"]["total_monthly"] == Decimal("35.00")
+    assert data["summary"]["total_monthly"] == sum(s["avg_monthly"] for s in data["subscriptions"])
+    assert data["summary"]["total_annual"] == Decimal("420.00")
 
 
 async def test_no_subscription_tag_or_no_tagged_payees_is_empty(db_session):

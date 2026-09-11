@@ -577,12 +577,15 @@ class LiabilitiesReportResponse(ApiModel):
 
 class RecurringSpend(ApiModel):
     """The figures a recurring line carries. One shape for a category and for
-    a payee inside it, because the arithmetic is the same."""
+    a payee inside it, because the arithmetic is the same — except
+    `avg_monthly`, which a category rolls up from its payees."""
 
     monthly_amounts: list[Decimal]  # amounts per month in the period
-    #: True monthly burden: total / months since the FIRST charge, so a
-    #: quarterly $30 subscription reads $10/mo. Per payee that is a service's
-    #: cost; per category it is the envelope's recurring burn rate.
+    #: True monthly burden. Per payee: total / complete months since THAT
+    #: service's first charge, so a quarterly $30 subscription reads $10/mo.
+    #: Per category: the SUM of its payees', so the nested table adds up and a
+    #: service that started after its envelope did is not lost to a shared
+    #: divisor.
     avg_monthly: Decimal
     total: Decimal
     avg_per_charge: Decimal  # typical charge: total / charge count
@@ -606,7 +609,9 @@ class SubscriptionCategory(RecurringSpend):
 
 
 class SubscriptionsSummary(ApiModel):
-    total_monthly: Decimal  # average monthly total across all subscriptions
+    #: The sum of every category's avg_monthly, which is itself the sum of its
+    #: payees': the page's headline is its rows added up.
+    total_monthly: Decimal
     total_annual: Decimal  # projected annual cost
     active_count: int  # number of tagged categories with charges in the period
 
@@ -617,10 +622,11 @@ class SubscriptionsReportResponse(ApiModel):
     months: list[date]  # month labels for the period
     #: The complete months the window holds — every month in `months`, on
     #: every day (`domain.dates.complete_month_window`). It is the MOST an
-    #: effective-monthly figure divides by: each line divides by the months
-    #: since its own first charge. 0 when nothing was charged in the window:
-    #: no figure was averaged. Required, not optional — a default would let
-    #: the page claim a divisor nothing served.
+    #: effective-monthly figure divides by: each SERVICE divides by the months
+    #: since its own first charge, and the category and summary figures are
+    #: sums of those. 0 when nothing was charged in the window: no figure was
+    #: averaged. Required, not optional — a default would let the page claim a
+    #: divisor nothing served.
     months_averaged: int
 
 
