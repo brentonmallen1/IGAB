@@ -884,9 +884,8 @@ export interface VolatilityItem {
 
 export interface VolatilityReport {
   categories: VolatilityItem[]
-  /** True when each charge was spread forward over the months until the next
-   *  one. Served so the page can say which reading it is showing — the same
-   *  numbers under two definitions is how a chart lies quietly. */
+  /** Which reading the figures are — served, see `VolatilityResponse` and
+   *  `domain.amortize.spread_forward`. The caption and the export read it. */
   amortized: boolean
   /** The complete months the statistics read (server-decided). Drill with
    *  these — a window computed here drifted from the backend's once already. */

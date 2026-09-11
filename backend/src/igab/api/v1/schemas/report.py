@@ -277,10 +277,13 @@ class VolatilityItem(ApiModel):
 
 class VolatilityResponse(ApiModel):
     categories: list[VolatilityItem]
-    #: True when each charge was spread forward over the months until the
-    #: next one. Served so the page can say which reading it is showing —
-    #: the same numbers under two definitions is how a chart lies quietly.
-    amortized: bool = False
+    #: True when each charge was spread over the months it pays for
+    #: (`domain.amortize.spread_forward`). Served so the page can say which
+    #: reading it is showing — the same numbers under two definitions is how a
+    #: chart lies quietly — and required, so a path that forgets it raises
+    #: instead of calling amortized figures raw. The caption and the export
+    #: filename read it.
+    amortized: bool
     #: The complete months the statistics read. The drill-down lists exactly
     #: these; the chart used to compute its own, and it drifted.
     window_start: date

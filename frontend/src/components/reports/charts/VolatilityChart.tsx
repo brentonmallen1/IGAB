@@ -15,7 +15,12 @@ import { useFormatters } from '../../../hooks/useFormatters'
 import { useMoneyAxis } from './useMoneyAxis'
 import { ReportErrorState } from '../ReportErrorState'
 import { COLOR_NEUTRAL, TOOLTIP_STYLE } from './chartColors'
-import { buildVolatilityChartRows, coefficientOfVariation, filterVolatile } from './volatilityData'
+import {
+  buildVolatilityChartRows,
+  coefficientOfVariation,
+  filterVolatile,
+  volatilityExport,
+} from './volatilityData'
 import { DrillDownTable } from '../DrillDownTable'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
@@ -60,6 +65,8 @@ export function VolatilityReport({ budgetId }: Props) {
   const categories = filterVolatile(data?.categories ?? [])
 
   const chartData = buildVolatilityChartRows(categories)
+  const amortized = data?.amortized ?? false
+  const exported = volatilityExport(categories, amortized)
 
   const tableRows = categories.map((c) => ({
     id: c.category_id,
@@ -118,18 +125,8 @@ export function VolatilityReport({ budgetId }: Props) {
           </label>
           <ReportRangeSelect />
           <ReportExportButton
-            reportId="volatility"
-            getRows={() =>
-              categories.map((c) => ({
-                category: c.category_name,
-                group: c.category_group_name,
-                mean: c.mean,
-                std_dev: c.std_dev,
-                min: c.min_val,
-                max: c.max_val,
-                months: c.months_included,
-              }))
-            }
+            reportId={exported.reportId}
+            getRows={() => exported.rows}
             captureRef={captureRef}
           />
         </div>
@@ -141,6 +138,12 @@ export function VolatilityReport({ budgetId }: Props) {
         </div>
       ) : (
         <div ref={captureRef} className="report-capture">
+          {/* Inside the capture, so a PNG of the amortized reading says so. */}
+          {amortized && (
+            <p className="report-note">
+              Amortized: each charge is spread over the months it pays for.
+            </p>
+          )}
           <ResponsiveContainer width="100%" height={Math.max(300, chartData.length * 34)}>
             <BarChart
               data={chartData}

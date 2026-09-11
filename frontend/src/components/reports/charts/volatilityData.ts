@@ -58,3 +58,31 @@ export function buildVolatilityChartRows(
 export function coefficientOfVariation(mean: number, stdDev: number): number {
   return mean > 0 ? (stdDev / mean) * 100 : 0
 }
+
+/**
+ * What an export of the report is named and carries.
+ *
+ * The raw and amortized readings of one window differ in σ, min and max, so a
+ * file has to say which one it holds: both used to be `igab-volatility.*` with
+ * the same columns, which is the same numbers under two definitions with
+ * nothing to tell them apart. `amortized` is the served flag, not the toggle —
+ * it names what the figures ARE.
+ */
+export function volatilityExport(
+  categories: VolatilityCategoryLike[],
+  amortized: boolean
+): { reportId: string; rows: Record<string, unknown>[] } {
+  return {
+    reportId: amortized ? 'volatility-amortized' : 'volatility',
+    rows: categories.map((c) => ({
+      category: c.category_name,
+      group: c.category_group_name,
+      reading: amortized ? 'amortized' : 'raw',
+      mean: c.mean,
+      std_dev: c.std_dev,
+      min: c.min_val,
+      max: c.max_val,
+      months: c.months_included,
+    })),
+  }
+}

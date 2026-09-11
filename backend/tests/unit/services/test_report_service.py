@@ -807,6 +807,31 @@ class TestCategoryVolatility:
         # The one figure that genuinely wants the sparse count.
         assert r["months_included"] == 2
 
+    async def test_amortize_reaches_the_statistics(self):
+        """The toggle's whole path below the route. Nothing passed amortize=True
+        here, so dropping the argument left every test green and the toggle
+        quietly showing the raw reading."""
+        with patch("igab.services.report_service.date") as mock_date:
+            mock_date.today.return_value = date(2026, 7, 10)
+            mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
+
+            def vrow(d):
+                return row(
+                    date=d,
+                    amount=D("-600.00"),
+                    category_id=CAT_A,
+                    category_name="Property Tax",
+                    group_name="Long Term",
+                )
+
+            # Jan–Jun, 600 in Jan and Apr: 200 a month once spread.
+            rows = [vrow(date(2026, 1, 20)), vrow(date(2026, 4, 20))]
+            svc = ReportService(make_session(earliest_result(None), mock_result(rows)))
+            (r,) = (await svc.category_volatility(BUDGET, months=6, amortize=True))["categories"]
+
+        assert r["min_val"] == r["max_val"] == D("200")
+        assert r["months_included"] == 2
+
     async def test_empty_returns_empty(self):
         with patch("igab.services.report_service.date") as mock_date:
             mock_date.today.return_value = date(2026, 3, 31)
