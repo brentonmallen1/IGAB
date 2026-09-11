@@ -8,6 +8,7 @@ import { MetricCard } from '../MetricCard'
 import { MetricRow } from '../MetricRow'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
+import { ReportNotes } from '../ReportNotes'
 import './EventTimeline.css'
 import { useReportScope } from '../../../stores/reportStore'
 import { drillScope } from '../drillScope'
@@ -139,6 +140,12 @@ export function TimelineReport({ budgetId }: Props) {
           />
         </div>
       </div>
+
+      {/* The response declares `filter_unavailable`, and declaring it put
+          nothing on screen: a deleted saved filter read as an empty period.
+          Above the empty state, as on Day-of-Week, because it is the reason
+          for it. No toggle here — the timeline counts every class. */}
+      <ReportNotes report={data} toggleAvailable={false} />
 
       <div ref={captureRef} className="report-capture">
         {transactions.length > 0 && (

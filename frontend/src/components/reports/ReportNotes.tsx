@@ -1,5 +1,5 @@
 import { EyeOff, Info } from 'lucide-react'
-import type { SpendingClassExcluded } from '../../types'
+import type { SavedFilterScope, SpendingClassExcluded } from '../../types'
 import { useFormatters } from '../../hooks/useFormatters'
 import './ReportNotes.css'
 
@@ -13,15 +13,10 @@ const CLASS_PHRASE: Record<string, string> = {
 
 /** The parts of a report this reads. Structural rather than a named response
  *  type: three charts carry these notes and only one of them has a view. */
-export interface ReportNotesSource {
+export interface ReportNotesSource extends Partial<SavedFilterScope> {
   view_hidden_categories?: number
   view_hidden_total?: number | string
   class_excluded?: SpendingClassExcluded[] | null
-  /** A saved filter was named and could not be found — deleted in another tab,
-   *  or belonging to another budget. Served by four reports and, until now,
-   *  declared by one client type, so three of them turned it into a silent
-   *  $0.00. */
-  filter_unavailable?: boolean
 }
 
 interface Props {
@@ -68,8 +63,12 @@ export function ReportNotes({ report, toggleAvailable, counts = 'spending' }: Pr
       {filterGone && (
         <p className="report-notes__line" role="note">
           <Info size={12} aria-hidden />
+          {/* Not "this report has nothing to show": the scope is the union of
+              the categories, the tags and the filter's own set, so a missing
+              filter drops only its share and a category picked beside it still
+              draws. This sentence holds either way. */}
           <span>
-            That saved filter no longer exists, so this report has nothing to show. Pick another
+            That saved filter no longer exists, so nothing it named is included here. Pick another
             filter or clear it.
           </span>
         </p>

@@ -911,7 +911,18 @@ export interface SpendingClassExcluded {
   total: number | string
 }
 
-export interface SpendingGroupedReport {
+/** Carried by every report scoped by a saved filter. */
+export interface SavedFilterScope {
+  /** A saved filter was named and could not be found — deleted in another tab,
+   *  or belonging to another budget. Its own share of the scope then matches
+   *  nothing; the report is NOT unfiltered. Nor is it necessarily empty: the
+   *  scope is the union of the categories, the tags and the filter, so a
+   *  category picked beside the lost filter still draws. `ReportNotes` says
+   *  so on every chart that reads one of these. */
+  filter_unavailable: boolean
+}
+
+export interface SpendingGroupedReport extends SavedFilterScope {
   groups: SpendingGroupItem[]
   total: number
   /** What the active view kept out: categories with spending in the window
@@ -922,11 +933,6 @@ export interface SpendingGroupedReport {
   /** Savings / debt activity in categories the user is looking at that a
    *  spending report will not count. Empty without a selection or view. */
   class_excluded: SpendingClassExcluded[]
-  /** A saved filter was named and could not be found — deleted in another tab,
-   *  or belonging to another budget. The scope then matches nothing, so the
-   *  report is EMPTY rather than unfiltered, and saying so is the whole point
-   *  of the flag. */
-  filter_unavailable: boolean
 }
 
 export interface CategoryClassSlice {
@@ -1031,13 +1037,12 @@ export interface SpendingTrendSeries {
   total: number
 }
 
-export interface SpendingTrendsReport {
+export interface SpendingTrendsReport extends SavedFilterScope {
   months: string[]
   series: SpendingTrendSeries[]
   monthly_totals: number[]
   total: number
   class_excluded: { activity_class: string; label: string; categories: number; total: number }[]
-  filter_unavailable: boolean
 }
 
 export interface IncomeSource {
@@ -1108,16 +1113,11 @@ export interface DayPatternItem {
   avg_transaction: number
 }
 
-export interface DayPatternsReport {
+export interface DayPatternsReport extends SavedFilterScope {
   days: DayPatternItem[]
   /** Savings / debt activity in the categories the user selected that this
    *  chart will not count. Empty without a selection. */
   class_excluded: SpendingClassExcluded[]
-  /** A saved filter was named and could not be found — deleted in another tab,
-   *  or belonging to another budget. The scope then matches nothing, so the
-   *  report is EMPTY rather than unfiltered, and saying so is the whole point
-   *  of the flag. */
-  filter_unavailable: boolean
   /** The activity classes these figures count, passed to the drill-down so a
    *  bar and the panel it opens total the same. */
   counted_classes: string[]
@@ -1142,13 +1142,8 @@ export interface TimelineTransaction {
   activity_label: string
 }
 
-export interface TimelineReport {
+export interface TimelineReport extends SavedFilterScope {
   transactions: TimelineTransaction[]
-  /** A saved filter was named and could not be found — deleted in another tab,
-   *  or belonging to another budget. The scope then matches nothing, so the
-   *  report is EMPTY rather than unfiltered, and saying so is the whole point
-   *  of the flag. */
-  filter_unavailable: boolean
 }
 
 /** The figures a recurring line carries — same shape for a category and for

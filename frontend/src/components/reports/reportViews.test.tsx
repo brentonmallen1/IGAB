@@ -279,6 +279,73 @@ describe('class-excluded note on the spending charts', () => {
   })
 })
 
+describe('a deleted saved filter', () => {
+  // Every report whose response declares `filter_unavailable`. Declaring the
+  // field put nothing on screen: the timeline never read it, so a deleted
+  // filter drew "No transactions for this period." and nothing else.
+  const FILTER_SCOPED = [
+    ...TOGGLE_CHARTS,
+    ['DayPatterns', DayPatternsReport],
+    ['Timeline', TimelineReport],
+  ] as const
+
+  // Empty in every shape these reports read, since one payload serves all.
+  const lost = {
+    groups: [],
+    months: [],
+    series: [],
+    monthly_totals: [],
+    total: 0,
+    days: [],
+    transactions: [],
+    counted_classes: [],
+    view_hidden_categories: 0,
+    view_hidden_total: '0',
+    class_excluded: [],
+    filter_unavailable: true,
+  }
+
+  it.each(FILTER_SCOPED)('%s says the filter is gone', (_name, Report) => {
+    setQuery({ data: lost })
+    renderReport(<Report budgetId="b1" />)
+    expect(screen.getByText(/That saved filter no longer exists/)).toBeInTheDocument()
+    // Trends once said the opposite of what the server does.
+    expect(screen.queryByText(/showing everything/i)).toBeNull()
+  })
+
+  it.each(FILTER_SCOPED)('%s says nothing while the filter exists', (_name, Report) => {
+    setQuery({ data: { ...lost, filter_unavailable: false } })
+    renderReport(<Report budgetId="b1" />)
+    expect(screen.queryByText(/saved filter no longer exists/)).toBeNull()
+  })
+
+  it('does not call a report empty that a category beside the filter still fills', () => {
+    // The scope is the union of categories, tags and the filter. A missing
+    // filter drops its own share; Groceries picked beside it still draws, so
+    // "this report has nothing to show" was false above a drawn chart.
+    setQuery({
+      data: {
+        ...lost,
+        groups: [
+          {
+            id: 'c1',
+            name: 'Groceries',
+            parent_id: 'g1',
+            parent_name: 'Everyday',
+            total: 120,
+            count: 2,
+            pct: 100,
+          },
+        ],
+        total: 120,
+      },
+    })
+    renderReport(<SpendingBreakdownReport budgetId="b1" />)
+    expect(screen.getByText(/nothing it named is included here/)).toBeInTheDocument()
+    expect(screen.queryByText(/nothing to show/)).toBeNull()
+  })
+})
+
 describe('treemap group-by fallback', () => {
   it('draws group tiles — and says so — when the stored mode is payee', () => {
     useReportStore.getState().setFilters({ groupBy: 'payee' })
