@@ -37,7 +37,7 @@ import { equityOf, liabilitiesSecuredBy } from '../../utils/equity'
 import { isStaleValue } from '../../utils/assetValues'
 import { parseAmountInput } from '../../utils/money'
 import './AssetPage.css'
-import { useMoneyAxis } from '../../components/reports/charts/useMoneyAxis'
+import { useMoneyAxis } from '../../hooks/useMoneyAxis'
 
 const TYPE_LABEL: Record<string, string> = {
   property: 'Property',
@@ -59,7 +59,7 @@ export function AssetPage() {
   const { assetId } = useParams<{ assetId: string }>()
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const navigate = useNavigate()
-  const { formatMoney, formatDate } = useFormatters()
+  const { formatMoney, formatMoneyOrDash, formatDate } = useFormatters()
   const moneyAxis = useMoneyAxis()
   const notify = useUndoToast()
 
@@ -186,7 +186,7 @@ export function AssetPage() {
       <MetricRow>
         <MetricCard
           label="Current value"
-          value={asset.current_value === null ? '—' : formatMoney(asset.current_value)}
+          value={formatMoneyOrDash(asset.current_value)}
           sub={
             asset.value_as_of ? (
               <span className={stale ? 'asset-page__asof asset-page__asof--stale' : ''}>
@@ -210,7 +210,7 @@ export function AssetPage() {
         {secured.length > 0 && (
           <MetricCard
             label="Equity"
-            value={equity === null ? '—' : formatMoney(equity)}
+            value={formatMoneyOrDash(equity)}
             sub={`value − ${formatMoney(secured.reduce((s, l) => s + l.current_balance, 0))} owed`}
             variant="raised"
           />

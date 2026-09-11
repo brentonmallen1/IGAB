@@ -50,6 +50,27 @@ describe('DrillDownTable', () => {
     expect(cellsOf('Total')).toContain('$700.00')
   })
 
+  it("states the shown rows' share only in a column of shares", () => {
+    // Budget vs Actual fills `pct` with each row's variance, and the wider
+    // row's share of spend landed in that column: -25.0% and -40.0% above a
+    // 23.4% that read as the set's aggregate variance.
+    const variance = [
+      { id: 'd', name: 'Dining', amount: 500, pct: -25 },
+      { id: 'g', name: 'Groceries', amount: 670, pct: -40 },
+    ]
+    const wider = { total: 5000, count: 40, label: 'categories' }
+    const { unmount } = render(<DrillDownTable rows={variance} wider={wider} />)
+    expect(cellsOf('of $5,000.00 across 40 categories')).toEqual([
+      'of $5,000.00 across 40 categories',
+      '$5,000.00',
+      '',
+    ])
+    unmount()
+
+    render(<DrillDownTable rows={variance} wider={wider} pctIsShare />)
+    expect(cellsOf('of $5,000.00 across 40 categories')).toContain('23.4%')
+  })
+
   it('keeps a negative row negative', () => {
     // Income vs Expenses lists monthly expenses; a month whose refunds beat
     // its spending is negative, and the table's `Math.abs` drew "we got $40

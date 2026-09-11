@@ -17,6 +17,8 @@ from decimal import Decimal
 
 import pytest
 
+from igab.repositories.asset_repo import AssetRepository
+from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.services.report_service import ReportService
 from igab.services.transaction_service import TransactionCreate
 
@@ -276,6 +278,68 @@ class TestTopSpendingIsSpending:
         assert len(data["top_categories"]) == 3
         assert [c["name"] for c in data["top_categories"]] == ["Rent", "Groceries", "Fun"]
 
+    async def test_the_card_is_the_breakdowns_top_three(self, db_session):
+        """The card summarises the Spending Breakdown, so it is its first three
+        rows — not a second query that has to be kept agreeing with it. It was
+        one, and it had drifted from the Breakdown three ways before its class
+        filter, envelope rule and truncation order were copied across.
+
+        Every row the Breakdown's row set decides on is here: a savings
+        transfer bigger than any spending, a deleted category, a split, a
+        clawback filed to Ready to Assign, and categorized activity on a
+        tracking account.
+        """
+        budget = await create_budget(db_session, await create_user(db_session))
+        checking = await create_account(db_session, budget, "Checking")
+        brokerage = await create_account(
+            db_session, budget, "Cascade Brokerage", account_type="investment", on_budget=False
+        )
+        group = await create_category_group(db_session, budget, "Everyday")
+        system = await create_category_group(db_session, budget, "Inflow", is_system=True)
+        rta = await create_category(db_session, budget, system, "Ready to Assign")
+        cats = {
+            name: await create_category(db_session, budget, group, name)
+            for name in ("Rent", "Groceries", "Fun", "Transport", "Investing", "Old Gym")
+        }
+        for name, amount in (("Rent", "-1400.00"), ("Fun", "-200.00"), ("Transport", "-90.00")):
+            await create_transaction(
+                db_session, budget, checking, amount, TODAY, category=cats[name]
+            )
+        parent = await create_transaction(
+            db_session, budget, checking, "-700.00", TODAY, is_split=True
+        )
+        for amount in ("-400.00", "-300.00"):
+            await create_transaction(
+                db_session,
+                budget,
+                checking,
+                amount,
+                TODAY,
+                category=cats["Groceries"],
+                parent_transaction_id=parent.id,
+            )
+        await create_transaction(
+            db_session, budget, checking, "-650.00", TODAY, category=cats["Old Gym"]
+        )
+        cats["Old Gym"].is_deleted = True
+        await create_transfer(
+            db_session, budget, checking, brokerage, "5000.00", TODAY, category=cats["Investing"]
+        )
+        await create_transaction(db_session, budget, checking, "-120.00", TODAY, category=rta)
+        await create_transaction(
+            db_session, budget, brokerage, "-3000.00", TODAY, category=cats["Transport"]
+        )
+        await db_session.commit()
+
+        svc = ReportService(db_session)
+        card = (await svc.dashboard_metrics(budget.id, MONTH_START, TODAY))["top_categories"]
+        breakdown, _total = await svc.spending_by_category(budget.id, MONTH_START, TODAY)
+
+        assert [c["name"] for c in card] == ["Rent", "Groceries", "Old Gym"]
+        assert [(c["id"], c["name"], c["group_name"], c["total"]) for c in card] == [
+            (c["id"], c["name"], c["group_name"], c["total"]) for c in breakdown[:3]
+        ]
+
 
 class TestABudgetWithNoTransactionsStillOwnsThings:
     async def test_an_unmanaged_liability_is_net_worth_even_with_no_rows(self, db_session):
@@ -302,6 +366,75 @@ class TestABudgetWithNoTransactionsStillOwnsThings:
 
         assert card["net_worth"] == Decimal("-240000.00")
         assert Decimal(str(chart[-1]["net_worth"])) == card["net_worth"]
+
+    async def test_a_stated_house_and_its_mortgage(self, db_session):
+        """The asset half of the same fix had no test: every asset test builds
+        its budget by posting a row, so none reached the empty path. Dropping
+        the house — the direction that reads a household as underwater —
+        passed.
+        """
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        house = await AssetRepository(db_session).create(budget_id=budget.id, name="Maple St House")
+        await AssetRepository(db_session).upsert_value(house, TODAY, Decimal("300000.00"))
+        loan = await create_liability(
+            db_session, budget, "Harborstone Mortgage", manual_balance=Decimal("240000.00")
+        )
+        await create_liability_snapshot(db_session, loan, TODAY, Decimal("240000.00"))
+
+        card = await ReportService(db_session).dashboard_metrics(budget.id, MONTH_START, TODAY)
+        chart = await ReportService(db_session).net_worth_history(budget.id, months=1)
+
+        assert card["net_worth"] == Decimal("60000.00")
+        assert chart[-1]["net_worth"] == Decimal("60000.00")
+
+    async def test_the_change_is_read_as_it_stood_before_the_window(self, db_session):
+        """The empty path set `net_worth_prev` to "now", so the card drew a
+        0.0% change beside a chart stepping from one figure to another, and a
+        house re-appraised during the window read unchanged. One $0.01 row
+        sent the same budget down the live path and a different answer.
+
+        The house stood at 280,000 before the window and 300,000 now; the
+        mortgage was first recorded today, so it is in "now" and not before.
+        """
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        house = await AssetRepository(db_session).create(budget_id=budget.id, name="Maple St House")
+        before = MONTH_START - timedelta(days=10)
+        await AssetRepository(db_session).upsert_value(house, before, Decimal("280000.00"))
+        await AssetRepository(db_session).upsert_value(house, TODAY, Decimal("300000.00"))
+        loan = await create_liability(
+            db_session, budget, "Harborstone Mortgage", manual_balance=Decimal("240000.00")
+        )
+        await create_liability_snapshot(db_session, loan, TODAY, Decimal("240000.00"))
+
+        card = await ReportService(db_session).dashboard_metrics(budget.id, MONTH_START, TODAY)
+        chart = await ReportService(db_session).net_worth_history(budget.id, months=2)
+
+        assert card["net_worth"] == Decimal("60000.00")
+        assert card["net_worth_prev"] == Decimal("280000.00")
+        # The window opens on the 1st, so "before it" is last month's point.
+        assert chart[-2]["net_worth"] == Decimal("280000.00")
+
+    async def test_tagged_essentials_are_zero_not_untagged(self, db_session):
+        """The empty path hard-coded "nothing tagged", so a new budget with
+        Rent tagged Essential was asked to tag something Essential — until
+        its first transaction, when the card read $0.00."""
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        group = await create_category_group(db_session, budget, "Bills")
+        rent = await create_category(db_session, budget, group, "Rent")
+        await seed_system_tags(db_session, budget.id)
+        tags = TagRepository(db_session)
+        essential = next(
+            t for t in await tags.list_for_budget(budget.id) if t.system_key == "essential"
+        )
+        await tags.set_category_tags(rent.id, [essential.id])
+
+        card = await ReportService(db_session).dashboard_metrics(budget.id, MONTH_START, TODAY)
+
+        assert card["essentials_tagged"] is True
+        assert card["essentials_monthly"] == Decimal("0")
 
 
 class TestNetWorthAtTheWindowStart:

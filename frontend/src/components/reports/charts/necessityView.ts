@@ -2,16 +2,19 @@
  * How the two necessity tiers read as a standing, and nothing more.
  *
  * The server decides what the tiers CONTAIN — that is a rule about rows, and
- * it lives in `domain.activity_class.tier_scope`. What a ratio MEANS for a
- * household is pure presentational composition of figures the server already
+ * it lives in `domain.activity_class.tier_scope`. It serves three figures:
+ * the wide tier, the lean one and take-home. Everything the page makes of
+ * those — the gap between the tiers, each ratio, and what a ratio MEANS for a
+ * household — is pure presentational composition of figures the server already
  * sent, and the client is missing no input, so by the boundary rule it belongs
- * here in one module rather than in a second server field.
+ * here in one module rather than in a server field no backend path reads.
  *
  * The bands lean on the 50/30/20 rule of thumb — roughly half of take-home to
  * needs, a third to wants, a fifth saved — because inventing thresholds and
  * then rendering them as a verdict would be dressing a guess as advice. They
  * are deliberately coarse, and the copy says "rule of thumb" out loud.
  */
+import { shareOfTotal } from '../drillDownTotals'
 
 /** Ordered worst-to-best so a caller can compare standings. */
 export type NecessityStanding = 'no-headroom' | 'tight' | 'workable' | 'comfortable' | 'unknown'
@@ -84,13 +87,41 @@ export function necessityReading(
   }
 }
 
-/** What share of committed spending a lean month could shed, 0-100.
+/**
+ * Cost of living less essentials: what a lean month could shed.
  *
- * Null rather than zero when nothing is committed: a share of nothing is
- * unknown, and rendering 0% would read as "nothing is sheddable". Null too
- * when the gap itself is unknown — nothing tagged Essential.
+ * Null whenever essentials is — nothing tagged Essential means the wide tier
+ * is every category, and the difference would not be a gap.
+ *
+ * Floored at zero: the wide tier contains the lean one, but its tag arms net
+ * refunds, so a refund filed to a Cost-of-living category can push the
+ * difference below zero, and nobody committed to a negative amount.
+ *
+ * Composed here rather than served. It is arithmetic on two figures the server
+ * already sends, no backend path read the served copy, and the sheddable share
+ * of the same shape was already on this side — so by the boundary rule the
+ * whole family lives here.
  */
-export function sheddableShare(costOfLiving: number, nonEssential: number | null): number | null {
-  if (nonEssential === null || costOfLiving <= 0) return null
-  return (nonEssential / costOfLiving) * 100
+export function nonEssentialSpend(costOfLiving: number, essentials: number | null): number | null {
+  return essentials === null ? null : Math.max(costOfLiving - essentials, 0)
+}
+
+/**
+ * One tier figure as a percentage of another, 0-100 — the report's only ratio
+ * rule, asked three times: cost of living against take-home ("Required"),
+ * essentials against take-home (what `necessityReading` bands), and the gap
+ * against cost of living (what a lean month could shed).
+ *
+ * Null rather than zero when the part is unknown — nothing tagged Essential —
+ * or when the whole is not positive, no income on record: a share of nothing,
+ * or of an unknown, is unknown, and 0% would read as a fact.
+ *
+ * **It divides the SERVED, cent-rounded averages the cards print**, not the
+ * window totals behind them, because a ratio quoted beside two cards has to be
+ * their quotient: a reader checking $1,800 against $3,600 must land on the 50%
+ * the page shows. The server's copy divided the unrounded totals, which can
+ * differ in the hundredths.
+ */
+export function necessityShare(part: number | null, whole: number): number | null {
+  return part === null ? null : shareOfTotal(part, whole)
 }

@@ -14,7 +14,7 @@ import {
 import { useVarianceReport } from '../../../api/reports'
 import { useChartHeight } from '../../../hooks/useChartHeight'
 import { useFormatters } from '../../../hooks/useFormatters'
-import { useMoneyAxis } from './useMoneyAxis'
+import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
 import { ReportErrorState } from '../ReportErrorState'
 import { ChartTooltip } from './ChartTooltip'
 import { CHART_COLORS, COLOR_NEGATIVE, COLOR_NEUTRAL } from './chartColors'

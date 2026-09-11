@@ -218,24 +218,16 @@ async def test_subscription_charges_project_monthly_from_last_charge(db_session)
     streaming = await _subscription_category(db_session, budget, "Streaming")
     netflix = await create_payee(db_session, budget, "Northstar Stream")
 
-    await create_transaction(
-        db_session,
-        budget,
-        checking,
-        "-15.99",
-        TODAY - timedelta(days=55),
-        payee=netflix,
-        category=streaming,
-    )
-    await create_transaction(
-        db_session,
-        budget,
-        checking,
-        "-15.99",
-        TODAY - timedelta(days=25),
-        payee=netflix,
-        category=streaming,
-    )
+    # Billed mid-month: the last charge is the most recent billing day before
+    # today, the one before it a calendar month earlier. Never today itself,
+    # so the first projected charge is a move on the path, not its start.
+    last_charge = TODAY.replace(day=14 if TODAY.day == 15 else 15)
+    if last_charge >= TODAY:
+        last_charge = add_months(last_charge, -1)
+    for charged in (add_months(last_charge, -1), last_charge):
+        await create_transaction(
+            db_session, budget, checking, "-15.99", charged, payee=netflix, category=streaming
+        )
     # A pending auth must shift neither the typical amount nor the cadence
     await create_transaction(
         db_session,
@@ -248,22 +240,32 @@ async def test_subscription_charges_project_monthly_from_last_charge(db_session)
         cleared="pending",
     )
 
-    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=30)
-
-    # Two charges 30 days apart, so the observed cadence is monthly — and
-    # "monthly" means a CALENDAR month from the last charge, keeping the
+    # "Monthly" means a CALENDAR month from the last charge, keeping the
     # subscription on its billing day. This used to step a flat 30 days, which
     # walks a monthly bill backwards through the calendar and fits thirteen
     # charges into a year. Derived rather than hardcoded, because the answer
-    # depends on the length of the month the test runs in.
-    last_charge = TODAY - timedelta(days=25)
-    next_charge = add_months(last_charge, 1)
+    # depends on the month the test runs in.
+    #
+    # Two charges, not one. A single calendar month is 30 days long a third of
+    # the time, and on those days a 30-day step gave the same date; no two
+    # consecutive months are both 30 days, so the second charge always tells
+    # the two apart. The guard below fails the test if that ever stops holding.
+    charges = [add_months(last_charge, 1), add_months(last_charge, 2)]
+    assert charges != [last_charge + timedelta(days=30), last_charge + timedelta(days=60)]
+    horizon = (charges[-1] - TODAY).days
+
+    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=horizon)
+
+    # The path carries both charges; the event list stops at 30 days out.
+    assert _charged_dates(data["points"]) == charges
     assert [(e["date"], e["amount"], e["source"]) for e in data["events"]] == [
-        (next_charge, Decimal("-15.99"), "subscription"),
+        (charge, Decimal("-15.99"), "subscription")
+        for charge in charges
+        if charge <= TODAY + timedelta(days=30)
     ]
     start = data["start_balance"]
     assert start == Decimal("4968.02")  # 5000 - two posted charges
-    assert data["points"][(next_charge - TODAY).days]["deterministic"] == start - Decimal("15.99")
+    assert data["points"][horizon]["deterministic"] == start - Decimal("31.98")
 
 
 async def test_scheduled_end_date_and_event_cap_respected(db_session):
@@ -413,6 +415,56 @@ async def test_a_month_end_schedule_keeps_its_day(db_session):
         date(year, 1, 31),
         month_end(date(year, 2, 1)),
         date(year, 3, 31),
+    ]
+
+
+async def test_a_schedule_already_advanced_to_a_clamped_day_returns_to_its_own(db_session):
+    """The case the scheduler actually leaves behind: started on the 31st and
+    already advanced, so the row stores 28 Feb. Every other fixture here has
+    `start_date == next_occurrence_date`, where anchoring on the stored day
+    and on the start day give the same answer — anchored on the stored day,
+    this reads 28 Mar."""
+    budget, checking = await _budget_with_checking(db_session)
+    year = TODAY.year + 1
+    await create_scheduled_transaction(
+        db_session,
+        budget,
+        checking,
+        "-100.00",
+        "monthly",
+        month_end(date(year, 2, 1)),
+        start_date=date(year, 1, 31),
+    )
+    horizon = (date(year, 4, 5) - TODAY).days
+
+    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=horizon)
+
+    assert _charged_dates(data["points"]) == [month_end(date(year, 2, 1)), date(year, 3, 31)]
+
+
+async def test_a_twice_monthly_schedule_stored_on_its_second_day_keeps_its_first(db_session):
+    """A 1st/15th schedule the scheduler has advanced to the 15th. Anchored on
+    the stored day it steps 15th to 15th and loses every 1st."""
+    budget, checking = await _budget_with_checking(db_session)
+    year = TODAY.year + 1
+    await create_scheduled_transaction(
+        db_session,
+        budget,
+        checking,
+        "1900.00",
+        "twice_monthly",
+        date(year, 1, 15),
+        start_date=date(year, 1, 1),
+        second_day_of_month=15,
+    )
+    horizon = (date(year, 2, 20) - TODAY).days
+
+    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=horizon)
+
+    assert _charged_dates(data["points"]) == [
+        date(year, 1, 15),
+        date(year, 2, 1),
+        date(year, 2, 15),
     ]
 
 
@@ -606,6 +658,27 @@ async def test_a_split_bill_leaves_the_history_with_its_schedule(db_session):
     await create_scheduled_transaction(
         db_session, budget, checking, "-1800.00", "monthly", add_months(TODAY, 1), payee=landlord
     )
+
+    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=60)
+    _assert_sampled_flow_per_day(data["points"], Decimal("0"))
+
+
+async def test_rows_a_schedule_created_leave_the_history_by_its_id(db_session):
+    """A schedule with neither payee nor category has no bill to match, so the
+    only thing tying its rows to it is `scheduled_transaction_id`, stamped when
+    they were entered from it. Every other partition test reaches the rows
+    through a payee or a category, so deleting the id clause left them green
+    while this schedule's rows were sampled AND re-applied — rent twice."""
+    budget, checking = await _budget_with_checking(db_session)
+    sched = await create_scheduled_transaction(
+        db_session, budget, checking, "-1800.00", "monthly", add_months(TODAY, 1)
+    )
+    for months_back in range(1, 4):
+        row = await create_transaction(
+            db_session, budget, checking, "-1800.00", add_months(TODAY, -months_back)
+        )
+        row.scheduled_transaction_id = sched.id
+    await db_session.flush()
 
     data = await ReportService(db_session).cash_projection(budget.id, horizon_days=60)
     _assert_sampled_flow_per_day(data["points"], Decimal("0"))

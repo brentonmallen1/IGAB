@@ -43,6 +43,7 @@ import {
 } from './importReview'
 import './ImportReviewDialog.css'
 import { closedAccounts } from '../../../utils/accountLists'
+import { parseLocalDate } from '../../../utils/dates'
 
 /**
  * What the import decided, and a chance to change it.
@@ -579,7 +580,7 @@ function ParityBlock({
   const incoherent = !consistency.self_consistent
 
   const anchorMonthLabel = anchoredAt
-    ? new Date(`${anchoredAt}T00:00:00`).toLocaleDateString(undefined, {
+    ? parseLocalDate(anchoredAt).toLocaleDateString(undefined, {
         month: 'long',
         year: 'numeric',
       })

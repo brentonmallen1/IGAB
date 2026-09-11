@@ -52,7 +52,7 @@ comment for why archived categories stay in it.
 
 from sqlalchemy import and_, func, not_, or_, select
 
-from igab.db.models import Category, CategoryGroup
+from igab.db.models import Category, CategoryGroup, Tag, category_tags
 
 NOT_ARCHIVED = Category.is_archived == False  # noqa: E712
 #: A category the arithmetic may still see. Soft-delete only: an *archived*
@@ -280,3 +280,24 @@ UNDER_DELETED_GROUP = (
     .correlate(Category)
     .exists()
 )
+
+
+def tagged_category_ids(*system_keys: str):
+    """Ids of the categories carrying any live tag with one of these system
+    keys — the one spelling of "which categories are tagged X".
+
+    `txn_filters.category_tagged` reads it per transaction row; the necessity
+    family's "has the household chosen anything" count and its seed list, and
+    `TagRepository.get_category_ids_by_system_keys`, read it per category. It
+    was written four times, and two of the copies were edited identically in
+    the same PR — the drift was only a matter of time.
+
+    Not budget-scoped: tags belong to a budget and so do the categories they
+    are applied to, so a caller scopes by the category (or the row) it asks
+    about.
+    """
+    tag_ids = select(Tag.id).where(
+        Tag.system_key.in_(system_keys),
+        Tag.is_deleted == False,  # noqa: E712
+    )
+    return select(category_tags.c.category_id).where(category_tags.c.tag_id.in_(tag_ids))

@@ -8,37 +8,21 @@ import { MetricCard } from '../MetricCard'
 import { MetricRow } from '../MetricRow'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
+import { ReportNotes } from '../ReportNotes'
 import './EventTimeline.css'
 import { useReportScope } from '../../../stores/reportStore'
 import { drillScope } from '../drillScope'
-
-/** Dot colour by what a row means, not which way the amount points.
- *
- * A null class is a split whose legs disagree, and it gets the neutral tone
- * rather than a sign-based guess — falling back to the sign is the exact
- * mislabelling the activity taxonomy exists to end, and it is how an
- * all-savings split came to be drawn as a red expense.
- */
-const TONE_BY_CLASS: Record<string, string> = {
-  income: 'income',
-  spending: 'expense',
-  savings: 'savings',
-  debt_principal: 'savings',
-  investment_return: 'neutral',
-  debt_interest: 'expense',
-  transfer_internal: 'neutral',
-}
+import { dotSize, largestMagnitude, newestFirst, timelineTone } from './timelineView'
+import { TIMELINE_LIMITS } from './reportControls'
 
 interface Props {
   budgetId: string
 }
 
-const LIMITS = [25, 50, 100] as const
-
 export function TimelineReport({ budgetId }: Props) {
   const { formatMoney } = useFormatters()
   const { filters, setDrillDown } = useReportStore()
-  const [limit, setLimit] = useState<25 | 50 | 100>(25)
+  const [limit, setLimit] = useState<(typeof TIMELINE_LIMITS)[number]>(25)
   const reportScope = useReportScope()
   const acctIds = filters.accountIds.length > 0 ? filters.accountIds : undefined
   const { data, isLoading, isError, error, refetch } = useTimelineReport(
@@ -55,13 +39,7 @@ export function TimelineReport({ budgetId }: Props) {
   // Timeline rows carry names only — resolve back to ids for the drill-down
   const payeeIdByName = useMemo(() => new Map((payees ?? []).map((p) => [p.name, p.id])), [payees])
 
-  // The server ranks by SIZE to pick the largest N; a timeline draws them in
-  // DATE order. The panel has been saying "displayed chronologically" while
-  // rendering the server's ranking, so the newest row could appear anywhere.
-  const transactions = useMemo(
-    () => [...(data?.transactions ?? [])].sort((a, b) => b.date.localeCompare(a.date)),
-    [data]
-  )
+  const transactions = useMemo(() => newestFirst(data?.transactions ?? []), [data])
 
   if (isLoading) return <div className="report-loading">Loading…</div>
   if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
@@ -80,17 +58,7 @@ export function TimelineReport({ budgetId }: Props) {
     })
   }
 
-  // Taken from the whole page rather than from row 0. The server ranks by size
-  // now, so row 0 IS the largest — but a scale that silently depends on the
-  // sort order is how this came to be wrong in the first place, and a max over
-  // the rows cannot be.
-  const largestAmt = transactions.reduce((m, t) => Math.max(m, Math.abs(t.amount)), 0)
-
-  const dotSize = (amount: number) => {
-    if (largestAmt === 0) return 8
-    const t = Math.abs(amount) / largestAmt
-    return Math.round(8 + t * 14)
-  }
+  const largestAmt = largestMagnitude(transactions)
 
   return (
     <div className="report-section surface">
@@ -113,7 +81,7 @@ export function TimelineReport({ budgetId }: Props) {
           Largest transactions — size indicates relative magnitude.
         </p>
         <div className="flex-row ms-auto">
-          {LIMITS.map((l) => (
+          {TIMELINE_LIMITS.map((l) => (
             <button
               key={l}
               className={`report-btn ${limit === l ? 'report-btn--active' : ''}`}
@@ -140,6 +108,12 @@ export function TimelineReport({ budgetId }: Props) {
         </div>
       </div>
 
+      {/* The response declares `filter_unavailable`, and declaring it put
+          nothing on screen: a deleted saved filter read as an empty period.
+          Above the empty state, as on Day-of-Week, because it is the reason
+          for it. No toggle here — the timeline counts every class. */}
+      <ReportNotes report={data} toggleAvailable={false} />
+
       <div ref={captureRef} className="report-capture">
         {transactions.length > 0 && (
           <MetricRow>
@@ -155,12 +129,8 @@ export function TimelineReport({ budgetId }: Props) {
             <div className="timeline__track" />
             {transactions.map((tx, i) => {
               const amt = tx.amount
-              // By class, not by sign. A transfer into savings is negative but is
-              // not an expense, and drawing it red said otherwise.
-              const tone = tx.activity_class
-                ? (TONE_BY_CLASS[tx.activity_class] ?? 'neutral')
-                : 'neutral'
-              const size = dotSize(amt)
+              const tone = timelineTone(tx.activity_class)
+              const size = dotSize(amt, largestAmt)
               const side = i % 2 === 0 ? 'left' : 'right'
               return (
                 <div key={tx.id} className={`timeline__event timeline__event--${side}`}>

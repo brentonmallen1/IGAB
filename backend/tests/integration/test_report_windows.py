@@ -145,6 +145,33 @@ class TestVolatilityServesItsWindow:
         assert body["window_end"] < THIS_MONTH.isoformat()
 
 
+class TestVolatilityServesItsReading:
+    async def test_the_route_says_which_reading_its_figures_are(self, db_session, api_client):
+        """`amortized` echoes the request, and the figures follow it. It was
+        optional with a False default, so a path that forgot it reported
+        amortized figures as the raw reading, and no test sent amortize=true."""
+        budget, checking, groceries = await _world(db_session, api_client.test_user)
+        # Six complete months; 600 in the first and the fourth.
+        for n in (6, 3):
+            await create_transaction(
+                db_session, budget, checking, "-600.00", _month(n), category=groceries
+            )
+        await db_session.commit()
+
+        url = f"/api/v1/{budget.id}/reports/volatility"
+        raw = await api_client.get(url, params={"months": 6})
+        spread = await api_client.get(url, params={"months": 6, "amortize": "true"})
+        assert raw.status_code == spread.status_code == 200, (raw.text, spread.text)
+
+        assert raw.json()["amortized"] is False
+        (r,) = raw.json()["categories"]
+        assert (D(r["min_val"]), D(r["max_val"])) == (D("0"), D("600"))
+
+        assert spread.json()["amortized"] is True
+        (s,) = spread.json()["categories"]
+        assert D(s["min_val"]) == D(s["max_val"]) == D("200")
+
+
 class TestEssentialsIsASubsetOfBurn:
     async def test_everything_essential_quotes_the_ninety_day_burn(self, db_session):
         """Tag every spending category Essential and the essentials figure is

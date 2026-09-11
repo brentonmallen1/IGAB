@@ -3,7 +3,7 @@ import { persist } from 'zustand/middleware'
 import { PERSIST_KEYS } from './persistKeys'
 import { useMemo } from 'react'
 import type { ReportScope } from '../api/reports'
-import { toISODate } from '../utils/dates'
+import { thisMonthWindow } from '../utils/dateWindow'
 
 export type ReportTab =
   | 'overview'
@@ -107,6 +107,26 @@ export type GroupBy = 'group' | 'category' | 'payee'
  *  server; keep the two in step. */
 export function spendingDrillClasses(includeSavings: boolean): string[] {
   return includeSavings ? ['spending', 'savings', 'debt_principal'] : ['spending']
+}
+
+/** The drill-down behind an Income figure: the rows every income figure
+ *  counts, which is `INCOME_ROW` on the server — leaf rows of the income
+ *  class. Parent rows are the wrong shape: a split paycheck of +1,000 pay and
+ *  -300 fees is one +700 parent, so the Sankey's Income node, reading 1,000,
+ *  opened a list totalling 700. One builder, because Income vs Expenses and
+ *  the Sankey both open it. */
+export function incomeDrill(
+  label: string,
+  window: { startDate: string; endDate: string }
+): DrillDownContext {
+  return {
+    kind: 'month',
+    label,
+    scope: 'leaf',
+    direction: 'inflow',
+    activityClasses: ['income'],
+    ...window,
+  }
 }
 
 export interface TabFilterSupport {
@@ -369,11 +389,10 @@ interface ReportState {
 }
 
 function defaultFilters(): ReportFilters {
-  const now = new Date()
-  const start = new Date(now.getFullYear(), now.getMonth(), 1)
+  const { start, end } = thisMonthWindow()
   return {
-    startDate: toISODate(start),
-    endDate: toISODate(now),
+    startDate: start,
+    endDate: end,
     categoryIds: [],
     tagIds: [],
     filterId: null,

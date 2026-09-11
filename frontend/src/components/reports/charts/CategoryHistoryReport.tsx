@@ -25,7 +25,7 @@ import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ChartTooltip } from './ChartTooltip'
 import { COLOR_NEGATIVE, COLOR_NET, COLOR_POSITIVE } from './chartColors'
 import { useReportMonths } from '../../../stores/reportStore'
-import { useMoneyAxis } from './useMoneyAxis'
+import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
 
 interface Props {
   budgetId: string
@@ -34,7 +34,7 @@ interface Props {
 /** One category, month by month: assigned, spent, and what was left — the
  *  budget page's own figures, from the same service. */
 export function CategoryHistoryReport({ budgetId }: Props) {
-  const { formatMoney, formatMonth } = useFormatters()
+  const { formatMoney, formatMoneyOrDash, formatMonth } = useFormatters()
   const moneyAxis = useMoneyAxis()
   const chartHeight = useChartHeight(320)
   const [categoryId, setCategoryId] = useState('')
@@ -72,7 +72,7 @@ export function CategoryHistoryReport({ budgetId }: Props) {
   // An em dash for an income category, which holds no money — its
   // `available` is a lifetime carryover the budget page never draws.
   const latestAvailable = rows[rows.length - 1]?.available ?? null
-  const availableNow = latestAvailable === null ? '—' : formatMoney(latestAvailable)
+  const availableNow = formatMoneyOrDash(latestAvailable)
 
   const spent = rows.reduce((sum, m) => sum + Math.abs(Math.min(m.activity, 0)), 0)
   const assigned = rows.reduce((sum, m) => sum + m.assigned, 0)
@@ -209,7 +209,7 @@ export function CategoryHistoryReport({ budgetId }: Props) {
                       color: (m.available ?? 0) < 0 ? 'var(--color-negative)' : undefined,
                     }}
                   >
-                    {m.available === null ? '—' : formatMoney(m.available)}
+                    {formatMoneyOrDash(m.available)}
                   </td>
                 </tr>
               ))}

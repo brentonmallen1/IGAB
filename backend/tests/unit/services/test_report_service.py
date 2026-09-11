@@ -12,7 +12,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from igab.services.report_service import ReportService, _subtract_months
+from igab.domain.dates import add_months
+from igab.services.report_service import ReportService
+from tests.report_clock import report_today
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -82,9 +84,9 @@ APR = date(2026, 4, 1)
 class TestSpendingByCategory:
     async def test_basic_aggregation(self):
         rows = [
-            row(id=CAT_A, name="Groceries", group_name="Food", amount=D("-60.00")),
-            row(id=CAT_A, name="Groceries", group_name="Food", amount=D("-40.00")),
-            row(id=CAT_B, name="Gas", group_name="Transport", amount=D("-25.00")),
+            row(id=CAT_A, name="Groceries", group_name="Food", cls="spending", amount=D("-60.00")),
+            row(id=CAT_A, name="Groceries", group_name="Food", cls="spending", amount=D("-40.00")),
+            row(id=CAT_B, name="Gas", group_name="Transport", cls="spending", amount=D("-25.00")),
         ]
         svc = ReportService(make_session(mock_result(rows)))
         cats, total = await svc.spending_by_category(BUDGET, JAN, APR)
@@ -104,14 +106,16 @@ class TestSpendingByCategory:
         assert total == D("0")
 
     async def test_single_category_pct_is_100(self):
-        rows = [row(id=CAT_A, name="Rent", group_name="Housing", amount=D("-1200.00"))]
+        rows = [
+            row(id=CAT_A, name="Rent", group_name="Housing", cls="spending", amount=D("-1200.00"))
+        ]
         svc = ReportService(make_session(mock_result(rows)))
         cats, total = await svc.spending_by_category(BUDGET, JAN, APR)
         assert cats[0]["pct"] == pytest.approx(100.0)
 
     async def test_amounts_are_absolute(self):
         """Stored as negative; returned totals must be positive."""
-        rows = [row(id=CAT_A, name="X", group_name="G", amount=D("-500.00"))]
+        rows = [row(id=CAT_A, name="X", group_name="G", cls="spending", amount=D("-500.00"))]
         svc = ReportService(make_session(mock_result(rows)))
         cats, total = await svc.spending_by_category(BUDGET, JAN, APR)
         assert cats[0]["total"] > 0
@@ -119,8 +123,8 @@ class TestSpendingByCategory:
 
     async def test_sorted_descending_by_total(self):
         rows = [
-            row(id=CAT_A, name="Small", group_name="G", amount=D("-10.00")),
-            row(id=CAT_B, name="Large", group_name="G", amount=D("-200.00")),
+            row(id=CAT_A, name="Small", group_name="G", cls="spending", amount=D("-10.00")),
+            row(id=CAT_B, name="Large", group_name="G", cls="spending", amount=D("-200.00")),
         ]
         svc = ReportService(make_session(mock_result(rows)))
         cats, _ = await svc.spending_by_category(BUDGET, JAN, APR)
@@ -142,7 +146,7 @@ class TestIncomeVsExpense:
     async def test_buckets_by_month(self):
         today = date.today()
         first = today.replace(day=1)
-        last_month = _subtract_months(first, 1)
+        last_month = add_months(first, -1)
 
         svc = ReportService(
             make_session(
@@ -340,7 +344,7 @@ class TestCumulativeVariance:
         # Use real current dates to avoid patching the date class (which breaks isinstance).
         today = date.today()
         first = today.replace(day=1)
-        m1 = _subtract_months(first, 1)  # last month
+        m1 = add_months(first, -1)  # last month
         m2 = first  # current month
 
         assigns = [
@@ -365,7 +369,7 @@ class TestCumulativeVariance:
     async def test_months_with_no_data_count_as_zero(self):
         today = date.today()
         first = today.replace(day=1)
-        m1 = _subtract_months(first, 1)
+        m1 = add_months(first, -1)
         m2 = first
 
         assigns = [row(month=m1, assigned=D("400.00"))]
@@ -659,250 +663,71 @@ class TestBurnRate:
     # label — and it contradicted the Overview's "30-Day Burn Rate", a genuine
     # trailing thirty days, every day of the month. Anchored on today the
     # window is stable and the label is true.
+    #
+    # The service clock is pinned. These read the real `date.today()`, and
+    # near a month's end the old `_last_day` window covered the same rows as
+    # the trailing one — so a revert passed on the 26th-30th of a 30-day month
+    # and the future-reaching window could ship on those days. Each case runs
+    # mid-month and on the day before a month ends; never ON a last day, where
+    # "tomorrow" is next month and both windows miss it.
 
-    async def test_rolling_30_sums_the_last_30_days(self):
-        today = date.today()
+    @pytest.fixture(params=[date(2026, 9, 10), date(2026, 9, 29), date(2026, 2, 27)], ids=str)
+    def today(self, request):
+        with report_today(request.param) as today:
+            yield today
+
+    async def _newest(self, rows) -> dict:
+        svc = ReportService(make_session(mock_result(rows)))
+        return (await svc.burn_rate(BUDGET, months=1))[-1]
+
+    async def test_rolling_30_sums_the_last_30_days(self, today):
         rows = [
             row(date=today - timedelta(days=25), amount=D("-200.00")),
             row(date=today - timedelta(days=3), amount=D("-300.00")),
         ]
-        svc = ReportService(make_session(mock_result(rows)))
-        result = await svc.burn_rate(BUDGET, months=1)
+        assert (await self._newest(rows))["rolling_30"] == D("500.0")
 
-        cur = result[0]
-        assert cur["rolling_30"] == D("500.0")
-
-    async def test_the_newest_window_does_not_reach_past_today(self):
-        """A row dated tomorrow is not money that has been burned."""
-        today = date.today()
+    async def test_the_30_day_window_is_today_and_the_29_days_before(self, today):
+        """Day 30 counting today as day 1 is in; day 31 is out."""
         rows = [
-            row(date=today - timedelta(days=2), amount=D("-100.00")),
-            row(date=today + timedelta(days=5), amount=D("-900.00")),
+            row(date=today - timedelta(days=30), amount=D("-700.00")),
+            row(date=today - timedelta(days=29), amount=D("-200.00")),
+            row(date=today, amount=D("-300.00")),
         ]
-        svc = ReportService(make_session(mock_result(rows)))
-        result = await svc.burn_rate(BUDGET, months=1)
+        assert (await self._newest(rows))["rolling_30"] == D("500.0")
 
-        assert result[0]["rolling_30"] == D("100.0")
+    async def test_the_newest_window_does_not_reach_past_today(self, today):
+        """A row dated tomorrow is not money that has been burned."""
+        rows = [
+            row(date=today - timedelta(days=2), amount=D("-300.00")),
+            row(date=today + timedelta(days=1), amount=D("-900.00")),
+        ]
+        newest = await self._newest(rows)
+        assert newest["rolling_30"] == D("300.0")
+        assert newest["rolling_90"] == D("100.0")
 
-    async def test_rolling_90_is_divided_by_3(self):
-        today = date.today()
+    async def test_rolling_90_is_divided_by_3(self, today):
         # 900 total inside the 90-day window → monthly equivalent = 300
         rows = [
             row(date=today - timedelta(days=85), amount=D("-300.00")),
             row(date=today - timedelta(days=50), amount=D("-300.00")),
             row(date=today - timedelta(days=10), amount=D("-300.00")),
         ]
-        svc = ReportService(make_session(mock_result(rows)))
-        result = await svc.burn_rate(BUDGET, months=1)
-
-        cur = result[0]
+        cur = await self._newest(rows)
         assert cur["rolling_90"] == pytest.approx(D("300.0"), rel=D("0.01"))
+
+    async def test_the_90_day_window_is_today_and_the_89_days_before(self, today):
+        rows = [
+            row(date=today - timedelta(days=90), amount=D("-300.00")),
+            row(date=today - timedelta(days=89), amount=D("-900.00")),
+        ]
+        assert (await self._newest(rows))["rolling_90"] == D("300.0")
 
 
 # ─── net_worth_history ────────────────────────────────────────────────────────
-
-
-class TestNetWorthHistory:
-    def _account(self, acct_id, acct_type, name="Account", classification="asset"):
-        if acct_type in ("credit_card", "loan", "other_liability"):
-            classification = "liability"
-        return row(id=acct_id, name=name, account_type=acct_type, classification=classification)
-
-    def _txn(self, txn_date, amount, acct_id):
-        return row(date=txn_date, amount=amount, account_id=acct_id)
-
-    async def test_checking_positive_balance_is_asset(self):
-        accounts = [self._account(ACCT_1, "checking", "Checking")]
-        txns = [self._txn(date(2026, 1, 1), D("5000.00"), ACCT_1)]
-
-        with patch("igab.services.report_service.date") as mock_date:
-            mock_date.today.return_value = date(2026, 1, 31)
-            mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
-            svc = ReportService(
-                make_session(
-                    mock_result(accounts),
-                    mock_result([]),  # unmanaged liabilities
-                    mock_result([]),  # stated asset values
-                    mock_result(txns),
-                )
-            )
-            result = await svc.net_worth_history(BUDGET, months=1)
-
-        assert result[0]["total_assets"] == D("5000.00")
-        assert result[0]["total_liabilities"] == D("0")
-        assert result[0]["net_worth"] == D("5000.00")
-
-    async def test_credit_card_negative_balance_is_liability(self):
-        accounts = [self._account(ACCT_1, "credit_card", "Visa")]
-        # Credit card with -1500 balance (owed)
-        txns = [self._txn(date(2026, 1, 1), D("-1500.00"), ACCT_1)]
-
-        with patch("igab.services.report_service.date") as mock_date:
-            mock_date.today.return_value = date(2026, 1, 31)
-            mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
-            svc = ReportService(
-                make_session(
-                    mock_result(accounts),
-                    mock_result([]),  # unmanaged liabilities
-                    mock_result([]),  # stated asset values
-                    mock_result(txns),
-                )
-            )
-            result = await svc.net_worth_history(BUDGET, months=1)
-
-        assert result[0]["total_liabilities"] == D("1500.00")
-        assert result[0]["total_assets"] == D("0")
-        assert result[0]["net_worth"] == D("-1500.00")
-
-    async def test_mixed_assets_and_liabilities(self):
-        accounts = [
-            self._account(ACCT_1, "checking", "Checking"),
-            self._account(ACCT_2, "credit_card", "Visa"),
-        ]
-        txns = [
-            self._txn(date(2026, 1, 1), D("10000.00"), ACCT_1),
-            self._txn(date(2026, 1, 1), D("-2000.00"), ACCT_2),
-        ]
-
-        with patch("igab.services.report_service.date") as mock_date:
-            mock_date.today.return_value = date(2026, 1, 31)
-            mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
-            svc = ReportService(
-                make_session(
-                    mock_result(accounts),
-                    mock_result([]),  # unmanaged liabilities
-                    mock_result([]),  # stated asset values
-                    mock_result(txns),
-                )
-            )
-            result = await svc.net_worth_history(BUDGET, months=1)
-
-        assert result[0]["total_assets"] == D("10000.00")
-        assert result[0]["total_liabilities"] == D("2000.00")
-        assert result[0]["net_worth"] == D("8000.00")
-
-    async def test_empty_budget_returns_zero_points(self):
-        svc = ReportService(
-            make_session(mock_result([]), mock_result([]), mock_result([]), mock_result([]))
-        )
-        result = await svc.net_worth_history(BUDGET, months=3)
-        assert len(result) == 3
-        assert all(p["net_worth"] == D("0") for p in result)
-
-    async def test_off_budget_accounts_are_included(self):
-        """The balance sheet spans every account — a brokerage and an
-        off-budget mortgage must both move net worth."""
-        brokerage = uuid.uuid4()
-        mortgage = uuid.uuid4()
-        accounts = [
-            self._account(ACCT_1, "checking", "Checking"),
-            self._account(brokerage, "investment", "Brokerage"),
-            self._account(mortgage, "loan", "Mortgage"),
-        ]
-        txns = [
-            self._txn(date(2026, 1, 1), D("1000.00"), ACCT_1),
-            self._txn(date(2026, 1, 1), D("12000.00"), brokerage),
-            self._txn(date(2026, 1, 1), D("-250000.00"), mortgage),
-        ]
-
-        with patch("igab.services.report_service.date") as mock_date:
-            mock_date.today.return_value = date(2026, 1, 31)
-            mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
-            svc = ReportService(
-                make_session(
-                    mock_result(accounts),
-                    mock_result([]),  # unmanaged liabilities
-                    mock_result([]),  # stated asset values
-                    mock_result(txns),
-                )
-            )
-            result = await svc.net_worth_history(BUDGET, months=1)
-
-        assert result[0]["total_assets"] == D("13000.00")
-        assert result[0]["total_liabilities"] == D("250000.00")
-        assert result[0]["net_worth"] == D("-237000.00")
-
-    async def test_overdrawn_checking_nets_assets_down(self):
-        """The old type-bucketing counted a negative checking balance in
-        NEITHER pile; classification math keeps the identity exact."""
-        accounts = [
-            self._account(ACCT_1, "checking", "Checking"),
-            self._account(ACCT_2, "savings", "Savings"),
-        ]
-        txns = [
-            self._txn(date(2026, 1, 1), D("-300.00"), ACCT_1),
-            self._txn(date(2026, 1, 1), D("1000.00"), ACCT_2),
-        ]
-
-        with patch("igab.services.report_service.date") as mock_date:
-            mock_date.today.return_value = date(2026, 1, 31)
-            mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
-            svc = ReportService(
-                make_session(
-                    mock_result(accounts),
-                    mock_result([]),  # unmanaged liabilities
-                    mock_result([]),  # stated asset values
-                    mock_result(txns),
-                )
-            )
-            result = await svc.net_worth_history(BUDGET, months=1)
-
-        assert result[0]["total_assets"] == D("700.00")
-        assert result[0]["total_liabilities"] == D("0")
-        assert result[0]["net_worth"] == D("700.00")
-
-    async def test_overpaid_credit_card_nets_liabilities_down(self):
-        accounts = [
-            self._account(ACCT_1, "credit_card", "Visa"),
-            self._account(ACCT_2, "loan", "Car"),
-        ]
-        txns = [
-            self._txn(date(2026, 1, 1), D("50.00"), ACCT_1),  # credit on the card
-            self._txn(date(2026, 1, 1), D("-1050.00"), ACCT_2),
-        ]
-
-        with patch("igab.services.report_service.date") as mock_date:
-            mock_date.today.return_value = date(2026, 1, 31)
-            mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
-            svc = ReportService(
-                make_session(
-                    mock_result(accounts),
-                    mock_result([]),  # unmanaged liabilities
-                    mock_result([]),  # stated asset values
-                    mock_result(txns),
-                )
-            )
-            result = await svc.net_worth_history(BUDGET, months=1)
-
-        assert result[0]["total_assets"] == D("0")
-        assert result[0]["total_liabilities"] == D("1000.00")
-        assert result[0]["net_worth"] == D("-1000.00")
-
-    async def test_cumulative_balance_at_month_end(self):
-        """Balance at each month snapshot is cumulative (all txns up to that date)."""
-        accounts = [self._account(ACCT_1, "checking")]
-        txns = [
-            self._txn(date(2026, 1, 1), D("1000.00"), ACCT_1),
-            self._txn(date(2026, 2, 1), D("1000.00"), ACCT_1),
-        ]
-
-        with patch("igab.services.report_service.date") as mock_date:
-            mock_date.today.return_value = date(2026, 2, 28)
-            mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
-            svc = ReportService(
-                make_session(
-                    mock_result(accounts),
-                    mock_result([]),  # unmanaged liabilities
-                    mock_result([]),  # stated asset values
-                    mock_result(txns),
-                )
-            )
-            result = await svc.net_worth_history(BUDGET, months=2)
-
-        jan_r = next(r for r in result if r["date"].month == 1)
-        feb_r = next(r for r in result if r["date"].month == 2)
-        assert jan_r["net_worth"] == D("1000.00")
-        assert feb_r["net_worth"] == D("2000.00")
+# The classification math moved to test_report_stats.py (TestBalanceSheet),
+# and the balances it reads to tests/integration/test_net_worth_history.py:
+# the rows come from one grouped SQL aggregate a mocked session cannot run.
 
 
 # ─── category_volatility ──────────────────────────────────────────────────────
@@ -980,6 +805,31 @@ class TestCategoryVolatility:
         assert r["max_val"] == pytest.approx(D("600.0"), rel=D("0.01"))
         assert r["std_dev"] > D("200")
         # The one figure that genuinely wants the sparse count.
+        assert r["months_included"] == 2
+
+    async def test_amortize_reaches_the_statistics(self):
+        """The toggle's whole path below the route. Nothing passed amortize=True
+        here, so dropping the argument left every test green and the toggle
+        quietly showing the raw reading."""
+        with patch("igab.services.report_service.date") as mock_date:
+            mock_date.today.return_value = date(2026, 7, 10)
+            mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
+
+            def vrow(d):
+                return row(
+                    date=d,
+                    amount=D("-600.00"),
+                    category_id=CAT_A,
+                    category_name="Property Tax",
+                    group_name="Long Term",
+                )
+
+            # Jan–Jun, 600 in Jan and Apr: 200 a month once spread.
+            rows = [vrow(date(2026, 1, 20)), vrow(date(2026, 4, 20))]
+            svc = ReportService(make_session(earliest_result(None), mock_result(rows)))
+            (r,) = (await svc.category_volatility(BUDGET, months=6, amortize=True))["categories"]
+
+        assert r["min_val"] == r["max_val"] == D("200")
         assert r["months_included"] == 2
 
     async def test_empty_returns_empty(self):

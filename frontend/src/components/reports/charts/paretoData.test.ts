@@ -4,7 +4,8 @@ import {
   cumulativePercents,
   paretoAdherence,
   paretoInsight,
-  shareOfTotal,
+  paretoSummary,
+  PARETO_BARS,
   type ParetoItem,
 } from './paretoData'
 import pareto from '../../../../../shared/pareto_cases.json'
@@ -21,14 +22,14 @@ const payees = [
 
 describe('buildParetoItems', () => {
   it('category mode sorts descending and trusts the backend total', () => {
-    const { sorted, grandTotal } = buildParetoItems('category', spending, payees, '1000')
+    const { sorted, grandTotal } = buildParetoItems('category', spending, '1000', undefined)
     expect(sorted.map((i) => i.name)).toEqual(['Rent', 'Groceries', 'Gas'])
     expect(sorted[1]).toMatchObject({ groupKey: 'g1', groupName: 'Everyday' })
     expect(grandTotal).toBe(1000)
   })
 
   it('group mode aggregates category totals per parent group', () => {
-    const { sorted, grandTotal } = buildParetoItems('group', spending, payees, '999')
+    const { sorted, grandTotal } = buildParetoItems('group', spending, '999', undefined)
     expect(sorted).toEqual([
       { id: 'g2', name: 'Home', total: 600, groupKey: 'g2', groupName: null },
       { id: 'g1', name: 'Everyday', total: 400, groupKey: 'g1', groupName: null },
@@ -39,35 +40,37 @@ describe('buildParetoItems', () => {
 
   it('group mode buckets parentless categories as Uncategorized', () => {
     const orphan = [{ id: 'c9', name: 'Misc', total: '50', parent_id: null, parent_name: null }]
-    const { sorted } = buildParetoItems('group', orphan, [], '0')
+    const { sorted } = buildParetoItems('group', orphan, '0', undefined)
     expect(sorted).toEqual([
       { id: '__none__', name: 'Uncategorized', total: 50, groupKey: '__none__', groupName: null },
     ])
   })
 
-  it('payee mode falls back to summing the visible payees', () => {
-    const { sorted, grandTotal, universeCount } = buildParetoItems(
-      'payee',
-      spending,
-      payees,
-      undefined
-    )
-    expect(sorted.map((i) => i.name)).toEqual(['Landlord', 'MegaMart'])
-    expect(grandTotal).toBe(850)
-    expect(universeCount).toBe(2)
-  })
-
-  it('payee mode prefers the served total and count over the ranked rows', () => {
+  it('payee mode reads the served total, count and 80% line, never the ranked rows', () => {
     // The server ranks the top 25 and totals every payee. Summing the ranked
     // rows made concentration a fact about the cap, and disagreed with the
     // `pct` on each row — which is a share of the served total.
-    const { grandTotal, universeCount } = buildParetoItems('payee', spending, payees, undefined, {
-      total: '4000',
-      count: 312,
-      itemsTo80: 140,
-    })
+    const { sorted, grandTotal, universeCount, itemsTo80 } = buildParetoItems(
+      'payee',
+      spending,
+      undefined,
+      { payees, total: '4000', payee_count: 312, payees_to_80pct: 140 }
+    )
+    expect(sorted.map((i) => i.name)).toEqual(['Landlord', 'MegaMart'])
     expect(grandTotal).toBe(4000)
     expect(universeCount).toBe(312)
+    expect(itemsTo80).toBe(140)
+  })
+
+  it('payee mode with no response has no payees, not a total summed from nothing', () => {
+    // The old optional fifth argument fell back to summing the ranked rows
+    // and counting them: a caller that forgot it reverted to the cap.
+    expect(buildParetoItems('payee', spending, undefined, undefined)).toEqual({
+      sorted: [],
+      grandTotal: 0,
+      universeCount: 0,
+      itemsTo80: null,
+    })
   })
 })
 
@@ -80,8 +83,10 @@ describe('cumulativePercents', () => {
     expect(pcts).toEqual([50, 80, 100])
   })
 
-  it('is all zeros when the grand total is zero', () => {
+  it('lies on the axis when there is no positive total to be a share of', () => {
+    // `shareOfTotal` has no share to state here; a line still needs a y.
     expect(cumulativePercents(items([1, 2]), 0)).toEqual([0, 0])
+    expect(cumulativePercents(items([10, -40]), -30)).toEqual([0, 0])
   })
 })
 
@@ -115,10 +120,24 @@ describe('paretoInsight', () => {
   })
 })
 
-describe('shareOfTotal', () => {
-  it('is the item share in percent, 0 for a zero denominator', () => {
-    expect(shareOfTotal(25, 200)).toBe(12.5)
-    expect(shareOfTotal(25, 0)).toBe(0)
+describe('paretoSummary', () => {
+  it('finds the 80% line past the bars it draws', () => {
+    // Forty equal categories: 80% is reached at item 32. The chart sliced its
+    // twenty bars first and measured those, whose line tops out at 50%, so
+    // the card vanished for exactly the spread-thin budget it exists to name.
+    const forty = items(Array(40).fill(25))
+    const { drawn, idx80, coverage } = paretoSummary(forty, 1000, 40)
+    expect(drawn).toHaveLength(PARETO_BARS)
+    expect(drawn[PARETO_BARS - 1].cumulativePct).toBe(50)
+    expect(idx80).toBe(31)
+    expect(coverage).toBeCloseTo(80, 5)
+  })
+
+  it('takes the served count in payee mode, where the client holds only 25', () => {
+    const top25 = items(Array(25).fill(4120 / 25))
+    const { drawn, idx80 } = paretoSummary(top25, 9850, 312, 140)
+    expect(drawn).toHaveLength(PARETO_BARS)
+    expect(idx80).toBe(139)
   })
 })
 

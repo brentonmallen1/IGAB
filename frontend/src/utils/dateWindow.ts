@@ -8,7 +8,7 @@
 // The Date → YYYY-MM-DD conversion lives in utils/dates (`toISODate`): this
 // module had the one copy the reports read, beside a second name for it and
 // three more spellings elsewhere in utils/.
-import { toISODate, today } from './dates'
+import { currentMonthStart, toISODate, today } from './dates'
 
 function parts(s: string): [number, number, number] {
   const [y, m, d] = s.split('-').map(Number)
@@ -43,12 +43,21 @@ export function monthsAgoStartISO(monthsBack: number): string {
   return toISODate(new Date(now.getFullYear(), now.getMonth() - monthsBack, 1))
 }
 
-/** Full window of a "YYYY-MM" month, end clamped to today (report queries
- * never run past today, so panel totals must not either). */
+/** Full window of a month, end clamped to today (report queries never run
+ * past today, so panel totals must not either). Takes "YYYY-MM" or any date
+ * inside the month — the server's month fields arrive as "YYYY-MM-01". */
 export function monthWindow(month: string): { start: string; end: string } {
   const [y, m] = month.split('-').map(Number)
   const start = toISODate(new Date(y, m - 1, 1))
   const lastDay = toISODate(new Date(y, m, 0)) // day 0 of next month = last of this
   const t = today()
   return { start, end: lastDay < t ? lastDay : t }
+}
+
+/** "This month so far": the 1st through today. The report filters' default and
+ * the date picker's "This Month" preset are this one value — the picker
+ * highlights a preset by string equality, so two spellings of it that drift
+ * leave the default filter matching no preset. */
+export function thisMonthWindow(): { start: string; end: string } {
+  return monthWindow(currentMonthStart())
 }

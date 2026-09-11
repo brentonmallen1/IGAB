@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import TypedDict
 
 import polars as pl
-from sqlalchemy import case, func, literal, literal_column, select
+from sqlalchemy import Select, func, literal_column, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -29,11 +29,14 @@ from igab.db.models import (
 from igab.domain.activity_class import (
     ACTIVITY_CLASS,
     INCOME_ROW,
-    SPENDING_CLASSES,
     ActivityClass,
     apply_class_joins,
     basis_is_chosen,
+    counted_class_filter,
     counted_classes,
+    planned_spend_filter,
+    rolled_up_classes,
+    split_leg_classes,
 )
 
 # CASH_FLOW_ROW: plain rows plus categorized transfer legs (spending
@@ -43,15 +46,18 @@ from igab.domain.activity_class import (
 from igab.domain.concentration import items_to_share
 from igab.domain.dates import (
     add_months,
+    clamped_month_end,
     complete_month_window,
     month_starts,
     months_spanned,
+    report_months,
     trailing_start,
 )
 from igab.domain.dates import month_end as _month_end
 from igab.domain.money import format_csv_amount, quantize_cents
 from igab.domain.plan import plan_outcome
 from igab.domain.schedule import projected_occurrences, subscription_occurrences
+from igab.domain.view_arrangement import arrange_by_view
 from igab.guide.concepts import (
     FULL_EMERGENCY_FUND_MONTHS_HIGH,
     FULL_EMERGENCY_FUND_MONTHS_LOW,
@@ -59,20 +65,23 @@ from igab.guide.concepts import (
     essentials_since,
 )
 from igab.repositories.account_repo import AccountRepository
-from igab.repositories.category_filters import BUDGETED_ENVELOPE, SPENT_ENVELOPE
+from igab.repositories.category_filters import BUDGETED_ENVELOPE
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.repositories.txn_filters import (
     CASH_ACCOUNT,
     CASH_FLOW_ROW,
     LEAF,
+    LIVE_ACCOUNT,
     NOT_DELETED,
     ON_BUDGET_ACCOUNT,
+    ON_CARD_ACCOUNT,
     PARENT_ROW,
     PAYEE_OF_RECORD,
-    PLANNED_SPEND_ROW,
     POSTED,
+    SPENDING_ROW,
     SPLIT_PARENT,
     SUBSCRIPTION_CHARGE,
+    account_scope,
     category_tagged,
     in_category_scope,
     none_of,
@@ -80,12 +89,12 @@ from igab.repositories.txn_filters import (
     reapplied_by_subscriptions,
 )
 from igab.services.report_basics import (
-    _subtract_months,
     class_excluded_note,
     emergency_fund,
 )
 from igab.services.report_stats import (
-    monthly_account_balances,
+    anomaly_rows,
+    balance_sheet,
     payee_breakdown,
     timeline_rows,
     volatility_stats,
@@ -132,54 +141,6 @@ class SavingsCategory(TypedDict):
     current_balance: Decimal
     target_balance: Decimal | None
     total_inflow: Decimal
-
-
-class AnomalyRow(TypedDict):
-    category_id: str
-    category_name: str
-    group_name: str
-    month: date
-    actual: Decimal
-    baseline_mean: Decimal
-    z_score: float
-    direction: str
-    history: list[Decimal]
-
-
-#: Bucket for categories a view has not placed. A string, not a UUID, so it
-#: cannot collide with a real group id.
-UNASSIGNED_VIEW_GROUP = "__unassigned__"
-
-
-def _spending_classes(
-    include: Sequence[ActivityClass] | None = None, *, scoped_accounts: bool = False
-):
-    """WHERE clause limiting a spending query to the requested activity classes.
-
-    Returns a predicate, so the caller owns the query — which means the caller
-    must also apply `apply_class_joins` to it. This is the one place the class
-    is used without the joins visibly beside it, so it is the one place a new
-    caller could forget: a query with this predicate and no joins is a
-    cartesian product, which `pyproject.toml` promotes from a warning to a test
-    failure. Every caller today does apply them.
-
-    Defaults to spending alone. That is the behaviour change a user asked for:
-    a transfer to a brokerage or a mortgage is money leaving the budget, but it
-    is not money spent, and counting it as spending skews every average.
-    Callers that genuinely want the wider picture pass the classes they mean.
-
-    `scoped_accounts` says the caller has an explicit account selection, which
-    overrides the on-budget default — so the user may be looking straight at a
-    tracked account, whose outflows classify `investment_return` (brokerage
-    fees) or `debt_interest` (loan interest) and never `spending`. Without
-    widening here, deliberately picking "Brokerage" in the account filter
-    returned an empty chart: this predicate is ANDed into the WHERE *before*
-    the scope override, so it silently cancelled the user's selection.
-    """
-    classes = list(include or SPENDING_CLASSES)
-    if scoped_accounts:
-        classes += [ActivityClass.INVESTMENT_RETURN, ActivityClass.DEBT_INTEREST]
-    return ACTIVITY_CLASS.in_([c.value for c in classes])
 
 
 #: The smallest inflow that counts as a payday.
@@ -275,75 +236,28 @@ class ReportService:
         account_ids: list[uuid.UUID] | None = None,
         include_classes: Sequence[ActivityClass] | None = None,
     ) -> tuple[list[dict], Decimal]:
-        q = (
-            select(
-                Category.id,
-                Category.name,
-                CategoryGroup.name.label("group_name"),
-                Transaction.amount,
-            )
-            .join(Transaction, Transaction.category_id == Category.id)
-            .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
-            .where(
-                Transaction.budget_id == budget_id,
-                NOT_DELETED,
-                POSTED,
-                Transaction.amount < 0,
-                Transaction.date >= start_date,
-                Transaction.date <= end_date,
-                LEAF,
-                CASH_FLOW_ROW,
-                # SPENT_ENVELOPE, which this hand-spelled copy of the spending
-                # predicate set was missing: without it a row filed into a
-                # system-group category — a clawed-back paycheque — counted as
-                # spending here, while every on-screen spending chart excluded
-                # it. Both the served /reports/spending endpoint and the AI
-                # chat tool read this method, so the assistant answered a
-                # different number from the charts.
-                SPENT_ENVELOPE,
-                _spending_classes(include_classes, scoped_accounts=account_ids is not None),
-            )
+        """Spending per category, largest first: the Breakdown, the AI spending
+        tool, and — its first three rows — the Overview's Top Spending card.
+
+        `_spending_query`'s rows and class set, not a hand copy of them. The
+        copy was one term short of it (`SPENT_ENVELOPE`), the card was a second
+        copy three terms short, and Decimal throughout rather than a float sum.
+        """
+        q, included = self._spending_query(
+            budget_id, start_date, end_date, category_ids, account_ids, include_classes
         )
-        q = scoped(q, Transaction.category_id, category_ids)
-        if account_ids is not None:
-            q = scoped(q, Transaction.account_id, account_ids)
-        else:
-            q = q.where(ON_BUDGET_ACCOUNT)
-        q = apply_class_joins(q)
-        result = await self.session.execute(q)
-        rows = result.all()
-
-        if not rows:
-            return [], Decimal("0")
-
-        df = pl.DataFrame(
-            {
-                "id": [str(r.id) for r in rows],
-                "name": [r.name for r in rows],
-                "group_name": [r.group_name for r in rows],
-                "amount": [float(r.amount) for r in rows],
-            }
-        )
-
-        agg = (
-            df.group_by(["id", "name", "group_name"])
-            .agg(pl.col("amount").sum().alias("total"))
-            .with_columns(pl.col("total").abs())
-            .sort("total", descending=True)
-        )
-
-        grand_total = agg["total"].sum()
-        categories = [
-            {
-                "id": row["id"],
-                "name": row["name"],
-                "group_name": row["group_name"],
-                "total": Decimal(str(round(row["total"], 4))),
-                "pct": float(row["total"] / grand_total * 100) if grand_total else 0.0,
-            }
-            for row in agg.iter_rows(named=True)
-        ]
-        return categories, Decimal(str(round(grand_total, 4)))
+        by_cat: dict[str, dict] = {}
+        for r in (await self.session.execute(q)).all():
+            if r.cls in included:
+                cat = by_cat.setdefault(
+                    str(r.id), {"id": str(r.id), "name": r.name, "group_name": r.group_name}
+                )
+                cat["total"] = cat.get("total", Decimal("0")) - r.amount
+        grand_total = sum((c["total"] for c in by_cat.values()), Decimal("0"))
+        categories = sorted(by_cat.values(), key=lambda c: c["total"], reverse=True)
+        for c in categories:
+            c["pct"] = float(c["total"] / grand_total * 100) if grand_total else 0.0
+        return categories, grand_total
 
     async def income_vs_expense(self, budget_id: uuid.UUID, months: int = 12) -> list[dict]:
         """Money in, money out, per month — with saving broken out of spending.
@@ -464,92 +378,19 @@ class ReportService:
         prev_start = add_months(start_date, -1)
         prev_end = start_date - timedelta(days=1)
 
-        # This used to pull EVERY posted row in the budget into Python — id,
-        # amounts, flags and the class join — to answer three questions: two
-        # scalar sums and a top-three. A household five years in was shipping
-        # tens of thousands of rows over the wire for a dashboard that draws
-        # eleven numbers, and the frame was rebuilt on every page load.
-        #
-        # Three narrow queries instead. The row set each one reads is stated
-        # where it is asked for rather than re-derived from one wide frame,
-        # which is also what made the old `cash_flow` column able to drift.
-        posted = (
-            Transaction.budget_id == budget_id,
-            NOT_DELETED,
-            POSTED,
-        )
-        any_row = (await self.session.execute(select(literal(1)).where(*posted).limit(1))).first()
+        # This used to pull EVERY posted row in the budget into Python to
+        # answer two scalar sums and a top-three. Each figure below now asks
+        # the one rule its report tab reads, so none can drift from its tab.
 
-        # Category info for spending
-        cat_q = (
-            select(Category.id, Category.name, CategoryGroup.name.label("group_name"))
-            .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
-            .where(
-                Category.budget_id == budget_id,
-                # SPENT_ENVELOPE, not BUDGETED_ENVELOPE: the only thing this
-                # lookup feeds is "top spending categories", and a category
-                # deleted after the money left it did not unspend the money.
-                # Under BUDGETED_ENVELOPE such a row fell out of the lookup —
-                # and because the top 3 were taken BEFORE the lookup, the card
-                # then drew two categories instead of three.
-                SPENT_ENVELOPE,
-            )
-        )
-        cats = {str(r.id): r for r in (await self.session.execute(cat_q)).all()}
-
-        if any_row is None:
-            # A budget with no transactions can still own things. This returned
-            # a flat zero, so a household that had stated a house value and
-            # entered its mortgage as an unmanaged liability read net worth 0
-            # — and `net_worth_history`, which counts both, disagreed with the
-            # card on a surface where the two are asserted to agree.
-            unmanaged_now, _ = await self._unmanaged_liabilities(budget_id)
-            asset_now, _ = await self._asset_values(budget_id)
-            return _empty_dashboard(net_worth=asset_now - unmanaged_now)
-
-        # Net worth spans EVERY account — matching net_worth_history, which
-        # this card must never disagree with. Assets minus liabilities reduces
-        # to the plain sum of all ledgers (transfers cancel), minus unmanaged.
-        #
-        # Parent rows only: a split's children would double-count it. Bounded
-        # at today — this summed every posted row with no upper bound while
-        # net_worth_history bounds each point at its month end, so a row dated
-        # in a later month was in the card and not in the chart, and the two
-        # are asserted to agree. Net worth "now" is not money that has not
-        # moved yet.
-        #
-        # Both sums in one row: "now" and "as of the start of the window" read
-        # the same rows with different bounds, and asking twice would walk the
-        # register twice.
-        totals = (
-            await self.session.execute(
-                select(
-                    func.coalesce(
-                        func.sum(case((Transaction.date <= today, Transaction.amount), else_=0)),
-                        0,
-                    ).label("now"),
-                    func.coalesce(
-                        func.sum(
-                            case((Transaction.date < start_date, Transaction.amount), else_=0)
-                        ),
-                        0,
-                    ).label("prev"),
-                ).where(*posted, PARENT_ROW)
-            )
-        ).one()
-        net_worth = Decimal(str(totals.now or 0))
-        net_worth_prev = Decimal(str(totals.prev or 0))
-
-        # Unmanaged liabilities reduce net worth here exactly as they do in
-        # net_worth_history, and stated asset values raise it the same way —
-        # the dashboard card and the report headline must never disagree
-        # (test_dashboard_matches_charts pins it).
-        unmanaged_now, unmanaged_series = await self._unmanaged_liabilities(budget_id)
-        net_worth -= unmanaged_now
-        net_worth_prev -= self._unmanaged_total_at(unmanaged_series, prev_end)
-        asset_now, asset_series = await self._asset_values(budget_id)
-        net_worth += asset_now
-        net_worth_prev += self._asset_total_at(asset_series, prev_end)
+        # Net worth "now" and as it stood the day before the window, from the
+        # one rule the net-worth chart reads (`_balance_sheets`). This card
+        # was its own SQL sum beside the chart's per-account walk, linked by
+        # a comment saying they must never disagree — and their date bounds
+        # had already drifted. An empty budget takes the same path: it had a
+        # short-circuit of its own that restated the composition, set prev to
+        # "now", and so drew a 0.0% change the chart beside it contradicted.
+        prev_sheet, now_sheet = await self._balance_sheets(budget_id, [prev_end, today])
+        net_worth, net_worth_prev = now_sheet["net_worth"], prev_sheet["net_worth"]
 
         # Every figure below reads the activity-class partition, not the sign
         # of the amount. The dashboard summarises the report tabs, so it has to
@@ -596,7 +437,7 @@ class ReportService:
             window = cdf.filter(
                 (pl.col("date") >= start)
                 & (pl.col("date") <= end)
-                & (pl.col("cls") == ActivityClass.SPENDING.value)
+                & pl.col("cls").is_in(list(counted_classes()))
                 & (pl.col("amount") < 0)
             )
             return -Decimal(str(window.select(pl.col("amount").sum()).item() or 0))
@@ -633,55 +474,22 @@ class ReportService:
             float(cash_on_hand) / daily_burn if daily_burn > 0 and cash_on_hand > 0 else None
         )
 
-        # Top 3 spending categories in the current period — leaf rows so splits
-        # count; categorized transfer legs (off-budget spending) count too.
-        #
-        # The class filter is what makes this "Top Spending" rather than "top
-        # outflows". It partitioned on `amount < 0` alone, under a comment two
-        # screens up claiming every figure below it uses the activity-class
-        # partition, so a transfer to a brokerage and a mortgage principal
-        # payment were listed as the household's biggest spending.
-        # Grouped in SQL over the window, rather than filtered out of a frame
-        # holding the whole register. No ON_BUDGET_ACCOUNT term, deliberately:
-        # a categorized transfer leg IS off-budget spending and belongs here.
-        cat_totals = (
-            await self.session.execute(
-                apply_class_joins(
-                    select(
-                        Transaction.category_id,
-                        func.sum(Transaction.amount).label("total"),
-                    )
-                    .where(
-                        *posted,
-                        LEAF,
-                        Transaction.amount < 0,
-                        Transaction.date >= start_date,
-                        Transaction.date <= end_date,
-                        Transaction.category_id.isnot(None),
-                        ACTIVITY_CLASS.in_([c.value for c in SPENDING_CLASSES]),
-                    )
-                    .group_by(Transaction.category_id)
-                    # Most negative first — these are all outflows.
-                    .order_by(func.sum(Transaction.amount))
-                )
-            )
-        ).all()
-        top_cats: list[dict] = []
-        # No `LIMIT 3` on the query: the lookup below can drop a row, and
-        # taking the top 3 first meant the card silently showed fewer than 3.
-        for row in cat_totals:
-            if len(top_cats) == 3:
-                break
-            cat_info = cats.get(str(row.category_id))
-            if cat_info:
-                top_cats.append(
-                    {
-                        "id": str(row.category_id),
-                        "name": cat_info.name,
-                        "group_name": cat_info.group_name,
-                        "total": quantize_cents(-row.total),
-                    }
-                )
+        # Top Spending is the Breakdown's first three rows, not a second query
+        # kept agreeing with it. It was one — the class filter, the envelope
+        # rule and the truncation order each copied across after the card had
+        # drifted three ways — under a comment calling its missing on-budget
+        # term deliberate, though a categorized transfer leg sits on the
+        # on-budget side and passes `ON_BUDGET_ACCOUNT` (see its comment).
+        breakdown, _spent = await self.spending_by_category(budget_id, start_date, end_date)
+        top_cats = [
+            {
+                "id": c["id"],
+                "name": c["name"],
+                "group_name": c["group_name"],
+                "total": quantize_cents(c["total"]),
+            }
+            for c in breakdown[:3]
+        ]
 
         return {
             "net_worth": net_worth,
@@ -814,146 +622,47 @@ class ReportService:
             series[snap.asset_id].append((snap.date, snap.value))
         return current_total, series
 
+    async def _balance_sheets(self, budget_id: uuid.UUID, as_of: list[date]) -> list[dict]:
+        """The balance sheet (`balance_sheet`) at the end of each day in
+        `as_of`, ascending — net worth's one rule. The Overview card asks it
+        for two days, the chart for every month end.
+
+        Clamped to today: a month end still ahead is not net worth yet, and
+        money that has not moved is not in it. On today, stated debts and
+        asset values read their current figures; before it, each reads its
+        step function and contributes nothing before its first point.
+        """
+        today = date.today()
+        cutoffs = [min(day, today) for day in as_of]
+        accounts = (
+            await self.session.execute(
+                select(
+                    Account.id, Account.name, Account.account_type, Account.classification
+                ).where(Account.budget_id == budget_id, LIVE_ACCOUNT)
+            )
+        ).all()
+        balances = await self.accounts.balances_through(budget_id, cutoffs)
+        unmanaged_now, unmanaged_series = await self._unmanaged_liabilities(budget_id)
+        asset_now, asset_series = await self._asset_values(budget_id)
+        sheets = []
+        for i, cutoff in enumerate(cutoffs):
+            now = cutoff == today
+            unmanaged = unmanaged_now if now else self._unmanaged_total_at(unmanaged_series, cutoff)
+            asset_total = asset_now if now else self._asset_total_at(asset_series, cutoff)
+            sheets.append(balance_sheet(accounts, balances, i, asset_total, unmanaged))
+        return sheets
+
     async def net_worth_history(
         self,
         budget_id: uuid.UUID,
         months: int = 12,
     ) -> list[dict]:
-        # EVERY account counts toward net worth — off-budget assets (brokerage,
-        # HSA, property) and off-budget loans included. on_budget scopes the
-        # envelope math, never the balance sheet. Closed accounts stay too:
-        # their history is real and their balance flattens after closing.
-        acct_q = select(
-            Account.id, Account.name, Account.account_type, Account.classification
-        ).where(
-            Account.budget_id == budget_id,
-            Account.is_deleted == False,  # noqa: E712
-        )
-        accounts = (await self.session.execute(acct_q)).all()
-
-        unmanaged_now, unmanaged_series = await self._unmanaged_liabilities(budget_id)
-        # Stated asset values are the mirror bucket: in net worth without
-        # appearing in any account series, exactly as unmanaged debts are —
-        # which is why every point serves `asset_value_total` beside
-        # `unmanaged_liability_total`, so the charts can footnote the gap
-        # between the visible account stack and the net line.
-        asset_now, asset_series = await self._asset_values(budget_id)
-        account_map = {str(a.id): a for a in accounts}
-
-        q = select(Transaction.date, Transaction.amount, Transaction.account_id).where(
-            Transaction.budget_id == budget_id,
-            NOT_DELETED,
-            POSTED,
-            PARENT_ROW,
-        )
-        txns = (await self.session.execute(q)).all()
-
-        today = date.today()
-        first_of_month = today.replace(day=1)
-
-        if not txns:
-            points = []
-            for i in range(months - 1, -1, -1):
-                month_start = _subtract_months(first_of_month, i)
-                month_end = min(_month_end(month_start), today)
-                unmanaged = (
-                    unmanaged_now
-                    if i == 0
-                    else self._unmanaged_total_at(unmanaged_series, month_end)
-                )
-                asset_total = asset_now if i == 0 else self._asset_total_at(asset_series, month_end)
-                points.append(
-                    {
-                        "date": month_start,
-                        "total_assets": asset_total,
-                        "total_liabilities": unmanaged,
-                        "net_worth": asset_total - unmanaged,
-                        "unmanaged_liability_total": unmanaged,
-                        "asset_value_total": asset_total,
-                        "accounts": [],
-                    }
-                )
-            return points
-
-        df = pl.DataFrame(
-            {
-                "date": [r.date for r in txns],
-                "amount": [float(r.amount) for r in txns],
-                "account_id": [str(r.account_id) for r in txns],
-                "account_name": [account_map[str(r.account_id)].name for r in txns],
-                "account_type": [account_map[str(r.account_id)].account_type for r in txns],
-                "classification": [
-                    account_map[str(r.account_id)].classification or "asset" for r in txns
-                ],
-            },
-            schema_overrides={"date": pl.Date, "amount": pl.Float64},
-        )
-
-        # Clamped: the current month's last day is a future date, and the
-        # newest point is "net worth now".
-        grid = [_subtract_months(first_of_month, i) for i in range(months - 1, -1, -1)]
-        month_ends = [min(_month_end(m), today) for m in grid]
-        per_account = monthly_account_balances(df, grid, month_ends)
-
-        results = []
-        for i, month_start in enumerate(grid):
-            month_end = month_ends[i]
-            snapshots = []
-            total_assets = Decimal("0")
-            liability_balances = Decimal("0")
-
-            # Sign-preserving identity math, keyed on classification: an
-            # overdrawn checking account NETS ASSETS DOWN (the old bucketing
-            # counted it in neither pile) and an overpaid credit card nets
-            # liabilities down. net_worth == assets - liabilities always.
-            for account in per_account:
-                if i < account["first_month"]:
-                    # No rows yet: an account that opens in March is absent
-                    # from February's stack rather than drawn at zero.
-                    continue
-                bal = Decimal(str(round(account["running"][i], 4)))
-                snapshots.append(
-                    {
-                        "account_id": account["account_id"],
-                        "account_name": account["account_name"],
-                        "account_type": account["account_type"],
-                        "classification": account["classification"],
-                        "balance": bal,
-                    }
-                )
-                if account["classification"] == "liability":
-                    liability_balances += bal
-                else:
-                    total_assets += bal
-
-            # Unmanaged debts join the liability side: current total for the
-            # current month, snapshot step-function for history. Stated asset
-            # values join the asset side the same way.
-            #
-            # The NEWEST point is the last of the grid — the loop used to count
-            # months down to zero, so reading `i == 0` after the grid was
-            # turned the right way round gave the oldest point today's debts.
-            current = i == len(grid) - 1
-            unmanaged = (
-                unmanaged_now if current else self._unmanaged_total_at(unmanaged_series, month_end)
-            )
-            asset_total = asset_now if current else self._asset_total_at(asset_series, month_end)
-            total_liabilities = -liability_balances + unmanaged
-            total_assets += asset_total
-
-            results.append(
-                {
-                    "date": month_start,
-                    "total_assets": total_assets,
-                    "total_liabilities": total_liabilities,
-                    "net_worth": total_assets - total_liabilities,
-                    "unmanaged_liability_total": unmanaged,
-                    "asset_value_total": asset_total,
-                    "accounts": snapshots,
-                }
-            )
-
-        return results
+        """Net worth at each of the last `months` month ends, the newest being
+        today. An empty register needs no branch of its own: stated assets and
+        unmanaged debts still stand on every point."""
+        grid = report_months(date.today(), months)
+        sheets = await self._balance_sheets(budget_id, [_month_end(m) for m in grid])
+        return [{"date": month, **sheet} for month, sheet in zip(grid, sheets, strict=True)]
 
     # ─── Account Composition ─────────────────────────────────────────────────
 
@@ -996,8 +705,9 @@ class ReportService:
         months: int = 12,
     ) -> list[dict]:
         today = date.today()
-        first_of_month = today.replace(day=1)
-        start = _subtract_months(first_of_month, months - 1 + 3)  # extra months for rolling
+        grid = report_months(today, months)
+        # Back far enough for the oldest point's ninety days, and no further.
+        start = trailing_start(clamped_month_end(grid[0], today), 90)
 
         q = select(Transaction.date, Transaction.amount).where(
             Transaction.budget_id == budget_id,
@@ -1016,20 +726,16 @@ class ReportService:
             ON_BUDGET_ACCOUNT,
             # A burn rate is how fast money is consumed. Money moved into
             # savings has not been burned.
-            _spending_classes(),
+            counted_class_filter(),
         )
         q = apply_class_joins(q)
         txns = (await self.session.execute(q)).all()
 
         results = []
-        for i in range(months - 1, -1, -1):
-            month_start = _subtract_months(first_of_month, i)
-            # Clamped to today. `_month_end` of the CURRENT month is a future
-            # date, so the newest point summed a window running weeks past
-            # today: it was month-to-date wearing a "30-day" label, and it
-            # contradicted the Overview's "30-Day Burn Rate" — which is a
-            # genuine trailing thirty days — every day of the month.
-            month_end = min(_month_end(month_start), today)
+        for month_start in grid:
+            # Clamped: the newest point is a genuine trailing thirty days, the
+            # Overview's "30-Day Burn Rate", not month-to-date under its label.
+            month_end = clamped_month_end(month_start, today)
 
             # Thirty days INCLUSIVE of month_end (`trailing_start`). A rolling
             # window deliberately does not tile the calendar: over a 31-day
@@ -1108,10 +814,7 @@ class ReportService:
             Transaction.date <= end_date,
             INCOME_ROW,
         )
-        if account_ids is not None:
-            income_q = scoped(income_q, Transaction.account_id, account_ids)
-        else:
-            income_q = income_q.where(ON_BUDGET_ACCOUNT)
+        income_q, _ = account_scope(income_q, account_ids)
         income_q = apply_class_joins(income_q.select_from(Transaction))
         total_income = (await self.session.execute(income_q)).scalar() or Decimal("0")
 
@@ -1222,11 +925,12 @@ class ReportService:
             select(
                 Transaction.id,
                 Transaction.amount,
-                Transaction.payee_id,
+                # A split leg created in the app carries no payee: the parent
+                # names where the money came from, as in payee_analysis.
+                PAYEE_OF_RECORD.label("payee_id"),
                 Transaction.category_id,
                 Transaction.transfer_id,
                 Transaction.is_split,
-                Transaction.parent_transaction_id,
                 Payee.name.label("payee_name"),
                 Category.name.label("category_name"),
                 CategoryGroup.id.label("group_id"),
@@ -1234,7 +938,8 @@ class ReportService:
                 ACTIVITY_CLASS.label("activity_class"),
                 INCOME_ROW.label("is_income"),
             )
-            .outerjoin(Payee, Transaction.payee_id == Payee.id)
+            .outerjoin(SPLIT_PARENT, Transaction.parent_transaction_id == SPLIT_PARENT.id)
+            .outerjoin(Payee, PAYEE_OF_RECORD == Payee.id)
             .outerjoin(Category, Transaction.category_id == Category.id)
             .outerjoin(CategoryGroup, Category.category_group_id == CategoryGroup.id)
             .where(
@@ -1246,10 +951,7 @@ class ReportService:
                 CASH_FLOW_ROW,
             )
         )
-        if account_ids is not None:
-            q = scoped(q, Transaction.account_id, account_ids)
-        else:
-            q = q.where(ON_BUDGET_ACCOUNT)
+        q, _ = account_scope(q, account_ids)
         q = apply_class_joins(q)
         rows = (await self.session.execute(q)).all()
 
@@ -1266,7 +968,7 @@ class ReportService:
                 "group_categories": {},
             }
 
-        # ONE row shape for both sides: LEAF.
+        # ONE row shape for every branch — income, outflow, drawn: LEAF.
         #
         # Income used to come from PARENT rows while expenses came from leaves,
         # and a split straddles the two. A split whose legs are +1,000 of pay
@@ -1285,8 +987,9 @@ class ReportService:
         # with income_vs_expense over the same window and left the savings
         # branch missing the draw. Income is INCOME_ROW, which budgeted mode
         # reads too; everything else that moved money out is outflow.
-        income_rows = [r for r in rows if r.is_income]
-        expense_rows = [r for r in rows if not r.is_split and r.amount < 0 and not r.is_income]
+        leaves = [r for r in rows if not r.is_split]
+        income_rows = [r for r in leaves if r.is_income]
+        expense_rows = [r for r in leaves if r.amount < 0 and not r.is_income]
 
         total_income = sum((r.amount for r in income_rows), Decimal("0"))
         # Everything leaving the budget. Kept as one figure because the links
@@ -1349,15 +1052,12 @@ class ReportService:
         # brokerage, or borrowing. By amount sign these read as income, which
         # overstated earnings and disagreed with income_vs_expense; dropping
         # them instead would silently break flow conservation. They get their
-        # own inflow trunk so the diagram stays honest either way.
+        # own inflow trunk so the diagram stays honest either way. Leaves, like
+        # income: read off parent rows, a split's +500 savings leg sat inside
+        # a parent that is never drawn, and counted nowhere at all.
         drawn_by_class: dict[str, Decimal] = {}
-        for r in rows:
-            if (
-                r.parent_transaction_id is None
-                and r.amount > 0
-                and r.activity_class != ActivityClass.INCOME.value
-                and r.activity_class in _DRAWDOWN_LABELS
-            ):
+        for r in leaves:
+            if r.amount > 0 and r.activity_class in _DRAWDOWN_LABELS:
                 drawn_by_class[r.activity_class] = (
                     drawn_by_class.get(r.activity_class, Decimal("0")) + r.amount
                 )
@@ -1533,9 +1233,9 @@ class ReportService:
         )
 
         # Activity (expenses) in range — leaf rows so split children count.
-        # PLANNED_SPEND_ROW: one universe with the assigned side above; this
-        # query was the byte-identical twin of cumulative_variance's before
-        # the predicate was extracted.
+        # planned_spend_filter: one universe with the assigned side above;
+        # this query was the byte-identical twin of cumulative_variance's
+        # before the predicate was extracted.
         # The names travel with the rows. This selected only the id and the
         # amount, so a category that was spent from but never assigned to
         # inside the window had no name to reach for and was served as
@@ -1555,8 +1255,7 @@ class ReportService:
                 Transaction.budget_id == budget_id,
                 Transaction.date >= start_date,
                 Transaction.date <= end_date,
-                PLANNED_SPEND_ROW,
-                _spending_classes(),
+                planned_spend_filter(),
             )
         )
         spend_q = apply_class_joins(spend_q)
@@ -1630,9 +1329,7 @@ class ReportService:
         budget_id: uuid.UUID,
         months: int = 12,
     ) -> list[dict]:
-        today = date.today()
-        first_of_month = today.replace(day=1)
-        months_list = [_subtract_months(first_of_month, i) for i in range(months - 1, -1, -1)]
+        months_list = report_months(date.today(), months)
 
         assign_q = (
             select(BudgetAssignment.month, BudgetAssignment.assigned)
@@ -1652,16 +1349,15 @@ class ReportService:
 
         start = months_list[0]
         end = _month_end(months_list[-1])
-        # PLANNED_SPEND_ROW + the class filter: the spent side must live in
-        # the same universe as the assigned side, or the subtraction
-        # compounds an apples-to-oranges gap every month. The predicate's
-        # docstring lists exactly what the old inline copy missed.
+        # planned_spend_filter: the spent side must live in the same universe
+        # as the assigned side, or the subtraction compounds an
+        # apples-to-oranges gap every month. The predicate's docstring lists
+        # exactly what the old inline copy missed.
         spend_q = select(Transaction.date, Transaction.amount).where(
             Transaction.budget_id == budget_id,
             Transaction.date >= start,
             Transaction.date <= end,
-            PLANNED_SPEND_ROW,
-            _spending_classes(),
+            planned_spend_filter(),
         )
         spend_q = apply_class_joins(spend_q)
         spending = (await self.session.execute(spend_q)).all()
@@ -1715,17 +1411,15 @@ class ReportService:
         — the signal that a plan is habitually wrong rather than occasionally
         unlucky.
 
-        "Spent" is `PLANNED_SPEND_ROW` plus the spending classes, the universe
-        Budget vs Actual and Cumulative Variance count. This report had its
-        own inline set with neither, so a categorized transfer into a
+        "Spent" is `planned_spend_filter()`, the universe Budget vs Actual
+        and Cumulative Variance count. This report had its
+        own inline set with neither half, so a categorized transfer into a
         brokerage or a row on a tracking account counted here as overspending
         while the other two said nothing was spent — and `chronic` feeds the
         Guide's chronic-overspend check, so saving could be reported as a bad
         habit.
         """
-        today = date.today()
-        first_of_month = today.replace(day=1)
-        months_list = [_subtract_months(first_of_month, i) for i in range(months - 1, -1, -1)]
+        months_list = report_months(date.today(), months)
 
         assign_q = (
             select(
@@ -1757,8 +1451,7 @@ class ReportService:
                 Transaction.budget_id == budget_id,
                 Transaction.date >= months_list[0],
                 Transaction.date <= _month_end(months_list[-1]),
-                PLANNED_SPEND_ROW,
-                _spending_classes(),
+                planned_spend_filter(),
             )
         )
         spend_q = apply_class_joins(spend_q)
@@ -1894,14 +1587,9 @@ class ReportService:
             .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
             .where(
                 Transaction.budget_id == budget_id,
-                NOT_DELETED,
-                POSTED,
-                Transaction.amount < 0,
                 Transaction.date >= start,
                 Transaction.date <= end,
-                LEAF,
-                CASH_FLOW_ROW,
-                SPENT_ENVELOPE,
+                SPENDING_ROW,
             )
         )
         rows = (await self.session.execute(q)).all()
@@ -1918,11 +1606,16 @@ class ReportService:
         end_date: date,
         category_ids: list[uuid.UUID] | None = None,
         account_ids: list[uuid.UUID] | None = None,
-    ):
+        include_classes: Sequence[ActivityClass] | None = None,
+    ) -> tuple[Select, set[str]]:
         """Every posted spending row in the window, with its category, group
         and activity class — the one predicate set the spending rollups and
         the spending trends share, so a bar on one and a line on the other
-        cannot total differently."""
+        cannot total differently — and the classes of those rows to count.
+
+        The class set comes back with the query because it widens on the
+        account scope applied here: derived beside it, the two cannot
+        disagree about whether the user picked accounts."""
         q = (
             select(
                 Category.id,
@@ -1937,26 +1630,14 @@ class ReportService:
             .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
             .where(
                 Transaction.budget_id == budget_id,
-                NOT_DELETED,
-                POSTED,
-                Transaction.amount < 0,
                 Transaction.date >= start_date,
                 Transaction.date <= end_date,
-                LEAF,
-                CASH_FLOW_ROW,
-                SPENT_ENVELOPE,
+                SPENDING_ROW,
             )
         )
         q = scoped(q, Transaction.category_id, category_ids)
-        # `is not None`, not truthiness: an empty selection means "a scope was
-        # asked for and nothing matched", and must return no rows rather than
-        # falling through to every on-budget account. That is the distinction
-        # `scoped()` was extracted to keep, and this branch did not keep it.
-        if account_ids is not None:
-            q = scoped(q, Transaction.account_id, account_ids)
-        else:
-            q = q.where(ON_BUDGET_ACCOUNT)
-        return apply_class_joins(q)
+        q, explicit = account_scope(q, account_ids)
+        return apply_class_joins(q), counted_classes(include_classes, scoped_accounts=explicit)
 
     async def spending_grouped(
         self,
@@ -1989,7 +1670,9 @@ class ReportService:
         The groups/total shape is identical either way, so the client-side
         rollup does not care which arrangement produced it.
         """
-        q = self._spending_query(budget_id, start_date, end_date, category_ids, account_ids)
+        q, included = self._spending_query(
+            budget_id, start_date, end_date, category_ids, account_ids, include_classes
+        )
         rows = (await self.session.execute(q)).all()
 
         # `_view_arrangement` returns None for a view that does not exist or
@@ -2006,7 +1689,6 @@ class ReportService:
         # complement — two full scans of the same window, each paying the
         # per-row subqueries ACTIVITY_CLASS compiles to, on exactly the
         # requests a view or a selection makes.
-        included = counted_classes(include_classes, scoped_accounts=account_ids is not None)
         counted = [r for r in rows if r.cls in included]
         other_class = [r for r in rows if r.cls not in included]
 
@@ -2119,14 +1801,9 @@ class ReportService:
             .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
             .where(
                 Transaction.budget_id == budget_id,
-                NOT_DELETED,
-                POSTED,
-                Transaction.amount < 0,
                 Transaction.date >= start,
                 Transaction.date <= end,
-                LEAF,
-                CASH_FLOW_ROW,
-                SPENT_ENVELOPE,
+                SPENDING_ROW,
             )
         )
         rows = (await self.session.execute(q)).all()
@@ -2334,29 +2011,21 @@ class ReportService:
             .outerjoin(Category, Transaction.category_id == Category.id)
             .where(
                 Transaction.budget_id == budget_id,
-                NOT_DELETED,
-                POSTED,
-                Transaction.amount < 0,
                 Transaction.date >= start_date,
                 Transaction.date <= end_date,
-                # Leaves, so each split leg classifies on its own category;
-                # the payee still comes from the parent row via PAYEE_OF_RECORD.
-                LEAF,
-                CASH_FLOW_ROW,
+                # Leaves (SPENDING_ROW), so each split leg classifies on its
+                # own category; the payee comes from the parent row.
+                SPENDING_ROW,
                 PAYEE_OF_RECORD.isnot(None),
-                # Otherwise "Transfer : Brokerage" ranks as a top payee, which
-                # is true and useless — it is not somewhere money was spent.
-                _spending_classes(scoped_accounts=bool(account_ids)),
             )
         )
-        # PAYEE_OF_RECORD rather than the raw column, and `is not None` for
-        # the same reason as the account scope below.
-        if payee_ids is not None:
-            q = scoped(q, PAYEE_OF_RECORD, payee_ids)
-        if account_ids is not None:
-            q = scoped(q, Transaction.account_id, account_ids)
-        else:
-            q = q.where(ON_BUDGET_ACCOUNT)
+        # PAYEE_OF_RECORD rather than the raw column; `scoped` keeps [] apart
+        # from None, as `account_scope` does for accounts.
+        q = scoped(q, PAYEE_OF_RECORD, payee_ids)
+        q, explicit = account_scope(q, account_ids)
+        # Otherwise "Transfer : Brokerage" ranks as a top payee, which is true
+        # and useless — it is not somewhere money was spent.
+        q = q.where(counted_class_filter(scoped_accounts=explicit))
         q = apply_class_joins(q)
         rows = (await self.session.execute(q)).all()
 
@@ -2421,7 +2090,8 @@ class ReportService:
         debt principal or savings drew the generic "no spending" empty state,
         which reads as missing data rather than as a definition.
         """
-        # Leaf rows: with a category filter, split spending must be reachable
+        # Leaf rows (SPENDING_ROW): with a category filter, split spending
+        # must be reachable
         q = select(
             Transaction.date,
             Transaction.amount,
@@ -2429,19 +2099,12 @@ class ReportService:
             ACTIVITY_CLASS.label("cls"),
         ).where(
             Transaction.budget_id == budget_id,
-            NOT_DELETED,
-            POSTED,
-            Transaction.amount < 0,
             Transaction.date >= start_date,
             Transaction.date <= end_date,
-            LEAF,
-            CASH_FLOW_ROW,
+            SPENDING_ROW,
         )
         q = scoped(q, Transaction.category_id, category_ids)
-        if account_ids is not None:
-            q = scoped(q, Transaction.account_id, account_ids)
-        else:
-            q = q.where(ON_BUDGET_ACCOUNT)
+        q, explicit = account_scope(q, account_ids)
         q = apply_class_joins(q)
         scanned = (await self.session.execute(q)).all()
 
@@ -2449,8 +2112,8 @@ class ReportService:
         # what the note is about, and re-querying for it would pay
         # ACTIVITY_CLASS's per-row subqueries a second time. Same shape as
         # `spending_grouped`, and the same widening for an explicit account
-        # selection — see `_spending_classes` for why that exists.
-        included = counted_classes(scoped_accounts=account_ids is not None)
+        # selection — see `counted_classes` for why that exists.
+        included = counted_classes(scoped_accounts=explicit)
         rows = [r for r in scanned if r.cls in included]
         class_excluded = class_excluded_note(
             [r for r in scanned if r.cls not in included],
@@ -2570,10 +2233,7 @@ class ReportService:
         # asked. A parent is in scope when any of its legs is.
         if category_ids is not None:
             q = q.where(in_category_scope(category_ids))
-        if account_ids is not None:
-            q = scoped(q, Transaction.account_id, account_ids)
-        else:
-            q = q.where(ON_BUDGET_ACCOUNT)
+        q, _ = account_scope(q, account_ids)
         # Ranked by SIZE, not by signed amount.
         #
         # `order_by(amount)` puts the most negative first, which is right for
@@ -2595,25 +2255,10 @@ class ReportService:
         # legs, was drawn as a red "Spending" dot. Its class comes from its
         # legs: one distinct class among them is the parent's class, and
         # anything else is honestly mixed.
-        leg_classes = await self._split_leg_classes([r.id for r in rows if r.is_split])
-
-        return timeline_rows(rows, leg_classes)
-
-    async def _split_leg_classes(self, parent_ids: list) -> dict:
-        """{parent id: the distinct activity classes of its legs}.
-
-        One query for the page rather than one per row, and only for the
-        parents actually returned — at most `limit` of them.
-        """
-        if not parent_ids:
-            return {}
-        q = select(Transaction.parent_transaction_id, ACTIVITY_CLASS.label("cls")).where(
-            Transaction.parent_transaction_id.in_(parent_ids), NOT_DELETED
-        )
-        out: dict = {}
-        for row in (await self.session.execute(apply_class_joins(q))).all():
-            out.setdefault(row.parent_transaction_id, set()).add(row.cls)
-        return out
+        # One query for the parents on this page, at most `limit` of them.
+        split_ids = [r.id for r in rows if r.is_split]
+        legs = (await self.session.execute(split_leg_classes(split_ids))).all() if split_ids else []
+        return timeline_rows(rows, rolled_up_classes(legs))
 
     # ─── Subscriptions Report ─────────────────────────────────────────────────
 
@@ -2703,23 +2348,14 @@ class ReportService:
         chart, not a shorter chart.
         """
         today = date.today()
-        first = today.replace(day=1)
-        by_month = await self._monthly_class_totals(
-            budget_id, _subtract_months(first, months - 1), today
-        )
-        return [
-            (month, by_month.get(month, {}))
-            for month in (_subtract_months(first, i) for i in range(months - 1, -1, -1))
-        ]
+        axis = report_months(today, months)
+        by_month = await self._monthly_class_totals(budget_id, axis[0], today)
+        return [(month, by_month.get(month, {})) for month in axis]
 
     async def _view_arrangement(self, budget_id: uuid.UUID, view_id: uuid.UUID):
-        """Return `category_id -> (group_id, group_name)` for one view, or None
-        for a category the view leaves out.
-
-        Mirrors the budget page's `groupByView` so a report and the grid never
-        disagree about where a category sits: hidden placements are dropped,
-        unplaced ones fall to "Unassigned" unless the view hides those too.
-        """
+        """The arranger for one view (`domain/view_arrangement.py`, the rule
+        the budget page's `groupByView` runs too), or None if there is no such
+        view in this budget."""
         view = (
             await self.session.execute(
                 select(BudgetView).where(
@@ -2752,27 +2388,9 @@ class ReportService:
             .scalars()
             .all()
         }
-        # A view with no groups puts every category in Unassigned, so
-        # honouring `hide_unassigned` there would empty the report entirely.
-        # The client's `viewGrouping` has carried this guard since the budget
-        # page hit it — "views saved before [the editor refused the
-        # combination] (or emptied of groups later) must still show something"
-        # — and the server did not, so the same view drew a populated budget
-        # page and a blank spending report.
-        hide_unassigned = view.hide_unassigned and bool(group_names)
-
-        def arrange(category_id) -> tuple[str, str] | None:
-            placement = placements.get(category_id)
-            if placement is not None and placement.is_hidden:
-                return None
-            group_id = placement.group_id if placement else None
-            if group_id is None:
-                if hide_unassigned:
-                    return None
-                return UNASSIGNED_VIEW_GROUP, "Unassigned"
-            return str(group_id), group_names.get(group_id, "Unassigned")
-
-        return arrange
+        return arrange_by_view(
+            hide_unassigned=view.hide_unassigned, group_names=group_names, placements=placements
+        )
 
     # ─── Savings Rate ─────────────────────────────────────────────────────────
 
@@ -2849,24 +2467,17 @@ class ReportService:
         savings_cat_ids = await tag_repo.get_category_ids_by_system_keys(
             budget_id, ["savings", "long_term_expense"]
         )
-
-        if not savings_cat_ids:
-            return _empty_savings_report([])
+        # No early return, tagged or not: two returned two empties (`months`
+        # [] beside the window) and one dropped the drains this path keeps.
 
         # Date range
-        today = date.today()
-        end_date = today
-        # months - 1: `month_starts` is inclusive of both ends, so
-        # subtracting `months` produced months + 1 buckets and "All time (18
-        # months)" drew 19 columns with an empty leader — which also divided
-        # the average inflow by 19. `available_range` exists to stop a report
-        # offering a window it cannot fill.
-        start_date = _subtract_months(today, months - 1).replace(day=1)
-        month_list = month_starts(start_date, end_date)
+        end_date = date.today()
+        month_list = report_months(end_date, months)
+        start_date = month_list[0]
 
-        # What pulled from savings: moves out of these envelopes in the window,
-        # named on both sides. The same rows the wishlist reads for its
-        # envelopes — one query, one shaping, two readers.
+        # What pulled from savings: moves out of every tagged envelope in the
+        # window, a since-deleted one included (the move happened), named on
+        # both sides. The same rows the wishlist reads for its envelopes.
         from igab.domain.drains import drains_total, shape_drains
         from igab.repositories.budget_move_repo import BudgetMoveRepository
         from igab.repositories.category_repo import CategoryRepository
@@ -2906,8 +2517,6 @@ class ReportService:
         cat_info = {str(r.id): {"name": r.name, "group_name": r.group_name} for r in cat_info_rows}
         # Everything below walks only the envelopes that survived that filter.
         savings_cat_ids = [c for c in savings_cat_ids if str(c) in cat_info]
-        if not savings_cat_ids:
-            return _empty_savings_report(month_list)
 
         # Available from the Budget page's own walk (`envelope_series`), never
         # a copy of it. This method once kept a running total — carrying an
@@ -2955,7 +2564,7 @@ class ReportService:
         total_inflow = sum((c["total_inflow"] for c in categories), Decimal("0"))
         # Every month in the window, the one in progress included — a
         # deliberate difference from the spending averages, which divide by
-        # COMPLETE months (`domain.dates.complete_months`).
+        # COMPLETE months (`domain.dates.complete_month_window`).
         #
         # Inflow here is ASSIGNED money, and assigning is a monthly act rather
         # than something that accrues by the day: an envelope funded on the
@@ -2983,14 +2592,14 @@ class ReportService:
     ) -> dict:
         """Detect category-months with spending outside baseline z-score.
 
-        **Complete months only.** The current month was scored as a full
-        observation against a baseline of complete ones, so on the 2nd of every
-        month every established category looked anomalously LOW — a household
-        that spends £400 on groceries a month was told its grocery spending had
-        collapsed, every month, for most of the month. A partial month is not a
-        small month.
+        Complete months make every baseline, and the month in progress is
+        scored against them but flagged only when it is HIGH — the rule, and
+        why it diverges, live at `report_stats.anomaly_rows`. The window
+        therefore runs from the complete-month start through TODAY, not
+        through last month's end.
         """
-        start_date, end_date = await self._complete_window(budget_id, months)
+        start_date, _ = await self._complete_window(budget_id, months)
+        today = date.today()
 
         # Get spending per category per month
         month_col = func.date_trunc(literal_column("'month'"), Transaction.date).label("month")
@@ -3006,13 +2615,9 @@ class ReportService:
             .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
             .where(
                 Transaction.budget_id == budget_id,
-                NOT_DELETED,
-                POSTED,
-                Transaction.amount < 0,  # outflows only
-                LEAF,
                 Transaction.date >= start_date,
-                Transaction.date <= end_date,
-                SPENT_ENVELOPE,
+                Transaction.date <= today,
+                SPENDING_ROW,
             )
             .group_by(
                 Category.id,
@@ -3023,77 +2628,20 @@ class ReportService:
         )
         rows = (await self.session.execute(q)).all()
 
-        if not rows:
-            return {"anomalies": []}
-
-        # Build DataFrame
-        df = pl.DataFrame(
-            {
-                "category_id": [str(r.category_id) for r in rows],
-                "category_name": [r.category_name for r in rows],
-                "group_name": [r.group_name for r in rows],
-                "month": [r.month.date() if hasattr(r.month, "date") else r.month for r in rows],
-                "total": [abs(float(r.total)) for r in rows],
-            }
+        anomalies = anomaly_rows(
+            [
+                (
+                    str(r.category_id),
+                    r.category_name,
+                    r.group_name,
+                    r.month.date() if hasattr(r.month, "date") else r.month,
+                    r.total,
+                )
+                for r in rows
+            ],
+            today=today,
+            threshold=threshold,
         )
-
-        anomalies: list[AnomalyRow] = []
-
-        # Group by category and compute z-scores
-        for cat_id in df["category_id"].unique().to_list():
-            cat_df = df.filter(pl.col("category_id") == cat_id).sort("month")
-
-            if len(cat_df) < 6:
-                continue
-
-            cat_name = cat_df["category_name"][0]
-            group_name = cat_df["group_name"][0]
-            months_data = cat_df["month"].to_list()
-            totals = cat_df["total"].to_list()
-
-            # For each month, compute leave-one-out z-score
-            for i, (month, actual) in enumerate(zip(months_data, totals)):
-                # Leave-one-out: exclude current month
-                others = [t for j, t in enumerate(totals) if j != i]
-                if len(others) < 5:
-                    continue
-
-                mean = sum(others) / len(others)
-                variance = sum((x - mean) ** 2 for x in others) / len(others)
-                std = variance**0.5
-
-                # Guard rails
-                if std < 5.0:
-                    continue
-                if abs(actual - mean) < 25.0:
-                    continue
-
-                z_score = (actual - mean) / std if std > 0 else 0
-
-                if abs(z_score) >= threshold:
-                    # Get trailing 12 months for sparkline
-                    history = totals[max(0, i - 11) : i + 1]
-                    # Pad to 12 if needed
-                    while len(history) < 12:
-                        history.insert(0, 0)
-
-                    anomalies.append(
-                        {
-                            "category_id": cat_id,
-                            "category_name": cat_name,
-                            "group_name": group_name,
-                            "month": month,
-                            "actual": quantize_cents(Decimal(str(actual))),
-                            "baseline_mean": quantize_cents(Decimal(str(mean))),
-                            "z_score": round(z_score, 2),
-                            "direction": "high" if z_score > 0 else "low",
-                            "history": [quantize_cents(Decimal(str(h))) for h in history],
-                        }
-                    )
-
-        # Sort by z-score magnitude descending
-        anomalies.sort(key=lambda x: abs(x["z_score"]), reverse=True)
-
         return {"anomalies": anomalies}
 
     # ─── Payday Effect ─────────────────────────────────────────────────────────
@@ -3104,9 +2652,16 @@ class ReportService:
         window: int = 14,
         months: int = 12,
     ) -> dict:
-        """Compute average daily spending for N days after income events."""
+        """Compute average daily spending for N days after income events.
+
+        The window is the last `months` complete months PLUS the running
+        month's days so far — a deliberate difference from the per-month
+        averages, which leave the running month out. Every figure here is per
+        DAY or per payday, over days that happened, so a partial month cannot
+        drag it down; dropping it would only hide the newest paydays.
+        """
         end_date = date.today()
-        start_date = _subtract_months(end_date, months)
+        start_date, _ = complete_month_window(end_date, months)
 
         # All cash-flow rows in the period. CASH_FLOW_ROW keeps transfers out:
         # a transfer into checking is not a payday, and the outflow leg of a
@@ -3132,6 +2687,7 @@ class ReportService:
                 # on-budget transfers; a transfer IN from a savings account
                 # passed straight through and was counted as a payday.
                 ACTIVITY_CLASS.label("cls"),
+                ON_CARD_ACCOUNT.label("on_card"),
             )
             .where(
                 Transaction.budget_id == budget_id,
@@ -3147,12 +2703,15 @@ class ReportService:
         )
         rows = (await self.session.execute(apply_class_joins(q))).all()
 
+        # The floor is served so the panel can state the rule it applied.
+        no_paydays = {
+            "days": [{"offset": i, "avg_spend": Decimal("0")} for i in range(window)],
+            "baseline_daily": None,
+            "event_count": 0,
+            "payday_floor": PAYDAY_FLOOR,
+        }
         if not rows:
-            return {
-                "days": [{"offset": i, "avg_spend": Decimal("0")} for i in range(window)],
-                "baseline_daily": None,
-                "event_count": 0,
-            }
+            return no_paydays
 
         # Build DataFrame
         df = pl.DataFrame(
@@ -3162,10 +2721,14 @@ class ReportService:
                 "payee_id": [str(r.payee_id) if r.payee_id else None for r in rows],
                 "is_subscription": [bool(r.is_subscription) for r in rows],
                 "cls": [r.cls for r in rows],
+                "on_card": [bool(r.on_card) for r in rows],
             }
         )
 
-        # A payday is an INCOME-class inflow of at least PAYDAY_FLOOR.
+        # A payday is an INCOME-class inflow of at least PAYDAY_FLOOR into
+        # cash. Never onto a card: a card payment whose cash leg was never
+        # paired is an uncategorized credit, which classes INCOME — so every
+        # month the bill was paid read as a second payday.
         #
         # Not a quantile. This took the P75 of every inflow, which makes a
         # RELATIVE threshold decide which paydays exist: pay varies — overtime,
@@ -3173,25 +2736,16 @@ class ReportService:
         # three quarters of the household's paydays, so the report described
         # the behaviour after its best-paid weeks only. An absolute floor keeps
         # every real payday and still ignores a small refund.
-        inflows = df.filter((pl.col("amount") > 0) & (pl.col("cls") == ActivityClass.INCOME.value))
-        if inflows.is_empty():
-            return {
-                "days": [{"offset": i, "avg_spend": Decimal("0")} for i in range(window)],
-                "baseline_daily": None,
-                "event_count": 0,
-            }
-
-        income_events = (
-            inflows.filter(pl.col("amount") >= float(PAYDAY_FLOOR))["date"].unique().to_list()
+        income_dates = set(
+            df.filter(
+                (pl.col("cls") == ActivityClass.INCOME.value)
+                & ~pl.col("on_card")
+                & (pl.col("amount") >= float(PAYDAY_FLOOR))
+            )["date"].to_list()
         )
-        income_dates = set(income_events)
 
         if not income_dates:
-            return {
-                "days": [{"offset": i, "avg_spend": Decimal("0")} for i in range(window)],
-                "baseline_daily": None,
-                "event_count": 0,
-            }
+            return no_paydays
 
         # Subscriptions are not payday behaviour: they land on their own
         # schedule whatever the household does after being paid, so counting
@@ -3203,7 +2757,7 @@ class ReportService:
         outflows = df.filter(
             (pl.col("amount") < 0)
             & ~pl.col("is_subscription")
-            & (pl.col("cls") == ActivityClass.SPENDING.value)
+            & pl.col("cls").is_in(list(counted_classes()))
         )
 
         # Group by date
@@ -3283,6 +2837,7 @@ class ReportService:
             "days": days_result,
             "baseline_daily": baseline_daily,
             "event_count": len(income_dates),
+            "payday_floor": PAYDAY_FLOOR,
         }
 
     # ─── Cash Projection ─────────────────────────────────────────────────────────
@@ -3352,15 +2907,7 @@ class ReportService:
         live_schedules: list[ColumnElement[bool]] = []
         for sched, payee_name in sched_rows:
             amount = Decimal(str(sched.amount))
-            dates, runs_on = projected_occurrences(
-                sched.frequency,
-                sched.next_occurrence_date,
-                start_day=sched.start_date.day,
-                second_day_of_month=sched.second_day_of_month,
-                end_date=sched.end_date,
-                today=today,
-                horizon_end=end_date,
-            )
+            dates, runs_on = projected_occurrences(sched, today=today, horizon_end=end_date)
             scheduled_events.extend((d, payee_name or "Scheduled", amount) for d in dates)
             covers = reapplied_by_schedule(sched)
             if dates:
@@ -3594,47 +3141,4 @@ class ReportService:
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 
-def _empty_savings_report(month_list: list[date]) -> dict:
-    """The declared shape with nothing in it.
-
-    Two paths reach it: no tagged categories at all, and every tagged category
-    filtered out by BUDGETED_ENVELOPE. Written once so the second cannot serve
-    a slightly different empty.
-    """
-    return {
-        "categories": [],
-        "summary": {
-            "total_balance": Decimal("0"),
-            "total_inflow": Decimal("0"),
-            "avg_monthly_inflow": Decimal("0"),
-            "category_count": 0,
-        },
-        "months": month_list,
-        "drains": {"total": Decimal("0"), "moves": []},
-        "unrecovered": [],
-    }
-
-
 _DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-
-
-def _empty_dashboard(net_worth: Decimal = Decimal("0")) -> dict:
-    return {
-        "net_worth": net_worth,
-        "net_worth_prev": net_worth,
-        "burn_rate_30": Decimal("0"),
-        "burn_rate_90": Decimal("0"),
-        "essentials_monthly": None,
-        "essentials_tagged": False,
-        # None, not 0.0 — the live path and the schema both say None when no
-        # income is on record, for the reason `savings_rate`'s docstring gives:
-        # "no income recorded" and "saved nothing" are different facts. This
-        # path is the one a brand-new budget takes, so 0.0 here told every new
-        # household it had saved none of its income.
-        "savings_rate": None,
-        "days_until_zero": None,
-        "income_this_month": Decimal("0"),
-        "expenses_this_month": Decimal("0"),
-        "expenses_prev_month": Decimal("0"),
-        "top_categories": [],
-    }

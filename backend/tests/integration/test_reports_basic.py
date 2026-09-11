@@ -8,6 +8,8 @@ Amounts are round on purpose so every figure can be checked on paper.
 from datetime import date
 from decimal import Decimal
 
+import pytest
+
 from igab.domain.dates import add_months
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.services.report_basics import income_by_source, spending_trends
@@ -275,14 +277,18 @@ class TestEssentialsRunway:
         assert body["runway_months"] is None
 
 
-async def test_cost_of_living_rolls_essentials_up_by_group(db_session, api_client):
-    """Built on the Essential tag rather than a sixth system tag: the groups a
-    budget already has are the shape a household thinks in."""
+async def test_cost_of_living_rolls_the_wide_tier_up_by_group(db_session, api_client):
+    """The endpoint serves both necessity tiers, the gap between them and a
+    ratio for each, rolled up by the groups a budget already has — the shape a
+    household thinks in. Every served field is checked here, through the
+    router, by a value no other field shares: the service tests alone left the
+    router's field-by-field mapping covered by a status-200 check."""
     budget = await create_budget(db_session, api_client.test_user)
     checking = await create_account(db_session, budget, "Harborstone Checking")
     tag_repo = TagRepository(db_session)
     await seed_system_tags(db_session, budget.id)
     essential = await tag_repo.get_system_tag(budget.id, "essential")
+    col = await tag_repo.get_system_tag(budget.id, "cost_of_living")
 
     housing = await create_category_group(db_session, budget, "Housing")
     rent = await create_category(db_session, budget, housing, "Rent")
@@ -290,8 +296,17 @@ async def test_cost_of_living_rolls_essentials_up_by_group(db_session, api_clien
     power = await create_category(db_session, budget, utilities, "Power")
     fun = await create_category_group(db_session, budget, "Fun")
     dining = await create_category(db_session, budget, fun, "Dining")
+    subs = await create_category_group(db_session, budget, "Subscriptions")
+    streaming = await create_category(db_session, budget, subs, "Streaming")
     for cat in (rent, power):
         await tag_repo.set_category_tags(cat.id, [essential.id])
+    await tag_repo.set_category_tags(streaming.id, [col.id])
+    inflows = await create_category_group(db_session, budget, "Income", is_system=True)
+    ready = await create_category(db_session, budget, inflows, "Ready to Assign")
+    payserv = await create_payee(db_session, budget, "Northwind Payserv")
+    await create_transaction(
+        db_session, budget, checking, Decimal("3600.00"), LAST, payee=payserv, category=ready
+    )
 
     async def spend(amount: str, category):
         # Last month: Cost of Living averages complete months only.
@@ -301,30 +316,44 @@ async def test_cost_of_living_rolls_essentials_up_by_group(db_session, api_clien
 
     await spend("-1400.00", rent)
     await spend("-180.00", power)
+    # Cost of living but not Essential: in the wide tier, and the whole gap.
+    await spend("-20.00", streaming)
     # Untagged: not a cost of living, however regular.
     await spend("-90.00", dining)
     await db_session.commit()
 
-    r = await api_client.get(f"/api/v1/{budget.id}/reports/cost-of-living", params={"months": 3})
+    r = await api_client.get(f"/api/v1/{budget.id}/reports/cost-of-living", params={"months": 1})
     assert r.status_code == 200, r.text
     body = r.json()
 
     assert body["tagged"] is True
     assert body["basis"] == "tag"
     groups = {g["group_name"]: g for g in body["groups"]}
-    assert set(groups) == {"Housing", "Utilities"}
+    assert set(groups) == {"Housing", "Utilities", "Subscriptions"}
     assert Decimal(groups["Housing"]["total"]) == Decimal("1400.00")
     assert Decimal(groups["Utilities"]["total"]) == Decimal("180.00")
-    # Shares are of the essentials total, so they add to 100.
+    assert Decimal(groups["Subscriptions"]["total"]) == Decimal("20.00")
+    # Shares are of the cost-of-living total, so they add to 100.
     assert sum(Decimal(g["share"]) for g in body["groups"]) == Decimal("100.00")
     # Biggest first.
-    assert [g["group_name"] for g in body["groups"]] == ["Housing", "Utilities"]
+    assert [g["group_name"] for g in body["groups"]] == ["Housing", "Utilities", "Subscriptions"]
+
+    # One complete month, hand-computed: 1,600 spoken for, 1,580 of it
+    # essential, out of 3,600 taken home. The gap (20 sheddable) and both
+    # ratios (44.44% and 43.89%) are the page's quotients of these three, so
+    # the route carries the three and `necessityView` composes the rest.
+    assert Decimal(body["avg_monthly_cost_of_living"]) == Decimal("1600.00")
+    assert Decimal(body["avg_monthly_essentials"]) == Decimal("1580.00")
+    assert Decimal(body["avg_monthly_income"]) == Decimal("3600.00")
+    assert "avg_monthly_non_essential" not in body
+    assert "required_ratio" not in body
+    assert "essentials_ratio" not in body
 
 
 async def test_cost_of_living_says_when_nothing_is_tagged(db_session, api_client):
-    """With no Essential tag applied the scope is every category, which equals
-    plain burn rate — the page has to say so rather than present it as a
-    chosen few."""
+    """With no Essential or Cost of living tag applied the scope is every
+    category, which equals plain burn rate — the page has to say so rather
+    than present it as a chosen few."""
     budget = await create_budget(db_session, api_client.test_user)
     await db_session.commit()
 
@@ -333,22 +362,27 @@ async def test_cost_of_living_says_when_nothing_is_tagged(db_session, api_client
     assert r.status_code == 200, r.text
     assert r.json()["tagged"] is False
     assert r.json()["basis"] == "all"
-    # No income on record: a ratio against zero is unknown, not 100%.
-    assert r.json()["required_ratio"] is None
+    # No income on record. The page reads the ratios as unknown rather than
+    # 100% off this, which is `necessityShare`'s rule and its test.
+    assert Decimal(r.json()["avg_monthly_income"]) == Decimal("0.00")
+    assert r.json()["avg_monthly_essentials"] is None
 
 
 class TestTheClassRuleIsOneRule:
-    """Three spending rollups widen their class set for an explicit account
-    selection, and the third copy of that rule did not have it.
+    """Five spending rollups answer one question over one account selection,
+    and each spelled its row set and its class set for itself.
 
-    `counted_classes` is now the one home. Pointing the account filter at a
-    tracked account used to draw nothing on Spending Trends beside a populated
-    Spending Breakdown over the identical selection — and the note that
-    explains an exclusion was suppressed too, because nothing had been
-    excluded: the rows were simply never counted.
+    Three copies widened the class set for an explicit account selection and
+    a third did not, so a tracked account drew nothing on Spending Trends
+    beside a populated Breakdown. Then `SPENT_ENVELOPE` was added to one hand
+    copy of the row set and not to Day Patterns or Payee Analysis, so over a
+    tracked brokerage a row filed to Ready to Assign read 20 on the Breakdown
+    and 420 beside it. The row set is `SPENDING_ROW` and the class set is
+    `counted_classes` now; this compares all five, not two that already read
+    the same function.
     """
 
-    async def test_a_tracked_account_selection_totals_the_same_on_both(
+    async def test_a_tracked_account_selection_totals_the_same_on_all_five(
         self, db_session, api_client
     ):
         budget, checking, group, groceries, fun = await _setup(db_session, api_client)
@@ -360,37 +394,123 @@ class TestTheClassRuleIsOneRule:
             on_budget=False,
         )
         fees = await create_category(db_session, budget, group, "Brokerage Fees")
+        system = await create_category_group(db_session, budget, "Inflow", is_system=True)
+        rta = await create_category(db_session, budget, system, "Ready to Assign")
+        house = await create_payee(db_session, budget, "Cascade Point")
+
+        async def on_brokerage(amount: str, category=None):
+            await create_transaction(
+                db_session, budget, brokerage, amount, THIS, category=category, payee=house
+            )
+
         # An outflow on a tracking account classifies investment_return, never
         # spending — which is why an explicit selection has to widen.
-        await create_transaction(db_session, budget, brokerage, "-180.00", THIS, category=fees)
+        await on_brokerage("-180.00", fees)
+        # Filed into the system group: no spending rollup counts it.
+        await on_brokerage("-400.00", rta)
+        # Uncategorized: a category-keyed rollup has nowhere to put it.
+        await on_brokerage("-15.00")
         await db_session.commit()
 
         svc = ReportService(db_session)
         window = (add_months(THIS, -1), TODAY)
-        trends = await spending_trends(svc, budget.id, *window, account_ids=[brokerage.id])
-        _items, grouped_total, _meta = await svc.spending_grouped(
-            budget.id, *window, account_ids=[brokerage.id]
-        )
+        scope = {"account_ids": [brokerage.id]}
+        _cats, breakdown = await svc.spending_by_category(budget.id, *window, **scope)
+        _items, grouped, _meta = await svc.spending_grouped(budget.id, *window, **scope)
+        trends = (await spending_trends(svc, budget.id, *window, **scope))["total"]
+        days = await svc.day_patterns(budget.id, *window, **scope)
+        by_day = sum((d["total"] for d in days["days"]), Decimal("0"))
+        _p, by_payee, _n, _to80 = await svc.payee_analysis(budget.id, *window, **scope)
 
-        assert trends["total"] == Decimal("180.00")
-        assert trends["total"] == grouped_total
+        assert breakdown == grouped == trends == Decimal("180.00")
+        # The one deliberate gap (stated at `SPENDING_ROW`): the day and payee
+        # views count uncategorized spending the category rollups cannot place.
+        assert by_day == by_payee == breakdown + Decimal("15.00")
 
-    async def test_an_empty_account_scope_returns_nothing_not_everything(
-        self, db_session, api_client
-    ):
-        """`None` means no scope was asked for; `[]` means one was asked for
-        and nothing matched. `if account_ids:` conflated them, so scoping to a
-        tag nobody has applied answered with the whole budget.
-        """
+
+async def _sankey_seen(svc, budget_id, window, mode, **scope) -> Decimal:
+    flow = await svc.cash_flow_sankey(budget_id, *window, mode=mode, **scope)
+    # Budgeted mode's links are assignments, which belong to the budget and
+    # not to an account, so only its income total takes the account scope.
+    return flow["total_income"] + (len(flow["links"]) if mode == "spent" else 0)
+
+
+#: What each scoped report saw, as one number: nonzero means "rows got in".
+_SCOPED_READERS = {
+    "spending_by_category": lambda svc, b, w, **s: _nth(svc.spending_by_category(b, *w, **s), 1),
+    "spending_grouped": lambda svc, b, w, **s: _nth(svc.spending_grouped(b, *w, **s), 1),
+    "spending_trends": lambda svc, b, w, **s: _key(spending_trends(svc, b, *w, **s), "total"),
+    "day_patterns": lambda svc, b, w, **s: _day_total(svc.day_patterns(b, *w, **s)),
+    "large_transactions": lambda svc, b, w, **s: _count(svc.large_transactions(b, *w, **s)),
+    "cash_flow_sankey_spent": lambda svc, b, w, **s: _sankey_seen(svc, b, w, "spent", **s),
+    "cash_flow_sankey_budgeted": lambda svc, b, w, **s: _sankey_seen(svc, b, w, "budgeted", **s),
+    "payee_analysis": lambda svc, b, w, **s: _nth(svc.payee_analysis(b, *w, **s), 1),
+}
+
+
+async def _nth(coro, i):
+    return (await coro)[i]
+
+
+async def _key(coro, k):
+    return (await coro)[k]
+
+
+async def _day_total(coro):
+    return sum((d["total"] for d in (await coro)["days"]), Decimal("0"))
+
+
+async def _count(coro):
+    return Decimal(len(await coro))
+
+
+class TestAnEmptyScopeReturnsNothingNotEverything:
+    """`None` means no scope was asked for; `[]` means one was asked for and
+    nothing matched. `if account_ids:` conflated them, so scoping to a tag
+    nobody has applied answered with the whole budget.
+
+    One case per report that takes the scope, by name: the fix converted
+    eight branches and only `spending_grouped` was pinned, so reverting any of
+    the other seven passed every test. They now share `account_scope`, and
+    this is what says each one still goes through it.
+    """
+
+    async def _world(self, db_session, api_client):
         budget, checking, group, groceries, fun = await _setup(db_session, api_client)
+        system = await create_category_group(db_session, budget, "Income", is_system=True)
+        inflow = await create_category(db_session, budget, system, "Ready to Assign")
+        payserv = await create_payee(db_session, budget, "Northwind Payserv")
+        grocer = await create_payee(db_session, budget, "Harborstone Market")
+        await create_transaction(
+            db_session, budget, checking, "3000.00", THIS, payee=payserv, category=inflow
+        )
+        await create_transaction(
+            db_session, budget, checking, "-60.00", THIS, payee=grocer, category=groceries
+        )
+        await create_budget_assignment(db_session, budget, groceries, THIS, "400.00")
+        await db_session.commit()
+        return budget
+
+    @pytest.mark.parametrize("report", sorted(_SCOPED_READERS))
+    async def test_an_empty_account_scope(self, db_session, api_client, report):
+        budget = await self._world(db_session, api_client)
+        svc = ReportService(db_session)
+        window = (add_months(THIS, -1), TODAY)
+        read = _SCOPED_READERS[report]
+
+        assert await read(svc, budget.id, window) > 0, "the world must be visible unscoped"
+        assert await read(svc, budget.id, window, account_ids=[]) == 0
+
+    async def test_an_empty_payee_scope(self, db_session, api_client):
+        budget = await self._world(db_session, api_client)
         svc = ReportService(db_session)
         window = (add_months(THIS, -1), TODAY)
 
-        _u, unscoped_total, _um = await svc.spending_grouped(budget.id, *window)
-        _e, empty_total, _em = await svc.spending_grouped(budget.id, *window, account_ids=[])
+        _p, unscoped, _n, _to80 = await svc.payee_analysis(budget.id, *window)
+        _p, empty, _n, _to80 = await svc.payee_analysis(budget.id, *window, payee_ids=[])
 
-        assert unscoped_total == Decimal("290.00")
-        assert empty_total == Decimal("0")
+        assert unscoped == Decimal("60.00")
+        assert empty == Decimal("0")
 
 
 class TestIncomeIsDecidedByClassNotSign:

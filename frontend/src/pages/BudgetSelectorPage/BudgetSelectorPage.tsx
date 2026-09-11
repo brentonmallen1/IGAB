@@ -52,6 +52,7 @@ import {
   type Disposition,
 } from './accountMapping'
 import { MappingNotes } from './MappingNotes'
+import { parseLocalDate } from '../../utils/dates'
 
 const CARD_MENU_ITEMS: ContextMenuItem[] = [
   { id: 'rename', label: 'Rename', icon: Pencil },
@@ -558,10 +559,10 @@ export function BudgetSelectorPage() {
                         This budget will start where YNAB left off — every envelope and card reserve
                         anchored at{' '}
                         <strong>
-                          {new Date(`${previewAnchorMonth}T00:00:00`).toLocaleDateString(
-                            undefined,
-                            { month: 'long', year: 'numeric' }
-                          )}
+                          {parseLocalDate(previewAnchorMonth).toLocaleDateString(undefined, {
+                            month: 'long',
+                            year: 'numeric',
+                          })}
                         </strong>
                         . Earlier history still imports into the register and reports. Keep YNAB
                         around until you&apos;re confident in the handoff.

@@ -65,8 +65,8 @@ CONCEPTS: tuple[Concept, ...] = (
         prompt="Roughly what a lean month costs — what an emergency fund is measured against.",
         caveat=(
             "Taken from your average spending over the last 90 days. Tag the "
-            "categories or payees you could not do without as Essential and this "
-            "narrows to them; point it at specific categories here to override that."
+            "categories you could not do without as Essential and this narrows "
+            "to them; point it at specific categories here to override that."
         ),
         allows_external=False,
     ),

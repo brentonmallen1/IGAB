@@ -2,6 +2,7 @@ import uuid
 from collections.abc import Sequence
 from datetime import date
 from decimal import Decimal
+from itertools import accumulate
 from typing import Any, Literal
 
 from sqlalchemy import and_, case, func, not_, select, update
@@ -19,6 +20,7 @@ from igab.repositories.txn_filters import (
     CARD_ACCOUNT,
     CASH_ACCOUNT,
     CLEARED,
+    LIVE_ACCOUNT,
     NEEDS_CATEGORY,
     NOT_DELETED,
     PARENT_ROW,
@@ -95,8 +97,52 @@ class AccountRepository(BaseRepository[Account]):
         balance row. The emergency-fund coverage report walks it month by
         month.
         """
-        cutoff = (Transaction.date <= as_of,) if as_of is not None else ()
+        cutoff = (not_future(as_of),) if as_of is not None else ()
         return await self._sums_by_account(account_ids, BALANCE_ROW, *cutoff)
+
+    async def balances_through(
+        self, budget_id: uuid.UUID, cutoffs: Sequence[date]
+    ) -> dict[uuid.UUID, tuple[int, list[Decimal]]]:
+        """Every live account's balance at the end of each day in `cutoffs`,
+        with the index of the first cutoff the account has any row by.
+
+        `balances_for(as_of=)` at many dates in one statement: the same rows
+        (BALANCE_ROW) and the same bound (`not_future`), with each row placed
+        on the first cutoff it falls on or before and the placings cumulated
+        here. What comes back grows with accounts × cutoffs, never with the
+        register — net worth history used to fetch every parent row in the
+        budget to draw twelve points, and the Overview card beside it asked
+        the same question through a second, hand-spelled query.
+
+        An account with no row by a cutoff is absent there (its first index
+        is later) rather than zero: an account opened in March is not a zero
+        tile in February. `cutoffs` must ascend.
+        """
+        if not cutoffs:
+            return {}
+        if list(cutoffs) != sorted(cutoffs):
+            raise ValueError("cutoffs must ascend")
+        placed = case(*((not_future(day), i) for i, day in enumerate(cutoffs))).label("placed")
+        rows = await self.session.execute(
+            select(Transaction.account_id, placed, func.sum(Transaction.amount))
+            .join(Account, Account.id == Transaction.account_id)
+            .where(
+                Account.budget_id == budget_id,
+                LIVE_ACCOUNT,
+                BALANCE_ROW,
+                not_future(cutoffs[-1]),
+            )
+            .group_by(Transaction.account_id, placed)
+        )
+        firsts: dict[uuid.UUID, int] = {}
+        deltas: dict[uuid.UUID, list[Decimal]] = {}
+        for account_id, i, total in rows.all():
+            deltas.setdefault(account_id, [Decimal("0")] * len(cutoffs))[i] += total
+            firsts[account_id] = min(firsts.get(account_id, i), i)
+        return {
+            account_id: (firsts[account_id], list(accumulate(steps)))
+            for account_id, steps in deltas.items()
+        }
 
     async def cleared_balances_for(
         self, account_ids: Sequence[uuid.UUID]

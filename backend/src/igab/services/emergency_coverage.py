@@ -29,12 +29,13 @@ beyond its own series and drew $0 under cards reading the real amount.
 
 import uuid
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from igab.domain.dates import add_months, month_start
+from igab.domain.dates import month_end as _month_end
+from igab.domain.dates import month_start
 from igab.domain.money import quantize_cents
 from igab.guide.concepts import (
     FULL_EMERGENCY_FUND_MONTHS_HIGH,
@@ -214,12 +215,12 @@ class EmergencyCoverageService:
         # The newest month the chart can draw. The series runs to the last
         # COMPLETE month, so this is in the past — which is the whole reason
         # the external figure needs clamping below.
-        newest_end = add_months(series[-1]["month"], 1) - timedelta(days=1) if series else None
+        newest_end = _month_end(series[-1]["month"]) if series else None
         for i, row in enumerate(series):
             if i < lead_in:
                 continue
             month: date = row["month"]
-            month_end = add_months(month, 1) - timedelta(days=1)
+            month_end = _month_end(month)
             essentials = trailing_average(totals, i, first_data=first_data)
             balance = await self._fund_balance_at(budgets, entities, month, month_end)
             # A self-reported figure is carried flat from the month it was

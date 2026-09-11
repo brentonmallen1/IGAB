@@ -284,15 +284,35 @@ class TestTruncationIsHonest:
 
 class TestARankedResultDoesNotInventACount:
     def test_it_refuses_to_state_a_total_it_never_counted(self):
-        """payee_analysis caps at 25 in the service and never counts the rest.
+        """A ranking whose service caps the list and never counts the rest.
         Passing that through clip told the model "25 rows, not truncated", so
-        it would answer "you paid 25 payees" for a budget with three hundred."""
+        it would answer "you paid 25 payees" for a budget with three hundred.
+        (payee_analysis now counts; see the counted cases below.)"""
         rows = [{"payee": f"P{i}"} for i in range(25)]
         result = ranked(rows, measure="amount spent", total_amount=Decimal("1000"))
         assert result["total_rows"] is None
         assert result["truncated"] is True
         assert "largest" in result["ranking"]
         assert "does not say" in result["note"]
+
+    def test_a_counted_ranking_wider_than_the_rows_says_so(self):
+        rows = [{"payee": f"P{i}"} for i in range(25)]
+        result = ranked(rows, measure="amount spent", total_rows=300)
+        assert result["total_rows"] == 300
+        assert result["truncated"] is True
+        assert "not every row" in result["note"]
+        assert "There were 300 in total." in result["note"]
+
+    def test_a_counted_ranking_that_is_every_row_does_not_hint_at_more(self):
+        """PR191-7: a month with 3 payees read "only the 3 largest ..., not
+        every row ... There were 3 in total", and the model invented others."""
+        rows = [{"payee": p} for p in ("A", "B", "C")]
+        result = ranked(rows, measure="amount spent", total_amount=100, total_rows=3)
+        assert result["truncated"] is False
+        assert result["total_rows"] == 3
+        assert "not every row" not in result["note"]
+        assert "only" not in result["note"]
+        assert result["note"] == "These are all 3, ranked by amount spent."
 
     def test_the_total_still_covers_everything(self):
         # The grand total IS computed over every row, so it is honest to state.

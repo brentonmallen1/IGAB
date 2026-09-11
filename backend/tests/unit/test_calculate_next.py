@@ -1,12 +1,12 @@
 """Occurrence arithmetic — domain/schedule.py, the one home for it.
 
-`calculate_next` on the service is a wrapper over `next_occurrence`; these
-cases exercise the pure function directly, with the row-shaped wrapper
-covered once at the bottom.
+`stored_next_occurrence` maps a stored row onto `next_occurrence`; these
+cases exercise the pure function directly, with the row-shaped mapping
+covered in `TestStoredRow`.
 """
 
-from datetime import date
-from unittest.mock import MagicMock
+from dataclasses import dataclass
+from datetime import date, timedelta
 
 import pytest
 
@@ -18,10 +18,10 @@ from igab.domain.schedule import (
     observed_interval_days,
     projected_occurrences,
     step_cadence,
+    stored_next_occurrence,
     subscription_occurrences,
     validate_schedule,
 )
-from igab.services.scheduled_transaction_service import calculate_next
 
 
 def nxt(frequency: str, current: date, **kw) -> date | None:
@@ -241,24 +241,43 @@ class TestValidateSchedule:
             self.ok(days_before_reminder=-1)
 
 
-class TestRowWrapper:
-    def test_calculate_next_reads_the_row(self):
-        m = MagicMock()
-        m.frequency = "twice_monthly"
-        m.next_occurrence_date = date(2024, 3, 15)
-        m.start_date = date(2024, 1, 1)
-        m.second_day_of_month = 15
-        m.end_date = None
-        assert calculate_next(m) == date(2024, 4, 1)
+@dataclass
+class Row:
+    """A stored schedule: what `StoredSchedule` reads off the model."""
 
-    def test_calculate_next_honours_end_date(self):
-        m = MagicMock()
-        m.frequency = "monthly"
-        m.next_occurrence_date = date(2024, 3, 15)
-        m.start_date = date(2024, 1, 15)
-        m.second_day_of_month = None
-        m.end_date = date(2024, 3, 31)
-        assert calculate_next(m) is None
+    frequency: str
+    next_occurrence_date: date
+    start_date: date
+    second_day_of_month: int | None = None
+    end_date: date | None = None
+
+
+class TestStoredRow:
+    """The row's stored next date is already clamped, so the mapping has to
+    anchor on `start_date` — the fixtures here are the ones where the two
+    differ, which no fixture did while the mapping was written twice."""
+
+    def test_reads_the_row(self):
+        row = Row("twice_monthly", date(2024, 3, 15), date(2024, 1, 1), second_day_of_month=15)
+        assert stored_next_occurrence(row) == date(2024, 4, 1)
+
+    def test_honours_end_date(self):
+        row = Row("monthly", date(2024, 3, 15), date(2024, 1, 15), end_date=date(2024, 3, 31))
+        assert stored_next_occurrence(row) is None
+
+    def test_a_row_stored_on_a_clamped_day_returns_to_its_start_day(self):
+        # Started 31 Jan, already advanced to 28 Feb: 31 Mar, not 28 Mar.
+        row = Row("monthly", date(2027, 2, 28), date(2027, 1, 31))
+        assert stored_next_occurrence(row) == date(2027, 3, 31)
+        assert stored_next_occurrence(row, date(2027, 3, 31)) == date(2027, 4, 30)
+        assert stored_next_occurrence(row, date(2027, 4, 30)) == date(2027, 5, 31)
+
+    def test_a_twice_monthly_row_stored_on_its_second_day_keeps_its_first(self):
+        # 1st/15th, stored on the 15th: anchored on the stored day, the 1st
+        # would be lost for good.
+        row = Row("twice_monthly", date(2027, 1, 15), date(2027, 1, 1), second_day_of_month=15)
+        assert stored_next_occurrence(row) == date(2027, 2, 1)
+        assert stored_next_occurrence(row, date(2027, 2, 1)) == date(2027, 2, 15)
 
 
 class TestObservedIntervalDays:
@@ -282,8 +301,14 @@ class TestObservedIntervalDays:
         assert observed_interval_days(date(2026, 8, 1), date(2026, 8, 1), 1) == 30
 
     def test_two_charges_on_one_day_do_not_project_daily(self):
-        # Without the floor this divides to 0 days and steps forever.
+        # No span at all, so this says no more than one charge: monthly is
+        # assumed. It never reaches the floor below.
         assert observed_interval_days(date(2026, 8, 1), date(2026, 8, 1), 2) == 30
+
+    def test_charges_bunched_inside_a_week_are_floored_to_weekly(self):
+        # Three charges over one day: 1 / 2 rounds to 0. Without the floor,
+        # stepping by 0 days never passes the horizon and the projection hangs.
+        assert observed_interval_days(date(2026, 8, 1), date(2026, 8, 2), 3) == 7
 
     def test_a_very_long_gap_is_bounded(self):
         assert observed_interval_days(date(2020, 1, 1), date(2026, 1, 1), 2) == 400
@@ -317,16 +342,17 @@ class TestStepCadence:
 class TestProjectedOccurrences:
     TODAY = date(2026, 9, 10)
 
-    def project(self, frequency, next_date, horizon_end, *, end_date=None, second=None):
-        return projected_occurrences(
-            frequency,
-            next_date,
-            start_day=next_date.day,
-            second_day_of_month=second,
-            end_date=end_date,
-            today=self.TODAY,
-            horizon_end=horizon_end,
+    def project(self, frequency, next_date, horizon_end, *, end_date=None):
+        row = Row(frequency, next_date, next_date, end_date=end_date)
+        return projected_occurrences(row, today=self.TODAY, horizon_end=horizon_end)
+
+    def test_a_row_stored_on_a_clamped_day_projects_from_its_start_day(self):
+        row = Row("monthly", date(2027, 2, 28), date(2027, 1, 31))
+        dates, runs_on = projected_occurrences(
+            row, today=date(2027, 2, 20), horizon_end=date(2027, 5, 1)
         )
+        assert dates == [date(2027, 2, 28), date(2027, 3, 31), date(2027, 4, 30)]
+        assert runs_on
 
     def test_a_stale_backlog_books_one_occurrence_on_today(self):
         # Weekly, first due 185 days ago: 27 missed occurrences. One reaches
@@ -402,6 +428,24 @@ class TestSubscriptionOccurrences:
             subscription_occurrences(date(2025, 7, 1), date(2025, 8, 1), 2, self.TODAY, self.END)
             == []
         )
+
+    # The boundary itself: missing two cycles is cancelled, missing them by a
+    # day more is. Only a thirteen-cycle gap was pinned, so any threshold from
+    # two cycles to twelve passed — and a subscription cancelled three months
+    # ago would have gone on being projected. Weekly and 40-day cadences step
+    # by days; 30 steps a calendar month.
+    @pytest.mark.parametrize("interval", [7, 30, 40])
+    def test_a_last_charge_exactly_two_cycles_back_is_still_projected(self, interval):
+        last = self.TODAY - timedelta(days=2 * interval)
+        first = last - timedelta(days=interval)
+        out = subscription_occurrences(first, last, 2, self.TODAY, self.END)
+        assert out and min(out) >= self.TODAY
+
+    @pytest.mark.parametrize("interval", [7, 30, 40])
+    def test_a_day_past_two_cycles_is_cancelled(self, interval):
+        last = self.TODAY - timedelta(days=2 * interval + 1)
+        first = last - timedelta(days=interval)
+        assert subscription_occurrences(first, last, 2, self.TODAY, self.END) == []
 
     def test_an_annual_subscription_projects_at_most_once(self):
         # Charged each November: one charge inside the horizon, not twelve.

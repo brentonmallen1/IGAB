@@ -6,9 +6,9 @@
  * budget's own history; this had not, so the same question got two different
  * answers depending on which report you were looking at.
  */
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const range = vi.hoisted(() => ({
   current: null as { earliest_month: string | null; months_available: number } | null,
@@ -18,6 +18,7 @@ vi.mock('../../../stores/appStore', () => ({ useAppStore: () => 'b1' }))
 
 import { DateRangePicker } from './DateRangePicker'
 import { toISODate } from '../../../utils/dates'
+import { pinTimeZone } from '../../../test-utils/timeZone'
 
 // The component's own formatter, deliberately. `new Date().toISOString()` is
 // the UTC date, so this file failed every evening west of UTC — the same
@@ -69,5 +70,48 @@ describe('DateRangePicker — All Time', () => {
     expect(screen.getByRole('button', { name: 'All Time' }).className).toContain(
       'drp__preset--active'
     )
+  })
+})
+
+/**
+ * The presets once built their dates as `toISOString().slice(0, 10)` of a
+ * local Date — UTC, so at 00:30 on 1 September in Berlin "This Month" asked
+ * for 31 August onwards, and "Last Month" for 31 July to 30 August. Pinned
+ * to that moment, the only kind that shows it: in UTC the two agree.
+ */
+describe('DateRangePicker presets ahead of Greenwich', () => {
+  pinTimeZone('Europe/Berlin')
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  function clickAt(label: string) {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 8, 1, 0, 30))
+    range.current = null
+    const onChange = mount()
+    fireEvent.click(screen.getByRole('button', { name: label }))
+    return onChange
+  }
+
+  it('This Month starts on the local 1st and ends today', () => {
+    expect(clickAt('This Month')).toHaveBeenCalledWith('2026-09-01', '2026-09-01')
+  })
+
+  it('Last Month is the whole previous local month', () => {
+    expect(clickAt('Last Month')).toHaveBeenCalledWith('2026-08-01', '2026-08-31')
+  })
+
+  it('Last 3 Months starts two month-starts back and ends today', () => {
+    expect(clickAt('Last 3 Months')).toHaveBeenCalledWith('2026-07-01', '2026-09-01')
+  })
+
+  it('This Year starts on the local New Year', () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 0, 1, 0, 30))
+    range.current = null
+    const onChange = mount()
+    fireEvent.click(screen.getByRole('button', { name: 'This Year' }))
+    expect(onChange).toHaveBeenCalledWith('2026-01-01', '2026-01-01')
   })
 })

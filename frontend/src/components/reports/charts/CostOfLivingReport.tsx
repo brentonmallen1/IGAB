@@ -14,20 +14,24 @@ import { chartColor } from './chartColors'
 import { ChartLegend } from './ChartLegend'
 import { ChartTooltip } from './ChartTooltip'
 import { ReportRangeSelect } from './rangeSelect'
-import { useMoneyAxis } from './useMoneyAxis'
-import { necessityReading, sheddableShare } from './necessityView'
+import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
+import { necessityReading, necessityShare, nonEssentialSpend } from './necessityView'
+import { averagedOver } from './averagedOver'
 
 interface Props {
   budgetId: string
 }
 
 /**
- * What it costs to keep the lights on, by category group.
+ * What it costs to keep the lights on, by category group, in two tiers.
  *
- * Built on the Essential tag rather than a new "utilities" one: a sixth
- * system tag whose only job is grouping would be a permanent addition to a
- * vocabulary that otherwise changes how money is COUNTED, and the groups a
- * budget already has are the shape a household thinks in.
+ * The table and chart roll up the WIDE tier: categories tagged Essential or
+ * Cost of living, plus debt payments by class. The Essentials card is the
+ * lean tier inside it, and Non-essential is the gap — what a lean month could
+ * shed. Which rows each tier holds is the server's rule
+ * (`domain.activity_class.tier_scope`); this page only lays the figures out,
+ * in the groups a budget already has, which are the shape a household
+ * thinks in.
  */
 /** The null-group bucket's name, which the server also spells. A drill into it
  *  means "rows with no category" — an empty id list filters nothing and would
@@ -35,7 +39,7 @@ interface Props {
 const UNCATEGORIZED = 'Uncategorized'
 
 export function CostOfLivingReport({ budgetId }: Props) {
-  const { formatMoney, formatMonthShort } = useFormatters()
+  const { formatMoney, formatMoneyOrDash, formatMonthShort } = useFormatters()
   const moneyAxis = useMoneyAxis()
   // Which group the legend is pointing at, if any. The palette repeats past
   // eight slots, so this is what tells two same-coloured bands apart.
@@ -49,12 +53,19 @@ export function CostOfLivingReport({ budgetId }: Props) {
   if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
   if (!data) return null
 
-  const reading = necessityReading(data.required_ratio, data.essentials_ratio)
-  const sheddable = sheddableShare(data.avg_monthly_cost_of_living, data.avg_monthly_non_essential)
+  // Composed from the three served averages, not served: see `necessityView`.
+  const nonEssential = nonEssentialSpend(
+    data.avg_monthly_cost_of_living,
+    data.avg_monthly_essentials
+  )
+  const requiredRatio = necessityShare(data.avg_monthly_cost_of_living, data.avg_monthly_income)
+  const essentialsRatio = necessityShare(data.avg_monthly_essentials, data.avg_monthly_income)
+  const reading = necessityReading(requiredRatio, essentialsRatio)
+  const sheddable = necessityShare(nonEssential, data.avg_monthly_cost_of_living)
   // The window is complete months only, and the card says how many — the
   // difference between a figure a reader can check and one that just looks
   // low at the start of a month.
-  const perMonth = `per month, over ${data.months_averaged} complete`
+  const perMonth = averagedOver('per month', data.months_averaged)
 
   const report = data
 
@@ -176,11 +187,7 @@ export function CostOfLivingReport({ budgetId }: Props) {
                 what a household could not cut, so the figure is unknown. */}
             <MetricCard
               label="Essentials"
-              value={
-                data.avg_monthly_essentials === null
-                  ? '—'
-                  : formatMoney(data.avg_monthly_essentials)
-              }
+              value={formatMoneyOrDash(data.avg_monthly_essentials)}
               sub={
                 data.avg_monthly_essentials === null
                   ? 'nothing tagged Essential'
@@ -192,13 +199,9 @@ export function CostOfLivingReport({ budgetId }: Props) {
                 car; this is an inventory, and the note below says so. */}
             <MetricCard
               label="Non-essential"
-              value={
-                data.avg_monthly_non_essential === null
-                  ? '—'
-                  : formatMoney(data.avg_monthly_non_essential)
-              }
+              value={formatMoneyOrDash(nonEssential)}
               sub={
-                data.avg_monthly_non_essential === null
+                nonEssential === null
                   ? 'needs Essentials tagged'
                   : sheddable === null
                     ? 'nothing committed yet'
@@ -214,8 +217,8 @@ export function CostOfLivingReport({ budgetId }: Props) {
               label="Required"
               // Null is "we have no income on record", which is not 0% and
               // not 100% — saying either would be inventing a ratio.
-              value={data.required_ratio === null ? '—' : `${Math.round(data.required_ratio)}%`}
-              sub={data.required_ratio === null ? 'no income on record' : 'of take-home'}
+              value={requiredRatio === null ? '—' : `${Math.round(requiredRatio)}%`}
+              sub={requiredRatio === null ? 'no income on record' : 'of take-home'}
             />
           </MetricRow>
 
@@ -275,7 +278,7 @@ export function CostOfLivingReport({ budgetId }: Props) {
           />
 
           <table className="report-table">
-            <caption className="sr-only">Essential spending by category group</caption>
+            <caption className="sr-only">Cost of living by category group</caption>
             <thead>
               <tr>
                 <th scope="col" style={{ textAlign: 'left' }}>

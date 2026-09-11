@@ -9,16 +9,11 @@ import { ReportRangeSelect } from './rangeSelect'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { Tooltip } from '../../common/Tooltip/Tooltip'
 import { monthWindow } from '../../../utils/dateWindow'
+import { SENSITIVITY_OPTIONS } from './reportControls'
 
 interface Props {
   budgetId: string
 }
-
-const SENSITIVITY_OPTIONS = [
-  { value: 3.0, label: 'Strict', description: 'z ≥ 3' },
-  { value: 2.5, label: 'Normal', description: 'z ≥ 2.5' },
-  { value: 2.0, label: 'Sensitive', description: 'z ≥ 2' },
-] as const
 
 export function AnomaliesReport({ budgetId }: Props) {
   const months = useReportMonths()
@@ -130,7 +125,15 @@ export function AnomaliesReport({ budgetId }: Props) {
         <div className="anomalies-list">
           {[...groupedByMonth.entries()].map(([monthLabel, items]) => (
             <div key={monthLabel} className="anomalies-group">
-              <h3 className="anomalies-group__label">{monthLabel}</h3>
+              {/* Every row in a group shares a month, so the first one says
+                  whether it is still being written. `partial_month` is the
+                  server's — see AnomalyItem in types/index.ts. */}
+              <h3 className="anomalies-group__label">
+                {monthLabel}
+                {items[0].partial_month && (
+                  <span className="anomalies-group__partial">so far this month</span>
+                )}
+              </h3>
               {items.map((a) => {
                 const actual = a.actual
                 const baseline = a.baseline_mean

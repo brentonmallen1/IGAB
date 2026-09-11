@@ -179,3 +179,20 @@ export function amountClass(amount: number): string {
  * labels, and both printed real amounts straight through privacy mode.
  */
 export const PRIVACY_MASK = '••••'
+
+/** What a money cell shows when there is no figure. */
+export const NO_FIGURE = '—'
+
+/**
+ * A money figure that may not exist — an income category's balance, a
+ * baseline with no days to average, a pending row's running balance. Null
+ * and undefined are a gap, never $0.00: a zero would say the money was
+ * counted and came to nothing. One spelling, because the pattern was written
+ * inline at fourteen call sites, two of which promised they could not disagree.
+ */
+export function moneyOrDash(
+  amount: number | null | undefined,
+  format: (amount: number) => string
+): string {
+  return amount === null || amount === undefined ? NO_FIGURE : format(amount)
+}

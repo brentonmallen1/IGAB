@@ -29,9 +29,8 @@ from igab.domain.activity_class import (
     NecessityTier,
     apply_class_joins,
     basis_is_chosen,
-    counted_classes,
 )
-from igab.domain.dates import add_months, complete_month_window, month_starts
+from igab.domain.dates import complete_month_window, month_starts
 from igab.domain.money import quantize_cents
 from igab.repositories.txn_filters import (
     LEAF,
@@ -43,17 +42,6 @@ from igab.repositories.txn_filters import (
 
 if TYPE_CHECKING:
     from igab.services.report_service import ReportService
-
-
-def _subtract_months(d: date, months: int) -> date:
-    """The start of the month `months` before `d`'s.
-
-    Discarding the day is deliberate — every caller here is keying a month
-    bucket. `add_months` is the one that preserves it.
-    """
-    # `replace(day=1)` rather than domain.dates.month_start: `month_start` is
-    # a loop variable throughout this module and importing the name shadows it.
-    return add_months(d.replace(day=1), -months)
 
 
 async def spending_trends(
@@ -74,13 +62,14 @@ async def spending_trends(
     """
     months = month_starts(start_date.replace(day=1), end_date)
     index = {m: i for i, m in enumerate(months)}
-    q = svc._spending_query(budget_id, start_date, end_date, category_ids, account_ids)
+    # The class set comes from `_spending_query` too: this was the one of
+    # three spending rollups that never widened for an explicit account
+    # selection, so a tracked account drew nothing here beside a populated
+    # Pareto over the identical selection.
+    q, included = svc._spending_query(
+        budget_id, start_date, end_date, category_ids, account_ids, include_classes
+    )
     rows = (await svc.session.execute(q)).all()
-    # `counted_classes`, not a fourth restatement: this was the one of three
-    # spending rollups that never widened for an explicit account selection,
-    # so pointing the account filter at a tracked account drew nothing here
-    # beside a populated Pareto over the identical selection.
-    included = counted_classes(include_classes, scoped_accounts=account_ids is not None)
     counted = [r for r in rows if r.cls in included]
     other_class = [r for r in rows if r.cls not in included]
 
@@ -231,8 +220,13 @@ async def emergency_fund(
 
 class RecurringSpend(TypedDict):
     """What a recurring line costs, whoever or whatever it is attached to.
-    Identical arithmetic for a category and for a payee inside one, so it is
-    written once and applied at both levels."""
+    One shape for a category and for a payee inside one, so it is written
+    once and applied at both levels.
+
+    One figure is not a second walk over the category's rows: `avg_monthly`
+    on a category is the SUM of its payees' (see `subscriptions_report`), so
+    the nested table adds up. Everything else here is the same arithmetic at
+    both levels."""
 
     monthly_amounts: list[Decimal]
     total: Decimal
@@ -260,9 +254,20 @@ class SubscriptionRow(RecurringSpend):
 def _recurring_spend(frame: pl.DataFrame, month_list: list[date]) -> RecurringSpend:
     """The per-line arithmetic, for a category or one payee inside it.
 
-    avg_monthly is the TRUE monthly burden: the total spread over the
-    months since the FIRST charge, not the average charged month — a
-    quarterly $30 subscription costs $10/mo, not $30/mo.
+    avg_monthly is the monthly burden: the total spread over the months
+    since the FIRST charge of THIS frame, not the average charged month — a
+    quarterly $30 subscription costs about $10/mo, not $30/mo. Which is why a
+    category's figure is the sum of its payees' rather than this function's
+    answer for the whole envelope: one divisor per envelope would start every
+    service at the envelope's oldest charge and lose the newest one. See
+    `subscriptions_report`.
+
+    "About", deliberately. The window's end can fall mid-cycle, and then the
+    last charge is counted whole while only part of the period it pays for is
+    in the divisor: the same quarterly $30 reads $10.00, $10.91 or $12.00 by
+    phase. The overstatement is bounded by one cycle's missing months and
+    shrinks as the history grows; a cadence-aware divisor would remove it and
+    has not been chosen. Pinned per phase in test_subscriptions_report.
 
     `month_list` is complete months only (`complete_month_window`). Counting a
     running month whole put a subscription's effective cost at its lowest on
@@ -309,7 +314,18 @@ async def subscriptions_report(
     "which envelope grew".
 
     Note what avg_monthly means at each level: per payee it is a service's
-    cost; per category it is that envelope's recurring burn rate.
+    cost, spread over the complete months since that service's first charge;
+    per category it is the envelope's recurring burn rate, which is the SUM
+    of the services inside it. The summary's total_monthly is in turn the sum
+    of the categories, so every figure on the page is the payee rows added up
+    and the nested table agrees with its own headline.
+
+    Dividing at category level instead — the envelope's total over the months
+    since the ENVELOPE's first charge — quietly dropped a service that
+    started later: Streaming charged $15 for three complete months, gaining a
+    $10 service in the last one, read $18.33 beside payee rows of $15.00 and
+    $10.00, and the summary was short by the newcomer. Pinned in
+    test_subscriptions_report.
     """
     from igab.repositories.tag_repo import TagRepository
 
@@ -399,13 +415,20 @@ async def subscriptions_report(
             )
         payees.sort(key=lambda p: p["total"], reverse=True)
 
+        envelope = _recurring_spend(in_category, month_list)
+        # Monthly rolls up from the rows beneath it; see the docstring for the
+        # figure a shared divisor lost. The sum is of the CENT-quantized payee
+        # figures, so the column adds up as drawn rather than to within a cent
+        # of it.
+        envelope["avg_monthly"] = sum((p["avg_monthly"] for p in payees), Decimal("0"))
+
         subscriptions.append(
             {
                 "category_id": category_id,
                 "category_name": in_category["category_name"][0],
                 "group_name": in_category["group_name"][0],
                 "payees": payees,
-                **_recurring_spend(in_category, month_list),
+                **envelope,
             }
         )
 
@@ -420,8 +443,10 @@ async def subscriptions_report(
             "active_count": len(subscriptions),
         },
         "months": month_list,
-        #: How many months an effective-monthly figure divides by: all of
-        #: them, since every month in the window is complete.
+        #: The window's complete months: the most an effective-monthly figure
+        #: divides by, since each SERVICE divides by the months since its own
+        #: first charge and the category and summary figures are sums of
+        #: those. Still a bound, not the divisor of anything on the page.
         "months_averaged": len(month_list),
     }
 
@@ -431,7 +456,7 @@ class CostOfLivingGroup(TypedDict):
     monthly_amounts: list[Decimal]
     total: Decimal
     avg_monthly: Decimal
-    #: This group's share of the essentials total, 0-100. Not of income —
+    #: This group's share of the cost-of-living total, 0-100. Not of income —
     #: the shares have to add to 100 or the bar reads as arithmetic nobody
     #: can check.
     share: Decimal
@@ -508,20 +533,20 @@ UNCATEGORIZED_GROUP = "Uncategorized"
 
 
 async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: int = 12) -> dict:
-    """What it costs to keep the lights on, by category group.
+    """What it costs to keep the lights on, by category group, in two tiers.
 
-    Built on the Essential tag rather than a new one. A sixth system tag whose
-    only job is grouping would be a permanent addition to a vocabulary that
-    otherwise changes how money is COUNTED, and the groups a budget already
-    has are the shape a household thinks in — Housing, Utilities, Groceries.
+    The groups roll up the WIDE tier, `NecessityTier.COST_OF_LIVING`:
+    categories tagged Essential or Cost of living, plus debt payments by
+    class. The lean tier, Essentials, is measured over the same window, and
+    the difference is the non-essential gap — committed spending a lean month
+    could shed. Tier membership is `tier_scope`'s rule, so this report and the
+    Essentials report cannot disagree about what Essentials holds. The groups
+    are the ones a budget already has, the shape a household thinks in —
+    Housing, Utilities, Groceries.
 
-    Nothing new is queried: `essential_spend_by_category_month` is the same
-    query the Essentials report and the Overview card read, so a category
-    counted here is counted there. Only the rollup is new.
-
-    `basis` says how "essential" was decided — bound categories, the tag, or
-    everything. "all" means nothing is tagged yet, and the caller must say so
-    rather than present a figure that equals plain burn rate.
+    `basis` says how the wide tier was decided: the tags, or everything.
+    "all" means nothing is tagged yet, and the caller must say so rather than
+    present a figure that equals plain burn rate.
     """
     from igab.repositories.transaction_repo import TransactionRepository
 
@@ -556,8 +581,7 @@ async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: in
     essentials_known = basis_is_chosen(lean_basis)
 
     # Every month in the window is complete, so every average divides by all
-    # of them, and the RATIOS below divide the same figures the cards show: a
-    # ratio printed beside two cards has to be their quotient.
+    # of them.
     n = len(month_list)
 
     #: Rows carry a null group where an essential PAYEE tagged a transaction
@@ -608,20 +632,12 @@ async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: in
     # window, not a second division of its monthly totals here.
     income = await income_by_source(session, budget_id, months)
     avg_income = income["avg_monthly"]
-    income_total = income["total"]
-    essentials_total = -essentials_signed
     avg_cost_of_living = quantize_cents(cost_of_living_total / n) if n else Decimal("0")
     avg_essentials: Decimal | None = None
-    avg_non_essential: Decimal | None = None
     if essentials_known:
         # Outflows are negative in the ledger; a cost reads positive here, the
         # same way the group buckets above flip theirs.
-        avg_essentials = quantize_cents(essentials_total / n) if n else Decimal("0")
-        # The gap, and the reason the two tiers exist: what a lean month could
-        # shed. Floored at zero: the wide tier contains the lean one, but its
-        # tag arms net refunds, so a refund filed to a Cost-of-living category
-        # can take it below — and nobody committed to a negative amount.
-        avg_non_essential = max(avg_cost_of_living - avg_essentials, Decimal("0"))
+        avg_essentials = quantize_cents(-essentials_signed / n) if n else Decimal("0")
 
     return {
         "months": month_list,
@@ -635,35 +651,16 @@ async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: in
         #: all of them complete.
         "months_averaged": n,
         "groups": groups,
+        #: The three figures the report's cards print, and the only ones it
+        #: needs: the gap between the tiers and the two ratios against
+        #: take-home are arithmetic on these, with no input the client is
+        #: missing, so by the boundary rule they are composed once in
+        #: `frontend/src/components/reports/charts/necessityView.ts`. They
+        #: were served here, read by no backend path, beside a third ratio of
+        #: the same shape that already lived on the client.
         "avg_monthly_cost_of_living": avg_cost_of_living,
         "avg_monthly_essentials": avg_essentials,
-        #: Cost of living less essentials: committed spending that is not
-        #: strictly necessary. Named for what it IS rather than for what to do
-        #: about it — a card labelled "could cut" beside a household's car
-        #: payment reads as advice to sell the car.
-        "avg_monthly_non_essential": avg_non_essential,
         "avg_monthly_income": avg_income,
-        #: What share of take-home is already spoken for before anything
-        #: discretionary. None when the averaged months carry no income: a
-        #: ratio against zero is not 100%, it is unknown.
-        #:
-        #: This is the WIDE tier now, and it rises for every household with a
-        #: tracked loan — debt principal joins cost of living by class, with no
-        #: tagging needed. The report has to say so on its face.
-        #:
-        #: Both ratios divide the totals behind the cards — the same months,
-        #: the same divisor — so each is the quotient of the two cards beside it.
-        "required_ratio": (
-            quantize_cents(cost_of_living_total / income_total * 100) if income_total > 0 else None
-        ),
-        #: The lean tier against take-home. Above 100 the household cannot
-        #: cover what it could not cut, which is a different and worse fact
-        #: than a high required ratio.
-        "essentials_ratio": (
-            quantize_cents(essentials_total / income_total * 100)
-            if income_total > 0 and essentials_known
-            else None
-        ),
         "basis": basis,
         #: False when nothing is tagged, so the page can say the figure is
         #: every category rather than a chosen few.

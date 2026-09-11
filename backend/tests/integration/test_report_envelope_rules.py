@@ -19,6 +19,8 @@ from decimal import Decimal
 from sqlalchemy import update
 
 from igab.db.models import Category, CategoryGroup
+from igab.domain.dates import add_months
+from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.services.report_service import ReportService
 
 from .factories import (
@@ -246,6 +248,10 @@ class TestThePlannedSpendUniverse:
     they counted nothing — and its chronic flag feeds the Guide."""
 
     async def test_a_savings_transfer_is_not_planned_spend(self, db_session):
+        """Out of an UNTAGGED envelope. The class is what excludes it, and a
+        savings TAG on the envelope is the one exception to that — the same
+        shape out of a tagged envelope does count, pinned by
+        `TestASavingsTaggedEnvelope`."""
         services, budget, checking, group, cat = await _world(db_session)
         brokerage = await create_account(
             db_session, budget, "Cascade Brokerage", account_type="investment", on_budget=False
@@ -347,3 +353,137 @@ class TestThePlannedSpendUniverse:
         assert variance[-1]["actual_spent"] == D("100.00")
         assert bva["total_spent"] == D("100.00")
         assert pvr["total_spent"] == D("100.00")
+
+
+async def _tagged_envelope(db_session, key: str, name: str):
+    """One envelope carrying one system tag, 195 assigned last month and this
+    month, and 390 paid out of it today. Dates are read at run time, so a
+    month rollover between collection and run cannot move the window."""
+    services, budget, checking, group, _ = await _world(db_session)
+    await seed_system_tags(db_session, budget.id)
+    tags = TagRepository(db_session)
+    envelope = await create_category(db_session, budget, group, name)
+    await tags.set_category_tags(envelope.id, [(await tags.get_system_tag(budget.id, key)).id])
+    today = date.today()
+    this_month = today.replace(day=1)
+    last_month = add_months(this_month, -1)
+    await create_budget_assignment(db_session, budget, envelope, last_month, "195.00")
+    await create_budget_assignment(db_session, budget, envelope, this_month, "195.00")
+    await create_transaction(db_session, budget, checking, "-390.00", today, category=envelope)
+    return budget, last_month, today
+
+
+class TestASinkingFundsBillIsPlannedSpend:
+    """A `long_term_expense` envelope's payout is spending (#182), so the
+    plan-vs-actual family counts it against the assignments it already
+    counted. Before, the payout classed SAVINGS: Budget vs Actual read the
+    sinking fund at assigned 390 and spent 0, and Cumulative Variance built
+    the same underspend month after month. Those two are the reports that
+    changed — Plan vs Reality did not read the class at the time, so a test
+    against it alone passed on the old rule."""
+
+    async def test_budget_vs_actual_counts_the_payout(self, db_session):
+        budget, last_month, today = await _tagged_envelope(
+            db_session, "long_term_expense", "Property Tax"
+        )
+        bva = await ReportService(db_session).budget_vs_actual(budget.id, last_month, today)
+
+        assert bva["total_assigned"] == D("390.00")
+        assert bva["total_spent"] == D("390.00")
+
+    async def test_cumulative_variance_counts_the_payout(self, db_session):
+        budget, *_ = await _tagged_envelope(db_session, "long_term_expense", "Property Tax")
+        variance = await ReportService(db_session).cumulative_variance(budget.id, months=2)
+
+        assert [(m["budget_assigned"], m["actual_spent"]) for m in variance] == [
+            (D("195.00"), D("0")),
+            (D("195.00"), D("390.00")),
+        ]
+        assert variance[-1]["cumulative_variance"] == D("0")
+
+    async def test_plan_vs_reality_agrees(self, db_session):
+        budget, *_ = await _tagged_envelope(db_session, "long_term_expense", "Property Tax")
+        pvr = await ReportService(db_session).plan_vs_reality(budget.id, months=2)
+
+        assert (pvr["total_assigned"], pvr["total_spent"]) == (D("390.00"), D("390.00"))
+
+    async def test_the_savings_rate_calls_it_spending(self, db_session):
+        # The month the household paid its property tax, it saved nothing.
+        budget, *_ = await _tagged_envelope(db_session, "long_term_expense", "Property Tax")
+        rate = await ReportService(db_session).savings_rate(budget.id, months=1)
+
+        assert rate["summary"]["savings"] == D("0")
+        assert rate["summary"]["spending"] == D("390.00")
+
+
+class TestASavingsTaggedEnvelope:
+    """Item 5d in docs/reports-audit-chain.md, decided and now built: spending
+    out of a `savings`-tagged envelope counts against that envelope's plan.
+
+    The tag classes the outflow SAVINGS (rule 1 of `domain.activity_class`),
+    and for a long time that meant the plan-vs-actual family counted the
+    envelope's assignments and none of its spending — a Vacation Savings
+    envelope assigned 195 a month and drained by a 390 flight read as a
+    variance of +390 that never closed, permanently under-spent. That is the
+    phantom underspend #182 removed for `long_term_expense` only.
+
+    `planned_spend_filter` is where the exception is stated: the household
+    PLANNED that money to leave, so against the plan it is spent. The class
+    itself does NOT move, and the rest of this class is the bound on the
+    change — the savings rate still calls the 390 saving and the spending
+    rollups still leave it out, because they read their own row sets.
+
+    The three reports must also give ONE reading. Plan vs Reality once kept
+    its own spent set with no class filter and read the full 390 here while
+    the other two read 0."""
+
+    async def test_budget_vs_actual_counts_the_payout(self, db_session):
+        budget, last_month, today = await _tagged_envelope(
+            db_session, "savings", "Vacation Savings"
+        )
+        bva = await ReportService(db_session).budget_vs_actual(budget.id, last_month, today)
+
+        assert (bva["total_assigned"], bva["total_spent"]) == (D("390.00"), D("390.00"))
+
+    async def test_cumulative_variance_stops_compounding_the_underspend(self, db_session):
+        budget, *_ = await _tagged_envelope(db_session, "savings", "Vacation Savings")
+        variance = await ReportService(db_session).cumulative_variance(budget.id, months=2)
+
+        # 195 put by and unspent, then 195 put by and 390 taken out: the plan
+        # closes at zero instead of carrying a +390 surplus forever.
+        assert [(m["budget_assigned"], m["actual_spent"]) for m in variance] == [
+            (D("195.00"), D("0")),
+            (D("195.00"), D("390.00")),
+        ]
+        assert variance[-1]["cumulative_variance"] == D("0")
+
+    async def test_plan_vs_reality_agrees(self, db_session):
+        budget, *_ = await _tagged_envelope(db_session, "savings", "Vacation Savings")
+        pvr = await ReportService(db_session).plan_vs_reality(budget.id, months=2)
+
+        assert (pvr["total_assigned"], pvr["total_spent"]) == (D("390.00"), D("390.00"))
+
+    async def test_the_savings_rate_still_calls_it_saving(self, db_session):
+        """The bound. The plan report changed; the class did not. Tagging an
+        envelope Savings was asked for so that its outflows count as saving
+        with no transfer involved, and that is still what the savings rate
+        says — 390 saved, nothing spent."""
+        budget, *_ = await _tagged_envelope(db_session, "savings", "Vacation Savings")
+        rate = await ReportService(db_session).savings_rate(budget.id, months=1)
+
+        assert rate["summary"]["savings"] == D("390.00")
+        assert rate["summary"]["spending"] == D("0")
+
+    async def test_the_spending_rollups_still_leave_it_out(self, db_session):
+        """The other half of the bound: the Breakdown and the Overview's Top
+        Spending card read `SPENDING_ROW` plus the counted classes, not the
+        plan universe, so the 390 does not appear there."""
+        budget, last_month, today = await _tagged_envelope(
+            db_session, "savings", "Vacation Savings"
+        )
+        rows, total = await ReportService(db_session).spending_by_category(
+            budget.id, last_month, today
+        )
+
+        assert total == D("0")
+        assert [r for r in rows if r["name"] == "Vacation Savings"] == []

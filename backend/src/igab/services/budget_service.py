@@ -24,6 +24,7 @@ from igab.domain.carryover import (
 # Aliased: `month_start` is also a local variable throughout this module
 # (`month_start = first_of_month(month)`), and one name meaning two things
 # is how the shadowing bug in report_service started.
+from igab.domain.dates import complete_month_window, month_starts
 from igab.domain.dates import month_end as _month_end
 from igab.domain.dates import month_start as _month_start
 from igab.domain.exceptions import InvariantViolation
@@ -49,21 +50,6 @@ if TYPE_CHECKING:
     from igab.domain.card_timeline import Breach as TimelineBreach
     from igab.domain.card_timeline import CardMonth as TimelineMonth
     from igab.repositories.budget_move_repo import BudgetMoveRepository
-
-
-def _prev_month(d: date) -> date:
-    if d.month == 1:
-        return date(d.year - 1, 12, 1)
-    return date(d.year, d.month - 1, 1)
-
-
-def _months_back(d: date, n: int) -> list[date]:
-    months = []
-    cur = _prev_month(d)
-    for _ in range(n):
-        months.append(cur)
-        cur = _prev_month(cur)
-    return months
 
 
 def first_of_month(d: date) -> date:
@@ -283,9 +269,14 @@ class EnvelopeSeries:
     #: whose balance the history cannot reproduce (`unrecovered_through`).
     available: list[Decimal | None]
     assigned: list[Decimal]
+    #: The month's activity as the page states it: less what a card inflow
+    #: repaid of uncovered debt, and a card envelope's reserve legs.
+    activity: list[Decimal]
     #: The latest month before an import whose balance could not be walked
     #: back from YNAB's figure — None when every month asked for could be.
     unrecovered_through: date | None = None
+    #: `CategoryBalance.in_system_group`, from the same `_system_group_ids`.
+    in_system_group: bool = False
 
     def latest(self) -> Decimal:
         """Available in the last month asked for. Never unknown for a month at
@@ -471,6 +462,43 @@ def _opening_leg(anchor: BudgetAnchor | None, account_id: uuid.UUID) -> dict[dat
     }
 
 
+def _card_envelope_balance(
+    category_id: uuid.UUID, reserve: CardReserve, month_start: date
+) -> CategoryBalance:
+    """A card's set-aside envelope as the Budget page states it: its figures
+    are the card's reserve, not the transaction sums — nothing can be filed
+    there, and its snapshot rows (assignments only) are ignored. The summary
+    and `envelope_series` both read this."""
+    zero = Decimal("0")
+    return CategoryBalance(
+        category_id=category_id,
+        month=month_start,
+        assigned=reserve.assignments.get(month_start, zero),
+        activity=(
+            reserve.reservations.get(month_start, zero)
+            - reserve.released.get(month_start, zero)
+            - reserve.residual.get(month_start, zero)
+            - reserve.payments.get(month_start, zero)
+        ),
+        available=reserve.set_aside(month_start),
+        is_card_payment=True,
+    )
+
+
+def _card_corrected(
+    category: Category, system_group_ids: set[uuid.UUID], funding: CardFunding
+) -> bool:
+    """Whether the Budget page re-reads this envelope's Available out of
+    `card_funding`'s corrected series: a card inflow filed here repaid
+    uncovered debt, and it is neither income nor a card's own envelope. The
+    summary and `envelope_series` both ask this; they once each spelled it."""
+    return (
+        category.id in funding.repaid_by_category
+        and category.category_group_id not in system_group_ids
+        and category.linked_account_id is None
+    )
+
+
 class BudgetService:
     def __init__(
         self,
@@ -539,6 +567,13 @@ class BudgetService:
             raise InvariantViolation("Category does not belong to this budget")
         return category
 
+    async def _system_group_ids(self, budget_id: uuid.UUID) -> set[uuid.UUID]:
+        """The budget's system (Income) groups — the one place this service
+        decides "is this an income category". The summary, `envelope_series`
+        and both money guards read it; four spellings used to."""
+        groups = await self.category_group_repo.get_all(budget_id, include_archived=True)
+        return {g.id for g in groups if g.is_system}
+
     async def _require_envelope(self, budget_id: uuid.UUID, category_id: uuid.UUID) -> None:
         """Money may LEAVE here. Income is the only refusal.
 
@@ -550,8 +585,7 @@ class BudgetService:
         the archive flow depends on it.
         """
         category = await self._load_envelope(budget_id, category_id)
-        group = await self.category_group_repo.get(category.category_group_id)
-        if group is not None and group.is_system:
+        if category.category_group_id in await self._system_group_ids(budget_id):
             raise InvariantViolation("Income categories do not hold money")
 
     async def _require_fundable(self, budget_id: uuid.UUID, category_id: uuid.UUID) -> None:
@@ -571,8 +605,7 @@ class BudgetService:
         category = await self._load_envelope(budget_id, category_id)
         if category.is_fundable:
             return
-        group = await self.category_group_repo.get(category.category_group_id)
-        if group is not None and group.is_system:
+        if category.category_group_id in await self._system_group_ids(budget_id):
             raise InvariantViolation("Income categories do not hold money")
         raise InvariantViolation(
             "That envelope is archived. Restore it before budgeting into it — "
@@ -641,80 +674,21 @@ class BudgetService:
             available=available,
         )
 
-    async def category_history(
-        self, category_id: uuid.UUID, months: list[date]
-    ) -> list[CategoryBalance]:
-        """One category's figures for several months, assembled once.
-
-        `get_category_balance` answers for a single month and reloads its
-        inputs each time, which is right for a single reading and wrong in a
-        loop: the category-history report called it once per month, so a
-        twelve-month chart issued a dozen assignment queries and a dozen
-        activity queries for two lookups' worth of data. The seam its
-        docstring describes — hand in the activity and the anchor — is what
-        this uses, plus one assignment load covering the whole span.
-
-        Same numbers, from the same domain walk (`available_through`), so this
-        cannot answer differently from the budget page. `in_system_group` is
-        decided here too, the way `get_budget_summary` decides it for the grid
-        — the report used to re-derive "is this an income category" from the
-        group repository itself, which is the second implementation this flag
-        exists to prevent.
-        """
-        if not months:
-            return []
-        through = first_of_month(max(months))
-        assignments = await self.assignment_repo.get_for_category(
-            category_id, through_month=through
-        )
-        assigned_by_month = {a.month: a.assigned for a in assignments}
-        activity_by_month = await self.transaction_repo.sum_by_category_by_month(
-            category_id, end_date=last_of_month(through)
-        )
-        seed = (
-            await self.anchor_repo.get_for_category(category_id)
-            if self.anchor_repo is not None
-            else None
-        )
-        category = await self.category_repo.get(category_id)
-        group = (
-            await self.category_group_repo.get(category.category_group_id)
-            if category is not None
-            else None
-        )
-        in_system_group = group is not None and group.is_system
-
-        out: list[CategoryBalance] = []
-        for month in months:
-            month_start = first_of_month(month)
-            out.append(
-                CategoryBalance(
-                    category_id=category_id,
-                    month=month_start,
-                    assigned=assigned_by_month.get(month_start, Decimal("0")),
-                    activity=activity_by_month.get(month_start, Decimal("0")),
-                    available=available_through(
-                        assigned_by_month,
-                        activity_by_month,
-                        month_start,
-                        opening=seed,
-                    ),
-                    in_system_group=in_system_group,
-                )
-            )
-        return out
-
     async def envelope_series(
         self, budget_id: uuid.UUID, category_ids: list[uuid.UUID], months: list[date]
     ) -> dict[uuid.UUID, EnvelopeSeries]:
         """Several envelopes' Available month by month, as the Budget page
-        serves it — for reports that chart balances over time.
+        serves it — for reports that chart balances over time. The Savings
+        report and Category History (which the budget page's inspector draws)
+        both read it, and neither assembles a figure of its own.
 
         The walk `get_budget_summary` runs: seeded from the import anchor, and
         read out of `card_funding`'s corrected series for an envelope a card
-        refund repaid debt through, under the same guards. The Savings report
-        assembled its own copy and skipped that correction, so a $100 card
-        charge refunded to the envelope read $100 there and $0 on the page.
+        refund repaid debt through, under the same guards (`_card_corrected`).
+        A card's own envelope reads its reserve (`_card_envelope_balance`).
+        The Savings report assembled its own copy and skipped that correction,
+        so a $100 card charge refunded to the envelope read $100 there and $0
+        on the page; Category History did the same with its activity too.
 
         Months before an import anchor are walked back from YNAB's figure
         (`domain.carryover.back_derived_balances`). Read through the anchored
@@ -736,10 +710,20 @@ class BudgetService:
             list(category_ids), end_date=last_of_month(through)
         )
         categories = await self.category_repo.get_all(budget_id, include_archived=True)
-        groups = await self.category_group_repo.get_all(budget_id, include_archived=True)
-        system_group_ids = {g.id for g in groups if g.is_system}
+        system_group_ids = await self._system_group_ids(budget_id)
         by_id = {c.id: c for c in categories}
         walk = await self.card_walk(budget_id, through, categories=categories)
+        reserves = {
+            linked.id: card_reserve(
+                walk.funding,
+                account.id,
+                walk.payments.get(account.id, {}),
+                opening=_opening_leg(walk.anchor, account.id),
+            )
+            for account in walk.card_accounts
+            if (linked := walk.linked_by_account.get(account.id)) is not None
+            and linked.id in wanted
+        }
         # Where the register begins: its first transaction or its first
         # assignment, whichever is earlier. The walk back stops there.
         first_txn = await self.transaction_repo.earliest_date(budget_id)
@@ -749,18 +733,20 @@ class BudgetService:
 
         out: dict[uuid.UUID, EnvelopeSeries] = {}
         for cid in category_ids:
+            cat = by_id.get(cid)
+            in_system_group = cat is not None and cat.category_group_id in system_group_ids
+            if (reserve := reserves.get(cid)) is not None:
+                page = [_card_envelope_balance(cid, reserve, m) for m in firsts]
+                out[cid] = EnvelopeSeries(
+                    available=[b.available for b in page],
+                    assigned=[b.assigned for b in page],
+                    activity=[b.activity for b in page],
+                )
+                continue
             cat_assigned, cat_activity = assigned.get(cid, {}), activity.get(cid, {})
             opening = category_opening(walk.anchor, cid)
-            cat = by_id.get(cid)
-            # `get_budget_summary`'s own condition for re-reading Available out
-            # of the card walk: corrected by it, and neither income nor a
-            # card's payment envelope.
-            corrected = (
-                cid in walk.funding.repaid_by_category
-                and cat is not None
-                and cat.category_group_id not in system_group_ids
-                and cat.linked_account_id is None
-            )
+            corrected = cat is not None and _card_corrected(cat, system_group_ids, walk.funding)
+            repaid = walk.funding.repaid_by_category.get(cid, {}) if corrected else {}
             series = (
                 walk.funding.end_balances[cid]
                 if corrected
@@ -783,7 +769,9 @@ class BudgetService:
                     for m in firsts
                 ],
                 assigned=[cat_assigned.get(m, zero) for m in firsts],
+                activity=[cat_activity.get(m, zero) - repaid.get(m, zero) for m in firsts],
                 unrecovered_through=stopped,
+                in_system_group=in_system_group,
             )
         return out
 
@@ -985,8 +973,7 @@ class BudgetService:
 
         # All category balances
         categories = await self.category_repo.get_all(budget_id, include_archived=True)
-        groups = await self.category_group_repo.get_all(budget_id, include_archived=True)
-        system_group_ids = {g.id for g in groups if g.is_system}
+        system_group_ids = await self._system_group_ids(budget_id)
 
         if self.snapshot_repo is not None:
             balance_map = await self._snapshot_balances(budget_id, categories, month_start)
@@ -1070,22 +1057,7 @@ class BudgetService:
                 card_assignments = reserve.assignments
                 opening_total = sum_through(reserve.opening, month_start)
                 if linked is not None:
-                    # The linked category's balance is this computation, not
-                    # the transaction sums — nothing can be filed there, and
-                    # its snapshot rows (assignments only) are ignored.
-                    balance_map[linked.id] = CategoryBalance(
-                        category_id=linked.id,
-                        month=month_start,
-                        assigned=card_assignments.get(month_start, zero),
-                        activity=(
-                            reserve.reservations.get(month_start, zero)
-                            - reserve.released.get(month_start, zero)
-                            - reserve.residual.get(month_start, zero)
-                            - reserve.payments.get(month_start, zero)
-                        ),
-                        available=set_aside,
-                        is_card_payment=True,
-                    )
+                    balance_map[linked.id] = _card_envelope_balance(linked.id, reserve, month_start)
                 balance = owed_by_card.get(account.id, zero)
                 # One implementation of "where does this card stand", shared
                 # with `reserve_discrepancy`. It used to be spelled again here.
@@ -1218,8 +1190,8 @@ class BudgetService:
             # and grew without bound. Only categories the walk actually
             # corrected are re-read: for the rest the series is identical, and
             # recomputing it would give the snapshot path a second opinion.
-            repaid = funding.repaid_by_category.get(cat.id)
-            if repaid and not bal.in_system_group and not bal.is_card_payment:
+            if _card_corrected(cat, system_group_ids, funding):
+                repaid = funding.repaid_by_category[cat.id]
                 bal.repaid_uncovered_debt = repaid.get(month_start, zero)
                 bal.activity -= bal.repaid_uncovered_debt
                 bal.available = available_at(funding.end_balances[cat.id], month_start)
@@ -1455,7 +1427,9 @@ class BudgetService:
             self.category_repo.session, Category, category_id, budget_id, "Category"
         )
         month_start = first_of_month(current_month)
-        past_months = _months_back(month_start, lookback)
+        # The `lookback` complete months before this one, newest first — the
+        # window every per-month average reads.
+        past_months = month_starts(*complete_month_window(month_start, lookback))[::-1]
 
         assignments = await self.assignment_repo.get_for_category(category_id)
         assigned_by_month = {a.month: a.assigned for a in assignments}

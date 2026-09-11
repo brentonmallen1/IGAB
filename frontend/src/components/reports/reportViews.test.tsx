@@ -7,10 +7,10 @@
  * assertions target the surrounding UI (headers, tables, metric cards) —
  * the chart math itself is covered by the pure-function suites.
  */
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import type { ComponentType, ReactElement } from 'react'
 import { MemoryRouter } from 'react-router-dom'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const queryState = vi.hoisted(() => ({
   current: {
@@ -21,11 +21,20 @@ const queryState = vi.hoisted(() => ({
   },
 }))
 
+/** Every call each report hook received, by hook name — so a test can check
+ *  what a chart ASKED for, not only what it drew from the shared state. */
+const hookCalls = vi.hoisted(() => new Map<string, unknown[][]>())
+
 vi.mock('../../api/reports', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>()
   const mocked: Record<string, unknown> = {}
   for (const key of Object.keys(actual)) {
-    mocked[key] = key.startsWith('use') ? () => queryState.current : actual[key]
+    mocked[key] = key.startsWith('use')
+      ? (...args: unknown[]) => {
+          hookCalls.set(key, [...(hookCalls.get(key) ?? []), args])
+          return queryState.current
+        }
+      : actual[key]
   }
   return mocked
 })
@@ -34,7 +43,11 @@ vi.mock('../../api/budgets', () => ({ useBudgetMonth: () => ({ data: undefined }
 vi.mock('../../api/accountTypes', () => ({ useAccountTypes: () => ({ data: undefined }) }))
 
 import { useReportStore } from '../../stores/reportStore'
+import { useAppStore } from '../../stores/appStore'
+import { PRIVACY_MASK } from '../../utils/money'
 import { CostOfLivingReport } from './charts/CostOfLivingReport'
+import { EssentialsReport } from './charts/EssentialsReport'
+import { EmergencyCoverageReport } from './charts/EmergencyCoverageReport'
 import { WishlistDisciplineReport } from './charts/WishlistDisciplineReport'
 import { OverviewReport } from './OverviewReport'
 import { AccountCompositionReport } from './charts/AccountCompositionChart'
@@ -56,6 +69,8 @@ import { SavingsReport } from './charts/SavingsReport'
 import { SavingsRateReport } from './charts/SavingsRateChart'
 import { SeasonalityReport } from './charts/SeasonalityHeatmap'
 import { SpendingTreemapReport } from './charts/SpendingTreemap'
+import { SpendingBreakdownReport } from './charts/SpendingBreakdownReport'
+import { SpendingTrendsReport } from './charts/SpendingTrendsReport'
 import { SubscriptionsReport } from './charts/SubscriptionsReport'
 import { VarianceReport } from './charts/VarianceChart'
 import { VolatilityReport } from './charts/VolatilityChart'
@@ -63,6 +78,8 @@ import { VolatilityReport } from './charts/VolatilityChart'
 const ALL_REPORTS: [string, ComponentType<{ budgetId: string }>][] = [
   ['Overview', OverviewReport],
   ['CostOfLiving', CostOfLivingReport],
+  ['Essentials', EssentialsReport],
+  ['EmergencyCoverage', EmergencyCoverageReport],
   ['WishlistDiscipline', WishlistDisciplineReport],
   ['NetWorth', NetWorthReport],
   ['AccountComposition', AccountCompositionReport],
@@ -78,6 +95,8 @@ const ALL_REPORTS: [string, ComponentType<{ budgetId: string }>][] = [
   ['Volatility', VolatilityReport],
   ['Pareto', ParetoReport],
   ['SpendingTreemap', SpendingTreemapReport],
+  ['SpendingBreakdown', SpendingBreakdownReport],
+  ['SpendingTrends', SpendingTrendsReport],
   ['Seasonality', SeasonalityReport],
   ['Subscriptions', SubscriptionsReport],
   ['Anomalies', AnomaliesReport],
@@ -102,8 +121,26 @@ function renderReport(ui: ReactElement) {
   return render(<MemoryRouter>{ui}</MemoryRouter>)
 }
 
+/** The cells of the table row whose text includes `label`. */
+function cellsOf(label: string): string[] {
+  const row = screen.getByText(label).closest('tr')
+  return Array.from(row?.querySelectorAll('td') ?? []).map((td) => td.textContent ?? '')
+}
+
+/** What one metric card says: its value and sub-line, read inside the card
+ *  named `label` — not anywhere on a page that may print the same figure in
+ *  a table or legend. */
+function card(label: string): { value: string; sub: string } {
+  const el = screen.getByText(label, { selector: '.metric-card__label' }).closest('.metric-card')
+  return {
+    value: el?.querySelector('.metric-card__value')?.textContent ?? '',
+    sub: el?.querySelector('.metric-card__sub')?.textContent ?? '',
+  }
+}
+
 beforeEach(() => {
   setQuery({})
+  hookCalls.clear()
 })
 
 describe.each(ALL_REPORTS)('%s report', (_name, Report) => {
@@ -130,6 +167,14 @@ describe.each(ALL_REPORTS)('%s report', (_name, Report) => {
   })
 })
 
+/** The spending charts that take a view, and so can be told what it hid.
+ *  Spending Trends takes no view. */
+const VIEW_CHARTS = [
+  ['Pareto', ParetoReport],
+  ['Treemap', SpendingTreemapReport],
+  ['Breakdown', SpendingBreakdownReport],
+] as const
+
 describe('view-hidden note on the spending charts', () => {
   const hiddenData = {
     groups: [
@@ -148,28 +193,19 @@ describe('view-hidden note on the spending charts', () => {
     view_hidden_total: 14820.45,
   }
 
-  it.each([
-    ['Pareto', ParetoReport],
-    ['Treemap', SpendingTreemapReport],
-  ] as const)('%s states what the view hid', (_name, Report) => {
+  it.each(VIEW_CHARTS)('%s states what the view hid', (_name, Report) => {
     setQuery({ data: hiddenData })
     renderReport(<Report budgetId="b1" />)
     expect(screen.getByText(/This view hides 31 categories/)).toBeInTheDocument()
   })
 
-  it.each([
-    ['Pareto', ParetoReport],
-    ['Treemap', SpendingTreemapReport],
-  ] as const)('%s stays quiet when nothing was hidden', (_name, Report) => {
+  it.each(VIEW_CHARTS)('%s stays quiet when nothing was hidden', (_name, Report) => {
     setQuery({ data: { ...hiddenData, view_hidden_categories: 0, view_hidden_total: '0' } })
     renderReport(<Report budgetId="b1" />)
     expect(screen.queryByText(/This view hides/)).not.toBeInTheDocument()
   })
 
-  it.each([
-    ['Pareto', ParetoReport],
-    ['Treemap', SpendingTreemapReport],
-  ] as const)(
+  it.each(VIEW_CHARTS)(
     '%s explains an all-hidden empty state instead of claiming no data',
     (_name, Report) => {
       setQuery({
@@ -184,7 +220,13 @@ describe('view-hidden note on the spending charts', () => {
   )
 })
 
+/** Every spending chart with the "Include savings & debt payments" toggle. */
+const TOGGLE_CHARTS = [...VIEW_CHARTS, ['Trends', SpendingTrendsReport]] as const
+
 describe('class-excluded note on the spending charts', () => {
+  // One payload in both shapes — the grouped rollup (Pareto, Treemap,
+  // Breakdown) and the monthly series (Trends) — since every hook in this
+  // suite serves the same data.
   const dataWithExcluded = {
     groups: [
       {
@@ -197,6 +239,18 @@ describe('class-excluded note on the spending charts', () => {
         pct: 100,
       },
     ],
+    months: ['2026-08-01'],
+    series: [
+      {
+        id: 'c1',
+        name: 'Dining Out',
+        group_id: 'g1',
+        group_name: 'Bills',
+        monthly: [205],
+        total: 205,
+      },
+    ],
+    monthly_totals: [205],
     total: 205,
     view_hidden_categories: 0,
     view_hidden_total: '0',
@@ -204,28 +258,107 @@ describe('class-excluded note on the spending charts', () => {
       { activity_class: 'debt_principal', label: 'Debt payment', categories: 1, total: 275.0 },
       { activity_class: 'savings', label: 'Savings', categories: 2, total: 101.0 },
     ],
+    filter_unavailable: false,
   }
 
-  it.each([
-    ['Pareto', ParetoReport],
-    ['Treemap', SpendingTreemapReport],
-  ] as const)('%s says what a selection excluded and how to add it back', (_name, Report) => {
-    setQuery({ data: dataWithExcluded })
-    renderReport(<Report budgetId="b1" />)
-    expect(screen.getByText(/Not counted as spending here:/)).toBeInTheDocument()
-    expect(screen.getByText(/debt payments \(1 category\)/)).toBeInTheDocument()
-    // "Savings" must not pluralise into "savingss".
-    expect(screen.getByText(/of savings \(2 categories\)/)).toBeInTheDocument()
-    expect(screen.getByText(/Include savings & debt payments” to add it/)).toBeInTheDocument()
-  })
+  it.each(TOGGLE_CHARTS)(
+    '%s says what a selection excluded and how to add it back',
+    (_name, Report) => {
+      setQuery({ data: dataWithExcluded })
+      renderReport(<Report budgetId="b1" />)
+      expect(screen.getByText(/Not counted as spending here:/)).toBeInTheDocument()
+      expect(screen.getByText(/debt payments \(1 category\)/)).toBeInTheDocument()
+      // "Savings" must not pluralise into "savingss".
+      expect(screen.getByText(/of savings \(2 categories\)/)).toBeInTheDocument()
+      // Breakdown drew the toggle yet told the note it had none, so the
+      // remedy never showed beside the checkbox that performs it.
+      expect(screen.getByText(/Include savings & debt payments” to add it/)).toBeInTheDocument()
+    }
+  )
 
-  it.each([
-    ['Pareto', ParetoReport],
-    ['Treemap', SpendingTreemapReport],
-  ] as const)('%s stays quiet when nothing was class-excluded', (_name, Report) => {
+  it.each(TOGGLE_CHARTS)('%s stays quiet when nothing was class-excluded', (_name, Report) => {
     setQuery({ data: { ...dataWithExcluded, class_excluded: [] } })
     renderReport(<Report budgetId="b1" />)
     expect(screen.queryByText(/Not counted as spending here/)).not.toBeInTheDocument()
+  })
+
+  it.each(TOGGLE_CHARTS)('%s draws the shared toggle, not a copy of it', (_name, Report) => {
+    // Breakdown and Trends kept inline checkboxes beside the shared one, and
+    // the copies had already lost its explanation.
+    setQuery({ data: dataWithExcluded })
+    renderReport(<Report budgetId="b1" />)
+    const label = screen.getByRole('checkbox', { name: 'Include savings & debt payments' })
+    expect(label.nextElementSibling).toHaveAttribute(
+      'title',
+      expect.stringMatching(/isn.t spending/)
+    )
+  })
+})
+
+describe('a deleted saved filter', () => {
+  // Every report whose response declares `filter_unavailable`. Declaring the
+  // field put nothing on screen: the timeline never read it, so a deleted
+  // filter drew "No transactions for this period." and nothing else.
+  const FILTER_SCOPED = [
+    ...TOGGLE_CHARTS,
+    ['DayPatterns', DayPatternsReport],
+    ['Timeline', TimelineReport],
+  ] as const
+
+  // Empty in every shape these reports read, since one payload serves all.
+  const lost = {
+    groups: [],
+    months: [],
+    series: [],
+    monthly_totals: [],
+    total: 0,
+    days: [],
+    transactions: [],
+    counted_classes: [],
+    view_hidden_categories: 0,
+    view_hidden_total: '0',
+    class_excluded: [],
+    filter_unavailable: true,
+  }
+
+  it.each(FILTER_SCOPED)('%s says the filter is gone', (_name, Report) => {
+    setQuery({ data: lost })
+    renderReport(<Report budgetId="b1" />)
+    expect(screen.getByText(/That saved filter no longer exists/)).toBeInTheDocument()
+    // Trends once said the opposite of what the server does.
+    expect(screen.queryByText(/showing everything/i)).toBeNull()
+  })
+
+  it.each(FILTER_SCOPED)('%s says nothing while the filter exists', (_name, Report) => {
+    setQuery({ data: { ...lost, filter_unavailable: false } })
+    renderReport(<Report budgetId="b1" />)
+    expect(screen.queryByText(/saved filter no longer exists/)).toBeNull()
+  })
+
+  it('does not call a report empty that a category beside the filter still fills', () => {
+    // The scope is the union of categories, tags and the filter. A missing
+    // filter drops its own share; Groceries picked beside it still draws, so
+    // "this report has nothing to show" was false above a drawn chart.
+    setQuery({
+      data: {
+        ...lost,
+        groups: [
+          {
+            id: 'c1',
+            name: 'Groceries',
+            parent_id: 'g1',
+            parent_name: 'Everyday',
+            total: 120,
+            count: 2,
+            pct: 100,
+          },
+        ],
+        total: 120,
+      },
+    })
+    renderReport(<SpendingBreakdownReport budgetId="b1" />)
+    expect(screen.getByText(/nothing it named is included here/)).toBeInTheDocument()
+    expect(screen.queryByText(/nothing to show/)).toBeNull()
   })
 })
 
@@ -289,6 +422,14 @@ describe('OverviewReport metric cards', () => {
     expect(screen.getByText('25.0%')).toBeInTheDocument() // savings rate
     expect(screen.getByText('46d')).toBeInTheDocument() // rounded days until zero
     expect(screen.getByText('Groceries')).toBeInTheDocument()
+  })
+
+  it('asks for categories tagged Essential, not payees, before there is a figure', () => {
+    // Essential is a category tag only; a payee tag counts for nothing. The
+    // first-run prompt still said "Tag categories or payees Essential".
+    setQuery({ data: { net_worth: '0', burn_rate_30: '0', burn_rate_90: '0', top_categories: [] } })
+    renderReport(<OverviewReport budgetId="b1" />)
+    expect(card('Essentials / month')).toEqual({ value: '—', sub: 'Tag categories Essential' })
   })
 })
 
@@ -359,10 +500,16 @@ describe('SubscriptionsReport table', () => {
         ],
         summary: { total_monthly: 10, total_annual: 120, active_count: 1 },
         months: ['2026-02-01', '2026-03-01', '2026-04-01', '2026-05-01'],
+        months_averaged: 4,
       },
     })
     renderReport(<SubscriptionsReport budgetId="b1" />)
 
+    // The count is a bound, not a divisor: the figure is the services added
+    // up, each spread over the months since its own first charge.
+    expect(card('Monthly').sub).toBe(
+      'effective, each service since its first charge, at most 4 complete months'
+    )
     expect(screen.getByText('Per Charge')).toBeInTheDocument()
     expect(screen.getByText('Monthly (effective)')).toBeInTheDocument()
     // $30 per charge but only $10/mo effective — both perspectives visible
@@ -404,9 +551,14 @@ describe('SubscriptionsReport table', () => {
         ],
         summary: { total_monthly: 30, total_annual: 360, active_count: 1 },
         months: ['2026-05-01'],
+        months_averaged: 1,
       },
     })
     renderReport(<SubscriptionsReport budgetId="b1" />)
+
+    expect(card('Monthly').sub).toBe(
+      'effective, each service since its first charge, at most 1 complete month'
+    )
 
     expect(screen.getByText('Category')).toBeInTheDocument()
     const row = screen.getByRole('button', { name: /Streaming/ })
@@ -417,6 +569,21 @@ describe('SubscriptionsReport table', () => {
 
     expect(row).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByText('Northwind Stream')).toBeInTheDocument()
+  })
+})
+
+describe('VolatilityReport amortize toggle', () => {
+  it('asks for the amortized reading once the box is ticked', () => {
+    // Without the flag reaching the hook, the chart kept showing the raw
+    // reading while its info panel described the amortized one.
+    setQuery({ data: { categories: [], amortized: false, window_start: '', window_end: '' } })
+    renderReport(<VolatilityReport budgetId="b1" />)
+    const months = useReportStore.getState().rangeMonths
+    expect(hookCalls.get('useVolatilityReport')?.at(-1)).toEqual(['b1', months, false])
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Amortize lumpy charges' }))
+
+    expect(hookCalls.get('useVolatilityReport')?.at(-1)).toEqual(['b1', months, true])
   })
 })
 
@@ -477,6 +644,7 @@ describe('DayPatternsReport payday baseline', () => {
         counted_classes: ['spending'],
         baseline_daily: null,
         event_count: 26,
+        payday_floor: 200,
       },
     })
     renderReport(<DayPatternsReport budgetId="b1" />)
@@ -484,6 +652,31 @@ describe('DayPatternsReport payday baseline', () => {
     expect(screen.getByText('No days fall outside a payday window')).toBeInTheDocument()
     expect(screen.queryByText('Average on non-payday periods')).toBeNull()
     expect(screen.queryByText('$0.00')).toBeNull()
+  })
+
+  it('states the payday rule the server applied, and that it counts spending only', () => {
+    // The panel said scheduled bills were excluded (they never were) and said
+    // nothing of the floor that decides what a payday is, nor of the class
+    // rule the Day-of-Week panel above it explains. The floor is served, so
+    // the copy cannot drift from it: 250 here, not the backend's default.
+    setQuery({
+      data: {
+        days: [],
+        counted_classes: ['spending'],
+        baseline_daily: 12,
+        event_count: 3,
+        payday_floor: 250,
+      },
+    })
+    renderReport(<DayPatternsReport budgetId="b1" />)
+    fireEvent.click(screen.getByRole('button', { name: 'About the Payday Effect report' }))
+
+    const panel = within(screen.getByRole('dialog', { name: 'Payday Effect' }))
+    expect(panel.getByText(/is an income deposit/).textContent).toContain(
+      '$250.00 or more into a cash account'
+    )
+    expect(panel.queryByText(/scheduled bills/)).toBeNull()
+    expect(panel.getByText(/Counts spending only/)).toBeInTheDocument()
   })
 })
 
@@ -535,6 +728,22 @@ describe('PayeeReport labels', () => {
     expect(screen.getByText('20 shown')).toBeInTheDocument()
     expect(screen.queryByText('top 25 shown')).toBeNull()
     expect(screen.getByText('all payees')).toBeInTheDocument()
+  })
+
+  it('counts every payee and totals every payee, beside the rows it shows', () => {
+    // Total Payees read `payees.length` (the ranking cap) and Total Spent the
+    // ranked rows summed, so a 312-payee budget was told it had 25.
+    setQuery({
+      data: { payees: payees.slice(0, 2), total: 1050, payee_count: 5, payees_to_80pct: 3 },
+    })
+    renderReport(<PayeeReport budgetId="b1" />)
+
+    expect(card('Total Payees')).toEqual({ value: '5', sub: '2 shown' })
+    expect(card('Recurring Payees').sub).toBe('of the top 2')
+    expect(card('Total Spent').value).toBe('$1,050.00')
+    // The table's wider row carries the share, because Payee's % column is a
+    // share of that same served total: 199 of 1,050.
+    expect(cellsOf('of $1,050.00 across 5 payees')).toContain('19.0%')
   })
 
   it('does not call a payee-filtered total "all payees"', () => {
@@ -595,6 +804,7 @@ describe('AnomaliesReport list', () => {
             baseline_mean: '100',
             z_score: 10,
             direction: 'high',
+            partial_month: false,
             history: ['0', '0', '0', '0', '0', '100', '100', '100', '100', '100', '100', '300'],
           },
         ],
@@ -604,6 +814,77 @@ describe('AnomaliesReport list', () => {
 
     expect(screen.getByText('Dining')).toBeInTheDocument()
     expect(screen.getByText('+200%')).toBeInTheDocument()
+  })
+
+  it('drills a current-month anomaly through today, not to the month end', () => {
+    // The drill once built its own month-end window: for the current month it
+    // asked for days that had not happened, so the panel could total more
+    // than the card that opened it.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 8, 10, 12, 0))
+    try {
+      setQuery({
+        data: {
+          anomalies: [
+            {
+              category_id: 'c1',
+              category_name: 'Dining',
+              group_name: 'Everyday',
+              month: '2026-09-01',
+              actual: '300',
+              baseline_mean: '100',
+              z_score: 10,
+              direction: 'high',
+              partial_month: true,
+              history: ['100', '100', '100', '300'],
+            },
+          ],
+        },
+      })
+      renderReport(<AnomaliesReport budgetId="b1" />)
+
+      fireEvent.click(screen.getByRole('button', { name: /Dining/ }))
+
+      expect(useReportStore.getState().drillDown).toMatchObject({
+        categoryIds: ['c1'],
+        startDate: '2026-09-01',
+        endDate: '2026-09-10',
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('says a month still in progress is not finished, and a complete one is', () => {
+    // The month in progress is scored against the complete months and only
+    // ever flagged HIGH (backend report_stats.anomaly_rows). Its figure is
+    // month-to-date, so the heading has to say so — unlabelled, a 1,200
+    // grocery month reads as a closed month's total.
+    const row = {
+      category_id: 'c1',
+      category_name: 'Groceries',
+      group_name: 'Everyday',
+      actual: '1200',
+      baseline_mean: '400',
+      z_score: 40,
+      direction: 'high',
+      history: ['400', '400', '1200'],
+    }
+    setQuery({
+      data: {
+        anomalies: [
+          { ...row, month: '2026-09-01', partial_month: true },
+          { ...row, category_id: 'c2', month: '2026-08-01', partial_month: false },
+        ],
+      },
+    })
+    renderReport(<AnomaliesReport budgetId="b1" />)
+
+    const labels = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)
+    expect(labels).toEqual([
+      expect.stringContaining('so far this month'),
+      expect.not.stringContaining('so far this month'),
+    ])
   })
 })
 
@@ -745,6 +1026,37 @@ describe('PlanVsRealityReport matrix', () => {
     expect(screen.getAllByText(/\$2,900\.00/).length).toBeGreaterThan(0)
   })
 
+  describe('in privacy mode', () => {
+    afterEach(() => {
+      useAppStore.setState({ privacyMode: false })
+    })
+
+    it('masks every active cell, sign and zero included', () => {
+      // The matrix draws its own labels, outside useFormatters. Its privacy
+      // argument once went unpassed at no test's notice, and with it passed the
+      // sign still sat outside the mask: "−••••", "+••••" and a bare "0".
+      useAppStore.setState({ privacyMode: true })
+      setQuery({ data: planData })
+      const { container } = renderReport(<PlanVsRealityReport budgetId="b1" />)
+
+      // Dining's two active months and Rent's three on-plan ones.
+      const cells = [...container.querySelectorAll('td.plan-reality__cell--clickable')]
+      expect(cells.map((c) => c.textContent)).toEqual(Array(5).fill(PRIVACY_MASK))
+    })
+
+    it('keeps the overspend tint, which shows state rather than a figure', () => {
+      // Deliberate: like the bar heights on every chart and the Budget page's
+      // overspent colour, the tint survives privacy mode. See cellLabel.
+      useAppStore.setState({ privacyMode: true })
+      setQuery({ data: planData })
+      const { container } = renderReport(<PlanVsRealityReport budgetId="b1" />)
+
+      const over = container.querySelectorAll('td.plan-reality__cell--over')
+      expect(over).toHaveLength(1)
+      expect((over[0] as HTMLElement).style.background).toContain('--chart-negative')
+    })
+  })
+
   it('filters to chronic categories only via the toggle', () => {
     setQuery({ data: planData })
     renderReport(<PlanVsRealityReport budgetId="b1" />)
@@ -752,6 +1064,31 @@ describe('PlanVsRealityReport matrix', () => {
     fireEvent.click(screen.getByLabelText('Chronic only'))
     expect(screen.getByText('Dining')).toBeInTheDocument()
     expect(screen.queryByText('Rent')).not.toBeInTheDocument()
+  })
+})
+
+describe('SeasonalityReport in privacy mode', () => {
+  afterEach(() => {
+    useAppStore.setState({ privacyMode: false })
+  })
+
+  it('masks the cell labels it draws for itself', () => {
+    // The heatmap's cells bypass useFormatters. With its privacy argument
+    // dropped they read "4.2k" beside a legend reading "$••••", and no test
+    // rendered the grid with privacy on to notice.
+    useAppStore.setState({ privacyMode: true })
+    setQuery({
+      data: {
+        months: ['2026-07-01'],
+        categories: [{ id: 'c1', name: 'Electric' }],
+        cells: [{ category_id: 'c1', month: '2026-07-01', total: '4180' }],
+      },
+    })
+    const { container } = renderReport(<SeasonalityReport budgetId="b1" />)
+
+    const value = container.querySelector('.heatmap__cell-value')
+    expect(value?.textContent).toBe(PRIVACY_MASK)
+    expect(container.querySelector('.heatmap__table')?.textContent).not.toMatch(/4\.2k|4180/)
   })
 })
 
@@ -820,17 +1157,63 @@ describe('BudgetActualReport values', () => {
     expect(screen.getByText('Dining')).toBeInTheDocument()
     expect(screen.queryByText('Car Repairs')).not.toBeInTheDocument()
   })
+
+  it('totals the overspent rows it lists, and puts the period beside them', () => {
+    // The period's whole spend used to be the table's Total while "Overspent
+    // only" was ticked. It is context now, with no share under a column of
+    // variances.
+    setQuery({
+      data: {
+        categories: [
+          {
+            category_id: 'c1',
+            category_name: 'Groceries',
+            category_group_name: 'Everyday',
+            assigned: 500,
+            spent: 450,
+            variance: 50,
+            variance_pct: 10,
+            overspent: false,
+          },
+          {
+            category_id: 'c2',
+            category_name: 'Dining',
+            category_group_name: 'Everyday',
+            assigned: 100,
+            spent: 160,
+            variance: -60,
+            variance_pct: -60,
+            overspent: true,
+          },
+        ],
+        total_assigned: '600',
+        total_spent: '610',
+      },
+    })
+    renderReport(<BudgetActualReport budgetId="b1" />)
+    fireEvent.click(screen.getByLabelText('Overspent only'))
+
+    expect(cellsOf('Total of the 1 shown')).toContain('$160.00')
+    const whole = cellsOf('of $610.00 across 2 categories')
+    expect(whole).toContain('$610.00')
+    expect(whole.some((c) => c.includes('%'))).toBe(false)
+  })
 })
 
 describe('CostOfLivingReport tiers', () => {
+  // Two complete months, as the server now serves them: every month in the
+  // window has finished, so each average is its total over both. Required
+  // (75) and the essentials ratio (58.33) sit in different bands, so reading
+  // the standing off the wrong one changes the note.
   const tiered = {
-    months: ['2026-08-01', '2026-09-01'],
-    window_start: '2026-08-01',
-    window_end: '2026-09-10',
+    months: ['2026-07-01', '2026-08-01'],
+    months_averaged: 2,
+    window_start: '2026-07-01',
+    window_end: '2026-08-31',
     groups: [
       {
         group_name: 'Bills',
-        monthly_amounts: [1400, 0],
+        monthly_amounts: [700, 700],
         total: 1400,
         avg_monthly: 700,
         share: 77.78,
@@ -838,35 +1221,50 @@ describe('CostOfLivingReport tiers', () => {
       },
       {
         group_name: 'Fun',
-        monthly_amounts: [400, 0],
+        monthly_amounts: [200, 200],
         total: 400,
         avg_monthly: 200,
         share: 22.22,
         category_ids: ['c2'],
       },
     ],
+    // The page composes the gap (900 - 700) and both ratios (900/1200 and
+    // 700/1200) from these three: `necessityView`, not the server.
     avg_monthly_cost_of_living: 900,
     avg_monthly_essentials: 700,
-    avg_monthly_non_essential: 200,
-    avg_monthly_income: 1800,
-    required_ratio: 50,
-    essentials_ratio: 38.89,
+    avg_monthly_income: 1200,
     basis: 'tag' as const,
     tagged: true,
     class_excluded: [],
     counted_classes: ['spending', 'debt_principal'],
   }
 
-  it('shows both tiers and the gap between them', () => {
+  it('puts each tier on its own card', () => {
+    // Read inside each card: the group table and legend print Bills $700 and
+    // Fun $200 too, so a page-wide search passed with the Essentials and
+    // Non-essential cards swapped.
     setQuery({ data: tiered })
     renderReport(<CostOfLivingReport budgetId="b1" />)
 
-    expect(screen.getByText('Cost of living')).toBeInTheDocument()
-    expect(screen.getByText('Essentials')).toBeInTheDocument()
-    expect(screen.getByText('Non-essential')).toBeInTheDocument()
-    expect(screen.getAllByText(/\$900\.00/).length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/\$700\.00/).length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/\$200\.00/).length).toBeGreaterThan(0)
+    expect(card('Cost of living')).toEqual({
+      value: '$900.00',
+      sub: 'per month, over 2 complete months',
+    })
+    expect(card('Essentials')).toEqual({ value: '$700.00', sub: 'could not be cut' })
+    expect(card('Non-essential').value).toBe('$200.00')
+    expect(card('Take-home')).toEqual({
+      value: '$1,200.00',
+      sub: 'per month, over 2 complete months',
+    })
+    expect(card('Required')).toEqual({ value: '75%', sub: 'of take-home' })
+  })
+
+  it('names its table for the tier it rolls up', () => {
+    // The table is the WIDE tier — subscriptions and debt payments included —
+    // and a screen reader announced it as "Essential spending".
+    setQuery({ data: tiered })
+    renderReport(<CostOfLivingReport budgetId="b1" />)
+    expect(screen.getByRole('table', { name: 'Cost of living by category group' })).toBeTruthy()
   })
 
   it('states the gap as a share of what is committed, not as advice', () => {
@@ -874,19 +1272,29 @@ describe('CostOfLivingReport tiers', () => {
     renderReport(<CostOfLivingReport budgetId="b1" />)
 
     // 200 of 900. And the card must not tell anyone to cancel anything.
-    expect(screen.getByText('22% of the above')).toBeInTheDocument()
+    expect(card('Non-essential').sub).toBe('22% of the above')
     expect(screen.queryByText(/could cut/i)).toBeNull()
   })
 
   it('reads the standing off the wide ratio', () => {
+    // Required 75 is "tight"; the essentials ratio, 58.33, would read
+    // "workable". Swapping the arguments must change the sentence.
     setQuery({ data: tiered })
     renderReport(<CostOfLivingReport budgetId="b1" />)
-    expect(screen.getByText(/no more than half your take-home/i)).toBeInTheDocument()
+    expect(screen.getByText(/Most of your take-home is committed/)).toBeInTheDocument()
+    expect(screen.queryByText(/over half your take-home/)).toBeNull()
   })
 
   it('says a household cannot cover its essentials, when it cannot', () => {
     setQuery({
-      data: { ...tiered, required_ratio: 130, essentials_ratio: 108 },
+      // 1,560 committed and 1,296 of it essential, out of 1,200 taken home:
+      // Required 130%, essentials 108%.
+      data: {
+        ...tiered,
+        avg_monthly_cost_of_living: 1560,
+        avg_monthly_essentials: 1296,
+        avg_monthly_income: 1200,
+      },
     })
     renderReport(<CostOfLivingReport budgetId="b1" />)
     // The worse fact, said as itself rather than as "no headroom".
@@ -901,9 +1309,8 @@ describe('CostOfLivingReport tiers', () => {
       data: {
         ...tiered,
         avg_monthly_essentials: null,
-        avg_monthly_non_essential: null,
-        essentials_ratio: null,
-        required_ratio: 130,
+        avg_monthly_cost_of_living: 1560,
+        avg_monthly_income: 1200,
       },
     })
     renderReport(<CostOfLivingReport budgetId="b1" />)
@@ -911,5 +1318,246 @@ describe('CostOfLivingReport tiers', () => {
     expect(screen.getByText('needs Essentials tagged')).toBeInTheDocument()
     expect(screen.queryByText('could not be cut')).toBeNull()
     expect(screen.queryByText(/costs more than you take home/i)).toBeNull()
+  })
+})
+
+describe('drill tables read spending as a positive figure', () => {
+  // DrillDownTable stopped taking Math.abs, and five callers stopped negating
+  // their figure on the way in. A caller that kept `amount: -c.spent` would
+  // print -$450.00 under a Spent column and drive the footer negative.
+  const noMinus = (label: string, amount: string) => {
+    const cells = cellsOf(label)
+    expect(cells).toContain(amount)
+    expect(cells.some((c) => c.startsWith('-'))).toBe(false)
+  }
+
+  it('Budget vs Actual', () => {
+    setQuery({
+      data: {
+        categories: [
+          {
+            category_id: 'c1',
+            category_name: 'Groceries',
+            category_group_name: 'Everyday',
+            assigned: 500,
+            spent: 450,
+            variance: 50,
+            variance_pct: 10,
+            overspent: false,
+          },
+        ],
+        total_assigned: '500',
+        total_spent: '450',
+      },
+    })
+    renderReport(<BudgetActualReport budgetId="b1" />)
+    noMinus('Groceries', '$450.00')
+    noMinus('Total', '$450.00')
+  })
+
+  it('Income vs Expenses', () => {
+    setQuery({
+      data: {
+        months: [
+          {
+            month: '2026-08-01',
+            income: 2000,
+            expenses: 300,
+            savings: 0,
+            debt_principal: 0,
+            net: 1700,
+          },
+        ],
+      },
+    })
+    renderReport(<IncomeExpenseReport budgetId="b1" />)
+    noMinus('2026-08', '$300.00')
+  })
+
+  it('Pareto', () => {
+    setQuery({
+      data: {
+        groups: [
+          {
+            id: 'c1',
+            name: 'Rent',
+            total: 500,
+            count: 1,
+            pct: 50,
+            parent_id: 'g1',
+            parent_name: 'Home',
+          },
+        ],
+        total: 500,
+      },
+    })
+    renderReport(<ParetoReport budgetId="b1" />)
+    noMinus('Rent', '$500.00')
+  })
+
+  it('Payee Analysis', () => {
+    setQuery({
+      data: {
+        payees: [
+          {
+            payee_id: 'p1',
+            payee_name: 'Harborstone Market',
+            total: 120,
+            count: 2,
+            pct: 100,
+            monthly_trend: [],
+            top_categories: [],
+            is_recurring: false,
+          },
+        ],
+        total: 120,
+        payee_count: 1,
+        payees_to_80pct: 1,
+      },
+    })
+    renderReport(<PayeeReport budgetId="b1" />)
+    noMinus('Harborstone Market', '$120.00')
+  })
+
+  it('Volatility', () => {
+    setQuery({
+      data: {
+        categories: [
+          {
+            category_id: 'c1',
+            category_name: 'Groceries',
+            category_group_name: 'Everyday',
+            mean: 400,
+            std_dev: 20,
+            min_val: 380,
+            max_val: 420,
+            p25: 390,
+            p75: 410,
+            months_included: 6,
+          },
+        ],
+        amortized: false,
+        window_start: '2026-03-01',
+        window_end: '2026-08-31',
+      },
+    })
+    renderReport(<VolatilityReport budgetId="b1" />)
+    noMinus('Groceries', '$400.00')
+  })
+})
+
+describe('EssentialsReport table footer', () => {
+  it('totals its own column, not the rounded average times the months', () => {
+    // Two categories of $10.00 over three months: each averages $3.33 and the
+    // lean month $6.67, and $6.67 × 3 is $20.01 under a column adding to $20.00.
+    setQuery({
+      data: {
+        tagged: true,
+        months: 3,
+        window_start: '2026-06-01',
+        window_end: '2026-08-31',
+        essentials_90d: 6.67,
+        monthly_total_average: 6.67,
+        categories: [
+          {
+            category_id: 'c1',
+            name: 'Water',
+            group_name: 'Bills',
+            total: 10,
+            monthly_average: 3.33,
+            months_with_spend: 3,
+          },
+          {
+            category_id: 'c2',
+            name: 'Power',
+            group_name: 'Bills',
+            total: 10,
+            monthly_average: 3.33,
+            months_with_spend: 3,
+          },
+        ],
+        monthly_series: [],
+        reserve: [],
+        roadmap_range: [3, 6],
+        emergency_fund_balance: null,
+        emergency_fund_source: null,
+        runway_months: null,
+        class_excluded: [],
+      },
+    })
+    renderReport(<EssentialsReport budgetId="b1" />)
+    const footer = screen.getByText('All essentials').closest('tr')
+    expect(footer).toHaveTextContent('$20.00')
+    expect(footer).not.toHaveTextContent('$20.01')
+  })
+})
+
+describe('EmergencyCoverageReport', () => {
+  const pt = (month: string, coverage: number | null, counted = false) => ({
+    month,
+    fund_balance: 4000,
+    essentials: 1000,
+    coverage_months: coverage,
+    target_low: 3000,
+    target_high: 6000,
+    external_counted: counted,
+  })
+  const base = {
+    months: 12,
+    tagged: true,
+    fund_balance: 4000,
+    fund_source: 'Cascade Point HYSA',
+    coverage_months: 4,
+    essentials_monthly: 1000,
+    target_low: 3000,
+    target_high: 6000,
+    target_range: [3, 6],
+    external_amount: null,
+    external_as_of: null,
+    current_month: '2026-09-01',
+  }
+
+  it('names the month the self-reported fund is counted from, not the day it was saved', () => {
+    // Saved on 2026-09-11. The series ends at August, the only point that
+    // counts the figure; the note said "carried flat from September 2026".
+    setQuery({
+      data: {
+        ...base,
+        series: [pt('2026-07-01', 3), pt('2026-08-01', 4, true)],
+        external_amount: 4000,
+        external_as_of: '2026-09-11',
+      },
+    })
+    renderReport(<EmergencyCoverageReport budgetId="b1" />)
+    expect(screen.getByText(/carried flat from August 2026/)).toBeInTheDocument()
+    expect(screen.queryByText(/September 2026/)).toBeNull()
+  })
+
+  it('states the span of a trend with a gap inside it', () => {
+    setQuery({
+      data: {
+        ...base,
+        series: [
+          pt('2026-01-01', 2),
+          pt('2026-02-01', null),
+          pt('2026-03-01', null),
+          pt('2026-04-01', 4),
+        ],
+      },
+    })
+    renderReport(<EmergencyCoverageReport budgetId="b1" />)
+    expect(screen.getByText('+2 months over 4 months')).toBeInTheDocument()
+  })
+})
+
+describe('AccountCompositionReport info panel', () => {
+  it('explains the Net line without a note about its own earlier wording', () => {
+    // The panel ended '(An unmanaged debt REDUCES net worth; this said "plus".)'
+    // — a changelog entry shown to a reader who never saw the old copy.
+    setQuery({ data: { points: [] } })
+    renderReport(<AccountCompositionReport budgetId="b1" />)
+    fireEvent.click(screen.getByRole('button', { name: 'About the Account Composition report' }))
+    expect(screen.getByText(/less any unmanaged debts/)).toBeInTheDocument()
+    expect(screen.queryByText(/this said/)).toBeNull()
   })
 })

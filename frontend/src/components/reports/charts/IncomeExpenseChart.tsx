@@ -10,11 +10,16 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { useReportMonths, useReportStore } from '../../../stores/reportStore'
+import {
+  incomeDrill,
+  spendingDrillClasses,
+  useReportMonths,
+  useReportStore,
+} from '../../../stores/reportStore'
 import { useIncomeExpenseReport } from '../../../api/reports'
 import { useChartHeight } from '../../../hooks/useChartHeight'
 import { useFormatters } from '../../../hooks/useFormatters'
-import { useMoneyAxis } from './useMoneyAxis'
+import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
 import { ReportErrorState } from '../ReportErrorState'
 import { monthWindow } from '../../../utils/dateWindow'
 import { DrillDownTable } from '../DrillDownTable'
@@ -41,18 +46,22 @@ export function IncomeExpenseReport({ budgetId }: Props) {
   function drillTo(month: string, direction: 'inflow' | 'outflow') {
     const ym = month.slice(0, 7)
     const window = monthWindow(ym)
+    const range = { startDate: window.start, endDate: window.end }
+    if (direction === 'inflow') {
+      setDrillDown(incomeDrill(`Income · ${ym}`, range))
+      return
+    }
     setDrillDown({
       kind: 'month',
-      label: `${direction === 'inflow' ? 'Income' : 'Expenses'} · ${ym}`,
-      // Leaf + explicit classes: these bars mean income and SPENDING (savings
-      // and debt principal are separate series), so the panel must not list
-      // every row of the matching sign. Classes live on leaves, not on a
-      // split parent, so the scope has to match too.
+      label: `Expenses · ${ym}`,
+      // Leaf + explicit classes: this bar means SPENDING (savings and debt
+      // principal are separate series), so the panel must not list every
+      // outflow. Classes live on leaves, not on a split parent, so the scope
+      // has to match too.
       scope: 'leaf',
       direction,
-      activityClasses: direction === 'inflow' ? ['income'] : ['spending'],
-      startDate: window.start,
-      endDate: window.end,
+      activityClasses: spendingDrillClasses(false),
+      ...range,
     })
   }
 

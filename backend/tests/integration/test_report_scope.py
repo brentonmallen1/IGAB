@@ -14,8 +14,10 @@ The two cases worth stating loudest are the ones a naive resolver gets wrong:
   about an unused tag is answered with the whole budget.
 """
 
+import json
 import uuid
 from datetime import date
+from pathlib import Path
 
 import pytest
 
@@ -30,6 +32,10 @@ from .factories import (
     create_category_group,
     create_transaction,
     create_user,
+)
+
+_UI_CONTROLS = json.loads(
+    (Path(__file__).resolve().parents[3] / "shared" / "report_controls.json").read_text()
 )
 
 
@@ -164,6 +170,55 @@ class TestAFilterThatIsNoLongerThere:
         scope = await _resolve(db_session, budget, filter_id=uuid.uuid4(), tag_ids=[essential.id])
         assert scope.filter_unavailable is True
         assert set(scope.category_ids or []) == {groceries.id, fuel.id}
+
+
+#: Routes that take `filter_id` and deliberately do not serve the flag, with
+#: the reason. Anything else that takes one must say when it could not find it.
+FILTER_FLAG_EXEMPT = {
+    # A drill-down listing: it is opened from a report that already says the
+    # filter is gone, and its payload is a page of rows, not a figure.
+    "/api/v1/{budget_id}/transactions": "drill-down listing",
+}
+
+
+def _routes_taking_filter_id() -> list[str]:
+    from fastapi.routing import APIRoute
+
+    from igab.main import app
+
+    return sorted(
+        r.path
+        for r in app.routes
+        if isinstance(r, APIRoute)
+        and "GET" in r.methods
+        and any(p.name == "filter_id" for p in r.dependant.query_params)
+    )
+
+
+@pytest.mark.parametrize(
+    "path", [p for p in _routes_taking_filter_id() if p not in FILTER_FLAG_EXEMPT]
+)
+async def test_every_route_taking_a_filter_says_when_it_is_gone(db_session, api_client, path):
+    """/reports/spending and /reports/budget-actual resolved `filter_id` like
+    the other four and had no field to say it was missing, so a deleted filter
+    came back as `total: 0` with nothing to tell it from an empty budget
+    (PR188-7). Enumerated from the app, so a new route that takes a filter and
+    forgets the flag fails here."""
+    budget, *_ = await _make_world(db_session, api_client.test_user)
+    resp = await api_client.get(
+        path.format(budget_id=budget.id), params={"filter_id": str(uuid.uuid4())}
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["filter_unavailable"] is True, path
+
+
+def test_the_filter_route_enumeration_is_not_vacuous():
+    routes = set(_routes_taking_filter_id())
+    assert set(FILTER_FLAG_EXEMPT) <= routes, "an exemption names a route that no longer exists"
+    assert {
+        "/api/v1/{budget_id}/reports/spending",
+        "/api/v1/{budget_id}/reports/budget-actual",
+    } <= routes
 
 
 class TestTagsDoNotReachAcrossBudgets:
@@ -398,6 +453,26 @@ class TestMalformedIdsAreRefused:
         assert resp.status_code == 400, resp.text
         assert "Malformed id" in resp.text
 
+    @pytest.mark.parametrize(
+        ("path", "param"),
+        [
+            ("/accounts/{account}/transactions", "category_ids"),
+            ("/accounts/{account}/transactions", "payee_ids"),
+            ("/{budget}/reports/payee-analysis", "payee_ids"),
+            ("/{budget}/reports/payee-analysis", "account_ids"),
+        ],
+    )
+    async def test_the_other_id_lists_refuse_it_too(self, db_session, api_client, path, param):
+        """The account listing parsed its ids with bare `uuid.UUID()` — a 500 —
+        and payee-analysis answered 200 with no payees at all. Both read the
+        one parser now (PR188-13)."""
+        budget, *_ = await _make_world(db_session, api_client.test_user)
+        account = await create_account(db_session, budget)
+        url = f"/api/v1{path.format(budget=budget.id, account=account.id)}?{param}=oops"
+        resp = await api_client.get(url)
+        assert resp.status_code == 400, f"{url} -> {resp.status_code} {resp.text}"
+        assert "Malformed id" in resp.text
+
     async def test_one_bad_id_among_good_ones_is_still_refused(self, db_session, api_client):
         budget, groceries, *_ = await _make_world(db_session, api_client.test_user)
         resp = await api_client.get(
@@ -438,3 +513,19 @@ class TestParameterBounds:
         for path in ("anomalies", "payday-effect", "cash-projection"):
             resp = await api_client.get(f"/api/v1/{budget.id}/reports/{path}")
             assert resp.status_code == 200, f"{path}: {resp.text}"
+
+    @pytest.mark.parametrize(
+        ("path", "param", "value"),
+        [(c["path"], c["param"], v) for c in _UI_CONTROLS["controls"] for v in c["values"]],
+    )
+    async def test_every_value_the_ui_sends_is_accepted(
+        self, db_session, api_client, path, param, value
+    ):
+        """The defaults passing said nothing about Cash Projection's 180-day
+        horizon or the 21-day payday window: tighten `ProjectionDays` to
+        `le=90` and those 422 in the app while the test above stays green
+        (PR188-14). `shared/report_controls.json` is the UI's own list —
+        reportControls.test.ts holds the chart constants to it."""
+        budget, *_ = await _make_world(db_session, api_client.test_user)
+        resp = await api_client.get(f"/api/v1/{budget.id}/reports/{path}?{param}={value}")
+        assert resp.status_code == 200, f"{path}?{param}={value}: {resp.text}"

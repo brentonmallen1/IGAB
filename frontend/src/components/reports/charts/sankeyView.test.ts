@@ -132,12 +132,21 @@ describe('extractPrevTotals', () => {
 
 describe('formatDelta', () => {
   it('formats signed amount with percent', () => {
-    expect(formatDelta(120, 100, fmt)).toBe('+$20 (+20%)')
-    expect(formatDelta(80, 100, fmt)).toBe('−$20 (−20%)')
+    expect(formatDelta(120, 100, fmt, false)).toBe('+$20 (+20%)')
+    expect(formatDelta(80, 100, fmt, false)).toBe('−$20 (−20%)')
   })
 
   it('omits the percent when prev is 0', () => {
-    expect(formatDelta(50, 0, fmt)).toBe('+$50')
+    expect(formatDelta(50, 0, fmt, false)).toBe('+$50')
+  })
+
+  it('is the mask alone in privacy mode, with no sign or percent outside it', () => {
+    // It read "−$•••• (−30%)" on Cash Flow's node labels and cards: which way
+    // spending moved, and by how much, beside cards reading "$••••".
+    const masked = () => '$••••'
+    expect(formatDelta(70, 100, masked, true)).toBe('$••••')
+    expect(formatDelta(130, 100, masked, true)).toBe('$••••')
+    expect(formatDelta(50, 0, masked, true)).toBe('$••••')
   })
 })
 

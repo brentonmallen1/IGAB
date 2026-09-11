@@ -13,7 +13,7 @@ import {
 import { useReportStore } from '../../../stores/reportStore'
 import { useBudgetActualReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
-import { useMoneyAxis } from './useMoneyAxis'
+import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
 import { ReportErrorState } from '../ReportErrorState'
 import { COLOR_NEGATIVE, COLOR_NEUTRAL, COLOR_POSITIVE } from './chartColors'
 import { DrillDownTable } from '../DrillDownTable'
@@ -21,7 +21,7 @@ import { MetricCard } from '../MetricCard'
 import { MetricRow } from '../MetricRow'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
-import { truncateLabel } from './chartLabel'
+import { truncateLabel } from '../../../utils/truncateLabel'
 
 interface Props {
   budgetId: string

@@ -9,11 +9,16 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
+  addMonths,
   formatDateTimeWithOptions,
+  formatDateWithOptions,
   formatDayMonthWithOptions,
   formatMonthShortWithOptions,
+  formatMonthWithOptions,
   ordinalDay,
+  parseLocalDate,
 } from './dates'
+import type { DateFormat } from '../types'
 import { pinTimeZone } from '../test-utils/timeZone'
 
 const AFTERNOON = '2026-08-17T13:53:41'
@@ -124,5 +129,78 @@ describe('short formatters ahead of Greenwich', () => {
     // satisfy both this block and the one above.
     expect(formatMonthShortWithOptions('2026-01-01', 'mdy')).toBe('Jan 26')
     expect(formatMonthShortWithOptions('2026-09-01', 'mdy')).toBe('Sep 26')
+  })
+})
+
+/**
+ * The local date-only parse was written seven times in dates.ts: five as
+ * `new Date(s + 'T00:00:00')` and the two short formatters' copies with a
+ * `.slice(0, 10)` in front. Handed a datetime, the unsliced five appended the
+ * suffix a second time — `formatMonthWithOptions('2026-09-01T00:00:00')` read
+ * "undefined NaN" while its short sibling read "Sep 26". `parseLocalDate` is
+ * the one copy, pinned behind Greenwich where a UTC parse would show.
+ */
+describe('parseLocalDate', () => {
+  pinTimeZone('America/Los_Angeles')
+
+  it('keeps a date-only string on its own calendar day', () => {
+    const d = parseLocalDate('2026-01-01')
+    expect([d.getFullYear(), d.getMonth(), d.getDate()]).toEqual([2026, 0, 1])
+  })
+
+  it('reads the date written at the front of a datetime string', () => {
+    const d = parseLocalDate('2026-09-01T00:00:00')
+    expect([d.getFullYear(), d.getMonth(), d.getDate()]).toEqual([2026, 8, 1])
+  })
+
+  it('reaches every formatter, so a datetime no longer prints NaN in the long ones', () => {
+    // The long month and day formatters were the unsliced copies.
+    expect(formatMonthWithOptions('2026-09-01T00:00:00', 'mdy')).toBe('September 2026')
+    expect(formatDateWithOptions('2026-09-10T00:00:00', 'mdy')).toBe('Sep 10, 2026')
+    expect(addMonths('2026-02-01T00:00:00', 1)).toBe('2026-03-01')
+  })
+
+  it('moves a month from the 31st without overflowing a short month', () => {
+    // addMonths moved the month before resetting the day: Jan 31 → "Feb 31"
+    // → March 3, so one month on from January 31 was March.
+    expect(addMonths('2026-01-31', 1)).toBe('2026-02-01')
+    expect(addMonths('2026-03-31', -1)).toBe('2026-02-01')
+  })
+
+  it('returns unparseable input verbatim instead of NaN soup', () => {
+    expect(formatMonthWithOptions('not-a-month', 'mdy')).toBe('not-a-month')
+    expect(formatDateWithOptions('not-a-date', 'dmy')).toBe('not-a-date')
+  })
+})
+
+/**
+ * The short formatters were copies of their long siblings with a different
+ * name table, and their agreement on each setting's ORDER was only claimed in
+ * docstrings. Each pair is one implementation now; these check the short form
+ * is the long form's own parts, per setting, so the orders cannot part.
+ */
+describe('short and long formatters agree on every date setting', () => {
+  const SETTINGS: DateFormat[] = ['mdy', 'dmy', 'ymd']
+
+  it.each(SETTINGS)('%s: the month label orders year and month the same way', (fmt) => {
+    const long = formatMonthWithOptions('2026-09-01', fmt)
+    const short = formatMonthShortWithOptions('2026-09-01', fmt)
+    const yearFirst = fmt === 'ymd'
+    expect(long).toBe(yearFirst ? '2026 September' : 'September 2026')
+    expect(short).toBe(yearFirst ? '26 Sep' : 'Sep 26')
+  })
+
+  it.each([
+    ['mdy', 'Sep 10, 2026', 'Sep 10'],
+    ['dmy', '10 Sep 2026', '10 Sep'],
+    ['ymd', '2026-09-10', '09-10'],
+  ] as const)('%s: the day label is the dated one without its year', (fmt, long, short) => {
+    expect(formatDateWithOptions('2026-09-10', fmt)).toBe(long)
+    expect(formatDayMonthWithOptions('2026-09-10', fmt)).toBe(short)
+  })
+
+  it('ymd prints the written date, not the datetime it was handed', () => {
+    // The dated ymd arm echoed its input, so a datetime leaked into the UI.
+    expect(formatDateWithOptions('2026-09-10T00:00:00', 'ymd')).toBe('2026-09-10')
   })
 })

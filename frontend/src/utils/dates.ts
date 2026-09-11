@@ -35,43 +35,79 @@ export function currentMonthStart(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
 }
 
-/** Advance month by N months, returns "YYYY-MM-01" */
+/**
+ * The calendar date WRITTEN at the start of `s`, as a local Date.
+ *
+ * `new Date("2026-01-01")` parses a date-only string as UTC midnight, which
+ * west of Greenwich is the previous day — the previous month for a month
+ * start, the previous year each January. Appending "T00:00:00" forces the
+ * local parse. The first ten characters are read so a datetime string
+ * ("2026-09-01T00:00:00") parses too: the month formatters used to take it
+ * whole, append the suffix a second time and print "undefined NaN".
+ *
+ * For an INSTANT (a datetime with an offset) the written date is not the
+ * viewer's date; use `formatDateTimeWithOptions`, which renders it locally.
+ */
+export function parseLocalDate(s: string): Date {
+  return new Date(s.slice(0, 10) + 'T00:00:00')
+}
+
+/** Advance month by N months, returns "YYYY-MM-01". The day goes to the 1st
+ * BEFORE the month moves: from the 31st, moving first overflowed a short
+ * month, so January 31 plus one month was March. */
 export function addMonths(monthStr: string, delta: number): string {
-  const d = new Date(monthStr + 'T00:00:00')
-  d.setMonth(d.getMonth() + delta)
+  const d = parseLocalDate(monthStr)
   d.setDate(1)
+  d.setMonth(d.getMonth() + delta)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
+}
+
+const pad2 = (n: number) => String(n).padStart(2, '0')
+
+/**
+ * The one day label, with or without its year. Each setting orders the parts
+ * once: `mdy` "Sep 10, 2026" / "Sep 10", `dmy` "10 Sep 2026" / "10 Sep", `ymd`
+ * "2026-09-10" / "09-10". Unparseable input comes back verbatim rather than as
+ * "undefined NaN, NaN".
+ */
+function dayLabel(dateStr: string, dateFormat: DateFormat, withYear: boolean): string {
+  const d = parseLocalDate(dateStr)
+  if (isNaN(d.getTime())) return dateStr
+  const day = d.getDate()
+  const month = MONTH_NAMES_SHORT[d.getMonth()]
+  const year = d.getFullYear()
+  switch (dateFormat) {
+    case 'mdy':
+      return withYear ? `${month} ${day}, ${year}` : `${month} ${day}`
+    case 'dmy':
+      return withYear ? `${day} ${month} ${year}` : `${day} ${month}`
+    case 'ymd': {
+      const monthDay = `${pad2(d.getMonth() + 1)}-${pad2(day)}`
+      return withYear ? `${year}-${monthDay}` : monthDay
+    }
+  }
+}
+
+/**
+ * The one month label, long ("September 2026") or short ("Sep 26"). `ymd`
+ * puts the year first in both; the other settings put the month first.
+ */
+function monthLabel(monthStr: string, dateFormat: DateFormat, short: boolean): string {
+  const d = parseLocalDate(monthStr)
+  if (isNaN(d.getTime())) return monthStr
+  const month = (short ? MONTH_NAMES_SHORT : MONTH_NAMES_LONG)[d.getMonth()]
+  const year = short ? String(d.getFullYear()).slice(-2) : String(d.getFullYear())
+  return dateFormat === 'ymd' ? `${year} ${month}` : `${month} ${year}`
 }
 
 /** Format ISO date "YYYY-MM-DD" with configurable format */
 export function formatDateWithOptions(dateStr: string, dateFormat: DateFormat): string {
-  const d = new Date(dateStr + 'T00:00:00')
-  const day = d.getDate()
-  const month = MONTH_NAMES_SHORT[d.getMonth()]
-  const year = d.getFullYear()
-
-  switch (dateFormat) {
-    case 'mdy':
-      return `${month} ${day}, ${year}`
-    case 'dmy':
-      return `${day} ${month} ${year}`
-    case 'ymd':
-      return dateStr
-  }
+  return dayLabel(dateStr, dateFormat, true)
 }
 
 /** Format "YYYY-MM-01" to month/year with configurable format */
 export function formatMonthWithOptions(monthStr: string, dateFormat: DateFormat): string {
-  const d = new Date(monthStr + 'T00:00:00')
-  const month = MONTH_NAMES_LONG[d.getMonth()]
-  const year = d.getFullYear()
-
-  switch (dateFormat) {
-    case 'ymd':
-      return `${year} ${month}`
-    default:
-      return `${month} ${year}`
-  }
+  return monthLabel(monthStr, dateFormat, false)
 }
 
 /**
@@ -79,57 +115,30 @@ export function formatMonthWithOptions(monthStr: string, dateFormat: DateFormat)
  *
  * For a dense axis where the year is already established by the surrounding
  * labels. `CashProjectionReport` carried its own copy of MONTH_NAMES_SHORT to
- * do this, and sent `ymd` down the US month-first branch; here `ymd` stays
- * numeric, matching `formatDateWithOptions`, which returns the ISO string for
- * that setting.
+ * do this, and sent `ymd` down the US month-first branch; `ymd` stays numeric
+ * here, the year-less half of what `formatDateWithOptions` prints.
  */
 export function formatDayMonthWithOptions(dateStr: string, dateFormat: DateFormat): string {
-  const d = new Date(dateStr.slice(0, 10) + 'T00:00:00')
-  const day = d.getDate()
-  const month = MONTH_NAMES_SHORT[d.getMonth()]
-
-  switch (dateFormat) {
-    case 'dmy':
-      return `${day} ${month}`
-    case 'ymd':
-      return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-    default:
-      return `${month} ${day}`
-  }
+  return dayLabel(dateStr, dateFormat, false)
 }
 
 /**
  * Format "YYYY-MM-01" to a short month + 2-digit year ("Sep 26").
  *
  * The axis labels on Savings, Subscriptions and Cost of Living each spelled
- * this as `new Date(monthStr).toLocaleDateString('en-US', ...)`. A date-ONLY
- * ISO string parses as UTC midnight, and toLocaleDateString renders in the
- * viewer's zone, so every label west of UTC read one month early — and one
- * YEAR early each January, where "2026-01-01" rendered "Dec 25". Appending
- * "T00:00:00" is what forces the local parse, exactly as
- * `formatMonthWithOptions` above already does; the three inline copies were
- * written without it.
- *
- * Hard-coding 'en-US' also ignored the budget's date-format setting, so the
- * `ymd` arm here matches `formatMonthWithOptions`.
+ * this as `new Date(monthStr).toLocaleDateString('en-US', ...)`: a UTC parse
+ * (see `parseLocalDate`) that read "Dec 25" for January 2026 west of UTC, and
+ * a hard-coded 'en-US' that ignored the budget's date-format setting.
  */
 export function formatMonthShortWithOptions(monthStr: string, dateFormat: DateFormat): string {
-  const d = new Date(monthStr.slice(0, 10) + 'T00:00:00')
-  const month = MONTH_NAMES_SHORT[d.getMonth()]
-  const year = String(d.getFullYear()).slice(-2)
-
-  switch (dateFormat) {
-    case 'ymd':
-      return `${year} ${month}`
-    default:
-      return `${month} ${year}`
-  }
+  return monthLabel(monthStr, dateFormat, true)
 }
 
 /**
  * Format a full ISO datetime (e.g. "2026-08-17T13:53:41+00:00") as local
- * date + time. Not formatDateWithOptions: that takes date-ONLY strings and
- * appends "T00:00:00" — fed a datetime it produced "undefined NaN, NaN".
+ * date + time. Not formatDateWithOptions: that reads the calendar date WRITTEN
+ * in the string, and an instant's written date is not the viewer's — it once
+ * appended "T00:00:00" to the whole datetime and printed "undefined NaN, NaN".
  * Both halves come from the same local Date so an evening entry never shows
  * tomorrow's UTC date beside its local time.
  */
@@ -174,7 +183,7 @@ export function formatTimeWithOptions(
 
 /** Format "YYYY-MM-01" to "January 2024" - legacy API */
 export function formatMonth(monthStr: string): string {
-  const d = new Date(monthStr + 'T00:00:00')
+  const d = parseLocalDate(monthStr)
   return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
 }
 
@@ -198,7 +207,7 @@ export function ordinalDay(day: number): string {
 
 /** Format ISO date "YYYY-MM-DD" to "Jan 5, 2024" - legacy API */
 export function formatDate(dateStr: string): string {
-  const d = new Date(dateStr + 'T00:00:00')
+  const d = parseLocalDate(dateStr)
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 

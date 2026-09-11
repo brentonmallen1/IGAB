@@ -17,9 +17,11 @@ and the income-side class filter went unpinned.
 from datetime import date, timedelta
 from decimal import Decimal
 
+from igab.domain import activity_class
+from igab.domain.activity_class import ActivityClass
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
-from igab.services.report_service import ReportService
+from igab.services.report_service import PAYDAY_FLOOR, ReportService
 from igab.services.transaction_service import TransactionCreate
 
 from .factories import (
@@ -286,6 +288,33 @@ async def test_a_payday_savings_sweep_is_not_post_payday_spending(db_session):
     does right after being paid — and the exact opposite of the splurge this
     report looks for, so counting it inverted the finding.
     """
+    budget = await _payday_with_a_sweep(db_session)
+
+    data = await ReportService(db_session).payday_effect(budget.id, window=14, months=12)
+
+    assert data["event_count"] == 1
+    by_offset = {d["offset"]: d["avg_spend"] for d in data["days"]}
+    assert by_offset[0] == Decimal("40.00")
+
+
+async def test_spending_is_whatever_spending_classes_says(db_session, monkeypatch):
+    """Spending Trends, Pareto and Day-of-Week read the spending set from
+    SPENDING_CLASSES. This report spelled SPENDING as a literal, so widening
+    the tuple would have moved every spending report but this one. Widened
+    here to take savings in, the sweep has to count."""
+    widened = (ActivityClass.SPENDING, ActivityClass.SAVINGS)
+    monkeypatch.setattr(activity_class, "SPENDING_CLASSES", widened)
+    budget = await _payday_with_a_sweep(db_session)
+
+    data = await ReportService(db_session).payday_effect(budget.id, window=14, months=12)
+
+    by_offset = {d["offset"]: d["avg_spend"] for d in data["days"]}
+    assert by_offset[0] == Decimal("1540.00")
+
+
+async def _payday_with_a_sweep(db_session):
+    """A payday at T-20, with 1,500 swept into an off-budget brokerage and 40
+    of real spending the same day."""
     user = await create_user(db_session)
     budget = await create_budget(db_session, user)
     checking = await create_account(db_session, budget, "Checking")
@@ -306,12 +335,7 @@ async def test_a_payday_savings_sweep_is_not_post_payday_spending(db_session):
         db_session, budget, checking, "-1500.00", TODAY - timedelta(days=20), payee=sweep_payee
     )
     await create_transaction(db_session, budget, checking, "-40.00", TODAY - timedelta(days=20))
-
-    data = await ReportService(db_session).payday_effect(budget.id, window=14, months=12)
-
-    assert data["event_count"] == 1
-    by_offset = {d["offset"]: d["avg_spend"] for d in data["days"]}
-    assert by_offset[0] == Decimal("40.00")
+    return budget
 
 
 async def test_a_varying_wage_keeps_every_payday(db_session):
@@ -371,6 +395,20 @@ async def test_a_short_history_is_not_a_year_of_quiet_days(db_session):
     assert all(d["avg_spend"] == Decimal("50.00") for d in data["days"])
 
 
+async def _biweekly_budget(db_session, owner):
+    """Biweekly pay up to today, and a spend of 90 five days before the first
+    payday in range."""
+    budget = await create_budget(db_session, owner)
+    checking = await create_account(db_session, budget, "Checking")
+    employer = await create_payee(db_session, budget, "Northwind Payserv")
+    for back in (42, 28, 14, 0):
+        await create_transaction(
+            db_session, budget, checking, "2000.00", TODAY - timedelta(days=back), payee=employer
+        )
+    await create_transaction(db_session, budget, checking, "-90.00", TODAY - timedelta(days=47))
+    return budget
+
+
 async def test_biweekly_pay_at_window_14_has_no_outside_whatever_its_phase(db_session):
     """Days before the first payday in range are the tail of a payday the query
     never fetched. Counted as "outside", they were the WHOLE baseline for a
@@ -379,19 +417,72 @@ async def test_biweekly_pay_at_window_14_has_no_outside_whatever_its_phase(db_se
 
     Here the first payday in range is five days after an edge-day spend of 90.
     """
-    budget = await create_budget(db_session, await create_user(db_session))
-    checking = await create_account(db_session, budget, "Checking")
-    employer = await create_payee(db_session, budget, "Northwind Payserv")
-    for back in (42, 28, 14, 0):
-        await create_transaction(
-            db_session, budget, checking, "2000.00", TODAY - timedelta(days=back), payee=employer
-        )
-    await create_transaction(db_session, budget, checking, "-90.00", TODAY - timedelta(days=47))
+    budget = await _biweekly_budget(db_session, await create_user(db_session))
 
     data = await ReportService(db_session).payday_effect(budget.id, window=14, months=12)
 
     assert data["event_count"] == 4
     assert data["baseline_daily"] is None
+
+
+async def test_a_baseline_with_no_outside_is_served_as_null(api_client, db_session):
+    """The same None, through the route. The schema typed it `Decimal` until
+    the None branch existed; a revert there would refuse to serialize, and
+    the only other None case in this file returns before reaching the
+    baseline at all."""
+    budget = await _biweekly_budget(db_session, api_client.test_user)
+
+    resp = await api_client.get(f"/api/v1/{budget.id}/reports/payday-effect?window=14")
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["event_count"] == 4
+    assert body["baseline_daily"] is None
+    # The floor the panel quotes is the one the server applied.
+    assert body["payday_floor"] == float(PAYDAY_FLOOR)
+
+
+async def test_exactly_the_floor_is_a_payday_and_a_cent_under_is_not(db_session):
+    """The floor alone decides which inflows are paydays, so its edge is the
+    rule. 200.00 at T-20 counts; 199.99 at T-10 does not — so T-20 is the only
+    payday, and T-10's spend lands on its offset 10."""
+    budget = await create_budget(db_session, await create_user(db_session))
+    checking = await create_account(db_session, budget, "Checking")
+    employer = await create_payee(db_session, budget, "Northwind Payserv")
+    for back, amount in ((20, "200.00"), (10, "199.99")):
+        await create_transaction(
+            db_session, budget, checking, amount, TODAY - timedelta(days=back), payee=employer
+        )
+    await create_transaction(db_session, budget, checking, "-30.00", TODAY - timedelta(days=20))
+    await create_transaction(db_session, budget, checking, "-50.00", TODAY - timedelta(days=10))
+
+    data = await ReportService(db_session).payday_effect(budget.id, window=14, months=12)
+
+    assert data["event_count"] == 1
+    by_offset = {d["offset"]: d["avg_spend"] for d in data["days"]}
+    assert by_offset[0] == Decimal("30.00")
+    assert by_offset[10] == Decimal("50.00")
+
+
+async def test_days_that_have_not_happened_are_not_zeros(db_session):
+    """The latest payday's window runs past today. Its future days are skipped,
+    not counted as quiet days: zero-filling them would halve every late offset
+    here, reading the 80 spent ten days after the older payday as 40."""
+    budget = await create_budget(db_session, await create_user(db_session))
+    checking = await create_account(db_session, budget, "Checking")
+    employer = await create_payee(db_session, budget, "Northwind Payserv")
+    for back in (40, 3):
+        await create_transaction(
+            db_session, budget, checking, "2000.00", TODAY - timedelta(days=back), payee=employer
+        )
+    await create_transaction(db_session, budget, checking, "-80.00", TODAY - timedelta(days=30))
+
+    data = await ReportService(db_session).payday_effect(budget.id, window=14, months=12)
+
+    assert data["event_count"] == 2
+    by_offset = {d["offset"]: d["avg_spend"] for d in data["days"]}
+    # T-30 is offset 10 of T-40; offset 10 of T-3 is a week from now.
+    assert by_offset[10] == Decimal("80.00")
 
 
 async def test_only_income_is_a_payday(db_session):
@@ -419,6 +510,20 @@ async def test_only_income_is_a_payday(db_session):
     await create_transaction(
         db_session, budget, checking, "250.00", TODAY - timedelta(days=15), category=household
     )
+
+    data = await ReportService(db_session).payday_effect(budget.id, window=14, months=12)
+
+    _assert_core_expectations(data)
+
+
+async def test_a_credit_on_a_card_is_never_a_payday(db_session):
+    """A card bill paid from checking whose two legs were never linked arrives
+    on the card as a plain credit — the unlinked-payment card scenario. It has
+    no category, so it classes INCOME, and at 300 it clears the floor: every
+    month the bill was paid read as a second payday. A wage lands in cash."""
+    budget, checking, _group = await _setup_core_scenario(db_session)
+    card = await create_account(db_session, budget, "Sapphire Visa", account_type="credit_card")
+    await create_transaction(db_session, budget, card, "300.00", TODAY - timedelta(days=12))
 
     data = await ReportService(db_session).payday_effect(budget.id, window=14, months=12)
 

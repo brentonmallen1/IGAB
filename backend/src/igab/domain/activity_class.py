@@ -14,9 +14,11 @@ rather than a named class, so rows could fall through it unnoticed.
 Scope note: a row's class is read from its category, which lives on split
 *children*. Apply this to LEAF queries. A split parent has no category and can
 legitimately mix classes across its legs (groceries and a savings transfer in
-one bank row), so PARENT_ROW aggregates — account balances, cash flow — cannot
-use it as-is and still classify by amount sign. Splitting those correctly means
-rolling children up per class, which is not done here.
+one bank row), so ACTIVITY_CLASS on a parent row is a fall-through, not an
+answer. Where one parent row is shown with a class — the Timeline, the
+transaction editor's "Counts as" line — its class is rolled up from its legs by
+`split_leg_classes` and `rolled_up_classes` below. PARENT_ROW aggregates do not
+use the roll-up: a sum splits per class by reading the legs themselves.
 
 The rules are ordered and first-match-wins, so each one also carries a stable
 `ActivityReason`. That is what lets the UI answer "why is this savings?" with
@@ -41,12 +43,11 @@ from igab.db.models import (
 from igab.repositories.category_filters import IN_SYSTEM_GROUP
 from igab.repositories.txn_filters import (
     CASH_FLOW_ROW,
-    COST_OF_LIVING_TAGGED,
     COUNTERPART_ACCOUNT_ID,
     COUNTERPART_OFF_BUDGET,
-    ESSENTIAL_TAGGED,
     LEAF,
     NOT_DELETED,
+    PLANNED_SPEND_ROW,
     POSTED,
     TRANSFER_LEG,
     category_tagged,
@@ -220,9 +221,10 @@ def _rules(c: _Inputs) -> list[Rule]:
         # insurance premium. Tagging that SAVINGS said the household saved
         # $2,340 in the month it paid its property tax, kept the bill out of
         # every spending report, out of Cost of Living and out of the
-        # emergency-fund target, and left `budget_vs_actual` counting the
-        # envelope's assignments but not its spending — a permanent phantom
-        # underspend on Plan vs Reality.
+        # emergency-fund target, and left Budget vs Actual and Cumulative
+        # Variance counting the envelope's assignments but not its spending —
+        # a permanent phantom underspend (`test_report_envelope_rules.py`,
+        # `TestASinkingFundsBillIsPlannedSpend`).
         #
         # Nothing is lost by dropping it. A transfer from the envelope to a
         # tracked savings account still classes SAVINGS by rule 3 below, which
@@ -473,36 +475,149 @@ SPENDING_WITH_SAVINGS_CLASSES = SPENDING_CLASSES + SAVINGS_CLASSES
 
 def explain(reason: str) -> str:
     """Prose for a reason code, safe for an unknown value from an older row."""
+    if reason in SPLIT_REASON_TEXT:
+        return SPLIT_REASON_TEXT[reason]
     try:
         return REASON_TEXT[ActivityReason(reason)]
     except (ValueError, KeyError):
         return "it did not match any specific rule"
 
 
+# ─── Split parents ───────────────────────────────────────────────────────────
+#
+# One home for "what does this split count as", because two places show a
+# split parent with a class. The Timeline rolled the legs up and the editor's
+# classification endpoint did not, so an all-savings split was a Savings dot on
+# the Timeline and "ordinary spending from a budget account" in the editor.
+
+#: The label of a split whose legs do not share one class. Served, never
+#: guessed at: falling back to the amount's sign is the mislabelling this
+#: taxonomy exists to end.
+SPLIT_LABEL = "Split"
+
+#: Reason codes for a split parent. Not `ActivityReason` members: no SQL rule
+#: emits them, and every member of that enum must fire on a leaf row.
+SPLIT_REASON_TEXT: dict[str, str] = {
+    "split_legs_agree": "every line of the split counts this way",
+    "split_legs_differ": "its lines count in different ways, and each is counted on its own",
+}
+
+
+def split_leg_classes(parent_ids: Sequence[Any]) -> Select:
+    """`(parent id, class)` for every live leg of these split parents.
+
+    One query for a page of parents rather than one per row. Live legs only:
+    editing or undoing a split soft-deletes its old legs and leaves them
+    pointing at the parent.
+    """
+    return apply_class_joins(
+        select(Transaction.parent_transaction_id, ACTIVITY_CLASS.label("cls")).where(
+            Transaction.parent_transaction_id.in_(parent_ids), NOT_DELETED
+        )
+    )
+
+
+def rolled_up_classes(leg_rows) -> dict[Any, str | None]:
+    """{parent id: its class} from `split_leg_classes` rows.
+
+    One distinct class among the legs IS the parent's class. Anything else is
+    honestly mixed, and the answer is None — shown as `SPLIT_LABEL`. A parent
+    with no live legs is absent, which reads the same.
+    """
+    found: dict[Any, set[str]] = {}
+    for parent_id, cls in leg_rows:
+        found.setdefault(parent_id, set()).add(cls)
+    return {pid: next(iter(c)) if len(c) == 1 else None for pid, c in found.items()}
+
+
+def class_label(cls: str | None) -> str:
+    """The display label for a class, or `SPLIT_LABEL` for a mixed split."""
+    return SPLIT_LABEL if cls is None else CLASS_LABEL[ActivityClass(cls)]
+
+
+def split_reason(cls: str | None) -> str:
+    """The reason code for a split parent whose rolled-up class is `cls`."""
+    return "split_legs_differ" if cls is None else "split_legs_agree"
+
+
 def counted_classes(
     include: Sequence[ActivityClass] | None = None, *, scoped_accounts: bool = False
 ) -> set[str]:
-    """The class VALUES a spending rollup counts.
+    """The class VALUES a spending rollup counts — the one statement of the
+    class set and its widening. `counted_class_filter` is the same set as a
+    WHERE clause; there is no third spelling.
 
-    The set form of the `_spending_classes` predicate, for the Python side of a
-    query that SELECTED the class rather than filtering on it — three spending
-    rollups do that so they can also report what they excluded.
+    Defaults to spending alone. A transfer to a brokerage or a mortgage is
+    money leaving the budget, but it is not money spent, and counting it as
+    spending skews every average. Callers that want the wider picture pass
+    the classes they mean.
 
-    The `scoped_accounts` widening was written three times, and the third copy
-    did not have it: pointing the account filter at a tracked account drew
-    nothing on Spending Trends beside a populated Pareto over the identical
-    selection, with the note explaining the exclusion suppressed too, because
-    nothing had been excluded — the rows were simply never counted.
+    `scoped_accounts` says the user made an explicit account selection —
+    `txn_filters.account_scope` returns it — which overrides the on-budget
+    default, so they may be looking straight at a tracked account, whose
+    outflows classify `investment_return` (brokerage fees) or `debt_interest`
+    (loan interest) and never `spending`. Without widening, picking
+    "Brokerage" in the account filter drew an empty chart.
 
-    An explicit account selection overrides the on-budget default, so the user
-    may be looking straight at a tracked account, whose outflows classify
-    `investment_return` or `debt_interest` and never `spending`. Same reason
-    `_spending_classes` widens; see its docstring.
+    The widening was written three times and the third copy did not have it,
+    so a tracked account drew nothing on Spending Trends beside a populated
+    Pareto. Then the predicate form lived in services beside this set, kept
+    in step by a docstring cross-reference, and read by the Breakdown and
+    Payee Analysis while three other rollups read this.
     """
     values = {c.value for c in (include or SPENDING_CLASSES)}
     if scoped_accounts:
         values |= {ActivityClass.INVESTMENT_RETURN.value, ActivityClass.DEBT_INTEREST.value}
     return values
+
+
+def counted_class_filter(
+    include: Sequence[ActivityClass] | None = None, *, scoped_accounts: bool = False
+) -> ColumnElement[bool]:
+    """`counted_classes` as a WHERE clause, for a query that filters on the
+    class rather than selecting it.
+
+    The caller must also apply `apply_class_joins`. This is the one place the
+    class is used without the joins visibly beside it, and a query with the
+    predicate and no joins is a cartesian product — which `pyproject.toml`
+    promotes from a warning to a test failure.
+    """
+    return ACTIVITY_CLASS.in_(sorted(counted_classes(include, scoped_accounts=scoped_accounts)))
+
+
+def planned_spend_filter() -> ColumnElement[bool]:
+    """What the plan-vs-actual family may count as "spent", whole.
+
+    `txn_filters.PLANNED_SPEND_ROW` is the row shape; this is the class
+    policy that has to travel with it. They are returned as one predicate
+    because the three readers — `budget_vs_actual`, `cumulative_variance`
+    and `plan_vs_reality` — must ask one question, and every time either
+    half was spelled at the call site the reports drifted apart: the last
+    time, a savings-tagged envelope read its full spend on one report and
+    zero on the other two.
+
+    The caller must still apply `apply_class_joins` — see
+    `counted_class_filter` for why the joins cannot be folded in here.
+
+    **The savings tag is the deliberate exception to `counted_classes`.**
+    Tagging an envelope Savings makes its outflows class SAVINGS (rule 1
+    above), which is what the household asked for on the savings rate. On a
+    plan report that meant the envelope's assignments were counted and its
+    spending was not: a Vacation Savings envelope assigned 195 a month and
+    drained by a 390 flight read as a variance of +390 that never closes —
+    permanently under-spent, the same phantom underspend #182 removed for
+    `long_term_expense`. The household PLANNED that money to leave, so
+    against the plan it is spent. "Did this leave the budget as saving?" is
+    a different question, still answered by the class alone: the savings
+    rate, the spending rollups and the necessity tiers read their own row
+    sets and do not move (pinned by
+    `test_report_envelope_rules.py::TestASavingsTaggedEnvelope`).
+
+    Only `savings`. `long_term_expense` needs no arm — its payout classes
+    SPENDING since #182 — and `debt_principal` is money no plan report has
+    ever counted as spent.
+    """
+    return and_(PLANNED_SPEND_ROW, or_(counted_class_filter(), _tagged("savings")))
 
 
 # ─── Necessity tiers ─────────────────────────────────────────────────────────
@@ -523,9 +638,10 @@ def counted_classes(
 # The only difference a user could see between the two screens was a calendar
 # artifact from three different windows.
 #
-# **The nesting is structural, not asserted.** The wider predicate contains the
-# narrower one as a disjunct, so Essentials ⊆ Cost of Living cannot drift and
-# needs no invariant policing it. An invariant that can only be satisfied is
+# **The nesting is structural, not asserted.** The wider tier's tag keys are
+# the narrower tier's plus its own (`TIER_TAG_KEYS`), and its predicate only
+# adds a disjunct, so Essentials ⊆ Cost of Living cannot drift and needs no
+# invariant policing it. An invariant that can only be satisfied is
 # decoration; this is the mechanism instead.
 #
 # The class tuple stays shared. `COST_OF_LIVING_CLASSES` answers what a row
@@ -546,17 +662,34 @@ class NecessityTier(StrEnum):
     COST_OF_LIVING = "cost_of_living"
 
 
-def tier_keys(tier: NecessityTier) -> list[str]:
-    """The system tag keys whose membership this tier reads.
-
-    Kept beside `tier_scope` so a tier cannot be given a predicate and a tag
-    set that disagree — the applied-count and the WHERE clause have to ask
-    about the same tags, and they did not: the count included payee tags long
-    after the predicate stopped reading them.
-    """
-    if tier is NecessityTier.ESSENTIAL:
-        return ["essential"]
-    return ["essential", "cost_of_living"]
+#: The system tag keys each tier reads — the one statement of it. `tier_scope`
+#: builds its tag arm from this, and `_necessity_scope`'s "has the household
+#: chosen anything" count and the Essentials seed list read it too. They had
+#: to ask about the same tags and did not: the count kept reading payee tags
+#: long after the predicate stopped, and the mapping was spelled twice more
+#: (literal key lists here, and an `ESSENTIAL_TAGGED`/`COST_OF_LIVING_TAGGED`
+#: pair in txn_filters) with a docstring as the only thing keeping them in step.
+#:
+#: The wide tier's keys are the lean tier's plus its own, by construction, so
+#: Essentials ⊆ Cost of Living holds for the tag arms without a test saying so.
+#:
+#: Categories only. The Essential arm was `or_(category_tagged, payee_tagged)`,
+#: and the payee arm was the last thing reading a payee tag for meaning. Tags
+#: on payees are retired: the app had already reached this conclusion once for
+#: Subscription (migration b8e5d1c73a49 — "a household files its subscriptions
+#: into categories far more reliably than it tags each payee") and the live
+#: evidence agreed, with zero system payee tags applied across a real budget.
+#: What that drops: an uncategorized row at a payee tagged Essential no longer
+#: counts as essential spending. It needs a category, which is the thing the
+#: app can act on.
+_ESSENTIAL_KEYS = ("essential",)
+TIER_TAG_KEYS: dict[NecessityTier, tuple[str, ...]] = {
+    NecessityTier.ESSENTIAL: _ESSENTIAL_KEYS,
+    # Non-discretionary but not strictly necessary: subscriptions, a
+    # home-maintenance sinking fund, a gym membership you would cancel in a
+    # genuine emergency but pay every month otherwise.
+    NecessityTier.COST_OF_LIVING: (*_ESSENTIAL_KEYS, "cost_of_living"),
+}
 
 
 def basis_is_chosen(basis: str) -> bool:
@@ -585,10 +718,10 @@ def tier_scope(tier: NecessityTier):
     living and a "comfortable" standing for a whole year. The tag arms keep
     netting refunds, as a category's own activity does.
     """
+    tagged = category_tagged(*TIER_TAG_KEYS[tier])
     if tier is NecessityTier.ESSENTIAL:
-        return ESSENTIAL_TAGGED
+        return tagged
     return or_(
-        ESSENTIAL_TAGGED,
-        COST_OF_LIVING_TAGGED,
+        tagged,
         and_(ACTIVITY_CLASS == ActivityClass.DEBT_PRINCIPAL.value, Transaction.amount < 0),
     )

@@ -9,7 +9,7 @@ import {
 } from '../../../api/categories'
 import { confirmAsync } from '../../../stores/confirmStore'
 import { useDeleteCategoryFlow } from '../DeleteCategoryModal/useDeleteCategoryFlow'
-import { addMonths } from '../../../utils/dates'
+import { addMonths, formatMonth } from '../../../utils/dates'
 import { AvailableBreakdown } from './AvailableBreakdown'
 import { TargetSection } from './TargetSection'
 import { AutoAssignSection } from './AutoAssignSection'
@@ -25,11 +25,6 @@ interface Props {
   budgetId: string
   /** Skip the collapsed-strip state (used when rendered inside the mobile sheet) */
   forceOpen?: boolean
-}
-
-function formatMonthLabel(month: string) {
-  const date = new Date(month + 'T00:00:00')
-  return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
 }
 
 export function CategoryInspector({ budgetId, forceOpen = false }: Props) {
@@ -99,7 +94,7 @@ export function CategoryInspector({ budgetId, forceOpen = false }: Props) {
 
   const headerTitle =
     count === 0
-      ? formatMonthLabel(month)
+      ? formatMonth(month)
       : isSingle
         ? (singleCategory?.name ?? 'Category')
         : `${count} categories selected`

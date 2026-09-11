@@ -100,6 +100,31 @@ const NO_UNFORMATTED_NUMERIC_AXIS = [
 ]
 
 /**
+ * A money axis spreads `useMoneyAxis()` (hooks/useMoneyAxis.ts): the formatter,
+ * the compact phone tick and the width, once. Five report charts carried
+ * their own ``${sym}${Math.round(v / 1000)}k`` — two gridlines both read
+ * "$2k", and 2.4M read "$2400k" — two more printed ``${sym}${v}`` unrounded,
+ * and the paydown and payoff charts wrote `(v) => formatMoney(v)` with their
+ * own width, so a phone got full-precision ticks in an 85px gutter. This
+ * refuses a tick formatter that does money itself: one that is `formatMoney`,
+ * or an inline function naming it or a currency symbol, writing a currency
+ * sign, or dividing by 1000.
+ */
+const NO_HAND_ROLLED_MONEY_AXIS = [
+  {
+    selector: "JSXAttribute[name.name='tickFormatter'] > JSXExpressionContainer > Identifier[name='formatMoney']",
+    message: 'A money axis spreads useMoneyAxis() — it adds the phone’s compact tick and width.',
+  },
+  {
+    selector:
+      "JSXAttribute[name.name='tickFormatter'] > JSXExpressionContainer > :function :matches(Identifier[name=/^(formatMoney|getCurrencySymbol|currencySymbol|sym)$/], TemplateElement[value.raw=/[$€£¥]/], BinaryExpression[operator='/'][right.value=1000])",
+    message:
+      'A hand-rolled money tick formatter. Spread useMoneyAxis() (hooks/useMoneyAxis.ts): one ' +
+      'formatter, the compact phone tick, the width and the privacy mask.',
+  },
+]
+
+/**
  * `toISOString()` is UTC, so slicing a date out of it names the wrong day for
  * most of the world for part of every day: tomorrow every evening west of
  * Greenwich, yesterday after midnight east of it. The AI chat told the server
@@ -148,6 +173,36 @@ const NO_HAND_ROLLED_VIEWPORT_MATH = [
   },
 ]
 
+/**
+ * A report's month and day labels come from `useFormatters()` —
+ * `formatMonthShort`, `formatDayMonth`, `formatMonth`, `formatDate` — never
+ * `toLocaleDateString`. Savings, Subscriptions, Cost of Living and Cash
+ * Projection each wrote `new Date(month).toLocaleDateString('en-US', …)`:
+ * a date-only string parses as UTC midnight, so west of Greenwich every label
+ * read one month early and January read "Dec 25", and 'en-US' ignored the
+ * budget's date-format setting. The chart data builders render under jsdom
+ * at zero size, so no test sees an axis label; this is the guard. Scoped to
+ * the reports, where the copies were.
+ */
+const NO_LOCALE_DATE_LABEL = {
+  selector: "CallExpression[callee.property.name='toLocaleDateString']",
+  message:
+    'Report date labels come from useFormatters() (formatMonthShort, formatDayMonth, ' +
+    'formatMonth, formatDate): toLocaleDateString on a date-only string reads UTC midnight, ' +
+    'a month early west of Greenwich, and ignores the budget’s date format.',
+}
+
+/** Every file's restricted syntax. A later block that sets the rule REPLACES
+ * it, so a block that adds a selector spreads this rather than respelling it. */
+const RESTRICTED_SYNTAX = [
+  NO_BARE_PARSE_FLOAT,
+  NO_UNFORMATTED_CHART_TOOLTIP,
+  ...NO_UNFORMATTED_NUMERIC_AXIS,
+  ...NO_HAND_ROLLED_MONEY_AXIS,
+  NO_UTC_DATE_SLICE,
+  ...NO_HAND_ROLLED_VIEWPORT_MATH,
+]
+
 export default defineConfig([
   globalIgnores(['dist']),
   {
@@ -169,15 +224,12 @@ export default defineConfig([
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },
       ],
-      'no-restricted-syntax': [
-        'error',
-        NO_BARE_PARSE_FLOAT,
-        NO_UNFORMATTED_CHART_TOOLTIP,
-        ...NO_UNFORMATTED_NUMERIC_AXIS,
-        NO_UTC_DATE_SLICE,
-        ...NO_HAND_ROLLED_VIEWPORT_MATH,
-      ],
+      'no-restricted-syntax': ['error', ...RESTRICTED_SYNTAX],
     },
+  },
+  {
+    files: ['src/components/reports/**/*.{ts,tsx}'],
+    rules: { 'no-restricted-syntax': ['error', ...RESTRICTED_SYNTAX, NO_LOCALE_DATE_LABEL] },
   },
   {
     // The money layer itself. These are the implementations the rule points

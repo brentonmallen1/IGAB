@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { buildVolatilityChartRows, coefficientOfVariation, filterVolatile } from './volatilityData'
+import {
+  buildVolatilityChartRows,
+  coefficientOfVariation,
+  filterVolatile,
+  volatilityExport,
+} from './volatilityData'
 
 const cat = (over: Partial<Parameters<typeof buildVolatilityChartRows>[0][number]> = {}) => ({
   category_id: 'c1',
@@ -50,5 +55,30 @@ describe('coefficientOfVariation', () => {
 
   it('is 0 for a non-positive mean instead of dividing by zero', () => {
     expect(coefficientOfVariation(0, 20)).toBe(0)
+  })
+})
+
+describe('volatilityExport', () => {
+  // Both readings used to export as `igab-volatility.*` with identical
+  // columns, so a raw and an amortized file could not be told apart.
+  it('names and labels an amortized export', () => {
+    const { reportId, rows } = volatilityExport([cat()], true)
+    expect(reportId).toBe('volatility-amortized')
+    expect(rows[0].reading).toBe('amortized')
+  })
+
+  it('names and labels a raw export', () => {
+    const { reportId, rows } = volatilityExport([cat()], false)
+    expect(reportId).toBe('volatility')
+    expect(rows[0]).toEqual({
+      category: 'Groceries',
+      group: 'Everyday',
+      reading: 'raw',
+      mean: '100',
+      std_dev: '20',
+      min: '60',
+      max: '150',
+      months: 6,
+    })
   })
 })

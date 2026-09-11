@@ -20,6 +20,10 @@ class SpendingCategory(ApiModel):
 class SpendingReportResponse(ApiModel):
     categories: list[SpendingCategory]
     total: Decimal
+    #: A saved filter was named and could not be found (see `CategoryScope`).
+    #: REQUIRED, not defaulted: a report that forgets it would report an empty
+    #: scope as an empty budget, which is the failure the flag exists to prevent.
+    filter_unavailable: bool
 
 
 class IncomeExpenseMonth(ApiModel):
@@ -211,6 +215,10 @@ class BudgetActualResponse(ApiModel):
     categories: list[BudgetActualItem]
     total_assigned: Decimal
     total_spent: Decimal
+    #: A saved filter was named and could not be found (see `CategoryScope`).
+    #: REQUIRED, not defaulted: a report that forgets it would report an empty
+    #: scope as an empty budget, which is the failure the flag exists to prevent.
+    filter_unavailable: bool
 
 
 # ─── Plan vs Reality ──────────────────────────────────────────────────────────
@@ -277,10 +285,13 @@ class VolatilityItem(ApiModel):
 
 class VolatilityResponse(ApiModel):
     categories: list[VolatilityItem]
-    #: True when each charge was spread forward over the months until the
-    #: next one. Served so the page can say which reading it is showing —
-    #: the same numbers under two definitions is how a chart lies quietly.
-    amortized: bool = False
+    #: True when each charge was spread over the months it pays for
+    #: (`domain.amortize.spread_forward`). Served so the page can say which
+    #: reading it is showing — the same numbers under two definitions is how a
+    #: chart lies quietly — and required, so a path that forgets it raises
+    #: instead of calling amortized figures raw. The caption and the export
+    #: filename read it.
+    amortized: bool
     #: The complete months the statistics read. The drill-down lists exactly
     #: these; the chart used to compute its own, and it drifted.
     window_start: date
@@ -332,12 +343,11 @@ class SpendingGroupedResponse(ApiModel):
     #: persists viewId outside any budget scope and would otherwise show one
     #: arrangement while its selector claims another.
     view_unavailable: bool = False
-    #: The same, for a saved filter. Separate from `view_unavailable` because
-    #: they are separate things: a view is an arrangement, a filter is a
-    #: predicate, and losing one says nothing about the other.
-    #: A saved filter was named and could not be found. REQUIRED, not
-    #: defaulted: a report that forgets it would report an empty scope as an
-    #: empty budget, which is the failure the flag exists to prevent.
+    #: Separate from `view_unavailable`: a view is an arrangement, a filter
+    #: is a predicate, and losing one says nothing about the other.
+    #: A saved filter was named and could not be found (see `CategoryScope`).
+    #: REQUIRED, not defaulted: a report that forgets it would report an empty
+    #: scope as an empty budget, which is the failure the flag exists to prevent.
     filter_unavailable: bool
 
 
@@ -471,18 +481,14 @@ class DayPatternsResponse(ApiModel):
     #: whose activity is all savings or debt payments otherwise draws an empty
     #: week with nothing to say why.
     class_excluded: list[SpendingClassExcluded] = []
-    #: The requested saved filter no longer exists (deleted, or another
-    #: budget's), so this report is unscoped. Said out loud for the reason
-    #: `view_unavailable` is: a stale id resolving to nothing WIDENS the
-    #: report, which reads as data appearing rather than a filter going
-    #: missing.
-    #: A saved filter was named and could not be found. REQUIRED, not
-    #: defaulted: a report that forgets it would report an empty scope as an
-    #: empty budget, which is the failure the flag exists to prevent.
+    #: A saved filter was named and could not be found (see `CategoryScope`).
+    #: REQUIRED, not defaulted: a report that forgets it would report an empty
+    #: scope as an empty budget, which is the failure the flag exists to prevent.
     filter_unavailable: bool
     #: The activity classes these figures count, so a drill-down opened from a
-    #: bar totals what the bar says.
-    counted_classes: list[str] = []
+    #: bar totals what the bar says. REQUIRED: `[]` makes the client send no
+    #: class filter, and the panel lists more than the bar.
+    counted_classes: list[str]
 
 
 # ─── Large Transactions (Timeline) ────────────────────────────────────────────
@@ -505,24 +511,23 @@ class TimelineTransaction(ApiModel):
     #: all-savings split was drawn as a red "Spending" dot. Where the legs
     #: agree, the parent takes their class; where they do not, the honest
     #: answer is that there isn't one, and `activity_label` reads "Split".
-    activity_class: str | None = "spending"
+    #:
+    #: Required, both of them: None now means "the legs disagree", so a
+    #: default of "spending" filled in for a path that forgot would draw an
+    #: all-savings split as a red Spending dot again, with no error.
+    activity_class: str | None
     #: Its display label, served rather than mirrored. A local copy in the
     #: chart had already drifted ("Interest" vs the canonical "Interest &
     #: fees"), and a class added later would fall back to sign-based colouring
     #: there — the exact mislabelling this taxonomy exists to fix.
-    activity_label: str = "Spending"
+    activity_label: str
 
 
 class TimelineResponse(ApiModel):
     transactions: list[TimelineTransaction]
-    #: The requested saved filter no longer exists (deleted, or another
-    #: budget's), so this report is unscoped. Said out loud for the reason
-    #: `view_unavailable` is: a stale id resolving to nothing WIDENS the
-    #: report, which reads as data appearing rather than a filter going
-    #: missing.
-    #: A saved filter was named and could not be found. REQUIRED, not
-    #: defaulted: a report that forgets it would report an empty scope as an
-    #: empty budget, which is the failure the flag exists to prevent.
+    #: A saved filter was named and could not be found (see `CategoryScope`).
+    #: REQUIRED, not defaulted: a report that forgets it would report an empty
+    #: scope as an empty budget, which is the failure the flag exists to prevent.
     filter_unavailable: bool
 
 
@@ -561,7 +566,8 @@ class LiabilitiesReportResponse(ApiModel):
     #: Owed on accounts closed with a balance still on them, excluded from
     #: `total_balance` above. Net worth counts it — it spans every account —
     #: so without this the two figures disagree in silence and this one claims
-    #: to be every debt.
+    #: to be every debt. Narrowed by the same type and mode filters as the
+    #: items, so it describes only debt the filtered total could have held.
     closed_with_balance_count: int
     closed_with_balance_total: Decimal
 
@@ -571,12 +577,15 @@ class LiabilitiesReportResponse(ApiModel):
 
 class RecurringSpend(ApiModel):
     """The figures a recurring line carries. One shape for a category and for
-    a payee inside it, because the arithmetic is the same."""
+    a payee inside it, because the arithmetic is the same — except
+    `avg_monthly`, which a category rolls up from its payees."""
 
     monthly_amounts: list[Decimal]  # amounts per month in the period
-    #: True monthly burden: total / months since the FIRST charge, so a
-    #: quarterly $30 subscription reads $10/mo. Per payee that is a service's
-    #: cost; per category it is the envelope's recurring burn rate.
+    #: True monthly burden. Per payee: total / complete months since THAT
+    #: service's first charge, so a quarterly $30 subscription reads $10/mo.
+    #: Per category: the SUM of its payees', so the nested table adds up and a
+    #: service that started after its envelope did is not lost to a shared
+    #: divisor.
     avg_monthly: Decimal
     total: Decimal
     avg_per_charge: Decimal  # typical charge: total / charge count
@@ -600,7 +609,9 @@ class SubscriptionCategory(RecurringSpend):
 
 
 class SubscriptionsSummary(ApiModel):
-    total_monthly: Decimal  # average monthly total across all subscriptions
+    #: The sum of every category's avg_monthly, which is itself the sum of its
+    #: payees': the page's headline is its rows added up.
+    total_monthly: Decimal
     total_annual: Decimal  # projected annual cost
     active_count: int  # number of tagged categories with charges in the period
 
@@ -609,11 +620,13 @@ class SubscriptionsReportResponse(ApiModel):
     subscriptions: list[SubscriptionCategory]
     summary: SubscriptionsSummary
     months: list[date]  # month labels for the period
-    #: How many months an effective-monthly figure divides by: COMPLETE
-    #: months. One less than the window on every day but the first of a
-    #: month. Required, not optional — the page has to be able to say which
-    #: months a per-month figure covers, and a default would let it claim the
-    #: whole window.
+    #: The complete months the window holds — every month in `months`, on
+    #: every day (`domain.dates.complete_month_window`). It is the MOST an
+    #: effective-monthly figure divides by: each SERVICE divides by the months
+    #: since its own first charge, and the category and summary figures are
+    #: sums of those. 0 when nothing was charged in the window: no figure was
+    #: averaged. Required, not optional — a default would let the page claim a
+    #: divisor nothing served.
     months_averaged: int
 
 
@@ -719,6 +732,11 @@ class AnomalyItem(ApiModel):
     baseline_mean: Decimal
     z_score: float
     direction: str  # 'high' or 'low'
+    #: True when `month` is the month still in progress, whose figure is
+    #: month-to-date. Required, not optional: a path that forgets it would
+    #: present an unfinished month as a closed one. Such rows are always
+    #: `direction == 'high'` — `report_stats.anomaly_rows` says why.
+    partial_month: bool
     history: list[Decimal]  # trailing 12 months for sparkline
 
 
@@ -743,6 +761,9 @@ class PaydayEffectResponse(ApiModel):
     #: the opposite of "there is no outside".
     baseline_daily: Decimal | None
     event_count: int  # number of income events used
+    #: The smallest inflow counted as a payday (report_service.PAYDAY_FLOOR),
+    #: served so the panel states the rule without a second copy of it.
+    payday_floor: Decimal
 
 
 # ─── Cash Projection Report ──────────────────────────────────────────────────
@@ -811,10 +832,9 @@ class SpendingTrendsResponse(ApiModel):
     #: Present only when the user scoped the report (categories, a filter, a
     #: tag): activity in that scope a spending report will not count.
     class_excluded: list[SpendingClassExcluded] = []
-    #: The saved filter no longer exists; the report fell back to unscoped.
-    #: A saved filter was named and could not be found. REQUIRED, not
-    #: defaulted: a report that forgets it would report an empty scope as an
-    #: empty budget, which is the failure the flag exists to prevent.
+    #: A saved filter was named and could not be found (see `CategoryScope`).
+    #: REQUIRED, not defaulted: a report that forgets it would report an empty
+    #: scope as an empty budget, which is the failure the flag exists to prevent.
     filter_unavailable: bool
 
 
@@ -852,7 +872,9 @@ class CategoryHistoryMonth(ApiModel):
     activity: Decimal
     #: None for an income category: "Income categories do not hold money", so
     #: their `available` is a lifetime carryover the budget page never draws.
-    #: Their monthly activity is meaningful and is still served.
+    #: Their monthly activity is meaningful and is still served. None too for
+    #: a month before an import whose balance the history cannot reproduce
+    #: (`EnvelopeSeries.unrecovered_through`) — absent, not zero.
     available: Decimal | None
 
 
@@ -873,8 +895,8 @@ class CostOfLivingGroup(ApiModel):
     monthly_amounts: list[Decimal]
     total: Decimal
     avg_monthly: Decimal
-    #: Share of the essentials total, 0-100 — not of income, so the shares
-    #: add to 100 and the bar is arithmetic a reader can check.
+    #: Share of the cost-of-living total, 0-100 — not of income, so the
+    #: shares add to 100 and the bar is arithmetic a reader can check.
     share: Decimal
     #: The categories behind the bar, so it can be opened. Empty on the
     #: Uncategorized bucket — that one drills by "no category", not by ids.
@@ -887,9 +909,8 @@ class CostOfLivingResponse(ApiModel):
     #: days rather than re-deriving them from `months`.
     window_start: date
     window_end: date
-    #: How many months the AVERAGES divide by: COMPLETE months, so the newest
-    #: column of `months` is outside it on every day but the first of a month.
-    #: The RATIOS are not affected — both their terms cover the same days.
+    #: How many months the AVERAGES divide by: every month in `months`, all of
+    #: them complete, on every day (`domain.dates.complete_month_window`).
     months_averaged: int
     groups: list[CostOfLivingGroup]
     #: The wide tier: everything non-discretionary. Required, not optional — a
@@ -900,30 +921,26 @@ class CostOfLivingResponse(ApiModel):
     #: None when nothing is tagged Essential (`basis_is_chosen`): all spending
     #: is not what a household could not cut, so the figure is unknown.
     avg_monthly_essentials: Decimal | None
-    #: Cost of living less essentials: what a lean month could shed. None
-    #: whenever essentials is.
-    avg_monthly_non_essential: Decimal | None
     avg_monthly_income: Decimal
-    #: Share of take-home already spoken for, against the WIDE tier. None when
-    #: the averaged months carry no income: a ratio against zero is unknown,
-    #: not 100%. Divides the same complete-month figures as the cards, so it is
-    #: the quotient of avg_monthly_cost_of_living and avg_monthly_income.
-    required_ratio: Decimal | None
-    #: The lean tier against take-home, over the same complete months. Above
-    #: 100 the household cannot cover what it could not cut.
-    essentials_ratio: Decimal | None
+    #: The gap between the tiers (cost of living less essentials) and the two
+    #: ratios against take-home are NOT served. They are arithmetic on the
+    #: three averages above, which the client already has and no backend path
+    #: reads, so they are composed once in `necessityView.ts` beside the
+    #: sheddable share of the same shape — the boundary rule.
     #: 'bound' | 'tag' | 'all' — how "essential" was decided.
     basis: str
-    #: False when nothing carries the Essential tag, so the page can say the
-    #: figure covers every category rather than a chosen few.
+    #: False when no category is tagged Essential or Cost of living (basis
+    #: 'all'), so the page can say the figure covers every category rather
+    #: than a chosen few.
     tagged: bool
     #: Tagged Essential and still not counted, by class. Tagging a category is
     #: pointing at it, so this fires wherever the basis is a tag or a Guide
     #: binding — the case being "I tagged ten and two showed up".
     class_excluded: list[SpendingClassExcluded] = []
     #: The activity classes these figures count, so a drill-down opened from a
-    #: bar totals what the bar says.
-    counted_classes: list[str] = []
+    #: bar totals what the bar says. REQUIRED: `[]` makes the client send no
+    #: class filter, and the panel lists more than the bar.
+    counted_classes: list[str]
     #: The necessity tier the groups roll up. Membership is per row (debt
     #: principal by class), so the drill sends it too. Required: a drill that
     #: forgets it lists spending the bar never counted.

@@ -5,6 +5,7 @@ import {
   formatMoneyWithOptions,
   formatAmountWithOptions,
   getCurrencySymbol,
+  moneyOrDash,
   PRIVACY_MASK,
 } from '../utils/money'
 import {
@@ -26,6 +27,12 @@ export function useFormatters() {
         ? `${getCurrencySymbol(settings.currencyCode)}${PRIVACY_MASK}`
         : formatMoneyWithOptions(amount, settings.currencyCode, settings.numberFormat),
     [privacyMode, settings.currencyCode, settings.numberFormat]
+  )
+
+  /** `formatMoney`, or an em dash for a figure that does not exist. */
+  const formatMoneyOrDash = useCallback(
+    (amount: number | null | undefined) => moneyOrDash(amount, formatMoney),
+    [formatMoney]
   )
 
   const formatAmount = useCallback(
@@ -69,6 +76,7 @@ export function useFormatters() {
 
   return {
     formatMoney,
+    formatMoneyOrDash,
     formatAmount,
     formatDate,
     formatMonth,

@@ -1,4 +1,5 @@
 import { AlertTriangle, CheckCircle2, Info } from 'lucide-react'
+import { moneyOrDash } from '../../utils/money'
 import type { Liability } from '../../api/liabilities'
 import { Surface } from '../common/Surface'
 import { ledgerAgreementNote, pmiNote, type CompositionNote } from './compositionNotes'
@@ -76,9 +77,7 @@ export function PaymentBreakdown({
             <div className="payment-breakdown__row payment-breakdown__row--total">
               <dt>Your bill each month</dt>
               <dd className="tabular">
-                {liability.full_monthly_payment === null
-                  ? '—'
-                  : formatMoney(liability.full_monthly_payment)}
+                {moneyOrDash(liability.full_monthly_payment, formatMoney)}
               </dd>
             </div>
           </dl>

@@ -16,12 +16,24 @@ once — when the transaction posts. This mirrors AccountRepository.get_balance.
 
 import re
 import uuid
-from collections.abc import Collection
+from collections.abc import Collection, Sequence
 from datetime import date
 from decimal import Decimal
 from typing import Protocol
 
-from sqlalchemy import Boolean, String, and_, cast, false, func, not_, or_, select, true
+from sqlalchemy import (
+    Boolean,
+    Select,
+    String,
+    and_,
+    cast,
+    false,
+    func,
+    not_,
+    or_,
+    select,
+    true,
+)
 from sqlalchemy.orm import aliased
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -29,13 +41,15 @@ from igab.db.models import (
     Account,
     Category,
     Payee,
-    Tag,
     Transaction,
-    category_tags,
 )
 from igab.domain.enums import ScheduleFrequency
 from igab.domain.payee_names import BALANCE_ADJUSTMENT_PAYEES
-from igab.repositories.category_filters import IN_SYSTEM_GROUP, SPENDABLE, SPENT_ENVELOPE
+from igab.repositories.category_filters import (
+    IN_SYSTEM_GROUP,
+    SPENDABLE,
+    tagged_category_ids,
+)
 
 NOT_DELETED = Transaction.is_deleted == False  # noqa: E712
 POSTED = Transaction.cleared != "pending"
@@ -255,6 +269,28 @@ ON_BUDGET_ACCOUNT = Transaction.account_id.in_(
     )
     .correlate(Transaction)
 )
+
+
+def account_scope(q: Select, account_ids: Sequence[uuid.UUID] | None) -> tuple[Select, bool]:
+    """Apply a report's account scope, and say whether the user chose one.
+
+    The user's selection when there is one, `ON_BUDGET_ACCOUNT` when there is
+    not. **None means no selection; an empty list means one was made and
+    matched nothing** — `in_([])` renders false, so it returns no rows rather
+    than falling through to every on-budget account (the distinction
+    `report_service.scoped` keeps for categories).
+
+    The flag rides along because the class widening turns on the same fact
+    (`counted_classes(scoped_accounts=...)`). This block was written out at
+    seven report queries and the flag derived at five more places, one of
+    them as `bool(account_ids)` seven lines above an `is not None` scope —
+    so the scope and the widening could disagree about whether a selection
+    existed.
+    """
+    if account_ids is None:
+        return q.where(ON_BUDGET_ACCOUNT), False
+    return q.where(Transaction.account_id.in_(account_ids)), True
+
 
 #: A card, for the credit model: an on-budget liability-classified account.
 #: Classification, not `account_type == "credit_card"` — a custom on-budget
@@ -592,62 +628,67 @@ CARD_ROW_FILED_AS_INCOME = and_(
 )
 
 
-# ─── Tags on the row's category or payee ─────────────────────────────────────
+# ─── Tags on the row's category ──────────────────────────────────────────────
 #
-# Both are guarded by the NOT NULL test: `NULL IN (...)` is UNKNOWN, not FALSE,
+# Guarded by the NOT NULL test: `NULL IN (...)` is UNKNOWN, not FALSE,
 # and a CASE arm evaluating to UNKNOWN differs from one evaluating FALSE only
 # by luck of ordering. Keep every arm two-valued. `category_tagged` is what
 # the activity classifier reads for the savings and debt tags; it lived there
 # as `_tagged` until the essentials report needed the same shape.
 
 
-def _tag_ids(system_keys: tuple[str, ...]):
-    return select(Tag.id).where(
-        Tag.system_key.in_(system_keys),
-        Tag.is_deleted == False,  # noqa: E712
-    )
-
-
 def category_tagged(*system_keys: str):
-    """Rows whose category carries any of these system tags."""
+    """Rows whose category carries any of these system tags.
+
+    The necessity tiers build their tag arms from this with the keys in
+    `domain.activity_class.TIER_TAG_KEYS` — categories only; see there for
+    why the payee arm was retired.
+    """
     return and_(
         Transaction.category_id.isnot(None),
-        Transaction.category_id.in_(
-            select(category_tags.c.category_id).where(
-                category_tags.c.tag_id.in_(_tag_ids(system_keys))
-            )
-        ),
+        Transaction.category_id.in_(tagged_category_ids(*system_keys)),
     )
 
 
-#: Spending the household could not do without. Evaluated only by
-#: TransactionRepository.essential_spend* — the Guide, the Overview card, the
-#: Essentials report and Cost of Living all read those.
+#: A row that spends money: what every spending rollup reads before its class
+#: set and its account scope — the Breakdown and the AI spending tool
+#: (`spending_by_category`, which the Overview's Top Spending card reads),
+#: the grouped and trend rollups (`_spending_query`), Day Patterns, Payee
+#: Analysis and Volatility.
 #:
-#: Categories only. This was `or_(category_tagged, payee_tagged)`, and the
-#: payee arm was the last thing reading a payee tag for meaning. Tags on payees
-#: are retired: the app had already reached this conclusion once for
-#: Subscription (migration b8e5d1c73a49 — "a household files its subscriptions
-#: into categories far more reliably than it tags each payee") and the live
-#: evidence agreed, with zero system payee tags applied across a real budget.
+#: Each spelled it by hand, and the copies drifted: `SPENT_ENVELOPE` reached
+#: two of them and not Day Patterns or Payee Analysis, so over an explicit
+#: tracked-brokerage selection a -400 filed to Ready to Assign read 20 on the
+#: Breakdown and 420 on the two beside it.
 #:
-#: What this drops in practice: an uncategorized row at a payee tagged
-#: Essential no longer counts as essential spending. That row now needs a
-#: category, which is the thing the app can actually act on.
-ESSENTIAL_TAGGED = category_tagged("essential")
-
-#: The wider necessity tier's own tag. Non-discretionary but not strictly
-#: necessary: subscriptions, a home-maintenance sinking fund, a gym membership
-#: you would cancel in a genuine emergency but pay every month otherwise.
+#: `not_(row_category(IN_SYSTEM_GROUP))`, not `row_category(SPENT_ENVELOPE)`:
+#: the positive EXISTS fails an uncategorized row, and the day and payee
+#: views count uncategorized spending. The category-keyed rollups join
+#: Category and so leave those rows out by construction. **That is the one
+#: deliberate gap**: Day Patterns and Payee Analysis exceed the Breakdown by
+#: exactly the uncategorized spending in scope, pinned by
+#: `test_reports_basic.py::TestTheClassRuleIsOneRule`.
 #:
-#: Only half of the Cost of Living tier — debt principal joins it by class.
-#: `domain.activity_class.NecessityTier` composes both so Essentials is a
-#: structural subset rather than an asserted one.
-COST_OF_LIVING_TAGGED = category_tagged("cost_of_living")
+#: Not here: the class set (`counted_classes` / `counted_class_filter`, with
+#: `apply_class_joins`) and the account scope (`account_scope`), which widen
+#: together and so are applied together.
+SPENDING_ROW = and_(
+    NOT_DELETED,
+    POSTED,
+    Transaction.amount < 0,
+    LEAF,
+    CASH_FLOW_ROW,
+    not_(row_category(IN_SYSTEM_GROUP)),
+)
 
 
-#: A row that spends planned money: what plan-vs-actual reports may count as
-#: "spent" against what `BUDGETED_ENVELOPE` counts as "assigned".
+#: A row that spends planned money: the SHAPE half of what plan-vs-actual
+#: reports may count as "spent" against what `BUDGETED_ENVELOPE` counts as
+#: "assigned". **No report reads this directly** — they read
+#: `domain.activity_class.planned_spend_filter()`, which is this plus the
+#: class policy (the spending classes, or a savings-tagged envelope). The two
+#: halves travel as one predicate because spelling the class half at the call
+#: site is what let the three readers disagree.
 #:
 #: This predicate existed twice — byte-identical, in `cumulative_variance` and
 #: `budget_vs_actual` — and both copies were missing the same three terms, so
@@ -655,32 +696,27 @@ COST_OF_LIVING_TAGGED = category_tagged("cost_of_living")
 #:
 #: - `ON_BUDGET_ACCOUNT`: categorized rows on tracking accounts counted as
 #:   spent; nothing is ever assigned against a tracking account.
-#: - `row_category(SPENT_ENVELOPE)`: rows filed into system-group categories
-#:   counted as spent while `BUDGETED_ENVELOPE` excludes them from assigned.
-#:   Deleted categories stay IN, exactly as `SPENT_ENVELOPE` documents — the
-#:   money moved, and deleting the envelope afterwards does not unspend it.
-#:   The EXISTS also absorbs `category_id IS NOT NULL`: a NULL category
-#:   matches no Category row.
-#: - The activity-class filter, which cannot live here: callers add
-#:   `_spending_classes()` AND `apply_class_joins`, because the predicate and
-#:   the joins must travel together (see `_spending_classes`' docstring — a
-#:   query with the class filter and no joins is a cartesian product).
-#:   Without it, a categorized brokerage transfer (SAVINGS) or a mortgage
-#:   principal payment (DEBT_PRINCIPAL) counted as spending with no matching
-#:   assignment, and cumulative variance compounded the gap every month.
+#: - The system-group rule (`SPENDING_ROW`'s): rows filed into system-group
+#:   categories counted as spent while `BUDGETED_ENVELOPE` excludes them from
+#:   assigned. Deleted categories stay IN, exactly as `SPENT_ENVELOPE`
+#:   documents — the money moved, and deleting the envelope afterwards does
+#:   not unspend it.
+#: - The activity-class filter, which cannot live in this module at all — it
+#:   reads `ACTIVITY_CLASS`, which is built from these constants. Without it,
+#:   a categorized brokerage transfer (SAVINGS) or a mortgage principal
+#:   payment (DEBT_PRINCIPAL) counted as spending with no matching
+#:   assignment, and cumulative variance compounded the gap every month. It
+#:   lives one import up, in `planned_spend_filter`, together with the joins
+#:   note: a query with the class filter and no joins is a cartesian product.
+#:
+#: So it is `SPENDING_ROW` narrowed to what a plan can be held to: on-budget,
+#: and filed somewhere (the foreign key is `ON DELETE SET NULL`, so a
+#: category id names a Category row, deleted or not).
 #:
 #: One divergence is deliberate and stays: `amount < 0` means a refund posted
 #: to a spending category never reduces "spent". Pinned by test rather than
 #: silently changed — flipping it would move every historical variance figure.
-PLANNED_SPEND_ROW = and_(
-    NOT_DELETED,
-    POSTED,
-    Transaction.amount < 0,
-    LEAF,
-    CASH_FLOW_ROW,
-    ON_BUDGET_ACCOUNT,
-    row_category(SPENT_ENVELOPE),
-)
+PLANNED_SPEND_ROW = and_(SPENDING_ROW, ON_BUDGET_ACCOUNT, Transaction.category_id.isnot(None))
 
 
 # ─── Free-text search ────────────────────────────────────────────────────────

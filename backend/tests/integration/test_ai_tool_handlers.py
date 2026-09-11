@@ -180,6 +180,13 @@ class TestTheFiguresMatchTheApp:
         window = {"start_date": MONTH.isoformat(), "end_date": TODAY.isoformat()}
         payees = await handlers.payee_analysis(ctx, window)
         assert any(r["payee"] == "Cascade Market" for r in payees["rows"])
+        # The service counts every payee in the window, and the handler passes
+        # that count on: under the cap of 25 the ranking is the whole set.
+        _, _, served_count, _ = await ctx.reports.payee_analysis(
+            ctx.budget_id, MONTH, TODAY, limit=25
+        )
+        assert payees["total_rows"] == served_count == len(payees["rows"])
+        assert payees["truncated"] is False
         assert "rows" in await handlers.large_transactions(ctx, window)
 
     async def test_months_argument_is_clamped(self, ctx):

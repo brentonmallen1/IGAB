@@ -10,7 +10,9 @@ import {
   type PayoffPlanResponse,
 } from '../../../api/guide'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
 import { useDebouncedValue } from '../../../hooks/useDebouncedValue'
+import { toCents } from '../../../utils/money'
 import { CHART_COLORS, TOOLTIP_STYLE } from '../../reports/charts/chartColors'
 import { ContextMenu } from '../../common/ContextMenu/ContextMenu'
 import {
@@ -275,7 +277,7 @@ function Comparison({
   const sooner = firstAv - firstSn
   return (
     <p className="tool__summary">
-      {saves > 0.005 ? (
+      {toCents(saves) > 0 ? (
         <>
           Avalanche saves <strong>{formatMoney(saves)}</strong> in interest over snowball.{' '}
         </>
@@ -361,6 +363,7 @@ function BalanceChart({
   plan: PayoffPlanResponse
   formatMoney: (n: number) => string
 }) {
+  const moneyAxis = useMoneyAxis()
   const series = SERIES
   const length = Math.max(...series.map((s) => plan[s.key].months.length))
   if (length === 0) return null
@@ -387,11 +390,7 @@ function BalanceChart({
             tick={{ fontSize: 10, fill: 'var(--text-muted)' }}
             minTickGap={24}
           />
-          <YAxis
-            tickFormatter={(v: number) => formatMoney(v)}
-            tick={{ fontSize: 10, fill: 'var(--text-muted)' }}
-            width={72}
-          />
+          <YAxis {...moneyAxis} tick={{ fontSize: 10, fill: 'var(--text-muted)' }} />
           <Tooltip
             {...TOOLTIP_STYLE}
             formatter={(v) => formatMoney(Number(v))}

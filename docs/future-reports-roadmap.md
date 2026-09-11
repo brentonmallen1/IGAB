@@ -642,22 +642,29 @@ event, measure average daily spending in the days after it, against baseline.
 
 `GET /{b}/reports/payday-effect?window=14` (window bounds 7–30).
 
-- Income events: posted inflows ≥ P75 of trailing-12-month inflow amounts (fallback
-  floor $200) on `CASH_FLOW_ROW` parent rows.
-- For days 0…window after each event: average daily outflow, **excluding
-  subscription-tagged payees and scheduled-transaction materializations** — otherwise
-  the chart just rediscovers that rent is due on the 1st.
-- Baseline: overall mean daily outflow over the same period with the same exclusions.
-- Response: `{days: [{offset, avg_spend: Decimal}], baseline_daily: Decimal,
-  event_count: int}`.
+- Income events (as built): posted INCOME-class leaf rows of at least `PAYDAY_FLOOR`
+  ($200, absolute) on on-budget **cash** accounts, `CASH_FLOW_ROW`. The P75 rule was
+  dropped: a quartile of a varying wage discards three quarters of the paydays. Cards
+  are out because an unpaired card payment is an uncategorized credit, which classes
+  INCOME. Uncategorized cash inflows over the floor still count.
+- For days 0…window after each event: average daily spending — the spending classes
+  (`counted_classes()`), outflows only — **excluding subscription-tagged categories**.
+  Every payday divides every offset; a quiet day is a zero. Days past today are skipped.
+  Scheduled-transaction materializations are *not* excluded: the spec asked for it, and
+  it was never built.
+- Baseline: mean daily spending over the days from the first payday on that fall
+  outside every payday window — `null` when the windows cover all of them.
+- Response: `{days: [{offset, avg_spend: Decimal}], baseline_daily: Decimal | null,
+  event_count: int, payday_floor: Decimal}`.
 
 ### UX design
 
 Not a tab — a second `.report-section` inside the existing **Day Patterns** tab, below
 the weekday chart: `BarChart` (x = days since payday 0–14, y = avg daily spend);
 dashed `ReferenceLine` at baseline labeled "typical day"; bars above baseline tinted
-`--color-warning` at low mix, others neutral. Caption (xs muted): "Excludes
-subscriptions and scheduled bills · based on N income events." The Day Patterns info
+`--color-warning` at low mix, others neutral. Caption (xs muted): "Based on N income
+events." The info panel states the payday rule with the served floor, and carries
+`SpendingClassNote` like every spending-only section. The Day Patterns info
 modal is expanded to cover both panels and states the limits plainly.
 
 **Cut criterion**: if dogfooding shows a flat profile after the exclusions, delete the
@@ -697,8 +704,9 @@ computation in `report_service.py`.
 - **Start balance**: sum of on-budget account balances (reuse
   `AccountRepository.get_balance` semantics — same as net worth).
 - **Deterministic layer**: expand `ScheduledTransaction` occurrences over the horizon,
-  **reusing the recurrence stepping in `scheduled_transaction_service.py`
-  (`calculate_next`) — do not reimplement**; plus confirmed subscriptions stepped from
+  **reusing the recurrence stepping in `domain/schedule.py`
+  (`projected_occurrences` over `stored_next_occurrence`, which the scheduler
+  steps with too) — do not reimplement**; plus confirmed subscriptions stepped from
   `next_expected_date` at `CADENCE_DAYS[effective cadence]` with `last_amount`.
   Dedup: skip a subscription if a ScheduledTransaction with the same `payee_id`
   exists (would double-count). Pre-R3 the endpoint simply returns scheduled-only.

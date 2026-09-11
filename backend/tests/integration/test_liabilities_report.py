@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from igab.repositories.liability_repo import LiabilityRepository
 from igab.services.liability_service import LiabilityService
+from igab.services.report_service import ReportService
 
 from .factories import (
     create_account,
@@ -164,6 +165,57 @@ async def test_a_closed_account_still_owing_is_counted_out_loud(db_session):
     # a managed loan carries no manual figure at all.
     assert report["closed_with_balance_count"] == 1
     assert report["closed_with_balance_total"] == Decimal("3000.00")
+
+    # The divergence the note states, pinned: net worth still counts the
+    # closed debt, by exactly the amount the note names (PR190-14). A change
+    # that drops closed accounts from net worth leaves the page saying "but
+    # net worth still counts it" about a figure that no longer does.
+    net_worth = (await ReportService(db_session).net_worth_history(budget.id, months=1))[-1]
+    assert net_worth["total_liabilities"] == (
+        report["total_balance"] + report["closed_with_balance_total"]
+    )
+
+
+async def _with_a_closed_auto_loan_owing(db_session):
+    services, budget, _managed, _unmanaged = await _setup(db_session)
+    settled = await create_account(
+        db_session, budget, "Old Auto Loan", account_type="auto_loan", on_budget=False
+    )
+    await create_transaction(db_session, budget, settled, "-3000.00", TODAY - timedelta(days=200))
+    await create_liability(
+        db_session, budget, "Trade-in", liability_type="auto", linked_account_id=settled.id
+    )
+    settled.is_closed = True
+    await db_session.flush()
+    return make_liability_service(db_session, services), budget
+
+
+async def test_a_filter_that_excludes_the_closed_loan_says_nothing_of_it(db_session):
+    """The note counted the closed debt budget-wide while the total beside it
+    was filtered, so the Personal pill read "$1,200 of personal debt" above a
+    note that $3,000 on a closed auto loan was left out of it (PR190-5)."""
+    svc, budget = await _with_a_closed_auto_loan_owing(db_session)
+
+    personal = await svc.liabilities_report(budget.id, liability_type="personal")
+    assert personal["total_balance"] == Decimal("1200.00")
+    assert personal["closed_with_balance_count"] == 0
+    assert personal["closed_with_balance_total"] == Decimal("0")
+
+    # Unmanaged: the closed loan is managed (it reads its account's ledger).
+    unmanaged = await svc.liabilities_report(budget.id, mode="unmanaged")
+    assert unmanaged["closed_with_balance_count"] == 0
+
+
+async def test_a_filter_that_includes_the_closed_loan_still_names_it(db_session):
+    svc, budget = await _with_a_closed_auto_loan_owing(db_session)
+
+    auto = await svc.liabilities_report(budget.id, liability_type="auto_loan")
+    assert [i["name"] for i in auto["items"]] == ["Car"]
+    assert auto["closed_with_balance_count"] == 1
+    assert auto["closed_with_balance_total"] == Decimal("3000.00")
+
+    managed = await svc.liabilities_report(budget.id, mode="managed")
+    assert managed["closed_with_balance_count"] == 1
 
 
 async def test_a_closed_account_that_was_paid_off_says_nothing(db_session):

@@ -9,7 +9,9 @@ correctly while putting money in the wrong bucket.
 """
 
 from datetime import date
+from decimal import Decimal
 
+import pytest
 from sqlalchemy import select
 
 from igab.db.models import Transaction
@@ -22,7 +24,8 @@ from igab.domain.activity_class import (
     explain,
 )
 from igab.repositories.payee_repo import PayeeRepository
-from igab.repositories.tag_repo import TagRepository
+from igab.repositories.tag_repo import TagRepository, seed_system_tags
+from igab.services.report_service import ReportService
 
 from .factories import (
     create_account,
@@ -31,6 +34,7 @@ from .factories import (
     create_category_group,
     create_payee,
     create_transaction,
+    create_transfer,
     create_user,
 )
 
@@ -246,7 +250,8 @@ class TestTagsOverrideInference:
         the tag used to call that SAVINGS: the app said the household saved
         $2,340 in the month it paid its property tax, kept the bill out of every
         spending report, out of Cost of Living and out of the emergency-fund
-        target, and left Plan vs Reality showing a permanent phantom underspend.
+        target, and left Budget vs Actual and Cumulative Variance showing a
+        permanent phantom underspend.
         """
         w = await _world(db_session)
         cat = await create_category(db_session, w.budget, w.group, "Property Tax")
@@ -289,9 +294,16 @@ class TestTagsOverrideInference:
 
         It is a narrow shape: `domain/transfers.py` only permits a category on
         a leg whose partner is OFF budget, so a row like this arrives from an
-        import rather than from the app. And CASH_FLOW_ROW keeps it out of
-        every cash-flow report anyway, because both legs sit inside the budget.
-        Recorded here so the reading is deliberate.
+        import (a tracking account mapped on-budget) or from PATCH /accounts
+        flipping `on_budget` under categorized legs, rather than from the app.
+
+        It is NOT kept out of the reports. CASH_FLOW_ROW keeps categorized
+        transfer legs — only UNcategorized on-budget legs are excluded — and
+        the class totals behind the savings rate do not read CASH_FLOW_ROW at
+        all. So the leg is spending everywhere spending is counted: the bounded
+        divergence from an uncategorized leg is pinned at report level by
+        `TestACategorizedOnBudgetLegIsSpending` below. Recorded here so the
+        reading is deliberate.
         """
         w = await _world(db_session)
         cat = await create_category(db_session, w.budget, w.group, "Property Tax")
@@ -375,3 +387,42 @@ class TestExplain:
 
     async def test_unknown_reason_does_not_raise(self):
         assert explain("something_from_the_future")
+
+
+class TestACategorizedOnBudgetLegIsSpending:
+    """The bound on the one shape #182 made noisier, stated in report figures
+    rather than a class assertion.
+
+    A categorized leg between two on-budget accounts is spending in every
+    report that counts spending — CASH_FLOW_ROW keeps categorized legs, and
+    the class totals do not read it. The bound: it counts ONCE (its
+    uncategorized partner leg is internal and counts nothing), and a
+    `long_term_expense` tag makes no difference — the figures are those of
+    the same leg filed to any category. If the bill is later paid from the
+    receiving account under the same category, spending sees both; that is
+    the cost of the shape, and why it is named here.
+    """
+
+    @pytest.mark.parametrize("tag", ["long_term_expense", None], ids=["sinking fund", "untagged"])
+    async def test_it_counts_once_as_spending(self, db_session, tag):
+        w = await _world(db_session)
+        cat = await create_category(db_session, w.budget, w.group, "Property Tax")
+        if tag:
+            await seed_system_tags(db_session, w.budget.id)
+            tags = TagRepository(db_session)
+            await tags.set_category_tags(cat.id, [(await tags.get_system_tag(w.budget.id, tag)).id])
+        today = date.today()
+        await create_transfer(
+            db_session, w.budget, w.checking, w.savings_acct, "195.00", today, category=cat
+        )
+
+        reports = ReportService(db_session)
+        by_cat, total = await reports.spending_by_category(w.budget.id, today.replace(day=1), today)
+        rate = await reports.savings_rate(w.budget.id, months=1)
+        burn = await reports.burn_rate(w.budget.id, months=1)
+
+        assert [(c["name"], c["total"]) for c in by_cat] == [("Property Tax", Decimal("195.00"))]
+        assert total == Decimal("195.00")
+        assert rate["summary"]["spending"] == Decimal("195.00")
+        assert rate["summary"]["savings"] == Decimal("0")
+        assert burn[-1]["rolling_30"] == Decimal("195.00")

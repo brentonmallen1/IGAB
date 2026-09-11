@@ -271,9 +271,10 @@ class YNABImportResult(BaseModel):
     #: fields live on a split's parent), so a review can say which part of the
     #: total is worth chasing and which is not.
     transfer_legs_in_splits: int = 0
-    #: Categories tagged Savings / Long-term expense from their names. A tag
-    #: changes how that category's spending is classified, so the count is
-    #: shown rather than applied quietly.
+    #: Categories tagged Savings from their names — the only key the importer
+    #: applies (`domain.tag_hints`). The tag changes how that category's
+    #: spending is classified, so the count is shown rather than applied
+    #: quietly.
     categories_tagged: int = 0
     #: Which ones, and why. The count cannot answer "show me what you did",
     #: and nothing on the join table records that a tag was guessed.

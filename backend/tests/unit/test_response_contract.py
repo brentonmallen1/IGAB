@@ -102,6 +102,39 @@ def test_the_types_file_is_where_we_think_it_is():
     assert TS_TYPES.is_file(), TS_TYPES
 
 
+def _schema_models() -> list[type[BaseModel]]:
+    """Every Pydantic model defined in `igab.api.v1.schemas`."""
+    import importlib
+    import pkgutil
+
+    import igab.api.v1.schemas as pkg
+
+    models = []
+    for mod_info in pkgutil.iter_modules(pkg.__path__):
+        mod = importlib.import_module(f"{pkg.__name__}.{mod_info.name}")
+        models += [
+            obj
+            for obj in vars(mod).values()
+            if inspect.isclass(obj)
+            and issubclass(obj, BaseModel)
+            and obj.__module__ == mod.__name__
+        ]
+    return models
+
+
+def test_counted_classes_is_required_wherever_it_is_served():
+    """`counted_classes` is what a drill-down sends so the panel totals the
+    bar that opened it. Defaulted to `[]`, a report path that forgot it
+    validated anyway — and the client's csv([]) sends no class filter, so the
+    panel listed savings and debt payments under a spending bar. Required,
+    a path that forgets fails at serialization instead.
+    """
+    served = [m for m in _schema_models() if "counted_classes" in m.model_fields]
+    assert served, "no response serves counted_classes; the check has nothing to guard"
+    defaulted = [m.__name__ for m in served if not m.model_fields["counted_classes"].is_required()]
+    assert not defaulted, f"counted_classes has a default on {defaulted}"
+
+
 def test_every_schema_inherits_the_api_base():
     """Money crosses the wire as a JSON number, and one `BaseModel` reintroduces
     a string for its whole model.
@@ -113,24 +146,13 @@ def test_every_schema_inherits_the_api_base():
     wrappings before anyone noticed, which is what a missing mechanism looks
     like — invisible exactly where it was forgotten.
     """
-    import importlib
-    import pkgutil
-
-    import igab.api.v1.schemas as pkg
     from igab.api.v1.schemas.base import ApiModel
 
-    offenders = []
-    for mod_info in pkgutil.iter_modules(pkg.__path__):
-        mod = importlib.import_module(f"{pkg.__name__}.{mod_info.name}")
-        for name, obj in vars(mod).items():
-            if (
-                inspect.isclass(obj)
-                and issubclass(obj, BaseModel)
-                and obj.__module__ == mod.__name__
-                and obj is not ApiModel
-                and not issubclass(obj, ApiModel)
-            ):
-                offenders.append(f"{mod_info.name}.{name}")
+    offenders = [
+        f"{obj.__module__.rsplit('.', 1)[-1]}.{obj.__name__}"
+        for obj in _schema_models()
+        if obj is not ApiModel and not issubclass(obj, ApiModel)
+    ]
 
     assert not offenders, (
         f"These schemas inherit BaseModel rather than ApiModel, so their Decimal "

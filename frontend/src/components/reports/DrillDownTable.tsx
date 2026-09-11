@@ -25,11 +25,25 @@ interface Props {
    *  Drawn beside the total, never as it — see `drillDownTotals.ts` for what
    *  went wrong when a wider figure was passed as the rows' own total. */
   wider?: WiderSet
+  /** True when the rows' `pct` is each row's share of `wider.total`.
+   *
+   *  Only then does the wider row state the shown rows' share in that column.
+   *  The column also carries Budget vs Actual's variance % and Volatility's
+   *  coefficient of variation, and under "Overspent only" a positive 23.4%
+   *  share sat beneath rows reading -25.0% and -40.0% — an aggregate variance
+   *  nobody computed. Off unless declared, so a new caller cannot land there. */
+  pctIsShare?: boolean
   onRowClick?: (row: DrillDownRow) => void
   amountLabel?: string
 }
 
-export function DrillDownTable({ rows, wider, onRowClick, amountLabel = 'Amount' }: Props) {
+export function DrillDownTable({
+  rows,
+  wider,
+  pctIsShare = false,
+  onRowClick,
+  amountLabel = 'Amount',
+}: Props) {
   const { formatMoney } = useFormatters()
   if (rows.length === 0) return null
 
@@ -78,9 +92,7 @@ export function DrillDownTable({ rows, wider, onRowClick, amountLabel = 'Amount'
             </tr>
           ))}
           <tr className="ddt__total">
-            <td colSpan={rows.some((r) => r.subName) ? 2 : 1}>
-              {footer.wider === null ? 'Total' : `Total of the ${rows.length} shown`}
-            </td>
+            <td colSpan={rows.some((r) => r.subName) ? 2 : 1}>{footer.totalLabel}</td>
             <td className="ddt__num">{formatMoney(footer.shown)}</td>
             {rows.some((r) => r.pct !== undefined) && <td />}
             {rows.some((r) => r.extra) && <td />}
@@ -91,7 +103,7 @@ export function DrillDownTable({ rows, wider, onRowClick, amountLabel = 'Amount'
               <td className="ddt__num">{formatMoney(footer.wider)}</td>
               {rows.some((r) => r.pct !== undefined) && (
                 <td className="ddt__num ddt__muted">
-                  {footer.share === null ? '' : `${footer.share.toFixed(1)}%`}
+                  {!pctIsShare || footer.share === null ? '' : `${footer.share.toFixed(1)}%`}
                 </td>
               )}
               {rows.some((r) => r.extra) && <td />}

@@ -13,7 +13,7 @@ import {
 import { useSavingsRateReport } from '../../../api/reports'
 import { useChartHeight } from '../../../hooks/useChartHeight'
 import { useFormatters } from '../../../hooks/useFormatters'
-import { useMoneyAxis } from './useMoneyAxis'
+import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
 import { ReportErrorState } from '../ReportErrorState'
 import { ChartTooltip } from './ChartTooltip'
 import { COLOR_NEGATIVE, COLOR_NET, COLOR_NEUTRAL, COLOR_POSITIVE } from './chartColors'
@@ -22,25 +22,11 @@ import { MetricRow } from '../MetricRow'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ReportRangeSelect } from './rangeSelect'
+import { pct, RATE_SERIES, savingsRateTooltipWith } from './savingsRateView'
 import { useReportMonths } from '../../../stores/reportStore'
 
 interface Props {
   budgetId: string
-}
-
-const pct = (v: number | null) => (v === null ? '—' : `${(v * 100).toFixed(1)}%`)
-
-/** The rate line's series name, used as both the dataKey and the tooltip key. */
-const RATE_SERIES = 'Savings Rate'
-
-/** The rate line is a percentage; the three bars beside it are money.
- *
- * One tooltip covers both axes, so it has to branch on the series name — the
- * shared default used to render 18.5 as "$18.50".
- */
-function savingsRateTooltipWith(formatMoney: (n: number) => string) {
-  return (value: number, name: string) =>
-    name === RATE_SERIES ? `${value.toFixed(1)}%` : formatMoney(value)
 }
 
 export function SavingsRateReport({ budgetId }: Props) {

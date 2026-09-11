@@ -20,6 +20,7 @@ test.
 
 import calendar
 from datetime import date, timedelta
+from typing import Protocol
 
 from igab.domain.dates import add_months
 from igab.domain.enums import ScheduleFrequency
@@ -94,18 +95,46 @@ def next_occurrence(
     return nxt
 
 
+class StoredSchedule(Protocol):
+    """What the stepping reads off a stored schedule row."""
+
+    @property
+    def frequency(self) -> str: ...
+    @property
+    def start_date(self) -> date: ...
+    @property
+    def next_occurrence_date(self) -> date: ...
+    @property
+    def second_day_of_month(self) -> int | None: ...
+    @property
+    def end_date(self) -> date | None: ...
+
+
+def stored_next_occurrence(schedule: StoredSchedule, current: date | None = None) -> date | None:
+    """A stored schedule's occurrence after `current` — by default, after the
+    date the row has stored as its next one.
+
+    The one mapping from a row to `next_occurrence`'s arguments. The row stores
+    its next date already clamped — 28 Feb for a schedule on the 31st, the 15th
+    for a 1st/15th one — so the anchor is `start_date.day`, never the stored
+    date's day: stepping from that walks the 31st to the 28th for good and
+    loses every 1st. The scheduler and the cash projection each spelled the
+    mapping out, and a change to how a row anchors would have reached one.
+    """
+    return next_occurrence(
+        schedule.frequency,
+        schedule.next_occurrence_date if current is None else current,
+        start_day=schedule.start_date.day,
+        second_day_of_month=schedule.second_day_of_month,
+        end_date=schedule.end_date,
+    )
+
+
 def projected_occurrences(
-    frequency: str,
-    next_date: date,
-    *,
-    start_day: int,
-    second_day_of_month: int | None,
-    end_date: date | None,
-    today: date,
-    horizon_end: date,
+    schedule: StoredSchedule, *, today: date, horizon_end: date
 ) -> tuple[list[date], bool]:
-    """A schedule's occurrences on a projection from `today` to `horizon_end`,
-    and whether it keeps running past the horizon.
+    """A stored schedule's occurrences on a projection from `today` to
+    `horizon_end`, and whether it keeps running past the horizon.
 
     An occurrence already due but not entered is booked on `today` — the path
     starts there, so a past date is one no projected balance would visit. But
@@ -116,8 +145,9 @@ def projected_occurrences(
     them put -$7,000 on day 0 of a six-month-stale $1,000 rent reminder, and
     read "goes negative today".
     """
+    end_date = schedule.end_date
     out: list[date] = []
-    current: date | None = next_date
+    current: date | None = schedule.next_occurrence_date
     while current is not None and current <= horizon_end:
         if end_date is not None and current > end_date:
             return out, False
@@ -125,13 +155,7 @@ def projected_occurrences(
             out.append(current)
         elif not out:
             out.append(today)
-        current = next_occurrence(
-            frequency,
-            current,
-            start_day=start_day,
-            second_day_of_month=second_day_of_month,
-            end_date=end_date,
-        )
+        current = stored_next_occurrence(schedule, current)
     return out, current is not None and (end_date is None or current <= end_date)
 
 
@@ -209,8 +233,10 @@ def validate_schedule(
 #: One charge says nothing about cadence, so it is assumed monthly: the tag is
 #: "Subscription" and monthly is what that overwhelmingly means.
 ASSUMED_INTERVAL_DAYS = 30
-#: A payee charged twice on one day would otherwise divide by zero days and
-#: project daily forever.
+#: Charges bunched closer than this — three over two days, a retry after a
+#: decline — would otherwise round to a 0-day interval, and stepping by zero
+#: days never reaches the end of the horizon: the projection hangs. (Charges
+#: all on one day never get here; they have no span and read as one charge.)
 MIN_INTERVAL_DAYS = 7
 MAX_INTERVAL_DAYS = 400
 

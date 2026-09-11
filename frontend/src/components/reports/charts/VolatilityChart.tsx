@@ -12,10 +12,15 @@ import {
 import { useReportMonths, useReportStore } from '../../../stores/reportStore'
 import { useVolatilityReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
-import { useMoneyAxis } from './useMoneyAxis'
+import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
 import { ReportErrorState } from '../ReportErrorState'
 import { COLOR_NEUTRAL, TOOLTIP_STYLE } from './chartColors'
-import { buildVolatilityChartRows, coefficientOfVariation, filterVolatile } from './volatilityData'
+import {
+  buildVolatilityChartRows,
+  coefficientOfVariation,
+  filterVolatile,
+  volatilityExport,
+} from './volatilityData'
 import { DrillDownTable } from '../DrillDownTable'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
@@ -60,6 +65,8 @@ export function VolatilityReport({ budgetId }: Props) {
   const categories = filterVolatile(data?.categories ?? [])
 
   const chartData = buildVolatilityChartRows(categories)
+  const amortized = data?.amortized ?? false
+  const exported = volatilityExport(categories, amortized)
 
   const tableRows = categories.map((c) => ({
     id: c.category_id,
@@ -94,9 +101,10 @@ export function VolatilityReport({ budgetId }: Props) {
             <strong>Amortize lumpy charges</strong> tells those apart. It spreads each charge
             forward over the months until the next one, so a bill of the same size every six months
             reads flat — and a category whose cost genuinely changed still shows a range. Months
-            before a category&apos;s first charge stay empty rather than being back-filled, and the
-            last charge spreads to the end of the window, which reads a little high for a bill paid
-            recently.
+            before a category&apos;s first charge in the window are left out of its figures, since a
+            charge from before the window paid for them. The last charge spreads over the same gap
+            as the one before it, so a bill paid in the window&apos;s final month reads at its
+            monthly rate rather than its full size.
           </p>
           <p>Only categories with at least 2 months of data are shown.</p>
           <ReportScopeNote scope="categories" />
@@ -117,18 +125,8 @@ export function VolatilityReport({ budgetId }: Props) {
           </label>
           <ReportRangeSelect />
           <ReportExportButton
-            reportId="volatility"
-            getRows={() =>
-              categories.map((c) => ({
-                category: c.category_name,
-                group: c.category_group_name,
-                mean: c.mean,
-                std_dev: c.std_dev,
-                min: c.min_val,
-                max: c.max_val,
-                months: c.months_included,
-              }))
-            }
+            reportId={exported.reportId}
+            getRows={() => exported.rows}
             captureRef={captureRef}
           />
         </div>
@@ -140,6 +138,12 @@ export function VolatilityReport({ budgetId }: Props) {
         </div>
       ) : (
         <div ref={captureRef} className="report-capture">
+          {/* Inside the capture, so a PNG of the amortized reading says so. */}
+          {amortized && (
+            <p className="report-note">
+              Amortized: each charge is spread over the months it pays for.
+            </p>
+          )}
           <ResponsiveContainer width="100%" height={Math.max(300, chartData.length * 34)}>
             <BarChart
               data={chartData}

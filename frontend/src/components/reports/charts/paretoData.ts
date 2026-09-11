@@ -2,6 +2,7 @@
  * cumulative percentages, and the 80%-line insight. Extracted from
  * ParetoChart so the concentration math is unit-testable. */
 import type { GroupBy } from '../../../stores/reportStore'
+import { shareOfTotal } from '../drillDownTotals'
 
 export interface ParetoItem {
   id: string
@@ -25,19 +26,33 @@ interface PayeeItemLike {
   total: string | number
 }
 
+/** The payee analysis response, whole: the ranked rows travel with the
+ *  served figures that span every payee, so a caller cannot pass one without
+ *  the other. */
+interface PayeeReportLike {
+  payees: PayeeItemLike[]
+  total: string | number
+  payee_count: number
+  payees_to_80pct: number | null
+}
+
 /** Sort + (for group mode) aggregate the raw report items, largest first.
  *
  * Category and payee mode trust the server's total, which spans everything;
  * group totals are summed from the categories, which the same response
  * carries in full. `universeCount` is how many things exist in the window —
  * larger than `sorted.length` only in payee mode, where the server ranks the
- * top 25 and the report used to state that cap as a period-wide fact. */
+ * top 25 and the report used to state that cap as a period-wide fact.
+ *
+ * Payee mode takes the whole response or nothing. It used to take the rows
+ * and, optionally, the served totals — and without them it quietly summed
+ * the 25 ranked rows and counted 25 payees, the rule the served fields were
+ * added to replace. An absent response (still loading) is no payees at all. */
 export function buildParetoItems(
   groupBy: GroupBy,
   spendingItems: SpendingGroupItemLike[],
-  payeeItems: PayeeItemLike[],
   backendTotal: string | number | undefined,
-  payeeTotals?: { total: string | number; count: number; itemsTo80: number | null }
+  payeeReport: PayeeReportLike | undefined
 ): {
   sorted: ParetoItem[]
   grandTotal: number
@@ -47,12 +62,10 @@ export function buildParetoItems(
   itemsTo80?: number | null
 } {
   if (groupBy === 'payee') {
-    const items = [...payeeItems].sort((a, b) => Number(b.total) - Number(a.total))
-    // The served total, not a sum of the ranked rows: it covers every payee
-    // in the window, and each row's `pct` is a share of it.
-    const total = payeeTotals
-      ? Number(payeeTotals.total)
-      : items.reduce((s, p) => s + Number(p.total), 0)
+    if (payeeReport === undefined) {
+      return { sorted: [], grandTotal: 0, universeCount: 0, itemsTo80: null }
+    }
+    const items = [...payeeReport.payees].sort((a, b) => Number(b.total) - Number(a.total))
     return {
       sorted: items.map((p) => ({
         id: p.payee_id,
@@ -61,9 +74,11 @@ export function buildParetoItems(
         groupKey: null,
         groupName: null,
       })),
-      grandTotal: total,
-      universeCount: payeeTotals?.count ?? items.length,
-      itemsTo80: payeeTotals?.itemsTo80,
+      // The served total, not a sum of the ranked rows: it covers every
+      // payee in the window, and each row's `pct` is a share of it.
+      grandTotal: Number(payeeReport.total),
+      universeCount: payeeReport.payee_count,
+      itemsTo80: payeeReport.payees_to_80pct,
     }
   }
   if (groupBy === 'group') {
@@ -103,13 +118,17 @@ export function buildParetoItems(
   }
 }
 
-/** Running share of the grand total for each item, in order (0–100). */
+/** Running share of the grand total for each item, in order (0–100).
+ *
+ * The line needs a y at every bar, so with no positive total to be a share
+ * of it lies on the axis — and never reaches 80%, which is the answer: the
+ * card is not drawn (the page also gates it on `grandTotal > 0`). */
 export function cumulativePercents(items: ParetoItem[], grandTotal: number): number[] {
   const cumulative = items.reduce<number[]>(
     (acc, item) => [...acc, (acc[acc.length - 1] ?? 0) + item.total],
     []
   )
-  return cumulative.map((c) => (grandTotal > 0 ? (c / grandTotal) * 100 : 0))
+  return cumulative.map((c) => shareOfTotal(c, grandTotal) ?? 0)
 }
 
 /** The 80/20 insight: index of the item whose cumulative share reaches 80%,
@@ -139,9 +158,30 @@ export function paretoInsight(
   return { idx80, coverage }
 }
 
-/** Share of the grand total for one item (0–100). */
-export function shareOfTotal(total: number, grandTotal: number): number {
-  return grandTotal > 0 ? (total / grandTotal) * 100 : 0
+/** How many bars the chart draws. The table lists every item. */
+export const PARETO_BARS = 20
+
+/** What the page draws: the first `PARETO_BARS` items with their running
+ * share, and the 80% insight — measured over EVERY item before the slice.
+ *
+ * The order is the fix. The chart used to slice first and measure the
+ * twenty bars, so a budget whose 80% point sat at item 32 got no card at
+ * all. It lived in the component, where no test reached it. */
+export function paretoSummary(
+  sorted: ParetoItem[],
+  grandTotal: number,
+  universeCount: number,
+  servedItemsTo80?: number | null
+): {
+  drawn: { item: ParetoItem; cumulativePct: number }[]
+  idx80: number
+  coverage: number | null
+} {
+  const cumulativePcts = cumulativePercents(sorted, grandTotal)
+  const drawn = sorted
+    .slice(0, PARETO_BARS)
+    .map((item, i) => ({ item, cumulativePct: cumulativePcts[i] }))
+  return { drawn, ...paretoInsight(cumulativePcts, universeCount, servedItemsTo80) }
 }
 
 /** Determines if spending adheres to the 80/20 rule.

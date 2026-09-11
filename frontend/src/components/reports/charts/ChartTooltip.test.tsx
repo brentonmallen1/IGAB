@@ -11,9 +11,16 @@
  * default: the tooltip renders exactly what the formatter returns, and it
  * hands over the series name so a mixed-unit chart can branch.
  */
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { render, renderHook, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ChartTooltip } from './ChartTooltip'
+import { RATE_SERIES, savingsRateTooltipWith } from './savingsRateView'
+import { useFormatters } from '../../../hooks/useFormatters'
+import { useAppStore } from '../../../stores/appStore'
+
+afterEach(() => {
+  useAppStore.setState({ privacyMode: false })
+})
 
 describe('ChartTooltip', () => {
   it('renders exactly what the formatter returns, adding no currency of its own', () => {
@@ -24,36 +31,45 @@ describe('ChartTooltip', () => {
         formatter={(v) => `-€${Math.abs(v).toFixed(2)}`}
       />
     )
-    // The old default would have drawn "$-1,200.00" here.
+    // A passed formatter always won, even over the old default; what this
+    // pins is that the tooltip adds no currency or sign of its own around it.
     expect(screen.getByText('-€1200.00')).toBeInTheDocument()
     expect(screen.queryByText(/\$/)).toBeNull()
   })
 
-  it('can be masked, which is what privacy mode needs', () => {
+  it('masks through the formatMoney the charts hand it, in privacy mode', () => {
+    // Not a literal mask echoed back: the charts pass useFormatters()'s
+    // formatMoney, so that is what this renders — with privacy mode on, the
+    // fund and the total must both come out masked.
+    useAppStore.setState({ privacyMode: true })
+    const { formatMoney } = renderHook(() => useFormatters()).result.current
     render(
       <ChartTooltip
         active
-        payload={[{ name: 'Fund', value: 412880.5 }]}
-        formatter={() => '$••••'}
+        showTotal
+        payload={[
+          { name: 'Fund', value: 412880.5 },
+          { name: 'Reserve', value: 1200 },
+        ]}
+        formatter={formatMoney}
       />
     )
-    expect(screen.getByText('$••••')).toBeInTheDocument()
-    expect(screen.queryByText(/412|880/)).toBeNull()
+    expect(screen.getAllByText('$••••')).toHaveLength(3)
+    expect(screen.queryByText(/412|880|1,?200|414/)).toBeNull()
   })
 
   it('passes the series name, so one tooltip can serve two units', () => {
-    // SavingsRateChart's real shape: money bars plus a percentage line. The
+    // SavingsRateChart's own formatter: money bars plus a percentage line. The
     // shared default rendered the rate 18.5 as "$18.50".
-    const formatter = (value: number, name: string) =>
-      name === 'Savings Rate' ? `${value.toFixed(1)}%` : `$${value.toFixed(2)}`
+    const { formatMoney } = renderHook(() => useFormatters()).result.current
     render(
       <ChartTooltip
         active
         payload={[
           { name: 'Saved', value: 900 },
-          { name: 'Savings Rate', value: 18.5 },
+          { name: RATE_SERIES, value: 18.5 },
         ]}
-        formatter={formatter}
+        formatter={savingsRateTooltipWith(formatMoney)}
       />
     )
     expect(screen.getByText('$900.00')).toBeInTheDocument()
@@ -99,7 +115,7 @@ describe('ChartTooltip', () => {
  */
 
 describe('a stacked tooltip whose chart draws only some of the series', () => {
-  it('heads its own sum "Shown" and states the whole beside it', () => {
+  it('heads its own sum as the rows it lists and states the whole beside it', () => {
     // Spending Trends stacks the ten largest series and printed their subtotal
     // as "Total", inches above a table row headed All carrying a larger
     // number. Same rule as `DrillDownTable`: the total is the sum of the rows
@@ -113,11 +129,13 @@ describe('a stacked tooltip whose chart draws only some of the series', () => {
         ]}
         label="Sep 26"
         showTotal
-        wider={{ total: 3200, label: 'All categories' }}
+        wider={{ total: 3200, label: 'categories' }}
         formatter={(v) => `$${v}`}
       />
     )
-    expect(screen.getByText('Shown')).toBeInTheDocument()
+    // The drill table's wording, from the drill table's function: this
+    // tooltip said "Shown" where the table says "Total of the N shown".
+    expect(screen.getByText('Total of the 2 shown')).toBeInTheDocument()
     expect(screen.getByText('$2400')).toBeInTheDocument()
     expect(screen.getByText('All categories')).toBeInTheDocument()
     expect(screen.getByText('$3200')).toBeInTheDocument()
@@ -133,7 +151,26 @@ describe('a stacked tooltip whose chart draws only some of the series', () => {
           { name: 'Groceries', value: 600 },
         ]}
         showTotal
-        wider={{ total: 2400, label: 'All categories' }}
+        wider={{ total: 2400, label: 'categories' }}
+        formatter={(v) => `$${v}`}
+      />
+    )
+    expect(screen.getByText('Total')).toBeInTheDocument()
+    expect(screen.queryByText('All categories')).toBeNull()
+  })
+
+  it('reads a rounding cent between its rows and the whole as the whole set', () => {
+    // The tooltip carried its own `>= 0.005` literal beside the table's CENT;
+    // it now asks `isPartial`, so the two cannot disagree about one set.
+    render(
+      <ChartTooltip
+        active
+        payload={[
+          { name: 'Rent', value: 1800 },
+          { name: 'Groceries', value: 600 },
+        ]}
+        showTotal
+        wider={{ total: 2400.004, label: 'categories' }}
         formatter={(v) => `$${v}`}
       />
     )

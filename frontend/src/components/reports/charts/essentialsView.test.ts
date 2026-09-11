@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { shareOfLeanMonth, worstMonth } from './essentialsView'
+import { columnTotal, shareOfLeanMonth, worstMonth } from './essentialsView'
 
 describe('shareOfLeanMonth', () => {
   it('is the share of the lean-month total, not of the largest category', () => {
@@ -32,5 +32,17 @@ describe('worstMonth', () => {
       { month: '2026-07-01', total: 900 },
     ])
     expect(worst?.month).toBe('2026-06-01')
+  })
+})
+
+describe('columnTotal', () => {
+  it('adds the column in cents, so the footer is the sum a reader checks on paper', () => {
+    // A float reduce gives 0.30000000000000004 for these two.
+    expect(columnTotal([{ total: 0.1 }, { total: 0.2 }])).toBe(0.3)
+    expect(columnTotal([{ total: 33.33 }, { total: 33.33 }, { total: 33.34 }])).toBe(100)
+  })
+
+  it('is zero for an empty table', () => {
+    expect(columnTotal([])).toBe(0)
   })
 })

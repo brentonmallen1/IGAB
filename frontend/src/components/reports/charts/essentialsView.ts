@@ -1,5 +1,7 @@
 /** Pure view math for the Essentials report, extracted so it is testable
  * without mounting a chart. */
+import { fromCents, sumToCents } from '../../../utils/money'
+import { shareOfTotal } from '../drillDownTotals'
 
 interface MonthTotal {
   month: string
@@ -16,8 +18,8 @@ interface MonthTotal {
  * inputs disagree, so the caller clamps the drawn width, not the figure.
  */
 export function shareOfLeanMonth(monthlyAverage: number, monthlyTotalAverage: number): number {
-  if (monthlyTotalAverage <= 0) return 0
-  return (monthlyAverage / monthlyTotalAverage) * 100
+  // A bar needs a width, so "no share to state" draws as no bar at all.
+  return shareOfTotal(monthlyAverage, monthlyTotalAverage) ?? 0
 }
 
 /**
@@ -31,4 +33,15 @@ export function worstMonth(series: MonthTotal[]): MonthTotal | null {
     if (m.total > 0 && (worst === null || m.total > worst.total)) worst = m
   }
   return worst
+}
+
+/**
+ * The footer under the table's Total column: the column's own sum, in cents.
+ *
+ * Not the rounded monthly average times the month count — those differ by up
+ * to a penny per category per month, and a footer that does not add up to
+ * the column above it is the one number on the table a reader can check.
+ */
+export function columnTotal(rows: readonly { total: number }[]): number {
+  return fromCents(sumToCents(rows.map((r) => r.total)))
 }

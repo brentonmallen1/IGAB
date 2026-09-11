@@ -128,9 +128,10 @@ export interface YnabImportResult {
   /** How many of those are one line of a split — unpairable by design, since
    *  a split's money lives on its parent. The rest are worth chasing. */
   transfer_legs_in_splits: number
-  /** Categories tagged Savings / Long-term expense from their names, so the
-   *  savings report has something to show. A tag changes how a category's
-   *  spending is classified, so it is reported rather than applied quietly. */
+  /** Categories tagged Savings from their names — the only key the importer
+   *  applies (backend domain/tag_hints.py) — so the savings report has
+   *  something to show. The tag changes how a category's spending is
+   *  classified, so it is reported rather than applied quietly. */
   categories_tagged: number
   /** Which ones, and why. The count alone cannot answer "show me what you
    *  did", and nothing on the join table records that a tag was guessed. */

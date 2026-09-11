@@ -12,7 +12,8 @@ being the branch above it. Merge bottom-up, #177 first.
 **Never `--delete-branch` a base while its child PR is open** — it auto-closes
 the child. Delete a branch only once every PR above it has merged.
 
-All nine phases of the audit have landed as branches. #193 is the only one
+All nine phases of the audit have landed as branches, and the last decided
+item, 5d, is built. #193 is the only one
 that can be dropped without touching the rest: it changes figures the user
 reads daily (a per-month average divides by finished months), and nothing sits
 on top of it.
@@ -29,6 +30,7 @@ each other, starting from `origin/main` at `892922a0`.
 | 5 | [#181](https://github.com/brentonmallen1/IGAB/pull/181) `fix/reports-one-spending-row-set` | Clear items: class rule, sign-vs-class, scope conflation, names, drained envelopes | done |
 | 5b | [#182](https://github.com/brentonmallen1/IGAB/pull/182) `fix/reports-lte-is-a-cost` | Long-term expense stops classifying a bill as saving; importer stops auto-writing it | done |
 | 5c | [#183](https://github.com/brentonmallen1/IGAB/pull/183) `feat/necessity-tiers` | Essentials ⊂ Cost of Living as two nested tiers, with the gap and a standing | done |
+| 5d | `fix/reports-tagged-envelope-spend` | Spending out of a **savings**-tagged envelope counts against its plan. Row 5b until #182 took the number and overwrote it; #182 fixed the long-term-expense half only. The three plan-vs-actual reports now read one predicate, `activity_class.planned_spend_filter()`, whose savings arm is the stated exception to the counted classes; the class itself is unchanged, so the savings rate and the spending rollups do not move. Pinned by `TestASavingsTaggedEnvelope` in `test_report_envelope_rules.py` | done |
 | 6 | [#184](https://github.com/brentonmallen1/IGAB/pull/184) `fix/reports-one-window` | Window bounds: burn rate, net worth, volatility, seasonality, anomalies | done |
 | 6b | [#185](https://github.com/brentonmallen1/IGAB/pull/185) `feat/volatility-amortize` | Say what a lumpy bill does to volatility, and offer the amortized reading | done |
 | 7 | [#186](https://github.com/brentonmallen1/IGAB/pull/186) `fix/reports-payday-denominators` | payday-effect divisors, class filters and the P75 threshold | done |

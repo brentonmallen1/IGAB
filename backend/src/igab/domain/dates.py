@@ -15,7 +15,6 @@ try/except around a calendar edge.
 """
 
 import calendar
-from collections.abc import Sequence
 from datetime import date, timedelta
 
 
@@ -78,30 +77,50 @@ def month_starts(start: date, end: date) -> list[date]:
     return months
 
 
-def complete_months(months: Sequence[date], today: date) -> list[date]:
-    """The month buckets in `months` that have finished.
+def report_months(today: date, months: int) -> list[date]:
+    """The `months` month buckets ending with `today`'s month, oldest first:
+    the axis of a report that draws a SERIES — net worth, burn rate, plan
+    discipline, a category's history — whose newest point is "now".
 
-    A per-month AVERAGE has to divide by months that happened. Dividing a
-    twelve-month total by twelve on the 3rd of the month spreads eleven months
-    of spending plus two days across twelve, and the figure is at its lowest
-    exactly when a household checks it at the start of a month: Cost of Living
-    quoted $2,750/month where the Essentials report, reading the same tag and
-    the same query over its own window, quoted $3,000.
+    Not `complete_month_window`, which is for a per-month AVERAGE and so
+    leaves the running month out. A series draws it, clamped to today
+    (`clamped_month_end`). Which window a report reads is its choice; the
+    arithmetic is here.
 
-    The current month is never complete — not even on its last day, since the
-    day is not over. `complete_month_window` applies the same rule to a
-    window, so a report cannot pick a different answer.
+    Exactly `months` buckets. The rule was spelled at a dozen call sites, and
+    two drifted to `months + 1` — subtract the count, then include the current
+    month too — so Savings and Subscriptions drew a thirteenth, empty column on
+    the default twelve and divided their averages by it.
     """
     current = month_start(today)
-    return [m for m in months if month_start(m) < current]
+    return [add_months(current, -i) for i in range(months - 1, -1, -1)]
+
+
+def clamped_month_end(month: date, today: date) -> date:
+    """The last day of `month`'s month, or `today` if that comes first.
+
+    A series point stands for everything through its month's end, and the
+    current month's end is a future date: summing through it counted rows
+    dated after today as "now", and read a month-to-date figure under a label
+    promising a trailing thirty days.
+    """
+    return min(month_end(month), today)
 
 
 def complete_month_window(
     today: date, months: int, history_from: date | None = None
 ) -> tuple[date, date]:
     """The last `months` COMPLETE months: (first day of the oldest, last day of
-    the previous month). The current month is never in it — see
-    `complete_months` for why.
+    the previous month) — the window of every per-month AVERAGE.
+
+    An average has to divide by months that happened. Dividing a twelve-month
+    total by twelve on the 3rd of the month spreads eleven months of spending
+    plus two days across twelve, and the figure is at its lowest exactly when
+    a household checks it at the start of a month: Cost of Living quoted
+    $2,750/month where the Essentials report, reading the same tag and the
+    same query over its own window, quoted $3,000. The current month is never
+    in the window — not even on its last day, since the day is not over — so
+    every month in it is complete, and a report divides by all of them.
 
     `history_from` is when the budget's history starts. The window never
     reaches before that month: a zero-filled month before the first

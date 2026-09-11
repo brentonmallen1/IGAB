@@ -13,6 +13,7 @@ import {
 } from 'recharts'
 import type { AmortizationResponse, AmortizationMonth } from '../../api/liabilities'
 import { useFormatters } from '../../hooks/useFormatters'
+import { useMoneyAxis } from '../../hooks/useMoneyAxis'
 import { ChartTooltip } from '../reports/charts/ChartTooltip'
 import { COLOR_NEGATIVE, COLOR_POSITIVE, CHART_COLORS } from '../reports/charts/chartColors'
 import { referenceLabel } from './paydownChartLabels'
@@ -44,6 +45,7 @@ interface ChartPoint {
  */
 export function PaydownChart({ amortization, mode, isMobile = false, promoEndDate }: Props) {
   const { formatMoney } = useFormatters()
+  const moneyAxis = useMoneyAxis()
   const points: ChartPoint[] = []
   const todayMonth = currentMonthStart().slice(0, 7)
 
@@ -106,7 +108,7 @@ export function PaydownChart({ amortization, mode, isMobile = false, promoEndDat
       <ComposedChart data={points} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
         <XAxis dataKey="month" tick={{ fontSize: 11 }} minTickGap={40} />
-        <YAxis tickFormatter={(v) => formatMoney(v)} tick={{ fontSize: 11 }} width={85} />
+        <YAxis {...moneyAxis} tick={{ fontSize: 11 }} />
         <Tooltip
           content={<ChartTooltip showTotal={false} formatter={formatMoney} />}
           offset={16}

@@ -144,6 +144,7 @@ REPORTS: list[tuple[str, dict]] = [
     ("reports/savings", {"months": 3}),
     ("reports/savings-rate", {"months": 3}),
     ("reports/anomalies", {"months": 3}),
+    ("reports/payday-effect", {"months": 3}),
     ("reports/plan-vs-reality", {"months": 3}),
 ]
 

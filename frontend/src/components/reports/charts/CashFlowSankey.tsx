@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from 'react'
 import { ChevronRight } from 'lucide-react'
-import { useReportStore } from '../../../stores/reportStore'
+import { incomeDrill, useReportStore } from '../../../stores/reportStore'
 import { useCashFlowReport } from '../../../api/reports'
 import { usePayees } from '../../../api/payees'
 import { useChartHeight } from '../../../hooks/useChartHeight'
@@ -23,7 +23,7 @@ import {
   type SankeyViewNode,
 } from './sankeyView'
 import './CashFlowSankey.css'
-import { truncateLabel } from './chartLabel'
+import { truncateLabel } from '../../../utils/truncateLabel'
 
 interface Props {
   budgetId: string
@@ -45,7 +45,7 @@ function SankeyNodeRect(props: {
   height?: number
   payload?: NodeData & { value?: number }
 }) {
-  const { formatMoney } = useFormatters()
+  const { formatMoney, privacyMode } = useFormatters()
   const { x = 0, y = 0, width = 0, height = 0, payload } = props
   if (!payload) return null
   const isLeft = payload.type === 'income'
@@ -79,7 +79,9 @@ function SankeyNodeRect(props: {
               : deltaColor(value, payload.prev, payload.type)
           }
         >
-          {payload.prev == null ? 'new' : formatDelta(value, payload.prev, formatMoney)}
+          {payload.prev == null
+            ? 'new'
+            : formatDelta(value, payload.prev, formatMoney, privacyMode)}
         </text>
       )}
     </g>
@@ -107,7 +109,7 @@ function SankeyTooltip({
   categoryPayees: Record<string, CategoryPayee[]>
   isDrilled: boolean
 }) {
-  const { formatMoney } = useFormatters()
+  const { formatMoney, formatMoneyOrDash, privacyMode } = useFormatters()
   if (!active || !payload?.length) return null
   const p = payload[0]?.payload
   const name = p?.name ?? ''
@@ -137,9 +139,7 @@ function SankeyTooltip({
         <>
           <div className="chart-tooltip__row">
             <span className="chart-tooltip__name">Previous</span>
-            <span className="chart-tooltip__value">
-              {p.prev == null ? '—' : formatMoney(p.prev)}
-            </span>
+            <span className="chart-tooltip__value">{formatMoneyOrDash(p.prev)}</span>
           </div>
           {p.prev != null && (
             <div className="chart-tooltip__row">
@@ -148,7 +148,7 @@ function SankeyTooltip({
                 className="chart-tooltip__value"
                 style={{ color: deltaColor(value, p.prev, nodeType ?? '') }}
               >
-                {formatDelta(value, p.prev, formatMoney)}
+                {formatDelta(value, p.prev, formatMoney, privacyMode)}
               </span>
             </div>
           )}
@@ -171,7 +171,7 @@ function SankeyTooltip({
 
 export function CashFlowSankeyReport({ budgetId }: Props) {
   const chartHeight = useChartHeight(500)
-  const { formatMoney } = useFormatters()
+  const { formatMoney, privacyMode } = useFormatters()
   const { filters, setDrillDown } = useReportStore()
   const [viewMode, setViewMode] = useState<'spent' | 'budgeted'>('spent')
   const [compare, setCompare] = useState(false)
@@ -252,13 +252,7 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
         setSelectedCategoryId(null)
       } else if (viewMode === 'spent') {
         // At the top level it opens the income transactions instead
-        setDrillDown({
-          kind: 'month',
-          label: 'Income',
-          scope: 'parent',
-          direction: 'inflow',
-          ...window,
-        })
+        setDrillDown(incomeDrill('Income', window))
       }
     } else if (nodeData.type === 'category_group') {
       if (selectedCategoryId) {
@@ -400,7 +394,7 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
               value={formatMoney(data.total_income)}
               sub={
                 compare && prevData
-                  ? formatDelta(data.total_income, prevData.total_income, formatMoney)
+                  ? formatDelta(data.total_income, prevData.total_income, formatMoney, privacyMode)
                   : undefined
               }
             />
@@ -421,7 +415,8 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
                     ? formatDelta(
                         Number(data.total_spending),
                         Number(prevData.total_spending),
-                        formatMoney
+                        formatMoney,
+                        privacyMode
                       )
                     : undefined
                 }
@@ -446,7 +441,8 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
                   ? formatDelta(
                       data.total_income - data.total_expense,
                       prevData.total_income - prevData.total_expense,
-                      formatMoney
+                      formatMoney,
+                      privacyMode
                     )
                   : undefined
               }

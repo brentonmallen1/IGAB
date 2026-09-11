@@ -4,9 +4,12 @@ categories, grouped by payee. The tag moved from payees to categories
 never tagged used to vanish from here.
 
 Pins the money semantics decided in the reports audit:
-- `avg_monthly` is the TRUE monthly burden: total ÷ months from the first
-  charged month through the end of the window (a quarterly $30 sub reads as
-  $10/mo, not $30/mo).
+- `avg_monthly` is the monthly burden: total ÷ complete months from the
+  first charged month through the end of the window (a quarterly $30 sub
+  reads about $10/mo, not $30/mo; where the window's end falls in its cycle
+  moves it between $10.00 and $12.00, pinned below). Per SERVICE — a
+  category's `avg_monthly` is the sum of the services inside it, and the
+  summary's is the sum of the categories, so the nested table adds up.
 - `avg_per_charge` is the typical charge: total ÷ charge count.
 - Refunds (inflows) are ignored — the report tracks subscription cost, and
   the `amount < 0` filter pins that choice.
@@ -15,6 +18,8 @@ Pins the money semantics decided in the reports audit:
 
 from datetime import date
 from decimal import Decimal
+
+import pytest
 
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.services.report_basics import subscriptions_report
@@ -137,12 +142,28 @@ async def test_monthly_subscription_counts_posted_leaf_outflows_only(db_session)
     assert data["summary"]["active_count"] == 1
 
 
-async def test_quarterly_subscription_normalizes_to_true_monthly_cost(db_session):
+@pytest.mark.parametrize(
+    ("charged", "effective"),
+    [
+        # The window is the twelve complete months, months_ago(12) through
+        # months_ago(1). In phase: the last charge's quarter ends with the
+        # window, so the figure is the true $10.00.
+        ((12, 9, 6, 3), "10.00"),
+        # The window's end cuts the last quarter: its $30 is counted whole
+        # while only two (then one) of the months it pays for are in the
+        # divisor. Not two errors cancelling anywhere — a phase error, bounded
+        # by one charge's missing months (see `_recurring_spend`).
+        ((11, 8, 5, 2), "10.91"),
+        ((10, 7, 4, 1), "12.00"),
+    ],
+)
+async def test_quarterly_subscription_normalizes_to_true_monthly_cost(
+    db_session, charged, effective
+):
     budget, checking, tag_repo, sub_cat = await _setup(db_session)
     gym = await _tag_payee(db_session, budget, tag_repo, sub_cat, "Quarterly Gym")
 
-    # 4 quarterly charges; first charge 11 months ago -> 12-month active span
-    for k in (11, 8, 5, 2):
+    for k in charged:
         await create_transaction(
             db_session, budget, checking, "-30.00", months_ago(k), payee=gym, category=sub_cat
         )
@@ -153,16 +174,12 @@ async def test_quarterly_subscription_normalizes_to_true_monthly_cost(db_session
     assert sub["total"] == Decimal("120.00")
     assert sub["avg_per_charge"] == Decimal("30.00")
     # $120 spread over the months since the first charge — NOT the $30
-    # per-charge figure, which is the whole point of the column.
-    #
-    # The window is the twelve complete months before this one, and the first
-    # charge lands in the second of them, so the figure is 120/11 = 10.91. It
-    # read a round 10.00 while the window was thirteen months long and the
-    # divisor counted the month in progress — two errors cancelling into a
-    # number that looked right.
-    assert sub["avg_monthly"] == Decimal("10.91")
-    assert data["summary"]["total_monthly"] == Decimal("10.91")
-    assert data["summary"]["total_annual"] == Decimal("130.92")
+    # per-charge figure, which is the whole point of the column — and never
+    # over the window's full twelve, which would be $10.00 in every phase and
+    # understate a service that started late.
+    assert sub["avg_monthly"] == Decimal(effective)
+    assert data["summary"]["total_monthly"] == Decimal(effective)
+    assert data["summary"]["total_annual"] == Decimal(effective) * 12
 
 
 async def test_monthly_buckets_are_exact_decimals(db_session):
@@ -216,6 +233,91 @@ async def test_split_child_charge_counts_once_at_child_amount(db_session):
     sub = data["subscriptions"][0]
     assert sub["total"] == Decimal("9.99")
     assert sub["transaction_count"] == 1
+
+
+async def test_a_service_charged_only_this_month_is_not_averaged_yet(db_session):
+    """The running month is outside every averaging window, so a service first
+    charged this month has no line yet — not its charge passed off as a
+    monthly figure (the old running-month fallback) and not $0.00 beside a
+    charge the page draws. Cost of Living drops a running-month bill the same
+    way (test_necessity_tiers)."""
+    budget, checking, tag_repo, sub_cat = await _setup(db_session)
+    pixelworks = await _tag_payee(db_session, budget, tag_repo, sub_cat, "Pixelworks")
+    await create_transaction(
+        db_session, budget, checking, "-9.00", TODAY, payee=pixelworks, category=sub_cat
+    )
+
+    data = await subscriptions_report(db_session, budget.id, months=12)
+
+    assert data["subscriptions"] == []
+    assert data["summary"]["total_monthly"] == Decimal("0")
+    assert data["summary"]["total_annual"] == Decimal("0")
+    assert len(data["months"]) == 12
+    assert TODAY.replace(day=1) not in data["months"]
+    assert data["months_averaged"] == 0
+
+
+async def test_a_newer_service_counts_in_its_category_and_in_the_summary(db_session):
+    """A category's Monthly is the SUM of the services inside it, and the
+    summary is the sum of the categories.
+
+    Dividing the envelope's own total by the months since the ENVELOPE's
+    first charge lost a service that started later: Streaming charged $15 a
+    month for three complete months, gaining a $10 service in the last one,
+    read $18.33 while its two payee rows read $15.00 and $10.00 — a nested
+    table that disagreed with itself — and the summary read $28.33 instead of
+    $35.00. Software, whose only service started in that same month, was
+    unaffected, which is what made the omission look like a rule rather than
+    the accident it was.
+    """
+    budget, checking, tag_repo, streaming = await _setup(db_session)
+    sub_tag = await tag_repo.get_system_tag(budget.id, "subscription")
+    group = await create_category_group(db_session, budget, "Digital")
+    software = await create_category(db_session, budget, group, "Software")
+    await tag_repo.set_category_tags(software.id, [sub_tag.id])
+
+    streamer = await create_payee(db_session, budget, "Nimbus Screen")
+    newcomer = await create_payee(db_session, budget, "Harbor Play")
+    editor = await create_payee(db_session, budget, "Pixelworks")
+
+    # Three complete months of an established service...
+    for k in (3, 2, 1):
+        await create_transaction(
+            db_session,
+            budget,
+            checking,
+            "-15.00",
+            months_ago(k),
+            payee=streamer,
+            category=streaming,
+        )
+    # ...and two services whose first charge is the last complete month, one
+    # sharing the envelope and one with an envelope of its own.
+    await create_transaction(
+        db_session, budget, checking, "-10.00", months_ago(1), payee=newcomer, category=streaming
+    )
+    await create_transaction(
+        db_session, budget, checking, "-10.00", months_ago(1), payee=editor, category=software
+    )
+
+    data = await subscriptions_report(db_session, budget.id, months=12)
+
+    lines = {s["category_name"]: s for s in data["subscriptions"]}
+    payees = {p["payee_name"]: p for p in lines["Streaming"]["payees"]}
+    # Each service over the complete months since its OWN first charge.
+    assert payees["Nimbus Screen"]["avg_monthly"] == Decimal("15.00")
+    assert payees["Harbor Play"]["avg_monthly"] == Decimal("10.00")
+
+    # The envelope is its services added up — 25.00, not 55/3 = 18.33.
+    assert lines["Streaming"]["avg_monthly"] == Decimal("25.00")
+    assert lines["Software"]["avg_monthly"] == Decimal("10.00")
+    for line in data["subscriptions"]:
+        assert line["avg_monthly"] == sum(p["avg_monthly"] for p in line["payees"])
+
+    # And the headline is the categories added up — 35.00, not 28.33.
+    assert data["summary"]["total_monthly"] == Decimal("35.00")
+    assert data["summary"]["total_monthly"] == sum(s["avg_monthly"] for s in data["subscriptions"])
+    assert data["summary"]["total_annual"] == Decimal("420.00")
 
 
 async def test_no_subscription_tag_or_no_tagged_payees_is_empty(db_session):

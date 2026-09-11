@@ -5,6 +5,8 @@
  * backend/src/igab/repositories/tag_repo.py, and both lists are tested against
  * shared/system_tags.json, so a tag seeded there cannot ship unexplained here.
  * The effects are in domain/activity_class.py (savings, debt principal), the
+ * Savings report (long-term expense: membership only, ReportService
+ * .savings_report — it no longer classifies anything), the
  * Subscriptions report (subscription, categories only —
  * CATEGORY_ONLY_SYSTEM_KEYS in tag_repo.py) and TransactionRepository
  * .essential_spend (essential, cost of living). Presentation only: nothing
@@ -21,7 +23,7 @@ export const SYSTEM_TAG_HELP: { key: string; name: string; on: string; does: str
     key: 'savings',
     name: 'Savings',
     on: 'categories',
-    does: 'Money leaving a Savings category counts as saving, not spending: it feeds the Savings report and the savings rate, and stays out of burn rate and the spending charts.',
+    does: 'Money leaving a Savings category counts as saving, not spending: it feeds the Savings report and the savings rate, and stays out of burn rate and the spending charts. It still counts against what you assigned to that category, so Budget vs Actual, Cumulative Variance and Plan vs Reality show the envelope being spent down rather than permanently under-spent.',
   },
   {
     key: 'long_term_expense',

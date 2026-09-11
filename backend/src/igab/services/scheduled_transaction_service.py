@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from igab.db.models import Account, Category, Payee, ScheduledTransaction
 from igab.domain.exceptions import NotFoundError
-from igab.domain.schedule import next_occurrence, validate_schedule
+from igab.domain.schedule import stored_next_occurrence, validate_schedule
 from igab.repositories.scheduled_transaction_repo import ScheduledTransactionRepository
 from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match
 from igab.services.ownership import require_in_budget
@@ -196,7 +196,7 @@ class ScheduledTransactionService:
         both cases; `process_due` used to have its own end-date branch.
         """
         before = snapshot("scheduled_transaction", sched)
-        nxt = calculate_next(sched)
+        nxt = stored_next_occurrence(sched)
         values: dict = {}
         if posted_on is not None:
             values["last_created_date"] = posted_on
@@ -289,15 +289,3 @@ class ScheduledTransactionService:
                 created += 1
                 current = await self.repo.get(current.id)
         return created
-
-
-def calculate_next(sched: ScheduledTransaction) -> date | None:
-    """The stored row's next occurrence — a thin wrapper so the arithmetic
-    has one home (domain/schedule.py) and one set of tests."""
-    return next_occurrence(
-        sched.frequency,
-        sched.next_occurrence_date,
-        start_day=sched.start_date.day,
-        second_day_of_month=sched.second_day_of_month,
-        end_date=sched.end_date,
-    )

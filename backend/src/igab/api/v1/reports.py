@@ -88,7 +88,7 @@ from igab.dependencies import (
     get_tag_repo,
 )
 from igab.domain.activity_class import SPENDING_WITH_SAVINGS_CLASSES, ActivityClass
-from igab.domain.dates import add_months
+from igab.domain.dates import report_months
 from igab.repositories.budget_filter_repo import BudgetFilterRepository
 from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.tag_repo import TagRepository
@@ -240,7 +240,9 @@ async def spending_report(
         _spending_classes(include_savings),
     )
     return SpendingReportResponse(
-        categories=[SpendingCategory.model_validate(c) for c in categories], total=total
+        categories=[SpendingCategory.model_validate(c) for c in categories],
+        total=total,
+        filter_unavailable=scope.filter_unavailable,
     )
 
 
@@ -386,6 +388,7 @@ async def budget_actual_report(
         categories=[BudgetActualItem.model_validate(c) for c in data["categories"]],
         total_assigned=data["total_assigned"],
         total_spent=data["total_spent"],
+        filter_unavailable=scope.filter_unavailable,
     )
 
 
@@ -576,25 +579,30 @@ async def category_history_report(
     category = await category_repo.get(category_id)
     if category is None or category.budget_id != budget_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
-    today = date.today()
-    month_list = [add_months(today.replace(day=1), -i) for i in range(months - 1, -1, -1)]
-    # One assembly for the whole span, not one call per month — and
-    # `in_system_group` comes off the row rather than being re-derived here
-    # from the group repository.
+    month_list = report_months(date.today(), months)
+    # `envelope_series`, the Budget page's own month-by-month figures (card
+    # correction and card reserves included), assembled once for the span —
+    # and `in_system_group` comes off the row rather than being re-derived
+    # here from the group repository.
     #
     # "Income categories do not hold money" is the app's own rule, raised by
     # `BudgetService._require_envelope`. Their `available` is a lifetime
     # carryover the budget page never draws, and this report published it as
     # an envelope balance under a docstring promising the budget page's own
     # numbers. Their month-by-month ACTIVITY is meaningful and stays.
+    series = (await budget_service.envelope_series(budget_id, [category_id], month_list))[
+        category_id
+    ]
     out = [
         CategoryHistoryMonth(
-            month=bal.month,
-            assigned=bal.assigned,
-            activity=bal.activity,
-            available=None if bal.in_system_group else bal.available,
+            month=month,
+            assigned=assigned,
+            activity=activity,
+            available=None if series.in_system_group else available,
         )
-        for bal in await budget_service.category_history(category_id, month_list)
+        for month, assigned, activity, available in zip(
+            month_list, series.assigned, series.activity, series.available, strict=True
+        )
     ]
     return CategoryHistoryReportResponse(
         category_id=category_id, category_name=category.name, months=out
@@ -847,6 +855,7 @@ async def payday_effect_report(
         days=[PaydayEffectDay.model_validate(d) for d in data["days"]],
         baseline_daily=data["baseline_daily"],
         event_count=data["event_count"],
+        payday_floor=data["payday_floor"],
     )
 
 
@@ -884,10 +893,7 @@ async def cost_of_living_report(
         groups=[CostOfLivingGroup.model_validate(g) for g in data["groups"]],
         avg_monthly_cost_of_living=data["avg_monthly_cost_of_living"],
         avg_monthly_essentials=data["avg_monthly_essentials"],
-        avg_monthly_non_essential=data["avg_monthly_non_essential"],
         avg_monthly_income=data["avg_monthly_income"],
-        required_ratio=data["required_ratio"],
-        essentials_ratio=data["essentials_ratio"],
         basis=data["basis"],
         tagged=data["tagged"],
         class_excluded=[SpendingClassExcluded.model_validate(c) for c in data["class_excluded"]],

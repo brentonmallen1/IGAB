@@ -58,14 +58,14 @@ export function OverviewReport({ budgetId }: Props) {
             </p>
             <p>
               <strong>Burn Rate</strong>: average monthly spending over the last 30 or 90 days.{' '}
-              <strong>Essentials</strong>: the same 90-day average, counting only categories and
-              payees tagged Essential — what a lean month costs, and the figure the Guide’s
-              emergency-fund target is built from. Shows “—” until something is tagged.{' '}
-              <strong>Savings Rate</strong>: Savings ÷ Income — money moved into savings or
-              investments, not simply money left over. Shows “—” for a window with no income.{' '}
-              <strong>Days Until Zero</strong>: cash on hand ÷ daily burn rate — how long the
-              budget’s cash accounts would last at this pace. Cards, loans and tracked investments
-              are out: net worth is not money you can spend next week.
+              <strong>Essentials</strong>: the same 90-day average, counting only categories tagged
+              Essential — what a lean month costs, and the figure the Guide’s emergency-fund target
+              is built from. Shows “—” until something is tagged. <strong>Savings Rate</strong>:
+              Savings ÷ Income — money moved into savings or investments, not simply money left
+              over. Shows “—” for a window with no income. <strong>Days Until Zero</strong>: cash on
+              hand ÷ daily burn rate — how long the budget’s cash accounts would last at this pace.
+              Cards, loans and tracked investments are out: net worth is not money you can spend
+              next week.
             </p>
             <ReportScopeNote scope="overview" />
           </ReportInfoButton>
@@ -138,7 +138,7 @@ export function OverviewReport({ budgetId }: Props) {
             sub={
               sixMonthReserve != null
                 ? `6-month reserve: ${formatMoney(sixMonthReserve)}`
-                : 'Tag categories or payees Essential'
+                : 'Tag categories Essential'
             }
           />
           <MetricCard

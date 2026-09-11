@@ -600,6 +600,16 @@
   border-bottom: 1px solid var(--border-color);
 }
 
+/* The month still in progress. Lower-case and unemphasised beside the month
+   it qualifies: it is a caveat on the figure, not a second heading. */
+.anomalies-group__partial {
+  margin-left: var(--spacing-xs);
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+  font-style: italic;
+}
+
 .anomaly-card {
   display: flex;
   align-items: center;

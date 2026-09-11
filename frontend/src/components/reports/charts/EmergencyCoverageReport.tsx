@@ -21,9 +21,16 @@ import { ReportRangeSelect } from './rangeSelect'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ChartTooltip } from './ChartTooltip'
 import { COLOR_NET, COLOR_POSITIVE, COLOR_NEUTRAL } from './chartColors'
-import { coverageTrend, monthsToTarget, standing } from './coverageView'
+import {
+  carriedFlatFrom,
+  coverageTrend,
+  monthsCovered,
+  monthsTick,
+  monthsToTarget,
+  standing,
+} from './coverageView'
 import { useReportMonths } from '../../../stores/reportStore'
-import { useMoneyAxis } from './useMoneyAxis'
+import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
 import './EmergencyCoverageReport.css'
 
 interface Props {
@@ -44,19 +51,6 @@ interface Props {
  * quoted rather than recomputed: two pages that each divide the same pair of
  * numbers are two pages that can disagree.
  */
-/** The first chart's Y axis is months of runway, not money.
- *
- * The shared tooltip's old default rendered 3.4 months as "$3.40".
- */
-function monthsCovered(value: number): string {
-  return `${value.toFixed(1)} months`
-}
-
-/** The same axis's ticks: a bare count, labelled "months" beside it. */
-function monthsTick(value: number): string {
-  return String(value)
-}
-
 export function EmergencyCoverageReport({ budgetId }: Props) {
   const { formatMoney, formatMonth } = useFormatters()
   // The second chart plots money. Its axis printed raw numbers — no currency
@@ -81,7 +75,7 @@ export function EmergencyCoverageReport({ budgetId }: Props) {
     [`${low}-month target`]: p.target_low,
     [`${high}-month target`]: p.target_high,
   }))
-  const carriedFlat = data.series.some((p) => p.external_counted)
+  const carriedFrom = carriedFlatFrom(data.series)
 
   return (
     <div className="coverage-report">
@@ -196,13 +190,12 @@ export function EmergencyCoverageReport({ budgetId }: Props) {
               {formatMoney(data.essentials_monthly)}/month over the Guide’s 90-day window. The{' '}
               <Link to="/reports?tab=essentials">Essentials report</Link> breaks that figure down by
               category.
-              {carriedFlat && (
+              {carriedFrom !== null && (
                 <>
                   {' '}
                   The self-reported part of your fund ({formatMoney(data.external_amount ?? 0)}) is
-                  carried flat from{' '}
-                  {data.external_as_of ? formatMonth(data.external_as_of) : 'the date you gave'}:
-                  IGAB cannot know what another bank held before then.
+                  carried flat from {formatMonth(carriedFrom)}: IGAB cannot know what another bank
+                  held before then.
                 </>
               )}
             </p>

@@ -629,7 +629,9 @@ export function useTransaction(transactionId: string | null) {
 }
 
 export interface TransactionClassification {
-  activity_class: string
+  /** Null for a split whose lines do not share one class; `label` reads
+   *  "Split". Served — see `activity_class.rolled_up_classes`. */
+  activity_class: string | null
   label: string
   reason: string
   explanation: string

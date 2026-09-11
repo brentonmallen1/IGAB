@@ -1,3 +1,5 @@
+import { parseLocalDate } from './dates'
+
 /**
  * When a stated value reads as stale. 12 months — a MIRROR of the server's
  * one home for the threshold (`account_hygiene.STALE_ASSET_VALUE_MONTHS`,
@@ -11,5 +13,5 @@ export function isStaleValue(asOf: string | null, today: Date = new Date()): boo
   if (!asOf) return false
   const cutoff = new Date(today)
   cutoff.setMonth(cutoff.getMonth() - VALUE_STALE_MONTHS)
-  return new Date(asOf + 'T00:00:00') < cutoff
+  return parseLocalDate(asOf) < cutoff
 }

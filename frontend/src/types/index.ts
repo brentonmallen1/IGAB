@@ -575,6 +575,9 @@ export interface SpendingCategory {
 export interface SpendingReport {
   categories: SpendingCategory[]
   total: number
+  /** A saved filter was named and could not be found — backend
+   *  `CategoryScope` in `report_scope.py` says what the scope then holds. */
+  filter_unavailable: boolean
 }
 
 export interface IncomeExpenseMonth {
@@ -734,7 +737,8 @@ export interface LiabilitiesReport {
   balance_over_time: LiabilitiesBalancePoint[]
   /** Owed on accounts closed with a balance still on them, excluded from
    *  `total_balance`. Net worth counts it, so the page says so rather than
-   *  letting two figures labelled Total Liabilities disagree in silence. */
+   *  letting two figures labelled Total Liabilities disagree in silence.
+   *  Narrowed by the report's type and mode filters, like `items`. */
   closed_with_balance_count: number
   closed_with_balance_total: number
 }
@@ -827,6 +831,9 @@ export interface BudgetActualReport {
   categories: BudgetActualItem[]
   total_assigned: number
   total_spent: number
+  /** A saved filter was named and could not be found — backend
+   *  `CategoryScope` in `report_scope.py` says what the scope then holds. */
+  filter_unavailable: boolean
 }
 
 export interface PlanRealityCell {
@@ -884,9 +891,8 @@ export interface VolatilityItem {
 
 export interface VolatilityReport {
   categories: VolatilityItem[]
-  /** True when each charge was spread forward over the months until the next
-   *  one. Served so the page can say which reading it is showing — the same
-   *  numbers under two definitions is how a chart lies quietly. */
+  /** Which reading the figures are — served, see `VolatilityResponse` and
+   *  `domain.amortize.spread_forward`. The caption and the export read it. */
   amortized: boolean
   /** The complete months the statistics read (server-decided). Drill with
    *  these — a window computed here drifted from the backend's once already. */
@@ -912,7 +918,18 @@ export interface SpendingClassExcluded {
   total: number | string
 }
 
-export interface SpendingGroupedReport {
+/** Carried by every report scoped by a saved filter. */
+export interface SavedFilterScope {
+  /** A saved filter was named and could not be found — deleted in another tab,
+   *  or belonging to another budget. Its own share of the scope then matches
+   *  nothing; the report is NOT unfiltered. Nor is it necessarily empty: the
+   *  scope is the union of the categories, the tags and the filter, so a
+   *  category picked beside the lost filter still draws. `ReportNotes` says
+   *  so on every chart that reads one of these. */
+  filter_unavailable: boolean
+}
+
+export interface SpendingGroupedReport extends SavedFilterScope {
   groups: SpendingGroupItem[]
   total: number
   /** What the active view kept out: categories with spending in the window
@@ -923,11 +940,6 @@ export interface SpendingGroupedReport {
   /** Savings / debt activity in categories the user is looking at that a
    *  spending report will not count. Empty without a selection or view. */
   class_excluded: SpendingClassExcluded[]
-  /** A saved filter was named and could not be found — deleted in another tab,
-   *  or belonging to another budget. The scope then matches nothing, so the
-   *  report is EMPTY rather than unfiltered, and saying so is the whole point
-   *  of the flag. */
-  filter_unavailable: boolean
 }
 
 export interface CategoryClassSlice {
@@ -1032,13 +1044,12 @@ export interface SpendingTrendSeries {
   total: number
 }
 
-export interface SpendingTrendsReport {
+export interface SpendingTrendsReport extends SavedFilterScope {
   months: string[]
   series: SpendingTrendSeries[]
   monthly_totals: number[]
   total: number
   class_excluded: { activity_class: string; label: string; categories: number; total: number }[]
-  filter_unavailable: boolean
 }
 
 export interface IncomeSource {
@@ -1069,7 +1080,9 @@ export interface CategoryHistoryReport {
     activity: number
     /** Null for an income category: "Income categories do not hold money", so
      *  their available is a lifetime carryover the budget page never draws.
-     *  Their monthly activity is meaningful and is still served. */
+     *  Their monthly activity is meaningful and is still served. Null too for
+     *  a month before an import the history cannot reproduce — backend
+     *  `CategoryHistoryMonth.available`. */
     available: number | null
   }[]
 }
@@ -1109,16 +1122,11 @@ export interface DayPatternItem {
   avg_transaction: number
 }
 
-export interface DayPatternsReport {
+export interface DayPatternsReport extends SavedFilterScope {
   days: DayPatternItem[]
   /** Savings / debt activity in the categories the user selected that this
    *  chart will not count. Empty without a selection. */
   class_excluded: SpendingClassExcluded[]
-  /** A saved filter was named and could not be found — deleted in another tab,
-   *  or belonging to another budget. The scope then matches nothing, so the
-   *  report is EMPTY rather than unfiltered, and saying so is the whole point
-   *  of the flag. */
-  filter_unavailable: boolean
   /** The activity classes these figures count, passed to the drill-down so a
    *  bar and the panel it opens total the same. */
   counted_classes: string[]
@@ -1143,21 +1151,20 @@ export interface TimelineTransaction {
   activity_label: string
 }
 
-export interface TimelineReport {
+export interface TimelineReport extends SavedFilterScope {
   transactions: TimelineTransaction[]
-  /** A saved filter was named and could not be found — deleted in another tab,
-   *  or belonging to another budget. The scope then matches nothing, so the
-   *  report is EMPTY rather than unfiltered, and saying so is the whole point
-   *  of the flag. */
-  filter_unavailable: boolean
 }
 
 /** The figures a recurring line carries — same shape for a category and for
- *  a payee inside it, because the arithmetic is the same. */
+ *  a payee inside it, because the arithmetic is the same, except
+ *  `avg_monthly`, which a category rolls up from its payees. */
 export interface RecurringSpend {
   monthly_amounts: number[]
-  /** True monthly burden: total / months since the first charge. Per payee
-   *  that is a service's cost; per category it is the envelope's burn rate. */
+  /** True monthly burden, from the server
+   *  (`services/report_basics._recurring_spend`). Per payee: total / complete
+   *  months since THAT service's first charge. Per category: the sum of its
+   *  payees', so the nested table adds up and a service that started after
+   *  its envelope did is not lost to a shared divisor. */
   avg_monthly: number
   total: number
   /** Typical charge: total / charge count */
@@ -1179,14 +1186,19 @@ export interface SubscriptionCategory extends RecurringSpend {
 }
 
 export interface SubscriptionsSummary {
+  /** The sum of every category's `avg_monthly`, each of which is the sum of
+   *  its payees': the headline is the rows added up. */
   total_monthly: number
   total_annual: number
   active_count: number
 }
 
 export interface SubscriptionsReport {
-  /** How many months an effective-monthly figure divides by: COMPLETE months.
-   *  The month in progress is never one of them. */
+  /** The complete months the window holds — every entry of `months`, on
+   *  every day (backend `domain.dates.complete_month_window`). The MOST an
+   *  effective-monthly figure divides by: each SERVICE divides by the months
+   *  since its own first charge, and the category and summary figures are
+   *  sums of those. 0 when nothing was charged in the window. */
   months_averaged: number
   subscriptions: SubscriptionCategory[]
   summary: SubscriptionsSummary
@@ -1257,6 +1269,12 @@ export interface AnomalyItem {
   baseline_mean: number
   z_score: number
   direction: 'high' | 'low'
+  /** True when `month` is the month still in progress, so `actual` is a
+   *  month-to-date figure — backend `services/report_stats.anomaly_rows`,
+   *  which also says why those rows are always `direction: 'high'`. Never
+   *  recompute it here from `month` and the clock: which month the report
+   *  calls "in progress" is the server's, and it is what scored the row. */
+  partial_month: boolean
   history: number[]
 }
 
@@ -1276,6 +1294,9 @@ export interface PaydayEffectReport {
    *  says the household spends nothing between paydays. */
   baseline_daily: number | null
   event_count: number
+  /** The smallest inflow the server counted as a payday — backend
+   *  PAYDAY_FLOOR, served so the info panel quotes the rule it applied. */
+  payday_floor: number
 }
 
 export interface CashProjectionPoint {
@@ -1380,7 +1401,8 @@ export interface CostOfLivingGroup {
   monthly_amounts: number[]
   total: number
   avg_monthly: number
-  /** Share of the essentials total, 0–100 — not of income, so shares add to 100. */
+  /** Share of the cost-of-living total, 0–100 — not of income, so shares add
+   *  to 100. */
   share: number
   /** The categories behind this bar, for the drill-down. Empty on the
    *  Uncategorized bucket, which drills by "no category" instead — an empty
@@ -1390,11 +1412,10 @@ export interface CostOfLivingGroup {
 
 export interface CostOfLivingReport {
   months: string[]
-  /** How many months the `avg_monthly_*` figures divide by: COMPLETE months,
-   *  so the newest entry of `months` is outside it on every day but the first
-   *  of a month. The RATIOS are unaffected — both their terms cover the same
-   *  days. Served rather than derived from `months.length`, which is what made
-   *  this report quote a lower figure than Essentials for the same tag. */
+  /** How many months the `avg_monthly_*` figures divide by: every entry of
+   *  `months`, all of them complete, on every day (backend
+   *  `domain.dates.complete_month_window`). Served rather than derived from
+   *  `months.length`, so the page never divides for itself. */
   months_averaged: number
   /** The window the figures cover. Served, not re-derived: "twelve months
    *  back from the first of that month, to today" is the report's rule and
@@ -1409,18 +1430,14 @@ export interface CostOfLivingReport {
    *  nothing is tagged Essential (backend `basis_is_chosen`): all spending is
    *  not what a household could not cut. */
   avg_monthly_essentials: number | null
-  /** Cost of living less essentials: what a lean month could shed. Null
-   *  whenever essentials is. */
-  avg_monthly_non_essential: number | null
   avg_monthly_income: number
-  /** Share of take-home spoken for, against the WIDE tier. Null when there is
-   *  no income on record: unknown, not 100%. */
-  required_ratio: number | null
-  /** The lean tier against take-home. Above 100 the household cannot cover
-   *  what it could not cut. */
-  essentials_ratio: number | null
+  /* The gap between the tiers, and the two ratios against take-home, are NOT
+   * served: they are arithmetic on the three averages above, so they are
+   * composed once in `components/reports/charts/necessityView.ts`
+   * (`nonEssentialSpend`, `necessityShare`). */
   basis: 'bound' | 'tag' | 'all'
-  /** False when nothing carries the Essential tag. */
+  /** False when no category is tagged Essential or Cost of living (basis
+   *  'all'): the figures then cover every category — the burn rate. */
   tagged: boolean
   /** Tagged Essential and still not counted, by class. Tagging a category is
    *  pointing at it, so absence without this reads as a bug — which is

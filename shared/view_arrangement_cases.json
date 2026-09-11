@@ -1,0 +1,75 @@
+{
+  "_comment": "Where a budget view puts each category: the view's group ids, or \"__unassigned__\", or null for a category the view leaves out. One rule, two languages: frontend/src/components/budget/BudgetTable/viewGrouping.test.ts runs these through groupByView, and backend/tests/unit/test_view_arrangement.py through domain/view_arrangement.py. The server once honoured hide_unassigned on a view with no groups and the client did not, so one view drew a populated budget page and a blank spending report.",
+  "cases": [
+    {
+      "name": "categories sit under the view's groups, and an unplaced one under Unassigned",
+      "groups": ["need", "want"],
+      "hide_unassigned": false,
+      "placements": [
+        { "category_id": "c1", "group_id": "need", "is_hidden": false },
+        { "category_id": "c2", "group_id": "want", "is_hidden": false }
+      ],
+      "categories": ["c1", "c2", "c3"],
+      "expected": { "c1": "need", "c2": "want", "c3": "__unassigned__" }
+    },
+    {
+      "name": "a placement with no group is unassigned",
+      "groups": ["need"],
+      "hide_unassigned": false,
+      "placements": [
+        { "category_id": "c1", "group_id": null, "is_hidden": false }
+      ],
+      "categories": ["c1"],
+      "expected": { "c1": "__unassigned__" }
+    },
+    {
+      "name": "a hidden placement is left out, group or not",
+      "groups": ["need"],
+      "hide_unassigned": false,
+      "placements": [
+        { "category_id": "c1", "group_id": "need", "is_hidden": true },
+        { "category_id": "c2", "group_id": null, "is_hidden": true },
+        { "category_id": "c3", "group_id": "need", "is_hidden": false }
+      ],
+      "categories": ["c1", "c2", "c3"],
+      "expected": { "c1": null, "c2": null, "c3": "need" }
+    },
+    {
+      "name": "hide_unassigned leaves out unplaced and groupless categories",
+      "groups": ["need"],
+      "hide_unassigned": true,
+      "placements": [
+        { "category_id": "c1", "group_id": "need", "is_hidden": false },
+        { "category_id": "c2", "group_id": null, "is_hidden": false }
+      ],
+      "categories": ["c1", "c2", "c3"],
+      "expected": { "c1": "need", "c2": null, "c3": null }
+    },
+    {
+      "name": "a view with no groups ignores hide_unassigned rather than showing nothing",
+      "groups": [],
+      "hide_unassigned": true,
+      "placements": [],
+      "categories": ["c1", "c2"],
+      "expected": { "c1": "__unassigned__", "c2": "__unassigned__" }
+    },
+    {
+      "name": "a view with no groups still honours per-category hides",
+      "groups": [],
+      "hide_unassigned": true,
+      "placements": [
+        { "category_id": "c1", "group_id": null, "is_hidden": true }
+      ],
+      "categories": ["c1", "c2"],
+      "expected": { "c1": null, "c2": "__unassigned__" }
+    },
+    {
+      "name": "an empty view keeps every category, unassigned",
+      "groups": [],
+      "hide_unassigned": false,
+      "placements": [],
+      "categories": ["c1", "c2"],
+      "expected": { "c1": "__unassigned__", "c2": "__unassigned__" }
+    }
+  ]
+}
