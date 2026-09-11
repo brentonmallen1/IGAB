@@ -56,6 +56,14 @@ class TagHint:
     applied_on_import: bool
 
 
+#: What "subscription-shaped" means, said once. Both the Subscription hint and
+#: the wider Cost of living hint offer these: the wide tier's hint exists so a
+#: subscription is offered the tier too. It copied half of them, so Netflix,
+#: Spotify and Amazon Prime were offered Subscription but not Cost of living
+#: while "Streaming" was offered both — the gap stayed empty for exactly the
+#: categories the hint was written for.
+_SUBSCRIPTION = ("subscription", "streaming", "membership", "prime", "netflix", "spotify")
+
 #: Kept short and obvious rather than clever, in both halves. The applied half
 #: is one key, `savings`; it was two until `long_term_expense` stopped
 #: overriding classification. Widening it is how proposals would turn into
@@ -80,11 +88,7 @@ TAG_HINTS: tuple[TagHint, ...] = (
     # produced zero of each — which is why an imported budget's Essentials
     # report is empty and its emergency-fund target is measured against all
     # spending instead.
-    TagHint(
-        "subscription",
-        ("subscription", "streaming", "membership", "prime", "netflix", "spotify"),
-        False,
-    ),
+    TagHint("subscription", _SUBSCRIPTION, False),
     TagHint(
         "essential",
         ("rent", "mortgage", "groceries", "electric", "utilities", "insurance"),
@@ -95,11 +99,7 @@ TAG_HINTS: tuple[TagHint, ...] = (
     # a tier that a subscription- or membership-shaped category can be OFFERED
     # is the only realistic path to a non-empty gap on an imported budget.
     # Proposal only, like everything below the first entry.
-    TagHint(
-        "cost_of_living",
-        ("subscription", "membership", "streaming", "gym", "storage", "maintenance"),
-        False,
-    ),
+    TagHint("cost_of_living", (*_SUBSCRIPTION, "gym", "storage", "maintenance"), False),
     TagHint("debt_principal", ("loan payment", "debt payment", "principal"), False),
 )
 

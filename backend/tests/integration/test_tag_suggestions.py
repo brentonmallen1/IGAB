@@ -37,14 +37,20 @@ async def _suggestions(api_client, budget_id):
 async def test_it_proposes_the_keys_the_importer_never_assigns(db_session, api_client):
     budget, _, made = await _budget_with(db_session, api_client, ["Groceries", "Amazon Prime"])
 
-    by_category = {s["category_id"]: s for s in await _suggestions(api_client, budget.id)}
+    suggestions = await _suggestions(api_client, budget.id)
+    # A category can be offered more than one key, so collect them all.
+    keys: dict[str, set[str]] = {}
+    for s in suggestions:
+        keys.setdefault(s["category_id"], set()).add(s["system_key"])
 
-    assert by_category[str(made["Groceries"].id)]["system_key"] == "essential"
-    assert by_category[str(made["Amazon Prime"].id)]["system_key"] == "subscription"
+    assert keys[str(made["Groceries"].id)] == {"essential"}
+    # Subscription-shaped: offered Subscription and the wide Cost of living tier.
+    assert keys[str(made["Amazon Prime"].id)] == {"subscription", "cost_of_living"}
     # Said out loud, so a person can check the guess rather than take it on faith.
-    assert by_category[str(made["Groceries"].id)]["matched_on"] == "Groceries"
+    groceries = next(s for s in suggestions if s["category_id"] == str(made["Groceries"].id))
+    assert groceries["matched_on"] == "Groceries"
     # And which of them the importer would have written, which is none of these.
-    assert all(not s["applied_on_import"] for s in by_category.values())
+    assert all(not s["applied_on_import"] for s in suggestions)
 
 
 @pytest.mark.asyncio

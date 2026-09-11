@@ -91,6 +91,11 @@ class TestWhatTheReviewProposes:
             ("Gym Membership", "Fun", "cost_of_living"),
             ("Storage Unit", "Bills", "cost_of_living"),
             ("Home Maintenance", "Long Term", "cost_of_living"),
+            # Subscription-shaped by brand name: offered both, not Subscription
+            # alone. The wide tier's hint copied only half the fragments.
+            ("Netflix", "Fun", "cost_of_living"),
+            ("Spotify", "Fun", "cost_of_living"),
+            ("Amazon Prime", "Monthly", "cost_of_living"),
         ],
     )
     def test_proposes_the_keys_the_importer_never_assigns(self, category, group, expected):
@@ -153,3 +158,10 @@ class TestWordStartMatching:
     @pytest.mark.parametrize("name", ["Parents' Gifts", "Parent Care", "Different Things"])
     def test_a_fragment_does_not_match_mid_word(self, name):
         assert suggest_review_tags(name, "Family") == []
+
+
+def test_every_subscription_shaped_name_is_offered_the_wide_tier_too():
+    """The Cost of living hint is built from the Subscription hint's fragments,
+    not a copy of some of them."""
+    by_key = {h.system_key: set(h.fragments) for h in TAG_HINTS}
+    assert by_key["subscription"] <= by_key["cost_of_living"]
