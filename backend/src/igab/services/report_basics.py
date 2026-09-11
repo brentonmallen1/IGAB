@@ -249,9 +249,16 @@ class SubscriptionRow(RecurringSpend):
 def _recurring_spend(frame: pl.DataFrame, month_list: list[date]) -> RecurringSpend:
     """The per-line arithmetic, for a category or one payee inside it.
 
-    avg_monthly is the TRUE monthly burden: the total spread over the
-    months since the FIRST charge, not the average charged month — a
-    quarterly $30 subscription costs $10/mo, not $30/mo.
+    avg_monthly is the monthly burden: the total spread over the months
+    since the FIRST charge, not the average charged month — a quarterly $30
+    subscription costs about $10/mo, not $30/mo.
+
+    "About", deliberately. The window's end can fall mid-cycle, and then the
+    last charge is counted whole while only part of the period it pays for is
+    in the divisor: the same quarterly $30 reads $10.00, $10.91 or $12.00 by
+    phase. The overstatement is bounded by one cycle's missing months and
+    shrinks as the history grows; a cadence-aware divisor would remove it and
+    has not been chosen. Pinned per phase in test_subscriptions_report.
 
     `month_list` is complete months only (`complete_month_window`). Counting a
     running month whole put a subscription's effective cost at its lowest on

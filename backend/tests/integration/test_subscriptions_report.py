@@ -4,9 +4,10 @@ categories, grouped by payee. The tag moved from payees to categories
 never tagged used to vanish from here.
 
 Pins the money semantics decided in the reports audit:
-- `avg_monthly` is the TRUE monthly burden: total ÷ months from the first
-  charged month through the end of the window (a quarterly $30 sub reads as
-  $10/mo, not $30/mo).
+- `avg_monthly` is the monthly burden: total ÷ complete months from the
+  first charged month through the end of the window (a quarterly $30 sub
+  reads about $10/mo, not $30/mo; where the window's end falls in its cycle
+  moves it between $10.00 and $12.00, pinned below).
 - `avg_per_charge` is the typical charge: total ÷ charge count.
 - Refunds (inflows) are ignored — the report tracks subscription cost, and
   the `amount < 0` filter pins that choice.
@@ -15,6 +16,8 @@ Pins the money semantics decided in the reports audit:
 
 from datetime import date
 from decimal import Decimal
+
+import pytest
 
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.services.report_basics import subscriptions_report
@@ -137,12 +140,28 @@ async def test_monthly_subscription_counts_posted_leaf_outflows_only(db_session)
     assert data["summary"]["active_count"] == 1
 
 
-async def test_quarterly_subscription_normalizes_to_true_monthly_cost(db_session):
+@pytest.mark.parametrize(
+    ("charged", "effective"),
+    [
+        # The window is the twelve complete months, months_ago(12) through
+        # months_ago(1). In phase: the last charge's quarter ends with the
+        # window, so the figure is the true $10.00.
+        ((12, 9, 6, 3), "10.00"),
+        # The window's end cuts the last quarter: its $30 is counted whole
+        # while only two (then one) of the months it pays for are in the
+        # divisor. Not two errors cancelling anywhere — a phase error, bounded
+        # by one charge's missing months (see `_recurring_spend`).
+        ((11, 8, 5, 2), "10.91"),
+        ((10, 7, 4, 1), "12.00"),
+    ],
+)
+async def test_quarterly_subscription_normalizes_to_true_monthly_cost(
+    db_session, charged, effective
+):
     budget, checking, tag_repo, sub_cat = await _setup(db_session)
     gym = await _tag_payee(db_session, budget, tag_repo, sub_cat, "Quarterly Gym")
 
-    # 4 quarterly charges; first charge 11 months ago -> 12-month active span
-    for k in (11, 8, 5, 2):
+    for k in charged:
         await create_transaction(
             db_session, budget, checking, "-30.00", months_ago(k), payee=gym, category=sub_cat
         )
@@ -153,16 +172,12 @@ async def test_quarterly_subscription_normalizes_to_true_monthly_cost(db_session
     assert sub["total"] == Decimal("120.00")
     assert sub["avg_per_charge"] == Decimal("30.00")
     # $120 spread over the months since the first charge — NOT the $30
-    # per-charge figure, which is the whole point of the column.
-    #
-    # The window is the twelve complete months before this one, and the first
-    # charge lands in the second of them, so the figure is 120/11 = 10.91. It
-    # read a round 10.00 while the window was thirteen months long and the
-    # divisor counted the month in progress — two errors cancelling into a
-    # number that looked right.
-    assert sub["avg_monthly"] == Decimal("10.91")
-    assert data["summary"]["total_monthly"] == Decimal("10.91")
-    assert data["summary"]["total_annual"] == Decimal("130.92")
+    # per-charge figure, which is the whole point of the column — and never
+    # over the window's full twelve, which would be $10.00 in every phase and
+    # understate a service that started late.
+    assert sub["avg_monthly"] == Decimal(effective)
+    assert data["summary"]["total_monthly"] == Decimal(effective)
+    assert data["summary"]["total_annual"] == Decimal(effective) * 12
 
 
 async def test_monthly_buckets_are_exact_decimals(db_session):
