@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import TypedDict
 
 import polars as pl
-from sqlalchemy import func, literal_column, select
+from sqlalchemy import Select, func, literal_column, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -75,6 +75,7 @@ from igab.repositories.txn_filters import (
     POSTED,
     SPLIT_PARENT,
     SUBSCRIPTION_CHARGE,
+    account_scope,
     category_tagged,
     in_category_scope,
     none_of,
@@ -303,14 +304,11 @@ class ReportService:
                 # chat tool read this method, so the assistant answered a
                 # different number from the charts.
                 SPENT_ENVELOPE,
-                _spending_classes(include_classes, scoped_accounts=account_ids is not None),
             )
         )
         q = scoped(q, Transaction.category_id, category_ids)
-        if account_ids is not None:
-            q = scoped(q, Transaction.account_id, account_ids)
-        else:
-            q = q.where(ON_BUDGET_ACCOUNT)
+        q, explicit = account_scope(q, account_ids)
+        q = q.where(_spending_classes(include_classes, scoped_accounts=explicit))
         q = apply_class_joins(q)
         result = await self.session.execute(q)
         rows = result.all()
@@ -967,10 +965,7 @@ class ReportService:
             Transaction.date <= end_date,
             INCOME_ROW,
         )
-        if account_ids is not None:
-            income_q = scoped(income_q, Transaction.account_id, account_ids)
-        else:
-            income_q = income_q.where(ON_BUDGET_ACCOUNT)
+        income_q, _ = account_scope(income_q, account_ids)
         income_q = apply_class_joins(income_q.select_from(Transaction))
         total_income = (await self.session.execute(income_q)).scalar() or Decimal("0")
 
@@ -1105,10 +1100,7 @@ class ReportService:
                 CASH_FLOW_ROW,
             )
         )
-        if account_ids is not None:
-            q = scoped(q, Transaction.account_id, account_ids)
-        else:
-            q = q.where(ON_BUDGET_ACCOUNT)
+        q, _ = account_scope(q, account_ids)
         q = apply_class_joins(q)
         rows = (await self.session.execute(q)).all()
 
@@ -1777,11 +1769,16 @@ class ReportService:
         end_date: date,
         category_ids: list[uuid.UUID] | None = None,
         account_ids: list[uuid.UUID] | None = None,
-    ):
+        include_classes: Sequence[ActivityClass] | None = None,
+    ) -> tuple[Select, set[str]]:
         """Every posted spending row in the window, with its category, group
         and activity class — the one predicate set the spending rollups and
         the spending trends share, so a bar on one and a line on the other
-        cannot total differently."""
+        cannot total differently — and the classes of those rows to count.
+
+        The class set comes back with the query because it widens on the
+        account scope applied here: derived beside it, the two cannot
+        disagree about whether the user picked accounts."""
         q = (
             select(
                 Category.id,
@@ -1807,15 +1804,8 @@ class ReportService:
             )
         )
         q = scoped(q, Transaction.category_id, category_ids)
-        # `is not None`, not truthiness: an empty selection means "a scope was
-        # asked for and nothing matched", and must return no rows rather than
-        # falling through to every on-budget account. That is the distinction
-        # `scoped()` was extracted to keep, and this branch did not keep it.
-        if account_ids is not None:
-            q = scoped(q, Transaction.account_id, account_ids)
-        else:
-            q = q.where(ON_BUDGET_ACCOUNT)
-        return apply_class_joins(q)
+        q, explicit = account_scope(q, account_ids)
+        return apply_class_joins(q), counted_classes(include_classes, scoped_accounts=explicit)
 
     async def spending_grouped(
         self,
@@ -1848,7 +1838,9 @@ class ReportService:
         The groups/total shape is identical either way, so the client-side
         rollup does not care which arrangement produced it.
         """
-        q = self._spending_query(budget_id, start_date, end_date, category_ids, account_ids)
+        q, included = self._spending_query(
+            budget_id, start_date, end_date, category_ids, account_ids, include_classes
+        )
         rows = (await self.session.execute(q)).all()
 
         # `_view_arrangement` returns None for a view that does not exist or
@@ -1865,7 +1857,6 @@ class ReportService:
         # complement — two full scans of the same window, each paying the
         # per-row subqueries ACTIVITY_CLASS compiles to, on exactly the
         # requests a view or a selection makes.
-        included = counted_classes(include_classes, scoped_accounts=account_ids is not None)
         counted = [r for r in rows if r.cls in included]
         other_class = [r for r in rows if r.cls not in included]
 
@@ -2205,17 +2196,13 @@ class ReportService:
                 PAYEE_OF_RECORD.isnot(None),
                 # Otherwise "Transfer : Brokerage" ranks as a top payee, which
                 # is true and useless — it is not somewhere money was spent.
-                _spending_classes(scoped_accounts=bool(account_ids)),
             )
         )
-        # PAYEE_OF_RECORD rather than the raw column, and `is not None` for
-        # the same reason as the account scope below.
-        if payee_ids is not None:
-            q = scoped(q, PAYEE_OF_RECORD, payee_ids)
-        if account_ids is not None:
-            q = scoped(q, Transaction.account_id, account_ids)
-        else:
-            q = q.where(ON_BUDGET_ACCOUNT)
+        # PAYEE_OF_RECORD rather than the raw column; `scoped` keeps [] apart
+        # from None, as `account_scope` does for accounts.
+        q = scoped(q, PAYEE_OF_RECORD, payee_ids)
+        q, explicit = account_scope(q, account_ids)
+        q = q.where(_spending_classes(scoped_accounts=explicit))
         q = apply_class_joins(q)
         rows = (await self.session.execute(q)).all()
 
@@ -2297,10 +2284,7 @@ class ReportService:
             CASH_FLOW_ROW,
         )
         q = scoped(q, Transaction.category_id, category_ids)
-        if account_ids is not None:
-            q = scoped(q, Transaction.account_id, account_ids)
-        else:
-            q = q.where(ON_BUDGET_ACCOUNT)
+        q, explicit = account_scope(q, account_ids)
         q = apply_class_joins(q)
         scanned = (await self.session.execute(q)).all()
 
@@ -2309,7 +2293,7 @@ class ReportService:
         # ACTIVITY_CLASS's per-row subqueries a second time. Same shape as
         # `spending_grouped`, and the same widening for an explicit account
         # selection — see `_spending_classes` for why that exists.
-        included = counted_classes(scoped_accounts=account_ids is not None)
+        included = counted_classes(scoped_accounts=explicit)
         rows = [r for r in scanned if r.cls in included]
         class_excluded = class_excluded_note(
             [r for r in scanned if r.cls not in included],
@@ -2429,10 +2413,7 @@ class ReportService:
         # asked. A parent is in scope when any of its legs is.
         if category_ids is not None:
             q = q.where(in_category_scope(category_ids))
-        if account_ids is not None:
-            q = scoped(q, Transaction.account_id, account_ids)
-        else:
-            q = q.where(ON_BUDGET_ACCOUNT)
+        q, _ = account_scope(q, account_ids)
         # Ranked by SIZE, not by signed amount.
         #
         # `order_by(amount)` puts the most negative first, which is right for

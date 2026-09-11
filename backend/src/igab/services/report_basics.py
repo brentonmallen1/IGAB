@@ -29,7 +29,6 @@ from igab.domain.activity_class import (
     NecessityTier,
     apply_class_joins,
     basis_is_chosen,
-    counted_classes,
 )
 from igab.domain.dates import add_months, complete_month_window, month_starts
 from igab.domain.money import quantize_cents
@@ -74,13 +73,14 @@ async def spending_trends(
     """
     months = month_starts(start_date.replace(day=1), end_date)
     index = {m: i for i, m in enumerate(months)}
-    q = svc._spending_query(budget_id, start_date, end_date, category_ids, account_ids)
+    # The class set comes from `_spending_query` too: this was the one of
+    # three spending rollups that never widened for an explicit account
+    # selection, so a tracked account drew nothing here beside a populated
+    # Pareto over the identical selection.
+    q, included = svc._spending_query(
+        budget_id, start_date, end_date, category_ids, account_ids, include_classes
+    )
     rows = (await svc.session.execute(q)).all()
-    # `counted_classes`, not a fourth restatement: this was the one of three
-    # spending rollups that never widened for an explicit account selection,
-    # so pointing the account filter at a tracked account drew nothing here
-    # beside a populated Pareto over the identical selection.
-    included = counted_classes(include_classes, scoped_accounts=account_ids is not None)
     counted = [r for r in rows if r.cls in included]
     other_class = [r for r in rows if r.cls not in included]
 

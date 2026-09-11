@@ -16,12 +16,24 @@ once — when the transaction posts. This mirrors AccountRepository.get_balance.
 
 import re
 import uuid
-from collections.abc import Collection
+from collections.abc import Collection, Sequence
 from datetime import date
 from decimal import Decimal
 from typing import Protocol
 
-from sqlalchemy import Boolean, String, and_, cast, false, func, not_, or_, select, true
+from sqlalchemy import (
+    Boolean,
+    Select,
+    String,
+    and_,
+    cast,
+    false,
+    func,
+    not_,
+    or_,
+    select,
+    true,
+)
 from sqlalchemy.orm import aliased
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -255,6 +267,28 @@ ON_BUDGET_ACCOUNT = Transaction.account_id.in_(
     )
     .correlate(Transaction)
 )
+
+
+def account_scope(q: Select, account_ids: Sequence[uuid.UUID] | None) -> tuple[Select, bool]:
+    """Apply a report's account scope, and say whether the user chose one.
+
+    The user's selection when there is one, `ON_BUDGET_ACCOUNT` when there is
+    not. **None means no selection; an empty list means one was made and
+    matched nothing** — `in_([])` renders false, so it returns no rows rather
+    than falling through to every on-budget account (the distinction
+    `report_service.scoped` keeps for categories).
+
+    The flag rides along because the class widening turns on the same fact
+    (`counted_classes(scoped_accounts=...)`). This block was written out at
+    seven report queries and the flag derived at five more places, one of
+    them as `bool(account_ids)` seven lines above an `is not None` scope —
+    so the scope and the widening could disagree about whether a selection
+    existed.
+    """
+    if account_ids is None:
+        return q.where(ON_BUDGET_ACCOUNT), False
+    return q.where(Transaction.account_id.in_(account_ids)), True
+
 
 #: A card, for the credit model: an on-budget liability-classified account.
 #: Classification, not `account_type == "credit_card"` — a custom on-budget
