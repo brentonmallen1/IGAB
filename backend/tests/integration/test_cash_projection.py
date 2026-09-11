@@ -418,6 +418,56 @@ async def test_a_month_end_schedule_keeps_its_day(db_session):
     ]
 
 
+async def test_a_schedule_already_advanced_to_a_clamped_day_returns_to_its_own(db_session):
+    """The case the scheduler actually leaves behind: started on the 31st and
+    already advanced, so the row stores 28 Feb. Every other fixture here has
+    `start_date == next_occurrence_date`, where anchoring on the stored day
+    and on the start day give the same answer — anchored on the stored day,
+    this reads 28 Mar."""
+    budget, checking = await _budget_with_checking(db_session)
+    year = TODAY.year + 1
+    await create_scheduled_transaction(
+        db_session,
+        budget,
+        checking,
+        "-100.00",
+        "monthly",
+        month_end(date(year, 2, 1)),
+        start_date=date(year, 1, 31),
+    )
+    horizon = (date(year, 4, 5) - TODAY).days
+
+    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=horizon)
+
+    assert _charged_dates(data["points"]) == [month_end(date(year, 2, 1)), date(year, 3, 31)]
+
+
+async def test_a_twice_monthly_schedule_stored_on_its_second_day_keeps_its_first(db_session):
+    """A 1st/15th schedule the scheduler has advanced to the 15th. Anchored on
+    the stored day it steps 15th to 15th and loses every 1st."""
+    budget, checking = await _budget_with_checking(db_session)
+    year = TODAY.year + 1
+    await create_scheduled_transaction(
+        db_session,
+        budget,
+        checking,
+        "1900.00",
+        "twice_monthly",
+        date(year, 1, 15),
+        start_date=date(year, 1, 1),
+        second_day_of_month=15,
+    )
+    horizon = (date(year, 2, 20) - TODAY).days
+
+    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=horizon)
+
+    assert _charged_dates(data["points"]) == [
+        date(year, 1, 15),
+        date(year, 2, 1),
+        date(year, 2, 15),
+    ]
+
+
 async def test_an_overdue_occurrence_lands_on_the_projected_path(db_session):
     """An occurrence already due but not yet entered used to appear in the
     events list under its own past date while never reaching the path — the

@@ -3207,15 +3207,7 @@ class ReportService:
         live_schedules: list[ColumnElement[bool]] = []
         for sched, payee_name in sched_rows:
             amount = Decimal(str(sched.amount))
-            dates, runs_on = projected_occurrences(
-                sched.frequency,
-                sched.next_occurrence_date,
-                start_day=sched.start_date.day,
-                second_day_of_month=sched.second_day_of_month,
-                end_date=sched.end_date,
-                today=today,
-                horizon_end=end_date,
-            )
+            dates, runs_on = projected_occurrences(sched, today=today, horizon_end=end_date)
             scheduled_events.extend((d, payee_name or "Scheduled", amount) for d in dates)
             covers = reapplied_by_schedule(sched)
             if dates:

@@ -697,8 +697,9 @@ computation in `report_service.py`.
 - **Start balance**: sum of on-budget account balances (reuse
   `AccountRepository.get_balance` semantics — same as net worth).
 - **Deterministic layer**: expand `ScheduledTransaction` occurrences over the horizon,
-  **reusing the recurrence stepping in `scheduled_transaction_service.py`
-  (`calculate_next`) — do not reimplement**; plus confirmed subscriptions stepped from
+  **reusing the recurrence stepping in `domain/schedule.py`
+  (`projected_occurrences` over `stored_next_occurrence`, which the scheduler
+  steps with too) — do not reimplement**; plus confirmed subscriptions stepped from
   `next_expected_date` at `CADENCE_DAYS[effective cadence]` with `last_amount`.
   Dedup: skip a subscription if a ScheduledTransaction with the same `payee_id`
   exists (would double-count). Pre-R3 the endpoint simply returns scheduled-only.

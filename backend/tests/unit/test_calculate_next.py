@@ -1,12 +1,12 @@
 """Occurrence arithmetic — domain/schedule.py, the one home for it.
 
-`calculate_next` on the service is a wrapper over `next_occurrence`; these
-cases exercise the pure function directly, with the row-shaped wrapper
-covered once at the bottom.
+`stored_next_occurrence` maps a stored row onto `next_occurrence`; these
+cases exercise the pure function directly, with the row-shaped mapping
+covered in `TestStoredRow`.
 """
 
+from dataclasses import dataclass
 from datetime import date, timedelta
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -18,10 +18,10 @@ from igab.domain.schedule import (
     observed_interval_days,
     projected_occurrences,
     step_cadence,
+    stored_next_occurrence,
     subscription_occurrences,
     validate_schedule,
 )
-from igab.services.scheduled_transaction_service import calculate_next
 
 
 def nxt(frequency: str, current: date, **kw) -> date | None:
@@ -241,24 +241,43 @@ class TestValidateSchedule:
             self.ok(days_before_reminder=-1)
 
 
-class TestRowWrapper:
-    def test_calculate_next_reads_the_row(self):
-        m = MagicMock()
-        m.frequency = "twice_monthly"
-        m.next_occurrence_date = date(2024, 3, 15)
-        m.start_date = date(2024, 1, 1)
-        m.second_day_of_month = 15
-        m.end_date = None
-        assert calculate_next(m) == date(2024, 4, 1)
+@dataclass
+class Row:
+    """A stored schedule: what `StoredSchedule` reads off the model."""
 
-    def test_calculate_next_honours_end_date(self):
-        m = MagicMock()
-        m.frequency = "monthly"
-        m.next_occurrence_date = date(2024, 3, 15)
-        m.start_date = date(2024, 1, 15)
-        m.second_day_of_month = None
-        m.end_date = date(2024, 3, 31)
-        assert calculate_next(m) is None
+    frequency: str
+    next_occurrence_date: date
+    start_date: date
+    second_day_of_month: int | None = None
+    end_date: date | None = None
+
+
+class TestStoredRow:
+    """The row's stored next date is already clamped, so the mapping has to
+    anchor on `start_date` — the fixtures here are the ones where the two
+    differ, which no fixture did while the mapping was written twice."""
+
+    def test_reads_the_row(self):
+        row = Row("twice_monthly", date(2024, 3, 15), date(2024, 1, 1), second_day_of_month=15)
+        assert stored_next_occurrence(row) == date(2024, 4, 1)
+
+    def test_honours_end_date(self):
+        row = Row("monthly", date(2024, 3, 15), date(2024, 1, 15), end_date=date(2024, 3, 31))
+        assert stored_next_occurrence(row) is None
+
+    def test_a_row_stored_on_a_clamped_day_returns_to_its_start_day(self):
+        # Started 31 Jan, already advanced to 28 Feb: 31 Mar, not 28 Mar.
+        row = Row("monthly", date(2027, 2, 28), date(2027, 1, 31))
+        assert stored_next_occurrence(row) == date(2027, 3, 31)
+        assert stored_next_occurrence(row, date(2027, 3, 31)) == date(2027, 4, 30)
+        assert stored_next_occurrence(row, date(2027, 4, 30)) == date(2027, 5, 31)
+
+    def test_a_twice_monthly_row_stored_on_its_second_day_keeps_its_first(self):
+        # 1st/15th, stored on the 15th: anchored on the stored day, the 1st
+        # would be lost for good.
+        row = Row("twice_monthly", date(2027, 1, 15), date(2027, 1, 1), second_day_of_month=15)
+        assert stored_next_occurrence(row) == date(2027, 2, 1)
+        assert stored_next_occurrence(row, date(2027, 2, 1)) == date(2027, 2, 15)
 
 
 class TestObservedIntervalDays:
@@ -323,16 +342,17 @@ class TestStepCadence:
 class TestProjectedOccurrences:
     TODAY = date(2026, 9, 10)
 
-    def project(self, frequency, next_date, horizon_end, *, end_date=None, second=None):
-        return projected_occurrences(
-            frequency,
-            next_date,
-            start_day=next_date.day,
-            second_day_of_month=second,
-            end_date=end_date,
-            today=self.TODAY,
-            horizon_end=horizon_end,
+    def project(self, frequency, next_date, horizon_end, *, end_date=None):
+        row = Row(frequency, next_date, next_date, end_date=end_date)
+        return projected_occurrences(row, today=self.TODAY, horizon_end=horizon_end)
+
+    def test_a_row_stored_on_a_clamped_day_projects_from_its_start_day(self):
+        row = Row("monthly", date(2027, 2, 28), date(2027, 1, 31))
+        dates, runs_on = projected_occurrences(
+            row, today=date(2027, 2, 20), horizon_end=date(2027, 5, 1)
         )
+        assert dates == [date(2027, 2, 28), date(2027, 3, 31), date(2027, 4, 30)]
+        assert runs_on
 
     def test_a_stale_backlog_books_one_occurrence_on_today(self):
         # Weekly, first due 185 days ago: 27 missed occurrences. One reaches
