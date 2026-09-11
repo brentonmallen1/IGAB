@@ -6,14 +6,16 @@ confirmed narrower than first claimed). Almost all of them are one question
 answered from a different row set in a different report, so the work is ordered
 by root cause rather than by report.
 
-**Pushed and opened as a stacked PR set, #177 through #183**, base of each being
-the branch above it. Merge bottom-up, #177 first.
+**Pushed and opened as one stacked PR set, #177 through #193**, base of each
+being the branch above it. Merge bottom-up, #177 first.
 
 **Never `--delete-branch` a base while its child PR is open** — it auto-closes
 the child. Delete a branch only once every PR above it has merged.
 
-Branches created after #183 branch off `feat/necessity-tiers` and continue the
-stack.
+All nine phases of the audit have landed as branches. #193 is the only one
+that can be dropped without touching the rest: it changes figures the user
+reads daily (a per-month average divides by finished months), and nothing sits
+on top of it.
 
 This file is the chain of record. All branches live in the `~/repos/IGAB-reports` worktree, cut sequentially off
 each other, starting from `origin/main` at `892922a0`.

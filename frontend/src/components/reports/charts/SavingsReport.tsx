@@ -132,9 +132,15 @@ export function SavingsReport({ budgetId }: Props) {
         <div ref={captureRef} className="report-capture">
           <MetricRow>
             <MetricCard label="Total Balance" value={formatMoney(summary?.total_balance ?? 0)} />
+            {/* Every month in the window, this one included — assigning is a
+                monthly act, not something that accrues by the day, so an
+                envelope funded on the 1st has its whole inflow on record.
+                Deliberately unlike the spending averages, which divide by
+                complete months. */}
             <MetricCard
               label="Avg Monthly Inflow"
               value={formatMoney(summary?.avg_monthly_inflow ?? 0)}
+              sub="assigned, per month"
             />
             <MetricCard
               label="Categories"
