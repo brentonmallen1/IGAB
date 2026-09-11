@@ -23,7 +23,7 @@ import { ChartTooltip } from './ChartTooltip'
 import { COLOR_NET, COLOR_POSITIVE, COLOR_NEUTRAL } from './chartColors'
 import { carriedFlatFrom, coverageTrend, monthsToTarget, standing } from './coverageView'
 import { useReportMonths } from '../../../stores/reportStore'
-import { useMoneyAxis } from './useMoneyAxis'
+import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
 import './EmergencyCoverageReport.css'
 
 interface Props {

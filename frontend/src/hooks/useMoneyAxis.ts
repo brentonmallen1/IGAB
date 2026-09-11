@@ -1,9 +1,9 @@
 import { useMemo } from 'react'
-import { useFormatters } from '../../../hooks/useFormatters'
-import { useIsMobile } from '../../../hooks/useMediaQuery'
-import { useAppStore } from '../../../stores/appStore'
-import { getCurrencySymbol } from '../../../utils/money'
-import { compactMoney, MONEY_AXIS_WIDTH } from './moneyAxis'
+import { useFormatters } from './useFormatters'
+import { useIsMobile } from './useMediaQuery'
+import { useAppStore } from '../stores/appStore'
+import { getCurrencySymbol } from '../utils/money'
+import { compactMoney, MONEY_AXIS_WIDTH } from '../utils/moneyAxis'
 
 /**
  * Props for a recharts money `<YAxis>`: the tick formatter and the width,

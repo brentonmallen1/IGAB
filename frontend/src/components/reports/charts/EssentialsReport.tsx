@@ -12,7 +12,7 @@ import {
 } from 'recharts'
 import { useEssentialsReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
-import { useMoneyAxis } from './useMoneyAxis'
+import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
 import { MetricCard } from '../MetricCard'
 import { ReportNotes } from '../ReportNotes'
 import { MetricRow } from '../MetricRow'

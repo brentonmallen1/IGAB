@@ -24,7 +24,7 @@ import { ChartTooltip } from './ChartTooltip'
 import { chartColor } from './chartColors'
 import { monthWiderByLabel, rollupTrends } from './spendingTrends'
 import { useReportScope } from '../../../stores/reportStore'
-import { useMoneyAxis } from './useMoneyAxis'
+import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
 import { ReportNotes, IncludeSavingsToggle } from '../ReportNotes'
 
 interface Props {

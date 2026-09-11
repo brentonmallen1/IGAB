@@ -16,7 +16,7 @@ import { spendingDrillClasses, useReportStore, type GroupBy } from '../../../sto
 import { useSpendingGroupedReport, usePayeeAnalysisReport } from '../../../api/reports'
 import { useChartHeight } from '../../../hooks/useChartHeight'
 import { useFormatters } from '../../../hooks/useFormatters'
-import { useMoneyAxis } from './useMoneyAxis'
+import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
 import { DrillDownTable } from '../DrillDownTable'
 import { MetricCard } from '../MetricCard'
 import { MetricRow } from '../MetricRow'

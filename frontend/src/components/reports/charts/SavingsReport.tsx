@@ -22,7 +22,7 @@ import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ChartTooltip } from './ChartTooltip'
 import './SavingsReport.css'
 import { useReportMonths } from '../../../stores/reportStore'
-import { useMoneyAxis } from './useMoneyAxis'
+import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
 
 interface Props {
   budgetId: string

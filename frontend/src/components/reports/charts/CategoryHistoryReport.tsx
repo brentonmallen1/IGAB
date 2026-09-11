@@ -25,7 +25,7 @@ import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ChartTooltip } from './ChartTooltip'
 import { COLOR_NEGATIVE, COLOR_NET, COLOR_POSITIVE } from './chartColors'
 import { useReportMonths } from '../../../stores/reportStore'
-import { useMoneyAxis } from './useMoneyAxis'
+import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
 
 interface Props {
   budgetId: string

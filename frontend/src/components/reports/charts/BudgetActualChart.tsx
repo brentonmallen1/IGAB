@@ -13,7 +13,7 @@ import {
 import { useReportStore } from '../../../stores/reportStore'
 import { useBudgetActualReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
-import { useMoneyAxis } from './useMoneyAxis'
+import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
 import { ReportErrorState } from '../ReportErrorState'
 import { COLOR_NEGATIVE, COLOR_NEUTRAL, COLOR_POSITIVE } from './chartColors'
 import { DrillDownTable } from '../DrillDownTable'

@@ -37,7 +37,7 @@ import { equityOf, liabilitiesSecuredBy } from '../../utils/equity'
 import { isStaleValue } from '../../utils/assetValues'
 import { parseAmountInput } from '../../utils/money'
 import './AssetPage.css'
-import { useMoneyAxis } from '../../components/reports/charts/useMoneyAxis'
+import { useMoneyAxis } from '../../hooks/useMoneyAxis'
 
 const TYPE_LABEL: Record<string, string> = {
   property: 'Property',

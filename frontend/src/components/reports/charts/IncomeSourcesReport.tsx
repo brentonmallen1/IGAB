@@ -21,7 +21,7 @@ import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ChartTooltip } from './ChartTooltip'
 import { chartColor, COLOR_OTHER } from './chartColors'
 import { useReportMonths } from '../../../stores/reportStore'
-import { useMoneyAxis } from './useMoneyAxis'
+import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
 import { otherIncome } from './incomeSourcesView'
 
 interface Props {

@@ -15,7 +15,7 @@ import {
 } from 'recharts'
 import { useLiabilitiesReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
-import { useMoneyAxis } from './useMoneyAxis'
+import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
 import { ReportErrorState } from '../ReportErrorState'
 import { ChartTooltip } from './ChartTooltip'
 import { chartColor } from './chartColors'

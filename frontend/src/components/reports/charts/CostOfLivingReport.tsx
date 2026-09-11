@@ -14,7 +14,7 @@ import { chartColor } from './chartColors'
 import { ChartLegend } from './ChartLegend'
 import { ChartTooltip } from './ChartTooltip'
 import { ReportRangeSelect } from './rangeSelect'
-import { useMoneyAxis } from './useMoneyAxis'
+import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
 import { necessityReading, sheddableShare } from './necessityView'
 import { averagedOver } from './averagedOver'
 

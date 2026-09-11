@@ -12,7 +12,7 @@ import {
 import { useReportMonths, useReportStore } from '../../../stores/reportStore'
 import { useVolatilityReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
-import { useMoneyAxis } from './useMoneyAxis'
+import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
 import { ReportErrorState } from '../ReportErrorState'
 import { COLOR_NEUTRAL, TOOLTIP_STYLE } from './chartColors'
 import {
