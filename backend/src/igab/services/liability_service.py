@@ -477,9 +477,7 @@ class LiabilityService:
                 total += await self.get_balance(liability)
         return total
 
-    async def _closed_but_owing(
-        self, budget_id: uuid.UUID, shown: list[Liability]
-    ) -> tuple[int, Decimal]:
+    async def _closed_but_owing(self, hidden: list[Liability]) -> tuple[int, Decimal]:
         """What the report's default exclusion hides, counted so it can be said.
 
         `get_all` drops a loan under a CLOSED account because "a settled loan
@@ -492,10 +490,11 @@ class LiabilityService:
 
         Deliberate divergence is fine; silence is not. The exclusion stays and
         the report says what it left out.
+
+        `hidden` is the closed-account liabilities the report's own type and
+        mode filters kept: a note under the Personal pill about a closed auto
+        loan described money that could never have been in that total.
         """
-        with_closed = await self.liability_repo.get_all(budget_id, include_closed=True)
-        shown_ids = {item.id for item in shown}
-        hidden = [item for item in with_closed if item.id not in shown_ids]
         # `get_balance`, not `manual_balance`: a MANAGED loan reads its linked
         # account's ledger and carries no manual figure at all, and a loan
         # account closed with a balance still on it is the whole case this
@@ -515,19 +514,22 @@ class LiabilityService:
         balance-over-time series (forward-filled between sparse points) for
         the consolidated Liabilities report. No new math — pure aggregation."""
         as_of = as_of or today_utc()
-        liabilities = await self.liability_repo.get_all(budget_id)
-
-        closed_count, closed_owing = await self._closed_but_owing(budget_id, liabilities)
-        resolved_types = {item.id: await self.resolve_type(item) for item in liabilities}
+        open_ids = {item.id for item in await self.liability_repo.get_all(budget_id)}
+        every = await self.liability_repo.get_all(budget_id, include_closed=True)
+        resolved_types = {item.id: await self.resolve_type(item) for item in every}
         # Filter on what the report SHOWS. Filtering the stored column instead
         # would hide rows whose visible type matches and surface ones whose
         # does not — the pre-derivation column is not what anyone is reading.
+        # Closed-account rows go through the same filters before the note
+        # counts them, so the note is about the total it sits beside.
         if liability_type is not None:
-            liabilities = [
-                item for item in liabilities if resolved_types[item.id] == liability_type
-            ]
+            every = [item for item in every if resolved_types[item.id] == liability_type]
         if mode is not None:
-            liabilities = [item for item in liabilities if self.mode(item) == mode]
+            every = [item for item in every if self.mode(item) == mode]
+        liabilities = [item for item in every if item.id in open_ids]
+        closed_count, closed_owing = await self._closed_but_owing(
+            [item for item in every if item.id not in open_ids]
+        )
 
         items: list[dict] = []
         per_liability_monthly: dict[str, dict[date, Decimal]] = {}
