@@ -536,17 +536,36 @@ def tier_keys(tier: NecessityTier) -> list[str]:
     return ["essential", "cost_of_living"]
 
 
+def basis_is_chosen(basis: str) -> bool:
+    """Whether a necessity figure was measured over what the household chose —
+    categories bound in the Guide ("bound") or its tags ("tag") — rather than
+    the "all" fallback `_necessity_scope` returns when nothing is chosen.
+
+    "all" is every category: the burn rate. Quoted as Essentials it says the
+    household could not cut a single thing, and it fired "what you could not
+    cut costs more than you take home" on spending that could be cut. A
+    figure on that basis is unknown, not everything. Said once, here: the
+    Essentials headline, both Cost of Living tiers and its notes all read it,
+    and they had three spellings of it.
+    """
+    return basis != "all"
+
+
 def tier_scope(tier: NecessityTier):
     """The membership predicate for one tier.
 
     Debt principal enters Cost of Living by CLASS rather than by tag, which is
     what delivers "any debt payments" without asking a household to tag each
-    loan envelope — and what gives most budgets a non-zero gap on day one.
+    loan envelope. **Payments only**: the class also marks money coming IN
+    from a tracked loan — a disbursement, a HELOC draw — and that netted
+    against the tier, so $5,000 of loan proceeds read as a negative cost of
+    living and a "comfortable" standing for a whole year. The tag arms keep
+    netting refunds, as a category's own activity does.
     """
     if tier is NecessityTier.ESSENTIAL:
         return ESSENTIAL_TAGGED
     return or_(
         ESSENTIAL_TAGGED,
         COST_OF_LIVING_TAGGED,
-        ACTIVITY_CLASS == ActivityClass.DEBT_PRINCIPAL.value,
+        and_(ACTIVITY_CLASS == ActivityClass.DEBT_PRINCIPAL.value, Transaction.amount < 0),
     )

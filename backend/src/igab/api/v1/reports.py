@@ -886,6 +886,7 @@ async def cost_of_living_report(
         tagged=data["tagged"],
         class_excluded=[SpendingClassExcluded.model_validate(c) for c in data["class_excluded"]],
         counted_classes=data["counted_classes"],
+        necessity_tier=data["necessity_tier"],
     )
 
 

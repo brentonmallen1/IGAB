@@ -876,9 +876,12 @@ class CostOfLivingResponse(ApiModel):
     avg_monthly_cost_of_living: Decimal
     #: The lean tier, measured over the SAME window, which is what makes the
     #: difference between them a real figure rather than a calendar artifact.
-    avg_monthly_essentials: Decimal
-    #: Cost of living less essentials: what a lean month could shed.
-    avg_monthly_non_essential: Decimal
+    #: None when nothing is tagged Essential (`basis_is_chosen`): all spending
+    #: is not what a household could not cut, so the figure is unknown.
+    avg_monthly_essentials: Decimal | None
+    #: Cost of living less essentials: what a lean month could shed. None
+    #: whenever essentials is.
+    avg_monthly_non_essential: Decimal | None
     avg_monthly_income: Decimal
     #: Share of take-home already spoken for, against the WIDE tier. None when
     #: the averaged months carry no income: a ratio against zero is unknown,
@@ -900,6 +903,10 @@ class CostOfLivingResponse(ApiModel):
     #: The activity classes these figures count, so a drill-down opened from a
     #: bar totals what the bar says.
     counted_classes: list[str] = []
+    #: The necessity tier the groups roll up. Membership is per row (debt
+    #: principal by class), so the drill sends it too. Required: a drill that
+    #: forgets it lists spending the bar never counted.
+    necessity_tier: str
 
 
 # ─── Wishlist discipline ─────────────────────────────────────────────────────

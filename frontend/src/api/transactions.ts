@@ -141,6 +141,9 @@ export interface BudgetTransactionParams {
   /** Restrict to these activity classes, so the panel totals what the chart
    *  that opened it counted rather than every row of the same sign. */
   activityClasses?: string[]
+  /** Restrict to a necessity tier's own rows (the report's served
+   *  `necessity_tier`), whose membership categories alone cannot express. */
+  necessityTier?: string
   limit?: number
   offset?: number
 }
@@ -173,6 +176,7 @@ function drillDownParams(p: BudgetTransactionParams): Record<string, unknown> {
     payee_ids: csv(p.payeeIds),
     account_ids: csv(p.accountIds),
     activity_classes: csv(p.activityClasses),
+    necessity_tier: p.necessityTier || undefined,
     uncategorized: p.uncategorized || undefined,
     tag_ids: csv(p.tagIds),
     filter_id: p.filterId || undefined,

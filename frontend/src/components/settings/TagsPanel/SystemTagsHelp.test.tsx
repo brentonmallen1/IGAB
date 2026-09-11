@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
+import systemTags from '../../../../../shared/system_tags.json'
 import { SystemTagsHelp } from './SystemTagsHelp'
 import { SYSTEM_TAG_HELP } from './systemTagHelp'
 
@@ -11,15 +12,10 @@ describe('SystemTagsHelp', () => {
       expect(screen.getByText(tag.name)).toBeInTheDocument()
       expect(tag.does.length).toBeGreaterThan(40)
     }
-    // The five the backend seeds (repositories/tag_repo.py SYSTEM_TAGS), in order.
-    expect(SYSTEM_TAG_HELP.map((t) => t.key)).toEqual([
-      'subscription',
-      'savings',
-      'long_term_expense',
-      'debt_principal',
-      'essential',
-      'wishlist',
-    ])
+    // Every tag the backend seeds, in its order. The list is shared with
+    // backend/tests/unit/test_system_tags_agree.py: a hand-copied one here let
+    // `cost_of_living` ship with no explanation while this test stayed green.
+    expect(SYSTEM_TAG_HELP.map((t) => t.key)).toEqual(systemTags.keys)
   })
 
   it('stays closed until asked', () => {

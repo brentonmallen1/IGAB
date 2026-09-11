@@ -82,6 +82,9 @@ export function CostOfLivingReport({ budgetId }: Props) {
       categoryIds: uncategorized ? undefined : g.category_ids,
       uncategorized: uncategorized || undefined,
       activityClasses: report.counted_classes,
+      // Debt principal joins the tier by class, per row: without the tier a
+      // bar's categories list the fuel beside the loan payment it counted.
+      necessityTier: report.necessity_tier,
       startDate: report.window_start,
       endDate: report.window_end,
     })
@@ -172,21 +175,37 @@ export function CostOfLivingReport({ budgetId }: Props) {
               value={formatMoney(data.avg_monthly_cost_of_living)}
               sub={perMonth}
             />
+            {/* Null until something is tagged Essential: all spending is not
+                what a household could not cut, so the figure is unknown. */}
             <MetricCard
               label="Essentials"
-              value={formatMoney(data.avg_monthly_essentials)}
-              sub="could not be cut"
+              value={
+                data.avg_monthly_essentials === null
+                  ? '—'
+                  : formatMoney(data.avg_monthly_essentials)
+              }
+              sub={
+                data.avg_monthly_essentials === null
+                  ? 'nothing tagged Essential'
+                  : 'could not be cut'
+              }
             />
             {/* Named for what it IS, not for what to do about it. "Could cut"
                 beside a household's car payment reads as advice to sell the
                 car; this is an inventory, and the note below says so. */}
             <MetricCard
               label="Non-essential"
-              value={formatMoney(data.avg_monthly_non_essential)}
+              value={
+                data.avg_monthly_non_essential === null
+                  ? '—'
+                  : formatMoney(data.avg_monthly_non_essential)
+              }
               sub={
-                sheddable === null
-                  ? 'nothing committed yet'
-                  : `${Math.round(sheddable)}% of the above`
+                data.avg_monthly_non_essential === null
+                  ? 'needs Essentials tagged'
+                  : sheddable === null
+                    ? 'nothing committed yet'
+                    : `${Math.round(sheddable)}% of the above`
               }
             />
             <MetricCard

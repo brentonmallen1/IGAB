@@ -664,4 +664,24 @@ describe('CostOfLivingReport tiers', () => {
     // The worse fact, said as itself rather than as "no headroom".
     expect(screen.getByText(/costs more than you take home/i)).toBeInTheDocument()
   })
+
+  it('shows no Essentials figure until something is tagged Essential', () => {
+    // Only Cost of living tagged: the server serves the lean tier as unknown
+    // rather than the whole burn rate, so nothing may read "could not be cut"
+    // and the underwater sentence cannot fire on spending that could be cut.
+    setQuery({
+      data: {
+        ...tiered,
+        avg_monthly_essentials: null,
+        avg_monthly_non_essential: null,
+        essentials_ratio: null,
+        required_ratio: 130,
+      },
+    })
+    renderReport(<CostOfLivingReport budgetId="b1" />)
+    expect(screen.getByText('nothing tagged Essential')).toBeInTheDocument()
+    expect(screen.getByText('needs Essentials tagged')).toBeInTheDocument()
+    expect(screen.queryByText('could not be cut')).toBeNull()
+    expect(screen.queryByText(/costs more than you take home/i)).toBeNull()
+  })
 })

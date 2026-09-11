@@ -64,6 +64,7 @@ function DrillDownPanelInner({ budgetId, drillDown }: Props & { drillDown: Drill
       filterId: drillDown.filterId,
       dayOfWeek: drillDown.dayOfWeek,
       activityClasses: drillDown.activityClasses,
+      necessityTier: drillDown.necessityTier,
       accountIds: filters.accountIds.length > 0 ? filters.accountIds : undefined,
       limit,
     }),

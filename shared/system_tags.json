@@ -1,0 +1,12 @@
+{
+  "_comment": "The system tags every budget is seeded with, in order. One list, two languages: backend/tests/unit/test_system_tags_agree.py holds repositories/tag_repo.py SYSTEM_TAGS to it, and frontend/src/components/settings/TagsPanel/SystemTagsHelp.test.tsx holds SYSTEM_TAG_HELP to it. The help once kept a hand-copied list with a comment pointing at the backend, and a seventh tag shipped with no explanation while that test stayed green.",
+  "keys": [
+    "subscription",
+    "savings",
+    "long_term_expense",
+    "debt_principal",
+    "essential",
+    "cost_of_living",
+    "wishlist"
+  ]
+}

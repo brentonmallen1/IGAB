@@ -1,7 +1,6 @@
 from datetime import date
 
 from igab.services.report_service import (
-    _last_day,
     _months_in_range,
     _subtract_months,
 )
@@ -11,6 +10,9 @@ from igab.services.report_service import (
 # is gone and `cash_projection` calls `domain.schedule.next_occurrence`, whose
 # 44 cases in tests/unit/test_calculate_next.py cover everything this class
 # asserted plus the branch it was missing.
+#
+# TestLastDay went the same way: `report_service._last_day` was a private copy
+# of `domain.dates.month_end`, and its cases live in test_domain_dates.py.
 
 
 class TestSubtractMonths:
@@ -50,23 +52,3 @@ class TestMonthsInRange:
 
     def test_empty_when_start_after_end(self):
         assert _months_in_range(date(2024, 5, 1), date(2024, 4, 30)) == []
-
-
-class TestLastDay:
-    def test_january(self):
-        assert _last_day(date(2024, 1, 1)) == date(2024, 1, 31)
-
-    def test_february_non_leap(self):
-        assert _last_day(date(2023, 2, 1)) == date(2023, 2, 28)
-
-    def test_february_leap(self):
-        assert _last_day(date(2024, 2, 1)) == date(2024, 2, 29)
-
-    def test_april(self):
-        assert _last_day(date(2024, 4, 1)) == date(2024, 4, 30)
-
-    def test_november(self):
-        assert _last_day(date(2024, 11, 1)) == date(2024, 11, 30)
-
-    def test_december(self):
-        assert _last_day(date(2024, 12, 1)) == date(2024, 12, 31)

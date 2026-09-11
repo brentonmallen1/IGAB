@@ -320,6 +320,10 @@ export interface DrillDownContext {
    *  "spending" must say so, or its drill lists savings and debt too — an
    *  $800 bar opening a panel that totals $1,800. */
   activityClasses?: string[]
+  /** A necessity tier the chart rolled up (served as `necessity_tier`). Its
+   *  membership is per row — debt principal by class — so categories and
+   *  classes alone list rows the bar never counted. */
+  necessityTier?: string
   startDate: string
   endDate: string
 }

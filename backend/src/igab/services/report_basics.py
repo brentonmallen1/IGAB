@@ -28,6 +28,7 @@ from igab.domain.activity_class import (
     ActivityClass,
     NecessityTier,
     apply_class_joins,
+    basis_is_chosen,
     counted_classes,
 )
 from igab.domain.dates import add_months, complete_months, month_end
@@ -562,9 +563,13 @@ async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: in
     excluded, _ = await repo.essential_excluded_by_class(
         budget_id, start_date, today, tier=NecessityTier.COST_OF_LIVING
     )
-    essentials_signed, _ = await repo.essential_spend(
+    essentials_signed, lean_basis = await repo.essential_spend(
         budget_id, start_date, today, tier=NecessityTier.ESSENTIAL
     )
+    # Each tier picks its fallback on its own, so tagging only Cost of living
+    # left Essentials on "all": the whole burn rate, larger than the tier it
+    # sits inside, reading "could not be cut". Unchosen, it is unknown.
+    essentials_known = basis_is_chosen(lean_basis)
 
     # A per-month AVERAGE divides by months that happened. `month_list` ends
     # with the month in progress, so dividing by its length spread eleven
@@ -579,7 +584,7 @@ async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: in
     complete = complete_months(month_list, today)
     n_complete = len(complete)
     essentials_complete_signed = essentials_signed
-    if 0 < n_complete < len(month_list):
+    if essentials_known and 0 < n_complete < len(month_list):
         essentials_complete_signed, _ = await repo.essential_spend(
             budget_id, start_date, month_end(complete[-1]), tier=NecessityTier.ESSENTIAL
         )
@@ -647,13 +652,16 @@ async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: in
     # Outflows are negative in the ledger; a cost reads positive here, the same
     # way the group buckets above flip theirs.
     essentials_complete = -essentials_complete_signed
-    avg_essentials = quantize_cents(essentials_complete / n) if n else Decimal("0")
     avg_cost_of_living = quantize_cents(cost_of_living_complete / n) if n else Decimal("0")
-    # The gap, and the reason the two tiers exist: what a lean month could shed.
-    # Floored at zero — the wide tier contains the lean one as a disjunct, so a
-    # negative here would mean the predicates had drifted apart, and reporting a
-    # negative "could shed" figure would be the first thing anyone noticed.
-    avg_non_essential = max(avg_cost_of_living - avg_essentials, Decimal("0"))
+    avg_essentials: Decimal | None = None
+    avg_non_essential: Decimal | None = None
+    if essentials_known:
+        avg_essentials = quantize_cents(essentials_complete / n) if n else Decimal("0")
+        # The gap, and the reason the two tiers exist: what a lean month could
+        # shed. Floored at zero: the wide tier contains the lean one, but its
+        # tag arms net refunds, so a refund filed to a Cost-of-living category
+        # can take it below — and nobody committed to a negative amount.
+        avg_non_essential = max(avg_cost_of_living - avg_essentials, Decimal("0"))
 
     return {
         "months": month_list,
@@ -697,22 +705,26 @@ async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: in
         #: than a high required ratio.
         "essentials_ratio": (
             quantize_cents(essentials_complete / income_complete * 100)
-            if income_complete > 0
+            if income_complete > 0 and essentials_known
             else None
         ),
         "basis": basis,
-        #: False when nothing is tagged Essential, so the page can say the
-        #: figure is every category rather than a chosen few.
-        "tagged": basis != "all",
+        #: False when nothing is tagged, so the page can say the figure is
+        #: every category rather than a chosen few.
+        "tagged": basis_is_chosen(basis),
         #: What was in scope and not counted. Tagging a category IS pointing at
         #: it, so this fires whenever the basis is a tag or a Guide binding —
         #: the case the note was written for is exactly "I tagged ten and two
         #: showed up".
-        "class_excluded": class_excluded_note(excluded, scoped=basis != "all") or [],
+        "class_excluded": class_excluded_note(excluded, scoped=basis_is_chosen(basis)) or [],
         #: The classes the figures above DO count, so a drill-down opened from
         #: a bar totals what the bar says. Without it a click on Housing lists
         #: the savings transfers too.
         "counted_classes": [c.value for c in COST_OF_LIVING_CLASSES],
+        #: The tier the groups roll up. Debt principal joins it by class, per
+        #: row, so a bar's categories and classes are not enough: the drill
+        #: sends this and lists the tier's own rows.
+        "necessity_tier": NecessityTier.COST_OF_LIVING.value,
     }
 
 

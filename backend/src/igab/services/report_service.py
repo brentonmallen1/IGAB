@@ -31,6 +31,7 @@ from igab.domain.activity_class import (
     SPENDING_CLASSES,
     ActivityClass,
     apply_class_joins,
+    basis_is_chosen,
     counted_classes,
 )
 
@@ -39,6 +40,7 @@ from igab.domain.activity_class import (
 # uncategorized transfers never do). For category-scoped queries the
 # predicate is vacuously true, keeping one uniform rule.
 from igab.domain.dates import add_months, months_spanned
+from igab.domain.dates import month_end as _month_end
 from igab.domain.money import format_csv_amount, quantize_cents
 from igab.domain.schedule import projected_occurrences, subscription_occurrences
 from igab.guide.concepts import (
@@ -838,7 +840,7 @@ class ReportService:
             points = []
             for i in range(months - 1, -1, -1):
                 month_start = _subtract_months(first_of_month, i)
-                month_end = min(_last_day(month_start), today)
+                month_end = min(_month_end(month_start), today)
                 unmanaged = (
                     unmanaged_now
                     if i == 0
@@ -875,7 +877,7 @@ class ReportService:
         # Clamped: the current month's last day is a future date, and the
         # newest point is "net worth now".
         grid = [_subtract_months(first_of_month, i) for i in range(months - 1, -1, -1)]
-        month_ends = [min(_last_day(m), today) for m in grid]
+        month_ends = [min(_month_end(m), today) for m in grid]
         per_account = monthly_account_balances(df, grid, month_ends)
 
         results = []
@@ -1007,12 +1009,12 @@ class ReportService:
         results = []
         for i in range(months - 1, -1, -1):
             month_start = _subtract_months(first_of_month, i)
-            # Clamped to today. `_last_day` of the CURRENT month is a future
+            # Clamped to today. `_month_end` of the CURRENT month is a future
             # date, so the newest point summed a window running weeks past
             # today: it was month-to-date wearing a "30-day" label, and it
             # contradicted the Overview's "30-Day Burn Rate" — which is a
             # genuine trailing thirty days — every day of the month.
-            month_end = min(_last_day(month_start), today)
+            month_end = min(_month_end(month_start), today)
 
             # Thirty days INCLUSIVE of month_end, which is why it is 29 and
             # not 30. A rolling window deliberately does not tile the
@@ -1628,7 +1630,7 @@ class ReportService:
         assignments = (await self.session.execute(assign_q)).all()
 
         start = months_list[0]
-        end = _last_day(months_list[-1])
+        end = _month_end(months_list[-1])
         # PLANNED_SPEND_ROW + the class filter: the spent side must live in
         # the same universe as the assigned side, or the subtraction
         # compounds an apples-to-oranges gap every month. The predicate's
@@ -1727,7 +1729,7 @@ class ReportService:
                 POSTED,
                 Transaction.amount < 0,
                 Transaction.date >= months_list[0],
-                Transaction.date <= _last_day(months_list[-1]),
+                Transaction.date <= _month_end(months_list[-1]),
                 LEAF,
                 CASH_FLOW_ROW,
                 SPENT_ENVELOPE,
@@ -2160,7 +2162,7 @@ class ReportService:
         """(monthly essentials over the Guide's window, anything tagged?)."""
         since = today - timedelta(days=ESSENTIALS_WINDOW_DAYS)
         total, basis = await self.txns.essential_spend(budget_id, since, today)
-        if basis != "tag":
+        if not basis_is_chosen(basis):
             return None, False
         return quantize_cents(abs(total) / 3), True
 
@@ -3604,12 +3606,3 @@ def _empty_dashboard(net_worth: Decimal = Decimal("0")) -> dict:
         "expenses_prev_month": Decimal("0"),
         "top_categories": [],
     }
-
-
-def _last_day(d: date) -> date:
-    m = d.month + 1
-    y = d.year
-    if m > 12:
-        m = 1
-        y += 1
-    return date(y, m, 1) - timedelta(days=1)

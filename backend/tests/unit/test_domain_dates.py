@@ -79,6 +79,13 @@ class TestMonthBuckets:
 
     def test_month_end_knows_thirty_day_months(self):
         assert month_end(date(2024, 4, 5)) == date(2024, 4, 30)
+        assert month_end(date(2024, 11, 1)) == date(2024, 11, 30)
+
+    def test_month_end_of_the_year_ends_and_starts(self):
+        # The cases report_service's private copy (`_last_day`) pinned before
+        # it was folded into this one; December is the one that rolls a year.
+        assert month_end(date(2024, 12, 1)) == date(2024, 12, 31)
+        assert month_end(date(2024, 1, 1)) == date(2024, 1, 31)
 
     def test_bucket_shift_keeps_day_one(self):
         # The composition report_service._subtract_months is built from.

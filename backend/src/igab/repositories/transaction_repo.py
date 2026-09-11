@@ -265,6 +265,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         posted_only: bool = False,
         cash_flow_only: bool = False,
         activity_classes: list[str] | None = None,
+        necessity_tier: NecessityTier | None = None,
         direction: str | None = None,
         day_of_week: int | None = None,
         cleared: str | None = None,
@@ -304,6 +305,14 @@ class TransactionRepository(BaseRepository[Transaction]):
             # totalling $1,800, because the bar means SPENDING and the list
             # meant every negative row.
             where.append(ACTIVITY_CLASS.in_(list(activity_classes)))
+        if necessity_tier is not None:
+            # A tier's membership is per ROW once debt principal joins it by
+            # class, so a bar's category ids alone list rows the tier never
+            # counted: an "Auto" bar holding a $340 loan payment opened $420
+            # with the fuel beside it. The tier's own scope — the report's
+            # rule, fallback included — is what the panel lists.
+            tier_where, _ = await self._necessity_scope(budget_id, necessity_tier, None)
+            where.extend(tier_where)
         if direction == "outflow":
             where.append(Transaction.amount < 0)
         elif direction == "inflow":
@@ -365,7 +374,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         totals_q = select(func.count(), func.coalesce(func.sum(Transaction.amount), 0)).select_from(
             Transaction
         )
-        if activity_classes:
+        if activity_classes or necessity_tier is not None:
             # Only when the filter is in play: these are four LEFT JOINs, and
             # the ordinary register listing has no reason to pay for them.
             rows_q = apply_class_joins(rows_q)

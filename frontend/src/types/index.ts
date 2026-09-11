@@ -1382,10 +1382,13 @@ export interface CostOfLivingReport {
   /** The wide tier: everything non-discretionary. */
   avg_monthly_cost_of_living: number
   /** The lean tier, over the SAME window — which is what makes the difference
-   *  between them a real figure rather than a calendar artifact. */
-  avg_monthly_essentials: number
-  /** Cost of living less essentials: what a lean month could shed. */
-  avg_monthly_non_essential: number
+   *  between them a real figure rather than a calendar artifact. Null when
+   *  nothing is tagged Essential (backend `basis_is_chosen`): all spending is
+   *  not what a household could not cut. */
+  avg_monthly_essentials: number | null
+  /** Cost of living less essentials: what a lean month could shed. Null
+   *  whenever essentials is. */
+  avg_monthly_non_essential: number | null
   avg_monthly_income: number
   /** Share of take-home spoken for, against the WIDE tier. Null when there is
    *  no income on record: unknown, not 100%. */
@@ -1403,6 +1406,9 @@ export interface CostOfLivingReport {
   /** The activity classes these figures count, passed to the drill-down so a
    *  bar and the panel it opens total the same. */
   counted_classes: string[]
+  /** The necessity tier the groups roll up. Membership is per row (debt
+   *  principal joins by class), so the drill sends it too. */
+  necessity_tier: string
 }
 
 export interface WishlistDisciplineReport {
