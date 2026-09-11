@@ -26,6 +26,9 @@ from datetime import date, timedelta
 from decimal import Decimal
 from uuid import UUID
 
+from sqlalchemy import insert
+
+from igab.db.models import payee_tags
 from igab.domain.activity_class import NecessityTier
 from igab.domain.dates import add_months, month_end
 from igab.guide.concepts import essentials_since
@@ -444,6 +447,48 @@ class TestEssentialsNeedTheirOwnTag:
         assert report["avg_monthly_cost_of_living"] == D("1260.00")  # the burn rate, said so
         assert report["avg_monthly_essentials"] is None
         assert report["essentials_ratio"] is None
+
+
+class TestAPayeeTagChoosesNothing:
+    async def test_a_payee_only_essential_tag_leaves_the_fallback_standing(self, db_session):
+        """`_necessity_scope` counted `payee_tags` when deciding whether the
+        household had chosen anything, while the predicate has read categories
+        only since the payee arm was retired. A payee tagged Essential gave
+        basis "tag", a predicate matching nothing, and a cost of living of
+        0.00 with the burn-rate note suppressed.
+
+        Payee tags can no longer be written through the API, but the table
+        stays for snapshot restore and undo, so the row is inserted directly —
+        the shape a restored snapshot carries.
+        """
+        budget = await create_budget(db_session, await create_user(db_session))
+        checking = await create_account(db_session, budget, "Harborstone Checking")
+        bills = await create_category_group(db_session, budget, "Bills")
+        rent = await create_category(db_session, budget, bills, "Rent")
+        streaming = await create_category(db_session, budget, bills, "Streaming")
+        landlord = await create_payee(db_session, budget, "Lakeside Property Co")
+        await seed_system_tags(db_session, budget.id)
+        essential = await TagRepository(db_session).get_system_tag(budget.id, "essential")
+        await db_session.execute(
+            insert(payee_tags).values(payee_id=landlord.id, tag_id=essential.id)
+        )
+        last_month = _last_month()
+        await create_transaction(
+            db_session, budget, checking, "-1200.00", last_month, payee=landlord, category=rent
+        )
+        await create_transaction(
+            db_session, budget, checking, "-60.00", last_month, category=streaming
+        )
+
+        report = await cost_of_living(db_session, budget.id, months=1)
+        lean, basis = await TransactionRepository(db_session).essential_spend(
+            budget.id, _first_of_last_month(), _today()
+        )
+
+        # Nothing was chosen, so both tiers fall back to all spending and say so.
+        assert report["tagged"] is False
+        assert report["avg_monthly_cost_of_living"] == D("1260.00")
+        assert (lean, basis) == (D("-1260.00"), "all")
 
 
 class TestLoanMoneyComingInIsNotACost:
