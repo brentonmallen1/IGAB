@@ -1054,6 +1054,10 @@ export interface IncomeBySourceReport {
   sources: IncomeSource[]
   monthly_totals: number[]
   total: number
+  /** `total` over the complete months the window holds, served — Cost of
+   *  Living's Take-home quotes the same figure. Never divide here. */
+  avg_monthly: number
+  months_averaged: number
 }
 
 export interface CategoryHistoryReport {

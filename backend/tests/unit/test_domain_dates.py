@@ -16,6 +16,7 @@ from igab.domain.dates import (
     complete_months,
     month_end,
     month_start,
+    month_starts,
     months_between,
     months_spanned,
     trailing_start,
@@ -248,3 +249,19 @@ class TestTrailingStart:
 
     def test_one_day_is_today(self):
         assert trailing_start(date(2026, 9, 10), 1) == date(2026, 9, 10)
+
+
+class TestMonthStarts:
+    def test_single_month(self):
+        assert month_starts(date(2024, 3, 10), date(2024, 3, 20)) == [date(2024, 3, 1)]
+
+    def test_spans_year_boundary(self):
+        assert month_starts(date(2023, 11, 15), date(2024, 2, 1)) == [
+            date(2023, 11, 1),
+            date(2023, 12, 1),
+            date(2024, 1, 1),
+            date(2024, 2, 1),
+        ]
+
+    def test_empty_when_start_after_end(self):
+        assert month_starts(date(2024, 5, 1), date(2024, 4, 30)) == []

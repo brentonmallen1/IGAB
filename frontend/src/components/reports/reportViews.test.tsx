@@ -46,6 +46,7 @@ import { CashProjectionReport } from './charts/CashProjectionReport'
 import { DayPatternsReport } from './charts/DayOfWeekChart'
 import { TimelineReport } from './charts/EventTimeline'
 import { IncomeExpenseReport } from './charts/IncomeExpenseChart'
+import { IncomeSourcesReport } from './charts/IncomeSourcesReport'
 import { LiabilitiesReport } from './charts/LiabilitiesReport'
 import { NetWorthReport } from './charts/NetWorthChart'
 import { ParetoReport } from './charts/ParetoChart'
@@ -548,6 +549,35 @@ describe('PayeeReport labels', () => {
     } finally {
       useReportStore.getState().setFilters({ payeeIds: [] })
     }
+  })
+})
+
+describe('IncomeSourcesReport average', () => {
+  it('shows the served average, not total over the months listed', () => {
+    // The page divided `total` by `months.length` for itself, with the running
+    // month in the window: 5,500 beside Cost of Living's Take-home of 6,000
+    // for the same steady pay. The server serves the figure both quote.
+    setQuery({
+      data: {
+        months: ['2026-06-01', '2026-07-01', '2026-08-01'],
+        sources: [
+          {
+            payee_id: 'p1',
+            payee_name: 'Northwind Payserv',
+            monthly: [6000, 6000, 6000],
+            total: 18000,
+            count: 3,
+          },
+        ],
+        monthly_totals: [6000, 6000, 6000],
+        total: 18000,
+        // Deliberately not total ÷ months, so a division done here would show.
+        avg_monthly: 5750,
+        months_averaged: 3,
+      },
+    })
+    renderReport(<IncomeSourcesReport budgetId="b1" />)
+    expect(screen.getByText('$5,750.00')).toBeInTheDocument()
   })
 })
 

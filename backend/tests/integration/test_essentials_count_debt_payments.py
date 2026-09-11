@@ -224,7 +224,8 @@ class TestTheReportCanBeOpened:
         budget, *_ = await _household(db_session)
         report = await cost_of_living(db_session, budget.id, months=2)
         assert report["window_start"] == report["months"][0]
-        assert report["window_end"] == TODAY
+        # The last day of last month: the window is complete months.
+        assert report["window_end"] == TODAY.replace(day=1) - timedelta(days=1)
 
     async def test_the_counted_classes_ride_along(self, db_session):
         """The drill-down passes these on, so the panel totals what the bar

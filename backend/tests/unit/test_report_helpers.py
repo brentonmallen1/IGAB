@@ -1,9 +1,6 @@
 from datetime import date
 
-from igab.services.report_service import (
-    _months_in_range,
-    _subtract_months,
-)
+from igab.services.report_service import _subtract_months
 
 # TestNextOccurrence lived here, testing `report_service._next_occurrence` — a
 # fourth copy of recurrence stepping with no `twice_monthly` branch. The copy
@@ -12,7 +9,8 @@ from igab.services.report_service import (
 # asserted plus the branch it was missing.
 #
 # TestLastDay went the same way: `report_service._last_day` was a private copy
-# of `domain.dates.month_end`, and its cases live in test_domain_dates.py.
+# of `domain.dates.month_end`, and its cases live in test_domain_dates.py. So
+# did TestMonthsInRange, now `domain.dates.month_starts`.
 
 
 class TestSubtractMonths:
@@ -36,19 +34,3 @@ class TestSubtractMonths:
 
     def test_december_minus_one(self):
         assert _subtract_months(date(2024, 1, 1), 1) == date(2023, 12, 1)
-
-
-class TestMonthsInRange:
-    def test_single_month(self):
-        assert _months_in_range(date(2024, 3, 10), date(2024, 3, 20)) == [date(2024, 3, 1)]
-
-    def test_spans_year_boundary(self):
-        assert _months_in_range(date(2023, 11, 15), date(2024, 2, 1)) == [
-            date(2023, 11, 1),
-            date(2023, 12, 1),
-            date(2024, 1, 1),
-            date(2024, 2, 1),
-        ]
-
-    def test_empty_when_start_after_end(self):
-        assert _months_in_range(date(2024, 5, 1), date(2024, 4, 30)) == []

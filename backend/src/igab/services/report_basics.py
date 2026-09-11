@@ -31,7 +31,7 @@ from igab.domain.activity_class import (
     basis_is_chosen,
     counted_classes,
 )
-from igab.domain.dates import add_months, complete_months, month_end
+from igab.domain.dates import add_months, complete_month_window, month_starts
 from igab.domain.money import quantize_cents
 from igab.repositories.txn_filters import (
     LEAF,
@@ -43,18 +43,6 @@ from igab.repositories.txn_filters import (
 
 if TYPE_CHECKING:
     from igab.services.report_service import ReportService
-
-
-def _months_in_range(start_date: date, end_date: date) -> list[date]:
-    months = []
-    cur = start_date.replace(day=1)
-    while cur <= end_date:
-        months.append(cur)
-        if cur.month == 12:
-            cur = cur.replace(year=cur.year + 1, month=1)
-        else:
-            cur = cur.replace(month=cur.month + 1)
-    return months
 
 
 def _subtract_months(d: date, months: int) -> date:
@@ -84,7 +72,7 @@ async def spending_trends(
     route. Months with nothing spent are zero, never missing, so every
     series is the same length as `months`.
     """
-    months = _months_in_range(start_date.replace(day=1), end_date)
+    months = month_starts(start_date.replace(day=1), end_date)
     index = {m: i for i, m in enumerate(months)}
     q = svc._spending_query(budget_id, start_date, end_date, category_ids, account_ids)
     rows = (await svc.session.execute(q)).all()
@@ -146,9 +134,9 @@ async def income_by_source(session: AsyncSession, budget_id: uuid.UUID, months: 
     rule is `INCOME_ROW`, which both Sankey modes read too; budgeted mode
     summed positive split parents by sign until it did.
     """
-    today = date.today()
-    start_date = _subtract_months(today, months - 1).replace(day=1)
-    month_list = _months_in_range(start_date, today)
+    # N complete months, like every averaging report (`complete_month_window`).
+    start_date, end_date = complete_month_window(date.today(), months)
+    month_list = month_starts(start_date, end_date)
     index = {m: i for i, m in enumerate(month_list)}
     q = (
         select(
@@ -161,7 +149,7 @@ async def income_by_source(session: AsyncSession, budget_id: uuid.UUID, months: 
         .where(
             Transaction.budget_id == budget_id,
             Transaction.date >= start_date,
-            Transaction.date <= today,
+            Transaction.date <= end_date,
             ON_BUDGET_ACCOUNT,
             # In SQL rather than a Python skip: the sign pre-filter used to cut
             # the row set down first, and without it that skip would fetch
@@ -194,11 +182,17 @@ async def income_by_source(session: AsyncSession, budget_id: uuid.UUID, months: 
         quantize_cents(sum((e["monthly"][i] for e in ordered), Decimal("0")))
         for i in range(len(month_list))
     ]
+    total = quantize_cents(sum(monthly_totals, Decimal("0")))
     return {
         "months": month_list,
         "sources": ordered,
         "monthly_totals": monthly_totals,
-        "total": quantize_cents(sum(monthly_totals, Decimal("0"))),
+        "total": total,
+        # Served, because Cost of Living's Take-home quotes it and the page
+        # divided for itself — by a window that included the running month,
+        # 5,500 beside Take-home's 6,000 for the same steady pay.
+        "avg_monthly": quantize_cents(total / len(month_list)) if month_list else Decimal("0"),
+        "months_averaged": len(month_list),
     }
 
 
@@ -263,21 +257,16 @@ class SubscriptionRow(RecurringSpend):
     payees: list[SubscriptionPayeeRow]
 
 
-def _recurring_spend(
-    frame: pl.DataFrame, month_list: list[date], n_complete: int
-) -> RecurringSpend:
+def _recurring_spend(frame: pl.DataFrame, month_list: list[date]) -> RecurringSpend:
     """The per-line arithmetic, for a category or one payee inside it.
 
     avg_monthly is the TRUE monthly burden: the total spread over the
     months since the FIRST charge, not the average charged month — a
     quarterly $30 subscription costs $10/mo, not $30/mo.
 
-    Over COMPLETE months. `month_list` ends with the month in progress, and
-    counting it whole put a subscription's effective cost at its lowest on the
-    2nd of every month — then `total_annual` multiplied that by twelve. A line
-    whose only charge is in the running month has no complete month to average
-    and reads that month's own figure: an estimate from two days is better
-    than a $0.00 beside a charge the user can see.
+    `month_list` is complete months only (`complete_month_window`). Counting a
+    running month whole put a subscription's effective cost at its lowest on
+    the 2nd of every month — then `total_annual` multiplied that by twelve.
     """
     by_month = frame.group_by("month").agg(pl.col("amount").sum().alias("monthly_total"))
     monthly_amounts: list[Decimal] = []
@@ -289,14 +278,11 @@ def _recurring_spend(
 
     total = sum(monthly_amounts, Decimal("0"))
     txn_count = len(frame)
-    complete = monthly_amounts[:n_complete] if n_complete else monthly_amounts
-    first_charged = next((i for i, a in enumerate(complete) if a > 0), None)
+    first_charged = next((i for i, a in enumerate(monthly_amounts) if a > 0), None)
     if first_charged is not None:
-        spread = sum(complete[first_charged:], Decimal("0"))
-        avg_monthly = spread / (len(complete) - first_charged)
-    elif total > 0:
-        # Charged only in the month still running.
-        avg_monthly = total
+        avg_monthly = sum(monthly_amounts[first_charged:], Decimal("0")) / (
+            len(monthly_amounts) - first_charged
+        )
     else:
         avg_monthly = Decimal("0")
     return {
@@ -346,15 +332,12 @@ async def subscriptions_report(
     if not tagged:
         return empty
 
-    today = date.today()
-    end_date = today
-    # `months` means N months, not N+1. This subtracted the full count from
-    # the current month and then included it too, so "Last 12 Months" drew
-    # thirteen columns with an empty leader and spread every cost over
-    # thirteen.
-    start_date = _subtract_months(today, months - 1).replace(day=1)
-    month_list = _months_in_range(start_date, end_date)
-    n_complete = len(complete_months(month_list, today))
+    # N COMPLETE months — the meaning every averaging report gives `months`
+    # (`complete_month_window`). This took N calendar months through today and
+    # averaged the N−1 complete ones, so Subscriptions and Cost of Living read
+    # one month fewer than Essentials over the same setting.
+    start_date, end_date = complete_month_window(date.today(), months)
+    month_list = month_starts(start_date, end_date)
 
     q = (
         select(
@@ -411,7 +394,7 @@ async def subscriptions_report(
                 {
                     "payee_id": None if payee_id == "__none__" else payee_id,
                     "payee_name": for_payee["payee_name"][0],
-                    **_recurring_spend(for_payee, month_list, n_complete),
+                    **_recurring_spend(for_payee, month_list),
                 }
             )
         payees.sort(key=lambda p: p["total"], reverse=True)
@@ -422,7 +405,7 @@ async def subscriptions_report(
                 "category_name": in_category["category_name"][0],
                 "group_name": in_category["group_name"][0],
                 "payees": payees,
-                **_recurring_spend(in_category, month_list, n_complete),
+                **_recurring_spend(in_category, month_list),
             }
         )
 
@@ -437,9 +420,9 @@ async def subscriptions_report(
             "active_count": len(subscriptions),
         },
         "months": month_list,
-        #: How many months an effective-monthly figure divides by. One less
-        #: than `months` on every day but the first of a month.
-        "months_averaged": n_complete or len(month_list),
+        #: How many months an effective-monthly figure divides by: all of
+        #: them, since every month in the window is complete.
+        "months_averaged": len(month_list),
     }
 
 
@@ -542,9 +525,14 @@ async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: in
     """
     from igab.repositories.transaction_repo import TransactionRepository
 
-    today = date.today()
-    start_date = _subtract_months(today, months - 1).replace(day=1)
-    month_list = _months_in_range(start_date, today)
+    # N COMPLETE months: the window the Essentials report reads, so this
+    # report's Essentials figure is that report's average rather than one
+    # month off it. This took N calendar months through today and averaged the
+    # N−1 complete ones, which agreed with Essentials only when spending was
+    # flat: rent of 3,000 a month plus a 1,200 premium twelve months back read
+    # 3,000 here and 3,100 there.
+    start_date, end_date = complete_month_window(date.today(), months)
+    month_list = month_starts(start_date, end_date)
     index = {m: i for i, m in enumerate(month_list)}
 
     repo = TransactionRepository(session)
@@ -554,36 +542,23 @@ async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: in
     # visible difference between Cost of Living and Essentials — a calendar
     # artifact wearing the gap's clothes.
     rows, basis = await repo.essential_spend_by_category_month(
-        budget_id, start_date, today, tier=NecessityTier.COST_OF_LIVING
+        budget_id, start_date, end_date, tier=NecessityTier.COST_OF_LIVING
     )
     excluded, _ = await repo.essential_excluded_by_class(
-        budget_id, start_date, today, tier=NecessityTier.COST_OF_LIVING
+        budget_id, start_date, end_date, tier=NecessityTier.COST_OF_LIVING
     )
     essentials_signed, lean_basis = await repo.essential_spend(
-        budget_id, start_date, today, tier=NecessityTier.ESSENTIAL
+        budget_id, start_date, end_date, tier=NecessityTier.ESSENTIAL
     )
     # Each tier picks its fallback on its own, so tagging only Cost of living
     # left Essentials on "all": the whole burn rate, larger than the tier it
     # sits inside, reading "could not be cut". Unchosen, it is unknown.
     essentials_known = basis_is_chosen(lean_basis)
 
-    # A per-month AVERAGE divides by months that happened. `month_list` ends
-    # with the month in progress, so dividing by its length spread eleven
-    # months of spending plus two days over twelve — lowest exactly when a
-    # household checks at the start of a month, and the reason this report
-    # quoted $2,750/month where the Essentials report quoted $3,000 for the
-    # same tag and the same query. The RATIOS below divide these same
-    # complete-month figures: a ratio printed beside two cards has to be their
-    # quotient. Dividing whole-window totals instead had both terms covering
-    # the same days — just not the days the cards average — and Required read
-    # 40% beside cards whose quotient was 60%.
-    complete = complete_months(month_list, today)
-    n_complete = len(complete)
-    essentials_complete_signed = essentials_signed
-    if essentials_known and 0 < n_complete < len(month_list):
-        essentials_complete_signed, _ = await repo.essential_spend(
-            budget_id, start_date, month_end(complete[-1]), tier=NecessityTier.ESSENTIAL
-        )
+    # Every month in the window is complete, so every average divides by all
+    # of them, and the RATIOS below divide the same figures the cards show: a
+    # ratio printed beside two cards has to be their quotient.
+    n = len(month_list)
 
     #: Rows carry a null group where an essential PAYEE tagged a transaction
     #: with no category. They are real spending and must not vanish.
@@ -608,20 +583,15 @@ async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: in
 
     groups: list[CostOfLivingGroup] = []
     cost_of_living_total = Decimal("0")
-    cost_of_living_complete = Decimal("0")
     for name, amounts in by_group.items():
         total = sum(amounts, Decimal("0"))
         cost_of_living_total += total
-        # Complete months only in the average — see `complete` below. The
-        # Total column keeps every day the window covers.
-        complete_total = sum(amounts[:n_complete], Decimal("0")) if n_complete else total
-        cost_of_living_complete += complete_total
         groups.append(
             {
                 "group_name": name,
                 "monthly_amounts": amounts,
                 "total": quantize_cents(total),
-                "avg_monthly": quantize_cents(complete_total / (n_complete or len(month_list))),
+                "avg_monthly": quantize_cents(total / n),
                 "share": Decimal("0"),
                 "category_ids": sorted(ids_by_group.get(name, set())),
             }
@@ -634,25 +604,19 @@ async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: in
         )
     groups.sort(key=lambda g: g["total"], reverse=True)
 
+    # Take-home is Income by Source's own served average over the same
+    # window, not a second division of its monthly totals here.
     income = await income_by_source(session, budget_id, months)
-    income_total = Decimal(income["total"])
-    # `n` is the divisor for every average: complete months, or the single
-    # month in progress when the window is one month long and there is
-    # nothing complete to divide by — a figure from two days is better than a
-    # figure from nothing, and `months_averaged` says which it is.
-    n = n_complete or len(month_list)
-    income_complete = (
-        sum(income["monthly_totals"][:n_complete], Decimal("0")) if n_complete else income_total
-    )
-    avg_income = quantize_cents(income_complete / n) if n else Decimal("0")
-    # Outflows are negative in the ledger; a cost reads positive here, the same
-    # way the group buckets above flip theirs.
-    essentials_complete = -essentials_complete_signed
-    avg_cost_of_living = quantize_cents(cost_of_living_complete / n) if n else Decimal("0")
+    avg_income = income["avg_monthly"]
+    income_total = income["total"]
+    essentials_total = -essentials_signed
+    avg_cost_of_living = quantize_cents(cost_of_living_total / n) if n else Decimal("0")
     avg_essentials: Decimal | None = None
     avg_non_essential: Decimal | None = None
     if essentials_known:
-        avg_essentials = quantize_cents(essentials_complete / n) if n else Decimal("0")
+        # Outflows are negative in the ledger; a cost reads positive here, the
+        # same way the group buckets above flip theirs.
+        avg_essentials = quantize_cents(essentials_total / n) if n else Decimal("0")
         # The gap, and the reason the two tiers exist: what a lean month could
         # shed. Floored at zero: the wide tier contains the lean one, but its
         # tag arms net refunds, so a refund filed to a Cost-of-living category
@@ -666,11 +630,9 @@ async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: in
         #: it — and re-deriving "twelve months back, from the first of that
         #: month, to today" on the other side is the same rule written twice.
         "window_start": start_date,
-        "window_end": today,
-        #: How many months the AVERAGES divide by. Smaller than `months` by one
-        #: whenever the newest month is still running, which is every day but
-        #: the first of a month — said out loud so the card and the series can
-        #: be read together.
+        "window_end": end_date,
+        #: How many months the averages divide by: every month in the window,
+        #: all of them complete.
         "months_averaged": n,
         "groups": groups,
         "avg_monthly_cost_of_living": avg_cost_of_living,
@@ -689,19 +651,17 @@ async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: in
         #: tracked loan — debt principal joins cost of living by class, with no
         #: tagging needed. The report has to say so on its face.
         #:
-        #: Both ratios divide the complete-month figures the cards show, so
-        #: each is exactly the quotient of the two cards beside it.
+        #: Both ratios divide the totals behind the cards — the same months,
+        #: the same divisor — so each is the quotient of the two cards beside it.
         "required_ratio": (
-            quantize_cents(cost_of_living_complete / income_complete * 100)
-            if income_complete > 0
-            else None
+            quantize_cents(cost_of_living_total / income_total * 100) if income_total > 0 else None
         ),
         #: The lean tier against take-home. Above 100 the household cannot
         #: cover what it could not cut, which is a different and worse fact
         #: than a high required ratio.
         "essentials_ratio": (
-            quantize_cents(essentials_complete / income_complete * 100)
-            if income_complete > 0 and essentials_known
+            quantize_cents(essentials_total / income_total * 100)
+            if income_total > 0 and essentials_known
             else None
         ),
         "basis": basis,

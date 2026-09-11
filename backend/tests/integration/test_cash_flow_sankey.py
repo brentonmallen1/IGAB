@@ -14,6 +14,7 @@ import uuid
 from datetime import date, timedelta
 from decimal import Decimal
 
+from igab.domain.dates import month_end
 from igab.services.report_basics import income_by_source
 from igab.services.report_service import ReportService
 from igab.services.transaction_service import TransactionCreate
@@ -305,18 +306,22 @@ async def test_budgeted_mode_counts_income_by_class_not_sign(db_session):
     brokerage = await create_account(
         db_session, budget, "Brokerage", account_type="investment", on_budget=False
     )
-    month = TODAY.replace(day=1)
+    # Last month: Income by Source reads complete months, so the three views
+    # are compared over a month that has finished.
+    month = months_ago(1)
+    when = month + timedelta(days=4)
+    end = month_end(month)
     await create_budget_assignment(db_session, budget, groceries, month, "500.00")
-    await create_transaction(db_session, budget, checking, "3000.00", TODAY, category=ready)
-    await create_transaction(db_session, budget, checking, "-400.00", TODAY, category=ready)
+    await create_transaction(db_session, budget, checking, "3000.00", when, category=ready)
+    await create_transaction(db_session, budget, checking, "-400.00", when, category=ready)
     # Neither of these is income: a refund into an envelope, and money drawn
     # back out of a tracked brokerage.
-    await create_transaction(db_session, budget, checking, "25.00", TODAY, category=groceries)
-    await create_transfer(db_session, budget, brokerage, checking, "500.00", TODAY)
+    await create_transaction(db_session, budget, checking, "25.00", when, category=groceries)
+    await create_transfer(db_session, budget, brokerage, checking, "500.00", when)
 
     reports = ReportService(db_session)
-    budgeted = await reports.cash_flow_sankey(budget.id, month, TODAY, mode="budgeted")
-    spent = await reports.cash_flow_sankey(budget.id, month, TODAY, mode="spent")
+    budgeted = await reports.cash_flow_sankey(budget.id, month, end, mode="budgeted")
+    spent = await reports.cash_flow_sankey(budget.id, month, end, mode="spent")
     by_source = await income_by_source(db_session, budget.id, months=1)
 
     assert budgeted["total_income"] == Decimal("2600.00")

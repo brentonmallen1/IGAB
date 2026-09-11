@@ -41,7 +41,13 @@ from igab.domain.activity_class import (
 # uncategorized transfers never do). For category-scoped queries the
 # predicate is vacuously true, keeping one uniform rule.
 from igab.domain.concentration import items_to_share
-from igab.domain.dates import add_months, complete_month_window, months_spanned, trailing_start
+from igab.domain.dates import (
+    add_months,
+    complete_month_window,
+    month_starts,
+    months_spanned,
+    trailing_start,
+)
 from igab.domain.dates import month_end as _month_end
 from igab.domain.money import format_csv_amount, quantize_cents
 from igab.domain.plan import plan_outcome
@@ -74,7 +80,6 @@ from igab.repositories.txn_filters import (
     reapplied_by_subscriptions,
 )
 from igab.services.report_basics import (
-    _months_in_range,
     _subtract_months,
     class_excluded_note,
     emergency_fund,
@@ -1074,7 +1079,7 @@ class ReportService:
         Assignments belong to the budget, not to accounts, so the account
         filter applies only to the transaction-derived income total.
         """
-        months = _months_in_range(start_date, end_date)
+        months = month_starts(start_date, end_date)
 
         # Get budget assignments with category/group info
         q = (
@@ -1507,7 +1512,7 @@ class ReportService:
         end_date: date,
         category_ids: list[uuid.UUID] | None = None,
     ) -> dict:
-        months_in_range = _months_in_range(start_date, end_date)
+        months_in_range = month_starts(start_date, end_date)
 
         # Assignments for those months
         assign_q = (
@@ -1901,7 +1906,7 @@ class ReportService:
         )
         rows = (await self.session.execute(q)).all()
         return {
-            "categories": volatility_stats(rows, _months_in_range(start, end), amortize=amortize),
+            "categories": volatility_stats(rows, month_starts(start, end), amortize=amortize),
             "window_start": start,
             "window_end": end,
         }
@@ -2101,7 +2106,7 @@ class ReportService:
         # no column at all — yet still set the colour scale and the top-20
         # ranking, the undrawn-cell defect the window was moved to fix.
         start, end = await self._complete_window(budget_id, months)
-        months_list = _months_in_range(start, end)
+        months_list = month_starts(start, end)
 
         q = (
             select(
@@ -2195,7 +2200,7 @@ class ReportService:
         # divides by `months` and Emergency Coverage reads it, so clamping is a
         # change to both figures rather than to a window.
         window_start, window_end = complete_month_window(today, months)
-        months_list = _months_in_range(window_start, window_end)
+        months_list = month_starts(window_start, window_end)
 
         essentials_90d, tagged = await self._essentials_monthly(budget_id, today)
         headline = essentials_90d or Decimal("0")
@@ -2851,13 +2856,13 @@ class ReportService:
         # Date range
         today = date.today()
         end_date = today
-        # months - 1: `_months_in_range` is inclusive of both ends, so
+        # months - 1: `month_starts` is inclusive of both ends, so
         # subtracting `months` produced months + 1 buckets and "All time (18
         # months)" drew 19 columns with an empty leader — which also divided
         # the average inflow by 19. `available_range` exists to stop a report
         # offering a window it cannot fill.
         start_date = _subtract_months(today, months - 1).replace(day=1)
-        month_list = _months_in_range(start_date, end_date)
+        month_list = month_starts(start_date, end_date)
 
         # What pulled from savings: moves out of these envelopes in the window,
         # named on both sides. The same rows the wishlist reads for its

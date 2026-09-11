@@ -557,6 +557,8 @@ async def income_by_source_report(
         sources=[IncomeSource.model_validate(e) for e in data["sources"]],
         monthly_totals=data["monthly_totals"],
         total=data["total"],
+        avg_monthly=data["avg_monthly"],
+        months_averaged=data["months_averaged"],
     )
 
 

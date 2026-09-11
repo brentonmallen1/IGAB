@@ -51,13 +51,10 @@ export function CostOfLivingReport({ budgetId }: Props) {
 
   const reading = necessityReading(data.required_ratio, data.essentials_ratio)
   const sheddable = sheddableShare(data.avg_monthly_cost_of_living, data.avg_monthly_non_essential)
-  // The averages divide by finished months; the chart still draws the month in
-  // progress. Saying which is the difference between a figure a reader can
-  // check and one that just looks low at the start of a month.
-  const perMonth =
-    data.months_averaged < data.months.length
-      ? `per month, over ${data.months_averaged} complete`
-      : 'per month'
+  // The window is complete months only, and the card says how many — the
+  // difference between a figure a reader can check and one that just looks
+  // low at the start of a month.
+  const perMonth = `per month, over ${data.months_averaged} complete`
 
   const report = data
 

@@ -65,6 +65,19 @@ def months_spanned(start: date, end: date) -> int:
     return max(0, (end.year - start.year) * 12 + end.month - start.month) + 1
 
 
+def month_starts(start: date, end: date) -> list[date]:
+    """The first of every month the range touches, oldest first, both ends
+    included. A report's month axis: build it from the same bounds as the
+    query, or a column and its cells drift a month apart.
+    """
+    months = []
+    cur = month_start(start)
+    while cur <= end:
+        months.append(cur)
+        cur = add_months(cur, 1)
+    return months
+
+
 def complete_months(months: Sequence[date], today: date) -> list[date]:
     """The month buckets in `months` that have finished.
 

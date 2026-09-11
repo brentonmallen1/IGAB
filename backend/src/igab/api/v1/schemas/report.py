@@ -837,6 +837,10 @@ class IncomeBySourceResponse(ApiModel):
     sources: list[IncomeSource]
     monthly_totals: list[Decimal]
     total: Decimal
+    #: `total` over the complete months it covers — the figure Cost of
+    #: Living's Take-home quotes. Never re-derive it on the client.
+    avg_monthly: Decimal
+    months_averaged: int
 
 
 # ─── Category History ────────────────────────────────────────────────────────

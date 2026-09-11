@@ -27,7 +27,7 @@ from decimal import Decimal
 from uuid import UUID
 
 from igab.domain.activity_class import NecessityTier
-from igab.domain.dates import month_end
+from igab.domain.dates import add_months, month_end
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.report_basics import cost_of_living
@@ -169,13 +169,13 @@ class TestTheTwoTiers:
 class TestTheServedReport:
     async def test_it_serves_both_tiers_and_the_gap(self, db_session):
         budget, *_ = await _household(db_session)
-        report = await cost_of_living(db_session, budget.id, months=2)
+        report = await cost_of_living(db_session, budget.id, months=1)
 
-        # months=2, and only ONE of those months has finished — the household
-        # spent it all last month — so a per-month average divides by one.
-        # Halving it against a month still in progress is what made this
-        # report quote $2,750 where Essentials quoted $3,000 for the same tag
-        # (`domain.dates.complete_months`). Hand-computed, not derived.
+        # months=1 is the last complete month, where the household spent it
+        # all, so the averages divide by one (`complete_month_window`). A
+        # window through the running month is what made this report quote
+        # $2,750 where Essentials quoted $3,000 for the same tag.
+        # Hand-computed, not derived.
         assert report["months_averaged"] == 1
         assert report["avg_monthly_cost_of_living"] == EXPECTED.cost_of_living
         assert report["avg_monthly_essentials"] == EXPECTED.essentials
@@ -188,7 +188,7 @@ class TestTheServedReport:
         clothes — so this pins that the served figures share one window.
         """
         budget, *_ = await _household(db_session)
-        report = await cost_of_living(db_session, budget.id, months=2)
+        report = await cost_of_living(db_session, budget.id, months=1)
         repo = TransactionRepository(db_session)
 
         # The averaged window: through the last COMPLETE month, which is what
@@ -209,7 +209,7 @@ class TestTheServedReport:
 
     async def test_the_groups_roll_up_the_wide_tier(self, db_session):
         budget, *_ = await _household(db_session)
-        report = await cost_of_living(db_session, budget.id, months=2)
+        report = await cost_of_living(db_session, budget.id, months=1)
         by_group = {g["group_name"]: g["total"] for g in report["groups"]}
 
         assert by_group == {"Bills": D("1400.00"), "Debt": D("340.00"), "Fun": D("60.00")}
@@ -226,7 +226,7 @@ class TestTheServedReport:
             db_session, budget, checking, "3600.00", LAST_MONTH, payee=payserv, category=inflow
         )
 
-        report = await cost_of_living(db_session, budget.id, months=2)
+        report = await cost_of_living(db_session, budget.id, months=1)
         # 1,800 of 3,600 is spoken for; 1,400 of it could not be cut.
         assert report["required_ratio"] == D("50.00")
         assert report["essentials_ratio"] == D("38.89")
@@ -247,25 +247,81 @@ class TestTheServedReport:
         await create_transaction(
             db_session, budget, checking, "3600.00", LAST_MONTH, payee=payserv, category=inflow
         )
-        # The running month: a paycheck and an essential bill, both of which
-        # the averages — and so the ratios — leave out.
+        # The running month: a paycheck and an essential bill. The window is
+        # complete months, so neither reaches a card, a group, a total or a
+        # ratio. Each of the four figures below once had its own reading of the
+        # running month; reverting any one of them moves it.
         today = date.today()
         await create_transaction(
             db_session, budget, checking, "3600.00", today, payee=payserv, category=inflow
         )
         await create_transaction(db_session, budget, checking, "-1200.00", today, category=water)
 
-        report = await cost_of_living(db_session, budget.id, months=2)
-        # Last month is the one complete month: 1,800 spoken for, 1,400 of it
-        # essential, 3,600 taken home. Hand-computed, not derived.
+        report = await cost_of_living(db_session, budget.id, months=1)
+        # Last month is the window: 1,800 spoken for, 1,400 of it essential,
+        # 3,600 taken home. Hand-computed, not derived.
         assert report["months_averaged"] == 1
         assert report["avg_monthly_cost_of_living"] == D("1800.00")
         assert report["avg_monthly_essentials"] == D("1400.00")
         assert report["avg_monthly_income"] == D("3600.00")
+        bills_group = next(g for g in report["groups"] if g["group_name"] == "Bills")
+        assert bills_group["avg_monthly"] == D("1400.00")
+        assert bills_group["total"] == D("1400.00")
         # 1,800 / 3,600 and 1,400 / 3,600 — not the whole-window 3,000 / 7,200
         # (41.67) and 2,600 / 7,200 (36.11) the ratios used to divide.
         assert report["required_ratio"] == D("50.00")
         assert report["essentials_ratio"] == D("38.89")
+
+
+class TestCostOfLivingQuotesTheEssentialsReport:
+    """`months=N` means the last N complete months in both reports now.
+    Essentials averaged N complete months while Cost of Living averaged the
+    N−1 complete ones of a window through today, so the two agreed only when
+    spending was flat — and a lumpy month at the far end of the window was in
+    one and not the other."""
+
+    async def _rent(self, db_session, *, premium: bool):
+        budget = await create_budget(db_session, await create_user(db_session))
+        checking = await create_account(db_session, budget, "Harborstone Checking")
+        bills = await create_category_group(db_session, budget, "Bills")
+        rent = await create_category(db_session, budget, bills, "Rent")
+        insurance = await create_category(db_session, budget, bills, "Insurance")
+        await seed_system_tags(db_session, budget.id)
+        tags = TagRepository(db_session)
+        essential = await tags.get_system_tag(budget.id, "essential")
+        for cat in (rent, insurance):
+            await tags.set_category_tags(cat.id, [essential.id])
+        this_month = TODAY.replace(day=1)
+        for n in range(1, 13):
+            when = add_months(this_month, -n) + timedelta(days=2)
+            await create_transaction(db_session, budget, checking, "-3000.00", when, category=rent)
+        if premium:
+            # A yearly premium in the oldest month of the twelve.
+            when = add_months(this_month, -12) + timedelta(days=9)
+            await create_transaction(
+                db_session, budget, checking, "-1200.00", when, category=insurance
+            )
+        # And this month's rent, outside both windows.
+        await create_transaction(db_session, budget, checking, "-3000.00", TODAY, category=rent)
+        return budget
+
+    async def test_steady_spending(self, db_session):
+        budget = await self._rent(db_session, premium=False)
+        col = await cost_of_living(db_session, budget.id, months=12)
+        ess = await ReportService(db_session).essentials_summary(budget.id, 12)
+        assert col["avg_monthly_essentials"] == ess["monthly_total_average"] == D("3000.00")
+
+    async def test_a_lumpy_month_at_the_far_end(self, db_session):
+        # (36,000 + 1,200) / 12 in both. Cost of Living used to read 3,000
+        # (the premium's month was outside its window) against 3,100.
+        budget = await self._rent(db_session, premium=True)
+        col = await cost_of_living(db_session, budget.id, months=12)
+        ess = await ReportService(db_session).essentials_summary(budget.id, 12)
+        assert col["avg_monthly_essentials"] == ess["monthly_total_average"] == D("3100.00")
+        assert (col["window_start"], col["window_end"]) == (
+            ess["window_start"],
+            ess["window_end"],
+        )
 
 
 class TestTheEmergencyFundStaysLean:
@@ -317,7 +373,7 @@ class TestEssentialsNeedTheirOwnTag:
 
     async def test_tagging_only_cost_of_living_leaves_essentials_unknown(self, db_session):
         budget = await _rent_and_streaming(db_session, tag_streaming=True)
-        report = await cost_of_living(db_session, budget.id, months=2)
+        report = await cost_of_living(db_session, budget.id, months=1)
 
         assert report["tagged"] is True
         assert report["avg_monthly_cost_of_living"] == D("60.00")
@@ -328,7 +384,7 @@ class TestEssentialsNeedTheirOwnTag:
 
     async def test_with_nothing_tagged_essentials_is_unknown_too(self, db_session):
         budget = await _rent_and_streaming(db_session, tag_streaming=False)
-        report = await cost_of_living(db_session, budget.id, months=2)
+        report = await cost_of_living(db_session, budget.id, months=1)
 
         assert report["tagged"] is False
         assert report["avg_monthly_cost_of_living"] == D("1260.00")  # the burn rate, said so
@@ -348,7 +404,7 @@ class TestLoanMoneyComingInIsNotACost:
         )
         await create_transfer(db_session, budget, loan, checking, "5000.00", LAST_MONTH)
 
-        report = await cost_of_living(db_session, budget.id, months=2)
+        report = await cost_of_living(db_session, budget.id, months=1)
 
         assert report["avg_monthly_cost_of_living"] == EXPECTED.cost_of_living
         assert all(g["total"] >= 0 for g in report["groups"])
@@ -411,7 +467,7 @@ class TestTheDrillTotalsItsBar:
         # Pins the mechanism the parameter fixes: the fuel beside the loan
         # payment, and the stray purchase beside the uncategorized one.
         budget = await _drill_world(db_session)
-        report = await cost_of_living(db_session, budget.id, months=2)
+        report = await cost_of_living(db_session, budget.id, months=1)
         by_name = {g["group_name"]: g for g in report["groups"]}
 
         assert await _drill(db_session, budget, report, by_name["Auto"], tier=None) == D("420.00")
@@ -421,7 +477,7 @@ class TestTheDrillTotalsItsBar:
 
     async def test_with_it_every_bar_opens_its_own_total(self, db_session):
         budget = await _drill_world(db_session)
-        report = await cost_of_living(db_session, budget.id, months=2)
+        report = await cost_of_living(db_session, budget.id, months=1)
         tier = NecessityTier(report["necessity_tier"])
 
         assert {g["group_name"]: g["total"] for g in report["groups"]} == {
@@ -434,7 +490,7 @@ class TestTheDrillTotalsItsBar:
 
     async def test_the_tier_reaches_the_query_through_the_api(self, api_client, db_session):
         budget = await _drill_world(db_session, api_client.test_user)
-        report = await cost_of_living(db_session, budget.id, months=2)
+        report = await cost_of_living(db_session, budget.id, months=1)
         auto = next(g for g in report["groups"] if g["group_name"] == "Auto")
 
         resp = await api_client.get(
