@@ -371,6 +371,20 @@ async def test_a_short_history_is_not_a_year_of_quiet_days(db_session):
     assert all(d["avg_spend"] == Decimal("50.00") for d in data["days"])
 
 
+async def _biweekly_budget(db_session, owner):
+    """Biweekly pay up to today, and a spend of 90 five days before the first
+    payday in range."""
+    budget = await create_budget(db_session, owner)
+    checking = await create_account(db_session, budget, "Checking")
+    employer = await create_payee(db_session, budget, "Northwind Payserv")
+    for back in (42, 28, 14, 0):
+        await create_transaction(
+            db_session, budget, checking, "2000.00", TODAY - timedelta(days=back), payee=employer
+        )
+    await create_transaction(db_session, budget, checking, "-90.00", TODAY - timedelta(days=47))
+    return budget
+
+
 async def test_biweekly_pay_at_window_14_has_no_outside_whatever_its_phase(db_session):
     """Days before the first payday in range are the tail of a payday the query
     never fetched. Counted as "outside", they were the WHOLE baseline for a
@@ -379,19 +393,70 @@ async def test_biweekly_pay_at_window_14_has_no_outside_whatever_its_phase(db_se
 
     Here the first payday in range is five days after an edge-day spend of 90.
     """
-    budget = await create_budget(db_session, await create_user(db_session))
-    checking = await create_account(db_session, budget, "Checking")
-    employer = await create_payee(db_session, budget, "Northwind Payserv")
-    for back in (42, 28, 14, 0):
-        await create_transaction(
-            db_session, budget, checking, "2000.00", TODAY - timedelta(days=back), payee=employer
-        )
-    await create_transaction(db_session, budget, checking, "-90.00", TODAY - timedelta(days=47))
+    budget = await _biweekly_budget(db_session, await create_user(db_session))
 
     data = await ReportService(db_session).payday_effect(budget.id, window=14, months=12)
 
     assert data["event_count"] == 4
     assert data["baseline_daily"] is None
+
+
+async def test_a_baseline_with_no_outside_is_served_as_null(api_client, db_session):
+    """The same None, through the route. The schema typed it `Decimal` until
+    the None branch existed; a revert there would refuse to serialize, and
+    the only other None case in this file returns before reaching the
+    baseline at all."""
+    budget = await _biweekly_budget(db_session, api_client.test_user)
+
+    resp = await api_client.get(f"/api/v1/{budget.id}/reports/payday-effect?window=14")
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["event_count"] == 4
+    assert body["baseline_daily"] is None
+
+
+async def test_exactly_the_floor_is_a_payday_and_a_cent_under_is_not(db_session):
+    """The floor alone decides which inflows are paydays, so its edge is the
+    rule. 200.00 at T-20 counts; 199.99 at T-10 does not — so T-20 is the only
+    payday, and T-10's spend lands on its offset 10."""
+    budget = await create_budget(db_session, await create_user(db_session))
+    checking = await create_account(db_session, budget, "Checking")
+    employer = await create_payee(db_session, budget, "Northwind Payserv")
+    for back, amount in ((20, "200.00"), (10, "199.99")):
+        await create_transaction(
+            db_session, budget, checking, amount, TODAY - timedelta(days=back), payee=employer
+        )
+    await create_transaction(db_session, budget, checking, "-30.00", TODAY - timedelta(days=20))
+    await create_transaction(db_session, budget, checking, "-50.00", TODAY - timedelta(days=10))
+
+    data = await ReportService(db_session).payday_effect(budget.id, window=14, months=12)
+
+    assert data["event_count"] == 1
+    by_offset = {d["offset"]: d["avg_spend"] for d in data["days"]}
+    assert by_offset[0] == Decimal("30.00")
+    assert by_offset[10] == Decimal("50.00")
+
+
+async def test_days_that_have_not_happened_are_not_zeros(db_session):
+    """The latest payday's window runs past today. Its future days are skipped,
+    not counted as quiet days: zero-filling them would halve every late offset
+    here, reading the 80 spent ten days after the older payday as 40."""
+    budget = await create_budget(db_session, await create_user(db_session))
+    checking = await create_account(db_session, budget, "Checking")
+    employer = await create_payee(db_session, budget, "Northwind Payserv")
+    for back in (40, 3):
+        await create_transaction(
+            db_session, budget, checking, "2000.00", TODAY - timedelta(days=back), payee=employer
+        )
+    await create_transaction(db_session, budget, checking, "-80.00", TODAY - timedelta(days=30))
+
+    data = await ReportService(db_session).payday_effect(budget.id, window=14, months=12)
+
+    assert data["event_count"] == 2
+    by_offset = {d["offset"]: d["avg_spend"] for d in data["days"]}
+    # T-30 is offset 10 of T-40; offset 10 of T-3 is a week from now.
+    assert by_offset[10] == Decimal("80.00")
 
 
 async def test_only_income_is_a_payday(db_session):
