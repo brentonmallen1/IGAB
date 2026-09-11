@@ -277,15 +277,18 @@ class TestEssentialsRunway:
         assert body["runway_months"] is None
 
 
-async def test_cost_of_living_rolls_essentials_up_by_group(db_session, api_client):
-    """Rolled up by the groups a budget already has, the shape a household
-    thinks in. Essential-tagged categories are in the wide tier too, so an
-    Essential-only household sees them here."""
+async def test_cost_of_living_rolls_the_wide_tier_up_by_group(db_session, api_client):
+    """The endpoint serves both necessity tiers, the gap between them and a
+    ratio for each, rolled up by the groups a budget already has — the shape a
+    household thinks in. Every served field is checked here, through the
+    router, by a value no other field shares: the service tests alone left the
+    router's field-by-field mapping covered by a status-200 check."""
     budget = await create_budget(db_session, api_client.test_user)
     checking = await create_account(db_session, budget, "Harborstone Checking")
     tag_repo = TagRepository(db_session)
     await seed_system_tags(db_session, budget.id)
     essential = await tag_repo.get_system_tag(budget.id, "essential")
+    col = await tag_repo.get_system_tag(budget.id, "cost_of_living")
 
     housing = await create_category_group(db_session, budget, "Housing")
     rent = await create_category(db_session, budget, housing, "Rent")
@@ -293,8 +296,17 @@ async def test_cost_of_living_rolls_essentials_up_by_group(db_session, api_clien
     power = await create_category(db_session, budget, utilities, "Power")
     fun = await create_category_group(db_session, budget, "Fun")
     dining = await create_category(db_session, budget, fun, "Dining")
+    subs = await create_category_group(db_session, budget, "Subscriptions")
+    streaming = await create_category(db_session, budget, subs, "Streaming")
     for cat in (rent, power):
         await tag_repo.set_category_tags(cat.id, [essential.id])
+    await tag_repo.set_category_tags(streaming.id, [col.id])
+    inflows = await create_category_group(db_session, budget, "Income", is_system=True)
+    ready = await create_category(db_session, budget, inflows, "Ready to Assign")
+    payserv = await create_payee(db_session, budget, "Northwind Payserv")
+    await create_transaction(
+        db_session, budget, checking, Decimal("3600.00"), LAST, payee=payserv, category=ready
+    )
 
     async def spend(amount: str, category):
         # Last month: Cost of Living averages complete months only.
@@ -304,24 +316,36 @@ async def test_cost_of_living_rolls_essentials_up_by_group(db_session, api_clien
 
     await spend("-1400.00", rent)
     await spend("-180.00", power)
+    # Cost of living but not Essential: in the wide tier, and the whole gap.
+    await spend("-20.00", streaming)
     # Untagged: not a cost of living, however regular.
     await spend("-90.00", dining)
     await db_session.commit()
 
-    r = await api_client.get(f"/api/v1/{budget.id}/reports/cost-of-living", params={"months": 3})
+    r = await api_client.get(f"/api/v1/{budget.id}/reports/cost-of-living", params={"months": 1})
     assert r.status_code == 200, r.text
     body = r.json()
 
     assert body["tagged"] is True
     assert body["basis"] == "tag"
     groups = {g["group_name"]: g for g in body["groups"]}
-    assert set(groups) == {"Housing", "Utilities"}
+    assert set(groups) == {"Housing", "Utilities", "Subscriptions"}
     assert Decimal(groups["Housing"]["total"]) == Decimal("1400.00")
     assert Decimal(groups["Utilities"]["total"]) == Decimal("180.00")
+    assert Decimal(groups["Subscriptions"]["total"]) == Decimal("20.00")
     # Shares are of the cost-of-living total, so they add to 100.
     assert sum(Decimal(g["share"]) for g in body["groups"]) == Decimal("100.00")
     # Biggest first.
-    assert [g["group_name"] for g in body["groups"]] == ["Housing", "Utilities"]
+    assert [g["group_name"] for g in body["groups"]] == ["Housing", "Utilities", "Subscriptions"]
+
+    # One complete month, hand-computed: 1,600 spoken for, 1,580 of it
+    # essential, 20 sheddable, out of 3,600 taken home.
+    assert Decimal(body["avg_monthly_cost_of_living"]) == Decimal("1600.00")
+    assert Decimal(body["avg_monthly_essentials"]) == Decimal("1580.00")
+    assert Decimal(body["avg_monthly_non_essential"]) == Decimal("20.00")
+    assert Decimal(body["avg_monthly_income"]) == Decimal("3600.00")
+    assert Decimal(str(body["required_ratio"])) == Decimal("44.44")  # 1,600 / 3,600
+    assert Decimal(str(body["essentials_ratio"])) == Decimal("43.89")  # 1,580 / 3,600
 
 
 async def test_cost_of_living_says_when_nothing_is_tagged(db_session, api_client):
@@ -338,6 +362,7 @@ async def test_cost_of_living_says_when_nothing_is_tagged(db_session, api_client
     assert r.json()["basis"] == "all"
     # No income on record: a ratio against zero is unknown, not 100%.
     assert r.json()["required_ratio"] is None
+    assert r.json()["essentials_ratio"] is None
 
 
 class TestTheClassRuleIsOneRule:
