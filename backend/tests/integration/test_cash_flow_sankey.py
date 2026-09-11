@@ -458,23 +458,62 @@ class TestTheNodesCanBeDrilled:
         it as a category id — `__uncategorized__` is not a UUID, so the
         drill-down 400s. Cost of Living already learned this and drills its
         Uncategorized bar by "no category" instead.
+
+        The rule is keyed on the CATEGORY half of the composite id, never the
+        group half: a real category filed under the Savings trunk has id
+        `c___savings___<uuid>` and must still drill by its UUID. The first
+        version of this test tested `"__" in id`, which fails on that correct
+        node and passes a regression that nulls it (PR189-6).
         """
-        _svc, budget, checking, _grp, _groc, _gas = await _setup(db_session)
-        # An uncategorized outflow, which is what produces the bucket.
+        services, budget, checking, _grp, groceries, _gas = await _setup(db_session)
+        brokerage = await create_account(
+            db_session, budget, "Brokerage", account_type="investment", on_budget=False
+        )
+        loan = await create_account(
+            db_session, budget, "Harborstone Auto Loan", account_type="loan", on_budget=False
+        )
+        # Uncategorized spending, savings and debt principal: all three
+        # pseudo-categories.
         await create_transaction(db_session, budget, checking, "-80.00", TODAY)
+        await create_transfer(db_session, budget, checking, brokerage, "200.00", TODAY)
+        await create_transfer(db_session, budget, checking, loan, "300.00", TODAY)
+        # A categorized transfer out to a tracked account: a REAL category on
+        # the Savings trunk.
+        await services.transactions.create(
+            budget.id,
+            TransactionCreate(
+                account_id=checking.id,
+                date=TODAY,
+                amount=Decimal("-150.00"),
+                transfer_account_id=brokerage.id,
+                category_id=groceries.id,
+                cleared="cleared",
+            ),
+        )
         await db_session.flush()
 
         data = await ReportService(db_session).cash_flow_sankey(
             budget.id, START, TODAY, mode="spent"
         )
+        categories = {n["id"]: n for n in data["nodes"] if n["type"] == "category"}
 
-        for node in data["nodes"]:
-            if node["id"].startswith("__") or "__" in node["id"]:
-                assert node["entity_id"] is None, node
-        # And every entity_id that IS served parses as a UUID.
-        for node in data["nodes"]:
-            if node.get("entity_id"):
-                uuid.UUID(str(node["entity_id"]))
+        sentinels = ("__uncategorized__", "__savings__", "__debt_principal__")
+        pseudo = {
+            nid: n for nid, n in categories.items() if any(nid.endswith(f"_{s}") for s in sentinels)
+        }
+        assert {n["name"] for n in pseudo.values()} == {
+            "Uncategorized",
+            "Savings",
+            "Debt Payments",
+        }
+        for node in pseudo.values():
+            assert node["entity_id"] is None, node
+
+        real = [n for nid, n in categories.items() if nid not in pseudo]
+        for node in real:
+            uuid.UUID(str(node["entity_id"]))  # raises if the client would send junk
+        on_the_trunk = categories[f"c___savings___{groceries.id}"]
+        assert on_the_trunk["entity_id"] == str(groceries.id)
 
     async def test_an_income_row_with_no_payee_is_named_not_keyed(self, db_session):
         """The node's key and its display name were derived twice, and the two
