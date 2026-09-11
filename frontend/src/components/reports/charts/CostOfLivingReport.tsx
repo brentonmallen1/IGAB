@@ -16,6 +16,7 @@ import { ChartTooltip } from './ChartTooltip'
 import { ReportRangeSelect } from './rangeSelect'
 import { useMoneyAxis } from './useMoneyAxis'
 import { necessityReading, sheddableShare } from './necessityView'
+import { averagedOver } from './averagedOver'
 
 interface Props {
   budgetId: string
@@ -54,7 +55,7 @@ export function CostOfLivingReport({ budgetId }: Props) {
   // The window is complete months only, and the card says how many — the
   // difference between a figure a reader can check and one that just looks
   // low at the start of a month.
-  const perMonth = `per month, over ${data.months_averaged} complete`
+  const perMonth = averagedOver('per month', data.months_averaged)
 
   const report = data
 

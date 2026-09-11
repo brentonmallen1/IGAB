@@ -22,6 +22,7 @@ import { ChartTooltip } from './ChartTooltip'
 import { ReportRangeSelect } from './rangeSelect'
 import { useReportMonths } from '../../../stores/reportStore'
 import { useMoneyAxis } from './useMoneyAxis'
+import { averagedOver } from './averagedOver'
 
 interface Props {
   budgetId: string
@@ -131,7 +132,7 @@ export function SubscriptionsReport({ budgetId }: Props) {
             <MetricCard
               label="Monthly"
               value={formatMoney(summary?.total_monthly ?? 0)}
-              sub={data ? `effective, over ${data.months_averaged} complete months` : 'effective'}
+              sub={data ? averagedOver('effective', data.months_averaged) : 'effective'}
             />
             <MetricCard
               label="Annual"

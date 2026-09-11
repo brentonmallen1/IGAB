@@ -376,10 +376,12 @@ describe('SubscriptionsReport table', () => {
         ],
         summary: { total_monthly: 10, total_annual: 120, active_count: 1 },
         months: ['2026-02-01', '2026-03-01', '2026-04-01', '2026-05-01'],
+        months_averaged: 4,
       },
     })
     renderReport(<SubscriptionsReport budgetId="b1" />)
 
+    expect(card('Monthly').sub).toBe('effective, over 4 complete months')
     expect(screen.getByText('Per Charge')).toBeInTheDocument()
     expect(screen.getByText('Monthly (effective)')).toBeInTheDocument()
     // $30 per charge but only $10/mo effective — both perspectives visible
@@ -421,9 +423,12 @@ describe('SubscriptionsReport table', () => {
         ],
         summary: { total_monthly: 30, total_annual: 360, active_count: 1 },
         months: ['2026-05-01'],
+        months_averaged: 1,
       },
     })
     renderReport(<SubscriptionsReport budgetId="b1" />)
+
+    expect(card('Monthly').sub).toBe('effective, over 1 complete month')
 
     expect(screen.getByText('Category')).toBeInTheDocument()
     const row = screen.getByRole('button', { name: /Streaming/ })
@@ -923,14 +928,19 @@ describe('BudgetActualReport values', () => {
 })
 
 describe('CostOfLivingReport tiers', () => {
+  // Two complete months, as the server now serves them: every month in the
+  // window has finished, so each average is its total over both. Required
+  // (75) and the essentials ratio (58.33) sit in different bands, so reading
+  // the standing off the wrong one changes the note.
   const tiered = {
-    months: ['2026-08-01', '2026-09-01'],
-    window_start: '2026-08-01',
-    window_end: '2026-09-10',
+    months: ['2026-07-01', '2026-08-01'],
+    months_averaged: 2,
+    window_start: '2026-07-01',
+    window_end: '2026-08-31',
     groups: [
       {
         group_name: 'Bills',
-        monthly_amounts: [1400, 0],
+        monthly_amounts: [700, 700],
         total: 1400,
         avg_monthly: 700,
         share: 77.78,
@@ -938,7 +948,7 @@ describe('CostOfLivingReport tiers', () => {
       },
       {
         group_name: 'Fun',
-        monthly_amounts: [400, 0],
+        monthly_amounts: [200, 200],
         total: 400,
         avg_monthly: 200,
         share: 22.22,
@@ -948,25 +958,33 @@ describe('CostOfLivingReport tiers', () => {
     avg_monthly_cost_of_living: 900,
     avg_monthly_essentials: 700,
     avg_monthly_non_essential: 200,
-    avg_monthly_income: 1800,
-    required_ratio: 50,
-    essentials_ratio: 38.89,
+    avg_monthly_income: 1200,
+    required_ratio: 75,
+    essentials_ratio: 58.33,
     basis: 'tag' as const,
     tagged: true,
     class_excluded: [],
     counted_classes: ['spending', 'debt_principal'],
   }
 
-  it('shows both tiers and the gap between them', () => {
+  it('puts each tier on its own card', () => {
+    // Read inside each card: the group table and legend print Bills $700 and
+    // Fun $200 too, so a page-wide search passed with the Essentials and
+    // Non-essential cards swapped.
     setQuery({ data: tiered })
     renderReport(<CostOfLivingReport budgetId="b1" />)
 
-    expect(screen.getByText('Cost of living')).toBeInTheDocument()
-    expect(screen.getByText('Essentials')).toBeInTheDocument()
-    expect(screen.getByText('Non-essential')).toBeInTheDocument()
-    expect(screen.getAllByText(/\$900\.00/).length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/\$700\.00/).length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/\$200\.00/).length).toBeGreaterThan(0)
+    expect(card('Cost of living')).toEqual({
+      value: '$900.00',
+      sub: 'per month, over 2 complete months',
+    })
+    expect(card('Essentials')).toEqual({ value: '$700.00', sub: 'could not be cut' })
+    expect(card('Non-essential').value).toBe('$200.00')
+    expect(card('Take-home')).toEqual({
+      value: '$1,200.00',
+      sub: 'per month, over 2 complete months',
+    })
+    expect(card('Required')).toEqual({ value: '75%', sub: 'of take-home' })
   })
 
   it('states the gap as a share of what is committed, not as advice', () => {
@@ -974,14 +992,17 @@ describe('CostOfLivingReport tiers', () => {
     renderReport(<CostOfLivingReport budgetId="b1" />)
 
     // 200 of 900. And the card must not tell anyone to cancel anything.
-    expect(screen.getByText('22% of the above')).toBeInTheDocument()
+    expect(card('Non-essential').sub).toBe('22% of the above')
     expect(screen.queryByText(/could cut/i)).toBeNull()
   })
 
   it('reads the standing off the wide ratio', () => {
+    // Required 75 is "tight"; the essentials ratio, 58.33, would read
+    // "workable". Swapping the arguments must change the sentence.
     setQuery({ data: tiered })
     renderReport(<CostOfLivingReport budgetId="b1" />)
-    expect(screen.getByText(/no more than half your take-home/i)).toBeInTheDocument()
+    expect(screen.getByText(/Most of your take-home is committed/)).toBeInTheDocument()
+    expect(screen.queryByText(/over half your take-home/)).toBeNull()
   })
 
   it('says a household cannot cover its essentials, when it cannot', () => {
