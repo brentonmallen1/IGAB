@@ -16,6 +16,7 @@ from decimal import Decimal
 import pytest
 
 from igab.services.report_service import ReportService
+from tests.report_clock import report_today
 
 from .factories import (
     create_account,
@@ -27,6 +28,17 @@ from .factories import (
 )
 
 TODAY = date.today()
+
+
+@pytest.fixture(autouse=True)
+def _the_service_reads_this_modules_today():
+    """Rows are dated from TODAY, read once at import; the report reads the
+    clock when called. A run that crossed midnight on a month's last day asked
+    a service that already called the seeded "current month" complete, so the
+    partial-month test scored its 12.00 against a 400 baseline and flagged it.
+    Pinned, every test asks the day its rows were seeded for."""
+    with report_today(TODAY):
+        yield
 
 
 def months_ago(n: int) -> date:
