@@ -10,7 +10,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import type { ComponentType, ReactElement } from 'react'
 import { MemoryRouter } from 'react-router-dom'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const queryState = vi.hoisted(() => ({
   current: {
@@ -43,6 +43,8 @@ vi.mock('../../api/budgets', () => ({ useBudgetMonth: () => ({ data: undefined }
 vi.mock('../../api/accountTypes', () => ({ useAccountTypes: () => ({ data: undefined }) }))
 
 import { useReportStore } from '../../stores/reportStore'
+import { useAppStore } from '../../stores/appStore'
+import { PRIVACY_MASK } from '../../utils/money'
 import { CostOfLivingReport } from './charts/CostOfLivingReport'
 import { EssentialsReport } from './charts/EssentialsReport'
 import { EmergencyCoverageReport } from './charts/EmergencyCoverageReport'
@@ -984,6 +986,37 @@ describe('PlanVsRealityReport matrix', () => {
     expect(screen.getAllByText(/\$2,900\.00/).length).toBeGreaterThan(0)
   })
 
+  describe('in privacy mode', () => {
+    afterEach(() => {
+      useAppStore.setState({ privacyMode: false })
+    })
+
+    it('masks every active cell, sign and zero included', () => {
+      // The matrix draws its own labels, outside useFormatters. Its privacy
+      // argument once went unpassed at no test's notice, and with it passed the
+      // sign still sat outside the mask: "−••••", "+••••" and a bare "0".
+      useAppStore.setState({ privacyMode: true })
+      setQuery({ data: planData })
+      const { container } = renderReport(<PlanVsRealityReport budgetId="b1" />)
+
+      // Dining's two active months and Rent's three on-plan ones.
+      const cells = [...container.querySelectorAll('td.plan-reality__cell--clickable')]
+      expect(cells.map((c) => c.textContent)).toEqual(Array(5).fill(PRIVACY_MASK))
+    })
+
+    it('keeps the overspend tint, which shows state rather than a figure', () => {
+      // Deliberate: like the bar heights on every chart and the Budget page's
+      // overspent colour, the tint survives privacy mode. See cellLabel.
+      useAppStore.setState({ privacyMode: true })
+      setQuery({ data: planData })
+      const { container } = renderReport(<PlanVsRealityReport budgetId="b1" />)
+
+      const over = container.querySelectorAll('td.plan-reality__cell--over')
+      expect(over).toHaveLength(1)
+      expect((over[0] as HTMLElement).style.background).toContain('--chart-negative')
+    })
+  })
+
   it('filters to chronic categories only via the toggle', () => {
     setQuery({ data: planData })
     renderReport(<PlanVsRealityReport budgetId="b1" />)
@@ -991,6 +1024,31 @@ describe('PlanVsRealityReport matrix', () => {
     fireEvent.click(screen.getByLabelText('Chronic only'))
     expect(screen.getByText('Dining')).toBeInTheDocument()
     expect(screen.queryByText('Rent')).not.toBeInTheDocument()
+  })
+})
+
+describe('SeasonalityReport in privacy mode', () => {
+  afterEach(() => {
+    useAppStore.setState({ privacyMode: false })
+  })
+
+  it('masks the cell labels it draws for itself', () => {
+    // The heatmap's cells bypass useFormatters. With its privacy argument
+    // dropped they read "4.2k" beside a legend reading "$••••", and no test
+    // rendered the grid with privacy on to notice.
+    useAppStore.setState({ privacyMode: true })
+    setQuery({
+      data: {
+        months: ['2026-07-01'],
+        categories: [{ id: 'c1', name: 'Electric' }],
+        cells: [{ category_id: 'c1', month: '2026-07-01', total: '4180' }],
+      },
+    })
+    const { container } = renderReport(<SeasonalityReport budgetId="b1" />)
+
+    const value = container.querySelector('.heatmap__cell-value')
+    expect(value?.textContent).toBe(PRIVACY_MASK)
+    expect(container.querySelector('.heatmap__table')?.textContent).not.toMatch(/4\.2k|4180/)
   })
 })
 

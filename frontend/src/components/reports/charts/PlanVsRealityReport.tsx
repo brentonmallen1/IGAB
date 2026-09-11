@@ -3,38 +3,17 @@ import { useReportMonths, useReportStore } from '../../../stores/reportStore'
 import { usePlanVsRealityReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
-import { abbreviateValue } from './seasonalityScale'
+import { cellLabel, isActive, overspendStyle } from './planRealityCells'
 import { monthWindow } from '../../../utils/dateWindow'
 import { MetricCard } from '../MetricCard'
 import { MetricRow } from '../MetricRow'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
-import type { PlanRealityCell } from '../../../types'
 import { ReportRangeSelect } from './rangeSelect'
 import './PlanVsRealityReport.css'
 
 interface Props {
   budgetId: string
-}
-
-/** A month is "active" when the plan or reality was non-zero — same rule the
- * backend uses for months_active/months_over. */
-function isActive(cell: PlanRealityCell): boolean {
-  return cell.assigned !== 0 || cell.spent !== 0
-}
-
-function cellLabel(variance: number, masked = false): string {
-  if (variance < 0) return `−${abbreviateValue(-variance, masked)}`
-  if (variance > 0) return `+${abbreviateValue(variance, masked)}`
-  return '0'
-}
-
-/** Overspend tint scaled by how bad the month was relative to the worst
- * overspend on screen — color only where there is genuine state. */
-function overspendStyle(variance: number, maxOver: number): React.CSSProperties {
-  if (variance >= 0) return {}
-  const pct = Math.round(Math.min(1, -variance / maxOver) * 30) + 8
-  return { background: `color-mix(in srgb, var(--chart-negative) ${pct}%, transparent)` }
 }
 
 export function PlanVsRealityReport({ budgetId }: Props) {

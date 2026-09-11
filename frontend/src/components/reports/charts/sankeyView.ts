@@ -34,13 +34,21 @@ export interface PrevTotals {
   cats: Map<string, number>
 }
 
-/** Signed delta as "+$123 (+12%)"; pct omitted when prev is 0. */
+/** Signed delta as "+$123 (+12%)"; pct omitted when prev is 0.
+ *
+ * Masked, it is `formatMoney`'s mask alone: the sign and the percentage both
+ * went outside it ("−$•••• (−30%)"), which says which way spending moved and
+ * by how much while every other figure on the page reads "$••••". The colour
+ * beside it stays — privacy mode masks figures, not state. Required, so a
+ * caller cannot leak the sign by leaving it out. */
 export function formatDelta(
   current: number,
   prev: number,
-  formatMoney: (n: number) => string
+  formatMoney: (n: number) => string,
+  masked: boolean
 ): string {
   const delta = current - prev
+  if (masked) return formatMoney(Math.abs(delta))
   const sign = delta >= 0 ? '+' : '−'
   const amount = `${sign}${formatMoney(Math.abs(delta))}`
   if (prev === 0) return amount
