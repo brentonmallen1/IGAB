@@ -34,6 +34,7 @@ from igab.domain.activity_class import (
     basis_is_chosen,
     counted_class_filter,
     counted_classes,
+    planned_spend_filter,
     rolled_up_classes,
     split_leg_classes,
 )
@@ -76,7 +77,6 @@ from igab.repositories.txn_filters import (
     ON_CARD_ACCOUNT,
     PARENT_ROW,
     PAYEE_OF_RECORD,
-    PLANNED_SPEND_ROW,
     POSTED,
     SPENDING_ROW,
     SPLIT_PARENT,
@@ -1233,9 +1233,9 @@ class ReportService:
         )
 
         # Activity (expenses) in range — leaf rows so split children count.
-        # PLANNED_SPEND_ROW: one universe with the assigned side above; this
-        # query was the byte-identical twin of cumulative_variance's before
-        # the predicate was extracted.
+        # planned_spend_filter: one universe with the assigned side above;
+        # this query was the byte-identical twin of cumulative_variance's
+        # before the predicate was extracted.
         # The names travel with the rows. This selected only the id and the
         # amount, so a category that was spent from but never assigned to
         # inside the window had no name to reach for and was served as
@@ -1255,8 +1255,7 @@ class ReportService:
                 Transaction.budget_id == budget_id,
                 Transaction.date >= start_date,
                 Transaction.date <= end_date,
-                PLANNED_SPEND_ROW,
-                counted_class_filter(),
+                planned_spend_filter(),
             )
         )
         spend_q = apply_class_joins(spend_q)
@@ -1350,16 +1349,15 @@ class ReportService:
 
         start = months_list[0]
         end = _month_end(months_list[-1])
-        # PLANNED_SPEND_ROW + the class filter: the spent side must live in
-        # the same universe as the assigned side, or the subtraction
-        # compounds an apples-to-oranges gap every month. The predicate's
-        # docstring lists exactly what the old inline copy missed.
+        # planned_spend_filter: the spent side must live in the same universe
+        # as the assigned side, or the subtraction compounds an
+        # apples-to-oranges gap every month. The predicate's docstring lists
+        # exactly what the old inline copy missed.
         spend_q = select(Transaction.date, Transaction.amount).where(
             Transaction.budget_id == budget_id,
             Transaction.date >= start,
             Transaction.date <= end,
-            PLANNED_SPEND_ROW,
-            counted_class_filter(),
+            planned_spend_filter(),
         )
         spend_q = apply_class_joins(spend_q)
         spending = (await self.session.execute(spend_q)).all()
@@ -1413,9 +1411,9 @@ class ReportService:
         — the signal that a plan is habitually wrong rather than occasionally
         unlucky.
 
-        "Spent" is `PLANNED_SPEND_ROW` plus the spending classes, the universe
-        Budget vs Actual and Cumulative Variance count. This report had its
-        own inline set with neither, so a categorized transfer into a
+        "Spent" is `planned_spend_filter()`, the universe Budget vs Actual
+        and Cumulative Variance count. This report had its
+        own inline set with neither half, so a categorized transfer into a
         brokerage or a row on a tracking account counted here as overspending
         while the other two said nothing was spent — and `chronic` feeds the
         Guide's chronic-overspend check, so saving could be reported as a bad
@@ -1453,8 +1451,7 @@ class ReportService:
                 Transaction.budget_id == budget_id,
                 Transaction.date >= months_list[0],
                 Transaction.date <= _month_end(months_list[-1]),
-                PLANNED_SPEND_ROW,
-                counted_class_filter(),
+                planned_spend_filter(),
             )
         )
         spend_q = apply_class_joins(spend_q)

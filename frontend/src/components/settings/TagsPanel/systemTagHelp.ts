@@ -23,7 +23,7 @@ export const SYSTEM_TAG_HELP: { key: string; name: string; on: string; does: str
     key: 'savings',
     name: 'Savings',
     on: 'categories',
-    does: 'Money leaving a Savings category counts as saving, not spending: it feeds the Savings report and the savings rate, and stays out of burn rate and the spending charts.',
+    does: 'Money leaving a Savings category counts as saving, not spending: it feeds the Savings report and the savings rate, and stays out of burn rate and the spending charts. It still counts against what you assigned to that category, so Budget vs Actual, Cumulative Variance and Plan vs Reality show the envelope being spent down rather than permanently under-spent.',
   },
   {
     key: 'long_term_expense',

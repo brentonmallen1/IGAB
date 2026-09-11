@@ -248,6 +248,10 @@ class TestThePlannedSpendUniverse:
     they counted nothing — and its chronic flag feeds the Guide."""
 
     async def test_a_savings_transfer_is_not_planned_spend(self, db_session):
+        """Out of an UNTAGGED envelope. The class is what excludes it, and a
+        savings TAG on the envelope is the one exception to that — the same
+        shape out of a tagged envelope does count, pinned by
+        `TestASavingsTaggedEnvelope`."""
         services, budget, checking, group, cat = await _world(db_session)
         brokerage = await create_account(
             db_session, budget, "Cascade Brokerage", account_type="investment", on_budget=False
@@ -413,28 +417,73 @@ class TestASinkingFundsBillIsPlannedSpend:
 
 
 class TestASavingsTaggedEnvelope:
-    """Open item 5d in docs/reports-audit-chain.md, decided and not yet built:
-    spending out of a `savings`-tagged envelope should count against its plan.
-    Today the tag classes the outflow SAVINGS (rule 1 of
-    `domain.activity_class`), so every plan-vs-actual report counts the
-    envelope's assignments and none of its spending — the phantom underspend
-    #182 removed for `long_term_expense` only.
+    """Item 5d in docs/reports-audit-chain.md, decided and now built: spending
+    out of a `savings`-tagged envelope counts against that envelope's plan.
 
-    What this pins is that the three reports give the envelope ONE reading.
-    Plan vs Reality once kept its own spent set with no class filter, and read
-    the full 390 here while the other two read 0. When 5d lands, the figure
-    changes in all three at once and this test changes with it."""
+    The tag classes the outflow SAVINGS (rule 1 of `domain.activity_class`),
+    and for a long time that meant the plan-vs-actual family counted the
+    envelope's assignments and none of its spending — a Vacation Savings
+    envelope assigned 195 a month and drained by a 390 flight read as a
+    variance of +390 that never closed, permanently under-spent. That is the
+    phantom underspend #182 removed for `long_term_expense` only.
 
-    async def test_the_plan_vs_actual_reports_give_one_reading(self, db_session):
-        budget, last_month, today = await _tagged_envelope(db_session, "savings", "Emergency Fund")
-        reports = ReportService(db_session)
-        bva = await reports.budget_vs_actual(budget.id, last_month, today)
-        variance = await reports.cumulative_variance(budget.id, months=2)
-        pvr = await reports.plan_vs_reality(budget.id, months=2)
+    `planned_spend_filter` is where the exception is stated: the household
+    PLANNED that money to leave, so against the plan it is spent. The class
+    itself does NOT move, and the rest of this class is the bound on the
+    change — the savings rate still calls the 390 saving and the spending
+    rollups still leave it out, because they read their own row sets.
 
-        assert (bva["total_assigned"], bva["total_spent"]) == (D("390.00"), D("0"))
+    The three reports must also give ONE reading. Plan vs Reality once kept
+    its own spent set with no class filter and read the full 390 here while
+    the other two read 0."""
+
+    async def test_budget_vs_actual_counts_the_payout(self, db_session):
+        budget, last_month, today = await _tagged_envelope(
+            db_session, "savings", "Vacation Savings"
+        )
+        bva = await ReportService(db_session).budget_vs_actual(budget.id, last_month, today)
+
+        assert (bva["total_assigned"], bva["total_spent"]) == (D("390.00"), D("390.00"))
+
+    async def test_cumulative_variance_stops_compounding_the_underspend(self, db_session):
+        budget, *_ = await _tagged_envelope(db_session, "savings", "Vacation Savings")
+        variance = await ReportService(db_session).cumulative_variance(budget.id, months=2)
+
+        # 195 put by and unspent, then 195 put by and 390 taken out: the plan
+        # closes at zero instead of carrying a +390 surplus forever.
         assert [(m["budget_assigned"], m["actual_spent"]) for m in variance] == [
             (D("195.00"), D("0")),
-            (D("195.00"), D("0")),
+            (D("195.00"), D("390.00")),
         ]
-        assert (pvr["total_assigned"], pvr["total_spent"]) == (D("390.00"), D("0"))
+        assert variance[-1]["cumulative_variance"] == D("0")
+
+    async def test_plan_vs_reality_agrees(self, db_session):
+        budget, *_ = await _tagged_envelope(db_session, "savings", "Vacation Savings")
+        pvr = await ReportService(db_session).plan_vs_reality(budget.id, months=2)
+
+        assert (pvr["total_assigned"], pvr["total_spent"]) == (D("390.00"), D("390.00"))
+
+    async def test_the_savings_rate_still_calls_it_saving(self, db_session):
+        """The bound. The plan report changed; the class did not. Tagging an
+        envelope Savings was asked for so that its outflows count as saving
+        with no transfer involved, and that is still what the savings rate
+        says — 390 saved, nothing spent."""
+        budget, *_ = await _tagged_envelope(db_session, "savings", "Vacation Savings")
+        rate = await ReportService(db_session).savings_rate(budget.id, months=1)
+
+        assert rate["summary"]["savings"] == D("390.00")
+        assert rate["summary"]["spending"] == D("0")
+
+    async def test_the_spending_rollups_still_leave_it_out(self, db_session):
+        """The other half of the bound: the Breakdown and the Overview's Top
+        Spending card read `SPENDING_ROW` plus the counted classes, not the
+        plan universe, so the 390 does not appear there."""
+        budget, last_month, today = await _tagged_envelope(
+            db_session, "savings", "Vacation Savings"
+        )
+        rows, total = await ReportService(db_session).spending_by_category(
+            budget.id, last_month, today
+        )
+
+        assert total == D("0")
+        assert [r for r in rows if r["name"] == "Vacation Savings"] == []

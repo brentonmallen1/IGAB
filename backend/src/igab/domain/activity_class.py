@@ -47,6 +47,7 @@ from igab.repositories.txn_filters import (
     COUNTERPART_OFF_BUDGET,
     LEAF,
     NOT_DELETED,
+    PLANNED_SPEND_ROW,
     POSTED,
     TRANSFER_LEG,
     category_tagged,
@@ -582,6 +583,41 @@ def counted_class_filter(
     promotes from a warning to a test failure.
     """
     return ACTIVITY_CLASS.in_(sorted(counted_classes(include, scoped_accounts=scoped_accounts)))
+
+
+def planned_spend_filter() -> ColumnElement[bool]:
+    """What the plan-vs-actual family may count as "spent", whole.
+
+    `txn_filters.PLANNED_SPEND_ROW` is the row shape; this is the class
+    policy that has to travel with it. They are returned as one predicate
+    because the three readers — `budget_vs_actual`, `cumulative_variance`
+    and `plan_vs_reality` — must ask one question, and every time either
+    half was spelled at the call site the reports drifted apart: the last
+    time, a savings-tagged envelope read its full spend on one report and
+    zero on the other two.
+
+    The caller must still apply `apply_class_joins` — see
+    `counted_class_filter` for why the joins cannot be folded in here.
+
+    **The savings tag is the deliberate exception to `counted_classes`.**
+    Tagging an envelope Savings makes its outflows class SAVINGS (rule 1
+    above), which is what the household asked for on the savings rate. On a
+    plan report that meant the envelope's assignments were counted and its
+    spending was not: a Vacation Savings envelope assigned 195 a month and
+    drained by a 390 flight read as a variance of +390 that never closes —
+    permanently under-spent, the same phantom underspend #182 removed for
+    `long_term_expense`. The household PLANNED that money to leave, so
+    against the plan it is spent. "Did this leave the budget as saving?" is
+    a different question, still answered by the class alone: the savings
+    rate, the spending rollups and the necessity tiers read their own row
+    sets and do not move (pinned by
+    `test_report_envelope_rules.py::TestASavingsTaggedEnvelope`).
+
+    Only `savings`. `long_term_expense` needs no arm — its payout classes
+    SPENDING since #182 — and `debt_principal` is money no plan report has
+    ever counted as spent.
+    """
+    return and_(PLANNED_SPEND_ROW, or_(counted_class_filter(), _tagged("savings")))
 
 
 # ─── Necessity tiers ─────────────────────────────────────────────────────────

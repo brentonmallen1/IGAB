@@ -682,8 +682,13 @@ SPENDING_ROW = and_(
 )
 
 
-#: A row that spends planned money: what plan-vs-actual reports may count as
-#: "spent" against what `BUDGETED_ENVELOPE` counts as "assigned".
+#: A row that spends planned money: the SHAPE half of what plan-vs-actual
+#: reports may count as "spent" against what `BUDGETED_ENVELOPE` counts as
+#: "assigned". **No report reads this directly** — they read
+#: `domain.activity_class.planned_spend_filter()`, which is this plus the
+#: class policy (the spending classes, or a savings-tagged envelope). The two
+#: halves travel as one predicate because spelling the class half at the call
+#: site is what let the three readers disagree.
 #:
 #: This predicate existed twice — byte-identical, in `cumulative_variance` and
 #: `budget_vs_actual` — and both copies were missing the same three terms, so
@@ -696,17 +701,17 @@ SPENDING_ROW = and_(
 #:   assigned. Deleted categories stay IN, exactly as `SPENT_ENVELOPE`
 #:   documents — the money moved, and deleting the envelope afterwards does
 #:   not unspend it.
-#: - The activity-class filter, which cannot live here: callers add
-#:   `counted_class_filter()` AND `apply_class_joins`, because the predicate
-#:   and the joins must travel together (a query with the class filter and no
-#:   joins is a cartesian product).
+#: - The activity-class filter, which cannot live in this module at all — it
+#:   reads `ACTIVITY_CLASS`, which is built from these constants. Without it,
+#:   a categorized brokerage transfer (SAVINGS) or a mortgage principal
+#:   payment (DEBT_PRINCIPAL) counted as spending with no matching
+#:   assignment, and cumulative variance compounded the gap every month. It
+#:   lives one import up, in `planned_spend_filter`, together with the joins
+#:   note: a query with the class filter and no joins is a cartesian product.
 #:
 #: So it is `SPENDING_ROW` narrowed to what a plan can be held to: on-budget,
 #: and filed somewhere (the foreign key is `ON DELETE SET NULL`, so a
 #: category id names a Category row, deleted or not).
-#:   Without it, a categorized brokerage transfer (SAVINGS) or a mortgage
-#:   principal payment (DEBT_PRINCIPAL) counted as spending with no matching
-#:   assignment, and cumulative variance compounded the gap every month.
 #:
 #: One divergence is deliberate and stays: `amount < 0` means a refund posted
 #: to a spending category never reduces "spent". Pinned by test rather than
