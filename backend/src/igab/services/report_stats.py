@@ -18,6 +18,8 @@ from decimal import Decimal
 
 import polars as pl
 
+from igab.domain.activity_class import CLASS_LABEL, ActivityClass
+
 
 def _amortized(monthly: pl.DataFrame, month_grid: list[date]) -> pl.DataFrame:
     """Spread each charge forward over the months until the next one.
@@ -160,3 +162,43 @@ def volatility_stats(rows, month_grid: list[date], *, amortize: bool = False) ->
         }
         for row in stats.iter_rows(named=True)
     ]
+
+
+def timeline_rows(rows, leg_classes: dict) -> list[dict]:
+    """Timeline entries, with a split parent's class taken from its legs.
+
+    The classifier is defined on LEAF rows — a split parent carries no category
+    — so a parent fell through every rule to the SPENDING default. A transfer
+    to a brokerage itemised into three legs was drawn as a red "Spending" dot.
+
+    One distinct class among the legs IS the parent's class. Anything else is
+    honestly mixed: `activity_class` is None and the label reads "Split", which
+    is served rather than guessed at. The client used to fall back to the
+    amount's sign there, and falling back to the sign is the mislabelling this
+    taxonomy exists to end.
+    """
+    out: list[dict] = []
+    for r in rows:
+        cls: str | None = r.activity_class
+        label = CLASS_LABEL[ActivityClass(cls)]
+        if r.is_split:
+            found = leg_classes.get(r.id, set())
+            if len(found) == 1:
+                cls = next(iter(found))
+                label = CLASS_LABEL[ActivityClass(cls)]
+            else:
+                cls = None
+                label = "Split"
+        out.append(
+            {
+                "id": str(r.id),
+                "date": r.date,
+                "amount": Decimal(str(r.amount)),
+                "payee_name": r.payee_name,
+                "category_name": r.category_name,
+                "memo": r.memo,
+                "activity_class": cls,
+                "activity_label": label,
+            }
+        )
+    return out

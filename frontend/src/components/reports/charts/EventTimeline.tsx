@@ -12,7 +12,13 @@ import './EventTimeline.css'
 import { useReportScope } from '../../../stores/reportStore'
 import { drillScope } from '../drillScope'
 
-/** Dot colour by what a row means, not which way the amount points. */
+/** Dot colour by what a row means, not which way the amount points.
+ *
+ * A null class is a split whose legs disagree, and it gets the neutral tone
+ * rather than a sign-based guess — falling back to the sign is the exact
+ * mislabelling the activity taxonomy exists to end, and it is how an
+ * all-savings split came to be drawn as a red expense.
+ */
 const TONE_BY_CLASS: Record<string, string> = {
   income: 'income',
   spending: 'expense',
@@ -141,7 +147,9 @@ export function TimelineReport({ budgetId }: Props) {
               const amt = tx.amount
               // By class, not by sign. A transfer into savings is negative but is
               // not an expense, and drawing it red said otherwise.
-              const tone = TONE_BY_CLASS[tx.activity_class] ?? (amt < 0 ? 'expense' : 'income')
+              const tone = tx.activity_class
+                ? (TONE_BY_CLASS[tx.activity_class] ?? 'neutral')
+                : 'neutral'
               const size = dotSize(amt)
               const side = i % 2 === 0 ? 'left' : 'right'
               return (

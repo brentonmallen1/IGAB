@@ -1012,6 +1012,7 @@ class TestLargeTransactions:
                 payee_name="Landlord",
                 category_name="Rent",
                 memo="January rent",
+                is_split=False,
                 activity_class="spending",
             )
         ]
@@ -1037,6 +1038,7 @@ class TestLargeTransactions:
                 payee_name="Transfer : Brokerage",
                 category_name="Investments",
                 memo=None,
+                is_split=False,
                 activity_class="savings",
             )
         ]
