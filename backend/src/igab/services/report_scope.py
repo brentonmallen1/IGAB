@@ -40,6 +40,11 @@ class CategoryScope:
     or belonging to another budget. That is reported rather than ignored: a
     stale id resolving to nothing would silently WIDEN the report to the whole
     budget, which looks like data appearing rather than a filter going missing.
+
+    What does happen: the missing filter contributes no categories. Explicit
+    categories and tags still scope the report, so a filter-only scope matches
+    nothing and the report is EMPTY, never unscoped. Every response schema's
+    `filter_unavailable` points here rather than restating this.
     """
 
     category_ids: list[uuid.UUID] | None

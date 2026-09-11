@@ -20,6 +20,10 @@ class SpendingCategory(ApiModel):
 class SpendingReportResponse(ApiModel):
     categories: list[SpendingCategory]
     total: Decimal
+    #: A saved filter was named and could not be found (see `CategoryScope`).
+    #: REQUIRED, not defaulted: a report that forgets it would report an empty
+    #: scope as an empty budget, which is the failure the flag exists to prevent.
+    filter_unavailable: bool
 
 
 class IncomeExpenseMonth(ApiModel):
@@ -211,6 +215,10 @@ class BudgetActualResponse(ApiModel):
     categories: list[BudgetActualItem]
     total_assigned: Decimal
     total_spent: Decimal
+    #: A saved filter was named and could not be found (see `CategoryScope`).
+    #: REQUIRED, not defaulted: a report that forgets it would report an empty
+    #: scope as an empty budget, which is the failure the flag exists to prevent.
+    filter_unavailable: bool
 
 
 # ─── Plan vs Reality ──────────────────────────────────────────────────────────
@@ -335,12 +343,11 @@ class SpendingGroupedResponse(ApiModel):
     #: persists viewId outside any budget scope and would otherwise show one
     #: arrangement while its selector claims another.
     view_unavailable: bool = False
-    #: The same, for a saved filter. Separate from `view_unavailable` because
-    #: they are separate things: a view is an arrangement, a filter is a
-    #: predicate, and losing one says nothing about the other.
-    #: A saved filter was named and could not be found. REQUIRED, not
-    #: defaulted: a report that forgets it would report an empty scope as an
-    #: empty budget, which is the failure the flag exists to prevent.
+    #: Separate from `view_unavailable`: a view is an arrangement, a filter
+    #: is a predicate, and losing one says nothing about the other.
+    #: A saved filter was named and could not be found (see `CategoryScope`).
+    #: REQUIRED, not defaulted: a report that forgets it would report an empty
+    #: scope as an empty budget, which is the failure the flag exists to prevent.
     filter_unavailable: bool
 
 
@@ -474,14 +481,9 @@ class DayPatternsResponse(ApiModel):
     #: whose activity is all savings or debt payments otherwise draws an empty
     #: week with nothing to say why.
     class_excluded: list[SpendingClassExcluded] = []
-    #: The requested saved filter no longer exists (deleted, or another
-    #: budget's), so this report is unscoped. Said out loud for the reason
-    #: `view_unavailable` is: a stale id resolving to nothing WIDENS the
-    #: report, which reads as data appearing rather than a filter going
-    #: missing.
-    #: A saved filter was named and could not be found. REQUIRED, not
-    #: defaulted: a report that forgets it would report an empty scope as an
-    #: empty budget, which is the failure the flag exists to prevent.
+    #: A saved filter was named and could not be found (see `CategoryScope`).
+    #: REQUIRED, not defaulted: a report that forgets it would report an empty
+    #: scope as an empty budget, which is the failure the flag exists to prevent.
     filter_unavailable: bool
     #: The activity classes these figures count, so a drill-down opened from a
     #: bar totals what the bar says. REQUIRED: `[]` makes the client send no
@@ -523,14 +525,9 @@ class TimelineTransaction(ApiModel):
 
 class TimelineResponse(ApiModel):
     transactions: list[TimelineTransaction]
-    #: The requested saved filter no longer exists (deleted, or another
-    #: budget's), so this report is unscoped. Said out loud for the reason
-    #: `view_unavailable` is: a stale id resolving to nothing WIDENS the
-    #: report, which reads as data appearing rather than a filter going
-    #: missing.
-    #: A saved filter was named and could not be found. REQUIRED, not
-    #: defaulted: a report that forgets it would report an empty scope as an
-    #: empty budget, which is the failure the flag exists to prevent.
+    #: A saved filter was named and could not be found (see `CategoryScope`).
+    #: REQUIRED, not defaulted: a report that forgets it would report an empty
+    #: scope as an empty budget, which is the failure the flag exists to prevent.
     filter_unavailable: bool
 
 
@@ -823,10 +820,9 @@ class SpendingTrendsResponse(ApiModel):
     #: Present only when the user scoped the report (categories, a filter, a
     #: tag): activity in that scope a spending report will not count.
     class_excluded: list[SpendingClassExcluded] = []
-    #: The saved filter no longer exists; the report fell back to unscoped.
-    #: A saved filter was named and could not be found. REQUIRED, not
-    #: defaulted: a report that forgets it would report an empty scope as an
-    #: empty budget, which is the failure the flag exists to prevent.
+    #: A saved filter was named and could not be found (see `CategoryScope`).
+    #: REQUIRED, not defaulted: a report that forgets it would report an empty
+    #: scope as an empty budget, which is the failure the flag exists to prevent.
     filter_unavailable: bool
 
 

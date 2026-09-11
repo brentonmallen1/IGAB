@@ -166,6 +166,55 @@ class TestAFilterThatIsNoLongerThere:
         assert set(scope.category_ids or []) == {groceries.id, fuel.id}
 
 
+#: Routes that take `filter_id` and deliberately do not serve the flag, with
+#: the reason. Anything else that takes one must say when it could not find it.
+FILTER_FLAG_EXEMPT = {
+    # A drill-down listing: it is opened from a report that already says the
+    # filter is gone, and its payload is a page of rows, not a figure.
+    "/api/v1/{budget_id}/transactions": "drill-down listing",
+}
+
+
+def _routes_taking_filter_id() -> list[str]:
+    from fastapi.routing import APIRoute
+
+    from igab.main import app
+
+    return sorted(
+        r.path
+        for r in app.routes
+        if isinstance(r, APIRoute)
+        and "GET" in r.methods
+        and any(p.name == "filter_id" for p in r.dependant.query_params)
+    )
+
+
+@pytest.mark.parametrize(
+    "path", [p for p in _routes_taking_filter_id() if p not in FILTER_FLAG_EXEMPT]
+)
+async def test_every_route_taking_a_filter_says_when_it_is_gone(db_session, api_client, path):
+    """/reports/spending and /reports/budget-actual resolved `filter_id` like
+    the other four and had no field to say it was missing, so a deleted filter
+    came back as `total: 0` with nothing to tell it from an empty budget
+    (PR188-7). Enumerated from the app, so a new route that takes a filter and
+    forgets the flag fails here."""
+    budget, *_ = await _make_world(db_session, api_client.test_user)
+    resp = await api_client.get(
+        path.format(budget_id=budget.id), params={"filter_id": str(uuid.uuid4())}
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["filter_unavailable"] is True, path
+
+
+def test_the_filter_route_enumeration_is_not_vacuous():
+    routes = set(_routes_taking_filter_id())
+    assert set(FILTER_FLAG_EXEMPT) <= routes, "an exemption names a route that no longer exists"
+    assert {
+        "/api/v1/{budget_id}/reports/spending",
+        "/api/v1/{budget_id}/reports/budget-actual",
+    } <= routes
+
+
 class TestTagsDoNotReachAcrossBudgets:
     async def test_another_budgets_tag_contributes_nothing(self, db_session, world):
         budget, *_ = world

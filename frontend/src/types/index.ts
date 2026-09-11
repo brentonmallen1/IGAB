@@ -575,6 +575,9 @@ export interface SpendingCategory {
 export interface SpendingReport {
   categories: SpendingCategory[]
   total: number
+  /** A saved filter was named and could not be found — backend
+   *  `CategoryScope` in `report_scope.py` says what the scope then holds. */
+  filter_unavailable: boolean
 }
 
 export interface IncomeExpenseMonth {
@@ -827,6 +830,9 @@ export interface BudgetActualReport {
   categories: BudgetActualItem[]
   total_assigned: number
   total_spent: number
+  /** A saved filter was named and could not be found — backend
+   *  `CategoryScope` in `report_scope.py` says what the scope then holds. */
+  filter_unavailable: boolean
 }
 
 export interface PlanRealityCell {

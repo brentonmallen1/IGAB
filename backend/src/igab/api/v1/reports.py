@@ -240,7 +240,9 @@ async def spending_report(
         _spending_classes(include_savings),
     )
     return SpendingReportResponse(
-        categories=[SpendingCategory.model_validate(c) for c in categories], total=total
+        categories=[SpendingCategory.model_validate(c) for c in categories],
+        total=total,
+        filter_unavailable=scope.filter_unavailable,
     )
 
 
@@ -386,6 +388,7 @@ async def budget_actual_report(
         categories=[BudgetActualItem.model_validate(c) for c in data["categories"]],
         total_assigned=data["total_assigned"],
         total_spent=data["total_spent"],
+        filter_unavailable=scope.filter_unavailable,
     )
 
 
