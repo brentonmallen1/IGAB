@@ -3,7 +3,7 @@ import { persist } from 'zustand/middleware'
 import { PERSIST_KEYS } from './persistKeys'
 import { useMemo } from 'react'
 import type { ReportScope } from '../api/reports'
-import { toISODate } from '../utils/dates'
+import { thisMonthWindow } from '../utils/dateWindow'
 
 export type ReportTab =
   | 'overview'
@@ -389,11 +389,10 @@ interface ReportState {
 }
 
 function defaultFilters(): ReportFilters {
-  const now = new Date()
-  const start = new Date(now.getFullYear(), now.getMonth(), 1)
+  const { start, end } = thisMonthWindow()
   return {
-    startDate: toISODate(start),
-    endDate: toISODate(now),
+    startDate: start,
+    endDate: end,
     categoryIds: [],
     tagIds: [],
     filterId: null,

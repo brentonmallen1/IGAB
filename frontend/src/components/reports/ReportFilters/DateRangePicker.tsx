@@ -3,7 +3,8 @@ import { Calendar } from 'lucide-react'
 import { useAppStore } from '../../../stores/appStore'
 import { useReportRange } from '../../../api/reports'
 import './DateRangePicker.css'
-import { toISODate } from '../../../utils/dates'
+import { addMonths, currentMonthStart, today } from '../../../utils/dates'
+import { monthsAgoStartISO, monthWindow, thisMonthWindow } from '../../../utils/dateWindow'
 
 interface Props {
   startDate: string
@@ -16,66 +17,35 @@ interface Preset {
   getValue: () => { start: string; end: string }
 }
 
-function firstOfMonth(d: Date) {
-  return new Date(d.getFullYear(), d.getMonth(), 1)
+/** "Last N Months" is the current month and the N-1 before it, through today. */
+function lastMonths(n: number): Preset {
+  return {
+    label: `Last ${n} Months`,
+    getValue: () => ({ start: monthsAgoStartISO(n - 1), end: today() }),
+  }
 }
 
-function lastOfMonth(d: Date) {
-  return new Date(d.getFullYear(), d.getMonth() + 1, 0)
-}
-
-function subtractMonths(d: Date, n: number) {
-  return new Date(d.getFullYear(), d.getMonth() - n, 1)
-}
-
+// Every preset is a dateWindow helper. The picker once kept its own
+// firstOfMonth / lastOfMonth / subtractMonths beside the module that already
+// does that arithmetic, and "This Month" was written twice — here and in the
+// report store's default — where a drift leaves the default matching no preset.
 const PRESETS: Preset[] = [
-  {
-    label: 'This Month',
-    getValue: () => {
-      const today = new Date()
-      return { start: toISODate(firstOfMonth(today)), end: toISODate(today) }
-    },
-  },
-  {
-    label: 'Last Month',
-    getValue: () => {
-      const today = new Date()
-      const prev = subtractMonths(today, 1)
-      return { start: toISODate(prev), end: toISODate(lastOfMonth(prev)) }
-    },
-  },
-  {
-    label: 'Last 3 Months',
-    getValue: () => {
-      const today = new Date()
-      return { start: toISODate(subtractMonths(today, 2)), end: toISODate(today) }
-    },
-  },
-  {
-    label: 'Last 6 Months',
-    getValue: () => {
-      const today = new Date()
-      return { start: toISODate(subtractMonths(today, 5)), end: toISODate(today) }
-    },
-  },
-  {
-    label: 'Last 12 Months',
-    getValue: () => {
-      const today = new Date()
-      return { start: toISODate(subtractMonths(today, 11)), end: toISODate(today) }
-    },
-  },
+  { label: 'This Month', getValue: thisMonthWindow },
+  { label: 'Last Month', getValue: () => monthWindow(addMonths(currentMonthStart(), -1)) },
+  lastMonths(3),
+  lastMonths(6),
+  lastMonths(12),
   {
     label: 'This Year',
     getValue: () => {
-      const today = new Date()
-      return { start: `${today.getFullYear()}-01-01`, end: toISODate(today) }
+      const t = today()
+      return { start: `${t.slice(0, 4)}-01-01`, end: t }
     },
   },
   {
     label: 'Last Year',
     getValue: () => {
-      const y = new Date().getFullYear() - 1
+      const y = Number(today().slice(0, 4)) - 1
       return { start: `${y}-01-01`, end: `${y}-12-31` }
     },
   },
@@ -88,7 +58,7 @@ const PRESETS: Preset[] = [
 function allTimePreset(earliestMonth: string): Preset {
   return {
     label: 'All Time',
-    getValue: () => ({ start: earliestMonth, end: toISODate(new Date()) }),
+    getValue: () => ({ start: earliestMonth, end: today() }),
   }
 }
 

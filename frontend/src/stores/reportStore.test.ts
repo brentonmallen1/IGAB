@@ -4,8 +4,10 @@
  * silently drew group tiles under a highlighted Payee button — group names
  * where the user asked for payees.
  */
-import { describe, expect, it } from 'vitest'
-import { incomeDrill, resolveGroupBy } from './reportStore'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { incomeDrill, resolveGroupBy, useReportStore } from './reportStore'
+import { thisMonthWindow } from '../utils/dateWindow'
+import { pinTimeZone } from '../test-utils/timeZone'
 
 describe('resolveGroupBy', () => {
   it('keeps a mode the tab can draw', () => {
@@ -37,5 +39,44 @@ describe('incomeDrill', () => {
       activityClasses: ['income'],
       ...window,
     })
+  })
+})
+
+/**
+ * The default report window is "this month so far". It was built as
+ * `toISOString().slice(0, 10)` of a local month-start, which east of
+ * Greenwich is the last day of the PREVIOUS month — at 00:30 on 1 September
+ * in Berlin the reports asked the server for 31 August onwards, a day nobody
+ * chose. Pinned to Berlin just after midnight on the 1st, the one moment that
+ * shows it; in UTC the two versions agree.
+ */
+describe('resetFilters ahead of Greenwich', () => {
+  pinTimeZone('Europe/Berlin')
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('starts the default window on the 1st of the local month', () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 8, 1, 0, 30))
+
+    useReportStore.getState().resetFilters()
+
+    const { startDate, endDate } = useReportStore.getState().filters
+    expect(startDate).toBe('2026-09-01')
+    expect(endDate).toBe('2026-09-01')
+  })
+
+  it("is the same value as the date picker's This Month preset", () => {
+    // The picker highlights a preset by string equality; a third spelling of
+    // "this month" that drifted would leave the default matching no preset.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 8, 17, 12, 0))
+
+    useReportStore.getState().resetFilters()
+
+    const { startDate, endDate } = useReportStore.getState().filters
+    expect({ start: startDate, end: endDate }).toEqual(thisMonthWindow())
+    expect(thisMonthWindow()).toEqual({ start: '2026-09-01', end: '2026-09-17' })
   })
 })
