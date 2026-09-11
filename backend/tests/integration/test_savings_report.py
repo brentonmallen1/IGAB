@@ -19,7 +19,9 @@ columns with an empty leader and divided the average inflow by 19.
 from datetime import date
 from decimal import Decimal
 
+from igab.repositories.import_anchor_repo import anchor_rows
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
+from igab.services.card_payment import ensure_payment_category
 from igab.services.report_service import ReportService
 
 from .factories import (
@@ -59,6 +61,21 @@ async def _tagged_category(db_session, budget, group, tag_repo, name, system_key
     tag = await tag_repo.get_system_tag(budget.id, system_key)
     await tag_repo.set_category_tags(category.id, [tag.id])
     return category
+
+
+async def _page_available(db_session, budget, category, month) -> Decimal:
+    """The Available the Budget page serves for `month` — `get_budget_summary`,
+    not `get_category_balance`, which skips the page's card correction."""
+    summary = await make_services(db_session).budgets.get_budget_summary(budget.id, month)
+    return next(b.available for b in summary.category_balances if b.category_id == category.id)
+
+
+async def _anchor(db_session, budget, opening_month, available):
+    """An import anchor stating YNAB's Available at `opening_month`'s end."""
+    db_session.add_all(
+        anchor_rows(budget.id, opening_month, available=available, reserve={}, uncovered={})
+    )
+    await db_session.flush()
 
 
 async def test_balances_carry_prior_history_then_accumulate_monthly(db_session):
@@ -182,6 +199,7 @@ async def test_no_tagged_categories_is_empty(db_session):
         # Nothing tagged means nothing to drain from — an empty list, not an
         # absent key, so the report's shape does not change with its contents.
         "drains": {"total": Decimal("0"), "moves": []},
+        "unrecovered": [],
     }
 
 
@@ -218,9 +236,11 @@ async def test_current_balance_equals_the_budget_pages_available(db_session):
 
     Whatever the walk does, this report's Balance and the Budget page's
     Available are the same question about the same envelope, so they must be
-    the same number. Asserted against `BudgetService.get_category_balance`
-    rather than a hand-written figure, because a hand-written figure can agree
-    with both implementations being wrong together.
+    the same number. Asserted against `get_budget_summary` — the figure the
+    page serves — rather than a hand-written one, because a hand-written figure
+    can agree with both implementations being wrong together. It used to read
+    `get_category_balance`, which skips the card correction the page applies,
+    so the oracle shared the bug it was meant to catch.
     """
     budget, checking, group, tag_repo = await _setup(db_session)
     fund = await _tagged_category(db_session, budget, group, tag_repo, "New Roof", "savings")
@@ -233,9 +253,10 @@ async def test_current_balance_equals_the_budget_pages_available(db_session):
     await create_budget_assignment(db_session, budget, fund, months_ago(0), "175.00")
 
     report = await ReportService(db_session).savings_report(budget.id, months=6)
-    grid = await make_services(db_session).budgets.get_category_balance(fund.id, TODAY)
 
-    assert report["categories"][0]["current_balance"] == grid.available
+    assert report["categories"][0]["current_balance"] == await _page_available(
+        db_session, budget, fund, TODAY
+    )
 
 
 async def test_activity_on_an_off_budget_account_moves_neither_figure(db_session):
@@ -296,3 +317,90 @@ async def test_the_window_has_exactly_the_months_asked_for(db_session):
     assert data["months"] == [months_ago(n) for n in range(5, -1, -1)]
     assert len(data["categories"][0]["monthly_balances"]) == 6
     assert data["summary"]["avg_monthly_inflow"] == Decimal("100.00")  # 600 / 6
+
+
+async def test_an_imported_budget_walks_back_from_ynabs_figure(db_session):
+    """The anchored walk starts at the import and says nothing earlier, so
+    every month before it read 0 — a flat line that jumped to the whole
+    balance at the import, beside an Inflow column counting those months'
+    deposits. The months before are walked back from YNAB's own figure.
+    """
+    budget, checking, group, tag_repo = await _setup(db_session)
+    fund = await _tagged_category(db_session, budget, group, tag_repo, "Emergency Fund", "savings")
+    for n in range(6, 1, -1):
+        await create_budget_assignment(db_session, budget, fund, months_ago(n), "200.00")
+    await create_budget_assignment(db_session, budget, fund, months_ago(0), "50.00")
+    await _anchor(db_session, budget, months_ago(2), {fund.id: Decimal("1000.00")})
+
+    data = await ReportService(db_session).savings_report(budget.id, months=6)
+    row = data["categories"][0]
+
+    # 1000 at the import, 200 a month before it; then the anchored months.
+    # Before: [0, 0, 0, 1000, 1000, 1050].
+    assert row["monthly_balances"] == [
+        Decimal("400.00"),
+        Decimal("600.00"),
+        Decimal("800.00"),
+        Decimal("1000.00"),
+        Decimal("1000.00"),
+        Decimal("1050.00"),
+    ]
+    assert data["unrecovered"] == []
+    assert row["current_balance"] == await _page_available(db_session, budget, fund, TODAY)
+
+
+async def test_an_envelope_whose_history_cannot_reach_ynabs_figure_starts_late(db_session):
+    """YNAB ended the import month at 100 though that month alone assigned
+    200 — spending YNAB saw that the register does not hold. No earlier
+    balance can be walked back from that, so the line starts at the import
+    and the report says why instead of drawing a gap nobody explained.
+    """
+    budget, checking, group, tag_repo = await _setup(db_session)
+    fund = await _tagged_category(db_session, budget, group, tag_repo, "Vacation", "savings")
+    await create_budget_assignment(db_session, budget, fund, months_ago(5), "100.00")
+    await create_budget_assignment(db_session, budget, fund, months_ago(2), "200.00")
+    await create_budget_assignment(db_session, budget, fund, months_ago(0), "50.00")
+    await _anchor(db_session, budget, months_ago(2), {fund.id: Decimal("100.00")})
+
+    data = await ReportService(db_session).savings_report(budget.id, months=6)
+
+    assert data["categories"][0]["monthly_balances"] == [
+        None,
+        None,
+        None,
+        Decimal("100.00"),
+        Decimal("100.00"),
+        Decimal("150.00"),
+    ]
+    assert data["unrecovered"] == [
+        {"category_id": str(fund.id), "category_name": "Vacation", "starts_from": months_ago(2)}
+    ]
+
+
+async def test_a_card_refund_reads_as_the_budget_page_does(db_session):
+    """Nothing assigned, so a $100 card charge rode the card as debt; the
+    refund repaid that debt and handed the envelope nothing. The Budget page
+    takes that repayment back out inside its walk. This report re-derived
+    Available without the step and read $100 above the page from the refund on.
+    """
+    budget, checking, group, tag_repo = await _setup(db_session)
+    visa = await create_account(db_session, budget, "Sapphire Visa", account_type="credit_card")
+    await ensure_payment_category(db_session, visa)
+    fund = await _tagged_category(
+        db_session, budget, group, tag_repo, "Car Repair", "long_term_expense"
+    )
+    await create_transaction(
+        db_session, budget, visa, "-100.00", months_ago(2).replace(day=9), category=fund
+    )
+    await create_transaction(
+        db_session, budget, visa, "100.00", months_ago(1).replace(day=9), category=fund
+    )
+    await create_budget_assignment(db_session, budget, fund, months_ago(0), "40.00")
+
+    data = await ReportService(db_session).savings_report(budget.id, months=3)
+    row = data["categories"][0]
+
+    # Before: [-100, 100, 140].
+    assert row["monthly_balances"] == [Decimal("-100.00"), Decimal("0.00"), Decimal("40.00")]
+    for month, balance in zip(data["months"], row["monthly_balances"], strict=True):
+        assert balance == await _page_available(db_session, budget, fund, month)

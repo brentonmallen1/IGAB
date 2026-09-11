@@ -608,7 +608,11 @@ class SavingsCategory(ApiModel):
     category_id: uuid.UUID
     category_name: str
     group_name: str
-    monthly_balances: list[Decimal]  # balance at end of each month
+    #: Available at the end of each month, as the Budget page states it. None
+    #: where no figure can be stated — before the budget's history, or before
+    #: an import whose history cannot reproduce YNAB's balance (see
+    #: `SavingsReportResponse.unrecovered`). Absent, not zero.
+    monthly_balances: list[Decimal | None]
     current_balance: Decimal
     target_balance: Decimal | None
     total_inflow: Decimal  # total assigned/deposited in the period
@@ -639,11 +643,23 @@ class ReportDrains(ApiModel):
     moves: list[ReportDrainMove]
 
 
+class SavingsUnrecovered(ApiModel):
+    """An envelope whose balance before an import could not be walked back
+    from YNAB's figure: its line starts at `starts_from`."""
+
+    category_id: uuid.UUID
+    category_name: str
+    starts_from: date
+
+
 class SavingsReportResponse(ApiModel):
     categories: list[SavingsCategory]
     summary: SavingsSummary
     months: list[date]
     drains: ReportDrains
+    #: Envelopes whose line starts late, so the page can say why rather than
+    #: draw a gap nobody explained.
+    unrecovered: list[SavingsUnrecovered]
 
 
 # ─── Savings Rate Report ─────────────────────────────────────────────────────

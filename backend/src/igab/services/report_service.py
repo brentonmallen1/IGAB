@@ -33,7 +33,6 @@ from igab.domain.activity_class import (
     apply_class_joins,
     counted_classes,
 )
-from igab.domain.carryover import available_at, monthly_end_balances
 
 # CASH_FLOW_ROW: plain rows plus categorized transfer legs (spending
 # transfers to off-budget accounts count as real income/expense; internal
@@ -49,7 +48,6 @@ from igab.guide.concepts import (
 )
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_filters import BUDGETED_ENVELOPE, SPENT_ENVELOPE
-from igab.repositories.import_anchor_repo import ImportAnchorRepository, category_opening
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.repositories.txn_filters import (
     CASH_ACCOUNT,
@@ -119,7 +117,7 @@ class SavingsCategory(TypedDict):
     category_id: str
     category_name: str
     group_name: str
-    monthly_balances: list[Decimal]
+    monthly_balances: list[Decimal | None]
     current_balance: Decimal
     target_balance: Decimal | None
     total_inflow: Decimal
@@ -2883,82 +2881,41 @@ class ReportService:
         if not savings_cat_ids:
             return _empty_savings_report(month_list)
 
-        # Assignments with NO lower bound: the walk needs every month, not a
-        # lump sum of the months before the window. A pre-window overspend has
-        # to be floored where it happened.
-        assign_q = select(
-            BudgetAssignment.category_id,
-            BudgetAssignment.month,
-            BudgetAssignment.assigned,
-        ).where(
-            BudgetAssignment.category_id.in_(savings_cat_ids),
-            BudgetAssignment.month <= end_date,
+        # Available from the Budget page's own walk (`envelope_series`), never
+        # a copy of it. This method once kept a running total — carrying an
+        # overspend forward forever where the walk floors it between months —
+        # and then a re-assembly that skipped the card correction, so a card
+        # charge refunded to the envelope read $100 here and $0 on the page.
+        # Assignments go unbounded below: a pre-window overspend is floored
+        # where it happened. On an imported budget the months before the
+        # import are walked back from YNAB's figure; an envelope whose history
+        # cannot reproduce it starts late, and `unrecovered` says so.
+        from igab.guide.detection import budget_service_from
+
+        series = await budget_service_from(self.session).envelope_series(
+            budget_id, list(savings_cat_ids), month_list
         )
-        assign_rows = (await self.session.execute(assign_q)).all()
-
-        assign_map: dict[uuid.UUID, dict[date, Decimal]] = {}
-        for r in assign_rows:
-            assign_map.setdefault(r.category_id, {})[r.month] = r.assigned
-
-        # Activity through `sum_all_categories_by_month`, which carries
-        # ON_BUDGET_ACCOUNT. The inline query here did not, so a categorized
-        # row on an account since flipped off-budget moved this report's
-        # balance and not the grid's — and its docstring says the two "must
-        # stay predicate-identical".
-        activity_map = await self.txns.sum_all_categories_by_month(
-            list(savings_cat_ids), end_date=_last_day(month_list[-1]) if month_list else end_date
-        )
-
-        # The import anchor, loaded once for the budget. An anchored budget
-        # seeds each envelope at (B-1, YNAB's Available then); the raw sum of
-        # everything before that date is not the same number.
-        anchor = await ImportAnchorRepository(self.session).get_for_budget(budget_id)
-
-        # Build category results
         categories: list[SavingsCategory] = []
+        unrecovered: list[dict] = []
         for cid in savings_cat_ids:
-            cid_str = str(cid)
-            if cid_str not in cat_info:
-                continue
-
-            info = cat_info[cid_str]
-
-            # The canonical walk, not a running total.
-            #
-            # This method summed prior assignments + prior activity into an
-            # opening figure and then added each month straight on top. That is
-            # not what an envelope balance is: `domain.carryover` floors the
-            # carryover BETWEEN months, because a month that ends negative is
-            # covered from To Be Assigned and the next month starts at zero.
-            # Only the month being viewed may show a negative. So a savings
-            # envelope that was once overspent carried its overspend forward
-            # forever here, and the report's "Balance" column disagreed with
-            # the Available the Budget page shows for the same envelope — the
-            # one number a savings report exists to state. It also ignored the
-            # import anchor, so every anchored budget was wrong from month one.
-            end_balances = monthly_end_balances(
-                assign_map.get(cid, {}),
-                activity_map.get(cid, {}),
-                opening=category_opening(anchor, cid),
-            )
-            monthly_balances = [available_at(end_balances, m) for m in month_list]
-            current_balance = available_at(end_balances, today.replace(day=1))
-
-            total_inflow = Decimal("0")
-            for m in month_list:
-                assigned = assign_map.get(cid, {}).get(m, Decimal("0"))
-                if assigned > 0:
-                    total_inflow += assigned
-
+            info, s = cat_info[str(cid)], series[cid]
+            if s.unrecovered_through is not None:
+                unrecovered.append(
+                    {
+                        "category_id": str(cid),
+                        "category_name": info["name"],
+                        "starts_from": add_months(s.unrecovered_through, 1),
+                    }
+                )
             categories.append(
                 {
-                    "category_id": cid_str,
+                    "category_id": str(cid),
                     "category_name": info["name"],
                     "group_name": info["group_name"],
-                    "monthly_balances": monthly_balances,
-                    "current_balance": current_balance,
+                    "monthly_balances": s.available,
+                    "current_balance": s.latest(),
                     "target_balance": None,  # Could fetch from category targets
-                    "total_inflow": total_inflow,
+                    "total_inflow": sum((a for a in s.assigned if a > 0), Decimal("0")),
                 }
             )
 
@@ -2988,6 +2945,7 @@ class ReportService:
             },
             "months": month_list,
             "drains": drains,
+            "unrecovered": unrecovered,
         }
 
     # ─── Anomaly Detection ────────────────────────────────────────────────────
@@ -3619,6 +3577,7 @@ def _empty_savings_report(month_list: list[date]) -> dict:
         },
         "months": month_list,
         "drains": {"total": Decimal("0"), "moves": []},
+        "unrecovered": [],
     }
 
 

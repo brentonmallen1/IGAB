@@ -1177,7 +1177,11 @@ export interface SavingsCategory {
   category_id: string
   category_name: string
   group_name: string
-  monthly_balances: number[]
+  /** Available at each month's end, from the Budget page's own walk
+   *  (BudgetService.envelope_series). `null` where no figure can be stated —
+   *  before an import the history cannot reproduce; see
+   *  `SavingsReport.unrecovered`. Absent, not zero: draw a gap. */
+  monthly_balances: (number | null)[]
   current_balance: number
   target_balance: number | null
   total_inflow: number
@@ -1208,11 +1212,20 @@ export interface ReportDrains {
   moves: ReportDrainMove[]
 }
 
+/** An envelope whose balance before an import could not be walked back from
+ *  YNAB's figure, so its line starts at `starts_from`. */
+export interface SavingsUnrecovered {
+  category_id: string
+  category_name: string
+  starts_from: string
+}
+
 export interface SavingsReport {
   categories: SavingsCategory[]
   summary: SavingsSummary
   months: string[]
   drains: ReportDrains
+  unrecovered: SavingsUnrecovered[]
 }
 
 export interface AnomalyItem {

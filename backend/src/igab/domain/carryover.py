@@ -19,6 +19,8 @@ Pure: takes the two series and the month, returns the number.
 from datetime import date
 from decimal import Decimal
 
+from igab.domain.dates import add_months
+
 ZERO = Decimal("0")
 
 
@@ -79,6 +81,70 @@ def monthly_end_balances(
         # Floor into the next month; the month itself keeps its raw value.
         carryover = next_carryover(end_of_month)
     return out
+
+
+def back_derived_balances(
+    opening: tuple[date, Decimal],
+    assignments_by_month: dict[date, Decimal],
+    activity_by_month: dict[date, Decimal],
+    earliest: date,
+) -> tuple[dict[date, Decimal], date | None]:
+    """Month-end available BEFORE an import anchor, walked back from YNAB's
+    own figure.
+
+    The anchored walk starts at the anchor and says nothing earlier, so a
+    report reading earlier months got zero — a flat line that jumped to the
+    whole balance at the import. The history before the anchor is still in
+    the register, and a month's carry-in is its end less what it added:
+
+        carry_in(m) = end(m) − assigned(m) − activity(m)
+
+    The month before ended at exactly that carry-in whenever it is positive,
+    because the floor only ever raises a negative end. Walking back from
+    YNAB's figure keeps the recovered line continuous with the anchored one;
+    replaying the history forward from zero would not — the two disagree
+    wherever the register drifted from YNAB's numbers, which is why the
+    anchor exists at all.
+
+    A step ends the walk three ways:
+
+    - carry_in < 0: no history reproduces YNAB's figure from here. The month
+      before is returned as `stopped_at`, and nothing earlier is known.
+    - carry_in == 0: the month before ended at or below zero and the floor
+      hid how far. The forward walk over the same history is the only other
+      witness, so its figures stand for everything earlier when it agrees
+      (ends that month at or below zero too); otherwise the walk stops.
+    - reaching `earliest`, the start of the register.
+
+    Returns `(balances, stopped_at)`: each recovered month in
+    [`earliest`, opening month), keyed by its first and valued as
+    `available_at` would read it, and the latest month that could not be
+    recovered — None when the walk reached `earliest`.
+    """
+    opening_month, end = opening
+    assigned = {m: v for m, v in assignments_by_month.items() if m <= opening_month}
+    activity = {m: v for m, v in activity_by_month.items() if m <= opening_month}
+    out: dict[date, Decimal] = {}
+    month = opening_month
+    while (prev := add_months(month, -1)) >= earliest:
+        carry_in = end - assigned.get(month, ZERO) - activity.get(month, ZERO)
+        if carry_in > ZERO:
+            out[prev] = end = carry_in
+            month = prev
+            continue
+        if carry_in == ZERO:
+            forward = monthly_end_balances(
+                {m: v for m, v in assigned.items() if m <= prev},
+                {m: v for m, v in activity.items() if m <= prev},
+            )
+            if available_at(forward, prev) <= ZERO:
+                m = earliest
+                while m <= prev:
+                    out[m] = available_at(forward, m)
+                    m = add_months(m, 1)
+                return out, None
+        return out, prev
+    return out, None
 
 
 def sum_through(series: dict[date, Decimal], month_start: date) -> Decimal:

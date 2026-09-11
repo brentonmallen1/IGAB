@@ -54,6 +54,7 @@ from igab.api.v1.schemas.report import (
     SavingsRateResponse,
     SavingsReportResponse,
     SavingsSummary,
+    SavingsUnrecovered,
     SeasonalityResponse,
     SpendingCategory,
     SpendingClassExcluded,
@@ -807,6 +808,7 @@ async def savings_report(
         summary=SavingsSummary.model_validate(data["summary"]),
         months=data["months"],
         drains=ReportDrains.model_validate(data["drains"]),
+        unrecovered=[SavingsUnrecovered.model_validate(u) for u in data["unrecovered"]],
     )
 
 

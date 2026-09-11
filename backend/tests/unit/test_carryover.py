@@ -8,7 +8,12 @@ Assigned, so the category reads permanently low.
 from datetime import date
 from decimal import Decimal
 
-from igab.domain.carryover import available_at, available_through, next_carryover
+from igab.domain.carryover import (
+    available_at,
+    available_through,
+    back_derived_balances,
+    next_carryover,
+)
 
 JAN, FEB, MAR, APR = (date(2026, m, 1) for m in (1, 2, 3, 4))
 D = Decimal
@@ -218,3 +223,82 @@ class TestTheImportAnchorOpening:
         # The UI clamps navigation at B; a service caller asking anyway gets
         # a calm zero, never a re-derivation.
         assert available_through({JAN: D("777")}, {}, JAN, opening=(FEB, D("40"))) == D("0")
+
+
+class TestBackDerivedBalances:
+    """Months before an import, walked back from YNAB's figure at July's end.
+    Every expectation is worked by hand: carry-in = end − assigned − activity."""
+
+    MAR, APR, MAY, JUN, JUL = (date(2026, m, 1) for m in (3, 4, 5, 6, 7))
+
+    def test_a_steady_saver_walks_back_to_the_first_deposit(self):
+        assigned = {m: D("200") for m in (self.MAR, self.APR, self.MAY, self.JUN, self.JUL)}
+        out, stopped = back_derived_balances((self.JUL, D("1000")), assigned, {}, self.MAR)
+        assert out == {
+            self.JUN: D("800"),
+            self.MAY: D("600"),
+            self.APR: D("400"),
+            self.MAR: D("200"),
+        }
+        assert stopped is None
+
+    def test_the_line_meets_ynabs_figure_where_a_forward_replay_would_not(self):
+        # The register holds a -100 in April that YNAB's figure does not
+        # reflect. Replayed forward that ends July at 900, a step down at the
+        # import; walked back from YNAB's 1000 the line joins it exactly.
+        assigned = {m: D("200") for m in (self.MAR, self.APR, self.MAY, self.JUN, self.JUL)}
+        activity = {self.APR: D("-100")}
+        out, _ = back_derived_balances((self.JUL, D("1000")), assigned, activity, self.MAR)
+        assert out == {
+            self.JUN: D("800"),
+            self.MAY: D("600"),
+            self.APR: D("400"),
+            self.MAR: D("300"),
+        }
+
+    def test_a_history_that_cannot_reach_ynabs_figure_stops(self):
+        # YNAB ended July at 100, but July alone assigned 200: nothing carried
+        # in can make that true, so no earlier month is known.
+        out, stopped = back_derived_balances(
+            (self.JUL, D("100")), {self.MAR: D("50"), self.JUL: D("200")}, {}, self.MAR
+        )
+        assert out == {}
+        assert stopped == self.JUN
+
+    def test_an_envelope_that_started_empty_reads_zero_before_it(self):
+        # Opened in May with 300. The carry into May is zero, and the forward
+        # replay agrees that April ended at zero — so it, and every month
+        # before, reads zero.
+        assigned = {self.MAY: D("300")}
+        activity = {self.JUL: D("-50")}
+        out, stopped = back_derived_balances((self.JUL, D("250")), assigned, activity, self.MAR)
+        assert out == {
+            self.JUN: D("300"),
+            self.MAY: D("300"),
+            self.APR: D("0"),
+            self.MAR: D("0"),
+        }
+        assert stopped is None
+
+    def test_a_zero_carry_the_forward_replay_contradicts_stops(self):
+        # The walk says May started empty; the register says April ended at
+        # 100. One of them is wrong, and a guess is not a balance.
+        assigned = {self.APR: D("100"), self.MAY: D("300")}
+        out, stopped = back_derived_balances((self.JUL, D("300")), assigned, {}, self.MAR)
+        assert out == {self.JUN: D("300"), self.MAY: D("300")}
+        assert stopped == self.APR
+
+    def test_an_overspent_month_before_a_zero_carry_shows_its_overspend(self):
+        # April ended 50 overspent, which the floor turned into May's empty
+        # start. The forward replay is the only witness to the -50, and it
+        # agrees with the walk, so April reads what the Budget page showed.
+        assigned = {self.APR: D("100"), self.MAY: D("300")}
+        activity = {self.APR: D("-150")}
+        out, stopped = back_derived_balances((self.JUL, D("300")), assigned, activity, self.MAR)
+        assert out[self.APR] == D("-50")
+        assert out[self.MAR] == D("0")
+        assert stopped is None
+
+    def test_a_history_that_begins_at_the_import_recovers_nothing(self):
+        out, stopped = back_derived_balances((self.JUL, D("500")), {}, {}, self.JUL)
+        assert (out, stopped) == ({}, None)

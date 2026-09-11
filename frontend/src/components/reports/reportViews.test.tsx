@@ -291,6 +291,42 @@ describe('OverviewReport metric cards', () => {
   })
 })
 
+describe('SavingsReport before an import', () => {
+  // An imported budget whose history could not be walked back from YNAB's
+  // figure before August: those months are null — a gap, not an empty
+  // envelope — and the page has to say why.
+  const data = {
+    categories: [
+      {
+        category_id: 'c1',
+        category_name: 'Vacation',
+        group_name: 'Goals',
+        monthly_balances: [null, null, 100, 150],
+        current_balance: 150,
+        target_balance: null,
+        total_inflow: 250,
+      },
+    ],
+    summary: { total_balance: 150, total_inflow: 250, avg_monthly_inflow: 62.5, category_count: 1 },
+    months: ['2026-06-01', '2026-07-01', '2026-08-01', '2026-09-01'],
+    drains: { total: 0, moves: [] },
+    unrecovered: [{ category_id: 'c1', category_name: 'Vacation', starts_from: '2026-08-01' }],
+  }
+
+  it('names the envelope that starts late, and why', () => {
+    setQuery({ data })
+    renderReport(<SavingsReport budgetId="b1" />)
+    const note = screen.getByText(/Vacation starts in/)
+    expect(note).toHaveTextContent(/doesn.t reproduce YNAB.s balance/)
+  })
+
+  it('says nothing when every month has a figure', () => {
+    setQuery({ data: { ...data, unrecovered: [] } })
+    renderReport(<SavingsReport budgetId="b1" />)
+    expect(screen.queryByText(/reproduce YNAB/)).not.toBeInTheDocument()
+  })
+})
+
 describe('SubscriptionsReport table', () => {
   it('shows BOTH the per-charge and normalized monthly columns', () => {
     setQuery({
