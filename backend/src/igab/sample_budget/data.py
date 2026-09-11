@@ -169,13 +169,11 @@ _HOUSEHOLD = SampleBudgetSpec(
                     tags=("Essential",),
                     monthly_budget=_d("1400.00"),
                 ),
-                # Essential, NOT Long-term expense. It carried that tag and
-                # is paid every month with a seasonal amount — which is a
-                # bill, not money set aside for a periodic one. The tag
-                # classifies a row as SAVINGS (activity_class.py), so the
-                # sample's whole power bill was invisible to every spending
-                # report, and tagging it Essential as well would only have
-                # moved that into the "tagged and still not counted" note.
+                # Essential, NOT Long-term expense: it is paid every month
+                # with a seasonal amount, which is a bill rather than money set
+                # aside for a periodic one. The tag no longer decides whether
+                # the power bill is spending, so this is now a statement about
+                # cadence alone.
                 CategorySpec("Electric", tags=("Essential",), monthly_budget=_d("150.00")),
                 CategorySpec("Internet", tags=("Essential",), monthly_budget=_d("80.00")),
                 CategorySpec("Phone", tags=("Essential",), monthly_budget=_d("65.00")),
@@ -265,16 +263,23 @@ _HOUSEHOLD = SampleBudgetSpec(
             "Long Term – $513/mo",
             tiers=FULL,
             categories=(
-                # Long-term expense and NOT Essential, though car insurance
-                # and property tax plainly are things a household cannot cut.
-                # The two tags are mutually exclusive in effect: long_term_expense
-                # classifies a row as SAVINGS, and the essentials family counts
-                # SPENDING and DEBT_PRINCIPAL only. Tagging both would put
-                # these in the report's "tagged Essential and still not
-                # counted" note — a demo that teaches a mistake.
-                CategorySpec(CAT_CAR_INS, tags=("Long-term expense",), monthly_budget=_d("118.00")),
+                # Long-term expense AND Essential, which is what these two
+                # actually are: money set aside monthly toward an annual bill
+                # a household cannot cut. The pair used to defeat itself —
+                # long_term_expense classified the payout SAVINGS while the
+                # essentials family counts SPENDING and DEBT_PRINCIPAL, so
+                # tagging both put them in the "tagged Essential and still not
+                # counted" note. The tag no longer overrides classification, so
+                # the demo can show the combination rather than avoid it.
                 CategorySpec(
-                    CAT_PROP_TAX, tags=("Long-term expense",), monthly_budget=_d("195.00")
+                    CAT_CAR_INS,
+                    tags=("Long-term expense", "Essential"),
+                    monthly_budget=_d("118.00"),
+                ),
+                CategorySpec(
+                    CAT_PROP_TAX,
+                    tags=("Long-term expense", "Essential"),
+                    monthly_budget=_d("195.00"),
                 ),
                 CategorySpec(
                     CAT_HOME_MAINT, tags=("Long-term expense",), monthly_budget=_d("150.00")

@@ -26,7 +26,7 @@ export const SYSTEM_TAG_HELP: { key: string; name: string; on: string; does: str
     key: 'long_term_expense',
     name: 'Long-term expense',
     on: 'categories',
-    does: 'Counted like Savings — money set aside for a known future cost (a sinking fund), not spent this month.',
+    does: 'Marks a sinking fund — money set aside monthly toward a known annual bill. It appears in the Savings report beside your savings, and the bill itself still counts as spending when you pay it.',
   },
   {
     key: 'debt_principal',

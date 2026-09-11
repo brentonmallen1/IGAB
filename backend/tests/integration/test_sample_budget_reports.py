@@ -86,10 +86,16 @@ async def test_the_essentials_family_has_something_to_say(db_session):
 
 
 async def test_nothing_is_tagged_essential_and_then_not_counted(db_session):
-    """`Long-term expense` classifies a row as SAVINGS, and the essentials
-    family counts SPENDING and DEBT_PRINCIPAL — so the two tags are mutually
-    exclusive in effect. A sample carrying both on one category would ship a
-    permanent "tagged and still not counted" note, which teaches a mistake."""
+    """Nothing the sample tags Essential may fall outside the counted classes,
+    or the demo ships a permanent "tagged and still not counted" note.
+
+    This used to hold by avoidance: `Long-term expense` classified a row as
+    SAVINGS while the essentials family counts SPENDING and DEBT_PRINCIPAL, so
+    the two tags were mutually exclusive in effect and the sample carried them
+    on different categories. The tag no longer overrides classification, so
+    Car Insurance and Property Tax now carry BOTH — and this still passes,
+    which is the point: the note is empty because the money is counted, not
+    because the combination was dodged."""
     for tier in ("starter", "full"):
         budget, _ = await _world(db_session, tier)
         report = await ReportService(db_session).essentials_summary(budget.id, 12)

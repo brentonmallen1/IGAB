@@ -239,10 +239,77 @@ class TestTagsOverrideInference:
         assert cls == ActivityClass.SAVINGS
         assert reason == ActivityReason.TAGGED_SAVINGS
 
-    async def test_long_term_expense_tag_also_counts_as_savings(self, db_session):
+    async def test_long_term_expense_does_not_disguise_a_payout_as_saving(self, db_session):
+        """A sinking fund's monthly set-aside is a BudgetAssignment — a budget
+        row, not a transaction — so there is nothing here for the classifier to
+        protect. The only transaction the envelope ever sees is the payout, and
+        the tag used to call that SAVINGS: the app said the household saved
+        $2,340 in the month it paid its property tax, kept the bill out of every
+        spending report, out of Cost of Living and out of the emergency-fund
+        target, and left Plan vs Reality showing a permanent phantom underspend.
+        """
         w = await _world(db_session)
-        cat = await create_category(db_session, w.budget, w.group, "Roof Fund")
+        cat = await create_category(db_session, w.budget, w.group, "Property Tax")
         await self._tag(db_session, w.budget, cat, "long_term_expense")
+        txn = await create_transaction(
+            db_session, w.budget, w.checking, "-500.00", TODAY, category=cat
+        )
+        cls, reason = await _classify(db_session, txn)
+        assert cls == ActivityClass.SPENDING
+        # And the explanation stops naming a tag the category does not carry.
+        assert reason == ActivityReason.DEFAULT_SPENDING
+
+    async def test_a_sinking_fund_transfer_to_a_tracked_account_is_still_saving(self, db_session):
+        """Nothing is lost by dropping the tag from rule 1: a household that
+        moves the set-aside into a real savings account still gets SAVINGS,
+        from the rule that asks where the money WENT rather than what the
+        category is called.
+        """
+        w = await _world(db_session)
+        cat = await create_category(db_session, w.budget, w.group, "Property Tax")
+        await self._tag(db_session, w.budget, cat, "long_term_expense")
+        payee = await _transfer_payee(db_session, w.budget, w.brokerage)
+        leg = await create_transaction(
+            db_session, w.budget, w.checking, "-195.00", TODAY, category=cat, payee=payee
+        )
+        cls, reason = await _classify(db_session, leg)
+        assert cls == ActivityClass.SAVINGS
+        assert reason == ActivityReason.TRANSFER_TO_TRACKED_ASSET
+
+    async def test_a_categorized_on_budget_transfer_from_a_sinking_fund_is_spending(
+        self, db_session
+    ):
+        """The one shape this change makes noisier, named so it is a decision
+        rather than a surprise.
+
+        A categorized leg between two ON-budget accounts matches no transfer
+        rule — rule 5 is gated on the leg being uncategorized, and rules 3 and
+        4 need an off-budget counterpart — so it falls to the spending default.
+        The `long_term_expense` tag used to catch it at rule 1.
+
+        It is a narrow shape: `domain/transfers.py` only permits a category on
+        a leg whose partner is OFF budget, so a row like this arrives from an
+        import rather than from the app. And CASH_FLOW_ROW keeps it out of
+        every cash-flow report anyway, because both legs sit inside the budget.
+        Recorded here so the reading is deliberate.
+        """
+        w = await _world(db_session)
+        cat = await create_category(db_session, w.budget, w.group, "Property Tax")
+        await self._tag(db_session, w.budget, cat, "long_term_expense")
+        payee = await _transfer_payee(db_session, w.budget, w.savings_acct)
+        leg = await create_transaction(
+            db_session, w.budget, w.checking, "-195.00", TODAY, category=cat, payee=payee
+        )
+        assert (await _classify(db_session, leg))[0] == ActivityClass.SPENDING
+
+    async def test_the_savings_tag_still_makes_a_plain_outflow_saving(self, db_session):
+        """The sibling behaviour that deliberately stays. Asked for directly —
+        see `ReportService.savings_rate` — and it is a different claim from
+        "this envelope holds money for a known annual bill".
+        """
+        w = await _world(db_session)
+        cat = await create_category(db_session, w.budget, w.group, "Emergency Fund")
+        await self._tag(db_session, w.budget, cat, "savings")
         txn = await create_transaction(
             db_session, w.budget, w.checking, "-500.00", TODAY, category=cat
         )
