@@ -580,6 +580,7 @@ describe('BudgetActualReport values', () => {
             spent: 450,
             variance: 50,
             variance_pct: 10,
+            overspent: false,
           },
         ],
         total_assigned: '500',
@@ -591,6 +592,45 @@ describe('BudgetActualReport values', () => {
     expect(screen.getByText('Groceries')).toBeInTheDocument()
     expect(screen.getAllByText(/\$500\.00/).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/\$450\.00/).length).toBeGreaterThan(0)
+  })
+
+  it('reads overspent from the server, so a drained envelope is not an overrun', () => {
+    // Car Repairs had 300 moved OUT and spent nothing: a negative assignment.
+    // The chart used to decide `spent > assigned` itself — 0 > -300 — and kept
+    // it under "Overspent only" while Plan vs Reality called it neutral.
+    setQuery({
+      data: {
+        categories: [
+          {
+            category_id: 'c1',
+            category_name: 'Car Repairs',
+            category_group_name: 'Irregular',
+            assigned: -300,
+            spent: 0,
+            variance: 0,
+            variance_pct: 0,
+            overspent: false,
+          },
+          {
+            category_id: 'c2',
+            category_name: 'Dining',
+            category_group_name: 'Everyday',
+            assigned: 100,
+            spent: 160,
+            variance: -60,
+            variance_pct: -60,
+            overspent: true,
+          },
+        ],
+        total_assigned: '-200',
+        total_spent: '160',
+      },
+    })
+    renderReport(<BudgetActualReport budgetId="b1" />)
+
+    fireEvent.click(screen.getByLabelText('Overspent only'))
+    expect(screen.getByText('Dining')).toBeInTheDocument()
+    expect(screen.queryByText('Car Repairs')).not.toBeInTheDocument()
   })
 })
 

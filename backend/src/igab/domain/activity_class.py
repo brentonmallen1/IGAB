@@ -40,10 +40,14 @@ from igab.db.models import (
 )
 from igab.repositories.category_filters import IN_SYSTEM_GROUP
 from igab.repositories.txn_filters import (
+    CASH_FLOW_ROW,
     COST_OF_LIVING_TAGGED,
     COUNTERPART_ACCOUNT_ID,
     COUNTERPART_OFF_BUDGET,
     ESSENTIAL_TAGGED,
+    LEAF,
+    NOT_DELETED,
+    POSTED,
     TRANSFER_LEG,
     category_tagged,
     row_category,
@@ -380,6 +384,25 @@ ACTIVITY_REASON = case(
 #: theirs, and it has no other way to know how they do. Reading this keeps the
 #: two in step across all 48 of its call sites.
 CLASS_JOINS: Callable[[Select], Select] | None = apply_class_joins
+
+#: A row that is income: what Income by Source and both Cash Flow Sankey modes
+#: count, and the same class Income vs Expenses reads from its partition.
+#: Apply `apply_class_joins` with it. Account scope stays the caller's —
+#: on-budget by default, or the user's explicit selection.
+#:
+#: **The class decides, never the sign.** Budgeted-mode Sankey summed
+#: `amount > 0` split parents, so a 3,000 paycheque and a 400 clawback read
+#: 3,000 there and 2,600 everywhere else, and flipping the Sankey between its
+#: modes changed "Income" although the mode is about spending. A refund or a
+#: brokerage withdrawal counted as income too. LEAF rather than PARENT_ROW
+#: because a split parent carries no category and so no class of its own.
+INCOME_ROW = and_(
+    NOT_DELETED,
+    POSTED,
+    LEAF,
+    CASH_FLOW_ROW,
+    ACTIVITY_CLASS == ActivityClass.INCOME.value,
+)
 
 
 # ─── The previous implementation, kept as a test oracle ──────────────────────

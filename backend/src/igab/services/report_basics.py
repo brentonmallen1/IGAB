@@ -22,9 +22,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Category, CategoryGroup, Payee, Transaction
 from igab.domain.activity_class import (
-    ACTIVITY_CLASS,
     CLASS_LABEL,
     COST_OF_LIVING_CLASSES,
+    INCOME_ROW,
     ActivityClass,
     NecessityTier,
     apply_class_joins,
@@ -34,7 +34,6 @@ from igab.domain.activity_class import (
 from igab.domain.dates import add_months, complete_months, month_end
 from igab.domain.money import quantize_cents
 from igab.repositories.txn_filters import (
-    CASH_FLOW_ROW,
     LEAF,
     NOT_DELETED,
     ON_BUDGET_ACCOUNT,
@@ -143,7 +142,9 @@ async def income_by_source(session: AsyncSession, budget_id: uuid.UUID, months: 
     which is the one thing three views of the same money must not do.
 
     Transfers, refunds into envelopes and investment returns are other classes
-    and stay out — the same partition every cash-flow report uses.
+    and stay out — the same partition every cash-flow report uses. The row
+    rule is `INCOME_ROW`, which both Sankey modes read too; budgeted mode
+    summed positive split parents by sign until it did.
     """
     today = date.today()
     start_date = _subtract_months(today, months - 1).replace(day=1)
@@ -155,22 +156,17 @@ async def income_by_source(session: AsyncSession, budget_id: uuid.UUID, months: 
             Payee.name.label("payee_name"),
             Transaction.date,
             Transaction.amount,
-            ACTIVITY_CLASS.label("cls"),
         )
         .outerjoin(Payee, Payee.id == Transaction.payee_id)
         .where(
             Transaction.budget_id == budget_id,
-            NOT_DELETED,
-            POSTED,
             Transaction.date >= start_date,
             Transaction.date <= today,
-            LEAF,
-            CASH_FLOW_ROW,
             ON_BUDGET_ACCOUNT,
             # In SQL rather than a Python skip: the sign pre-filter used to cut
             # the row set down first, and without it that skip would fetch
             # every on-budget cash-flow row in the window to discard most.
-            ACTIVITY_CLASS == ActivityClass.INCOME.value,
+            INCOME_ROW,
         )
     )
     rows = (await session.execute(apply_class_joins(q))).all()

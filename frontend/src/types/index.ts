@@ -811,8 +811,12 @@ export interface BudgetActualItem {
   category_group_name: string
   assigned: number
   spent: number
+  /** Against the plan floored at zero — backend `domain/plan.py`. */
   variance: number
   variance_pct: number
+  /** The server's verdict, same rule as Plan vs Reality. Never re-derive it
+   * from `spent > assigned`: a drained envelope has a negative assignment. */
+  overspent: boolean
 }
 
 export interface BudgetActualReport {

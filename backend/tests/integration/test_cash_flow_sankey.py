@@ -14,6 +14,7 @@ import uuid
 from datetime import date, timedelta
 from decimal import Decimal
 
+from igab.services.report_basics import income_by_source
 from igab.services.report_service import ReportService
 from igab.services.transaction_service import TransactionCreate
 
@@ -25,6 +26,7 @@ from .factories import (
     create_category_group,
     create_payee,
     create_transaction,
+    create_transfer,
     create_user,
     make_services,
 )
@@ -289,6 +291,37 @@ async def test_budgeted_mode_sums_across_months(db_session):
     assert sankey["total_expense"] == Decimal("1000.00")
     links = {(link["source"], link["target"]): link["value"] for link in sankey["links"]}
     assert links[(f"g_{everyday.id}", f"c_{groceries.id}")] == Decimal("1000.00")
+
+
+async def test_budgeted_mode_counts_income_by_class_not_sign(db_session):
+    """Budgeted mode summed `amount > 0` split parents, so switching the
+    diagram's mode changed "Income" — a figure the mode has nothing to do
+    with. A clawed-back paycheque stayed in, and a refund and a brokerage draw
+    joined it. Every income figure now reads `INCOME_ROW`, so all three
+    views quote one number."""
+    services, budget, checking, everyday, groceries, gas = await _setup(db_session)
+    inflow = await create_category_group(db_session, budget, "Inflow", is_system=True)
+    ready = await create_category(db_session, budget, inflow, "Ready to Assign")
+    brokerage = await create_account(
+        db_session, budget, "Brokerage", account_type="investment", on_budget=False
+    )
+    month = TODAY.replace(day=1)
+    await create_budget_assignment(db_session, budget, groceries, month, "500.00")
+    await create_transaction(db_session, budget, checking, "3000.00", TODAY, category=ready)
+    await create_transaction(db_session, budget, checking, "-400.00", TODAY, category=ready)
+    # Neither of these is income: a refund into an envelope, and money drawn
+    # back out of a tracked brokerage.
+    await create_transaction(db_session, budget, checking, "25.00", TODAY, category=groceries)
+    await create_transfer(db_session, budget, brokerage, checking, "500.00", TODAY)
+
+    reports = ReportService(db_session)
+    budgeted = await reports.cash_flow_sankey(budget.id, month, TODAY, mode="budgeted")
+    spent = await reports.cash_flow_sankey(budget.id, month, TODAY, mode="spent")
+    by_source = await income_by_source(db_session, budget.id, months=1)
+
+    assert budgeted["total_income"] == Decimal("2600.00")
+    assert spent["total_income"] == Decimal("2600.00")
+    assert by_source["total"] == Decimal("2600.00")
 
 
 class TestCategoryNodesCarryTheirEntityId:

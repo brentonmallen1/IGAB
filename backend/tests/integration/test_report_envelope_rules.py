@@ -238,7 +238,12 @@ class TestThePlannedSpendUniverse:
     three terms — no class filter, no `ON_BUDGET_ACCOUNT`, no envelope rule —
     so each subtracted a bigger spending universe from a smaller planning one,
     and the cumulative line compounded the gap every month. One test per
-    missing term, each named for the row the old copies wrongly counted."""
+    missing term, each named for the row the old copies wrongly counted.
+
+    `plan_vs_reality` is the third reader. It kept its own inline set with
+    no class filter and no `ON_BUDGET_ACCOUNT` after the other two were
+    consolidated, so it counted a brokerage transfer as overspending while
+    they counted nothing — and its chronic flag feeds the Guide."""
 
     async def test_a_savings_transfer_is_not_planned_spend(self, db_session):
         services, budget, checking, group, cat = await _world(db_session)
@@ -255,10 +260,12 @@ class TestThePlannedSpendUniverse:
         reports = ReportService(db_session)
         variance = await reports.cumulative_variance(budget.id, months=1)
         bva = await reports.budget_vs_actual(budget.id, FIRST, TODAY)
+        pvr = await reports.plan_vs_reality(budget.id, months=1)
 
         assert variance[-1]["actual_spent"] == D("0")
         assert variance[-1]["monthly_variance"] == D("500.00")
         assert bva["total_spent"] == D("0")
+        assert pvr["total_spent"] == D("0")
 
     async def test_tracking_account_activity_is_not_planned_spend(self, db_session):
         services, budget, checking, group, cat = await _world(db_session)
@@ -272,9 +279,11 @@ class TestThePlannedSpendUniverse:
         reports = ReportService(db_session)
         variance = await reports.cumulative_variance(budget.id, months=1)
         bva = await reports.budget_vs_actual(budget.id, FIRST, TODAY)
+        pvr = await reports.plan_vs_reality(budget.id, months=1)
 
         assert variance[-1]["actual_spent"] == D("0")
         assert bva["total_spent"] == D("0")
+        assert pvr["total_spent"] == D("0")
 
     async def test_a_system_group_row_is_not_planned_spend(self, db_session):
         services, budget, checking, group, cat = await _world(db_session)
@@ -288,9 +297,11 @@ class TestThePlannedSpendUniverse:
         reports = ReportService(db_session)
         variance = await reports.cumulative_variance(budget.id, months=1)
         bva = await reports.budget_vs_actual(budget.id, FIRST, TODAY)
+        pvr = await reports.plan_vs_reality(budget.id, months=1)
 
         assert variance[-1]["actual_spent"] == D("0")
         assert bva["total_spent"] == D("0")
+        assert pvr["total_spent"] == D("0")
 
     async def test_a_refund_does_not_reduce_spent(self, db_session):
         """The deliberate divergence, pinned: `amount < 0` in
@@ -304,13 +315,15 @@ class TestThePlannedSpendUniverse:
         reports = ReportService(db_session)
         variance = await reports.cumulative_variance(budget.id, months=1)
         bva = await reports.budget_vs_actual(budget.id, FIRST, TODAY)
+        pvr = await reports.plan_vs_reality(budget.id, months=1)
 
         assert variance[-1]["actual_spent"] == D("100.00")
         assert bva["total_spent"] == D("100.00")
+        assert pvr["total_spent"] == D("100.00")
 
-    async def test_both_reports_spend_the_same_universe(self, db_session):
+    async def test_every_report_spends_the_same_universe(self, db_session):
         """The consolidation itself: over a register that trips every
-        excluded term at once, the two reports must quote one figure."""
+        excluded term at once, the three reports must quote one figure."""
         services, budget, checking, group, cat = await _world(db_session)
         brokerage = await create_account(
             db_session, budget, "Cascade Brokerage", account_type="investment", on_budget=False
@@ -329,6 +342,8 @@ class TestThePlannedSpendUniverse:
         reports = ReportService(db_session)
         variance = await reports.cumulative_variance(budget.id, months=1)
         bva = await reports.budget_vs_actual(budget.id, FIRST, TODAY)
+        pvr = await reports.plan_vs_reality(budget.id, months=1)
 
         assert variance[-1]["actual_spent"] == D("100.00")
         assert bva["total_spent"] == D("100.00")
+        assert pvr["total_spent"] == D("100.00")

@@ -195,8 +195,11 @@ class BudgetActualItem(ApiModel):
     category_group_name: str
     assigned: Decimal
     spent: Decimal
+    #: Against the plan floored at zero (`domain.plan`), like Plan vs Reality.
     variance: Decimal
     variance_pct: float
+    #: The server's verdict; the chart's filter, sort and red bar read it.
+    overspent: bool
 
 
 class BudgetActualResponse(ApiModel):

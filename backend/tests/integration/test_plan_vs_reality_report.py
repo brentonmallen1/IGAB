@@ -257,6 +257,55 @@ async def test_real_overspending_of_a_drained_envelope_still_counts(db_session, 
     assert D(_cell(cat, _months_back(0))["variance"]) == D("-120.00")
 
 
+class TestBudgetVsActualGivesTheSameVerdict:
+    """Budget vs Actual answers the same question over a window, and it did
+    not floor: it served `assigned - spent` raw, and BudgetActualChart decided
+    overspent for itself from `spent > assigned`. Over one drained envelope the
+    two reports gave opposite verdicts — neutral here, a red 300 overrun there,
+    kept by "Overspent only", ranked first by "Sort by overspent", and quoted to
+    the AI as -300. Both now serve `domain.plan.plan_outcome`."""
+
+    async def _both(self, api_client, budget_id):
+        bva = await api_client.get(
+            f"/api/v1/{budget_id}/reports/budget-actual",
+            params={"start_date": THIS_MONTH.isoformat(), "end_date": TODAY.isoformat()},
+        )
+        assert bva.status_code == 200, bva.text
+        return bva.json(), await _fetch(api_client, budget_id, months=3)
+
+    async def test_a_drained_envelope_is_not_overspent_on_either(self, db_session, api_client):
+        budget = await create_budget(db_session, api_client.test_user)
+        await create_account(db_session, budget, "Checking")
+        group = await create_category_group(db_session, budget, "Goals")
+        drained = await create_category(db_session, budget, group, "Car Repairs")
+        await create_budget_assignment(db_session, budget, drained, THIS_MONTH, "-300.00")
+        await db_session.commit()
+
+        bva, pvr = await self._both(api_client, budget.id)
+        item = _cat(bva, drained.id)
+
+        assert item["overspent"] is False
+        assert D(item["variance"]) == D("0")
+        assert _cat(pvr, drained.id)["months_over"] == 0
+
+    async def test_real_spending_is_over_by_the_same_amount_on_both(self, db_session, api_client):
+        budget = await create_budget(db_session, api_client.test_user)
+        checking = await create_account(db_session, budget, "Checking")
+        group = await create_category_group(db_session, budget, "Goals")
+        drained = await create_category(db_session, budget, group, "Car Repairs")
+        await create_budget_assignment(db_session, budget, drained, THIS_MONTH, "-300.00")
+        await create_transaction(db_session, budget, checking, "-120.00", TODAY, category=drained)
+        await db_session.commit()
+
+        bva, pvr = await self._both(api_client, budget.id)
+        item = _cat(bva, drained.id)
+
+        assert item["overspent"] is True
+        # 120, not the 420 the unfloored subtraction ranked it by.
+        assert D(item["variance"]) == D("-120.00")
+        assert D(_cell(_cat(pvr, drained.id), THIS_MONTH)["variance"]) == D("-120.00")
+
+
 async def test_a_sinking_fund_reaches_plan_vs_reality(db_session, api_client):
     """The phantom underspend, fixed as a consequence of the class change.
 

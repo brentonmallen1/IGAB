@@ -28,6 +28,7 @@ from igab.db.models import (
 )
 from igab.domain.activity_class import (
     ACTIVITY_CLASS,
+    INCOME_ROW,
     SPENDING_CLASSES,
     ActivityClass,
     apply_class_joins,
@@ -42,6 +43,7 @@ from igab.domain.activity_class import (
 from igab.domain.dates import add_months, months_spanned
 from igab.domain.dates import month_end as _month_end
 from igab.domain.money import format_csv_amount, quantize_cents
+from igab.domain.plan import plan_outcome
 from igab.domain.schedule import projected_occurrences, subscription_occurrences
 from igab.guide.concepts import (
     ESSENTIALS_WINDOW_DAYS,
@@ -1085,21 +1087,19 @@ class ReportService:
         )
         rows = (await self.session.execute(q)).all()
 
-        # Get total income from transactions
+        # Income is INCOME_ROW, as in spent mode: the mode changes what the
+        # money went to, never what came in.
         income_q = select(func.sum(Transaction.amount)).where(
             Transaction.budget_id == budget_id,
-            NOT_DELETED,
-            POSTED,
             Transaction.date >= start_date,
             Transaction.date <= end_date,
-            Transaction.amount > 0,
-            PARENT_ROW,
-            CASH_FLOW_ROW,
+            INCOME_ROW,
         )
         if account_ids is not None:
             income_q = scoped(income_q, Transaction.account_id, account_ids)
         else:
             income_q = income_q.where(ON_BUDGET_ACCOUNT)
+        income_q = apply_class_joins(income_q.select_from(Transaction))
         total_income = (await self.session.execute(income_q)).scalar() or Decimal("0")
 
         if not rows:
@@ -1219,6 +1219,7 @@ class ReportService:
                 CategoryGroup.id.label("group_id"),
                 CategoryGroup.name.label("group_name"),
                 ACTIVITY_CLASS.label("activity_class"),
+                INCOME_ROW.label("is_income"),
             )
             .outerjoin(Payee, Transaction.payee_id == Payee.id)
             .outerjoin(Category, Transaction.category_id == Category.id)
@@ -1269,16 +1270,10 @@ class ReportService:
         # Split by activity class, not by amount sign. Sign said a withdrawal
         # FROM a brokerage (+500 into checking) was income, which disagreed
         # with income_vs_expense over the same window and left the savings
-        # branch missing the draw. Income is what classifies as income;
-        # everything else that moved money out is outflow.
-        income_rows = [
-            r for r in rows if not r.is_split and r.activity_class == ActivityClass.INCOME.value
-        ]
-        expense_rows = [
-            r
-            for r in rows
-            if not r.is_split and r.amount < 0 and r.activity_class != ActivityClass.INCOME.value
-        ]
+        # branch missing the draw. Income is INCOME_ROW, which budgeted mode
+        # reads too; everything else that moved money out is outflow.
+        income_rows = [r for r in rows if r.is_income]
+        expense_rows = [r for r in rows if not r.is_split and r.amount < 0 and not r.is_income]
 
         total_income = sum((r.amount for r in income_rows), Decimal("0"))
         # Everything leaving the budget. Kept as one figure because the links
@@ -1590,9 +1585,19 @@ class ReportService:
         total_spent = Decimal("0")
 
         for item in sorted(assign_by_cat.values(), key=lambda x: x["spent"], reverse=True):
-            variance = item["assigned"] - item["spent"]
-            variance_pct = float(variance / item["assigned"] * 100) if item["assigned"] > 0 else 0.0
-            categories.append({**item, "variance": variance, "variance_pct": variance_pct})
+            # The window's plan, floored — the same verdict Plan vs Reality
+            # serves per month, so a drained envelope is not red here and
+            # neutral there. `overspent` is served so the chart stops
+            # deciding it from the raw assignment.
+            outcome = plan_outcome(item["assigned"], item["spent"])
+            categories.append(
+                {
+                    **item,
+                    "variance": outcome.variance,
+                    "variance_pct": outcome.variance_pct,
+                    "overspent": outcome.over,
+                }
+            )
             total_assigned += item["assigned"]
             total_spent += item["spent"]
 
@@ -1688,10 +1693,19 @@ class ReportService:
         not envelope health — a category living off January's surplus still
         reads as over-plan in February if nothing was assigned then.
 
-        A month counts as "over" when spent > assigned among active months
-        (any assignment or spending). Chronic = over in 3+ of the last 6
-        months of the window — the signal that a plan is habitually wrong
-        rather than occasionally unlucky.
+        A month counts as "over" when `plan_outcome` says so — spending above
+        the assignment floored at zero — among active months (any assignment
+        or spending). Chronic = over in 3+ of the last 6 months of the window
+        — the signal that a plan is habitually wrong rather than occasionally
+        unlucky.
+
+        "Spent" is `PLANNED_SPEND_ROW` plus the spending classes, the universe
+        Budget vs Actual and Cumulative Variance count. This report had its
+        own inline set with neither, so a categorized transfer into a
+        brokerage or a row on a tracking account counted here as overspending
+        while the other two said nothing was spent — and `chronic` feeds the
+        Guide's chronic-overspend check, so saving could be reported as a bad
+        habit.
         """
         today = date.today()
         first_of_month = today.replace(day=1)
@@ -1725,16 +1739,13 @@ class ReportService:
             .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
             .where(
                 Transaction.budget_id == budget_id,
-                NOT_DELETED,
-                POSTED,
-                Transaction.amount < 0,
                 Transaction.date >= months_list[0],
                 Transaction.date <= _month_end(months_list[-1]),
-                LEAF,
-                CASH_FLOW_ROW,
-                SPENT_ENVELOPE,
+                PLANNED_SPEND_ROW,
+                _spending_classes(),
             )
         )
+        spend_q = apply_class_joins(spend_q)
         assignments = (await self.session.execute(assign_q)).all()
         spending = (await self.session.execute(spend_q)).all()
 
@@ -1776,29 +1787,20 @@ class ReportService:
             for m in months_list:
                 assigned = entry["assigned"][m]
                 spent = entry["spent"][m]
-                # The plan floors at zero. A NEGATIVE assignment is money moved
-                # back OUT of the envelope — a plan being reduced, not a
-                # household overspending — and `spent > assigned` read it as
-                # the latter: drain 300 from an envelope that spent nothing and
-                # `0 > -300` flagged it, so an envelope with no spending at all
-                # could be reported as a chronic overspender. Do it in three
-                # months and the report named it the household's worst habit.
-                #
-                # One definition, used by the chronic count AND by the cell's
-                # variance, because the matrix tints a negative variance red:
-                # a drained envelope was being coloured as overspent while the
-                # chronic flag beside it disagreed.
-                plan = max(assigned, zero)
-                over = spent > plan
+                # One verdict for the chronic count AND the cell's variance,
+                # because the matrix tints a negative variance red: a drained
+                # envelope was coloured as overspent while the chronic flag
+                # beside it disagreed. `plan_outcome` says why the plan floors.
+                outcome = plan_outcome(assigned, spent)
                 if assigned != zero or spent != zero:
                     months_active += 1
-                    if over:
+                    if outcome.over:
                         months_over += 1
-                        over_total += spent - plan
+                        over_total += -outcome.variance
                         if m in recent:
                             recent_over += 1
                 monthly.append(
-                    {"month": m, "assigned": assigned, "spent": spent, "variance": plan - spent}
+                    {"month": m, "assigned": assigned, "spent": spent, "variance": outcome.variance}
                 )
             cat_assigned = sum(entry["assigned"].values(), zero)
             cat_spent = sum(entry["spent"].values(), zero)
