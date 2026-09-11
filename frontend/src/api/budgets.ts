@@ -7,6 +7,7 @@ import type { Budget, BudgetMonth } from '../types'
 import type { SnapshotInspection } from './budgetSnapshots'
 import type { YnabImportResult } from './imports'
 import { ROOT } from './queryKeys'
+import { parseLocalDate } from '../utils/dates'
 
 export interface YnabImportBudgetResult {
   budget: Budget
@@ -149,7 +150,7 @@ export async function confirmFutureOverspend(
   if (warnings.length === 0) return true
 
   const lines = warnings.map((w) => {
-    const month = new Date(`${w.month}T00:00:00`).toLocaleDateString(undefined, {
+    const month = parseLocalDate(w.month).toLocaleDateString(undefined, {
       month: 'long',
       year: 'numeric',
     })

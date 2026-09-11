@@ -10,6 +10,7 @@
  */
 import type { YnabAccountPreview, YnabAccountTypeChoice } from '../../api/budgets'
 import { monthsAgoStartISO } from '../../utils/dateWindow'
+import { parseLocalDate } from '../../utils/dates'
 
 /** What happens to an account at import time. */
 export type Disposition = 'import' | 'close' | 'skip'
@@ -78,7 +79,7 @@ export function isDormant(lastActivity: string | null, monthsAgoISO?: string): b
 /** "Mar 2019" — a month is the right precision for "when did this last move". */
 export function activityLabel(iso: string | null): string | null {
   if (!iso) return null
-  const d = new Date(iso + 'T00:00:00')
+  const d = parseLocalDate(iso)
   if (Number.isNaN(d.getTime())) return null
   return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
 }
