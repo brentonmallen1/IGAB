@@ -2971,6 +2971,14 @@ class ReportService:
         # Summary
         total_balance = sum((c["current_balance"] for c in categories), Decimal("0"))
         total_inflow = sum((c["total_inflow"] for c in categories), Decimal("0"))
+        # Every month in the window, the one in progress included — a
+        # deliberate difference from the spending averages, which divide by
+        # COMPLETE months (`domain.dates.complete_months`).
+        #
+        # Inflow here is ASSIGNED money, and assigning is a monthly act rather
+        # than something that accrues by the day: an envelope funded on the
+        # 1st has this month's whole inflow on record. Excluding the running
+        # month would understate a household that has already budgeted it.
         avg_monthly = total_inflow / len(month_list) if month_list else Decimal("0")
 
         return {

@@ -775,6 +775,7 @@ async def subscriptions_report(
         subscriptions=[SubscriptionCategory.model_validate(s) for s in data["subscriptions"]],
         summary=SubscriptionsSummary.model_validate(data["summary"]),
         months=data["months"],
+        months_averaged=data["months_averaged"],
     )
 
 
@@ -871,6 +872,7 @@ async def cost_of_living_report(
         months=data["months"],
         window_start=data["window_start"],
         window_end=data["window_end"],
+        months_averaged=data["months_averaged"],
         groups=[CostOfLivingGroup.model_validate(g) for g in data["groups"]],
         avg_monthly_cost_of_living=data["avg_monthly_cost_of_living"],
         avg_monthly_essentials=data["avg_monthly_essentials"],

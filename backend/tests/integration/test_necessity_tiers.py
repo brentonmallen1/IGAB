@@ -26,6 +26,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from igab.domain.activity_class import NecessityTier
+from igab.domain.dates import month_end
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.report_basics import cost_of_living
@@ -169,11 +170,15 @@ class TestTheServedReport:
         budget, *_ = await _household(db_session)
         report = await cost_of_living(db_session, budget.id, months=2)
 
-        # months=2 over a 2-month window, so a monthly average halves the
-        # single month's spending. Hand-computed, not derived.
-        assert report["avg_monthly_cost_of_living"] == EXPECTED.cost_of_living / 2
-        assert report["avg_monthly_essentials"] == EXPECTED.essentials / 2
-        assert report["avg_monthly_non_essential"] == EXPECTED.gap / 2
+        # months=2, and only ONE of those months has finished — the household
+        # spent it all last month — so a per-month average divides by one.
+        # Halving it against a month still in progress is what made this
+        # report quote $2,750 where Essentials quoted $3,000 for the same tag
+        # (`domain.dates.complete_months`). Hand-computed, not derived.
+        assert report["months_averaged"] == 1
+        assert report["avg_monthly_cost_of_living"] == EXPECTED.cost_of_living
+        assert report["avg_monthly_essentials"] == EXPECTED.essentials
+        assert report["avg_monthly_non_essential"] == EXPECTED.gap
 
     async def test_both_tiers_are_measured_over_one_window(self, db_session):
         """The gap has to be a difference of two figures across the same days.
@@ -185,16 +190,19 @@ class TestTheServedReport:
         report = await cost_of_living(db_session, budget.id, months=2)
         repo = TransactionRepository(db_session)
 
+        # The averaged window: through the last COMPLETE month, which is what
+        # both tiers divide by and what both must measure.
+        n = report["months_averaged"]
+        averaged_end = month_end(report["months"][n - 1])
         lean, _ = await repo.essential_spend(
-            budget.id, report["window_start"], report["window_end"], tier=NecessityTier.ESSENTIAL
+            budget.id, report["window_start"], averaged_end, tier=NecessityTier.ESSENTIAL
         )
         wide, _ = await repo.essential_spend(
             budget.id,
             report["window_start"],
-            report["window_end"],
+            averaged_end,
             tier=NecessityTier.COST_OF_LIVING,
         )
-        n = len(report["months"])
         assert report["avg_monthly_essentials"] == -lean / n
         assert report["avg_monthly_cost_of_living"] == -wide / n
 
@@ -219,6 +227,42 @@ class TestTheServedReport:
 
         report = await cost_of_living(db_session, budget.id, months=2)
         # 1,800 of 3,600 is spoken for; 1,400 of it could not be cut.
+        assert report["required_ratio"] == D("50.00")
+        assert report["essentials_ratio"] == D("38.89")
+
+    async def test_the_ratios_are_the_quotient_of_the_cards_beside_them(self, db_session):
+        """Required and the essentials ratio divide the complete-month figures
+        the cards show. They used to divide whole-window totals, running month
+        included, so a household whose cards read 1,800 spoken for out of
+        3,600 taken home saw Required say 42% — and early in a month, with a
+        paycheck in and the bills not yet, the gap was tens of points.
+        """
+        budget, checking, bills, tags, by_key = await _household(db_session)
+        sysgroup = await create_category_group(db_session, budget, "Income", is_system=True)
+        inflow = await create_category(db_session, budget, sysgroup, "Ready to Assign")
+        payserv = await create_payee(db_session, budget, "Northwind Payserv")
+        water = await create_category(db_session, budget, bills, "Water")
+        await tags.set_category_tags(water.id, [by_key["essential"].id])
+        await create_transaction(
+            db_session, budget, checking, "3600.00", LAST_MONTH, payee=payserv, category=inflow
+        )
+        # The running month: a paycheck and an essential bill, both of which
+        # the averages — and so the ratios — leave out.
+        today = date.today()
+        await create_transaction(
+            db_session, budget, checking, "3600.00", today, payee=payserv, category=inflow
+        )
+        await create_transaction(db_session, budget, checking, "-1200.00", today, category=water)
+
+        report = await cost_of_living(db_session, budget.id, months=2)
+        # Last month is the one complete month: 1,800 spoken for, 1,400 of it
+        # essential, 3,600 taken home. Hand-computed, not derived.
+        assert report["months_averaged"] == 1
+        assert report["avg_monthly_cost_of_living"] == D("1800.00")
+        assert report["avg_monthly_essentials"] == D("1400.00")
+        assert report["avg_monthly_income"] == D("3600.00")
+        # 1,800 / 3,600 and 1,400 / 3,600 — not the whole-window 3,000 / 7,200
+        # (41.67) and 2,600 / 7,200 (36.11) the ratios used to divide.
         assert report["required_ratio"] == D("50.00")
         assert report["essentials_ratio"] == D("38.89")
 

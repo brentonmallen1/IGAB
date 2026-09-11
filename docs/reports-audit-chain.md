@@ -6,14 +6,16 @@ confirmed narrower than first claimed). Almost all of them are one question
 answered from a different row set in a different report, so the work is ordered
 by root cause rather than by report.
 
-**Pushed and opened as a stacked PR set, #177 through #183**, base of each being
-the branch above it. Merge bottom-up, #177 first.
+**Pushed and opened as one stacked PR set, #177 through #193**, base of each
+being the branch above it. Merge bottom-up, #177 first.
 
 **Never `--delete-branch` a base while its child PR is open** — it auto-closes
 the child. Delete a branch only once every PR above it has merged.
 
-Branches created after #183 branch off `feat/necessity-tiers` and continue the
-stack.
+All nine phases of the audit have landed as branches. #193 is the only one
+that can be dropped without touching the rest: it changes figures the user
+reads daily (a per-month average divides by finished months), and nothing sits
+on top of it.
 
 This file is the chain of record. All branches live in the `~/repos/IGAB-reports` worktree, cut sequentially off
 each other, starting from `origin/main` at `892922a0`.
@@ -36,6 +38,7 @@ each other, starting from `origin/main` at `892922a0`.
 | 11 | `fix/reports-labels` | Labels that contradict the computation | done |
 | 12 | `fix/reports-totals-not-truncations` | A truncated set is not a total (payee_analysis, DrillDownTable, Pareto) | done |
 | 13 | `fix/reports-efficiency` | Per-month query loops; whole-register scans; CSV amount formatting | done |
+| 14 | `fix/reports-complete-months` | A per-month average divides by months that finished | done |
 
 Branches 1–4 are independent in content and could be reordered; 5 onward depend
 on the extractions beneath them.

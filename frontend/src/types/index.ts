@@ -1165,6 +1165,9 @@ export interface SubscriptionsSummary {
 }
 
 export interface SubscriptionsReport {
+  /** How many months an effective-monthly figure divides by: COMPLETE months.
+   *  The month in progress is never one of them. */
+  months_averaged: number
   subscriptions: SubscriptionCategory[]
   summary: SubscriptionsSummary
   months: string[]
@@ -1351,6 +1354,12 @@ export interface CostOfLivingGroup {
 
 export interface CostOfLivingReport {
   months: string[]
+  /** How many months the `avg_monthly_*` figures divide by: COMPLETE months,
+   *  so the newest entry of `months` is outside it on every day but the first
+   *  of a month. The RATIOS are unaffected — both their terms cover the same
+   *  days. Served rather than derived from `months.length`, which is what made
+   *  this report quote a lower figure than Essentials for the same tag. */
+  months_averaged: number
   /** The window the figures cover. Served, not re-derived: "twelve months
    *  back from the first of that month, to today" is the report's rule and
    *  belongs on one side of the wire. */
