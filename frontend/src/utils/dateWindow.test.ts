@@ -70,6 +70,12 @@ describe('monthWindow', () => {
     const dd = String(now.getDate()).padStart(2, '0')
     expect(monthWindow(ym).end).toBe(`${ym}-${dd}`)
   })
+  it('takes a date inside the month, as the server sends month fields', () => {
+    // AnomalyItem.month and every report's `months` arrive as "YYYY-MM-01",
+    // and the drill-downs hand them straight in.
+    expect(monthWindow('2026-02-01')).toEqual(monthWindow('2026-02'))
+    expect(monthWindow('2026-02-17')).toEqual({ start: '2026-02-01', end: '2026-02-28' })
+  })
 })
 
 /**

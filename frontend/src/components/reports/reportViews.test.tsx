@@ -806,6 +806,44 @@ describe('AnomaliesReport list', () => {
     expect(screen.getByText('Dining')).toBeInTheDocument()
     expect(screen.getByText('+200%')).toBeInTheDocument()
   })
+
+  it('drills a current-month anomaly through today, not to the month end', () => {
+    // The drill once built its own month-end window: for the current month it
+    // asked for days that had not happened, so the panel could total more
+    // than the card that opened it.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 8, 10, 12, 0))
+    try {
+      setQuery({
+        data: {
+          anomalies: [
+            {
+              category_id: 'c1',
+              category_name: 'Dining',
+              group_name: 'Everyday',
+              month: '2026-09-01',
+              actual: '300',
+              baseline_mean: '100',
+              z_score: 10,
+              direction: 'high',
+              history: ['100', '100', '100', '300'],
+            },
+          ],
+        },
+      })
+      renderReport(<AnomaliesReport budgetId="b1" />)
+
+      fireEvent.click(screen.getByRole('button', { name: /Dining/ }))
+
+      expect(useReportStore.getState().drillDown).toMatchObject({
+        categoryIds: ['c1'],
+        startDate: '2026-09-01',
+        endDate: '2026-09-10',
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })
 
 describe('ParetoReport insight', () => {
