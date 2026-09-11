@@ -551,11 +551,13 @@ async def test_the_sankey_counts_a_split_inflow_once(db_session):
     reports = ReportService(db_session)
     system = await create_category_group(db_session, budget, "Income", is_system=True)
     salary = await create_category(db_session, budget, system, "Salary")
+    employer = await create_payee(db_session, budget, "Northwind Payserv")
 
     header = TransactionCreate(
         account_id=checking.id,
         date=TODAY - timedelta(days=4),
         amount=Decimal("700.00"),
+        payee_id=employer.id,
         cleared="cleared",
     )
     splits = [
@@ -578,6 +580,55 @@ async def test_the_sankey_counts_a_split_inflow_once(db_session):
 
     assert Decimal(str(data["total_income"])) == Decimal("1000.00")
     assert Decimal(str(data["total_expense"])) == Decimal("300.00")
+    # The legs carry no payee of their own; the income node is named by the
+    # split's payee of record, not merged into "Unknown Income".
+    (income_node,) = [n for n in data["nodes"] if n["id"].startswith("inc_")]
+    assert income_node["name"] == "Northwind Payserv"
+
+
+async def test_a_split_drawdown_leg_joins_the_drawn_trunk(db_session):
+    """The drawn-from-savings trunk read PARENT rows after income moved to
+    leaves. A +700 split of +200 Salary and +500 out of a savings-tagged fund:
+    the parent is never drawn, and the +500 leg is not a parent row, so it
+    counted nowhere. Income read 200 and inflow 200 — the 500 had vanished,
+    where the same money as a plain row drew a "Drawn from savings" node.
+    """
+    services, budget, checking, _savings, _groceries, _gas = await _setup(db_session)
+    reports = ReportService(db_session)
+    system = await create_category_group(db_session, budget, "Income", is_system=True)
+    salary = await create_category(db_session, budget, system, "Salary")
+    goals = await create_category_group(db_session, budget, "Goals")
+    fund = await create_category(db_session, budget, goals, "Emergency Fund")
+    await seed_system_tags(db_session, budget.id)
+    tags = TagRepository(db_session)
+    savings_tag = await tags.get_system_tag(budget.id, "savings")
+    await tags.set_category_tags(fund.id, [savings_tag.id])
+
+    when = TODAY - timedelta(days=3)
+    header = TransactionCreate(
+        account_id=checking.id, date=when, amount=Decimal("700.00"), cleared="cleared"
+    )
+    splits = [
+        TransactionCreate(
+            account_id=checking.id, date=when, amount=Decimal("200.00"), category_id=salary.id
+        ),
+        TransactionCreate(
+            account_id=checking.id, date=when, amount=Decimal("500.00"), category_id=fund.id
+        ),
+    ]
+    await services.transactions.create_split(budget.id, header, splits)
+
+    data = await reports.cash_flow_sankey(budget.id, START, TODAY, mode="spent")
+
+    inflow = {
+        link["source"]: Decimal(str(link["value"]))
+        for link in data["links"]
+        if link["target"] == "__budget__"
+    }
+    assert Decimal(str(data["total_income"])) == Decimal("200.00")
+    assert inflow["drawn_savings"] == Decimal("500.00")
+    # Every inflow is income or drawn, and together they are the whole split.
+    assert sum(inflow.values()) == Decimal("700.00")
 
 
 async def test_the_largest_transactions_are_ranked_by_size_not_by_sign(db_session):

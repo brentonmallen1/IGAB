@@ -938,11 +938,12 @@ class ReportService:
             select(
                 Transaction.id,
                 Transaction.amount,
-                Transaction.payee_id,
+                # A split leg created in the app carries no payee: the parent
+                # names where the money came from, as in payee_analysis.
+                PAYEE_OF_RECORD.label("payee_id"),
                 Transaction.category_id,
                 Transaction.transfer_id,
                 Transaction.is_split,
-                Transaction.parent_transaction_id,
                 Payee.name.label("payee_name"),
                 Category.name.label("category_name"),
                 CategoryGroup.id.label("group_id"),
@@ -950,7 +951,8 @@ class ReportService:
                 ACTIVITY_CLASS.label("activity_class"),
                 INCOME_ROW.label("is_income"),
             )
-            .outerjoin(Payee, Transaction.payee_id == Payee.id)
+            .outerjoin(SPLIT_PARENT, Transaction.parent_transaction_id == SPLIT_PARENT.id)
+            .outerjoin(Payee, PAYEE_OF_RECORD == Payee.id)
             .outerjoin(Category, Transaction.category_id == Category.id)
             .outerjoin(CategoryGroup, Category.category_group_id == CategoryGroup.id)
             .where(
@@ -979,7 +981,7 @@ class ReportService:
                 "group_categories": {},
             }
 
-        # ONE row shape for both sides: LEAF.
+        # ONE row shape for every branch — income, outflow, drawn: LEAF.
         #
         # Income used to come from PARENT rows while expenses came from leaves,
         # and a split straddles the two. A split whose legs are +1,000 of pay
@@ -998,8 +1000,9 @@ class ReportService:
         # with income_vs_expense over the same window and left the savings
         # branch missing the draw. Income is INCOME_ROW, which budgeted mode
         # reads too; everything else that moved money out is outflow.
-        income_rows = [r for r in rows if r.is_income]
-        expense_rows = [r for r in rows if not r.is_split and r.amount < 0 and not r.is_income]
+        leaves = [r for r in rows if not r.is_split]
+        income_rows = [r for r in leaves if r.is_income]
+        expense_rows = [r for r in leaves if r.amount < 0 and not r.is_income]
 
         total_income = sum((r.amount for r in income_rows), Decimal("0"))
         # Everything leaving the budget. Kept as one figure because the links
@@ -1062,15 +1065,12 @@ class ReportService:
         # brokerage, or borrowing. By amount sign these read as income, which
         # overstated earnings and disagreed with income_vs_expense; dropping
         # them instead would silently break flow conservation. They get their
-        # own inflow trunk so the diagram stays honest either way.
+        # own inflow trunk so the diagram stays honest either way. Leaves, like
+        # income: read off parent rows, a split's +500 savings leg sat inside
+        # a parent that is never drawn, and counted nowhere at all.
         drawn_by_class: dict[str, Decimal] = {}
-        for r in rows:
-            if (
-                r.parent_transaction_id is None
-                and r.amount > 0
-                and r.activity_class != ActivityClass.INCOME.value
-                and r.activity_class in _DRAWDOWN_LABELS
-            ):
+        for r in leaves:
+            if r.amount > 0 and r.activity_class in _DRAWDOWN_LABELS:
                 drawn_by_class[r.activity_class] = (
                     drawn_by_class.get(r.activity_class, Decimal("0")) + r.amount
                 )
