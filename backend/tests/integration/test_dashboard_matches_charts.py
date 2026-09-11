@@ -5,7 +5,7 @@ whole pass is about, and the dashboard had two of them. Both were covered by
 comments claiming agreement, which is exactly why they went unnoticed.
 """
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from igab.services.report_service import ReportService
@@ -124,3 +124,77 @@ class TestSavingsRate:
 
         # Same ratio, same rows — neither invents a number the other denies.
         assert card["savings_rate"] == tab["months"][-1]["savings_rate"]
+
+
+class TestTheBurnWindowsAreTheSameWindow:
+    """The card says "30-Day Burn Rate" and the chart says "Current 30-Day
+    Burn". They were two different windows.
+
+    The chart ran to `_last_day` of the current month — a FUTURE date — so its
+    newest point was month-to-date wearing a thirty-day label. The card ran
+    `today - 30` with inclusive bounds, which is thirty-ONE days, and then
+    `days_until_zero` divided it by 30. So the card overstated daily burn by
+    about 3.3% and understated runway by the same, and the two figures could
+    not agree by construction.
+
+    A future-dated row is deliberately NOT tested here: `burn_rate`'s query
+    already bounds at today, so such a test could not fail and would only look
+    like coverage. The Python windowing is covered by
+    `TestBurnRate.test_the_newest_window_does_not_reach_past_today`, which
+    mocks the session and so reaches the window rather than the query.
+    """
+
+    async def test_a_spend_31_days_back_is_in_neither(self, db_session):
+        budget, checking, category = await _budget_with_checking(db_session)
+        # Day 30 is inside a thirty-day window counting today as day 1;
+        # day 31 is outside it. The card used to count day 31.
+        await create_transaction(
+            db_session,
+            budget,
+            checking,
+            "-500.00",
+            TODAY - timedelta(days=30),
+            category=category,
+            cleared="cleared",
+        )
+        await create_transaction(
+            db_session,
+            budget,
+            checking,
+            "-100.00",
+            TODAY - timedelta(days=5),
+            category=category,
+            cleared="cleared",
+        )
+        await db_session.flush()
+
+        service = ReportService(db_session)
+        card = await service.dashboard_metrics(budget.id, MONTH_START, TODAY)
+        chart = await service.burn_rate(budget.id, months=1)
+
+        assert Decimal(str(card["burn_rate_30"])) == Decimal("100.00")
+        assert _burn_from_chart(chart) == Decimal("100.00")
+
+    async def test_net_worth_now_is_the_same_on_both(self, db_session):
+        """The card summed every posted row with no upper bound; the chart
+        bounds each point at its month end. A row dated in a LATER month was
+        therefore in one and not the other."""
+        budget, checking, category = await _budget_with_checking(db_session)
+        await create_transaction(db_session, budget, checking, "5000.00", TODAY, cleared="cleared")
+        # Next month: not yet part of net worth "now".
+        await create_transaction(
+            db_session,
+            budget,
+            checking,
+            "-4000.00",
+            (MONTH_START + timedelta(days=40)).replace(day=3),
+            cleared="cleared",
+        )
+        await db_session.flush()
+
+        service = ReportService(db_session)
+        card = await service.dashboard_metrics(budget.id, MONTH_START, TODAY)
+        chart = await service.net_worth_history(budget.id, months=1)
+
+        assert Decimal(str(card["net_worth"])) == Decimal("5000.00")
+        assert Decimal(str(chart[-1]["net_worth"])) == Decimal("5000.00")

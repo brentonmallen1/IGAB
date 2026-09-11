@@ -69,6 +69,7 @@ from igab.services.report_basics import (
     class_excluded_note,
     emergency_fund,
 )
+from igab.services.report_stats import volatility_stats
 
 # Report payload shapes.
 #
@@ -509,7 +510,14 @@ class ReportService:
         # Net worth spans EVERY account — matching net_worth_history, which
         # this card must never disagree with. Assets minus liabilities reduces
         # to the plain sum of all ledgers (transfers cancel), minus unmanaged.
-        net_worth = Decimal(str(pdf.select(pl.col("amount").sum()).item() or 0))
+        # Bounded at today. This summed EVERY posted row with no upper bound,
+        # while net_worth_history bounds each point at its month end — so a row
+        # dated in a later month was in the card and not in the chart, and the
+        # two are asserted to agree. Net worth "now" is not money that has not
+        # moved yet.
+        net_worth = Decimal(
+            str(pdf.filter(pl.col("date") <= today).select(pl.col("amount").sum()).item() or 0)
+        )
 
         # Previous net worth: sum up to start_date
         net_worth_prev = Decimal(
@@ -533,8 +541,14 @@ class ReportService:
         # this card announce "Savings Rate 0% / Expenses $5,000" beside a
         # Savings Rate tab reading 40% and an Income vs Expenses tab reading
         # $3,000, for the same window and the same budget.
-        thirty_ago = today - timedelta(days=30)
-        ninety_ago = today - timedelta(days=90)
+        # 29 and 89, not 30 and 90. Both bounds below are inclusive, so
+        # `today - 30` spans THIRTY-ONE days — and `days_until_zero` divides
+        # burn_30 by 30 while burn_90 is divided by 3, so the card overstated
+        # daily burn by about 3.3% and understated runway by the same. The Burn
+        # Rate chart already used 29 and 89, so the two disagreed by
+        # construction.
+        thirty_ago = today - timedelta(days=29)
+        ninety_ago = today - timedelta(days=89)
         cdf = await self._class_frame(budget_id, min(prev_start, ninety_ago), today)
 
         def _cls_total(start: date, end: date, cls: ActivityClass) -> Decimal:
@@ -816,7 +830,7 @@ class ReportService:
             points = []
             for i in range(months - 1, -1, -1):
                 month_start = _subtract_months(first_of_month, i)
-                month_end = _last_day(month_start)
+                month_end = min(_last_day(month_start), today)
                 unmanaged = (
                     unmanaged_now
                     if i == 0
@@ -853,7 +867,9 @@ class ReportService:
         results = []
         for i in range(months - 1, -1, -1):
             month_start = _subtract_months(first_of_month, i)
-            month_end = _last_day(month_start)
+            # Clamped: the current month's last day is a future date, and the
+            # newest point is "net worth now".
+            month_end = min(_last_day(month_start), today)
             month_df = df.filter(pl.col("date") <= month_end)
 
             acct_balances = month_df.group_by(
@@ -977,11 +993,20 @@ class ReportService:
         results = []
         for i in range(months - 1, -1, -1):
             month_start = _subtract_months(first_of_month, i)
-            month_end = _last_day(month_start)
+            # Clamped to today. `_last_day` of the CURRENT month is a future
+            # date, so the newest point summed a window running weeks past
+            # today: it was month-to-date wearing a "30-day" label, and it
+            # contradicted the Overview's "30-Day Burn Rate" — which is a
+            # genuine trailing thirty days — every day of the month.
+            month_end = min(_last_day(month_start), today)
 
-            # 30-day: sum expenses in 30 days ending at month_end
+            # Thirty days INCLUSIVE of month_end, which is why it is 29 and
+            # not 30. A rolling window deliberately does not tile the
+            # calendar: over a 31-day month one day falls in no window, and
+            # over a 28-day month one falls in two. That is what "rolling"
+            # means, and `rolling_30` says so — a per-calendar-month figure is
+            # what Spending Trends is for.
             d30 = month_end - timedelta(days=29)
-            # 90-day: sum expenses in 90 days ending at month_end, divided by 3
             d90 = month_end - timedelta(days=89)
 
             r30 = sum(abs(float(r.amount)) for r in txns if d30 <= r.date <= month_end)
@@ -1784,7 +1809,17 @@ class ReportService:
     ) -> list[dict]:
         today = date.today()
         first_of_month = today.replace(day=1)
-        start = _subtract_months(first_of_month, months - 1)
+        # COMPLETE months only, and bounded at both ends.
+        #
+        # There was no upper bound at all, so a future-dated row landed in a
+        # month bucket outside the window it is labelled with — and on the
+        # heatmap it set the colour scale for every real cell. And the current
+        # month was counted as though complete, which invents a historical
+        # minimum on the 2nd of every month and drags the coefficient of
+        # variation with it: a category that always spends 400 read a spread of
+        # 12-400 purely because today is early.
+        start = _subtract_months(first_of_month, months)
+        end = first_of_month - timedelta(days=1)
 
         q = (
             select(
@@ -1802,64 +1837,14 @@ class ReportService:
                 POSTED,
                 Transaction.amount < 0,
                 Transaction.date >= start,
+                Transaction.date <= end,
                 LEAF,
                 CASH_FLOW_ROW,
                 SPENT_ENVELOPE,
             )
         )
         rows = (await self.session.execute(q)).all()
-
-        if not rows:
-            return []
-
-        df = pl.DataFrame(
-            {
-                "date": [r.date for r in rows],
-                "amount": [abs(float(r.amount)) for r in rows],
-                "category_id": [str(r.category_id) for r in rows],
-                "category_name": [r.category_name for r in rows],
-                "group_name": [r.group_name for r in rows],
-            },
-            schema_overrides={"date": pl.Date, "amount": pl.Float64},
-        )
-
-        monthly = (
-            df.with_columns(pl.col("date").dt.truncate("1mo").alias("month"))
-            .group_by(["category_id", "category_name", "group_name", "month"])
-            .agg(pl.col("amount").sum().alias("monthly_total"))
-        )
-
-        stats = (
-            monthly.group_by(["category_id", "category_name", "group_name"])
-            .agg(
-                pl.col("monthly_total").mean().alias("mean"),
-                pl.col("monthly_total").std().alias("std_dev"),
-                pl.col("monthly_total").min().alias("min_val"),
-                pl.col("monthly_total").max().alias("max_val"),
-                pl.col("monthly_total").quantile(0.25).alias("p25"),
-                pl.col("monthly_total").quantile(0.75).alias("p75"),
-                pl.col("monthly_total").count().alias("months_included"),
-            )
-            .sort("mean", descending=True)
-        )
-
-        return [
-            {
-                "category_id": row["category_id"],
-                "category_name": row["category_name"],
-                "category_group_name": row["group_name"],
-                "mean": Decimal(str(round(row["mean"] or 0, 4))),
-                "std_dev": Decimal(str(round(row["std_dev"] or 0, 4))),
-                "min_val": Decimal(str(round(row["min_val"] or 0, 4))),
-                "max_val": Decimal(str(round(row["max_val"] or 0, 4))),
-                "p25": Decimal(str(round(row["p25"] or 0, 4))),
-                "p75": Decimal(str(round(row["p75"] or 0, 4))),
-                "months_included": int(row["months_included"]),
-            }
-            for row in stats.iter_rows(named=True)
-        ]
-
-    # ─── Spending Grouped (Pareto + Treemap) ──────────────────────────────────
+        return volatility_stats(rows, _months_in_range(start, end))
 
     @staticmethod
     def _spending_query(
@@ -2048,7 +2033,17 @@ class ReportService:
     ) -> dict:
         today = date.today()
         first_of_month = today.replace(day=1)
-        start = _subtract_months(first_of_month, months - 1)
+        # COMPLETE months only, and bounded at both ends.
+        #
+        # There was no upper bound at all, so a future-dated row landed in a
+        # month bucket outside the window it is labelled with — and on the
+        # heatmap it set the colour scale for every real cell. And the current
+        # month was counted as though complete, which invents a historical
+        # minimum on the 2nd of every month and drags the coefficient of
+        # variation with it: a category that always spends 400 read a spread of
+        # 12-400 purely because today is early.
+        start = _subtract_months(first_of_month, months)
+        end = first_of_month - timedelta(days=1)
 
         q = (
             select(
@@ -2065,6 +2060,7 @@ class ReportService:
                 POSTED,
                 Transaction.amount < 0,
                 Transaction.date >= start,
+                Transaction.date <= end,
                 LEAF,
                 CASH_FLOW_ROW,
                 SPENT_ENVELOPE,
@@ -2937,10 +2933,19 @@ class ReportService:
     async def anomalies_report(
         self, budget_id: uuid.UUID, months: int = 12, threshold: float = 2.0
     ) -> dict:
-        """Detect category-months with spending outside baseline z-score."""
+        """Detect category-months with spending outside baseline z-score.
+
+        **Complete months only.** The current month was scored as a full
+        observation against a baseline of complete ones, so on the 2nd of every
+        month every established category looked anomalously LOW — a household
+        that spends £400 on groceries a month was told its grocery spending had
+        collapsed, every month, for most of the month. A partial month is not a
+        small month.
+        """
         today = date.today()
-        end_date = today
-        start_date = _subtract_months(today, months).replace(day=1)
+        first_of_month = today.replace(day=1)
+        end_date = first_of_month - timedelta(days=1)
+        start_date = _subtract_months(first_of_month, months)
 
         # Get spending per category per month
         month_col = func.date_trunc(literal_column("'month'"), Transaction.date).label("month")

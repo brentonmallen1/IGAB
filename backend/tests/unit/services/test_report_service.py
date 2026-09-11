@@ -621,20 +621,22 @@ class TestPayeeAnalysis:
 
 
 class TestBurnRate:
-    # The rolling windows end at the CURRENT MONTH'S last day, so anchor test
-    # dates to month_end (dates relative to today drift out of the window as
-    # the month progresses and made these tests calendar-flaky).
-    @staticmethod
-    def _month_end() -> date:
-        first = date.today().replace(day=1)
-        next_month = (first.replace(day=28) + timedelta(days=4)).replace(day=1)
-        return next_month - timedelta(days=1)
+    # The newest point's window ends at TODAY, so test dates anchor there.
+    #
+    # These used to anchor to the current month's last day, with a comment
+    # saying dates relative to today "drift out of the window as the month
+    # progresses and made these tests calendar-flaky". That flakiness was the
+    # bug talking: the window ran to `_last_day` of the current month, which is
+    # a future date, so the newest point was month-to-date wearing a "30-day"
+    # label — and it contradicted the Overview's "30-Day Burn Rate", a genuine
+    # trailing thirty days, every day of the month. Anchored on today the
+    # window is stable and the label is true.
 
-    async def test_rolling_30_sums_last_30_days(self):
-        month_end = self._month_end()
+    async def test_rolling_30_sums_the_last_30_days(self):
+        today = date.today()
         rows = [
-            row(date=month_end - timedelta(days=25), amount=D("-200.00")),
-            row(date=month_end - timedelta(days=3), amount=D("-300.00")),
+            row(date=today - timedelta(days=25), amount=D("-200.00")),
+            row(date=today - timedelta(days=3), amount=D("-300.00")),
         ]
         svc = ReportService(make_session(mock_result(rows)))
         result = await svc.burn_rate(BUDGET, months=1)
@@ -642,13 +644,25 @@ class TestBurnRate:
         cur = result[0]
         assert cur["rolling_30"] == D("500.0")
 
+    async def test_the_newest_window_does_not_reach_past_today(self):
+        """A row dated tomorrow is not money that has been burned."""
+        today = date.today()
+        rows = [
+            row(date=today - timedelta(days=2), amount=D("-100.00")),
+            row(date=today + timedelta(days=5), amount=D("-900.00")),
+        ]
+        svc = ReportService(make_session(mock_result(rows)))
+        result = await svc.burn_rate(BUDGET, months=1)
+
+        assert result[0]["rolling_30"] == D("100.0")
+
     async def test_rolling_90_is_divided_by_3(self):
-        month_end = self._month_end()
+        today = date.today()
         # 900 total inside the 90-day window → monthly equivalent = 300
         rows = [
-            row(date=month_end - timedelta(days=85), amount=D("-300.00")),
-            row(date=month_end - timedelta(days=50), amount=D("-300.00")),
-            row(date=month_end - timedelta(days=10), amount=D("-300.00")),
+            row(date=today - timedelta(days=85), amount=D("-300.00")),
+            row(date=today - timedelta(days=50), amount=D("-300.00")),
+            row(date=today - timedelta(days=10), amount=D("-300.00")),
         ]
         svc = ReportService(make_session(mock_result(rows)))
         result = await svc.burn_rate(BUDGET, months=1)
@@ -881,10 +895,14 @@ class TestCategoryVolatility:
                     group_name="Food",
                 )
 
+            # months=3 with today in March means the three COMPLETE months
+            # Dec, Jan, Feb. March is the partial current month and is out —
+            # counting it as complete invents a historical minimum on the 2nd
+            # of every month.
             rows = [
-                vrow(date(2026, 1, 15), D("-100.00")),
-                vrow(date(2026, 2, 15), D("-200.00")),
-                vrow(date(2026, 3, 15), D("-150.00")),
+                vrow(date(2025, 12, 15), D("-100.00")),
+                vrow(date(2026, 1, 15), D("-200.00")),
+                vrow(date(2026, 2, 15), D("-150.00")),
             ]
             svc = ReportService(make_session(mock_result(rows)))
             result = await svc.category_volatility(BUDGET, months=3)
@@ -896,6 +914,45 @@ class TestCategoryVolatility:
         assert r["min_val"] == pytest.approx(D("100.0"), rel=D("0.01"))
         assert r["max_val"] == pytest.approx(D("200.0"), rel=D("0.01"))
         assert r["months_included"] == 3
+
+    async def test_a_dormant_month_is_a_zero_not_a_missing_row(self):
+        """The statistics used to group only the months that HAD rows, which
+        made every one of them per-ACTIVE-month.
+
+        A bill paid twice a year reported a mean of its full charge and a
+        standard deviation of zero — "£600 a month, never varies" — when its
+        monthly cost is a sixth of that and it is the most volatile thing in
+        the budget. `min_val` could never be zero either, so a dormant category
+        showed a floor it had never spent as little as.
+        """
+        with patch("igab.services.report_service.date") as mock_date:
+            mock_date.today.return_value = date(2026, 7, 10)
+            mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
+
+            def vrow(d, amt):
+                return row(
+                    date=d,
+                    amount=amt,
+                    category_id=CAT_A,
+                    category_name="Property Tax",
+                    group_name="Long Term",
+                )
+
+            # Two charges of 600 in a six-month window: Jan and Apr.
+            rows = [vrow(date(2026, 1, 20), D("-600.00")), vrow(date(2026, 4, 20), D("-600.00"))]
+            svc = ReportService(make_session(mock_result(rows)))
+            result = await svc.category_volatility(BUDGET, months=6)
+
+        r = result[0]
+        # 1,200 over six months, not 600 over two.
+        assert r["mean"] == pytest.approx(D("200.0"), rel=D("0.01"))
+        # The four dormant months are real, so the floor is zero and the
+        # spread is wide. It used to read min 600, max 600, std_dev 0.
+        assert r["min_val"] == D("0")
+        assert r["max_val"] == pytest.approx(D("600.0"), rel=D("0.01"))
+        assert r["std_dev"] > D("200")
+        # The one figure that genuinely wants the sparse count.
+        assert r["months_included"] == 2
 
     async def test_empty_returns_empty(self):
         with patch("igab.services.report_service.date") as mock_date:
