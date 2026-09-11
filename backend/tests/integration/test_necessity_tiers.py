@@ -198,27 +198,40 @@ class TestTheServedReport:
         """The gap has to be a difference of two figures across the same days.
         Three windows in this family used to be the only visible difference
         between the two screens — a calendar artifact wearing the gap's
-        clothes — so this pins that the served figures share one window.
-        """
-        budget, *_ = await _household(db_session)
-        report = await cost_of_living(db_session, budget.id, months=1)
-        repo = TransactionRepository(db_session)
+        clothes — so this pins that both tiers read one window, edge to edge.
 
-        # The averaged window: through the last COMPLETE month, which is what
-        # both tiers divide by and what both must measure.
-        n = report["months_averaged"]
-        averaged_end = month_end(report["months"][n - 1])
-        lean, _ = await repo.essential_spend(
-            budget.id, report["window_start"], averaged_end, tier=NecessityTier.ESSENTIAL
-        )
-        wide, _ = await repo.essential_spend(
-            budget.id,
-            report["window_start"],
-            averaged_end,
-            tier=NecessityTier.COST_OF_LIVING,
-        )
-        assert report["avg_monthly_essentials"] == -lean / n
-        assert report["avg_monthly_cost_of_living"] == -wide / n
+        Every other fixture row sits on day 6 of last month, inside every
+        window this family has ever used, so none of them can see a window
+        difference. These rows sit ON the edges and just past them: a tier
+        that ran through the running month, or started a day early, reads a
+        different figure here and nowhere else.
+        """
+        budget, checking, bills, tags, by_key = await _household(db_session)
+        water = await create_category(db_session, budget, bills, "Water")
+        gym = await create_category(db_session, budget, bills, "Gym")
+        await tags.set_category_tags(water.id, [by_key["essential"].id])
+        await tags.set_category_tags(gym.id, [by_key["cost_of_living"].id])
+
+        start = _first_of_last_month()
+        end = month_end(start)
+        today = _today()
+        # Inside: the window's first day (both tiers) and its last (wide only).
+        await create_transaction(db_session, budget, checking, "-100.00", start, category=water)
+        await create_transaction(db_session, budget, checking, "-10.00", end, category=gym)
+        # Outside: the day before it starts, and the running month.
+        before = start - timedelta(days=1)
+        await create_transaction(db_session, budget, checking, "-700.00", before, category=water)
+        await create_transaction(db_session, budget, checking, "-500.00", today, category=water)
+        await create_transaction(db_session, budget, checking, "-20.00", today, category=gym)
+
+        report = await cost_of_living(db_session, budget.id, months=1)
+
+        assert (report["window_start"], report["window_end"]) == (start, end)
+        # Hand-computed, not derived: 1,400 + 100 essential; 1,800 + 100 + 10
+        # wide. Neither tier sees the 700 before the window or the 520 after.
+        assert report["avg_monthly_essentials"] == D("1500.00")
+        assert report["avg_monthly_cost_of_living"] == D("1910.00")
+        assert report["avg_monthly_non_essential"] == D("410.00")
 
     async def test_the_groups_roll_up_the_wide_tier(self, db_session):
         budget, *_ = await _household(db_session)
