@@ -24,7 +24,7 @@ The rules are ordered and first-match-wins, so each one also carries a stable
 an opaque reclassification.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
@@ -431,3 +431,29 @@ def explain(reason: str) -> str:
         return REASON_TEXT[ActivityReason(reason)]
     except (ValueError, KeyError):
         return "it did not match any specific rule"
+
+
+def counted_classes(
+    include: Sequence[ActivityClass] | None = None, *, scoped_accounts: bool = False
+) -> set[str]:
+    """The class VALUES a spending rollup counts.
+
+    The set form of the `_spending_classes` predicate, for the Python side of a
+    query that SELECTED the class rather than filtering on it — three spending
+    rollups do that so they can also report what they excluded.
+
+    The `scoped_accounts` widening was written three times, and the third copy
+    did not have it: pointing the account filter at a tracked account drew
+    nothing on Spending Trends beside a populated Pareto over the identical
+    selection, with the note explaining the exclusion suppressed too, because
+    nothing had been excluded — the rows were simply never counted.
+
+    An explicit account selection overrides the on-budget default, so the user
+    may be looking straight at a tracked account, whose outflows classify
+    `investment_return` or `debt_interest` and never `spending`. Same reason
+    `_spending_classes` widens; see its docstring.
+    """
+    values = {c.value for c in (include or SPENDING_CLASSES)}
+    if scoped_accounts:
+        values |= {ActivityClass.INVESTMENT_RETURN.value, ActivityClass.DEBT_INTEREST.value}
+    return values

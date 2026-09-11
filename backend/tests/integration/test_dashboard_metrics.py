@@ -25,6 +25,7 @@ from .factories import (
     create_category,
     create_category_group,
     create_transaction,
+    create_transfer,
     create_user,
 )
 
@@ -212,3 +213,58 @@ class TestFiguresPreservedFromTheOldSuite:
         card = await ReportService(db_session).dashboard_metrics(budget.id, MONTH_START, TODAY)
 
         assert card["days_until_zero"] is None
+
+
+class TestTopSpendingIsSpending:
+    """`top_categories` partitioned on `amount < 0` alone, two screens below a
+    comment claiming every figure on the card uses the activity-class
+    partition. So a transfer to a brokerage and a mortgage principal payment
+    were listed as the household's biggest spending.
+    """
+
+    async def test_a_savings_transfer_is_not_top_spending(self, db_session):
+        budget = await create_budget(db_session, await create_user(db_session))
+        checking = await create_account(db_session, budget, "Checking")
+        brokerage = await create_account(
+            db_session, budget, "Cascade Point HYSA", account_type="investment", on_budget=False
+        )
+        group = await create_category_group(db_session, budget, "Everyday")
+        savings = await create_category(db_session, budget, group, "Investing")
+        groceries = await create_category(db_session, budget, group, "Groceries")
+
+        # The transfer is far larger, so before the fix it took the top slot.
+        await create_transfer(
+            db_session, budget, checking, brokerage, "2000.00", TODAY, category=savings
+        )
+        await create_transaction(db_session, budget, checking, "-310.00", TODAY, category=groceries)
+        await db_session.commit()
+
+        data = await ReportService(db_session).dashboard_metrics(budget.id, MONTH_START, TODAY)
+
+        assert [c["name"] for c in data["top_categories"]] == ["Groceries"]
+
+    async def test_the_card_shows_three_when_three_exist(self, db_session):
+        """The top 3 were taken BEFORE the category lookup, and the lookup used
+        BUDGETED_ENVELOPE — which drops a deleted category. A category deleted
+        after the money left it did not unspend the money, so the row belongs
+        in the ranking; under the old order the card silently drew two.
+        """
+        budget = await create_budget(db_session, await create_user(db_session))
+        checking = await create_account(db_session, budget, "Checking")
+        group = await create_category_group(db_session, budget, "Everyday")
+        names = ["Rent", "Groceries", "Fun", "Transport"]
+        amounts = ["-1400.00", "-600.00", "-200.00", "-90.00"]
+        cats = []
+        for name, amount in zip(names, amounts, strict=True):
+            cat = await create_category(db_session, budget, group, name)
+            await create_transaction(db_session, budget, checking, amount, TODAY, category=cat)
+            cats.append(cat)
+        # Delete the biggest one: it stays in the ranking, and the card still
+        # fills three slots rather than two.
+        cats[0].is_deleted = True
+        await db_session.commit()
+
+        data = await ReportService(db_session).dashboard_metrics(budget.id, MONTH_START, TODAY)
+
+        assert len(data["top_categories"]) == 3
+        assert [c["name"] for c in data["top_categories"]] == ["Rent", "Groceries", "Fun"]

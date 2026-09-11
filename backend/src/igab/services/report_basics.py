@@ -25,9 +25,9 @@ from igab.domain.activity_class import (
     ACTIVITY_CLASS,
     CLASS_LABEL,
     COST_OF_LIVING_CLASSES,
-    SPENDING_CLASSES,
     ActivityClass,
     apply_class_joins,
+    counted_classes,
 )
 from igab.domain.dates import add_months
 from igab.domain.money import quantize_cents
@@ -87,7 +87,11 @@ async def spending_trends(
     index = {m: i for i, m in enumerate(months)}
     q = svc._spending_query(budget_id, start_date, end_date, category_ids, account_ids)
     rows = (await svc.session.execute(q)).all()
-    included = {c.value for c in (include_classes or SPENDING_CLASSES)}
+    # `counted_classes`, not a fourth restatement: this was the one of three
+    # spending rollups that never widened for an explicit account selection,
+    # so pointing the account filter at a tracked account drew nothing here
+    # beside a populated Pareto over the identical selection.
+    included = counted_classes(include_classes, scoped_accounts=account_ids is not None)
     counted = [r for r in rows if r.cls in included]
     other_class = [r for r in rows if r.cls not in included]
 
@@ -125,10 +129,20 @@ async def spending_trends(
 
 
 async def income_by_source(session: AsyncSession, budget_id: uuid.UUID, months: int = 12) -> dict:
-    """Income per payee per month: on-budget inflows the classifier reads
-    as income. Transfers, refunds into envelopes and investment returns
-    are other classes and stay out — the same partition every cash-flow
-    report uses."""
+    """Income per payee per month: what the classifier reads as income.
+
+    **The sign does not decide; the class does.** This filtered
+    `Transaction.amount > 0` in SQL and then kept only INCOME rows in Python,
+    but the classifier's income rule is "(amount > 0 AND uncategorized) OR the
+    category is in a system group" — so a NEGATIVE row filed to an inflow
+    category is income too: a clawed-back paycheque is negative income, not
+    spending. Dropping it made this report's total exceed the income figure
+    Income vs Expenses and the Cash Flow Sankey serve for the same window,
+    which is the one thing three views of the same money must not do.
+
+    Transfers, refunds into envelopes and investment returns are other classes
+    and stay out — the same partition every cash-flow report uses.
+    """
     today = date.today()
     start_date = _subtract_months(today, months - 1).replace(day=1)
     month_list = _months_in_range(start_date, today)
@@ -146,19 +160,20 @@ async def income_by_source(session: AsyncSession, budget_id: uuid.UUID, months: 
             Transaction.budget_id == budget_id,
             NOT_DELETED,
             POSTED,
-            Transaction.amount > 0,
             Transaction.date >= start_date,
             Transaction.date <= today,
             LEAF,
             CASH_FLOW_ROW,
             ON_BUDGET_ACCOUNT,
+            # In SQL rather than a Python skip: the sign pre-filter used to cut
+            # the row set down first, and without it that skip would fetch
+            # every on-budget cash-flow row in the window to discard most.
+            ACTIVITY_CLASS == ActivityClass.INCOME.value,
         )
     )
     rows = (await session.execute(apply_class_joins(q))).all()
     sources: dict[str, dict] = {}
     for r in rows:
-        if r.cls != ActivityClass.INCOME.value:
-            continue
         key = str(r.payee_id) if r.payee_id else "__none__"
         entry = sources.setdefault(
             key,
