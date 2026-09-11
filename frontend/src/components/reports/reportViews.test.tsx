@@ -307,6 +307,14 @@ describe('OverviewReport metric cards', () => {
     expect(screen.getByText('46d')).toBeInTheDocument() // rounded days until zero
     expect(screen.getByText('Groceries')).toBeInTheDocument()
   })
+
+  it('asks for categories tagged Essential, not payees, before there is a figure', () => {
+    // Essential is a category tag only; a payee tag counts for nothing. The
+    // first-run prompt still said "Tag categories or payees Essential".
+    setQuery({ data: { net_worth: '0', burn_rate_30: '0', burn_rate_90: '0', top_categories: [] } })
+    renderReport(<OverviewReport budgetId="b1" />)
+    expect(card('Essentials / month')).toEqual({ value: '—', sub: 'Tag categories Essential' })
+  })
 })
 
 describe('SavingsReport before an import', () => {

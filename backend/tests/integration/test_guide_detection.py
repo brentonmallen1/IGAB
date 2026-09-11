@@ -264,7 +264,9 @@ class TestEssentialExpenses:
 
         found = await GuideDetection(db_session).essential_expenses(budget.id)
         assert found.value == Decimal("1000.00")
-        assert "tagged Essential" in found.reason
+        # Categories only: a payee tag counts for nothing, so the Guide must not
+        # say it narrowed to the payees someone tagged.
+        assert found.reason == "the categories you tagged Essential"
 
     async def test_a_binding_still_beats_the_tag(self, db_session):
         from igab.repositories.tag_repo import TagRepository, seed_system_tags

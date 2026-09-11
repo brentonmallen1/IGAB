@@ -10,7 +10,7 @@ from decimal import Decimal
 from typing import Any
 
 from igab.domain.dates import add_months
-from igab.guide.concepts import STALE_EXTERNAL_MONTHS
+from igab.guide.concepts import CONCEPTS_BY_KEY, STALE_EXTERNAL_MONTHS
 from igab.guide.findings import RULES, CheckupInputs, evaluate, metrics
 
 TODAY = date(2026, 8, 26)
@@ -285,7 +285,7 @@ class TestMetrics:
             inputs(
                 signals,
                 essentials_monthly=Decimal("3240"),
-                essentials_reason="the categories and payees you tagged Essential",
+                essentials_reason="the categories you tagged Essential",
             )
         )
         keys = [m.key for m in rows]
@@ -294,7 +294,7 @@ class TestMetrics:
         assert row.value == Decimal("3240")
         assert row.target is None
         assert row.unit == "money"
-        assert row.detail == "Based on the categories and payees you tagged Essential."
+        assert row.detail == "Based on the categories you tagged Essential."
         assert row.report == "essentials"
         assert row.finding_kinds == []
 
@@ -357,3 +357,12 @@ class TestNamesTravelWhole:
         assert row.names[0] == "Card 0 — no rate on record"
         assert any(n.startswith("Emergency fund — told to us") for n in row.names)
         assert any(n.startswith("Health savings account — told to us") for n in row.names)
+
+
+class TestEssentialsCopy:
+    def test_the_essentials_caveat_does_not_offer_payee_tags(self):
+        """Essential is a category tag only: ESSENTIAL_TAGGED reads categories
+        and the payee tag routes are gone. The caveat still said to tag
+        "categories or payees", so a payee tag did nothing while the Guide
+        kept using all spending."""
+        assert "payee" not in CONCEPTS_BY_KEY["essential_expenses"].caveat

@@ -270,7 +270,7 @@ class GuideDetection:
         )
         reason = {
             "bound": "the categories you told us are essential",
-            "tag": "the categories and payees you tagged Essential",
+            "tag": "the categories you tagged Essential",
             "all": "your average spending over the last 90 days",
         }[basis]
         monthly = essentials_per_month(total)
