@@ -42,6 +42,7 @@ from igab.guide.concepts import (
 )
 from igab.guide.detection import budget_service_from
 from igab.repositories.account_repo import AccountRepository
+from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.budget_service import BudgetService
 
 #: Months of spending averaged into the denominator. The Guide's essentials
@@ -110,16 +111,42 @@ def trailing_average(
     and double the coverage — a chart that opens on a reassuring number it
     then walks back.
 
-    `first_data` is the index of the first month the budget has any essentials
-    history for. Months before it are not months a household spent nothing —
-    they are months the budget did not exist — and averaging their zeros in did
-    exactly what the paragraph above warns against from the other direction: a
-    young budget's chart opened at 6.0 months of runway against a headline of
-    2.0, because two thirds of its denominator was a period with no data.
+    `first_data` is the index of the first month the budget has any history
+    for (`history_index`). Months before it are not months a household spent
+    nothing — they are months the budget did not exist — and averaging their
+    zeros in did exactly what the paragraph above warns against from the other
+    direction: a young budget's chart opened at 6.0 months of runway, because
+    two thirds of its denominator was a period with no data.
+
+    **The one deliberate divergence.** The headline (`essentials_90d`) is the
+    Guide's figure, 90 days divided by three whatever the budget's age. For a
+    budget with under three complete months of history, the newest point here
+    divides by the months that exist and the headline still by three, so the
+    two differ — by at most a factor of three, and only until the third
+    complete month. Pinned in `test_emergency_coverage.py`.
     """
     start = max(first_data, index - window + 1)
     span = totals[start : index + 1]
     return quantize_cents(sum(span, Decimal("0")) / len(span)) if span else Decimal("0")
+
+
+def history_index(months: list[date], history_from: date | None) -> int:
+    """The index of the first month in `months` the budget has history for.
+
+    From the budget's first transaction — `earliest_date`, the start "All
+    time" counts from — not from the first month with essentials spending.
+    That was the first version, and it is a second answer to "when does this
+    budget begin": a real month in which nothing essential was spent read as a
+    month before the budget existed, so a household whose first Essential bill
+    landed in March had March averaged alone instead of with the two quiet
+    months before it.
+
+    A budget with no transactions has no history to cut from: 0.
+    """
+    if history_from is None:
+        return 0
+    start = month_start(history_from)
+    return next((i for i, m in enumerate(months) if m >= start), len(months))
 
 
 def coverage_months(balance: Decimal, essentials: Decimal) -> Decimal | None:
@@ -171,9 +198,10 @@ class EmergencyCoverageService:
         )
         series = summary["monthly_series"]
         totals = [row["total"] for row in series]
-        # The first month with any essentials history. Everything before it is
-        # a month the budget did not exist, not a month nothing was spent.
-        first_data = next((i for i, t in enumerate(totals) if t != 0), 0)
+        first_data = history_index(
+            [row["month"] for row in series],
+            await TransactionRepository(self.session).earliest_date(budget_id),
+        )
 
         today = date.today()
         first_of_month = month_start(today)
