@@ -21,7 +21,6 @@ from igab.domain import activity_class
 from igab.domain.activity_class import ActivityClass
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
-from igab.services import report_service
 from igab.services.report_service import PAYDAY_FLOOR, ReportService
 from igab.services.transaction_service import TransactionCreate
 
@@ -305,7 +304,6 @@ async def test_spending_is_whatever_spending_classes_says(db_session, monkeypatc
     here to take savings in, the sweep has to count."""
     widened = (ActivityClass.SPENDING, ActivityClass.SAVINGS)
     monkeypatch.setattr(activity_class, "SPENDING_CLASSES", widened)
-    monkeypatch.setattr(report_service, "SPENDING_CLASSES", widened)
     budget = await _payday_with_a_sweep(db_session)
 
     data = await ReportService(db_session).payday_effect(budget.id, window=14, months=12)

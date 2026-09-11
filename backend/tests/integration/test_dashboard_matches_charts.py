@@ -13,7 +13,6 @@ import pytest
 from igab.domain import activity_class
 from igab.domain.activity_class import ActivityClass
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
-from igab.services import report_service
 from igab.services.report_service import ReportService
 from tests.report_clock import report_today
 
@@ -118,7 +117,6 @@ class TestBurnRate:
         savings-tagged outflow."""
         widened = (ActivityClass.SPENDING, ActivityClass.SAVINGS)
         monkeypatch.setattr(activity_class, "SPENDING_CLASSES", widened)
-        monkeypatch.setattr(report_service, "SPENDING_CLASSES", widened)
         budget, checking, category = await _budget_with_checking(db_session)
         await seed_system_tags(db_session, budget.id)
         tags = TagRepository(db_session)
