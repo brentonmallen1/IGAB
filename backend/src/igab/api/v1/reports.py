@@ -570,27 +570,26 @@ async def category_history_report(
     category = await category_repo.get(category_id)
     if category is None or category.budget_id != budget_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
-    # "Income categories do not hold money" — the app's own rule, raised by
+    today = date.today()
+    month_list = [add_months(today.replace(day=1), -i) for i in range(months - 1, -1, -1)]
+    # One assembly for the whole span, not one call per month — and
+    # `in_system_group` comes off the row rather than being re-derived here
+    # from the group repository.
+    #
+    # "Income categories do not hold money" is the app's own rule, raised by
     # `BudgetService._require_envelope`. Their `available` is a lifetime
     # carryover the budget page never draws, and this report published it as
     # an envelope balance under a docstring promising the budget page's own
-    # numbers. Their month-by-month ACTIVITY is meaningful and stays; the
-    # figure that is not is served as None rather than as a number.
-    group = await budget_service.category_group_repo.get(category.category_group_id)
-    holds_money = not (group is not None and group.is_system)
-    today = date.today()
-    month_list = [add_months(today.replace(day=1), -i) for i in range(months - 1, -1, -1)]
-    out = []
-    for m in month_list:
-        bal = await budget_service.get_category_balance(category_id, m)
-        out.append(
-            CategoryHistoryMonth(
-                month=m,
-                assigned=bal.assigned,
-                activity=bal.activity,
-                available=bal.available if holds_money else None,
-            )
+    # numbers. Their month-by-month ACTIVITY is meaningful and stays.
+    out = [
+        CategoryHistoryMonth(
+            month=bal.month,
+            assigned=bal.assigned,
+            activity=bal.activity,
+            available=None if bal.in_system_group else bal.available,
         )
+        for bal in await budget_service.category_history(category_id, month_list)
+    ]
     return CategoryHistoryReportResponse(
         category_id=category_id, category_name=category.name, months=out
     )

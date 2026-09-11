@@ -17,8 +17,12 @@ vi.mock('../../../api/reports', () => ({ useReportRange: () => ({ data: range.cu
 vi.mock('../../../stores/appStore', () => ({ useAppStore: () => 'b1' }))
 
 import { DateRangePicker } from './DateRangePicker'
+import { toISODate } from '../../../utils/dateWindow'
 
-const TODAY = new Date().toISOString().slice(0, 10)
+// The component's own formatter, deliberately. `new Date().toISOString()` is
+// the UTC date, so this file failed every evening west of UTC — the same
+// round-trip the picker itself stopped doing, left behind in its test.
+const TODAY = toISODate(new Date())
 
 function mount(onChange = vi.fn()) {
   render(<DateRangePicker startDate="2026-01-01" endDate="2026-01-31" onChange={onChange} />)

@@ -123,3 +123,27 @@ async def test_empty_budget_exports_empty_payloads(db_session):
 
     json_content, _ = await reports.export_transactions(budget.id, None, None, "json")
     assert json.loads(json_content) == []
+
+
+async def test_amounts_are_written_the_way_every_other_export_writes_them(db_session):
+    """`str(Decimal)` wrote the column's stored scale, NUMERIC(12,4), so this
+    file said "-100.0000" where the YNAB export, the budget export and
+    `parse_csv_amount` — the exact inverse of `format_csv_amount` — all speak
+    in two decimals. One money formatter, so a file this app writes is a file
+    this app can read back.
+    """
+    budget, cleared, _pending, _parent = await _setup_with_mixed_rows(db_session)
+    reports = ReportService(db_session)
+
+    content, _ = await reports.export_transactions(
+        budget.id, TODAY - timedelta(days=3), TODAY, "csv"
+    )
+
+    row = next(r for r in csv.DictReader(io.StringIO(content)) if r["id"] == str(cleared.id))
+    assert row["amount"] == "-100.00"
+
+    # The JSON export reads the same column, so it says the same thing.
+    payload, _ = await reports.export_transactions(
+        budget.id, TODAY - timedelta(days=3), TODAY, "json"
+    )
+    assert next(r for r in json.loads(payload) if r["id"] == str(cleared.id))["amount"] == "-100.00"

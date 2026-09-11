@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import TypedDict
 
 import polars as pl
-from sqlalchemy import func, literal_column, select, true
+from sqlalchemy import case, func, literal, literal_column, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -40,7 +40,7 @@ from igab.domain.carryover import available_at, monthly_end_balances
 # uncategorized transfers never do). For category-scoped queries the
 # predicate is vacuously true, keeping one uniform rule.
 from igab.domain.dates import add_months, months_spanned
-from igab.domain.money import quantize_cents
+from igab.domain.money import format_csv_amount, quantize_cents
 from igab.domain.schedule import next_occurrence, subscription_occurrences
 from igab.guide.concepts import (
     ESSENTIALS_WINDOW_DAYS,
@@ -69,7 +69,12 @@ from igab.services.report_basics import (
     class_excluded_note,
     emergency_fund,
 )
-from igab.services.report_stats import payee_breakdown, timeline_rows, volatility_stats
+from igab.services.report_stats import (
+    monthly_account_balances,
+    payee_breakdown,
+    timeline_rows,
+    volatility_stats,
+)
 
 # Report payload shapes.
 #
@@ -391,7 +396,13 @@ class ReportService:
             {
                 "id": [str(r.id) for r in rows],
                 "date": [r.date for r in rows],
-                "amount": [str(r.amount) for r in rows],
+                # `format_csv_amount`, not `str(Decimal)`: the column dtype
+                # is stored NUMERIC(12,4), so `str` wrote "-42.5000" where
+                # every other export in this app writes "-42.50" — and
+                # `parse_csv_amount`, the exact inverse, is what reads these
+                # files back in. An f-string or a bare `str` at a call site is
+                # how the two directions drift.
+                "amount": [format_csv_amount(r.amount) for r in rows],
                 "memo": [r.memo or "" for r in rows],
                 "cleared": [r.cleared for r in rows],
                 "approved": [r.approved for r in rows],
@@ -439,28 +450,21 @@ class ReportService:
         prev_start = add_months(start_date, -1)
         prev_end = start_date - timedelta(days=1)
 
-        # All posted rows for the budget: parent rows feed money flows
-        # (net worth, income/expenses, burn); leaf rows feed the category
-        # breakdown (split children carry the categories).
-        q = select(
-            Transaction.id,
-            Transaction.date,
-            Transaction.amount,
-            Transaction.category_id,
-            Transaction.payee_id,
-            Transaction.transfer_id,
-            Transaction.account_id,
-            Transaction.is_split,
-            Transaction.parent_transaction_id,
-            # Only ever read on the LEAF-filtered frame below — the classifier
-            # is defined on leaf rows, and a split parent carries no category.
-            ACTIVITY_CLASS.label("cls"),
-        ).where(
+        # This used to pull EVERY posted row in the budget into Python — id,
+        # amounts, flags and the class join — to answer three questions: two
+        # scalar sums and a top-three. A household five years in was shipping
+        # tens of thousands of rows over the wire for a dashboard that draws
+        # eleven numbers, and the frame was rebuilt on every page load.
+        #
+        # Three narrow queries instead. The row set each one reads is stated
+        # where it is asked for rather than re-derived from one wide frame,
+        # which is also what made the old `cash_flow` column able to drift.
+        posted = (
             Transaction.budget_id == budget_id,
             NOT_DELETED,
             POSTED,
         )
-        all_txns = (await self.session.execute(apply_class_joins(q))).all()
+        any_row = (await self.session.execute(select(literal(1)).where(*posted).limit(1))).first()
 
         # Category info for spending
         cat_q = (
@@ -479,7 +483,7 @@ class ReportService:
         )
         cats = {str(r.id): r for r in (await self.session.execute(cat_q)).all()}
 
-        if not all_txns:
+        if any_row is None:
             # A budget with no transactions can still own things. This returned
             # a flat zero, so a household that had stated a house value and
             # entered its mortgage as an unmanaged liability read net worth 0
@@ -489,56 +493,38 @@ class ReportService:
             asset_now, _ = await self._asset_values(budget_id)
             return _empty_dashboard(net_worth=asset_now - unmanaged_now)
 
-        df = pl.DataFrame(
-            {
-                "id": [str(r.id) for r in all_txns],
-                "date": [r.date for r in all_txns],
-                "amount": [float(r.amount) for r in all_txns],
-                "account_id": [str(r.account_id) for r in all_txns],
-                "category_id": [str(r.category_id) if r.category_id else "" for r in all_txns],
-                "is_transfer": [r.transfer_id is not None for r in all_txns],
-                "is_split": [r.is_split for r in all_txns],
-                "is_parent_row": [r.parent_transaction_id is None for r in all_txns],
-                "cls": [r.cls for r in all_txns],
-            },
-            schema_overrides={
-                "date": pl.Date,
-                "amount": pl.Float64,
-                "is_transfer": pl.Boolean,
-                "is_split": pl.Boolean,
-                "is_parent_row": pl.Boolean,
-            },
-        )
-
-        # A `cash_flow` column used to be derived here — a Polars restatement of
-        # CASH_FLOW_ROW that had drifted from it twice over: it knew a transfer
-        # only by `transfer_id`, so every unpaired YNAB leg read as ordinary
-        # spending (the 1,117-row bug txn_filters.py documents), and it dropped
-        # the counterpart-off-budget arm, so an uncategorized mortgage transfer
-        # was excluded from cash flow when that case is the arm's whole point.
-        # Nothing read it. Dead code encoding a wrong rule is worse than no
-        # code, because the next reader will use it.
-
-        # Parent rows carry the account-level amounts (split children would
-        # double-count); leaf rows carry the categories.
-        pdf = df.filter(pl.col("is_parent_row"))
-
         # Net worth spans EVERY account — matching net_worth_history, which
         # this card must never disagree with. Assets minus liabilities reduces
         # to the plain sum of all ledgers (transfers cancel), minus unmanaged.
-        # Bounded at today. This summed EVERY posted row with no upper bound,
-        # while net_worth_history bounds each point at its month end — so a row
-        # dated in a later month was in the card and not in the chart, and the
-        # two are asserted to agree. Net worth "now" is not money that has not
+        #
+        # Parent rows only: a split's children would double-count it. Bounded
+        # at today — this summed every posted row with no upper bound while
+        # net_worth_history bounds each point at its month end, so a row dated
+        # in a later month was in the card and not in the chart, and the two
+        # are asserted to agree. Net worth "now" is not money that has not
         # moved yet.
-        net_worth = Decimal(
-            str(pdf.filter(pl.col("date") <= today).select(pl.col("amount").sum()).item() or 0)
-        )
-
-        # Previous net worth: sum up to start_date
-        net_worth_prev = Decimal(
-            str(pdf.filter(pl.col("date") < start_date).select(pl.col("amount").sum()).item() or 0)
-        )
+        #
+        # Both sums in one row: "now" and "as of the start of the window" read
+        # the same rows with different bounds, and asking twice would walk the
+        # register twice.
+        totals = (
+            await self.session.execute(
+                select(
+                    func.coalesce(
+                        func.sum(case((Transaction.date <= today, Transaction.amount), else_=0)),
+                        0,
+                    ).label("now"),
+                    func.coalesce(
+                        func.sum(
+                            case((Transaction.date < start_date, Transaction.amount), else_=0)
+                        ),
+                        0,
+                    ).label("prev"),
+                ).where(*posted, PARENT_ROW)
+            )
+        ).one()
+        net_worth = Decimal(str(totals.now or 0))
+        net_worth_prev = Decimal(str(totals.prev or 0))
 
         # Unmanaged liabilities reduce net worth here exactly as they do in
         # net_worth_history, and stated asset values raise it the same way —
@@ -643,36 +629,47 @@ class ReportService:
         # screens up claiming every figure below it uses the activity-class
         # partition, so a transfer to a brokerage and a mortgage principal
         # payment were listed as the household's biggest spending.
-        cat_df = df.filter(
-            ~pl.col("is_split")
-            & (pl.col("amount") < 0)
-            & (pl.col("date") >= start_date)
-            & (pl.col("date") <= end_date)
-            & (pl.col("category_id") != "")
-            & pl.col("cls").is_in([c.value for c in SPENDING_CLASSES])
-        )
-        top_cats: list[dict] = []
-        if not cat_df.is_empty():
-            # No `.head(3)` here: the lookup below can drop a row, and taking
-            # the top 3 first meant the card silently showed fewer than 3.
-            cat_agg = (
-                cat_df.group_by("category_id")
-                .agg(pl.col("amount").abs().sum().alias("total"))
-                .sort("total", descending=True)
-            )
-            for row in cat_agg.iter_rows(named=True):
-                if len(top_cats) == 3:
-                    break
-                cat_info = cats.get(row["category_id"])
-                if cat_info:
-                    top_cats.append(
-                        {
-                            "id": row["category_id"],
-                            "name": cat_info.name,
-                            "group_name": cat_info.group_name,
-                            "total": Decimal(str(round(row["total"], 4))),
-                        }
+        # Grouped in SQL over the window, rather than filtered out of a frame
+        # holding the whole register. No ON_BUDGET_ACCOUNT term, deliberately:
+        # a categorized transfer leg IS off-budget spending and belongs here.
+        cat_totals = (
+            await self.session.execute(
+                apply_class_joins(
+                    select(
+                        Transaction.category_id,
+                        func.sum(Transaction.amount).label("total"),
                     )
+                    .where(
+                        *posted,
+                        LEAF,
+                        Transaction.amount < 0,
+                        Transaction.date >= start_date,
+                        Transaction.date <= end_date,
+                        Transaction.category_id.isnot(None),
+                        ACTIVITY_CLASS.in_([c.value for c in SPENDING_CLASSES]),
+                    )
+                    .group_by(Transaction.category_id)
+                    # Most negative first — these are all outflows.
+                    .order_by(func.sum(Transaction.amount))
+                )
+            )
+        ).all()
+        top_cats: list[dict] = []
+        # No `LIMIT 3` on the query: the lookup below can drop a row, and
+        # taking the top 3 first meant the card silently showed fewer than 3.
+        for row in cat_totals:
+            if len(top_cats) == 3:
+                break
+            cat_info = cats.get(str(row.category_id))
+            if cat_info:
+                top_cats.append(
+                    {
+                        "id": str(row.category_id),
+                        "name": cat_info.name,
+                        "group_name": cat_info.group_name,
+                        "total": quantize_cents(-row.total),
+                    }
+                )
 
         return {
             "net_worth": net_worth,
@@ -880,18 +877,15 @@ class ReportService:
             schema_overrides={"date": pl.Date, "amount": pl.Float64},
         )
 
+        # Clamped: the current month's last day is a future date, and the
+        # newest point is "net worth now".
+        grid = [_subtract_months(first_of_month, i) for i in range(months - 1, -1, -1)]
+        month_ends = [min(_last_day(m), today) for m in grid]
+        per_account = monthly_account_balances(df, grid, month_ends)
+
         results = []
-        for i in range(months - 1, -1, -1):
-            month_start = _subtract_months(first_of_month, i)
-            # Clamped: the current month's last day is a future date, and the
-            # newest point is "net worth now".
-            month_end = min(_last_day(month_start), today)
-            month_df = df.filter(pl.col("date") <= month_end)
-
-            acct_balances = month_df.group_by(
-                ["account_id", "account_name", "account_type", "classification"]
-            ).agg(pl.col("amount").sum().alias("balance"))
-
+        for i, month_start in enumerate(grid):
+            month_end = month_ends[i]
             snapshots = []
             total_assets = Decimal("0")
             liability_balances = Decimal("0")
@@ -900,18 +894,22 @@ class ReportService:
             # overdrawn checking account NETS ASSETS DOWN (the old bucketing
             # counted it in neither pile) and an overpaid credit card nets
             # liabilities down. net_worth == assets - liabilities always.
-            for row in acct_balances.iter_rows(named=True):
-                bal = Decimal(str(round(row["balance"], 4)))
+            for account in per_account:
+                if i < account["first_month"]:
+                    # No rows yet: an account that opens in March is absent
+                    # from February's stack rather than drawn at zero.
+                    continue
+                bal = Decimal(str(round(account["running"][i], 4)))
                 snapshots.append(
                     {
-                        "account_id": row["account_id"],
-                        "account_name": row["account_name"],
-                        "account_type": row["account_type"],
-                        "classification": row["classification"],
+                        "account_id": account["account_id"],
+                        "account_name": account["account_name"],
+                        "account_type": account["account_type"],
+                        "classification": account["classification"],
                         "balance": bal,
                     }
                 )
-                if row["classification"] == "liability":
+                if account["classification"] == "liability":
                     liability_balances += bal
                 else:
                     total_assets += bal
@@ -919,10 +917,15 @@ class ReportService:
             # Unmanaged debts join the liability side: current total for the
             # current month, snapshot step-function for history. Stated asset
             # values join the asset side the same way.
+            #
+            # The NEWEST point is the last of the grid — the loop used to count
+            # months down to zero, so reading `i == 0` after the grid was
+            # turned the right way round gave the oldest point today's debts.
+            current = i == len(grid) - 1
             unmanaged = (
-                unmanaged_now if i == 0 else self._unmanaged_total_at(unmanaged_series, month_end)
+                unmanaged_now if current else self._unmanaged_total_at(unmanaged_series, month_end)
             )
-            asset_total = asset_now if i == 0 else self._asset_total_at(asset_series, month_end)
+            asset_total = asset_now if current else self._asset_total_at(asset_series, month_end)
             total_liabilities = -liability_balances + unmanaged
             total_assets += asset_total
 

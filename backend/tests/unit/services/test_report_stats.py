@@ -8,9 +8,10 @@ on paper.
 from datetime import date
 from decimal import Decimal
 
+import polars as pl
 import pytest
 
-from igab.services.report_stats import volatility_stats
+from igab.services.report_stats import monthly_account_balances, volatility_stats
 
 
 class Row:
@@ -127,3 +128,84 @@ class TestTheAmortizedReading:
         assert amortized["mean"] == raw["mean"]
         assert amortized["std_dev"] == raw["std_dev"]
         assert amortized["months_included"] == raw["months_included"]
+
+
+class TestMonthlyAccountBalances:
+    """`net_worth_history` used to re-filter and re-group the whole register
+    once per point. These pin what the single pass has to reproduce."""
+
+    @staticmethod
+    def frame(rows: list[tuple[date, float, str]]) -> pl.DataFrame:
+        return pl.DataFrame(
+            {
+                "date": [r[0] for r in rows],
+                "amount": [r[1] for r in rows],
+                "account_id": [r[2] for r in rows],
+                "account_name": [r[2].title() for r in rows],
+                "account_type": ["checking" for _ in rows],
+                "classification": ["asset" for _ in rows],
+            },
+            schema_overrides={"date": pl.Date, "amount": pl.Float64},
+        )
+
+    def test_a_balance_is_cumulative_across_the_window(self):
+        grid = months((2026, 1), (2026, 2), (2026, 3))
+        ends = [date(2026, 1, 31), date(2026, 2, 28), date(2026, 3, 31)]
+        df = self.frame(
+            [
+                (date(2026, 1, 10), 1000.0, "checking"),
+                (date(2026, 2, 10), -400.0, "checking"),
+                (date(2026, 3, 10), 250.0, "checking"),
+            ]
+        )
+        (account,) = monthly_account_balances(df, grid, ends)
+        assert account["running"] == [1000.0, 600.0, 850.0]
+        assert account["first_month"] == 0
+
+    def test_rows_older_than_the_window_open_the_first_month(self):
+        # The opening point is everything that happened up to then, not just
+        # that month's activity — a five-year-old savings account does not
+        # start the chart at zero.
+        grid = months((2026, 2), (2026, 3))
+        ends = [date(2026, 2, 28), date(2026, 3, 31)]
+        df = self.frame(
+            [
+                (date(2021, 6, 1), 5000.0, "savings"),
+                (date(2026, 3, 2), 100.0, "savings"),
+            ]
+        )
+        (account,) = monthly_account_balances(df, grid, ends)
+        assert account["running"] == [5000.0, 5100.0]
+
+    def test_an_account_with_no_rows_yet_is_absent_not_zero(self):
+        grid = months((2026, 1), (2026, 2))
+        ends = [date(2026, 1, 31), date(2026, 2, 28)]
+        df = self.frame(
+            [
+                (date(2026, 1, 5), 300.0, "checking"),
+                (date(2026, 2, 5), 900.0, "brokerage"),
+            ]
+        )
+        by_id = {a["account_id"]: a for a in monthly_account_balances(df, grid, ends)}
+        assert by_id["checking"]["first_month"] == 0
+        # February's index — January's stack must not carry a brokerage tile.
+        assert by_id["brokerage"]["first_month"] == 1
+
+    def test_rows_after_the_last_month_end_are_dropped(self):
+        # The newest point is clamped to today, so a future-dated row is not
+        # part of "net worth now".
+        grid = months(
+            (2026, 1),
+        )
+        ends = [date(2026, 1, 20)]
+        df = self.frame(
+            [
+                (date(2026, 1, 5), 300.0, "checking"),
+                (date(2026, 1, 25), 900.0, "checking"),
+            ]
+        )
+        (account,) = monthly_account_balances(df, grid, ends)
+        assert account["running"] == [300.0]
+
+    def test_an_empty_grid_claims_nothing(self):
+        assert monthly_account_balances(self.frame([]), [], []) == []
