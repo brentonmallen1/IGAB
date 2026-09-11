@@ -218,24 +218,16 @@ async def test_subscription_charges_project_monthly_from_last_charge(db_session)
     streaming = await _subscription_category(db_session, budget, "Streaming")
     netflix = await create_payee(db_session, budget, "Northstar Stream")
 
-    await create_transaction(
-        db_session,
-        budget,
-        checking,
-        "-15.99",
-        TODAY - timedelta(days=55),
-        payee=netflix,
-        category=streaming,
-    )
-    await create_transaction(
-        db_session,
-        budget,
-        checking,
-        "-15.99",
-        TODAY - timedelta(days=25),
-        payee=netflix,
-        category=streaming,
-    )
+    # Billed mid-month: the last charge is the most recent billing day before
+    # today, the one before it a calendar month earlier. Never today itself,
+    # so the first projected charge is a move on the path, not its start.
+    last_charge = TODAY.replace(day=14 if TODAY.day == 15 else 15)
+    if last_charge >= TODAY:
+        last_charge = add_months(last_charge, -1)
+    for charged in (add_months(last_charge, -1), last_charge):
+        await create_transaction(
+            db_session, budget, checking, "-15.99", charged, payee=netflix, category=streaming
+        )
     # A pending auth must shift neither the typical amount nor the cadence
     await create_transaction(
         db_session,
@@ -248,22 +240,32 @@ async def test_subscription_charges_project_monthly_from_last_charge(db_session)
         cleared="pending",
     )
 
-    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=30)
-
-    # Two charges 30 days apart, so the observed cadence is monthly — and
-    # "monthly" means a CALENDAR month from the last charge, keeping the
+    # "Monthly" means a CALENDAR month from the last charge, keeping the
     # subscription on its billing day. This used to step a flat 30 days, which
     # walks a monthly bill backwards through the calendar and fits thirteen
     # charges into a year. Derived rather than hardcoded, because the answer
-    # depends on the length of the month the test runs in.
-    last_charge = TODAY - timedelta(days=25)
-    next_charge = add_months(last_charge, 1)
+    # depends on the month the test runs in.
+    #
+    # Two charges, not one. A single calendar month is 30 days long a third of
+    # the time, and on those days a 30-day step gave the same date; no two
+    # consecutive months are both 30 days, so the second charge always tells
+    # the two apart. The guard below fails the test if that ever stops holding.
+    charges = [add_months(last_charge, 1), add_months(last_charge, 2)]
+    assert charges != [last_charge + timedelta(days=30), last_charge + timedelta(days=60)]
+    horizon = (charges[-1] - TODAY).days
+
+    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=horizon)
+
+    # The path carries both charges; the event list stops at 30 days out.
+    assert _charged_dates(data["points"]) == charges
     assert [(e["date"], e["amount"], e["source"]) for e in data["events"]] == [
-        (next_charge, Decimal("-15.99"), "subscription"),
+        (charge, Decimal("-15.99"), "subscription")
+        for charge in charges
+        if charge <= TODAY + timedelta(days=30)
     ]
     start = data["start_balance"]
     assert start == Decimal("4968.02")  # 5000 - two posted charges
-    assert data["points"][(next_charge - TODAY).days]["deterministic"] == start - Decimal("15.99")
+    assert data["points"][horizon]["deterministic"] == start - Decimal("31.98")
 
 
 async def test_scheduled_end_date_and_event_cap_respected(db_session):
