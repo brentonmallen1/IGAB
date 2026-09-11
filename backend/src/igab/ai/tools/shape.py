@@ -90,16 +90,21 @@ def ranked(
     fact. Omit it and the note still forbids guessing, which is the honest
     answer for a ranking that never counted.
     """
-    counted = total_rows is not None
-    note = (
-        f"These are only the {len(rows)} largest by {measure}, not every row. "
-        "Any total above covers them all, not just the ones shown. "
-    )
-    note += (
-        f"There were {total_rows} in total."
-        if counted
-        else "Do not state how many there were in total — this result does not say."
-    )
+    truncated = total_rows is None or total_rows > len(rows)
+    if not truncated:
+        # A counted ranking that fits whole: saying "not every row" here made
+        # the model claim payees that do not exist.
+        note = f"These are all {len(rows)}, ranked by {measure}."
+    else:
+        note = (
+            f"These are only the {len(rows)} largest by {measure}, not every row. "
+            "Any total above covers them all, not just the ones shown. "
+        )
+        note += (
+            f"There were {total_rows} in total."
+            if total_rows is not None
+            else "Do not state how many there were in total — this result does not say."
+        )
     return {
         "rows": rows,
         "shown": len(rows),
@@ -107,7 +112,7 @@ def ranked(
         # None unless the caller counted: inventing a number here is exactly
         # what went wrong.
         "total_rows": total_rows,
-        "truncated": not counted or total_rows > len(rows),
+        "truncated": truncated,
         **({"total_amount": money(total_amount)} if total_amount is not None else {}),
         "note": note,
     }
