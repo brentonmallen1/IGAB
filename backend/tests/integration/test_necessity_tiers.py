@@ -45,15 +45,25 @@ from .factories import (
 )
 
 D = Decimal
-TODAY = date.today()
+
+
+# Dates are read when a test RUNS, from the clock the services read
+# (`date.today()`), never at import. A module-level TODAY was fixed at
+# collection while `cost_of_living` and `essentials_summary` read the clock at
+# run time, so a run collected at 23:59 on a month's last day and executed
+# after midnight put every fixture row two months back — outside the months=1
+# window — and every served figure read 0.00.
+def _today() -> date:
+    return date.today()
 
 
 def _first_of_last_month() -> date:
-    first = TODAY.replace(day=1)
-    return (first - timedelta(days=1)).replace(day=1)
+    return add_months(_today().replace(day=1), -1)
 
 
-LAST_MONTH = _first_of_last_month() + timedelta(days=5)
+def _last_month() -> date:
+    """Day 6 of last month: inside the last complete month whatever today is."""
+    return _first_of_last_month() + timedelta(days=5)
 
 
 @dataclass(frozen=True)
@@ -96,11 +106,12 @@ async def _household(db_session):
     await tags.set_category_tags(streaming.id, [by_key["cost_of_living"].id])
     # `car` is deliberately untagged.
 
-    await create_transaction(db_session, budget, checking, "-1200.00", LAST_MONTH, category=rent)
-    await create_transaction(db_session, budget, checking, "-200.00", LAST_MONTH, category=electric)
-    await create_transaction(db_session, budget, checking, "-60.00", LAST_MONTH, category=streaming)
+    last_month = _last_month()
+    await create_transaction(db_session, budget, checking, "-1200.00", last_month, category=rent)
+    await create_transaction(db_session, budget, checking, "-200.00", last_month, category=electric)
+    await create_transaction(db_session, budget, checking, "-60.00", last_month, category=streaming)
     await create_transfer(
-        db_session, budget, checking, car_loan, "340.00", LAST_MONTH, category=car
+        db_session, budget, checking, car_loan, "340.00", last_month, category=car
     )
     return budget, checking, bills, tags, by_key
 
@@ -110,7 +121,7 @@ class TestTheTwoTiers:
         budget, *_ = await _household(db_session)
         repo = TransactionRepository(db_session)
         total, basis = await repo.essential_spend(
-            budget.id, _first_of_last_month(), TODAY, tier=NecessityTier.ESSENTIAL
+            budget.id, _first_of_last_month(), _today(), tier=NecessityTier.ESSENTIAL
         )
         assert -total == EXPECTED.essentials
         assert basis == "tag"
@@ -119,7 +130,7 @@ class TestTheTwoTiers:
         budget, *_ = await _household(db_session)
         repo = TransactionRepository(db_session)
         total, basis = await repo.essential_spend(
-            budget.id, _first_of_last_month(), TODAY, tier=NecessityTier.COST_OF_LIVING
+            budget.id, _first_of_last_month(), _today(), tier=NecessityTier.COST_OF_LIVING
         )
         assert -total == EXPECTED.cost_of_living
         assert basis == "tag"
@@ -133,10 +144,10 @@ class TestTheTwoTiers:
         budget, _checking, _bills, tags, by_key = await _household(db_session)
         repo = TransactionRepository(db_session)
         wide, _ = await repo.essential_spend(
-            budget.id, _first_of_last_month(), TODAY, tier=NecessityTier.COST_OF_LIVING
+            budget.id, _first_of_last_month(), _today(), tier=NecessityTier.COST_OF_LIVING
         )
         lean, _ = await repo.essential_spend(
-            budget.id, _first_of_last_month(), TODAY, tier=NecessityTier.ESSENTIAL
+            budget.id, _first_of_last_month(), _today(), tier=NecessityTier.ESSENTIAL
         )
         # 340 of car payment plus 60 of streaming.
         assert -wide - -lean == EXPECTED.gap
@@ -151,15 +162,15 @@ class TestTheTwoTiers:
         surprise = await create_category(db_session, budget, bills, "Water")
         await tags.set_category_tags(surprise.id, [by_key["essential"].id])
         await create_transaction(
-            db_session, budget, checking, "-45.00", LAST_MONTH, category=surprise
+            db_session, budget, checking, "-45.00", _last_month(), category=surprise
         )
 
         repo = TransactionRepository(db_session)
         wide, _ = await repo.essential_spend(
-            budget.id, _first_of_last_month(), TODAY, tier=NecessityTier.COST_OF_LIVING
+            budget.id, _first_of_last_month(), _today(), tier=NecessityTier.COST_OF_LIVING
         )
         lean, _ = await repo.essential_spend(
-            budget.id, _first_of_last_month(), TODAY, tier=NecessityTier.ESSENTIAL
+            budget.id, _first_of_last_month(), _today(), tier=NecessityTier.ESSENTIAL
         )
         assert -lean == EXPECTED.essentials + D("45.00")
         assert -wide == EXPECTED.cost_of_living + D("45.00")
@@ -223,7 +234,7 @@ class TestTheServedReport:
         inflow = await create_category(db_session, budget, sysgroup, "Ready to Assign")
         payserv = await create_payee(db_session, budget, "Northwind Payserv")
         await create_transaction(
-            db_session, budget, checking, "3600.00", LAST_MONTH, payee=payserv, category=inflow
+            db_session, budget, checking, "3600.00", _last_month(), payee=payserv, category=inflow
         )
 
         report = await cost_of_living(db_session, budget.id, months=1)
@@ -245,13 +256,13 @@ class TestTheServedReport:
         water = await create_category(db_session, budget, bills, "Water")
         await tags.set_category_tags(water.id, [by_key["essential"].id])
         await create_transaction(
-            db_session, budget, checking, "3600.00", LAST_MONTH, payee=payserv, category=inflow
+            db_session, budget, checking, "3600.00", _last_month(), payee=payserv, category=inflow
         )
         # The running month: a paycheck and an essential bill. The window is
         # complete months, so neither reaches a card, a group, a total or a
         # ratio. Each of the four figures below once had its own reading of the
         # running month; reverting any one of them moves it.
-        today = date.today()
+        today = _today()
         await create_transaction(
             db_session, budget, checking, "3600.00", today, payee=payserv, category=inflow
         )
@@ -291,7 +302,7 @@ class TestCostOfLivingQuotesTheEssentialsReport:
         essential = await tags.get_system_tag(budget.id, "essential")
         for cat in (rent, insurance):
             await tags.set_category_tags(cat.id, [essential.id])
-        this_month = TODAY.replace(day=1)
+        this_month = _today().replace(day=1)
         for n in range(1, 13):
             when = add_months(this_month, -n) + timedelta(days=2)
             await create_transaction(db_session, budget, checking, "-3000.00", when, category=rent)
@@ -302,7 +313,7 @@ class TestCostOfLivingQuotesTheEssentialsReport:
                 db_session, budget, checking, "-1200.00", when, category=insurance
             )
         # And this month's rent, outside both windows.
-        await create_transaction(db_session, budget, checking, "-3000.00", TODAY, category=rent)
+        await create_transaction(db_session, budget, checking, "-3000.00", _today(), category=rent)
         return budget
 
     async def test_steady_spending(self, db_session):
@@ -348,6 +359,7 @@ class TestTheEmergencyFundStaysLean:
 
 async def _rent_and_streaming(db_session, *, tag_streaming: bool):
     """Rent 1,200 and Streaming 60 last month, nothing tagged Essential."""
+    last_month = _last_month()
     user = await create_user(db_session)
     budget = await create_budget(db_session, user)
     checking = await create_account(db_session, budget, "Harborstone Checking")
@@ -359,8 +371,8 @@ async def _rent_and_streaming(db_session, *, tag_streaming: bool):
         tags = TagRepository(db_session)
         col = await tags.get_system_tag(budget.id, "cost_of_living")
         await tags.set_category_tags(streaming.id, [col.id])
-    await create_transaction(db_session, budget, checking, "-1200.00", LAST_MONTH, category=rent)
-    await create_transaction(db_session, budget, checking, "-60.00", LAST_MONTH, category=streaming)
+    await create_transaction(db_session, budget, checking, "-1200.00", last_month, category=rent)
+    await create_transaction(db_session, budget, checking, "-60.00", last_month, category=streaming)
     return budget
 
 
@@ -402,7 +414,7 @@ class TestLoanMoneyComingInIsNotACost:
         loan = await create_account(
             db_session, budget, "Cascade Point Personal Loan", account_type="loan", on_budget=False
         )
-        await create_transfer(db_session, budget, loan, checking, "5000.00", LAST_MONTH)
+        await create_transfer(db_session, budget, loan, checking, "5000.00", _last_month())
 
         report = await cost_of_living(db_session, budget.id, months=1)
 
@@ -433,11 +445,12 @@ async def _drill_world(db_session, owner=None):
     essential = await tags.get_system_tag(budget.id, "essential")
     await tags.set_category_tags(rent.id, [essential.id])
 
-    await create_transaction(db_session, budget, checking, "-1200.00", LAST_MONTH, category=rent)
-    await create_transfer(db_session, budget, checking, loan, "340.00", LAST_MONTH, category=car)
-    await create_transaction(db_session, budget, checking, "-80.00", LAST_MONTH, category=car)
-    await create_transfer(db_session, budget, checking, loan, "340.00", LAST_MONTH)
-    await create_transaction(db_session, budget, checking, "-75.00", LAST_MONTH)
+    last_month = _last_month()
+    await create_transaction(db_session, budget, checking, "-1200.00", last_month, category=rent)
+    await create_transfer(db_session, budget, checking, loan, "340.00", last_month, category=car)
+    await create_transaction(db_session, budget, checking, "-80.00", last_month, category=car)
+    await create_transfer(db_session, budget, checking, loan, "340.00", last_month)
+    await create_transaction(db_session, budget, checking, "-75.00", last_month)
     return budget
 
 
