@@ -148,6 +148,35 @@ const NO_HAND_ROLLED_VIEWPORT_MATH = [
   },
 ]
 
+/**
+ * A report's month and day labels come from `useFormatters()` —
+ * `formatMonthShort`, `formatDayMonth`, `formatMonth`, `formatDate` — never
+ * `toLocaleDateString`. Savings, Subscriptions, Cost of Living and Cash
+ * Projection each wrote `new Date(month).toLocaleDateString('en-US', …)`:
+ * a date-only string parses as UTC midnight, so west of Greenwich every label
+ * read one month early and January read "Dec 25", and 'en-US' ignored the
+ * budget's date-format setting. The chart data builders render under jsdom
+ * at zero size, so no test sees an axis label; this is the guard. Scoped to
+ * the reports, where the copies were.
+ */
+const NO_LOCALE_DATE_LABEL = {
+  selector: "CallExpression[callee.property.name='toLocaleDateString']",
+  message:
+    'Report date labels come from useFormatters() (formatMonthShort, formatDayMonth, ' +
+    'formatMonth, formatDate): toLocaleDateString on a date-only string reads UTC midnight, ' +
+    'a month early west of Greenwich, and ignores the budget’s date format.',
+}
+
+/** Every file's restricted syntax. A later block that sets the rule REPLACES
+ * it, so a block that adds a selector spreads this rather than respelling it. */
+const RESTRICTED_SYNTAX = [
+  NO_BARE_PARSE_FLOAT,
+  NO_UNFORMATTED_CHART_TOOLTIP,
+  ...NO_UNFORMATTED_NUMERIC_AXIS,
+  NO_UTC_DATE_SLICE,
+  ...NO_HAND_ROLLED_VIEWPORT_MATH,
+]
+
 export default defineConfig([
   globalIgnores(['dist']),
   {
@@ -169,15 +198,12 @@ export default defineConfig([
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },
       ],
-      'no-restricted-syntax': [
-        'error',
-        NO_BARE_PARSE_FLOAT,
-        NO_UNFORMATTED_CHART_TOOLTIP,
-        ...NO_UNFORMATTED_NUMERIC_AXIS,
-        NO_UTC_DATE_SLICE,
-        ...NO_HAND_ROLLED_VIEWPORT_MATH,
-      ],
+      'no-restricted-syntax': ['error', ...RESTRICTED_SYNTAX],
     },
+  },
+  {
+    files: ['src/components/reports/**/*.{ts,tsx}'],
+    rules: { 'no-restricted-syntax': ['error', ...RESTRICTED_SYNTAX, NO_LOCALE_DATE_LABEL] },
   },
   {
     // The money layer itself. These are the implementations the rule points
