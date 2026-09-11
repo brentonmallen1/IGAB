@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import {
   Bar,
   BarChart,
@@ -32,7 +32,12 @@ export function VolatilityReport({ budgetId }: Props) {
   const moneyAxis = useMoneyAxis()
   const setDrillDown = useReportStore((s) => s.setDrillDown)
   const months = useReportMonths()
-  const { data, isLoading, isError, error, refetch } = useVolatilityReport(budgetId, months)
+  const [amortize, setAmortize] = useState(false)
+  const { data, isLoading, isError, error, refetch } = useVolatilityReport(
+    budgetId,
+    months,
+    amortize
+  )
   const captureRef = useRef<HTMLDivElement>(null)
 
   // Same window the backend aggregates over: first-of-month (months-1) ago → today
@@ -79,6 +84,19 @@ export function VolatilityReport({ budgetId }: Props) {
             spike and drop month to month. These are candidates for a bigger buffer or a closer look
             at what drives the spikes.
           </p>
+          <p>
+            <strong>Fewer, bigger payments read as volatile</strong>, and that is not a mistake: a
+            month with nothing spent is a zero, so an annual insurance premium shows a wide range
+            and a low mean. Its cost is steady; only its timing is lumpy.
+          </p>
+          <p>
+            <strong>Amortize lumpy charges</strong> tells those apart. It spreads each charge
+            forward over the months until the next one, so a bill of the same size every six months
+            reads flat — and a category whose cost genuinely changed still shows a range. Months
+            before a category&apos;s first charge stay empty rather than being back-filled, and the
+            last charge spreads to the end of the window, which reads a little high for a bill paid
+            recently.
+          </p>
           <p>Only categories with at least 2 months of data are shown.</p>
           <ReportScopeNote scope="categories" />
         </ReportInfoButton>
@@ -86,6 +104,16 @@ export function VolatilityReport({ budgetId }: Props) {
           Mean monthly spending with min/max range. High variation = unstable spending.
         </p>
         <div className="flex-row ms-auto">
+          <label className="report-toggle">
+            <input
+              type="checkbox"
+              checked={amortize}
+              onChange={(e) => setAmortize(e.target.checked)}
+            />
+            <span title="A bill paid twice a year has a steady cost and lumpy timing. Spreading each charge forward over the months until the next one separates that from a category whose cost genuinely swings.">
+              Amortize lumpy charges
+            </span>
+          </label>
           <ReportRangeSelect />
           <ReportExportButton
             reportId="volatility"

@@ -277,12 +277,12 @@ export function useVarianceReport(budgetId: string | null, months = 12) {
 
 // ─── Volatility ────────────────────────────────────────────────────────────
 
-export function useVolatilityReport(budgetId: string | null, months = 12) {
+export function useVolatilityReport(budgetId: string | null, months = 12, amortize = false) {
   return useQuery({
-    queryKey: [ROOT.reports, 'volatility', budgetId, months],
+    queryKey: [ROOT.reports, 'volatility', budgetId, months, amortize],
     queryFn: async () => {
       const { data } = await apiClient.get<VolatilityReport>(`/${budgetId}/reports/volatility`, {
-        params: { months },
+        params: { months, amortize },
       })
       return data
     },

@@ -1806,6 +1806,7 @@ class ReportService:
         self,
         budget_id: uuid.UUID,
         months: int = 12,
+        amortize: bool = False,
     ) -> list[dict]:
         today = date.today()
         first_of_month = today.replace(day=1)
@@ -1844,7 +1845,7 @@ class ReportService:
             )
         )
         rows = (await self.session.execute(q)).all()
-        return volatility_stats(rows, _months_in_range(start, end))
+        return volatility_stats(rows, _months_in_range(start, end), amortize=amortize)
 
     @staticmethod
     def _spending_query(
