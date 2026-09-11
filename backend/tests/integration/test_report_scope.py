@@ -453,6 +453,26 @@ class TestMalformedIdsAreRefused:
         assert resp.status_code == 400, resp.text
         assert "Malformed id" in resp.text
 
+    @pytest.mark.parametrize(
+        ("path", "param"),
+        [
+            ("/accounts/{account}/transactions", "category_ids"),
+            ("/accounts/{account}/transactions", "payee_ids"),
+            ("/{budget}/reports/payee-analysis", "payee_ids"),
+            ("/{budget}/reports/payee-analysis", "account_ids"),
+        ],
+    )
+    async def test_the_other_id_lists_refuse_it_too(self, db_session, api_client, path, param):
+        """The account listing parsed its ids with bare `uuid.UUID()` — a 500 —
+        and payee-analysis answered 200 with no payees at all. Both read the
+        one parser now (PR188-13)."""
+        budget, *_ = await _make_world(db_session, api_client.test_user)
+        account = await create_account(db_session, budget)
+        url = f"/api/v1{path.format(budget=budget.id, account=account.id)}?{param}=oops"
+        resp = await api_client.get(url)
+        assert resp.status_code == 400, f"{url} -> {resp.status_code} {resp.text}"
+        assert "Malformed id" in resp.text
+
     async def test_one_bad_id_among_good_ones_is_still_refused(self, db_session, api_client):
         budget, groceries, *_ = await _make_world(db_session, api_client.test_user)
         resp = await api_client.get(
