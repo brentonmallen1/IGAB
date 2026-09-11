@@ -22,6 +22,7 @@ from decimal import Decimal
 import pytest
 
 from igab.db.models import BudgetMove
+from igab.domain.dates import month_end
 from igab.domain.drains import GONE_LABEL, TBA_LABEL
 from igab.repositories.import_anchor_repo import anchor_rows
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
@@ -292,6 +293,29 @@ async def test_current_balance_equals_the_budget_pages_available(db_session):
 
     report = await ReportService(db_session).savings_report(budget.id, months=6)
 
+    assert report["categories"][0]["current_balance"] == await _page_available(
+        db_session, budget, fund, TODAY
+    )
+
+
+async def test_a_row_later_this_month_moves_the_balance_as_it_moves_the_page(db_session):
+    """Activity runs to the month's last day, not to today — the Budget page's
+    own cutoff (`get_budget_summary` reads the whole month). The report once
+    stopped at today, so a posted row dated later this month split the two:
+    the report read 500 while the page read 380. Every other fixture date is
+    a first of month, so nothing else here can tell the two cutoffs apart.
+    """
+    last_day = month_end(TODAY)
+    if last_day == TODAY:
+        pytest.skip("on a month's last day no row can be later this month")
+    budget, checking, group, tag_repo = await _setup(db_session)
+    fund = await _tagged_category(db_session, budget, group, tag_repo, "Car Repair", "savings")
+    await create_budget_assignment(db_session, budget, fund, months_ago(0), "500.00")
+    await create_transaction(db_session, budget, checking, "-120.00", last_day, category=fund)
+
+    report = await ReportService(db_session).savings_report(budget.id, months=3)
+
+    assert report["categories"][0]["current_balance"] == Decimal("380.00")
     assert report["categories"][0]["current_balance"] == await _page_available(
         db_session, budget, fund, TODAY
     )
