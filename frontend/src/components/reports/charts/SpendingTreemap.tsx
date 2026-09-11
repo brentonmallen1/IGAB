@@ -6,14 +6,19 @@ import { useSpendingGroupedReport } from '../../../api/reports'
 import { useChartHeight } from '../../../hooks/useChartHeight'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
-import { flatTiles, groupTiles, treemapGroups, type TreeNode } from './treemapTiles'
+import {
+  flatTiles,
+  groupTiles,
+  tileFontSize,
+  tileLabel,
+  treemapGroups,
+  type TreeNode,
+} from './treemapTiles'
 import { ReportInfoButton, ReportScopeNote, SpendingClassNote } from '../ReportInfoButton'
 import { ReportNotes, IncludeSavingsToggle, emptySpendingMessage } from '../ReportNotes'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import './SpendingTreemap.css'
 import { useReportScope } from '../../../stores/reportStore'
-import { shareOfTotal } from '../drillDownTotals'
-import { tileFontSize, tileLabel } from './treemapTile'
 
 interface Props {
   budgetId: string

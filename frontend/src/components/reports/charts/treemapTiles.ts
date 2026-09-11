@@ -12,6 +12,7 @@
  */
 import type { SpendingGroupItem } from '../../../types'
 import { chartColor } from './chartColors'
+import { truncateLabel } from '../../../utils/truncateLabel'
 import { shareOfTotal } from '../drillDownTotals'
 
 export interface TreeNode {
@@ -90,4 +91,23 @@ export function groupTiles(
     pct: shareOfTotal(g.total, grandTotal),
     fill: chartColor(g.colorIdx),
   }))
+}
+
+// A tile's name label. Pure because recharts renders the tile at zero size
+// under jsdom.
+
+/** Horizontal pixels one label character is given — the font shrinks with a
+ * narrow tile by the same measure the label is cut by. */
+const PX_PER_CHAR = 7
+
+/** The label's font size: 12px, smaller on a tile too narrow for it. */
+export function tileFontSize(width: number): number {
+  return Math.min(12, width / PX_PER_CHAR)
+}
+
+/** The name, cut to what fits across the tile by the rule every chart shares.
+ * The tile once sliced its own (`floor(width / 7) - 1`), one character wider
+ * than every chart at the same limit. */
+export function tileLabel(name: string, width: number): string {
+  return truncateLabel(name, Math.floor(width / PX_PER_CHAR))
 }
