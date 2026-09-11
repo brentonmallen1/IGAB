@@ -255,6 +255,7 @@ export function PayeeReport({ budgetId }: Props) {
             <DrillDownTable
               rows={tableRows}
               wider={{ total: grandTotal, count: payeeCount, label: 'payees' }}
+              pctIsShare
               amountLabel="Spent"
               onRowClick={(row) => drillTo(row.id, row.name)}
             />

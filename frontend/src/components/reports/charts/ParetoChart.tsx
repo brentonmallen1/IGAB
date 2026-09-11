@@ -382,6 +382,7 @@ export function ParetoReport({ budgetId }: Props) {
             <DrillDownTable
               rows={tableRows}
               wider={{ total: grandTotal, count: universeCount, label: GROUP_PLURALS[groupBy] }}
+              pctIsShare
               amountLabel="Spent"
               onRowClick={(row) => drillTo(row.id, row.name)}
             />
