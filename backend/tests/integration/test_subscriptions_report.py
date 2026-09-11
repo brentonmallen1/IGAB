@@ -233,6 +233,28 @@ async def test_split_child_charge_counts_once_at_child_amount(db_session):
     assert sub["transaction_count"] == 1
 
 
+async def test_a_service_charged_only_this_month_is_not_averaged_yet(db_session):
+    """The running month is outside every averaging window, so a service first
+    charged this month has no line yet — not its charge passed off as a
+    monthly figure (the old running-month fallback) and not $0.00 beside a
+    charge the page draws. Cost of Living drops a running-month bill the same
+    way (test_necessity_tiers)."""
+    budget, checking, tag_repo, sub_cat = await _setup(db_session)
+    pixelworks = await _tag_payee(db_session, budget, tag_repo, sub_cat, "Pixelworks")
+    await create_transaction(
+        db_session, budget, checking, "-9.00", TODAY, payee=pixelworks, category=sub_cat
+    )
+
+    data = await subscriptions_report(db_session, budget.id, months=12)
+
+    assert data["subscriptions"] == []
+    assert data["summary"]["total_monthly"] == Decimal("0")
+    assert data["summary"]["total_annual"] == Decimal("0")
+    assert len(data["months"]) == 12
+    assert TODAY.replace(day=1) not in data["months"]
+    assert data["months_averaged"] == 0
+
+
 async def test_no_subscription_tag_or_no_tagged_payees_is_empty(db_session):
     user = await create_user(db_session)
     untagged_budget = await create_budget(db_session, user)

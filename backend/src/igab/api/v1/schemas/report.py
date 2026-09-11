@@ -613,8 +613,9 @@ class SubscriptionsReportResponse(ApiModel):
     #: The complete months the window holds — every month in `months`, on
     #: every day (`domain.dates.complete_month_window`). It is the MOST an
     #: effective-monthly figure divides by: each line divides by the months
-    #: since its own first charge. Required, not optional — a default would
-    #: let the page claim a divisor nothing served.
+    #: since its own first charge. 0 when nothing was charged in the window:
+    #: no figure was averaged. Required, not optional — a default would let
+    #: the page claim a divisor nothing served.
     months_averaged: int
 
 

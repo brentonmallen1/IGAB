@@ -1188,7 +1188,7 @@ export interface SubscriptionsReport {
   /** The complete months the window holds — every entry of `months`, on
    *  every day (backend `domain.dates.complete_month_window`). The MOST an
    *  effective-monthly figure divides by: each line divides by the months
-   *  since its own first charge. */
+   *  since its own first charge. 0 when nothing was charged in the window. */
   months_averaged: number
   subscriptions: SubscriptionCategory[]
   summary: SubscriptionsSummary
