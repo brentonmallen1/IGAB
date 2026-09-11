@@ -10,6 +10,9 @@ this could not be fixed on the client.
 from datetime import date
 from decimal import Decimal
 
+from sqlalchemy import select
+
+from igab.db.models import Account
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.report_service import ReportService
 
@@ -207,3 +210,74 @@ class TestThroughTheApi:
         )
 
         assert resp.status_code == 400
+
+
+class TestTheDayOfWeekDrillMatchesTheBar:
+    """Day Patterns serves `counted_classes` so the panel a bar opens asks for
+    the classes the bar counted. Nothing tested it: dropping the field from
+    the service or the route validated against a `[]` default, the client's
+    csv([]) then sent no class filter, and the Tuesday bar reading $800
+    opened a panel listing $1,800 — every test still green.
+
+    Through the API and with the client's own drill parameters
+    (`drillDownParams` in api/transactions.ts), because the route is half of
+    the path that forgot.
+    """
+
+    async def _bar_and_drill(self, api_client, budget, account_ids=None):
+        scope = {"account_ids": ",".join(str(a) for a in account_ids)} if account_ids else {}
+        window = {"start_date": MONTH_START.isoformat(), "end_date": TODAY.isoformat()}
+        report = await api_client.get(
+            f"/api/v1/{budget.id}/reports/day-patterns", params={**window, **scope}
+        )
+        assert report.status_code == 200, report.text
+        body = report.json()
+        dow = TODAY.weekday()
+        bar = Decimal(str(body["days"][dow]["total"]))
+
+        listing = await api_client.get(
+            f"/api/v1/{budget.id}/transactions",
+            params={
+                **window,
+                **scope,
+                "scope": "leaf",
+                "posted_only": "true",
+                "cash_flow_only": "true",
+                "direction": "outflow",
+                "day_of_week": dow,
+                "activity_classes": ",".join(body["counted_classes"]),
+            },
+        )
+        assert listing.status_code == 200, listing.text
+        return body["counted_classes"], bar, abs(Decimal(listing.json()["total_amount"]))
+
+    async def test_the_panel_totals_the_bar(self, api_client, db_session):
+        budget = await _world(db_session, api_client.test_user)
+        await db_session.commit()
+
+        classes, bar, drilled = await self._bar_and_drill(api_client, budget)
+
+        assert classes == ["spending"]
+        # $1,800 without the classes: the $1,000 brokerage transfer is savings.
+        assert bar == drilled == Decimal("800.00")
+
+    async def test_an_account_selection_widens_both(self, api_client, db_session):
+        """A tracked account's outflows classify investment_return, so the
+        bar widens for an explicit selection — and the panel must ask for
+        the widened set, or it lists nothing under a populated bar."""
+        budget = await _world(db_session, api_client.test_user)
+        brokerage = next(a for a in await _accounts(db_session, budget) if not a.on_budget)
+        await create_transaction(db_session, budget, brokerage, "-20.00", TODAY)
+        await db_session.commit()
+
+        classes, bar, drilled = await self._bar_and_drill(
+            api_client, budget, account_ids=[brokerage.id]
+        )
+
+        assert classes == ["debt_interest", "investment_return", "spending"]
+        assert bar == drilled == Decimal("20.00")
+
+
+async def _accounts(db_session, budget):
+    q = select(Account).where(Account.budget_id == budget.id)
+    return (await db_session.execute(q)).scalars().all()

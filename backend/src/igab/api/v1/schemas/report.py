@@ -481,8 +481,9 @@ class DayPatternsResponse(ApiModel):
     #: empty budget, which is the failure the flag exists to prevent.
     filter_unavailable: bool
     #: The activity classes these figures count, so a drill-down opened from a
-    #: bar totals what the bar says.
-    counted_classes: list[str] = []
+    #: bar totals what the bar says. REQUIRED: `[]` makes the client send no
+    #: class filter, and the panel lists more than the bar.
+    counted_classes: list[str]
 
 
 # ─── Large Transactions (Timeline) ────────────────────────────────────────────
@@ -925,8 +926,9 @@ class CostOfLivingResponse(ApiModel):
     #: binding — the case being "I tagged ten and two showed up".
     class_excluded: list[SpendingClassExcluded] = []
     #: The activity classes these figures count, so a drill-down opened from a
-    #: bar totals what the bar says.
-    counted_classes: list[str] = []
+    #: bar totals what the bar says. REQUIRED: `[]` makes the client send no
+    #: class filter, and the panel lists more than the bar.
+    counted_classes: list[str]
     #: The necessity tier the groups roll up. Membership is per row (debt
     #: principal by class), so the drill sends it too. Required: a drill that
     #: forgets it lists spending the bar never counted.
