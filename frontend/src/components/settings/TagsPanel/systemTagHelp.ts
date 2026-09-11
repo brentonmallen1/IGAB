@@ -5,6 +5,8 @@
  * backend/src/igab/repositories/tag_repo.py, and both lists are tested against
  * shared/system_tags.json, so a tag seeded there cannot ship unexplained here.
  * The effects are in domain/activity_class.py (savings, debt principal), the
+ * Savings report (long-term expense: membership only, ReportService
+ * .savings_report — it no longer classifies anything), the
  * Subscriptions report (subscription, categories only —
  * CATEGORY_ONLY_SYSTEM_KEYS in tag_repo.py) and TransactionRepository
  * .essential_spend (essential, cost of living). Presentation only: nothing

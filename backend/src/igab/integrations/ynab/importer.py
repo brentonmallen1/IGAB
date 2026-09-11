@@ -149,10 +149,10 @@ class ImportResult:
     #: so the number the user is shown is the number of rows they can act on —
     #: they are repairable by hand from the register like any orphan leg.
     transfer_legs_in_splits: int = 0
-    #: Categories the import tagged from their names (Savings, Long-term
-    #: expense). Reported because a tag changes how that category's spending
-    #: is classified in reports — applying it silently would be a number
-    #: moving for a reason the user never saw.
+    #: Categories the import tagged Savings from their names — the only key
+    #: it applies (`domain.tag_hints`). Reported because the tag changes how
+    #: that category's spending is classified in reports — applying it
+    #: silently would be a number moving for a reason the user never saw.
     categories_tagged: int = 0
     #: Which categories, and what key each was given. The count alone cannot
     #: answer the question the review exists for -- "show me what you did" --

@@ -7,9 +7,10 @@ Two callers with different consequences, and the difference is the whole point
 of this module:
 
 - The YNAB importer **writes** a tag for a fresh category (`suggest_system_tag`).
-  A system tag overrides classification outright (see `domain.activity_class`),
-  so a wrong guess here silently moves burn rate, savings rate and the spending
-  charts. That is why only the two unmistakable keys are applied.
+  The Savings tag overrides classification outright (see
+  `domain.activity_class`), so a wrong guess here silently moves burn rate,
+  savings rate and the spending charts. That is why only `savings`, the one
+  unmistakable key, is applied.
 - The import review **proposes** the rest (`suggest_review_tags`), unchecked,
   for a person to accept. A proposal that misses costs nothing; one that is
   clever and wrong costs trust.
@@ -56,8 +57,9 @@ class TagHint:
 
 
 #: Kept short and obvious rather than clever, in both halves. The applied half
-#: is unchanged from when it lived in `repositories.tag_repo`; widening it is
-#: how proposals would turn into silent writes.
+#: is one key, `savings`; it was two until `long_term_expense` stopped
+#: overriding classification. Widening it is how proposals would turn into
+#: silent writes.
 TAG_HINTS: tuple[TagHint, ...] = (
     TagHint("savings", ("saving", "emergency fund", "rainy day", "nest egg"), True),
     # Proposed only, from here down.

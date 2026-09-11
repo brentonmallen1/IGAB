@@ -258,8 +258,9 @@ async def list_tag_suggestions(
 
     Proposals only. Nothing here is written until the caller sends them back
     through the bulk update, which is the whole difference between this and
-    what the importer does: the importer applies two keys it is confident
-    about, and everything else is offered to a person.
+    what the importer does: the importer applies the one key it is confident
+    about (`savings`, see `domain.tag_hints`), and everything else is offered
+    to a person.
 
     Seeds first, because a budget can be missing a system tag entirely — the
     backfill migration predates three of the six keys, and `list_tags` is the
