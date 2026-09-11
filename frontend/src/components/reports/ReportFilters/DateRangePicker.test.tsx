@@ -17,7 +17,7 @@ vi.mock('../../../api/reports', () => ({ useReportRange: () => ({ data: range.cu
 vi.mock('../../../stores/appStore', () => ({ useAppStore: () => 'b1' }))
 
 import { DateRangePicker } from './DateRangePicker'
-import { toISODate } from '../../../utils/dateWindow'
+import { toISODate } from '../../../utils/dates'
 
 // The component's own formatter, deliberately. `new Date().toISOString()` is
 // the UTC date, so this file failed every evening west of UTC — the same

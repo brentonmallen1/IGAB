@@ -1,9 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useChatStream } from './useChatStream'
 import type { ChatStreamEvent } from '../../../api/chatStream'
+import { pinTimeZone } from '../../../test-utils/timeZone'
 
 const streamChat = vi.hoisted(() => vi.fn())
 vi.mock('../../../api/chatStream', () => ({ streamChat }))
@@ -256,5 +257,36 @@ describe('useChatStream', () => {
         clientToday: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
       })
     )
+  })
+})
+
+/**
+ * clientToday was `new Date().toISOString().slice(0, 10)` — the UTC date. From
+ * 8pm in New York that is tomorrow, so every evening the assistant was told it
+ * was the next day and answered "this month" questions about the wrong month
+ * on the last evening of one. The test above only checked the shape, which
+ * both versions satisfy.
+ */
+describe('useChatStream clientToday behind Greenwich', () => {
+  pinTimeZone('America/New_York')
+
+  beforeEach(() => {
+    streamChat.mockReset()
+    // Date only: faking timers too would stall the stream's own awaits.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    // 21:00 on 10 Sep in New York, already 11 Sep in UTC.
+    vi.setSystemTime(new Date('2026-09-11T01:00:00Z'))
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('sends the local date, not the UTC one', async () => {
+    streamChat.mockImplementation(scripted([{ type: 'done', message_id: null }]))
+    const { result } = renderHook(() => useChatStream('b1'), { wrapper })
+    await act(async () => {
+      await result.current.send('q', { conversationId: null, pageContext: null })
+    })
+    expect(streamChat).toHaveBeenCalledWith(expect.objectContaining({ clientToday: '2026-09-10' }))
   })
 })

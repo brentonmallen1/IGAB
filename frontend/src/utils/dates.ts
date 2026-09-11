@@ -202,15 +202,27 @@ export function formatDate(dateStr: string): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
+/** A Date's LOCAL calendar day as YYYY-MM-DD.
+ *
+ * The one safe conversion. `d.toISOString().slice(0, 10)` is the trap: it
+ * converts to UTC first, so a local midnight ahead of Greenwich lands on the
+ * previous calendar day and an evening behind it lands on the next — the AI
+ * chat told the server it was tomorrow every night after 8 in New York. Lint
+ * refuses the trap; this is what it points to. `today()`, `yesterday()`,
+ * utils/dateWindow and the search grammar all read it rather than respell it.
+ */
+export function toISODate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 /** Today's date as "YYYY-MM-DD" */
 export function today(): string {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  return toISODate(new Date())
 }
 
 /** Yesterday's date as "YYYY-MM-DD" */
 export function yesterday(): string {
   const d = new Date()
   d.setDate(d.getDate() - 1)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  return toISODate(d)
 }

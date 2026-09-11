@@ -1,3 +1,5 @@
+import { toISODate } from './dates'
+
 export interface TransactionFilters {
   text?: string
   cleared?: string
@@ -63,12 +65,6 @@ const MONTH_NAMES: Record<string, number> = {
 
 const PERIOD_WORDS = new Set(['week', 'month', 'year'])
 
-function toIsoDate(d: Date): string {
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${d.getFullYear()}-${m}-${day}`
-}
-
 /** Monday of the week containing d. */
 function startOfWeek(d: Date): Date {
   const dow = (d.getDay() + 6) % 7
@@ -98,12 +94,12 @@ function matchDateTokens(tokens: string[], i: number, now: Date): DateTokenMatch
   const lower = tokens[i].toLowerCase()
 
   if (lower === 'today') {
-    const d = toIsoDate(now)
+    const d = toISODate(now)
     return { startDate: d, endDate: d, label: 'Today', consumed: 1 }
   }
   if (lower === 'yesterday') {
     const y = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
-    const d = toIsoDate(y)
+    const d = toISODate(y)
     return { startDate: d, endDate: d, label: 'Yesterday', consumed: 1 }
   }
 
@@ -115,13 +111,13 @@ function matchDateTokens(tokens: string[], i: number, now: Date): DateTokenMatch
       const monday = startOfWeek(now)
       if (lower === 'last') monday.setDate(monday.getDate() - 7)
       const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6)
-      return { startDate: toIsoDate(monday), endDate: toIsoDate(sunday), label, consumed: 2 }
+      return { startDate: toISODate(monday), endDate: toISODate(sunday), label, consumed: 2 }
     }
     if (period === 'month') {
       const m = lower === 'last' ? now.getMonth() - 1 : now.getMonth()
       const start = new Date(now.getFullYear(), m, 1)
       const end = new Date(now.getFullYear(), m + 1, 0)
-      return { startDate: toIsoDate(start), endDate: toIsoDate(end), label, consumed: 2 }
+      return { startDate: toISODate(start), endDate: toISODate(end), label, consumed: 2 }
     }
     const year = lower === 'last' ? now.getFullYear() - 1 : now.getFullYear()
     return {
@@ -142,8 +138,8 @@ function matchDateTokens(tokens: string[], i: number, now: Date): DateTokenMatch
     const endYear = endMonth > now.getMonth() ? now.getFullYear() - 1 : now.getFullYear()
     const startYear = startMonth > endMonth ? endYear - 1 : endYear
     return {
-      startDate: toIsoDate(new Date(startYear, startMonth, 1)),
-      endDate: toIsoDate(new Date(endYear, endMonth + 1, 0)),
+      startDate: toISODate(new Date(startYear, startMonth, 1)),
+      endDate: toISODate(new Date(endYear, endMonth + 1, 0)),
       label: `${capitalize(rangeMatch[1])}–${capitalize(rangeMatch[2])}`,
       consumed: 1,
     }
@@ -158,8 +154,8 @@ function matchDateTokens(tokens: string[], i: number, now: Date): DateTokenMatch
     const span = resolveDateSpan(lower, now)
     if (span) {
       return {
-        startDate: toIsoDate(span.start),
-        endDate: toIsoDate(span.end),
+        startDate: toISODate(span.start),
+        endDate: toISODate(span.end),
         label: span.label,
         consumed: 1,
       }
@@ -171,8 +167,8 @@ function matchDateTokens(tokens: string[], i: number, now: Date): DateTokenMatch
     const yearToken = tokens[i + 1]?.match(/^\d{4}$/) ? Number(tokens[i + 1]) : null
     const year = yearToken ?? (month > now.getMonth() ? now.getFullYear() - 1 : now.getFullYear())
     return {
-      startDate: toIsoDate(new Date(year, month, 1)),
-      endDate: toIsoDate(new Date(year, month + 1, 0)),
+      startDate: toISODate(new Date(year, month, 1)),
+      endDate: toISODate(new Date(year, month + 1, 0)),
       label: yearToken ? `${capitalize(lower)} ${yearToken}` : capitalize(lower),
       consumed: yearToken ? 2 : 1,
     }
@@ -306,11 +302,11 @@ function matchExplicitDateExpr(expr: string, now: Date): DateExprMatch | null {
   // MARCH means from the 1st, on or before 2025 means through 31 December.
   if (raw.startsWith('>')) {
     const span = resolveDateSpan(raw.replace(/^>=?/, ''), now)
-    return span ? { startDate: toIsoDate(span.start), label: `On or after ${span.label}` } : null
+    return span ? { startDate: toISODate(span.start), label: `On or after ${span.label}` } : null
   }
   if (raw.startsWith('<')) {
     const span = resolveDateSpan(raw.replace(/^<=?/, ''), now)
-    return span ? { endDate: toIsoDate(span.end), label: `On or before ${span.label}` } : null
+    return span ? { endDate: toISODate(span.end), label: `On or before ${span.label}` } : null
   }
 
   // Ranges: '..' separates any two forms and the sides may differ
@@ -334,15 +330,15 @@ function matchExplicitDateExpr(expr: string, now: Date): DateExprMatch | null {
     // First span's start to last span's end, so march..june is the whole of
     // both months rather than their first days.
     return {
-      startDate: toIsoDate(a.start),
-      endDate: toIsoDate(b.end),
+      startDate: toISODate(a.start),
+      endDate: toISODate(b.end),
       label: `${a.label} – ${b.label}`,
     }
   }
 
   const span = resolveDateSpan(raw, now)
   return span
-    ? { startDate: toIsoDate(span.start), endDate: toIsoDate(span.end), label: span.label }
+    ? { startDate: toISODate(span.start), endDate: toISODate(span.end), label: span.label }
     : null
 }
 

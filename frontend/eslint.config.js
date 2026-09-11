@@ -100,6 +100,22 @@ const NO_UNFORMATTED_NUMERIC_AXIS = [
 ]
 
 /**
+ * `toISOString()` is UTC, so slicing a date out of it names the wrong day for
+ * most of the world for part of every day: tomorrow every evening west of
+ * Greenwich, yesterday after midnight east of it. The AI chat told the server
+ * it was tomorrow every night after 8 in New York; an opening balance left
+ * undated was booked a day late; a test computing "today" this way failed
+ * every evening. Applied to tests too, for that last reason.
+ */
+const NO_UTC_DATE_SLICE = {
+  selector:
+    "CallExpression[callee.property.name='slice'][callee.object.callee.property.name='toISOString']",
+  message:
+    'toISOString() is UTC: sliced to a date it is tomorrow every evening west of Greenwich. Use ' +
+    'toISODate(d), today() or currentMonthStart() from utils/dates.',
+}
+
+/**
  * Overlay geometry has now been consolidated twice. The first round collapsed
  * five copies into `utils/anchoredPosition.ts`; by the second, three more
  * surfaces were again running off the bottom of the screen — ContextMenu
@@ -158,6 +174,7 @@ export default defineConfig([
         NO_BARE_PARSE_FLOAT,
         NO_UNFORMATTED_CHART_TOOLTIP,
         ...NO_UNFORMATTED_NUMERIC_AXIS,
+        NO_UTC_DATE_SLICE,
         ...NO_HAND_ROLLED_VIEWPORT_MATH,
       ],
     },
@@ -167,7 +184,7 @@ export default defineConfig([
     // at, and `utils/searchParser.ts` parses a search grammar rather than an
     // amount to store.
     files: ['src/utils/money.ts', 'src/utils/amountExpression.ts', 'src/utils/searchParser.ts'],
-    rules: { 'no-restricted-syntax': ['error', ...NO_HAND_ROLLED_VIEWPORT_MATH] },
+    rules: { 'no-restricted-syntax': ['error', NO_UTC_DATE_SLICE, ...NO_HAND_ROLLED_VIEWPORT_MATH] },
   },
   {
     // The geometry rule's own home, and the hook that publishes the viewport
@@ -195,12 +212,12 @@ export default defineConfig([
       'src/components/guide/RoadmapMap.tsx',
       'src/components/transactions/TransactionTable/TransactionTable.tsx',
     ],
-    rules: { 'no-restricted-syntax': ['error', NO_BARE_PARSE_FLOAT] },
+    rules: { 'no-restricted-syntax': ['error', NO_BARE_PARSE_FLOAT, NO_UTC_DATE_SLICE] },
   },
   {
     // Tests stub the viewport to state a case; that is the point of them.
     files: ['**/*.test.ts', '**/*.test.tsx'],
-    rules: { 'no-restricted-syntax': ['error', NO_BARE_PARSE_FLOAT] },
+    rules: { 'no-restricted-syntax': ['error', NO_BARE_PARSE_FLOAT, NO_UTC_DATE_SLICE] },
   },
   {
     // ── Readability budget, .ts ONLY ────────────────────────────────────────

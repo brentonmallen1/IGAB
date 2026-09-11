@@ -3,7 +3,7 @@ import { persist } from 'zustand/middleware'
 import { PERSIST_KEYS } from './persistKeys'
 import { useMemo } from 'react'
 import type { ReportScope } from '../api/reports'
-import { toISODate } from '../utils/dateWindow'
+import { toISODate } from '../utils/dates'
 
 export type ReportTab =
   | 'overview'

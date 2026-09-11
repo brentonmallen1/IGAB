@@ -1,3 +1,4 @@
+import { today } from '../../utils/dates'
 import { PageHeader } from '../../components/common/PageHeader/PageHeader'
 import { parseAmountInput } from '../../utils/money'
 import { useMemo, useState } from 'react'
@@ -177,10 +178,7 @@ export function LiabilityPage() {
 
   async function handleSeedOpeningBalance() {
     if (!liability?.linked_account_id) return
-    await seedOpeningBalance(
-      liability.current_balance,
-      liability.origination_date ?? new Date().toISOString().slice(0, 10)
-    )
+    await seedOpeningBalance(liability.current_balance, liability.origination_date ?? today())
   }
 
   /** The register is the one home for a managed liability's balance, so
@@ -711,9 +709,7 @@ export function LiabilityPage() {
           placeholder="24000.00"
           pending={createTransaction.isPending}
           // Blank date means today, as everywhere else this form is used.
-          onSubmit={(amount, on) =>
-            seedOpeningBalance(amount, on ?? new Date().toISOString().slice(0, 10))
-          }
+          onSubmit={(amount, on) => seedOpeningBalance(amount, on ?? today())}
           onClose={() => setShowOpeningForm(false)}
         />
       )}
