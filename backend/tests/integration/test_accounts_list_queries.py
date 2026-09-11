@@ -14,37 +14,13 @@ names itself.
 import uuid
 from datetime import date
 
-from sqlalchemy import event
-
 from .factories import create_account, create_budget, create_transaction
-
-
-class _Counter:
-    """Counts statements issued on a session's sync connection."""
-
-    def __init__(self) -> None:
-        self.statements: list[str] = []
-
-    def __call__(self, conn, cursor, statement, params, context, executemany) -> None:
-        self.statements.append(statement)
-
-    @property
-    def selects(self) -> int:
-        return sum(1 for s in self.statements if s.lstrip().upper().startswith("SELECT"))
+from .statement_counts import count_request
 
 
 async def _count_list_selects(api_client, db_session, budget_id: uuid.UUID) -> int:
-    counter = _Counter()
-    # The API and this fixture share one session, so its bind is where every
-    # statement the request issues shows up.
-    bind = db_session.get_bind()
-    event.listen(bind, "before_cursor_execute", counter)
-    try:
-        resp = await api_client.get(f"/api/v1/{budget_id}/accounts")
-        assert resp.status_code == 200
-    finally:
-        event.remove(bind, "before_cursor_execute", counter)
-    return counter.selects
+    path = f"/api/v1/{budget_id}/accounts"
+    return (await count_request(api_client, db_session, path, {})).selects
 
 
 async def _seed(db_session, budget, n: int, start: int = 0) -> None:

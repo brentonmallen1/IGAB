@@ -1,22 +1,23 @@
-"""Two reports must not ask per month.
+"""Reports must not ask per month, or fetch the register to draw a summary.
 
-Both did. Category history called `get_category_balance` inside a loop — two
-queries a month — so a twelve-month chart issued two dozen round-trips for two
-lookups' worth of data, and asking for 24 months doubled it. Net worth history
-re-filtered and re-grouped the WHOLE register once per point, which is not a
-query count but the same shape of mistake one layer down: the cost grows with
-the window for no new data.
+Category history called `get_category_balance` inside a loop — two queries a
+month — so a twelve-month chart issued two dozen round-trips for two lookups'
+worth of data, and asking for 24 months doubled it. Net worth history
+re-filtered and re-grouped the WHOLE register once per point, then fetched
+every parent row to draw twelve points; the Overview pulled every posted row
+into Python to draw eleven numbers. Each cost grew with the window or the
+register for no new data.
 
-Count assertions rather than timings: timings are flaky and say nothing about
-why. If someone reintroduces a per-month query, the count moves and names
-itself. The pattern is `test_accounts_list_queries.py`'s, one report over.
+Counted with `statement_counts.py`, the same counter the accounts listing
+uses: statements for a per-month query, rows returned for a register fetched
+whole.
 """
 
 import uuid
 from datetime import date, timedelta
 from decimal import Decimal
 
-from sqlalchemy import event
+import pytest
 
 from igab.db.models import ImportAnchor
 from igab.domain.dates import add_months
@@ -30,37 +31,14 @@ from .factories import (
     create_transaction,
     make_services,
 )
+from .statement_counts import count_request
 
 TODAY = date.today()
 THIS = TODAY.replace(day=1)
 
 
-class _Counter:
-    """Counts statements issued on a session's sync connection."""
-
-    def __init__(self) -> None:
-        self.statements: list[str] = []
-
-    def __call__(self, conn, cursor, statement, params, context, executemany) -> None:
-        self.statements.append(statement)
-
-    @property
-    def selects(self) -> int:
-        return sum(1 for s in self.statements if s.lstrip().upper().startswith("SELECT"))
-
-
 async def _count_selects(api_client, db_session, path: str, params: dict) -> int:
-    counter = _Counter()
-    # The API and this fixture share one session, so its bind is where every
-    # statement the request issues shows up.
-    bind = db_session.get_bind()
-    event.listen(bind, "before_cursor_execute", counter)
-    try:
-        resp = await api_client.get(path, params=params)
-        assert resp.status_code == 200, resp.text
-    finally:
-        event.remove(bind, "before_cursor_execute", counter)
-    return counter.selects
+    return (await count_request(api_client, db_session, path, params)).selects
 
 
 async def _envelope(db_session, budget) -> uuid.UUID:
@@ -190,10 +168,9 @@ class TestCategoryHistoryDoesNotAskPerMonth:
 
 
 class TestNetWorthHistoryDoesNotRescanPerMonth:
-    """A ratchet, not a proof: this report's per-month cost was a polars
-    re-scan of the whole register, which no statement counter can see. The
-    figures are pinned by `test_report_stats.py` and the net-worth suites; this
-    keeps the batching from being undone with a query instead."""
+    """Its per-month cost was a polars re-scan, which a statement count cannot
+    see; the rows-fetched ratchet below can. This one keeps the batching from
+    being undone with a query per month instead."""
 
     async def test_query_count_is_flat_as_the_window_grows(self, api_client, db_session):
         budget = await create_budget(db_session, api_client.test_user)
@@ -205,4 +182,54 @@ class TestNetWorthHistoryDoesNotRescanPerMonth:
 
         assert long == short, (
             f"{short} SELECTs for 3 months, {long} for 15 — the report is asking per month again"
+        )
+
+
+class TestTheRegisterIsNotFetchedWhole:
+    """Neither the Overview's narrowing nor net worth's single statement had
+    a test that failed if the old whole-register fetch came back: it is one
+    wide SELECT, so the statement count never moved. The rows it returns do —
+    history outside every window the page draws must not change them."""
+
+    @pytest.mark.parametrize(
+        ("report", "params"), [("dashboard", {}), ("net-worth", {"months": 3})]
+    )
+    async def test_rows_fetched_do_not_grow_with_old_history(
+        self, api_client, db_session, report, params
+    ):
+        budget = await create_budget(db_session, api_client.test_user)
+        checking = await create_account(db_session, budget, "Checking")
+        group = await create_category_group(db_session, budget, "Everyday")
+        groceries = await create_category(db_session, budget, group, "Groceries")
+        # Two years back: outside the window, its comparison period and the
+        # 90-day burn, on the account and envelope already read. One row is
+        # there from the start — the balance before the first cutoff is one
+        # group of the balance sheet, however many rows make it up.
+        long_ago = add_months(THIS, -24)
+        await create_transaction(db_session, budget, checking, "900.00", long_ago)
+        for i in range(10):
+            await create_transaction(
+                db_session, budget, checking, "-5.00", TODAY - timedelta(days=i), category=groceries
+            )
+        await db_session.flush()
+        path = f"/api/v1/{budget.id}/reports/{report}"
+        await count_request(api_client, db_session, path, params)  # warm any one-time lookups
+
+        before = await count_request(api_client, db_session, path, params)
+        for i in range(200):
+            await create_transaction(
+                db_session,
+                budget,
+                checking,
+                "-1.00",
+                long_ago + timedelta(days=i % 28),
+                category=groceries,
+            )
+        await db_session.flush()
+        after = await count_request(api_client, db_session, path, params)
+
+        assert after.selects == before.selects
+        assert after.rows_fetched == before.rows_fetched, (
+            f"{before.rows_fetched} rows before 200 old ones were added, "
+            f"{after.rows_fetched} after — {report} is fetching the register again"
         )
