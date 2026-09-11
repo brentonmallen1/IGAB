@@ -34,6 +34,14 @@ interface Props {
   formatter: (value: number, name: string) => string
   labelFormatter?: (label: string) => string
   showTotal?: boolean
+  /** The wider set the listed rows are part of — a month's whole spend behind
+   *  ten drawn series, say.
+   *
+   *  Same vocabulary as `DrillDownTable`, and the same rule: the Total line is
+   *  the sum of the rows the tooltip LISTS, and a wider figure is drawn beside
+   *  it. Spending Trends showed the ten drawn series' subtotal as "Total"
+   *  inches above a table row headed All carrying a larger number. */
+  wider?: { total: number; label: string }
 }
 
 export function ChartTooltip({
@@ -43,6 +51,7 @@ export function ChartTooltip({
   formatter,
   labelFormatter,
   showTotal = false,
+  wider,
 }: Props) {
   if (!active || !payload?.length) return null
 
@@ -54,6 +63,8 @@ export function ChartTooltip({
 
   const total = entries.reduce((s, e) => s + (e.value ?? 0), 0)
   const displayLabel = label ? (labelFormatter ? labelFormatter(label) : label) : null
+  // A cent of rounding is not a truncated set.
+  const partial = wider !== undefined && Math.abs(wider.total - total) >= 0.005
 
   return (
     <div className="chart-tooltip">
@@ -69,8 +80,14 @@ export function ChartTooltip({
       ))}
       {showTotal && entries.length > 1 && (
         <div className="chart-tooltip__row chart-tooltip__row--total">
-          <span className="chart-tooltip__name">Total</span>
+          <span className="chart-tooltip__name">{partial ? 'Shown' : 'Total'}</span>
           <span className="chart-tooltip__value">{formatter(total, 'Total')}</span>
+        </div>
+      )}
+      {partial && wider && (
+        <div className="chart-tooltip__row chart-tooltip__row--total">
+          <span className="chart-tooltip__name">{wider.label}</span>
+          <span className="chart-tooltip__value">{formatter(wider.total, wider.label)}</span>
         </div>
       )}
     </div>

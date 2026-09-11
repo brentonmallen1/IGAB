@@ -1070,8 +1070,15 @@ export interface PayeeSpending {
 }
 
 export interface PayeeAnalysisReport {
+  /** The largest by spend — a ranking, never a page. */
   payees: PayeeSpending[]
+  /** Over EVERY payee in the window, not over `payees`. Each row's `pct` is a
+   *  share of this. */
   total: number
+  /** How many payees spent in the window. Served because a client that knows
+   *  only "25 rows" cannot say whether that is all of them — the Total Payees
+   *  card used to report the ranking cap. */
+  payee_count: number
 }
 
 export interface DayPatternItem {

@@ -637,7 +637,9 @@ async def payee_analysis_report(
     end = end_date or today
     p_ids = parse_uuid_list(payee_ids)
     acct_ids = parse_uuid_list(account_ids)
-    payees, total = await report_svc.payee_analysis(budget_id, start, end, limit, p_ids, acct_ids)
+    payees, total, payee_count = await report_svc.payee_analysis(
+        budget_id, start, end, limit, p_ids, acct_ids
+    )
     return PayeeAnalysisResponse(
         payees=[
             PayeeSpending(
@@ -653,6 +655,7 @@ async def payee_analysis_report(
             for p in payees
         ],
         total=total,
+        payee_count=payee_count,
     )
 
 

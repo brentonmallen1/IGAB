@@ -77,11 +77,16 @@ export function PayeeReport({ budgetId }: Props) {
     id: p.payee_id,
     name: p.payee_name,
     subName: p.is_recurring ? 'Recurring' : `${p.count} transactions`,
-    amount: -p.total,
+    amount: p.total,
     pct: p.pct,
   }))
 
-  const grandTotal = payees.reduce((s, p) => s + p.total, 0)
+  // The server's own figure, over EVERY payee in the window — not a sum of
+  // the 25 it ranked. `pct` is a share of this, so a client-side sum of the
+  // visible rows disagreed with the percentages beside them.
+  const grandTotal = Number(data?.total ?? 0)
+  const payeeCount = data?.payee_count ?? payees.length
+  const ranked = payees.length
 
   return (
     <div className="report-section surface">
@@ -92,6 +97,11 @@ export function PayeeReport({ budgetId }: Props) {
             Ranks your top payees by total spending in the selected period.{' '}
             <strong>Highlighted bars</strong> indicate recurring payees (appeared in 3+ different
             months).
+          </p>
+          <p>
+            The chart and table show the <strong>25 largest</strong> payees; the Total Payees card
+            and Total Spent cover <strong>every</strong> payee in the period, so the rows below can
+            add up to less than the total. Each row&apos;s percentage is a share of that whole.
           </p>
           <p>
             Use <em>Recurring</em> mode to focus only on fixed or habitual expenses — subscriptions,
@@ -140,9 +150,21 @@ export function PayeeReport({ budgetId }: Props) {
       <div ref={captureRef} className="report-capture">
         {payees.length > 0 && (
           <MetricRow>
-            <MetricCard label="Total Payees" value={String(payees.length)} />
-            <MetricCard label="Recurring Payees" value={String(recurring.length)} />
-            <MetricCard label="Total Spent" value={formatMoney(grandTotal)} />
+            {/* The window's payee count, served. This card read
+                `payees.length` — the server's ranking cap — so a budget with
+                three hundred payees was told it had 25, beside a Total Spent
+                that was those 25 rows added up. */}
+            <MetricCard
+              label="Total Payees"
+              value={String(payeeCount)}
+              sub={ranked < payeeCount ? `top ${ranked} shown` : undefined}
+            />
+            <MetricCard
+              label="Recurring Payees"
+              value={String(recurring.length)}
+              sub={ranked < payeeCount ? `of the top ${ranked}` : undefined}
+            />
+            <MetricCard label="Total Spent" value={formatMoney(grandTotal)} sub="all payees" />
           </MetricRow>
         )}
 
@@ -219,7 +241,8 @@ export function PayeeReport({ budgetId }: Props) {
             </div>
             <DrillDownTable
               rows={tableRows}
-              total={grandTotal}
+              wider={{ total: grandTotal, count: payeeCount, label: 'payees' }}
+              amountLabel="Spent"
               onRowClick={(row) => drillTo(row.id, row.name)}
             />
           </>

@@ -76,13 +76,10 @@ export function IncomeExpenseReport({ budgetId }: Props) {
   const tableRows = (data?.months ?? []).map((m) => ({
     id: m.month,
     name: m.month.slice(0, 7),
-    // A month whose refunds exceeded its spending has NEGATIVE expenses, and
-    // `DrillDownTable` renders `Math.abs(row.amount)` — so "we got 40 back"
-    // draws as "we spent 40" whatever this passes. Fixing it means making the
-    // shared table sign-aware, which changes how five charts read; deferred
-    // with the same component's total-vs-rows contract rather than papered
-    // over here. See docs/reports-audit-chain.md.
-    amount: -m.expenses,
+    // Positive is spending, under a column headed Expenses. A month whose
+    // refunds exceeded its spending is negative and now READS negative: the
+    // table used to abs() this, so "we got $40 back" drew as "we spent $40".
+    amount: m.expenses,
     extra: `Net: ${formatMoney(m.net)}`,
   }))
 

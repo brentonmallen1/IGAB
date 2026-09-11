@@ -64,7 +64,7 @@ export function VolatilityReport({ budgetId }: Props) {
     id: c.category_id,
     name: c.category_name,
     subName: c.category_group_name,
-    amount: -c.mean,
+    amount: c.mean,
     pct: coefficientOfVariation(c.mean, c.std_dev),
     extra: `σ ${formatMoney(c.std_dev)}`,
   }))

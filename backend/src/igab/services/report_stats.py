@@ -202,3 +202,57 @@ def timeline_rows(rows, leg_classes: dict) -> list[dict]:
             }
         )
     return out
+
+
+#: A payee seen in this many distinct months is treated as recurring.
+RECURRING_MONTHS = 3
+
+
+def payee_breakdown(df: pl.DataFrame, payee_agg: pl.DataFrame, grand_total: Decimal) -> list[dict]:
+    """One row per ranked payee: the trend, its biggest envelopes, and whether
+    it recurs.
+
+    `payee_agg` is already ranked and capped; `grand_total` spans EVERY payee,
+    so `pct` is a share of the period rather than of the rows that survived
+    the cap. Passing the truncated frame's own sum here is the defect this
+    signature exists to make visible.
+    """
+    payees: list[dict] = []
+    for row in payee_agg.iter_rows(named=True):
+        pid = row["payee_id"]
+        payee_df = df.filter(pl.col("payee_id") == pid)
+        by_month = payee_df.with_columns(pl.col("date").dt.truncate("1mo").alias("month"))
+
+        trend = by_month.group_by("month").agg(pl.col("amount").sum().alias("total")).sort("month")
+        monthly_trend = [
+            {"month": r["month"], "total": Decimal(str(round(r["total"], 4)))}
+            for r in trend.iter_rows(named=True)
+        ]
+
+        top_cats = (
+            payee_df.filter(pl.col("category_name") != "Uncategorized")
+            .group_by("category_name")
+            .agg(pl.col("amount").sum().alias("total"))
+            .sort("total", descending=True)
+            .head(3)
+        )
+        top_categories = [
+            {"category_name": r["category_name"], "total": Decimal(str(round(r["total"], 4)))}
+            for r in top_cats.iter_rows(named=True)
+        ]
+
+        payees.append(
+            {
+                "payee_id": pid,
+                "payee_name": row["payee_name"],
+                "total": Decimal(str(round(row["total"], 4))),
+                "count": int(row["count"]),
+                "pct": (
+                    float(Decimal(str(row["total"])) / grand_total * 100) if grand_total else 0.0
+                ),
+                "monthly_trend": monthly_trend,
+                "top_categories": top_categories,
+                "is_recurring": by_month["month"].n_unique() >= RECURRING_MONTHS,
+            }
+        )
+    return payees

@@ -80,7 +80,8 @@ export function BudgetActualReport({ budgetId }: Props) {
   if (isLoading) return <div className="report-loading">Loading…</div>
   if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
 
-  let categories = data?.categories ?? []
+  const allCategories = data?.categories ?? []
+  let categories = allCategories
   if (showOverspent) categories = categories.filter((c) => c.spent > c.assigned)
   if (sortBy === 'overspent') {
     categories = [...categories].sort((a, b) => b.spent - b.assigned - (a.spent - a.assigned))
@@ -123,7 +124,7 @@ export function BudgetActualReport({ budgetId }: Props) {
     id: c.category_id,
     name: c.category_name,
     subName: c.category_group_name,
-    amount: -c.spent,
+    amount: c.spent,
     pct: c.variance_pct,
     extra: `Assigned: ${formatMoney(c.assigned)}`,
   }))
@@ -250,7 +251,14 @@ export function BudgetActualReport({ budgetId }: Props) {
             </ResponsiveContainer>
             <DrillDownTable
               rows={tableRows}
-              total={Number(data?.total_spent ?? 0)}
+              // The period's whole spend, which used to be handed over as the
+              // rows' own total — so with "Overspent only" ticked the footer
+              // was larger than the column above it.
+              wider={{
+                total: Number(data?.total_spent ?? 0),
+                count: allCategories.length,
+                label: 'categories',
+              }}
               amountLabel="Spent"
               onRowClick={(row) => drillTo(row.id, row.name)}
             />

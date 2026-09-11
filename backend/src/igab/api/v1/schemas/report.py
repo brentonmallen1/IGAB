@@ -426,8 +426,16 @@ class PayeeSpending(ApiModel):
 
 
 class PayeeAnalysisResponse(ApiModel):
+    #: The `limit` largest by spend, never a page of a list.
     payees: list[PayeeSpending]
+    #: Over EVERY payee in the window, not over `payees` — which is what
+    #: `pct` is a share of, and what the Pareto card measures against.
     total: Decimal
+    #: How many payees spent in the window. Required, because a client that
+    #: knows only "25 rows" cannot say whether that is all of them, and both
+    #: the payee table and the Pareto card were stating the cap as a
+    #: period-wide fact.
+    payee_count: int
 
 
 # ─── Day Patterns ─────────────────────────────────────────────────────────────

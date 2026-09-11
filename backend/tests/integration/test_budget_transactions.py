@@ -130,7 +130,7 @@ async def test_parent_scope_returns_split_as_one_row(api_client, db_session):
 
     # Reconciles with the payee-analysis aggregate (PARENT_ROW-based)
     reports = ReportService(db_session)
-    payees, _total = await reports.payee_analysis(budget.id, START, TODAY)
+    payees, _total, _count = await reports.payee_analysis(budget.id, START, TODAY)
     superstore = next(p for p in payees if p["payee_name"] == "Superstore")
     assert abs(money(body["total_amount"])) == Decimal(str(superstore["total"]))
 

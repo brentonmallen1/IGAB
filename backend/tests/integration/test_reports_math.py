@@ -490,3 +490,44 @@ async def test_the_largest_transactions_are_ranked_by_size_not_by_sign(db_sessio
         Decimal("900.00"),
         Decimal("-120.00"),
     ]
+
+
+async def test_the_payee_total_covers_every_payee_not_only_the_ranked_ones(db_session):
+    """The grand total and every `pct` were computed from the frame AFTER
+    `.head(limit)`, so "Total Spent" was the top-N subtotal and each share was
+    a fraction of a number that was not the total.
+
+    `ai/tools/shape.ranked` writes the opposite contract down — "the service
+    returns the biggest N and a total computed over **everything**" — and a
+    unit test pins that prose, so the spec and the code disagreed in writing.
+    """
+    _services, budget, checking, _savings, groceries, gas = await _setup(db_session)
+    reports = ReportService(db_session)
+
+    spend = [
+        ("Harborstone Realty", "-400.00", groceries),
+        ("Cascade Grocers", "-300.00", groceries),
+        ("Ridgeline Fuel", "-200.00", gas),
+        ("Alder Street Cafe", "-100.00", groceries),
+        ("Sound Transit Pass", "-50.00", gas),
+    ]
+    for name, amount, category in spend:
+        payee = await create_payee(db_session, budget, name)
+        await create_transaction(
+            db_session,
+            budget,
+            checking,
+            amount,
+            TODAY - timedelta(days=5),
+            category=category,
+            payee=payee,
+        )
+
+    rows, total, count = await reports.payee_analysis(budget.id, START, TODAY, limit=2)
+
+    assert [r["payee_name"] for r in rows] == ["Harborstone Realty", "Cascade Grocers"]
+    # 400 + 300 + 200 + 100 + 50, not the 700 the two ranked rows carry.
+    assert total == Decimal("1050.00")
+    assert count == 5
+    # 400 / 1050, not 400 / 700 — which read 57% before.
+    assert round(rows[0]["pct"], 2) == 38.10

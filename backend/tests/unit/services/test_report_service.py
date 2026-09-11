@@ -563,7 +563,7 @@ class TestPayeeAnalysis:
             self._txn(date(2026, 3, 15), D("-50.00")),
         ]
         svc = ReportService(make_session(mock_result(rows)))
-        payees, _ = await svc.payee_analysis(BUDGET, JAN, APR)
+        payees, _, _ = await svc.payee_analysis(BUDGET, JAN, APR)
         assert payees[0]["is_recurring"] is True
 
     async def test_not_recurring_two_months(self):
@@ -572,7 +572,7 @@ class TestPayeeAnalysis:
             self._txn(date(2026, 2, 15), D("-50.00")),
         ]
         svc = ReportService(make_session(mock_result(rows)))
-        payees, _ = await svc.payee_analysis(BUDGET, JAN, APR)
+        payees, _, _ = await svc.payee_analysis(BUDGET, JAN, APR)
         assert payees[0]["is_recurring"] is False
 
     async def test_monthly_trend(self):
@@ -582,7 +582,7 @@ class TestPayeeAnalysis:
             self._txn(date(2026, 2, 5), D("-75.00")),
         ]
         svc = ReportService(make_session(mock_result(rows)))
-        payees, _ = await svc.payee_analysis(BUDGET, JAN, APR)
+        payees, _, _ = await svc.payee_analysis(BUDGET, JAN, APR)
 
         trend = {t["month"]: t["total"] for t in payees[0]["monthly_trend"]}
         assert trend[date(2026, 1, 1)] == D("150.0")
@@ -594,7 +594,7 @@ class TestPayeeAnalysis:
             self._txn(date(2026, 1, 2), D("-200.00")),
         ]
         svc = ReportService(make_session(mock_result(rows)))
-        payees, grand_total = await svc.payee_analysis(BUDGET, JAN, APR)
+        payees, grand_total, _ = await svc.payee_analysis(BUDGET, JAN, APR)
         assert payees[0]["total"] == D("300.0")
         assert payees[0]["count"] == 2
         assert grand_total == D("300.0")
@@ -605,16 +605,36 @@ class TestPayeeAnalysis:
             self._txn(date(2026, 1, 2), D("-300.00"), cat_name="Electronics"),
         ]
         svc = ReportService(make_session(mock_result(rows)))
-        payees, _ = await svc.payee_analysis(BUDGET, JAN, APR)
+        payees, _, _ = await svc.payee_analysis(BUDGET, JAN, APR)
         top = {c["category_name"]: c["total"] for c in payees[0]["top_categories"]}
         assert top["Electronics"] == D("300.0")
         assert top["Groceries"] == D("100.0")
 
     async def test_empty_returns_empty(self):
         svc = ReportService(make_session(mock_result([])))
-        payees, total = await svc.payee_analysis(BUDGET, JAN, APR)
+        payees, total, count = await svc.payee_analysis(BUDGET, JAN, APR)
         assert payees == []
         assert total == D("0")
+        assert count == 0
+
+    async def test_the_total_and_count_span_every_payee_not_the_ranked_ones(self):
+        # The cap is what this report IS — a ranking, not a page — so both
+        # figures beside it have to describe the period. They were computed
+        # from the capped frame, so "Total Spent" was the visible subtotal and
+        # every `pct` was a share of it.
+        third = uuid.uuid4()
+        rows = [
+            self._txn(date(2026, 1, 1), D("-400.00"), PAYEE_1, "Harborstone Realty"),
+            self._txn(date(2026, 1, 2), D("-300.00"), PAYEE_2, "Cascade Grocers"),
+            self._txn(date(2026, 1, 3), D("-100.00"), third, "Alder Street Cafe"),
+        ]
+        svc = ReportService(make_session(mock_result(rows)))
+        payees, total, count = await svc.payee_analysis(BUDGET, JAN, APR, limit=2)
+        assert [p["payee_name"] for p in payees] == ["Harborstone Realty", "Cascade Grocers"]
+        assert total == D("800.0")
+        assert count == 3
+        # 400 / 800, not 400 / 700.
+        assert round(payees[0]["pct"], 1) == 50.0
 
 
 # ─── burn_rate ────────────────────────────────────────────────────────────────

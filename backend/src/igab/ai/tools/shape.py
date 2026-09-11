@@ -72,32 +72,44 @@ def ranked(
     *,
     measure: str,
     total_amount: Any = None,
+    total_rows: int | None = None,
 ) -> dict:
     """A "top N by spend" result, said as what it is.
 
     Distinct from `clip`, and the distinction is the point. `clip` describes a
     *page* of a list whose true length is known. These reports are ranked: the
-    service returns the biggest N and a total computed over **everything**, and
-    there is no count of the rest to report.
+    service returns the biggest N and a total computed over **everything**.
 
     Passing one through `clip` told the model "25 rows, not truncated", so it
     would answer "you paid 25 payees" for a budget with three hundred — the
     badge-says-3-register-draws-930 failure, one table over.
+
+    `total_rows` is for a ranking whose service DOES count the whole set —
+    `payee_analysis` now does, because both the Pareto card and the payee
+    table needed the denominator to stop stating the cap as a period-wide
+    fact. Omit it and the note still forbids guessing, which is the honest
+    answer for a ranking that never counted.
     """
+    counted = total_rows is not None
+    note = (
+        f"These are only the {len(rows)} largest by {measure}, not every row. "
+        "Any total above covers them all, not just the ones shown. "
+    )
+    note += (
+        f"There were {total_rows} in total."
+        if counted
+        else "Do not state how many there were in total — this result does not say."
+    )
     return {
         "rows": rows,
         "shown": len(rows),
         "ranking": f"the {len(rows)} largest by {measure}",
-        # No total_rows: the report never counted the rest, and inventing a
-        # number here is exactly what went wrong.
-        "total_rows": None,
-        "truncated": True,
+        # None unless the caller counted: inventing a number here is exactly
+        # what went wrong.
+        "total_rows": total_rows,
+        "truncated": not counted or total_rows > len(rows),
         **({"total_amount": money(total_amount)} if total_amount is not None else {}),
-        "note": (
-            f"These are only the {len(rows)} largest by {measure}, not every row. "
-            "Any total above covers them all, not just the ones shown. Do not "
-            "state how many there were in total — this result does not say."
-        ),
+        "note": note,
     }
 
 
