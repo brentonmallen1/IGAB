@@ -18,6 +18,7 @@ from decimal import Decimal
 
 from sqlalchemy import event
 
+from igab.db.models import ImportAnchor
 from igab.domain.dates import add_months
 
 from .factories import (
@@ -141,6 +142,50 @@ class TestCategoryHistoryDoesNotAskPerMonth:
         # 0 + 200 − 50 = 150, held to the month after.
         assert [b.available for b in batched] == [
             Decimal(v) for v in ("50.00", "-50.00", "150.00", "150.00")
+        ]
+
+    async def test_an_anchored_budget_walks_from_the_anchor(self, db_session, api_client):
+        """YNAB-imported budgets start the walk from the import anchor, and the
+        differential above builds an unanchored budget — `opening` is None on
+        both sides, so losing the seed in the batched path passed. Here the
+        category is anchored at 120 two months before its first activity.
+        """
+        budget = await create_budget(db_session, api_client.test_user)
+        checking = await create_account(db_session, budget, "Checking")
+        group = await create_category_group(db_session, budget, "Everyday")
+        groceries = await create_category(db_session, budget, group, "Groceries")
+        anchor_month = add_months(THIS, -3)
+        db_session.add(
+            ImportAnchor(
+                budget_id=budget.id,
+                month=anchor_month,
+                kind="available",
+                category_id=groceries.id,
+                amount=Decimal("120.00"),
+            )
+        )
+        after = [add_months(THIS, -2), add_months(THIS, -1)]
+        for month, assigned, spent in zip(
+            after, ("100.00", "50.00"), ("-80.00", "-30.00"), strict=True
+        ):
+            await create_budget_assignment(db_session, budget, groceries, month, assigned)
+            await create_transaction(
+                db_session, budget, checking, spent, month + timedelta(days=3), category=groceries
+            )
+        await db_session.flush()
+
+        months = [add_months(THIS, -4), anchor_month, *after]
+        budgets = make_services(db_session).budgets
+        batched = await budgets.category_history(groceries.id, months)
+        one_by_one = [await budgets.get_category_balance(groceries.id, m) for m in months]
+
+        assert [(b.month, b.available) for b in batched] == [
+            (b.month, b.available) for b in one_by_one
+        ]
+        # The anchor month reads the anchor; then 120 + 100 − 80 = 140, and
+        # 140 + 50 − 30 = 160. Walked from zero these would read 20 and 40.
+        assert [b.available for b in batched[1:]] == [
+            Decimal(v) for v in ("120.00", "140.00", "160.00")
         ]
 
 
