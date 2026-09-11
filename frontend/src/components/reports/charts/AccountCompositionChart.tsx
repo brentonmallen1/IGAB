@@ -64,8 +64,7 @@ export function AccountCompositionReport({ budgetId }: Props) {
           <p>
             Balances keep their sign: asset balances stack above zero, debt balances below. The{' '}
             <strong>Net</strong> line is their sum, less any unmanaged debts and plus any stated
-            asset values — the same figure the Net Worth report draws. (An unmanaged debt REDUCES
-            net worth; this said "plus".)
+            asset values — the same figure the Net Worth report draws.
           </p>
           <ReportScopeNote scope="all-accounts" />
         </ReportInfoButton>

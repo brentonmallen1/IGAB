@@ -1383,3 +1383,15 @@ describe('EmergencyCoverageReport', () => {
     expect(screen.getByText('+2 months over 4 months')).toBeInTheDocument()
   })
 })
+
+describe('AccountCompositionReport info panel', () => {
+  it('explains the Net line without a note about its own earlier wording', () => {
+    // The panel ended '(An unmanaged debt REDUCES net worth; this said "plus".)'
+    // — a changelog entry shown to a reader who never saw the old copy.
+    setQuery({ data: { points: [] } })
+    renderReport(<AccountCompositionReport budgetId="b1" />)
+    fireEvent.click(screen.getByRole('button', { name: 'About the Account Composition report' }))
+    expect(screen.getByText(/less any unmanaged debts/)).toBeInTheDocument()
+    expect(screen.queryByText(/this said/)).toBeNull()
+  })
+})
