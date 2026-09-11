@@ -566,7 +566,8 @@ class LiabilitiesReportResponse(ApiModel):
     #: Owed on accounts closed with a balance still on them, excluded from
     #: `total_balance` above. Net worth counts it — it spans every account —
     #: so without this the two figures disagree in silence and this one claims
-    #: to be every debt.
+    #: to be every debt. Narrowed by the same type and mode filters as the
+    #: items, so it describes only debt the filtered total could have held.
     closed_with_balance_count: int
     closed_with_balance_total: Decimal
 

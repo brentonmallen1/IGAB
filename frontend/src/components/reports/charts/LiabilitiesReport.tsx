@@ -24,6 +24,7 @@ import { MetricRow } from '../MetricRow'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { LogScaleToggle, logAxisProps } from './logScale'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
+import { closedDebtNote, totalLiabilitiesSub } from './liabilitiesView'
 import './LiabilitiesReport.css'
 
 interface Props {
@@ -84,6 +85,8 @@ export function LiabilitiesReport({ budgetId }: Props) {
   if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
 
   const presentTypes = [...new Set((allData?.items ?? []).map((i) => i.liability_type))]
+  const closedCount = data?.closed_with_balance_count ?? 0
+  const closedOwed = formatMoney(data?.closed_with_balance_total ?? 0)
   const chartPoints = (data?.balance_over_time ?? []).map((p) => {
     const point: Record<string, number | string> = { date: p.date.slice(0, 7) }
     for (const item of data?.items ?? []) {
@@ -171,23 +174,13 @@ export function LiabilitiesReport({ budgetId }: Props) {
             captureRef={captureRef}
           />
         </div>
-
-        {(data?.closed_with_balance_count ?? 0) > 0 && data && (
-          <p className="report-note">
-            {formatMoney(data.closed_with_balance_total)} is still owed on{' '}
-            {data.closed_with_balance_count === 1
-              ? 'an account that has been closed'
-              : `${data.closed_with_balance_count} accounts that have been closed`}
-            , so it is not in the total above — but net worth still counts it. Reopen the account,
-            or settle the balance, to bring the two figures together.
-          </p>
-        )}
       </div>
 
       <div ref={captureRef} className="report-capture">
         {(data?.items.length ?? 0) === 0 ? (
           <div className="reports-empty">
-            No liabilities tracked yet — add one from the Liabilities section in the sidebar.
+            {closedDebtNote(closedCount, closedOwed, true) ??
+              'No liabilities tracked yet — add one from the Liabilities section in the sidebar.'}
           </div>
         ) : (
           <>
@@ -199,7 +192,7 @@ export function LiabilitiesReport({ budgetId }: Props) {
               <MetricCard
                 label="Total Liabilities"
                 value={formatMoney(data!.total_balance)}
-                sub="Every debt, cards included"
+                sub={totalLiabilitiesSub(closedCount)}
                 accent
               />
               {/* Rows without terms contribute no interest, so say the total
@@ -215,6 +208,9 @@ export function LiabilitiesReport({ budgetId }: Props) {
               />
               <MetricCard label="Liabilities" value={String(data!.items.length)} />
             </MetricRow>
+            {closedCount > 0 && (
+              <p className="report-note">{closedDebtNote(closedCount, closedOwed, false)}</p>
+            )}
 
             {chartPoints.length > 1 && (
               <ResponsiveContainer width="100%" height={280}>

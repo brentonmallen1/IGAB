@@ -737,7 +737,8 @@ export interface LiabilitiesReport {
   balance_over_time: LiabilitiesBalancePoint[]
   /** Owed on accounts closed with a balance still on them, excluded from
    *  `total_balance`. Net worth counts it, so the page says so rather than
-   *  letting two figures labelled Total Liabilities disagree in silence. */
+   *  letting two figures labelled Total Liabilities disagree in silence.
+   *  Narrowed by the report's type and mode filters, like `items`. */
   closed_with_balance_count: number
   closed_with_balance_total: number
 }
