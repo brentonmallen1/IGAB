@@ -15,9 +15,13 @@ once — when the transaction posts. This mirrors AccountRepository.get_balance.
 """
 
 import re
+import uuid
+from collections.abc import Collection
 from datetime import date
+from decimal import Decimal
+from typing import Protocol
 
-from sqlalchemy import Boolean, String, and_, cast, func, not_, or_, select
+from sqlalchemy import Boolean, String, and_, cast, false, func, not_, or_, select, true
 from sqlalchemy.orm import aliased
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -29,6 +33,7 @@ from igab.db.models import (
     Transaction,
     category_tags,
 )
+from igab.domain.enums import ScheduleFrequency
 from igab.domain.payee_names import BALANCE_ADJUSTMENT_PAYEES
 from igab.repositories.category_filters import IN_SYSTEM_GROUP, SPENDABLE, SPENT_ENVELOPE
 
@@ -444,6 +449,18 @@ CARD_PAYMENT_FROM_CASH = and_(Transaction.amount > 0, TRANSFER_LEG, COUNTERPART_
 #: A split parent's legs, for a rule that has to see through the parent.
 _leg = aliased(Transaction)
 
+#: A split leg's parent, for a rule that reads what the legs itemise. Any
+#: query using `PAYEE_OF_RECORD` needs
+#: `.outerjoin(SPLIT_PARENT, Transaction.parent_transaction_id == SPLIT_PARENT.id)`.
+SPLIT_PARENT = aliased(Transaction)
+
+#: Payee of record for a leaf row: its own, falling back to its split parent's.
+#: Splits are one trip to the shop with the legs itemised, so the parent names
+#: where the money went — but the legs are what carry categories, and therefore
+#: classes. Reading the parent row instead would classify the whole basket by
+#: its net sign, counting a savings-tagged leg as spending.
+PAYEE_OF_RECORD = func.coalesce(Transaction.payee_id, SPLIT_PARENT.payee_id)
+
 
 def in_category_scope(category_ids) -> ColumnElement[bool]:
     """A row is in a category scope if its OWN category is — or, for a split
@@ -716,3 +733,94 @@ def search_matches(search: str):
     if digits is not None:
         clauses.append(AMOUNT_AS_TEXT.like(f"%{digits}%"))
     return or_(*clauses)
+
+
+# ─── Cash projection: what the fixed layer re-applies ────────────────────────
+#
+# The cash projection has two layers that must partition the register: fixed
+# events (schedules, inferred subscriptions) and a bootstrap over the history
+# left over. A row the fixed layer re-applies has to leave the history, and
+# nothing else may: a row in neither layer is spending the projection forgets,
+# and a row in both is spending it counts twice.
+
+#: What an inferred subscription is made of: a charge in a Subscription-tagged
+#: category. The arm that projects subscriptions reads these rows, and the
+#: history leaves out exactly these rows for the payees it projects.
+SUBSCRIPTION_CHARGE = and_(category_tagged("subscription"), Transaction.amount < 0)
+
+
+class ScheduleShape(Protocol):
+    """What `reapplied_by_schedule` reads off a schedule."""
+
+    @property
+    def id(self) -> uuid.UUID: ...
+    @property
+    def payee_id(self) -> uuid.UUID | None: ...
+    @property
+    def category_id(self) -> uuid.UUID | None: ...
+    @property
+    def account_id(self) -> uuid.UUID: ...
+    @property
+    def amount(self) -> Decimal: ...
+    @property
+    def frequency(self) -> str: ...
+
+
+def reapplied_by_schedule(schedule: ScheduleShape) -> ColumnElement[bool]:
+    """The register rows a projected schedule stands in for.
+
+    Always the rows the scheduler created for it. For a recurring schedule,
+    also the hand-entered or bank-synced rows of the same bill: the same payee
+    of record (and category, when the schedule has one) — or, for a schedule
+    with no payee, which is every schedule IGAB's own editor makes, the same
+    category on the same account. Only rows moving money the same way as the
+    schedule: a refund into the rent envelope is not rent.
+
+    Keyed on the payee alone, the exclusion missed every editor-made schedule
+    and swept up a payee's unrelated spending. A `once` schedule stands in for
+    one event rather than a flow, so its payee's history stays sampled.
+
+    NULL for some rows (no payee, no category), so negate it only through
+    `none_of`. Requires the `SPLIT_PARENT` outer join.
+    """
+    created = Transaction.scheduled_transaction_id == schedule.id
+    if schedule.frequency == ScheduleFrequency.ONCE.value or schedule.amount == 0:
+        return created
+    same_way = Transaction.amount < 0 if schedule.amount < 0 else Transaction.amount > 0
+    if schedule.payee_id is not None:
+        bill = [PAYEE_OF_RECORD == schedule.payee_id]
+        if schedule.category_id is not None:
+            bill.append(Transaction.category_id == schedule.category_id)
+    elif schedule.category_id is not None:
+        bill = [
+            Transaction.category_id == schedule.category_id,
+            Transaction.account_id == schedule.account_id,
+        ]
+    else:
+        return created
+    return or_(created, and_(same_way, *bill))
+
+
+def reapplied_by_subscriptions(payee_ids: Collection[uuid.UUID]) -> ColumnElement[bool]:
+    """The charges the subscription arm projects, for the payees it projects.
+
+    The exclusion used to take every row of those payees in every category, so
+    a shop with a $15 subscription and $100 a week of household spending lost
+    the household spending from both layers. Matches nothing for no payees.
+    """
+    if not payee_ids:
+        return false()
+    return and_(Transaction.payee_id.in_(payee_ids), SUBSCRIPTION_CHARGE)
+
+
+def none_of(*predicates: ColumnElement[bool]) -> ColumnElement[bool]:
+    """Rows matching none of `predicates`, a NULL counting as no match.
+
+    `~or_(...)` is not that: SQL's NOT of an unknown is unknown, and WHERE drops
+    unknowns. `payee_id NOT IN (...)` is unknown for every row with no payee —
+    every split line typed in the UI — which is how the cash projection's
+    history lost all of them as soon as one schedule carried a payee.
+    """
+    if not predicates:
+        return true()
+    return or_(*predicates).is_not(true())

@@ -7,9 +7,9 @@ from decimal import Decimal
 from typing import TypedDict
 
 import polars as pl
-from sqlalchemy import case, func, literal, literal_column, select, true
+from sqlalchemy import case, func, literal, literal_column, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import aliased
+from sqlalchemy.sql.elements import ColumnElement
 
 from igab.db.models import (
     Account,
@@ -41,7 +41,7 @@ from igab.domain.carryover import available_at, monthly_end_balances
 # predicate is vacuously true, keeping one uniform rule.
 from igab.domain.dates import add_months, months_spanned
 from igab.domain.money import format_csv_amount, quantize_cents
-from igab.domain.schedule import next_occurrence, subscription_occurrences
+from igab.domain.schedule import projected_occurrences, subscription_occurrences
 from igab.guide.concepts import (
     ESSENTIALS_WINDOW_DAYS,
     FULL_EMERGENCY_FUND_MONTHS_HIGH,
@@ -58,10 +58,16 @@ from igab.repositories.txn_filters import (
     NOT_DELETED,
     ON_BUDGET_ACCOUNT,
     PARENT_ROW,
+    PAYEE_OF_RECORD,
     PLANNED_SPEND_ROW,
     POSTED,
+    SPLIT_PARENT,
+    SUBSCRIPTION_CHARGE,
     category_tagged,
     in_category_scope,
+    none_of,
+    reapplied_by_schedule,
+    reapplied_by_subscriptions,
 )
 from igab.services.report_basics import (
     _months_in_range,
@@ -174,15 +180,6 @@ def _spending_classes(
 #: varying wage discards three quarters of them. A floor only has to be low
 #: enough to catch a real wage and high enough to ignore a refund.
 PAYDAY_FLOOR = Decimal("200")
-
-
-#: Payee of record for a leaf row: its own, falling back to its split parent's.
-#: Splits are one trip to the shop with the legs itemised, so the parent names
-#: where the money went — but the legs are what carry categories, and therefore
-#: classes. Reading the parent row instead would classify the whole basket by
-#: its net sign, counting a savings-tagged leg as spending.
-_split_parent = aliased(Transaction)
-PAYEE_OF_RECORD = func.coalesce(Transaction.payee_id, _split_parent.payee_id)
 
 
 #: Inflow that is not income: money drawn back out of savings, or borrowed.
@@ -2311,7 +2308,7 @@ class ReportService:
                 Payee.name.label("payee_name"),
                 Category.name.label("category_name"),
             )
-            .outerjoin(_split_parent, Transaction.parent_transaction_id == _split_parent.id)
+            .outerjoin(SPLIT_PARENT, Transaction.parent_transaction_id == SPLIT_PARENT.id)
             .outerjoin(Payee, PAYEE_OF_RECORD == Payee.id)
             .outerjoin(Category, Transaction.category_id == Category.id)
             .where(
@@ -3320,30 +3317,22 @@ class ReportService:
         # queries below, which scope the same way).
         start_balance = await self.accounts.sum_on_budget_balance(budget_id, today)
 
-        # 2. Get scheduled transactions in the projection window. The
-        # projection covers on-budget cash, so schedules pointed at
-        # off-budget or closed accounts don't belong in it.
+        # 2. Scheduled transactions. The projection covers on-budget cash, so
+        # schedules pointed at off-budget or closed accounts don't belong in
+        # it. Every live schedule is read, not only those due inside the
+        # horizon: a yearly bill next due after the horizon still tells the
+        # subscription arm below not to infer its own copy of that bill.
+        # The whole row: start_date and second_day_of_month are what let
+        # next_occurrence re-anchor a monthly schedule and step a twice-monthly
+        # one at all, and category and account identify the bill when there is
+        # no payee — which IGAB's own schedule editor never sets.
         sched_q = (
-            select(
-                ScheduledTransaction.id,
-                ScheduledTransaction.amount,
-                ScheduledTransaction.next_occurrence_date,
-                ScheduledTransaction.frequency,
-                ScheduledTransaction.end_date,
-                # start_date and second_day_of_month are what let
-                # domain.schedule.next_occurrence re-anchor a monthly schedule
-                # to its own day and step a twice-monthly one at all.
-                ScheduledTransaction.start_date,
-                ScheduledTransaction.second_day_of_month,
-                ScheduledTransaction.payee_id,
-                Payee.name.label("payee_name"),
-            )
+            select(ScheduledTransaction, Payee.name.label("payee_name"))
             .join(Account, Account.id == ScheduledTransaction.account_id)
             .outerjoin(Payee, Payee.id == ScheduledTransaction.payee_id)
             .where(
                 ScheduledTransaction.budget_id == budget_id,
                 ScheduledTransaction.is_deleted == False,  # noqa: E712
-                ScheduledTransaction.next_occurrence_date <= end_date,
                 Account.is_closed == False,  # noqa: E712
                 # Cash accounts only, matching the balance being projected.
                 # A schedule pointed at a card does not move cash on its
@@ -3361,30 +3350,31 @@ class ReportService:
         # twice-monthly schedule contributed ONE occurrence to a 90-day
         # projection — including the demo budget's twice-monthly salary.
         #
-        # An occurrence already due but not entered is booked on `today`, not
-        # its own past date. Before, it went into `det_by_date` under a date
-        # the path never visits (the path starts at today) while still showing
-        # in the events list: a bill no projected balance accounted for.
+        # Everything a schedule has due by today is one charge on today — see
+        # `projected_occurrences`. Each schedule also yields the register rows
+        # it stands in for (`reapplied_by_schedule`): those that booked an
+        # event leave the sampled history, and every live one keeps the
+        # subscription arm from inferring the same bill a second time.
         scheduled_events: list[tuple[date, str, Decimal]] = []
-        scheduled_payee_ids: set[uuid.UUID] = set()
-        for row in sched_rows:
-            occ_date = row.next_occurrence_date
-            amount = Decimal(str(row.amount))
-            payee_name = row.payee_name or "Scheduled"
-            if row.payee_id is not None:
-                scheduled_payee_ids.add(row.payee_id)
-
-            while occ_date is not None and occ_date <= end_date:
-                if row.end_date and occ_date > row.end_date:
-                    break
-                scheduled_events.append((max(occ_date, today), payee_name, amount))
-                occ_date = next_occurrence(
-                    row.frequency,
-                    occ_date,
-                    start_day=row.start_date.day,
-                    second_day_of_month=row.second_day_of_month,
-                    end_date=row.end_date,
-                )
+        projected_schedules: list[ColumnElement[bool]] = []
+        live_schedules: list[ColumnElement[bool]] = []
+        for sched, payee_name in sched_rows:
+            amount = Decimal(str(sched.amount))
+            dates, runs_on = projected_occurrences(
+                sched.frequency,
+                sched.next_occurrence_date,
+                start_day=sched.start_date.day,
+                second_day_of_month=sched.second_day_of_month,
+                end_date=sched.end_date,
+                today=today,
+                horizon_end=end_date,
+            )
+            scheduled_events.extend((d, payee_name or "Scheduled", amount) for d in dates)
+            covers = reapplied_by_schedule(sched)
+            if dates:
+                projected_schedules.append(covers)
+            if dates or runs_on:
+                live_schedules.append(covers)
 
         # 3. Recurring charges in categories tagged Subscription, by payee.
         #
@@ -3397,7 +3387,11 @@ class ReportService:
         subscription_events: list[tuple[date, str, Decimal]] = []
         subscription_payee_ids: set[uuid.UUID] = set()
         # Last charge date and typical amount per payee inside those
-        # categories.
+        # categories — leaving out charges a live schedule already stands in
+        # for. Both arms used to book those, so a subscription entered as a
+        # schedule was charged to the projection twice; and the old check
+        # matched on the schedule's payee, which a schedule made in IGAB's
+        # editor never has.
         sub_q = (
             select(
                 Transaction.payee_id,
@@ -3409,29 +3403,24 @@ class ReportService:
             )
             .join(Payee, Payee.id == Transaction.payee_id)
             .join(Account, Account.id == Transaction.account_id)
+            .outerjoin(SPLIT_PARENT, Transaction.parent_transaction_id == SPLIT_PARENT.id)
             .where(
                 Transaction.budget_id == budget_id,
                 NOT_DELETED,
                 POSTED,
                 LEAF,
-                category_tagged("subscription"),
-                Transaction.amount < 0,
+                SUBSCRIPTION_CHARGE,
                 Account.is_closed == False,  # noqa: E712
                 # Cash accounts only: a subscription charged to a card
                 # consumes cash at payment time, not charge time.
                 CASH_ACCOUNT,
+                none_of(*live_schedules),
             )
             .group_by(Transaction.payee_id, Payee.name)
         )
         sub_rows = (await self.session.execute(sub_q)).all()
 
         for row in sub_rows:
-            # A payee already covered by a scheduled transaction is projected
-            # by the arm above. Both arms used to book it, so a subscription
-            # entered as a schedule was charged to the projection twice.
-            if row.payee_id is not None and row.payee_id in scheduled_payee_ids:
-                continue
-
             last_date: date = row.last_date
             avg_amount = Decimal(str(row.avg_amount))
             payee_name = row.payee_name or "Subscription"
@@ -3463,14 +3452,18 @@ class ReportService:
         # days ... minus transactions of deterministic payees"; only the first
         # half was implemented.
         #
-        # Two exclusions, because a recurring charge reaches the register two
-        # ways: rows the scheduler created carry `scheduled_transaction_id`,
-        # while a hand-entered one carries only its payee.
-        det_payee_ids = scheduled_payee_ids | subscription_payee_ids
+        # Exactly what the fixed layer re-applies, and nothing more: each
+        # projected schedule's own rows and its bill, and each projected
+        # subscription's charges (txn_filters' "what the fixed layer
+        # re-applies"). This was `payee_id NOT IN (every deterministic payee)`,
+        # which dropped every payee-less row — split lines included — the
+        # moment one schedule had a payee, and took a subscription payee's
+        # unrelated spending out of both layers.
         hist_start = today - timedelta(days=180)
         hist_q = (
             select(Transaction.date, Transaction.amount)
             .join(Account, Account.id == Transaction.account_id)
+            .outerjoin(SPLIT_PARENT, Transaction.parent_transaction_id == SPLIT_PARENT.id)
             .where(
                 Transaction.budget_id == budget_id,
                 NOT_DELETED,
@@ -3480,9 +3473,7 @@ class ReportService:
                 Transaction.date < today,
                 Account.is_closed == False,  # noqa: E712
                 CASH_ACCOUNT,
-                Transaction.scheduled_transaction_id.is_(None),
-                # in_([]) renders false, so the empty case must not reach it.
-                true() if not det_payee_ids else Transaction.payee_id.not_in(det_payee_ids),
+                none_of(*projected_schedules, reapplied_by_subscriptions(subscription_payee_ids)),
             )
         )
         hist_rows = (await self.session.execute(hist_q)).all()
