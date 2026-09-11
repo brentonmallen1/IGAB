@@ -7,9 +7,11 @@ comments claiming agreement, which is exactly why they went unnoticed.
 
 from datetime import date, timedelta
 from decimal import Decimal
-from unittest.mock import patch
+
+import pytest
 
 from igab.services.report_service import ReportService
+from tests.report_clock import report_today
 
 from .factories import (
     create_account,
@@ -22,6 +24,15 @@ from .factories import (
 
 TODAY = date.today()
 MONTH_START = TODAY.replace(day=1)
+
+
+@pytest.fixture(autouse=True)
+def _the_service_reads_this_modules_today():
+    """Rows here are dated from TODAY, read once at import; the service reads
+    the clock when called. Pinned, a run that crosses midnight still asks the
+    day its rows were seeded for."""
+    with report_today(TODAY):
+        yield
 
 
 async def _budget_with_checking(db_session):
@@ -176,14 +187,30 @@ class TestTheBurnWindowsAreTheSameWindow:
         assert Decimal(str(card["burn_rate_30"])) == Decimal("100.00")
         assert _burn_from_chart(chart) == Decimal("100.00")
 
+    async def test_a_spend_90_days_back_is_in_neither(self, db_session):
+        """The 90-day half of the same fix: day 90 counting today as day 1 is
+        in, day 91 is out. The card ran `today - 90`, ninety-one days, and
+        counted the 300 the chart's `rolling_90` leaves out."""
+        budget, checking, category = await _budget_with_checking(db_session)
+        for amount, days_back in (("-300.00", 90), ("-900.00", 89)):
+            await create_transaction(
+                db_session,
+                budget,
+                checking,
+                amount,
+                TODAY - timedelta(days=days_back),
+                category=category,
+                cleared="cleared",
+            )
+        await db_session.flush()
 
-class _MidMonth(date):
-    """The service's clock, pinned mid-month: a row later this month is then
-    a day that has not happened yet, whatever day the suite runs on."""
+        service = ReportService(db_session)
+        card = await service.dashboard_metrics(budget.id, MONTH_START, TODAY)
+        chart = await service.burn_rate(budget.id, months=1)
 
-    @classmethod
-    def today(cls):
-        return date(2026, 3, 15)
+        # 900 over three months, not 1,200.
+        assert Decimal(str(card["burn_rate_90"])) == Decimal("300.00")
+        assert Decimal(str(chart[-1]["rolling_90"])) == Decimal("300.00")
 
 
 class TestNetWorthNow:
@@ -200,7 +227,9 @@ class TestNetWorthNow:
         await db_session.flush()
 
         service = ReportService(db_session)
-        with patch("igab.services.report_service.date", _MidMonth):
+        # Pinned mid-month: a row later this month has not happened yet,
+        # whatever day the suite runs on.
+        with report_today(date(2026, 3, 15)):
             card = await service.dashboard_metrics(budget.id, date(2026, 3, 1), date(2026, 3, 15))
             chart = await service.net_worth_history(budget.id, months=1)
 
