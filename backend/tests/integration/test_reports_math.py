@@ -580,6 +580,10 @@ async def test_the_sankey_counts_a_split_inflow_once(db_session):
 
     assert Decimal(str(data["total_income"])) == Decimal("1000.00")
     assert Decimal(str(data["total_expense"])) == Decimal("300.00")
+    # Budgeted mode counts the same income: the mode changes where the money
+    # went, never what came in. It summed the +700 parent.
+    budgeted = await reports.cash_flow_sankey(budget.id, START, TODAY, mode="budgeted")
+    assert Decimal(str(budgeted["total_income"])) == Decimal("1000.00")
     # The legs carry no payee of their own; the income node is named by the
     # split's payee of record, not merged into "Unknown Income".
     (income_node,) = [n for n in data["nodes"] if n["id"].startswith("inc_")]

@@ -109,6 +109,26 @@ export function spendingDrillClasses(includeSavings: boolean): string[] {
   return includeSavings ? ['spending', 'savings', 'debt_principal'] : ['spending']
 }
 
+/** The drill-down behind an Income figure: the rows every income figure
+ *  counts, which is `INCOME_ROW` on the server — leaf rows of the income
+ *  class. Parent rows are the wrong shape: a split paycheck of +1,000 pay and
+ *  -300 fees is one +700 parent, so the Sankey's Income node, reading 1,000,
+ *  opened a list totalling 700. One builder, because Income vs Expenses and
+ *  the Sankey both open it. */
+export function incomeDrill(
+  label: string,
+  window: { startDate: string; endDate: string }
+): DrillDownContext {
+  return {
+    kind: 'month',
+    label,
+    scope: 'leaf',
+    direction: 'inflow',
+    activityClasses: ['income'],
+    ...window,
+  }
+}
+
 export interface TabFilterSupport {
   /** Whether the tab can roll up by a saved view's groups instead of the
    *  budget's own. Only the group-capable ones — everything else has no group

@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef } from 'react'
 import { ChevronRight } from 'lucide-react'
-import { useReportStore } from '../../../stores/reportStore'
+import { incomeDrill, useReportStore } from '../../../stores/reportStore'
 import { useCashFlowReport } from '../../../api/reports'
 import { usePayees } from '../../../api/payees'
 import { useChartHeight } from '../../../hooks/useChartHeight'
@@ -252,13 +252,7 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
         setSelectedCategoryId(null)
       } else if (viewMode === 'spent') {
         // At the top level it opens the income transactions instead
-        setDrillDown({
-          kind: 'month',
-          label: 'Income',
-          scope: 'parent',
-          direction: 'inflow',
-          ...window,
-        })
+        setDrillDown(incomeDrill('Income', window))
       }
     } else if (nodeData.type === 'category_group') {
       if (selectedCategoryId) {
