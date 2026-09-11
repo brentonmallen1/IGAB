@@ -68,6 +68,7 @@ from igab.repositories.txn_filters import (
     LIVE_ACCOUNT,
     NOT_DELETED,
     ON_BUDGET_ACCOUNT,
+    ON_CARD_ACCOUNT,
     PARENT_ROW,
     PAYEE_OF_RECORD,
     PLANNED_SPEND_ROW,
@@ -2987,6 +2988,7 @@ class ReportService:
                 # on-budget transfers; a transfer IN from a savings account
                 # passed straight through and was counted as a payday.
                 ACTIVITY_CLASS.label("cls"),
+                ON_CARD_ACCOUNT.label("on_card"),
             )
             .where(
                 Transaction.budget_id == budget_id,
@@ -3017,10 +3019,14 @@ class ReportService:
                 "payee_id": [str(r.payee_id) if r.payee_id else None for r in rows],
                 "is_subscription": [bool(r.is_subscription) for r in rows],
                 "cls": [r.cls for r in rows],
+                "on_card": [bool(r.on_card) for r in rows],
             }
         )
 
-        # A payday is an INCOME-class inflow of at least PAYDAY_FLOOR.
+        # A payday is an INCOME-class inflow of at least PAYDAY_FLOOR into
+        # cash. Never onto a card: a card payment whose cash leg was never
+        # paired is an uncategorized credit, which classes INCOME — so every
+        # month the bill was paid read as a second payday.
         #
         # Not a quantile. This took the P75 of every inflow, which makes a
         # RELATIVE threshold decide which paydays exist: pay varies — overtime,
@@ -3028,18 +3034,13 @@ class ReportService:
         # three quarters of the household's paydays, so the report described
         # the behaviour after its best-paid weeks only. An absolute floor keeps
         # every real payday and still ignores a small refund.
-        inflows = df.filter((pl.col("amount") > 0) & (pl.col("cls") == ActivityClass.INCOME.value))
-        if inflows.is_empty():
-            return {
-                "days": [{"offset": i, "avg_spend": Decimal("0")} for i in range(window)],
-                "baseline_daily": None,
-                "event_count": 0,
-            }
-
-        income_events = (
-            inflows.filter(pl.col("amount") >= float(PAYDAY_FLOOR))["date"].unique().to_list()
+        income_dates = set(
+            df.filter(
+                (pl.col("cls") == ActivityClass.INCOME.value)
+                & ~pl.col("on_card")
+                & (pl.col("amount") >= float(PAYDAY_FLOOR))
+            )["date"].to_list()
         )
-        income_dates = set(income_events)
 
         if not income_dates:
             return {

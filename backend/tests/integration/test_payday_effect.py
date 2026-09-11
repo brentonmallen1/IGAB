@@ -514,3 +514,17 @@ async def test_only_income_is_a_payday(db_session):
     data = await ReportService(db_session).payday_effect(budget.id, window=14, months=12)
 
     _assert_core_expectations(data)
+
+
+async def test_a_credit_on_a_card_is_never_a_payday(db_session):
+    """A card bill paid from checking whose two legs were never linked arrives
+    on the card as a plain credit — the unlinked-payment card scenario. It has
+    no category, so it classes INCOME, and at 300 it clears the floor: every
+    month the bill was paid read as a second payday. A wage lands in cash."""
+    budget, checking, _group = await _setup_core_scenario(db_session)
+    card = await create_account(db_session, budget, "Sapphire Visa", account_type="credit_card")
+    await create_transaction(db_session, budget, card, "300.00", TODAY - timedelta(days=12))
+
+    data = await ReportService(db_session).payday_effect(budget.id, window=14, months=12)
+
+    _assert_core_expectations(data)
