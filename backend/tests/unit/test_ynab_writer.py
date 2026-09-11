@@ -58,11 +58,17 @@ class TestMoneyRoundTrips:
     def test_no_currency_symbol_is_written(self):
         assert "$" not in format_csv_amount(Decimal("5.00"))
 
-    def test_fractional_cents_are_rounded_not_written(self):
-        """Numeric(19,4) holds four places; a CSV cell shows two, and the
-        rounding is the one the rest of the app uses."""
-        assert format_csv_amount(Decimal("1.005")) == "1.00"  # half-even
-        assert format_csv_amount(Decimal("1.015")) == "1.02"
+    def test_whole_cents_are_written_with_two_places(self):
+        # Numeric(19,4) stores "-42.5000"; the cell reads like money.
+        assert format_csv_amount(Decimal("-42.5000")) == "-42.50"
+        assert format_csv_amount(Decimal("7")) == "7.00"
+
+    @pytest.mark.parametrize("amount", ["1.005", "-12.345", "0.0001", "-1234567.8912"])
+    def test_a_sub_cent_amount_is_written_whole_not_rounded(self, amount):
+        """Rounding to cents made the export lossy: -12.345 wrote -12.34, and
+        the file no longer read back as the ledger it came from."""
+        assert format_csv_amount(Decimal(amount)) == amount
+        assert parse_csv_amount(format_csv_amount(Decimal(amount))) == Decimal(amount)
 
 
 class TestDatesRoundTrip:

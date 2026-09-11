@@ -116,7 +116,17 @@ def format_csv_amount(amount: Decimal) -> str:
     round-trip is pinned by a test rather than by matching format strings by
     eye.
 
-    Plain, two decimals, a leading minus for negatives, no separators: the
-    subset every spreadsheet and every reader here agrees on.
+    Plain, a leading minus for negatives, no separators: the subset every
+    spreadsheet and every reader here agrees on. Two decimals for whole cents,
+    which is nearly every amount — and the stored value, up to
+    `MAX_DECIMAL_PLACES`, for one that is not. Amounts are stored to four
+    places, and rounding those to cents made the export lossy: -12.345 wrote
+    -12.34, the column stopped summing to the balance, and reading the file
+    back gave a different ledger. The reader never needed the rounding;
+    `parse_csv_amount("-12.345")` is exact.
     """
-    return f"{quantize_cents(amount):.2f}"
+    cents = quantize_cents(amount)
+    if cents == amount:
+        return f"{cents:.2f}"
+    stored = amount.quantize(Decimal(1).scaleb(-MAX_DECIMAL_PLACES), rounding=ROUND_HALF_EVEN)
+    return f"{stored.normalize():f}"

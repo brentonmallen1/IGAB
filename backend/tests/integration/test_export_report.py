@@ -147,3 +147,22 @@ async def test_amounts_are_written_the_way_every_other_export_writes_them(db_ses
         budget.id, TODAY - timedelta(days=3), TODAY, "json"
     )
     assert next(r for r in json.loads(payload) if r["id"] == str(cleared.id))["amount"] == "-100.00"
+
+
+async def test_a_sub_cent_amount_exports_whole(db_session):
+    """Amounts are stored to four places. The export rounded every one to
+    cents, so a -12.345 row wrote -12.34 in both formats: the column stopped
+    summing to the account and the file no longer read back as the ledger.
+    Whole cents still write two places; a sub-cent amount writes itself."""
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+    checking = await create_account(db_session, budget, "Checking")
+    odd = await create_transaction(db_session, budget, checking, "-12.345", TODAY)
+    reports = ReportService(db_session)
+
+    content, _ = await reports.export_transactions(budget.id, TODAY, TODAY, "csv")
+    payload, _ = await reports.export_transactions(budget.id, TODAY, TODAY, "json")
+
+    row = next(r for r in csv.DictReader(io.StringIO(content)) if r["id"] == str(odd.id))
+    assert row["amount"] == "-12.345"
+    assert next(r for r in json.loads(payload) if r["id"] == str(odd.id))["amount"] == "-12.345"
