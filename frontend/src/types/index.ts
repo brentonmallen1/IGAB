@@ -1259,7 +1259,10 @@ export interface PaydayEffectDay {
 
 export interface PaydayEffectReport {
   days: PaydayEffectDay[]
-  baseline_daily: number
+  /** null when the payday windows cover every day, so there is no "outside"
+   *  to average — backend PaydayEffectResponse. Never read it as 0.00: that
+   *  says the household spends nothing between paydays. */
+  baseline_daily: number | null
   event_count: number
 }
 

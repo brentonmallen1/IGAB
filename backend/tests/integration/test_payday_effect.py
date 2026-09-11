@@ -2,9 +2,16 @@
 
 Pins the cash-flow rules this report must share with every other report:
 uncategorized transfer legs are internal money movement — a big transfer
-INTO checking is not a payday, and the outflow leg is not spending.
-Subscription-tagged payees are excluded from the spending averages (they
-fire on their own schedule, not because a payday happened).
+INTO checking is not a payday, and the outflow leg is not spending. Only an
+INCOME-class inflow is a payday, so money drawn back from a tracked account
+and a large refund are not either. Subscription-tagged categories are excluded
+from the spending averages (they fire on their own schedule, not because a
+payday happened).
+
+Transfers are built with the SOURCE as `account_id`: `_create_transfer` books
+`account_id` as the outflow leg. The first version of these tests had it the
+other way round, so "a transfer into checking" never put a cent into checking
+and the income-side class filter went unpinned.
 """
 
 from datetime import date, timedelta
@@ -61,14 +68,11 @@ def _assert_core_expectations(data):
     assert by_offset[0] == Decimal("100.00")
     assert by_offset[1] == Decimal("50.00")
     assert by_offset[5] == Decimal("0")
-    # `baseline_daily` is "average daily spend outside the window", which is
-    # what the schema has always promised — so the 75 spreads across every
-    # quiet day in the range rather than dividing by the one day that happened
-    # to have spending. The exact figure depends on how many days the range
-    # holds, so the arithmetic is pinned in
-    # `test_the_baseline_counts_quiet_days_too` rather than hard-coded here.
-    assert data["baseline_daily"] is not None
-    assert Decimal("0") < data["baseline_daily"] < by_offset[1]
+    # The window holds T-20..T-7; the baseline is every day after it, T-6..T:
+    # seven days, one with 75. 75 / 7. Pinned exactly, because loose bounds
+    # let two denominator bugs through — dropping today (75 / 6 = 12.50) and
+    # counting window days as zeros (75 / 21 = 3.57).
+    assert data["baseline_daily"] == Decimal("10.71")
 
 
 async def test_spending_averages_by_day_after_payday(db_session):
@@ -87,14 +91,14 @@ async def test_transfers_are_neither_paydays_nor_spending(db_session):
 
     # A 3000 transfer into checking: bigger than the salary, but internal.
     # If counted, it would both displace the salary as the income event and
-    # register a 3000 "spend" on its savings leg.
+    # register a 3000 "spend" on its savings leg. `account_id` is the source.
     await services.transactions.create(
         budget.id,
         TransactionCreate(
-            account_id=checking.id,
+            account_id=savings.id,
             date=TODAY - timedelta(days=10),
             amount=Decimal("3000.00"),
-            transfer_account_id=savings.id,
+            transfer_account_id=checking.id,
             cleared="cleared",
         ),
     )
@@ -260,17 +264,17 @@ async def test_the_baseline_counts_quiet_days_too(db_session):
     checking = await create_account(db_session, budget, "Checking")
     employer = await create_payee(db_session, budget, "Northwind Payserv")
 
-    await create_transaction(db_session, budget, checking, "2000.00", TODAY, payee=employer)
-    await create_transaction(db_session, budget, checking, "-40.00", TODAY - timedelta(days=2))
-    await create_transaction(db_session, budget, checking, "-20.00", TODAY - timedelta(days=4))
+    await create_transaction(
+        db_session, budget, checking, "2000.00", TODAY - timedelta(days=10), payee=employer
+    )
+    await create_transaction(db_session, budget, checking, "-40.00", TODAY - timedelta(days=5))
+    await create_transaction(db_session, budget, checking, "-20.00", TODAY - timedelta(days=3))
 
     data = await ReportService(db_session).payday_effect(budget.id, window=3, months=12)
 
-    baseline = data["baseline_daily"]
-    assert baseline is not None
-    # 60 of spending spread over a year of quiet days. An average over the two
-    # days that had spending would have given 30.00.
-    assert baseline < Decimal("1.00")
+    # The window is T-10..T-8; the baseline is T-7..T, eight days holding 60.
+    # An average over the two days that had spending would have given 30.00.
+    assert data["baseline_daily"] == Decimal("7.50")
 
 
 async def test_a_payday_savings_sweep_is_not_post_payday_spending(db_session):
@@ -331,3 +335,91 @@ async def test_a_varying_wage_keeps_every_payday(db_session):
 
     # All four, not just the one above the 75th percentile.
     assert data["event_count"] == 4
+
+
+async def _flat_register(db_session, *, days_of_history: int, paydays: list[int], daily: str):
+    """A register with `daily` spent every day for `days_of_history` days and
+    paydays `paydays` days back. Nothing older: a first sync, say."""
+    budget = await create_budget(db_session, await create_user(db_session))
+    checking = await create_account(db_session, budget, "Checking")
+    employer = await create_payee(db_session, budget, "Northwind Payserv")
+    for back in paydays:
+        await create_transaction(
+            db_session, budget, checking, "2000.00", TODAY - timedelta(days=back), payee=employer
+        )
+    for back in range(days_of_history + 1):
+        await create_transaction(
+            db_session, budget, checking, f"-{daily}", TODAY - timedelta(days=back)
+        )
+    return budget
+
+
+async def test_a_short_history_is_not_a_year_of_quiet_days(db_session):
+    """A ninety-day first sync is the common case. The baseline walked every
+    day from twelve months back and zero-filled the months before the register
+    had any data, so a household spending a flat 50 a day — no payday effect at
+    all — was told post-payday spending ran twelve times normal.
+    """
+    budget = await _flat_register(
+        db_session, days_of_history=60, paydays=[56, 42, 28, 14], daily="50.00"
+    )
+
+    data = await ReportService(db_session).payday_effect(budget.id, window=7, months=12)
+
+    assert data["event_count"] == 4
+    assert data["baseline_daily"] == Decimal("50.00")
+    assert all(d["avg_spend"] == Decimal("50.00") for d in data["days"])
+
+
+async def test_biweekly_pay_at_window_14_has_no_outside_whatever_its_phase(db_session):
+    """Days before the first payday in range are the tail of a payday the query
+    never fetched. Counted as "outside", they were the WHOLE baseline for a
+    biweekly earner: an average of however many edge days the calendar left —
+    served as a figure, or as None only when a payday fell on `start_date`.
+
+    Here the first payday in range is five days after an edge-day spend of 90.
+    """
+    budget = await create_budget(db_session, await create_user(db_session))
+    checking = await create_account(db_session, budget, "Checking")
+    employer = await create_payee(db_session, budget, "Northwind Payserv")
+    for back in (42, 28, 14, 0):
+        await create_transaction(
+            db_session, budget, checking, "2000.00", TODAY - timedelta(days=back), payee=employer
+        )
+    await create_transaction(db_session, budget, checking, "-90.00", TODAY - timedelta(days=47))
+
+    data = await ReportService(db_session).payday_effect(budget.id, window=14, months=12)
+
+    assert data["event_count"] == 4
+    assert data["baseline_daily"] is None
+
+
+async def test_only_income_is_a_payday(db_session):
+    """The income side's class filter, pinned. Under the absolute floor it is
+    the only thing keeping these two inflows — both over 200 — from being
+    paydays: money drawn back from a tracked savings account, and a refund
+    filed to a spending category."""
+    budget, checking, group = await _setup_core_scenario(db_session)
+    services = make_services(db_session)
+    hysa = await create_account(
+        db_session, budget, "Cascade Point HYSA", account_type="investment", on_budget=False
+    )
+    household = await create_category(db_session, budget, group, "Household")
+
+    await services.transactions.create(
+        budget.id,
+        TransactionCreate(
+            account_id=hysa.id,
+            date=TODAY - timedelta(days=12),
+            amount=Decimal("500.00"),
+            transfer_account_id=checking.id,
+            cleared="cleared",
+        ),
+    )
+    await create_transaction(
+        db_session, budget, checking, "250.00", TODAY - timedelta(days=15), category=household
+    )
+
+    data = await ReportService(db_session).payday_effect(budget.id, window=14, months=12)
+
+    _assert_core_expectations(data)

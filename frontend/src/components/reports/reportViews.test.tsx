@@ -455,6 +455,37 @@ describe('VolatilityReport drill-down', () => {
   })
 })
 
+describe('DayPatternsReport payday baseline', () => {
+  it('shows no baseline, rather than $0.00, when paydays cover every day', () => {
+    // The server serves null when no day falls outside a payday window. The
+    // chart turned it into 0 with `?? 0`, so the card read "Baseline Daily
+    // $0.00" — "spends nothing between paydays" — and every bar with any
+    // spend was painted as above it. Both hooks share this mock's data, so
+    // each row carries the day-of-week fields and the payday fields.
+    setQuery({
+      data: {
+        days: [0, 1].map((i) => ({
+          day_of_week: i,
+          day_name: i ? 'Tuesday' : 'Monday',
+          total: 50,
+          count: 1,
+          avg_transaction: 50,
+          offset: i,
+          avg_spend: 40,
+        })),
+        counted_classes: ['spending'],
+        baseline_daily: null,
+        event_count: 26,
+      },
+    })
+    renderReport(<DayPatternsReport budgetId="b1" />)
+
+    expect(screen.getByText('No days fall outside a payday window')).toBeInTheDocument()
+    expect(screen.queryByText('Average on non-payday periods')).toBeNull()
+    expect(screen.queryByText('$0.00')).toBeNull()
+  })
+})
+
 describe('AnomaliesReport list', () => {
   it('shows the anomaly with its percent change vs baseline', () => {
     setQuery({

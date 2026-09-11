@@ -3226,14 +3226,23 @@ class ReportService:
                 if target_date <= end_date:
                     offset_totals[offset].append(daily_map.get(target_date, 0.0))
 
-        # Baseline: every day in the window outside an income window, spending
-        # or not. It collected only days present in `daily_map` — days that HAD
-        # spending — so `baseline_daily` was "average over spending days" while
-        # the schema promises "average daily spend outside the window". Those
-        # differ by exactly the household's quiet days, which is most of them.
-        span = (end_date - start_date).days
-        for i in range(span + 1):
-            d = start_date + timedelta(days=i)
+        # Baseline: every day from the FIRST PAYDAY on that sits outside an
+        # income window, spending or not. Quiet days count — averaging only
+        # days that had spending is "average over spending days", which the
+        # schema does not promise.
+        #
+        # From the first payday, not from `start_date`. A day before it is in
+        # an unknown phase: it may be the tail of a payday this query never
+        # fetched, and it may be a day before the register had any data at
+        # all. Counted as "outside", the first made the baseline an average of
+        # whichever edge days the calendar happened to leave — biweekly pay at
+        # window=14 served 10.00 from eight days, or None if a payday fell on
+        # `start_date` — and the second zero-filled every month before a
+        # ninety-day first sync, so a flat $50 a day read as a 12x post-payday
+        # splurge.
+        first_payday = min(income_dates)
+        for i in range((end_date - first_payday).days + 1):
+            d = first_payday + timedelta(days=i)
             if d not in income_windows:
                 baseline_days.append(daily_map.get(d, 0.0))
 
@@ -3246,10 +3255,10 @@ class ReportService:
                 {"offset": offset, "avg_spend": quantize_cents(Decimal(str(avg_spend)))}
             )
 
-        # None, not 0.00, when the income windows cover every day in the range
-        # — which `window=14` guarantees for biweekly pay. A served 0.00 says
-        # "the household spends nothing outside payday", which is the opposite
-        # of "there is no outside".
+        # None, not 0.00, when the income windows cover every day from the
+        # first payday on — biweekly pay at window=14, whatever its phase. A
+        # served 0.00 says "the household spends nothing outside payday",
+        # which is the opposite of "there is no outside".
         baseline_daily = (
             quantize_cents(Decimal(str(sum(baseline_days) / len(baseline_days))))
             if baseline_days

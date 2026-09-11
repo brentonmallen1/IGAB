@@ -727,10 +727,11 @@ class PaydayEffectDay(ApiModel):
 
 class PaydayEffectResponse(ApiModel):
     days: list[PaydayEffectDay]
-    #: Average daily spend on days outside every payday window. None when the
-    #: windows cover every day in the range — which `window=14` guarantees for
-    #: biweekly pay. A served 0.00 would say "this household spends nothing
-    #: outside payday", which is the opposite of "there is no outside".
+    #: Average daily spend on days outside every payday window, counted from
+    #: the first payday in the range. None when the windows cover every one of
+    #: those days — biweekly pay at window=14, whatever its phase. A served
+    #: 0.00 would say "this household spends nothing outside payday", which is
+    #: the opposite of "there is no outside".
     baseline_daily: Decimal | None
     event_count: int  # number of income events used
 
