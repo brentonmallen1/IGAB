@@ -102,6 +102,23 @@ function renderReport(ui: ReactElement) {
   return render(<MemoryRouter>{ui}</MemoryRouter>)
 }
 
+/** The cells of the table row whose text includes `label`. */
+function cellsOf(label: string): string[] {
+  const row = screen.getByText(label).closest('tr')
+  return Array.from(row?.querySelectorAll('td') ?? []).map((td) => td.textContent ?? '')
+}
+
+/** What one metric card says: its value and sub-line, read inside the card
+ *  named `label` — not anywhere on a page that may print the same figure in
+ *  a table or legend. */
+function card(label: string): { value: string; sub: string } {
+  const el = screen.getByText(label, { selector: '.metric-card__label' }).closest('.metric-card')
+  return {
+    value: el?.querySelector('.metric-card__value')?.textContent ?? '',
+    sub: el?.querySelector('.metric-card__sub')?.textContent ?? '',
+  }
+}
+
 beforeEach(() => {
   setQuery({})
 })
@@ -563,6 +580,22 @@ describe('PayeeReport labels', () => {
     expect(screen.getByText('all payees')).toBeInTheDocument()
   })
 
+  it('counts every payee and totals every payee, beside the rows it shows', () => {
+    // Total Payees read `payees.length` (the ranking cap) and Total Spent the
+    // ranked rows summed, so a 312-payee budget was told it had 25.
+    setQuery({
+      data: { payees: payees.slice(0, 2), total: 1050, payee_count: 5, payees_to_80pct: 3 },
+    })
+    renderReport(<PayeeReport budgetId="b1" />)
+
+    expect(card('Total Payees')).toEqual({ value: '5', sub: '2 shown' })
+    expect(card('Recurring Payees').sub).toBe('of the top 2')
+    expect(card('Total Spent').value).toBe('$1,050.00')
+    // The table's wider row carries the share, because Payee's % column is a
+    // share of that same served total: 199 of 1,050.
+    expect(cellsOf('of $1,050.00 across 5 payees')).toContain('19.0%')
+  })
+
   it('does not call a payee-filtered total "all payees"', () => {
     useReportStore.getState().setFilters({ payeeIds: ['p1', 'p2', 'p3'] })
     try {
@@ -846,6 +879,47 @@ describe('BudgetActualReport values', () => {
     expect(screen.getByText('Dining')).toBeInTheDocument()
     expect(screen.queryByText('Car Repairs')).not.toBeInTheDocument()
   })
+
+  it('totals the overspent rows it lists, and puts the period beside them', () => {
+    // The period's whole spend used to be the table's Total while "Overspent
+    // only" was ticked. It is context now, with no share under a column of
+    // variances.
+    setQuery({
+      data: {
+        categories: [
+          {
+            category_id: 'c1',
+            category_name: 'Groceries',
+            category_group_name: 'Everyday',
+            assigned: 500,
+            spent: 450,
+            variance: 50,
+            variance_pct: 10,
+            overspent: false,
+          },
+          {
+            category_id: 'c2',
+            category_name: 'Dining',
+            category_group_name: 'Everyday',
+            assigned: 100,
+            spent: 160,
+            variance: -60,
+            variance_pct: -60,
+            overspent: true,
+          },
+        ],
+        total_assigned: '600',
+        total_spent: '610',
+      },
+    })
+    renderReport(<BudgetActualReport budgetId="b1" />)
+    fireEvent.click(screen.getByLabelText('Overspent only'))
+
+    expect(cellsOf('Total of the 1 shown')).toContain('$160.00')
+    const whole = cellsOf('of $610.00 across 2 categories')
+    expect(whole).toContain('$610.00')
+    expect(whole.some((c) => c.includes('%'))).toBe(false)
+  })
 })
 
 describe('CostOfLivingReport tiers', () => {
@@ -937,5 +1011,130 @@ describe('CostOfLivingReport tiers', () => {
     expect(screen.getByText('needs Essentials tagged')).toBeInTheDocument()
     expect(screen.queryByText('could not be cut')).toBeNull()
     expect(screen.queryByText(/costs more than you take home/i)).toBeNull()
+  })
+})
+
+describe('drill tables read spending as a positive figure', () => {
+  // DrillDownTable stopped taking Math.abs, and five callers stopped negating
+  // their figure on the way in. A caller that kept `amount: -c.spent` would
+  // print -$450.00 under a Spent column and drive the footer negative.
+  const noMinus = (label: string, amount: string) => {
+    const cells = cellsOf(label)
+    expect(cells).toContain(amount)
+    expect(cells.some((c) => c.startsWith('-'))).toBe(false)
+  }
+
+  it('Budget vs Actual', () => {
+    setQuery({
+      data: {
+        categories: [
+          {
+            category_id: 'c1',
+            category_name: 'Groceries',
+            category_group_name: 'Everyday',
+            assigned: 500,
+            spent: 450,
+            variance: 50,
+            variance_pct: 10,
+            overspent: false,
+          },
+        ],
+        total_assigned: '500',
+        total_spent: '450',
+      },
+    })
+    renderReport(<BudgetActualReport budgetId="b1" />)
+    noMinus('Groceries', '$450.00')
+    noMinus('Total', '$450.00')
+  })
+
+  it('Income vs Expenses', () => {
+    setQuery({
+      data: {
+        months: [
+          {
+            month: '2026-08-01',
+            income: 2000,
+            expenses: 300,
+            savings: 0,
+            debt_principal: 0,
+            net: 1700,
+          },
+        ],
+      },
+    })
+    renderReport(<IncomeExpenseReport budgetId="b1" />)
+    noMinus('2026-08', '$300.00')
+  })
+
+  it('Pareto', () => {
+    setQuery({
+      data: {
+        groups: [
+          {
+            id: 'c1',
+            name: 'Rent',
+            total: 500,
+            count: 1,
+            pct: 50,
+            parent_id: 'g1',
+            parent_name: 'Home',
+          },
+        ],
+        total: 500,
+      },
+    })
+    renderReport(<ParetoReport budgetId="b1" />)
+    noMinus('Rent', '$500.00')
+  })
+
+  it('Payee Analysis', () => {
+    setQuery({
+      data: {
+        payees: [
+          {
+            payee_id: 'p1',
+            payee_name: 'Harborstone Market',
+            total: 120,
+            count: 2,
+            pct: 100,
+            monthly_trend: [],
+            top_categories: [],
+            is_recurring: false,
+          },
+        ],
+        total: 120,
+        payee_count: 1,
+        payees_to_80pct: 1,
+      },
+    })
+    renderReport(<PayeeReport budgetId="b1" />)
+    noMinus('Harborstone Market', '$120.00')
+  })
+
+  it('Volatility', () => {
+    setQuery({
+      data: {
+        categories: [
+          {
+            category_id: 'c1',
+            category_name: 'Groceries',
+            category_group_name: 'Everyday',
+            mean: 400,
+            std_dev: 20,
+            min_val: 380,
+            max_val: 420,
+            p25: 390,
+            p75: 410,
+            months_included: 6,
+          },
+        ],
+        amortized: false,
+        window_start: '2026-03-01',
+        window_end: '2026-08-31',
+      },
+    })
+    renderReport(<VolatilityReport budgetId="b1" />)
+    noMinus('Groceries', '$400.00')
   })
 })
