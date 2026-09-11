@@ -73,6 +73,33 @@ const NO_UNFORMATTED_CHART_TOOLTIP = {
 }
 
 /**
+ * A numeric chart axis with no `tickFormatter` prints raw numbers: no
+ * currency, no number format and, above all, no privacy mask. The Emergency
+ * Fund chart's money axis shipped that way beside a masked tooltip and masked
+ * cards, so its gridlines read the fund to within one line while every figure
+ * on the page said $••••. Spread `useMoneyAxis()` for money — it carries the
+ * formatter and the phone width — or pass a formatter for the axis's own unit.
+ * A category axis prints names and is exempt; recharts' XAxis is a category
+ * axis unless it says `type="number"`.
+ */
+const NO_UNFORMATTED_NUMERIC_AXIS = [
+  {
+    selector:
+      "JSXOpeningElement[name.name='YAxis']:not(:has(JSXAttribute[name.name='tickFormatter'])):not(:has(JSXSpreadAttribute)):not(:has(JSXAttribute[name.name='type'][value.value='category']))",
+    message:
+      'A numeric YAxis needs a tickFormatter. Spread useMoneyAxis() for money (currency, number ' +
+      'format and privacy mode), or pass a formatter for the axis’s own unit.',
+  },
+  {
+    selector:
+      "JSXOpeningElement[name.name='XAxis']:has(JSXAttribute[name.name='type'][value.value='number']):not(:has(JSXAttribute[name.name='tickFormatter'])):not(:has(JSXSpreadAttribute))",
+    message:
+      'A numeric XAxis needs a tickFormatter. Pass useMoneyAxis().tickFormatter for money, or a ' +
+      'formatter for the axis’s own unit.',
+  },
+]
+
+/**
  * Overlay geometry has now been consolidated twice. The first round collapsed
  * five copies into `utils/anchoredPosition.ts`; by the second, three more
  * surfaces were again running off the bottom of the screen — ContextMenu
@@ -130,6 +157,7 @@ export default defineConfig([
         'error',
         NO_BARE_PARSE_FLOAT,
         NO_UNFORMATTED_CHART_TOOLTIP,
+        ...NO_UNFORMATTED_NUMERIC_AXIS,
         ...NO_HAND_ROLLED_VIEWPORT_MATH,
       ],
     },
