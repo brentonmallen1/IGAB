@@ -23,12 +23,15 @@ interface Props {
 }
 
 /**
- * What it costs to keep the lights on, by category group.
+ * What it costs to keep the lights on, by category group, in two tiers.
  *
- * Built on the Essential tag rather than a new "utilities" one: a sixth
- * system tag whose only job is grouping would be a permanent addition to a
- * vocabulary that otherwise changes how money is COUNTED, and the groups a
- * budget already has are the shape a household thinks in.
+ * The table and chart roll up the WIDE tier: categories tagged Essential or
+ * Cost of living, plus debt payments by class. The Essentials card is the
+ * lean tier inside it, and Non-essential is the gap — what a lean month could
+ * shed. Which rows each tier holds is the server's rule
+ * (`domain.activity_class.tier_scope`); this page only lays the figures out,
+ * in the groups a budget already has, which are the shape a household
+ * thinks in.
  */
 /** The null-group bucket's name, which the server also spells. A drill into it
  *  means "rows with no category" — an empty id list filters nothing and would
@@ -276,7 +279,7 @@ export function CostOfLivingReport({ budgetId }: Props) {
           />
 
           <table className="report-table">
-            <caption className="sr-only">Essential spending by category group</caption>
+            <caption className="sr-only">Cost of living by category group</caption>
             <thead>
               <tr>
                 <th scope="col" style={{ textAlign: 'left' }}>

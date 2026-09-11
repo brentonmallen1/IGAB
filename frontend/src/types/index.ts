@@ -1384,7 +1384,8 @@ export interface CostOfLivingGroup {
   monthly_amounts: number[]
   total: number
   avg_monthly: number
-  /** Share of the essentials total, 0–100 — not of income, so shares add to 100. */
+  /** Share of the cost-of-living total, 0–100 — not of income, so shares add
+   *  to 100. */
   share: number
   /** The categories behind this bar, for the drill-down. Empty on the
    *  Uncategorized bucket, which drills by "no category" instead — an empty
@@ -1423,7 +1424,8 @@ export interface CostOfLivingReport {
    *  what it could not cut. */
   essentials_ratio: number | null
   basis: 'bound' | 'tag' | 'all'
-  /** False when nothing carries the Essential tag. */
+  /** False when no category is tagged Essential or Cost of living (basis
+   *  'all'): the figures then cover every category — the burn rate. */
   tagged: boolean
   /** Tagged Essential and still not counted, by class. Tagging a category is
    *  pointing at it, so absence without this reads as a bug — which is

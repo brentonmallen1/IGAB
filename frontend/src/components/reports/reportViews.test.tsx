@@ -987,6 +987,14 @@ describe('CostOfLivingReport tiers', () => {
     expect(card('Required')).toEqual({ value: '75%', sub: 'of take-home' })
   })
 
+  it('names its table for the tier it rolls up', () => {
+    // The table is the WIDE tier — subscriptions and debt payments included —
+    // and a screen reader announced it as "Essential spending".
+    setQuery({ data: tiered })
+    renderReport(<CostOfLivingReport budgetId="b1" />)
+    expect(screen.getByRole('table', { name: 'Cost of living by category group' })).toBeTruthy()
+  })
+
   it('states the gap as a share of what is committed, not as advice', () => {
     setQuery({ data: tiered })
     renderReport(<CostOfLivingReport budgetId="b1" />)

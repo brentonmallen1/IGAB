@@ -278,8 +278,9 @@ class TestEssentialsRunway:
 
 
 async def test_cost_of_living_rolls_essentials_up_by_group(db_session, api_client):
-    """Built on the Essential tag rather than a sixth system tag: the groups a
-    budget already has are the shape a household thinks in."""
+    """Rolled up by the groups a budget already has, the shape a household
+    thinks in. Essential-tagged categories are in the wide tier too, so an
+    Essential-only household sees them here."""
     budget = await create_budget(db_session, api_client.test_user)
     checking = await create_account(db_session, budget, "Harborstone Checking")
     tag_repo = TagRepository(db_session)
@@ -317,16 +318,16 @@ async def test_cost_of_living_rolls_essentials_up_by_group(db_session, api_clien
     assert set(groups) == {"Housing", "Utilities"}
     assert Decimal(groups["Housing"]["total"]) == Decimal("1400.00")
     assert Decimal(groups["Utilities"]["total"]) == Decimal("180.00")
-    # Shares are of the essentials total, so they add to 100.
+    # Shares are of the cost-of-living total, so they add to 100.
     assert sum(Decimal(g["share"]) for g in body["groups"]) == Decimal("100.00")
     # Biggest first.
     assert [g["group_name"] for g in body["groups"]] == ["Housing", "Utilities"]
 
 
 async def test_cost_of_living_says_when_nothing_is_tagged(db_session, api_client):
-    """With no Essential tag applied the scope is every category, which equals
-    plain burn rate — the page has to say so rather than present it as a
-    chosen few."""
+    """With no Essential or Cost of living tag applied the scope is every
+    category, which equals plain burn rate — the page has to say so rather
+    than present it as a chosen few."""
     budget = await create_budget(db_session, api_client.test_user)
     await db_session.commit()
 

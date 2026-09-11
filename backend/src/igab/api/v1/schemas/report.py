@@ -885,8 +885,8 @@ class CostOfLivingGroup(ApiModel):
     monthly_amounts: list[Decimal]
     total: Decimal
     avg_monthly: Decimal
-    #: Share of the essentials total, 0-100 — not of income, so the shares
-    #: add to 100 and the bar is arithmetic a reader can check.
+    #: Share of the cost-of-living total, 0-100 — not of income, so the
+    #: shares add to 100 and the bar is arithmetic a reader can check.
     share: Decimal
     #: The categories behind the bar, so it can be opened. Empty on the
     #: Uncategorized bucket — that one drills by "no category", not by ids.
@@ -925,8 +925,9 @@ class CostOfLivingResponse(ApiModel):
     essentials_ratio: Decimal | None
     #: 'bound' | 'tag' | 'all' — how "essential" was decided.
     basis: str
-    #: False when nothing carries the Essential tag, so the page can say the
-    #: figure covers every category rather than a chosen few.
+    #: False when no category is tagged Essential or Cost of living (basis
+    #: 'all'), so the page can say the figure covers every category rather
+    #: than a chosen few.
     tagged: bool
     #: Tagged Essential and still not counted, by class. Tagging a category is
     #: pointing at it, so this fires wherever the basis is a tag or a Guide

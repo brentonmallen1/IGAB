@@ -428,7 +428,7 @@ class CostOfLivingGroup(TypedDict):
     monthly_amounts: list[Decimal]
     total: Decimal
     avg_monthly: Decimal
-    #: This group's share of the essentials total, 0-100. Not of income —
+    #: This group's share of the cost-of-living total, 0-100. Not of income —
     #: the shares have to add to 100 or the bar reads as arithmetic nobody
     #: can check.
     share: Decimal
@@ -505,20 +505,20 @@ UNCATEGORIZED_GROUP = "Uncategorized"
 
 
 async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: int = 12) -> dict:
-    """What it costs to keep the lights on, by category group.
+    """What it costs to keep the lights on, by category group, in two tiers.
 
-    Built on the Essential tag rather than a new one. A sixth system tag whose
-    only job is grouping would be a permanent addition to a vocabulary that
-    otherwise changes how money is COUNTED, and the groups a budget already
-    has are the shape a household thinks in — Housing, Utilities, Groceries.
+    The groups roll up the WIDE tier, `NecessityTier.COST_OF_LIVING`:
+    categories tagged Essential or Cost of living, plus debt payments by
+    class. The lean tier, Essentials, is measured over the same window, and
+    the difference is the non-essential gap — committed spending a lean month
+    could shed. Tier membership is `tier_scope`'s rule, so this report and the
+    Essentials report cannot disagree about what Essentials holds. The groups
+    are the ones a budget already has, the shape a household thinks in —
+    Housing, Utilities, Groceries.
 
-    Nothing new is queried: `essential_spend_by_category_month` is the same
-    query the Essentials report and the Overview card read, so a category
-    counted here is counted there. Only the rollup is new.
-
-    `basis` says how "essential" was decided — bound categories, the tag, or
-    everything. "all" means nothing is tagged yet, and the caller must say so
-    rather than present a figure that equals plain burn rate.
+    `basis` says how the wide tier was decided: the tags, or everything.
+    "all" means nothing is tagged yet, and the caller must say so rather than
+    present a figure that equals plain burn rate.
     """
     from igab.repositories.transaction_repo import TransactionRepository
 

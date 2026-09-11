@@ -1218,7 +1218,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         tier: NecessityTier = NecessityTier.ESSENTIAL,
     ) -> tuple[Decimal, str]:
         """Signed sum of essential spending in the window (outflows are
-        negative), and the rule that scoped it — see `_essential_scope`."""
+        negative), and the rule that scoped it — see `_necessity_scope`."""
         scope, basis = await self._necessity_scope(budget_id, tier, bound_categories)
         total = (
             await self.session.execute(
