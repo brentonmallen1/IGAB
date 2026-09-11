@@ -1,9 +1,12 @@
 """The wishlist lives inside the budget: its money is the envelopes' money."""
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
+import pytest
+
 from igab.domain.dates import add_months
+from igab.guide import wishlist_service
 
 from .factories import (
     create_account,
@@ -17,6 +20,25 @@ from .factories import (
 
 TODAY = date.today()
 THIS_MONTH = TODAY.replace(day=1)
+
+
+class _FrozenDate(date):
+    """`date` whose today() is the TODAY this module collected with."""
+
+    @classmethod
+    def today(cls) -> date:
+        return TODAY
+
+
+@pytest.fixture(autouse=True)
+def _one_today(monkeypatch):
+    """The wishlist service reads the clock per request; this module reads it
+    once, at collection. A run that crossed midnight UTC between the two
+    compared tomorrow's `cooling_until`/`done_at` with today's (#191's red CI,
+    MERGE-1), and a run crossing a month end would file THIS_MONTH's
+    assignments into last month's funding. Pin the service to the module's
+    TODAY so the two clocks cannot part."""
+    monkeypatch.setattr(wishlist_service, "date", _FrozenDate)
 
 
 async def _budget(db_session, api_client):
@@ -437,12 +459,7 @@ class TestCoolingReviewAndStillWanted:
         r = await api_client.put(f"{_url(budget)}/settings", json={"cooling_days": 10})
         assert r.status_code == 200 and r.json()["cooling_days"] == 10
         wish = await _add(api_client, budget)
-        assert (
-            wish["cooling_until"]
-            == (
-                TODAY.replace(day=TODAY.day) + __import__("datetime").timedelta(days=10)
-            ).isoformat()
-        )
+        assert wish["cooling_until"] == (TODAY + timedelta(days=10)).isoformat()
         assert wish["cooling"] is True
         assert wish["review_due"] is False
         no_cooling = await _add(api_client, budget, name="Now", cooling_days=0)
