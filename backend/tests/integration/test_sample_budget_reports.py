@@ -14,6 +14,9 @@ state on a budget built to show the app off.
 from datetime import date
 from decimal import Decimal
 
+from sqlalchemy import select
+
+from igab.db.models import Category
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.budget_filter_repo import BudgetFilterRepository
 from igab.repositories.category_repo import (
@@ -28,6 +31,7 @@ from igab.repositories.scheduled_transaction_repo import ScheduledTransactionRep
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.repositories.target_repo import TargetRepository
 from igab.repositories.transaction_repo import TransactionRepository
+from igab.sample_budget.data import CAT_HOME_MAINT
 from igab.sample_budget.generator import SampleBudgetGenerator
 from igab.services.emergency_coverage import EmergencyCoverageService
 from igab.services.report_basics import cost_of_living
@@ -64,6 +68,27 @@ async def _generate(session, budget, tier: str):
         tier=tier,
     )
     return await generator.generate(anchor=ANCHOR)
+
+
+async def _category_id(db_session, budget, name: str) -> str:
+    """A sample category's id as the reports serve it, by its exact name."""
+    rows = (
+        await db_session.execute(
+            select(Category.id).where(Category.budget_id == budget.id, Category.name == name)
+        )
+    ).all()
+    assert len(rows) == 1, f"the sample has {len(rows)} categories named {name!r}"
+    return str(rows[0][0])
+
+
+async def _tier_category_ids(db_session, budget) -> tuple[set[str], set[str]]:
+    """(wide, lean): the category ids Cost of Living's groups and the
+    Essentials table carry over the same twelve months."""
+    report = await cost_of_living(db_session, budget.id, months=12)
+    lean = await ReportService(db_session).essentials_summary(budget.id, 12)
+    wide_ids = {cid for g in report["groups"] for cid in g["category_ids"]}
+    lean_ids = {str(c["category_id"]) for c in lean["categories"]}
+    return wide_ids, lean_ids
 
 
 async def _world(db_session, tier: str = "starter"):
@@ -200,6 +225,14 @@ async def test_the_demo_actually_shows_a_gap(db_session):
         f"every group in the wide tier is also in the lean one: {sorted(wide_groups)}"
     )
 
+    # And by name, for the tag arm: the group difference alone is {Debt},
+    # which the class arm supplies, so it passed with Cost of living tags
+    # dropped from the tier entirely.
+    wide_ids, lean_ids = await _tier_category_ids(db_session, budget)
+    for name in ("Streaming", CAT_HOME_MAINT):
+        cid = await _category_id(db_session, budget, name)
+        assert cid in wide_ids and cid not in lean_ids, name
+
 
 async def test_the_debt_half_of_the_tier_needs_no_tag(db_session):
     """`Car Payment` is deliberately untagged in the sample. Its rows classify
@@ -208,9 +241,11 @@ async def test_the_debt_half_of_the_tier_needs_no_tag(db_session):
     "any debt payments" means when no tag can express it.
     """
     budget, _ = await _world(db_session, "full")
-    report = await cost_of_living(db_session, budget.id, months=12)
-    lean = await ReportService(db_session).essentials_summary(budget.id, 12)
+    wide_ids, lean_ids = await _tier_category_ids(db_session, budget)
 
-    wide_names = {cid for g in report["groups"] for cid in g["category_ids"]}
-    lean_names = {str(c["category_id"]) for c in lean["categories"]}
-    assert wide_names - lean_names, "the wide tier reaches no category the lean one misses"
+    # Car Payment by id, not "some category is missing from the lean table":
+    # Streaming and Home Maintenance (in by tag) satisfied that, so it passed
+    # with the class arm removed.
+    car = await _category_id(db_session, budget, "Car Payment")
+    assert car in wide_ids, "the untagged car payment did not reach Cost of Living"
+    assert car not in lean_ids
