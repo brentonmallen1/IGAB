@@ -54,6 +54,7 @@ from igab.api.v1.schemas.report import (
     SavingsRateResponse,
     SavingsReportResponse,
     SavingsSummary,
+    SavingsUnrecovered,
     SeasonalityResponse,
     SpendingCategory,
     SpendingClassExcluded,
@@ -432,7 +433,10 @@ async def volatility_report(
     """
     data = await report_svc.category_volatility(budget_id, months, amortize)
     return VolatilityResponse(
-        categories=[VolatilityItem.model_validate(c) for c in data], amortized=amortize
+        categories=[VolatilityItem.model_validate(c) for c in data["categories"]],
+        amortized=amortize,
+        window_start=data["window_start"],
+        window_end=data["window_end"],
     )
 
 
@@ -553,6 +557,8 @@ async def income_by_source_report(
         sources=[IncomeSource.model_validate(e) for e in data["sources"]],
         monthly_totals=data["monthly_totals"],
         total=data["total"],
+        avg_monthly=data["avg_monthly"],
+        months_averaged=data["months_averaged"],
     )
 
 
@@ -636,7 +642,7 @@ async def payee_analysis_report(
     end = end_date or today
     p_ids = parse_uuid_list(payee_ids)
     acct_ids = parse_uuid_list(account_ids)
-    payees, total, payee_count = await report_svc.payee_analysis(
+    payees, total, payee_count, payees_to_80pct = await report_svc.payee_analysis(
         budget_id, start, end, limit, p_ids, acct_ids
     )
     return PayeeAnalysisResponse(
@@ -655,6 +661,7 @@ async def payee_analysis_report(
         ],
         total=total,
         payee_count=payee_count,
+        payees_to_80pct=payees_to_80pct,
     )
 
 
@@ -807,6 +814,7 @@ async def savings_report(
         summary=SavingsSummary.model_validate(data["summary"]),
         months=data["months"],
         drains=ReportDrains.model_validate(data["drains"]),
+        unrecovered=[SavingsUnrecovered.model_validate(u) for u in data["unrecovered"]],
     )
 
 
@@ -884,6 +892,7 @@ async def cost_of_living_report(
         tagged=data["tagged"],
         class_excluded=[SpendingClassExcluded.model_validate(c) for c in data["class_excluded"]],
         counted_classes=data["counted_classes"],
+        necessity_tier=data["necessity_tier"],
     )
 
 

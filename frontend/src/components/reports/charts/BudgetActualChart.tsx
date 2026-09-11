@@ -82,9 +82,12 @@ export function BudgetActualReport({ budgetId }: Props) {
 
   const allCategories = data?.categories ?? []
   let categories = allCategories
-  if (showOverspent) categories = categories.filter((c) => c.spent > c.assigned)
+  // `overspent` and `variance` are the server's verdict against the plan
+  // floored at zero. Deciding them here from `spent > assigned` drew a drained
+  // envelope (a negative assignment, nothing spent) as a red overrun.
+  if (showOverspent) categories = categories.filter((c) => c.overspent)
   if (sortBy === 'overspent') {
-    categories = [...categories].sort((a, b) => b.spent - b.assigned - (a.spent - a.assigned))
+    categories = [...categories].sort((a, b) => a.variance - b.variance)
   }
 
   const chartData = categories.slice(0, 20).map((c) => ({
@@ -94,7 +97,7 @@ export function BudgetActualReport({ budgetId }: Props) {
     group: c.category_group_name,
     Assigned: c.assigned,
     Spent: c.spent,
-    overspent: c.spent > c.assigned,
+    overspent: c.overspent,
   }))
 
   function drillTo(categoryId: string, name: string) {
@@ -140,7 +143,8 @@ export function BudgetActualReport({ budgetId }: Props) {
           </p>
           <p>
             <strong>Green bars</strong> = under budget. <strong>Red bars</strong> = over budget
-            (spent more than assigned).
+            (spent more than assigned). Moving money out of an envelope lowers its plan; it is not
+            overspending.
           </p>
           <p>
             Use the <em>Overspent only</em> filter to focus on problem categories, and{' '}
@@ -172,7 +176,7 @@ export function BudgetActualReport({ budgetId }: Props) {
                 group: c.category_group_name,
                 assigned: c.assigned,
                 spent: c.spent,
-                variance: c.assigned - c.spent,
+                variance: c.variance,
                 variance_pct: c.variance_pct,
               }))
             }

@@ -133,13 +133,17 @@ class TestIncomeBySource:
         budget, checking, _, groceries, _ = await _setup(db_session, api_client)
         payserv = await create_payee(db_session, budget, "Northwind Payserv")
         side = await create_payee(db_session, budget, "Side Gig")
+        prev = add_months(THIS, -2)
+        await create_transaction(db_session, budget, checking, "3000.00", prev, payee=payserv)
         await create_transaction(db_session, budget, checking, "3000.00", LAST, payee=payserv)
-        await create_transaction(db_session, budget, checking, "3000.00", THIS, payee=payserv)
-        await create_transaction(db_session, budget, checking, "250.00", THIS, payee=side)
+        await create_transaction(db_session, budget, checking, "250.00", LAST, payee=side)
         # A refund into an envelope is not income.
         await create_transaction(
-            db_session, budget, checking, "20.00", THIS, payee=side, category=groceries
+            db_session, budget, checking, "20.00", LAST, payee=side, category=groceries
         )
+        # This month's pay: the month is still running, so it is outside the
+        # window of complete months every averaging report reads.
+        await create_transaction(db_session, budget, checking, "3000.00", THIS, payee=payserv)
         await db_session.commit()
 
         r = await api_client.get(
@@ -147,7 +151,7 @@ class TestIncomeBySource:
         )
         assert r.status_code == 200, r.text
         body = r.json()
-        assert body["months"] == [LAST.isoformat(), THIS.isoformat()]
+        assert body["months"] == [prev.isoformat(), LAST.isoformat()]
         by_name = {s["payee_name"]: s for s in body["sources"]}
         assert [Decimal(str(v)) for v in by_name["Northwind Payserv"]["monthly"]] == [
             Decimal("3000.00"),
@@ -159,6 +163,9 @@ class TestIncomeBySource:
         ]
         assert Decimal(str(body["total"])) == Decimal("6250.00")
         assert body["sources"][0]["payee_name"] == "Northwind Payserv"
+        # Served, so the page and Cost of Living's Take-home quote one figure.
+        assert Decimal(str(body["avg_monthly"])) == Decimal("3125.00")
+        assert body["months_averaged"] == 2
 
 
 class TestCategoryHistory:
@@ -286,11 +293,10 @@ async def test_cost_of_living_rolls_essentials_up_by_group(db_session, api_clien
     for cat in (rent, power):
         await tag_repo.set_category_tags(cat.id, [essential.id])
 
-    today = date.today()
-
     async def spend(amount: str, category):
+        # Last month: Cost of Living averages complete months only.
         await create_transaction(
-            db_session, budget, checking, Decimal(amount), today, category=category
+            db_session, budget, checking, Decimal(amount), LAST, category=category
         )
 
     await spend("-1400.00", rent)
@@ -400,11 +406,12 @@ class TestIncomeIsDecidedByClassNotSign:
         inflow = await create_category(db_session, budget, system, "Ready to Assign")
         payserv = await create_payee(db_session, budget, "Northwind Payserv")
 
+        # Last month: Income by Source reads complete months.
         await create_transaction(
-            db_session, budget, checking, "3000.00", THIS, payee=payserv, category=inflow
+            db_session, budget, checking, "3000.00", LAST, payee=payserv, category=inflow
         )
         await create_transaction(
-            db_session, budget, checking, "-400.00", THIS, payee=payserv, category=inflow
+            db_session, budget, checking, "-400.00", LAST, payee=payserv, category=inflow
         )
         await db_session.commit()
 

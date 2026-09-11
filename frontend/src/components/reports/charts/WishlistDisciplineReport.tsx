@@ -6,6 +6,7 @@ import { MetricCard } from '../MetricCard'
 import { MetricRow } from '../MetricRow'
 import { ReportInfoButton } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
+import { wishCount, wishlistOutcomes } from './wishlistOutcomes'
 
 interface Props {
   budgetId: string
@@ -29,9 +30,8 @@ export function WishlistDisciplineReport({ budgetId }: Props) {
   if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
   if (!data) return null
 
-  const decided =
-    data.cooled_then_bought + data.cooled_then_dropped + data.bought_early + data.dropped_early
-  const empty = decided === 0 && data.still_open === 0 && data.unplaced === 0
+  const outcomes = wishlistOutcomes(data)
+  const empty = wishCount(data) === 0
 
   return (
     <div className="report-section surface">
@@ -39,8 +39,9 @@ export function WishlistDisciplineReport({ budgetId }: Props) {
         <h2 className="report-section__title">Wishlist</h2>
         <ReportInfoButton title="Wishlist">
           <p>
-            What the cooling-off period did. <strong>Resisted</strong> is money you wanted, waited
-            on, and then decided against — the number this report exists for.
+            What the cooling-off period did. <strong>Resisted</strong> is money you wanted and then
+            decided against — the number this report exists for. The table says whether you waited
+            the period out first.
           </p>
           <p>
             <strong>Bought early</strong> counts wishes bought before their waiting period was up.
@@ -55,10 +56,8 @@ export function WishlistDisciplineReport({ budgetId }: Props) {
           <ReportExportButton
             reportId="wishlist"
             getRows={() => [
-              { metric: 'cooled_then_dropped', value: data.cooled_then_dropped },
-              { metric: 'cooled_then_bought', value: data.cooled_then_bought },
-              { metric: 'bought_early', value: data.bought_early },
-              { metric: 'still_open', value: data.still_open },
+              ...outcomes.map((o) => ({ metric: o.key, value: o.count })),
+              { metric: 'resisted_count', value: data.resisted_count },
               { metric: 'resisted_total', value: data.resisted_total },
               { metric: 'bought_total', value: data.bought_total },
             ]}
@@ -81,7 +80,10 @@ export function WishlistDisciplineReport({ budgetId }: Props) {
             <MetricCard
               label="Resisted"
               value={formatMoney(data.resisted_total)}
-              sub={`${data.cooled_then_dropped} talked yourself out of`}
+              // resisted_count sums the same wishes as the figure above it. It
+              // read cooled_then_dropped, so early drops put money on the card
+              // with no wish beside it: "$300 — 0 talked yourself out of".
+              sub={`${data.resisted_count} talked yourself out of`}
             />
             <MetricCard
               label="Bought"
@@ -114,31 +116,12 @@ export function WishlistDisciplineReport({ budgetId }: Props) {
               </tr>
             </thead>
             <tbody>
-              <tr>
-                <td>Waited, then decided against</td>
-                <td style={{ textAlign: 'right' }}>{data.cooled_then_dropped}</td>
-              </tr>
-              <tr>
-                <td>Waited, then bought</td>
-                <td style={{ textAlign: 'right' }}>{data.cooled_then_bought}</td>
-              </tr>
-              <tr>
-                <td>Bought before the wait was up</td>
-                <td style={{ textAlign: 'right' }}>{data.bought_early}</td>
-              </tr>
-              <tr>
-                <td>Still waiting</td>
-                <td style={{ textAlign: 'right' }}>{data.still_open}</td>
-              </tr>
-              {data.unplaced > 0 && (
-                <tr>
-                  {/* Shown rather than folded into a bucket they might not
-                      belong in — these are wishes with no waiting period, or
-                      ones that ended before the app recorded when. */}
-                  <td>Ended, but not against a waiting period</td>
-                  <td style={{ textAlign: 'right' }}>{data.unplaced}</td>
+              {outcomes.map((o) => (
+                <tr key={o.key}>
+                  <td>{o.label}</td>
+                  <td style={{ textAlign: 'right' }}>{o.count}</td>
                 </tr>
-              )}
+              ))}
             </tbody>
           </table>
 

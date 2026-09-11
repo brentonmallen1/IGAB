@@ -3,7 +3,7 @@ import { persist } from 'zustand/middleware'
 import { PERSIST_KEYS } from './persistKeys'
 import { useMemo } from 'react'
 import type { ReportScope } from '../api/reports'
-import { toISODate } from '../utils/dateWindow'
+import { toISODate } from '../utils/dates'
 
 export type ReportTab =
   | 'overview'
@@ -311,15 +311,22 @@ export interface DrillDownContext {
    *  a chart WITH its own ids must not send these. */
   tagIds?: string[]
   filterId?: string | null
-  /** Rows with no category, for a bucket that is defined by their absence.
-   *  An empty `categoryIds` cannot say this — it filters nothing and lists the
-   *  whole window, which is worse than not offering the drill at all. */
-  uncategorized?: boolean
+  /** Rows with no category, for a bucket that is defined by their absence
+   *  (served as `no_category`). An empty `categoryIds` cannot say this — it
+   *  filters nothing and lists the whole window, which is worse than not
+   *  offering the drill at all. Not the register's Uncategorized filter: that
+   *  is the needs-a-category rule, which leaves out rows before an account's
+   *  budget start and rows on tracking accounts that a report bucket counted. */
+  noCategory?: boolean
   dayOfWeek?: number
   /** Activity classes the originating chart counted. A chart that means
    *  "spending" must say so, or its drill lists savings and debt too — an
    *  $800 bar opening a panel that totals $1,800. */
   activityClasses?: string[]
+  /** A necessity tier the chart rolled up (served as `necessity_tier`). Its
+   *  membership is per row — debt principal by class — so categories and
+   *  classes alone list rows the bar never counted. */
+  necessityTier?: string
   startDate: string
   endDate: string
 }

@@ -56,4 +56,8 @@ describe('sheddableShare', () => {
   it('reads 100 when none of it is essential', () => {
     expect(sheddableShare(500, 500)).toBe(100)
   })
+
+  it('is unknown when the gap is — nothing tagged Essential', () => {
+    expect(sheddableShare(1800, null)).toBeNull()
+  })
 })

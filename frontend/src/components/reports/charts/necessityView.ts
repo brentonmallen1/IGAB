@@ -87,9 +87,10 @@ export function necessityReading(
 /** What share of committed spending a lean month could shed, 0-100.
  *
  * Null rather than zero when nothing is committed: a share of nothing is
- * unknown, and rendering 0% would read as "nothing is sheddable".
+ * unknown, and rendering 0% would read as "nothing is sheddable". Null too
+ * when the gap itself is unknown — nothing tagged Essential.
  */
-export function sheddableShare(costOfLiving: number, nonEssential: number): number | null {
-  if (costOfLiving <= 0) return null
+export function sheddableShare(costOfLiving: number, nonEssential: number | null): number | null {
+  if (nonEssential === null || costOfLiving <= 0) return null
   return (nonEssential / costOfLiving) * 100
 }

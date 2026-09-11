@@ -301,7 +301,9 @@ async def _resolve_category(ctx: ToolContext, name: str):
 async def payee_analysis(ctx: ToolContext, args: dict) -> dict:
     start = _date(args, "start_date", ctx.today.replace(day=1))
     end = _date(args, "end_date", ctx.today)
-    rows, total, payee_count = await ctx.reports.payee_analysis(ctx.budget_id, start, end, limit=25)
+    rows, total, payee_count, _ = await ctx.reports.payee_analysis(
+        ctx.budget_id, start, end, limit=25
+    )
     shaped = [
         {
             "payee": r["payee_name"],

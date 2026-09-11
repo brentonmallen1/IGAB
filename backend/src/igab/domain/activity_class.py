@@ -40,10 +40,14 @@ from igab.db.models import (
 )
 from igab.repositories.category_filters import IN_SYSTEM_GROUP
 from igab.repositories.txn_filters import (
+    CASH_FLOW_ROW,
     COST_OF_LIVING_TAGGED,
     COUNTERPART_ACCOUNT_ID,
     COUNTERPART_OFF_BUDGET,
     ESSENTIAL_TAGGED,
+    LEAF,
+    NOT_DELETED,
+    POSTED,
     TRANSFER_LEG,
     category_tagged,
     row_category,
@@ -381,6 +385,25 @@ ACTIVITY_REASON = case(
 #: two in step across all 48 of its call sites.
 CLASS_JOINS: Callable[[Select], Select] | None = apply_class_joins
 
+#: A row that is income: what Income by Source and both Cash Flow Sankey modes
+#: count, and the same class Income vs Expenses reads from its partition.
+#: Apply `apply_class_joins` with it. Account scope stays the caller's —
+#: on-budget by default, or the user's explicit selection.
+#:
+#: **The class decides, never the sign.** Budgeted-mode Sankey summed
+#: `amount > 0` split parents, so a 3,000 paycheque and a 400 clawback read
+#: 3,000 there and 2,600 everywhere else, and flipping the Sankey between its
+#: modes changed "Income" although the mode is about spending. A refund or a
+#: brokerage withdrawal counted as income too. LEAF rather than PARENT_ROW
+#: because a split parent carries no category and so no class of its own.
+INCOME_ROW = and_(
+    NOT_DELETED,
+    POSTED,
+    LEAF,
+    CASH_FLOW_ROW,
+    ACTIVITY_CLASS == ActivityClass.INCOME.value,
+)
+
 
 # ─── The previous implementation, kept as a test oracle ──────────────────────
 #
@@ -536,17 +559,36 @@ def tier_keys(tier: NecessityTier) -> list[str]:
     return ["essential", "cost_of_living"]
 
 
+def basis_is_chosen(basis: str) -> bool:
+    """Whether a necessity figure was measured over what the household chose —
+    categories bound in the Guide ("bound") or its tags ("tag") — rather than
+    the "all" fallback `_necessity_scope` returns when nothing is chosen.
+
+    "all" is every category: the burn rate. Quoted as Essentials it says the
+    household could not cut a single thing, and it fired "what you could not
+    cut costs more than you take home" on spending that could be cut. A
+    figure on that basis is unknown, not everything. Said once, here: the
+    Essentials headline, both Cost of Living tiers and its notes all read it,
+    and they had three spellings of it.
+    """
+    return basis != "all"
+
+
 def tier_scope(tier: NecessityTier):
     """The membership predicate for one tier.
 
     Debt principal enters Cost of Living by CLASS rather than by tag, which is
     what delivers "any debt payments" without asking a household to tag each
-    loan envelope — and what gives most budgets a non-zero gap on day one.
+    loan envelope. **Payments only**: the class also marks money coming IN
+    from a tracked loan — a disbursement, a HELOC draw — and that netted
+    against the tier, so $5,000 of loan proceeds read as a negative cost of
+    living and a "comfortable" standing for a whole year. The tag arms keep
+    netting refunds, as a category's own activity does.
     """
     if tier is NecessityTier.ESSENTIAL:
         return ESSENTIAL_TAGGED
     return or_(
         ESSENTIAL_TAGGED,
         COST_OF_LIVING_TAGGED,
-        ACTIVITY_CLASS == ActivityClass.DEBT_PRINCIPAL.value,
+        and_(ACTIVITY_CLASS == ActivityClass.DEBT_PRINCIPAL.value, Transaction.amount < 0),
     )

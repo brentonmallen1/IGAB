@@ -13,8 +13,10 @@ written for users, following the precedent set by
 """
 
 from dataclasses import dataclass, field
+from datetime import date
 from decimal import Decimal
 
+from igab.domain.dates import trailing_start
 from igab.domain.money import quantize_cents
 
 
@@ -168,6 +170,20 @@ STALE_EXTERNAL_MONTHS = 12
 #: signal and the Overview's essentials card share it, so the emergency-fund
 #: target and the card can never quote different months.
 ESSENTIALS_WINDOW_DAYS = 90
+
+
+def essentials_since(today: date) -> date:
+    """The first day of the essentials window: `ESSENTIALS_WINDOW_DAYS` days
+    ending today, both included. It was `today - 90` in the Guide and the
+    report alike — 91 days beside the Overview's 90-day burn."""
+    return trailing_start(today, ESSENTIALS_WINDOW_DAYS)
+
+
+def essentials_per_month(window_total: Decimal) -> Decimal:
+    """A total over the essentials window as a monthly figure — ninety days
+    is three months. The Guide's target and the Overview card each divided
+    for themselves."""
+    return quantize_cents(abs(window_total) / 3)
 
 
 def emergency_fund_target(essentials_monthly: Decimal, months: int) -> Decimal:

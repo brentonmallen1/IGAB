@@ -14,6 +14,8 @@ import uuid
 from datetime import date, timedelta
 from decimal import Decimal
 
+from igab.domain.dates import month_end
+from igab.services.report_basics import income_by_source
 from igab.services.report_service import ReportService
 from igab.services.transaction_service import TransactionCreate
 
@@ -25,6 +27,7 @@ from .factories import (
     create_category_group,
     create_payee,
     create_transaction,
+    create_transfer,
     create_user,
     make_services,
 )
@@ -291,6 +294,41 @@ async def test_budgeted_mode_sums_across_months(db_session):
     assert links[(f"g_{everyday.id}", f"c_{groceries.id}")] == Decimal("1000.00")
 
 
+async def test_budgeted_mode_counts_income_by_class_not_sign(db_session):
+    """Budgeted mode summed `amount > 0` split parents, so switching the
+    diagram's mode changed "Income" — a figure the mode has nothing to do
+    with. A clawed-back paycheque stayed in, and a refund and a brokerage draw
+    joined it. Every income figure now reads `INCOME_ROW`, so all three
+    views quote one number."""
+    services, budget, checking, everyday, groceries, gas = await _setup(db_session)
+    inflow = await create_category_group(db_session, budget, "Inflow", is_system=True)
+    ready = await create_category(db_session, budget, inflow, "Ready to Assign")
+    brokerage = await create_account(
+        db_session, budget, "Brokerage", account_type="investment", on_budget=False
+    )
+    # Last month: Income by Source reads complete months, so the three views
+    # are compared over a month that has finished.
+    month = months_ago(1)
+    when = month + timedelta(days=4)
+    end = month_end(month)
+    await create_budget_assignment(db_session, budget, groceries, month, "500.00")
+    await create_transaction(db_session, budget, checking, "3000.00", when, category=ready)
+    await create_transaction(db_session, budget, checking, "-400.00", when, category=ready)
+    # Neither of these is income: a refund into an envelope, and money drawn
+    # back out of a tracked brokerage.
+    await create_transaction(db_session, budget, checking, "25.00", when, category=groceries)
+    await create_transfer(db_session, budget, brokerage, checking, "500.00", when)
+
+    reports = ReportService(db_session)
+    budgeted = await reports.cash_flow_sankey(budget.id, month, end, mode="budgeted")
+    spent = await reports.cash_flow_sankey(budget.id, month, end, mode="spent")
+    by_source = await income_by_source(db_session, budget.id, months=1)
+
+    assert budgeted["total_income"] == Decimal("2600.00")
+    assert spent["total_income"] == Decimal("2600.00")
+    assert by_source["total"] == Decimal("2600.00")
+
+
 class TestCategoryNodesCarryTheirEntityId:
     """The node id is a (group, category) composite so one category can appear
     under both its own group and the savings trunk. The client used to recover
@@ -459,3 +497,62 @@ class TestTheNodesCanBeDrilled:
         names = [n["name"] for n in data["nodes"]]
         assert "Unknown Income" in names
         assert not any(n.startswith("inc_") for n in names), names
+
+
+async def test_every_category_node_drills_to_exactly_what_it_counted(db_session):
+    """The three pseudo-nodes — Savings, Debt Payments, Uncategorized — have no
+    category to drill by, so each sent "no category" and nothing else, and
+    each opened the union of all three. The node now serves the classes it
+    counted and the drill lists "no category" by `category_id IS NULL`, not
+    by the register's needs-a-category rule: that rule leaves out a row
+    dated before its account's budget start, which the node still counts.
+    """
+    services, budget, checking, everyday, groceries, gas = await _setup(db_session)
+    brokerage = await create_account(
+        db_session, budget, "Cascade Brokerage", account_type="investment", on_budget=False
+    )
+    mortgage = await create_account(
+        db_session, budget, "Harborstone Mortgage", account_type="loan", on_budget=False
+    )
+    checking.budget_start_date = TODAY - timedelta(days=15)
+    await db_session.flush()
+
+    await create_transfer(
+        db_session, budget, checking, brokerage, "500.00", TODAY - timedelta(days=3)
+    )
+    await create_transfer(
+        db_session, budget, checking, mortgage, "1000.00", TODAY - timedelta(days=3)
+    )
+    await create_transaction(db_session, budget, checking, "-80.00", TODAY - timedelta(days=3))
+    # Before the account's budget start: opening position to the register's
+    # needs-a-category rule, but money that left all the same.
+    await create_transaction(db_session, budget, checking, "-30.00", TODAY - timedelta(days=18))
+    await create_transaction(
+        db_session, budget, checking, "-60.00", TODAY - timedelta(days=3), category=groceries
+    )
+
+    sankey = await ReportService(db_session).cash_flow_sankey(budget.id, START, TODAY, mode="spent")
+    into = {link["target"]: link["value"] for link in sankey["links"]}
+    categories = [n for n in sankey["nodes"] if n["type"] == "category"]
+    pseudo = {n["name"]: n for n in categories if n["entity_id"] is None}
+
+    assert {name: n["activity_classes"] for name, n in pseudo.items()} == {
+        "Savings": ["savings"],
+        "Debt Payments": ["debt_principal"],
+        "Uncategorized": ["spending"],
+    }
+    for node in categories:
+        _rows, _count, total = await services.transaction_repo.list_for_budget(
+            budget.id,
+            start_date=START,
+            end_date=TODAY,
+            scope="leaf",
+            direction="outflow",
+            posted_only=True,
+            cash_flow_only=True,
+            activity_classes=node["activity_classes"],
+            category_ids=[uuid.UUID(node["entity_id"])] if node["entity_id"] else None,
+            no_category=node["entity_id"] is None,
+        )
+        assert -total == into[node["id"]], node["name"]
+    assert into[pseudo["Uncategorized"]["id"]] == Decimal("110.00")

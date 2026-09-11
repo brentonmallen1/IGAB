@@ -16,8 +16,6 @@ import { useMoneyAxis } from './useMoneyAxis'
 import { ReportErrorState } from '../ReportErrorState'
 import { COLOR_NEUTRAL, TOOLTIP_STYLE } from './chartColors'
 import { buildVolatilityChartRows, coefficientOfVariation, filterVolatile } from './volatilityData'
-import { monthsAgoStartISO } from '../../../utils/dateWindow'
-import { today } from '../../../utils/dates'
 import { DrillDownTable } from '../DrillDownTable'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
@@ -40,16 +38,19 @@ export function VolatilityReport({ budgetId }: Props) {
   )
   const captureRef = useRef<HTMLDivElement>(null)
 
-  // Same window the backend aggregates over: first-of-month (months-1) ago → today
+  // The window the statistics read, as served. This computed its own and the
+  // two drifted: the panel added the partial current month the figures leave
+  // out and dropped the oldest, so its count and total could not reconcile.
   function drillTo(categoryId: string, name: string) {
+    if (!data) return
     setDrillDown({
       kind: 'category',
       label: name,
       scope: 'leaf',
       direction: 'outflow',
       categoryIds: [categoryId],
-      startDate: monthsAgoStartISO(months - 1),
-      endDate: today(),
+      startDate: data.window_start,
+      endDate: data.window_end,
     })
   }
 

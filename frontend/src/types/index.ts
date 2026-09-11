@@ -774,6 +774,10 @@ export interface SankeyNode {
    *  several ids — a category node is keyed by (group, category) so one
    *  category can sit under both its own group and the savings trunk. */
   entity_id?: string | null
+  /** Spent-mode category nodes: the activity classes the node counted, which
+   *  its drill-down must list. The Savings, Debt Payments and Uncategorized
+   *  pseudo-nodes differ by nothing else. */
+  activity_classes?: string[] | null
 }
 
 export interface SankeyLink {
@@ -811,8 +815,12 @@ export interface BudgetActualItem {
   category_group_name: string
   assigned: number
   spent: number
+  /** Against the plan floored at zero — backend `domain/plan.py`. */
   variance: number
   variance_pct: number
+  /** The server's verdict, same rule as Plan vs Reality. Never re-derive it
+   * from `spent > assigned`: a drained envelope has a negative assignment. */
+  overspent: boolean
 }
 
 export interface BudgetActualReport {
@@ -880,6 +888,10 @@ export interface VolatilityReport {
    *  one. Served so the page can say which reading it is showing — the same
    *  numbers under two definitions is how a chart lies quietly. */
   amortized: boolean
+  /** The complete months the statistics read (server-decided). Drill with
+   *  these — a window computed here drifted from the backend's once already. */
+  window_start: string
+  window_end: string
 }
 
 export interface SpendingGroupItem {
@@ -1042,6 +1054,10 @@ export interface IncomeBySourceReport {
   sources: IncomeSource[]
   monthly_totals: number[]
   total: number
+  /** `total` over the complete months the window holds, served — Cost of
+   *  Living's Take-home quotes the same figure. Never divide here. */
+  avg_monthly: number
+  months_averaged: number
 }
 
 export interface CategoryHistoryReport {
@@ -1079,6 +1095,10 @@ export interface PayeeAnalysisReport {
    *  only "25 rows" cannot say whether that is all of them — the Total Payees
    *  card used to report the ranking cap. */
   payee_count: number
+  /** How many of the largest payees make up 80% of `total`, counted over
+   *  every payee — the Pareto card's figure, which the top 25 cannot give
+   *  (backend `domain/concentration.py`). null when nothing was spent. */
+  payees_to_80pct: number | null
 }
 
 export interface DayPatternItem {
@@ -1177,7 +1197,11 @@ export interface SavingsCategory {
   category_id: string
   category_name: string
   group_name: string
-  monthly_balances: number[]
+  /** Available at each month's end, from the Budget page's own walk
+   *  (BudgetService.envelope_series). `null` where no figure can be stated —
+   *  before an import the history cannot reproduce; see
+   *  `SavingsReport.unrecovered`. Absent, not zero: draw a gap. */
+  monthly_balances: (number | null)[]
   current_balance: number
   target_balance: number | null
   total_inflow: number
@@ -1208,11 +1232,20 @@ export interface ReportDrains {
   moves: ReportDrainMove[]
 }
 
+/** An envelope whose balance before an import could not be walked back from
+ *  YNAB's figure, so its line starts at `starts_from`. */
+export interface SavingsUnrecovered {
+  category_id: string
+  category_name: string
+  starts_from: string
+}
+
 export interface SavingsReport {
   categories: SavingsCategory[]
   summary: SavingsSummary
   months: string[]
   drains: ReportDrains
+  unrecovered: SavingsUnrecovered[]
 }
 
 export interface AnomalyItem {
@@ -1238,7 +1271,10 @@ export interface PaydayEffectDay {
 
 export interface PaydayEffectReport {
   days: PaydayEffectDay[]
-  baseline_daily: number
+  /** null when the payday windows cover every day, so there is no "outside"
+   *  to average — backend PaydayEffectResponse. Never read it as 0.00: that
+   *  says the household spends nothing between paydays. */
+  baseline_daily: number | null
   event_count: number
 }
 
@@ -1369,10 +1405,13 @@ export interface CostOfLivingReport {
   /** The wide tier: everything non-discretionary. */
   avg_monthly_cost_of_living: number
   /** The lean tier, over the SAME window — which is what makes the difference
-   *  between them a real figure rather than a calendar artifact. */
-  avg_monthly_essentials: number
-  /** Cost of living less essentials: what a lean month could shed. */
-  avg_monthly_non_essential: number
+   *  between them a real figure rather than a calendar artifact. Null when
+   *  nothing is tagged Essential (backend `basis_is_chosen`): all spending is
+   *  not what a household could not cut. */
+  avg_monthly_essentials: number | null
+  /** Cost of living less essentials: what a lean month could shed. Null
+   *  whenever essentials is. */
+  avg_monthly_non_essential: number | null
   avg_monthly_income: number
   /** Share of take-home spoken for, against the WIDE tier. Null when there is
    *  no income on record: unknown, not 100%. */
@@ -1390,6 +1429,9 @@ export interface CostOfLivingReport {
   /** The activity classes these figures count, passed to the drill-down so a
    *  bar and the panel it opens total the same. */
   counted_classes: string[]
+  /** The necessity tier the groups roll up. Membership is per row (debt
+   *  principal joins by class), so the drill sends it too. */
+  necessity_tier: string
 }
 
 export interface WishlistDisciplineReport {
@@ -1400,7 +1442,10 @@ export interface WishlistDisciplineReport {
    *  something the cooling-off period did. */
   dropped_early: number
   still_open: number
+  /** Every dropped wish's cost, waited on or not. */
   resisted_total: number
+  /** How many wishes `resisted_total` sums — the card's count. */
+  resisted_count: number
   bought_total: number
   open_total: number
   avg_days_to_buy: number | null

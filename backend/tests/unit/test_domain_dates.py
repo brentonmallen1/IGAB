@@ -12,11 +12,14 @@ import pytest
 
 from igab.domain.dates import (
     add_months,
+    complete_month_window,
     complete_months,
     month_end,
     month_start,
+    month_starts,
     months_between,
     months_spanned,
+    trailing_start,
     weekday_occurrences,
 )
 
@@ -79,6 +82,13 @@ class TestMonthBuckets:
 
     def test_month_end_knows_thirty_day_months(self):
         assert month_end(date(2024, 4, 5)) == date(2024, 4, 30)
+        assert month_end(date(2024, 11, 1)) == date(2024, 11, 30)
+
+    def test_month_end_of_the_year_ends_and_starts(self):
+        # The cases report_service's private copy (`_last_day`) pinned before
+        # it was folded into this one; December is the one that rolls a year.
+        assert month_end(date(2024, 12, 1)) == date(2024, 12, 31)
+        assert month_end(date(2024, 1, 1)) == date(2024, 1, 31)
 
     def test_bucket_shift_keeps_day_one(self):
         # The composition report_service._subtract_months is built from.
@@ -193,3 +203,65 @@ class TestCompleteMonths:
         # Buckets are keyed on the first of the month, but a caller handing in
         # a mid-month date means that month.
         assert complete_months([date(2026, 8, 17)], date(2026, 9, 2)) == [date(2026, 8, 17)]
+
+
+class TestCompleteMonthWindow:
+    def test_ends_on_the_last_day_of_the_previous_month(self):
+        assert complete_month_window(date(2026, 9, 10), 3) == (date(2026, 6, 1), date(2026, 8, 31))
+
+    def test_crosses_a_year(self):
+        assert complete_month_window(date(2026, 3, 10), 3) == (
+            date(2025, 12, 1),
+            date(2026, 2, 28),
+        )
+
+    def test_never_reaches_before_the_history(self):
+        # History from 5 July, twelve months asked: July and August only. The
+        # ten months before were zero-filled as real zero-spend months.
+        assert complete_month_window(date(2026, 9, 10), 12, date(2026, 7, 5)) == (
+            date(2026, 7, 1),
+            date(2026, 8, 31),
+        )
+
+    def test_all_time_asks_one_month_too_many_and_is_clamped(self):
+        # "All time" counts the current month (`months_spanned`), so it asks
+        # for three here while only two are complete. Unclamped the window
+        # started in June, a month before the first transaction.
+        history = date(2026, 7, 5)
+        today = date(2026, 9, 10)
+        asked = months_spanned(history, today)
+        assert asked == 3
+        assert complete_month_window(today, asked, history)[0] == date(2026, 7, 1)
+
+    def test_history_starting_this_month_has_no_complete_month(self):
+        start, end = complete_month_window(date(2026, 9, 10), 12, date(2026, 9, 2))
+        assert start > end
+
+
+class TestTrailingStart:
+    def test_the_window_holds_exactly_that_many_days(self):
+        today = date(2026, 9, 10)
+        start = trailing_start(today, 90)
+        assert (today - start).days + 1 == 90
+
+    def test_thirty_days_ending_today(self):
+        assert trailing_start(date(2026, 9, 30), 30) == date(2026, 9, 1)
+
+    def test_one_day_is_today(self):
+        assert trailing_start(date(2026, 9, 10), 1) == date(2026, 9, 10)
+
+
+class TestMonthStarts:
+    def test_single_month(self):
+        assert month_starts(date(2024, 3, 10), date(2024, 3, 20)) == [date(2024, 3, 1)]
+
+    def test_spans_year_boundary(self):
+        assert month_starts(date(2023, 11, 15), date(2024, 2, 1)) == [
+            date(2023, 11, 1),
+            date(2023, 12, 1),
+            date(2024, 1, 1),
+            date(2024, 2, 1),
+        ]
+
+    def test_empty_when_start_after_end(self):
+        assert month_starts(date(2024, 5, 1), date(2024, 4, 30)) == []

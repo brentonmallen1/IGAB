@@ -36,6 +36,14 @@ def _day_in(year: int, month: int, day: int) -> date:
     return date(year, month, min(day, calendar.monthrange(year, month)[1]))
 
 
+def _step_months(current: date, months: int, day: int) -> date:
+    """`months` calendar months on from `current`, landing on `day` — clamped
+    in a short month, and back on `day` the month after. Stepping from the
+    clamped date instead drifts a bill on the 31st to the 28th for good."""
+    shifted = add_months(current, months)
+    return _day_in(shifted.year, shifted.month, day)
+
+
 def next_occurrence(
     frequency: str,
     current: date,
@@ -64,13 +72,11 @@ def next_occurrence(
     elif freq is ScheduleFrequency.BIWEEKLY:
         nxt = current + timedelta(weeks=2)
     elif freq is ScheduleFrequency.MONTHLY:
-        shifted = add_months(current, 1)
-        nxt = _day_in(shifted.year, shifted.month, day)
+        nxt = _step_months(current, 1, day)
     elif freq is ScheduleFrequency.YEARLY:
         # add_months, not `replace(year=...)`: a schedule dated 29 February
         # raised ValueError every leap year and stalled the run.
-        shifted = add_months(current, 12)
-        nxt = _day_in(shifted.year, shifted.month, day)
+        nxt = _step_months(current, 12, day)
     elif freq is ScheduleFrequency.TWICE_MONTHLY:
         if second_day_of_month is None:
             raise InvariantViolation("A twice-monthly schedule needs its second day of the month")
@@ -86,6 +92,47 @@ def next_occurrence(
     if end_date is not None and nxt > end_date:
         return None
     return nxt
+
+
+def projected_occurrences(
+    frequency: str,
+    next_date: date,
+    *,
+    start_day: int,
+    second_day_of_month: int | None,
+    end_date: date | None,
+    today: date,
+    horizon_end: date,
+) -> tuple[list[date], bool]:
+    """A schedule's occurrences on a projection from `today` to `horizon_end`,
+    and whether it keeps running past the horizon.
+
+    An occurrence already due but not entered is booked on `today` — the path
+    starts there, so a past date is one no projected balance would visit. But
+    everything due on or before today is ONE charge, the one row the register
+    shows for the schedule. A manual schedule advances only through Enter or
+    Skip, so one kept as a reminder for a bill paid through bank sync piles up
+    missed occurrences whose money has already left: booking every one of
+    them put -$7,000 on day 0 of a six-month-stale $1,000 rent reminder, and
+    read "goes negative today".
+    """
+    out: list[date] = []
+    current: date | None = next_date
+    while current is not None and current <= horizon_end:
+        if end_date is not None and current > end_date:
+            return out, False
+        if current > today:
+            out.append(current)
+        elif not out:
+            out.append(today)
+        current = next_occurrence(
+            frequency,
+            current,
+            start_day=start_day,
+            second_day_of_month=second_day_of_month,
+            end_date=end_date,
+        )
+    return out, current is not None and (end_date is None or current <= end_date)
 
 
 def first_occurrence_after(
@@ -182,20 +229,34 @@ def observed_interval_days(first: date, last: date, charge_count: int) -> int:
     return max(MIN_INTERVAL_DAYS, min(MAX_INTERVAL_DAYS, round(span / (charge_count - 1))))
 
 
-def step_cadence(d: date, interval_days: int) -> date:
+def step_cadence(d: date, interval_days: int, *, anchor_day: int | None = None) -> date:
     """Advance one billing cycle.
 
-    A near-monthly interval steps a CALENDAR month, keeping the charge on its
-    day of the month, and a near-annual one steps a calendar year. Anything
-    else steps by days. Stepping 30 days for a monthly bill is what made a
-    subscription drift off its billing date, and the drift compounds across a
-    90-day horizon.
+    A near-monthly interval steps a CALENDAR month and a near-annual one a
+    calendar year, both landing on `anchor_day` (default: `d`'s own day) the
+    way `next_occurrence` re-anchors a schedule. Anything else steps by days.
+    Stepping 30 days for a monthly bill is what made a subscription drift off
+    its billing date, and the drift compounds across a 90-day horizon.
     """
+    day = anchor_day or d.day
     if 25 <= interval_days <= 35:
-        return add_months(d, 1)
+        return _step_months(d, 1, day)
     if 350 <= interval_days <= MAX_INTERVAL_DAYS:
-        return add_months(d, 12)
+        return _step_months(d, 12, day)
     return d + timedelta(days=interval_days)
+
+
+def billing_day(first_charge: date, last_charge: date) -> int:
+    """The day of the month a subscription bills on, read off its charges.
+
+    The last charge's day — unless it sits on the final day of a month and an
+    earlier charge fell later in its month. A bill on the 31st posts on 28
+    February; anchoring to that 28 kept every later charge on the 28th.
+    """
+    month_length = calendar.monthrange(last_charge.year, last_charge.month)[1]
+    if last_charge.day == month_length and first_charge.day > last_charge.day:
+        return first_charge.day
+    return last_charge.day
 
 
 def subscription_occurrences(
@@ -212,10 +273,11 @@ def subscription_occurrences(
     if last_charge < today - timedelta(days=2 * interval):
         return []
 
+    day = billing_day(first_charge, last_charge)
     out: list[date] = []
-    nxt = step_cadence(last_charge, interval)
+    nxt = step_cadence(last_charge, interval, anchor_day=day)
     while nxt <= end_date:
         if nxt >= today:
             out.append(nxt)
-        nxt = step_cadence(nxt, interval)
+        nxt = step_cadence(nxt, interval, anchor_day=day)
     return out

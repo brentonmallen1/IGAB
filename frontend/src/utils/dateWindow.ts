@@ -5,35 +5,20 @@
  * Greenwich. All arithmetic goes through local-calendar components instead.
  */
 
-import { today } from './dates'
+// The Date → YYYY-MM-DD conversion lives in utils/dates (`toISODate`): this
+// module had the one copy the reports read, beside a second name for it and
+// three more spellings elsewhere in utils/.
+import { toISODate, today } from './dates'
 
 function parts(s: string): [number, number, number] {
   const [y, m, d] = s.split('-').map(Number)
   return [y, m, d]
 }
 
-function fmt(y: number, m: number, d: number): string {
-  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
-}
-
-/** A Date's LOCAL calendar day as YYYY-MM-DD.
- *
- * The one safe conversion. `d.toISOString().slice(0, 10)` is the trap: it
- * converts to UTC first, so a local midnight ahead of Greenwich lands on the
- * previous calendar day and an afternoon behind it lands on the next. Both
- * `DateRangePicker` and `reportStore.defaultFilters` used toISOString and so
- * asked the server for a window nobody chose.
- */
-export function toISODate(d: Date): string {
-  return fmt(d.getFullYear(), d.getMonth() + 1, d.getDate())
-}
-
-const fromDate = toISODate
-
 /** Add (or subtract) whole days; the Date constructor normalizes the calendar. */
 export function addDaysISO(s: string, days: number): string {
   const [y, m, d] = parts(s)
-  return fromDate(new Date(y, m - 1, d + days))
+  return toISODate(new Date(y, m - 1, d + days))
 }
 
 /** Difference in calendar days (b - a). */
@@ -52,19 +37,18 @@ export function previousWindow(start: string, end: string): { start: string; end
   return { start: prevStart, end: prevEnd }
 }
 
-/** First day of the month `monthsBack` months before the current one —
- * mirrors the backend's `_subtract_months(first_of_month, months - 1)`. */
+/** First day of the month `monthsBack` months before the current one. */
 export function monthsAgoStartISO(monthsBack: number): string {
   const now = new Date()
-  return fromDate(new Date(now.getFullYear(), now.getMonth() - monthsBack, 1))
+  return toISODate(new Date(now.getFullYear(), now.getMonth() - monthsBack, 1))
 }
 
 /** Full window of a "YYYY-MM" month, end clamped to today (report queries
  * never run past today, so panel totals must not either). */
 export function monthWindow(month: string): { start: string; end: string } {
   const [y, m] = month.split('-').map(Number)
-  const start = fmt(y, m, 1)
-  const lastDay = fromDate(new Date(y, m, 0)) // day 0 of next month = last of this
+  const start = toISODate(new Date(y, m - 1, 1))
+  const lastDay = toISODate(new Date(y, m, 0)) // day 0 of next month = last of this
   const t = today()
   return { start, end: lastDay < t ? lastDay : t }
 }

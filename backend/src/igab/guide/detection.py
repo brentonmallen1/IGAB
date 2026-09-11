@@ -24,10 +24,11 @@ from igab.domain.activity_class import ACTIVITY_CLASS, ActivityClass, apply_clas
 from igab.domain.dates import month_start
 from igab.domain.money import quantize_cents
 from igab.guide.concepts import (
-    ESSENTIALS_WINDOW_DAYS,
     HIGH_INTEREST_APR,
     MODERATE_INTEREST_APR,
     MORTGAGE_KINDS,
+    essentials_per_month,
+    essentials_since,
 )
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import (
@@ -264,16 +265,15 @@ class GuideDetection:
         user bound here, else what they tagged Essential, else all spending.
         """
         today = date.today()
-        since = today - timedelta(days=ESSENTIALS_WINDOW_DAYS)
         total, basis = await self.txns.essential_spend(
-            budget_id, since, today, bound.get("category") if bound else None
+            budget_id, essentials_since(today), today, bound.get("category") if bound else None
         )
         reason = {
             "bound": "the categories you told us are essential",
             "tag": "the categories and payees you tagged Essential",
             "all": "your average spending over the last 90 days",
         }[basis]
-        monthly = _cents(abs(total) / 3)
+        monthly = essentials_per_month(total)
         return Finding(
             concept_key="essential_expenses",
             met=monthly > 0,

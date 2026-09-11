@@ -17,6 +17,7 @@ from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.services.emergency_coverage import (
     EmergencyCoverageService,
     coverage_months,
+    history_index,
     trailing_average,
 )
 
@@ -200,3 +201,92 @@ async def test_a_self_reported_fund_reaches_the_newest_point(db_session, api_cli
         len(body["series"]) - 1
     )
     assert Decimal(str(body["fund_balance"])) == Decimal("4000.00")
+
+
+class TestTheAverageStartsWithTheHistory:
+    """The coverage denominator never averages months before the budget
+    existed, and "existed" means its first transaction — the start "All time"
+    counts from — not its first Essential bill."""
+
+    def test_history_index_finds_the_first_month_of_history(self):
+        months = MONTHS[:4]
+        assert history_index(months, None) == 0
+        assert history_index(months, MONTHS[0] - timedelta(days=40)) == 0
+        assert history_index(months, MONTHS[2] + timedelta(days=12)) == 2
+        assert history_index(months, MONTHS[5]) == 4  # after every month listed
+
+    def test_the_average_is_cut_at_the_history_not_before_it(self):
+        totals = [Decimal("0"), Decimal("0"), Decimal("900"), Decimal("600")]
+        # Before the history: nothing to average.
+        assert trailing_average(totals, 1, first_data=2) == Decimal("0")
+        # At it: that month alone, not 900 / 3.
+        assert trailing_average(totals, 2, first_data=2) == Decimal("900.00")
+        assert trailing_average(totals, 3, first_data=2) == Decimal("750.00")
+        # With the history behind it, the full three months, zeros included.
+        assert trailing_average(totals, 3, first_data=0) == Decimal("500.00")
+
+    async def _budget(self, db_session, *, history_from, bills, fund_amount):
+        """A budget whose first transaction is `history_from`, with Essential
+        rent bills `{month: amount}` and a fund assigned in the last month."""
+        services = make_services(db_session)
+        budget = await create_budget(db_session, await create_user(db_session))
+        checking = await create_account(db_session, budget, "Checking")
+        bills_group = await create_category_group(db_session, budget, "Bills")
+        rent = await create_category(db_session, budget, bills_group, "Rent")
+        coffee = await create_category(db_session, budget, bills_group, "Coffee")
+        goals = await create_category_group(db_session, budget, "Goals")
+        fund = await create_category(db_session, budget, goals, "Emergency Fund")
+        await seed_system_tags(db_session, budget.id)
+        tags = TagRepository(db_session)
+        by_key = {t.system_key: t for t in await tags.list_for_budget(budget.id)}
+        await tags.set_category_tags(rent.id, [by_key["essential"].id])
+        await tags.set_category_tags(fund.id, [by_key["savings"].id])
+        await create_transaction(
+            db_session, budget, checking, "-4.00", history_from, category=coffee
+        )
+        for month, amount in bills.items():
+            await create_transaction(
+                db_session, budget, checking, f"-{amount}", month + timedelta(days=4), category=rent
+            )
+        await _fund(services, budget, fund, MONTHS[5], fund_amount)
+        return budget
+
+    async def test_a_month_with_no_essential_bill_is_still_history(self, db_session):
+        """History from three months back, the first Essential bill last
+        month. The first version started the average at the first bill, so
+        last month was averaged alone: 900, where the budget's own three
+        months say (0 + 0 + 900) / 3."""
+        budget = await self._budget(
+            db_session,
+            history_from=MONTHS[3] + timedelta(days=1),
+            bills={MONTHS[5]: "900.00"},
+            fund_amount="900.00",
+        )
+
+        report = await EmergencyCoverageService(db_session).coverage(budget.id, months=1)
+
+        [point] = report["series"]
+        assert point["essentials"] == Decimal("300.00")
+        assert point["coverage_months"] == Decimal("3.0")
+
+    async def test_a_young_budgets_newest_point_and_headline_diverge_by_design(self, db_session):
+        """The deliberate divergence, pinned. History began last month, with
+        $1,000 of essentials and a $2,000 fund. The newest point divides by
+        the one month that exists — 2.0 months of runway — while the headline,
+        the Guide's 90 days ÷ 3, reads 6.0. Bounded: at most a factor of
+        three, and gone once three complete months exist."""
+        budget = await self._budget(
+            db_session,
+            history_from=MONTHS[5] + timedelta(days=1),
+            bills={MONTHS[5]: "1000.00"},
+            fund_amount="2000.00",
+        )
+
+        report = await EmergencyCoverageService(db_session).coverage(budget.id, months=1)
+
+        [point] = report["series"]
+        assert point["essentials"] == Decimal("1000.00")
+        assert point["coverage_months"] == Decimal("2.0")
+        assert report["essentials_monthly"] == Decimal("333.33")
+        assert report["coverage_months"] == Decimal("6.0")
+        assert point["essentials"] <= report["essentials_monthly"] * 3 + Decimal("0.01")

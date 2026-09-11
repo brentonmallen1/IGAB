@@ -12,9 +12,11 @@ import pytest
 
 from igab.domain.exceptions import InvariantViolation
 from igab.domain.schedule import (
+    billing_day,
     first_occurrence_after,
     next_occurrence,
     observed_interval_days,
+    projected_occurrences,
     step_cadence,
     subscription_occurrences,
     validate_schedule,
@@ -305,6 +307,84 @@ class TestStepCadence:
         # 91 is outside both calendar bands, so it stays arithmetic.
         assert step_cadence(date(2026, 1, 1), 91) == date(2026, 4, 2)
 
+    def test_an_anchor_day_brings_a_clamped_date_back(self):
+        # From the clamped 28 Feb, a bill on the 31st is back on the 31st.
+        # Without the anchor it stepped from the 28 and stayed there.
+        assert step_cadence(date(2027, 2, 28), 30, anchor_day=31) == date(2027, 3, 31)
+        assert step_cadence(date(2027, 2, 28), 365, anchor_day=29) == date(2028, 2, 29)
+
+
+class TestProjectedOccurrences:
+    TODAY = date(2026, 9, 10)
+
+    def project(self, frequency, next_date, horizon_end, *, end_date=None, second=None):
+        return projected_occurrences(
+            frequency,
+            next_date,
+            start_day=next_date.day,
+            second_day_of_month=second,
+            end_date=end_date,
+            today=self.TODAY,
+            horizon_end=horizon_end,
+        )
+
+    def test_a_stale_backlog_books_one_occurrence_on_today(self):
+        # Weekly, first due 185 days ago: 27 missed occurrences. One reaches
+        # the path — booking all 27 on day 0 is what read "goes negative today".
+        dates, runs_on = self.project("weekly", date(2026, 3, 9), date(2026, 9, 15))
+        assert dates == [date(2026, 9, 10), date(2026, 9, 14)]
+        assert runs_on
+
+    def test_a_backlog_and_an_occurrence_due_today_are_one_charge(self):
+        # Due 27 Aug, 3 Sep and today: one row in the register, one charge on
+        # the path — not the backlog's charge plus today's.
+        dates, runs_on = self.project("weekly", date(2026, 8, 27), date(2026, 9, 18))
+        assert dates == [date(2026, 9, 10), date(2026, 9, 17)]
+        assert runs_on
+
+    def test_an_occurrence_due_today_with_no_backlog_is_booked_today(self):
+        dates, _ = self.project("weekly", date(2026, 9, 10), date(2026, 9, 18))
+        assert dates == [date(2026, 9, 10), date(2026, 9, 17)]
+
+    def test_a_schedule_that_ended_while_overdue_books_its_last_one_and_stops(self):
+        dates, runs_on = self.project(
+            "monthly", date(2026, 8, 10), date(2026, 12, 9), end_date=date(2026, 8, 31)
+        )
+        assert dates == [date(2026, 9, 10)]
+        assert not runs_on
+
+    def test_a_schedule_due_after_the_horizon_books_nothing_and_runs_on(self):
+        dates, runs_on = self.project("yearly", date(2027, 3, 1), date(2026, 12, 9))
+        assert dates == []
+        assert runs_on
+
+    def test_a_schedule_whose_next_date_is_past_its_end_is_finished(self):
+        dates, runs_on = self.project(
+            "monthly", date(2026, 9, 20), date(2026, 12, 9), end_date=date(2026, 9, 15)
+        )
+        assert dates == []
+        assert not runs_on
+
+    def test_an_overdue_one_off_lands_on_today_once(self):
+        dates, runs_on = self.project("once", date(2026, 9, 1), date(2026, 12, 9))
+        assert dates == [date(2026, 9, 10)]
+        assert not runs_on
+
+
+class TestBillingDay:
+    def test_the_last_charges_day(self):
+        assert billing_day(date(2026, 6, 15), date(2026, 8, 15)) == 15
+
+    def test_a_bill_on_the_31st_seen_last_on_a_short_month(self):
+        # 28 February is the 31st, clamped; the earlier charge says so.
+        assert billing_day(date(2027, 1, 31), date(2027, 2, 28)) == 31
+        assert billing_day(date(2026, 7, 31), date(2026, 9, 30)) == 31
+
+    def test_a_bill_that_moved_earlier_in_the_month_follows_the_move(self):
+        # The last charge is not a month end, so it is not a clamp: the bill
+        # really moved from the 20th to the 5th.
+        assert billing_day(date(2026, 6, 20), date(2026, 8, 5)) == 5
+
 
 class TestSubscriptionOccurrences:
     TODAY = date(2026, 9, 10)
@@ -342,3 +422,18 @@ class TestSubscriptionOccurrences:
             )
             == []
         )
+
+    def test_a_month_end_bill_keeps_its_day_across_several_cycles(self):
+        # One step lands on a short month and clamps; every later step has to
+        # come back to the 31st. Stepping from the clamped date read 28 Mar
+        # and 28 Apr — charges landing up to three days early.
+        out = subscription_occurrences(
+            date(2026, 12, 31), date(2027, 1, 31), 2, date(2027, 2, 1), date(2027, 5, 2)
+        )
+        assert out == [date(2027, 2, 28), date(2027, 3, 31), date(2027, 4, 30)]
+
+    def test_a_last_charge_already_clamped_still_returns_to_the_31st(self):
+        out = subscription_occurrences(
+            date(2027, 1, 31), date(2027, 2, 28), 2, date(2027, 3, 5), date(2027, 6, 1)
+        )
+        assert out == [date(2027, 3, 31), date(2027, 4, 30), date(2027, 5, 31)]

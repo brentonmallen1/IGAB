@@ -46,6 +46,7 @@ import { CashProjectionReport } from './charts/CashProjectionReport'
 import { DayPatternsReport } from './charts/DayOfWeekChart'
 import { TimelineReport } from './charts/EventTimeline'
 import { IncomeExpenseReport } from './charts/IncomeExpenseChart'
+import { IncomeSourcesReport } from './charts/IncomeSourcesReport'
 import { LiabilitiesReport } from './charts/LiabilitiesReport'
 import { NetWorthReport } from './charts/NetWorthChart'
 import { ParetoReport } from './charts/ParetoChart'
@@ -291,6 +292,42 @@ describe('OverviewReport metric cards', () => {
   })
 })
 
+describe('SavingsReport before an import', () => {
+  // An imported budget whose history could not be walked back from YNAB's
+  // figure before August: those months are null — a gap, not an empty
+  // envelope — and the page has to say why.
+  const data = {
+    categories: [
+      {
+        category_id: 'c1',
+        category_name: 'Vacation',
+        group_name: 'Goals',
+        monthly_balances: [null, null, 100, 150],
+        current_balance: 150,
+        target_balance: null,
+        total_inflow: 250,
+      },
+    ],
+    summary: { total_balance: 150, total_inflow: 250, avg_monthly_inflow: 62.5, category_count: 1 },
+    months: ['2026-06-01', '2026-07-01', '2026-08-01', '2026-09-01'],
+    drains: { total: 0, moves: [] },
+    unrecovered: [{ category_id: 'c1', category_name: 'Vacation', starts_from: '2026-08-01' }],
+  }
+
+  it('names the envelope that starts late, and why', () => {
+    setQuery({ data })
+    renderReport(<SavingsReport budgetId="b1" />)
+    const note = screen.getByText(/Vacation starts in/)
+    expect(note).toHaveTextContent(/doesn.t reproduce YNAB.s balance/)
+  })
+
+  it('says nothing when every month has a figure', () => {
+    setQuery({ data: { ...data, unrecovered: [] } })
+    renderReport(<SavingsReport budgetId="b1" />)
+    expect(screen.queryByText(/reproduce YNAB/)).not.toBeInTheDocument()
+  })
+})
+
 describe('SubscriptionsReport table', () => {
   it('shows BOTH the per-charge and normalized monthly columns', () => {
     setQuery({
@@ -383,6 +420,167 @@ describe('SubscriptionsReport table', () => {
   })
 })
 
+describe('VolatilityReport drill-down', () => {
+  it('opens the window the statistics read, as served', () => {
+    // The chart computed its own window — `monthsAgoStartISO(months - 1)`
+    // through today — under a comment calling it the backend's. The backend
+    // reads complete months, so the panel added the partial current month and
+    // dropped the oldest one, and its total could not reconcile.
+    setQuery({
+      data: {
+        categories: [
+          {
+            category_id: 'c1',
+            category_name: 'Groceries',
+            category_group_name: 'Everyday',
+            mean: 400,
+            std_dev: 20,
+            min_val: 380,
+            max_val: 420,
+            p25: 390,
+            p75: 410,
+            months_included: 6,
+          },
+        ],
+        amortized: false,
+        window_start: '2026-03-01',
+        window_end: '2026-08-31',
+      },
+    })
+    renderReport(<VolatilityReport budgetId="b1" />)
+
+    fireEvent.click(screen.getByRole('cell', { name: 'Groceries' }))
+
+    const drill = useReportStore.getState().drillDown
+    expect(drill).toMatchObject({ startDate: '2026-03-01', endDate: '2026-08-31' })
+  })
+})
+
+describe('DayPatternsReport payday baseline', () => {
+  it('shows no baseline, rather than $0.00, when paydays cover every day', () => {
+    // The server serves null when no day falls outside a payday window. The
+    // chart turned it into 0 with `?? 0`, so the card read "Baseline Daily
+    // $0.00" — "spends nothing between paydays" — and every bar with any
+    // spend was painted as above it. Both hooks share this mock's data, so
+    // each row carries the day-of-week fields and the payday fields.
+    setQuery({
+      data: {
+        days: [0, 1].map((i) => ({
+          day_of_week: i,
+          day_name: i ? 'Tuesday' : 'Monday',
+          total: 50,
+          count: 1,
+          avg_transaction: 50,
+          offset: i,
+          avg_spend: 40,
+        })),
+        counted_classes: ['spending'],
+        baseline_daily: null,
+        event_count: 26,
+      },
+    })
+    renderReport(<DayPatternsReport budgetId="b1" />)
+
+    expect(screen.getByText('No days fall outside a payday window')).toBeInTheDocument()
+    expect(screen.queryByText('Average on non-payday periods')).toBeNull()
+    expect(screen.queryByText('$0.00')).toBeNull()
+  })
+})
+
+describe('WishlistDisciplineReport resisted wishes', () => {
+  it('counts the wishes its Resisted figure sums, and lists the early drops', () => {
+    // Three wishes dropped on day three of a thirty-day wait. The card read
+    // "$300.00 — 0 talked yourself out of" and the table had no row for them.
+    setQuery({
+      data: {
+        cooled_then_bought: 0,
+        cooled_then_dropped: 0,
+        bought_early: 0,
+        dropped_early: 3,
+        still_open: 0,
+        resisted_total: 300,
+        resisted_count: 3,
+        bought_total: 0,
+        open_total: 0,
+        avg_days_to_buy: null,
+        avg_wish_cost: 100,
+        unplaced: 0,
+      },
+    })
+    renderReport(<WishlistDisciplineReport budgetId="b1" />)
+
+    expect(screen.getByText('3 talked yourself out of')).toBeInTheDocument()
+    const row = screen.getByText('Decided against before the wait was up').closest('tr')
+    expect(row).toHaveTextContent('3')
+  })
+})
+
+describe('PayeeReport labels', () => {
+  const payees = Array.from({ length: 25 }, (_, i) => ({
+    payee_id: `p${i}`,
+    payee_name: `Payee ${i}`,
+    total: 100 - i,
+    count: 1,
+    pct: 1,
+    monthly_trend: [],
+    top_categories: [],
+    is_recurring: false,
+  }))
+
+  it('says how many the view shows, not how many the server ranked', () => {
+    // The card read "top 25 shown" while the Top view drew and listed 20.
+    setQuery({ data: { payees, total: 9850, payee_count: 312, payees_to_80pct: 140 } })
+    renderReport(<PayeeReport budgetId="b1" />)
+
+    expect(screen.getByText('20 shown')).toBeInTheDocument()
+    expect(screen.queryByText('top 25 shown')).toBeNull()
+    expect(screen.getByText('all payees')).toBeInTheDocument()
+  })
+
+  it('does not call a payee-filtered total "all payees"', () => {
+    useReportStore.getState().setFilters({ payeeIds: ['p1', 'p2', 'p3'] })
+    try {
+      setQuery({
+        data: { payees: payees.slice(0, 3), total: 250, payee_count: 3, payees_to_80pct: 3 },
+      })
+      renderReport(<PayeeReport budgetId="b1" />)
+      expect(screen.getByText('selected payees')).toBeInTheDocument()
+      expect(screen.queryByText('all payees')).toBeNull()
+    } finally {
+      useReportStore.getState().setFilters({ payeeIds: [] })
+    }
+  })
+})
+
+describe('IncomeSourcesReport average', () => {
+  it('shows the served average, not total over the months listed', () => {
+    // The page divided `total` by `months.length` for itself, with the running
+    // month in the window: 5,500 beside Cost of Living's Take-home of 6,000
+    // for the same steady pay. The server serves the figure both quote.
+    setQuery({
+      data: {
+        months: ['2026-06-01', '2026-07-01', '2026-08-01'],
+        sources: [
+          {
+            payee_id: 'p1',
+            payee_name: 'Northwind Payserv',
+            monthly: [6000, 6000, 6000],
+            total: 18000,
+            count: 3,
+          },
+        ],
+        monthly_totals: [6000, 6000, 6000],
+        total: 18000,
+        // Deliberately not total ÷ months, so a division done here would show.
+        avg_monthly: 5750,
+        months_averaged: 3,
+      },
+    })
+    renderReport(<IncomeSourcesReport budgetId="b1" />)
+    expect(screen.getByText('$5,750.00')).toBeInTheDocument()
+  })
+})
+
 describe('AnomaliesReport list', () => {
   it('shows the anomaly with its percent change vs baseline', () => {
     setQuery({
@@ -465,6 +663,32 @@ describe('ParetoReport insight', () => {
       screen.getByText('Spending is spread thin—consider consolidating or reviewing smaller items.')
     ).toBeInTheDocument()
   })
+
+  it('draws the payee card from the served count when the top 25 hold under 80%', () => {
+    // 312 payees, the 25 sent holding $4,120 of $9,850. The card looked for
+    // 80% in those 25 and, finding nothing, disappeared.
+    useReportStore.getState().setFilters({ groupBy: 'payee' })
+    try {
+      setQuery({
+        data: {
+          groups: [],
+          payees: Array.from({ length: 25 }, (_, i) => ({
+            payee_id: `p${i}`,
+            payee_name: `Payee ${i}`,
+            total: 4120 / 25,
+          })),
+          total: 9850,
+          payee_count: 312,
+          payees_to_80pct: 140,
+        },
+      })
+      renderReport(<ParetoReport budgetId="b1" />)
+      expect(screen.getByText('80% of Spend')).toBeInTheDocument()
+      expect(screen.getByText('140 payees')).toBeInTheDocument()
+    } finally {
+      useReportStore.getState().setFilters({ groupBy: 'category' })
+    }
+  })
 })
 
 describe('PlanVsRealityReport matrix', () => {
@@ -544,6 +768,7 @@ describe('BudgetActualReport values', () => {
             spent: 450,
             variance: 50,
             variance_pct: 10,
+            overspent: false,
           },
         ],
         total_assigned: '500',
@@ -555,6 +780,45 @@ describe('BudgetActualReport values', () => {
     expect(screen.getByText('Groceries')).toBeInTheDocument()
     expect(screen.getAllByText(/\$500\.00/).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/\$450\.00/).length).toBeGreaterThan(0)
+  })
+
+  it('reads overspent from the server, so a drained envelope is not an overrun', () => {
+    // Car Repairs had 300 moved OUT and spent nothing: a negative assignment.
+    // The chart used to decide `spent > assigned` itself — 0 > -300 — and kept
+    // it under "Overspent only" while Plan vs Reality called it neutral.
+    setQuery({
+      data: {
+        categories: [
+          {
+            category_id: 'c1',
+            category_name: 'Car Repairs',
+            category_group_name: 'Irregular',
+            assigned: -300,
+            spent: 0,
+            variance: 0,
+            variance_pct: 0,
+            overspent: false,
+          },
+          {
+            category_id: 'c2',
+            category_name: 'Dining',
+            category_group_name: 'Everyday',
+            assigned: 100,
+            spent: 160,
+            variance: -60,
+            variance_pct: -60,
+            overspent: true,
+          },
+        ],
+        total_assigned: '-200',
+        total_spent: '160',
+      },
+    })
+    renderReport(<BudgetActualReport budgetId="b1" />)
+
+    fireEvent.click(screen.getByLabelText('Overspent only'))
+    expect(screen.getByText('Dining')).toBeInTheDocument()
+    expect(screen.queryByText('Car Repairs')).not.toBeInTheDocument()
   })
 })
 
@@ -627,5 +891,25 @@ describe('CostOfLivingReport tiers', () => {
     renderReport(<CostOfLivingReport budgetId="b1" />)
     // The worse fact, said as itself rather than as "no headroom".
     expect(screen.getByText(/costs more than you take home/i)).toBeInTheDocument()
+  })
+
+  it('shows no Essentials figure until something is tagged Essential', () => {
+    // Only Cost of living tagged: the server serves the lean tier as unknown
+    // rather than the whole burn rate, so nothing may read "could not be cut"
+    // and the underwater sentence cannot fire on spending that could be cut.
+    setQuery({
+      data: {
+        ...tiered,
+        avg_monthly_essentials: null,
+        avg_monthly_non_essential: null,
+        essentials_ratio: null,
+        required_ratio: 130,
+      },
+    })
+    renderReport(<CostOfLivingReport budgetId="b1" />)
+    expect(screen.getByText('nothing tagged Essential')).toBeInTheDocument()
+    expect(screen.getByText('needs Essentials tagged')).toBeInTheDocument()
+    expect(screen.queryByText('could not be cut')).toBeNull()
+    expect(screen.queryByText(/costs more than you take home/i)).toBeNull()
   })
 })

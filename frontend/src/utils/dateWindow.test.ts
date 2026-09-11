@@ -1,5 +1,7 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { addDaysISO, daysBetween, monthWindow, previousWindow, toISODate } from './dateWindow'
+import { describe, expect, it } from 'vitest'
+import { addDaysISO, daysBetween, monthWindow, previousWindow } from './dateWindow'
+import { toISODate } from './dates'
+import { pinTimeZone } from '../test-utils/timeZone'
 
 describe('addDaysISO', () => {
   it('adds within a month', () => {
@@ -82,14 +84,7 @@ describe('monthWindow', () => {
  * agree and the test would prove nothing.
  */
 describe('toISODate ahead of Greenwich', () => {
-  const realTZ = process.env.TZ
-
-  beforeAll(() => {
-    process.env.TZ = 'Europe/Berlin'
-  })
-  afterAll(() => {
-    process.env.TZ = realTZ
-  })
+  pinTimeZone('Europe/Berlin')
 
   it('keeps a local month-start on the 1st', () => {
     // toISOString() gave '2026-08-31' for this Date.
@@ -102,14 +97,7 @@ describe('toISODate ahead of Greenwich', () => {
 })
 
 describe('toISODate behind Greenwich', () => {
-  const realTZ = process.env.TZ
-
-  beforeAll(() => {
-    process.env.TZ = 'America/Los_Angeles'
-  })
-  afterAll(() => {
-    process.env.TZ = realTZ
-  })
+  pinTimeZone('America/Los_Angeles')
 
   it('does not push an afternoon today onto tomorrow', () => {
     // 18:00 PDT on 30 Sep is 01:00 UTC on 1 Oct; toISOString() said October.

@@ -59,7 +59,10 @@ export function IncomeSourcesReport({ budgetId }: Props) {
   if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
   if (!data) return null
 
-  const avg = data.months.length ? data.total / data.months.length : 0
+  // Served. This divided by `months.length` with the running month in the
+  // window, reading 5,500 beside Cost of Living's Take-home of 6,000 for the
+  // same steady pay.
+  const avg = data.avg_monthly
   const hasOther = chartData.some((r) => 'Other' in r)
 
   return (

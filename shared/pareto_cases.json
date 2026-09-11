@@ -1,0 +1,11 @@
+{
+  "_comment": "How many of the largest items it takes to reach 80% of spending. Run by BOTH backend/tests/unit/test_domain_concentration.py (payee mode: the server serves the count, because it ranks every payee and sends only the top 25) and frontend/src/components/reports/charts/paretoData.test.ts (category and group modes, which the client holds in full). Totals are listed largest first; `items_to_80` is null when nothing was spent.",
+  "cases": [
+    { "totals": [50, 30, 20], "items_to_80": 2, "note": "the ordinary case" },
+    { "totals": [70, 10, 20], "items_to_80": 2, "note": "exactly 80% counts as reaching it" },
+    { "totals": [90, 10], "items_to_80": 1, "note": "one item past the line" },
+    { "totals": [10, 10, 10, 10, 10, 10, 10, 10, 10, 10], "items_to_80": 8, "note": "diffuse spending needs most of the items" },
+    { "totals": [100], "items_to_80": 1, "note": "a single item is all of it" },
+    { "totals": [], "items_to_80": null, "note": "nothing spent has no 80% line" }
+  ]
+}

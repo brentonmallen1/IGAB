@@ -139,6 +139,8 @@ export function CreditScoreTracker() {
                 <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
                 <YAxis
                   domain={[300, 850]}
+                  // A credit score, not money: its own unit, left unmasked.
+                  tickFormatter={(score: number) => String(score)}
                   tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
                   axisLine={false}
                   tickLine={false}

@@ -16,6 +16,7 @@ from igab.domain.cards import (
 from igab.domain.carryover import (
     available_at,
     available_through,
+    back_derived_balances,
     monthly_end_balances,
     sum_through,
 )
@@ -269,6 +270,30 @@ class RodeEnvelope:
     category_id: uuid.UUID
     category_name: str
     amount: Decimal
+
+
+@dataclass(frozen=True)
+class EnvelopeSeries:
+    """One envelope's figures month by month, as the Budget page states them
+    (`BudgetService.envelope_series`). Both lists align with the months
+    asked for."""
+
+    #: Available at each month's end. None where no figure can be stated: a
+    #: month before the budget's history, or, on an imported budget, one
+    #: whose balance the history cannot reproduce (`unrecovered_through`).
+    available: list[Decimal | None]
+    assigned: list[Decimal]
+    #: The latest month before an import whose balance could not be walked
+    #: back from YNAB's figure — None when every month asked for could be.
+    unrecovered_through: date | None = None
+
+    def latest(self) -> Decimal:
+        """Available in the last month asked for. Never unknown for a month at
+        or after the import, which is every month a caller reads "now" from."""
+        value = self.available[-1]
+        if value is None:
+            raise InvariantViolation("The latest month asked for predates the import")
+        return value
 
 
 @dataclass
@@ -676,6 +701,89 @@ class BudgetService:
                     ),
                     in_system_group=in_system_group,
                 )
+            )
+        return out
+
+    async def envelope_series(
+        self, budget_id: uuid.UUID, category_ids: list[uuid.UUID], months: list[date]
+    ) -> dict[uuid.UUID, EnvelopeSeries]:
+        """Several envelopes' Available month by month, as the Budget page
+        serves it — for reports that chart balances over time.
+
+        The walk `get_budget_summary` runs: seeded from the import anchor, and
+        read out of `card_funding`'s corrected series for an envelope a card
+        refund repaid debt through, under the same guards. The Savings report
+        assembled its own copy and skipped that correction, so a $100 card
+        charge refunded to the envelope read $100 there and $0 on the page.
+
+        Months before an import anchor are walked back from YNAB's figure
+        (`domain.carryover.back_derived_balances`). Read through the anchored
+        walk alone they were all zero: a flat line that jumped to the whole
+        balance at the import.
+        """
+        zero = Decimal("0")
+        if not category_ids or not months:
+            return {}
+        firsts = [first_of_month(m) for m in months]
+        through = max(firsts)
+        wanted = set(category_ids)
+        assigned: dict[uuid.UUID, dict[date, Decimal]] = {}
+        every_assignment = await self.assignment_repo.get_all_for_budget(budget_id)
+        for a in every_assignment:
+            if a.category_id in wanted and a.month <= through:
+                assigned.setdefault(a.category_id, {})[a.month] = a.assigned
+        activity = await self.transaction_repo.sum_all_categories_by_month(
+            list(category_ids), end_date=last_of_month(through)
+        )
+        categories = await self.category_repo.get_all(budget_id, include_archived=True)
+        groups = await self.category_group_repo.get_all(budget_id, include_archived=True)
+        system_group_ids = {g.id for g in groups if g.is_system}
+        by_id = {c.id: c for c in categories}
+        walk = await self.card_walk(budget_id, through, categories=categories)
+        # Where the register begins: its first transaction or its first
+        # assignment, whichever is earlier. The walk back stops there.
+        first_txn = await self.transaction_repo.earliest_date(budget_id)
+        starts = [first_of_month(first_txn)] if first_txn else []
+        starts += [min(a.month for a in every_assignment)] if every_assignment else []
+        earliest = min(starts) if starts else None
+
+        out: dict[uuid.UUID, EnvelopeSeries] = {}
+        for cid in category_ids:
+            cat_assigned, cat_activity = assigned.get(cid, {}), activity.get(cid, {})
+            opening = category_opening(walk.anchor, cid)
+            cat = by_id.get(cid)
+            # `get_budget_summary`'s own condition for re-reading Available out
+            # of the card walk: corrected by it, and neither income nor a
+            # card's payment envelope.
+            corrected = (
+                cid in walk.funding.repaid_by_category
+                and cat is not None
+                and cat.category_group_id not in system_group_ids
+                and cat.linked_account_id is None
+            )
+            series = (
+                walk.funding.end_balances[cid]
+                if corrected
+                else monthly_end_balances(cat_assigned, cat_activity, opening=opening)
+            )
+            recovered: dict[date, Decimal] = {}
+            stopped: date | None = None
+            if opening is not None and earliest is not None:
+                recovered, stopped = back_derived_balances(
+                    opening, cat_assigned, cat_activity, earliest
+                )
+            # A stop before the first month asked for leaves nothing missing.
+            if stopped is not None and stopped < firsts[0]:
+                stopped = None
+            out[cid] = EnvelopeSeries(
+                available=[
+                    available_at(series, m)
+                    if opening is None or m >= opening[0]
+                    else recovered.get(m)
+                    for m in firsts
+                ],
+                assigned=[cat_assigned.get(m, zero) for m in firsts],
+                unrecovered_through=stopped,
             )
         return out
 

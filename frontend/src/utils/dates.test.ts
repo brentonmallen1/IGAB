@@ -7,13 +7,14 @@
  * that keeps the expected local date/time fixed no matter which timezone the
  * test runner is in.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import {
   formatDateTimeWithOptions,
   formatDayMonthWithOptions,
   formatMonthShortWithOptions,
   ordinalDay,
 } from './dates'
+import { pinTimeZone } from '../test-utils/timeZone'
 
 const AFTERNOON = '2026-08-17T13:53:41'
 
@@ -92,14 +93,7 @@ describe('ordinalDay', () => {
  * The suite pins no zone of its own, so a UTC runner would have passed the bug.
  */
 describe('short formatters are timezone-proof', () => {
-  const realTZ = process.env.TZ
-
-  beforeAll(() => {
-    process.env.TZ = 'America/Los_Angeles'
-  })
-  afterAll(() => {
-    process.env.TZ = realTZ
-  })
+  pinTimeZone('America/Los_Angeles')
 
   it('keeps a month-start string in its own month behind Greenwich', () => {
     // The January case is the loud one: this read "Dec 25" before the fix.
@@ -122,14 +116,7 @@ describe('short formatters are timezone-proof', () => {
 })
 
 describe('short formatters ahead of Greenwich', () => {
-  const realTZ = process.env.TZ
-
-  beforeAll(() => {
-    process.env.TZ = 'Pacific/Auckland'
-  })
-  afterAll(() => {
-    process.env.TZ = realTZ
-  })
+  pinTimeZone('Pacific/Auckland')
 
   it('reads the same month on the other side of the world', () => {
     // Proves the fix is zone-independent rather than merely shifted the other

@@ -229,7 +229,9 @@ export function AssetPage() {
             <ComposedChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
               <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
-              <YAxis {...moneyAxis} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} width={90} />
+              {/* No width of its own: the spread's is the phone's 52 or the
+                  desktop's 90, and a width written after it overrode the phone's. */}
+              <YAxis {...moneyAxis} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
               <Tooltip
                 content={<ChartTooltip showTotal={false} formatter={formatMoney} />}
                 offset={16}

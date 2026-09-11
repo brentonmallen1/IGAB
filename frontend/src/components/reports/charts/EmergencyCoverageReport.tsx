@@ -23,6 +23,7 @@ import { ChartTooltip } from './ChartTooltip'
 import { COLOR_NET, COLOR_POSITIVE, COLOR_NEUTRAL } from './chartColors'
 import { coverageTrend, monthsToTarget, standing } from './coverageView'
 import { useReportMonths } from '../../../stores/reportStore'
+import { useMoneyAxis } from './useMoneyAxis'
 import './EmergencyCoverageReport.css'
 
 interface Props {
@@ -51,8 +52,16 @@ function monthsCovered(value: number): string {
   return `${value.toFixed(1)} months`
 }
 
+/** The same axis's ticks: a bare count, labelled "months" beside it. */
+function monthsTick(value: number): string {
+  return String(value)
+}
+
 export function EmergencyCoverageReport({ budgetId }: Props) {
   const { formatMoney, formatMonth } = useFormatters()
+  // The second chart plots money. Its axis printed raw numbers — no currency
+  // and no privacy mask — beside a tooltip and cards that both read $••••.
+  const moneyAxis = useMoneyAxis()
   const months = useReportMonths()
   const { data, isLoading, isError, error, refetch } = useEmergencyCoverageReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
@@ -206,6 +215,7 @@ export function EmergencyCoverageReport({ budgetId }: Props) {
                   <XAxis dataKey="month" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
                   <YAxis
                     tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
+                    tickFormatter={monthsTick}
                     label={{
                       value: 'months',
                       angle: -90,
@@ -243,7 +253,7 @@ export function EmergencyCoverageReport({ budgetId }: Props) {
                 <ComposedChart data={chart}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
                   <XAxis dataKey="month" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
-                  <YAxis tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
+                  <YAxis {...moneyAxis} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
                   <Tooltip content={<ChartTooltip formatter={formatMoney} />} />
                   <Area
                     type="monotone"

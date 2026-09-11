@@ -7,6 +7,7 @@ import {
   shareOfTotal,
   type ParetoItem,
 } from './paretoData'
+import pareto from '../../../../../shared/pareto_cases.json'
 
 const spending = [
   { id: 'c1', name: 'Groceries', total: '300', parent_id: 'g1', parent_name: 'Everyday' },
@@ -63,6 +64,7 @@ describe('buildParetoItems', () => {
     const { grandTotal, universeCount } = buildParetoItems('payee', spending, payees, undefined, {
       total: '4000',
       count: 312,
+      itemsTo80: 140,
     })
     expect(grandTotal).toBe(4000)
     expect(universeCount).toBe(312)
@@ -132,5 +134,32 @@ describe('paretoAdherence', () => {
   it('claims nothing without a coverage figure or with too few items', () => {
     expect(paretoAdherence(null, 100)).toBeNull()
     expect(paretoAdherence(20, 2)).toBeNull()
+  })
+})
+
+describe('the 80% line, against the cases the backend runs', () => {
+  // Category and group modes compute it here; payee mode is served it by
+  // `domain/concentration.py`. One fixture holds both to the same answer.
+  it.each(pareto.cases)('$note', ({ totals, items_to_80 }) => {
+    const sum = totals.reduce((s, t) => s + t, 0)
+    const { idx80 } = paretoInsight(cumulativePercents(items(totals), sum), totals.length)
+    expect(idx80 === -1 ? null : idx80 + 1).toBe(items_to_80)
+  })
+})
+
+describe('paretoInsight in payee mode', () => {
+  it('draws the card when the ranked top 25 hold under 80% of spending', () => {
+    // 312 payees, the top 25 holding $4,120 of $9,850: the cumulative line
+    // peaks at 41.8%, so looking for 80% in it found nothing and the card
+    // disappeared. The server counted 140 payees to the line.
+    const top25 = cumulativePercents(items(Array(25).fill(4120 / 25)), 9850)
+    expect(paretoInsight(top25, 312).idx80).toBe(-1)
+    const { idx80, coverage } = paretoInsight(top25, 312, 140)
+    expect(idx80).toBe(139)
+    expect(coverage).toBeCloseTo((140 / 312) * 100, 5)
+  })
+
+  it('has no line when nothing was spent', () => {
+    expect(paretoInsight([], 0, null)).toEqual({ idx80: -1, coverage: null })
   })
 })

@@ -1,3 +1,4 @@
+import { currentMonthStart } from '../../utils/dates'
 import {
   Area,
   CartesianGrid,
@@ -44,7 +45,7 @@ interface ChartPoint {
 export function PaydownChart({ amortization, mode, isMobile = false, promoEndDate }: Props) {
   const { formatMoney } = useFormatters()
   const points: ChartPoint[] = []
-  const todayMonth = new Date().toISOString().slice(0, 7)
+  const todayMonth = currentMonthStart().slice(0, 7)
 
   if (mode === 'beginning') {
     for (const p of amortization.history) {

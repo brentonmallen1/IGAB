@@ -64,6 +64,7 @@ from igab.repositories.txn_filters import (
     UNCLAIMED_CARD_ROW,
     UNPAIRED_TRANSFER_LEG,
     USER_ENTERED,
+    in_category_scope,
     search_matches,
     sync_created_pending,
 )
@@ -219,7 +220,9 @@ class TransactionRepository(BaseRepository[Transaction]):
         # the same distinction `report_service.scoped` states for the reports,
         # and the drill-down panel reads this listing.
         if category_ids is not None:
-            q = q.where(Transaction.category_id.in_(category_ids))
+            # `in_category_scope`: these are parent rows, and a split parent
+            # carries no category of its own — the plain IN dropped every split.
+            q = q.where(in_category_scope(category_ids))
         if payee_ids:
             q = q.where(Transaction.payee_id.in_(payee_ids))
         if amount_min is not None:
@@ -265,11 +268,13 @@ class TransactionRepository(BaseRepository[Transaction]):
         posted_only: bool = False,
         cash_flow_only: bool = False,
         activity_classes: list[str] | None = None,
+        necessity_tier: NecessityTier | None = None,
         direction: str | None = None,
         day_of_week: int | None = None,
         cleared: str | None = None,
         exclude_cleared: str | None = None,
         uncategorized: bool = False,
+        no_category: bool = False,
         unapproved: bool = False,
         is_or_mode: bool = False,
         amount_min: float | None = None,
@@ -288,6 +293,12 @@ class TransactionRepository(BaseRepository[Transaction]):
         count/sum aggregate runs over the same predicate as the page query so
         callers can reconcile a paginated list against report totals.
 
+        `uncategorized` is the register's filter: NEEDS_CATEGORY, the badge's
+        rule, which leaves out rows before an account's budget start and rows
+        on tracking accounts. `no_category` is a report bucket defined by the
+        absence of a category — the Sankey's Uncategorized node counts those
+        rows, so its drill must list them.
+
         order="register" sorts pending → needs-category → uncleared → rest
         (same priority as the per-account register) so paginated clients load
         rows needing attention first; order="date" is plain date-desc.
@@ -304,6 +315,14 @@ class TransactionRepository(BaseRepository[Transaction]):
             # totalling $1,800, because the bar means SPENDING and the list
             # meant every negative row.
             where.append(ACTIVITY_CLASS.in_(list(activity_classes)))
+        if necessity_tier is not None:
+            # A tier's membership is per ROW once debt principal joins it by
+            # class, so a bar's category ids alone list rows the tier never
+            # counted: an "Auto" bar holding a $340 loan payment opened $420
+            # with the fuel beside it. The tier's own scope — the report's
+            # rule, fallback included — is what the panel lists.
+            tier_where, _ = await self._necessity_scope(budget_id, necessity_tier, None)
+            where.extend(tier_where)
         if direction == "outflow":
             where.append(Transaction.amount < 0)
         elif direction == "inflow":
@@ -319,7 +338,18 @@ class TransactionRepository(BaseRepository[Transaction]):
         if end_date:
             where.append(Transaction.date <= end_date)
         if category_ids is not None:
-            where.append(Transaction.category_id.in_(category_ids))
+            # Parent rows scope by their legs too. The Timeline shows a split
+            # scoped to one of its legs' categories (`in_category_scope`), and
+            # clicking its card opened this listing with a plain IN that
+            # excludes every split parent — "No transactions match" for the
+            # row just clicked.
+            where.append(
+                in_category_scope(category_ids)
+                if scope == "parent"
+                else Transaction.category_id.in_(category_ids)
+            )
+        if no_category:
+            where.append(Transaction.category_id.is_(None))
         if payee_ids:
             where.append(Transaction.payee_id.in_(payee_ids))
         if account_ids:
@@ -365,7 +395,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         totals_q = select(func.count(), func.coalesce(func.sum(Transaction.amount), 0)).select_from(
             Transaction
         )
-        if activity_classes:
+        if activity_classes or necessity_tier is not None:
             # Only when the filter is in play: these are four LEFT JOINs, and
             # the ordinary register listing has no reason to pay for them.
             rows_q = apply_class_joins(rows_q)

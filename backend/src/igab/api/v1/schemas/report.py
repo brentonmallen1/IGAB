@@ -151,6 +151,11 @@ class SankeyNode(ApiModel):
     #: and the savings trunk) — recovering an id by string-surgery on it sent
     #: "{group_uuid}_{category_uuid}" to the transactions API as a category id.
     entity_id: str | None = None
+    #: On a spent-mode category node: the activity classes it counted. Its
+    #: drill-down lists exactly these, because the three pseudo-nodes
+    #: (Savings, Debt Payments, Uncategorized) share "no category" and differ
+    #: only by class. None on every other node.
+    activity_classes: list[str] | None = None
 
 
 class SankeyLink(ApiModel):
@@ -195,8 +200,11 @@ class BudgetActualItem(ApiModel):
     category_group_name: str
     assigned: Decimal
     spent: Decimal
+    #: Against the plan floored at zero (`domain.plan`), like Plan vs Reality.
     variance: Decimal
     variance_pct: float
+    #: The server's verdict; the chart's filter, sort and red bar read it.
+    overspent: bool
 
 
 class BudgetActualResponse(ApiModel):
@@ -273,6 +281,10 @@ class VolatilityResponse(ApiModel):
     #: next one. Served so the page can say which reading it is showing —
     #: the same numbers under two definitions is how a chart lies quietly.
     amortized: bool = False
+    #: The complete months the statistics read. The drill-down lists exactly
+    #: these; the chart used to compute its own, and it drifted.
+    window_start: date
+    window_end: date
 
 
 # ─── Spending Grouped (Pareto + Treemap) ──────────────────────────────────────
@@ -436,6 +448,10 @@ class PayeeAnalysisResponse(ApiModel):
     #: the payee table and the Pareto card were stating the cap as a
     #: period-wide fact.
     payee_count: int
+    #: How many of the largest payees make up 80% of `total`, counted over
+    #: every payee (`domain.concentration`). None when nothing was spent. The
+    #: Pareto card reads it: the client holds only the top 25.
+    payees_to_80pct: int | None
 
 
 # ─── Day Patterns ─────────────────────────────────────────────────────────────
@@ -608,7 +624,11 @@ class SavingsCategory(ApiModel):
     category_id: uuid.UUID
     category_name: str
     group_name: str
-    monthly_balances: list[Decimal]  # balance at end of each month
+    #: Available at the end of each month, as the Budget page states it. None
+    #: where no figure can be stated — before the budget's history, or before
+    #: an import whose history cannot reproduce YNAB's balance (see
+    #: `SavingsReportResponse.unrecovered`). Absent, not zero.
+    monthly_balances: list[Decimal | None]
     current_balance: Decimal
     target_balance: Decimal | None
     total_inflow: Decimal  # total assigned/deposited in the period
@@ -639,11 +659,23 @@ class ReportDrains(ApiModel):
     moves: list[ReportDrainMove]
 
 
+class SavingsUnrecovered(ApiModel):
+    """An envelope whose balance before an import could not be walked back
+    from YNAB's figure: its line starts at `starts_from`."""
+
+    category_id: uuid.UUID
+    category_name: str
+    starts_from: date
+
+
 class SavingsReportResponse(ApiModel):
     categories: list[SavingsCategory]
     summary: SavingsSummary
     months: list[date]
     drains: ReportDrains
+    #: Envelopes whose line starts late, so the page can say why rather than
+    #: draw a gap nobody explained.
+    unrecovered: list[SavingsUnrecovered]
 
 
 # ─── Savings Rate Report ─────────────────────────────────────────────────────
@@ -704,10 +736,11 @@ class PaydayEffectDay(ApiModel):
 
 class PaydayEffectResponse(ApiModel):
     days: list[PaydayEffectDay]
-    #: Average daily spend on days outside every payday window. None when the
-    #: windows cover every day in the range — which `window=14` guarantees for
-    #: biweekly pay. A served 0.00 would say "this household spends nothing
-    #: outside payday", which is the opposite of "there is no outside".
+    #: Average daily spend on days outside every payday window, counted from
+    #: the first payday in the range. None when the windows cover every one of
+    #: those days — biweekly pay at window=14, whatever its phase. A served
+    #: 0.00 would say "this household spends nothing outside payday", which is
+    #: the opposite of "there is no outside".
     baseline_daily: Decimal | None
     event_count: int  # number of income events used
 
@@ -804,6 +837,10 @@ class IncomeBySourceResponse(ApiModel):
     sources: list[IncomeSource]
     monthly_totals: list[Decimal]
     total: Decimal
+    #: `total` over the complete months it covers — the figure Cost of
+    #: Living's Take-home quotes. Never re-derive it on the client.
+    avg_monthly: Decimal
+    months_averaged: int
 
 
 # ─── Category History ────────────────────────────────────────────────────────
@@ -860,9 +897,12 @@ class CostOfLivingResponse(ApiModel):
     avg_monthly_cost_of_living: Decimal
     #: The lean tier, measured over the SAME window, which is what makes the
     #: difference between them a real figure rather than a calendar artifact.
-    avg_monthly_essentials: Decimal
-    #: Cost of living less essentials: what a lean month could shed.
-    avg_monthly_non_essential: Decimal
+    #: None when nothing is tagged Essential (`basis_is_chosen`): all spending
+    #: is not what a household could not cut, so the figure is unknown.
+    avg_monthly_essentials: Decimal | None
+    #: Cost of living less essentials: what a lean month could shed. None
+    #: whenever essentials is.
+    avg_monthly_non_essential: Decimal | None
     avg_monthly_income: Decimal
     #: Share of take-home already spoken for, against the WIDE tier. None when
     #: the averaged months carry no income: a ratio against zero is unknown,
@@ -884,6 +924,10 @@ class CostOfLivingResponse(ApiModel):
     #: The activity classes these figures count, so a drill-down opened from a
     #: bar totals what the bar says.
     counted_classes: list[str] = []
+    #: The necessity tier the groups roll up. Membership is per row (debt
+    #: principal by class), so the drill sends it too. Required: a drill that
+    #: forgets it lists spending the bar never counted.
+    necessity_tier: str
 
 
 # ─── Wishlist discipline ─────────────────────────────────────────────────────
@@ -898,8 +942,11 @@ class WishlistDisciplineResponse(ApiModel):
     #: three of thirty under "waited, then decided against".
     dropped_early: int
     still_open: int
-    #: Wanted, waited on, and not spent — the figure the report is for.
+    #: Wanted and not spent — every dropped wish, whether the wait ran its
+    #: course or not. The figure the report is for.
     resisted_total: Decimal
+    #: How many wishes `resisted_total` sums; the card's count reads this.
+    resisted_count: int
     bought_total: Decimal
     open_total: Decimal
     #: None with nothing bought: an average of no days is not zero days.

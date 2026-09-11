@@ -65,17 +65,18 @@ async def test_monthly_subscription_counts_posted_leaf_outflows_only(db_session)
     budget, checking, tag_repo, sub_cat = await _setup(db_session)
     netflix = await _tag_payee(db_session, budget, tag_repo, sub_cat, "Netflix")
 
-    for k in (2, 1, 0):
+    for k in (3, 2, 1):
         await create_transaction(
             db_session, budget, checking, "-15.99", months_ago(k), payee=netflix, category=sub_cat
         )
-    # None of these may count: pending, deleted, refund (inflow)
+    # None of these may count: pending, deleted, refund (inflow), and a charge
+    # in the month still running — the window is complete months.
     await create_transaction(
         db_session,
         budget,
         checking,
         "-15.99",
-        months_ago(0),
+        months_ago(1),
         payee=netflix,
         category=sub_cat,
         cleared="pending",
@@ -85,13 +86,16 @@ async def test_monthly_subscription_counts_posted_leaf_outflows_only(db_session)
         budget,
         checking,
         "-15.99",
-        months_ago(0),
+        months_ago(1),
         payee=netflix,
         category=sub_cat,
         is_deleted=True,
     )
     await create_transaction(
-        db_session, budget, checking, "15.99", months_ago(0), payee=netflix, category=sub_cat
+        db_session, budget, checking, "15.99", months_ago(1), payee=netflix, category=sub_cat
+    )
+    await create_transaction(
+        db_session, budget, checking, "-15.99", TODAY, payee=netflix, category=sub_cat
     )
     # Untagged payee: never a subscription, no matter the cadence
     rent = await create_payee(db_session, budget, "Rent")
@@ -107,9 +111,9 @@ async def test_monthly_subscription_counts_posted_leaf_outflows_only(db_session)
     assert sub["payees"][0]["total"] == Decimal("47.97")
     assert sub["total"] == Decimal("47.97")
     assert sub["transaction_count"] == 3
-    assert sub["last_charge_date"] == months_ago(0)
+    assert sub["last_charge_date"] == months_ago(1)
     assert sub["avg_per_charge"] == Decimal("15.99")
-    # First charge 2 months ago -> active span of 3 months
+    # First charge 3 months ago -> active span of 3 complete months
     assert sub["avg_monthly"] == Decimal("15.99")
 
     months = data["months"]
@@ -117,14 +121,15 @@ async def test_monthly_subscription_counts_posted_leaf_outflows_only(db_session)
     # month and then included it too, so the chart drew thirteen columns with
     # an empty leader and every effective-monthly figure divided by thirteen.
     assert len(months) == 12
-    # The average divides by COMPLETE months, and the newest column is always
-    # the month in progress — on the 1st of October, September has finished
-    # and October has not — so this is eleven of the twelve on any day.
-    assert data["months_averaged"] == 11
+    # Twelve COMPLETE months, the meaning Essentials gives `months` too. The
+    # window used to run through today and average eleven, so Subscriptions
+    # and Essentials read one month apart over the same setting.
+    assert data["months_averaged"] == 12
+    assert months[-1] == months_ago(1)
     amounts = dict(zip(months, sub["monthly_amounts"]))
+    assert amounts[months_ago(3)] == Decimal("15.99")
     assert amounts[months_ago(2)] == Decimal("15.99")
     assert amounts[months_ago(1)] == Decimal("15.99")
-    assert amounts[months_ago(0)] == Decimal("15.99")
     assert amounts[months_ago(5)] == Decimal("0")
 
     assert data["summary"]["total_monthly"] == Decimal("15.99")
@@ -150,12 +155,11 @@ async def test_quarterly_subscription_normalizes_to_true_monthly_cost(db_session
     # $120 spread over the months since the first charge — NOT the $30
     # per-charge figure, which is the whole point of the column.
     #
-    # Eleven of the twelve months are complete on any day of any month (the
-    # twelfth is today's, still running) and the first charge lands in the
-    # first of them, so the figure is 120/11 = 10.91. It read a round 10.00
-    # while the window was thirteen months long and the divisor counted the
-    # month in progress — two errors cancelling into a number that looked
-    # right.
+    # The window is the twelve complete months before this one, and the first
+    # charge lands in the second of them, so the figure is 120/11 = 10.91. It
+    # read a round 10.00 while the window was thirteen months long and the
+    # divisor counted the month in progress — two errors cancelling into a
+    # number that looked right.
     assert sub["avg_monthly"] == Decimal("10.91")
     assert data["summary"]["total_monthly"] == Decimal("10.91")
     assert data["summary"]["total_annual"] == Decimal("130.92")
@@ -167,10 +171,10 @@ async def test_monthly_buckets_are_exact_decimals(db_session):
 
     # 0.1 + 0.2 is the canonical float-artifact trap
     await create_transaction(
-        db_session, budget, checking, "-0.10", months_ago(0), payee=micro, category=sub_cat
+        db_session, budget, checking, "-0.10", months_ago(1), payee=micro, category=sub_cat
     )
     await create_transaction(
-        db_session, budget, checking, "-0.20", months_ago(0), payee=micro, category=sub_cat
+        db_session, budget, checking, "-0.20", months_ago(1), payee=micro, category=sub_cat
     )
 
     data = await subscriptions_report(db_session, budget.id, months=12)
@@ -253,7 +257,7 @@ async def test_several_tagged_categories_each_get_a_line(db_session):
     netflix = await create_payee(db_session, budget, "Netflix")
     hulu = await create_payee(db_session, budget, "Hulu")
     editor = await create_payee(db_session, budget, "Pixelworks")
-    for k in (1, 0):
+    for k in (2, 1):
         await create_transaction(
             db_session, budget, checking, "-20.00", months_ago(k), payee=netflix, category=streaming
         )

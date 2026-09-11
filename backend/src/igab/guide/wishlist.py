@@ -262,7 +262,14 @@ class Discipline:
     #: period did. The `done` branch had drawn this distinction all along.
     dropped_early: int
     still_open: int
+    #: Every dropped wish — waited on, abandoned early, or unplaceable. The
+    #: money was wanted and not spent whichever it was.
     resisted_total: Decimal
+    #: How many wishes `resisted_total` sums. The card quoted
+    #: `cooled_then_dropped` beside it, so once early drops moved to their own
+    #: bucket the figure covered wishes its count did not: "$300 — 0 talked
+    #: yourself out of".
+    resisted_count: int
     bought_total: Decimal
     open_total: Decimal
     #: Mean days from adding a wish to buying it. None with nothing bought —
@@ -294,6 +301,7 @@ def discipline(wishes: Iterable[DisciplineInput]) -> Discipline:
     the habit, not a score.
     """
     cooled_bought = cooled_dropped = early = dropped_early = still_open = unplaced = 0
+    resisted_count = 0
     resisted = bought = open_total = ZERO
     days: list[int] = []
     costs: list[Decimal] = []
@@ -319,6 +327,7 @@ def discipline(wishes: Iterable[DisciplineInput]) -> Discipline:
                 unplaced += 1
         else:  # dropped
             resisted += w.cost
+            resisted_count += 1
             if after is True:
                 cooled_dropped += 1
             elif after is False:
@@ -333,6 +342,7 @@ def discipline(wishes: Iterable[DisciplineInput]) -> Discipline:
         dropped_early=dropped_early,
         still_open=still_open,
         resisted_total=quantize_cents(resisted),
+        resisted_count=resisted_count,
         bought_total=quantize_cents(bought),
         open_total=quantize_cents(open_total),
         avg_days_to_buy=round(sum(days) / len(days)) if days else None,

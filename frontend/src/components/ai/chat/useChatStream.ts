@@ -1,3 +1,4 @@
+import { today } from '../../../utils/dates'
 import { useCallback, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
@@ -141,7 +142,7 @@ export function useChatStream(budgetId: string | null) {
           message,
           conversationId,
           pageContext: options.pageContext,
-          clientToday: new Date().toISOString().slice(0, 10),
+          clientToday: today(),
           signal: controller.signal,
         })) {
           setTurn((t) => applyEvent(t, event))

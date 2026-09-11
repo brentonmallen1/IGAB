@@ -886,6 +886,7 @@ async def test_the_discipline_report_counts_what_the_cooling_off_did(db_session,
     body = (await api_client.get(f"/api/v1/{budget.id}/reports/wishlist")).json()
 
     assert Decimal(body["resisted_total"]) == Decimal("420.00")
+    assert body["resisted_count"] == 1
     assert Decimal(body["bought_total"]) == Decimal("180.00")
     assert body["still_open"] == 1
     assert Decimal(body["open_total"]) == Decimal("300.00")

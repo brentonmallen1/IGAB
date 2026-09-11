@@ -95,14 +95,18 @@ export function DayPatternsReport({ budgetId }: Props) {
   }
 
   const paydayDays = paydayData?.days ?? []
-  const paydayBaseline = Number(paydayData?.baseline_daily ?? 0)
+  // null means the payday windows cover every day: there is no baseline, and
+  // `?? 0` here invented the $0.00 the server refuses to send — the card read
+  // "Baseline Daily $0.00" and every bar with any spend turned warning.
+  const servedBaseline = paydayData?.baseline_daily
+  const paydayBaseline = servedBaseline == null ? null : Number(servedBaseline)
   const paydayEventCount = paydayData?.event_count ?? 0
 
   const paydayChartData = paydayDays.map((d) => ({
     name: d.offset === 0 ? 'Payday' : `+${d.offset}`,
     offset: d.offset,
     spend: d.avg_spend,
-    aboveBaseline: d.avg_spend > paydayBaseline,
+    aboveBaseline: paydayBaseline !== null && d.avg_spend > paydayBaseline,
   }))
 
   const paydayPeakDay = paydayDays.reduce(
@@ -275,8 +279,12 @@ export function DayPatternsReport({ budgetId }: Props) {
             <MetricRow>
               <MetricCard
                 label="Baseline Daily"
-                value={formatMoney(paydayBaseline)}
-                sub="Average on non-payday periods"
+                value={paydayBaseline === null ? '—' : formatMoney(paydayBaseline)}
+                sub={
+                  paydayBaseline === null
+                    ? 'No days fall outside a payday window'
+                    : 'Average on non-payday periods'
+                }
               />
               {paydayPeakDay && (
                 <MetricCard
@@ -296,17 +304,19 @@ export function DayPatternsReport({ budgetId }: Props) {
                   tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
                   width={moneyAxis.width}
                 />
-                <ReferenceLine
-                  y={paydayBaseline}
-                  stroke="var(--text-muted)"
-                  strokeDasharray="4 4"
-                  label={{
-                    value: 'Baseline',
-                    position: 'insideTopRight',
-                    fill: 'var(--text-muted)',
-                    fontSize: 11,
-                  }}
-                />
+                {paydayBaseline !== null && (
+                  <ReferenceLine
+                    y={paydayBaseline}
+                    stroke="var(--text-muted)"
+                    strokeDasharray="4 4"
+                    label={{
+                      value: 'Baseline',
+                      position: 'insideTopRight',
+                      fill: 'var(--text-muted)',
+                      fontSize: 11,
+                    }}
+                  />
+                )}
                 <Tooltip
                   formatter={(v: unknown) => [formatMoney(Number(v)), 'Avg Daily Spend']}
                   offset={16}

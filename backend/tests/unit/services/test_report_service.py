@@ -41,6 +41,14 @@ def scalar_result(value) -> MagicMock:
     return r
 
 
+def earliest_result(value: date | None) -> MagicMock:
+    """What `TransactionRepository.earliest_date` reads: when history starts.
+    The complete-month reports ask for it first, to clamp their window."""
+    r = MagicMock()
+    r.scalar_one_or_none.return_value = value
+    return r
+
+
 def make_session(*results) -> AsyncMock:
     """
     Session whose execute() calls return results in order.
@@ -563,7 +571,7 @@ class TestPayeeAnalysis:
             self._txn(date(2026, 3, 15), D("-50.00")),
         ]
         svc = ReportService(make_session(mock_result(rows)))
-        payees, _, _ = await svc.payee_analysis(BUDGET, JAN, APR)
+        payees, _, _, _to80 = await svc.payee_analysis(BUDGET, JAN, APR)
         assert payees[0]["is_recurring"] is True
 
     async def test_not_recurring_two_months(self):
@@ -572,7 +580,7 @@ class TestPayeeAnalysis:
             self._txn(date(2026, 2, 15), D("-50.00")),
         ]
         svc = ReportService(make_session(mock_result(rows)))
-        payees, _, _ = await svc.payee_analysis(BUDGET, JAN, APR)
+        payees, _, _, _to80 = await svc.payee_analysis(BUDGET, JAN, APR)
         assert payees[0]["is_recurring"] is False
 
     async def test_monthly_trend(self):
@@ -582,7 +590,7 @@ class TestPayeeAnalysis:
             self._txn(date(2026, 2, 5), D("-75.00")),
         ]
         svc = ReportService(make_session(mock_result(rows)))
-        payees, _, _ = await svc.payee_analysis(BUDGET, JAN, APR)
+        payees, _, _, _to80 = await svc.payee_analysis(BUDGET, JAN, APR)
 
         trend = {t["month"]: t["total"] for t in payees[0]["monthly_trend"]}
         assert trend[date(2026, 1, 1)] == D("150.0")
@@ -594,7 +602,7 @@ class TestPayeeAnalysis:
             self._txn(date(2026, 1, 2), D("-200.00")),
         ]
         svc = ReportService(make_session(mock_result(rows)))
-        payees, grand_total, _ = await svc.payee_analysis(BUDGET, JAN, APR)
+        payees, grand_total, _, _to80 = await svc.payee_analysis(BUDGET, JAN, APR)
         assert payees[0]["total"] == D("300.0")
         assert payees[0]["count"] == 2
         assert grand_total == D("300.0")
@@ -605,14 +613,14 @@ class TestPayeeAnalysis:
             self._txn(date(2026, 1, 2), D("-300.00"), cat_name="Electronics"),
         ]
         svc = ReportService(make_session(mock_result(rows)))
-        payees, _, _ = await svc.payee_analysis(BUDGET, JAN, APR)
+        payees, _, _, _to80 = await svc.payee_analysis(BUDGET, JAN, APR)
         top = {c["category_name"]: c["total"] for c in payees[0]["top_categories"]}
         assert top["Electronics"] == D("300.0")
         assert top["Groceries"] == D("100.0")
 
     async def test_empty_returns_empty(self):
         svc = ReportService(make_session(mock_result([])))
-        payees, total, count = await svc.payee_analysis(BUDGET, JAN, APR)
+        payees, total, count, _to80 = await svc.payee_analysis(BUDGET, JAN, APR)
         assert payees == []
         assert total == D("0")
         assert count == 0
@@ -629,7 +637,7 @@ class TestPayeeAnalysis:
             self._txn(date(2026, 1, 3), D("-100.00"), third, "Alder Street Cafe"),
         ]
         svc = ReportService(make_session(mock_result(rows)))
-        payees, total, count = await svc.payee_analysis(BUDGET, JAN, APR, limit=2)
+        payees, total, count, _to80 = await svc.payee_analysis(BUDGET, JAN, APR, limit=2)
         assert [p["payee_name"] for p in payees] == ["Harborstone Realty", "Cascade Grocers"]
         assert total == D("800.0")
         assert count == 3
@@ -924,8 +932,8 @@ class TestCategoryVolatility:
                 vrow(date(2026, 1, 15), D("-200.00")),
                 vrow(date(2026, 2, 15), D("-150.00")),
             ]
-            svc = ReportService(make_session(mock_result(rows)))
-            result = await svc.category_volatility(BUDGET, months=3)
+            svc = ReportService(make_session(earliest_result(None), mock_result(rows)))
+            result = (await svc.category_volatility(BUDGET, months=3))["categories"]
 
         assert len(result) == 1
         r = result[0]
@@ -960,8 +968,8 @@ class TestCategoryVolatility:
 
             # Two charges of 600 in a six-month window: Jan and Apr.
             rows = [vrow(date(2026, 1, 20), D("-600.00")), vrow(date(2026, 4, 20), D("-600.00"))]
-            svc = ReportService(make_session(mock_result(rows)))
-            result = await svc.category_volatility(BUDGET, months=6)
+            svc = ReportService(make_session(earliest_result(None), mock_result(rows)))
+            result = (await svc.category_volatility(BUDGET, months=6))["categories"]
 
         r = result[0]
         # 1,200 over six months, not 600 over two.
@@ -978,9 +986,14 @@ class TestCategoryVolatility:
         with patch("igab.services.report_service.date") as mock_date:
             mock_date.today.return_value = date(2026, 3, 31)
             mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
-            svc = ReportService(make_session(mock_result([])))
+            svc = ReportService(make_session(earliest_result(None), mock_result([])))
             result = await svc.category_volatility(BUDGET, months=3)
-        assert result == []
+        assert result["categories"] == []
+        # The window is served even when empty: the drill-down needs it.
+        assert (result["window_start"], result["window_end"]) == (
+            date(2025, 12, 1),
+            date(2026, 2, 28),
+        )
 
 
 # ─── seasonality ──────────────────────────────────────────────────────────────
@@ -995,27 +1008,41 @@ class TestSeasonality:
             def srow(d, amt):
                 return row(date=d, amount=amt, category_id=CAT_A, category_name="Groceries")
 
-            rows = [srow(date(2026, 1, 10), D("-100.00")), srow(date(2026, 2, 10), D("-120.00"))]
-            svc = ReportService(make_session(mock_result(rows)))
+            # Two complete months before February: December and January.
+            rows = [srow(date(2025, 12, 10), D("-120.00")), srow(date(2026, 1, 10), D("-100.00"))]
+            svc = ReportService(make_session(earliest_result(None), mock_result(rows)))
             result = await svc.seasonality(BUDGET, months=2)
 
-        assert len(result["months"]) == 2
+        # The axis is the query's window. It used to run through the current
+        # month — Jan/Feb here — while the query read Dec/Jan, so February was
+        # always a blank column and December's cells had none.
+        assert result["months"] == [date(2025, 12, 1), date(2026, 1, 1)]
+        assert {c["month"] for c in result["cells"]} <= set(result["months"])
         assert any(c["id"] == str(CAT_A) for c in result["categories"])
-        cells = result["cells"]
-        jan_cell = next((c for c in cells if c["month"].month == 1), None)
-        assert jan_cell is not None
+        jan_cell = next(c for c in result["cells"] if c["month"] == date(2026, 1, 1))
         assert jan_cell["total"] == D("100.0")
+
+    async def test_the_axis_starts_where_the_history_does(self):
+        """A budget three weeks old on "12 months" has one complete month. The
+        axis drew eleven blank columns before it, which reads as data loss."""
+        with patch("igab.services.report_service.date") as mock_date:
+            mock_date.today.return_value = date(2026, 2, 20)
+            mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
+            svc = ReportService(make_session(earliest_result(date(2026, 1, 28)), mock_result([])))
+            result = await svc.seasonality(BUDGET, months=12)
+
+        assert result["months"] == [date(2026, 1, 1)]
 
     async def test_empty_returns_months_no_cells(self):
         with patch("igab.services.report_service.date") as mock_date:
             mock_date.today.return_value = date(2026, 2, 28)
             mock_date.side_effect = lambda *a, **kw: date(*a, **kw)
-            svc = ReportService(make_session(mock_result([])))
+            svc = ReportService(make_session(earliest_result(None), mock_result([])))
             result = await svc.seasonality(BUDGET, months=2)
 
         assert result["cells"] == []
         assert result["categories"] == []
-        assert len(result["months"]) == 2
+        assert result["months"] == [date(2025, 12, 1), date(2026, 1, 1)]
 
 
 # ─── large_transactions ───────────────────────────────────────────────────────

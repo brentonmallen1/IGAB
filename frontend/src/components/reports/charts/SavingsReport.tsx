@@ -30,7 +30,7 @@ interface Props {
 
 export function SavingsReport({ budgetId }: Props) {
   const navigate = useNavigate()
-  const { formatMoney, formatDate, formatMonthShort } = useFormatters()
+  const { formatMoney, formatDate, formatMonth, formatMonthShort } = useFormatters()
   const moneyAxis = useMoneyAxis()
   const months = useReportMonths()
   const { data, isLoading, isError, error, refetch } = useSavingsReport(budgetId, months)
@@ -44,10 +44,12 @@ export function SavingsReport({ budgetId }: Props) {
     if (!monthLabels.length || !categories.length) return []
 
     return monthLabels.map((monthStr, idx) => {
-      const entry: Record<string, string | number> = { month: formatMonthShort(monthStr) }
+      const entry: Record<string, string | number | null> = { month: formatMonthShort(monthStr) }
 
       for (const cat of categories) {
-        entry[cat.category_name] = cat.monthly_balances[idx] ?? 0
+        // null, not 0: a month the server has no figure for is a gap, not an
+        // empty envelope.
+        entry[cat.category_name] = cat.monthly_balances[idx] ?? null
       }
 
       return entry
@@ -71,9 +73,14 @@ export function SavingsReport({ budgetId }: Props) {
             <strong>Long-term expense</strong>.
           </p>
           <p>
-            The chart shows cumulative balances over time. <strong>Total Balance</strong> is the sum
-            of all savings category balances. <strong>Avg Monthly Inflow</strong> shows how much
+            The chart shows each category&apos;s balance at the end of every month — the same
+            Available the Budget page shows. <strong>Total Balance</strong> is the sum of all
+            savings category balances. <strong>Avg Monthly Inflow</strong> shows how much
             you&apos;re typically adding.
+          </p>
+          <p>
+            On a budget imported from YNAB, months before the import are worked back from
+            YNAB&apos;s own balance at the import.
           </p>
           <p>
             To track a category, open it on the Budget page and add the <strong>Savings</strong> tag
@@ -169,12 +176,14 @@ export function SavingsReport({ budgetId }: Props) {
                   content={({ active, payload, label }) => (
                     <ChartTooltip
                       active={active}
-                      payload={payload?.map((p) => ({
-                        name: String(p.name ?? ''),
-                        value: Number(p.value ?? 0),
-                        color: p.color,
-                        fill: p.fill,
-                      }))}
+                      payload={payload
+                        ?.filter((p) => p.value != null)
+                        .map((p) => ({
+                          name: String(p.name ?? ''),
+                          value: Number(p.value),
+                          color: p.color,
+                          fill: p.fill,
+                        }))}
                       label={String(label ?? '')}
                       showTotal
                       formatter={formatMoney}
@@ -196,6 +205,16 @@ export function SavingsReport({ budgetId }: Props) {
               </AreaChart>
             </ResponsiveContainer>
           </div>
+
+          {data && data.unrecovered.length > 0 && (
+            <p className="reports-note" role="note">
+              {data.unrecovered
+                .map((u) => `${u.category_name} starts in ${formatMonth(u.starts_from)}`)
+                .join('; ')}
+              . Before then, the imported history doesn&apos;t reproduce YNAB&apos;s balance, so
+              there is no figure to draw.
+            </p>
+          )}
 
           <table className="report-table">
             <caption className="sr-only">Savings category balances</caption>

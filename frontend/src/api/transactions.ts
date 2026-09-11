@@ -135,12 +135,16 @@ export interface BudgetTransactionParams {
   accountIds?: string[]
   tagIds?: string[]
   filterId?: string | null
-  /** Rows the shared `NEEDS_CATEGORY` rule counts as unfiled. */
-  uncategorized?: boolean
+  /** Rows with no category at all — a report bucket's drill. See
+   *  `DrillDownContext.noCategory` for why this is not `uncategorized`. */
+  noCategory?: boolean
   dayOfWeek?: number
   /** Restrict to these activity classes, so the panel totals what the chart
    *  that opened it counted rather than every row of the same sign. */
   activityClasses?: string[]
+  /** Restrict to a necessity tier's own rows (the report's served
+   *  `necessity_tier`), whose membership categories alone cannot express. */
+  necessityTier?: string
   limit?: number
   offset?: number
 }
@@ -173,7 +177,8 @@ function drillDownParams(p: BudgetTransactionParams): Record<string, unknown> {
     payee_ids: csv(p.payeeIds),
     account_ids: csv(p.accountIds),
     activity_classes: csv(p.activityClasses),
-    uncategorized: p.uncategorized || undefined,
+    necessity_tier: p.necessityTier || undefined,
+    no_category: p.noCategory || undefined,
     tag_ids: csv(p.tagIds),
     filter_id: p.filterId || undefined,
   }

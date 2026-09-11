@@ -3,7 +3,7 @@ import { Calendar } from 'lucide-react'
 import { useAppStore } from '../../../stores/appStore'
 import { useReportRange } from '../../../api/reports'
 import './DateRangePicker.css'
-import { toISODate } from '../../../utils/dateWindow'
+import { toISODate } from '../../../utils/dates'
 
 interface Props {
   startDate: string

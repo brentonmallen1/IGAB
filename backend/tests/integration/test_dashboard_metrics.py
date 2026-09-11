@@ -18,6 +18,7 @@ from decimal import Decimal
 import pytest
 
 from igab.services.report_service import ReportService
+from igab.services.transaction_service import TransactionCreate
 
 from .factories import (
     create_account,
@@ -29,6 +30,7 @@ from .factories import (
     create_transaction,
     create_transfer,
     create_user,
+    make_services,
 )
 
 TODAY = date.today()
@@ -300,3 +302,58 @@ class TestABudgetWithNoTransactionsStillOwnsThings:
 
         assert card["net_worth"] == Decimal("-240000.00")
         assert Decimal(str(chart[-1]["net_worth"])) == card["net_worth"]
+
+
+class TestNetWorthAtTheWindowStart:
+    async def test_prev_counts_rows_before_the_window_and_the_debt_as_it_stood(self, db_session):
+        """`net_worth_prev` — the Overview's net-worth change — became one SQL
+        aggregate with nothing pinning its bound. A slip to `<= start_date`
+        counts the first day of the window as the past; a slip to `<= today`
+        makes the change zero. Every row below sits on one side of a bound,
+        and the unmanaged debt is read as it stood the day before the window.
+        """
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        checking = await create_account(db_session, budget, "Checking")
+        group = await create_category_group(db_session, budget, "Everyday")
+        groceries = await create_category(db_session, budget, group, "Groceries")
+        gas = await create_category(db_session, budget, group, "Gas")
+        start = TODAY - timedelta(days=10)
+
+        await create_transaction(db_session, budget, checking, "1000.00", start - timedelta(days=5))
+        await create_transaction(db_session, budget, checking, "200.00", start)
+        await create_transaction(db_session, budget, checking, "50.00", TODAY)
+        # Not money that has moved yet: in neither figure.
+        await create_transaction(db_session, budget, checking, "7.00", TODAY + timedelta(days=5))
+        # A split before the window: counted once, by its parent.
+        when = start - timedelta(days=3)
+        await make_services(db_session).transactions.create_split(
+            budget.id,
+            TransactionCreate(account_id=checking.id, date=when, amount=Decimal("-100.00")),
+            [
+                TransactionCreate(
+                    account_id=checking.id,
+                    date=when,
+                    amount=Decimal("-60.00"),
+                    category_id=groceries.id,
+                ),
+                TransactionCreate(
+                    account_id=checking.id, date=when, amount=Decimal("-40.00"), category_id=gas.id
+                ),
+            ],
+        )
+        # An unmanaged debt that stood at 800 before the window and 500 now.
+        loan = await create_liability(
+            db_session, budget, "Harborstone Loan", manual_balance=Decimal("500.00")
+        )
+        await create_liability_snapshot(
+            db_session, loan, start - timedelta(days=6), Decimal("800.00")
+        )
+        await create_liability_snapshot(db_session, loan, TODAY, Decimal("500.00"))
+
+        card = await ReportService(db_session).dashboard_metrics(budget.id, start, TODAY)
+
+        # Now: 1000 + 200 + 50 − 100 = 1150, less the 500 owed.
+        assert card["net_worth"] == Decimal("650.00")
+        # Before the window: 1000 − 100 = 900, less the 800 owed then.
+        assert card["net_worth_prev"] == Decimal("100.00")

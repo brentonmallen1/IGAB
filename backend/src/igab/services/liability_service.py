@@ -26,7 +26,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, Liability
-from igab.domain.dates import add_months
+from igab.domain.dates import add_months, complete_month_window, month_start, month_starts
 from igab.domain.minimum_payment import FIXED, MinimumPaymentRule
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import CategoryRepository
@@ -146,10 +146,6 @@ async def release_for_account(session: AsyncSession, account: Account) -> None:
     if untouched:
         companion.is_deleted = True
         await session.flush()
-
-
-def _month_start(d: date) -> date:
-    return d.replace(day=1)
 
 
 def _month_index(d: date) -> int:
@@ -294,8 +290,8 @@ class LiabilityService:
         """Per-month payments for the trailing `months` COMPLETE months,
         oldest first. Months without evidence contribute 0."""
         as_of = as_of or today_utc()
-        current = _month_start(as_of)
-        window = [add_months(current, -i) for i in range(months, 0, -1)]
+        current = month_start(as_of)
+        window = month_starts(*complete_month_window(as_of, months))
         last_complete_end = current  # exclusive upper bound: 1st of current month
 
         if liability.linked_account_id is not None:
@@ -339,8 +335,8 @@ class LiabilityService:
         if account is None or account.on_budget:
             return [], ZERO
         as_of = as_of or today_utc()
-        current = _month_start(as_of)
-        window = [add_months(current, -i) for i in range(months, 0, -1)]
+        current = month_start(as_of)
+        window = month_starts(*complete_month_window(as_of, months))
         payments = await self.transaction_repo.sum_loan_payments_by_month(
             liability.linked_account_id, end_date=current
         )
@@ -370,7 +366,7 @@ class LiabilityService:
             span = max(1, _month_index(nxt.date) - _month_index(prev.date))
             per_month = quantize_cents(drop / span)
             for i in range(span):
-                m = add_months(_month_start(prev.date), i + 1)
+                m = add_months(month_start(prev.date), i + 1)
                 by_month[m] = by_month.get(m, ZERO) + per_month
         return [max(ZERO, by_month.get(m, ZERO)) for m in window]
 
@@ -463,7 +459,7 @@ class LiabilityService:
             points: list[tuple[date, Decimal]] = []
             running = ZERO
             month = min(by_month)
-            current = _month_start(as_of)
+            current = month_start(as_of)
             while month <= current:
                 running += by_month.get(month, ZERO)
                 points.append((month, max(ZERO, quantize_cents(-running))))
@@ -535,7 +531,7 @@ class LiabilityService:
 
         items: list[dict] = []
         per_liability_monthly: dict[str, dict[date, Decimal]] = {}
-        current_month = _month_start(as_of)
+        current_month = month_start(as_of)
 
         for liability in liabilities:
             status = await self.get_status(liability, as_of=as_of)
@@ -566,7 +562,7 @@ class LiabilityService:
             )
             monthly: dict[date, Decimal] = {}
             for point_date, balance in await self.get_balance_history(liability, as_of=as_of):
-                monthly[_month_start(point_date)] = balance  # last point in a month wins
+                monthly[month_start(point_date)] = balance  # last point in a month wins
             monthly[current_month] = status.current_balance
             per_liability_monthly[str(liability.id)] = monthly
 
