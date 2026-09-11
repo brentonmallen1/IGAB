@@ -278,6 +278,68 @@ class TestTopSpendingIsSpending:
         assert len(data["top_categories"]) == 3
         assert [c["name"] for c in data["top_categories"]] == ["Rent", "Groceries", "Fun"]
 
+    async def test_the_card_is_the_breakdowns_top_three(self, db_session):
+        """The card summarises the Spending Breakdown, so it is its first three
+        rows — not a second query that has to be kept agreeing with it. It was
+        one, and it had drifted from the Breakdown three ways before its class
+        filter, envelope rule and truncation order were copied across.
+
+        Every row the Breakdown's row set decides on is here: a savings
+        transfer bigger than any spending, a deleted category, a split, a
+        clawback filed to Ready to Assign, and categorized activity on a
+        tracking account.
+        """
+        budget = await create_budget(db_session, await create_user(db_session))
+        checking = await create_account(db_session, budget, "Checking")
+        brokerage = await create_account(
+            db_session, budget, "Cascade Brokerage", account_type="investment", on_budget=False
+        )
+        group = await create_category_group(db_session, budget, "Everyday")
+        system = await create_category_group(db_session, budget, "Inflow", is_system=True)
+        rta = await create_category(db_session, budget, system, "Ready to Assign")
+        cats = {
+            name: await create_category(db_session, budget, group, name)
+            for name in ("Rent", "Groceries", "Fun", "Transport", "Investing", "Old Gym")
+        }
+        for name, amount in (("Rent", "-1400.00"), ("Fun", "-200.00"), ("Transport", "-90.00")):
+            await create_transaction(
+                db_session, budget, checking, amount, TODAY, category=cats[name]
+            )
+        parent = await create_transaction(
+            db_session, budget, checking, "-700.00", TODAY, is_split=True
+        )
+        for amount in ("-400.00", "-300.00"):
+            await create_transaction(
+                db_session,
+                budget,
+                checking,
+                amount,
+                TODAY,
+                category=cats["Groceries"],
+                parent_transaction_id=parent.id,
+            )
+        await create_transaction(
+            db_session, budget, checking, "-650.00", TODAY, category=cats["Old Gym"]
+        )
+        cats["Old Gym"].is_deleted = True
+        await create_transfer(
+            db_session, budget, checking, brokerage, "5000.00", TODAY, category=cats["Investing"]
+        )
+        await create_transaction(db_session, budget, checking, "-120.00", TODAY, category=rta)
+        await create_transaction(
+            db_session, budget, brokerage, "-3000.00", TODAY, category=cats["Transport"]
+        )
+        await db_session.commit()
+
+        svc = ReportService(db_session)
+        card = (await svc.dashboard_metrics(budget.id, MONTH_START, TODAY))["top_categories"]
+        breakdown, _total = await svc.spending_by_category(budget.id, MONTH_START, TODAY)
+
+        assert [c["name"] for c in card] == ["Rent", "Groceries", "Old Gym"]
+        assert [(c["id"], c["name"], c["group_name"], c["total"]) for c in card] == [
+            (c["id"], c["name"], c["group_name"], c["total"]) for c in breakdown[:3]
+        ]
+
 
 class TestABudgetWithNoTransactionsStillOwnsThings:
     async def test_an_unmanaged_liability_is_net_worth_even_with_no_rows(self, db_session):

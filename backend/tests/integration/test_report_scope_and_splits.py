@@ -9,6 +9,7 @@ piece passed while the composition was broken.
 from datetime import date
 from decimal import Decimal
 
+from igab.domain.activity_class import SPENDING_WITH_SAVINGS_CLASSES
 from igab.repositories.tag_repo import TagRepository
 from igab.services.report_service import ReportService
 
@@ -20,6 +21,7 @@ from .factories import (
     create_payee,
     create_tag,
     create_transaction,
+    create_transfer,
     create_user,
 )
 
@@ -70,6 +72,41 @@ class TestExplicitAccountScopeBeatsTheClassFilter:
             budget.id, MONTH_START, TODAY, None, [brokerage.id]
         )
         assert sum(d["total"] for d in result["days"]) == Decimal("50.00")
+
+    async def test_a_system_group_row_on_a_selected_tracked_account_is_not_spending(
+        self, db_session
+    ):
+        """The widening lets a tracked account's outflows through the class
+        filter, so the envelope rule is the only thing between a row filed to
+        Ready to Assign and the Breakdown — and the AI spending tool, which
+        reads the same method. Without it this read 450."""
+        budget, _, brokerage, _ = await self._world(db_session)
+        inflow = await create_category_group(db_session, budget, "Inflow", is_system=True)
+        rta = await create_category(db_session, budget, inflow, "Ready to Assign")
+        await create_transaction(db_session, budget, brokerage, "-400.00", TODAY, category=rta)
+        await db_session.flush()
+
+        _, total = await ReportService(db_session).spending_by_category(
+            budget.id, MONTH_START, TODAY, None, [brokerage.id]
+        )
+        assert total == Decimal("50.00")
+
+    async def test_a_savings_transfer_filed_to_ready_to_assign_is_not_counted(self, db_session):
+        """With savings included, a categorized transfer to a tracked asset
+        counts — unless its category is in the system group, where nothing is
+        ever assigned. Without the envelope rule this read 2,090."""
+        budget, checking, brokerage, _ = await self._world(db_session)
+        inflow = await create_category_group(db_session, budget, "Inflow", is_system=True)
+        rta = await create_category(db_session, budget, inflow, "Ready to Assign")
+        await create_transfer(
+            db_session, budget, checking, brokerage, "2000.00", TODAY, category=rta
+        )
+        await db_session.flush()
+
+        _, total = await ReportService(db_session).spending_by_category(
+            budget.id, MONTH_START, TODAY, include_classes=SPENDING_WITH_SAVINGS_CLASSES
+        )
+        assert total == Decimal("90.00")
 
     async def test_the_default_scope_still_excludes_them(self, db_session):
         """The widening must apply only to an explicit selection — the

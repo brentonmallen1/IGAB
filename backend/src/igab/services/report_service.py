@@ -29,10 +29,10 @@ from igab.db.models import (
 from igab.domain.activity_class import (
     ACTIVITY_CLASS,
     INCOME_ROW,
-    SPENDING_CLASSES,
     ActivityClass,
     apply_class_joins,
     basis_is_chosen,
+    counted_class_filter,
     counted_classes,
 )
 
@@ -59,7 +59,7 @@ from igab.guide.concepts import (
     essentials_since,
 )
 from igab.repositories.account_repo import AccountRepository
-from igab.repositories.category_filters import BUDGETED_ENVELOPE, SPENT_ENVELOPE
+from igab.repositories.category_filters import BUDGETED_ENVELOPE
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.repositories.txn_filters import (
     CASH_ACCOUNT,
@@ -73,6 +73,7 @@ from igab.repositories.txn_filters import (
     PAYEE_OF_RECORD,
     PLANNED_SPEND_ROW,
     POSTED,
+    SPENDING_ROW,
     SPLIT_PARENT,
     SUBSCRIPTION_CHARGE,
     account_scope,
@@ -152,37 +153,6 @@ class AnomalyRow(TypedDict):
 #: Bucket for categories a view has not placed. A string, not a UUID, so it
 #: cannot collide with a real group id.
 UNASSIGNED_VIEW_GROUP = "__unassigned__"
-
-
-def _spending_classes(
-    include: Sequence[ActivityClass] | None = None, *, scoped_accounts: bool = False
-):
-    """WHERE clause limiting a spending query to the requested activity classes.
-
-    Returns a predicate, so the caller owns the query — which means the caller
-    must also apply `apply_class_joins` to it. This is the one place the class
-    is used without the joins visibly beside it, so it is the one place a new
-    caller could forget: a query with this predicate and no joins is a
-    cartesian product, which `pyproject.toml` promotes from a warning to a test
-    failure. Every caller today does apply them.
-
-    Defaults to spending alone. That is the behaviour change a user asked for:
-    a transfer to a brokerage or a mortgage is money leaving the budget, but it
-    is not money spent, and counting it as spending skews every average.
-    Callers that genuinely want the wider picture pass the classes they mean.
-
-    `scoped_accounts` says the caller has an explicit account selection, which
-    overrides the on-budget default — so the user may be looking straight at a
-    tracked account, whose outflows classify `investment_return` (brokerage
-    fees) or `debt_interest` (loan interest) and never `spending`. Without
-    widening here, deliberately picking "Brokerage" in the account filter
-    returned an empty chart: this predicate is ANDed into the WHERE *before*
-    the scope override, so it silently cancelled the user's selection.
-    """
-    classes = list(include or SPENDING_CLASSES)
-    if scoped_accounts:
-        classes += [ActivityClass.INVESTMENT_RETURN, ActivityClass.DEBT_INTEREST]
-    return ACTIVITY_CLASS.in_([c.value for c in classes])
 
 
 #: The smallest inflow that counts as a payday.
@@ -278,72 +248,28 @@ class ReportService:
         account_ids: list[uuid.UUID] | None = None,
         include_classes: Sequence[ActivityClass] | None = None,
     ) -> tuple[list[dict], Decimal]:
-        q = (
-            select(
-                Category.id,
-                Category.name,
-                CategoryGroup.name.label("group_name"),
-                Transaction.amount,
-            )
-            .join(Transaction, Transaction.category_id == Category.id)
-            .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
-            .where(
-                Transaction.budget_id == budget_id,
-                NOT_DELETED,
-                POSTED,
-                Transaction.amount < 0,
-                Transaction.date >= start_date,
-                Transaction.date <= end_date,
-                LEAF,
-                CASH_FLOW_ROW,
-                # SPENT_ENVELOPE, which this hand-spelled copy of the spending
-                # predicate set was missing: without it a row filed into a
-                # system-group category — a clawed-back paycheque — counted as
-                # spending here, while every on-screen spending chart excluded
-                # it. Both the served /reports/spending endpoint and the AI
-                # chat tool read this method, so the assistant answered a
-                # different number from the charts.
-                SPENT_ENVELOPE,
-            )
+        """Spending per category, largest first: the Breakdown, the AI spending
+        tool, and — its first three rows — the Overview's Top Spending card.
+
+        `_spending_query`'s rows and class set, not a hand copy of them. The
+        copy was one term short of it (`SPENT_ENVELOPE`), the card was a second
+        copy three terms short, and Decimal throughout rather than a float sum.
+        """
+        q, included = self._spending_query(
+            budget_id, start_date, end_date, category_ids, account_ids, include_classes
         )
-        q = scoped(q, Transaction.category_id, category_ids)
-        q, explicit = account_scope(q, account_ids)
-        q = q.where(_spending_classes(include_classes, scoped_accounts=explicit))
-        q = apply_class_joins(q)
-        result = await self.session.execute(q)
-        rows = result.all()
-
-        if not rows:
-            return [], Decimal("0")
-
-        df = pl.DataFrame(
-            {
-                "id": [str(r.id) for r in rows],
-                "name": [r.name for r in rows],
-                "group_name": [r.group_name for r in rows],
-                "amount": [float(r.amount) for r in rows],
-            }
-        )
-
-        agg = (
-            df.group_by(["id", "name", "group_name"])
-            .agg(pl.col("amount").sum().alias("total"))
-            .with_columns(pl.col("total").abs())
-            .sort("total", descending=True)
-        )
-
-        grand_total = agg["total"].sum()
-        categories = [
-            {
-                "id": row["id"],
-                "name": row["name"],
-                "group_name": row["group_name"],
-                "total": Decimal(str(round(row["total"], 4))),
-                "pct": float(row["total"] / grand_total * 100) if grand_total else 0.0,
-            }
-            for row in agg.iter_rows(named=True)
-        ]
-        return categories, Decimal(str(round(grand_total, 4)))
+        by_cat: dict[str, dict] = {}
+        for r in (await self.session.execute(q)).all():
+            if r.cls in included:
+                cat = by_cat.setdefault(
+                    str(r.id), {"id": str(r.id), "name": r.name, "group_name": r.group_name}
+                )
+                cat["total"] = cat.get("total", Decimal("0")) - r.amount
+        grand_total = sum((c["total"] for c in by_cat.values()), Decimal("0"))
+        categories = sorted(by_cat.values(), key=lambda c: c["total"], reverse=True)
+        for c in categories:
+            c["pct"] = float(c["total"] / grand_total * 100) if grand_total else 0.0
+        return categories, grand_total
 
     async def income_vs_expense(self, budget_id: uuid.UUID, months: int = 12) -> list[dict]:
         """Money in, money out, per month — with saving broken out of spending.
@@ -464,37 +390,9 @@ class ReportService:
         prev_start = add_months(start_date, -1)
         prev_end = start_date - timedelta(days=1)
 
-        # This used to pull EVERY posted row in the budget into Python — id,
-        # amounts, flags and the class join — to answer three questions: two
-        # scalar sums and a top-three. A household five years in was shipping
-        # tens of thousands of rows over the wire for a dashboard that draws
-        # eleven numbers, and the frame was rebuilt on every page load.
-        #
-        # Three narrow queries instead. The row set each one reads is stated
-        # where it is asked for rather than re-derived from one wide frame,
-        # which is also what made the old `cash_flow` column able to drift.
-        posted = (
-            Transaction.budget_id == budget_id,
-            NOT_DELETED,
-            POSTED,
-        )
-
-        # Category info for spending
-        cat_q = (
-            select(Category.id, Category.name, CategoryGroup.name.label("group_name"))
-            .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
-            .where(
-                Category.budget_id == budget_id,
-                # SPENT_ENVELOPE, not BUDGETED_ENVELOPE: the only thing this
-                # lookup feeds is "top spending categories", and a category
-                # deleted after the money left it did not unspend the money.
-                # Under BUDGETED_ENVELOPE such a row fell out of the lookup —
-                # and because the top 3 were taken BEFORE the lookup, the card
-                # then drew two categories instead of three.
-                SPENT_ENVELOPE,
-            )
-        )
-        cats = {str(r.id): r for r in (await self.session.execute(cat_q)).all()}
+        # This used to pull EVERY posted row in the budget into Python to
+        # answer two scalar sums and a top-three. Each figure below now asks
+        # the one rule its report tab reads, so none can drift from its tab.
 
         # Net worth "now" and as it stood the day before the window, from the
         # one rule the net-worth chart reads (`_balance_sheets`). This card
@@ -588,55 +486,22 @@ class ReportService:
             float(cash_on_hand) / daily_burn if daily_burn > 0 and cash_on_hand > 0 else None
         )
 
-        # Top 3 spending categories in the current period — leaf rows so splits
-        # count; categorized transfer legs (off-budget spending) count too.
-        #
-        # The class filter is what makes this "Top Spending" rather than "top
-        # outflows". It partitioned on `amount < 0` alone, under a comment two
-        # screens up claiming every figure below it uses the activity-class
-        # partition, so a transfer to a brokerage and a mortgage principal
-        # payment were listed as the household's biggest spending.
-        # Grouped in SQL over the window, rather than filtered out of a frame
-        # holding the whole register. No ON_BUDGET_ACCOUNT term, deliberately:
-        # a categorized transfer leg IS off-budget spending and belongs here.
-        cat_totals = (
-            await self.session.execute(
-                apply_class_joins(
-                    select(
-                        Transaction.category_id,
-                        func.sum(Transaction.amount).label("total"),
-                    )
-                    .where(
-                        *posted,
-                        LEAF,
-                        Transaction.amount < 0,
-                        Transaction.date >= start_date,
-                        Transaction.date <= end_date,
-                        Transaction.category_id.isnot(None),
-                        ACTIVITY_CLASS.in_([c.value for c in SPENDING_CLASSES]),
-                    )
-                    .group_by(Transaction.category_id)
-                    # Most negative first — these are all outflows.
-                    .order_by(func.sum(Transaction.amount))
-                )
-            )
-        ).all()
-        top_cats: list[dict] = []
-        # No `LIMIT 3` on the query: the lookup below can drop a row, and
-        # taking the top 3 first meant the card silently showed fewer than 3.
-        for row in cat_totals:
-            if len(top_cats) == 3:
-                break
-            cat_info = cats.get(str(row.category_id))
-            if cat_info:
-                top_cats.append(
-                    {
-                        "id": str(row.category_id),
-                        "name": cat_info.name,
-                        "group_name": cat_info.group_name,
-                        "total": quantize_cents(-row.total),
-                    }
-                )
+        # Top Spending is the Breakdown's first three rows, not a second query
+        # kept agreeing with it. It was one — the class filter, the envelope
+        # rule and the truncation order each copied across after the card had
+        # drifted three ways — under a comment calling its missing on-budget
+        # term deliberate, though a categorized transfer leg sits on the
+        # on-budget side and passes `ON_BUDGET_ACCOUNT` (see its comment).
+        breakdown, _spent = await self.spending_by_category(budget_id, start_date, end_date)
+        top_cats = [
+            {
+                "id": c["id"],
+                "name": c["name"],
+                "group_name": c["group_name"],
+                "total": quantize_cents(c["total"]),
+            }
+            for c in breakdown[:3]
+        ]
 
         return {
             "net_worth": net_worth,
@@ -873,7 +738,7 @@ class ReportService:
             ON_BUDGET_ACCOUNT,
             # A burn rate is how fast money is consumed. Money moved into
             # savings has not been burned.
-            _spending_classes(),
+            counted_class_filter(),
         )
         q = apply_class_joins(q)
         txns = (await self.session.execute(q)).all()
@@ -1407,7 +1272,7 @@ class ReportService:
                 Transaction.date >= start_date,
                 Transaction.date <= end_date,
                 PLANNED_SPEND_ROW,
-                _spending_classes(),
+                counted_class_filter(),
             )
         )
         spend_q = apply_class_joins(spend_q)
@@ -1512,7 +1377,7 @@ class ReportService:
             Transaction.date >= start,
             Transaction.date <= end,
             PLANNED_SPEND_ROW,
-            _spending_classes(),
+            counted_class_filter(),
         )
         spend_q = apply_class_joins(spend_q)
         spending = (await self.session.execute(spend_q)).all()
@@ -1609,7 +1474,7 @@ class ReportService:
                 Transaction.date >= months_list[0],
                 Transaction.date <= _month_end(months_list[-1]),
                 PLANNED_SPEND_ROW,
-                _spending_classes(),
+                counted_class_filter(),
             )
         )
         spend_q = apply_class_joins(spend_q)
@@ -1745,14 +1610,9 @@ class ReportService:
             .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
             .where(
                 Transaction.budget_id == budget_id,
-                NOT_DELETED,
-                POSTED,
-                Transaction.amount < 0,
                 Transaction.date >= start,
                 Transaction.date <= end,
-                LEAF,
-                CASH_FLOW_ROW,
-                SPENT_ENVELOPE,
+                SPENDING_ROW,
             )
         )
         rows = (await self.session.execute(q)).all()
@@ -1793,14 +1653,9 @@ class ReportService:
             .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
             .where(
                 Transaction.budget_id == budget_id,
-                NOT_DELETED,
-                POSTED,
-                Transaction.amount < 0,
                 Transaction.date >= start_date,
                 Transaction.date <= end_date,
-                LEAF,
-                CASH_FLOW_ROW,
-                SPENT_ENVELOPE,
+                SPENDING_ROW,
             )
         )
         q = scoped(q, Transaction.category_id, category_ids)
@@ -1969,14 +1824,9 @@ class ReportService:
             .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
             .where(
                 Transaction.budget_id == budget_id,
-                NOT_DELETED,
-                POSTED,
-                Transaction.amount < 0,
                 Transaction.date >= start,
                 Transaction.date <= end,
-                LEAF,
-                CASH_FLOW_ROW,
-                SPENT_ENVELOPE,
+                SPENDING_ROW,
             )
         )
         rows = (await self.session.execute(q)).all()
@@ -2184,25 +2034,21 @@ class ReportService:
             .outerjoin(Category, Transaction.category_id == Category.id)
             .where(
                 Transaction.budget_id == budget_id,
-                NOT_DELETED,
-                POSTED,
-                Transaction.amount < 0,
                 Transaction.date >= start_date,
                 Transaction.date <= end_date,
-                # Leaves, so each split leg classifies on its own category;
-                # the payee still comes from the parent row via PAYEE_OF_RECORD.
-                LEAF,
-                CASH_FLOW_ROW,
+                # Leaves (SPENDING_ROW), so each split leg classifies on its
+                # own category; the payee comes from the parent row.
+                SPENDING_ROW,
                 PAYEE_OF_RECORD.isnot(None),
-                # Otherwise "Transfer : Brokerage" ranks as a top payee, which
-                # is true and useless — it is not somewhere money was spent.
             )
         )
         # PAYEE_OF_RECORD rather than the raw column; `scoped` keeps [] apart
         # from None, as `account_scope` does for accounts.
         q = scoped(q, PAYEE_OF_RECORD, payee_ids)
         q, explicit = account_scope(q, account_ids)
-        q = q.where(_spending_classes(scoped_accounts=explicit))
+        # Otherwise "Transfer : Brokerage" ranks as a top payee, which is true
+        # and useless — it is not somewhere money was spent.
+        q = q.where(counted_class_filter(scoped_accounts=explicit))
         q = apply_class_joins(q)
         rows = (await self.session.execute(q)).all()
 
@@ -2267,7 +2113,8 @@ class ReportService:
         debt principal or savings drew the generic "no spending" empty state,
         which reads as missing data rather than as a definition.
         """
-        # Leaf rows: with a category filter, split spending must be reachable
+        # Leaf rows (SPENDING_ROW): with a category filter, split spending
+        # must be reachable
         q = select(
             Transaction.date,
             Transaction.amount,
@@ -2275,13 +2122,9 @@ class ReportService:
             ACTIVITY_CLASS.label("cls"),
         ).where(
             Transaction.budget_id == budget_id,
-            NOT_DELETED,
-            POSTED,
-            Transaction.amount < 0,
             Transaction.date >= start_date,
             Transaction.date <= end_date,
-            LEAF,
-            CASH_FLOW_ROW,
+            SPENDING_ROW,
         )
         q = scoped(q, Transaction.category_id, category_ids)
         q, explicit = account_scope(q, account_ids)
@@ -2292,7 +2135,7 @@ class ReportService:
         # what the note is about, and re-querying for it would pay
         # ACTIVITY_CLASS's per-row subqueries a second time. Same shape as
         # `spending_grouped`, and the same widening for an explicit account
-        # selection — see `_spending_classes` for why that exists.
+        # selection — see `counted_classes` for why that exists.
         included = counted_classes(scoped_accounts=explicit)
         rows = [r for r in scanned if r.cls in included]
         class_excluded = class_excluded_note(
@@ -2843,13 +2686,9 @@ class ReportService:
             .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
             .where(
                 Transaction.budget_id == budget_id,
-                NOT_DELETED,
-                POSTED,
-                Transaction.amount < 0,  # outflows only
-                LEAF,
                 Transaction.date >= start_date,
                 Transaction.date <= end_date,
-                SPENT_ENVELOPE,
+                SPENDING_ROW,
             )
             .group_by(
                 Category.id,

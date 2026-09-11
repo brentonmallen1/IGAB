@@ -47,7 +47,7 @@ from igab.db.models import (
 )
 from igab.domain.enums import ScheduleFrequency
 from igab.domain.payee_names import BALANCE_ADJUSTMENT_PAYEES
-from igab.repositories.category_filters import IN_SYSTEM_GROUP, SPENDABLE, SPENT_ENVELOPE
+from igab.repositories.category_filters import IN_SYSTEM_GROUP, SPENDABLE
 
 NOT_DELETED = Transaction.is_deleted == False  # noqa: E712
 POSTED = Transaction.cleared != "pending"
@@ -680,6 +680,38 @@ ESSENTIAL_TAGGED = category_tagged("essential")
 COST_OF_LIVING_TAGGED = category_tagged("cost_of_living")
 
 
+#: A row that spends money: what every spending rollup reads before its class
+#: set and its account scope — the Breakdown and the AI spending tool
+#: (`spending_by_category`, which the Overview's Top Spending card reads),
+#: the grouped and trend rollups (`_spending_query`), Day Patterns, Payee
+#: Analysis and Volatility.
+#:
+#: Each spelled it by hand, and the copies drifted: `SPENT_ENVELOPE` reached
+#: two of them and not Day Patterns or Payee Analysis, so over an explicit
+#: tracked-brokerage selection a -400 filed to Ready to Assign read 20 on the
+#: Breakdown and 420 on the two beside it.
+#:
+#: `not_(row_category(IN_SYSTEM_GROUP))`, not `row_category(SPENT_ENVELOPE)`:
+#: the positive EXISTS fails an uncategorized row, and the day and payee
+#: views count uncategorized spending. The category-keyed rollups join
+#: Category and so leave those rows out by construction. **That is the one
+#: deliberate gap**: Day Patterns and Payee Analysis exceed the Breakdown by
+#: exactly the uncategorized spending in scope, pinned by
+#: `test_reports_basic.py::TestTheClassRuleIsOneRule`.
+#:
+#: Not here: the class set (`counted_classes` / `counted_class_filter`, with
+#: `apply_class_joins`) and the account scope (`account_scope`), which widen
+#: together and so are applied together.
+SPENDING_ROW = and_(
+    NOT_DELETED,
+    POSTED,
+    Transaction.amount < 0,
+    LEAF,
+    CASH_FLOW_ROW,
+    not_(row_category(IN_SYSTEM_GROUP)),
+)
+
+
 #: A row that spends planned money: what plan-vs-actual reports may count as
 #: "spent" against what `BUDGETED_ENVELOPE` counts as "assigned".
 #:
@@ -689,16 +721,19 @@ COST_OF_LIVING_TAGGED = category_tagged("cost_of_living")
 #:
 #: - `ON_BUDGET_ACCOUNT`: categorized rows on tracking accounts counted as
 #:   spent; nothing is ever assigned against a tracking account.
-#: - `row_category(SPENT_ENVELOPE)`: rows filed into system-group categories
-#:   counted as spent while `BUDGETED_ENVELOPE` excludes them from assigned.
-#:   Deleted categories stay IN, exactly as `SPENT_ENVELOPE` documents — the
-#:   money moved, and deleting the envelope afterwards does not unspend it.
-#:   The EXISTS also absorbs `category_id IS NOT NULL`: a NULL category
-#:   matches no Category row.
+#: - The system-group rule (`SPENDING_ROW`'s): rows filed into system-group
+#:   categories counted as spent while `BUDGETED_ENVELOPE` excludes them from
+#:   assigned. Deleted categories stay IN, exactly as `SPENT_ENVELOPE`
+#:   documents — the money moved, and deleting the envelope afterwards does
+#:   not unspend it.
 #: - The activity-class filter, which cannot live here: callers add
-#:   `_spending_classes()` AND `apply_class_joins`, because the predicate and
-#:   the joins must travel together (see `_spending_classes`' docstring — a
-#:   query with the class filter and no joins is a cartesian product).
+#:   `counted_class_filter()` AND `apply_class_joins`, because the predicate
+#:   and the joins must travel together (a query with the class filter and no
+#:   joins is a cartesian product).
+#:
+#: So it is `SPENDING_ROW` narrowed to what a plan can be held to: on-budget,
+#: and filed somewhere (the foreign key is `ON DELETE SET NULL`, so a
+#: category id names a Category row, deleted or not).
 #:   Without it, a categorized brokerage transfer (SAVINGS) or a mortgage
 #:   principal payment (DEBT_PRINCIPAL) counted as spending with no matching
 #:   assignment, and cumulative variance compounded the gap every month.
@@ -706,15 +741,7 @@ COST_OF_LIVING_TAGGED = category_tagged("cost_of_living")
 #: One divergence is deliberate and stays: `amount < 0` means a refund posted
 #: to a spending category never reduces "spent". Pinned by test rather than
 #: silently changed — flipping it would move every historical variance figure.
-PLANNED_SPEND_ROW = and_(
-    NOT_DELETED,
-    POSTED,
-    Transaction.amount < 0,
-    LEAF,
-    CASH_FLOW_ROW,
-    ON_BUDGET_ACCOUNT,
-    row_category(SPENT_ENVELOPE),
-)
+PLANNED_SPEND_ROW = and_(SPENDING_ROW, ON_BUDGET_ACCOUNT, Transaction.category_id.isnot(None))
 
 
 # ─── Free-text search ────────────────────────────────────────────────────────

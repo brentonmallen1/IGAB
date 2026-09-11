@@ -340,17 +340,20 @@ async def test_cost_of_living_says_when_nothing_is_tagged(db_session, api_client
 
 
 class TestTheClassRuleIsOneRule:
-    """Three spending rollups widen their class set for an explicit account
-    selection, and the third copy of that rule did not have it.
+    """Five spending rollups answer one question over one account selection,
+    and each spelled its row set and its class set for itself.
 
-    `counted_classes` is now the one home. Pointing the account filter at a
-    tracked account used to draw nothing on Spending Trends beside a populated
-    Spending Breakdown over the identical selection — and the note that
-    explains an exclusion was suppressed too, because nothing had been
-    excluded: the rows were simply never counted.
+    Three copies widened the class set for an explicit account selection and
+    a third did not, so a tracked account drew nothing on Spending Trends
+    beside a populated Breakdown. Then `SPENT_ENVELOPE` was added to one hand
+    copy of the row set and not to Day Patterns or Payee Analysis, so over a
+    tracked brokerage a row filed to Ready to Assign read 20 on the Breakdown
+    and 420 beside it. The row set is `SPENDING_ROW` and the class set is
+    `counted_classes` now; this compares all five, not two that already read
+    the same function.
     """
 
-    async def test_a_tracked_account_selection_totals_the_same_on_both(
+    async def test_a_tracked_account_selection_totals_the_same_on_all_five(
         self, db_session, api_client
     ):
         budget, checking, group, groceries, fun = await _setup(db_session, api_client)
@@ -362,20 +365,38 @@ class TestTheClassRuleIsOneRule:
             on_budget=False,
         )
         fees = await create_category(db_session, budget, group, "Brokerage Fees")
+        system = await create_category_group(db_session, budget, "Inflow", is_system=True)
+        rta = await create_category(db_session, budget, system, "Ready to Assign")
+        house = await create_payee(db_session, budget, "Cascade Point")
+
+        async def on_brokerage(amount: str, category=None):
+            await create_transaction(
+                db_session, budget, brokerage, amount, THIS, category=category, payee=house
+            )
+
         # An outflow on a tracking account classifies investment_return, never
         # spending — which is why an explicit selection has to widen.
-        await create_transaction(db_session, budget, brokerage, "-180.00", THIS, category=fees)
+        await on_brokerage("-180.00", fees)
+        # Filed into the system group: no spending rollup counts it.
+        await on_brokerage("-400.00", rta)
+        # Uncategorized: a category-keyed rollup has nowhere to put it.
+        await on_brokerage("-15.00")
         await db_session.commit()
 
         svc = ReportService(db_session)
         window = (add_months(THIS, -1), TODAY)
-        trends = await spending_trends(svc, budget.id, *window, account_ids=[brokerage.id])
-        _items, grouped_total, _meta = await svc.spending_grouped(
-            budget.id, *window, account_ids=[brokerage.id]
-        )
+        scope = {"account_ids": [brokerage.id]}
+        _cats, breakdown = await svc.spending_by_category(budget.id, *window, **scope)
+        _items, grouped, _meta = await svc.spending_grouped(budget.id, *window, **scope)
+        trends = (await spending_trends(svc, budget.id, *window, **scope))["total"]
+        days = await svc.day_patterns(budget.id, *window, **scope)
+        by_day = sum((d["total"] for d in days["days"]), Decimal("0"))
+        _p, by_payee, _n, _to80 = await svc.payee_analysis(budget.id, *window, **scope)
 
-        assert trends["total"] == Decimal("180.00")
-        assert trends["total"] == grouped_total
+        assert breakdown == grouped == trends == Decimal("180.00")
+        # The one deliberate gap (stated at `SPENDING_ROW`): the day and payee
+        # views count uncategorized spending the category rollups cannot place.
+        assert by_day == by_payee == breakdown + Decimal("15.00")
 
 
 async def _sankey_seen(svc, budget_id, window, mode, **scope) -> Decimal:

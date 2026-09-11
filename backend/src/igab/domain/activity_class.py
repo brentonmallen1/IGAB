@@ -482,27 +482,46 @@ def explain(reason: str) -> str:
 def counted_classes(
     include: Sequence[ActivityClass] | None = None, *, scoped_accounts: bool = False
 ) -> set[str]:
-    """The class VALUES a spending rollup counts.
+    """The class VALUES a spending rollup counts — the one statement of the
+    class set and its widening. `counted_class_filter` is the same set as a
+    WHERE clause; there is no third spelling.
 
-    The set form of the `_spending_classes` predicate, for the Python side of a
-    query that SELECTED the class rather than filtering on it — three spending
-    rollups do that so they can also report what they excluded.
+    Defaults to spending alone. A transfer to a brokerage or a mortgage is
+    money leaving the budget, but it is not money spent, and counting it as
+    spending skews every average. Callers that want the wider picture pass
+    the classes they mean.
 
-    The `scoped_accounts` widening was written three times, and the third copy
-    did not have it: pointing the account filter at a tracked account drew
-    nothing on Spending Trends beside a populated Pareto over the identical
-    selection, with the note explaining the exclusion suppressed too, because
-    nothing had been excluded — the rows were simply never counted.
+    `scoped_accounts` says the user made an explicit account selection —
+    `txn_filters.account_scope` returns it — which overrides the on-budget
+    default, so they may be looking straight at a tracked account, whose
+    outflows classify `investment_return` (brokerage fees) or `debt_interest`
+    (loan interest) and never `spending`. Without widening, picking
+    "Brokerage" in the account filter drew an empty chart.
 
-    An explicit account selection overrides the on-budget default, so the user
-    may be looking straight at a tracked account, whose outflows classify
-    `investment_return` or `debt_interest` and never `spending`. Same reason
-    `_spending_classes` widens; see its docstring.
+    The widening was written three times and the third copy did not have it,
+    so a tracked account drew nothing on Spending Trends beside a populated
+    Pareto. Then the predicate form lived in services beside this set, kept
+    in step by a docstring cross-reference, and read by the Breakdown and
+    Payee Analysis while three other rollups read this.
     """
     values = {c.value for c in (include or SPENDING_CLASSES)}
     if scoped_accounts:
         values |= {ActivityClass.INVESTMENT_RETURN.value, ActivityClass.DEBT_INTEREST.value}
     return values
+
+
+def counted_class_filter(
+    include: Sequence[ActivityClass] | None = None, *, scoped_accounts: bool = False
+) -> ColumnElement[bool]:
+    """`counted_classes` as a WHERE clause, for a query that filters on the
+    class rather than selecting it.
+
+    The caller must also apply `apply_class_joins`. This is the one place the
+    class is used without the joins visibly beside it, and a query with the
+    predicate and no joins is a cartesian product — which `pyproject.toml`
+    promotes from a warning to a test failure.
+    """
+    return ACTIVITY_CLASS.in_(sorted(counted_classes(include, scoped_accounts=scoped_accounts)))
 
 
 # ─── Necessity tiers ─────────────────────────────────────────────────────────

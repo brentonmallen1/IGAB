@@ -83,9 +83,9 @@ APR = date(2026, 4, 1)
 class TestSpendingByCategory:
     async def test_basic_aggregation(self):
         rows = [
-            row(id=CAT_A, name="Groceries", group_name="Food", amount=D("-60.00")),
-            row(id=CAT_A, name="Groceries", group_name="Food", amount=D("-40.00")),
-            row(id=CAT_B, name="Gas", group_name="Transport", amount=D("-25.00")),
+            row(id=CAT_A, name="Groceries", group_name="Food", cls="spending", amount=D("-60.00")),
+            row(id=CAT_A, name="Groceries", group_name="Food", cls="spending", amount=D("-40.00")),
+            row(id=CAT_B, name="Gas", group_name="Transport", cls="spending", amount=D("-25.00")),
         ]
         svc = ReportService(make_session(mock_result(rows)))
         cats, total = await svc.spending_by_category(BUDGET, JAN, APR)
@@ -105,14 +105,16 @@ class TestSpendingByCategory:
         assert total == D("0")
 
     async def test_single_category_pct_is_100(self):
-        rows = [row(id=CAT_A, name="Rent", group_name="Housing", amount=D("-1200.00"))]
+        rows = [
+            row(id=CAT_A, name="Rent", group_name="Housing", cls="spending", amount=D("-1200.00"))
+        ]
         svc = ReportService(make_session(mock_result(rows)))
         cats, total = await svc.spending_by_category(BUDGET, JAN, APR)
         assert cats[0]["pct"] == pytest.approx(100.0)
 
     async def test_amounts_are_absolute(self):
         """Stored as negative; returned totals must be positive."""
-        rows = [row(id=CAT_A, name="X", group_name="G", amount=D("-500.00"))]
+        rows = [row(id=CAT_A, name="X", group_name="G", cls="spending", amount=D("-500.00"))]
         svc = ReportService(make_session(mock_result(rows)))
         cats, total = await svc.spending_by_category(BUDGET, JAN, APR)
         assert cats[0]["total"] > 0
@@ -120,8 +122,8 @@ class TestSpendingByCategory:
 
     async def test_sorted_descending_by_total(self):
         rows = [
-            row(id=CAT_A, name="Small", group_name="G", amount=D("-10.00")),
-            row(id=CAT_B, name="Large", group_name="G", amount=D("-200.00")),
+            row(id=CAT_A, name="Small", group_name="G", cls="spending", amount=D("-10.00")),
+            row(id=CAT_B, name="Large", group_name="G", cls="spending", amount=D("-200.00")),
         ]
         svc = ReportService(make_session(mock_result(rows)))
         cats, _ = await svc.spending_by_category(BUDGET, JAN, APR)
