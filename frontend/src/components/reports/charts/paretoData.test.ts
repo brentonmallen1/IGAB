@@ -4,7 +4,6 @@ import {
   cumulativePercents,
   paretoAdherence,
   paretoInsight,
-  shareOfTotal,
   type ParetoItem,
 } from './paretoData'
 import pareto from '../../../../../shared/pareto_cases.json'
@@ -80,8 +79,10 @@ describe('cumulativePercents', () => {
     expect(pcts).toEqual([50, 80, 100])
   })
 
-  it('is all zeros when the grand total is zero', () => {
+  it('lies on the axis when there is no positive total to be a share of', () => {
+    // `shareOfTotal` has no share to state here; a line still needs a y.
     expect(cumulativePercents(items([1, 2]), 0)).toEqual([0, 0])
+    expect(cumulativePercents(items([10, -40]), -30)).toEqual([0, 0])
   })
 })
 
@@ -112,13 +113,6 @@ describe('paretoInsight', () => {
 
     const drawnOnly = spread.slice(0, 20)
     expect(paretoInsight(drawnOnly, 40).idx80).toBe(-1)
-  })
-})
-
-describe('shareOfTotal', () => {
-  it('is the item share in percent, 0 for a zero denominator', () => {
-    expect(shareOfTotal(25, 200)).toBe(12.5)
-    expect(shareOfTotal(25, 0)).toBe(0)
   })
 })
 

@@ -99,7 +99,7 @@ describe('ChartTooltip', () => {
  */
 
 describe('a stacked tooltip whose chart draws only some of the series', () => {
-  it('heads its own sum "Shown" and states the whole beside it', () => {
+  it('heads its own sum as the rows it lists and states the whole beside it', () => {
     // Spending Trends stacks the ten largest series and printed their subtotal
     // as "Total", inches above a table row headed All carrying a larger
     // number. Same rule as `DrillDownTable`: the total is the sum of the rows
@@ -113,11 +113,13 @@ describe('a stacked tooltip whose chart draws only some of the series', () => {
         ]}
         label="Sep 26"
         showTotal
-        wider={{ total: 3200, label: 'All categories' }}
+        wider={{ total: 3200, label: 'categories' }}
         formatter={(v) => `$${v}`}
       />
     )
-    expect(screen.getByText('Shown')).toBeInTheDocument()
+    // The drill table's wording, from the drill table's function: this
+    // tooltip said "Shown" where the table says "Total of the N shown".
+    expect(screen.getByText('Total of the 2 shown')).toBeInTheDocument()
     expect(screen.getByText('$2400')).toBeInTheDocument()
     expect(screen.getByText('All categories')).toBeInTheDocument()
     expect(screen.getByText('$3200')).toBeInTheDocument()
@@ -133,7 +135,26 @@ describe('a stacked tooltip whose chart draws only some of the series', () => {
           { name: 'Groceries', value: 600 },
         ]}
         showTotal
-        wider={{ total: 2400, label: 'All categories' }}
+        wider={{ total: 2400, label: 'categories' }}
+        formatter={(v) => `$${v}`}
+      />
+    )
+    expect(screen.getByText('Total')).toBeInTheDocument()
+    expect(screen.queryByText('All categories')).toBeNull()
+  })
+
+  it('reads a rounding cent between its rows and the whole as the whole set', () => {
+    // The tooltip carried its own `>= 0.005` literal beside the table's CENT;
+    // it now asks `isPartial`, so the two cannot disagree about one set.
+    render(
+      <ChartTooltip
+        active
+        payload={[
+          { name: 'Rent', value: 1800 },
+          { name: 'Groceries', value: 600 },
+        ]}
+        showTotal
+        wider={{ total: 2400.004, label: 'categories' }}
         formatter={(v) => `$${v}`}
       />
     )

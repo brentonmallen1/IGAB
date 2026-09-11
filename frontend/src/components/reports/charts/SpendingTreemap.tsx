@@ -12,6 +12,7 @@ import { ReportNotes, IncludeSavingsToggle, emptySpendingMessage } from '../Repo
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import './SpendingTreemap.css'
 import { useReportScope } from '../../../stores/reportStore'
+import { shareOfTotal } from '../drillDownTotals'
 
 interface Props {
   budgetId: string
@@ -23,7 +24,9 @@ interface TreeNode {
   parent_id: string | null
   parent_name: string | null
   size: number
-  pct: number
+  /** Share of the grand total; null when there is no positive total to be
+   *  a share of (see `shareOfTotal`). */
+  pct: number | null
   fill?: string
   // Recharts' Treemap data points must satisfy TreemapDataType's index signature.
   [key: string]: unknown
@@ -133,7 +136,7 @@ export function SpendingTreemapReport({ budgetId }: Props) {
       parent_id: null,
       parent_name: null,
       size: g.total,
-      pct: grandTotal > 0 ? (g.total / grandTotal) * 100 : 0,
+      pct: shareOfTotal(g.total, grandTotal),
       fill: chartColor(i),
     }))
   }, [groupBy, selectedGroup, groups, items, grandTotal])
@@ -253,7 +256,9 @@ export function SpendingTreemapReport({ budgetId }: Props) {
                       </div>
                       <div className="chart-tooltip__row">
                         <span className="chart-tooltip__name">Share</span>
-                        <span className="chart-tooltip__value">{(p?.pct ?? 0).toFixed(1)}%</span>
+                        <span className="chart-tooltip__value">
+                          {p?.pct == null ? '—' : `${p.pct.toFixed(1)}%`}
+                        </span>
                       </div>
                     </div>
                   )

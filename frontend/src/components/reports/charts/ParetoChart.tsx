@@ -22,13 +22,8 @@ import { MetricCard } from '../MetricCard'
 import { MetricRow } from '../MetricRow'
 import { ReportErrorState } from '../ReportErrorState'
 import { CHART_COLORS, COLOR_NEGATIVE, chartColor } from './chartColors'
-import {
-  buildParetoItems,
-  cumulativePercents,
-  paretoAdherence,
-  paretoInsight,
-  shareOfTotal,
-} from './paretoData'
+import { buildParetoItems, cumulativePercents, paretoAdherence, paretoInsight } from './paretoData'
+import { shareOfTotal } from '../drillDownTotals'
 import { ReportInfoButton, ReportScopeNote, SpendingClassNote } from '../ReportInfoButton'
 import { ReportNotes, IncludeSavingsToggle, emptySpendingMessage } from '../ReportNotes'
 import { LogScaleToggle, logAxisProps } from './logScale'
@@ -238,7 +233,8 @@ export function ParetoReport({ budgetId }: Props) {
     name: item.name,
     subName: item.groupName ?? '',
     amount: item.total,
-    pct: shareOfTotal(item.total, grandTotal),
+    // No share to state against a total that is not positive, so no column.
+    pct: shareOfTotal(item.total, grandTotal) ?? undefined,
   }))
 
   return (
@@ -275,7 +271,7 @@ export function ParetoReport({ budgetId }: Props) {
                 name: item.name,
                 group: item.groupName ?? '',
                 total: item.total,
-                pct: grandTotal > 0 ? (item.total / grandTotal) * 100 : 0,
+                pct: shareOfTotal(item.total, grandTotal),
               }))
             }
             captureRef={captureRef}

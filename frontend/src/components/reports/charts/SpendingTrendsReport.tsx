@@ -186,7 +186,7 @@ export function SpendingTrendsReport({ budgetId }: Props) {
                         showTotal
                         wider={{
                           total: totalByMonth.get(String(label ?? '')) ?? 0,
-                          label: 'All categories',
+                          label: 'categories',
                         }}
                         formatter={formatMoney}
                       />

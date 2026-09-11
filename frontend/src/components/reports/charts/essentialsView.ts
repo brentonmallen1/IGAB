@@ -1,5 +1,6 @@
 /** Pure view math for the Essentials report, extracted so it is testable
  * without mounting a chart. */
+import { shareOfTotal } from '../drillDownTotals'
 
 interface MonthTotal {
   month: string
@@ -16,8 +17,8 @@ interface MonthTotal {
  * inputs disagree, so the caller clamps the drawn width, not the figure.
  */
 export function shareOfLeanMonth(monthlyAverage: number, monthlyTotalAverage: number): number {
-  if (monthlyTotalAverage <= 0) return 0
-  return (monthlyAverage / monthlyTotalAverage) * 100
+  // A bar needs a width, so "no share to state" draws as no bar at all.
+  return shareOfTotal(monthlyAverage, monthlyTotalAverage) ?? 0
 }
 
 /**

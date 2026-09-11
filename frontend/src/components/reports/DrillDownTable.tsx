@@ -78,9 +78,7 @@ export function DrillDownTable({ rows, wider, onRowClick, amountLabel = 'Amount'
             </tr>
           ))}
           <tr className="ddt__total">
-            <td colSpan={rows.some((r) => r.subName) ? 2 : 1}>
-              {footer.wider === null ? 'Total' : `Total of the ${rows.length} shown`}
-            </td>
+            <td colSpan={rows.some((r) => r.subName) ? 2 : 1}>{footer.totalLabel}</td>
             <td className="ddt__num">{formatMoney(footer.shown)}</td>
             {rows.some((r) => r.pct !== undefined) && <td />}
             {rows.some((r) => r.extra) && <td />}

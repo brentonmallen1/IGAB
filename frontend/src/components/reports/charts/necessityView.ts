@@ -12,6 +12,7 @@
  * then rendering them as a verdict would be dressing a guess as advice. They
  * are deliberately coarse, and the copy says "rule of thumb" out loud.
  */
+import { shareOfTotal } from '../drillDownTotals'
 
 /** Ordered worst-to-best so a caller can compare standings. */
 export type NecessityStanding = 'no-headroom' | 'tight' | 'workable' | 'comfortable' | 'unknown'
@@ -91,6 +92,5 @@ export function necessityReading(
  * when the gap itself is unknown — nothing tagged Essential.
  */
 export function sheddableShare(costOfLiving: number, nonEssential: number | null): number | null {
-  if (nonEssential === null || costOfLiving <= 0) return null
-  return (nonEssential / costOfLiving) * 100
+  return nonEssential === null ? null : shareOfTotal(nonEssential, costOfLiving)
 }

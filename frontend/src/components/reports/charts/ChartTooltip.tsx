@@ -13,6 +13,7 @@
  * default. Pass `formatMoney` from `useFormatters()` for money, and an explicit
  * formatter for anything else; eslint refuses a `<ChartTooltip` without one.
  */
+import { drillDownFooter, type WiderSet } from '../drillDownTotals'
 import './ChartTooltip.css'
 
 interface TooltipEntry {
@@ -35,13 +36,16 @@ interface Props {
   labelFormatter?: (label: string) => string
   showTotal?: boolean
   /** The wider set the listed rows are part of — a month's whole spend behind
-   *  ten drawn series, say.
+   *  ten drawn series, say. `label` is the plural noun, as on the drill table:
+   *  the row reads "All categories".
    *
-   *  Same vocabulary as `DrillDownTable`, and the same rule: the Total line is
-   *  the sum of the rows the tooltip LISTS, and a wider figure is drawn beside
-   *  it. Spending Trends showed the ten drawn series' subtotal as "Total"
-   *  inches above a table row headed All carrying a larger number. */
-  wider?: { total: number; label: string }
+   *  The Total line is the sum of the rows the tooltip LISTS, and a wider
+   *  figure is drawn beside it. Spending Trends showed the ten drawn series'
+   *  subtotal as "Total" inches above a table row headed All carrying a larger
+   *  number. The rule — what counts as partial, what heads the subtotal — is
+   *  `drillDownFooter`'s, called here rather than re-typed: this tooltip had
+   *  its own copy of the cent tolerance and its own wording ("Shown"). */
+  wider?: WiderSet
 }
 
 export function ChartTooltip({
@@ -61,10 +65,13 @@ export function ChartTooltip({
     color: p.color ?? p.fill,
   }))
 
-  const total = entries.reduce((s, e) => s + (e.value ?? 0), 0)
+  const footer = drillDownFooter(
+    entries.map((e) => ({ amount: e.value ?? 0 })),
+    wider,
+    (amount) => formatter(amount, 'Total')
+  )
   const displayLabel = label ? (labelFormatter ? labelFormatter(label) : label) : null
-  // A cent of rounding is not a truncated set.
-  const partial = wider !== undefined && Math.abs(wider.total - total) >= 0.005
+  const allLabel = wider?.label ? `All ${wider.label}` : 'All'
 
   return (
     <div className="chart-tooltip">
@@ -80,14 +87,14 @@ export function ChartTooltip({
       ))}
       {showTotal && entries.length > 1 && (
         <div className="chart-tooltip__row chart-tooltip__row--total">
-          <span className="chart-tooltip__name">{partial ? 'Shown' : 'Total'}</span>
-          <span className="chart-tooltip__value">{formatter(total, 'Total')}</span>
+          <span className="chart-tooltip__name">{footer.totalLabel}</span>
+          <span className="chart-tooltip__value">{formatter(footer.shown, 'Total')}</span>
         </div>
       )}
-      {partial && wider && (
+      {footer.wider !== null && (
         <div className="chart-tooltip__row chart-tooltip__row--total">
-          <span className="chart-tooltip__name">{wider.label}</span>
-          <span className="chart-tooltip__value">{formatter(wider.total, wider.label)}</span>
+          <span className="chart-tooltip__name">{allLabel}</span>
+          <span className="chart-tooltip__value">{formatter(footer.wider, allLabel)}</span>
         </div>
       )}
     </div>

@@ -2,6 +2,7 @@
  * cumulative percentages, and the 80%-line insight. Extracted from
  * ParetoChart so the concentration math is unit-testable. */
 import type { GroupBy } from '../../../stores/reportStore'
+import { shareOfTotal } from '../drillDownTotals'
 
 export interface ParetoItem {
   id: string
@@ -103,13 +104,17 @@ export function buildParetoItems(
   }
 }
 
-/** Running share of the grand total for each item, in order (0–100). */
+/** Running share of the grand total for each item, in order (0–100).
+ *
+ * The line needs a y at every bar, so with no positive total to be a share
+ * of it lies on the axis — and never reaches 80%, which is the answer: the
+ * card is not drawn (the page also gates it on `grandTotal > 0`). */
 export function cumulativePercents(items: ParetoItem[], grandTotal: number): number[] {
   const cumulative = items.reduce<number[]>(
     (acc, item) => [...acc, (acc[acc.length - 1] ?? 0) + item.total],
     []
   )
-  return cumulative.map((c) => (grandTotal > 0 ? (c / grandTotal) * 100 : 0))
+  return cumulative.map((c) => shareOfTotal(c, grandTotal) ?? 0)
 }
 
 /** The 80/20 insight: index of the item whose cumulative share reaches 80%,
@@ -137,11 +142,6 @@ export function paretoInsight(
         : servedItemsTo80 - 1
   const coverage = idx80 >= 0 && totalItemCount > 0 ? ((idx80 + 1) / totalItemCount) * 100 : null
   return { idx80, coverage }
-}
-
-/** Share of the grand total for one item (0–100). */
-export function shareOfTotal(total: number, grandTotal: number): number {
-  return grandTotal > 0 ? (total / grandTotal) * 100 : 0
 }
 
 /** Determines if spending adheres to the 80/20 rule.

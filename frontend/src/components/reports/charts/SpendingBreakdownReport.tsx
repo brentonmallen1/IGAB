@@ -13,6 +13,10 @@ import { ChartTooltip } from './ChartTooltip'
 import { chartColor } from './chartColors'
 import { useReportScope } from '../../../stores/reportStore'
 import { ReportNotes } from '../ReportNotes'
+import { shareOfTotal } from '../drillDownTotals'
+
+/** A slice's share, or a dash where there is no positive total to share. */
+const shareLabel = (share: number | null) => (share === null ? '—' : `${Math.round(share)}%`)
 
 interface Props {
   budgetId: string
@@ -203,7 +207,7 @@ export function SpendingBreakdownReport({ budgetId }: Props) {
                   <td>{s.name}</td>
                   <td style={{ textAlign: 'right' }}>{formatMoney(s.value)}</td>
                   <td style={{ textAlign: 'right', color: 'var(--text-muted)' }}>
-                    {total > 0 ? `${Math.round((s.value / total) * 100)}%` : '—'}
+                    {shareLabel(shareOfTotal(s.value, total))}
                   </td>
                 </tr>
               ))}
