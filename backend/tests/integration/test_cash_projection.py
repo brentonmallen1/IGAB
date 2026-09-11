@@ -663,6 +663,27 @@ async def test_a_split_bill_leaves_the_history_with_its_schedule(db_session):
     _assert_sampled_flow_per_day(data["points"], Decimal("0"))
 
 
+async def test_rows_a_schedule_created_leave_the_history_by_its_id(db_session):
+    """A schedule with neither payee nor category has no bill to match, so the
+    only thing tying its rows to it is `scheduled_transaction_id`, stamped when
+    they were entered from it. Every other partition test reaches the rows
+    through a payee or a category, so deleting the id clause left them green
+    while this schedule's rows were sampled AND re-applied — rent twice."""
+    budget, checking = await _budget_with_checking(db_session)
+    sched = await create_scheduled_transaction(
+        db_session, budget, checking, "-1800.00", "monthly", add_months(TODAY, 1)
+    )
+    for months_back in range(1, 4):
+        row = await create_transaction(
+            db_session, budget, checking, "-1800.00", add_months(TODAY, -months_back)
+        )
+        row.scheduled_transaction_id = sched.id
+    await db_session.flush()
+
+    data = await ReportService(db_session).cash_projection(budget.id, horizon_days=60)
+    _assert_sampled_flow_per_day(data["points"], Decimal("0"))
+
+
 async def test_a_subscription_payees_other_spending_stays_sampled(db_session):
     """The subscription arm projects a payee's Subscription-tagged charges, and
     the exclusion took every row of that payee in every category. A warehouse

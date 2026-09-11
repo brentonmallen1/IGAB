@@ -648,7 +648,12 @@ class Transaction(Base):
     # the bank matched was entered by the user first.
     created_via: Mapped[str | None] = mapped_column(String(20))
     # The schedule this row was entered from (Enter now, or the scheduler's
-    # auto-create). Served, so the row can say so; nothing else reads it.
+    # auto-create). Served, so the row can say so — and the cash projection
+    # partitions on it (txn_filters.reapplied_by_schedule): a row carrying the
+    # id of a schedule it projects leaves the sampled history. For a schedule
+    # with no payee and no category it is the ONLY link, so every path that
+    # enters a row from a schedule must stamp it, or the projection books that
+    # bill twice.
     scheduled_transaction_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     # SimpleFIN match link
     linked_transaction_id: Mapped[uuid.UUID | None] = mapped_column(
