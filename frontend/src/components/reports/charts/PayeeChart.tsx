@@ -27,6 +27,13 @@ interface Props {
   budgetId: string
 }
 
+/** How many payees the server ranks. Recurring mode reads all of them. */
+const RANKED = 25
+/** How many the Top view draws and lists. Every "shown" label reads this or
+ *  the rows themselves: the help said 25 while the chart drew 20, and the
+ *  Total Payees card said "top 25 shown" above a table footer saying "20". */
+const TOP_SHOWN = 20
+
 export function PayeeReport({ budgetId }: Props) {
   const { formatMoney } = useFormatters()
   const moneyAxis = useMoneyAxis()
@@ -37,7 +44,7 @@ export function PayeeReport({ budgetId }: Props) {
     budgetId,
     filters.startDate,
     filters.endDate,
-    25,
+    RANKED,
     payeeIds,
     acctIds
   )
@@ -50,7 +57,7 @@ export function PayeeReport({ budgetId }: Props) {
 
   const payees = data?.payees ?? []
   const recurring = payees.filter((p) => p.is_recurring)
-  const displayed = view === 'recurring' ? recurring : payees.slice(0, 20)
+  const displayed = view === 'recurring' ? recurring : payees.slice(0, TOP_SHOWN)
 
   const chartData = displayed.map((p) => ({
     name: truncateLabel(p.payee_name, 18),
@@ -99,9 +106,10 @@ export function PayeeReport({ budgetId }: Props) {
             months).
           </p>
           <p>
-            The chart and table show the <strong>25 largest</strong> payees; the Total Payees card
-            and Total Spent cover <strong>every</strong> payee in the period, so the rows below can
-            add up to less than the total. Each row&apos;s percentage is a share of that whole.
+            The chart and table show the <strong>{TOP_SHOWN} largest</strong> payees (Recurring
+            mode: the recurring ones among the {RANKED} largest); the Total Payees card and Total
+            Spent cover <strong>every</strong> payee in the period, so the rows below can add up to
+            less than the total. Each row&apos;s percentage is a share of that whole.
           </p>
           <p>
             Use <em>Recurring</em> mode to focus only on fixed or habitual expenses — subscriptions,
@@ -157,14 +165,19 @@ export function PayeeReport({ budgetId }: Props) {
             <MetricCard
               label="Total Payees"
               value={String(payeeCount)}
-              sub={ranked < payeeCount ? `top ${ranked} shown` : undefined}
+              sub={displayed.length < payeeCount ? `${displayed.length} shown` : undefined}
             />
             <MetricCard
               label="Recurring Payees"
               value={String(recurring.length)}
               sub={ranked < payeeCount ? `of the top ${ranked}` : undefined}
             />
-            <MetricCard label="Total Spent" value={formatMoney(grandTotal)} sub="all payees" />
+            <MetricCard
+              label="Total Spent"
+              value={formatMoney(grandTotal)}
+              // The served total honours the toolbar's payee filter.
+              sub={payeeIds ? 'selected payees' : 'all payees'}
+            />
           </MetricRow>
         )}
 

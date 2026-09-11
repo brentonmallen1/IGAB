@@ -136,7 +136,7 @@ export function ParetoReport({ budgetId }: Props) {
     return map
   }, [spendingItems])
 
-  const { sorted, grandTotal, universeCount } = useMemo(
+  const { sorted, grandTotal, universeCount, itemsTo80 } = useMemo(
     () =>
       buildParetoItems(
         groupBy,
@@ -146,6 +146,7 @@ export function ParetoReport({ budgetId }: Props) {
         payeeQ.data && {
           total: payeeQ.data.total,
           count: payeeQ.data.payee_count,
+          itemsTo80: payeeQ.data.payees_to_80pct,
         }
       ),
     [groupBy, spendingItems, payeeItems, spendingQ.data, payeeQ.data]
@@ -228,7 +229,7 @@ export function ParetoReport({ budgetId }: Props) {
   // `universeCount`, not `sorted.length`: in payee mode the server ranks the
   // top 25, and "% of all payees" measured against the cap was the cap
   // restated as a fact about the period.
-  const { idx80, coverage } = paretoInsight(cumulativePcts, universeCount)
+  const { idx80, coverage } = paretoInsight(cumulativePcts, universeCount, itemsTo80)
   const adherence = paretoAdherence(coverage, universeCount)
   const rankedIsEverything = universeCount === sorted.length
 

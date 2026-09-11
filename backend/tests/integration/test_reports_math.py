@@ -640,7 +640,7 @@ async def test_the_payee_total_covers_every_payee_not_only_the_ranked_ones(db_se
             payee=payee,
         )
 
-    rows, total, count = await reports.payee_analysis(budget.id, START, TODAY, limit=2)
+    rows, total, count, to_80 = await reports.payee_analysis(budget.id, START, TODAY, limit=2)
 
     assert [r["payee_name"] for r in rows] == ["Harborstone Realty", "Cascade Grocers"]
     # 400 + 300 + 200 + 100 + 50, not the 700 the two ranked rows carry.
@@ -648,3 +648,7 @@ async def test_the_payee_total_covers_every_payee_not_only_the_ranked_ones(db_se
     assert count == 5
     # 400 / 1050, not 400 / 700 — which read 57% before.
     assert round(rows[0]["pct"], 2) == 38.10
+    # The two rows sent hold 700 of 1,050 — under 80% — so the client could
+    # not find the line and the Pareto card vanished. Counted over every
+    # payee: 400 + 300 + 200 = 900 reaches 840.
+    assert to_80 == 3

@@ -40,6 +40,7 @@ from igab.domain.activity_class import (
 # transfers to off-budget accounts count as real income/expense; internal
 # uncategorized transfers never do). For category-scoped queries the
 # predicate is vacuously true, keeping one uniform rule.
+from igab.domain.concentration import items_to_share
 from igab.domain.dates import add_months, complete_month_window, months_spanned, trailing_start
 from igab.domain.dates import month_end as _month_end
 from igab.domain.money import format_csv_amount, quantize_cents
@@ -2305,9 +2306,9 @@ class ReportService:
         limit: int = 25,
         payee_ids: list[uuid.UUID] | None = None,
         account_ids: list[uuid.UUID] | None = None,
-    ) -> tuple[list[dict], Decimal, int]:
-        """The `limit` largest payees, the total over EVERY payee, and how many
-        there were.
+    ) -> tuple[list[dict], Decimal, int, int | None]:
+        """The `limit` largest payees, the total over EVERY payee, how many
+        there were, and how many of the largest make up 80% of the spending.
 
         The count is served because the report is a ranking, not a page: a
         client that knows only "25 rows" cannot say whether that is all of
@@ -2355,7 +2356,7 @@ class ReportService:
         rows = (await self.session.execute(q)).all()
 
         if not rows:
-            return [], Decimal("0"), 0
+            return [], Decimal("0"), 0, None
 
         df = pl.DataFrame(
             {
@@ -2387,11 +2388,16 @@ class ReportService:
         # **everything**" — so the spec and the code disagreed in writing.
         grand_total = Decimal(str(round(payee_agg["total"].sum(), 4)))
         payee_count = payee_agg.height
+        # Also before the cap, and for the same reason: the Pareto card looked
+        # for 80% in the 25 rows it was sent against a total over every payee,
+        # so whenever the top 25 held less than 80% the card vanished — for
+        # exactly the diffuse spending it exists to point out.
+        to_80 = items_to_share([Decimal(str(round(t, 4))) for t in payee_agg["total"]])
         payee_agg = payee_agg.head(limit)
 
         payees = payee_breakdown(df, payee_agg, grand_total)
 
-        return payees, grand_total, payee_count
+        return payees, grand_total, payee_count, to_80
 
     # ─── Day Patterns ─────────────────────────────────────────────────────────
 

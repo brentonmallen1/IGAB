@@ -37,8 +37,15 @@ export function buildParetoItems(
   spendingItems: SpendingGroupItemLike[],
   payeeItems: PayeeItemLike[],
   backendTotal: string | number | undefined,
-  payeeTotals?: { total: string | number; count: number }
-): { sorted: ParetoItem[]; grandTotal: number; universeCount: number } {
+  payeeTotals?: { total: string | number; count: number; itemsTo80: number | null }
+): {
+  sorted: ParetoItem[]
+  grandTotal: number
+  universeCount: number
+  /** Served in payee mode, where the client holds only the ranked top 25 and
+   *  so cannot find the 80% line itself. Undefined means "compute it". */
+  itemsTo80?: number | null
+} {
   if (groupBy === 'payee') {
     const items = [...payeeItems].sort((a, b) => Number(b.total) - Number(a.total))
     // The served total, not a sum of the ranked rows: it covers every payee
@@ -56,6 +63,7 @@ export function buildParetoItems(
       })),
       grandTotal: total,
       universeCount: payeeTotals?.count ?? items.length,
+      itemsTo80: payeeTotals?.itemsTo80,
     }
   }
   if (groupBy === 'group') {
@@ -114,9 +122,19 @@ export function cumulativePercents(items: ParetoItem[], grandTotal: number): num
  * a display-rounded string calls 30.4% adherent. */
 export function paretoInsight(
   cumulativePcts: number[],
-  totalItemCount: number
+  totalItemCount: number,
+  servedItemsTo80?: number | null
 ): { idx80: number; coverage: number | null } {
-  const idx80 = cumulativePcts.findIndex((pct) => pct >= 80)
+  // Payee mode is served the count: its cumulative line tops out at the top
+  // 25's share, so whenever those held under 80% `findIndex` found nothing and
+  // the card vanished for diffuse spending. The two sides are held to one
+  // answer by `shared/pareto_cases.json`.
+  const idx80 =
+    servedItemsTo80 === undefined
+      ? cumulativePcts.findIndex((pct) => pct >= 80)
+      : servedItemsTo80 === null
+        ? -1
+        : servedItemsTo80 - 1
   const coverage = idx80 >= 0 && totalItemCount > 0 ? ((idx80 + 1) / totalItemCount) * 100 : null
   return { idx80, coverage }
 }

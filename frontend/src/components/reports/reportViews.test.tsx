@@ -514,6 +514,43 @@ describe('WishlistDisciplineReport resisted wishes', () => {
   })
 })
 
+describe('PayeeReport labels', () => {
+  const payees = Array.from({ length: 25 }, (_, i) => ({
+    payee_id: `p${i}`,
+    payee_name: `Payee ${i}`,
+    total: 100 - i,
+    count: 1,
+    pct: 1,
+    monthly_trend: [],
+    top_categories: [],
+    is_recurring: false,
+  }))
+
+  it('says how many the view shows, not how many the server ranked', () => {
+    // The card read "top 25 shown" while the Top view drew and listed 20.
+    setQuery({ data: { payees, total: 9850, payee_count: 312, payees_to_80pct: 140 } })
+    renderReport(<PayeeReport budgetId="b1" />)
+
+    expect(screen.getByText('20 shown')).toBeInTheDocument()
+    expect(screen.queryByText('top 25 shown')).toBeNull()
+    expect(screen.getByText('all payees')).toBeInTheDocument()
+  })
+
+  it('does not call a payee-filtered total "all payees"', () => {
+    useReportStore.getState().setFilters({ payeeIds: ['p1', 'p2', 'p3'] })
+    try {
+      setQuery({
+        data: { payees: payees.slice(0, 3), total: 250, payee_count: 3, payees_to_80pct: 3 },
+      })
+      renderReport(<PayeeReport budgetId="b1" />)
+      expect(screen.getByText('selected payees')).toBeInTheDocument()
+      expect(screen.queryByText('all payees')).toBeNull()
+    } finally {
+      useReportStore.getState().setFilters({ payeeIds: [] })
+    }
+  })
+})
+
 describe('AnomaliesReport list', () => {
   it('shows the anomaly with its percent change vs baseline', () => {
     setQuery({
@@ -595,6 +632,32 @@ describe('ParetoReport insight', () => {
     expect(
       screen.getByText('Spending is spread thin—consider consolidating or reviewing smaller items.')
     ).toBeInTheDocument()
+  })
+
+  it('draws the payee card from the served count when the top 25 hold under 80%', () => {
+    // 312 payees, the 25 sent holding $4,120 of $9,850. The card looked for
+    // 80% in those 25 and, finding nothing, disappeared.
+    useReportStore.getState().setFilters({ groupBy: 'payee' })
+    try {
+      setQuery({
+        data: {
+          groups: [],
+          payees: Array.from({ length: 25 }, (_, i) => ({
+            payee_id: `p${i}`,
+            payee_name: `Payee ${i}`,
+            total: 4120 / 25,
+          })),
+          total: 9850,
+          payee_count: 312,
+          payees_to_80pct: 140,
+        },
+      })
+      renderReport(<ParetoReport budgetId="b1" />)
+      expect(screen.getByText('80% of Spend')).toBeInTheDocument()
+      expect(screen.getByText('140 payees')).toBeInTheDocument()
+    } finally {
+      useReportStore.getState().setFilters({ groupBy: 'category' })
+    }
   })
 })
 

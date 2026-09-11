@@ -1091,6 +1091,10 @@ export interface PayeeAnalysisReport {
    *  only "25 rows" cannot say whether that is all of them — the Total Payees
    *  card used to report the ranking cap. */
   payee_count: number
+  /** How many of the largest payees make up 80% of `total`, counted over
+   *  every payee — the Pareto card's figure, which the top 25 cannot give
+   *  (backend `domain/concentration.py`). null when nothing was spent. */
+  payees_to_80pct: number | null
 }
 
 export interface DayPatternItem {

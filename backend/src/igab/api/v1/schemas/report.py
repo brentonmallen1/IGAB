@@ -448,6 +448,10 @@ class PayeeAnalysisResponse(ApiModel):
     #: the payee table and the Pareto card were stating the cap as a
     #: period-wide fact.
     payee_count: int
+    #: How many of the largest payees make up 80% of `total`, counted over
+    #: every payee (`domain.concentration`). None when nothing was spent. The
+    #: Pareto card reads it: the client holds only the top 25.
+    payees_to_80pct: int | None
 
 
 # ─── Day Patterns ─────────────────────────────────────────────────────────────
