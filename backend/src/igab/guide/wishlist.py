@@ -253,6 +253,14 @@ class Discipline:
     cooled_then_bought: int
     cooled_then_dropped: int
     bought_early: int
+    #: Dropped BEFORE the cooling-off period ended.
+    #:
+    #: This used to be counted as `cooled_then_dropped`, so a wish abandoned on
+    #: day three of thirty was reported under "waited, then decided against".
+    #: It is still resisted money and still good discipline — it just is not
+    #: what the cooling-off period did, and the report exists to say what the
+    #: period did. The `done` branch had drawn this distinction all along.
+    dropped_early: int
     still_open: int
     resisted_total: Decimal
     bought_total: Decimal
@@ -278,12 +286,14 @@ def _ended_after_cooling(ended: date | None, cooling_until: date | None) -> bool
 def discipline(wishes: Iterable[DisciplineInput]) -> Discipline:
     """Cooling-off outcomes across every wish, open and closed.
 
-    `bought_early` counts a wish bought before its cooling-off period ended.
+    `bought_early` counts a wish bought before its cooling-off period ended,
+    and `dropped_early` one abandoned before it ended — both are the period
+    not having run, and neither is what it did.
     That is possible because the date is editable after the fact, and it is
     worth seeing rather than hiding: the point of the number is honesty about
     the habit, not a score.
     """
-    cooled_bought = cooled_dropped = early = still_open = unplaced = 0
+    cooled_bought = cooled_dropped = early = dropped_early = still_open = unplaced = 0
     resisted = bought = open_total = ZERO
     days: list[int] = []
     costs: list[Decimal] = []
@@ -309,15 +319,18 @@ def discipline(wishes: Iterable[DisciplineInput]) -> Discipline:
                 unplaced += 1
         else:  # dropped
             resisted += w.cost
-            if after is None:
-                unplaced += 1
-            else:
+            if after is True:
                 cooled_dropped += 1
+            elif after is False:
+                dropped_early += 1
+            else:
+                unplaced += 1
 
     return Discipline(
         cooled_then_bought=cooled_bought,
         cooled_then_dropped=cooled_dropped,
         bought_early=early,
+        dropped_early=dropped_early,
         still_open=still_open,
         resisted_total=quantize_cents(resisted),
         bought_total=quantize_cents(bought),

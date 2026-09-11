@@ -481,6 +481,32 @@ class LiabilityService:
                 total += await self.get_balance(liability)
         return total
 
+    async def _closed_but_owing(
+        self, budget_id: uuid.UUID, shown: list[Liability]
+    ) -> tuple[int, Decimal]:
+        """What the report's default exclusion hides, counted so it can be said.
+
+        `get_all` drops a loan under a CLOSED account because "a settled loan
+        belongs in none of [its readers]" — which is right, and rests on an
+        assumption nobody stated: that closing an account means the debt is
+        gone. Close one with a balance still on it and net worth keeps counting
+        it (net worth spans every account) while this report does not, so two
+        figures labelled Total Liabilities disagree and this one claims to be
+        every debt.
+
+        Deliberate divergence is fine; silence is not. The exclusion stays and
+        the report says what it left out.
+        """
+        with_closed = await self.liability_repo.get_all(budget_id, include_closed=True)
+        shown_ids = {item.id for item in shown}
+        hidden = [item for item in with_closed if item.id not in shown_ids]
+        # `get_balance`, not `manual_balance`: a MANAGED loan reads its linked
+        # account's ledger and carries no manual figure at all, and a loan
+        # account closed with a balance still on it is the whole case this
+        # counts. Reading the column would have found nothing.
+        owing = [b for b in [await self.get_balance(item) for item in hidden] if b > 0]
+        return len(owing), quantize_cents(sum(owing, Decimal("0")))
+
     async def liabilities_report(
         self,
         budget_id: uuid.UUID,
@@ -494,6 +520,8 @@ class LiabilityService:
         the consolidated Liabilities report. No new math — pure aggregation."""
         as_of = as_of or today_utc()
         liabilities = await self.liability_repo.get_all(budget_id)
+
+        closed_count, closed_owing = await self._closed_but_owing(budget_id, liabilities)
         resolved_types = {item.id: await self.resolve_type(item) for item in liabilities}
         # Filter on what the report SHOWS. Filtering the stored column instead
         # would hide rows whose visible type matches and surface ones whose
@@ -584,4 +612,9 @@ class LiabilityService:
             "total_interest_remaining": total_interest,
             "liabilities_missing_terms": missing_terms,
             "balance_over_time": points,
+            #: Owed on accounts closed with a balance still on them. Not in
+            #: `total_balance` — it is in net worth, and the page says so
+            #: rather than letting the two figures disagree in silence.
+            "closed_with_balance_count": closed_count,
+            "closed_with_balance_total": quantize_cents(closed_owing),
         }

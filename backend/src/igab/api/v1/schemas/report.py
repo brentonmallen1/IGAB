@@ -534,6 +534,12 @@ class LiabilitiesReportResponse(ApiModel):
     total_interest_remaining: Decimal
     liabilities_missing_terms: int
     balance_over_time: list[LiabilitiesBalancePoint]
+    #: Owed on accounts closed with a balance still on them, excluded from
+    #: `total_balance` above. Net worth counts it — it spans every account —
+    #: so without this the two figures disagree in silence and this one claims
+    #: to be every debt.
+    closed_with_balance_count: int
+    closed_with_balance_total: Decimal
 
 
 # ─── Subscriptions Report ────────────────────────────────────────────────────
@@ -793,7 +799,10 @@ class CategoryHistoryMonth(ApiModel):
     month: date
     assigned: Decimal
     activity: Decimal
-    available: Decimal
+    #: None for an income category: "Income categories do not hold money", so
+    #: their `available` is a lifetime carryover the budget page never draws.
+    #: Their monthly activity is meaningful and is still served.
+    available: Decimal | None
 
 
 class CategoryHistoryReportResponse(ApiModel):
@@ -864,6 +873,10 @@ class WishlistDisciplineResponse(ApiModel):
     cooled_then_bought: int
     cooled_then_dropped: int
     bought_early: int
+    #: Dropped before the cooling-off period ended. Counted as
+    #: `cooled_then_dropped` until now, which reported a wish abandoned on day
+    #: three of thirty under "waited, then decided against".
+    dropped_early: int
     still_open: int
     #: Wanted, waited on, and not spent — the figure the report is for.
     resisted_total: Decimal

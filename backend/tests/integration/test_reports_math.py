@@ -461,3 +461,32 @@ async def test_the_sankey_counts_a_split_inflow_once(db_session):
 
     assert Decimal(str(data["total_income"])) == Decimal("1000.00")
     assert Decimal(str(data["total_expense"])) == Decimal("300.00")
+
+
+async def test_the_largest_transactions_are_ranked_by_size_not_by_sign(db_session):
+    """`order_by(amount)` puts the most negative first, which reads as "largest"
+    only while every row is an outflow. One inflow in the window sorted to the
+    very END, so a report called Largest Transactions could omit the largest
+    transaction it had — and the client scales every dot against row 0, so the
+    whole chart's proportions came from whichever row happened to sort first.
+    """
+    _services, budget, checking, _savings, groceries, gas = await _setup(db_session)
+    reports = ReportService(db_session)
+    payee = await create_payee(db_session, budget, "Harborstone")
+
+    await create_transaction(
+        db_session, budget, checking, "-120.00", TODAY - timedelta(days=5), category=gas
+    )
+    await create_transaction(
+        db_session, budget, checking, "-20.00", TODAY - timedelta(days=4), category=groceries
+    )
+    # A refund of a cancelled annual policy: the biggest row in the window.
+    await create_transaction(
+        db_session, budget, checking, "900.00", TODAY - timedelta(days=3), payee=payee
+    )
+
+    rows = await reports.large_transactions(budget.id, START, TODAY, limit=2)
+    assert [Decimal(str(t["amount"])) for t in rows] == [
+        Decimal("900.00"),
+        Decimal("-120.00"),
+    ]

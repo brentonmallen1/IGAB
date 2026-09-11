@@ -46,7 +46,11 @@ export function IncomeSourcesReport({ budgetId }: Props) {
       const row: Record<string, string | number> = { month: formatMonth(m) }
       for (const s of shown) row[s.payee_name] = s.monthly[i] ?? 0
       const rest = data.monthly_totals[i] - shown.reduce((sum, s) => sum + (s.monthly[i] ?? 0), 0)
-      if (rest > 0) row.Other = rest
+      // A cent, not a series. `monthly_totals` and the per-payee `monthly`
+      // arrays are each rounded server-side, so their difference is routinely
+      // a fraction of a penny — and `rest > 0` drew an "Other" band for it,
+      // giving every month a phantom income source worth £0.00.
+      if (rest >= 0.01) row.Other = rest
       return row
     })
   }, [data, shown, formatMonth])

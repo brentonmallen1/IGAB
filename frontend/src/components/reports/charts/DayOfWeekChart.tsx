@@ -72,7 +72,10 @@ export function DayPatternsReport({ budgetId }: Props) {
     dayOfWeek: d.day_of_week,
     Amount: d.total,
     Transactions: d.count,
-    avgPerTxn: d.count > 0 ? d.total / d.count : 0,
+    // The served figure. This was re-derived here and again in the
+    // export, so three places computed one number and the server's went
+    // unread.
+    avgPerTxn: d.avg_transaction,
   }))
 
   function drillTo(dayOfWeek: number, dayName: string) {
@@ -134,7 +137,7 @@ export function DayPatternsReport({ budgetId }: Props) {
                   day: d.day_name,
                   total: d.total,
                   count: d.count,
-                  avg_transaction: d.count > 0 ? d.total / d.count : 0,
+                  avg_transaction: d.avg_transaction,
                 }))
               }
               captureRef={captureRef}

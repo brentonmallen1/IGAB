@@ -30,8 +30,10 @@ export function HistorySection({ categoryId, budgetId }: Props) {
               <td>{formatMonth(m.month)}</td>
               <td>{formatMoney(m.assigned)}</td>
               <td>{formatMoney(Math.abs(Math.min(m.activity, 0)))}</td>
-              <td className={m.available < 0 ? 'inspector-history__neg' : ''}>
-                {formatMoney(m.available)}
+              {/* Null for an income category, which holds no money — an em
+                  dash rather than a lifetime carryover dressed as a balance. */}
+              <td className={(m.available ?? 0) < 0 ? 'inspector-history__neg' : ''}>
+                {m.available === null ? '—' : formatMoney(m.available)}
               </td>
             </tr>
           ))}

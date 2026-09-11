@@ -130,3 +130,59 @@ async def test_api_endpoint_with_filters(api_client, db_session):
     body = medical.json()
     assert [i["name"] for i in body["items"]] == ["Hospital"]
     assert Decimal(str(body["total_balance"])) == Decimal("300.00")
+
+
+async def test_a_closed_account_still_owing_is_counted_out_loud(db_session):
+    """`get_all` drops a loan under a CLOSED account — right for every reader
+    asking "what do I still owe", and resting on an assumption nobody stated:
+    that closing an account means the debt is gone.
+
+    Close one with a balance still on it and net worth keeps counting it (it
+    filters only `is_deleted`) while this report does not, so two figures
+    labelled Total Liabilities disagreed with nothing on the page saying why.
+    The exclusion stays; the report says what it left out.
+    """
+    services, budget, _managed, _unmanaged = await _setup(db_session)
+    svc = make_liability_service(db_session, services)
+
+    settled = await create_account(
+        db_session, budget, "Old Auto Loan", account_type="auto_loan", on_budget=False
+    )
+    await create_transaction(db_session, budget, settled, "-3000.00", TODAY - timedelta(days=200))
+    await create_liability(
+        db_session, budget, "Trade-in", liability_type="auto", linked_account_id=settled.id
+    )
+    settled.is_closed = True
+    await db_session.flush()
+
+    report = await svc.liabilities_report(budget.id)
+
+    # Still excluded from the list and from the total.
+    assert sorted(i["name"] for i in report["items"]) == ["Car", "Family"]
+    assert report["total_balance"] == Decimal("8200.00")
+    # And now said out loud. Read through `get_balance`, not `manual_balance`:
+    # a managed loan carries no manual figure at all.
+    assert report["closed_with_balance_count"] == 1
+    assert report["closed_with_balance_total"] == Decimal("3000.00")
+
+
+async def test_a_closed_account_that_was_paid_off_says_nothing(db_session):
+    """The note is for a debt that outlived its account, not for every closed
+    one — a settled loan is exactly what the exclusion is for."""
+    services, budget, _managed, _unmanaged = await _setup(db_session)
+    svc = make_liability_service(db_session, services)
+
+    paid = await create_account(
+        db_session, budget, "Paid Auto Loan", account_type="auto_loan", on_budget=False
+    )
+    await create_transaction(db_session, budget, paid, "-5000.00", TODAY - timedelta(days=400))
+    await create_transaction(db_session, budget, paid, "5000.00", TODAY - timedelta(days=30))
+    await create_liability(
+        db_session, budget, "Settled", liability_type="auto", linked_account_id=paid.id
+    )
+    paid.is_closed = True
+    await db_session.flush()
+
+    report = await svc.liabilities_report(budget.id)
+    assert report["closed_with_balance_count"] == 0
+    assert report["closed_with_balance_total"] == Decimal("0")

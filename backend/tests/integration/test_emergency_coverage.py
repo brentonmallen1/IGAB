@@ -152,3 +152,51 @@ def test_a_month_with_no_essentials_has_no_answer():
     """Zero coverage is a specific and alarming claim; "no answer" is not."""
     assert coverage_months(Decimal("5000"), Decimal("0")) is None
     assert coverage_months(Decimal("0"), Decimal("1000")) == Decimal("0.0")
+
+
+async def test_a_self_reported_fund_reaches_the_newest_point(db_session, api_client):
+    """A self-reported figure used to be counted in the headline cards and in
+    no series point at all — the chart drew $0 and 0.0 months beneath cards
+    reading the real amount.
+
+    `GuideService.set_binding` stamps `as_of` with today, and the series ends
+    at the last COMPLETE month, so `as_of <= month_end` was false for every
+    point on every chart. Written through the API on purpose: the stamp is
+    what made this unreachable, and a hand-built binding row would not have
+    reproduced it.
+    """
+    budget = await create_budget(db_session, api_client.test_user)
+    checking = await create_account(db_session, budget, "Checking")
+    bills = await create_category_group(db_session, budget, "Bills")
+    rent = await create_category(db_session, budget, bills, "Rent")
+    await seed_system_tags(db_session, budget.id)
+    tags = TagRepository(db_session)
+    by_key = {t.system_key: t for t in await tags.list_for_budget(budget.id)}
+    await tags.set_category_tags(rent.id, [by_key["essential"].id])
+    for month in MONTHS:
+        await create_transaction(
+            db_session, budget, checking, "-1000.00", month + timedelta(days=4), category=rent
+        )
+    await db_session.commit()
+
+    # A figure the household typed, with no as-of date.
+    resp = await api_client.put(
+        f"/api/v1/{budget.id}/guide/bindings/emergency_fund",
+        json={"mode": "manual", "entity_ids": {}, "external": True, "external_amount": "4000"},
+    )
+    assert resp.status_code in (200, 204), resp.text
+
+    # Read through the API too: the binding was written in the client's own
+    # transaction, which `db_session` cannot see.
+    body = (await api_client.get(f"/api/v1/{budget.id}/reports/emergency-fund")).json()
+    last = body["series"][-1]
+
+    assert last["external_counted"] is True
+    assert Decimal(str(last["fund_balance"])) == Decimal("4000.00")
+    # $4,000 against $1,000 a month of essentials.
+    assert Decimal(str(last["coverage_months"])) == Decimal("4.0")
+    # Only the newest point: the figure has no history behind it.
+    assert [p["external_counted"] for p in body["series"]][:-1] == [False] * (
+        len(body["series"]) - 1
+    )
+    assert Decimal(str(body["fund_balance"])) == Decimal("4000.00")

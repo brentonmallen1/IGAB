@@ -183,6 +183,43 @@ class TestCategoryHistory:
         assert Decimal(str(this["available"])) == Decimal(str(row["available"]))
         assert Decimal(str(this["assigned"])) == Decimal(str(row["assigned"]))
 
+    async def test_an_income_category_publishes_no_available(self, db_session, api_client):
+        """ "Income categories do not hold money" — the app's own rule, raised by
+        `BudgetService._require_envelope`, and the budget page draws no balance
+        for one. This report served it anyway, under a docstring promising the
+        budget page's own numbers: a paycheque category read a lifetime
+        carryover of every dollar ever earned, in a column headed Available.
+
+        The month-by-month ACTIVITY is meaningful and stays.
+        """
+        budget, checking, *_ = await _setup(db_session, api_client)
+        income = await create_category_group(db_session, budget, "Income", is_system=True)
+        salary = await create_category(db_session, budget, income, "Salary")
+        await create_transaction(db_session, budget, checking, "2500.00", LAST, category=salary)
+        await create_transaction(db_session, budget, checking, "2500.00", THIS, category=salary)
+        await db_session.commit()
+
+        r = await api_client.get(
+            f"/api/v1/{budget.id}/reports/category-history",
+            params={"category_id": str(salary.id), "months": 2},
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert [m["available"] for m in body["months"]] == [None, None]
+        assert Decimal(str(body["months"][1]["activity"])) == Decimal("2500.00")
+
+    async def test_a_spending_categorys_available_is_still_served(self, db_session, api_client):
+        """The other side of the same fork: None is for the categories that
+        hold no money, never a blanket "we stopped answering"."""
+        budget, _, _, groceries, _ = await _setup(db_session, api_client)
+        await create_budget_assignment(db_session, budget, groceries, THIS, "200.00")
+        await db_session.commit()
+        r = await api_client.get(
+            f"/api/v1/{budget.id}/reports/category-history",
+            params={"category_id": str(groceries.id), "months": 1},
+        )
+        assert Decimal(str(r.json()["months"][0]["available"])) == Decimal("50.00")
+
     async def test_another_budgets_category_is_not_found(self, db_session, api_client):
         budget, *_ = await _setup(db_session, api_client)
         other = await create_budget(db_session, api_client.test_user, name="Other")

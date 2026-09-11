@@ -92,7 +92,12 @@ export function SpendingTreemapReport({ budgetId }: Props) {
         parent_name: item.parent_name,
         size: item.total,
         pct: item.pct,
-        fill: chartColor(colorIdx),
+        // The GROUP's slot, not the running counter. `colorIdx++` above
+        // post-increments, so a child read the NEXT group's colour — none of
+        // a group's tiles matched the group tile you had just clicked, two
+        // categories in one group could land on the same colour, and flat
+        // mode disagreed with grouped mode about all of it.
+        fill: chartColor(g.colorIdx),
       })
     }
     return map
