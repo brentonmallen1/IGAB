@@ -11,9 +11,16 @@
  * default: the tooltip renders exactly what the formatter returns, and it
  * hands over the series name so a mixed-unit chart can branch.
  */
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { render, renderHook, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ChartTooltip } from './ChartTooltip'
+import { RATE_SERIES, savingsRateTooltipWith } from './savingsRateView'
+import { useFormatters } from '../../../hooks/useFormatters'
+import { useAppStore } from '../../../stores/appStore'
+
+afterEach(() => {
+  useAppStore.setState({ privacyMode: false })
+})
 
 describe('ChartTooltip', () => {
   it('renders exactly what the formatter returns, adding no currency of its own', () => {
@@ -24,36 +31,45 @@ describe('ChartTooltip', () => {
         formatter={(v) => `-€${Math.abs(v).toFixed(2)}`}
       />
     )
-    // The old default would have drawn "$-1,200.00" here.
+    // A passed formatter always won, even over the old default; what this
+    // pins is that the tooltip adds no currency or sign of its own around it.
     expect(screen.getByText('-€1200.00')).toBeInTheDocument()
     expect(screen.queryByText(/\$/)).toBeNull()
   })
 
-  it('can be masked, which is what privacy mode needs', () => {
+  it('masks through the formatMoney the charts hand it, in privacy mode', () => {
+    // Not a literal mask echoed back: the charts pass useFormatters()'s
+    // formatMoney, so that is what this renders — with privacy mode on, the
+    // fund and the total must both come out masked.
+    useAppStore.setState({ privacyMode: true })
+    const { formatMoney } = renderHook(() => useFormatters()).result.current
     render(
       <ChartTooltip
         active
-        payload={[{ name: 'Fund', value: 412880.5 }]}
-        formatter={() => '$••••'}
+        showTotal
+        payload={[
+          { name: 'Fund', value: 412880.5 },
+          { name: 'Reserve', value: 1200 },
+        ]}
+        formatter={formatMoney}
       />
     )
-    expect(screen.getByText('$••••')).toBeInTheDocument()
-    expect(screen.queryByText(/412|880/)).toBeNull()
+    expect(screen.getAllByText('$••••')).toHaveLength(3)
+    expect(screen.queryByText(/412|880|1,?200|414/)).toBeNull()
   })
 
   it('passes the series name, so one tooltip can serve two units', () => {
-    // SavingsRateChart's real shape: money bars plus a percentage line. The
+    // SavingsRateChart's own formatter: money bars plus a percentage line. The
     // shared default rendered the rate 18.5 as "$18.50".
-    const formatter = (value: number, name: string) =>
-      name === 'Savings Rate' ? `${value.toFixed(1)}%` : `$${value.toFixed(2)}`
+    const { formatMoney } = renderHook(() => useFormatters()).result.current
     render(
       <ChartTooltip
         active
         payload={[
           { name: 'Saved', value: 900 },
-          { name: 'Savings Rate', value: 18.5 },
+          { name: RATE_SERIES, value: 18.5 },
         ]}
-        formatter={formatter}
+        formatter={savingsRateTooltipWith(formatMoney)}
       />
     )
     expect(screen.getByText('$900.00')).toBeInTheDocument()

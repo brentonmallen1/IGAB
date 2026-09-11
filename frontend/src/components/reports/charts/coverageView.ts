@@ -83,3 +83,14 @@ export function monthsToTarget(series: readonly CoveragePoint[]): number | null 
   if (pace <= 0) return null
   return Math.ceil(gap / pace)
 }
+
+/** The first chart's Y axis is months of runway, not money: its tooltip
+ * reads "3.4 months". The shared tooltip's old default rendered "$3.40". */
+export function monthsCovered(value: number): string {
+  return `${value.toFixed(1)} months`
+}
+
+/** The same axis's ticks: a bare count, labelled "months" beside it. */
+export function monthsTick(value: number): string {
+  return String(value)
+}

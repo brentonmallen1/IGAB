@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { carriedFlatFrom, coverageTrend, monthsToTarget, standing } from './coverageView'
+import {
+  carriedFlatFrom,
+  coverageTrend,
+  monthsCovered,
+  monthsTick,
+  monthsToTarget,
+  standing,
+} from './coverageView'
 import type { CoveragePoint } from '../../../types'
 
 const point = (over: Partial<CoveragePoint>): CoveragePoint => ({
@@ -150,5 +157,21 @@ describe('where the self-reported fund is carried flat from', () => {
 
   it('is null when no point counts a self-reported figure', () => {
     expect(carriedFlatFrom([point({ external_counted: false })])).toBeNull()
+  })
+})
+
+/** The first chart's axis is months of runway. Its tooltip formatter was
+ * module-private in the component and untested, so going back to
+ * `formatter={formatMoney}` — which read 3.4 months as "$3.40" — passed every
+ * check. */
+describe('monthsCovered', () => {
+  it('reads months, not money', () => {
+    expect(monthsCovered(3.4)).toBe('3.4 months')
+    expect(monthsCovered(6)).toBe('6.0 months')
+    expect(monthsCovered(3.4)).not.toContain('$')
+  })
+
+  it('ticks the axis with a bare count', () => {
+    expect(monthsTick(3)).toBe('3')
   })
 })
