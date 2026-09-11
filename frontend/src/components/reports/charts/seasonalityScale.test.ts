@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { abbreviateValue, buildCellMap, intensityPct, maxCellValue } from './seasonalityScale'
 import { PRIVACY_MASK } from '../../../utils/money'
+import { compactMoney } from '../../../utils/moneyAxis'
 
 const cells = [
   { category_id: 'c1', month: '2026-01-01', total: '120.5' },
@@ -44,13 +45,23 @@ describe('intensityPct', () => {
 })
 
 describe('abbreviateValue', () => {
-  it('renders thousands as k with one decimal', () => {
-    expect(abbreviateValue(1234)).toBe('1.2k')
-    expect(abbreviateValue(1000)).toBe('1.0k')
+  it("is the axes' compact money without the symbol", () => {
+    expect(abbreviateValue(1234, false)).toBe('1.2k')
+    expect(abbreviateValue(850.4, false)).toBe('850')
+    for (const v of [850.4, 1000, 1234, 12_345, 2_400_000]) {
+      expect(abbreviateValue(v, false)).toBe(compactMoney(v, ''))
+    }
   })
 
-  it('renders sub-thousand values as whole numbers', () => {
-    expect(abbreviateValue(850.4)).toBe('850')
+  it('rounds the way the axis beside it does', () => {
+    // Its own formatter said "1.0k" and "12.3k" where the axis said 1k, 12k.
+    expect(abbreviateValue(1000, false)).toBe('1k')
+    expect(abbreviateValue(12_345, false)).toBe('12k')
+  })
+
+  it('scales past a million instead of counting thousands forever', () => {
+    // It printed "2400.0k".
+    expect(abbreviateValue(2_400_000, false)).toBe('2.4M')
   })
 })
 
@@ -60,17 +71,13 @@ describe('abbreviateValue', () => {
  * amounts with privacy mode on — whose whole purpose is that "sign and digits
  * hidden, so overspending can't be inferred".
  *
- * `masked` is a parameter rather than a store read, so this module stays pure
- * and the branch is a one-line test.
+ * `masked` is a required parameter rather than a store read, so this module
+ * stays pure and the branch is a one-line test — and required, so a caller
+ * cannot print real amounts by leaving it out.
  */
 describe('abbreviateValue masks for privacy mode', () => {
   it('hides the digits when masked', () => {
     expect(abbreviateValue(4180, true)).toBe(PRIVACY_MASK)
     expect(abbreviateValue(4180, true)).not.toContain('4')
-  })
-
-  it('is unmasked by default, so no caller loses its label by accident', () => {
-    expect(abbreviateValue(4180)).toBe('4.2k')
-    expect(abbreviateValue(4180, false)).toBe('4.2k')
   })
 })
