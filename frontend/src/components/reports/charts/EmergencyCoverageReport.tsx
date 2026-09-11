@@ -147,15 +147,6 @@ export function EmergencyCoverageReport({ budgetId }: Props) {
                 }
                 accent={where === 'within' || where === 'above'}
                 warning={where === 'below'}
-                trend={
-                  trend
-                    ? trend.delta > 0
-                      ? 'up'
-                      : trend.delta < 0
-                        ? 'down'
-                        : 'neutral'
-                    : undefined
-                }
               />
               <MetricCard
                 label="Fund"

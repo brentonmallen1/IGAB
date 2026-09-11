@@ -49,7 +49,11 @@ class TopCategory(ApiModel):
 
 
 class DashboardMetrics(ApiModel):
-    to_be_assigned: Decimal = Decimal("0")
+    # `to_be_assigned` lived here, defaulted to zero and populated by no code
+    # path. The Overview's card reads the budget-month endpoint's own figure,
+    # which is the one the budget page uses — so this served a constant 0 that
+    # nothing read. A field that always lies is worse than an absent one,
+    # because the next reader will use it.
     net_worth: Decimal
     net_worth_prev: Decimal
     burn_rate_30: Decimal

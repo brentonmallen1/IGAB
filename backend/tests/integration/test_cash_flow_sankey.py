@@ -411,3 +411,51 @@ async def test_budgeted_mode_declines_to_split_rather_than_reporting_zero(api_cl
     assert body["total_spending"] is None
     assert body["total_savings"] is None
     assert body["total_debt_principal"] is None
+
+
+class TestTheNodesCanBeDrilled:
+    async def test_a_pseudo_category_carries_no_entity_id(self, db_session):
+        """`entity_id` used to carry the sentinel string for the Savings and
+        Debt Payments trunks and the Uncategorized bucket, and the client sends
+        it as a category id — `__uncategorized__` is not a UUID, so the
+        drill-down 400s. Cost of Living already learned this and drills its
+        Uncategorized bar by "no category" instead.
+        """
+        _svc, budget, checking, _grp, _groc, _gas = await _setup(db_session)
+        # An uncategorized outflow, which is what produces the bucket.
+        await create_transaction(db_session, budget, checking, "-80.00", TODAY)
+        await db_session.flush()
+
+        data = await ReportService(db_session).cash_flow_sankey(
+            budget.id, START, TODAY, mode="spent"
+        )
+
+        for node in data["nodes"]:
+            if node["id"].startswith("__") or "__" in node["id"]:
+                assert node["entity_id"] is None, node
+        # And every entity_id that IS served parses as a UUID.
+        for node in data["nodes"]:
+            if node.get("entity_id"):
+                uuid.UUID(str(node["entity_id"]))
+
+    async def test_an_income_row_with_no_payee_is_named_not_keyed(self, db_session):
+        """The node's key and its display name were derived twice, and the two
+        disagreed: the key fell back to `payee_name or "Unknown Income"` while
+        the lookup fell back to `payee_name` alone. An income row with no payee
+        matched nothing, so the `next(..., pid)` default shipped the internal
+        key — "inc_Unknown Income" — as the node's name, and into the CSV
+        export with it.
+        """
+        _svc, budget, checking, _grp, _groc, _gas = await _setup(db_session)
+        system = await create_category_group(db_session, budget, "Income", is_system=True)
+        salary = await create_category(db_session, budget, system, "Salary")
+        await create_transaction(db_session, budget, checking, "1200.00", TODAY, category=salary)
+        await db_session.flush()
+
+        data = await ReportService(db_session).cash_flow_sankey(
+            budget.id, START, TODAY, mode="spent"
+        )
+
+        names = [n["name"] for n in data["nodes"]]
+        assert "Unknown Income" in names
+        assert not any(n.startswith("inc_") for n in names), names

@@ -480,7 +480,14 @@ class ReportService:
         cats = {str(r.id): r for r in (await self.session.execute(cat_q)).all()}
 
         if not all_txns:
-            return _empty_dashboard()
+            # A budget with no transactions can still own things. This returned
+            # a flat zero, so a household that had stated a house value and
+            # entered its mortgage as an unmanaged liability read net worth 0
+            # — and `net_worth_history`, which counts both, disagreed with the
+            # card on a surface where the two are asserted to agree.
+            unmanaged_now, _ = await self._unmanaged_liabilities(budget_id)
+            asset_now, _ = await self._asset_values(budget_id)
+            return _empty_dashboard(net_worth=asset_now - unmanaged_now)
 
         df = pl.DataFrame(
             {
@@ -1303,23 +1310,25 @@ class ReportService:
 
         get_node("__budget__", "Budget", "budget")
 
-        # Income: payees -> budget
+        # Income: payees -> budget.
+        #
+        # The key and the display name are built in ONE pass. They used to be
+        # derived twice, and the two derivations disagreed: the key fell back
+        # to `payee_name or "Unknown Income"` while the lookup fell back to
+        # `payee_name` alone, so an income row with no payee at all matched
+        # nothing and the `next(..., pid)` default shipped the internal key —
+        # "inc_Unknown Income" — as the node's name, and into the CSV export
+        # with it.
         income_by_payee: dict[str, Decimal] = {}
+        income_names: dict[str, str] = {}
         for r in income_rows:
             pname = r.payee_name or "Unknown Income"
             pid = f"inc_{r.payee_id or pname}"
             income_by_payee[pid] = income_by_payee.get(pid, Decimal("0")) + r.amount
+            income_names[pid] = pname
 
         for pid, total in sorted(income_by_payee.items(), key=lambda x: -x[1])[:15]:
-            pname = next(
-                (
-                    r.payee_name or "Unknown"
-                    for r in income_rows
-                    if f"inc_{r.payee_id or r.payee_name}" == pid
-                ),
-                pid,
-            )
-            get_node(pid, pname, "income_payee")
+            get_node(pid, income_names[pid], "income_payee")
             links.append(
                 {
                     "source": pid,
@@ -1431,7 +1440,18 @@ class ReportService:
             # parsing it back out of the id sent a non-UUID to the API.
             node_id = f"c_{gid}_{cat_id}"
             group_to_cats.setdefault(gid, []).append(slot)
-            get_node(node_id, cat_names[slot], "category", entity_id=cat_id)
+            # `entity_id` is None for a pseudo-category — the Savings and
+            # Debt Payments trunks, and the Uncategorized bucket. It used to
+            # carry the sentinel string, which the client then sent as a
+            # category id: `__uncategorized__` is not a UUID, so the drill-down
+            # 400s. Cost of Living already learned this and drills its
+            # Uncategorized bar by "no category" instead.
+            get_node(
+                node_id,
+                cat_names[slot],
+                "category",
+                entity_id=None if cat_id.startswith("__") else cat_id,
+            )
             links.append(
                 {
                     "source": f"g_{gid}",
@@ -3629,15 +3649,20 @@ def _empty_savings_report(month_list: list[date]) -> dict:
 _DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 
-def _empty_dashboard() -> dict:
+def _empty_dashboard(net_worth: Decimal = Decimal("0")) -> dict:
     return {
-        "net_worth": Decimal("0"),
-        "net_worth_prev": Decimal("0"),
+        "net_worth": net_worth,
+        "net_worth_prev": net_worth,
         "burn_rate_30": Decimal("0"),
         "burn_rate_90": Decimal("0"),
         "essentials_monthly": None,
         "essentials_tagged": False,
-        "savings_rate": 0.0,
+        # None, not 0.0 — the live path and the schema both say None when no
+        # income is on record, for the reason `savings_rate`'s docstring gives:
+        # "no income recorded" and "saved nothing" are different facts. This
+        # path is the one a brand-new budget takes, so 0.0 here told every new
+        # household it had saved none of its income.
+        "savings_rate": None,
         "days_until_zero": None,
         "income_this_month": Decimal("0"),
         "expenses_this_month": Decimal("0"),
