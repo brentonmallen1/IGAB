@@ -22,7 +22,7 @@ import { ChartTooltip } from './ChartTooltip'
 import { chartColor, COLOR_OTHER } from './chartColors'
 import { useReportMonths } from '../../../stores/reportStore'
 import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
-import { otherIncome } from './incomeSourcesView'
+import { incomeSourceCount, otherIncome } from './incomeSourcesView'
 
 interface Props {
   budgetId: string
@@ -103,11 +103,22 @@ export function IncomeSourcesReport({ budgetId }: Props) {
           <MetricRow>
             <MetricCard label="Total income" value={formatMoney(data.total)} />
             <MetricCard label="Average / month" value={formatMoney(avg)} />
-            <MetricCard label="Sources" value={String(data.sources.length)} />
+            <MetricCard label="Sources" value={String(incomeSourceCount(data.sources))} />
           </MetricRow>
           <div className="report-chart" style={{ height: chartHeight }}>
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+              <BarChart
+                data={chartData}
+                margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                // A payee's month can be negative — a reconciliation
+                // adjustment filed to Ready to Assign is income by class. With
+                // recharts' default offset ("none") that segment is drawn
+                // downwards from the top of the one below it, painting over it
+                // and leaving the bar's top at the month's gross rather than
+                // its net. "sign" puts negative segments below the axis, where
+                // they read as what they are.
+                stackOffset="sign"
+              >
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
                 <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
                 <YAxis
