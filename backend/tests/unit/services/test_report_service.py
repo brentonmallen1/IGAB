@@ -12,7 +12,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from igab.services.report_service import ReportService, _subtract_months
+from igab.domain.dates import add_months
+from igab.services.report_service import ReportService
 from tests.report_clock import report_today
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -145,7 +146,7 @@ class TestIncomeVsExpense:
     async def test_buckets_by_month(self):
         today = date.today()
         first = today.replace(day=1)
-        last_month = _subtract_months(first, 1)
+        last_month = add_months(first, -1)
 
         svc = ReportService(
             make_session(
@@ -343,7 +344,7 @@ class TestCumulativeVariance:
         # Use real current dates to avoid patching the date class (which breaks isinstance).
         today = date.today()
         first = today.replace(day=1)
-        m1 = _subtract_months(first, 1)  # last month
+        m1 = add_months(first, -1)  # last month
         m2 = first  # current month
 
         assigns = [
@@ -368,7 +369,7 @@ class TestCumulativeVariance:
     async def test_months_with_no_data_count_as_zero(self):
         today = date.today()
         first = today.replace(day=1)
-        m1 = _subtract_months(first, 1)
+        m1 = add_months(first, -1)
         m2 = first
 
         assigns = [row(month=m1, assigned=D("400.00"))]

@@ -12,6 +12,7 @@ import pytest
 
 from igab.domain.dates import (
     add_months,
+    clamped_month_end,
     complete_month_window,
     complete_months,
     month_end,
@@ -19,6 +20,7 @@ from igab.domain.dates import (
     month_starts,
     months_between,
     months_spanned,
+    report_months,
     trailing_start,
     weekday_occurrences,
 )
@@ -91,7 +93,7 @@ class TestMonthBuckets:
         assert month_end(date(2024, 1, 1)) == date(2024, 1, 31)
 
     def test_bucket_shift_keeps_day_one(self):
-        # The composition report_service._subtract_months is built from.
+        # The composition `report_months` is built from.
         assert add_months(month_start(date(2024, 3, 31)), -2) == date(2024, 1, 1)
 
 
@@ -265,3 +267,52 @@ class TestMonthStarts:
 
     def test_empty_when_start_after_end(self):
         assert month_starts(date(2024, 5, 1), date(2024, 4, 30)) == []
+
+
+class TestReportMonths:
+    """A series axis: exactly N buckets, the newest one the running month."""
+
+    def test_twelve_is_twelve(self):
+        # Savings and Subscriptions each drew thirteen: subtract twelve, then
+        # include the current month as well.
+        axis = report_months(date(2026, 9, 11), 12)
+        assert len(axis) == 12
+        assert axis[0] == date(2025, 10, 1)
+        assert axis[-1] == date(2026, 9, 1)
+
+    def test_one_is_the_running_month(self):
+        assert report_months(date(2026, 9, 30), 1) == [date(2026, 9, 1)]
+
+    def test_crosses_a_year_oldest_first(self):
+        assert report_months(date(2024, 2, 29), 4) == [
+            date(2023, 11, 1),
+            date(2023, 12, 1),
+            date(2024, 1, 1),
+            date(2024, 2, 1),
+        ]
+
+    def test_differs_from_the_averaging_window_by_the_running_month(self):
+        # The two windows a report can read, side by side: the same length,
+        # one month apart. A series draws "now"; an average leaves it out.
+        today = date(2026, 9, 11)
+        averaged = month_starts(*complete_month_window(today, 12))
+        assert len(averaged) == len(report_months(today, 12))
+        assert report_months(today, 12)[:-1] == averaged[1:]
+
+    def test_matches_the_bounds_a_query_would_use(self):
+        # The axis and a query over `month_starts(first, today)` agree, which
+        # is the drift `month_starts`' docstring warns about.
+        today = date(2026, 1, 31)
+        axis = report_months(today, 6)
+        assert month_starts(axis[0], today) == axis
+
+
+class TestClampedMonthEnd:
+    def test_a_past_month_ends_on_its_last_day(self):
+        assert clamped_month_end(date(2026, 2, 1), date(2026, 9, 11)) == date(2026, 2, 28)
+
+    def test_the_running_month_ends_today(self):
+        assert clamped_month_end(date(2026, 9, 1), date(2026, 9, 11)) == date(2026, 9, 11)
+
+    def test_on_the_last_day_both_agree(self):
+        assert clamped_month_end(date(2026, 9, 1), date(2026, 9, 30)) == date(2026, 9, 30)

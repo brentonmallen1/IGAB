@@ -24,6 +24,7 @@ from igab.domain.carryover import (
 # Aliased: `month_start` is also a local variable throughout this module
 # (`month_start = first_of_month(month)`), and one name meaning two things
 # is how the shadowing bug in report_service started.
+from igab.domain.dates import complete_month_window, month_starts
 from igab.domain.dates import month_end as _month_end
 from igab.domain.dates import month_start as _month_start
 from igab.domain.exceptions import InvariantViolation
@@ -49,21 +50,6 @@ if TYPE_CHECKING:
     from igab.domain.card_timeline import Breach as TimelineBreach
     from igab.domain.card_timeline import CardMonth as TimelineMonth
     from igab.repositories.budget_move_repo import BudgetMoveRepository
-
-
-def _prev_month(d: date) -> date:
-    if d.month == 1:
-        return date(d.year - 1, 12, 1)
-    return date(d.year, d.month - 1, 1)
-
-
-def _months_back(d: date, n: int) -> list[date]:
-    months = []
-    cur = _prev_month(d)
-    for _ in range(n):
-        months.append(cur)
-        cur = _prev_month(cur)
-    return months
 
 
 def first_of_month(d: date) -> date:
@@ -1455,7 +1441,9 @@ class BudgetService:
             self.category_repo.session, Category, category_id, budget_id, "Category"
         )
         month_start = first_of_month(current_month)
-        past_months = _months_back(month_start, lookback)
+        # The `lookback` complete months before this one, newest first — the
+        # window every per-month average reads.
+        past_months = month_starts(*complete_month_window(month_start, lookback))[::-1]
 
         assignments = await self.assignment_repo.get_for_category(category_id)
         assigned_by_month = {a.month: a.assigned for a in assignments}

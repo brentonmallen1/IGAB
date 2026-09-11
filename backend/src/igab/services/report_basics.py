@@ -30,7 +30,7 @@ from igab.domain.activity_class import (
     apply_class_joins,
     basis_is_chosen,
 )
-from igab.domain.dates import add_months, complete_month_window, month_starts
+from igab.domain.dates import complete_month_window, month_starts
 from igab.domain.money import quantize_cents
 from igab.repositories.txn_filters import (
     LEAF,
@@ -42,17 +42,6 @@ from igab.repositories.txn_filters import (
 
 if TYPE_CHECKING:
     from igab.services.report_service import ReportService
-
-
-def _subtract_months(d: date, months: int) -> date:
-    """The start of the month `months` before `d`'s.
-
-    Discarding the day is deliberate — every caller here is keying a month
-    bucket. `add_months` is the one that preserves it.
-    """
-    # `replace(day=1)` rather than domain.dates.month_start: `month_start` is
-    # a loop variable throughout this module and importing the name shadows it.
-    return add_months(d.replace(day=1), -months)
 
 
 async def spending_trends(

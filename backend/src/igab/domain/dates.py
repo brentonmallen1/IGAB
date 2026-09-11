@@ -78,6 +78,36 @@ def month_starts(start: date, end: date) -> list[date]:
     return months
 
 
+def report_months(today: date, months: int) -> list[date]:
+    """The `months` month buckets ending with `today`'s month, oldest first:
+    the axis of a report that draws a SERIES — net worth, burn rate, plan
+    discipline, a category's history — whose newest point is "now".
+
+    Not `complete_month_window`, which is for a per-month AVERAGE and so
+    leaves the running month out. A series draws it, clamped to today
+    (`clamped_month_end`). Which window a report reads is its choice; the
+    arithmetic is here.
+
+    Exactly `months` buckets. The rule was spelled at a dozen call sites, and
+    two drifted to `months + 1` — subtract the count, then include the current
+    month too — so Savings and Subscriptions drew a thirteenth, empty column on
+    the default twelve and divided their averages by it.
+    """
+    current = month_start(today)
+    return [add_months(current, -i) for i in range(months - 1, -1, -1)]
+
+
+def clamped_month_end(month: date, today: date) -> date:
+    """The last day of `month`'s month, or `today` if that comes first.
+
+    A series point stands for everything through its month's end, and the
+    current month's end is a future date: summing through it counted rows
+    dated after today as "now", and read a month-to-date figure under a label
+    promising a trailing thirty days.
+    """
+    return min(month_end(month), today)
+
+
 def complete_months(months: Sequence[date], today: date) -> list[date]:
     """The month buckets in `months` that have finished.
 

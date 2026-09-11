@@ -88,7 +88,7 @@ from igab.dependencies import (
     get_tag_repo,
 )
 from igab.domain.activity_class import SPENDING_WITH_SAVINGS_CLASSES, ActivityClass
-from igab.domain.dates import add_months
+from igab.domain.dates import report_months
 from igab.repositories.budget_filter_repo import BudgetFilterRepository
 from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.tag_repo import TagRepository
@@ -576,8 +576,7 @@ async def category_history_report(
     category = await category_repo.get(category_id)
     if category is None or category.budget_id != budget_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
-    today = date.today()
-    month_list = [add_months(today.replace(day=1), -i) for i in range(months - 1, -1, -1)]
+    month_list = report_months(date.today(), months)
     # One assembly for the whole span, not one call per month — and
     # `in_system_group` comes off the row rather than being re-derived here
     # from the group repository.

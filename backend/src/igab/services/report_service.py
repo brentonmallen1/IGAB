@@ -43,9 +43,11 @@ from igab.domain.activity_class import (
 from igab.domain.concentration import items_to_share
 from igab.domain.dates import (
     add_months,
+    clamped_month_end,
     complete_month_window,
     month_starts,
     months_spanned,
+    report_months,
     trailing_start,
 )
 from igab.domain.dates import month_end as _month_end
@@ -84,7 +86,6 @@ from igab.repositories.txn_filters import (
     reapplied_by_subscriptions,
 )
 from igab.services.report_basics import (
-    _subtract_months,
     class_excluded_note,
     emergency_fund,
 )
@@ -672,8 +673,7 @@ class ReportService:
         """Net worth at each of the last `months` month ends, the newest being
         today. An empty register needs no branch of its own: stated assets and
         unmanaged debts still stand on every point."""
-        first_of_month = date.today().replace(day=1)
-        grid = [_subtract_months(first_of_month, i) for i in range(months - 1, -1, -1)]
+        grid = report_months(date.today(), months)
         sheets = await self._balance_sheets(budget_id, [_month_end(m) for m in grid])
         return [{"date": month, **sheet} for month, sheet in zip(grid, sheets, strict=True)]
 
@@ -718,8 +718,9 @@ class ReportService:
         months: int = 12,
     ) -> list[dict]:
         today = date.today()
-        first_of_month = today.replace(day=1)
-        start = _subtract_months(first_of_month, months - 1 + 3)  # extra months for rolling
+        grid = report_months(today, months)
+        # Back far enough for the oldest point's ninety days, and no further.
+        start = trailing_start(clamped_month_end(grid[0], today), 90)
 
         q = select(Transaction.date, Transaction.amount).where(
             Transaction.budget_id == budget_id,
@@ -744,14 +745,10 @@ class ReportService:
         txns = (await self.session.execute(q)).all()
 
         results = []
-        for i in range(months - 1, -1, -1):
-            month_start = _subtract_months(first_of_month, i)
-            # Clamped to today. `_month_end` of the CURRENT month is a future
-            # date, so the newest point summed a window running weeks past
-            # today: it was month-to-date wearing a "30-day" label, and it
-            # contradicted the Overview's "30-Day Burn Rate" — which is a
-            # genuine trailing thirty days — every day of the month.
-            month_end = min(_month_end(month_start), today)
+        for month_start in grid:
+            # Clamped: the newest point is a genuine trailing thirty days, the
+            # Overview's "30-Day Burn Rate", not month-to-date under its label.
+            month_end = clamped_month_end(month_start, today)
 
             # Thirty days INCLUSIVE of month_end (`trailing_start`). A rolling
             # window deliberately does not tile the calendar: over a 31-day
@@ -1346,9 +1343,7 @@ class ReportService:
         budget_id: uuid.UUID,
         months: int = 12,
     ) -> list[dict]:
-        today = date.today()
-        first_of_month = today.replace(day=1)
-        months_list = [_subtract_months(first_of_month, i) for i in range(months - 1, -1, -1)]
+        months_list = report_months(date.today(), months)
 
         assign_q = (
             select(BudgetAssignment.month, BudgetAssignment.assigned)
@@ -1439,9 +1434,7 @@ class ReportService:
         Guide's chronic-overspend check, so saving could be reported as a bad
         habit.
         """
-        today = date.today()
-        first_of_month = today.replace(day=1)
-        months_list = [_subtract_months(first_of_month, i) for i in range(months - 1, -1, -1)]
+        months_list = report_months(date.today(), months)
 
         assign_q = (
             select(
@@ -2386,14 +2379,9 @@ class ReportService:
         chart, not a shorter chart.
         """
         today = date.today()
-        first = today.replace(day=1)
-        by_month = await self._monthly_class_totals(
-            budget_id, _subtract_months(first, months - 1), today
-        )
-        return [
-            (month, by_month.get(month, {}))
-            for month in (_subtract_months(first, i) for i in range(months - 1, -1, -1))
-        ]
+        axis = report_months(today, months)
+        by_month = await self._monthly_class_totals(budget_id, axis[0], today)
+        return [(month, by_month.get(month, {})) for month in axis]
 
     async def _view_arrangement(self, budget_id: uuid.UUID, view_id: uuid.UUID):
         """Return `category_id -> (group_id, group_name)` for one view, or None
@@ -2536,15 +2524,9 @@ class ReportService:
         # [] beside the window) and one dropped the drains this path keeps.
 
         # Date range
-        today = date.today()
-        end_date = today
-        # months - 1: `month_starts` is inclusive of both ends, so
-        # subtracting `months` produced months + 1 buckets and "All time (18
-        # months)" drew 19 columns with an empty leader — which also divided
-        # the average inflow by 19. `available_range` exists to stop a report
-        # offering a window it cannot fill.
-        start_date = _subtract_months(today, months - 1).replace(day=1)
-        month_list = month_starts(start_date, end_date)
+        end_date = date.today()
+        month_list = report_months(end_date, months)
+        start_date = month_list[0]
 
         # What pulled from savings: moves out of every tagged envelope in the
         # window, a since-deleted one included (the move happened), named on
@@ -2780,9 +2762,16 @@ class ReportService:
         window: int = 14,
         months: int = 12,
     ) -> dict:
-        """Compute average daily spending for N days after income events."""
+        """Compute average daily spending for N days after income events.
+
+        The window is the last `months` complete months PLUS the running
+        month's days so far — a deliberate difference from the per-month
+        averages, which leave the running month out. Every figure here is per
+        DAY or per payday, over days that happened, so a partial month cannot
+        drag it down; dropping it would only hide the newest paydays.
+        """
         end_date = date.today()
-        start_date = _subtract_months(end_date, months)
+        start_date, _ = complete_month_window(end_date, months)
 
         # All cash-flow rows in the period. CASH_FLOW_ROW keeps transfers out:
         # a transfer into checking is not a payday, and the outflow leg of a
