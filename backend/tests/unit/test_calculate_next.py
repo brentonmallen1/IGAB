@@ -5,7 +5,7 @@ cases exercise the pure function directly, with the row-shaped wrapper
 covered once at the bottom.
 """
 
-from datetime import date
+from datetime import date, timedelta
 from unittest.mock import MagicMock
 
 import pytest
@@ -282,8 +282,14 @@ class TestObservedIntervalDays:
         assert observed_interval_days(date(2026, 8, 1), date(2026, 8, 1), 1) == 30
 
     def test_two_charges_on_one_day_do_not_project_daily(self):
-        # Without the floor this divides to 0 days and steps forever.
+        # No span at all, so this says no more than one charge: monthly is
+        # assumed. It never reaches the floor below.
         assert observed_interval_days(date(2026, 8, 1), date(2026, 8, 1), 2) == 30
+
+    def test_charges_bunched_inside_a_week_are_floored_to_weekly(self):
+        # Three charges over one day: 1 / 2 rounds to 0. Without the floor,
+        # stepping by 0 days never passes the horizon and the projection hangs.
+        assert observed_interval_days(date(2026, 8, 1), date(2026, 8, 2), 3) == 7
 
     def test_a_very_long_gap_is_bounded(self):
         assert observed_interval_days(date(2020, 1, 1), date(2026, 1, 1), 2) == 400
@@ -402,6 +408,24 @@ class TestSubscriptionOccurrences:
             subscription_occurrences(date(2025, 7, 1), date(2025, 8, 1), 2, self.TODAY, self.END)
             == []
         )
+
+    # The boundary itself: missing two cycles is cancelled, missing them by a
+    # day more is. Only a thirteen-cycle gap was pinned, so any threshold from
+    # two cycles to twelve passed — and a subscription cancelled three months
+    # ago would have gone on being projected. Weekly and 40-day cadences step
+    # by days; 30 steps a calendar month.
+    @pytest.mark.parametrize("interval", [7, 30, 40])
+    def test_a_last_charge_exactly_two_cycles_back_is_still_projected(self, interval):
+        last = self.TODAY - timedelta(days=2 * interval)
+        first = last - timedelta(days=interval)
+        out = subscription_occurrences(first, last, 2, self.TODAY, self.END)
+        assert out and min(out) >= self.TODAY
+
+    @pytest.mark.parametrize("interval", [7, 30, 40])
+    def test_a_day_past_two_cycles_is_cancelled(self, interval):
+        last = self.TODAY - timedelta(days=2 * interval + 1)
+        first = last - timedelta(days=interval)
+        assert subscription_occurrences(first, last, 2, self.TODAY, self.END) == []
 
     def test_an_annual_subscription_projects_at_most_once(self):
         # Charged each November: one charge inside the horizon, not twelve.

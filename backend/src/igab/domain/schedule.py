@@ -209,8 +209,10 @@ def validate_schedule(
 #: One charge says nothing about cadence, so it is assumed monthly: the tag is
 #: "Subscription" and monthly is what that overwhelmingly means.
 ASSUMED_INTERVAL_DAYS = 30
-#: A payee charged twice on one day would otherwise divide by zero days and
-#: project daily forever.
+#: Charges bunched closer than this — three over two days, a retry after a
+#: decline — would otherwise round to a 0-day interval, and stepping by zero
+#: days never reaches the end of the horizon: the projection hangs. (Charges
+#: all on one day never get here; they have no span and read as one charge.)
 MIN_INTERVAL_DAYS = 7
 MAX_INTERVAL_DAYS = 400
 
