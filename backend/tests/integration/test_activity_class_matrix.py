@@ -151,6 +151,26 @@ CASES = [
     ("to a tracked debt, categorized", "checking", "-275.00", "groceries", "loan", DEBT),
     ("to a tracked debt, uncategorized", "checking", "-275.00", None, "loan", DEBT),
     ("between two on-budget accounts", "checking", "-300.00", None, "on_budget_savings", INTERNAL),
+    # Categorized, the same leg falls past every transfer rule to the spending
+    # default — and a long-term-expense tag no longer catches it first. Pinned
+    # in report figures by test_activity_class.py's
+    # TestACategorizedOnBudgetLegIsSpending.
+    (
+        "between two on-budget accounts, categorized",
+        "checking",
+        "-300.00",
+        "groceries",
+        "on_budget_savings",
+        SPENDING,
+    ),
+    (
+        "between two on-budget accounts, from a sinking fund",
+        "checking",
+        "-195.00",
+        "sinking",
+        "on_budget_savings",
+        SPENDING,
+    ),
     ("to an on-budget credit card", "checking", "-200.00", None, "credit", INTERNAL),
     # ─ activity inside tracked accounts ──────────────────────────────────
     ("dividend on a brokerage", "brokerage", "125.00", None, None, RETURN),
