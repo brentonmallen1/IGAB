@@ -804,6 +804,7 @@ describe('AnomaliesReport list', () => {
             baseline_mean: '100',
             z_score: 10,
             direction: 'high',
+            partial_month: false,
             history: ['0', '0', '0', '0', '0', '100', '100', '100', '100', '100', '100', '300'],
           },
         ],
@@ -834,6 +835,7 @@ describe('AnomaliesReport list', () => {
               baseline_mean: '100',
               z_score: 10,
               direction: 'high',
+              partial_month: true,
               history: ['100', '100', '100', '300'],
             },
           ],
@@ -851,6 +853,38 @@ describe('AnomaliesReport list', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('says a month still in progress is not finished, and a complete one is', () => {
+    // The month in progress is scored against the complete months and only
+    // ever flagged HIGH (backend report_stats.anomaly_rows). Its figure is
+    // month-to-date, so the heading has to say so — unlabelled, a 1,200
+    // grocery month reads as a closed month's total.
+    const row = {
+      category_id: 'c1',
+      category_name: 'Groceries',
+      group_name: 'Everyday',
+      actual: '1200',
+      baseline_mean: '400',
+      z_score: 40,
+      direction: 'high',
+      history: ['400', '400', '1200'],
+    }
+    setQuery({
+      data: {
+        anomalies: [
+          { ...row, month: '2026-09-01', partial_month: true },
+          { ...row, category_id: 'c2', month: '2026-08-01', partial_month: false },
+        ],
+      },
+    })
+    renderReport(<AnomaliesReport budgetId="b1" />)
+
+    const labels = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)
+    expect(labels).toEqual([
+      expect.stringContaining('so far this month'),
+      expect.not.stringContaining('so far this month'),
+    ])
   })
 })
 

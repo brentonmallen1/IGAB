@@ -1269,6 +1269,12 @@ export interface AnomalyItem {
   baseline_mean: number
   z_score: number
   direction: 'high' | 'low'
+  /** True when `month` is the month still in progress, so `actual` is a
+   *  month-to-date figure — backend `services/report_stats.anomaly_rows`,
+   *  which also says why those rows are always `direction: 'high'`. Never
+   *  recompute it here from `month` and the clock: which month the report
+   *  calls "in progress" is the server's, and it is what scored the row. */
+  partial_month: boolean
   history: number[]
 }
 

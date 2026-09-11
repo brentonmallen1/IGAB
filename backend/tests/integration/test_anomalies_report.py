@@ -6,6 +6,8 @@ Pins the detection contract:
 - Guard rails pin intentional silences: std < 5 (flat baselines never flag,
   even for huge spikes) and |actual − mean| < 25 (small-dollar wobble).
 - System category groups are invisible to the detector.
+- Baselines are made of COMPLETE months only; the month in progress is scored
+  against them but flags only HIGH (`report_stats.anomaly_rows`).
 - Known limitation, documented: months with zero spending produce no row,
   so they are absent from the baseline rather than counted as 0.
 """
@@ -58,13 +60,11 @@ async def _setup(db_session):
 
 
 def newest_scorable() -> date:
-    """The most recent month the report will score: the last COMPLETE one.
+    """The newest COMPLETE month: the last one scored in either direction.
 
-    The current month used to be scored as a full observation against a
-    baseline of complete ones, so on the 2nd of every month every established
-    category looked anomalously LOW. A partial month is not a small month, and
-    the report now leaves it out — so the newest month a test can place an
-    anomaly in is last month.
+    The month in progress is scored too, but only a HIGH verdict on it
+    survives — `report_stats.anomaly_rows` says why. A test that wants a LOW
+    flag, or a baseline month, puts it here.
     """
     return months_ago(1)
 
@@ -146,6 +146,7 @@ async def test_spike_flags_with_exact_leave_one_out_zscore(db_session):
     assert a["baseline_mean"] == Decimal("100.00")
     assert a["z_score"] == pytest.approx(10.0)  # (300 - 100) / 20
     assert a["direction"] == "high"
+    assert a["partial_month"] is False
     expected_history = [Decimal("0.00")] * 5 + [
         Decimal("80.00"),
         Decimal("120.00"),
@@ -242,22 +243,11 @@ async def test_fewer_than_six_category_months_never_flags(db_session):
     assert data["anomalies"] == []
 
 
-async def test_the_partial_current_month_is_not_scored(db_session):
-    """A partial month is not a small month.
-
-    The current month used to be scored as a full observation against a
-    baseline of complete ones, so on the 2nd of every month every established
-    category read anomalously LOW — a household spending 400 on groceries was
-    told its grocery spending had collapsed, every month, for most of the
-    month.
-    """
-    budget, checking, group = await _setup(db_session)
-    groceries = await create_category(db_session, budget, group, "Groceries")
-    # Six complete months around 400. Varied on purpose: the report skips any
-    # baseline whose standard deviation is under 5, so a perfectly flat history
-    # would make this test pass whatever the window did. The spread is kept
-    # small enough that no complete month clears the 25.00 deviation guard
-    # either, so the only candidate anomaly is the partial month.
+async def _baseline_around_400(db_session, budget, checking, groceries):
+    """Six complete months averaging 400. Varied on purpose: a perfectly flat
+    history falls under the std < 5 guard and would pass whatever the window
+    did, while the spread is small enough that no complete month clears the
+    25.00 deviation guard — so the month in progress is the only candidate."""
     await _spend_series(
         db_session,
         budget,
@@ -265,6 +255,20 @@ async def test_the_partial_current_month_is_not_scored(db_session):
         groceries,
         {5: "380.00", 4: "420.00", 3: "390.00", 2: "410.00", 1: "400.00", 0: "400.00"},
     )
+
+
+async def test_the_month_in_progress_is_never_flagged_low(db_session):
+    """A partial month is not a small month.
+
+    The month in progress used to be scored as a full observation against a
+    baseline of complete ones, so on the 2nd of every month every established
+    category read anomalously LOW — a household spending 400 on groceries was
+    told its grocery spending had collapsed, every month, for most of the
+    month. It is still scored, but only a HIGH verdict on it survives.
+    """
+    budget, checking, group = await _setup(db_session)
+    groceries = await create_category(db_session, budget, group, "Groceries")
+    await _baseline_around_400(db_session, budget, checking, groceries)
     await create_transaction(
         db_session, budget, checking, "-12.00", months_ago(0), category=groceries
     )
@@ -272,4 +276,27 @@ async def test_the_partial_current_month_is_not_scored(db_session):
     data = await ReportService(db_session).anomalies_report(budget.id, months=12)
 
     assert data["anomalies"] == []
-    assert all(a["month"] != months_ago(0) for a in data["anomalies"])
+
+
+async def test_a_spike_in_the_month_in_progress_flags_and_says_it_is_partial(db_session):
+    """Waiting for the month to close hid a 3x grocery month for up to 31 days.
+
+    Spending only accumulates, so a partial month cannot fake a HIGH: the
+    spike is real the day it happens, and the row says the month is not over.
+    """
+    budget, checking, group = await _setup(db_session)
+    groceries = await create_category(db_session, budget, group, "Groceries")
+    await _baseline_around_400(db_session, budget, checking, groceries)
+    await create_transaction(
+        db_session, budget, checking, "-1200.00", months_ago(0), category=groceries
+    )
+
+    data = await ReportService(db_session).anomalies_report(budget.id, months=12)
+
+    assert len(data["anomalies"]) == 1
+    a = data["anomalies"][0]
+    assert a["month"] == months_ago(0)
+    assert a["actual"] == Decimal("1200.00")
+    assert a["baseline_mean"] == Decimal("400.00")
+    assert a["direction"] == "high"
+    assert a["partial_month"] is True

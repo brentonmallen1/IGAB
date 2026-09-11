@@ -732,6 +732,11 @@ class AnomalyItem(ApiModel):
     baseline_mean: Decimal
     z_score: float
     direction: str  # 'high' or 'low'
+    #: True when `month` is the month still in progress, whose figure is
+    #: month-to-date. Required, not optional: a path that forgets it would
+    #: present an unfinished month as a closed one. Such rows are always
+    #: `direction == 'high'` — `report_stats.anomaly_rows` says why.
+    partial_month: bool
     history: list[Decimal]  # trailing 12 months for sparkline
 
 

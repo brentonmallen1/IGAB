@@ -17,12 +17,14 @@ import uuid
 from collections.abc import Sequence
 from datetime import date
 from decimal import Decimal
-from typing import Any
+from typing import Any, TypedDict
 
 import polars as pl
 
 from igab.domain.activity_class import class_label
 from igab.domain.amortize import spread_forward
+from igab.domain.dates import month_start
+from igab.domain.money import quantize_cents
 
 
 def _amortized(filled: pl.DataFrame) -> pl.DataFrame:
@@ -130,6 +132,112 @@ def volatility_stats(rows, month_grid: list[date], *, amortize: bool = False) ->
         }
         for row in stats.iter_rows(named=True)
     ]
+
+
+#: A baseline this flat is noise, not a pattern: a category that spends the
+#: same amount every month would make any deviation an infinite z-score.
+ANOMALY_MIN_STD = 5.0
+#: Below this, a "300% spike" is a few pounds and nobody wants to hear it.
+ANOMALY_MIN_DEVIATION = 25.0
+#: Months of history a category needs before it is scored at all, and the
+#: smallest baseline any single month may be scored against (one fewer,
+#: because a complete month is left out of its own baseline).
+ANOMALY_MIN_MONTHS = 6
+ANOMALY_MIN_BASELINE = 5
+
+
+class AnomalyRow(TypedDict):
+    category_id: str
+    category_name: str
+    group_name: str
+    month: date
+    actual: Decimal
+    baseline_mean: Decimal
+    z_score: float
+    direction: str
+    #: True for the month still in progress — see `anomaly_rows`. Required,
+    #: never optional: a row that forgot it would read as a closed month.
+    partial_month: bool
+    history: list[Decimal]
+
+
+def anomaly_rows(
+    rows: Sequence[tuple[str, str, str, date, Decimal]],
+    *,
+    today: date,
+    threshold: float,
+) -> list[AnomalyRow]:
+    """Category-months whose spending sits `threshold` standard deviations off
+    that category's baseline, worst first.
+
+    `rows` are `(category_id, category_name, group_name, month, signed_total)`,
+    one per category-month, outflows negative; magnitudes are what is scored.
+
+    **Every baseline is made of COMPLETE months only.** The month in progress
+    is never in one, and never leaves one out either: scored as a full
+    observation against complete neighbours it made every established category
+    read anomalously LOW on the 2nd of every month — a household spending 400
+    a month on groceries was told its grocery spending had collapsed, every
+    month, for most of the month. A partial month is not a small month.
+
+    **Deliberate divergence: a complete month flags in either direction, the
+    month in progress only HIGH.** Spending accumulates, so a month that is not
+    over can only understate itself — a LOW verdict on it is the calendar
+    talking, not the household. It cannot understate its way *past* the
+    baseline, though, so a spike is real the day it happens, and dropping the
+    running month entirely hid a 3x grocery month for up to 31 days. Those rows
+    carry `partial_month=True`, and every other row carries `False`, so a
+    reader is told which figure is still being written.
+    """
+    running = month_start(today)
+    series: dict[str, list[tuple[date, float]]] = {}
+    names: dict[str, tuple[str, str]] = {}
+    for category_id, category_name, group_name, month, total in rows:
+        series.setdefault(category_id, []).append((month, abs(float(total))))
+        names[category_id] = (category_name, group_name)
+
+    anomalies: list[AnomalyRow] = []
+    for category_id, months in series.items():
+        months.sort()
+        month_list = [m for m, _ in months]
+        totals = [t for _, t in months]
+        if sum(1 for m in month_list if m < running) < ANOMALY_MIN_MONTHS:
+            continue
+        category_name, group_name = names[category_id]
+
+        for i, (month, actual) in enumerate(months):
+            baseline = [t for j, t in enumerate(totals) if j != i and month_list[j] < running]
+            if len(baseline) < ANOMALY_MIN_BASELINE:
+                continue
+            mean = sum(baseline) / len(baseline)
+            std = (sum((x - mean) ** 2 for x in baseline) / len(baseline)) ** 0.5
+            if std < ANOMALY_MIN_STD or abs(actual - mean) < ANOMALY_MIN_DEVIATION:
+                continue
+
+            z_score = (actual - mean) / std
+            partial = month >= running
+            if abs(z_score) < threshold or (partial and z_score < 0):
+                continue
+
+            history = totals[max(0, i - 11) : i + 1]
+            history = [0.0] * (12 - len(history)) + history
+            anomalies.append(
+                {
+                    "category_id": category_id,
+                    "category_name": category_name,
+                    "group_name": group_name,
+                    "month": month,
+                    "actual": quantize_cents(Decimal(str(actual))),
+                    "baseline_mean": quantize_cents(Decimal(str(mean))),
+                    "z_score": round(z_score, 2),
+                    "direction": "high" if z_score > 0 else "low",
+                    "partial_month": partial,
+                    "history": [quantize_cents(Decimal(str(h))) for h in history],
+                }
+            )
+
+    anomalies.sort(key=lambda x: abs(x["z_score"]), reverse=True)
+    return anomalies
 
 
 def timeline_rows(rows, parent_classes: dict) -> list[dict]:

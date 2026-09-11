@@ -12,7 +12,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from igab.services.report_stats import balance_sheet, volatility_stats
+from igab.services.report_stats import anomaly_rows, balance_sheet, volatility_stats
 
 
 class Row:
@@ -310,3 +310,77 @@ class TestBalanceSheet:
     def test_an_account_with_no_rows_at_all_is_absent(self):
         got = balance_sheet([self.account("Unused")], {}, 0, Decimal("0"), Decimal("0"))
         assert got["accounts"] == [] and got["net_worth"] == Decimal("0")
+
+
+class TestAnomalyRows:
+    """Which months are scored, and which verdicts survive.
+
+    Every figure is written by hand. The baseline alternates 380/420, so its
+    mean is 400 and its population standard deviation is exactly 20 — a spike
+    of 1,200 is 40 sigma, and that is checkable on paper. Today is 2026-07-15,
+    so July is the month in progress and June the newest complete one.
+    """
+
+    BASELINE = ["380", "420", "380", "420", "380", "420"]
+
+    def month_back(self, n: int) -> date:
+        month, year = 7 - n, 2026
+        while month <= 0:
+            month, year = month + 12, year - 1
+        return date(year, month, 1)
+
+    def rows(self, complete: list[str], running: str | None = None):
+        """One `(category_id, name, group, month, signed_total)` per month:
+        `complete` ends with June 2026, `running` lands in July."""
+        out = [
+            ("c1", "Groceries", "Everyday", self.month_back(len(complete) - i), Decimal(f"-{a}"))
+            for i, a in enumerate(complete)
+        ]
+        if running is not None:
+            out.append(("c1", "Groceries", "Everyday", date(2026, 7, 1), Decimal(f"-{running}")))
+        return out
+
+    def score(self, rows, threshold: float = 2.0):
+        return anomaly_rows(rows, today=date(2026, 7, 15), threshold=threshold)
+
+    def test_a_spike_in_the_month_in_progress_flags_the_day_it_happens(self):
+        got = self.score(self.rows(self.BASELINE, running="1200"))
+
+        assert len(got) == 1
+        assert got[0]["month"] == date(2026, 7, 1)
+        assert got[0]["actual"] == Decimal("1200.00")
+        assert got[0]["baseline_mean"] == Decimal("400.00")
+        assert got[0]["z_score"] == pytest.approx(40.0)  # (1200 - 400) / 20
+        assert got[0]["direction"] == "high"
+        assert got[0]["partial_month"] is True
+
+    def test_the_month_in_progress_is_never_flagged_low(self):
+        """Spending accumulates, so a month that is not over can only
+        understate itself: 12.00 by the 15th is the calendar talking, not a
+        collapse. Scored as a full observation it is -19.4 sigma, well past
+        every threshold the report offers."""
+        assert self.score(self.rows(self.BASELINE, running="12")) == []
+
+    def test_a_complete_month_still_flags_low(self):
+        got = self.score(self.rows(["180", "220", "180", "220", "180", "220", "40"]))
+
+        assert len(got) == 1
+        assert got[0]["month"] == date(2026, 6, 1)
+        assert got[0]["z_score"] == pytest.approx(-8.0)  # (40 - 200) / 20
+        assert got[0]["direction"] == "low"
+        assert got[0]["partial_month"] is False
+
+    def test_the_month_in_progress_is_in_no_other_months_baseline(self):
+        """June's 1,200 is 40 sigma off the six months before it. Let July's
+        5.00 into that baseline and the mean falls to 343.57 while the spread
+        triples, so June would read about 6 sigma instead."""
+        got = self.score(self.rows([*self.BASELINE, "1200"], running="5"))
+
+        assert len(got) == 1
+        assert got[0]["month"] == date(2026, 6, 1)
+        assert got[0]["baseline_mean"] == Decimal("400.00")
+        assert got[0]["z_score"] == pytest.approx(40.0)
+        assert got[0]["partial_month"] is False
+
+    def test_the_month_in_progress_needs_six_complete_months_like_any_other(self):
+        assert self.score(self.rows(["380", "420", "380", "420", "380"], running="1200")) == []

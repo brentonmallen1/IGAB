@@ -93,6 +93,7 @@ from igab.services.report_basics import (
     emergency_fund,
 )
 from igab.services.report_stats import (
+    anomaly_rows,
     balance_sheet,
     payee_breakdown,
     timeline_rows,
@@ -140,18 +141,6 @@ class SavingsCategory(TypedDict):
     current_balance: Decimal
     target_balance: Decimal | None
     total_inflow: Decimal
-
-
-class AnomalyRow(TypedDict):
-    category_id: str
-    category_name: str
-    group_name: str
-    month: date
-    actual: Decimal
-    baseline_mean: Decimal
-    z_score: float
-    direction: str
-    history: list[Decimal]
 
 
 #: The smallest inflow that counts as a payday.
@@ -2606,14 +2595,14 @@ class ReportService:
     ) -> dict:
         """Detect category-months with spending outside baseline z-score.
 
-        **Complete months only.** The current month was scored as a full
-        observation against a baseline of complete ones, so on the 2nd of every
-        month every established category looked anomalously LOW — a household
-        that spends £400 on groceries a month was told its grocery spending had
-        collapsed, every month, for most of the month. A partial month is not a
-        small month.
+        Complete months make every baseline, and the month in progress is
+        scored against them but flagged only when it is HIGH — the rule, and
+        why it diverges, live at `report_stats.anomaly_rows`. The window
+        therefore runs from the complete-month start through TODAY, not
+        through last month's end.
         """
-        start_date, end_date = await self._complete_window(budget_id, months)
+        start_date, _ = await self._complete_window(budget_id, months)
+        today = date.today()
 
         # Get spending per category per month
         month_col = func.date_trunc(literal_column("'month'"), Transaction.date).label("month")
@@ -2630,7 +2619,7 @@ class ReportService:
             .where(
                 Transaction.budget_id == budget_id,
                 Transaction.date >= start_date,
-                Transaction.date <= end_date,
+                Transaction.date <= today,
                 SPENDING_ROW,
             )
             .group_by(
@@ -2642,77 +2631,20 @@ class ReportService:
         )
         rows = (await self.session.execute(q)).all()
 
-        if not rows:
-            return {"anomalies": []}
-
-        # Build DataFrame
-        df = pl.DataFrame(
-            {
-                "category_id": [str(r.category_id) for r in rows],
-                "category_name": [r.category_name for r in rows],
-                "group_name": [r.group_name for r in rows],
-                "month": [r.month.date() if hasattr(r.month, "date") else r.month for r in rows],
-                "total": [abs(float(r.total)) for r in rows],
-            }
+        anomalies = anomaly_rows(
+            [
+                (
+                    str(r.category_id),
+                    r.category_name,
+                    r.group_name,
+                    r.month.date() if hasattr(r.month, "date") else r.month,
+                    r.total,
+                )
+                for r in rows
+            ],
+            today=today,
+            threshold=threshold,
         )
-
-        anomalies: list[AnomalyRow] = []
-
-        # Group by category and compute z-scores
-        for cat_id in df["category_id"].unique().to_list():
-            cat_df = df.filter(pl.col("category_id") == cat_id).sort("month")
-
-            if len(cat_df) < 6:
-                continue
-
-            cat_name = cat_df["category_name"][0]
-            group_name = cat_df["group_name"][0]
-            months_data = cat_df["month"].to_list()
-            totals = cat_df["total"].to_list()
-
-            # For each month, compute leave-one-out z-score
-            for i, (month, actual) in enumerate(zip(months_data, totals)):
-                # Leave-one-out: exclude current month
-                others = [t for j, t in enumerate(totals) if j != i]
-                if len(others) < 5:
-                    continue
-
-                mean = sum(others) / len(others)
-                variance = sum((x - mean) ** 2 for x in others) / len(others)
-                std = variance**0.5
-
-                # Guard rails
-                if std < 5.0:
-                    continue
-                if abs(actual - mean) < 25.0:
-                    continue
-
-                z_score = (actual - mean) / std if std > 0 else 0
-
-                if abs(z_score) >= threshold:
-                    # Get trailing 12 months for sparkline
-                    history = totals[max(0, i - 11) : i + 1]
-                    # Pad to 12 if needed
-                    while len(history) < 12:
-                        history.insert(0, 0)
-
-                    anomalies.append(
-                        {
-                            "category_id": cat_id,
-                            "category_name": cat_name,
-                            "group_name": group_name,
-                            "month": month,
-                            "actual": quantize_cents(Decimal(str(actual))),
-                            "baseline_mean": quantize_cents(Decimal(str(mean))),
-                            "z_score": round(z_score, 2),
-                            "direction": "high" if z_score > 0 else "low",
-                            "history": [quantize_cents(Decimal(str(h))) for h in history],
-                        }
-                    )
-
-        # Sort by z-score magnitude descending
-        anomalies.sort(key=lambda x: abs(x["z_score"]), reverse=True)
-
         return {"anomalies": anomalies}
 
     # ─── Payday Effect ─────────────────────────────────────────────────────────
