@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from igab.services.report_service import ReportService, _subtract_months
+from tests.report_clock import report_today
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -659,44 +660,65 @@ class TestBurnRate:
     # label — and it contradicted the Overview's "30-Day Burn Rate", a genuine
     # trailing thirty days, every day of the month. Anchored on today the
     # window is stable and the label is true.
+    #
+    # The service clock is pinned. These read the real `date.today()`, and
+    # near a month's end the old `_last_day` window covered the same rows as
+    # the trailing one — so a revert passed on the 26th-30th of a 30-day month
+    # and the future-reaching window could ship on those days. Each case runs
+    # mid-month and on the day before a month ends; never ON a last day, where
+    # "tomorrow" is next month and both windows miss it.
 
-    async def test_rolling_30_sums_the_last_30_days(self):
-        today = date.today()
+    @pytest.fixture(params=[date(2026, 9, 10), date(2026, 9, 29), date(2026, 2, 27)], ids=str)
+    def today(self, request):
+        with report_today(request.param) as today:
+            yield today
+
+    async def _newest(self, rows) -> dict:
+        svc = ReportService(make_session(mock_result(rows)))
+        return (await svc.burn_rate(BUDGET, months=1))[-1]
+
+    async def test_rolling_30_sums_the_last_30_days(self, today):
         rows = [
             row(date=today - timedelta(days=25), amount=D("-200.00")),
             row(date=today - timedelta(days=3), amount=D("-300.00")),
         ]
-        svc = ReportService(make_session(mock_result(rows)))
-        result = await svc.burn_rate(BUDGET, months=1)
+        assert (await self._newest(rows))["rolling_30"] == D("500.0")
 
-        cur = result[0]
-        assert cur["rolling_30"] == D("500.0")
-
-    async def test_the_newest_window_does_not_reach_past_today(self):
-        """A row dated tomorrow is not money that has been burned."""
-        today = date.today()
+    async def test_the_30_day_window_is_today_and_the_29_days_before(self, today):
+        """Day 30 counting today as day 1 is in; day 31 is out."""
         rows = [
-            row(date=today - timedelta(days=2), amount=D("-100.00")),
-            row(date=today + timedelta(days=5), amount=D("-900.00")),
+            row(date=today - timedelta(days=30), amount=D("-700.00")),
+            row(date=today - timedelta(days=29), amount=D("-200.00")),
+            row(date=today, amount=D("-300.00")),
         ]
-        svc = ReportService(make_session(mock_result(rows)))
-        result = await svc.burn_rate(BUDGET, months=1)
+        assert (await self._newest(rows))["rolling_30"] == D("500.0")
 
-        assert result[0]["rolling_30"] == D("100.0")
+    async def test_the_newest_window_does_not_reach_past_today(self, today):
+        """A row dated tomorrow is not money that has been burned."""
+        rows = [
+            row(date=today - timedelta(days=2), amount=D("-300.00")),
+            row(date=today + timedelta(days=1), amount=D("-900.00")),
+        ]
+        newest = await self._newest(rows)
+        assert newest["rolling_30"] == D("300.0")
+        assert newest["rolling_90"] == D("100.0")
 
-    async def test_rolling_90_is_divided_by_3(self):
-        today = date.today()
+    async def test_rolling_90_is_divided_by_3(self, today):
         # 900 total inside the 90-day window → monthly equivalent = 300
         rows = [
             row(date=today - timedelta(days=85), amount=D("-300.00")),
             row(date=today - timedelta(days=50), amount=D("-300.00")),
             row(date=today - timedelta(days=10), amount=D("-300.00")),
         ]
-        svc = ReportService(make_session(mock_result(rows)))
-        result = await svc.burn_rate(BUDGET, months=1)
-
-        cur = result[0]
+        cur = await self._newest(rows)
         assert cur["rolling_90"] == pytest.approx(D("300.0"), rel=D("0.01"))
+
+    async def test_the_90_day_window_is_today_and_the_89_days_before(self, today):
+        rows = [
+            row(date=today - timedelta(days=90), amount=D("-300.00")),
+            row(date=today - timedelta(days=89), amount=D("-900.00")),
+        ]
+        assert (await self._newest(rows))["rolling_90"] == D("300.0")
 
 
 # ─── net_worth_history ────────────────────────────────────────────────────────
