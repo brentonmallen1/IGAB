@@ -223,16 +223,45 @@ class TestViewArrangement:
     async def test_a_view_that_hides_everything_still_explains_itself(self, db_session):
         """The report the user actually hit: a sparse view + hide_unassigned
         left one category standing. Taken to the limit — nothing standing —
-        the empty result must carry the reason, or it reads as data loss."""
+        the empty result must carry the reason, or it reads as data loss.
+
+        The view has a group with nothing placed in it, which is what makes
+        `hide_unassigned` bite. It used to reach the same limit with a view
+        that had NO groups, and that case is now deliberately exempt: a view
+        with no groups puts every category in Unassigned, so honouring
+        `hide_unassigned` there empties the report entirely. The budget page's
+        `viewGrouping` has carried that guard since it hit the same wall, and
+        the server did not — so one view drew a populated grid and a blank
+        report. See `test_a_view_with_no_groups_is_not_an_empty_report`.
+        """
         budget, c = await _world(db_session)
         repo = BudgetViewRepository(db_session)
         view = await repo.create(budget_id=budget.id, name="Void", hide_unassigned=True)
+        await repo.set_groups(view.id, ["Need"])
         items, total, notes = await ReportService(db_session).spending_grouped(
             budget.id, START, TODAY, view_id=view.id
         )
         assert items == []
         assert total == Decimal("0")
         assert notes["view_hidden"] == {"categories": 3, "total": Decimal("1500.00")}
+
+    async def test_a_view_with_no_groups_is_not_an_empty_report(self, db_session):
+        """`hide_unassigned` on a view with no groups would hide everything,
+        because every category is unassigned when there is nowhere to assign
+        it. The editor refuses the combination going forward, but views saved
+        before it did — or emptied of groups later — must still show something.
+
+        The budget page has always read it that way. The report did not, so the
+        same view drew a populated grid and a blank chart.
+        """
+        budget, c = await _world(db_session)
+        repo = BudgetViewRepository(db_session)
+        view = await repo.create(budget_id=budget.id, name="Groupless", hide_unassigned=True)
+        items, total, _notes = await ReportService(db_session).spending_grouped(
+            budget.id, START, TODAY, view_id=view.id
+        )
+        assert total == Decimal("1500.00")
+        assert items != []
 
     async def test_an_unknown_view_falls_back_to_the_default_groups(self, db_session):
         """A stale id in a persisted report filter must not empty the report."""

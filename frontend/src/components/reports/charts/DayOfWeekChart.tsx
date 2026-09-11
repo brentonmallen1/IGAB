@@ -82,6 +82,9 @@ export function DayPatternsReport({ budgetId }: Props) {
       scope: 'leaf',
       direction: 'outflow',
       dayOfWeek,
+      // The classes the bar counted. Without them the panel filtered to
+      // nothing and totalled more than the bar that opened it.
+      activityClasses: data?.counted_classes,
       ...drillScope(reportScope),
       startDate: filters.startDate,
       endDate: filters.endDate,

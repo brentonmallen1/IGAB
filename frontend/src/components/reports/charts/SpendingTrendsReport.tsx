@@ -25,6 +25,7 @@ import { chartColor } from './chartColors'
 import { rollupTrends } from './spendingTrends'
 import { useReportScope } from '../../../stores/reportStore'
 import { useMoneyAxis } from './useMoneyAxis'
+import { ReportNotes } from '../ReportNotes'
 
 interface Props {
   budgetId: string
@@ -132,21 +133,11 @@ export function SpendingTrendsReport({ budgetId }: Props) {
         </div>
       </div>
 
-      {data.filter_unavailable && (
-        <p className="report-note">That saved filter no longer exists; showing everything.</p>
-      )}
-      {data.class_excluded.length > 0 && !includeSavings && (
-        <p className="report-note">
-          Left out of this scope:{' '}
-          {data.class_excluded
-            .map(
-              (c) =>
-                `${c.label} ${formatMoney(c.total)} in ${c.categories} categor${c.categories === 1 ? 'y' : 'ies'}`
-            )
-            .join('; ')}
-          .
-        </p>
-      )}
+      {/* `ReportNotes`, not a fourth inline copy of the same sentence. This
+          chart had its own wording for the class-excluded note and its own
+          — inverted — wording for the missing-filter one, which said "showing
+          everything" while the server shows nothing. */}
+      <ReportNotes report={data} toggleAvailable={!includeSavings} />
 
       {rolled.length === 0 ? (
         <div className="reports-empty">

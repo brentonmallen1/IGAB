@@ -374,3 +374,67 @@ class TestTheDrillDownListingHonoursTheSameScope:
         )
         assert resp.status_code == 200, resp.text
         assert resp.json()["total_count"] == 0
+
+
+class TestMalformedIdsAreRefused:
+    """`_parse_uuids` mapped a malformed id onto the "no scope" sentinel.
+
+    `None` means "no scope was asked for", so one bad character in a category,
+    tag, account or payee id silently WIDENED the report to the whole budget —
+    which `report_scope.py`'s own docstring calls out as the worse surprise:
+    "a stale id resolving to nothing would silently WIDEN the report to the
+    whole budget, which looks like data appearing rather than a filter going
+    missing." It guarded `filter_id` against exactly this and left the id lists
+    unguarded beside it. The sibling parser in `transactions.py` had raised a
+    400 all along; there is one parser now.
+    """
+
+    @pytest.mark.parametrize("param", ["category_ids", "tag_ids", "account_ids"])
+    async def test_a_malformed_id_is_a_400_not_a_wider_report(self, db_session, api_client, param):
+        budget, *_ = await _make_world(db_session, api_client.test_user)
+        resp = await api_client.get(
+            f"/api/v1/{budget.id}/reports/spending-grouped?{param}=not-a-uuid"
+        )
+        assert resp.status_code == 400, resp.text
+        assert "Malformed id" in resp.text
+
+    async def test_one_bad_id_among_good_ones_is_still_refused(self, db_session, api_client):
+        budget, groceries, *_ = await _make_world(db_session, api_client.test_user)
+        resp = await api_client.get(
+            f"/api/v1/{budget.id}/reports/spending-grouped?category_ids={groceries.id},oops"
+        )
+        assert resp.status_code == 400, resp.text
+
+
+class TestParameterBounds:
+    """`threshold`, `window`, `days` and the two `limit`s carried no `Query()`,
+    so `limit=-1` was a 500 on one endpoint and a silently wrong 200 on the
+    other, and `window`/`days` were unbounded allocations — `days=100000` asks
+    the projection for a hundred thousand daily buckets across five hundred
+    simulations.
+    """
+
+    @pytest.mark.parametrize(
+        ("path", "param", "value"),
+        [
+            ("payee-analysis", "limit", "-1"),
+            ("payee-analysis", "limit", "100000"),
+            ("large-transactions", "limit", "0"),
+            ("anomalies", "threshold", "0"),
+            ("anomalies", "threshold", "500"),
+            ("payday-effect", "window", "0"),
+            ("payday-effect", "window", "9999"),
+            ("cash-projection", "days", "0"),
+            ("cash-projection", "days", "100000"),
+        ],
+    )
+    async def test_an_absurd_value_is_refused(self, db_session, api_client, path, param, value):
+        budget, *_ = await _make_world(db_session, api_client.test_user)
+        resp = await api_client.get(f"/api/v1/{budget.id}/reports/{path}?{param}={value}")
+        assert resp.status_code == 422, f"{path}?{param}={value} -> {resp.status_code}"
+
+    async def test_the_defaults_still_work(self, db_session, api_client):
+        budget, *_ = await _make_world(db_session, api_client.test_user)
+        for path in ("anomalies", "payday-effect", "cash-projection"):
+            resp = await api_client.get(f"/api/v1/{budget.id}/reports/{path}")
+            assert resp.status_code == 200, f"{path}: {resp.text}"
