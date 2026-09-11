@@ -25,7 +25,7 @@ import { chartColor } from './chartColors'
 import { monthWiderByLabel, rollupTrends } from './spendingTrends'
 import { useReportScope } from '../../../stores/reportStore'
 import { useMoneyAxis } from './useMoneyAxis'
-import { ReportNotes } from '../ReportNotes'
+import { ReportNotes, IncludeSavingsToggle } from '../ReportNotes'
 
 interface Props {
   budgetId: string
@@ -114,14 +114,7 @@ export function SpendingTrendsReport({ budgetId }: Props) {
           >
             Lines
           </button>
-          <label className="report-toggle">
-            <input
-              type="checkbox"
-              checked={includeSavings}
-              onChange={(e) => setIncludeSavings(e.target.checked)}
-            />
-            Include savings &amp; debt payments
-          </label>
+          <IncludeSavingsToggle checked={includeSavings} onChange={setIncludeSavings} />
         </div>
         <div style={{ marginLeft: 'auto' }}>
           <ReportExportButton

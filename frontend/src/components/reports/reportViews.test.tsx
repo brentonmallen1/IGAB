@@ -56,6 +56,8 @@ import { SavingsReport } from './charts/SavingsReport'
 import { SavingsRateReport } from './charts/SavingsRateChart'
 import { SeasonalityReport } from './charts/SeasonalityHeatmap'
 import { SpendingTreemapReport } from './charts/SpendingTreemap'
+import { SpendingBreakdownReport } from './charts/SpendingBreakdownReport'
+import { SpendingTrendsReport } from './charts/SpendingTrendsReport'
 import { SubscriptionsReport } from './charts/SubscriptionsReport'
 import { VarianceReport } from './charts/VarianceChart'
 import { VolatilityReport } from './charts/VolatilityChart'
@@ -78,6 +80,8 @@ const ALL_REPORTS: [string, ComponentType<{ budgetId: string }>][] = [
   ['Volatility', VolatilityReport],
   ['Pareto', ParetoReport],
   ['SpendingTreemap', SpendingTreemapReport],
+  ['SpendingBreakdown', SpendingBreakdownReport],
+  ['SpendingTrends', SpendingTrendsReport],
   ['Seasonality', SeasonalityReport],
   ['Subscriptions', SubscriptionsReport],
   ['Anomalies', AnomaliesReport],
@@ -147,6 +151,14 @@ describe.each(ALL_REPORTS)('%s report', (_name, Report) => {
   })
 })
 
+/** The spending charts that take a view, and so can be told what it hid.
+ *  Spending Trends takes no view. */
+const VIEW_CHARTS = [
+  ['Pareto', ParetoReport],
+  ['Treemap', SpendingTreemapReport],
+  ['Breakdown', SpendingBreakdownReport],
+] as const
+
 describe('view-hidden note on the spending charts', () => {
   const hiddenData = {
     groups: [
@@ -165,28 +177,19 @@ describe('view-hidden note on the spending charts', () => {
     view_hidden_total: 14820.45,
   }
 
-  it.each([
-    ['Pareto', ParetoReport],
-    ['Treemap', SpendingTreemapReport],
-  ] as const)('%s states what the view hid', (_name, Report) => {
+  it.each(VIEW_CHARTS)('%s states what the view hid', (_name, Report) => {
     setQuery({ data: hiddenData })
     renderReport(<Report budgetId="b1" />)
     expect(screen.getByText(/This view hides 31 categories/)).toBeInTheDocument()
   })
 
-  it.each([
-    ['Pareto', ParetoReport],
-    ['Treemap', SpendingTreemapReport],
-  ] as const)('%s stays quiet when nothing was hidden', (_name, Report) => {
+  it.each(VIEW_CHARTS)('%s stays quiet when nothing was hidden', (_name, Report) => {
     setQuery({ data: { ...hiddenData, view_hidden_categories: 0, view_hidden_total: '0' } })
     renderReport(<Report budgetId="b1" />)
     expect(screen.queryByText(/This view hides/)).not.toBeInTheDocument()
   })
 
-  it.each([
-    ['Pareto', ParetoReport],
-    ['Treemap', SpendingTreemapReport],
-  ] as const)(
+  it.each(VIEW_CHARTS)(
     '%s explains an all-hidden empty state instead of claiming no data',
     (_name, Report) => {
       setQuery({
@@ -201,7 +204,13 @@ describe('view-hidden note on the spending charts', () => {
   )
 })
 
+/** Every spending chart with the "Include savings & debt payments" toggle. */
+const TOGGLE_CHARTS = [...VIEW_CHARTS, ['Trends', SpendingTrendsReport]] as const
+
 describe('class-excluded note on the spending charts', () => {
+  // One payload in both shapes — the grouped rollup (Pareto, Treemap,
+  // Breakdown) and the monthly series (Trends) — since every hook in this
+  // suite serves the same data.
   const dataWithExcluded = {
     groups: [
       {
@@ -214,6 +223,18 @@ describe('class-excluded note on the spending charts', () => {
         pct: 100,
       },
     ],
+    months: ['2026-08-01'],
+    series: [
+      {
+        id: 'c1',
+        name: 'Dining Out',
+        group_id: 'g1',
+        group_name: 'Bills',
+        monthly: [205],
+        total: 205,
+      },
+    ],
+    monthly_totals: [205],
     total: 205,
     view_hidden_categories: 0,
     view_hidden_total: '0',
@@ -221,28 +242,40 @@ describe('class-excluded note on the spending charts', () => {
       { activity_class: 'debt_principal', label: 'Debt payment', categories: 1, total: 275.0 },
       { activity_class: 'savings', label: 'Savings', categories: 2, total: 101.0 },
     ],
+    filter_unavailable: false,
   }
 
-  it.each([
-    ['Pareto', ParetoReport],
-    ['Treemap', SpendingTreemapReport],
-  ] as const)('%s says what a selection excluded and how to add it back', (_name, Report) => {
-    setQuery({ data: dataWithExcluded })
-    renderReport(<Report budgetId="b1" />)
-    expect(screen.getByText(/Not counted as spending here:/)).toBeInTheDocument()
-    expect(screen.getByText(/debt payments \(1 category\)/)).toBeInTheDocument()
-    // "Savings" must not pluralise into "savingss".
-    expect(screen.getByText(/of savings \(2 categories\)/)).toBeInTheDocument()
-    expect(screen.getByText(/Include savings & debt payments” to add it/)).toBeInTheDocument()
-  })
+  it.each(TOGGLE_CHARTS)(
+    '%s says what a selection excluded and how to add it back',
+    (_name, Report) => {
+      setQuery({ data: dataWithExcluded })
+      renderReport(<Report budgetId="b1" />)
+      expect(screen.getByText(/Not counted as spending here:/)).toBeInTheDocument()
+      expect(screen.getByText(/debt payments \(1 category\)/)).toBeInTheDocument()
+      // "Savings" must not pluralise into "savingss".
+      expect(screen.getByText(/of savings \(2 categories\)/)).toBeInTheDocument()
+      // Breakdown drew the toggle yet told the note it had none, so the
+      // remedy never showed beside the checkbox that performs it.
+      expect(screen.getByText(/Include savings & debt payments” to add it/)).toBeInTheDocument()
+    }
+  )
 
-  it.each([
-    ['Pareto', ParetoReport],
-    ['Treemap', SpendingTreemapReport],
-  ] as const)('%s stays quiet when nothing was class-excluded', (_name, Report) => {
+  it.each(TOGGLE_CHARTS)('%s stays quiet when nothing was class-excluded', (_name, Report) => {
     setQuery({ data: { ...dataWithExcluded, class_excluded: [] } })
     renderReport(<Report budgetId="b1" />)
     expect(screen.queryByText(/Not counted as spending here/)).not.toBeInTheDocument()
+  })
+
+  it.each(TOGGLE_CHARTS)('%s draws the shared toggle, not a copy of it', (_name, Report) => {
+    // Breakdown and Trends kept inline checkboxes beside the shared one, and
+    // the copies had already lost its explanation.
+    setQuery({ data: dataWithExcluded })
+    renderReport(<Report budgetId="b1" />)
+    const label = screen.getByRole('checkbox', { name: 'Include savings & debt payments' })
+    expect(label.nextElementSibling).toHaveAttribute(
+      'title',
+      expect.stringMatching(/isn.t spending/)
+    )
   })
 })
 

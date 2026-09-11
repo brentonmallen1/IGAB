@@ -12,7 +12,7 @@ import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ChartTooltip } from './ChartTooltip'
 import { chartColor } from './chartColors'
 import { useReportScope } from '../../../stores/reportStore'
-import { ReportNotes } from '../ReportNotes'
+import { ReportNotes, IncludeSavingsToggle, emptySpendingMessage } from '../ReportNotes'
 import { shareOfTotal } from '../drillDownTotals'
 
 /** A slice's share, or a dash where there is no positive total to share. */
@@ -85,14 +85,7 @@ export function SpendingBreakdownReport({ budgetId }: Props) {
               ← All groups
             </button>
           )}
-          <label className="report-toggle">
-            <input
-              type="checkbox"
-              checked={includeSavings}
-              onChange={(e) => setIncludeSavings(e.target.checked)}
-            />
-            Include savings &amp; debt payments
-          </label>
+          <IncludeSavingsToggle checked={includeSavings} onChange={setIncludeSavings} />
         </div>
         <div style={{ marginLeft: 'auto' }}>
           <ReportExportButton
@@ -113,12 +106,15 @@ export function SpendingBreakdownReport({ budgetId }: Props) {
       {/* `ReportNotes` owns all three caveats. This chart re-implemented the
           view-hidden sentence, never rendered the served `class_excluded` note
           at all, and had nothing for a missing saved filter — so money the
-          report deliberately left out simply went missing from the screen. */}
-      <ReportNotes report={data} toggleAvailable={false} />
+          report deliberately left out simply went missing from the screen.
+          The toggle is in this chart's header, so the note may point at it:
+          passing false here dropped the remedy while the checkbox sat above. */}
+      <ReportNotes report={data} toggleAvailable={!includeSavings} />
 
       {slices.length === 0 ? (
         <div className="reports-empty">
-          <p>Nothing spent in this window.</p>
+          {/* A view that hid everything is not "nothing spent". */}
+          <p>{emptySpendingMessage(data.view_hidden_categories)}</p>
         </div>
       ) : (
         <div ref={captureRef} className="report-capture">
