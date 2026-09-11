@@ -213,8 +213,10 @@ async def test_the_demo_actually_shows_a_gap(db_session):
     budget, _ = await _world(db_session, "full")
     report = await cost_of_living(db_session, budget.id, months=12)
 
+    # A gap the page can compose: the wide tier reaches past the lean one.
+    # (`necessityView.nonEssentialSpend` subtracts them, and floors at zero —
+    # so "wide > lean" is the demo's requirement, said as itself.)
     assert report["avg_monthly_cost_of_living"] > report["avg_monthly_essentials"]
-    assert report["avg_monthly_non_essential"] > Decimal("0")
 
     # The gap is nameable, not just non-zero: the wide tier must reach groups
     # the lean one does not.

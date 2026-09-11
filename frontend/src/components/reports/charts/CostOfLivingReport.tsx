@@ -15,7 +15,7 @@ import { ChartLegend } from './ChartLegend'
 import { ChartTooltip } from './ChartTooltip'
 import { ReportRangeSelect } from './rangeSelect'
 import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
-import { necessityReading, sheddableShare } from './necessityView'
+import { necessityReading, necessityShare, nonEssentialSpend } from './necessityView'
 import { averagedOver } from './averagedOver'
 
 interface Props {
@@ -53,8 +53,15 @@ export function CostOfLivingReport({ budgetId }: Props) {
   if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
   if (!data) return null
 
-  const reading = necessityReading(data.required_ratio, data.essentials_ratio)
-  const sheddable = sheddableShare(data.avg_monthly_cost_of_living, data.avg_monthly_non_essential)
+  // Composed from the three served averages, not served: see `necessityView`.
+  const nonEssential = nonEssentialSpend(
+    data.avg_monthly_cost_of_living,
+    data.avg_monthly_essentials
+  )
+  const requiredRatio = necessityShare(data.avg_monthly_cost_of_living, data.avg_monthly_income)
+  const essentialsRatio = necessityShare(data.avg_monthly_essentials, data.avg_monthly_income)
+  const reading = necessityReading(requiredRatio, essentialsRatio)
+  const sheddable = necessityShare(nonEssential, data.avg_monthly_cost_of_living)
   // The window is complete months only, and the card says how many — the
   // difference between a figure a reader can check and one that just looks
   // low at the start of a month.
@@ -192,9 +199,9 @@ export function CostOfLivingReport({ budgetId }: Props) {
                 car; this is an inventory, and the note below says so. */}
             <MetricCard
               label="Non-essential"
-              value={formatMoneyOrDash(data.avg_monthly_non_essential)}
+              value={formatMoneyOrDash(nonEssential)}
               sub={
-                data.avg_monthly_non_essential === null
+                nonEssential === null
                   ? 'needs Essentials tagged'
                   : sheddable === null
                     ? 'nothing committed yet'
@@ -210,8 +217,8 @@ export function CostOfLivingReport({ budgetId }: Props) {
               label="Required"
               // Null is "we have no income on record", which is not 0% and
               // not 100% — saying either would be inventing a ratio.
-              value={data.required_ratio === null ? '—' : `${Math.round(data.required_ratio)}%`}
-              sub={data.required_ratio === null ? 'no income on record' : 'of take-home'}
+              value={requiredRatio === null ? '—' : `${Math.round(requiredRatio)}%`}
+              sub={requiredRatio === null ? 'no income on record' : 'of take-home'}
             />
           </MetricRow>
 

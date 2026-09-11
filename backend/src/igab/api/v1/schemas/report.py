@@ -921,18 +921,12 @@ class CostOfLivingResponse(ApiModel):
     #: None when nothing is tagged Essential (`basis_is_chosen`): all spending
     #: is not what a household could not cut, so the figure is unknown.
     avg_monthly_essentials: Decimal | None
-    #: Cost of living less essentials: what a lean month could shed. None
-    #: whenever essentials is.
-    avg_monthly_non_essential: Decimal | None
     avg_monthly_income: Decimal
-    #: Share of take-home already spoken for, against the WIDE tier. None when
-    #: the averaged months carry no income: a ratio against zero is unknown,
-    #: not 100%. Divides the same complete-month figures as the cards, so it is
-    #: the quotient of avg_monthly_cost_of_living and avg_monthly_income.
-    required_ratio: Decimal | None
-    #: The lean tier against take-home, over the same complete months. Above
-    #: 100 the household cannot cover what it could not cut.
-    essentials_ratio: Decimal | None
+    #: The gap between the tiers (cost of living less essentials) and the two
+    #: ratios against take-home are NOT served. They are arithmetic on the
+    #: three averages above, which the client already has and no backend path
+    #: reads, so they are composed once in `necessityView.ts` beside the
+    #: sheddable share of the same shape — the boundary rule.
     #: 'bound' | 'tag' | 'all' — how "essential" was decided.
     basis: str
     #: False when no category is tagged Essential or Cost of living (basis

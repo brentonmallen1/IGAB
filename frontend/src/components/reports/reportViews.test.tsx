@@ -1228,12 +1228,11 @@ describe('CostOfLivingReport tiers', () => {
         category_ids: ['c2'],
       },
     ],
+    // The page composes the gap (900 - 700) and both ratios (900/1200 and
+    // 700/1200) from these three: `necessityView`, not the server.
     avg_monthly_cost_of_living: 900,
     avg_monthly_essentials: 700,
-    avg_monthly_non_essential: 200,
     avg_monthly_income: 1200,
-    required_ratio: 75,
-    essentials_ratio: 58.33,
     basis: 'tag' as const,
     tagged: true,
     class_excluded: [],
@@ -1288,7 +1287,14 @@ describe('CostOfLivingReport tiers', () => {
 
   it('says a household cannot cover its essentials, when it cannot', () => {
     setQuery({
-      data: { ...tiered, required_ratio: 130, essentials_ratio: 108 },
+      // 1,560 committed and 1,296 of it essential, out of 1,200 taken home:
+      // Required 130%, essentials 108%.
+      data: {
+        ...tiered,
+        avg_monthly_cost_of_living: 1560,
+        avg_monthly_essentials: 1296,
+        avg_monthly_income: 1200,
+      },
     })
     renderReport(<CostOfLivingReport budgetId="b1" />)
     // The worse fact, said as itself rather than as "no headroom".
@@ -1303,9 +1309,8 @@ describe('CostOfLivingReport tiers', () => {
       data: {
         ...tiered,
         avg_monthly_essentials: null,
-        avg_monthly_non_essential: null,
-        essentials_ratio: null,
-        required_ratio: 130,
+        avg_monthly_cost_of_living: 1560,
+        avg_monthly_income: 1200,
       },
     })
     renderReport(<CostOfLivingReport budgetId="b1" />)

@@ -1430,16 +1430,11 @@ export interface CostOfLivingReport {
    *  nothing is tagged Essential (backend `basis_is_chosen`): all spending is
    *  not what a household could not cut. */
   avg_monthly_essentials: number | null
-  /** Cost of living less essentials: what a lean month could shed. Null
-   *  whenever essentials is. */
-  avg_monthly_non_essential: number | null
   avg_monthly_income: number
-  /** Share of take-home spoken for, against the WIDE tier. Null when there is
-   *  no income on record: unknown, not 100%. */
-  required_ratio: number | null
-  /** The lean tier against take-home. Above 100 the household cannot cover
-   *  what it could not cut. */
-  essentials_ratio: number | null
+  /* The gap between the tiers, and the two ratios against take-home, are NOT
+   * served: they are arithmetic on the three averages above, so they are
+   * composed once in `components/reports/charts/necessityView.ts`
+   * (`nonEssentialSpend`, `necessityShare`). */
   basis: 'bound' | 'tag' | 'all'
   /** False when no category is tagged Essential or Cost of living (basis
    *  'all'): the figures then cover every category — the burn rate. */

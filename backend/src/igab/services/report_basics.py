@@ -581,8 +581,7 @@ async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: in
     essentials_known = basis_is_chosen(lean_basis)
 
     # Every month in the window is complete, so every average divides by all
-    # of them, and the RATIOS below divide the same figures the cards show: a
-    # ratio printed beside two cards has to be their quotient.
+    # of them.
     n = len(month_list)
 
     #: Rows carry a null group where an essential PAYEE tagged a transaction
@@ -633,20 +632,12 @@ async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: in
     # window, not a second division of its monthly totals here.
     income = await income_by_source(session, budget_id, months)
     avg_income = income["avg_monthly"]
-    income_total = income["total"]
-    essentials_total = -essentials_signed
     avg_cost_of_living = quantize_cents(cost_of_living_total / n) if n else Decimal("0")
     avg_essentials: Decimal | None = None
-    avg_non_essential: Decimal | None = None
     if essentials_known:
         # Outflows are negative in the ledger; a cost reads positive here, the
         # same way the group buckets above flip theirs.
-        avg_essentials = quantize_cents(essentials_total / n) if n else Decimal("0")
-        # The gap, and the reason the two tiers exist: what a lean month could
-        # shed. Floored at zero: the wide tier contains the lean one, but its
-        # tag arms net refunds, so a refund filed to a Cost-of-living category
-        # can take it below — and nobody committed to a negative amount.
-        avg_non_essential = max(avg_cost_of_living - avg_essentials, Decimal("0"))
+        avg_essentials = quantize_cents(-essentials_signed / n) if n else Decimal("0")
 
     return {
         "months": month_list,
@@ -660,35 +651,16 @@ async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: in
         #: all of them complete.
         "months_averaged": n,
         "groups": groups,
+        #: The three figures the report's cards print, and the only ones it
+        #: needs: the gap between the tiers and the two ratios against
+        #: take-home are arithmetic on these, with no input the client is
+        #: missing, so by the boundary rule they are composed once in
+        #: `frontend/src/components/reports/charts/necessityView.ts`. They
+        #: were served here, read by no backend path, beside a third ratio of
+        #: the same shape that already lived on the client.
         "avg_monthly_cost_of_living": avg_cost_of_living,
         "avg_monthly_essentials": avg_essentials,
-        #: Cost of living less essentials: committed spending that is not
-        #: strictly necessary. Named for what it IS rather than for what to do
-        #: about it — a card labelled "could cut" beside a household's car
-        #: payment reads as advice to sell the car.
-        "avg_monthly_non_essential": avg_non_essential,
         "avg_monthly_income": avg_income,
-        #: What share of take-home is already spoken for before anything
-        #: discretionary. None when the averaged months carry no income: a
-        #: ratio against zero is not 100%, it is unknown.
-        #:
-        #: This is the WIDE tier now, and it rises for every household with a
-        #: tracked loan — debt principal joins cost of living by class, with no
-        #: tagging needed. The report has to say so on its face.
-        #:
-        #: Both ratios divide the totals behind the cards — the same months,
-        #: the same divisor — so each is the quotient of the two cards beside it.
-        "required_ratio": (
-            quantize_cents(cost_of_living_total / income_total * 100) if income_total > 0 else None
-        ),
-        #: The lean tier against take-home. Above 100 the household cannot
-        #: cover what it could not cut, which is a different and worse fact
-        #: than a high required ratio.
-        "essentials_ratio": (
-            quantize_cents(essentials_total / income_total * 100)
-            if income_total > 0 and essentials_known
-            else None
-        ),
         "basis": basis,
         #: False when nothing is tagged, so the page can say the figure is
         #: every category rather than a chosen few.

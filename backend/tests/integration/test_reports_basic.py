@@ -339,13 +339,15 @@ async def test_cost_of_living_rolls_the_wide_tier_up_by_group(db_session, api_cl
     assert [g["group_name"] for g in body["groups"]] == ["Housing", "Utilities", "Subscriptions"]
 
     # One complete month, hand-computed: 1,600 spoken for, 1,580 of it
-    # essential, 20 sheddable, out of 3,600 taken home.
+    # essential, out of 3,600 taken home. The gap (20 sheddable) and both
+    # ratios (44.44% and 43.89%) are the page's quotients of these three, so
+    # the route carries the three and `necessityView` composes the rest.
     assert Decimal(body["avg_monthly_cost_of_living"]) == Decimal("1600.00")
     assert Decimal(body["avg_monthly_essentials"]) == Decimal("1580.00")
-    assert Decimal(body["avg_monthly_non_essential"]) == Decimal("20.00")
     assert Decimal(body["avg_monthly_income"]) == Decimal("3600.00")
-    assert Decimal(str(body["required_ratio"])) == Decimal("44.44")  # 1,600 / 3,600
-    assert Decimal(str(body["essentials_ratio"])) == Decimal("43.89")  # 1,580 / 3,600
+    assert "avg_monthly_non_essential" not in body
+    assert "required_ratio" not in body
+    assert "essentials_ratio" not in body
 
 
 async def test_cost_of_living_says_when_nothing_is_tagged(db_session, api_client):
@@ -360,9 +362,10 @@ async def test_cost_of_living_says_when_nothing_is_tagged(db_session, api_client
     assert r.status_code == 200, r.text
     assert r.json()["tagged"] is False
     assert r.json()["basis"] == "all"
-    # No income on record: a ratio against zero is unknown, not 100%.
-    assert r.json()["required_ratio"] is None
-    assert r.json()["essentials_ratio"] is None
+    # No income on record. The page reads the ratios as unknown rather than
+    # 100% off this, which is `necessityShare`'s rule and its test.
+    assert Decimal(r.json()["avg_monthly_income"]) == Decimal("0.00")
+    assert r.json()["avg_monthly_essentials"] is None
 
 
 class TestTheClassRuleIsOneRule:

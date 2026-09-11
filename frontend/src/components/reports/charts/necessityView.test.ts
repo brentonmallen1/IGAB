@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { necessityReading, sheddableShare } from './necessityView'
+import { necessityReading, necessityShare, nonEssentialSpend } from './necessityView'
 
 describe('necessityReading', () => {
   it('says nothing rather than guessing when there is no income', () => {
@@ -42,22 +42,48 @@ describe('necessityReading', () => {
   })
 })
 
-describe('sheddableShare', () => {
-  it('is the gap as a share of what is committed', () => {
-    // Cost of living 1,800 with 400 of it non-essential.
-    expect(sheddableShare(1800, 400)).toBeCloseTo(22.22, 2)
+describe('nonEssentialSpend', () => {
+  it('is the wide tier less the lean one', () => {
+    // Cost of living 1,800 with 1,400 of it essential.
+    expect(nonEssentialSpend(1800, 1400)).toBe(400)
   })
 
-  it('is unknown rather than zero when nothing is committed', () => {
-    expect(sheddableShare(0, 0)).toBeNull()
-    expect(sheddableShare(-5, 0)).toBeNull()
+  it('is unknown, not zero, until something is tagged Essential', () => {
+    // The lean tier unchosen is not "nothing could be cut".
+    expect(nonEssentialSpend(1800, null)).toBeNull()
   })
 
-  it('reads 100 when none of it is essential', () => {
-    expect(sheddableShare(500, 500)).toBe(100)
+  it('floors at zero when a refund puts the wide tier under the lean one', () => {
+    // The wide tier contains the lean one, but its tag arms net refunds: a
+    // refund filed to a Cost-of-living category can invert them, and nobody
+    // committed to -$40.
+    expect(nonEssentialSpend(1360, 1400)).toBe(0)
+  })
+})
+
+describe('necessityShare', () => {
+  it('divides the two figures the cards beside it print', () => {
+    // Required: $1,800 committed out of $3,600 taken home is the 50% the page
+    // shows, checkable on paper from the two cards.
+    expect(necessityShare(1800, 3600)).toBe(50)
+    // The essentials ratio, same take-home: 1,400 of 3,600.
+    expect(necessityShare(1400, 3600)).toBeCloseTo(38.89, 2)
+    // And the sheddable share, which divides the gap by the wide tier.
+    expect(necessityShare(400, 1800)).toBeCloseTo(22.22, 2)
   })
 
-  it('is unknown when the gap is — nothing tagged Essential', () => {
-    expect(sheddableShare(1800, null)).toBeNull()
+  it('is unknown rather than 100 when there is no income on record', () => {
+    expect(necessityShare(1800, 0)).toBeNull()
+    expect(necessityShare(0, 0)).toBeNull()
+    // A window whose refunds beat its income has no positive whole either.
+    expect(necessityShare(1800, -5)).toBeNull()
+  })
+
+  it('is unknown when the part is — nothing tagged Essential', () => {
+    expect(necessityShare(null, 3600)).toBeNull()
+  })
+
+  it('reads 100 when the part is the whole of it', () => {
+    expect(necessityShare(500, 500)).toBe(100)
   })
 })

@@ -183,7 +183,7 @@ class TestTheTwoTiers:
 
 
 class TestTheServedReport:
-    async def test_it_serves_both_tiers_and_the_gap(self, db_session):
+    async def test_it_serves_both_tiers(self, db_session):
         budget, *_ = await _household(db_session)
         report = await cost_of_living(db_session, budget.id, months=1)
 
@@ -195,7 +195,9 @@ class TestTheServedReport:
         assert report["months_averaged"] == 1
         assert report["avg_monthly_cost_of_living"] == EXPECTED.cost_of_living
         assert report["avg_monthly_essentials"] == EXPECTED.essentials
-        assert report["avg_monthly_non_essential"] == EXPECTED.gap
+        # The gap between them is not served: it is these two subtracted, with
+        # no input the page is missing, so it is composed once in
+        # `necessityView.nonEssentialSpend` and pinned there.
 
     async def test_both_tiers_are_measured_over_one_window(self, db_session):
         """The gap has to be a difference of two figures across the same days.
@@ -234,7 +236,6 @@ class TestTheServedReport:
         # wide. Neither tier sees the 700 before the window or the 520 after.
         assert report["avg_monthly_essentials"] == D("1500.00")
         assert report["avg_monthly_cost_of_living"] == D("1910.00")
-        assert report["avg_monthly_non_essential"] == D("410.00")
 
     async def test_the_groups_roll_up_the_wide_tier(self, db_session):
         budget, *_ = await _household(db_session)
@@ -246,26 +247,16 @@ class TestTheServedReport:
         # And the shares are of the wide total, so they add to 100.
         assert sum(g["share"] for g in report["groups"]) == D("100.00")
 
-    async def test_the_ratios_answer_two_different_questions(self, db_session):
-        budget, checking, *_ = await _household(db_session)
-        sysgroup = await create_category_group(db_session, budget, "Income", is_system=True)
-        inflow = await create_category(db_session, budget, sysgroup, "Ready to Assign")
-        payserv = await create_payee(db_session, budget, "Northwind Payserv")
-        await create_transaction(
-            db_session, budget, checking, "3600.00", _last_month(), payee=payserv, category=inflow
-        )
-
-        report = await cost_of_living(db_session, budget.id, months=1)
-        # 1,800 of 3,600 is spoken for; 1,400 of it could not be cut.
-        assert report["required_ratio"] == D("50.00")
-        assert report["essentials_ratio"] == D("38.89")
-
-    async def test_the_ratios_are_the_quotient_of_the_cards_beside_them(self, db_session):
-        """Required and the essentials ratio divide the complete-month figures
-        the cards show. They used to divide whole-window totals, running month
-        included, so a household whose cards read 1,800 spoken for out of
-        3,600 taken home saw Required say 42% — and early in a month, with a
-        paycheck in and the bills not yet, the gap was tens of points.
+    async def test_it_serves_the_complete_month_figures_the_ratios_divide(self, db_session):
+        """Required and the essentials ratio are the page's, not this
+        service's — they divide two of the figures below, and the client is
+        missing no input (`necessityView.necessityShare`, pinned there on this
+        test's own 1,800 / 1,400 / 3,600). What has to hold HERE is that the
+        figures they divide cover the complete months only: served against
+        whole-window totals, running month included, a household whose cards
+        read 1,800 spoken for out of 3,600 taken home saw Required say 42%,
+        and early in a month with a paycheck in and the bills not yet, the gap
+        was tens of points.
         """
         budget, checking, bills, tags, by_key = await _household(db_session)
         sysgroup = await create_category_group(db_session, budget, "Income", is_system=True)
@@ -296,10 +287,8 @@ class TestTheServedReport:
         bills_group = next(g for g in report["groups"] if g["group_name"] == "Bills")
         assert bills_group["avg_monthly"] == D("1400.00")
         assert bills_group["total"] == D("1400.00")
-        # 1,800 / 3,600 and 1,400 / 3,600 — not the whole-window 3,000 / 7,200
-        # (41.67) and 2,600 / 7,200 (36.11) the ratios used to divide.
-        assert report["required_ratio"] == D("50.00")
-        assert report["essentials_ratio"] == D("38.89")
+        # So the page divides 1,800 / 3,600 and 1,400 / 3,600 — not the
+        # whole-window 3,000 / 7,200 (41.67) and 2,600 / 7,200 (36.11).
 
 
 class TestCostOfLivingQuotesTheEssentialsReport:
@@ -436,8 +425,6 @@ class TestEssentialsNeedTheirOwnTag:
         assert report["avg_monthly_cost_of_living"] == D("60.00")
         # Before: 1,260.00 "could not be cut" beside a 60.00 cost of living.
         assert report["avg_monthly_essentials"] is None
-        assert report["avg_monthly_non_essential"] is None
-        assert report["essentials_ratio"] is None
 
     async def test_with_nothing_tagged_essentials_is_unknown_too(self, db_session):
         budget = await _rent_and_streaming(db_session, tag_streaming=False)
@@ -446,7 +433,6 @@ class TestEssentialsNeedTheirOwnTag:
         assert report["tagged"] is False
         assert report["avg_monthly_cost_of_living"] == D("1260.00")  # the burn rate, said so
         assert report["avg_monthly_essentials"] is None
-        assert report["essentials_ratio"] is None
 
 
 class TestAPayeeTagChoosesNothing:
