@@ -35,6 +35,7 @@ vi.mock('../../api/accountTypes', () => ({ useAccountTypes: () => ({ data: undef
 
 import { useReportStore } from '../../stores/reportStore'
 import { CostOfLivingReport } from './charts/CostOfLivingReport'
+import { EssentialsReport } from './charts/EssentialsReport'
 import { WishlistDisciplineReport } from './charts/WishlistDisciplineReport'
 import { OverviewReport } from './OverviewReport'
 import { AccountCompositionReport } from './charts/AccountCompositionChart'
@@ -65,6 +66,7 @@ import { VolatilityReport } from './charts/VolatilityChart'
 const ALL_REPORTS: [string, ComponentType<{ budgetId: string }>][] = [
   ['Overview', OverviewReport],
   ['CostOfLiving', CostOfLivingReport],
+  ['Essentials', EssentialsReport],
   ['WishlistDiscipline', WishlistDisciplineReport],
   ['NetWorth', NetWorthReport],
   ['AccountComposition', AccountCompositionReport],
@@ -1273,5 +1275,51 @@ describe('drill tables read spending as a positive figure', () => {
     })
     renderReport(<VolatilityReport budgetId="b1" />)
     noMinus('Groceries', '$400.00')
+  })
+})
+
+describe('EssentialsReport table footer', () => {
+  it('totals its own column, not the rounded average times the months', () => {
+    // Two categories of $10.00 over three months: each averages $3.33 and the
+    // lean month $6.67, and $6.67 × 3 is $20.01 under a column adding to $20.00.
+    setQuery({
+      data: {
+        tagged: true,
+        months: 3,
+        window_start: '2026-06-01',
+        window_end: '2026-08-31',
+        essentials_90d: 6.67,
+        monthly_total_average: 6.67,
+        categories: [
+          {
+            category_id: 'c1',
+            name: 'Water',
+            group_name: 'Bills',
+            total: 10,
+            monthly_average: 3.33,
+            months_with_spend: 3,
+          },
+          {
+            category_id: 'c2',
+            name: 'Power',
+            group_name: 'Bills',
+            total: 10,
+            monthly_average: 3.33,
+            months_with_spend: 3,
+          },
+        ],
+        monthly_series: [],
+        reserve: [],
+        roadmap_range: [3, 6],
+        emergency_fund_balance: null,
+        emergency_fund_source: null,
+        runway_months: null,
+        class_excluded: [],
+      },
+    })
+    renderReport(<EssentialsReport budgetId="b1" />)
+    const footer = screen.getByText('All essentials').closest('tr')
+    expect(footer).toHaveTextContent('$20.00')
+    expect(footer).not.toHaveTextContent('$20.01')
   })
 })
