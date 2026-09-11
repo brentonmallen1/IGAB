@@ -12,22 +12,39 @@ export interface CoverageTrend {
   to: number
   /** Positive means the fund now covers more months than it did. */
   delta: number
-  /** How many months the reading actually spans.
+  /** How many months the reading actually spans: first known point to last,
+   * inclusive.
    *
-   * Points with no coverage figure are dropped — a month with no essential
-   * spending has no answer — so the span is not the window the user picked.
-   * The card labelled the delta "over {months} months" regardless, which
-   * overstated the period on any budget with a gap in it. */
+   * Points with no coverage figure — a month with no essential spending has
+   * no answer — are not endpoints, so a gap at either edge shortens the span
+   * and the card must not label it with the window the user picked. A gap
+   * BETWEEN the endpoints does not: January to April is four months whether
+   * or not February had an answer, and counting only the known points said
+   * two. */
   months: number
 }
 
 export function coverageTrend(series: readonly CoveragePoint[]): CoverageTrend | null {
-  const known = series.filter((p) => p.coverage_months !== null)
+  const first = series.findIndex((p) => p.coverage_months !== null)
+  const last = series.findLastIndex((p) => p.coverage_months !== null)
   // One point is a reading, not a trend — "up from itself" is not a sentence.
-  if (known.length < 2) return null
-  const from = known[0].coverage_months as number
-  const to = known[known.length - 1].coverage_months as number
-  return { from, to, delta: Number((to - from).toFixed(1)), months: known.length }
+  if (first === -1 || first === last) return null
+  const from = series[first].coverage_months as number
+  const to = series[last].coverage_months as number
+  return { from, to, delta: Number((to - from).toFixed(1)), months: last - first + 1 }
+}
+
+/**
+ * The month the self-reported part of the fund is counted from — the first
+ * point the server marked `external_counted` — or null when none is.
+ *
+ * Not the served `external_as_of`: that is the raw stamp, which for a figure
+ * saved today names the running month, while the server counts it from the
+ * newest COMPLETE month. The note then named a month the chart does not draw,
+ * one after the only point that counts the fund.
+ */
+export function carriedFlatFrom(series: readonly CoveragePoint[]): string | null {
+  return series.find((p) => p.external_counted)?.month ?? null
 }
 
 /**

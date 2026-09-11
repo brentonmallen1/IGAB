@@ -36,6 +36,7 @@ vi.mock('../../api/accountTypes', () => ({ useAccountTypes: () => ({ data: undef
 import { useReportStore } from '../../stores/reportStore'
 import { CostOfLivingReport } from './charts/CostOfLivingReport'
 import { EssentialsReport } from './charts/EssentialsReport'
+import { EmergencyCoverageReport } from './charts/EmergencyCoverageReport'
 import { WishlistDisciplineReport } from './charts/WishlistDisciplineReport'
 import { OverviewReport } from './OverviewReport'
 import { AccountCompositionReport } from './charts/AccountCompositionChart'
@@ -67,6 +68,7 @@ const ALL_REPORTS: [string, ComponentType<{ budgetId: string }>][] = [
   ['Overview', OverviewReport],
   ['CostOfLiving', CostOfLivingReport],
   ['Essentials', EssentialsReport],
+  ['EmergencyCoverage', EmergencyCoverageReport],
   ['WishlistDiscipline', WishlistDisciplineReport],
   ['NetWorth', NetWorthReport],
   ['AccountComposition', AccountCompositionReport],
@@ -1321,5 +1323,63 @@ describe('EssentialsReport table footer', () => {
     const footer = screen.getByText('All essentials').closest('tr')
     expect(footer).toHaveTextContent('$20.00')
     expect(footer).not.toHaveTextContent('$20.01')
+  })
+})
+
+describe('EmergencyCoverageReport', () => {
+  const pt = (month: string, coverage: number | null, counted = false) => ({
+    month,
+    fund_balance: 4000,
+    essentials: 1000,
+    coverage_months: coverage,
+    target_low: 3000,
+    target_high: 6000,
+    external_counted: counted,
+  })
+  const base = {
+    months: 12,
+    tagged: true,
+    fund_balance: 4000,
+    fund_source: 'Cascade Point HYSA',
+    coverage_months: 4,
+    essentials_monthly: 1000,
+    target_low: 3000,
+    target_high: 6000,
+    target_range: [3, 6],
+    external_amount: null,
+    external_as_of: null,
+    current_month: '2026-09-01',
+  }
+
+  it('names the month the self-reported fund is counted from, not the day it was saved', () => {
+    // Saved on 2026-09-11. The series ends at August, the only point that
+    // counts the figure; the note said "carried flat from September 2026".
+    setQuery({
+      data: {
+        ...base,
+        series: [pt('2026-07-01', 3), pt('2026-08-01', 4, true)],
+        external_amount: 4000,
+        external_as_of: '2026-09-11',
+      },
+    })
+    renderReport(<EmergencyCoverageReport budgetId="b1" />)
+    expect(screen.getByText(/carried flat from August 2026/)).toBeInTheDocument()
+    expect(screen.queryByText(/September 2026/)).toBeNull()
+  })
+
+  it('states the span of a trend with a gap inside it', () => {
+    setQuery({
+      data: {
+        ...base,
+        series: [
+          pt('2026-01-01', 2),
+          pt('2026-02-01', null),
+          pt('2026-03-01', null),
+          pt('2026-04-01', 4),
+        ],
+      },
+    })
+    renderReport(<EmergencyCoverageReport budgetId="b1" />)
+    expect(screen.getByText('+2 months over 4 months')).toBeInTheDocument()
   })
 })
