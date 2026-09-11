@@ -616,6 +616,69 @@ class BudgetService:
             available=available,
         )
 
+    async def category_history(
+        self, category_id: uuid.UUID, months: list[date]
+    ) -> list[CategoryBalance]:
+        """One category's figures for several months, assembled once.
+
+        `get_category_balance` answers for a single month and reloads its
+        inputs each time, which is right for a single reading and wrong in a
+        loop: the category-history report called it once per month, so a
+        twelve-month chart issued a dozen assignment queries and a dozen
+        activity queries for two lookups' worth of data. The seam its
+        docstring describes — hand in the activity and the anchor — is what
+        this uses, plus one assignment load covering the whole span.
+
+        Same numbers, from the same domain walk (`available_through`), so this
+        cannot answer differently from the budget page. `in_system_group` is
+        decided here too, the way `get_budget_summary` decides it for the grid
+        — the report used to re-derive "is this an income category" from the
+        group repository itself, which is the second implementation this flag
+        exists to prevent.
+        """
+        if not months:
+            return []
+        through = first_of_month(max(months))
+        assignments = await self.assignment_repo.get_for_category(
+            category_id, through_month=through
+        )
+        assigned_by_month = {a.month: a.assigned for a in assignments}
+        activity_by_month = await self.transaction_repo.sum_by_category_by_month(
+            category_id, end_date=last_of_month(through)
+        )
+        seed = (
+            await self.anchor_repo.get_for_category(category_id)
+            if self.anchor_repo is not None
+            else None
+        )
+        category = await self.category_repo.get(category_id)
+        group = (
+            await self.category_group_repo.get(category.category_group_id)
+            if category is not None
+            else None
+        )
+        in_system_group = group is not None and group.is_system
+
+        out: list[CategoryBalance] = []
+        for month in months:
+            month_start = first_of_month(month)
+            out.append(
+                CategoryBalance(
+                    category_id=category_id,
+                    month=month_start,
+                    assigned=assigned_by_month.get(month_start, Decimal("0")),
+                    activity=activity_by_month.get(month_start, Decimal("0")),
+                    available=available_through(
+                        assigned_by_month,
+                        activity_by_month,
+                        month_start,
+                        opening=seed,
+                    ),
+                    in_system_group=in_system_group,
+                )
+            )
+        return out
+
     async def card_walk(
         self,
         budget_id: uuid.UUID,
