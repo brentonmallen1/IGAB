@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import TypedDict
 
 import polars as pl
-from sqlalchemy import case, func, literal, literal_column, select
+from sqlalchemy import func, literal_column, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -65,6 +65,7 @@ from igab.repositories.txn_filters import (
     CASH_ACCOUNT,
     CASH_FLOW_ROW,
     LEAF,
+    LIVE_ACCOUNT,
     NOT_DELETED,
     ON_BUDGET_ACCOUNT,
     PARENT_ROW,
@@ -85,7 +86,7 @@ from igab.services.report_basics import (
     emergency_fund,
 )
 from igab.services.report_stats import (
-    monthly_account_balances,
+    balance_sheet,
     payee_breakdown,
     timeline_rows,
     volatility_stats,
@@ -478,7 +479,6 @@ class ReportService:
             NOT_DELETED,
             POSTED,
         )
-        any_row = (await self.session.execute(select(literal(1)).where(*posted).limit(1))).first()
 
         # Category info for spending
         cat_q = (
@@ -497,59 +497,15 @@ class ReportService:
         )
         cats = {str(r.id): r for r in (await self.session.execute(cat_q)).all()}
 
-        if any_row is None:
-            # A budget with no transactions can still own things. This returned
-            # a flat zero, so a household that had stated a house value and
-            # entered its mortgage as an unmanaged liability read net worth 0
-            # — and `net_worth_history`, which counts both, disagreed with the
-            # card on a surface where the two are asserted to agree.
-            unmanaged_now, _ = await self._unmanaged_liabilities(budget_id)
-            asset_now, _ = await self._asset_values(budget_id)
-            return _empty_dashboard(net_worth=asset_now - unmanaged_now)
-
-        # Net worth spans EVERY account — matching net_worth_history, which
-        # this card must never disagree with. Assets minus liabilities reduces
-        # to the plain sum of all ledgers (transfers cancel), minus unmanaged.
-        #
-        # Parent rows only: a split's children would double-count it. Bounded
-        # at today — this summed every posted row with no upper bound while
-        # net_worth_history bounds each point at its month end, so a row dated
-        # in a later month was in the card and not in the chart, and the two
-        # are asserted to agree. Net worth "now" is not money that has not
-        # moved yet.
-        #
-        # Both sums in one row: "now" and "as of the start of the window" read
-        # the same rows with different bounds, and asking twice would walk the
-        # register twice.
-        totals = (
-            await self.session.execute(
-                select(
-                    func.coalesce(
-                        func.sum(case((Transaction.date <= today, Transaction.amount), else_=0)),
-                        0,
-                    ).label("now"),
-                    func.coalesce(
-                        func.sum(
-                            case((Transaction.date < start_date, Transaction.amount), else_=0)
-                        ),
-                        0,
-                    ).label("prev"),
-                ).where(*posted, PARENT_ROW)
-            )
-        ).one()
-        net_worth = Decimal(str(totals.now or 0))
-        net_worth_prev = Decimal(str(totals.prev or 0))
-
-        # Unmanaged liabilities reduce net worth here exactly as they do in
-        # net_worth_history, and stated asset values raise it the same way —
-        # the dashboard card and the report headline must never disagree
-        # (test_dashboard_matches_charts pins it).
-        unmanaged_now, unmanaged_series = await self._unmanaged_liabilities(budget_id)
-        net_worth -= unmanaged_now
-        net_worth_prev -= self._unmanaged_total_at(unmanaged_series, prev_end)
-        asset_now, asset_series = await self._asset_values(budget_id)
-        net_worth += asset_now
-        net_worth_prev += self._asset_total_at(asset_series, prev_end)
+        # Net worth "now" and as it stood the day before the window, from the
+        # one rule the net-worth chart reads (`_balance_sheets`). This card
+        # was its own SQL sum beside the chart's per-account walk, linked by
+        # a comment saying they must never disagree — and their date bounds
+        # had already drifted. An empty budget takes the same path: it had a
+        # short-circuit of its own that restated the composition, set prev to
+        # "now", and so drew a 0.0% change the chart beside it contradicted.
+        prev_sheet, now_sheet = await self._balance_sheets(budget_id, [prev_end, today])
+        net_worth, net_worth_prev = now_sheet["net_worth"], prev_sheet["net_worth"]
 
         # Every figure below reads the activity-class partition, not the sign
         # of the amount. The dashboard summarises the report tabs, so it has to
@@ -814,146 +770,48 @@ class ReportService:
             series[snap.asset_id].append((snap.date, snap.value))
         return current_total, series
 
+    async def _balance_sheets(self, budget_id: uuid.UUID, as_of: list[date]) -> list[dict]:
+        """The balance sheet (`balance_sheet`) at the end of each day in
+        `as_of`, ascending — net worth's one rule. The Overview card asks it
+        for two days, the chart for every month end.
+
+        Clamped to today: a month end still ahead is not net worth yet, and
+        money that has not moved is not in it. On today, stated debts and
+        asset values read their current figures; before it, each reads its
+        step function and contributes nothing before its first point.
+        """
+        today = date.today()
+        cutoffs = [min(day, today) for day in as_of]
+        accounts = (
+            await self.session.execute(
+                select(
+                    Account.id, Account.name, Account.account_type, Account.classification
+                ).where(Account.budget_id == budget_id, LIVE_ACCOUNT)
+            )
+        ).all()
+        balances = await self.accounts.balances_through(budget_id, cutoffs)
+        unmanaged_now, unmanaged_series = await self._unmanaged_liabilities(budget_id)
+        asset_now, asset_series = await self._asset_values(budget_id)
+        sheets = []
+        for i, cutoff in enumerate(cutoffs):
+            now = cutoff == today
+            unmanaged = unmanaged_now if now else self._unmanaged_total_at(unmanaged_series, cutoff)
+            asset_total = asset_now if now else self._asset_total_at(asset_series, cutoff)
+            sheets.append(balance_sheet(accounts, balances, i, asset_total, unmanaged))
+        return sheets
+
     async def net_worth_history(
         self,
         budget_id: uuid.UUID,
         months: int = 12,
     ) -> list[dict]:
-        # EVERY account counts toward net worth — off-budget assets (brokerage,
-        # HSA, property) and off-budget loans included. on_budget scopes the
-        # envelope math, never the balance sheet. Closed accounts stay too:
-        # their history is real and their balance flattens after closing.
-        acct_q = select(
-            Account.id, Account.name, Account.account_type, Account.classification
-        ).where(
-            Account.budget_id == budget_id,
-            Account.is_deleted == False,  # noqa: E712
-        )
-        accounts = (await self.session.execute(acct_q)).all()
-
-        unmanaged_now, unmanaged_series = await self._unmanaged_liabilities(budget_id)
-        # Stated asset values are the mirror bucket: in net worth without
-        # appearing in any account series, exactly as unmanaged debts are —
-        # which is why every point serves `asset_value_total` beside
-        # `unmanaged_liability_total`, so the charts can footnote the gap
-        # between the visible account stack and the net line.
-        asset_now, asset_series = await self._asset_values(budget_id)
-        account_map = {str(a.id): a for a in accounts}
-
-        q = select(Transaction.date, Transaction.amount, Transaction.account_id).where(
-            Transaction.budget_id == budget_id,
-            NOT_DELETED,
-            POSTED,
-            PARENT_ROW,
-        )
-        txns = (await self.session.execute(q)).all()
-
-        today = date.today()
-        first_of_month = today.replace(day=1)
-
-        if not txns:
-            points = []
-            for i in range(months - 1, -1, -1):
-                month_start = _subtract_months(first_of_month, i)
-                month_end = min(_month_end(month_start), today)
-                unmanaged = (
-                    unmanaged_now
-                    if i == 0
-                    else self._unmanaged_total_at(unmanaged_series, month_end)
-                )
-                asset_total = asset_now if i == 0 else self._asset_total_at(asset_series, month_end)
-                points.append(
-                    {
-                        "date": month_start,
-                        "total_assets": asset_total,
-                        "total_liabilities": unmanaged,
-                        "net_worth": asset_total - unmanaged,
-                        "unmanaged_liability_total": unmanaged,
-                        "asset_value_total": asset_total,
-                        "accounts": [],
-                    }
-                )
-            return points
-
-        df = pl.DataFrame(
-            {
-                "date": [r.date for r in txns],
-                "amount": [float(r.amount) for r in txns],
-                "account_id": [str(r.account_id) for r in txns],
-                "account_name": [account_map[str(r.account_id)].name for r in txns],
-                "account_type": [account_map[str(r.account_id)].account_type for r in txns],
-                "classification": [
-                    account_map[str(r.account_id)].classification or "asset" for r in txns
-                ],
-            },
-            schema_overrides={"date": pl.Date, "amount": pl.Float64},
-        )
-
-        # Clamped: the current month's last day is a future date, and the
-        # newest point is "net worth now".
+        """Net worth at each of the last `months` month ends, the newest being
+        today. An empty register needs no branch of its own: stated assets and
+        unmanaged debts still stand on every point."""
+        first_of_month = date.today().replace(day=1)
         grid = [_subtract_months(first_of_month, i) for i in range(months - 1, -1, -1)]
-        month_ends = [min(_month_end(m), today) for m in grid]
-        per_account = monthly_account_balances(df, grid, month_ends)
-
-        results = []
-        for i, month_start in enumerate(grid):
-            month_end = month_ends[i]
-            snapshots = []
-            total_assets = Decimal("0")
-            liability_balances = Decimal("0")
-
-            # Sign-preserving identity math, keyed on classification: an
-            # overdrawn checking account NETS ASSETS DOWN (the old bucketing
-            # counted it in neither pile) and an overpaid credit card nets
-            # liabilities down. net_worth == assets - liabilities always.
-            for account in per_account:
-                if i < account["first_month"]:
-                    # No rows yet: an account that opens in March is absent
-                    # from February's stack rather than drawn at zero.
-                    continue
-                bal = Decimal(str(round(account["running"][i], 4)))
-                snapshots.append(
-                    {
-                        "account_id": account["account_id"],
-                        "account_name": account["account_name"],
-                        "account_type": account["account_type"],
-                        "classification": account["classification"],
-                        "balance": bal,
-                    }
-                )
-                if account["classification"] == "liability":
-                    liability_balances += bal
-                else:
-                    total_assets += bal
-
-            # Unmanaged debts join the liability side: current total for the
-            # current month, snapshot step-function for history. Stated asset
-            # values join the asset side the same way.
-            #
-            # The NEWEST point is the last of the grid — the loop used to count
-            # months down to zero, so reading `i == 0` after the grid was
-            # turned the right way round gave the oldest point today's debts.
-            current = i == len(grid) - 1
-            unmanaged = (
-                unmanaged_now if current else self._unmanaged_total_at(unmanaged_series, month_end)
-            )
-            asset_total = asset_now if current else self._asset_total_at(asset_series, month_end)
-            total_liabilities = -liability_balances + unmanaged
-            total_assets += asset_total
-
-            results.append(
-                {
-                    "date": month_start,
-                    "total_assets": total_assets,
-                    "total_liabilities": total_liabilities,
-                    "net_worth": total_assets - total_liabilities,
-                    "unmanaged_liability_total": unmanaged,
-                    "asset_value_total": asset_total,
-                    "accounts": snapshots,
-                }
-            )
-
-        return results
+        sheets = await self._balance_sheets(budget_id, [_month_end(m) for m in grid])
+        return [{"date": month, **sheet} for month, sheet in zip(grid, sheets, strict=True)]
 
     # ─── Account Composition ─────────────────────────────────────────────────
 
@@ -3616,25 +3474,3 @@ def _empty_savings_report(month_list: list[date]) -> dict:
 
 
 _DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-
-
-def _empty_dashboard(net_worth: Decimal = Decimal("0")) -> dict:
-    return {
-        "net_worth": net_worth,
-        "net_worth_prev": net_worth,
-        "burn_rate_30": Decimal("0"),
-        "burn_rate_90": Decimal("0"),
-        "essentials_monthly": None,
-        "essentials_tagged": False,
-        # None, not 0.0 — the live path and the schema both say None when no
-        # income is on record, for the reason `savings_rate`'s docstring gives:
-        # "no income recorded" and "saved nothing" are different facts. This
-        # path is the one a brand-new budget takes, so 0.0 here told every new
-        # household it had saved none of its income.
-        "savings_rate": None,
-        "days_until_zero": None,
-        "income_this_month": Decimal("0"),
-        "expenses_this_month": Decimal("0"),
-        "expenses_prev_month": Decimal("0"),
-        "top_categories": [],
-    }

@@ -1,10 +1,11 @@
 """Net worth × liabilities: unmanaged liabilities counted exactly once, managed never twice.
 
-The two independent net-worth computations (net_worth_history and the
-dashboard metric) must agree — this is the easiest place for the liability
-phase to silently corrupt an already-audited number, so both directions
-are pinned: an unmanaged liability reduces net worth by exactly its balance,
-and creating a Liability row for an on-budget loan account changes nothing.
+Both readers of net worth (net_worth_history and the dashboard metric) are
+checked against hand-written figures — this is the easiest place for the
+liability phase to silently corrupt an already-audited number, so both
+directions are pinned: an unmanaged liability reduces net worth by exactly
+its balance, and creating a Liability row for an on-budget loan account
+changes nothing.
 """
 
 from datetime import date, timedelta

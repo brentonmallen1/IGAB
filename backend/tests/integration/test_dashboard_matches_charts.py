@@ -7,6 +7,7 @@ comments claiming agreement, which is exactly why they went unnoticed.
 
 from datetime import date, timedelta
 from decimal import Decimal
+from unittest.mock import patch
 
 from igab.services.report_service import ReportService
 
@@ -175,26 +176,34 @@ class TestTheBurnWindowsAreTheSameWindow:
         assert Decimal(str(card["burn_rate_30"])) == Decimal("100.00")
         assert _burn_from_chart(chart) == Decimal("100.00")
 
-    async def test_net_worth_now_is_the_same_on_both(self, db_session):
-        """The card summed every posted row with no upper bound; the chart
-        bounds each point at its month end. A row dated in a LATER month was
-        therefore in one and not the other."""
-        budget, checking, category = await _budget_with_checking(db_session)
-        await create_transaction(db_session, budget, checking, "5000.00", TODAY, cleared="cleared")
-        # Next month: not yet part of net worth "now".
-        await create_transaction(
-            db_session,
-            budget,
-            checking,
-            "-4000.00",
-            (MONTH_START + timedelta(days=40)).replace(day=3),
-            cleared="cleared",
-        )
+
+class _MidMonth(date):
+    """The service's clock, pinned mid-month: a row later this month is then
+    a day that has not happened yet, whatever day the suite runs on."""
+
+    @classmethod
+    def today(cls):
+        return date(2026, 3, 15)
+
+
+class TestNetWorthNow:
+    async def test_a_row_later_this_month_is_in_neither(self, db_session):
+        """Net worth "now" is not money that has not moved yet. The card
+        summed every posted row with no upper bound and the chart bounded
+        each point at its month end; both now read one rule, clamped to
+        today. The row that pins the clamp is later in the SAME month — one
+        dated next month, which this used to use, is past every month end
+        the chart draws and so passed without the clamp."""
+        budget, checking, _ = await _budget_with_checking(db_session)
+        await create_transaction(db_session, budget, checking, "5000.00", date(2026, 3, 10))
+        await create_transaction(db_session, budget, checking, "-4000.00", date(2026, 3, 20))
         await db_session.flush()
 
         service = ReportService(db_session)
-        card = await service.dashboard_metrics(budget.id, MONTH_START, TODAY)
-        chart = await service.net_worth_history(budget.id, months=1)
+        with patch("igab.services.report_service.date", _MidMonth):
+            card = await service.dashboard_metrics(budget.id, date(2026, 3, 1), date(2026, 3, 15))
+            chart = await service.net_worth_history(budget.id, months=1)
 
-        assert Decimal(str(card["net_worth"])) == Decimal("5000.00")
-        assert Decimal(str(chart[-1]["net_worth"])) == Decimal("5000.00")
+        assert chart[-1]["date"] == date(2026, 3, 1)
+        assert chart[-1]["net_worth"] == Decimal("5000.00")
+        assert card["net_worth"] == Decimal("5000.00")

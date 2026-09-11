@@ -17,6 +17,8 @@ from decimal import Decimal
 
 import pytest
 
+from igab.repositories.asset_repo import AssetRepository
+from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.services.report_service import ReportService
 from igab.services.transaction_service import TransactionCreate
 
@@ -302,6 +304,75 @@ class TestABudgetWithNoTransactionsStillOwnsThings:
 
         assert card["net_worth"] == Decimal("-240000.00")
         assert Decimal(str(chart[-1]["net_worth"])) == card["net_worth"]
+
+    async def test_a_stated_house_and_its_mortgage(self, db_session):
+        """The asset half of the same fix had no test: every asset test builds
+        its budget by posting a row, so none reached the empty path. Dropping
+        the house — the direction that reads a household as underwater —
+        passed.
+        """
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        house = await AssetRepository(db_session).create(budget_id=budget.id, name="Maple St House")
+        await AssetRepository(db_session).upsert_value(house, TODAY, Decimal("300000.00"))
+        loan = await create_liability(
+            db_session, budget, "Harborstone Mortgage", manual_balance=Decimal("240000.00")
+        )
+        await create_liability_snapshot(db_session, loan, TODAY, Decimal("240000.00"))
+
+        card = await ReportService(db_session).dashboard_metrics(budget.id, MONTH_START, TODAY)
+        chart = await ReportService(db_session).net_worth_history(budget.id, months=1)
+
+        assert card["net_worth"] == Decimal("60000.00")
+        assert chart[-1]["net_worth"] == Decimal("60000.00")
+
+    async def test_the_change_is_read_as_it_stood_before_the_window(self, db_session):
+        """The empty path set `net_worth_prev` to "now", so the card drew a
+        0.0% change beside a chart stepping from one figure to another, and a
+        house re-appraised during the window read unchanged. One $0.01 row
+        sent the same budget down the live path and a different answer.
+
+        The house stood at 280,000 before the window and 300,000 now; the
+        mortgage was first recorded today, so it is in "now" and not before.
+        """
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        house = await AssetRepository(db_session).create(budget_id=budget.id, name="Maple St House")
+        before = MONTH_START - timedelta(days=10)
+        await AssetRepository(db_session).upsert_value(house, before, Decimal("280000.00"))
+        await AssetRepository(db_session).upsert_value(house, TODAY, Decimal("300000.00"))
+        loan = await create_liability(
+            db_session, budget, "Harborstone Mortgage", manual_balance=Decimal("240000.00")
+        )
+        await create_liability_snapshot(db_session, loan, TODAY, Decimal("240000.00"))
+
+        card = await ReportService(db_session).dashboard_metrics(budget.id, MONTH_START, TODAY)
+        chart = await ReportService(db_session).net_worth_history(budget.id, months=2)
+
+        assert card["net_worth"] == Decimal("60000.00")
+        assert card["net_worth_prev"] == Decimal("280000.00")
+        # The window opens on the 1st, so "before it" is last month's point.
+        assert chart[-2]["net_worth"] == Decimal("280000.00")
+
+    async def test_tagged_essentials_are_zero_not_untagged(self, db_session):
+        """The empty path hard-coded "nothing tagged", so a new budget with
+        Rent tagged Essential was asked to tag something Essential — until
+        its first transaction, when the card read $0.00."""
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        group = await create_category_group(db_session, budget, "Bills")
+        rent = await create_category(db_session, budget, group, "Rent")
+        await seed_system_tags(db_session, budget.id)
+        tags = TagRepository(db_session)
+        essential = next(
+            t for t in await tags.list_for_budget(budget.id) if t.system_key == "essential"
+        )
+        await tags.set_category_tags(rent.id, [essential.id])
+
+        card = await ReportService(db_session).dashboard_metrics(budget.id, MONTH_START, TODAY)
+
+        assert card["essentials_tagged"] is True
+        assert card["essentials_monthly"] == Decimal("0")
 
 
 class TestNetWorthAtTheWindowStart:

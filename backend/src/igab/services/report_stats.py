@@ -13,8 +13,11 @@ varies" — when its monthly cost is a sixth of that and it is the most volatile
 thing in the budget.
 """
 
+import uuid
+from collections.abc import Sequence
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
 import polars as pl
 
@@ -258,63 +261,58 @@ def payee_breakdown(df: pl.DataFrame, payee_agg: pl.DataFrame, grand_total: Deci
     return payees
 
 
-def monthly_account_balances(
-    df: pl.DataFrame, grid: list[date], month_ends: list[date]
-) -> list[dict]:
-    """Each account's balance at the end of every month in `grid`.
+def balance_sheet(
+    accounts: Sequence[Any],
+    balances: dict[uuid.UUID, tuple[int, list[Decimal]]],
+    i: int,
+    stated_assets: Decimal,
+    unmanaged: Decimal,
+) -> dict:
+    """Net worth at the `i`-th cutoff of `balances`
+    (`AccountRepository.balances_through`), given the stated asset values and
+    unmanaged debts standing then.
 
-    One pass over the register instead of one per point. `net_worth_history`
-    used to filter and re-group the WHOLE frame per month — `df.filter(date <=
-    month_end).group_by(account)` inside the loop — so an eighteen-month
-    window made eighteen passes over every posted parent row in the budget,
-    and the dashboard's own history call made twelve more.
+    `accounts` carries id, name, account_type and classification. Every
+    account counts — off-budget assets and loans included, closed ones too:
+    on_budget scopes the envelope math, never the balance sheet.
 
-    Rows older than the window fold into the first month, because a balance is
-    cumulative: the opening point is everything that happened up to then, not
-    just that month's activity. Rows after the last month end are dropped, the
-    same clamp the loop applied.
+    Sign-preserving identity math, keyed on classification: an overdrawn
+    checking account NETS ASSETS DOWN (the old bucketing counted it in
+    neither pile) and an overpaid credit card nets liabilities down.
+    net_worth == assets − liabilities always. Stated asset values and
+    unmanaged debts join their side without appearing in any account tile,
+    which is why both are served beside the totals.
 
-    `first_month` is the index of the earliest month the account has any row
-    in. Before it the account is absent from the stack rather than drawn at
-    zero — an account opened in March is not a March-shaped hole in February.
+    An account with no row yet is absent from the stack rather than drawn at
+    zero — an account that opens in March is not a zero tile in February.
     """
-    if not grid:
-        return []
-    counted = df.filter(pl.col("date") <= month_ends[-1])
-    bucketed = counted.with_columns(
-        pl.when(pl.col("date") <= month_ends[0])
-        .then(pl.lit(grid[0], dtype=pl.Date))
-        .otherwise(pl.col("date").dt.truncate("1mo"))
-        .alias("bucket")
-    )
-    per_month = bucketed.group_by(
-        ["account_id", "account_name", "account_type", "classification", "bucket"]
-    ).agg(pl.col("amount").sum().alias("delta"))
-
-    index_of = {month: i for i, month in enumerate(grid)}
-    accounts: dict[str, dict] = {}
-    for row in per_month.iter_rows(named=True):
-        key = row["account_id"]
-        account = accounts.setdefault(
-            key,
+    snapshots = []
+    total_assets = stated_assets
+    liability_balances = Decimal("0")
+    for account in accounts:
+        first, running = balances.get(account.id, (i + 1, []))
+        if i < first:
+            continue
+        classification = account.classification or "asset"
+        snapshots.append(
             {
-                "account_id": key,
-                "account_name": row["account_name"],
-                "account_type": row["account_type"],
-                "classification": row["classification"],
-                "deltas": [0.0] * len(grid),
-                "first_month": len(grid),
-            },
+                "account_id": str(account.id),
+                "account_name": account.name,
+                "account_type": account.account_type,
+                "classification": classification,
+                "balance": running[i],
+            }
         )
-        i = index_of[row["bucket"]]
-        account["deltas"][i] += row["delta"]
-        account["first_month"] = min(account["first_month"], i)
-
-    for account in accounts.values():
-        running: list[float] = []
-        total = 0.0
-        for delta in account.pop("deltas"):
-            total += delta
-            running.append(total)
-        account["running"] = running
-    return list(accounts.values())
+        if classification == "liability":
+            liability_balances += running[i]
+        else:
+            total_assets += running[i]
+    total_liabilities = unmanaged - liability_balances
+    return {
+        "total_assets": total_assets,
+        "total_liabilities": total_liabilities,
+        "net_worth": total_assets - total_liabilities,
+        "unmanaged_liability_total": unmanaged,
+        "asset_value_total": stated_assets,
+        "accounts": snapshots,
+    }
