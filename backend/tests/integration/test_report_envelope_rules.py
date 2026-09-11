@@ -410,3 +410,31 @@ class TestASinkingFundsBillIsPlannedSpend:
 
         assert rate["summary"]["savings"] == D("0")
         assert rate["summary"]["spending"] == D("390.00")
+
+
+class TestASavingsTaggedEnvelope:
+    """Open item 5d in docs/reports-audit-chain.md, decided and not yet built:
+    spending out of a `savings`-tagged envelope should count against its plan.
+    Today the tag classes the outflow SAVINGS (rule 1 of
+    `domain.activity_class`), so every plan-vs-actual report counts the
+    envelope's assignments and none of its spending — the phantom underspend
+    #182 removed for `long_term_expense` only.
+
+    What this pins is that the three reports give the envelope ONE reading.
+    Plan vs Reality once kept its own spent set with no class filter, and read
+    the full 390 here while the other two read 0. When 5d lands, the figure
+    changes in all three at once and this test changes with it."""
+
+    async def test_the_plan_vs_actual_reports_give_one_reading(self, db_session):
+        budget, last_month, today = await _tagged_envelope(db_session, "savings", "Emergency Fund")
+        reports = ReportService(db_session)
+        bva = await reports.budget_vs_actual(budget.id, last_month, today)
+        variance = await reports.cumulative_variance(budget.id, months=2)
+        pvr = await reports.plan_vs_reality(budget.id, months=2)
+
+        assert (bva["total_assigned"], bva["total_spent"]) == (D("390.00"), D("0"))
+        assert [(m["budget_assigned"], m["actual_spent"]) for m in variance] == [
+            (D("195.00"), D("0")),
+            (D("195.00"), D("0")),
+        ]
+        assert (pvr["total_assigned"], pvr["total_spent"]) == (D("390.00"), D("0"))
