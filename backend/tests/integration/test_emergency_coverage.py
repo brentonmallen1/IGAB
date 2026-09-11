@@ -12,7 +12,7 @@ paper.
 from datetime import date, timedelta
 from decimal import Decimal
 
-from igab.domain.dates import add_months, month_start
+from igab.domain.dates import add_months, month_end, month_start
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.services.emergency_coverage import (
     EmergencyCoverageService,
@@ -87,6 +87,28 @@ async def test_coverage_tracks_the_fund_month_by_month(db_session):
         Decimal("1.0"),
         Decimal("3.0"),
         Decimal("3.0"),
+    ]
+
+
+async def test_an_account_fund_counts_through_the_last_day_of_each_month(db_session):
+    """A point stands for its whole month, the last day included: a deposit
+    on the 31st is in that month's balance, not the next one's. The bound is
+    `domain.dates.month_end`, where the report once wrote its own two copies
+    of "first of next month, less a day" beside it."""
+    services, budget, _unfunded_envelope = await _world(db_session)
+    hysa = await create_account(
+        db_session, budget, "Cascade Point HYSA", account_type="savings", on_budget=False
+    )
+    await create_transaction(db_session, budget, hysa, "2000.00", month_end(MONTHS[3]))
+
+    report = await EmergencyCoverageService(db_session).coverage(budget.id, months=4)
+
+    assert [p["month"] for p in report["series"]] == MONTHS[2:]
+    assert [p["fund_balance"] for p in report["series"]] == [
+        Decimal("0.00"),
+        Decimal("2000.00"),
+        Decimal("2000.00"),
+        Decimal("2000.00"),
     ]
 
 
