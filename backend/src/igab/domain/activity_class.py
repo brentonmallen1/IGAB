@@ -222,9 +222,10 @@ def _rules(c: _Inputs) -> list[Rule]:
         # insurance premium. Tagging that SAVINGS said the household saved
         # $2,340 in the month it paid its property tax, kept the bill out of
         # every spending report, out of Cost of Living and out of the
-        # emergency-fund target, and left `budget_vs_actual` counting the
-        # envelope's assignments but not its spending — a permanent phantom
-        # underspend on Plan vs Reality.
+        # emergency-fund target, and left Budget vs Actual and Cumulative
+        # Variance counting the envelope's assignments but not its spending —
+        # a permanent phantom underspend (`test_report_envelope_rules.py`,
+        # `TestASinkingFundsBillIsPlannedSpend`).
         #
         # Nothing is lost by dropping it. A transfer from the envelope to a
         # tracked savings account still classes SAVINGS by rule 3 below, which

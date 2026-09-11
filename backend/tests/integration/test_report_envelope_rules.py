@@ -19,6 +19,8 @@ from decimal import Decimal
 from sqlalchemy import update
 
 from igab.db.models import Category, CategoryGroup
+from igab.domain.dates import add_months
+from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.services.report_service import ReportService
 
 from .factories import (
@@ -347,3 +349,64 @@ class TestThePlannedSpendUniverse:
         assert variance[-1]["actual_spent"] == D("100.00")
         assert bva["total_spent"] == D("100.00")
         assert pvr["total_spent"] == D("100.00")
+
+
+async def _tagged_envelope(db_session, key: str, name: str):
+    """One envelope carrying one system tag, 195 assigned last month and this
+    month, and 390 paid out of it today. Dates are read at run time, so a
+    month rollover between collection and run cannot move the window."""
+    services, budget, checking, group, _ = await _world(db_session)
+    await seed_system_tags(db_session, budget.id)
+    tags = TagRepository(db_session)
+    envelope = await create_category(db_session, budget, group, name)
+    await tags.set_category_tags(envelope.id, [(await tags.get_system_tag(budget.id, key)).id])
+    today = date.today()
+    this_month = today.replace(day=1)
+    last_month = add_months(this_month, -1)
+    await create_budget_assignment(db_session, budget, envelope, last_month, "195.00")
+    await create_budget_assignment(db_session, budget, envelope, this_month, "195.00")
+    await create_transaction(db_session, budget, checking, "-390.00", today, category=envelope)
+    return budget, last_month, today
+
+
+class TestASinkingFundsBillIsPlannedSpend:
+    """A `long_term_expense` envelope's payout is spending (#182), so the
+    plan-vs-actual family counts it against the assignments it already
+    counted. Before, the payout classed SAVINGS: Budget vs Actual read the
+    sinking fund at assigned 390 and spent 0, and Cumulative Variance built
+    the same underspend month after month. Those two are the reports that
+    changed — Plan vs Reality did not read the class at the time, so a test
+    against it alone passed on the old rule."""
+
+    async def test_budget_vs_actual_counts_the_payout(self, db_session):
+        budget, last_month, today = await _tagged_envelope(
+            db_session, "long_term_expense", "Property Tax"
+        )
+        bva = await ReportService(db_session).budget_vs_actual(budget.id, last_month, today)
+
+        assert bva["total_assigned"] == D("390.00")
+        assert bva["total_spent"] == D("390.00")
+
+    async def test_cumulative_variance_counts_the_payout(self, db_session):
+        budget, *_ = await _tagged_envelope(db_session, "long_term_expense", "Property Tax")
+        variance = await ReportService(db_session).cumulative_variance(budget.id, months=2)
+
+        assert [(m["budget_assigned"], m["actual_spent"]) for m in variance] == [
+            (D("195.00"), D("0")),
+            (D("195.00"), D("390.00")),
+        ]
+        assert variance[-1]["cumulative_variance"] == D("0")
+
+    async def test_plan_vs_reality_agrees(self, db_session):
+        budget, *_ = await _tagged_envelope(db_session, "long_term_expense", "Property Tax")
+        pvr = await ReportService(db_session).plan_vs_reality(budget.id, months=2)
+
+        assert (pvr["total_assigned"], pvr["total_spent"]) == (D("390.00"), D("390.00"))
+
+    async def test_the_savings_rate_calls_it_spending(self, db_session):
+        # The month the household paid its property tax, it saved nothing.
+        budget, *_ = await _tagged_envelope(db_session, "long_term_expense", "Property Tax")
+        rate = await ReportService(db_session).savings_rate(budget.id, months=1)
+
+        assert rate["summary"]["savings"] == D("0")
+        assert rate["summary"]["spending"] == D("390.00")

@@ -246,7 +246,8 @@ class TestTagsOverrideInference:
         the tag used to call that SAVINGS: the app said the household saved
         $2,340 in the month it paid its property tax, kept the bill out of every
         spending report, out of Cost of Living and out of the emergency-fund
-        target, and left Plan vs Reality showing a permanent phantom underspend.
+        target, and left Budget vs Actual and Cumulative Variance showing a
+        permanent phantom underspend.
         """
         w = await _world(db_session)
         cat = await create_category(db_session, w.budget, w.group, "Property Tax")

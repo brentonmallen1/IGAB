@@ -8,8 +8,6 @@ February if nothing was assigned in February.
 from datetime import date
 from decimal import Decimal
 
-from igab.repositories.tag_repo import TagRepository, seed_system_tags
-
 from .factories import (
     create_account,
     create_budget,
@@ -304,35 +302,3 @@ class TestBudgetVsActualGivesTheSameVerdict:
         # 120, not the 420 the unfloored subtraction ranked it by.
         assert D(item["variance"]) == D("-120.00")
         assert D(_cell(_cat(pvr, drained.id), THIS_MONTH)["variance"]) == D("-120.00")
-
-
-async def test_a_sinking_fund_reaches_plan_vs_reality(db_session, api_client):
-    """The phantom underspend, fixed as a consequence of the class change.
-
-    A `long_term_expense` envelope's assignments were counted (BUDGETED_ENVELOPE
-    takes them) while its spending was not: the payout classed SAVINGS and the
-    plan-vs-actual family filters to SPENDING. So a sinking fund read as
-    permanently underspent — assign 195 a month for a year, pay the 2,340 bill,
-    and the report still said you had spent nothing.
-    """
-    budget = await create_budget(db_session, api_client.test_user)
-    checking = await create_account(db_session, budget, "Checking")
-    await seed_system_tags(db_session, budget.id)
-    tags = TagRepository(db_session)
-    lte = await tags.get_system_tag(budget.id, "long_term_expense")
-    group = await create_category_group(db_session, budget, "Long Term")
-    prop_tax = await create_category(db_session, budget, group, "Property Tax")
-    await tags.set_category_tags(prop_tax.id, [lte.id])
-
-    await create_budget_assignment(db_session, budget, prop_tax, _months_back(1), "195.00")
-    await create_budget_assignment(db_session, budget, prop_tax, _months_back(0), "195.00")
-    await create_transaction(db_session, budget, checking, "-390.00", TODAY, category=prop_tax)
-    await db_session.commit()
-
-    body = await _fetch(api_client, budget.id, months=6)
-    cat = _cat(body, prop_tax.id)
-
-    # Spent 390 against 390 planned. Before, total_spent was 0.
-    assert D(cat["total_spent"]) == D("390.00")
-    assert D(cat["total_assigned"]) == D("390.00")
-    assert cat["months_over"] == 1  # the whole bill landed in one month
