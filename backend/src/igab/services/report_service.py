@@ -552,7 +552,7 @@ class ReportService:
             window = cdf.filter(
                 (pl.col("date") >= start)
                 & (pl.col("date") <= end)
-                & (pl.col("cls") == ActivityClass.SPENDING.value)
+                & pl.col("cls").is_in(list(counted_classes()))
                 & (pl.col("amount") < 0)
             )
             return -Decimal(str(window.select(pl.col("amount").sum()).item() or 0))
@@ -3058,7 +3058,7 @@ class ReportService:
         outflows = df.filter(
             (pl.col("amount") < 0)
             & ~pl.col("is_subscription")
-            & (pl.col("cls") == ActivityClass.SPENDING.value)
+            & pl.col("cls").is_in(list(counted_classes()))
         )
 
         # Group by date

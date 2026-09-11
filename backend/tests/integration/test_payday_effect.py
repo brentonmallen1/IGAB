@@ -17,8 +17,11 @@ and the income-side class filter went unpinned.
 from datetime import date, timedelta
 from decimal import Decimal
 
+from igab.domain import activity_class
+from igab.domain.activity_class import ActivityClass
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
+from igab.services import report_service
 from igab.services.report_service import ReportService
 from igab.services.transaction_service import TransactionCreate
 
@@ -286,6 +289,34 @@ async def test_a_payday_savings_sweep_is_not_post_payday_spending(db_session):
     does right after being paid — and the exact opposite of the splurge this
     report looks for, so counting it inverted the finding.
     """
+    budget = await _payday_with_a_sweep(db_session)
+
+    data = await ReportService(db_session).payday_effect(budget.id, window=14, months=12)
+
+    assert data["event_count"] == 1
+    by_offset = {d["offset"]: d["avg_spend"] for d in data["days"]}
+    assert by_offset[0] == Decimal("40.00")
+
+
+async def test_spending_is_whatever_spending_classes_says(db_session, monkeypatch):
+    """Spending Trends, Pareto and Day-of-Week read the spending set from
+    SPENDING_CLASSES. This report spelled SPENDING as a literal, so widening
+    the tuple would have moved every spending report but this one. Widened
+    here to take savings in, the sweep has to count."""
+    widened = (ActivityClass.SPENDING, ActivityClass.SAVINGS)
+    monkeypatch.setattr(activity_class, "SPENDING_CLASSES", widened)
+    monkeypatch.setattr(report_service, "SPENDING_CLASSES", widened)
+    budget = await _payday_with_a_sweep(db_session)
+
+    data = await ReportService(db_session).payday_effect(budget.id, window=14, months=12)
+
+    by_offset = {d["offset"]: d["avg_spend"] for d in data["days"]}
+    assert by_offset[0] == Decimal("1540.00")
+
+
+async def _payday_with_a_sweep(db_session):
+    """A payday at T-20, with 1,500 swept into an off-budget brokerage and 40
+    of real spending the same day."""
     user = await create_user(db_session)
     budget = await create_budget(db_session, user)
     checking = await create_account(db_session, budget, "Checking")
@@ -306,12 +337,7 @@ async def test_a_payday_savings_sweep_is_not_post_payday_spending(db_session):
         db_session, budget, checking, "-1500.00", TODAY - timedelta(days=20), payee=sweep_payee
     )
     await create_transaction(db_session, budget, checking, "-40.00", TODAY - timedelta(days=20))
-
-    data = await ReportService(db_session).payday_effect(budget.id, window=14, months=12)
-
-    assert data["event_count"] == 1
-    by_offset = {d["offset"]: d["avg_spend"] for d in data["days"]}
-    assert by_offset[0] == Decimal("40.00")
+    return budget
 
 
 async def test_a_varying_wage_keeps_every_payday(db_session):

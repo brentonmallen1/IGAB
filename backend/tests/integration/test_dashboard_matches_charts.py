@@ -10,6 +10,10 @@ from decimal import Decimal
 
 import pytest
 
+from igab.domain import activity_class
+from igab.domain.activity_class import ActivityClass
+from igab.repositories.tag_repo import TagRepository, seed_system_tags
+from igab.services import report_service
 from igab.services.report_service import ReportService
 from tests.report_clock import report_today
 
@@ -104,6 +108,38 @@ class TestBurnRate:
 
         # Uncategorized rows between two on-budget accounts are not spending.
         assert Decimal(str(card["burn_rate_30"])) == Decimal("0")
+
+    async def test_the_card_and_the_chart_follow_spending_classes_together(
+        self, db_session, monkeypatch
+    ):
+        """The chart reads the spending set from SPENDING_CLASSES; the card
+        spelled SPENDING as a literal. They agreed only while the tuple held
+        one class. Widened here to take savings in, both have to count a
+        savings-tagged outflow."""
+        widened = (ActivityClass.SPENDING, ActivityClass.SAVINGS)
+        monkeypatch.setattr(activity_class, "SPENDING_CLASSES", widened)
+        monkeypatch.setattr(report_service, "SPENDING_CLASSES", widened)
+        budget, checking, category = await _budget_with_checking(db_session)
+        await seed_system_tags(db_session, budget.id)
+        tags = TagRepository(db_session)
+        savings_tag = await tags.get_system_tag(budget.id, "savings")
+        group = await create_category_group(db_session, budget, "Goals")
+        fund = await create_category(db_session, budget, group, "Car Replacement")
+        await tags.set_category_tags(fund.id, [savings_tag.id])
+        await create_transaction(
+            db_session, budget, checking, "-100.00", TODAY, category=category, cleared="cleared"
+        )
+        await create_transaction(
+            db_session, budget, checking, "-250.00", TODAY, category=fund, cleared="cleared"
+        )
+        await db_session.flush()
+
+        service = ReportService(db_session)
+        card = await service.dashboard_metrics(budget.id, MONTH_START, TODAY)
+        chart = await service.burn_rate(budget.id, months=1)
+
+        assert Decimal(str(card["burn_rate_30"])) == Decimal("350.00")
+        assert _burn_from_chart(chart) == Decimal("350.00")
 
 
 class TestSavingsRate:
