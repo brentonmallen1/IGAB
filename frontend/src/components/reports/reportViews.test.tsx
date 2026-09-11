@@ -21,11 +21,20 @@ const queryState = vi.hoisted(() => ({
   },
 }))
 
+/** Every call each report hook received, by hook name — so a test can check
+ *  what a chart ASKED for, not only what it drew from the shared state. */
+const hookCalls = vi.hoisted(() => new Map<string, unknown[][]>())
+
 vi.mock('../../api/reports', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>()
   const mocked: Record<string, unknown> = {}
   for (const key of Object.keys(actual)) {
-    mocked[key] = key.startsWith('use') ? () => queryState.current : actual[key]
+    mocked[key] = key.startsWith('use')
+      ? (...args: unknown[]) => {
+          hookCalls.set(key, [...(hookCalls.get(key) ?? []), args])
+          return queryState.current
+        }
+      : actual[key]
   }
   return mocked
 })
@@ -129,6 +138,7 @@ function card(label: string): { value: string; sub: string } {
 
 beforeEach(() => {
   setQuery({})
+  hookCalls.clear()
 })
 
 describe.each(ALL_REPORTS)('%s report', (_name, Report) => {
@@ -551,6 +561,21 @@ describe('SubscriptionsReport table', () => {
 
     expect(row).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByText('Northwind Stream')).toBeInTheDocument()
+  })
+})
+
+describe('VolatilityReport amortize toggle', () => {
+  it('asks for the amortized reading once the box is ticked', () => {
+    // Without the flag reaching the hook, the chart kept showing the raw
+    // reading while its info panel described the amortized one.
+    setQuery({ data: { categories: [], amortized: false, window_start: '', window_end: '' } })
+    renderReport(<VolatilityReport budgetId="b1" />)
+    const months = useReportStore.getState().rangeMonths
+    expect(hookCalls.get('useVolatilityReport')?.at(-1)).toEqual(['b1', months, false])
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Amortize lumpy charges' }))
+
+    expect(hookCalls.get('useVolatilityReport')?.at(-1)).toEqual(['b1', months, true])
   })
 })
 
