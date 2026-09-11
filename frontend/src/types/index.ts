@@ -1080,7 +1080,9 @@ export interface CategoryHistoryReport {
     activity: number
     /** Null for an income category: "Income categories do not hold money", so
      *  their available is a lifetime carryover the budget page never draws.
-     *  Their monthly activity is meaningful and is still served. */
+     *  Their monthly activity is meaningful and is still served. Null too for
+     *  a month before an import the history cannot reproduce — backend
+     *  `CategoryHistoryMonth.available`. */
     available: number | null
   }[]
 }

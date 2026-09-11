@@ -861,7 +861,9 @@ class CategoryHistoryMonth(ApiModel):
     activity: Decimal
     #: None for an income category: "Income categories do not hold money", so
     #: their `available` is a lifetime carryover the budget page never draws.
-    #: Their monthly activity is meaningful and is still served.
+    #: Their monthly activity is meaningful and is still served. None too for
+    #: a month before an import whose balance the history cannot reproduce
+    #: (`EnvelopeSeries.unrecovered_through`) — absent, not zero.
     available: Decimal | None
 
 

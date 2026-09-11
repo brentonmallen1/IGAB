@@ -21,6 +21,7 @@ import pytest
 
 from igab.db.models import ImportAnchor
 from igab.domain.dates import add_months
+from igab.services.card_payment import ensure_payment_category
 
 from .factories import (
     create_account,
@@ -29,6 +30,7 @@ from .factories import (
     create_category,
     create_category_group,
     create_transaction,
+    create_transfer,
     make_services,
 )
 from .statement_counts import count_request
@@ -80,13 +82,46 @@ class TestCategoryHistoryDoesNotAskPerMonth:
             f"{short} SELECTs for 3 months, {long} for 15 — the report is asking per month again"
         )
 
-    async def test_the_batched_history_is_the_budget_pages_own_figure(self, db_session, api_client):
-        """Batching must not change any answer, only the statement count.
 
-        Both assemblies of one figure, compared across an OVERSPENT month —
-        the zero floor between months is what a running total gets wrong, and
-        it is the difference a second implementation would show first.
-        """
+async def _history(api_client, budget, category_id, months: int) -> list[tuple]:
+    resp = await api_client.get(
+        f"/api/v1/{budget.id}/reports/category-history",
+        params={"category_id": str(category_id), "months": months},
+    )
+    assert resp.status_code == 200, resp.text
+    return [
+        (
+            date.fromisoformat(m["month"]),
+            Decimal(str(m["assigned"])),
+            Decimal(str(m["activity"])),
+            None if m["available"] is None else Decimal(str(m["available"])),
+        )
+        for m in resp.json()["months"]
+    ]
+
+
+async def _page(db_session, budget, category_id, months: list[date]) -> list[tuple]:
+    """What the Budget page serves for each month — `get_budget_summary`, the
+    method the page reads. `get_category_balance`, the pin's old oracle, skips
+    the page's card correction and card reserves, so agreeing with it proved
+    nothing about the page."""
+    budgets = make_services(db_session).budgets
+    out = []
+    for month in months:
+        summary = await budgets.get_budget_summary(budget.id, month)
+        bal = next(b for b in summary.category_balances if b.category_id == category_id)
+        out.append((month, bal.assigned, bal.activity, bal.available))
+    return out
+
+
+class TestCategoryHistoryIsTheBudgetPagesFigure:
+    """Category History is drawn inside the budget page's inspector, so it
+    must state the page's own numbers. It walked `available_through` itself
+    and skipped the corrections `get_budget_summary` applies (PR192-3), while
+    its docstring said it could not answer differently."""
+
+    async def test_across_an_overspent_month(self, db_session, api_client):
+        """The zero floor between months is what a running total gets wrong."""
         budget = await create_budget(db_session, api_client.test_user)
         checking = await create_account(db_session, budget, "Checking")
         group = await create_category_group(db_session, budget, "Everyday")
@@ -108,26 +143,74 @@ class TestCategoryHistoryDoesNotAskPerMonth:
                 )
         await db_session.flush()
 
-        budgets = make_services(db_session).budgets
-        batched = await budgets.category_history(groceries.id, months)
-        one_by_one = [await budgets.get_category_balance(groceries.id, m) for m in months]
-
-        assert [(b.month, b.assigned, b.activity, b.available) for b in batched] == [
-            (b.month, b.assigned, b.activity, b.available) for b in one_by_one
-        ]
-        # And the figures themselves, on paper: 200 − 150 = 50 carried in,
-        # then 250 − 300 = −50, which the next month does NOT inherit —
-        # 0 + 200 − 50 = 150, held to the month after.
-        assert [b.available for b in batched] == [
+        history = await _history(api_client, budget, groceries.id, 4)
+        assert history == await _page(db_session, budget, groceries.id, months)
+        # On paper: 200 − 150 = 50 carried in, then 250 − 300 = −50, which the
+        # next month does NOT inherit — 0 + 200 − 50 = 150, held after.
+        assert [h[3] for h in history] == [
             Decimal(v) for v in ("50.00", "-50.00", "150.00", "150.00")
         ]
 
+    async def test_a_card_refund_that_repaid_uncovered_debt(self, db_session, api_client):
+        """Nothing assigned, so a $100 Sapphire Visa charge rode the card as
+        debt; the $40 refund next month repaid that debt and handed the
+        envelope nothing. The page reads activity 0 and available 0 from the
+        refund on; the history read +40 and +40, and carried the gap."""
+        budget = await create_budget(db_session, api_client.test_user)
+        visa = await create_account(db_session, budget, "Sapphire Visa", account_type="credit_card")
+        await ensure_payment_category(db_session, visa)
+        group = await create_category_group(db_session, budget, "Everyday")
+        groceries = await create_category(db_session, budget, group, "Groceries")
+        months = [add_months(THIS, -i) for i in range(2, -1, -1)]
+        await create_transaction(
+            db_session, budget, visa, "-100.00", months[0] + timedelta(days=8), category=groceries
+        )
+        await create_transaction(
+            db_session, budget, visa, "40.00", months[1] + timedelta(days=8), category=groceries
+        )
+        await db_session.flush()
+
+        history = await _history(api_client, budget, groceries.id, 3)
+        assert history == await _page(db_session, budget, groceries.id, months)
+        assert [(h[2], h[3]) for h in history] == [
+            (Decimal("-100.00"), Decimal("-100.00")),
+            (Decimal("0.00"), Decimal("0.00")),
+            (Decimal("0.00"), Decimal("0.00")),
+        ]
+
+    async def test_a_cards_own_envelope_reads_its_reserve(self, db_session, api_client):
+        """A card's set-aside envelope holds no transactions of its own, so the
+        history read 0/0 where the page reads the reserve: 100 set aside when
+        a funded $100 charge went on the card, 40 once $60 was paid."""
+        budget = await create_budget(db_session, api_client.test_user)
+        checking = await create_account(db_session, budget, "Checking")
+        visa = await create_account(db_session, budget, "Sapphire Visa", account_type="credit_card")
+        envelope = await ensure_payment_category(db_session, visa)
+        group = await create_category_group(db_session, budget, "Everyday")
+        groceries = await create_category(db_session, budget, group, "Groceries")
+        months = [add_months(THIS, -i) for i in range(2, -1, -1)]
+        await create_budget_assignment(db_session, budget, groceries, months[0], "100.00")
+        await create_transaction(
+            db_session, budget, visa, "-100.00", months[0] + timedelta(days=8), category=groceries
+        )
+        await create_transfer(
+            db_session, budget, checking, visa, "60.00", months[1] + timedelta(days=8)
+        )
+        await db_session.flush()
+
+        history = await _history(api_client, budget, envelope.id, 3)
+        assert history == await _page(db_session, budget, envelope.id, months)
+        assert [h[3] for h in history] == [
+            Decimal("100.00"),
+            Decimal("40.00"),
+            Decimal("40.00"),
+        ]
+
     async def test_an_anchored_budget_walks_from_the_anchor(self, db_session, api_client):
-        """YNAB-imported budgets start the walk from the import anchor, and the
-        differential above builds an unanchored budget — `opening` is None on
-        both sides, so losing the seed in the batched path passed. Here the
-        category is anchored at 120 two months before its first activity.
-        """
+        """YNAB-imported budgets start the walk from the import anchor. Here
+        the category is anchored at 120 two months before its first activity.
+        The page clamps navigation at the anchor, so months before it have no
+        page figure: one before the budget's history is absent, not zero."""
         budget = await create_budget(db_session, api_client.test_user)
         checking = await create_account(db_session, budget, "Checking")
         group = await create_category_group(db_session, budget, "Everyday")
@@ -152,18 +235,18 @@ class TestCategoryHistoryDoesNotAskPerMonth:
             )
         await db_session.flush()
 
-        months = [add_months(THIS, -4), anchor_month, *after]
-        budgets = make_services(db_session).budgets
-        batched = await budgets.category_history(groceries.id, months)
-        one_by_one = [await budgets.get_category_balance(groceries.id, m) for m in months]
-
-        assert [(b.month, b.available) for b in batched] == [
-            (b.month, b.available) for b in one_by_one
-        ]
+        history = await _history(api_client, budget, groceries.id, 5)
+        assert history[1:] == await _page(
+            db_session, budget, groceries.id, [anchor_month, *after, THIS]
+        )
         # The anchor month reads the anchor; then 120 + 100 − 80 = 140, and
         # 140 + 50 − 30 = 160. Walked from zero these would read 20 and 40.
-        assert [b.available for b in batched[1:]] == [
-            Decimal(v) for v in ("120.00", "140.00", "160.00")
+        assert [h[3] for h in history] == [
+            None,
+            Decimal("120.00"),
+            Decimal("140.00"),
+            Decimal("160.00"),
+            Decimal("160.00"),
         ]
 
 

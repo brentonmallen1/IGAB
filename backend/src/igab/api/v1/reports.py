@@ -580,23 +580,29 @@ async def category_history_report(
     if category is None or category.budget_id != budget_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
     month_list = report_months(date.today(), months)
-    # One assembly for the whole span, not one call per month — and
-    # `in_system_group` comes off the row rather than being re-derived here
-    # from the group repository.
+    # `envelope_series`, the Budget page's own month-by-month figures (card
+    # correction and card reserves included), assembled once for the span —
+    # and `in_system_group` comes off the row rather than being re-derived
+    # here from the group repository.
     #
     # "Income categories do not hold money" is the app's own rule, raised by
     # `BudgetService._require_envelope`. Their `available` is a lifetime
     # carryover the budget page never draws, and this report published it as
     # an envelope balance under a docstring promising the budget page's own
     # numbers. Their month-by-month ACTIVITY is meaningful and stays.
+    series = (await budget_service.envelope_series(budget_id, [category_id], month_list))[
+        category_id
+    ]
     out = [
         CategoryHistoryMonth(
-            month=bal.month,
-            assigned=bal.assigned,
-            activity=bal.activity,
-            available=None if bal.in_system_group else bal.available,
+            month=month,
+            assigned=assigned,
+            activity=activity,
+            available=None if series.in_system_group else available,
         )
-        for bal in await budget_service.category_history(category_id, month_list)
+        for month, assigned, activity, available in zip(
+            month_list, series.assigned, series.activity, series.available, strict=True
+        )
     ]
     return CategoryHistoryReportResponse(
         category_id=category_id, category_name=category.name, months=out
