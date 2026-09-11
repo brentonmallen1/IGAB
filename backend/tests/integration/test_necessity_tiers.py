@@ -28,6 +28,8 @@ from uuid import UUID
 
 from igab.domain.activity_class import NecessityTier
 from igab.domain.dates import add_months, month_end
+from igab.guide.concepts import essentials_since
+from igab.guide.detection import GuideDetection
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.report_basics import cost_of_living
@@ -355,6 +357,33 @@ class TestTheEmergencyFundStaysLean:
         assert report["avg_monthly_cost_of_living"] != report["avg_monthly_essentials"]
         # The Essentials report — which sizes the fund — reads the lean tier.
         assert sum(c["total"] for c in summary["categories"]) == EXPECTED.essentials
+
+    async def test_the_figure_that_sizes_the_fund_is_the_lean_one(self, db_session):
+        """The table above is not what sizes the fund. The headline is —
+        `essentials_90d`, rolling 90 days ÷ 3 — and the reserve, the Emergency
+        Coverage headline and the Guide's target all read it. A cleanup that
+        gave `essential_spend` the wide tier by default, or passed it there,
+        moved every one of them while the table-only pin above stayed green.
+
+        1,400 of essentials in the 90 days is 466.67 a month; the wide tier's
+        1,800 would be 600.00. Hand-computed, not derived.
+        """
+        budget, *_ = await _household(db_session)
+        summary = await ReportService(db_session).essentials_summary(budget.id, 1)
+        guide = await GuideDetection(db_session).essential_expenses(budget.id)
+
+        assert summary["essentials_90d"] == D("466.67")
+        assert guide.value == D("466.67")
+        reserve = {r["months"]: r["amount"] for r in summary["reserve"]}
+        assert reserve[3] == D("1400.01")
+
+        # And it is below what the wide tier reads over the same 90 days.
+        today = _today()
+        wide, _ = await TransactionRepository(db_session).essential_spend(
+            budget.id, essentials_since(today), today, tier=NecessityTier.COST_OF_LIVING
+        )
+        assert -wide == EXPECTED.cost_of_living
+        assert summary["essentials_90d"] < D("600.00")
 
 
 async def _rent_and_streaming(db_session, *, tag_streaming: bool):
