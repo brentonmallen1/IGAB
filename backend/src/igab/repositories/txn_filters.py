@@ -41,13 +41,15 @@ from igab.db.models import (
     Account,
     Category,
     Payee,
-    Tag,
     Transaction,
-    category_tags,
 )
 from igab.domain.enums import ScheduleFrequency
 from igab.domain.payee_names import BALANCE_ADJUSTMENT_PAYEES
-from igab.repositories.category_filters import IN_SYSTEM_GROUP, SPENDABLE
+from igab.repositories.category_filters import (
+    IN_SYSTEM_GROUP,
+    SPENDABLE,
+    tagged_category_ids,
+)
 
 NOT_DELETED = Transaction.is_deleted == False  # noqa: E712
 POSTED = Transaction.cleared != "pending"
@@ -626,58 +628,26 @@ CARD_ROW_FILED_AS_INCOME = and_(
 )
 
 
-# ─── Tags on the row's category or payee ─────────────────────────────────────
+# ─── Tags on the row's category ──────────────────────────────────────────────
 #
-# Both are guarded by the NOT NULL test: `NULL IN (...)` is UNKNOWN, not FALSE,
+# Guarded by the NOT NULL test: `NULL IN (...)` is UNKNOWN, not FALSE,
 # and a CASE arm evaluating to UNKNOWN differs from one evaluating FALSE only
 # by luck of ordering. Keep every arm two-valued. `category_tagged` is what
 # the activity classifier reads for the savings and debt tags; it lived there
 # as `_tagged` until the essentials report needed the same shape.
 
 
-def _tag_ids(system_keys: tuple[str, ...]):
-    return select(Tag.id).where(
-        Tag.system_key.in_(system_keys),
-        Tag.is_deleted == False,  # noqa: E712
-    )
-
-
 def category_tagged(*system_keys: str):
-    """Rows whose category carries any of these system tags."""
+    """Rows whose category carries any of these system tags.
+
+    The necessity tiers build their tag arms from this with the keys in
+    `domain.activity_class.TIER_TAG_KEYS` — categories only; see there for
+    why the payee arm was retired.
+    """
     return and_(
         Transaction.category_id.isnot(None),
-        Transaction.category_id.in_(
-            select(category_tags.c.category_id).where(
-                category_tags.c.tag_id.in_(_tag_ids(system_keys))
-            )
-        ),
+        Transaction.category_id.in_(tagged_category_ids(*system_keys)),
     )
-
-
-#: Spending the household could not do without. Evaluated only by
-#: TransactionRepository.essential_spend* — the Guide, the Overview card, the
-#: Essentials report and Cost of Living all read those.
-#:
-#: Categories only. This was `or_(category_tagged, payee_tagged)`, and the
-#: payee arm was the last thing reading a payee tag for meaning. Tags on payees
-#: are retired: the app had already reached this conclusion once for
-#: Subscription (migration b8e5d1c73a49 — "a household files its subscriptions
-#: into categories far more reliably than it tags each payee") and the live
-#: evidence agreed, with zero system payee tags applied across a real budget.
-#:
-#: What this drops in practice: an uncategorized row at a payee tagged
-#: Essential no longer counts as essential spending. That row now needs a
-#: category, which is the thing the app can actually act on.
-ESSENTIAL_TAGGED = category_tagged("essential")
-
-#: The wider necessity tier's own tag. Non-discretionary but not strictly
-#: necessary: subscriptions, a home-maintenance sinking fund, a gym membership
-#: you would cancel in a genuine emergency but pay every month otherwise.
-#:
-#: Only half of the Cost of Living tier — debt principal joins it by class.
-#: `domain.activity_class.NecessityTier` composes both so Essentials is a
-#: structural subset rather than an asserted one.
-COST_OF_LIVING_TAGGED = category_tagged("cost_of_living")
 
 
 #: A row that spends money: what every spending rollup reads before its class

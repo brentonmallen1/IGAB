@@ -43,10 +43,8 @@ from igab.db.models import (
 from igab.repositories.category_filters import IN_SYSTEM_GROUP
 from igab.repositories.txn_filters import (
     CASH_FLOW_ROW,
-    COST_OF_LIVING_TAGGED,
     COUNTERPART_ACCOUNT_ID,
     COUNTERPART_OFF_BUDGET,
-    ESSENTIAL_TAGGED,
     LEAF,
     NOT_DELETED,
     POSTED,
@@ -604,9 +602,10 @@ def counted_class_filter(
 # The only difference a user could see between the two screens was a calendar
 # artifact from three different windows.
 #
-# **The nesting is structural, not asserted.** The wider predicate contains the
-# narrower one as a disjunct, so Essentials ⊆ Cost of Living cannot drift and
-# needs no invariant policing it. An invariant that can only be satisfied is
+# **The nesting is structural, not asserted.** The wider tier's tag keys are
+# the narrower tier's plus its own (`TIER_TAG_KEYS`), and its predicate only
+# adds a disjunct, so Essentials ⊆ Cost of Living cannot drift and needs no
+# invariant policing it. An invariant that can only be satisfied is
 # decoration; this is the mechanism instead.
 #
 # The class tuple stays shared. `COST_OF_LIVING_CLASSES` answers what a row
@@ -627,17 +626,34 @@ class NecessityTier(StrEnum):
     COST_OF_LIVING = "cost_of_living"
 
 
-def tier_keys(tier: NecessityTier) -> list[str]:
-    """The system tag keys whose membership this tier reads.
-
-    Kept beside `tier_scope` so a tier cannot be given a predicate and a tag
-    set that disagree — the applied-count and the WHERE clause have to ask
-    about the same tags, and they did not: the count included payee tags long
-    after the predicate stopped reading them.
-    """
-    if tier is NecessityTier.ESSENTIAL:
-        return ["essential"]
-    return ["essential", "cost_of_living"]
+#: The system tag keys each tier reads — the one statement of it. `tier_scope`
+#: builds its tag arm from this, and `_necessity_scope`'s "has the household
+#: chosen anything" count and the Essentials seed list read it too. They had
+#: to ask about the same tags and did not: the count kept reading payee tags
+#: long after the predicate stopped, and the mapping was spelled twice more
+#: (literal key lists here, and an `ESSENTIAL_TAGGED`/`COST_OF_LIVING_TAGGED`
+#: pair in txn_filters) with a docstring as the only thing keeping them in step.
+#:
+#: The wide tier's keys are the lean tier's plus its own, by construction, so
+#: Essentials ⊆ Cost of Living holds for the tag arms without a test saying so.
+#:
+#: Categories only. The Essential arm was `or_(category_tagged, payee_tagged)`,
+#: and the payee arm was the last thing reading a payee tag for meaning. Tags
+#: on payees are retired: the app had already reached this conclusion once for
+#: Subscription (migration b8e5d1c73a49 — "a household files its subscriptions
+#: into categories far more reliably than it tags each payee") and the live
+#: evidence agreed, with zero system payee tags applied across a real budget.
+#: What that drops: an uncategorized row at a payee tagged Essential no longer
+#: counts as essential spending. It needs a category, which is the thing the
+#: app can act on.
+_ESSENTIAL_KEYS = ("essential",)
+TIER_TAG_KEYS: dict[NecessityTier, tuple[str, ...]] = {
+    NecessityTier.ESSENTIAL: _ESSENTIAL_KEYS,
+    # Non-discretionary but not strictly necessary: subscriptions, a
+    # home-maintenance sinking fund, a gym membership you would cancel in a
+    # genuine emergency but pay every month otherwise.
+    NecessityTier.COST_OF_LIVING: (*_ESSENTIAL_KEYS, "cost_of_living"),
+}
 
 
 def basis_is_chosen(basis: str) -> bool:
@@ -666,10 +682,10 @@ def tier_scope(tier: NecessityTier):
     living and a "comfortable" standing for a whole year. The tag arms keep
     netting refunds, as a category's own activity does.
     """
+    tagged = category_tagged(*TIER_TAG_KEYS[tier])
     if tier is NecessityTier.ESSENTIAL:
-        return ESSENTIAL_TAGGED
+        return tagged
     return or_(
-        ESSENTIAL_TAGGED,
-        COST_OF_LIVING_TAGGED,
+        tagged,
         and_(ACTIVITY_CLASS == ActivityClass.DEBT_PRINCIPAL.value, Transaction.amount < 0),
     )

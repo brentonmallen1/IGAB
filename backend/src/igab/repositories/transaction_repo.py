@@ -23,17 +23,15 @@ from igab.db.models import (
     Category,
     CategoryGroup,
     Payee,
-    Tag,
     Transaction,
     TransactionAttachment,
-    category_tags,
 )
 from igab.domain.activity_class import (
     ACTIVITY_CLASS,
     COST_OF_LIVING_CLASSES,
+    TIER_TAG_KEYS,
     NecessityTier,
     apply_class_joins,
-    tier_keys,
     tier_scope,
 )
 from igab.repositories.base import BaseRepository
@@ -41,6 +39,7 @@ from igab.repositories.category_filters import (
     IS_CATEGORIZABLE,
     LIVE_CATEGORY,
     NOT_ARCHIVED_ANYWHERE,
+    tagged_category_ids,
 )
 from igab.repositories.txn_filters import (
     AI_NEEDS_REVIEW,
@@ -1167,15 +1166,16 @@ class TransactionRepository(BaseRepository[Transaction]):
         """
         if bound_categories:
             return [Transaction.category_id.in_(list(bound_categories))], "bound"
-        tagged = select(Tag.id).where(
-            Tag.budget_id == budget_id,
-            Tag.system_key.in_(tier_keys(tier)),
-            Tag.is_deleted == False,  # noqa: E712
-        )
+        # `TIER_TAG_KEYS` and `tagged_category_ids` are what `tier_scope`
+        # builds its tag arm from, so the count and the predicate cannot ask
+        # about different tags.
         applied = (
             select(func.count())
-            .select_from(category_tags)
-            .where(category_tags.c.tag_id.in_(tagged))
+            .select_from(Category)
+            .where(
+                Category.budget_id == budget_id,
+                Category.id.in_(tagged_category_ids(*TIER_TAG_KEYS[tier])),
+            )
             .scalar_subquery()
         )
         if (await self.session.execute(select(applied))).scalar_one() > 0:
@@ -1231,9 +1231,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         ).scalar_one()
         return Decimal(total), basis
 
-    async def essential_tagged_categories(
-        self, budget_id: uuid.UUID, tier: NecessityTier = NecessityTier.ESSENTIAL
-    ) -> list:
+    async def essential_tagged_categories(self, budget_id: uuid.UUID) -> list:
         """(id, name, group_name) for every category tagged Essential that is
         still on the budget.
 
@@ -1252,16 +1250,14 @@ class TransactionRepository(BaseRepository[Transaction]):
         `NOT_ARCHIVED_ANYWHERE` rather than `Category.is_archived`: a live
         category inside an archived group is off the budget too, and it is the
         half that gets forgotten.
+
+        The lean tier only, and by tag only. There is no Cost of Living
+        variant: that tier also admits debt principal BY CLASS, per row, which
+        no list of tagged categories can say — a tier-seeded list built from
+        tags alone would omit the untagged car payment the tier's figures
+        count. If one is ever needed, derive it from `tier_scope`.
         """
-        tagged = select(category_tags.c.category_id).where(
-            category_tags.c.tag_id.in_(
-                select(Tag.id).where(
-                    Tag.budget_id == budget_id,
-                    Tag.system_key.in_(tier_keys(tier)),
-                    Tag.is_deleted == False,  # noqa: E712
-                )
-            )
-        )
+        tagged = tagged_category_ids(*TIER_TAG_KEYS[NecessityTier.ESSENTIAL])
         q = (
             select(
                 Category.id,

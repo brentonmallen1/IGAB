@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Category, Tag, category_tags, payee_tags
 from igab.repositories.base import BaseRepository
+from igab.repositories.category_filters import tagged_category_ids
 
 TAG_COLOR_SLOTS = frozenset({"red", "orange", "yellow", "green", "teal", "blue", "purple", "pink"})
 
@@ -41,8 +42,8 @@ SYSTEM_TAGS = [
     # loan gets a truthful figure without tagging each loan envelope.
     #
     # The gap between the two is the point: what a lean month could shed. See
-    # `domain.activity_class.NecessityTier`, which composes both predicates so
-    # the nesting cannot drift.
+    # `domain.activity_class.TIER_TAG_KEYS`, which builds the wide tier's keys
+    # from the lean tier's so the nesting cannot drift.
     ("essential", "Essential", "blue"),
     ("cost_of_living", "Cost of living", "yellow"),
     # Applied by the wishlist to every envelope that funds an open wish, and
@@ -201,13 +202,9 @@ class TagRepository(BaseRepository[Tag]):
         if not system_keys:
             return set()
         result = await self.session.execute(
-            select(category_tags.c.category_id)
-            .join(Tag, Tag.id == category_tags.c.tag_id)
-            .join(Category, Category.id == category_tags.c.category_id)
-            .where(
-                Tag.system_key.in_(system_keys),
+            select(Category.id).where(
                 Category.budget_id == budget_id,
-                Tag.is_deleted == False,  # noqa: E712
+                Category.id.in_(tagged_category_ids(*system_keys)),
             )
         )
         return {row[0] for row in result.all()}
