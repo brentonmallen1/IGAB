@@ -16,9 +16,19 @@ function fmt(y: number, m: number, d: number): string {
   return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
 }
 
-function fromDate(d: Date): string {
+/** A Date's LOCAL calendar day as YYYY-MM-DD.
+ *
+ * The one safe conversion. `d.toISOString().slice(0, 10)` is the trap: it
+ * converts to UTC first, so a local midnight ahead of Greenwich lands on the
+ * previous calendar day and an afternoon behind it lands on the next. Both
+ * `DateRangePicker` and `reportStore.defaultFilters` used toISOString and so
+ * asked the server for a window nobody chose.
+ */
+export function toISODate(d: Date): string {
   return fmt(d.getFullYear(), d.getMonth() + 1, d.getDate())
 }
+
+const fromDate = toISODate
 
 /** Add (or subtract) whole days; the Date constructor normalizes the calendar. */
 export function addDaysISO(s: string, days: number): string {

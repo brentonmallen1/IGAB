@@ -30,7 +30,7 @@ interface Props {
 
 export function SavingsReport({ budgetId }: Props) {
   const navigate = useNavigate()
-  const { formatMoney, formatDate, settings } = useFormatters()
+  const { formatMoney, formatDate, formatMonthShort, settings } = useFormatters()
   const currencySymbol = getCurrencySymbol(settings.currencyCode)
   const months = useReportMonths()
   const { data, isLoading, isError, error, refetch } = useSavingsReport(budgetId, months)
@@ -44,9 +44,7 @@ export function SavingsReport({ budgetId }: Props) {
     if (!monthLabels.length || !categories.length) return []
 
     return monthLabels.map((monthStr, idx) => {
-      const date = new Date(monthStr)
-      const label = date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
-      const entry: Record<string, string | number> = { month: label }
+      const entry: Record<string, string | number> = { month: formatMonthShort(monthStr) }
 
       for (const cat of categories) {
         entry[cat.category_name] = cat.monthly_balances[idx] ?? 0
@@ -54,7 +52,7 @@ export function SavingsReport({ budgetId }: Props) {
 
       return entry
     })
-  }, [monthLabels, categories])
+  }, [monthLabels, categories, formatMonthShort])
 
   if (isLoading) {
     return <div className="report-loading">Loading...</div>

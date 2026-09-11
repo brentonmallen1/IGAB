@@ -34,7 +34,7 @@ interface Props {
 const UNCATEGORIZED = 'Uncategorized'
 
 export function CostOfLivingReport({ budgetId }: Props) {
-  const { formatMoney, settings } = useFormatters()
+  const { formatMoney, formatMonthShort, settings } = useFormatters()
   // Which group the legend is pointing at, if any. The palette repeats past
   // eight slots, so this is what tells two same-coloured bands apart.
   const [highlight, setHighlight] = useState<string | null>(null)
@@ -85,7 +85,7 @@ export function CostOfLivingReport({ budgetId }: Props) {
   // what makes a repeated colour unambiguous rather than merely tolerated.
   const chartData = data.months.map((monthStr, idx) => {
     const entry: Record<string, string | number> = {
-      month: new Date(monthStr).toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
+      month: formatMonthShort(monthStr),
     }
     for (const g of data.groups) entry[g.group_name] = g.monthly_amounts[idx] ?? 0
     return entry

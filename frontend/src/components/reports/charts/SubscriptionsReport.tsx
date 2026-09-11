@@ -28,7 +28,7 @@ interface Props {
 }
 
 export function SubscriptionsReport({ budgetId }: Props) {
-  const { formatMoney, formatDate, settings } = useFormatters()
+  const { formatMoney, formatDate, formatMonthShort, settings } = useFormatters()
   const currencySymbol = getCurrencySymbol(settings.currencyCode)
   const months = useReportMonths()
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -43,9 +43,7 @@ export function SubscriptionsReport({ budgetId }: Props) {
     if (!monthLabels.length || !subscriptions.length) return []
 
     return monthLabels.map((monthStr, idx) => {
-      const date = new Date(monthStr)
-      const label = date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
-      const entry: Record<string, string | number> = { month: label }
+      const entry: Record<string, string | number> = { month: formatMonthShort(monthStr) }
 
       for (const sub of subscriptions) {
         entry[sub.category_name] = sub.monthly_amounts[idx] ?? 0
@@ -53,7 +51,7 @@ export function SubscriptionsReport({ budgetId }: Props) {
 
       return entry
     })
-  }, [monthLabels, subscriptions])
+  }, [monthLabels, subscriptions, formatMonthShort])
 
   if (isLoading) {
     return <div className="report-loading">Loading...</div>

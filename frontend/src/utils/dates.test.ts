@@ -7,8 +7,13 @@
  * that keeps the expected local date/time fixed no matter which timezone the
  * test runner is in.
  */
-import { describe, expect, it } from 'vitest'
-import { formatDateTimeWithOptions, ordinalDay } from './dates'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import {
+  formatDateTimeWithOptions,
+  formatDayMonthWithOptions,
+  formatMonthShortWithOptions,
+  ordinalDay,
+} from './dates'
 
 const AFTERNOON = '2026-08-17T13:53:41'
 
@@ -72,5 +77,65 @@ describe('ordinalDay', () => {
     expect(ordinalDay(22)).toBe('22nd')
     expect(ordinalDay(23)).toBe('23rd')
     expect(ordinalDay(31)).toBe('31st')
+  })
+})
+
+/**
+ * These two pin a timezone on purpose, because the bug they cover is invisible
+ * in UTC. `months` arrives from the server as a date-only string ("2026-09-01",
+ * `months: list[date]`), and `new Date(dateOnly)` parses that as UTC midnight.
+ * Rendered in a zone behind Greenwich it lands on the previous day — which for
+ * a month-start string is the previous MONTH, and each January the previous
+ * YEAR. Savings, Subscriptions and Cost of Living each hand-rolled the label
+ * that way and read "Dec 25" for January 2026.
+ *
+ * The suite pins no zone of its own, so a UTC runner would have passed the bug.
+ */
+describe('short formatters are timezone-proof', () => {
+  const realTZ = process.env.TZ
+
+  beforeAll(() => {
+    process.env.TZ = 'America/Los_Angeles'
+  })
+  afterAll(() => {
+    process.env.TZ = realTZ
+  })
+
+  it('keeps a month-start string in its own month behind Greenwich', () => {
+    // The January case is the loud one: this read "Dec 25" before the fix.
+    expect(formatMonthShortWithOptions('2026-01-01', 'mdy')).toBe('Jan 26')
+    expect(formatMonthShortWithOptions('2026-09-01', 'mdy')).toBe('Sep 26')
+    expect(formatMonthShortWithOptions('2026-12-01', 'mdy')).toBe('Dec 26')
+  })
+
+  it('honours the ymd date setting instead of hard-coding en-US', () => {
+    expect(formatMonthShortWithOptions('2026-09-01', 'ymd')).toBe('26 Sep')
+    // dmy shares the month-first short form; only ymd reorders.
+    expect(formatMonthShortWithOptions('2026-09-01', 'dmy')).toBe('Sep 26')
+  })
+
+  it('keeps a day-month label on its own day, and keeps ymd numeric', () => {
+    expect(formatDayMonthWithOptions('2026-01-01', 'mdy')).toBe('Jan 1')
+    expect(formatDayMonthWithOptions('2026-01-01', 'dmy')).toBe('1 Jan')
+    expect(formatDayMonthWithOptions('2026-01-01', 'ymd')).toBe('01-01')
+  })
+})
+
+describe('short formatters ahead of Greenwich', () => {
+  const realTZ = process.env.TZ
+
+  beforeAll(() => {
+    process.env.TZ = 'Pacific/Auckland'
+  })
+  afterAll(() => {
+    process.env.TZ = realTZ
+  })
+
+  it('reads the same month on the other side of the world', () => {
+    // Proves the fix is zone-independent rather than merely shifted the other
+    // way: a UTC-midnight parse is correct here, so only a local parse can
+    // satisfy both this block and the one above.
+    expect(formatMonthShortWithOptions('2026-01-01', 'mdy')).toBe('Jan 26')
+    expect(formatMonthShortWithOptions('2026-09-01', 'mdy')).toBe('Sep 26')
   })
 })
