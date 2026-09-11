@@ -101,6 +101,7 @@ export function DayPatternsReport({ budgetId }: Props) {
   const servedBaseline = paydayData?.baseline_daily
   const paydayBaseline = servedBaseline == null ? null : Number(servedBaseline)
   const paydayEventCount = paydayData?.event_count ?? 0
+  const paydayFloor = paydayData?.payday_floor
 
   const paydayChartData = paydayDays.map((d) => ({
     name: d.offset === 0 ? 'Payday' : `+${d.offset}`,
@@ -232,20 +233,31 @@ export function DayPatternsReport({ budgetId }: Props) {
           <h2 className="report-section__title">Payday Effect</h2>
           <ReportInfoButton title="Payday Effect">
             <p>
-              Analyzes your <strong>spending behavior after large income deposits</strong>{' '}
-              (paychecks, bonuses, etc.). Compares daily spending in the days following income
-              events against your baseline daily spending.
+              Compares your <strong>spending in the days after each payday</strong> with your
+              baseline daily spending.
             </p>
             <p>
-              Bars above the dashed baseline indicate higher-than-normal spending. Many people spend
-              more right after payday — this visualization helps you see if that pattern applies to
-              you.
+              A <strong>payday</strong> is an income deposit — categorized as income, or not yet
+              categorized — of {paydayFloor == null ? 'a minimum amount' : formatMoney(paydayFloor)}{' '}
+              or more into a cash account. Money moved in from another of your accounts, a credit on
+              a credit card, and a refund filed to a spending category are not paydays.
             </p>
             <p>
-              <strong>Note:</strong> Subscriptions and scheduled bills are excluded to isolate
-              discretionary spending patterns.
+              Each bar is the average spent that many days after a payday, across every payday; a
+              payday with nothing spent that day counts as zero. The dashed baseline is your average
+              daily spending on the days, from the first payday on, that fall outside every payday
+              window. When paydays come often enough to cover every day, there is no baseline.
+            </p>
+            <p>
+              Bars above the baseline indicate higher-than-normal spending. Many people spend more
+              right after payday — this shows whether that pattern applies to you.
+            </p>
+            <p>
+              <strong>Note:</strong> Subscriptions are excluded — they land on their own schedule,
+              whatever you do after being paid.
             </p>
             <ReportScopeNote scope="on-budget" />
+            <SpendingClassNote />
           </ReportInfoButton>
           <div
             className="report-section__controls"

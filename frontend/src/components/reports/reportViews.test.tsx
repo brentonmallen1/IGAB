@@ -7,7 +7,7 @@
  * assertions target the surrounding UI (headers, tables, metric cards) —
  * the chart math itself is covered by the pure-function suites.
  */
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import type { ComponentType, ReactElement } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -477,6 +477,7 @@ describe('DayPatternsReport payday baseline', () => {
         counted_classes: ['spending'],
         baseline_daily: null,
         event_count: 26,
+        payday_floor: 200,
       },
     })
     renderReport(<DayPatternsReport budgetId="b1" />)
@@ -484,6 +485,31 @@ describe('DayPatternsReport payday baseline', () => {
     expect(screen.getByText('No days fall outside a payday window')).toBeInTheDocument()
     expect(screen.queryByText('Average on non-payday periods')).toBeNull()
     expect(screen.queryByText('$0.00')).toBeNull()
+  })
+
+  it('states the payday rule the server applied, and that it counts spending only', () => {
+    // The panel said scheduled bills were excluded (they never were) and said
+    // nothing of the floor that decides what a payday is, nor of the class
+    // rule the Day-of-Week panel above it explains. The floor is served, so
+    // the copy cannot drift from it: 250 here, not the backend's default.
+    setQuery({
+      data: {
+        days: [],
+        counted_classes: ['spending'],
+        baseline_daily: 12,
+        event_count: 3,
+        payday_floor: 250,
+      },
+    })
+    renderReport(<DayPatternsReport budgetId="b1" />)
+    fireEvent.click(screen.getByRole('button', { name: 'About the Payday Effect report' }))
+
+    const panel = within(screen.getByRole('dialog', { name: 'Payday Effect' }))
+    expect(panel.getByText(/is an income deposit/).textContent).toContain(
+      '$250.00 or more into a cash account'
+    )
+    expect(panel.queryByText(/scheduled bills/)).toBeNull()
+    expect(panel.getByText(/Counts spending only/)).toBeInTheDocument()
   })
 })
 

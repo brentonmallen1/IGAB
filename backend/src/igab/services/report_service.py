@@ -3004,12 +3004,15 @@ class ReportService:
         )
         rows = (await self.session.execute(apply_class_joins(q))).all()
 
+        # The floor is served so the panel can state the rule it applied.
+        no_paydays = {
+            "days": [{"offset": i, "avg_spend": Decimal("0")} for i in range(window)],
+            "baseline_daily": None,
+            "event_count": 0,
+            "payday_floor": PAYDAY_FLOOR,
+        }
         if not rows:
-            return {
-                "days": [{"offset": i, "avg_spend": Decimal("0")} for i in range(window)],
-                "baseline_daily": None,
-                "event_count": 0,
-            }
+            return no_paydays
 
         # Build DataFrame
         df = pl.DataFrame(
@@ -3043,11 +3046,7 @@ class ReportService:
         )
 
         if not income_dates:
-            return {
-                "days": [{"offset": i, "avg_spend": Decimal("0")} for i in range(window)],
-                "baseline_daily": None,
-                "event_count": 0,
-            }
+            return no_paydays
 
         # Subscriptions are not payday behaviour: they land on their own
         # schedule whatever the household does after being paid, so counting
@@ -3139,6 +3138,7 @@ class ReportService:
             "days": days_result,
             "baseline_daily": baseline_daily,
             "event_count": len(income_dates),
+            "payday_floor": PAYDAY_FLOOR,
         }
 
     # ─── Cash Projection ─────────────────────────────────────────────────────────

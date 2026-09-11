@@ -847,6 +847,7 @@ async def payday_effect_report(
         days=[PaydayEffectDay.model_validate(d) for d in data["days"]],
         baseline_daily=data["baseline_daily"],
         event_count=data["event_count"],
+        payday_floor=data["payday_floor"],
     )
 
 

@@ -22,7 +22,7 @@ from igab.domain.activity_class import ActivityClass
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.services import report_service
-from igab.services.report_service import ReportService
+from igab.services.report_service import PAYDAY_FLOOR, ReportService
 from igab.services.transaction_service import TransactionCreate
 
 from .factories import (
@@ -440,6 +440,8 @@ async def test_a_baseline_with_no_outside_is_served_as_null(api_client, db_sessi
     body = resp.json()
     assert body["event_count"] == 4
     assert body["baseline_daily"] is None
+    # The floor the panel quotes is the one the server applied.
+    assert body["payday_floor"] == float(PAYDAY_FLOOR)
 
 
 async def test_exactly_the_floor_is_a_payday_and_a_cent_under_is_not(db_session):

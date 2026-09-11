@@ -743,6 +743,9 @@ class PaydayEffectResponse(ApiModel):
     #: the opposite of "there is no outside".
     baseline_daily: Decimal | None
     event_count: int  # number of income events used
+    #: The smallest inflow counted as a payday (report_service.PAYDAY_FLOOR),
+    #: served so the panel states the rule without a second copy of it.
+    payday_floor: Decimal
 
 
 # ─── Cash Projection Report ──────────────────────────────────────────────────

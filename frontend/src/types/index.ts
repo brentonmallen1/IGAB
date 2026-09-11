@@ -1276,6 +1276,9 @@ export interface PaydayEffectReport {
    *  says the household spends nothing between paydays. */
   baseline_daily: number | null
   event_count: number
+  /** The smallest inflow the server counted as a payday — backend
+   *  PAYDAY_FLOOR, served so the info panel quotes the rule it applied. */
+  payday_floor: number
 }
 
 export interface CashProjectionPoint {
