@@ -22,7 +22,7 @@ import { MetricCard } from '../MetricCard'
 import { MetricRow } from '../MetricRow'
 import { ReportErrorState } from '../ReportErrorState'
 import { CHART_COLORS, COLOR_NEGATIVE, chartColor } from './chartColors'
-import { buildParetoItems, cumulativePercents, paretoAdherence, paretoInsight } from './paretoData'
+import { buildParetoItems, paretoAdherence, paretoSummary } from './paretoData'
 import { shareOfTotal } from '../drillDownTotals'
 import { ReportInfoButton, ReportScopeNote, SpendingClassNote } from '../ReportInfoButton'
 import { ReportNotes, IncludeSavingsToggle, emptySpendingMessage } from '../ReportNotes'
@@ -119,7 +119,6 @@ export function ParetoReport({ budgetId }: Props) {
   )
 
   const spendingItems = useMemo(() => spendingQ.data?.groups ?? [], [spendingQ.data])
-  const payeeItems = useMemo(() => payeeQ.data?.payees ?? [], [payeeQ.data])
 
   const groupColorMap = useMemo(() => {
     const map = new Map<string, string>()
@@ -132,19 +131,8 @@ export function ParetoReport({ budgetId }: Props) {
   }, [spendingItems])
 
   const { sorted, grandTotal, universeCount, itemsTo80 } = useMemo(
-    () =>
-      buildParetoItems(
-        groupBy,
-        spendingItems,
-        payeeItems,
-        spendingQ.data?.total,
-        payeeQ.data && {
-          total: payeeQ.data.total,
-          count: payeeQ.data.payee_count,
-          itemsTo80: payeeQ.data.payees_to_80pct,
-        }
-      ),
-    [groupBy, spendingItems, payeeItems, spendingQ.data, payeeQ.data]
+    () => buildParetoItems(groupBy, spendingItems, spendingQ.data?.total, payeeQ.data),
+    [groupBy, spendingItems, spendingQ.data, payeeQ.data]
   )
 
   // Group id → member category ids, for expanding a group drill client-side
@@ -204,27 +192,22 @@ export function ParetoReport({ budgetId }: Props) {
     }
   }
 
-  // Over every item, then sliced for the chart. Measuring concentration on
-  // the twenty drawn bars is how the 80% card came to disappear exactly for
-  // the budgets whose spending is spread thin.
-  const cumulativePcts = cumulativePercents(sorted, grandTotal)
-  const top20 = sorted.slice(0, 20)
-  const chartData = top20.map((item, i) => ({
+  // `universeCount`, not `sorted.length`: in payee mode the server ranks the
+  // top 25, and "% of all payees" measured against the cap was the cap
+  // restated as a fact about the period.
+  const { drawn, idx80, coverage } = paretoSummary(sorted, grandTotal, universeCount, itemsTo80)
+  const chartData = drawn.map(({ item, cumulativePct }, i) => ({
     name: truncateLabel(item.name, 14),
     fullName: item.name,
     group: item.groupName,
     Amount: item.total,
-    'Cumulative %': cumulativePcts[i],
+    'Cumulative %': cumulativePct,
     color:
       groupBy === 'group'
         ? chartColor(i)
         : (groupColorMap.get(item.groupKey ?? '__none__') ?? CHART_COLORS[0]),
   }))
 
-  // `universeCount`, not `sorted.length`: in payee mode the server ranks the
-  // top 25, and "% of all payees" measured against the cap was the cap
-  // restated as a fact about the period.
-  const { idx80, coverage } = paretoInsight(cumulativePcts, universeCount, itemsTo80)
   const adherence = paretoAdherence(coverage, universeCount)
   const rankedIsEverything = universeCount === sorted.length
 

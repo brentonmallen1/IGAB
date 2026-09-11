@@ -92,7 +92,9 @@ export function PayeeReport({ budgetId }: Props) {
   // the 25 it ranked. `pct` is a share of this, so a client-side sum of the
   // visible rows disagreed with the percentages beside them.
   const grandTotal = Number(data?.total ?? 0)
-  const payeeCount = data?.payee_count ?? payees.length
+  // Served, never the rows' length — that is the ranking cap. No response
+  // means no payees, and nothing below draws.
+  const payeeCount = data?.payee_count ?? 0
   const ranked = payees.length
 
   return (
