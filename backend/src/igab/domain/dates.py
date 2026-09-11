@@ -15,7 +15,6 @@ try/except around a calendar edge.
 """
 
 import calendar
-from collections.abc import Sequence
 from datetime import date, timedelta
 
 
@@ -108,30 +107,20 @@ def clamped_month_end(month: date, today: date) -> date:
     return min(month_end(month), today)
 
 
-def complete_months(months: Sequence[date], today: date) -> list[date]:
-    """The month buckets in `months` that have finished.
-
-    A per-month AVERAGE has to divide by months that happened. Dividing a
-    twelve-month total by twelve on the 3rd of the month spreads eleven months
-    of spending plus two days across twelve, and the figure is at its lowest
-    exactly when a household checks it at the start of a month: Cost of Living
-    quoted $2,750/month where the Essentials report, reading the same tag and
-    the same query over its own window, quoted $3,000.
-
-    The current month is never complete — not even on its last day, since the
-    day is not over. `complete_month_window` applies the same rule to a
-    window, so a report cannot pick a different answer.
-    """
-    current = month_start(today)
-    return [m for m in months if month_start(m) < current]
-
-
 def complete_month_window(
     today: date, months: int, history_from: date | None = None
 ) -> tuple[date, date]:
     """The last `months` COMPLETE months: (first day of the oldest, last day of
-    the previous month). The current month is never in it — see
-    `complete_months` for why.
+    the previous month) — the window of every per-month AVERAGE.
+
+    An average has to divide by months that happened. Dividing a twelve-month
+    total by twelve on the 3rd of the month spreads eleven months of spending
+    plus two days across twelve, and the figure is at its lowest exactly when
+    a household checks it at the start of a month: Cost of Living quoted
+    $2,750/month where the Essentials report, reading the same tag and the
+    same query over its own window, quoted $3,000. The current month is never
+    in the window — not even on its last day, since the day is not over — so
+    every month in it is complete, and a report divides by all of them.
 
     `history_from` is when the budget's history starts. The window never
     reaches before that month: a zero-filled month before the first

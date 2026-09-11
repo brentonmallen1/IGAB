@@ -14,7 +14,6 @@ from igab.domain.dates import (
     add_months,
     clamped_month_end,
     complete_month_window,
-    complete_months,
     month_end,
     month_start,
     month_starts,
@@ -173,43 +172,27 @@ class TestWeekdayOccurrences:
             weekday_occurrences(date(2026, 5, 1), 7)
 
 
-class TestCompleteMonths:
+class TestCompleteMonthWindow:
     """What a per-month AVERAGE is allowed to divide by."""
 
-    @staticmethod
-    def year(n: int = 12, *, end: date = date(2026, 9, 1)) -> list[date]:
-        return [add_months(end, -i) for i in range(n - 1, -1, -1)]
-
-    def test_the_month_in_progress_is_not_complete(self):
-        months = self.year()
-        assert complete_months(months, date(2026, 9, 10)) == months[:-1]
-
-    def test_not_even_on_its_last_day(self):
-        # The day is not over, and a month measured on its final morning is
-        # still short. The alternative — counting it — is what made a
-        # twelve-month average lowest on the days a household checks it.
-        months = self.year()
-        assert len(complete_months(months, date(2026, 9, 30))) == 11
-
-    def test_it_is_complete_the_moment_the_next_month_starts(self):
-        months = self.year()
-        assert complete_months(months, date(2026, 10, 1)) == months
-
-    def test_a_one_month_window_has_nothing_complete_in_it(self):
-        # The caller's problem, not this function's: `cost_of_living` falls
-        # back to the running month rather than dividing by zero, and says so
-        # through `months_averaged`.
-        assert complete_months([date(2026, 9, 1)], date(2026, 9, 10)) == []
-
-    def test_the_day_of_a_bucket_does_not_matter(self):
-        # Buckets are keyed on the first of the month, but a caller handing in
-        # a mid-month date means that month.
-        assert complete_months([date(2026, 8, 17)], date(2026, 9, 2)) == [date(2026, 8, 17)]
-
-
-class TestCompleteMonthWindow:
     def test_ends_on_the_last_day_of_the_previous_month(self):
         assert complete_month_window(date(2026, 9, 10), 3) == (date(2026, 6, 1), date(2026, 8, 31))
+
+    def test_not_even_on_the_running_months_last_day(self):
+        # The day is not over, and a month measured on its final morning is
+        # still short. Counting it is what made a twelve-month average lowest
+        # on the days a household checks it.
+        assert complete_month_window(date(2026, 9, 30), 12)[1] == date(2026, 8, 31)
+
+    @pytest.mark.parametrize("today", [date(2026, 10, 1), date(2026, 10, 17), date(2026, 10, 31)])
+    def test_always_exactly_n_months_the_first_included(self, today):
+        # `months_averaged` is the window's length on every day, the 1st
+        # included. The served docs once promised "one less than the window
+        # on every day but the first", a rule that never held.
+        axis = month_starts(*complete_month_window(today, 12))
+        assert len(axis) == 12
+        assert axis[0] == date(2025, 10, 1)
+        assert axis[-1] == date(2026, 9, 1)
 
     def test_crosses_a_year(self):
         assert complete_month_window(date(2026, 3, 10), 3) == (

@@ -416,8 +416,9 @@ async def subscriptions_report(
             "active_count": len(subscriptions),
         },
         "months": month_list,
-        #: How many months an effective-monthly figure divides by: all of
-        #: them, since every month in the window is complete.
+        #: The window's complete months: the most an effective-monthly figure
+        #: divides by, since each line divides by the months since its own
+        #: first charge.
         "months_averaged": len(month_list),
     }
 

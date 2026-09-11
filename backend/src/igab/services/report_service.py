@@ -2617,7 +2617,7 @@ class ReportService:
         total_inflow = sum((c["total_inflow"] for c in categories), Decimal("0"))
         # Every month in the window, the one in progress included — a
         # deliberate difference from the spending averages, which divide by
-        # COMPLETE months (`domain.dates.complete_months`).
+        # COMPLETE months (`domain.dates.complete_month_window`).
         #
         # Inflow here is ASSIGNED money, and assigning is a monthly act rather
         # than something that accrues by the day: an envelope funded on the

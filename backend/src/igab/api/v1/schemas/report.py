@@ -610,11 +610,11 @@ class SubscriptionsReportResponse(ApiModel):
     subscriptions: list[SubscriptionCategory]
     summary: SubscriptionsSummary
     months: list[date]  # month labels for the period
-    #: How many months an effective-monthly figure divides by: COMPLETE
-    #: months. One less than the window on every day but the first of a
-    #: month. Required, not optional — the page has to be able to say which
-    #: months a per-month figure covers, and a default would let it claim the
-    #: whole window.
+    #: The complete months the window holds — every month in `months`, on
+    #: every day (`domain.dates.complete_month_window`). It is the MOST an
+    #: effective-monthly figure divides by: each line divides by the months
+    #: since its own first charge. Required, not optional — a default would
+    #: let the page claim a divisor nothing served.
     months_averaged: int
 
 
@@ -891,9 +891,8 @@ class CostOfLivingResponse(ApiModel):
     #: days rather than re-deriving them from `months`.
     window_start: date
     window_end: date
-    #: How many months the AVERAGES divide by: COMPLETE months, so the newest
-    #: column of `months` is outside it on every day but the first of a month.
-    #: The RATIOS are not affected — both their terms cover the same days.
+    #: How many months the AVERAGES divide by: every month in `months`, all of
+    #: them complete, on every day (`domain.dates.complete_month_window`).
     months_averaged: int
     groups: list[CostOfLivingGroup]
     #: The wide tier: everything non-discretionary. Required, not optional — a
