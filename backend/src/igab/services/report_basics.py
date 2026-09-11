@@ -571,8 +571,11 @@ async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: in
     # months of spending plus two days over twelve — lowest exactly when a
     # household checks at the start of a month, and the reason this report
     # quoted $2,750/month where the Essentials report quoted $3,000 for the
-    # same tag and the same query. The RATIOS below are unaffected: both their
-    # terms cover the same days.
+    # same tag and the same query. The RATIOS below divide these same
+    # complete-month figures: a ratio printed beside two cards has to be their
+    # quotient. Dividing whole-window totals instead had both terms covering
+    # the same days — just not the days the cards average — and Required read
+    # 40% beside cards whose quotient was 60%.
     complete = complete_months(month_list, today)
     n_complete = len(complete)
     essentials_complete_signed = essentials_signed
@@ -643,8 +646,8 @@ async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: in
     avg_income = quantize_cents(income_complete / n) if n else Decimal("0")
     # Outflows are negative in the ledger; a cost reads positive here, the same
     # way the group buckets above flip theirs.
-    essentials_total = -essentials_signed
-    avg_essentials = quantize_cents(-essentials_complete_signed / n) if n else Decimal("0")
+    essentials_complete = -essentials_complete_signed
+    avg_essentials = quantize_cents(essentials_complete / n) if n else Decimal("0")
     avg_cost_of_living = quantize_cents(cost_of_living_complete / n) if n else Decimal("0")
     # The gap, and the reason the two tiers exist: what a lean month could shed.
     # Floored at zero — the wide tier contains the lean one as a disjunct, so a
@@ -675,20 +678,27 @@ async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: in
         "avg_monthly_non_essential": avg_non_essential,
         "avg_monthly_income": avg_income,
         #: What share of take-home is already spoken for before anything
-        #: discretionary. None when there is no income on record: a ratio
-        #: against zero is not 100%, it is unknown.
+        #: discretionary. None when the averaged months carry no income: a
+        #: ratio against zero is not 100%, it is unknown.
         #:
         #: This is the WIDE tier now, and it rises for every household with a
         #: tracked loan — debt principal joins cost of living by class, with no
         #: tagging needed. The report has to say so on its face.
+        #:
+        #: Both ratios divide the complete-month figures the cards show, so
+        #: each is exactly the quotient of the two cards beside it.
         "required_ratio": (
-            quantize_cents(cost_of_living_total / income_total * 100) if income_total > 0 else None
+            quantize_cents(cost_of_living_complete / income_complete * 100)
+            if income_complete > 0
+            else None
         ),
         #: The lean tier against take-home. Above 100 the household cannot
         #: cover what it could not cut, which is a different and worse fact
         #: than a high required ratio.
         "essentials_ratio": (
-            quantize_cents(essentials_total / income_total * 100) if income_total > 0 else None
+            quantize_cents(essentials_complete / income_complete * 100)
+            if income_complete > 0
+            else None
         ),
         "basis": basis,
         #: False when nothing is tagged Essential, so the page can say the

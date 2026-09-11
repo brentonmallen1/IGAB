@@ -865,10 +865,12 @@ class CostOfLivingResponse(ApiModel):
     avg_monthly_non_essential: Decimal
     avg_monthly_income: Decimal
     #: Share of take-home already spoken for, against the WIDE tier. None when
-    #: no income is on record: a ratio against zero is unknown, not 100%.
+    #: the averaged months carry no income: a ratio against zero is unknown,
+    #: not 100%. Divides the same complete-month figures as the cards, so it is
+    #: the quotient of avg_monthly_cost_of_living and avg_monthly_income.
     required_ratio: Decimal | None
-    #: The lean tier against take-home. Above 100 the household cannot cover
-    #: what it could not cut.
+    #: The lean tier against take-home, over the same complete months. Above
+    #: 100 the household cannot cover what it could not cut.
     essentials_ratio: Decimal | None
     #: 'bound' | 'tag' | 'all' — how "essential" was decided.
     basis: str
