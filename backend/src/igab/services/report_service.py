@@ -2707,9 +2707,8 @@ class ReportService:
         savings_cat_ids = await tag_repo.get_category_ids_by_system_keys(
             budget_id, ["savings", "long_term_expense"]
         )
-
-        if not savings_cat_ids:
-            return _empty_savings_report([])
+        # No early return, tagged or not: two returned two empties (`months`
+        # [] beside the window) and one dropped the drains this path keeps.
 
         # Date range
         today = date.today()
@@ -2722,9 +2721,9 @@ class ReportService:
         start_date = _subtract_months(today, months - 1).replace(day=1)
         month_list = month_starts(start_date, end_date)
 
-        # What pulled from savings: moves out of these envelopes in the window,
-        # named on both sides. The same rows the wishlist reads for its
-        # envelopes — one query, one shaping, two readers.
+        # What pulled from savings: moves out of every tagged envelope in the
+        # window, a since-deleted one included (the move happened), named on
+        # both sides. The same rows the wishlist reads for its envelopes.
         from igab.domain.drains import drains_total, shape_drains
         from igab.repositories.budget_move_repo import BudgetMoveRepository
         from igab.repositories.category_repo import CategoryRepository
@@ -2764,8 +2763,6 @@ class ReportService:
         cat_info = {str(r.id): {"name": r.name, "group_name": r.group_name} for r in cat_info_rows}
         # Everything below walks only the envelopes that survived that filter.
         savings_cat_ids = [c for c in savings_cat_ids if str(c) in cat_info]
-        if not savings_cat_ids:
-            return _empty_savings_report(month_list)
 
         # Available from the Budget page's own walk (`envelope_series`), never
         # a copy of it. This method once kept a running total — carrying an
@@ -3450,27 +3447,6 @@ class ReportService:
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
-
-
-def _empty_savings_report(month_list: list[date]) -> dict:
-    """The declared shape with nothing in it.
-
-    Two paths reach it: no tagged categories at all, and every tagged category
-    filtered out by BUDGETED_ENVELOPE. Written once so the second cannot serve
-    a slightly different empty.
-    """
-    return {
-        "categories": [],
-        "summary": {
-            "total_balance": Decimal("0"),
-            "total_inflow": Decimal("0"),
-            "avg_monthly_inflow": Decimal("0"),
-            "category_count": 0,
-        },
-        "months": month_list,
-        "drains": {"total": Decimal("0"), "moves": []},
-        "unrecovered": [],
-    }
 
 
 _DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]

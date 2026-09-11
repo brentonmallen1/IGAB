@@ -19,10 +19,15 @@ columns with an empty leader and divided the average inflow by 19.
 from datetime import date
 from decimal import Decimal
 
+import pytest
+
+from igab.db.models import BudgetMove
+from igab.domain.drains import GONE_LABEL, TBA_LABEL
 from igab.repositories.import_anchor_repo import anchor_rows
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.services.card_payment import ensure_payment_category
 from igab.services.report_service import ReportService
+from tests.report_clock import report_today
 
 from .factories import (
     create_account,
@@ -36,6 +41,15 @@ from .factories import (
 )
 
 TODAY = date.today()
+
+
+@pytest.fixture(autouse=True)
+def _the_service_reads_this_modules_today():
+    """Rows are dated from TODAY, read once at import; the report reads the
+    clock when called. Pinned, a run that crosses midnight at a month's end
+    still asks for the window its rows were seeded in."""
+    with report_today(TODAY):
+        yield
 
 
 def months_ago(n: int) -> date:
@@ -195,7 +209,10 @@ async def test_no_tagged_categories_is_empty(db_session):
             "avg_monthly_inflow": Decimal("0"),
             "category_count": 0,
         },
-        "months": [],
+        # The window, as every other savings report states it. This read []
+        # while a budget whose only tagged envelope was deleted read the
+        # window: one empty report, two API shapes.
+        "months": [months_ago(2), months_ago(1), months_ago(0)],
         # Nothing tagged means nothing to drain from — an empty list, not an
         # absent key, so the report's shape does not change with its contents.
         "drains": {"total": Decimal("0"), "moves": []},
@@ -300,6 +317,44 @@ async def test_a_soft_deleted_envelope_is_not_a_row(db_session):
     assert [c["category_name"] for c in data["categories"]] == ["Emergency Fund"]
     assert data["summary"]["category_count"] == 1
     assert data["summary"]["total_balance"] == Decimal("200.00")
+
+
+@pytest.mark.parametrize("live_sibling", [False, True], ids=["all-filtered", "live-sibling"])
+async def test_a_deleted_envelopes_drain_does_not_hang_on_a_live_sibling(db_session, live_sibling):
+    """Drains read every tagged envelope, a deleted one included: the move
+    happened while it was savings. When the deleted one was the only tagged
+    envelope, an early return served an empty report without them — so a
+    40.00 move out of "Old Goal" showed while "Emergency Fund" was tagged and
+    vanished when it was not.
+    """
+    budget, checking, group, tag_repo = await _setup(db_session)
+    if live_sibling:
+        live = await _tagged_category(
+            db_session, budget, group, tag_repo, "Emergency Fund", "savings"
+        )
+        await create_budget_assignment(db_session, budget, live, months_ago(0), "200.00")
+    gone = await _tagged_category(db_session, budget, group, tag_repo, "Old Goal", "savings")
+    await create_budget_assignment(db_session, budget, gone, months_ago(1), "90.00")
+    db_session.add(
+        BudgetMove(
+            budget_id=budget.id,
+            month=months_ago(1),
+            from_category_id=gone.id,
+            to_category_id=None,
+            amount=Decimal("40.00"),
+        )
+    )
+    gone.is_deleted = True
+    await db_session.flush()
+
+    data = await ReportService(db_session).savings_report(budget.id, months=3)
+
+    assert data["months"] == [months_ago(2), months_ago(1), months_ago(0)]
+    assert data["summary"]["category_count"] == (1 if live_sibling else 0)
+    assert data["drains"]["total"] == Decimal("40.00")
+    assert [(m["from_name"], m["to_name"], m["amount"]) for m in data["drains"]["moves"]] == [
+        (GONE_LABEL, TBA_LABEL, Decimal("40.00"))
+    ]
 
 
 async def test_the_window_has_exactly_the_months_asked_for(db_session):
