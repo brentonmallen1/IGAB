@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Change } from '../../api/changes'
-import { diffRows, fieldLabel, formatFieldValue, summarizeChange, truncate } from './changeDetails'
+import { diffRows, fieldLabel, formatFieldValue, summarizeChange } from './changeDetails'
 
 const PAYEE = '11111111-1111-1111-1111-111111111111'
 const ACCOUNT = '22222222-2222-2222-2222-222222222222'
@@ -62,7 +62,9 @@ describe('summarizeChange', () => {
       change({ after: { amount: '-5.00', payee_id: PAYEE } }),
       longNames
     )
-    expect(summary).toBe('-$5.00 · The Extremely Long Paye…')
+    // utils/truncateLabel's rule: `max - 2` characters and the ellipsis. This
+    // page's own copy kept one more ("…Long Paye…") than every chart did.
+    expect(summary).toBe('-$5.00 · The Extremely Long Pay…')
   })
 
   it('leaves the line bare when the names map has no answer', () => {
@@ -174,8 +176,5 @@ describe('labels and truncation', () => {
     expect(fieldLabel('category_id')).toBe('category')
     expect(fieldLabel('_tag_ids')).toBe('tags')
     expect(fieldLabel('next_occurrence_date')).toBe('next occurrence date')
-  })
-  it('truncate keeps short strings whole', () => {
-    expect(truncate('Checking')).toBe('Checking')
   })
 })

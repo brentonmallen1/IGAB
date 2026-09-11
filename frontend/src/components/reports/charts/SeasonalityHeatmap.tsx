@@ -9,7 +9,7 @@ import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ReportRangeSelect } from './rangeSelect'
 import './SeasonalityHeatmap.css'
-import { truncateLabel } from './chartLabel'
+import { truncateLabel } from '../../../utils/truncateLabel'
 
 interface Props {
   budgetId: string

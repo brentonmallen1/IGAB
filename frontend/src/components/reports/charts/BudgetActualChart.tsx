@@ -21,7 +21,7 @@ import { MetricCard } from '../MetricCard'
 import { MetricRow } from '../MetricRow'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
-import { truncateLabel } from './chartLabel'
+import { truncateLabel } from '../../../utils/truncateLabel'
 
 interface Props {
   budgetId: string

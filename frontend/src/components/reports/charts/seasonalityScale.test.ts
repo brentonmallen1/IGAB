@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { abbreviateValue, buildCellMap, intensityPct, maxCellValue } from './seasonalityScale'
 import { PRIVACY_MASK } from '../../../utils/money'
@@ -79,5 +81,20 @@ describe('abbreviateValue masks for privacy mode', () => {
   it('hides the digits when masked', () => {
     expect(abbreviateValue(4180, true)).toBe(PRIVACY_MASK)
     expect(abbreviateValue(4180, true)).not.toContain('4')
+  })
+})
+
+describe('the heatmap row heading is cut once', () => {
+  it('leaves truncation to truncateLabel, with no CSS ellipsis beside it', () => {
+    // It was cut twice: truncateLabel(name, 20) in TS and max-width 180px with
+    // text-overflow: ellipsis in CSS. The TS cut always won, so the CSS copy
+    // was free to say anything — the TagPicker double, again.
+    const css = readFileSync(path.resolve(__dirname, 'SeasonalityHeatmap.css'), 'utf8').replace(
+      /\/\*[\s\S]*?\*\//g,
+      ''
+    )
+    const rule = css.match(/\.heatmap__cat-name\s*\{([^}]*)\}/)?.[1] ?? ''
+    expect(rule).not.toBe('')
+    expect(rule).not.toMatch(/text-overflow|max-width/)
   })
 })

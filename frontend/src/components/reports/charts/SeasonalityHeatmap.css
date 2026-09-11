@@ -40,10 +40,10 @@
   padding: 4px var(--spacing-sm);
   color: var(--text-secondary);
   font-size: var(--font-size-sm);
+  /* No max-width or ellipsis here: the row heading is cut in TS by
+     truncateLabel, which every chart shares. The CSS copy never fired — 20
+     characters fit inside its 180px — so it was free to say anything. */
   white-space: nowrap;
-  max-width: 180px;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .heatmap__cell {

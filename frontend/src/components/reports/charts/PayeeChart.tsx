@@ -21,7 +21,7 @@ import { CHART_COLORS, TOOLTIP_STYLE } from './chartColors'
 import { ReportInfoButton, ReportScopeNote, SpendingClassNote } from '../ReportInfoButton'
 import { LogScaleToggle, logAxisProps } from './logScale'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
-import { truncateLabel } from './chartLabel'
+import { truncateLabel } from '../../../utils/truncateLabel'
 
 interface Props {
   budgetId: string

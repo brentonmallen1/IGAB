@@ -30,7 +30,7 @@ import { LogScaleToggle, logAxisProps } from './logScale'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { useReportScope } from '../../../stores/reportStore'
 import { drillScope } from '../drillScope'
-import { truncateLabel } from './chartLabel'
+import { truncateLabel } from '../../../utils/truncateLabel'
 
 interface Props {
   budgetId: string

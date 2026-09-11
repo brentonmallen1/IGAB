@@ -13,6 +13,7 @@ import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import './SpendingTreemap.css'
 import { useReportScope } from '../../../stores/reportStore'
 import { shareOfTotal } from '../drillDownTotals'
+import { tileFontSize, tileLabel } from './treemapTile'
 
 interface Props {
   budgetId: string
@@ -232,13 +233,11 @@ function TreemapContent(props: {
           x={x + width / 2}
           y={y + height / 2 - 6}
           textAnchor="middle"
-          fontSize={Math.min(12, width / 7)}
+          fontSize={tileFontSize(width)}
           fill="var(--heatmap-cell-text)"
           fontWeight={600}
         >
-          {name.length > Math.floor(width / 7)
-            ? name.slice(0, Math.floor(width / 7) - 1) + '…'
-            : name}
+          {tileLabel(name, width)}
         </text>
       )}
       {height > 48 && (

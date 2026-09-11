@@ -1,7 +1,7 @@
 /** Pure math for the volatility report: error-bar spans and the coefficient
  * of variation. Extracted from VolatilityChart so it is unit-testable. */
 
-import { truncateLabel } from './chartLabel'
+import { truncateLabel } from '../../../utils/truncateLabel'
 
 interface VolatilityCategoryLike {
   category_id: string

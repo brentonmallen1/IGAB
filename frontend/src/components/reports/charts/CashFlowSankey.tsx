@@ -23,7 +23,7 @@ import {
   type SankeyViewNode,
 } from './sankeyView'
 import './CashFlowSankey.css'
-import { truncateLabel } from './chartLabel'
+import { truncateLabel } from '../../../utils/truncateLabel'
 
 interface Props {
   budgetId: string

@@ -10,6 +10,7 @@
  */
 import type { Change } from '../../api/changes'
 import { parseApiDecimal } from '../../utils/money'
+import { truncateLabel } from '../../utils/truncateLabel'
 
 export type Names = Record<string, string>
 
@@ -51,9 +52,10 @@ function signedMoney(value: unknown): string {
   return `${n < 0 ? '-' : '+'}$${Math.abs(n).toFixed(2)}`
 }
 
-export function truncate(text: string, max = 24): string {
-  return text.length > max ? `${text.slice(0, max - 1)}…` : text
-}
+/** Room for a payee, account or category name beside a change's amount. */
+const CONTEXT_NAME_MAX = 24
+/** An id the names map does not know, shortened to a stub. */
+const ID_STUB_MAX = 9
 
 /** Display form of one snapshot value. Ids the names map knows become
  *  names; unknown ids shorten to a stub rather than a full UUID. */
@@ -61,7 +63,7 @@ export function formatFieldValue(field: string, value: unknown, names: Names): s
   if (value === null || value === undefined || value === '') return '—'
   if (Array.isArray(value)) {
     if (value.length === 0) return '—'
-    return value.map((v) => names[String(v)] ?? truncate(String(v), 9)).join(', ')
+    return value.map((v) => names[String(v)] ?? truncateLabel(String(v), ID_STUB_MAX)).join(', ')
   }
   if (typeof value === 'object') return '(document)'
   if (typeof value === 'boolean') return value ? 'yes' : 'no'
@@ -104,7 +106,7 @@ function contextSuffix(change: Change, names: Names): string {
   const parts = fields
     .map((field) => names[String(snap[field] ?? '')])
     .filter((name): name is string => Boolean(name))
-    .map((name) => truncate(name))
+    .map((name) => truncateLabel(name, CONTEXT_NAME_MAX))
   return parts.length ? ` · ${parts.join(' · ')}` : ''
 }
 
