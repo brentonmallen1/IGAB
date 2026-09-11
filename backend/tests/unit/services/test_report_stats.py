@@ -92,19 +92,65 @@ class TestTheAmortizedReading:
         assert r["max_val"] == pytest.approx(Decimal("300.0"), rel=Decimal("0.01"))
         assert r["std_dev"] > Decimal("90")
 
-    def test_months_before_the_first_charge_stay_unknown(self):
-        """Spreading is FORWARD. The months before a category's first charge
-        are months we know nothing about, and back-filling them would invent
-        history — and flattening the whole window to `total / 12` would drive
-        every standard deviation to zero and make the report say nothing.
+    def test_months_before_the_first_charge_are_left_out_not_zero(self):
+        """Spreading is FORWARD, and the months before a category's first
+        charge were paid for by a charge the window never saw. They used to
+        count as zero, so a lumpy bill read flat only when the window happened
+        to start on one of its charges.
         """
-        rows = [Row(date(2026, 7, 20), "-600.00")]
+        # Feb and Aug on a Sep–Aug window: the phase that read 0 to 600, the
+        # raw range exactly.
+        grid = months(*[(2025, m) for m in range(9, 13)], *[(2026, m) for m in range(1, 9)])
+        rows = [Row(date(2026, 2, 20), "-600.00"), Row(date(2026, 8, 20), "-600.00")]
+        (r,) = volatility_stats(rows, grid, amortize=True)
+
+        assert r["min_val"] == Decimal("100")
+        assert r["max_val"] == Decimal("100")
+        assert r["mean"] == Decimal("100")
+        assert r["std_dev"] == Decimal("0")
+
+    def test_unequal_gaps_spread_to_each_next_charge(self):
+        """900 in Jan, Apr and Oct: Jan–Mar read 300, Apr–Sep read 150, and
+        Oct keeps its six-month rhythm, 150 over Oct–Dec. A fixed-period
+        spread (the window ÷ three charges) reads 0 to 300 and used to pass."""
+        rows = [Row(date(2026, m, 20), "-900.00") for m in (1, 4, 10)]
         (r,) = volatility_stats(rows, YEAR, amortize=True)
 
-        # 600 over Jul-Dec is 100 a month; Jan-Jun stay zero.
-        assert r["min_val"] == Decimal("0")
-        assert r["max_val"] == pytest.approx(Decimal("100.0"), rel=Decimal("0.01"))
-        assert r["mean"] == pytest.approx(Decimal("50.0"), rel=Decimal("0.01"))
+        assert r["min_val"] == Decimal("150")
+        assert r["max_val"] == Decimal("300")
+        # (3 × 300 + 9 × 150) / 12
+        assert r["mean"] == Decimal("187.5")
+        # Sample σ: sqrt((3 × 112.5² + 9 × 37.5²) / 11) = sqrt(50,625 / 11).
+        assert r["std_dev"] == pytest.approx(Decimal("67.8401"), abs=Decimal("0.0001"))
+        assert r["months_included"] == 3
+
+    def test_a_lumpy_category_beside_a_monthly_one_still_reads_flat(self):
+        """The next charge is looked up within the category. A lookup that
+        leaked across categories found Groceries' next month as Property Tax's
+        next charge and read it 0 to 600."""
+        rows = [
+            Row(date(2026, 1, 20), "-600.00"),
+            Row(date(2026, 7, 20), "-600.00"),
+            *[Row(date(2026, m, 10), "-80.00", cid="c2", name="Groceries") for m in range(1, 13)],
+        ]
+        by_name = {r["category_name"]: r for r in volatility_stats(rows, YEAR, amortize=True)}
+
+        tax = by_name["Property Tax"]
+        assert (tax["min_val"], tax["max_val"], tax["std_dev"]) == (
+            Decimal("100"),
+            Decimal("100"),
+            Decimal("0"),
+        )
+        groceries = by_name["Groceries"]
+        assert (groceries["min_val"], groceries["max_val"]) == (Decimal("80"), Decimal("80"))
+
+    def test_a_split_that_does_not_divide_evenly_is_right_to_the_cent(self):
+        grid = months(*[(2026, m) for m in range(1, 7)])
+        rows = [Row(date(2026, 1, 20), "-1000.00"), Row(date(2026, 4, 20), "-1000.00")]
+        (r,) = volatility_stats(rows, grid, amortize=True)
+
+        for field in ("mean", "min_val", "max_val", "p25", "p75"):
+            assert r[field] == pytest.approx(Decimal("333.33"), abs=Decimal("0.005")), field
 
     def test_months_included_still_counts_charges_not_spread_months(self):
         """Spreading one charge across six months must not report six.
@@ -119,6 +165,8 @@ class TestTheAmortizedReading:
 
         (single,) = volatility_stats([Row(date(2026, 3, 20), "-600.00")], YEAR, amortize=True)
         assert single["months_included"] == 1
+        # A lone charge has no rhythm, so it spreads to the end of the window.
+        assert single["min_val"] == single["max_val"] == pytest.approx(Decimal("60"))
 
     def test_a_steady_category_is_unchanged_by_amortizing(self):
         """Nothing to spread: a charge every month already covers one month."""
@@ -129,6 +177,43 @@ class TestTheAmortizedReading:
         assert amortized["mean"] == raw["mean"]
         assert amortized["std_dev"] == raw["std_dev"]
         assert amortized["months_included"] == raw["months_included"]
+
+
+class TestOnlyTheWindowCounts:
+    """Rows outside the grid count nowhere — not in `months_included`, and not
+    in the spread. The count was taken off the sparse frame, and the spread
+    carried a charge dated before the window into its first months, while the
+    comments still promised in-window counting."""
+
+    GRID = months(*[(2026, m) for m in range(1, 7)])
+
+    def test_months_included_ignores_rows_before_and_after(self):
+        rows = [
+            Row(date(2025, 11, 5), "-100.00"),
+            Row(date(2026, 3, 5), "-100.00"),
+            Row(date(2026, 8, 5), "-100.00"),
+        ]
+        for amortize in (False, True):
+            (r,) = volatility_stats(rows, self.GRID, amortize=amortize)
+            # One charge in the window, so the client's two-month floor drops it.
+            assert r["months_included"] == 1, amortize
+
+    def test_a_category_with_no_row_in_the_window_is_absent(self):
+        rows = [Row(date(2026, 10, 5), "-100.00")]
+        assert volatility_stats(rows, self.GRID) == []
+        assert volatility_stats(rows, self.GRID, amortize=True) == []
+
+    def test_a_charge_before_the_window_is_not_spread_into_it(self):
+        rows = [Row(date(2025, 12, 5), "-600.00"), Row(date(2026, 3, 5), "-100.00")]
+
+        (raw,) = volatility_stats(rows, self.GRID)
+        assert raw["mean"] == pytest.approx(Decimal("16.67"), abs=Decimal("0.005"))
+
+        (spread,) = volatility_stats(rows, self.GRID, amortize=True)
+        # March's 100 alone, over Mar–Jun: 25 a month. Carrying December's
+        # 600 in read 116.67.
+        assert spread["mean"] == Decimal("25")
+        assert spread["max_val"] == Decimal("25")
 
 
 class TestBalanceSheet:

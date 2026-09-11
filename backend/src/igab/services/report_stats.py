@@ -22,71 +22,44 @@ from typing import Any
 import polars as pl
 
 from igab.domain.activity_class import CLASS_LABEL, ActivityClass
+from igab.domain.amortize import spread_forward
 
 
-def _amortized(monthly: pl.DataFrame, month_grid: list[date]) -> pl.DataFrame:
-    """Spread each charge forward over the months until the next one.
+def _amortized(filled: pl.DataFrame) -> pl.DataFrame:
+    """`filled` with each category's series spread by `domain.amortize`.
 
-    A bill paid twice a year has a steady COST and irregular TIMING, and the
-    raw series cannot tell those apart from a category whose cost genuinely
-    swings. Spread £600 in January across January to June and £600 in July
-    across July to December and the series reads a flat £100 — so what is left
-    in the spread is variation in the rate, which is the thing a volatility
-    report is for.
-
-    Forward, not backward, and not over the whole window: the months before a
-    category's first charge are months we know nothing about, and flattening
-    everything to `total / window` would drive every standard deviation to zero
-    and make the report say nothing at all.
-
-    The final charge spreads to the end of the window, which is a guess about a
-    gap that has not finished yet — so a category whose last charge is recent
-    reads a little high. Bounded and deliberate: the alternative is dropping
-    the most recent charge, and a report that ignores what just happened is
-    worse than one that annualises it early.
+    Months before a category's first charge come back null, which every
+    aggregate below skips. See `spread_forward` for the rule.
     """
-    out: list[dict] = []
     key = ["category_id", "category_name", "group_name"]
-    for (cid, name, group), frame in monthly.group_by(key, maintain_order=True):
-        charges = frame.sort("month").select(["month", "monthly_total"]).rows()
-        for i, (month, amount) in enumerate(charges):
-            nxt = charges[i + 1][0] if i + 1 < len(charges) else None
-            covered = [m for m in month_grid if m >= month and (nxt is None or m < nxt)]
-            if not covered:
-                continue
-            share = amount / len(covered)
-            for m in covered:
-                out.append(
-                    {
-                        "category_id": cid,
-                        "category_name": name,
-                        "group_name": group,
-                        "month": m,
-                        "monthly_total": share,
-                    }
-                )
-    if not out:
-        return monthly.clear()
-    return pl.DataFrame(out, schema_overrides={"month": pl.Date, "monthly_total": pl.Float64})
+    parts = [
+        frame.with_columns(
+            pl.Series("monthly_total", spread_forward(frame["monthly_total"].to_list())).cast(
+                pl.Float64
+            )
+        )
+        for _, frame in filled.sort("month").group_by(key, maintain_order=True)
+    ]
+    return pl.concat(parts) if parts else filled
 
 
 def volatility_stats(rows, month_grid: list[date], *, amortize: bool = False) -> list[dict]:
     """Per-category mean, spread and quartiles over `month_grid`.
 
     `rows` are `(date, amount, category_id, category_name, group_name)` with
-    outflows negative; amounts are reported as magnitudes. Every category in
-    `rows` gets an entry for every month in `month_grid`, zero-filled.
+    outflows negative; amounts are reported as magnitudes. `month_grid` is
+    contiguous. Every category with a row inside the grid gets an entry for
+    every month in it, zero-filled; rows outside the grid count nowhere.
 
-    `amortize` spreads each charge forward over the months until the next one,
-    so a bill with steady cost and irregular timing reads flat. See
-    `_amortized`.
+    `amortize` spreads each charge over the months it pays for, so a bill with
+    steady cost and irregular timing reads flat. See `domain.amortize`.
 
-    `months_included` is the count of months with ACTIVITY, not the grid
+    `months_included` is the count of months with a CHARGE, not the grid
     length — the one figure here that genuinely wants the sparse count, and
-    what the client's `filterVolatile` reads. It is counted off the filled grid
-    so it can only ever mean "months in THIS window with activity"; counted off
-    the sparse frame it would also count a month outside the window that
-    happened to carry rows.
+    what the client's `filterVolatile` reads. It is held before amortizing:
+    spreading one charge across six months must not report six, and the
+    client's drop-under-two is what keeps a single annual charge — flat by
+    construction once spread — out of a report about variation.
     """
     if not rows:
         return []
@@ -102,25 +75,20 @@ def volatility_stats(rows, month_grid: list[date], *, amortize: bool = False) ->
         schema_overrides={"date": pl.Date, "amount": pl.Float64},
     )
 
+    # Cut to the grid FIRST, so nothing below can see a month outside it: not
+    # the charge count, and not the spread, which would otherwise carry a
+    # charge dated before the window into its first months.
     monthly = (
         df.with_columns(pl.col("date").dt.truncate("1mo").alias("month"))
+        .filter(pl.col("month").is_in(month_grid))
         .group_by(["category_id", "category_name", "group_name", "month"])
         .agg(pl.col("amount").sum().alias("monthly_total"))
     )
-
-    # Held before amortization: `months_included` means months that carried a
-    # CHARGE, and spreading one charge across six months must not report six.
-    # The client's `filterVolatile` drops anything under two, which is what
-    # keeps a single annual charge — flat by construction once spread — out of
-    # a report about variation.
     charge_months = (
         monthly.filter(pl.col("monthly_total") != 0.0)
         .group_by("category_id")
         .agg(pl.col("month").count().alias("months_included"))
     )
-
-    if amortize:
-        monthly = _amortized(monthly, month_grid)
 
     grid = pl.DataFrame({"month": month_grid}, schema_overrides={"month": pl.Date})
     cats = monthly.select(["category_id", "category_name", "group_name"]).unique()
@@ -129,12 +97,9 @@ def volatility_stats(rows, month_grid: list[date], *, amortize: bool = False) ->
         .join(monthly, on=["category_id", "category_name", "group_name", "month"], how="left")
         .with_columns(pl.col("monthly_total").fill_null(0.0))
     )
+    if amortize:
+        filled = _amortized(filled)
 
-    # Counted off the filled grid so it can only ever mean "months in THIS
-    # window with activity" — off the sparse frame it would also count a month
-    # outside the window that happened to carry rows.
-    in_window = filled.select("category_id").unique()
-    active = charge_months.join(in_window, on="category_id", how="semi")
     stats = (
         filled.group_by(["category_id", "category_name", "group_name"])
         .agg(
@@ -145,7 +110,7 @@ def volatility_stats(rows, month_grid: list[date], *, amortize: bool = False) ->
             pl.col("monthly_total").quantile(0.25).alias("p25"),
             pl.col("monthly_total").quantile(0.75).alias("p75"),
         )
-        .join(active, on="category_id", how="left")
+        .join(charge_months, on="category_id", how="left")
         .with_columns(pl.col("months_included").fill_null(0))
         .sort("mean", descending=True)
     )
