@@ -774,6 +774,10 @@ export interface SankeyNode {
    *  several ids — a category node is keyed by (group, category) so one
    *  category can sit under both its own group and the savings trunk. */
   entity_id?: string | null
+  /** Spent-mode category nodes: the activity classes the node counted, which
+   *  its drill-down must list. The Savings, Debt Payments and Uncategorized
+   *  pseudo-nodes differ by nothing else. */
+  activity_classes?: string[] | null
 }
 
 export interface SankeyLink {

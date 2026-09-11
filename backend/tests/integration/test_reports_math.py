@@ -7,7 +7,8 @@ from decimal import Decimal
 
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.services.report_service import ReportService
-from igab.services.transaction_service import TransactionCreate
+from igab.services.transaction_service import SplitSpec, TransactionCreate
+from igab.services.undo_service import UndoService
 
 from .factories import (
     create_account,
@@ -334,6 +335,122 @@ async def test_a_scoped_timeline_keeps_its_split_transactions(db_session):
         db_session, budget, await create_category_group(db_session, budget, "Other"), "Holidays"
     )
     assert await reports.large_transactions(budget.id, START, TODAY, category_ids=[other.id]) == []
+
+
+async def _costco_split(services, budget, checking, groceries, gas, payee=None):
+    """A -250 purchase split Groceries -150 / Gas -100."""
+    when = TODAY - timedelta(days=3)
+    return await services.transactions.create_split(
+        budget.id,
+        TransactionCreate(
+            account_id=checking.id,
+            date=when,
+            amount=Decimal("-250.00"),
+            payee_id=payee.id if payee else None,
+            cleared="cleared",
+        ),
+        [
+            TransactionCreate(
+                account_id=checking.id,
+                date=when,
+                amount=Decimal("-150.00"),
+                category_id=groceries.id,
+            ),
+            TransactionCreate(
+                account_id=checking.id, date=when, amount=Decimal("-100.00"), category_id=gas.id
+            ),
+        ],
+    )
+
+
+def _amounts(rows) -> list[Decimal]:
+    return [Decimal(str(t["amount"])) for t in rows]
+
+
+async def test_a_resplit_leaves_the_scope_of_the_category_it_dropped(db_session):
+    """Editing a split's lines soft-deletes the ones it drops and leaves their
+    `parent_transaction_id` set. The scope's EXISTS did not check `is_deleted`,
+    so the purchase stayed under Groceries after Groceries left it."""
+    services, budget, checking, _savings, groceries, gas = await _setup(db_session)
+    household = await create_category(
+        db_session, budget, await create_category_group(db_session, budget, "Home"), "Household"
+    )
+    reports = ReportService(db_session)
+    parent = await _costco_split(services, budget, checking, groceries, gas)
+
+    await services.transactions.replace_splits(
+        budget.id,
+        parent.id,
+        [
+            SplitSpec(amount=Decimal("-100.00"), category_id=gas.id),
+            SplitSpec(amount=Decimal("-150.00"), category_id=household.id),
+        ],
+    )
+    await db_session.flush()
+
+    by = lambda cat: reports.large_transactions(budget.id, START, TODAY, category_ids=[cat.id])  # noqa: E731
+    assert await by(groceries) == []
+    assert _amounts(await by(household)) == [Decimal("-250.00")]
+
+
+async def test_an_undone_split_leaves_the_scope_of_its_legs(db_session):
+    """Undoing a split soft-deletes its legs the same way: a plain Gas row
+    stayed under a Groceries scope after Cmd+Z."""
+    services, budget, checking, _savings, groceries, gas = await _setup(db_session)
+    reports = ReportService(db_session)
+    row = await create_transaction(
+        db_session, budget, checking, "-120.00", TODAY - timedelta(days=2), category=gas
+    )
+    await services.transactions.convert_to_split(
+        budget.id,
+        row.id,
+        [
+            SplitSpec(amount=Decimal("-80.00"), category_id=gas.id),
+            SplitSpec(amount=Decimal("-40.00"), category_id=groceries.id),
+        ],
+    )
+    await db_session.flush()
+    await UndoService(db_session).undo_latest(budget.id)
+    await db_session.flush()
+
+    by = lambda cat: reports.large_transactions(budget.id, START, TODAY, category_ids=[cat.id])  # noqa: E731
+    assert await by(groceries) == []
+    assert _amounts(await by(gas)) == [Decimal("-120.00")]
+
+
+async def test_a_scoped_timeline_entry_is_listed_by_its_drill_down(db_session):
+    """Clicking a Timeline card opens a payee drill in parent scope with the
+    report's category scope. The Timeline kept the split (`in_category_scope`)
+    and the listing used a plain `category_id IN`, which excludes every split
+    parent — "No transactions match" for the row just clicked. The account
+    register's category filter had the same plain IN."""
+    services, budget, checking, _savings, groceries, gas = await _setup(db_session)
+    store = await create_payee(db_session, budget, "Harborstone Market")
+    parent = await _costco_split(services, budget, checking, groceries, gas, payee=store)
+    reports = ReportService(db_session)
+
+    timeline = await reports.large_transactions(
+        budget.id, START, TODAY, category_ids=[groceries.id]
+    )
+    rows, count, total = await services.transaction_repo.list_for_budget(
+        budget.id,
+        start_date=START,
+        end_date=TODAY,
+        scope="parent",
+        direction="outflow",
+        posted_only=True,
+        cash_flow_only=True,
+        payee_ids=[store.id],
+        category_ids=[groceries.id],
+    )
+    register = await services.transaction_repo.get_for_account(
+        checking.id, category_ids=[groceries.id]
+    )
+
+    assert _amounts(timeline) == [Decimal("-250.00")]
+    assert [r.id for r in rows] == [parent.id]
+    assert (count, total) == (1, Decimal("-250.00"))
+    assert parent.id in [r.id for r in register]
 
 
 async def test_an_all_savings_split_is_not_drawn_as_spending(db_session):

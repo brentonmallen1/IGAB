@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { CashFlowReport } from '../../../types'
-import { buildSankeyView, deltaColor, extractPrevTotals, formatDelta } from './sankeyView'
+import {
+  buildSankeyView,
+  categoryNodeDrill,
+  deltaColor,
+  extractPrevTotals,
+  formatDelta,
+} from './sankeyView'
 
 const fmt = (n: number) => `$${n.toFixed(0)}`
 
@@ -140,5 +146,43 @@ describe('deltaColor', () => {
     expect(deltaColor(120, 100, 'income')).toBe('var(--color-positive)')
     expect(deltaColor(120, 100, 'category')).toBe('var(--color-negative)')
     expect(deltaColor(80, 100, 'category')).toBe('var(--color-positive)')
+  })
+})
+
+describe('categoryNodeDrill', () => {
+  const window = { startDate: '2026-08-01', endDate: '2026-08-31' }
+
+  // The three pseudo-nodes share "no category" and differ only by class. Each
+  // used to drill with `uncategorized: true` alone and open the union of all
+  // three — a $500 Savings node listing $1,580.
+  it.each([
+    ['Savings', ['savings']],
+    ['Debt Payments', ['debt_principal']],
+    ['Uncategorized', ['spending']],
+  ])('%s lists only its own classes, by the absence of a category', (name, classes) => {
+    expect(categoryNodeDrill({ name, entity_id: null, activity_classes: classes }, window)).toEqual(
+      {
+        kind: 'category',
+        label: name,
+        scope: 'leaf',
+        direction: 'outflow',
+        categoryIds: undefined,
+        noCategory: true,
+        activityClasses: classes,
+        ...window,
+      }
+    )
+  })
+
+  it('scopes a real category by its entity id and its classes', () => {
+    // One category can hang under its own group AND the savings trunk; the
+    // two nodes share an entity id and differ by class.
+    const drill = categoryNodeDrill(
+      { name: 'Groceries', entity_id: 'cat-1', activity_classes: ['savings'] },
+      window
+    )
+    expect(drill.categoryIds).toEqual(['cat-1'])
+    expect(drill.noCategory).toBeUndefined()
+    expect(drill.activityClasses).toEqual(['savings'])
   })
 })

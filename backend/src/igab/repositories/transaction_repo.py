@@ -64,6 +64,7 @@ from igab.repositories.txn_filters import (
     UNCLAIMED_CARD_ROW,
     UNPAIRED_TRANSFER_LEG,
     USER_ENTERED,
+    in_category_scope,
     search_matches,
     sync_created_pending,
 )
@@ -219,7 +220,9 @@ class TransactionRepository(BaseRepository[Transaction]):
         # the same distinction `report_service.scoped` states for the reports,
         # and the drill-down panel reads this listing.
         if category_ids is not None:
-            q = q.where(Transaction.category_id.in_(category_ids))
+            # `in_category_scope`: these are parent rows, and a split parent
+            # carries no category of its own — the plain IN dropped every split.
+            q = q.where(in_category_scope(category_ids))
         if payee_ids:
             q = q.where(Transaction.payee_id.in_(payee_ids))
         if amount_min is not None:
@@ -271,6 +274,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         cleared: str | None = None,
         exclude_cleared: str | None = None,
         uncategorized: bool = False,
+        no_category: bool = False,
         unapproved: bool = False,
         is_or_mode: bool = False,
         amount_min: float | None = None,
@@ -288,6 +292,12 @@ class TransactionRepository(BaseRepository[Transaction]):
         parents excluded); scope="parent" selects account-balance rows. The
         count/sum aggregate runs over the same predicate as the page query so
         callers can reconcile a paginated list against report totals.
+
+        `uncategorized` is the register's filter: NEEDS_CATEGORY, the badge's
+        rule, which leaves out rows before an account's budget start and rows
+        on tracking accounts. `no_category` is a report bucket defined by the
+        absence of a category — the Sankey's Uncategorized node counts those
+        rows, so its drill must list them.
 
         order="register" sorts pending → needs-category → uncleared → rest
         (same priority as the per-account register) so paginated clients load
@@ -328,7 +338,18 @@ class TransactionRepository(BaseRepository[Transaction]):
         if end_date:
             where.append(Transaction.date <= end_date)
         if category_ids is not None:
-            where.append(Transaction.category_id.in_(category_ids))
+            # Parent rows scope by their legs too. The Timeline shows a split
+            # scoped to one of its legs' categories (`in_category_scope`), and
+            # clicking its card opened this listing with a plain IN that
+            # excludes every split parent — "No transactions match" for the
+            # row just clicked.
+            where.append(
+                in_category_scope(category_ids)
+                if scope == "parent"
+                else Transaction.category_id.in_(category_ids)
+            )
+        if no_category:
+            where.append(Transaction.category_id.is_(None))
         if payee_ids:
             where.append(Transaction.payee_id.in_(payee_ids))
         if account_ids:

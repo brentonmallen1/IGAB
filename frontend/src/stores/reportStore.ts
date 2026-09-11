@@ -311,10 +311,13 @@ export interface DrillDownContext {
    *  a chart WITH its own ids must not send these. */
   tagIds?: string[]
   filterId?: string | null
-  /** Rows with no category, for a bucket that is defined by their absence.
-   *  An empty `categoryIds` cannot say this — it filters nothing and lists the
-   *  whole window, which is worse than not offering the drill at all. */
-  uncategorized?: boolean
+  /** Rows with no category, for a bucket that is defined by their absence
+   *  (served as `no_category`). An empty `categoryIds` cannot say this — it
+   *  filters nothing and lists the whole window, which is worse than not
+   *  offering the drill at all. Not the register's Uncategorized filter: that
+   *  is the needs-a-category rule, which leaves out rows before an account's
+   *  budget start and rows on tracking accounts that a report bucket counted. */
+  noCategory?: boolean
   dayOfWeek?: number
   /** Activity classes the originating chart counted. A chart that means
    *  "spending" must say so, or its drill lists savings and debt too — an

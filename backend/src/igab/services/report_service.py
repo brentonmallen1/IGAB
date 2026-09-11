@@ -1304,10 +1304,10 @@ class ReportService:
         links: list[dict] = []
         node_ids: dict[str, int] = {}
 
-        def get_node(nid: str, name: str, ntype: str, entity_id: str | None = None) -> int:
+        def get_node(nid: str, name: str, ntype: str, **extra) -> int:
             if nid not in node_ids:
                 node_ids[nid] = len(nodes)
-                nodes.append({"id": nid, "name": name, "type": ntype, "entity_id": entity_id})
+                nodes.append({"id": nid, "name": name, "type": ntype, **extra})
             return node_ids[nid]
 
         get_node("__budget__", "Budget", "budget")
@@ -1374,6 +1374,7 @@ class ReportService:
         group_names: dict[str, str] = {}
         cat_names: dict[tuple[str, str], str] = {}
         payee_by_cat: dict[tuple[str, str], dict[str, Decimal]] = {}
+        classes_by_cat: dict[tuple[str, str], set[str]] = {}
 
         # Saving and paying down debt leave the budget but are not spending, so
         # they get their own branch off the budget node instead of sitting
@@ -1409,6 +1410,7 @@ class ReportService:
             cat_totals[slot] = cat_totals.get(slot, Decimal("0")) + abs(r.amount)
             group_names[gid] = gname
             cat_names[slot] = cname
+            classes_by_cat.setdefault(slot, set()).add(r.activity_class)
 
             pname = r.payee_name or "Unknown"
             pid = str(r.payee_id) if r.payee_id else f"__payee_{pname}__"
@@ -1448,11 +1450,19 @@ class ReportService:
             # category id: `__uncategorized__` is not a UUID, so the drill-down
             # 400s. Cost of Living already learned this and drills its
             # Uncategorized bar by "no category" instead.
+            #
+            # `activity_classes` is what this node counted, served because the
+            # drill must list exactly that. The three pseudo-nodes all drill
+            # by "no category" and differ ONLY by class — without it each one
+            # opened the union of all three — and a real category sitting
+            # under its own group and the savings trunk is two nodes of one
+            # id that differ the same way.
             get_node(
                 node_id,
                 cat_names[slot],
                 "category",
                 entity_id=None if cat_id.startswith("__") else cat_id,
+                activity_classes=sorted(classes_by_cat[slot]),
             )
             links.append(
                 {
@@ -1475,15 +1485,8 @@ class ReportService:
             ]
 
         return {
-            "nodes": [
-                {
-                    "id": n["id"],
-                    "name": n["name"],
-                    "type": n["type"],
-                    "entity_id": n.get("entity_id"),
-                }
-                for n in nodes
-            ],
+            # Every node carries every key; only category nodes fill the last two.
+            "nodes": [{"entity_id": None, "activity_classes": None, **n} for n in nodes],
             "links": links,
             "total_income": total_income,
             "total_expense": total_expense,

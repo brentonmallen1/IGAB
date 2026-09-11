@@ -16,6 +16,7 @@ import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import type { CategoryPayee } from '../../../types'
 import {
   buildSankeyView,
+  categoryNodeDrill,
   deltaColor,
   extractPrevTotals,
   formatDelta,
@@ -272,24 +273,10 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
         // Drill into category to show payees (only in spent mode)
         setSelectedCategoryId(nodeData.id)
       } else {
-        // Already at payee level — the category node opens its transactions
-        setDrillDown({
-          kind: 'category',
-          label: nodeData.name,
-          scope: 'leaf',
-          direction: 'outflow',
-          // entity_id, not the node id: the id is a (group, category)
-          // composite so one category can appear under both its own group and
-          // the savings trunk, and stripping the prefix yielded a non-UUID.
-          //
-          // A null entity_id is a pseudo-category — the Savings and Debt
-          // Payments trunks, and the Uncategorized bucket — which has no id to
-          // send. Falling back to the node id used to post
-          // `__uncategorized__` as a category id and 400 the panel.
-          categoryIds: nodeData.entity_id ? [nodeData.entity_id] : undefined,
-          uncategorized: nodeData.entity_id ? undefined : true,
-          ...window,
-        })
+        // Already at payee level — the category node opens its transactions.
+        // entity_id, never the node id: the id is a (group, category)
+        // composite, and stripping its prefix posted a non-UUID.
+        setDrillDown(categoryNodeDrill(nodeData, window))
       }
     } else if (nodeData.type === 'payee') {
       // Level-3 payee nodes carry names only — resolve back to an id

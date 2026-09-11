@@ -80,7 +80,7 @@ export function CostOfLivingReport({ budgetId }: Props) {
       // leaves — the scope the report's own query uses.
       scope: 'leaf',
       categoryIds: uncategorized ? undefined : g.category_ids,
-      uncategorized: uncategorized || undefined,
+      noCategory: uncategorized || undefined,
       activityClasses: report.counted_classes,
       // Debt principal joins the tier by class, per row: without the tier a
       // bar's categories list the fuel beside the loan payment it counted.

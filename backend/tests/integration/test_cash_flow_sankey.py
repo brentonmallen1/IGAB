@@ -492,3 +492,62 @@ class TestTheNodesCanBeDrilled:
         names = [n["name"] for n in data["nodes"]]
         assert "Unknown Income" in names
         assert not any(n.startswith("inc_") for n in names), names
+
+
+async def test_every_category_node_drills_to_exactly_what_it_counted(db_session):
+    """The three pseudo-nodes — Savings, Debt Payments, Uncategorized — have no
+    category to drill by, so each sent "no category" and nothing else, and
+    each opened the union of all three. The node now serves the classes it
+    counted and the drill lists "no category" by `category_id IS NULL`, not
+    by the register's needs-a-category rule: that rule leaves out a row
+    dated before its account's budget start, which the node still counts.
+    """
+    services, budget, checking, everyday, groceries, gas = await _setup(db_session)
+    brokerage = await create_account(
+        db_session, budget, "Cascade Brokerage", account_type="investment", on_budget=False
+    )
+    mortgage = await create_account(
+        db_session, budget, "Harborstone Mortgage", account_type="loan", on_budget=False
+    )
+    checking.budget_start_date = TODAY - timedelta(days=15)
+    await db_session.flush()
+
+    await create_transfer(
+        db_session, budget, checking, brokerage, "500.00", TODAY - timedelta(days=3)
+    )
+    await create_transfer(
+        db_session, budget, checking, mortgage, "1000.00", TODAY - timedelta(days=3)
+    )
+    await create_transaction(db_session, budget, checking, "-80.00", TODAY - timedelta(days=3))
+    # Before the account's budget start: opening position to the register's
+    # needs-a-category rule, but money that left all the same.
+    await create_transaction(db_session, budget, checking, "-30.00", TODAY - timedelta(days=18))
+    await create_transaction(
+        db_session, budget, checking, "-60.00", TODAY - timedelta(days=3), category=groceries
+    )
+
+    sankey = await ReportService(db_session).cash_flow_sankey(budget.id, START, TODAY, mode="spent")
+    into = {link["target"]: link["value"] for link in sankey["links"]}
+    categories = [n for n in sankey["nodes"] if n["type"] == "category"]
+    pseudo = {n["name"]: n for n in categories if n["entity_id"] is None}
+
+    assert {name: n["activity_classes"] for name, n in pseudo.items()} == {
+        "Savings": ["savings"],
+        "Debt Payments": ["debt_principal"],
+        "Uncategorized": ["spending"],
+    }
+    for node in categories:
+        _rows, _count, total = await services.transaction_repo.list_for_budget(
+            budget.id,
+            start_date=START,
+            end_date=TODAY,
+            scope="leaf",
+            direction="outflow",
+            posted_only=True,
+            cash_flow_only=True,
+            activity_classes=node["activity_classes"],
+            category_ids=[uuid.UUID(node["entity_id"])] if node["entity_id"] else None,
+            no_category=node["entity_id"] is None,
+        )
+        assert -total == into[node["id"]], node["name"]
+    assert into[pseudo["Uncategorized"]["id"]] == Decimal("110.00")

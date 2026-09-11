@@ -176,6 +176,10 @@ async def list_budget_transactions(
     cleared: str | None = None,
     exclude_cleared: str | None = None,
     uncategorized: bool = False,
+    #: Rows with no category at all, for a report bucket defined by that
+    #: absence. Not `uncategorized`, which is the register's needs-a-category
+    #: rule and leaves out rows the bucket counted.
+    no_category: bool = False,
     unapproved: bool = False,
     is_or_mode: bool = False,
     amount_min: float | None = None,
@@ -233,6 +237,7 @@ async def list_budget_transactions(
         cleared=cleared,
         exclude_cleared=exclude_cleared,
         uncategorized=uncategorized,
+        no_category=no_category,
         unapproved=unapproved,
         is_or_mode=is_or_mode,
         amount_min=amount_min,

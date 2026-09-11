@@ -475,11 +475,21 @@ def in_category_scope(category_ids) -> ColumnElement[bool]:
     Only for `PARENT_ROW` queries. A LEAF query already has the category on the
     row and wants `scoped()`; using this there would make a split CHILD match
     on a sibling's category.
+
+    Live legs only. Editing a split's lines and undoing a split both
+    soft-delete legs and leave their `parent_transaction_id` set, so without
+    the term a parent stayed in the scope of a category none of its live legs
+    carried: re-split a Costco trip from Groceries to Household and a
+    Groceries-scoped Timeline still listed it.
     """
     return or_(
         Transaction.category_id.in_(category_ids),
         select(_leg.id)
-        .where(_leg.parent_transaction_id == Transaction.id, _leg.category_id.in_(category_ids))
+        .where(
+            _leg.parent_transaction_id == Transaction.id,
+            _leg.is_deleted == False,  # noqa: E712
+            _leg.category_id.in_(category_ids),
+        )
         .correlate(Transaction)
         .exists(),
     )

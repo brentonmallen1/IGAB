@@ -2,6 +2,7 @@
  * assembly and period-over-period deltas. Extracted from CashFlowSankey so
  * the money math is unit-testable. */
 import type { CashFlowReport, CategoryPayee } from '../../../types'
+import type { DrillDownContext } from '../../../stores/reportStore'
 
 export interface SankeyViewNode {
   name: string
@@ -10,6 +11,8 @@ export interface SankeyViewNode {
   /** The entity the node stands for. `id` is a display key that may compose
    *  several ids, so a drill-down must read this rather than parse that. */
   entity_id?: string | null
+  /** The activity classes a category node counted — served, see `SankeyNode`. */
+  activity_classes?: string[] | null
   /** Previous-window value when compare is on; null = node is new this window */
   prev?: number | null
 }
@@ -122,6 +125,7 @@ export function buildSankeyView(
         name: category.name,
         type: 'category',
         entity_id: category.entity_id,
+        activity_classes: category.activity_classes,
       })
       links.push({ source: 0, target: 1, value: groupTotals.get(group.id) ?? 0 })
       links.push({ source: 1, target: 2, value: catTotals.get(category.id) ?? 0 })
@@ -177,5 +181,34 @@ export function buildSankeyView(
     sankeyData: { nodes, links: links.filter((l) => l.value > 0) },
     groupCategories: data.group_categories ?? {},
     categoryPayees: data.category_payees ?? {},
+  }
+}
+
+/**
+ * The drill-down a category node opens: exactly the rows it counted.
+ *
+ * `entity_id` scopes a real category; a null one is a pseudo-category — the
+ * Savings and Debt Payments trunks and the Uncategorized bucket — scoped by
+ * the absence of a category. Those three share that and differ ONLY by class,
+ * so without the node's served `activity_classes` each opened the union of
+ * all three: a $500 Savings node listing $1,580. A real category sitting
+ * under both its own group and the savings trunk is two nodes that differ
+ * the same way. The classes are served rather than inferred from the node id
+ * because the client is missing the input: it cannot know which classes an
+ * Uncategorized bucket happened to hold.
+ */
+export function categoryNodeDrill(
+  node: Pick<SankeyViewNode, 'name' | 'entity_id' | 'activity_classes'>,
+  window: { startDate: string; endDate: string }
+): DrillDownContext {
+  return {
+    kind: 'category',
+    label: node.name,
+    scope: 'leaf',
+    direction: 'outflow',
+    categoryIds: node.entity_id ? [node.entity_id] : undefined,
+    noCategory: node.entity_id ? undefined : true,
+    activityClasses: node.activity_classes ?? undefined,
+    ...window,
   }
 }
