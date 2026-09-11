@@ -248,6 +248,27 @@ async def test_a_month_that_overspent_hands_zero_to_the_next(db_session):
     assert row["current_balance"] == Decimal("600.00")
 
 
+async def test_an_overspend_before_the_window_is_floored_where_it_happened(db_session):
+    """Every other overspend in this suite is inside the window, so a walk
+    that lumped the months before it into one opening figure — sum first,
+    floor after — passed them all. Five months back the envelope overspent
+    by 200 and TBA covered it; four months back it took 500. The lump reads
+    100 - 300 + 500 = 300; the Budget page reads 500.
+    """
+    budget, checking, group, tag_repo = await _setup(db_session)
+    fund = await _tagged_category(db_session, budget, group, tag_repo, "Vacation", "savings")
+    await create_budget_assignment(db_session, budget, fund, months_ago(5), "100.00")
+    await create_transaction(db_session, budget, checking, "-300.00", months_ago(5), category=fund)
+    await create_budget_assignment(db_session, budget, fund, months_ago(4), "500.00")
+
+    data = await ReportService(db_session).savings_report(budget.id, months=3)
+    row = data["categories"][0]
+
+    assert row["monthly_balances"] == [Decimal("500.00")] * 3
+    for month, balance in zip(data["months"], row["monthly_balances"], strict=True):
+        assert balance == await _page_available(db_session, budget, fund, month)
+
+
 async def test_current_balance_equals_the_budget_pages_available(db_session):
     """The differential that covers the whole class of divergence at once.
 
