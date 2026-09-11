@@ -21,6 +21,7 @@ import { MetricCard } from '../MetricCard'
 import { MetricRow } from '../MetricRow'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
+import { truncateLabel } from './chartLabel'
 
 interface Props {
   budgetId: string
@@ -86,7 +87,7 @@ export function BudgetActualReport({ budgetId }: Props) {
   }
 
   const chartData = categories.slice(0, 20).map((c) => ({
-    name: c.category_name.length > 16 ? c.category_name.slice(0, 14) + '…' : c.category_name,
+    name: truncateLabel(c.category_name, 16),
     fullName: c.category_name,
     categoryId: c.category_id,
     group: c.category_group_name,

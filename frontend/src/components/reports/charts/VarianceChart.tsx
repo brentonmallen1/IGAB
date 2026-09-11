@@ -107,13 +107,9 @@ export function VarianceReport({ budgetId }: Props) {
             <ComposedChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
               <XAxis dataKey="month" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
-              <YAxis
-                tickFormatter={moneyAxis.tickFormatter}
-                tick={{ fontSize: 11, fill: 'var(--text-muted)' }}
-                width={90}
-              />
+              <YAxis {...moneyAxis} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
               <Tooltip
-                content={<ChartTooltip showTotal={false} />}
+                content={<ChartTooltip showTotal={false} formatter={formatMoney} />}
                 offset={16}
                 isAnimationActive={false}
               />

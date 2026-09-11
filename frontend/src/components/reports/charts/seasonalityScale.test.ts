@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { abbreviateValue, buildCellMap, intensityPct, maxCellValue } from './seasonalityScale'
+import { PRIVACY_MASK } from '../../../utils/money'
 
 const cells = [
   { category_id: 'c1', month: '2026-01-01', total: '120.5' },
@@ -50,5 +51,26 @@ describe('abbreviateValue', () => {
 
   it('renders sub-thousand values as whole numbers', () => {
     expect(abbreviateValue(850.4)).toBe('850')
+  })
+})
+
+/**
+ * The Seasonality heatmap and the Plan vs Reality matrix draw their own cell
+ * labels, so neither went through `useFormatters` and both printed real
+ * amounts with privacy mode on — whose whole purpose is that "sign and digits
+ * hidden, so overspending can't be inferred".
+ *
+ * `masked` is a parameter rather than a store read, so this module stays pure
+ * and the branch is a one-line test.
+ */
+describe('abbreviateValue masks for privacy mode', () => {
+  it('hides the digits when masked', () => {
+    expect(abbreviateValue(4180, true)).toBe(PRIVACY_MASK)
+    expect(abbreviateValue(4180, true)).not.toContain('4')
+  })
+
+  it('is unmasked by default, so no caller loses its label by accident', () => {
+    expect(abbreviateValue(4180)).toBe('4.2k')
+    expect(abbreviateValue(4180, false)).toBe('4.2k')
   })
 })

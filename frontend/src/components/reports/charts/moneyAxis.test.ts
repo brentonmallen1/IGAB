@@ -29,3 +29,36 @@ describe('MONEY_AXIS_WIDTH', () => {
     expect(MONEY_AXIS_WIDTH.phone).toBeGreaterThanOrEqual(48)
   })
 })
+
+/**
+ * Five report charts carried their own axis formatter:
+ *
+ *   Math.abs(v) >= 1000 ? `${sym}${Math.round(v / 1000)}k` : `${sym}${Math.round(v)}`
+ *
+ * `Math.round(v / 1000)` is the defect — it collapses a whole band of values
+ * onto one label, so two different gridlines on the same axis both read "$2k".
+ * Two more charts printed `${sym}${v}` with no rounding at all, drawing ticks
+ * like "$1234.5600000001". All seven now spread `useMoneyAxis`.
+ */
+describe('the axis label the five hand-rolled copies got wrong', () => {
+  const kRound = (v: number, symbol: string) =>
+    Math.abs(v) >= 1000 ? `${symbol}${Math.round(v / 1000)}k` : `${symbol}${Math.round(v)}`
+
+  it('gives adjacent gridlines distinct labels', () => {
+    // The old copy called both of these "$2k".
+    expect(kRound(1500, '$')).toBe(kRound(2400, '$'))
+    expect(compactMoney(1500, '$')).not.toBe(compactMoney(2400, '$'))
+    expect(compactMoney(1500, '$')).toBe('$1.5k')
+    expect(compactMoney(2400, '$')).toBe('$2.4k')
+  })
+
+  it('scales past a million instead of counting thousands forever', () => {
+    // The old copy rendered 2.4M as "$2400k".
+    expect(kRound(2_400_000, '$')).toBe('$2400k')
+    expect(compactMoney(2_400_000, '$')).toBe('$2.4M')
+  })
+
+  it('honours the budget currency symbol it is given', () => {
+    expect(compactMoney(1500, '€')).toBe('€1.5k')
+  })
+})

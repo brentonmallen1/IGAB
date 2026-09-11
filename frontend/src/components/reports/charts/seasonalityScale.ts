@@ -2,6 +2,8 @@
  * value abbreviation. Extracted from SeasonalityHeatmap so it is
  * unit-testable. */
 
+import { PRIVACY_MASK } from '../../../utils/money'
+
 interface SeasonalityCellLike {
   category_id: string
   month: string
@@ -29,6 +31,7 @@ export function intensityPct(value: number, max: number): number | null {
 }
 
 /** Compact cell label: 1234 → "1.2k", 850 → "850". */
-export function abbreviateValue(value: number): string {
+export function abbreviateValue(value: number, masked = false): string {
+  if (masked) return PRIVACY_MASK
   return value >= 1000 ? `${(value / 1000).toFixed(1)}k` : value.toFixed(0)
 }

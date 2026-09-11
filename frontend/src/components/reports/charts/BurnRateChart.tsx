@@ -106,7 +106,7 @@ export function BurnRateReport({ budgetId }: Props) {
                 {...logAxisProps(logScale)}
               />
               <Tooltip
-                content={<ChartTooltip showTotal={false} />}
+                content={<ChartTooltip showTotal={false} formatter={formatMoney} />}
                 offset={16}
                 isAnimationActive={false}
               />

@@ -15,7 +15,6 @@ import { useSpendingTrendsReport } from '../../../api/reports'
 import { useReportStore, resolveGroupBy } from '../../../stores/reportStore'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { useChartHeight } from '../../../hooks/useChartHeight'
-import { getCurrencySymbol } from '../../../utils/money'
 import { ReportErrorState } from '../ReportErrorState'
 import { MetricCard } from '../MetricCard'
 import { MetricRow } from '../MetricRow'
@@ -25,6 +24,7 @@ import { ChartTooltip } from './ChartTooltip'
 import { chartColor } from './chartColors'
 import { rollupTrends } from './spendingTrends'
 import { useReportScope } from '../../../stores/reportStore'
+import { useMoneyAxis } from './useMoneyAxis'
 
 interface Props {
   budgetId: string
@@ -40,8 +40,7 @@ const MAX_SERIES = 10
  */
 export function SpendingTrendsReport({ budgetId }: Props) {
   const { formatMoney, formatMonth } = useFormatters()
-  const { settings } = useFormatters()
-  const currencySymbol = getCurrencySymbol(settings.currencyCode)
+  const moneyAxis = useMoneyAxis()
   const chartHeight = useChartHeight(340)
   const { filters } = useReportStore()
   const groupBy = resolveGroupBy('spending-trends', filters.groupBy)
@@ -168,12 +167,8 @@ export function SpendingTrendsReport({ budgetId }: Props) {
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
                   <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
                   <YAxis
+                    {...moneyAxis}
                     tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
-                    tickFormatter={(v) =>
-                      Math.abs(v) >= 1000
-                        ? `${currencySymbol}${Math.round(v / 1000)}k`
-                        : `${currencySymbol}${Math.round(v)}`
-                    }
                     axisLine={false}
                     tickLine={false}
                   />
@@ -189,6 +184,7 @@ export function SpendingTrendsReport({ budgetId }: Props) {
                         }))}
                         label={String(label ?? '')}
                         showTotal
+                        formatter={formatMoney}
                       />
                     )}
                   />
@@ -202,12 +198,8 @@ export function SpendingTrendsReport({ budgetId }: Props) {
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
                   <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
                   <YAxis
+                    {...moneyAxis}
                     tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
-                    tickFormatter={(v) =>
-                      Math.abs(v) >= 1000
-                        ? `${currencySymbol}${Math.round(v / 1000)}k`
-                        : `${currencySymbol}${Math.round(v)}`
-                    }
                     axisLine={false}
                     tickLine={false}
                   />
@@ -222,6 +214,7 @@ export function SpendingTrendsReport({ budgetId }: Props) {
                           fill: p.fill,
                         }))}
                         label={String(label ?? '')}
+                        formatter={formatMoney}
                       />
                     )}
                   />

@@ -171,3 +171,11 @@ export function amountClass(amount: number): string {
   if (amount > 0) return 'amount-positive'
   return 'amount-zero'
 }
+
+/** Privacy-mode mask: sign and digits hidden, so overspending can't be inferred.
+ *
+ * Lives here rather than in `useFormatters` because pure modules need it too —
+ * the Plan vs Reality matrix and the Seasonality heatmap render their own cell
+ * labels, and both printed real amounts straight through privacy mode.
+ */
+export const PRIVACY_MASK = '••••'

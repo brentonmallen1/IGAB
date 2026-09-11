@@ -12,7 +12,6 @@ import {
 } from 'recharts'
 import { useSubscriptionsReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
-import { getCurrencySymbol } from '../../../utils/money'
 import { ReportErrorState } from '../ReportErrorState'
 import { MetricCard } from '../MetricCard'
 import { MetricRow } from '../MetricRow'
@@ -22,14 +21,15 @@ import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ChartTooltip } from './ChartTooltip'
 import { ReportRangeSelect } from './rangeSelect'
 import { useReportMonths } from '../../../stores/reportStore'
+import { useMoneyAxis } from './useMoneyAxis'
 
 interface Props {
   budgetId: string
 }
 
 export function SubscriptionsReport({ budgetId }: Props) {
-  const { formatMoney, formatDate, formatMonthShort, settings } = useFormatters()
-  const currencySymbol = getCurrencySymbol(settings.currencyCode)
+  const { formatMoney, formatDate, formatMonthShort } = useFormatters()
+  const moneyAxis = useMoneyAxis()
   const months = useReportMonths()
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const { data, isLoading, isError, error, refetch } = useSubscriptionsReport(budgetId, months)
@@ -155,8 +155,8 @@ export function SubscriptionsReport({ budgetId }: Props) {
                   tickLine={false}
                 />
                 <YAxis
+                  {...moneyAxis}
                   tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
-                  tickFormatter={(v) => `${currencySymbol}${v}`}
                   axisLine={false}
                   tickLine={false}
                 />
@@ -171,6 +171,7 @@ export function SubscriptionsReport({ budgetId }: Props) {
                         fill: p.fill,
                       }))}
                       label={String(label ?? '')}
+                      formatter={formatMoney}
                     />
                   )}
                 />

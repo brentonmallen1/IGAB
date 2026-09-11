@@ -23,9 +23,9 @@ function isActive(cell: PlanRealityCell): boolean {
   return cell.assigned !== 0 || cell.spent !== 0
 }
 
-function cellLabel(variance: number): string {
-  if (variance < 0) return `−${abbreviateValue(-variance)}`
-  if (variance > 0) return `+${abbreviateValue(variance)}`
+function cellLabel(variance: number, masked = false): string {
+  if (variance < 0) return `−${abbreviateValue(-variance, masked)}`
+  if (variance > 0) return `+${abbreviateValue(variance, masked)}`
   return '0'
 }
 
@@ -38,7 +38,7 @@ function overspendStyle(variance: number, maxOver: number): React.CSSProperties 
 }
 
 export function PlanVsRealityReport({ budgetId }: Props) {
-  const { formatMoney } = useFormatters()
+  const { formatMoney, privacyMode } = useFormatters()
   const setDrillDown = useReportStore((s) => s.setDrillDown)
   const months = useReportMonths()
   const [chronicOnly, setChronicOnly] = useState(false)
@@ -208,7 +208,7 @@ export function PlanVsRealityReport({ budgetId }: Props) {
                               : undefined
                           }
                         >
-                          {active ? cellLabel(v) : ''}
+                          {active ? cellLabel(v, privacyMode) : ''}
                         </td>
                       )
                     })}

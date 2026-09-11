@@ -9,6 +9,7 @@ import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ReportRangeSelect } from './rangeSelect'
 import './SeasonalityHeatmap.css'
+import { truncateLabel } from './chartLabel'
 
 interface Props {
   budgetId: string
@@ -23,7 +24,7 @@ function intensityStyle(value: number, max: number): React.CSSProperties {
 }
 
 export function SeasonalityReport({ budgetId }: Props) {
-  const { formatMoney } = useFormatters()
+  const { formatMoney, privacyMode } = useFormatters()
   const setDrillDown = useReportStore((s) => s.setDrillDown)
   const months = useReportMonths()
   const { data, isLoading, isError, error, refetch } = useSeasonalityReport(budgetId, months)
@@ -113,7 +114,7 @@ export function SeasonalityReport({ budgetId }: Props) {
                 {categories.map((cat) => (
                   <tr key={cat.id}>
                     <td className="heatmap__cat-name" title={cat.name}>
-                      {cat.name.length > 20 ? cat.name.slice(0, 18) + '…' : cat.name}
+                      {truncateLabel(cat.name, 20)}
                     </td>
                     {allMonths.map((m) => {
                       const val = cellMap.get(`${cat.id}|${String(m)}`) ?? 0
@@ -126,7 +127,9 @@ export function SeasonalityReport({ budgetId }: Props) {
                           onClick={val > 0 ? () => drillTo(cat.id, cat.name, String(m)) : undefined}
                         >
                           {val > 0 && (
-                            <span className="heatmap__cell-value">{abbreviateValue(val)}</span>
+                            <span className="heatmap__cell-value">
+                              {abbreviateValue(val, privacyMode)}
+                            </span>
                           )}
                         </td>
                       )

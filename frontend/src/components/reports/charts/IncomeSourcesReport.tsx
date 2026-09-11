@@ -12,7 +12,6 @@ import {
 import { useIncomeBySourceReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { useChartHeight } from '../../../hooks/useChartHeight'
-import { getCurrencySymbol } from '../../../utils/money'
 import { ReportErrorState } from '../ReportErrorState'
 import { ReportRangeSelect } from './rangeSelect'
 import { MetricCard } from '../MetricCard'
@@ -22,6 +21,7 @@ import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ChartTooltip } from './ChartTooltip'
 import { chartColor, COLOR_OTHER } from './chartColors'
 import { useReportMonths } from '../../../stores/reportStore'
+import { useMoneyAxis } from './useMoneyAxis'
 
 interface Props {
   budgetId: string
@@ -32,8 +32,8 @@ const MAX_SERIES = 8
 /** Income per payee per month, with a total line — pairs with the paycheck
  *  planner. Only rows the classifier reads as income count. */
 export function IncomeSourcesReport({ budgetId }: Props) {
-  const { formatMoney, formatMonth, settings } = useFormatters()
-  const currencySymbol = getCurrencySymbol(settings.currencyCode)
+  const { formatMoney, formatMonth } = useFormatters()
+  const moneyAxis = useMoneyAxis()
   const chartHeight = useChartHeight(320)
   const months = useReportMonths()
   const captureRef = useRef<HTMLDivElement>(null)
@@ -104,12 +104,8 @@ export function IncomeSourcesReport({ budgetId }: Props) {
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
                 <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
                 <YAxis
+                  {...moneyAxis}
                   tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
-                  tickFormatter={(v) =>
-                    Math.abs(v) >= 1000
-                      ? `${currencySymbol}${Math.round(v / 1000)}k`
-                      : `${currencySymbol}${Math.round(v)}`
-                  }
                   axisLine={false}
                   tickLine={false}
                 />
@@ -125,6 +121,7 @@ export function IncomeSourcesReport({ budgetId }: Props) {
                       }))}
                       label={String(label ?? '')}
                       showTotal
+                      formatter={formatMoney}
                     />
                   )}
                 />

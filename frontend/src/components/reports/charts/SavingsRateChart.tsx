@@ -30,10 +30,24 @@ interface Props {
 
 const pct = (v: number | null) => (v === null ? '—' : `${(v * 100).toFixed(1)}%`)
 
+/** The rate line's series name, used as both the dataKey and the tooltip key. */
+const RATE_SERIES = 'Savings Rate'
+
+/** The rate line is a percentage; the three bars beside it are money.
+ *
+ * One tooltip covers both axes, so it has to branch on the series name — the
+ * shared default used to render 18.5 as "$18.50".
+ */
+function savingsRateTooltipWith(formatMoney: (n: number) => string) {
+  return (value: number, name: string) =>
+    name === RATE_SERIES ? `${value.toFixed(1)}%` : formatMoney(value)
+}
+
 export function SavingsRateReport({ budgetId }: Props) {
   const chartHeight = useChartHeight(320)
   const { formatMoney } = useFormatters()
   const moneyAxis = useMoneyAxis()
+  const savingsRateTooltip = savingsRateTooltipWith(formatMoney)
   const months = useReportMonths()
   const [withDebt, setWithDebt] = useState(true)
   const { data, isLoading, isError, error, refetch } = useSavingsRateReport(budgetId, months)
@@ -53,7 +67,7 @@ export function SavingsRateReport({ budgetId }: Props) {
     Spent: Number(m.spending),
     // null leaves a gap in the line rather than dropping it to zero, which
     // would read as "saved nothing" in a month with no income at all.
-    'Savings Rate': m[rateKey] === null ? null : m[rateKey] * 100,
+    [RATE_SERIES]: m[rateKey] === null ? null : m[rateKey] * 100,
   }))
 
   const hasAnything = rows.some(
@@ -152,7 +166,7 @@ export function SavingsRateReport({ budgetId }: Props) {
                 width={50}
               />
               <Tooltip
-                content={<ChartTooltip showTotal={false} />}
+                content={<ChartTooltip showTotal={false} formatter={savingsRateTooltip} />}
                 offset={16}
                 isAnimationActive={false}
               />
@@ -163,7 +177,7 @@ export function SavingsRateReport({ budgetId }: Props) {
               <Line
                 yAxisId="rate"
                 type="monotone"
-                dataKey="Savings Rate"
+                dataKey={RATE_SERIES}
                 stroke={COLOR_NET}
                 strokeWidth={2}
                 dot={{ r: 3 }}

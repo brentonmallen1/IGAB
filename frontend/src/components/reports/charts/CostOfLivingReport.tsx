@@ -3,7 +3,6 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxi
 import { useReportMonths, useReportStore } from '../../../stores/reportStore'
 import { useCostOfLivingReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
-import { getCurrencySymbol } from '../../../utils/money'
 import { ReportErrorState } from '../ReportErrorState'
 import { MetricCard } from '../MetricCard'
 import { MetricRow } from '../MetricRow'
@@ -15,6 +14,7 @@ import { chartColor } from './chartColors'
 import { ChartLegend } from './ChartLegend'
 import { ChartTooltip } from './ChartTooltip'
 import { ReportRangeSelect } from './rangeSelect'
+import { useMoneyAxis } from './useMoneyAxis'
 
 interface Props {
   budgetId: string
@@ -34,11 +34,11 @@ interface Props {
 const UNCATEGORIZED = 'Uncategorized'
 
 export function CostOfLivingReport({ budgetId }: Props) {
-  const { formatMoney, formatMonthShort, settings } = useFormatters()
+  const { formatMoney, formatMonthShort } = useFormatters()
+  const moneyAxis = useMoneyAxis()
   // Which group the legend is pointing at, if any. The palette repeats past
   // eight slots, so this is what tells two same-coloured bands apart.
   const [highlight, setHighlight] = useState<string | null>(null)
-  const currencySymbol = getCurrencySymbol(settings.currencyCode)
   const months = useReportMonths()
   const { data, isLoading, isError, error, refetch } = useCostOfLivingReport(budgetId, months)
   const setDrillDown = useReportStore((s) => s.setDrillDown)
@@ -178,8 +178,8 @@ export function CostOfLivingReport({ budgetId }: Props) {
                   tickLine={false}
                 />
                 <YAxis
+                  {...moneyAxis}
                   tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
-                  tickFormatter={(v) => `${currencySymbol}${v}`}
                   axisLine={false}
                   tickLine={false}
                 />
