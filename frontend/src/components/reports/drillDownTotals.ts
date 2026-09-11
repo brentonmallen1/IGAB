@@ -10,6 +10,7 @@
  * The rule: **the total is the sum of the rows it sits under.** A wider set
  * is context beside it, never the rows' own figure.
  */
+import { toCents } from '../../utils/money'
 
 export interface WiderSet {
   /** The whole set's total — the figure the rows are a part of. */
@@ -34,9 +35,6 @@ export interface DrillDownFooter {
   share: number | null
 }
 
-/** Money differences below this are rounding, not a truncated set. */
-const CENT = 0.005
-
 /** Whether `shown` is only part of `whole`, rather than the whole of it with
  *  a rounding cent between them.
  *
@@ -44,9 +42,10 @@ const CENT = 0.005
  *  total by a fraction of a penny. The drill table, the chart tooltip and
  *  Income by Source's Other band each wrote this with their own tolerance
  *  (0.005, 0.005 and 0.01), so a $0.007 gap was rounding on one and a
- *  truncated set on the others. */
+ *  truncated set on the others. Read in cents: a difference below one is
+ *  float dust, and a genuine cent is a truncated set. */
 export function isPartial(shown: number, whole: number): boolean {
-  return Math.abs(whole - shown) >= CENT
+  return toCents(whole - shown) !== 0
 }
 
 /** `part` as a percentage of `whole`, 0–100 — or null when there is no

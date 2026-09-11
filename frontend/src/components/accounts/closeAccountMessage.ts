@@ -1,3 +1,4 @@
+import { toCents } from '../../utils/money'
 import { isCardAccount, isCashAccount, type AccountKindFields } from '../../utils/accountKinds'
 
 /**
@@ -25,14 +26,12 @@ export interface ClosingAccount extends AccountKindFields {
   balance: number
 }
 
-/** Below a cent is float dust from summing a ledger, not money. */
-const A_CENT = 0.005
-
 export function closeAccountMessage(
   account: ClosingAccount,
   money: (amount: number) => string
 ): string | null {
-  const holdsMoney = Math.abs(account.balance) >= A_CENT
+  // In cents: below one is float dust from summing a ledger, not money.
+  const holdsMoney = toCents(account.balance) !== 0
 
   if (isCardAccount(account)) {
     // A card's set-aside outlives the card, so this one speaks even at zero:

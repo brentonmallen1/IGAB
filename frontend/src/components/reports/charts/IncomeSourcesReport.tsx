@@ -19,10 +19,10 @@ import { MetricRow } from '../MetricRow'
 import { ReportInfoButton } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ChartTooltip } from './ChartTooltip'
-import { isPartial } from '../drillDownTotals'
 import { chartColor, COLOR_OTHER } from './chartColors'
 import { useReportMonths } from '../../../stores/reportStore'
 import { useMoneyAxis } from './useMoneyAxis'
+import { otherIncome } from './incomeSourcesView'
 
 interface Props {
   budgetId: string
@@ -46,15 +46,11 @@ export function IncomeSourcesReport({ budgetId }: Props) {
     return data.months.map((m, i) => {
       const row: Record<string, string | number> = { month: formatMonth(m) }
       for (const s of shown) row[s.payee_name] = s.monthly[i] ?? 0
-      const drawn = shown.reduce((sum, s) => sum + (s.monthly[i] ?? 0), 0)
-      const rest = data.monthly_totals[i] - drawn
-      // A cent, not a series. `monthly_totals` and the per-payee `monthly`
-      // arrays are each rounded server-side, so their difference is routinely
-      // a fraction of a penny — and `rest > 0` drew an "Other" band for it,
-      // giving every month a phantom income source worth £0.00. Whether the
-      // drawn sources are the whole month is `isPartial`, the tooltip's and
-      // the drill table's rule; this band had its own 0.01 tolerance.
-      if (rest > 0 && isPartial(drawn, data.monthly_totals[i])) row.Other = rest
+      const rest = otherIncome(
+        data.monthly_totals[i],
+        shown.map((s) => s.monthly[i] ?? 0)
+      )
+      if (rest !== null) row.Other = rest
       return row
     })
   }, [data, shown, formatMonth])
