@@ -28,7 +28,7 @@ describe('signalHeadline', () => {
   })
 
   it('reads an amount from its figure, whatever met says', () => {
-    expect(signalHeadline({ met: false, value: '1240.5' }, 'amount', money)).toEqual({
+    expect(signalHeadline({ met: false, value: 1240.5 }, 'amount', money)).toEqual({
       text: '$1240.50',
       known: true,
     })
@@ -42,7 +42,7 @@ describe('signalHeadline', () => {
   })
 
   it('reads a rate as a percentage', () => {
-    expect(signalHeadline({ met: true, value: '15' }, 'rate', money)).toEqual({
+    expect(signalHeadline({ met: true, value: 15 }, 'rate', money)).toEqual({
       text: '15.0%',
       known: true,
     })
@@ -51,12 +51,11 @@ describe('signalHeadline', () => {
 
 describe('formatSignalFigure', () => {
   it('formats money and rates in their own units', () => {
-    expect(formatSignalFigure('9600', 'amount', money)).toBe('$9600.00')
-    expect(formatSignalFigure('12.25', 'rate', money)).toBe('12.3%')
+    expect(formatSignalFigure(9600, 'amount', money)).toBe('$9600.00')
+    expect(formatSignalFigure(12.25, 'rate', money)).toBe('12.3%')
   })
 
-  it('is null for no figure or one that does not parse', () => {
+  it('is null for no figure', () => {
     expect(formatSignalFigure(null, 'amount', money)).toBeNull()
-    expect(formatSignalFigure('n/a', 'amount', money)).toBeNull()
   })
 })

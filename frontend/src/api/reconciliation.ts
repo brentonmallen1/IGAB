@@ -13,9 +13,9 @@ export interface ReconciliationSnapshot {
   id: string
   account_id: string
   reconciled_at: string
-  statement_balance: string
-  cleared_balance: string
-  adjustment_amount: string
+  statement_balance: number
+  cleared_balance: number
+  adjustment_amount: number
   note: string | null
 }
 

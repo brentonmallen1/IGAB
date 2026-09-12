@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { downloadAuthed, exportFilename } from '../../utils/exportFile'
 import { useAppStore } from '../../stores/appStore'
@@ -6,13 +6,16 @@ import { useReportStore } from '../../stores/reportStore'
 import { exportTransactionsPath, useDashboardMetrics } from '../../api/reports'
 import { useBudgetMonth } from '../../api/budgets'
 import { MetricCard } from './MetricCard'
+import { LivingMeansCard } from './LivingMeansCard'
+import { AT_MEANS_BAND_PCT } from './livingMeans'
 import { MetricRow } from './MetricRow'
 import { ReportInfoButton, ReportScopeNote } from './ReportInfoButton'
 import { ReportExportButton } from './ReportExportButton/ReportExportButton'
 import { useFormatters } from '../../hooks/useFormatters'
 import { ReportErrorState } from './ReportErrorState'
+import { SavingsRateDialog } from './SavingsRateDialog'
+import { pct, ratePercent } from './charts/savingsRateView'
 import {
-  clampedSavingsRate,
   essentialsReserve,
   netWorthDelta,
   roundedDaysUntilZero,
@@ -35,6 +38,7 @@ export function OverviewReport({ budgetId }: Props) {
   )
   const { data: budgetMonth } = useBudgetMonth(budgetId, selectedMonth)
   const captureRef = useRef<HTMLDivElement>(null)
+  const [savingsOpen, setSavingsOpen] = useState(false)
 
   if (isLoading) return <div className="report-loading">Loading…</div>
   if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
@@ -42,7 +46,6 @@ export function OverviewReport({ budgetId }: Props) {
 
   const netWorthDeltaPct = netWorthDelta(data.net_worth, data.net_worth_prev)
   const spendingDeltaPct = spendingDelta(data.expenses_this_month, data.expenses_prev_month)
-  const savingsRate = clampedSavingsRate(data.savings_rate)
   const daysUntilZero = roundedDaysUntilZero(data.days_until_zero)
   const sixMonthReserve = essentialsReserve(data.essentials_monthly, 6)
 
@@ -62,10 +65,17 @@ export function OverviewReport({ budgetId }: Props) {
               Essential — what a lean month costs, and the figure the Guide’s emergency-fund target
               is built from. Shows “—” until something is tagged. <strong>Savings Rate</strong>:
               Savings ÷ Income — money moved into savings or investments, not simply money left
-              over. Shows “—” for a window with no income. <strong>Days Until Zero</strong>: cash on
-              hand ÷ daily burn rate — how long the budget’s cash accounts would last at this pace.
-              Cards, loans and tracked investments are out: net worth is not money you can spend
-              next week.
+              over. Shows “—” for a window with no income. Open it to see where the savings went and
+              where the income came from. <strong>Days Until Zero</strong>: cash on hand ÷ daily
+              burn rate — how long the budget’s cash accounts would last at this pace. Cards, loans
+              and tracked investments are out: net worth is not money you can spend next week.
+            </p>
+            <p>
+              <strong>Your Means</strong>: income against what living cost over the range — spending
+              plus debt payments. Below your means is money left over; at your means is outflows
+              within {AT_MEANS_BAND_PCT}% of income either side; above is outflows beyond that.
+              Savings transfers are not outflows. Shows “—” when no income was recorded. Open it to
+              see the figures, the biggest spending categories and the prior period.
             </p>
             <ReportScopeNote scope="overview" />
           </ReportInfoButton>
@@ -96,14 +106,16 @@ export function OverviewReport({ budgetId }: Props) {
                 ...(data.essentials_monthly != null
                   ? [{ metric: 'essentials_monthly', value: data.essentials_monthly }]
                   : []),
-                ...(savingsRate !== null
-                  ? [{ metric: 'savings_rate_pct', value: savingsRate }]
+                ...(data.savings_rate !== null
+                  ? [{ metric: 'savings_rate_pct', value: ratePercent(data.savings_rate) }]
                   : []),
                 ...(daysUntilZero !== null
                   ? [{ metric: 'days_until_zero', value: daysUntilZero }]
                   : []),
                 { metric: 'income_this_period', value: data.income_this_month },
                 { metric: 'spent_this_period', value: data.expenses_this_month },
+                { metric: 'debt_payments_this_period', value: data.debt_payments_this_month },
+                { metric: 'outflows_this_period', value: data.outflows_this_month },
               ]}
               captureRef={captureRef}
               window={{ start: filters.startDate, end: filters.endDate }}
@@ -111,6 +123,7 @@ export function OverviewReport({ budgetId }: Props) {
           </div>
         </div>
         <MetricRow ref={captureRef}>
+          <LivingMeansCard data={data} />
           {budgetMonth && (
             <MetricCard
               label="To Be Assigned"
@@ -145,8 +158,12 @@ export function OverviewReport({ budgetId }: Props) {
             label="Savings Rate"
             // "—" rather than 0%: with no income recorded there is nothing to
             // take a percentage of, and 0% reads as "saved nothing".
-            value={savingsRate === null ? '—' : `${savingsRate.toFixed(1)}%`}
-            sub={savingsRate === null ? 'No income recorded' : 'Savings / Income'}
+            value={pct(data.savings_rate)}
+            sub={data.savings_rate === null ? 'No income recorded' : 'Savings / Income'}
+            details={{
+              label: `Savings rate ${pct(data.savings_rate)}. Show what contributed`,
+              onOpen: () => setSavingsOpen(true),
+            }}
           />
           {daysUntilZero !== null && (
             <MetricCard
@@ -166,6 +183,16 @@ export function OverviewReport({ budgetId }: Props) {
             }
           />
         </MetricRow>
+        {savingsOpen && (
+          <SavingsRateDialog
+            budgetId={budgetId}
+            startDate={filters.startDate}
+            endDate={filters.endDate}
+            rate={data.savings_rate}
+            withDebt={false}
+            onClose={() => setSavingsOpen(false)}
+          />
+        )}
       </div>
 
       {data.top_categories.length > 0 && (

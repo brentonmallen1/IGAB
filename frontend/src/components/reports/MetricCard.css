@@ -28,11 +28,61 @@
 }
 
 .metric-card__label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   font-size: var(--font-size-xs);
   font-weight: 500;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+
+/* ─── A card that opens a dialog (`details`) ─────────────────────────────────
+   The button sits in the value slot and stretches over the card with ::after,
+   so the markup stays valid (no card inside a button) and the click target is
+   the tile a reader sees. The affordance is a muted chevron beside the label
+   and a firmer edge on hover — present on every such card, delta or not, and
+   quiet enough that a row of them still reads as figures. */
+.metric-card--opens {
+  position: relative;
+}
+
+.metric-card__opens-icon {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.metric-card__open {
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.metric-card__open::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--border-radius-sm);
+}
+
+/* The ring goes round the tile, not round the figure inside it. */
+.metric-card__open:focus-visible {
+  box-shadow: none;
+}
+
+.metric-card__open:focus-visible::after {
+  box-shadow: var(--focus-ring);
+}
+
+.metric-card--opens:hover {
+  border-color: var(--edge-strong);
+}
+
+.metric-card--opens:hover .metric-card__opens-icon {
+  color: var(--text-secondary);
 }
 
 .metric-card__value {

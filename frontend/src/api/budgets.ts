@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 import { invalidateAfterImport } from './invalidateAfterImport'
 import { invalidateAfterMoneyMove } from './invalidateAfterMoneyMove'
@@ -8,6 +8,7 @@ import type { SnapshotInspection } from './budgetSnapshots'
 import type { YnabImportResult } from './imports'
 import { ROOT } from './queryKeys'
 import { parseLocalDate } from '../utils/dates'
+import { balancesByCategory } from '../utils/categoryBalances'
 
 export interface YnabImportBudgetResult {
   budget: Budget
@@ -88,12 +89,21 @@ export function useCardTimeline(budgetId: string | null, accountId: string | nul
   })
 }
 
+/** The one description of a budget month's cache entry: the hook below
+ *  observes it, and an imperative read (`qc.fetchQuery`) asks the same key
+ *  with the same freshness rather than spelling its own. */
+export function budgetMonthQuery(budgetId: string, month: string) {
+  return queryOptions({
+    queryKey: [ROOT.budgetMonth, budgetId, month],
+    queryFn: () => fetchBudgetMonth(budgetId, month),
+    staleTime: 10_000,
+  })
+}
+
 export function useBudgetMonth(budgetId: string | null, month: string) {
   return useQuery({
-    queryKey: [ROOT.budgetMonth, budgetId, month],
-    queryFn: () => fetchBudgetMonth(budgetId!, month),
+    ...budgetMonthQuery(budgetId ?? '', month),
     enabled: !!budgetId,
-    staleTime: 10_000,
   })
 }
 
@@ -190,7 +200,7 @@ export function useSetAssignment(budgetId: string) {
       await qc.cancelQueries({ queryKey: [ROOT.budgetMonth, budgetId, month] })
       const previous = qc.getQueryData<BudgetMonth>([ROOT.budgetMonth, budgetId, month])
       if (previous) {
-        const existing = previous.category_balances.find((b) => b.category_id === categoryId)
+        const existing = balancesByCategory(previous).get(categoryId)
         const delta = amount - Number(existing?.assigned ?? 0)
         const category_balances = existing
           ? previous.category_balances.map((b) =>
@@ -254,7 +264,7 @@ export interface BudgetMove {
   month: string
   from_category_id: string | null
   to_category_id: string | null
-  amount: string
+  amount: number
   created_at: string
 }
 

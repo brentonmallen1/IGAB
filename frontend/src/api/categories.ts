@@ -217,8 +217,8 @@ export interface CategoryDeletePreview {
   /** Of those, how many are reconciled — they cannot be re-filed by hand
    *  afterwards without unlocking them first, so the dialog says so. */
   reconciled_count: number
-  available: string
-  future_assigned: string
+  available: number
+  future_assigned: number
   payee_count: number
   scheduled_count: number
   /** Everything else still pointing at these categories. `clearable` ones go
@@ -231,11 +231,11 @@ export interface CategoryDeletePreview {
   /** Net posted spending filed here over the categories' whole life
    *  (positive = outflow) — what the destination absorbs, or what leaves
    *  category-keyed reports until re-filed. */
-  moving_activity: string
+  moving_activity: number
   /** What Ready to Assign gains, one figure per mode — SERVED, the dialog
    *  never derives money. They differ when future-dated activity moves. */
-  released_if_moved: string
-  released_if_uncategorized: string
+  released_if_moved: number
+  released_if_uncategorized: number
   /** Non-empty means the delete is refused (a linked payment or debt
    *  category); each entry names the counterpart and what to do instead. */
   blocked_by: string[]
@@ -252,7 +252,7 @@ export interface CategoryDeleteResult {
   assignments_removed: number
   /** What actually reached Ready to Assign. Not the assignments removed —
    *  money already spent out of an envelope does not come back. */
-  released: string
+  released: number
 }
 
 /** One archived envelope, as the archived listing serves it. `available` is
@@ -266,7 +266,7 @@ export interface ArchivedCategory {
   group_name: string
   transaction_count: number
   archived_at: string | null
-  available: string
+  available: number
   /** The *group* is why this row is listed, not the category's own flag.
    *  Restoring the category alone is a no-op then — the group still hides it —
    *  so the modal offers to restore the group. Served: the client cannot see
@@ -294,8 +294,8 @@ export interface ArchivePreview {
   category_ids: string[]
   category_names: string[]
   transaction_count: number
-  available: string
-  future_assigned: string
+  available: number
+  future_assigned: number
   blocked_by_balance: string[]
   blocked_by_link: string[]
   blocked_by_schedule: string[]
@@ -476,7 +476,7 @@ export interface RepairOrphansResult {
   categories_repaired: number
   transactions_uncategorized: number
   assignments_removed: number
-  released: string
+  released: number
   change_ids: string[]
   categories_under_deleted_groups: number
 }

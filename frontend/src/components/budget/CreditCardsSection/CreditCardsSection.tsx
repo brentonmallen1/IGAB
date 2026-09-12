@@ -31,6 +31,7 @@ import { Surface } from '../../common/Surface'
 import { Link } from 'react-router-dom'
 import { TransactionsPeekModal } from '../TransactionsPeekModal/TransactionsPeekModal'
 import type { CardStatus } from '../../../types'
+import { balancesByCategory } from '../../../utils/categoryBalances'
 import './CreditCardsSection.css'
 
 /**
@@ -439,15 +440,10 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
   const cards = budgetMonth?.cards ?? []
   if (cards.length === 0) return null
 
-  const assignedByCategory = new Map(
-    budgetMonth?.category_balances.map((b) => [b.category_id, Number(b.assigned ?? 0)]) ?? []
-  )
+  const balances = balancesByCategory(budgetMonth)
   // The server computes a card envelope's target verdict like any other
   // category's — the grid never draws the envelope, so this strip is where
   // the number surfaces.
-  const neededByCategory = new Map(
-    budgetMonth?.category_balances.map((b) => [b.category_id, b.needed_this_month]) ?? []
-  )
   const totalUncovered = cards.reduce((sum, c) => sum + c.uncovered, 0)
   // The payoff projection already exists on the Liability page — baseline
   // against the minimum payment versus the pace you are actually paying. The
@@ -528,10 +524,10 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
             </div>
             {cards.map((card) => {
               const assigned = card.category_id
-                ? (assignedByCategory.get(card.category_id) ?? 0)
+                ? Number(balances.get(card.category_id)?.assigned ?? 0)
                 : 0
               const needed = card.category_id
-                ? (neededByCategory.get(card.category_id) ?? null)
+                ? (balances.get(card.category_id)?.needed_this_month ?? null)
                 : null
               const legsOpen = legsFor === card.account_id
               const note = reserveNote(card, formatMoney)

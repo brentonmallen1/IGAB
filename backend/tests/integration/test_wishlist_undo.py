@@ -88,6 +88,22 @@ class TestWishUndo:
         assert Decimal(row["cost"]) == Decimal("1800")
         assert row["is_priority"] is False
 
+    async def test_undo_of_a_cooling_off_set_in_days_restores_the_old_date(
+        self, db_session, api_client
+    ):
+        budget = await _budget(db_session, api_client)
+        wish = await _add(api_client, budget, cooling_days=10)
+        before = wish["cooling_until"]
+        r = await api_client.patch(f"{_url(budget)}/{wish['id']}", json={"cooling_days": 90})
+        assert r.status_code == 200, r.text
+        assert r.json()["cooling_until"] != before
+
+        undone = await _undo(api_client, budget)
+        assert (undone["entity_type"], undone["action"]) == ("wishlist_item", "update")
+        [row] = await _items(api_client, budget)
+        assert row["cooling_until"] == before
+        assert row["added_on"] == wish["added_on"]
+
     async def test_affirm_is_a_recorded_change(self, db_session, api_client):
         budget = await _budget(db_session, api_client)
         wish = await _add(api_client, budget)

@@ -16,6 +16,19 @@ afterEach(() => {
   useAppStore.setState({ privacyMode: false })
 })
 
+describe('pct', () => {
+  it('prints a negative rate rather than flooring it at 0%', () => {
+    // The Overview's card clamped with its own formatter and read 0.0% where
+    // the tab read -40.0% for the same served rate.
+    expect(pct(-0.4)).toBe('-40.0%')
+    expect(pct(0.25)).toBe('25.0%')
+  })
+
+  it('has no rate without income', () => {
+    expect(pct(null)).toBe('—')
+  })
+})
+
 describe('savingsRateTooltipWith', () => {
   it('reads the rate line as a percentage', () => {
     expect(savingsRateTooltipWith(money)(18.5, RATE_SERIES)).toBe('18.5%')

@@ -14,17 +14,20 @@
  * the user is asked before that flag is ever sent, and never after saying no.
  */
 import { describe, expect, it, vi } from 'vitest'
-import { wishlistToggleOutcome, type WishlistRetireFacts } from './wishlistToggle'
+import type { WishlistRetirePreview } from '../../api/guide'
+import { wishlistToggleOutcome } from './wishlistToggle'
 
-const HOLDS_MONEY: WishlistRetireFacts = {
+const HOLDS_MONEY: WishlistRetirePreview = {
   envelopes: ['New Bike', 'Camera Lens'],
-  available: '400.0000',
+  available: 400,
   is_empty: false,
 }
-const EMPTY: WishlistRetireFacts = { envelopes: [], available: '0.0000', is_empty: true }
+const EMPTY: WishlistRetirePreview = { envelopes: [], available: 0, is_empty: true }
 
 /** Built with the mocks kept concrete, so a test can read what was asked. */
-function deps(opts: { facts?: WishlistRetireFacts; offline?: boolean; confirmed?: boolean } = {}) {
+function deps(
+  opts: { facts?: WishlistRetirePreview; offline?: boolean; confirmed?: boolean } = {}
+) {
   return {
     fetchPreview: vi.fn(async () => {
       if (opts.offline) throw new Error('offline')
@@ -34,7 +37,7 @@ function deps(opts: { facts?: WishlistRetireFacts; offline?: boolean; confirmed?
       async (_req: { title: string; message: string; confirmLabel: string }) =>
         opts.confirmed ?? true
     ),
-    formatMoney: (a: string) => `$${Number(a).toFixed(2)}`,
+    formatMoney: (a: number) => `$${a.toFixed(2)}`,
     onPreviewFailed: vi.fn(),
   }
 }

@@ -5,7 +5,8 @@ from typing import Literal
 
 from pydantic import Field, model_validator
 
-from igab.api.v1.schemas.base import ApiModel
+from igab.api.v1.schemas.base import ApiModel, ClientDated
+from igab.guide.wishlist import MAX_COOLING_DAYS
 
 Money = Decimal
 
@@ -29,14 +30,17 @@ class FundingIn(ApiModel):
         return self
 
 
-class WishCreate(ApiModel):
+class WishCreate(ClientDated):
+    """`client_today` is the day the wish is added: what `cooling_days`
+    counts from, now and on every later edit that sets the period in days."""
+
     name: str = Field(min_length=1, max_length=200)
     cost: Money = Field(default=Decimal("0"), ge=0)
     url: str | None = Field(default=None, max_length=2000)
     notes: str | None = Field(default=None, max_length=2000)
     project_id: uuid.UUID | None = None
     priority: int | None = Field(default=None, ge=0)
-    cooling_days: int | None = Field(default=None, ge=0, le=365)
+    cooling_days: int | None = Field(default=None, ge=0, le=MAX_COOLING_DAYS)
     funding: FundingIn = Field(default_factory=FundingIn)
 
 
@@ -52,11 +56,24 @@ class WishUpdate(ApiModel):
     is_priority: bool | None = None
     status: Literal["open", "done", "dropped"] | None = None
     cooling_until: date | None = None
+    #: The cooling-off as a length: this many days after the wish was ADDED,
+    #: not after today — so "14" means the same date whenever the edit is
+    #: made, and one that is already behind us simply ends the cooling-off.
+    #: The other spelling of `cooling_until`; sending both is refused.
+    cooling_days: int | None = Field(default=None, ge=0, le=MAX_COOLING_DAYS)
     #: Any of the three modes. `own` on a wish that has no envelope of its
     #: own makes one (named for the wish, with a savings goal of its cost);
     #: on one that already has an envelope it is a no-op, because the budget
     #: page owns that category from the moment it exists.
     funding: FundingIn | None = None
+
+    @model_validator(mode="after")
+    def one_cooling_spelling(self) -> "WishUpdate":
+        # Presence, not value: `cooling_until: null` (end it) beside a day
+        # count is as contradictory as two dates.
+        if {"cooling_days", "cooling_until"} <= self.model_fields_set:
+            raise ValueError("Set the cooling-off as a date or as days, not both")
+        return self
 
 
 class FundingOut(ApiModel):
@@ -91,6 +108,10 @@ class WishOut(ApiModel):
     funding: FundingOut
     cooling_until: date | None
     cooling: bool
+    #: The day the wish was added, as its cooling-off in days counts it —
+    #: served because the client cannot recover the person's date from
+    #: `created_at`, an instant.
+    added_on: date
     last_affirmed_at: datetime | None
     review_due: bool
     done_at: date | None
@@ -144,7 +165,7 @@ class WishlistSettingsOut(ApiModel):
 
 
 class WishlistSettingsUpdate(ApiModel):
-    cooling_days: int | None = Field(default=None, ge=0, le=365)
+    cooling_days: int | None = Field(default=None, ge=0, le=MAX_COOLING_DAYS)
     review_after_days: int | None = Field(default=None, ge=7, le=365)
 
 
@@ -203,4 +224,6 @@ class WishlistResponse(ApiModel):
     #: The pin cap, served so the client disables the action at the limit
     #: without spelling its own 3.
     priority_limit: int
+    #: The longest cooling-off, in days — served for the same reason.
+    max_cooling_days: int
     drains: DrainsOut | None

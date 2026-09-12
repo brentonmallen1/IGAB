@@ -26,8 +26,9 @@ The rules are ordered and first-match-wins, so each one also carries a stable
 an opaque reclassification.
 """
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from decimal import Decimal
 from enum import StrEnum
 from typing import Any
 
@@ -112,6 +113,23 @@ REASON_TEXT: dict[ActivityReason, str] = {
     ),
     ActivityReason.UNCATEGORIZED_INFLOW: "it is money arriving with no category, ready to assign",
     ActivityReason.DEFAULT_SPENDING: "it is ordinary spending from a budget account",
+}
+
+#: The same reasons as a short noun phrase, for a list that names each row's
+#: reason beside an amount — the savings-rate dialog's contributors. The
+#: clauses above complete "counts this way because …" and read badly as a
+#: label; these read as one. Kept beside them, and
+#: `test_savings_contributors.py` holds both to every member of the enum.
+REASON_LABEL: dict[ActivityReason, str] = {
+    ActivityReason.TAGGED_SAVINGS: "category tagged Savings",
+    ActivityReason.TAGGED_DEBT: "category tagged Debt principal",
+    ActivityReason.TRANSFER_TO_TRACKED_ASSET: "transfer to a tracked account",
+    ActivityReason.TRANSFER_TO_TRACKED_DEBT: "payment to a tracked debt",
+    ActivityReason.INTERNAL_TRANSFER: "move between your own accounts",
+    ActivityReason.TRACKED_ASSET_ACTIVITY: "activity inside a tracked account",
+    ActivityReason.TRACKED_DEBT_ACTIVITY: "activity inside a tracked debt",
+    ActivityReason.UNCATEGORIZED_INFLOW: "income",
+    ActivityReason.DEFAULT_SPENDING: "spending",
 }
 
 #: Short label for each class, for anywhere a class is shown to a person.
@@ -338,6 +356,22 @@ _JOINED_INPUTS = _Inputs(
 #: The shipped rules, reading joined columns.
 RULES: list[Rule] = _rules(_JOINED_INPUTS)
 
+#: Every reason in the order the rules test it, first-match-wins. Where one
+#: figure gathers rows that several rules decided, this says which of them
+#: speaks for it — the classifier's own order: a user's tag before an inference.
+REASON_PRIORITY: tuple[ActivityReason, ...] = (
+    *(reason for _, _, reason in RULES),
+    ActivityReason.DEFAULT_SPENDING,
+)
+
+#: A transfer leg whose other side is a tracked, off-budget account: the
+#: condition the TRANSFER_TO_TRACKED_* rules test, read from the same joined
+#: inputs, so "where did this money go" is answered by the columns that decided
+#: its class. Apply `apply_class_joins` with it; `TRACKED_COUNTERPART_ACCOUNT`
+#: is the joined account it names.
+TRACKED_TRANSFER = and_(_JOINED_INPUTS.transfer_leg, _JOINED_INPUTS.tracked_counterpart)
+TRACKED_COUNTERPART_ACCOUNT = _counterpart_acct
+
 
 def apply_class_joins(stmt: Select) -> Select:
     """Bring in the columns ACTIVITY_CLASS reads.
@@ -471,6 +505,23 @@ COST_OF_LIVING_CLASSES = (ActivityClass.SPENDING, ActivityClass.DEBT_PRINCIPAL)
 #: places assembling the same tuple is how the badge and the register came to
 #: disagree.
 SPENDING_WITH_SAVINGS_CLASSES = SPENDING_CLASSES + SAVINGS_CLASSES
+
+
+def class_magnitude(buckets: Mapping[str, Decimal], cls: ActivityClass) -> Decimal:
+    """An outflow class's signed total (class value -> sum), as a positive number.
+
+    Outflow rows are stored negative and every consumer reports magnitudes, so
+    every consumer flipped the sign itself — each with its own copy of the
+    comment explaining why. Three copies is three chances for one of them to
+    keep the sign through a refactor and quietly report a negative savings rate.
+
+    Here rather than in the report service because the savings-rate dialog's
+    contributors (`report_basics.savings_contributors`) flip each part by the
+    rule the cards flip the whole by; otherwise the parts need not sum to the
+    figure the card divided. A net inflow — money drawn back out of savings —
+    comes out negative, and stays negative.
+    """
+    return -buckets.get(cls.value, Decimal("0"))
 
 
 def explain(reason: str) -> str:

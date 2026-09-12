@@ -1,0 +1,8 @@
+/* Positioned so the screen-reader copy's absolute box stays inside the figure
+   rather than escaping to the nearest positioned ancestor and widening it. */
+.count-up-money {
+  position: relative;
+  /* Fixed-width digits: a counting figure must not jitter sideways. */
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

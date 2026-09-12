@@ -29,7 +29,8 @@ import { CategoryDragProvider } from '../CategoryDrag/CategoryDragContext'
 import { BudgetFilterBar } from '../BudgetFilterBar/BudgetFilterBar'
 import { ArchivedCategoriesModal } from '../ArchivedCategoriesModal/ArchivedCategoriesModal'
 import { useDeleteCategoryFlow } from '../DeleteCategoryModal/useDeleteCategoryFlow'
-import type { Category, CategoryBalance, CategoryGroup } from '../../../types'
+import type { Category, CategoryGroup } from '../../../types'
+import { balancesByCategory } from '../../../utils/categoryBalances'
 import '../budgetGrid.css'
 import './BudgetTable.css'
 
@@ -96,8 +97,7 @@ export function BudgetTable() {
     return <div className="budget-table__loading">Loading...</div>
   }
 
-  const balanceMap = new Map<string, CategoryBalance>()
-  budgetMonth?.category_balances.forEach((b) => balanceMap.set(b.category_id, b))
+  const balanceMap = balancesByCategory(budgetMonth)
 
   const activeFilter = filters?.find((f) => f.id === activeFilterId) ?? null
   // The served union of named categories and tag members — never re-derived here.

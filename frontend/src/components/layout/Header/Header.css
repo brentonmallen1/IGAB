@@ -198,9 +198,9 @@
 }
 
 @media (max-width: 768px) {
-  /* Two things on a phone: the month nav (budget route) and search. The
-     search sits at the right edge and the month label takes what is left,
-     so it never truncates. */
+  /* Three things on a phone: the month nav (budget route), search and the
+     assistant. Search and the assistant sit at the right edge and the month
+     label takes what is left. */
   .header__palette-wrap {
     flex: 0 0 auto;
     margin-left: auto;
@@ -212,6 +212,14 @@
     min-width: 0;
     display: flex;
     align-items: center;
+  }
+
+  /* No gap: each 44px button already carries 14px of air around its icon.
+     With the assistant beside search and the today button showing, the
+     desktop's 8px gaps left "September 2026" 98px of the 106 it needs at
+     390px wide. */
+  .header__month-nav {
+    gap: 0;
   }
 
   .header__month-label {

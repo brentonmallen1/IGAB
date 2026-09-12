@@ -1,0 +1,92 @@
+/* The explanatory dialogs' layout — see ReportDetail.tsx. Moved from
+   LivingMeansCard.css when the savings-rate dialog needed the same shapes. */
+
+.report-detail__figures {
+  margin: 0;
+  padding: var(--spacing-sm) var(--spacing-md);
+  display: flex;
+  flex-direction: column;
+}
+
+.report-detail__figure {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  padding: 4px 0;
+  font-size: var(--font-size-sm);
+}
+
+.report-detail__figure dt {
+  color: var(--text-secondary);
+}
+
+.report-detail__figure dd {
+  margin: 0;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.report-detail__figure--strong {
+  border-top: 1px solid var(--edge);
+  font-weight: 600;
+}
+
+.report-detail__figure--strong + .report-detail__figure--strong {
+  border-top: none;
+}
+
+.report-detail__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.report-detail__heading {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.report-detail__rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.report-detail__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--spacing-md);
+  padding: var(--spacing-xs) 0;
+  border-bottom: 1px solid var(--edge);
+  font-size: var(--font-size-sm);
+}
+
+.report-detail__row:last-child {
+  border-bottom: none;
+}
+
+.report-detail__name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  color: var(--text-primary);
+}
+
+.report-detail__note {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.report-detail__amount {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

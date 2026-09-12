@@ -1,8 +1,10 @@
 import { flatCategoryOptions } from '../../../utils/categoryPickers'
 import { rowMayCarryCategory } from '../../../utils/rowCategoryRule'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
 import toast from 'react-hot-toast'
 import { useUndoToast } from '../../../utils/toastUndo'
+import { useCategoryAvailable } from './useCategoryAvailable'
+import { AvailableChangeToast } from './AvailableChangeToast'
 import {
   AlertTriangle,
   Camera,
@@ -199,15 +201,6 @@ export function QuickAddSheet() {
       .map((p) => ({ id: p.id, label: p.name }))
   }, [payees, nearbyPayees])
 
-  const categoryOptions = useMemo<SelectionSheetOption[]>(
-    () =>
-      flatCategoryOptions(
-        categories.filter((c) => c.is_categorizable),
-        categoryGroups
-      ),
-    [categories, categoryGroups]
-  )
-
   const accountOptions = useMemo<SelectionSheetOption[]>(
     () =>
       choosable.map((a) => ({
@@ -225,6 +218,24 @@ export function QuickAddSheet() {
   // neither the field nor payee-memory prefill is offered for them.
   const canCategorize = rowMayCarryCategory(
     accountId ? (accounts.find((a) => a.id === accountId)?.on_budget ?? true) : true
+  )
+
+  // Available in the month the row is dated, for the picker, the row and the
+  // after-save toast. Unfetched where no category can be chosen — including
+  // the first render, before the sticky account is known to be on budget.
+  const { balances, hintFor, readServerBalance } = useCategoryAvailable(
+    open && accountId && canCategorize ? budgetId : null,
+    date
+  )
+  const categoryHint = canCategorize ? hintFor(categoryId) : undefined
+
+  const categoryOptions = useMemo<SelectionSheetOption[]>(
+    () =>
+      flatCategoryOptions(
+        categories.filter((c) => c.is_categorizable),
+        categoryGroups
+      ).map((o) => ({ ...o, hint: canCategorize ? hintFor(o.id) : undefined })),
+    [categories, categoryGroups, canCategorize, hintFor]
   )
 
   function handlePayeePicked(id: string | null) {
@@ -400,6 +411,12 @@ export function QuickAddSheet() {
       : categoryId
         ? [{ category_id: categoryId, date, amount_delta: signed }]
         : []
+    // The envelope as it read when Save was pressed — only for one category;
+    // a split's legs keep the plain toast.
+    const availableBefore =
+      !splitList && canCategorize && categoryId
+        ? (balances.get(categoryId)?.available ?? null)
+        : null
     if (affected.length > 0) {
       const proceed = await confirmFutureOverspend(budgetId, affected, formatMoney)
       if (!proceed) return
@@ -433,15 +450,29 @@ export function QuickAddSheet() {
         }
       }
 
+      const headline = `Added ${direction === 'outflow' ? '−' : ''}${formatMoney(cents / 100)}`
       const where = isSplit
         ? ` · split ${splits.length} ways`
         : categoryName
           ? ` · ${categoryName}`
           : ''
-      notify(
-        `Added ${direction === 'outflow' ? '−' : ''}${formatMoney(cents / 100)}${where}`,
-        'latest'
-      )
+      let message: string | ReactElement = `${headline}${where}`
+      // Before → after only when both ends are the server's; otherwise the
+      // sentence above, never a figure the client made up.
+      if (availableBefore !== null && categoryId && categoryName) {
+        const after = await readServerBalance(categoryId)
+        if (after && after.available !== null) {
+          message = (
+            <AvailableChangeToast
+              headline={headline}
+              categoryName={categoryName}
+              before={availableBefore}
+              after={{ ...after, available: after.available }}
+            />
+          )
+        }
+      }
+      notify(message, 'latest')
       hapticTick()
       if (addAnother) {
         setAmount('')
@@ -628,6 +659,7 @@ export function QuickAddSheet() {
                   const legName = sp.categoryId
                     ? (categories.find((c) => c.id === sp.categoryId)?.name ?? '')
                     : ''
+                  const legHint = legName ? hintFor(sp.categoryId) : undefined
                   return (
                     <div key={sp.tempId} className="quick-add__split-leg">
                       {canCategorize && (
@@ -636,10 +668,15 @@ export function QuickAddSheet() {
                           onClick={() => setCategorySheetFor(sp.tempId)}
                           aria-label={`Split ${i + 1} category`}
                         >
-                          <span
-                            className={`quick-add__row-value ${legName ? '' : 'quick-add__row-value--empty'}`}
-                          >
-                            {legName || 'Choose category'}
+                          <span className="quick-add__row-stack">
+                            <span
+                              className={`quick-add__row-value ${legName ? '' : 'quick-add__row-value--empty'}`}
+                            >
+                              {legName || 'Choose category'}
+                            </span>
+                            {legHint && (
+                              <span className="quick-add__row-hint">Available {legHint}</span>
+                            )}
                           </span>
                           <ChevronRight size={15} className="quick-add__row-chevron" />
                         </button>
@@ -690,10 +727,15 @@ export function QuickAddSheet() {
                   onClick={() => setCategorySheetFor(SINGLE_CATEGORY)}
                   aria-label="Category"
                 >
-                  <span
-                    className={`quick-add__row-value ${categoryName ? '' : 'quick-add__row-value--empty'}`}
-                  >
-                    {categoryName || 'Choose category'}
+                  <span className="quick-add__row-stack">
+                    <span
+                      className={`quick-add__row-value ${categoryName ? '' : 'quick-add__row-value--empty'}`}
+                    >
+                      {categoryName || 'Choose category'}
+                    </span>
+                    {categoryName && categoryHint && (
+                      <span className="quick-add__row-hint">Available {categoryHint}</span>
+                    )}
                   </span>
                   <ChevronRight size={16} className="quick-add__row-chevron" />
                 </button>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { drillDownFooter, isPartial, shareOfTotal } from './drillDownTotals'
+import { drillDownFooter, isPartial, shareOfTotal, sharePhrase } from './drillDownTotals'
 
 const money = (n: number) => `$${n.toFixed(2)}`
 const rows = (amounts: number[]) => amounts.map((amount) => ({ amount }))
@@ -91,5 +91,20 @@ describe('shareOfTotal', () => {
     // share of a negative total. A share of nothing is unknown.
     expect(shareOfTotal(25, 0)).toBeNull()
     expect(shareOfTotal(-40, -100)).toBeNull()
+  })
+})
+
+describe('sharePhrase', () => {
+  it('states the share in words at whole percent', () => {
+    // The means dialog and the savings-rate dialog each wrote this template.
+    expect(sharePhrase(1200, 3000, 'of spending')).toBe('40% of spending')
+  })
+
+  it('states a negative part as a negative share', () => {
+    expect(sharePhrase(-100, 1000, 'of savings')).toBe('-10% of savings')
+  })
+
+  it('says nothing where shareOfTotal has no share', () => {
+    expect(sharePhrase(25, 0, 'of income')).toBeNull()
   })
 })

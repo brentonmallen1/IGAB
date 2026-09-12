@@ -1,0 +1,28 @@
+/* The card is an ordinary MetricCard that opens a dialog (its `details`); the
+   dialog is laid out from ReportDetail. What is left here is the verdict's
+   colour and the band list, which only this card has. */
+
+/* Colour for the state and nothing else. Not an amount, so no glow. */
+.living-means__verdict--below {
+  color: var(--color-positive);
+}
+
+.living-means__verdict--at {
+  color: var(--color-warning);
+}
+
+.living-means__verdict--above {
+  color: var(--color-negative);
+}
+
+.living-means__verdict--unknown {
+  color: var(--text-muted);
+}
+
+.living-means__bands {
+  margin: 0;
+  padding-left: var(--spacing-lg);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  line-height: 1.65;
+}

@@ -1,0 +1,19 @@
+/* The rate and its formula head the dialog; everything below is ReportDetail. */
+.savings-rate-dialog__rate {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm) var(--spacing-md);
+}
+
+.savings-rate-dialog__value {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.savings-rate-dialog__formula {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}

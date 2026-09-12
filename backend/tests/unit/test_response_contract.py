@@ -25,6 +25,7 @@ from pathlib import Path
 import pytest
 from pydantic import BaseModel
 
+from igab.api.v1.schemas import category, guide, reconciliation, report, wishlist
 from igab.api.v1.schemas.account import AccountResponse
 from igab.api.v1.schemas.category import (
     BudgetMonthResponse,
@@ -161,10 +162,10 @@ def test_every_schema_inherits_the_api_base():
     )
 
 
-def _ts_field_types(name: str) -> dict[str, str]:
+def _ts_field_types(name: str, path: Path = TS_TYPES) -> dict[str, str]:
     """Field name → its declared TypeScript type, for one interface."""
-    match = re.search(rf"export interface {name} \{{(.*?)\n\}}", TS_TYPES.read_text(), re.S)
-    assert match, f"No `export interface {name}` in {TS_TYPES}."
+    match = re.search(rf"export interface {name} \{{(.*?)\n\}}", path.read_text(), re.S)
+    assert match, f"No `export interface {name}` in {path}."
     body = re.sub(r"//[^\n]*", "", re.sub(r"/\*.*?\*/", "", match.group(1), flags=re.S))
     return {
         m.group(1): m.group(2).strip().rstrip(",")
@@ -185,18 +186,84 @@ def test_decimal_fields_are_numbers_in_typescript(model: type[BaseModel], ts_nam
     is how it survived long enough to grow 444 `Number(...)` wrappings and
     reach the screen as "$0.00" where the code said "—".
     """
-    declared = _ts_field_types(ts_name)
+    _assert_decimals_are_numbers(model, ts_name, TS_TYPES)
+
+
+API_DIR = TS_TYPES.parent.parent / "api"
+
+#: Response models whose TypeScript lives beside its hooks in `frontend/src/api/`
+#: rather than in `types/index.ts` → (file, interface). Only the Decimal half of
+#: the contract is checked for these.
+#:
+#: Every entry here was declared `string` long after the server began sending
+#: numbers, and two of them broke a form: the wish editor seeded its Cost input
+#: with the served number and Save threw on `.trim()`; the Guide binding sheet
+#: did the same with a declared outside amount. Nothing failed at compile time
+#: because nothing compared the two files.
+API_CONTRACT: dict[type[BaseModel], tuple[str, str]] = {
+    wishlist.WishOut: ("wishlist.ts", "Wish"),
+    wishlist.ReachOut: ("wishlist.ts", "WishReach"),
+    wishlist.ProjectSummaryOut: ("wishlist.ts", "ProjectSummary"),
+    wishlist.DrainAffectedOut: ("wishlist.ts", "DrainAffected"),
+    wishlist.DrainMoveOut: ("wishlist.ts", "DrainMove"),
+    wishlist.DrainsOut: ("wishlist.ts", "Drains"),
+    wishlist.EnvelopeOut: ("wishlist.ts", "WishEnvelope"),
+    guide.SignalResponse: ("guide.ts", "Signal"),
+    guide.WishlistRetirePreview: ("guide.ts", "WishlistRetirePreview"),
+    guide.CheckupMetric: ("guide.ts", "CheckupMetric"),
+    guide.CheckupFinding: ("guide.ts", "CheckupFinding"),
+    guide.CascadeDebtOut: ("guide.ts", "CascadeDebtOut"),
+    guide.CascadeMonthOut: ("guide.ts", "CascadeMonthOut"),
+    guide.CascadeOut: ("guide.ts", "CascadeOut"),
+    guide.PayoffPlanResponse: ("guide.ts", "PayoffPlanResponse"),
+    guide.PayVsSaveResponse: ("guide.ts", "PayVsSaveResponse"),
+    guide.LoanOutcomeOut: ("guide.ts", "LoanOutcomeOut"),
+    guide.EmergencyFundResponse: ("guide.ts", "EmergencyFundResponse"),
+    category.BudgetMoveResponse: ("budgets.ts", "BudgetMove"),
+    category.CategoryDeletePreviewResponse: ("categories.ts", "CategoryDeletePreview"),
+    category.CategoryDeleteResultResponse: ("categories.ts", "CategoryDeleteResult"),
+    category.ArchivedCategoryResponse: ("categories.ts", "ArchivedCategory"),
+    category.CategoryArchivePreviewResponse: ("categories.ts", "ArchivePreview"),
+    category.RepairOrphansResponse: ("categories.ts", "RepairOrphansResult"),
+    reconciliation.ReconciliationSnapshotResponse: (
+        "reconciliation.ts",
+        "ReconciliationSnapshot",
+    ),
+    report.SavingsRateMonth: ("reports.ts", "SavingsRateMonth"),
+}
+
+
+@pytest.mark.parametrize(
+    ("model", "where"), list(API_CONTRACT.items()), ids=[m.__name__ for m in API_CONTRACT]
+)
+def test_decimal_fields_are_numbers_in_the_api_modules(
+    model: type[BaseModel], where: tuple[str, str]
+):
+    ts_file, ts_name = where
+    _assert_decimals_are_numbers(model, ts_name, API_DIR / ts_file)
+
+
+def _assert_decimals_are_numbers(model: type[BaseModel], ts_name: str, path: Path) -> None:
+    declared = _ts_field_types(ts_name, path)
+    decimal_fields = [
+        f for f, info in model.model_fields.items() if _mentions_decimal(info.annotation)
+    ]
+    # A mapping to an interface that declares none of the model's money is a
+    # mapping to the wrong interface, and would pass forever.
+    assert not decimal_fields or any(f in declared for f in decimal_fields), (
+        f"`interface {ts_name}` in {path.name} declares none of {model.__name__}'s "
+        f"Decimal fields {decimal_fields}; is the mapping right?"
+    )
     wrong = {
         field: declared[field]
-        for field, info in model.model_fields.items()
-        if field in declared
-        and _mentions_decimal(info.annotation)
-        and "number" not in declared[field]
+        for field in decimal_fields
+        if field in declared and "number" not in declared[field]
     }
     assert not wrong, (
         f"{model.__name__} serializes these as JSON numbers, but `interface {ts_name}` "
-        f"declares them otherwise: {wrong}. A string here compiles and then misbehaves "
-        f'quietly — "0.00" !== 0, "9" >= "10", and + concatenates.'
+        f"in {path.name} declares them otherwise: {wrong}. A string here compiles and "
+        f'then misbehaves quietly — "0.00" !== 0, "9" >= "10", and + concatenates, '
+        f"and a form that seeds a text input from it throws on `.trim()`."
     )
 
 

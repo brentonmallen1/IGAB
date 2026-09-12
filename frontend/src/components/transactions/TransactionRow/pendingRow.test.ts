@@ -14,6 +14,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { escapeRegex } from '../../../utils/payeeRegex'
 
 const css = readFileSync(resolve(__dirname, 'TransactionRow.css'), 'utf8')
 const base = readFileSync(resolve(__dirname, '../../../themes/base.css'), 'utf8')
@@ -21,8 +22,7 @@ const base = readFileSync(resolve(__dirname, '../../../themes/base.css'), 'utf8'
 /** The declaration block for a selector, wherever it is indented (some of
  *  these live inside `@media (hover: hover)`). */
 function rule(source: string, selector: string): string {
-  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const start = source.search(new RegExp(`^\\s*${escaped}\\s*\\{`, 'm'))
+  const start = source.search(new RegExp(`^\\s*${escapeRegex(selector)}\\s*\\{`, 'm'))
   expect(start, `${selector} is missing`).toBeGreaterThan(-1)
   return source.slice(start, source.indexOf('}', start))
 }

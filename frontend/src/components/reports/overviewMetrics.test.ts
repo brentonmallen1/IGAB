@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import {
-  clampedSavingsRate,
   essentialsReserve,
   netWorthDelta,
   roundedDaysUntilZero,
@@ -31,16 +30,6 @@ describe('spendingDelta', () => {
 
   it('is 0 without prior spending', () => {
     expect(spendingDelta(120, 0)).toBe(0)
-  })
-})
-
-describe('clampedSavingsRate', () => {
-  it('converts the rate to a percentage', () => {
-    expect(clampedSavingsRate(0.25)).toBe(25)
-  })
-
-  it('clamps overspent periods at 0 instead of showing a negative rate', () => {
-    expect(clampedSavingsRate(-0.4)).toBe(0)
   })
 })
 

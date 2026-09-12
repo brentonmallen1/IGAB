@@ -43,7 +43,9 @@
   outline: none;
   background: transparent;
   color: var(--text-primary);
-  font-size: 34px;
+  /* Larger than the text around it, so not font-size: base.css's touch floor
+     overrides that with max(16px, the surrounding size) and reads this. */
+  --control-font-size: 34px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   caret-color: var(--color-accent);
@@ -155,6 +157,33 @@
 
 .quick-add__row-value--empty {
   color: var(--text-muted);
+}
+
+/* A chosen category's Available sits UNDER its name rather than beside it:
+   beside, "Available $1,240.00" left a 375px phone's category row a few
+   characters for the name, and a split leg none. Two lines fit the row's
+   existing 52px (a leg's 44px) without growing it. */
+.quick-add__row-stack {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+/* In a column the value's row-direction `flex: 1` would grow it vertically
+   and push the hint to the bottom edge. */
+.quick-add__row-stack .quick-add__row-value {
+  flex: none;
+}
+
+.quick-add__row-hint {
+  font-size: var(--font-size-xs);
+  line-height: 1.3;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .quick-add__row-chevron {

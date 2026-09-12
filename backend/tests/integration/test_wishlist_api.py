@@ -1,5 +1,6 @@
 """The wishlist lives inside the budget: its money is the envelopes' money."""
 
+import uuid
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -52,6 +53,10 @@ def _url(budget) -> str:
 async def _add(api_client, budget, **body):
     body.setdefault("name", "Bike")
     body.setdefault("cost", "1800")
+    # What the browser sends: the day the wish is added, in the person's own
+    # date. Without it the server's UTC clock answers, which is not TODAY on
+    # a machine west of UTC in the evening.
+    body.setdefault("client_today", TODAY.isoformat())
     r = await api_client.post(_url(budget), json=body)
     assert r.status_code == 201, r.text
     return r.json()
@@ -557,7 +562,112 @@ class TestEveryFieldUpdates:
         # until it joins `changes` (or the clears) above.
         from igab.api.v1.schemas.wishlist import WishUpdate
 
-        assert set(changes) | {"status"} == set(WishUpdate.model_fields)
+        assert set(changes) | {"status", "cooling_days"} == set(WishUpdate.model_fields)
+
+    async def test_cooling_days_round_trip_too(self, db_session, api_client):
+        # Its own request: it cannot ride beside `cooling_until` above.
+        budget = await _budget(db_session, api_client)
+        wish = await _add(api_client, budget, cooling_days=0)
+        r = await api_client.patch(f"{_url(budget)}/{wish['id']}", json={"cooling_days": 21})
+        assert r.status_code == 200, r.text
+        assert r.json()["cooling_until"] == (TODAY + timedelta(days=21)).isoformat()
+
+
+class TestCoolingOffInDays:
+    """An edit can set the cooling-off as a number of days after the wish was
+    ADDED — the server resolves the date, with the same rule creation uses."""
+
+    async def _patch(self, api_client, budget, wish, body):
+        return await api_client.patch(f"{_url(budget)}/{wish['id']}", json=body)
+
+    async def test_the_day_added_is_the_callers_date_and_is_served(self, db_session, api_client):
+        budget = await _budget(db_session, api_client)
+        added = TODAY - timedelta(days=3)
+        wish = await _add(api_client, budget, client_today=added.isoformat(), cooling_days=10)
+        assert wish["added_on"] == added.isoformat()
+        # Creation counts from that same day, not the server's.
+        assert wish["cooling_until"] == (added + timedelta(days=10)).isoformat()
+
+    async def test_days_count_from_the_day_added_not_from_today(self, db_session, api_client):
+        budget = await _budget(db_session, api_client)
+        added = TODAY - timedelta(days=5)
+        wish = await _add(api_client, budget, client_today=added.isoformat(), cooling_days=0)
+        r = await self._patch(api_client, budget, wish, {"cooling_days": 14})
+        assert r.status_code == 200, r.text
+        row = r.json()
+        assert row["cooling_until"] == (added + timedelta(days=14)).isoformat()
+        assert row["cooling"] is True
+        assert row["added_on"] == added.isoformat()
+
+    async def test_zero_days_ends_the_cooling_off_on_the_day_added(self, db_session, api_client):
+        budget = await _budget(db_session, api_client)
+        wish = await _add(api_client, budget, cooling_days=30)
+        assert wish["cooling"] is True
+        r = await self._patch(api_client, budget, wish, {"cooling_days": 0})
+        assert r.status_code == 200, r.text
+        assert r.json()["cooling_until"] == TODAY.isoformat()
+        assert r.json()["cooling"] is False
+
+    async def test_days_already_behind_us_are_not_an_error(self, db_session, api_client):
+        """Added 40 days ago, set to 30: the period ended ten days back. The
+        wish is simply no longer cooling off."""
+        budget = await _budget(db_session, api_client)
+        added = TODAY - timedelta(days=40)
+        wish = await _add(api_client, budget, client_today=added.isoformat(), cooling_days=0)
+        r = await self._patch(api_client, budget, wish, {"cooling_days": 30})
+        assert r.status_code == 200, r.text
+        assert r.json()["cooling_until"] == (TODAY - timedelta(days=10)).isoformat()
+        assert r.json()["cooling"] is False
+
+    async def test_the_limit_is_365_and_it_is_served(self, db_session, api_client):
+        budget = await _budget(db_session, api_client)
+        wish = await _add(api_client, budget, cooling_days=0)
+        r = await self._patch(api_client, budget, wish, {"cooling_days": 365})
+        assert r.status_code == 200, r.text
+        assert r.json()["cooling_until"] == (TODAY + timedelta(days=365)).isoformat()
+        for bad in (366, -1):
+            r = await self._patch(api_client, budget, wish, {"cooling_days": bad})
+            assert r.status_code == 422, bad
+        body = (await api_client.get(_url(budget))).json()
+        assert body["max_cooling_days"] == 365
+        # A refused edit moved nothing.
+        assert body["items"][0]["cooling_until"] == (TODAY + timedelta(days=365)).isoformat()
+
+    async def test_both_spellings_at_once_are_refused(self, db_session, api_client):
+        budget = await _budget(db_session, api_client)
+        wish = await _add(api_client, budget, cooling_days=10)
+        for until in ("2027-01-15", None):
+            r = await self._patch(
+                api_client, budget, wish, {"cooling_days": 14, "cooling_until": until}
+            )
+            assert r.status_code == 422, (until, r.text)
+        after = (await api_client.get(_url(budget))).json()["items"][0]
+        assert after["cooling_until"] == (TODAY + timedelta(days=10)).isoformat()
+
+    async def test_clearing_still_goes_through_the_date(self, db_session, api_client):
+        budget = await _budget(db_session, api_client)
+        wish = await _add(api_client, budget, cooling_days=10)
+        r = await self._patch(api_client, budget, wish, {"cooling_until": None})
+        assert r.status_code == 200 and r.json()["cooling_until"] is None
+        # Days after a clear put a period back, from the day added.
+        r = await self._patch(api_client, budget, wish, {"cooling_days": 7})
+        assert r.json()["cooling_until"] == (TODAY + timedelta(days=7)).isoformat()
+
+    async def test_a_row_with_no_recorded_day_counts_from_its_instant(self, db_session, api_client):
+        """A wish restored from a snapshot older than `added_on` still takes
+        days — counted from the date of `created_at`, as it always was."""
+        from igab.db.models import WishlistItem
+
+        budget = await _budget(db_session, api_client)
+        wish = await _add(api_client, budget, cooling_days=0)
+        item = await db_session.get(WishlistItem, uuid.UUID(wish["id"]))
+        item.added_on = None
+        await db_session.flush()
+        r = await self._patch(api_client, budget, wish, {"cooling_days": 3})
+        assert r.status_code == 200, r.text
+        instant_day = date.fromisoformat(r.json()["created_at"][:10])
+        assert r.json()["added_on"] == instant_day.isoformat()
+        assert r.json()["cooling_until"] == (instant_day + timedelta(days=3)).isoformat()
 
 
 class TestTopPriorities:

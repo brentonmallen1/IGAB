@@ -15,6 +15,7 @@
  */
 
 import type { ScheduledTransaction } from '../types'
+import { daysBetween } from './dateWindow'
 
 export const FREQUENCIES = [
   { value: 'once', label: 'Once' },
@@ -36,15 +37,11 @@ export function frequencyLabel(frequency: string): string {
   return FREQ_LABELS[frequency] ?? frequency
 }
 
-const MS_PER_DAY = 86_400_000
-
 /** Whole days from `todayISO` to `dateISO`; negative when the date has passed.
- *  Both are "YYYY-MM-DD"; parsed as UTC so a DST change cannot make a day
- *  23 hours long and round to the wrong count. */
+ *  The reminder's reading of `daysBetween`, which owns the calendar-day
+ *  arithmetic — this module had a second copy of it. */
 export function daysUntil(dateISO: string, todayISO: string): number {
-  const a = Date.UTC(+dateISO.slice(0, 4), +dateISO.slice(5, 7) - 1, +dateISO.slice(8, 10))
-  const b = Date.UTC(+todayISO.slice(0, 4), +todayISO.slice(5, 7) - 1, +todayISO.slice(8, 10))
-  return Math.round((a - b) / MS_PER_DAY)
+  return daysBetween(todayISO, dateISO)
 }
 
 /** "Due today", "Due in 3 days", "Overdue 2 days". */

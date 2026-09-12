@@ -490,3 +490,153 @@ class TestNetWorthAtTheWindowStart:
         assert card["net_worth"] == Decimal("650.00")
         # Before the window: 1000 − 100 = 900, less the 800 owed then.
         assert card["net_worth_prev"] == Decimal("100.00")
+
+
+class TestWhatLivingCostOverTheWindow:
+    """The inputs to the Overview's above/at/below-your-means verdict.
+
+    The verdict itself is the client's (`livingMeans.ts`): it compares income
+    with outflows. What the client could not know is which classes an outflow
+    is, so the server serves `outflows_this_month` from COST_OF_LIVING_CLASSES
+    and names the debt payments in it. Figures are round and hand-computed.
+    """
+
+    async def _household_with_a_mortgage(self, db_session):
+        """5,000 in, 3,000 on groceries, 2,000 to a brokerage, 1,000 on the mortgage."""
+        budget = await create_budget(db_session, await create_user(db_session))
+        checking = await create_account(db_session, budget, "Checking")
+        brokerage = await create_account(
+            db_session, budget, "Brokerage", account_type="investment", on_budget=False
+        )
+        everyday = await create_category_group(db_session, budget, "Everyday")
+        groceries = await create_category(db_session, budget, everyday, "Groceries")
+        investing = await create_category(db_session, budget, everyday, "Investing")
+        await create_transaction(db_session, budget, checking, "5000.00", TODAY)
+        await create_transaction(
+            db_session, budget, checking, "-3000.00", TODAY, category=groceries
+        )
+        await create_transfer(
+            db_session, budget, checking, brokerage, "2000.00", TODAY, category=investing
+        )
+        loan = await create_account(
+            db_session, budget, "Harborstone Mortgage", account_type="mortgage", on_budget=False
+        )
+        group = await create_category_group(db_session, budget, "Housing")
+        mortgage = await create_category(db_session, budget, group, "Mortgage")
+        await create_transfer(
+            db_session, budget, checking, loan, "1000.00", TODAY, category=mortgage
+        )
+        return budget, checking
+
+    async def test_an_empty_budget_costs_nothing(self, db_session):
+        budget = await create_budget(db_session, await create_user(db_session))
+        card = await ReportService(db_session).dashboard_metrics(budget.id, MONTH_START, TODAY)
+        assert card["debt_payments_this_month"] == Decimal("0")
+        assert card["outflows_this_month"] == Decimal("0")
+
+    async def test_a_payment_into_a_tracked_debt_counts_and_saving_does_not(self, db_session):
+        budget, _ = await self._household_with_a_mortgage(db_session)
+        card = await ReportService(db_session).dashboard_metrics(budget.id, MONTH_START, TODAY)
+
+        assert card["debt_payments_this_month"] == Decimal("1000.00")
+        # 3,000 groceries + 1,000 mortgage. The 2,000 to the brokerage is what
+        # was left over, not what living cost.
+        assert card["outflows_this_month"] == Decimal("4000.00")
+        assert card["expenses_this_month"] == Decimal("3000.00")
+
+    async def test_an_uncategorized_payment_into_a_tracked_debt_counts(self, db_session):
+        """Where the money went decides the class, not whether it was filed."""
+        budget = await create_budget(db_session, await create_user(db_session))
+        checking = await create_account(db_session, budget, "Checking")
+        loan = await create_account(
+            db_session, budget, "Harborstone Auto Loan", account_type="auto_loan", on_budget=False
+        )
+        await create_transfer(db_session, budget, checking, loan, "450.00", TODAY)
+
+        card = await ReportService(db_session).dashboard_metrics(budget.id, MONTH_START, TODAY)
+
+        assert card["debt_payments_this_month"] == Decimal("450.00")
+        assert card["outflows_this_month"] == Decimal("450.00")
+
+    async def test_paying_an_on_budget_card_is_not_a_second_outflow(self, db_session):
+        """The purchase was the outflow. Counting the payment as well would
+        charge the household twice for one dinner."""
+        budget = await create_budget(db_session, await create_user(db_session))
+        checking = await create_account(db_session, budget, "Checking")
+        card_acct = await create_account(
+            db_session, budget, "Sapphire Visa", account_type="credit_card"
+        )
+        group = await create_category_group(db_session, budget, "Everyday")
+        dining = await create_category(db_session, budget, group, "Dining")
+        await create_transaction(db_session, budget, card_acct, "-80.00", TODAY, category=dining)
+        await create_transfer(db_session, budget, checking, card_acct, "80.00", TODAY)
+
+        card = await ReportService(db_session).dashboard_metrics(budget.id, MONTH_START, TODAY)
+
+        assert card["debt_payments_this_month"] == Decimal("0")
+        assert card["outflows_this_month"] == Decimal("80.00")
+
+    async def test_outflows_are_exactly_the_two_figures_the_dialog_names(self, db_session):
+        """The dialog lists spending and debt payments beneath the outflow
+        total. If COST_OF_LIVING_CLASSES ever gains a class, those two lines
+        stop adding up to the figure above them, and this fails first."""
+        budget, _ = await self._household_with_a_mortgage(db_session)
+        card = await ReportService(db_session).dashboard_metrics(budget.id, MONTH_START, TODAY)
+        assert card["outflows_this_month"] == (
+            card["expenses_this_month"] + card["debt_payments_this_month"]
+        )
+
+    async def test_a_refund_nets_against_what_living_cost(self, db_session):
+        """Cost of Living nets refunds; so does this."""
+        budget = await create_budget(db_session, await create_user(db_session))
+        checking = await create_account(db_session, budget, "Checking")
+        group = await create_category_group(db_session, budget, "Everyday")
+        shopping = await create_category(db_session, budget, group, "Shopping")
+        await create_transaction(db_session, budget, checking, "-500.00", TODAY, category=shopping)
+        await create_transaction(db_session, budget, checking, "120.00", TODAY, category=shopping)
+
+        card = await ReportService(db_session).dashboard_metrics(budget.id, MONTH_START, TODAY)
+
+        assert card["outflows_this_month"] == Decimal("380.00")
+
+    async def test_rows_outside_the_window_are_in_neither_figure(self, db_session):
+        budget = await create_budget(db_session, await create_user(db_session))
+        checking = await create_account(db_session, budget, "Checking")
+        loan = await create_account(
+            db_session, budget, "Harborstone Mortgage", account_type="mortgage", on_budget=False
+        )
+        start = TODAY - timedelta(days=9)
+        await create_transfer(db_session, budget, checking, loan, "700.00", start)
+        await create_transfer(
+            db_session, budget, checking, loan, "900.00", start - timedelta(days=1)
+        )
+
+        card = await ReportService(db_session).dashboard_metrics(budget.id, start, TODAY)
+
+        assert card["debt_payments_this_month"] == Decimal("700.00")
+        assert card["outflows_this_month"] == Decimal("700.00")
+
+
+class TestThePriorPeriodIsTheSameLength:
+    async def test_a_ten_day_window_is_held_against_the_ten_days_before(self, db_session):
+        """The prior period was the month before the start, whatever the range:
+        a month-to-date read against a whole prior month, so "Spent This
+        Period" showed spending down by half every early month."""
+        budget = await create_budget(db_session, await create_user(db_session))
+        checking = await create_account(db_session, budget, "Checking")
+        group = await create_category_group(db_session, budget, "Everyday")
+        groceries = await create_category(db_session, budget, group, "Groceries")
+        start = TODAY - timedelta(days=9)
+        # The first and last day of the prior ten, and the day before them.
+        for amount, when in (
+            ("-100.00", start - timedelta(days=1)),
+            ("-40.00", start - timedelta(days=10)),
+            ("-600.00", start - timedelta(days=11)),
+        ):
+            await create_transaction(db_session, budget, checking, amount, when, category=groceries)
+        await create_transaction(db_session, budget, checking, "-300.00", start, category=groceries)
+
+        card = await ReportService(db_session).dashboard_metrics(budget.id, start, TODAY)
+
+        assert card["expenses_this_month"] == Decimal("300.00")
+        assert card["expenses_prev_month"] == Decimal("140.00")

@@ -6,7 +6,11 @@ import { ROOT } from './queryKeys'
 
 // The wishlist lives inside the budget: a wish's money is an envelope's
 // money. Everything below is served — reach, rollups, cooling, review-due —
-// and the client only sorts, filters and formats it. Money travels as strings.
+// and the client only sorts, filters and formats it. Money arrives as a JSON
+// number, like every `ApiModel` response (backend `schemas/base.py`). These
+// said `string` long after that stopped being true, and the edit form seeded
+// its Cost input from one: Save called `.trim()` on a number and threw before
+// any request was sent.
 
 export type FundingMode = 'own' | 'existing' | 'none'
 export type WishStatus = 'open' | 'done' | 'dropped'
@@ -28,9 +32,9 @@ export interface WishReach {
   months: number | null
   date: string | null
   /** What the wishes ahead in the same envelope still need. */
-  ahead_cost: string
+  ahead_cost: number
   /** 0–1, net of the wishes ahead. */
-  progress: string
+  progress: number
 }
 
 export interface Wish {
@@ -39,7 +43,7 @@ export interface Wish {
   name: string
   url: string | null
   notes: string | null
-  cost: string
+  cost: number
   priority: number
   /** Pinned as a top priority — an explicit choice, capped at the served
    *  `priority_limit`; distinct from `priority`, the funding-queue order. */
@@ -48,6 +52,10 @@ export interface Wish {
   funding: WishFunding
   cooling_until: string | null
   cooling: boolean
+  /** The day the wish was added, in the person's own date: what a cooling-off
+   *  in days counts from. Served, because `created_at` is an instant and the
+   *  day it falls on depends on a timezone the server recorded at creation. */
+  added_on: string
   last_affirmed_at: string | null
   review_due: boolean
   done_at: string | null
@@ -61,7 +69,7 @@ export type ProjectState =
 export interface ProjectSummary {
   item_count: number
   open_count: number
-  total_cost: string
+  total_cost: number
   affordable_now: number
   funded_by: string | null
   state: ProjectState
@@ -81,14 +89,14 @@ export interface WishlistProject {
 export interface DrainAffected {
   item_id: string
   name: string
-  months_further: string | null
+  months_further: number | null
 }
 
 export interface DrainMove {
   move_id: string
   month: string
   date: string
-  amount: string
+  amount: number
   from_category_id: string
   from_name: string
   to_category_id: string | null
@@ -98,7 +106,7 @@ export interface DrainMove {
 
 export interface Drains {
   month: string
-  total: string
+  total: number
   moves: DrainMove[]
 }
 
@@ -117,6 +125,8 @@ export interface Wishlist {
   settings: WishlistSettings
   /** The pin cap, served — the client never spells its own 3. */
   priority_limit: number
+  /** The longest cooling-off in days, served for the same reason. */
+  max_cooling_days: number
   drains: Drains | null
 }
 
@@ -128,18 +138,21 @@ export interface FundingIn {
 
 export interface WishCreate {
   name: string
-  cost: string
+  cost: number
   url?: string | null
   notes?: string | null
   project_id?: string | null
   priority?: number | null
   cooling_days?: number | null
+  /** The browser's today: the day the wish is added, which a cooling-off in
+   *  days counts from now and on every later edit. */
+  client_today?: string
   funding: FundingIn
 }
 
 export interface WishUpdate {
   name?: string
-  cost?: string
+  cost?: number
   url?: string | null
   notes?: string | null
   project_id?: string | null
@@ -147,6 +160,9 @@ export interface WishUpdate {
   is_priority?: boolean
   status?: WishStatus
   cooling_until?: string | null
+  /** The cooling-off as days after the wish was added — the other spelling of
+   *  `cooling_until`. The server resolves the date and refuses both at once. */
+  cooling_days?: number
   funding?: FundingIn
 }
 
@@ -162,8 +178,15 @@ export interface ProjectUpdate {
   notes?: string | null
 }
 
+/** The envelope a deleted wish owned, offered for deletion with it. */
+export interface WishEnvelope {
+  category_id: string
+  name: string
+  available: number
+}
+
 export interface DeleteWishResult {
-  envelope: { category_id: string; name: string; available: string } | null
+  envelope: WishEnvelope | null
 }
 
 export function useWishlist(budgetId: string | null, enabled = true) {

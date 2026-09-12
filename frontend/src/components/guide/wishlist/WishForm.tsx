@@ -8,18 +8,27 @@ import {
   type Wish,
   type WishlistProject,
 } from '../../../api/wishlist'
+import { useFormatters } from '../../../hooks/useFormatters'
 import { groupedCategorySections } from '../../../utils/categoryPickers'
+import { today } from '../../../utils/dates'
 import { parseAmountInput } from '../../../utils/money'
 import { CategoryCombobox } from '../../common/CategoryCombobox/CategoryCombobox'
 import { GuideDialog } from '../GuideDialog'
+import { coolingUntilFromDays, daysAfterAdded, parseCoolingDays } from './wishlistCooling'
 
 interface Props {
   budgetId: string
   wish?: Wish | null
   projects: WishlistProject[]
   defaultCoolingDays: number
+  /** The served cap on a cooling-off, in days. */
+  maxCoolingDays: number
   onClose: () => void
 }
+
+/** Which of the edit form's two cooling-off fields the person last typed in —
+ *  that one is what gets sent. */
+type CoolingSource = 'days' | 'date'
 
 /**
  * Add or edit a wish. The funding choice is the point of the form: an
@@ -37,17 +46,34 @@ interface Props {
  * holding money, so switching away detaches the wish and leaves the category
  * standing rather than deleting it.
  */
-export function WishForm({ budgetId, wish, projects, defaultCoolingDays, onClose }: Props) {
+export function WishForm({
+  budgetId,
+  wish,
+  projects,
+  defaultCoolingDays,
+  maxCoolingDays,
+  onClose,
+}: Props) {
   const editing = !!wish
   const [name, setName] = useState(wish?.name ?? '')
-  const [cost, setCost] = useState(wish?.cost ?? '')
+  // The input edits text; the served cost is a number.
+  const [cost, setCost] = useState(wish ? String(wish.cost) : '')
   const [url, setUrl] = useState(wish?.url ?? '')
   const [notes, setNotes] = useState(wish?.notes ?? '')
   const [projectId, setProjectId] = useState<string>(wish?.project_id ?? '')
-  const [coolingDays, setCoolingDays] = useState(String(defaultCoolingDays))
-  // Editing works on the stored date, not a day count: days only mean
-  // something at creation, when they measure from today.
+  // Both spellings of the cooling-off, kept in step. Days count from the day
+  // the wish was ADDED — so an edit shows the days its stored date already
+  // means — and on creation, where added is today, from the settings default.
+  const [coolingDays, setCoolingDays] = useState(
+    wish
+      ? wish.cooling_until
+        ? String(daysAfterAdded(wish.added_on, wish.cooling_until))
+        : ''
+      : String(defaultCoolingDays)
+  )
   const [coolingUntil, setCoolingUntil] = useState(wish?.cooling_until ?? '')
+  const [coolingSource, setCoolingSource] = useState<CoolingSource | null>(null)
+  const { formatDate } = useFormatters()
   // Inherited funding seeds 'none': the wish's own stored choice is "no
   // category of its own" — the envelope it shows belongs to the project. The
   // served mode says 'existing' for it, and seeding from that blocked every
@@ -92,27 +118,55 @@ export function WishForm({ budgetId, wish, projects, defaultCoolingDays, onClose
   const selectedProject = projects.find((p) => p.id === projectId)
   const projectEnvelope = selectedProject?.category_id ? selectedProject.category_name : null
 
+  function changeCoolingDays(text: string) {
+    setCoolingDays(text)
+    setCoolingSource('days')
+    if (!wish) return
+    // The date follows while the days read as a figure; a half-typed or
+    // refused entry leaves it be, and Save says what is wrong.
+    const parsed = parseCoolingDays(text, maxCoolingDays)
+    if (parsed.ok) {
+      setCoolingUntil(parsed.days === null ? '' : coolingUntilFromDays(wish.added_on, parsed.days))
+    }
+  }
+
+  function changeCoolingUntil(value: string) {
+    setCoolingUntil(value)
+    setCoolingSource('date')
+    if (wish) setCoolingDays(value ? String(daysAfterAdded(wish.added_on, value)) : '')
+  }
+
+  /** What the edit sends for the cooling-off: the field last typed in. Days
+   *  are validated only then — a date picked by hand is sent as picked. */
+  function coolingChange(): { cooling_days: number } | { cooling_until: string | null } | string {
+    if (coolingSource !== 'days') return { cooling_until: coolingUntil || null }
+    const parsed = parseCoolingDays(coolingDays, maxCoolingDays)
+    if (!parsed.ok) return parsed.error
+    return parsed.days === null ? { cooling_until: null } : { cooling_days: parsed.days }
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
-    if (!name.trim()) return setError('Give it a name')
-    const parsedCost = parseAmountInput(cost)
-    if (Number.isNaN(parsedCost) || parsedCost < 0) return setError('That cost did not parse')
-    if (mode === 'existing' && !categoryId) return setError('Pick the category that funds it')
-    const days = coolingDays.trim() === '' ? null : Number(coolingDays)
-    if (days !== null && (!Number.isInteger(days) || days < 0 || days > 365)) {
-      return setError('Cooling-off days must be a whole number up to 365')
-    }
+    // Everything below sits inside the try. The parse used to run before it,
+    // so a throw there — `.trim()` on a served number — left Save doing
+    // nothing at all: no request, no message.
     try {
+      if (!name.trim()) return setError('Give it a name')
+      const parsedCost = parseAmountInput(cost)
+      if (Number.isNaN(parsedCost)) return setError('That cost did not parse')
+      if (mode === 'existing' && !categoryId) return setError('Pick the category that funds it')
       if (editing && wish) {
+        const cooling = coolingChange()
+        if (typeof cooling === 'string') return setError(cooling)
         await update.mutateAsync({
           id: wish.id,
           name: name.trim(),
-          cost: String(parsedCost),
+          cost: parsedCost,
           url: url.trim() || null,
           notes: notes.trim() || null,
           project_id: projectId || null,
-          cooling_until: coolingUntil || null,
+          ...cooling,
           // Sent even for a wish that keeps its envelope: the server treats
           // `own` on one that already has one as "leave it alone", so the
           // form does not have to special-case what it means. `want_by` only
@@ -126,13 +180,16 @@ export function WishForm({ budgetId, wish, projects, defaultCoolingDays, onClose
           },
         })
       } else {
+        const days = parseCoolingDays(coolingDays, maxCoolingDays)
+        if (!days.ok) return setError(days.error)
         await create.mutateAsync({
           name: name.trim(),
-          cost: String(parsedCost),
+          cost: parsedCost,
           url: url.trim() || null,
           notes: notes.trim() || null,
           project_id: projectId || null,
-          cooling_days: days,
+          cooling_days: days.days,
+          client_today: today(),
           funding: {
             mode,
             category_id: mode === 'existing' ? categoryId : null,
@@ -145,6 +202,15 @@ export function WishForm({ budgetId, wish, projects, defaultCoolingDays, onClose
       setError(apiErrorMessage(err, 'Could not save'))
     }
   }
+
+  // One days input for both forms; only its label and its partner differ.
+  const daysInput = (
+    <input
+      inputMode="numeric"
+      value={coolingDays}
+      onChange={(e) => changeCoolingDays(e.target.value)}
+    />
+  )
 
   return (
     <GuideDialog
@@ -258,23 +324,31 @@ export function WishForm({ budgetId, wish, projects, defaultCoolingDays, onClose
           )}
         </fieldset>
 
-        {editing ? (
-          <label className="tool__field tool__field--inline">
-            <span>Cooling off until (blank ends it)</span>
-            <input
-              type="date"
-              value={coolingUntil}
-              onChange={(e) => setCoolingUntil(e.target.value)}
-            />
-          </label>
+        {wish ? (
+          <div className="wish-form__cooling">
+            <div className="tool__grid">
+              <label className="tool__field">
+                <span>Cooling off, days after added</span>
+                {daysInput}
+              </label>
+              <label className="tool__field">
+                <span>Cooling off until</span>
+                <input
+                  type="date"
+                  value={coolingUntil}
+                  onChange={(e) => changeCoolingUntil(e.target.value)}
+                />
+              </label>
+            </div>
+            <p className="wish-form__hint">
+              Added {formatDate(wish.added_on)}. Change either and the other follows; leave them
+              blank to end the cooling-off.
+            </p>
+          </div>
         ) : (
           <label className="tool__field tool__field--inline">
             <span>Cooling-off, days</span>
-            <input
-              inputMode="numeric"
-              value={coolingDays}
-              onChange={(e) => setCoolingDays(e.target.value)}
-            />
+            {daysInput}
           </label>
         )}
         <label className="tool__field">

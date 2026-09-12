@@ -63,15 +63,15 @@ function makePreview(over: Partial<CategoryDeletePreview> = {}): CategoryDeleteP
     category_names: ['Groceries'],
     transaction_count: 412,
     reconciled_count: 0,
-    available: '60.0000',
-    future_assigned: '50.0000',
+    available: 60,
+    future_assigned: 50,
     payee_count: 0,
     scheduled_count: 0,
     references: [],
     may_hard_delete: true,
-    moving_activity: '40.0000',
-    released_if_moved: '110.0000',
-    released_if_uncategorized: '110.0000',
+    moving_activity: 40,
+    released_if_moved: 110,
+    released_if_uncategorized: 110,
     blocked_by: [],
     is_empty: false,
     ...over,
@@ -160,7 +160,7 @@ describe('DeleteCategoryModal', () => {
   it('shows the figure for the mode the user has selected', async () => {
     // They differ when future-dated activity moves; the dialog must follow
     // the selection rather than quote one number for both.
-    renderModal({ released_if_moved: '110.0000', released_if_uncategorized: '80.0000' })
+    renderModal({ released_if_moved: 110, released_if_uncategorized: 80 })
     expect(screen.getByText('$110.00')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('radio', { name: /Leave them uncategorized/ }))
     expect(screen.getByText('$80.00')).toBeInTheDocument()

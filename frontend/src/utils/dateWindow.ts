@@ -21,7 +21,9 @@ export function addDaysISO(s: string, days: number): string {
   return toISODate(new Date(y, m - 1, d + days))
 }
 
-/** Difference in calendar days (b - a). */
+/** Difference in calendar days (b - a). Counted in UTC, so a daylight-saving
+ *  change between the two cannot make a day 23 hours long and round wrong.
+ *  The one copy: schedule reminders and the wishlist's cooling-off read it. */
 export function daysBetween(a: string, b: string): number {
   const [ay, am, ad] = parts(a)
   const [by, bm, bd] = parts(b)
@@ -29,7 +31,11 @@ export function daysBetween(a: string, b: string): number {
 }
 
 /** The equal-length window immediately preceding [start, end] (both inclusive).
- * May 1–Jul 21 (82 days) → Feb 8–Apr 30. */
+ * May 1–Jul 21 (82 days) → Feb 8–Apr 30.
+ *
+ * The server's `domain.dates.previous_window` is the other side of this rule
+ * (the Overview's prior period is served); `shared/previous_window_cases.json`
+ * holds both to the same cases. */
 export function previousWindow(start: string, end: string): { start: string; end: string } {
   const lengthDays = daysBetween(start, end) + 1
   const prevEnd = addDaysISO(start, -1)
