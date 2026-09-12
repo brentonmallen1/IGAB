@@ -270,6 +270,16 @@ ON_BUDGET_ACCOUNT = Transaction.account_id.in_(
     .correlate(Transaction)
 )
 
+#: The rows the savings-rate family totals by activity class: the Overview's
+#: savings-rate card (`ReportService._class_frame`), the Savings Rate and
+#: Income vs Expenses tabs (`_monthly_class_totals`) and the savings-rate
+#: dialog's contributors (`report_basics.savings_contributors`). The dialog's
+#: parts are only worth showing if they are cut from exactly the rows the card
+#: divided, so the three read one predicate rather than three lists of the same
+#: four clauses. LEAF because a split parent carries no category and so no
+#: class of its own.
+CLASS_TOTAL_ROW = and_(NOT_DELETED, POSTED, LEAF, ON_BUDGET_ACCOUNT)
+
 
 def account_scope(q: Select, account_ids: Sequence[uuid.UUID] | None) -> tuple[Select, bool]:
     """Apply a report's account scope, and say whether the user chose one.

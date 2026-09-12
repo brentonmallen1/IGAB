@@ -33,6 +33,7 @@ from igab.domain.activity_class import (
     ActivityClass,
     apply_class_joins,
     basis_is_chosen,
+    class_magnitude,
     counted_class_filter,
     counted_classes,
     planned_spend_filter,
@@ -72,6 +73,7 @@ from igab.repositories.transaction_repo import TransactionRepository
 from igab.repositories.txn_filters import (
     CASH_ACCOUNT,
     CASH_FLOW_ROW,
+    CLASS_TOTAL_ROW,
     LEAF,
     LIVE_ACCOUNT,
     NOT_DELETED,
@@ -162,20 +164,6 @@ _DRAWDOWN_LABELS: dict[str, str] = {
     ActivityClass.DEBT_PRINCIPAL.value: "Borrowed",
     ActivityClass.INVESTMENT_RETURN.value: "Investment gains",
 }
-
-
-#: Classes worth explaining when a spending report leaves them out. Internal
-#: transfers and market movement are not "money you spent somewhere else" — a
-#: note about them would be noise, not reassurance.
-def _magnitude(buckets: dict[str, Decimal], cls: ActivityClass) -> Decimal:
-    """An outflow class's total for one month, as a positive number.
-
-    Outflow rows are stored negative and every consumer reports magnitudes, so
-    every consumer flipped the sign itself — each with its own copy of the
-    comment explaining why. Three copies is three chances for one of them to
-    keep the sign through a refactor and quietly report a negative savings rate.
-    """
-    return -buckets.get(cls.value, Decimal("0"))
 
 
 def scoped(q, column, ids: Sequence[uuid.UUID] | None):
@@ -275,11 +263,11 @@ class ReportService:
         cancel, and showing them would double the apparent flow.
         """
         results = []
-        for month_start, buckets in await self._class_series(budget_id, months):
+        for month_start, buckets in await self._class_series(budget_id, months, date.today()):
             income = buckets.get(ActivityClass.INCOME.value, Decimal("0"))
-            expenses = _magnitude(buckets, ActivityClass.SPENDING)
-            savings = _magnitude(buckets, ActivityClass.SAVINGS)
-            debt = _magnitude(buckets, ActivityClass.DEBT_PRINCIPAL)
+            expenses = class_magnitude(buckets, ActivityClass.SPENDING)
+            savings = class_magnitude(buckets, ActivityClass.SAVINGS)
+            debt = class_magnitude(buckets, ActivityClass.DEBT_PRINCIPAL)
             results.append(
                 {
                     "month": month_start,
@@ -409,7 +397,7 @@ class ReportService:
 
         def _buckets(start: date, end: date) -> dict[str, Decimal]:
             """class -> signed total over a window: the shape the month-bucketed
-            tabs hand `_magnitude`, so the cards flip signs by the same rule
+            tabs hand `class_magnitude`, so the cards flip signs by the same rule
             rather than a window-sized copy of it."""
             window = cdf.filter((pl.col("date") >= start) & (pl.col("date") <= end))
             totals = window.group_by("cls").agg(pl.col("amount").sum())
@@ -417,16 +405,16 @@ class ReportService:
 
         this, prev = _buckets(start_date, end_date), _buckets(prev_start, prev_end)
         income_this = this.get(ActivityClass.INCOME.value, Decimal("0"))
-        expenses_this = _magnitude(this, ActivityClass.SPENDING)
-        savings_this = _magnitude(this, ActivityClass.SAVINGS)
-        expenses_prev = _magnitude(prev, ActivityClass.SPENDING)
+        expenses_this = class_magnitude(this, ActivityClass.SPENDING)
+        savings_this = class_magnitude(this, ActivityClass.SAVINGS)
+        expenses_prev = class_magnitude(prev, ActivityClass.SPENDING)
         # What living cost over the window — spending plus debt payments — from
         # the one tuple Cost of Living and the Essentials figures read, so the
         # Overview's means verdict cannot count a class those reports do not.
         # Debt payments are served beside it because the verdict's dialog names
         # them; savings are neither: they are what was left over.
-        debt_payments_this = _magnitude(this, ActivityClass.DEBT_PRINCIPAL)
-        outflows_this = sum((_magnitude(this, c) for c in COST_OF_LIVING_CLASSES), Decimal(0))
+        debt_payments_this = class_magnitude(this, ActivityClass.DEBT_PRINCIPAL)
+        outflows_this = sum((class_magnitude(this, c) for c in COST_OF_LIVING_CLASSES), Decimal(0))
 
         # Burn rate is how fast money is consumed, so savings and debt principal
         # are out. This claimed to match the Burn Rate chart "exactly" and did
@@ -2280,12 +2268,9 @@ class ReportService:
                         ACTIVITY_CLASS.label("cls"),
                     ).where(
                         Transaction.budget_id == budget_id,
-                        NOT_DELETED,
-                        POSTED,
-                        LEAF,
+                        CLASS_TOTAL_ROW,
                         Transaction.date >= start,
                         Transaction.date <= end,
-                        ON_BUDGET_ACCOUNT,
                     )
                 )
             )
@@ -2319,12 +2304,9 @@ class ReportService:
             )
             .where(
                 Transaction.budget_id == budget_id,
-                NOT_DELETED,
-                POSTED,
-                LEAF,
+                CLASS_TOTAL_ROW,
                 Transaction.date >= start,
                 Transaction.date <= end,
-                ON_BUDGET_ACCOUNT,
             )
             .group_by(month_col, ACTIVITY_CLASS)
         )
@@ -2338,7 +2320,7 @@ class ReportService:
         return by_month
 
     async def _class_series(
-        self, budget_id: uuid.UUID, months: int
+        self, budget_id: uuid.UUID, months: int, today: date
     ) -> list[tuple[date, dict[str, Decimal]]]:
         """The last `months` calendar months, oldest first, with class totals.
 
@@ -2348,8 +2330,11 @@ class ReportService:
         landed in one report and not the other. Months with no activity are
         present with an empty bucket: a gap in the series is a gap in the
         chart, not a shorter chart.
+
+        The rows run from the first month's start through `today`, which the
+        caller reads once — `savings_rate` serves that window, and a second
+        clock read could name a day the rows were not read through.
         """
-        today = date.today()
         axis = report_months(today, months)
         by_month = await self._monthly_class_totals(budget_id, axis[0], today)
         return [(month, by_month.get(month, {})) for month in axis]
@@ -2424,12 +2409,14 @@ class ReportService:
                 return None
             return float(numerator / income)
 
+        today = date.today()
+        class_series = await self._class_series(budget_id, months, today)
         series: list[dict] = []
-        for month, buckets in await self._class_series(budget_id, months):
+        for month, buckets in class_series:
             income = buckets.get(ActivityClass.INCOME.value, Decimal("0"))
-            savings = _magnitude(buckets, ActivityClass.SAVINGS)
-            debt = _magnitude(buckets, ActivityClass.DEBT_PRINCIPAL)
-            spending = _magnitude(buckets, ActivityClass.SPENDING)
+            savings = class_magnitude(buckets, ActivityClass.SAVINGS)
+            debt = class_magnitude(buckets, ActivityClass.DEBT_PRINCIPAL)
+            spending = class_magnitude(buckets, ActivityClass.SPENDING)
             series.append(
                 {
                     "month": month,
@@ -2448,6 +2435,12 @@ class ReportService:
         }
         return {
             "months": series,
+            # The window the summary covers, served rather than rebuilt from
+            # `months` on the client: the last month is read through today, not
+            # its end, and the savings-rate dialog asks for the contributors
+            # of exactly these rows.
+            "start_date": class_series[0][0],
+            "end_date": today,
             "summary": {
                 **totals,
                 "savings_rate": _rate(totals["savings"], totals["income"]),

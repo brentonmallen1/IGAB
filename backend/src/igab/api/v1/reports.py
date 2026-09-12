@@ -51,6 +51,7 @@ from igab.api.v1.schemas.report import (
     ReportFavoritesUpdate,
     ReportRangeResponse,
     SavingsCategory,
+    SavingsContributorsResponse,
     SavingsRateResponse,
     SavingsReportResponse,
     SavingsSummary,
@@ -98,6 +99,7 @@ from igab.services.liability_service import LiabilityService
 from igab.services.report_basics import (
     cost_of_living,
     income_by_source,
+    savings_contributors,
     spending_trends,
     wishlist_discipline,
 )
@@ -806,6 +808,22 @@ async def savings_rate_report(
     saving."""
     data = await report_svc.savings_rate(budget_id, months)
     return SavingsRateResponse.model_validate(data)
+
+
+@router.get("/{budget_id}/reports/savings-contributors", response_model=SavingsContributorsResponse)
+async def savings_contributors_report(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    report_svc: Annotated[ReportService, Depends(get_report_service)],
+    start_date: date,
+    end_date: date,
+) -> SavingsContributorsResponse:
+    """What a savings rate was made of: where the savings and debt principal
+    went, and where the income came from. Both dates are required — the dialog
+    passes the window of the card that opened it, and a default here would be
+    a third spelling of which window that is."""
+    data = await savings_contributors(report_svc.session, budget_id, start_date, end_date)
+    return SavingsContributorsResponse.model_validate(data)
 
 
 @router.get("/{budget_id}/reports/savings", response_model=SavingsReportResponse)

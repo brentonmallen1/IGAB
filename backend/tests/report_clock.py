@@ -19,12 +19,17 @@ from unittest.mock import patch
 
 @contextmanager
 def report_today(today: date) -> Iterator[date]:
-    """`date.today()` inside `igab.services.report_service` returns `today`."""
+    """`date.today()` inside the report service and report_basics returns `today`."""
 
     class _Pinned(date):
         @classmethod
         def today(cls) -> date:
             return today
 
-    with patch("igab.services.report_service.date", _Pinned):
+    # report_basics too: its free functions (Income by Source, the savings-rate
+    # contributors) read the clock the same way the service's methods do.
+    with (
+        patch("igab.services.report_service.date", _Pinned),
+        patch("igab.services.report_basics.date", _Pinned),
+    ):
         yield today

@@ -1,6 +1,7 @@
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import Field
 
@@ -725,7 +726,55 @@ class SavingsRateSummary(ApiModel):
 
 class SavingsRateResponse(ApiModel):
     months: list[SavingsRateMonth]
+    #: The dates `summary` covers: the first month's start through today.
+    #: The savings-rate dialog asks /savings-contributors for exactly this.
+    start_date: date
+    end_date: date
     summary: SavingsRateSummary
+
+
+class SavingsContributor(ApiModel):
+    """One place money counted toward savings (or debt principal) went.
+
+    Named by destination: a transfer to a tracked account by that account,
+    anything else by its category. `total` is the class magnitude — positive
+    for money that left the budget, negative for money drawn back into it.
+    """
+
+    kind: Literal["account", "category"]
+    id: uuid.UUID
+    name: str
+    #: The ActivityReason that decided these rows; where rules differed, the
+    #: first in the classifier's own order.
+    reason: str
+    reason_label: str
+    total: Decimal
+    count: int
+
+
+class SavingsIncomeSource(ApiModel):
+    payee_id: uuid.UUID | None
+    payee_name: str
+    total: Decimal
+    count: int
+
+
+class SavingsContributorsResponse(ApiModel):
+    """What a savings rate over [start_date, end_date] was made of.
+
+    The totals are the figures the rate cards divide, and each list sums to
+    its total exactly. The rate itself is not served here: the card that
+    opens the dialog already has it.
+    """
+
+    start_date: date
+    end_date: date
+    income: Decimal
+    savings: Decimal
+    debt_principal: Decimal
+    savings_contributors: list[SavingsContributor]
+    debt_contributors: list[SavingsContributor]
+    income_sources: list[SavingsIncomeSource]
 
 
 # ─── Anomaly Detection Report ────────────────────────────────────────────────

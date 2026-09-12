@@ -22,17 +22,26 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Category, CategoryGroup, Payee, Transaction
 from igab.domain.activity_class import (
+    ACTIVITY_CLASS,
+    ACTIVITY_REASON,
     CLASS_LABEL,
     COST_OF_LIVING_CLASSES,
     INCOME_ROW,
+    REASON_LABEL,
+    REASON_PRIORITY,
+    TRACKED_COUNTERPART_ACCOUNT,
+    TRACKED_TRANSFER,
     ActivityClass,
+    ActivityReason,
     NecessityTier,
     apply_class_joins,
     basis_is_chosen,
+    class_magnitude,
 )
 from igab.domain.dates import complete_month_window, month_starts
 from igab.domain.money import quantize_cents
 from igab.repositories.txn_filters import (
+    CLASS_TOTAL_ROW,
     LEAF,
     NOT_DELETED,
     ON_BUDGET_ACCOUNT,
@@ -42,6 +51,17 @@ from igab.repositories.txn_filters import (
 
 if TYPE_CHECKING:
     from igab.services.report_service import ReportService
+
+#: What a payee-less row is called wherever rows are grouped by payee — Income
+#: by Source, the Subscriptions report's payees and the savings-rate dialog's
+#: income sources. `_NO_PAYEE_KEY` is the group key those rows share, which no
+#: payee id can collide with.
+NO_PAYEE = "No payee"
+_NO_PAYEE_KEY = "__none__"
+
+
+def _payee_key(payee_id: uuid.UUID | None) -> str:
+    return str(payee_id) if payee_id else _NO_PAYEE_KEY
 
 
 async def spending_trends(
@@ -149,12 +169,12 @@ async def income_by_source(session: AsyncSession, budget_id: uuid.UUID, months: 
     rows = (await session.execute(apply_class_joins(q))).all()
     sources: dict[str, dict] = {}
     for r in rows:
-        key = str(r.payee_id) if r.payee_id else "__none__"
+        key = _payee_key(r.payee_id)
         entry = sources.setdefault(
             key,
             {
                 "payee_id": r.payee_id,
-                "payee_name": r.payee_name or "No payee",
+                "payee_name": r.payee_name or NO_PAYEE,
                 "monthly": [Decimal("0")] * len(month_list),
                 "total": Decimal("0"),
                 "count": 0,
@@ -182,6 +202,146 @@ async def income_by_source(session: AsyncSession, budget_id: uuid.UUID, months: 
         # 5,500 beside Take-home's 6,000 for the same steady pay.
         "avg_monthly": quantize_cents(total / len(month_list)) if month_list else Decimal("0"),
         "months_averaged": len(month_list),
+    }
+
+
+#: The classes a savings rate's numerator can hold: saving, and — with the Savings
+#: Rate tab's "include debt payments" — debt principal.
+_CONTRIBUTOR_CLASSES = (ActivityClass.SAVINGS, ActivityClass.DEBT_PRINCIPAL)
+
+
+async def savings_contributors(
+    session: AsyncSession, budget_id: uuid.UUID, start_date: date, end_date: date
+) -> dict:
+    """What a savings rate over a window was made of — the rate cards' dialog.
+
+    **Same rows, same rule, so the parts sum to the card.** The rows are
+    `CLASS_TOTAL_ROW`, the predicate the Overview card's frame and the Savings
+    Rate tab's monthly totals read; each total is `class_magnitude` of the
+    class's signed sum, as those cards compute it; and each contributor is
+    that same flip applied to its own share of the rows. Nothing is truncated,
+    so every list sums to its total to the cent — including a withdrawal from
+    tracked savings back into the budget, which is a SAVINGS-class inflow and
+    appears as a negative contributor rather than being dropped.
+
+    **Named by where the money went.** A row whose transfer lands in a tracked
+    account is grouped under that account, whatever rule classed it; any other
+    row under its category. A category tagged Savings that transfers into a
+    brokerage is therefore the brokerage: "where did the savings go" is
+    answered by a destination, and naming the envelope instead would split one
+    brokerage across as many rows as there are ways to reach it. The served
+    `reason` is the rule that decided the group's rows — where rows of one
+    destination were decided by different rules, the first in
+    `REASON_PRIORITY`, the classifier's own order.
+
+    **Through today.** The Overview card's frame is read up to today whatever
+    range was picked, and the Savings Rate tab's window ends today, so a
+    future-dated row is in neither and is not in this either.
+
+    Income is grouped by payee, as Income by Source groups it.
+    """
+    end = min(end_date, date.today())
+    wanted = [ActivityClass.INCOME.value, *(c.value for c in _CONTRIBUTOR_CLASSES)]
+    q = (
+        select(
+            Transaction.amount,
+            ACTIVITY_CLASS.label("cls"),
+            ACTIVITY_REASON.label("reason"),
+            TRACKED_TRANSFER.label("tracked_transfer"),
+            TRACKED_COUNTERPART_ACCOUNT.id.label("account_id"),
+            TRACKED_COUNTERPART_ACCOUNT.name.label("account_name"),
+            Transaction.category_id,
+            Category.name.label("category_name"),
+            Transaction.payee_id,
+            Payee.name.label("payee_name"),
+        )
+        .outerjoin(Category, Category.id == Transaction.category_id)
+        .outerjoin(Payee, Payee.id == Transaction.payee_id)
+        .where(
+            Transaction.budget_id == budget_id,
+            CLASS_TOTAL_ROW,
+            Transaction.date >= start_date,
+            Transaction.date <= end,
+            ACTIVITY_CLASS.in_(wanted),
+        )
+    )
+    rows = (await session.execute(apply_class_joins(q))).all()
+
+    signed: dict[str, Decimal] = {}
+    groups: dict[str, dict[tuple[str, uuid.UUID], dict]] = {
+        c.value: {} for c in _CONTRIBUTOR_CLASSES
+    }
+    sources: dict[str, dict] = {}
+    for r in rows:
+        signed[r.cls] = signed.get(r.cls, Decimal("0")) + r.amount
+        if r.cls == ActivityClass.INCOME.value:
+            source = sources.setdefault(
+                _payee_key(r.payee_id),
+                {
+                    "payee_id": r.payee_id,
+                    "payee_name": r.payee_name or NO_PAYEE,
+                    "total": Decimal("0"),
+                    "count": 0,
+                },
+            )
+            source["total"] += r.amount
+            source["count"] += 1
+            continue
+        if r.tracked_transfer:
+            kind, key_id, name = "account", r.account_id, r.account_name
+        else:
+            kind, key_id, name = "category", r.category_id, r.category_name
+        if key_id is None:
+            # Unreachable by the rules: a SAVINGS or DEBT_PRINCIPAL row that is
+            # not a tracked transfer was classed by its category's tag. Raised
+            # rather than grouped under a blank name, which would still sum.
+            raise ValueError(f"a {r.cls} row with no destination and no category")
+        group = groups[r.cls].setdefault(
+            (kind, key_id),
+            {
+                "kind": kind,
+                "id": key_id,
+                "name": name,
+                "reasons": set(),
+                "signed": Decimal("0"),
+                "count": 0,
+            },
+        )
+        group["reasons"].add(ActivityReason(r.reason))
+        group["signed"] += r.amount
+        group["count"] += 1
+
+    def _by_magnitude(entries: list[dict], name: str = "name") -> list[dict]:
+        return sorted(entries, key=lambda e: (-abs(e["total"]), e[name]))
+
+    def _contributors(cls: ActivityClass) -> list[dict]:
+        out = []
+        for g in groups[cls.value].values():
+            reason = min(g["reasons"], key=REASON_PRIORITY.index)
+            out.append(
+                {
+                    "kind": g["kind"],
+                    "id": g["id"],
+                    "name": g["name"],
+                    "reason": reason.value,
+                    "reason_label": REASON_LABEL[reason],
+                    "total": quantize_cents(class_magnitude({cls.value: g["signed"]}, cls)),
+                    "count": g["count"],
+                }
+            )
+        return _by_magnitude(out)
+
+    return {
+        "start_date": start_date,
+        "end_date": end,
+        "income": quantize_cents(signed.get(ActivityClass.INCOME.value, Decimal("0"))),
+        "savings": quantize_cents(class_magnitude(signed, ActivityClass.SAVINGS)),
+        "debt_principal": quantize_cents(class_magnitude(signed, ActivityClass.DEBT_PRINCIPAL)),
+        "savings_contributors": _contributors(ActivityClass.SAVINGS),
+        "debt_contributors": _contributors(ActivityClass.DEBT_PRINCIPAL),
+        "income_sources": _by_magnitude(
+            [{**s, "total": quantize_cents(s["total"])} for s in sources.values()], "payee_name"
+        ),
     }
 
 
@@ -391,8 +551,8 @@ async def subscriptions_report(
             "category_id": [str(r.category_id) for r in rows],
             "category_name": [r.category_name for r in rows],
             "group_name": [r.group_name for r in rows],
-            "payee_id": [str(r.payee_id) if r.payee_id else "__none__" for r in rows],
-            "payee_name": [r.payee_name or "No payee" for r in rows],
+            "payee_id": [_payee_key(r.payee_id) for r in rows],
+            "payee_name": [r.payee_name or NO_PAYEE for r in rows],
             "month": [r.date.replace(day=1) for r in rows],
             "date": [r.date for r in rows],
             "amount": [abs(float(r.amount)) for r in rows],
@@ -408,7 +568,7 @@ async def subscriptions_report(
             for_payee = in_category.filter(pl.col("payee_id") == payee_id)
             payees.append(
                 {
-                    "payee_id": None if payee_id == "__none__" else payee_id,
+                    "payee_id": None if payee_id == _NO_PAYEE_KEY else payee_id,
                     "payee_name": for_payee["payee_name"][0],
                     **_recurring_spend(for_payee, month_list),
                 }
