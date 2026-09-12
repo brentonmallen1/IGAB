@@ -34,7 +34,7 @@ function wish(over: Partial<Wish>): Wish {
     name: 'Bike',
     url: null,
     notes: null,
-    cost: '1800',
+    cost: 1800,
     priority: 0,
     is_priority: false,
     status: 'open',
@@ -51,8 +51,9 @@ function wish(over: Partial<Wish>): Wish {
     last_affirmed_at: null,
     review_due: false,
     done_at: null,
+    added_on: '2026-08-01',
     created_at: '2026-08-01T00:00:00Z',
-    reach: { state: 'months', months: 8, date: '2027-04-26', ahead_cost: '0', progress: '0.30' },
+    reach: { state: 'months', months: 8, date: '2027-04-26', ahead_cost: 0, progress: 0.3 },
     ...over,
   }
 }
@@ -67,7 +68,8 @@ function payload(over: Partial<Wishlist>): Wishlist {
     review_due_count: 0,
     settings: { cooling_days: 30, review_after_days: 90 },
     priority_limit: 3,
-    drains: { month: '2026-08-01', total: '0', moves: [] },
+    max_cooling_days: 365,
+    drains: { month: '2026-08-01', total: 0, moves: [] },
     ...over,
   }
 }
@@ -210,7 +212,7 @@ describe('WishlistPanel', () => {
         summary: {
           item_count: 2,
           open_count: 2,
-          total_cost: '400',
+          total_cost: 400,
           affordable_now: 0,
           funded_by: null,
           state: 'months',
@@ -254,7 +256,7 @@ describe('WishlistPanel', () => {
         summary: {
           item_count: 1,
           open_count: 1,
-          total_cost: '400',
+          total_cost: 400,
           affordable_now: 0,
           funded_by: null,
           state: 'months',
@@ -325,18 +327,18 @@ describe('WishlistPanel', () => {
         items: [wish({})],
         drains: {
           month: '2026-08-01',
-          total: '60',
+          total: 60,
           moves: [
             {
               move_id: 'm1',
               month: '2026-08-01',
               date: '2026-08-12T09:30:00Z',
-              amount: '60',
+              amount: 60,
               from_category_id: 'c',
               from_name: 'Bike',
               to_category_id: 'd',
               to_name: 'Dining Out',
-              affected: [{ item_id: 'w', name: 'Bike', months_further: '0.6' }],
+              affected: [{ item_id: 'w', name: 'Bike', months_further: 0.6 }],
             },
           ],
         },

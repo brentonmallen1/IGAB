@@ -11,7 +11,7 @@ function wish(over: Partial<Wish>): Wish {
     name: 'W',
     url: null,
     notes: null,
-    cost: '100',
+    cost: 100,
     priority: 0,
     is_priority: false,
     status: 'open',
@@ -28,6 +28,7 @@ function wish(over: Partial<Wish>): Wish {
     last_affirmed_at: null,
     review_due: false,
     done_at: null,
+    added_on: '2026-08-01',
     created_at: '2026-08-01',
     reach: null,
     ...over,
@@ -36,16 +37,16 @@ function wish(over: Partial<Wish>): Wish {
 
 describe('impactLabel', () => {
   it('speaks in weeks under a month and half-months above', () => {
-    expect(impactLabel('0.25')).toBe('about 1 week further away')
-    expect(impactLabel('0.6')).toBe('about 3 weeks further away')
-    expect(impactLabel('1')).toBe('about 1 month further away')
-    expect(impactLabel('1.4')).toBe('about 1½ months further away')
-    expect(impactLabel('2.1')).toBe('about 2 months further away')
+    expect(impactLabel(0.25)).toBe('about 1 week further away')
+    expect(impactLabel(0.6)).toBe('about 3 weeks further away')
+    expect(impactLabel(1)).toBe('about 1 month further away')
+    expect(impactLabel(1.4)).toBe('about 1½ months further away')
+    expect(impactLabel(2.1)).toBe('about 2 months further away')
   })
 
   it('says nothing when there is no pace', () => {
     expect(impactLabel(null)).toBeNull()
-    expect(impactLabel('0')).toBeNull()
+    expect(impactLabel(0)).toBeNull()
   })
 })
 
@@ -53,7 +54,7 @@ describe('reachLabel', () => {
   it('names each state', () => {
     expect(
       reachLabel(
-        wish({ reach: { state: 'now', months: 0, date: null, ahead_cost: '0', progress: '1' } }),
+        wish({ reach: { state: 'now', months: 0, date: null, ahead_cost: 0, progress: 1 } }),
         fmt
       )
     ).toBe('you can afford this now')
@@ -64,8 +65,8 @@ describe('reachLabel', () => {
             state: 'months',
             months: 8,
             date: '2027-04-26',
-            ahead_cost: '0',
-            progress: '0.3',
+            ahead_cost: 0,
+            progress: 0.3,
           },
         }),
         fmt
@@ -74,7 +75,7 @@ describe('reachLabel', () => {
     expect(
       reachLabel(
         wish({
-          reach: { state: 'no_rate', months: null, date: null, ahead_cost: '0', progress: '0' },
+          reach: { state: 'no_rate', months: null, date: null, ahead_cost: 0, progress: 0 },
         }),
         fmt
       )
@@ -90,7 +91,7 @@ describe('reachLabel', () => {
             owns_envelope: false,
             target_date: null,
           },
-          reach: { state: 'unlinked', months: null, date: null, ahead_cost: '0', progress: '0' },
+          reach: { state: 'unlinked', months: null, date: null, ahead_cost: 0, progress: 0 },
         }),
         fmt
       )
