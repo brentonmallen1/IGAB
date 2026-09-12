@@ -3,6 +3,7 @@ import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { rulesWithContext, stripComments, type ContextRule } from '../test-utils/cssRules'
+import { escapeRegex } from '../utils/payeeRegex'
 
 /**
  * The 16px input floor: it lives once, and it wins.
@@ -247,7 +248,7 @@ describe('a control larger than the floor', () => {
         (r) =>
           r.file === file &&
           r.selector === selector &&
-          new RegExp(`--control-font-size:\\s*${value.replace(/[()]/g, '\\$&')}`).test(r.body)
+          new RegExp(`--control-font-size:\\s*${escapeRegex(value)}`).test(r.body)
       )
     expect(
       declares(
