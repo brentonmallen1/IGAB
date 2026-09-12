@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { PERSIST_KEYS } from './persistKeys'
 import { syncThemeColorMeta } from '../utils/themeColor'
+import { currentMonthStart } from '../utils/dates'
 
 export type Theme =
   | 'dark'
@@ -196,18 +197,13 @@ interface AppState {
   setViewportRuler: (on: boolean) => void
 }
 
-function currentMonthString(): string {
-  const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
-}
-
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
       theme: 'dark',
       fontScale: 'small',
       currentBudgetId: null,
-      selectedMonth: currentMonthString(),
+      selectedMonth: currentMonthStart(),
       budgetAnchorMonth: null,
       autoOpenLastBudget: true,
       lastQuickAddAccountId: null,
