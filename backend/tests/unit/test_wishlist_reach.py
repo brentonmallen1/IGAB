@@ -5,9 +5,13 @@ Every figure the Wishlist tab states that is not a stored field comes from
 decide whether to say "you can buy this now" about someone's money.
 """
 
-from datetime import date, timedelta
+import json
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
 from uuid import UUID, uuid4
+
+import pytest
 
 from igab.domain.dates import add_months
 from igab.domain.ordering import renumber
@@ -16,6 +20,7 @@ from igab.guide.wishlist import (
     Funding,
     ProjectInput,
     WishInput,
+    added_on,
     cooling_until_for,
     drain_impact,
     effective_category,
@@ -27,6 +32,9 @@ from igab.guide.wishlist import (
 )
 
 TODAY = date(2026, 8, 26)
+COOLING_CASES = json.loads(
+    (Path(__file__).resolve().parents[3] / "shared" / "cooling_cases.json").read_text()
+)
 MONTH = date(2026, 8, 1)
 
 
@@ -229,6 +237,43 @@ class TestCoolingAndReview:
     def test_cooling_default(self):
         assert cooling_until_for(TODAY, DEFAULT_COOLING_DAYS) == TODAY + timedelta(days=30)
         assert cooling_until_for(TODAY, 0) == TODAY
+
+    @pytest.mark.parametrize(
+        "case", COOLING_CASES["cases"], ids=[c["note"] for c in COOLING_CASES["cases"]]
+    )
+    def test_days_after_added_agree_with_the_form(self, case):
+        """The cases the edit form previews with: one date on screen, the same
+        date saved."""
+        added = date.fromisoformat(case["added_on"])
+        assert cooling_until_for(added, case["days"]) == date.fromisoformat(case["cooling_until"])
+
+    def test_days_count_from_the_day_added_not_from_today(self):
+        # Set on an edit months later, "14 days" still means added + 14.
+        added = TODAY - timedelta(days=90)
+        assert cooling_until_for(added, 14) == date(2026, 6, 11)
+
+    def test_days_already_behind_us_end_the_cooling_off_rather_than_fail(self):
+        added = TODAY - timedelta(days=40)
+        until = cooling_until_for(added, 30)
+        assert until == TODAY - timedelta(days=10)
+        # Ended, so the wish is asked "still want it?" like any other.
+        assert review_due(added, None, until, 30, TODAY)
+
+    def test_negative_days_clamp_to_the_day_added(self):
+        assert cooling_until_for(TODAY, -5) == TODAY
+
+
+class TestAddedOn:
+    def test_the_recorded_date_wins_over_the_instant(self):
+        # 7pm on the 25th west of UTC is already the 26th in UTC. The person
+        # added it on the 25th, and that is what days count from.
+        instant = datetime(2026, 8, 26, 2, 0, tzinfo=UTC)
+        assert added_on(date(2026, 8, 25), instant) == date(2026, 8, 25)
+
+    def test_a_row_without_one_falls_back_to_the_instants_date(self):
+        # Rows from before the column, or restored from an older snapshot.
+        instant = datetime(2026, 8, 26, 2, 0, tzinfo=UTC)
+        assert added_on(None, instant) == date(2026, 8, 26)
 
     def test_review_due_at_exactly_n_days(self):
         assert review_due(TODAY - timedelta(days=90), None, None, 90, TODAY)

@@ -1,0 +1,13 @@
+{
+  "_comment": "A cooling-off set in days counts from the day the wish was added. The server resolves `cooling_until` from `added_on` + `days` (backend/tests/unit/test_wishlist_reach.py runs these against `guide.wishlist.cooling_until_for`); the edit form previews the same date while the person types, and reads a stored date back as days (frontend/src/components/guide/wishlist/wishlistCooling.test.ts). Both directions must agree across month, year and leap-day edges, or the form shows one date and saves another.",
+  "cases": [
+    { "added_on": "2026-08-01", "days": 0, "cooling_until": "2026-08-01", "note": "zero days ends the day it was added" },
+    { "added_on": "2026-08-01", "days": 14, "cooling_until": "2026-08-15", "note": "the ordinary case" },
+    { "added_on": "2026-08-25", "days": 10, "cooling_until": "2026-09-04", "note": "crosses a month end" },
+    { "added_on": "2026-12-20", "days": 30, "cooling_until": "2027-01-19", "note": "crosses a year end" },
+    { "added_on": "2028-02-20", "days": 10, "cooling_until": "2028-03-01", "note": "a leap February has a 29th" },
+    { "added_on": "2027-02-20", "days": 10, "cooling_until": "2027-03-02", "note": "a common February does not" },
+    { "added_on": "2026-03-01", "days": 365, "cooling_until": "2027-03-01", "note": "the longest cooling-off" },
+    { "added_on": "2026-03-07", "days": 2, "cooling_until": "2026-03-09", "note": "across a US daylight-saving change, where a day is 23 hours" }
+  ]
+}

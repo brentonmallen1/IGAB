@@ -25,7 +25,7 @@ export function sortWishes(items: Wish[], sort: WishlistSort): Wish[] {
     case 'priority':
       return copy.sort((a, b) => a.priority - b.priority)
     case 'cost':
-      return copy.sort((a, b) => Number(b.cost) - Number(a.cost))
+      return copy.sort((a, b) => b.cost - a.cost)
     case 'added':
       return copy.sort((a, b) => b.created_at.localeCompare(a.created_at))
     case 'name':

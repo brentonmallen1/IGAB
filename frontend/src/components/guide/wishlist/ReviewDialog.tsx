@@ -39,7 +39,7 @@ export function ReviewDialog({ budgetId, due, reviewDays, onClose }: Props) {
             <div className="wish-review__card">
               <h4 className="wish-review__name">{current.name}</h4>
               <p className="wish-review__meta">
-                {fmt.formatMoney(Number(current.cost))} · {fundingLabel(current)} ·{' '}
+                {fmt.formatMoney(current.cost)} · {fundingLabel(current)} ·{' '}
                 {reachLabel(current, fmt)}
               </p>
               <p className="wish-review__added">

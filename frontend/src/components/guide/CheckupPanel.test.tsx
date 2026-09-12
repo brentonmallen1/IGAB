@@ -30,7 +30,7 @@ function finding(
   kind: FindingKind,
   rank: number,
   concept_key: string | null = null,
-  value: string | null = null
+  value: number | null = null
 ): CheckupFinding {
   return {
     kind,
@@ -53,8 +53,8 @@ function checkup(findings: CheckupFinding[]): Checkup {
       {
         key: 'emergency_fund',
         label: 'Emergency fund',
-        value: '0',
-        target: '1000',
+        value: 0,
+        target: 1000,
         unit: 'money',
         detail: '',
         finding_kinds: ['ef_not_started', 'ef_below_starter', 'ef_below_full'],
@@ -66,8 +66,8 @@ function checkup(findings: CheckupFinding[]): Checkup {
       {
         key: 'high_interest_debt',
         label: 'Debt at 10%+ APR',
-        value: '3410',
-        target: '0',
+        value: 3410,
+        target: 0,
         unit: 'money',
         detail: 'these debts are at 10% APR or higher',
         finding_kinds: ['high_interest_debt', 'unknown_rates'],
@@ -79,8 +79,8 @@ function checkup(findings: CheckupFinding[]): Checkup {
       {
         key: 'chronic_overspend',
         label: 'Overspent month after month',
-        value: '0',
-        target: '0',
+        value: 0,
+        target: 0,
         unit: 'count',
         detail: '',
         finding_kinds: ['chronic_overspend'],
@@ -175,7 +175,7 @@ describe('CheckupPanel', () => {
 
   it('an emergency fund that has not started reads red, and the report drops the $0.00', async () => {
     vi.mocked(useGuideCheckup).mockReturnValue({
-      data: checkup([finding('ef_not_started', 2, 'emergency_fund', '0')]),
+      data: checkup([finding('ef_not_started', 2, 'emergency_fund', 0)]),
       isLoading: false,
     } as never)
     const { container } = renderPanel()

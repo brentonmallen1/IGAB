@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { useDeleteCategoryFlow } from '../../budget/DeleteCategoryModal/useDeleteCategoryFlow'
 import { useFormatters } from '../../../hooks/useFormatters'
+import type { WishEnvelope } from '../../../api/wishlist'
 import { GuideDialog } from '../GuideDialog'
 
 interface Props {
   budgetId: string
   wishName: string
-  envelope: { category_id: string; name: string; available: string }
+  envelope: WishEnvelope
   onClose: () => void
 }
 
@@ -21,7 +22,7 @@ export function DeleteWishDialog({ budgetId, wishName, envelope, onClose }: Prop
   const [phase, setPhase] = useState<'ask' | 'deleting'>('ask')
   const { requestDelete, modal } = useDeleteCategoryFlow(budgetId, onClose)
   const sawModal = useRef(false)
-  const available = Number(envelope.available)
+  const available = envelope.available
 
   useEffect(() => {
     if (modal) sawModal.current = true

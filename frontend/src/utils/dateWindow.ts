@@ -21,7 +21,9 @@ export function addDaysISO(s: string, days: number): string {
   return toISODate(new Date(y, m - 1, d + days))
 }
 
-/** Difference in calendar days (b - a). */
+/** Difference in calendar days (b - a). Counted in UTC, so a daylight-saving
+ *  change between the two cannot make a day 23 hours long and round wrong.
+ *  The one copy: schedule reminders and the wishlist's cooling-off read it. */
 export function daysBetween(a: string, b: string): number {
   const [ay, am, ad] = parts(a)
   const [by, bm, bd] = parts(b)

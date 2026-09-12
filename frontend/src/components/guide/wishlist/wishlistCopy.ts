@@ -37,10 +37,8 @@ export function coolingLabel(w: Wish, fmt: Fmt): string | null {
 }
 
 /** "about 2 weeks further away" / "about 1½ months further away". */
-export function impactLabel(months: string | null): string | null {
-  if (months === null) return null
-  const m = Number(months)
-  if (Number.isNaN(m) || m <= 0) return null
+export function impactLabel(m: number | null): string | null {
+  if (m === null || Number.isNaN(m) || m <= 0) return null
   if (m < 0.75) {
     const weeks = Math.max(1, Math.round(m * 4.33))
     return `about ${weeks} ${weeks === 1 ? 'week' : 'weeks'} further away`
@@ -65,7 +63,7 @@ export function projectLine(p: WishlistProject, fmt: Fmt): string {
   if (s.complete) return 'complete'
   const parts = [
     `${s.affordable_now} of ${s.open_count} affordable now`,
-    fmt.formatMoney(Number(s.total_cost)),
+    fmt.formatMoney(s.total_cost),
   ]
   if (s.funded_by)
     parts.push(s.state === 'now' ? 'all affordable now' : `all by ${fmt.formatDate(s.funded_by)}`)

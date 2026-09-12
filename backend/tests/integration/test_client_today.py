@@ -93,11 +93,23 @@ async def _liability_snapshot(api_client, budget, db_session):
     return resp.json()["date"]
 
 
+async def _wish_create(api_client, budget, db_session):
+    """POST /wishlist — stamps the day the wish was added, which a cooling-off
+    set in days counts from on every later edit."""
+    resp = await api_client.post(
+        f"/api/v1/{budget.id}/wishlist",
+        json={"name": "Canoe", "cost": 900, "client_today": CALLER_TODAY.isoformat()},
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["added_on"]
+
+
 STAMPING_ENDPOINTS = [
     ("asset create", _asset_create),
     ("asset value", _asset_value),
     ("liability create", _liability_create),
     ("liability snapshot", _liability_snapshot),
+    ("wish create", _wish_create),
 ]
 
 

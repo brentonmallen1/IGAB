@@ -36,17 +36,19 @@ export interface Signal {
   source: SignalSource
   /** null whenever detection could not tell. Never a guess. */
   met: boolean | null
-  /** Detected plus self-reported. Strings: these are money, not floats. */
-  value: string | null
-  detected_value: string | null
-  external_value: string | null
+  /** Detected plus self-reported, in the concept's units. JSON numbers, like
+   *  all served money: these said "strings" after the server stopped sending
+   *  them, and the binding sheet called `.trim()` on one. */
+  value: number | null
+  detected_value: number | null
+  external_value: number | null
   external_declared: boolean
   external_as_of: string | null
-  target: string | null
+  target: number | null
   /** Emergency fund only: the starter cushion ($1,000 or one month of
    *  essentials, whichever is larger) and whether the fund clears it. The
    *  roadmap's starter step reads these; the full step reads `target`/`met`. */
-  starter_target: string | null
+  starter_target: number | null
   starter_met: boolean | null
   reason: string
   entities: Partial<Record<EntityType, string[]>>
@@ -86,7 +88,7 @@ export interface BindingUpdate {
   answer?: boolean
   external?: boolean
   /** Optional on purpose — "I have this covered" is a complete answer. */
-  external_amount?: string | null
+  external_amount?: number | null
   note?: string | null
 }
 
@@ -140,7 +142,7 @@ export function useSetBinding(budgetId: string) {
  *  client cannot see its envelopes to add them up at all. */
 export interface WishlistRetirePreview {
   envelopes: string[]
-  available: string
+  available: number
   is_empty: boolean
 }
 
@@ -210,16 +212,16 @@ export interface CheckupFinding {
   /** A short clause with no figures — compose with `value` in the budget's currency. */
   title: string
   detail: string
-  value: string | null
-  target: string | null
+  value: number | null
+  target: number | null
   names: string[]
 }
 
 export interface CheckupMetric {
   key: string
   label: string
-  value: string | null
-  target: string | null
+  value: number | null
+  target: number | null
   unit: 'money' | 'months' | 'percent' | 'count'
   detail: string
   /** Finding kinds this row is the home of — mark it when one fired. */
@@ -230,8 +232,8 @@ export interface CheckupMetric {
   names: string[]
   /** The same figure in money when `unit` is not money — the emergency fund
    *  in months also says what those months are worth. */
-  money_value: string | null
-  money_target: string | null
+  money_value: number | null
+  money_target: number | null
 }
 
 export interface Checkup {
@@ -287,18 +289,18 @@ export interface CascadeDebtOut {
   payoff_date: string | null
   months: number
   never_pays_off: boolean
-  total_interest: string
-  total_principal: string
+  total_interest: number
+  total_principal: number
 }
 
 export interface CascadeMonthOut {
   month_index: number
   date: string
-  payment: string
-  principal_paid: string
-  interest_paid: string
-  balance: string
-  balances: Record<string, string>
+  payment: number
+  principal_paid: number
+  interest_paid: number
+  balance: number
+  balances: Record<string, number>
 }
 
 export interface CascadeOut {
@@ -307,13 +309,13 @@ export interface CascadeOut {
   months: CascadeMonthOut[]
   debt_free_date: string | null
   never_pays_off: boolean
-  total_interest: string
-  total_paid: string
+  total_interest: number
+  total_paid: number
 }
 
 export interface PayoffPlanResponse {
   as_of: string
-  extra: string
+  extra: number
   avalanche: CascadeOut
   snowball: CascadeOut
   /** Minimums only, nothing rolled — what happens if nothing changes. */
@@ -330,18 +332,18 @@ export interface PayVsSaveRequest {
 
 export interface PayVsSaveResponse {
   horizon_months: number
-  baseline_total_interest: string
+  baseline_total_interest: number
   baseline_never_pays_off: boolean
   pay_months: number
   pay_payoff_date: string | null
-  pay_total_interest: string
+  pay_total_interest: number
   pay_never_pays_off: boolean
-  debt_interest_saved: string
+  debt_interest_saved: number
   months_sooner: number
-  savings_contributed: string
-  savings_balance: string
-  savings_interest_earned: string
-  breakeven_apy: string | null
+  savings_contributed: number
+  savings_balance: number
+  savings_interest_earned: number
+  breakeven_apy: number | null
   favours: 'pay' | 'save' | 'even'
 }
 
@@ -360,12 +362,12 @@ export interface LoanCompareRequest {
 
 export interface LoanOutcomeOut {
   name: string
-  payment: string
+  payment: number
   months: number
   payoff_date: string | null
   never_pays_off: boolean
-  total_interest: string
-  total_cost: string
+  total_interest: number
+  total_cost: number
 }
 
 export interface LoanCompareResponse {
@@ -380,11 +382,11 @@ export interface EmergencyFundRequest {
 
 export interface EmergencyFundResponse {
   months: number
-  monthly_contribution: string
-  essentials_monthly: string | null
-  current: string | null
-  target: string | null
-  gap: string | null
+  monthly_contribution: number
+  essentials_monthly: number | null
+  current: number | null
+  target: number | null
+  gap: number | null
   months_to_fund: number | null
   funded_by: string | null
 }

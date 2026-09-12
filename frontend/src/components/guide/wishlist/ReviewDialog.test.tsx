@@ -21,7 +21,7 @@ function wish(name: string): Wish {
     name,
     url: null,
     notes: null,
-    cost: '100',
+    cost: 100,
     priority: 0,
     is_priority: false,
     status: 'open',
@@ -38,6 +38,7 @@ function wish(name: string): Wish {
     last_affirmed_at: null,
     review_due: true,
     done_at: null,
+    added_on: '2026-01-01',
     created_at: '2026-01-01T00:00:00Z',
     reach: null,
   }

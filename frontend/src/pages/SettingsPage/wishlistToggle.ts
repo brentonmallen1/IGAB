@@ -14,13 +14,7 @@
  * mounted 36KB settings page. The page keeps the wiring — the real fetch, the
  * real dialog, the mutation.
  */
-
-export interface WishlistRetireFacts {
-  envelopes: string[]
-  /** Canonical server decimal string. */
-  available: string
-  is_empty: boolean
-}
+import type { WishlistRetirePreview } from '../../api/guide'
 
 /** What to PUT at the preferences endpoint, or null to do nothing at all. */
 export interface WishlistToggleOutcome {
@@ -31,10 +25,10 @@ export interface WishlistToggleOutcome {
 export interface WishlistToggleDeps {
   /** Asked at the moment of the click; a cached figure could name money that
    *  is no longer there. */
-  fetchPreview: () => Promise<WishlistRetireFacts>
+  fetchPreview: () => Promise<WishlistRetirePreview>
   confirm: (message: { title: string; message: string; confirmLabel: string }) => Promise<boolean>
   /** The user's own money formatting, so the dialog reads like the rest of the app. */
-  formatMoney: (amount: string) => string
+  formatMoney: (amount: number) => string
   onPreviewFailed: () => void
 }
 
@@ -45,7 +39,7 @@ export async function wishlistToggleOutcome(
   // Turning it ON moves no money and archives nothing, so it never asks.
   if (next) return { wishlist: true }
 
-  let preview: WishlistRetireFacts
+  let preview: WishlistRetirePreview
   try {
     preview = await deps.fetchPreview()
   } catch {

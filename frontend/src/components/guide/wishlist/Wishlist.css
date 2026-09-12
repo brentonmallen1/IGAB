@@ -506,6 +506,12 @@
   line-height: 1.4;
 }
 
+.wish-form__cooling {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
 .wish-form__hint {
   margin: 0;
   font-size: var(--font-size-xs);

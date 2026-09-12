@@ -5,6 +5,9 @@
  * mode 'existing', and seeding the form from that blocked every save of a
  * project-funded wish behind "Pick the category that funds it" — for a
  * category the form deliberately doesn't show. These pin the seeding.
+ *
+ * Fixtures carry money as the server sends it — a JSON number. They said
+ * '900' while the server said 900, and that gap hid a Save that did nothing.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
@@ -35,7 +38,7 @@ function wish(funding: Partial<WishFunding>, over: Partial<Wish> = {}): Wish {
     name: 'Canoe',
     url: null,
     notes: null,
-    cost: '900',
+    cost: 900,
     priority: 0,
     is_priority: false,
     status: 'open',
@@ -53,6 +56,7 @@ function wish(funding: Partial<WishFunding>, over: Partial<Wish> = {}): Wish {
     last_affirmed_at: null,
     review_due: false,
     done_at: null,
+    added_on: '2026-08-01',
     created_at: '2026-08-01T00:00:00Z',
     reach: null,
     ...over,
@@ -70,7 +74,7 @@ function project(over: Partial<WishlistProject>): WishlistProject {
     summary: {
       item_count: 0,
       open_count: 0,
-      total_cost: '0',
+      total_cost: 0,
       affordable_now: 0,
       funded_by: null,
       state: 'empty',
@@ -92,6 +96,7 @@ function renderForm(w: Wish | null, projects: WishlistProject[]) {
         wish={w}
         projects={projects}
         defaultCoolingDays={30}
+        maxCoolingDays={365}
         onClose={() => {}}
       />
     </QueryClientProvider>
@@ -179,7 +184,7 @@ describe('WishForm', () => {
     expect(update).toHaveBeenCalledWith({
       id: 'w1',
       name: 'Kayak',
-      cost: '1200',
+      cost: 1200,
       url: 'https://new.example/kayak',
       notes: 'the tandem',
       project_id: 'Cabin',
@@ -243,5 +248,173 @@ describe('WishForm', () => {
     expect(update).toHaveBeenCalledWith(
       expect.objectContaining({ funding: { mode: 'existing', category_id: 'c-own' } })
     )
+  })
+})
+
+describe('WishForm with a server-shaped wish', () => {
+  it('saves after changing only the cool-off date', async () => {
+    // Regression: the server sends cost as a JSON number, the type said
+    // string, and the Cost input was seeded with the number. Save called
+    // `.trim()` on it and threw outside the try — no request, no message.
+    // Fixtures spelled cost '900', so nothing noticed.
+    const w = wish({ mode: 'none' }, { cost: 900, cooling_until: '2026-08-31', cooling: true })
+    renderForm(w, [])
+
+    fireEvent.change(screen.getByLabelText(/Cooling off until/), {
+      target: { value: '2026-10-01' },
+    })
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(update).toHaveBeenCalledWith({
+      id: 'w1',
+      name: 'Canoe',
+      cost: 900,
+      url: null,
+      notes: null,
+      project_id: null,
+      cooling_until: '2026-10-01',
+      funding: { mode: 'none', category_id: null },
+    })
+  })
+
+  it('keeps a cents cost exact through an untouched save', async () => {
+    renderForm(wish({ mode: 'none' }, { cost: 1234.56 }), [])
+    expect(screen.getByLabelText('Cost')).toHaveValue('1234.56')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({ cost: 1234.56 }))
+  })
+
+  it('says so when the cost does not parse, and sends nothing', async () => {
+    renderForm(wish({ mode: 'none' }, { cost: 900 }), [])
+    await userEvent.clear(screen.getByLabelText('Cost'))
+    await userEvent.type(screen.getByLabelText('Cost'), 'lots')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(screen.getByText('That cost did not parse')).toBeInTheDocument()
+    expect(update).not.toHaveBeenCalled()
+  })
+
+  it('surfaces a failure from inside the submit rather than doing nothing', async () => {
+    update.mockRejectedValueOnce(new Error('boom'))
+    renderForm(wish({ mode: 'none' }, { cost: 900 }), [])
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(await screen.findByText('Could not save')).toBeInTheDocument()
+  })
+})
+
+describe('WishForm cooling-off in days', () => {
+  const added = { added_on: '2026-08-01', created_at: '2026-08-01T00:00:00Z' }
+  const daysField = () => screen.getByLabelText(/days after added/)
+  const dateField = () => screen.getByLabelText(/Cooling off until/)
+
+  it('shows the stored date as days after the wish was added', () => {
+    renderForm(wish({ mode: 'none' }, { ...added, cooling_until: '2026-08-15', cooling: true }), [])
+    expect(daysField()).toHaveValue('14')
+    expect(dateField()).toHaveValue('2026-08-15')
+  })
+
+  it('moves the date as days are typed, and sends the days for the server to resolve', async () => {
+    renderForm(wish({ mode: 'none' }, { ...added, cooling_until: '2026-08-15', cooling: true }), [])
+    await userEvent.clear(daysField())
+    await userEvent.type(daysField(), '30')
+    expect(dateField()).toHaveValue('2026-08-31')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    const body = update.mock.calls[0][0]
+    expect(body.cooling_days).toBe(30)
+    // Never both: the server refuses a request that carries the two.
+    expect(body).not.toHaveProperty('cooling_until')
+  })
+
+  it('moves the days as a date is picked, and sends the date', async () => {
+    renderForm(wish({ mode: 'none' }, { ...added, cooling_until: '2026-08-15', cooling: true }), [])
+    fireEvent.change(dateField(), { target: { value: '2026-09-10' } })
+    expect(daysField()).toHaveValue('40')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    const body = update.mock.calls[0][0]
+    expect(body.cooling_until).toBe('2026-09-10')
+    expect(body).not.toHaveProperty('cooling_days')
+  })
+
+  it('zero days ends the cooling-off on the day the wish was added', async () => {
+    renderForm(wish({ mode: 'none' }, { ...added, cooling_until: '2026-08-15', cooling: true }), [])
+    await userEvent.clear(daysField())
+    await userEvent.type(daysField(), '0')
+    expect(dateField()).toHaveValue('2026-08-01')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(update.mock.calls[0][0].cooling_days).toBe(0)
+  })
+
+  it('takes days that are already behind us — that is just a wish done cooling', async () => {
+    // Added 2026-08-01; ten days is long past by the time anyone edits it.
+    renderForm(wish({ mode: 'none' }, added), [])
+    await userEvent.type(daysField(), '10')
+    expect(dateField()).toHaveValue('2026-08-11')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(update.mock.calls[0][0].cooling_days).toBe(10)
+    expect(screen.queryByText(/Cooling-off days must/)).not.toBeInTheDocument()
+  })
+
+  it('refuses days past the served limit with a message, and sends nothing', async () => {
+    renderForm(wish({ mode: 'none' }, added), [])
+    await userEvent.type(daysField(), '366')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(
+      screen.getByText('Cooling-off days must be a whole number from 0 to 365')
+    ).toBeInTheDocument()
+    expect(update).not.toHaveBeenCalled()
+  })
+
+  it('clearing the days clears the date and ends the cooling-off', async () => {
+    renderForm(wish({ mode: 'none' }, { ...added, cooling_until: '2026-08-15', cooling: true }), [])
+    await userEvent.clear(daysField())
+    expect(dateField()).toHaveValue('')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({ cooling_until: null }))
+  })
+
+  it('does not validate the days when only the date or another field was edited', async () => {
+    // The days field used to be validated on every edit even while hidden. A
+    // date picked before the day added reads as negative days — shown as
+    // what it is, and no reason to block saving a new name.
+    renderForm(wish({ mode: 'none' }, { ...added, cooling_until: '2026-07-20' }), [])
+    expect(daysField()).toHaveValue('-12')
+    await userEvent.clear(screen.getByLabelText('What'))
+    await userEvent.type(screen.getByLabelText('What'), 'Kayak')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Kayak', cooling_until: '2026-07-20' })
+    )
+  })
+
+  it('create keeps its days field, sends the browser date as the day added', async () => {
+    renderForm(null, [])
+    await userEvent.type(screen.getByLabelText('What'), 'Tent')
+    await userEvent.type(screen.getByLabelText('Cost'), '250')
+    const days = screen.getByLabelText('Cooling-off, days')
+    expect(days).toHaveValue('30')
+    await userEvent.clear(days)
+    await userEvent.type(days, '14')
+    await userEvent.click(screen.getByRole('button', { name: 'Add to the list' }))
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'Tent',
+        cost: 250,
+        cooling_days: 14,
+        client_today: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+      })
+    )
+  })
+
+  it('create refuses the same bad days the edit does', async () => {
+    renderForm(null, [])
+    await userEvent.type(screen.getByLabelText('What'), 'Tent')
+    await userEvent.type(screen.getByLabelText('Cost'), '250')
+    const days = screen.getByLabelText('Cooling-off, days')
+    await userEvent.clear(days)
+    await userEvent.type(days, '1.5')
+    await userEvent.click(screen.getByRole('button', { name: 'Add to the list' }))
+    expect(screen.getByText(/whole number from 0 to 365/)).toBeInTheDocument()
+    expect(create).not.toHaveBeenCalled()
   })
 })

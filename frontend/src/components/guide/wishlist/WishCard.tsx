@@ -42,8 +42,7 @@ export function WishCard({
 }: Props) {
   const fmt = useFormatters()
   const cooling = coolingLabel(wish, fmt)
-  const progress =
-    wish.reach && wish.reach.state !== 'unlinked' ? Number(wish.reach.progress) : null
+  const progress = wish.reach && wish.reach.state !== 'unlinked' ? wish.reach.progress : null
   const pct = progress === null ? 0 : Math.round(Math.min(1, Math.max(0, progress)) * 100)
 
   return (
@@ -61,7 +60,7 @@ export function WishCard({
             wish.name
           )}
         </h4>
-        <span className="wish__cost tabular">{fmt.formatMoney(Number(wish.cost))}</span>
+        <span className="wish__cost tabular">{fmt.formatMoney(wish.cost)}</span>
       </div>
 
       <p className="wish__funding">

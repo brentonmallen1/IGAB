@@ -1364,6 +1364,12 @@ class WishlistItem(Base):
     #: filters it; a hard delete would put the row beyond undo's reach.
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     cooling_until: Mapped[date | None] = mapped_column(Date)
+    #: The person's own date the wish was added, from the browser's
+    #: `client_today` — what a cooling-off in days counts from. Not derivable
+    #: from `created_at`, an instant whose date is tomorrow every evening west
+    #: of UTC. Nullable only for rows that predate it (a restored old
+    #: snapshot); read it through `guide.wishlist.added_on`, never directly.
+    added_on: Mapped[date | None] = mapped_column(Date)
     last_affirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     done_at: Mapped[date | None] = mapped_column(Date)
     #: Mirror of done_at for the other ending. Without it, "talked yourself

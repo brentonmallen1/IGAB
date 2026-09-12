@@ -20,6 +20,7 @@ import {
   useUpdateWish,
   useWishlist,
   type Wish,
+  type WishEnvelope,
   type WishlistProject,
 } from '../../../api/wishlist'
 import { useFormatters } from '../../../hooks/useFormatters'
@@ -78,7 +79,7 @@ export function WishlistPanel() {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [pendingEnvelope, setPendingEnvelope] = useState<{
     wishName: string
-    envelope: { category_id: string; name: string; available: string }
+    envelope: WishEnvelope
   } | null>(null)
   const fmt = useFormatters()
   const update = useUpdateWish(budgetId ?? '')
@@ -359,8 +360,7 @@ export function WishlistPanel() {
               ) : (
                 <>
                   <p className="wish-drains__total">
-                    {fmt.formatMoney(Number(data.drains.total))} moved out of wish envelopes this
-                    month.
+                    {fmt.formatMoney(data.drains.total)} moved out of wish envelopes this month.
                   </p>
                   <ul className="wish-drains__list scroll-list">
                     {data.drains.moves.map((m) => (
@@ -369,7 +369,7 @@ export function WishlistPanel() {
                           {fmt.formatDate(m.date.slice(0, 10))}
                         </span>
                         <span className="wish-drains__amount tabular">
-                          {fmt.formatMoney(Number(m.amount))}
+                          {fmt.formatMoney(m.amount)}
                         </span>
                         <span className="wish-drains__path">
                           {m.from_name} → {m.to_name}
@@ -402,7 +402,7 @@ export function WishlistPanel() {
               ))}
               {data.history.map((w) => (
                 <p key={w.id} className="guide-wishlist__history-row">
-                  <strong>{w.name}</strong> · {fmt.formatMoney(Number(w.cost))} ·{' '}
+                  <strong>{w.name}</strong> · {fmt.formatMoney(w.cost)} ·{' '}
                   {w.status === 'done'
                     ? `done ${w.done_at ? fmt.formatDate(w.done_at) : ''}`
                     : 'dropped'}
@@ -425,6 +425,7 @@ export function WishlistPanel() {
           budgetId={budgetId}
           projects={activeProjects}
           defaultCoolingDays={data.settings.cooling_days}
+          maxCoolingDays={data.max_cooling_days}
           onClose={() => setAdding(null)}
         />
       )}
@@ -434,6 +435,7 @@ export function WishlistPanel() {
           wish={editing}
           projects={activeProjects}
           defaultCoolingDays={data.settings.cooling_days}
+          maxCoolingDays={data.max_cooling_days}
           onClose={() => setEditing(null)}
         />
       )}

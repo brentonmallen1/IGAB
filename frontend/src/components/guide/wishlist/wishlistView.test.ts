@@ -3,7 +3,7 @@ import type { Wish, WishlistProject, WishReach } from '../../../api/wishlist'
 import { filterWishes, groupByProject, sortWishes, splitHero, splitProjects } from './wishlistView'
 
 function reach(state: WishReach['state'], months: number | null = null): WishReach {
-  return { state, months, date: null, ahead_cost: '0', progress: '0' }
+  return { state, months, date: null, ahead_cost: 0, progress: 0 }
 }
 
 function wish(over: Partial<Wish>): Wish {
@@ -13,7 +13,7 @@ function wish(over: Partial<Wish>): Wish {
     name: 'W',
     url: null,
     notes: null,
-    cost: '100',
+    cost: 100,
     priority: 0,
     is_priority: false,
     status: 'open',
@@ -30,6 +30,7 @@ function wish(over: Partial<Wish>): Wish {
     last_affirmed_at: null,
     review_due: false,
     done_at: null,
+    added_on: '2026-08-01',
     created_at: '2026-08-01T00:00:00Z',
     reach: null,
     ...over,
@@ -47,7 +48,7 @@ function project(over: Partial<WishlistProject>): WishlistProject {
     summary: {
       item_count: 0,
       open_count: 0,
-      total_cost: '0',
+      total_cost: 0,
       affordable_now: 0,
       funded_by: null,
       state: 'empty',
@@ -77,8 +78,8 @@ describe('sortWishes', () => {
 
   it('other sorts', () => {
     const items = [
-      wish({ name: 'b', priority: 2, cost: '5', created_at: '2026-01-01' }),
-      wish({ name: 'a', priority: 1, cost: '50', created_at: '2026-03-01' }),
+      wish({ name: 'b', priority: 2, cost: 5, created_at: '2026-01-01' }),
+      wish({ name: 'a', priority: 1, cost: 50, created_at: '2026-03-01' }),
     ]
     expect(sortWishes(items, 'priority').map((w) => w.name)).toEqual(['a', 'b'])
     expect(sortWishes(items, 'cost').map((w) => w.name)).toEqual(['a', 'b'])
