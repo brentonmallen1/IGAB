@@ -37,7 +37,7 @@ function metrics(overrides: Partial<DashboardMetrics> = {}): DashboardMetrics {
 }
 
 function value(): { text: string; sub: string } {
-  const card = document.querySelector('.living-means .metric-card')
+  const card = document.querySelector('.metric-card')
   return {
     text: card?.querySelector('.metric-card__value')?.textContent ?? '',
     sub: card?.querySelector('.metric-card__sub')?.textContent ?? '',
@@ -65,16 +65,15 @@ describe('LivingMeansCard', () => {
     render(<LivingMeansCard data={metrics({ outflows_this_month: outflows })} />)
 
     const button = screen.getByRole('button', { name: new RegExp(`^${label}`) })
-    expect(button).toHaveClass(`living-means__open--${standing}`)
+    expect(within(button).getByText(short)).toHaveClass(`living-means__verdict--${standing}`)
     expect(value()).toEqual({ text: short, sub })
   })
 
   it('says there is no income rather than giving a verdict', () => {
     render(<LivingMeansCard data={metrics({ income_this_month: 0 })} />)
 
-    expect(screen.getByRole('button', { name: /^No income this period/ })).toHaveClass(
-      'living-means__open--unknown'
-    )
+    const button = screen.getByRole('button', { name: /^No income this period/ })
+    expect(within(button).getByText('—')).toHaveClass('living-means__verdict--unknown')
     expect(value()).toEqual({ text: '—', sub: 'No income recorded' })
     expect(document.body).not.toHaveTextContent(/(above|at|below) your means/i)
   })
@@ -85,7 +84,7 @@ describe('LivingMeansCard', () => {
 
     const dialog = await screen.findByRole('dialog', { name: 'Living below your means' })
     const figures = Object.fromEntries(
-      [...dialog.querySelectorAll('.living-means__figure')].map((row) => [
+      [...dialog.querySelectorAll('.report-detail__figure')].map((row) => [
         row.querySelector('dt')?.textContent,
         row.querySelector('dd')?.textContent,
       ])
@@ -102,7 +101,7 @@ describe('LivingMeansCard', () => {
     expect(dialog).toHaveTextContent('Below your means: outflows under $4,750.00.')
     expect(dialog).toHaveTextContent('Above your means: outflows over $5,250.00.')
 
-    const top = [...dialog.querySelectorAll('.living-means__top-item')].map((li) => li.textContent)
+    const top = [...dialog.querySelectorAll('.report-detail__row')].map((li) => li.textContent)
     expect(top).toEqual([
       'GroceriesEveryday$1,200.0040% of spending',
       'DiningEveryday$600.0020% of spending',
@@ -118,7 +117,7 @@ describe('LivingMeansCard', () => {
     await userEvent.click(screen.getByRole('button', { name: /Living above your means/ }))
 
     const dialog = await screen.findByRole('dialog', { name: 'Living above your means' })
-    const short = [...dialog.querySelectorAll('.living-means__figure')].find(
+    const short = [...dialog.querySelectorAll('.report-detail__figure')].find(
       (row) => row.querySelector('dt')?.textContent === 'Short'
     )
     expect(short?.querySelector('dd')?.textContent).toBe('$1,000.00')

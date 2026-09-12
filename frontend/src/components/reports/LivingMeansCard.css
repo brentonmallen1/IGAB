@@ -1,105 +1,22 @@
-/* The card is an ordinary MetricCard; the whole of it opens the dialog. The
-   button sits in the value slot and stretches over the card with ::after, so
-   the markup stays valid (no card inside a button) and the click target is
-   the tile a reader sees. */
-.living-means {
-  position: relative;
-  display: grid;
-}
-
-.living-means__open {
-  padding: 0;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.living-means__open::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: var(--border-radius-sm);
-}
-
-/* The ring goes round the tile, not round the word inside it. */
-.living-means__open:focus-visible {
-  box-shadow: none;
-}
-
-.living-means__open:focus-visible::after {
-  box-shadow: var(--focus-ring);
-}
-
-.living-means:hover .metric-card {
-  border-color: var(--edge-strong);
-}
+/* The card is an ordinary MetricCard that opens a dialog (its `details`); the
+   dialog is laid out from ReportDetail. What is left here is the verdict's
+   colour and the band list, which only this card has. */
 
 /* Colour for the state and nothing else. Not an amount, so no glow. */
-.living-means__open--below {
+.living-means__verdict--below {
   color: var(--color-positive);
 }
 
-.living-means__open--at {
+.living-means__verdict--at {
   color: var(--color-warning);
 }
 
-.living-means__open--above {
+.living-means__verdict--above {
   color: var(--color-negative);
 }
 
-.living-means__open--unknown {
+.living-means__verdict--unknown {
   color: var(--text-muted);
-}
-
-/* ─── Dialog ──────────────────────────────────────────────────────────────── */
-
-.living-means__figures {
-  margin: 0;
-  padding: var(--spacing-sm) var(--spacing-md);
-  display: flex;
-  flex-direction: column;
-}
-
-.living-means__figure {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--spacing-md);
-  padding: 4px 0;
-  font-size: var(--font-size-sm);
-}
-
-.living-means__figure dt {
-  color: var(--text-secondary);
-}
-
-.living-means__figure dd {
-  margin: 0;
-  color: var(--text-primary);
-  font-variant-numeric: tabular-nums;
-}
-
-.living-means__figure--strong {
-  border-top: 1px solid var(--edge);
-  font-weight: 600;
-}
-
-.living-means__figure--strong + .living-means__figure--strong {
-  border-top: none;
-}
-
-.living-means__section {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-xs);
-}
-
-.living-means__heading {
-  margin: 0;
-  font-size: var(--font-size-xs);
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
 }
 
 .living-means__bands {
@@ -108,46 +25,4 @@
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
   line-height: 1.65;
-}
-
-.living-means__top {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.living-means__top-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: var(--spacing-md);
-  padding: var(--spacing-xs) 0;
-  border-bottom: 1px solid var(--edge);
-  font-size: var(--font-size-sm);
-}
-
-.living-means__top-item:last-child {
-  border-bottom: none;
-}
-
-.living-means__top-name {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  color: var(--text-primary);
-}
-
-.living-means__top-group,
-.living-means__top-share {
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-}
-
-.living-means__top-amount {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  color: var(--text-primary);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
 }

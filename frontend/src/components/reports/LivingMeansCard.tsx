@@ -2,11 +2,11 @@ import { useState } from 'react'
 import type { DashboardMetrics } from '../../types'
 import { useFormatters } from '../../hooks/useFormatters'
 import { Dialog } from '../common/Dialog/Dialog'
-import { Surface } from '../common/Surface'
 import { MetricCard } from './MetricCard'
-import { shareOfTotal } from './drillDownTotals'
+import { sharePhrase } from './drillDownTotals'
 import { AT_MEANS_BAND_PCT, meansReading, netPhrase, type MeansReading } from './livingMeans'
 import { spendingDelta } from './overviewMetrics'
+import { DetailFigure, DetailFigures, DetailRow, DetailRows, DetailSection } from './ReportDetail'
 import './LivingMeansCard.css'
 
 /**
@@ -21,20 +21,18 @@ export function LivingMeansCard({ data }: { data: DashboardMetrics }) {
   const reading = meansReading(data.income_this_month, data.outflows_this_month)
 
   return (
-    <div className="living-means">
+    <>
       <MetricCard
         label="Your Means"
         value={
-          <button
-            type="button"
-            className={`living-means__open living-means__open--${reading.standing}`}
-            aria-haspopup="dialog"
-            aria-label={`${reading.label}. Show what is contributing`}
-            onClick={() => setOpen(true)}
-          >
+          <span className={`living-means__verdict living-means__verdict--${reading.standing}`}>
             {reading.short}
-          </button>
+          </span>
         }
+        details={{
+          label: `${reading.label}. Show what is contributing`,
+          onOpen: () => setOpen(true),
+        }}
         sub={
           reading.standing === 'unknown'
             ? 'No income recorded'
@@ -42,7 +40,7 @@ export function LivingMeansCard({ data }: { data: DashboardMetrics }) {
         }
       />
       {open && <LivingMeansDialog data={data} reading={reading} onClose={() => setOpen(false)} />}
-    </div>
+    </>
   )
 }
 
@@ -63,20 +61,19 @@ function LivingMeansDialog({
     <Dialog title={reading.label} onClose={onClose} historyKey="overview-living-means">
       <p className="dialog__body">{reading.note}</p>
 
-      <Surface as="dl" variant="sunken" className="living-means__figures">
-        <Figure label="Income" value={formatMoney(data.income_this_month)} />
-        <Figure label="Spending" value={formatMoney(spending)} />
-        <Figure label="Debt payments" value={formatMoney(data.debt_payments_this_month)} />
-        <Figure label="Outflows" value={formatMoney(data.outflows_this_month)} strong />
-        <Figure
+      <DetailFigures>
+        <DetailFigure label="Income" value={formatMoney(data.income_this_month)} />
+        <DetailFigure label="Spending" value={formatMoney(spending)} />
+        <DetailFigure label="Debt payments" value={formatMoney(data.debt_payments_this_month)} />
+        <DetailFigure label="Outflows" value={formatMoney(data.outflows_this_month)} strong />
+        <DetailFigure
           label={reading.net < 0 ? 'Short' : 'Left over'}
           value={formatMoney(Math.abs(reading.net))}
           strong
         />
-      </Surface>
+      </DetailFigures>
 
-      <section className="living-means__section" aria-label="How the verdict is read">
-        <h4 className="living-means__heading">How this is read</h4>
+      <DetailSection title="How this is read">
         <p className="dialog__body">
           Outflows are spending plus debt payments. Money moved into savings is not an outflow — it
           is part of what was left over.
@@ -99,39 +96,27 @@ function LivingMeansDialog({
             With no income to measure against, there is no band to read outflows by.
           </p>
         )}
-      </section>
+      </DetailSection>
 
-      <section className="living-means__section" aria-label="Biggest spending">
-        <h4 className="living-means__heading">Biggest spending</h4>
+      <DetailSection title="Biggest spending">
         {data.top_categories.length > 0 ? (
-          <ol className="living-means__top">
-            {data.top_categories.map((c) => {
-              const share = shareOfTotal(c.total, spending)
-              return (
-                <li key={c.id} className="living-means__top-item">
-                  <span className="living-means__top-name">
-                    {c.name}
-                    <span className="living-means__top-group">{c.group_name}</span>
-                  </span>
-                  <span className="living-means__top-amount">
-                    {formatMoney(c.total)}
-                    {share !== null && (
-                      <span className="living-means__top-share">
-                        {share.toFixed(0)}% of spending
-                      </span>
-                    )}
-                  </span>
-                </li>
-              )
-            })}
-          </ol>
+          <DetailRows>
+            {data.top_categories.map((c) => (
+              <DetailRow
+                key={c.id}
+                name={c.name}
+                nameNote={c.group_name}
+                amount={formatMoney(c.total)}
+                amountNote={sharePhrase(c.total, spending, 'of spending')}
+              />
+            ))}
+          </DetailRows>
         ) : (
           <p className="dialog__body dialog__body--muted">No spending in this period.</p>
         )}
-      </section>
+      </DetailSection>
 
-      <section className="living-means__section" aria-label="Spending against the prior period">
-        <h4 className="living-means__heading">Against the prior period</h4>
+      <DetailSection title="Against the prior period">
         <p className="dialog__body">
           {prior > 0 ? (
             <>
@@ -142,17 +127,8 @@ function LivingMeansDialog({
             <>No spending in the period of the same length just before, so nothing to compare.</>
           )}
         </p>
-      </section>
+      </DetailSection>
     </Dialog>
-  )
-}
-
-function Figure({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
-  return (
-    <div className={`living-means__figure${strong ? ' living-means__figure--strong' : ''}`}>
-      <dt>{label}</dt>
-      <dd>{value}</dd>
-    </div>
   )
 }
 

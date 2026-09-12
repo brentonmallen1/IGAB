@@ -62,6 +62,15 @@ export function shareOfTotal(part: number, whole: number): number | null {
   return whole > 0 ? (part / whole) * 100 : null
 }
 
+/** `shareOfTotal` in words — "40% of spending" — or null where there is no
+ *  share to state. The explanatory dialogs' rows (the means dialog, the
+ *  savings-rate dialog) all print a share this way. A negative part reads as a
+ *  negative share: money drawn back out of savings is "-8% of savings". */
+export function sharePhrase(part: number, whole: number, ofWhat: string): string | null {
+  const share = shareOfTotal(part, whole)
+  return share === null ? null : `${share.toFixed(0)}% ${ofWhat}`
+}
+
 export function drillDownFooter(
   rows: readonly { amount: number }[],
   wider: WiderSet | undefined,
