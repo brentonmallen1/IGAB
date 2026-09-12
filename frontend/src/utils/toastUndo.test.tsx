@@ -83,6 +83,24 @@ describe('useUndoToast', () => {
     expect(api.post).not.toHaveBeenCalled()
   })
 
+  it('carries rich content beside the same Undo', async () => {
+    // The quick-add's envelope figure is an element, not a sentence; it must
+    // not need a second toast helper to keep its Undo.
+    api.get.mockResolvedValue({ data: { changes: [{ seq: 7 }], total: 1, names: {} } })
+    const { notify } = mount()
+    act(() =>
+      notify(
+        <span>
+          Groceries <b>$198.00</b>
+        </span>,
+        'latest'
+      )
+    )
+    expect(await screen.findByText('$198.00')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/b1/changes/undo'))
+  })
+
   it('replaces an older undoable toast so a stale Undo never lingers', async () => {
     const { notify } = mount()
     act(() => notify('First', { batch: 'a' }))

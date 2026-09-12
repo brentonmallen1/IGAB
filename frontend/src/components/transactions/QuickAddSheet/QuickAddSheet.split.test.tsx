@@ -8,6 +8,7 @@
  * category of its own, and the overspend check must ask about every leg.
  */
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TransactionCreate } from '../../../types'
 
@@ -23,7 +24,13 @@ const closeQuickAdd = vi.hoisted(() => vi.fn())
 vi.mock('../../../api/transactions', () => ({
   useCreateTransaction: () => ({ mutateAsync: createMutate, isPending: false }),
 }))
-vi.mock('../../../api/budgets', () => ({ confirmFutureOverspend: confirmOverspend }))
+// No month loads here: the envelope hints are QuickAddSheet.available.test's
+// subject, and the split maths does not read them.
+vi.mock('../../../api/budgets', () => ({
+  confirmFutureOverspend: confirmOverspend,
+  useBudgetMonth: () => ({ data: undefined }),
+  budgetMonthQuery: vi.fn(),
+}))
 vi.mock('../../../api/attachments', () => ({
   ATTACHMENT_ACCEPT: '',
   isAttachableFile: () => true,
@@ -109,9 +116,17 @@ vi.mock('../../../utils/toastUndo', () => ({ useUndoToast: () => vi.fn() }))
 
 import { QuickAddSheet } from './QuickAddSheet'
 
+function renderSheet() {
+  return render(
+    <QueryClientProvider client={new QueryClient()}>
+      <QuickAddSheet />
+    </QueryClientProvider>
+  )
+}
+
 /** Enter an amount, open the split editor. */
 function startSplit(total: string) {
-  render(<QuickAddSheet />)
+  renderSheet()
   fireEvent.change(screen.getByLabelText('Amount'), { target: { value: total } })
   fireEvent.click(screen.getByTitle('Split this across categories'))
 }
@@ -150,7 +165,7 @@ beforeEach(() => {
 
 describe('reaching the split editor', () => {
   it('offers a split alongside the category row', () => {
-    render(<QuickAddSheet />)
+    renderSheet()
     expect(screen.getByTitle('Split this across categories')).toBeTruthy()
   })
 
@@ -160,7 +175,7 @@ describe('reaching the split editor', () => {
   })
 
   it('carries an already-chosen category into the first leg', () => {
-    render(<QuickAddSheet />)
+    renderSheet()
     fireEvent.change(screen.getByLabelText('Amount'), { target: { value: '10.00' } })
     fireEvent.click(screen.getByLabelText('Category'))
     pickInSheet('Groceries')
@@ -396,7 +411,7 @@ describe('leaving mid-split', () => {
   })
 
   it('treats an empty split as dirty — it was still a deliberate act', () => {
-    render(<QuickAddSheet />)
+    renderSheet()
     fireEvent.click(screen.getByTitle('Split this across categories'))
     fireEvent.click(screen.getByLabelText('Cancel'))
     expect(screen.getByText('Discard this transaction?')).toBeTruthy()

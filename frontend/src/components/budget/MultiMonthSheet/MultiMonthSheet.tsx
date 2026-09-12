@@ -13,6 +13,7 @@ import { AmountInput } from '../../common/AmountInput/AmountInput'
 import { Modal } from '../../common/Modal/Modal'
 import type { BudgetMonth, Category, CategoryBalance } from '../../../types'
 import { renderableGroups } from '../budgetGroups'
+import { balancesByCategory } from '../../../utils/categoryBalances'
 import './MultiMonthSheet.css'
 import { ROOT } from '../../../api/queryKeys'
 
@@ -133,7 +134,7 @@ export function MultiMonthSheet({ budgetId }: Props) {
   const balanceMaps: (Map<string, CategoryBalance> | null)[] = months.map((_, i) => {
     const data: BudgetMonth | undefined = monthQueries[i].data
     if (!data) return null
-    return new Map(data.category_balances.map((b) => [b.category_id, b]))
+    return balancesByCategory(data)
   })
 
   const query = search.trim().toLowerCase()

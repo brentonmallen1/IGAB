@@ -19,6 +19,7 @@ import { BottomSheet } from '../../common/BottomSheet/BottomSheet'
 import { TransactionEditor } from '../../transactions/TransactionEditor/TransactionEditor'
 import { TransactionsPeekModal } from '../TransactionsPeekModal/TransactionsPeekModal'
 import { toCents } from '../../../utils/money'
+import { availableTone } from '../../../utils/categoryBalances'
 import { parseAssignmentCommit } from '../../../utils/amountExpression'
 import { AmountInput } from '../../common/AmountInput/AmountInput'
 import { today } from '../../../utils/dates'
@@ -102,7 +103,8 @@ export const CategoryRow = memo(function CategoryRow({
   // boundary it rides onto the card as debt rather than being written off.
   // Red funded entirely that way is a fact, not a task — so it reads calmly.
   const creditOverspent = Number(balance?.credit_overspent ?? 0)
-  const overspentOnCardOnly = available < 0 && creditOverspent >= -available
+  const availableClass = availableTone({ available, credit_overspent: creditOverspent })
+  const overspentOnCardOnly = availableClass === 'negative-on-card'
 
   const handleStartEdit = useCallback(() => {
     committedRef.current = false
@@ -220,14 +222,6 @@ export const CategoryRow = memo(function CategoryRow({
     if (!anySelected) toggleCategorySelection(category.id)
   }, handleRowClick)
 
-  const availableClass = overspentOnCardOnly
-    ? 'negative-on-card'
-    : available < 0
-      ? 'negative'
-      : available > 0
-        ? 'positive'
-        : 'zero'
-
   const isTargetExpired = !!(target?.target_date && String(target.target_date) < today())
 
   // The verdict is the server's — the same function Fill Underfunded asks.
@@ -285,7 +279,7 @@ export const CategoryRow = memo(function CategoryRow({
         />
       )}
       <div
-        className={`category-row budget-grid drag-handle-host ${isSelected ? 'category-row--selected' : ''} ${anySelected ? 'category-row--any-selected' : ''} ${available < 0 && !overspentOnCardOnly ? 'category-row--overspent' : ''} ${targetProgress !== null && budgetRowMode === 'expanded' ? 'category-row--has-pill' : ''} ${budgetRowMode === 'dense' ? 'category-row--dense' : ''} ${budgetRowMode === 'compact' ? 'category-row--compact' : ''} ${reorder?.dragIndex === index ? 'drag-handle-host--dragging' : ''} ${reorder && reorder.overIndex === index && reorder.dragIndex !== index ? 'drag-handle-host--drag-over' : ''}`}
+        className={`category-row budget-grid drag-handle-host ${isSelected ? 'category-row--selected' : ''} ${anySelected ? 'category-row--any-selected' : ''} ${availableClass === 'negative' ? 'category-row--overspent' : ''} ${targetProgress !== null && budgetRowMode === 'expanded' ? 'category-row--has-pill' : ''} ${budgetRowMode === 'dense' ? 'category-row--dense' : ''} ${budgetRowMode === 'compact' ? 'category-row--compact' : ''} ${reorder?.dragIndex === index ? 'drag-handle-host--dragging' : ''} ${reorder && reorder.overIndex === index && reorder.dragIndex !== index ? 'drag-handle-host--drag-over' : ''}`}
         role="row"
         {...(isMobile ? longPress : { onClick: handleRowClick })}
         style={{ cursor: 'default' }}
