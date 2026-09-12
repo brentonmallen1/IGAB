@@ -22,7 +22,8 @@ import { MetricRow } from '../MetricRow'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ReportRangeSelect } from './rangeSelect'
-import { pct, RATE_SERIES, savingsRateTooltipWith } from './savingsRateView'
+import { SavingsRateDialog } from '../SavingsRateDialog'
+import { pct, RATE_SERIES, ratePercent, savingsRateTooltipWith } from './savingsRateView'
 import { useReportMonths } from '../../../stores/reportStore'
 
 interface Props {
@@ -36,6 +37,7 @@ export function SavingsRateReport({ budgetId }: Props) {
   const savingsRateTooltip = savingsRateTooltipWith(formatMoney)
   const months = useReportMonths()
   const [withDebt, setWithDebt] = useState(true)
+  const [contributorsOpen, setContributorsOpen] = useState(false)
   const { data, isLoading, isError, error, refetch } = useSavingsRateReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
 
@@ -53,7 +55,7 @@ export function SavingsRateReport({ budgetId }: Props) {
     Spent: Number(m.spending),
     // null leaves a gap in the line rather than dropping it to zero, which
     // would read as "saved nothing" in a month with no income at all.
-    [RATE_SERIES]: m[rateKey] === null ? null : m[rateKey] * 100,
+    [RATE_SERIES]: m[rateKey] === null ? null : ratePercent(m[rateKey]),
   }))
 
   const hasAnything = rows.some(
@@ -79,6 +81,10 @@ export function SavingsRateReport({ budgetId }: Props) {
           <p>
             A month with no income shows a gap rather than 0%: having no income recorded isn’t the
             same as saving none of it.
+          </p>
+          <p>
+            Open the rate to see where the savings went, what paid down debt and where the income
+            came from.
           </p>
           <ReportScopeNote scope="on-budget" />
         </ReportInfoButton>
@@ -117,7 +123,11 @@ export function SavingsRateReport({ budgetId }: Props) {
           <MetricRow>
             <MetricCard
               label={withDebt ? 'Savings Rate (with debt)' : 'Savings Rate'}
-              value={pct(withDebt ? summary.savings_rate_with_debt : summary.savings_rate)}
+              value={pct(summary[rateKey])}
+              details={{
+                label: `Savings rate ${pct(summary[rateKey])}. Show what contributed`,
+                onOpen: () => setContributorsOpen(true),
+              }}
             />
             <MetricCard label="Income" value={formatMoney(Number(summary.income))} />
             <MetricCard label="Saved" value={formatMoney(Number(summary.savings))} />
@@ -126,6 +136,18 @@ export function SavingsRateReport({ budgetId }: Props) {
               value={formatMoney(Number(summary.debt_principal))}
             />
           </MetricRow>
+        )}
+        {data && contributorsOpen && (
+          // The window the summary covers, as served — so the dialog's totals
+          // are this card's, not a range rebuilt from `months`.
+          <SavingsRateDialog
+            budgetId={budgetId}
+            startDate={data.start_date}
+            endDate={data.end_date}
+            rate={data.summary[rateKey]}
+            withDebt={withDebt}
+            onClose={() => setContributorsOpen(false)}
+          />
         )}
 
         {!hasAnything ? (

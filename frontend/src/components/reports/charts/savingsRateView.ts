@@ -4,10 +4,23 @@
 /** The rate line's series name, used as both the dataKey and the tooltip key. */
 export const RATE_SERIES = 'Savings Rate'
 
-/** A savings rate — a fraction, 0.185 — as "18.5%"; "—" for a month with no
- * income, which has no rate. The metric card and the tooltip both read it. */
+/** A served rate — a fraction, 0.185 — as a percentage number, 18.5. The
+ * chart's 0–100 axis and the Overview's export both read it. */
+export function ratePercent(v: number): number {
+  return v * 100
+}
+
+/** A savings rate — a fraction, 0.185 — as "18.5%"; "—" for a window with no
+ * income, which has no rate.
+ *
+ * Every savings-rate card reads this: the tab's summary, the Overview's card
+ * and the dialog either one opens. The Overview used to clamp a negative rate
+ * to 0% with its own formatter while the tab printed it, so a month that drew
+ * more out of savings than it put in read 0.0% on one card and −3.0% on the
+ * other — and a dialog listing a negative "Saved" beside 0% would contradict
+ * itself. A negative rate is a fact: money came back out of savings. */
 export function pct(v: number | null): string {
-  return v === null ? '—' : `${(v * 100).toFixed(1)}%`
+  return v === null ? '—' : `${ratePercent(v).toFixed(1)}%`
 }
 
 /** The chart's one tooltip: the rate line is a percentage, the three bars

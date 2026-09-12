@@ -450,6 +450,136 @@ describe('OverviewReport metric cards', () => {
   })
 })
 
+/** What /reports/savings-contributors serves, merged into each card's own
+ *  payload below: every hook in this suite returns one shared state, so the
+ *  dialog a card opens reads the same object the card did. The dialog's own
+ *  rows and states are SavingsRateDialog.test.tsx. */
+const CONTRIBUTORS = {
+  income: 4000,
+  savings: 1000,
+  debt_principal: 500,
+  savings_contributors: [
+    {
+      kind: 'account',
+      id: 'a1',
+      name: 'Cascade Point HYSA',
+      reason: 'transfer_to_tracked_asset',
+      reason_label: 'transfer to a tracked account',
+      total: 1000,
+      count: 1,
+    },
+  ],
+  debt_contributors: [],
+  income_sources: [{ payee_id: 'p1', payee_name: 'Northwind Payserv', total: 4000, count: 1 }],
+}
+
+describe('the savings-rate cards open what contributed', () => {
+  beforeEach(async () => {
+    // A dialog opened in more than one test leaves a deferred history.back().
+    await new Promise((r) => setTimeout(r, 0))
+    await new Promise((r) => setTimeout(r, 0))
+    window.history.replaceState(null, '')
+  })
+
+  const dashboard = {
+    net_worth: 0,
+    net_worth_prev: 0,
+    burn_rate_30: 0,
+    burn_rate_90: 0,
+    essentials_monthly: null,
+    essentials_tagged: false,
+    savings_rate: 0.25,
+    days_until_zero: null,
+    income_this_month: 4000,
+    expenses_this_month: 2500,
+    expenses_prev_month: 0,
+    debt_payments_this_month: 500,
+    outflows_this_month: 3000,
+    top_categories: [],
+  }
+
+  it('the Overview card asks for the range the Overview shows', () => {
+    useReportStore.getState().setFilters({ startDate: '2026-03-01', endDate: '2026-03-31' })
+    setQuery({ data: { ...dashboard, ...CONTRIBUTORS } })
+    renderReport(<OverviewReport budgetId="b1" />)
+
+    // Lazy: nothing is fetched until the card is opened.
+    expect(hookCalls.get('useSavingsContributors')).toBeUndefined()
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Savings rate 25.0%. Show what contributed' })
+    )
+
+    const dialog = screen.getByRole('dialog', { name: 'Savings rate' })
+    expect(hookCalls.get('useSavingsContributors')?.at(-1)).toEqual([
+      'b1',
+      '2026-03-01',
+      '2026-03-31',
+    ])
+    expect(within(dialog).getByText('25.0%')).toBeInTheDocument()
+    expect(within(dialog).getByText('Saved ÷ Income')).toBeInTheDocument()
+    expect(dialog).toHaveTextContent('Cascade Point HYSA')
+    useReportStore.getState().resetFilters()
+  })
+
+  const tab = {
+    months: [],
+    start_date: '2026-01-01',
+    end_date: '2026-03-15',
+    summary: {
+      income: 4000,
+      spending: 2500,
+      savings: 1000,
+      debt_principal: 500,
+      savings_rate: 0.25,
+      savings_rate_with_debt: 0.375,
+    },
+  }
+
+  it('the tab card asks for the window its summary covers, as served', () => {
+    setQuery({ data: { ...tab, ...CONTRIBUTORS } })
+    renderReport(<SavingsRateReport budgetId="b1" />)
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Savings rate 37.5%. Show what contributed' })
+    )
+
+    const dialog = screen.getByRole('dialog', { name: 'Savings rate (with debt)' })
+    expect(hookCalls.get('useSavingsContributors')?.at(-1)).toEqual([
+      'b1',
+      '2026-01-01',
+      '2026-03-15',
+    ])
+    expect(within(dialog).getByText('37.5%')).toBeInTheDocument()
+    expect(within(dialog).getByText('(Saved + Debt principal) ÷ Income')).toBeInTheDocument()
+  })
+
+  it('the tab card without debt opens the plain rate', () => {
+    setQuery({ data: { ...tab, ...CONTRIBUTORS } })
+    renderReport(<SavingsRateReport budgetId="b1" />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Include debt payments' }))
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Savings rate 25.0%. Show what contributed' })
+    )
+
+    const dialog = screen.getByRole('dialog', { name: 'Savings rate' })
+    expect(within(dialog).getByText('Saved ÷ Income')).toBeInTheDocument()
+    expect(dialog).toHaveTextContent('Not part of this rate.')
+  })
+
+  it('both cards print a negative rate the same way', () => {
+    // The Overview clamped to 0.0% with its own formatter; the tab printed it.
+    setQuery({ data: { ...dashboard, savings_rate: -0.03 } })
+    const { unmount } = renderReport(<OverviewReport budgetId="b1" />)
+    expect(card('Savings Rate').value).toBe('-3.0%')
+    unmount()
+
+    setQuery({ data: { ...tab, summary: { ...tab.summary, savings_rate_with_debt: -0.03 } } })
+    renderReport(<SavingsRateReport budgetId="b1" />)
+    expect(card('Savings Rate (with debt)').value).toBe('-3.0%')
+  })
+})
+
 describe('SavingsReport before an import', () => {
   // An imported budget whose history could not be walked back from YNAB's
   // figure before August: those months are null — a gap, not an empty

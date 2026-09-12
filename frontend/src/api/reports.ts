@@ -306,6 +306,10 @@ export interface SavingsRateMonth {
 
 export interface SavingsRateReport {
   months: SavingsRateMonth[]
+  /** The dates `summary` covers — the first month's start through today.
+   *  The savings-rate dialog asks for the contributors of exactly this. */
+  start_date: string
+  end_date: string
   summary: {
     income: number
     spending: number
@@ -323,6 +327,55 @@ export function useSavingsRateReport(budgetId: string | null, months = 12) {
       const { data } = await apiClient.get<SavingsRateReport>(`/${budgetId}/reports/savings-rate`, {
         params: params({ months }),
       })
+      return data
+    },
+    enabled: !!budgetId,
+    staleTime: STALE,
+  })
+}
+
+/** One place money counted toward savings (or debt principal) went, named by
+ *  destination — `report_basics.savings_contributors` says how. `total` is
+ *  negative for money drawn back into the budget. */
+export interface SavingsContributor {
+  kind: 'account' | 'category'
+  id: string
+  name: string
+  /** The ActivityReason value that decided these rows. */
+  reason: string
+  /** Served copy for that reason — never spell it here. */
+  reason_label: string
+  total: number
+  count: number
+}
+
+export interface SavingsContributors {
+  start_date: string
+  end_date: string
+  income: number
+  savings: number
+  debt_principal: number
+  /** Each list sums to its total exactly, and is ordered by magnitude. */
+  savings_contributors: SavingsContributor[]
+  debt_contributors: SavingsContributor[]
+  income_sources: { payee_id: string | null; payee_name: string; total: number; count: number }[]
+}
+
+/** What a savings rate over a window was made of. Fetched only while the
+ *  dialog that shows it is open — the dialog mounts this hook, the cards do
+ *  not. */
+export function useSavingsContributors(
+  budgetId: string | null,
+  startDate: string,
+  endDate: string
+) {
+  return useQuery({
+    queryKey: [ROOT.reports, 'savings-contributors', budgetId, startDate, endDate],
+    queryFn: async () => {
+      const { data } = await apiClient.get<SavingsContributors>(
+        `/${budgetId}/reports/savings-contributors`,
+        { params: params({ start_date: startDate, end_date: endDate }) }
+      )
       return data
     },
     enabled: !!budgetId,
