@@ -11,7 +11,7 @@ budget page's number, handed in from `BudgetService.get_category_balance`.
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Literal
 from uuid import UUID
@@ -23,6 +23,10 @@ ZERO = Decimal("0")
 ONE = Decimal("1")
 
 DEFAULT_COOLING_DAYS = 30
+#: The longest cooling-off a wish may be given, in days — at creation, on an
+#: edit, or as the default for new wishes. Served, so the form's validation
+#: never spells its own 365.
+MAX_COOLING_DAYS = 365
 DEFAULT_REVIEW_DAYS = 90
 #: "Added a while ago and still wanted" — the line the feature exists for.
 STILL_WANTED_MONTHS = 3
@@ -92,8 +96,27 @@ def effective_category(wish: WishInput, projects: Mapping[UUID, ProjectInput]) -
     return None
 
 
-def cooling_until_for(created: date, days: int) -> date:
-    return created + timedelta(days=max(0, days))
+def added_on(recorded: date | None, created_at: datetime) -> date:
+    """The day a wish was added — what "14 days" of cooling-off counts from,
+    and what review and still-wanted measure age by.
+
+    `recorded` is the person's own date, stamped at creation from the
+    browser's `client_today` (see `utils/clock.recorded_on`). The instant
+    `created_at` cannot answer it: every evening west of UTC its date is
+    already tomorrow, so "14 days after added" would have landed a day late.
+    A row with no recorded date — added before the column existed, or
+    restored from a snapshot that predates it — falls back to the instant's
+    own date, which is what every reader used until then.
+    """
+    return recorded if recorded is not None else created_at.date()
+
+
+def cooling_until_for(added: date, days: int) -> date:
+    """The end of a cooling-off `days` long, counted from the day the wish was
+    added. One rule for both ways of setting it: at creation, where added is
+    today, and on an edit, where it may be long past — which can put the end
+    in the past too, and that is simply a wish no longer cooling off."""
+    return added + timedelta(days=max(0, days))
 
 
 def trailing_average(

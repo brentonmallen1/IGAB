@@ -29,12 +29,14 @@ from igab.guide.service import DEFAULT_PREFS, PREFS_KEY
 from igab.guide.wishlist import (
     DEFAULT_COOLING_DAYS,
     DEFAULT_REVIEW_DAYS,
+    MAX_COOLING_DAYS,
     PRIORITY_LIMIT,
     STILL_WANTED_MONTHS,
     Funding,
     ProjectInput,
     Reach,
     WishInput,
+    added_on,
     cooling_until_for,
     drain_impact,
     effective_category,
@@ -55,6 +57,7 @@ from igab.repositories.target_repo import TargetRepository
 from igab.services.budget_service import BudgetService
 from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match
 from igab.services.target_service import TargetService
+from igab.utils.clock import recorded_on
 
 SETTINGS_KEY = "wishlist"
 DEFAULT_SETTINGS: dict[str, int] = {
@@ -125,6 +128,7 @@ class WishlistService:
                 "review_due_count": 0,
                 "settings": await self.settings(budget_id),
                 "priority_limit": PRIORITY_LIMIT,
+                "max_cooling_days": MAX_COOLING_DAYS,
                 "drains": None,
             }
         await self.ensure_group(budget_id)
@@ -185,6 +189,7 @@ class WishlistService:
             "review_due_count": sum(1 for o in open_items if o["review_due"]),
             "settings": settings,
             "priority_limit": PRIORITY_LIMIT,
+            "max_cooling_days": MAX_COOLING_DAYS,
             "drains": drains,
         }
 
@@ -237,7 +242,7 @@ class WishlistService:
             category_id=item.category_id,
             cost=item.cost,
             priority=item.priority,
-            created_at=item.created_at.date(),
+            created_at=added_on(item.added_on, item.created_at),
             status=item.status,
         )
 
@@ -278,6 +283,7 @@ class WishlistService:
             },
             "cooling_until": item.cooling_until,
             "cooling": item.cooling_until is not None and item.cooling_until > today,
+            "added_on": wish.created_at,
             "last_affirmed_at": item.last_affirmed_at,
             "review_due": item.status == "open"
             and review_due(
@@ -408,7 +414,9 @@ class WishlistService:
 
     async def create(self, budget_id: uuid.UUID, data: dict[str, Any]) -> dict[str, Any]:
         await self._require_enabled(budget_id)
-        today = date.today()
+        # The person's today, not the server's: it is the day the wish was
+        # added, and every later "N days after added" edit counts from it.
+        added = recorded_on(None, data.get("client_today"))
         settings = await self.settings(budget_id)
         funding = data.get("funding") or {}
         mode = funding.get("mode", "none")
@@ -458,7 +466,8 @@ class WishlistService:
                 owns_envelope=owns,
                 priority=priority,
                 status="open",
-                cooling_until=cooling_until_for(today, cooling_days),
+                added_on=added,
+                cooling_until=cooling_until_for(added, cooling_days),
             )
             self.session.add(item)
             await self.session.flush()
@@ -488,6 +497,12 @@ class WishlistService:
             for key in ("url", "notes", "cooling_until"):
                 if key in data:
                     setattr(item, key, data[key])
+            if "cooling_days" in data and data["cooling_days"] is not None:
+                # The schema refuses it beside `cooling_until`, so this never
+                # overwrites a date sent in the same request.
+                item.cooling_until = cooling_until_for(
+                    added_on(item.added_on, item.created_at), int(data["cooling_days"])
+                )
             if "priority" in data and data["priority"] is not None:
                 item.priority = int(data["priority"])
             if "cost" in data and data["cost"] is not None:

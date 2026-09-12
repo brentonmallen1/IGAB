@@ -690,7 +690,7 @@ async def wishlist_discipline(session: AsyncSession, budget_id: uuid.UUID) -> di
     a case at a time.
     """
     from igab.db.models import WishlistItem
-    from igab.guide.wishlist import DisciplineInput, discipline
+    from igab.guide.wishlist import DisciplineInput, added_on, discipline
 
     rows = (
         (
@@ -708,7 +708,7 @@ async def wishlist_discipline(session: AsyncSession, budget_id: uuid.UUID) -> di
         DisciplineInput(
             status=w.status,
             cost=Decimal(w.cost or 0),
-            created_at=w.created_at.date(),
+            created_at=added_on(w.added_on, w.created_at),
             cooling_until=w.cooling_until,
             done_at=w.done_at,
             dropped_at=w.dropped_at,

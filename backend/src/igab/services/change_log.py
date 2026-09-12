@@ -182,6 +182,7 @@ SNAPSHOT_FIELDS: dict[str, tuple[str, ...]] = {
         "is_priority",
         "status",
         "cooling_until",
+        "added_on",
         "last_affirmed_at",
         "done_at",
         "dropped_at",
