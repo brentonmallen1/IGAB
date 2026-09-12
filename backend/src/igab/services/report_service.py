@@ -407,31 +407,26 @@ class ReportService:
         ninety_ago = trailing_start(today, 90)
         cdf = await self._class_frame(budget_id, min(prev_start, ninety_ago), today)
 
-        def _cls_total(start: date, end: date, cls: ActivityClass) -> Decimal:
-            window = cdf.filter(
-                (pl.col("date") >= start) & (pl.col("date") <= end) & (pl.col("cls") == cls.value)
-            )
-            return Decimal(str(window.select(pl.col("amount").sum()).item() or 0))
+        def _buckets(start: date, end: date) -> dict[str, Decimal]:
+            """class -> signed total over a window: the shape the month-bucketed
+            tabs hand `_magnitude`, so the cards flip signs by the same rule
+            rather than a window-sized copy of it."""
+            window = cdf.filter((pl.col("date") >= start) & (pl.col("date") <= end))
+            totals = window.group_by("cls").agg(pl.col("amount").sum())
+            return {cls: Decimal(str(amount)) for cls, amount in totals.iter_rows()}
 
-        def _cls_magnitude(start: date, end: date, cls: ActivityClass) -> Decimal:
-            """Outflow classes are stored negative; these cards report
-            magnitudes. Same convention as `_magnitude`, over a window rather
-            than a month bucket."""
-            return -_cls_total(start, end, cls)
-
-        income_this = _cls_total(start_date, end_date, ActivityClass.INCOME)
-        expenses_this = _cls_magnitude(start_date, end_date, ActivityClass.SPENDING)
-        savings_this = _cls_magnitude(start_date, end_date, ActivityClass.SAVINGS)
-        expenses_prev = _cls_magnitude(prev_start, prev_end, ActivityClass.SPENDING)
+        this, prev = _buckets(start_date, end_date), _buckets(prev_start, prev_end)
+        income_this = this.get(ActivityClass.INCOME.value, Decimal("0"))
+        expenses_this = _magnitude(this, ActivityClass.SPENDING)
+        savings_this = _magnitude(this, ActivityClass.SAVINGS)
+        expenses_prev = _magnitude(prev, ActivityClass.SPENDING)
         # What living cost over the window — spending plus debt payments — from
         # the one tuple Cost of Living and the Essentials figures read, so the
         # Overview's means verdict cannot count a class those reports do not.
         # Debt payments are served beside it because the verdict's dialog names
         # them; savings are neither: they are what was left over.
-        debt_payments_this = _cls_magnitude(start_date, end_date, ActivityClass.DEBT_PRINCIPAL)
-        outflows_this = sum(
-            (_cls_magnitude(start_date, end_date, c) for c in COST_OF_LIVING_CLASSES), Decimal(0)
-        )
+        debt_payments_this = _magnitude(this, ActivityClass.DEBT_PRINCIPAL)
+        outflows_this = sum((_magnitude(this, c) for c in COST_OF_LIVING_CLASSES), Decimal(0))
 
         # Burn rate is how fast money is consumed, so savings and debt principal
         # are out. This claimed to match the Burn Rate chart "exactly" and did
@@ -492,12 +487,7 @@ class ReportService:
         # on-budget side and passes `ON_BUDGET_ACCOUNT` (see its comment).
         breakdown, _spent = await self.spending_by_category(budget_id, start_date, end_date)
         top_cats = [
-            {
-                "id": c["id"],
-                "name": c["name"],
-                "group_name": c["group_name"],
-                "total": quantize_cents(c["total"]),
-            }
+            {**{k: c[k] for k in ("id", "name", "group_name")}, "total": quantize_cents(c["total"])}
             for c in breakdown[:3]
         ]
 
