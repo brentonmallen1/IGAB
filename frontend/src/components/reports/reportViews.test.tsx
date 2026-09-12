@@ -411,10 +411,17 @@ describe('OverviewReport metric cards', () => {
         income_this_month: '4000',
         expenses_this_month: '3000',
         expenses_prev_month: '2500',
+        debt_payments_this_month: '500',
+        outflows_this_month: '3500',
         top_categories: [{ id: 'c1', name: 'Groceries', group_name: 'Everyday', total: 300 }],
       },
     })
     renderReport(<OverviewReport budgetId="b1" />)
+
+    // 3,500 of outflows on 4,000 of income: the means card leads the row.
+    // Its states and dialog are LivingMeansCard.test.tsx.
+    expect(card('Your Means')).toEqual({ value: 'Below', sub: '$500.00 left over' })
+    expect(screen.getByRole('button', { name: /^Living below your means/ })).toBeInTheDocument()
 
     expect(screen.getByText('$1,100.00')).toBeInTheDocument()
     expect(screen.getByText(/\+10\.0%/)).toBeInTheDocument() // net worth delta
@@ -427,9 +434,19 @@ describe('OverviewReport metric cards', () => {
   it('asks for categories tagged Essential, not payees, before there is a figure', () => {
     // Essential is a category tag only; a payee tag counts for nothing. The
     // first-run prompt still said "Tag categories or payees Essential".
-    setQuery({ data: { net_worth: '0', burn_rate_30: '0', burn_rate_90: '0', top_categories: [] } })
+    setQuery({
+      data: {
+        net_worth: '0',
+        burn_rate_30: '0',
+        burn_rate_90: '0',
+        income_this_month: '0',
+        outflows_this_month: '0',
+        top_categories: [],
+      },
+    })
     renderReport(<OverviewReport budgetId="b1" />)
     expect(card('Essentials / month')).toEqual({ value: '—', sub: 'Tag categories Essential' })
+    expect(card('Your Means')).toEqual({ value: '—', sub: 'No income recorded' })
   })
 })
 
