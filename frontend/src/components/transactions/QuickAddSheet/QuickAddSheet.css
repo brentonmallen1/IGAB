@@ -43,7 +43,9 @@
   outline: none;
   background: transparent;
   color: var(--text-primary);
-  font-size: 34px;
+  /* Larger than the text around it, so not font-size: base.css's touch floor
+     overrides that with max(16px, the surrounding size) and reads this. */
+  --control-font-size: 34px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   caret-color: var(--color-accent);

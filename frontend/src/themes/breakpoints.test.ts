@@ -55,9 +55,8 @@ function widthQueries(): Array<{ file: string; query: string }> {
 describe('the phone breakpoint is 768px everywhere', () => {
   const queries = widthQueries()
 
-  // The width a query names, whatever else it combines with — the 16px input
-  // floor is `(hover: none) and (max-width: 768px)` and is still the one
-  // breakpoint.
+  // The width a query names, whatever else it combines with, e.g.
+  // `(hover: none) and (max-width: 768px)` is still the one breakpoint.
   const width = (q: string) => Number(q.match(/(?:min|max)-width:\s*(\d+)px/)?.[1])
   const isPhone = (q: string) => /max-width/.test(q) && width(q) === 768
 

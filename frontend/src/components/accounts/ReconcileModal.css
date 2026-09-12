@@ -74,7 +74,9 @@
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius-md);
   color: var(--text-primary);
-  font-size: var(--font-size-lg);
+  /* Larger than the text around it, so not font-size: base.css's touch floor
+     overrides that with max(16px, the surrounding size) and reads this. */
+  --control-font-size: var(--font-size-lg);
   font-variant-numeric: tabular-nums;
   text-align: center;
 }
