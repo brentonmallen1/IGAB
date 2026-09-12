@@ -1,0 +1,45 @@
+.available-change-toast {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.available-change-toast__line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-xs);
+  min-width: 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.available-change-toast__category {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.available-change-toast__figures {
+  /* Holds the screen-reader "to" in place (see CountUpMoney.css). */
+  position: relative;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.available-change-toast__after {
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+
+/* The grid's reading of a negative Available: red is an overspend to act on,
+   red that rides on a card is a fact and stays calm (CategoryRow.css). */
+.available-change-toast__after--negative {
+  color: var(--color-negative);
+}
+
+.available-change-toast__after--negative-on-card {
+  color: var(--text-secondary);
+}

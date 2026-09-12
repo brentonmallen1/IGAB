@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 import { invalidateAfterImport } from './invalidateAfterImport'
 import { invalidateAfterMoneyMove } from './invalidateAfterMoneyMove'
@@ -89,12 +89,21 @@ export function useCardTimeline(budgetId: string | null, accountId: string | nul
   })
 }
 
+/** The one description of a budget month's cache entry: the hook below
+ *  observes it, and an imperative read (`qc.fetchQuery`) asks the same key
+ *  with the same freshness rather than spelling its own. */
+export function budgetMonthQuery(budgetId: string, month: string) {
+  return queryOptions({
+    queryKey: [ROOT.budgetMonth, budgetId, month],
+    queryFn: () => fetchBudgetMonth(budgetId, month),
+    staleTime: 10_000,
+  })
+}
+
 export function useBudgetMonth(budgetId: string | null, month: string) {
   return useQuery({
-    queryKey: [ROOT.budgetMonth, budgetId, month],
-    queryFn: () => fetchBudgetMonth(budgetId!, month),
+    ...budgetMonthQuery(budgetId ?? '', month),
     enabled: !!budgetId,
-    staleTime: 10_000,
   })
 }
 
