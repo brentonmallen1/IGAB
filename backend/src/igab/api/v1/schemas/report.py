@@ -71,9 +71,17 @@ class DashboardMetrics(ApiModel):
     #: convention, and a gap rather than a floor on the chart.
     savings_rate: float | None
     days_until_zero: float | None
+    #: The `*_this_month` figures cover the requested window, whatever its
+    #: length; `expenses_prev_month` covers the equal-length window before it.
     income_this_month: Decimal
     expenses_this_month: Decimal
     expenses_prev_month: Decimal
+    #: Principal paid into tracked debts over the window (DEBT_PRINCIPAL).
+    debt_payments_this_month: Decimal
+    #: What living cost over the window: every class in COST_OF_LIVING_CLASSES,
+    #: so spending plus debt payments. Savings are not an outflow here. The
+    #: Overview's above/at/below-your-means verdict reads it against income.
+    outflows_this_month: Decimal
     top_categories: list[TopCategory]
 
 

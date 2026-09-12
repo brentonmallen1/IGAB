@@ -28,6 +28,7 @@ from igab.db.models import (
 )
 from igab.domain.activity_class import (
     ACTIVITY_CLASS,
+    COST_OF_LIVING_CLASSES,
     INCOME_ROW,
     ActivityClass,
     apply_class_joins,
@@ -50,6 +51,7 @@ from igab.domain.dates import (
     complete_month_window,
     month_starts,
     months_spanned,
+    previous_window,
     report_months,
     trailing_start,
 )
@@ -372,11 +374,10 @@ class ReportService:
         end_date: date,
     ) -> dict:
         today = date.today()
-        # Day-clamped month shift: a naive .replace(month=month-1) explodes
-        # whenever start_date's day doesn't exist in the previous month
-        # (July 31 → "June 31").
-        prev_start = add_months(start_date, -1)
-        prev_end = start_date - timedelta(days=1)
+        # "vs prior period" is the equal-length window before this one — the
+        # month before `start`, as this was, held a twelve-day month-to-date
+        # against a whole prior month. `prev_end` is also the net-worth "before".
+        prev_start, prev_end = previous_window(start_date, end_date)
 
         # This used to pull EVERY posted row in the budget into Python to
         # answer two scalar sums and a top-three. Each figure below now asks
@@ -422,6 +423,15 @@ class ReportService:
         expenses_this = _cls_magnitude(start_date, end_date, ActivityClass.SPENDING)
         savings_this = _cls_magnitude(start_date, end_date, ActivityClass.SAVINGS)
         expenses_prev = _cls_magnitude(prev_start, prev_end, ActivityClass.SPENDING)
+        # What living cost over the window — spending plus debt payments — from
+        # the one tuple Cost of Living and the Essentials figures read, so the
+        # Overview's means verdict cannot count a class those reports do not.
+        # Debt payments are served beside it because the verdict's dialog names
+        # them; savings are neither: they are what was left over.
+        debt_payments_this = _cls_magnitude(start_date, end_date, ActivityClass.DEBT_PRINCIPAL)
+        outflows_this = sum(
+            (_cls_magnitude(start_date, end_date, c) for c in COST_OF_LIVING_CLASSES), Decimal(0)
+        )
 
         # Burn rate is how fast money is consumed, so savings and debt principal
         # are out. This claimed to match the Burn Rate chart "exactly" and did
@@ -503,6 +513,8 @@ class ReportService:
             "income_this_month": income_this,
             "expenses_this_month": expenses_this,
             "expenses_prev_month": expenses_prev,
+            "debt_payments_this_month": debt_payments_this,
+            "outflows_this_month": outflows_this,
             "top_categories": top_cats,
         }
 

@@ -1,0 +1,40 @@
+{
+  "_comment": "What 'vs prior period' means: the equal-length window immediately before [start, end], both ends inclusive. One rule, two languages: frontend/src/utils/dateWindow.test.ts holds previousWindow to these, and backend/tests/unit/test_previous_window.py holds domain.dates.previous_window to them. The Overview's server-side prior period was the month before the start whatever the range, while the Cash Flow Sankey's client-side one compared equal lengths, under the same label.",
+  "cases": [
+    {
+      "note": "82 days maps to the 82 before",
+      "start": "2026-05-01",
+      "end": "2026-07-21",
+      "prev_start": "2026-02-08",
+      "prev_end": "2026-04-30"
+    },
+    {
+      "note": "a single day maps to the day before",
+      "start": "2026-07-21",
+      "end": "2026-07-21",
+      "prev_start": "2026-07-20",
+      "prev_end": "2026-07-20"
+    },
+    {
+      "note": "crosses a year boundary",
+      "start": "2026-01-01",
+      "end": "2026-01-31",
+      "prev_start": "2025-12-01",
+      "prev_end": "2025-12-31"
+    },
+    {
+      "note": "handles leap February",
+      "start": "2024-03-01",
+      "end": "2024-03-29",
+      "prev_start": "2024-02-01",
+      "prev_end": "2024-02-29"
+    },
+    {
+      "note": "month to date is not held against the whole prior month",
+      "start": "2026-09-01",
+      "end": "2026-09-12",
+      "prev_start": "2026-08-20",
+      "prev_end": "2026-08-31"
+    }
+  ]
+}
