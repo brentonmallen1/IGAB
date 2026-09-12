@@ -8,6 +8,7 @@ import type { SnapshotInspection } from './budgetSnapshots'
 import type { YnabImportResult } from './imports'
 import { ROOT } from './queryKeys'
 import { parseLocalDate } from '../utils/dates'
+import { balancesByCategory } from '../utils/categoryBalances'
 
 export interface YnabImportBudgetResult {
   budget: Budget
@@ -190,7 +191,7 @@ export function useSetAssignment(budgetId: string) {
       await qc.cancelQueries({ queryKey: [ROOT.budgetMonth, budgetId, month] })
       const previous = qc.getQueryData<BudgetMonth>([ROOT.budgetMonth, budgetId, month])
       if (previous) {
-        const existing = previous.category_balances.find((b) => b.category_id === categoryId)
+        const existing = balancesByCategory(previous).get(categoryId)
         const delta = amount - Number(existing?.assigned ?? 0)
         const category_balances = existing
           ? previous.category_balances.map((b) =>
