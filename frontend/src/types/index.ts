@@ -678,7 +678,15 @@ export interface DashboardMetrics {
   days_until_zero: number | null
   income_this_month: number
   expenses_this_month: number
+  /** Spending over the equal-length window before this one
+   *  (`domain.dates.previous_window`). */
   expenses_prev_month: number
+  /** Principal paid into tracked debts over the window. */
+  debt_payments_this_month: number
+  /** What living cost over the window: every class in the server's
+   *  COST_OF_LIVING_CLASSES — spending plus debt payments, never savings.
+   *  Read against income by `components/reports/livingMeans.ts`. */
+  outflows_this_month: number
   top_categories: { id: string; name: string; group_name: string; total: number }[]
 }
 

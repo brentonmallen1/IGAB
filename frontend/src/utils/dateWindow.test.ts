@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { addDaysISO, daysBetween, monthWindow, previousWindow } from './dateWindow'
 import { toISODate } from './dates'
 import { pinTimeZone } from '../test-utils/timeZone'
+import previousWindowCases from '../../../shared/previous_window_cases.json'
 
 describe('addDaysISO', () => {
   it('adds within a month', () => {
@@ -30,30 +31,10 @@ describe('daysBetween', () => {
 })
 
 describe('previousWindow', () => {
-  it('returns the equal-length window immediately before', () => {
-    // May 1 – Jul 21 is 82 days inclusive → Feb 8 – Apr 30
-    expect(previousWindow('2026-05-01', '2026-07-21')).toEqual({
-      start: '2026-02-08',
-      end: '2026-04-30',
-    })
-  })
-  it('single-day window maps to the previous day', () => {
-    expect(previousWindow('2026-07-21', '2026-07-21')).toEqual({
-      start: '2026-07-20',
-      end: '2026-07-20',
-    })
-  })
-  it('crosses a year boundary', () => {
-    expect(previousWindow('2026-01-01', '2026-01-31')).toEqual({
-      start: '2025-12-01',
-      end: '2025-12-31',
-    })
-  })
-  it('handles leap February', () => {
-    expect(previousWindow('2024-03-01', '2024-03-29')).toEqual({
-      start: '2024-02-01',
-      end: '2024-02-29',
-    })
+  // The server's `domain.dates.previous_window` runs the same cases: the
+  // Overview's prior period is served, the Sankey's is computed here.
+  it.each(previousWindowCases.cases)('$note', ({ start, end, prev_start, prev_end }) => {
+    expect(previousWindow(start, end)).toEqual({ start: prev_start, end: prev_end })
   })
 })
 

@@ -6,6 +6,8 @@ import { useReportStore } from '../../stores/reportStore'
 import { exportTransactionsPath, useDashboardMetrics } from '../../api/reports'
 import { useBudgetMonth } from '../../api/budgets'
 import { MetricCard } from './MetricCard'
+import { LivingMeansCard } from './LivingMeansCard'
+import { AT_MEANS_BAND_PCT } from './livingMeans'
 import { MetricRow } from './MetricRow'
 import { ReportInfoButton, ReportScopeNote } from './ReportInfoButton'
 import { ReportExportButton } from './ReportExportButton/ReportExportButton'
@@ -67,6 +69,13 @@ export function OverviewReport({ budgetId }: Props) {
               Cards, loans and tracked investments are out: net worth is not money you can spend
               next week.
             </p>
+            <p>
+              <strong>Your Means</strong>: income against what living cost over the range — spending
+              plus debt payments. Below your means is money left over; at your means is outflows
+              within {AT_MEANS_BAND_PCT}% of income either side; above is outflows beyond that.
+              Savings transfers are not outflows. Shows “—” when no income was recorded. Open it to
+              see the figures, the biggest spending categories and the prior period.
+            </p>
             <ReportScopeNote scope="overview" />
           </ReportInfoButton>
           <div className="flex-row ms-auto">
@@ -104,6 +113,8 @@ export function OverviewReport({ budgetId }: Props) {
                   : []),
                 { metric: 'income_this_period', value: data.income_this_month },
                 { metric: 'spent_this_period', value: data.expenses_this_month },
+                { metric: 'debt_payments_this_period', value: data.debt_payments_this_month },
+                { metric: 'outflows_this_period', value: data.outflows_this_month },
               ]}
               captureRef={captureRef}
               window={{ start: filters.startDate, end: filters.endDate }}
@@ -111,6 +122,7 @@ export function OverviewReport({ budgetId }: Props) {
           </div>
         </div>
         <MetricRow ref={captureRef}>
+          <LivingMeansCard data={data} />
           {budgetMonth && (
             <MetricCard
               label="To Be Assigned"

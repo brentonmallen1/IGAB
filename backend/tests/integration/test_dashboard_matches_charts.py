@@ -22,6 +22,7 @@ from .factories import (
     create_category,
     create_category_group,
     create_transaction,
+    create_transfer,
     create_user,
 )
 
@@ -170,6 +171,39 @@ class TestSavingsRate:
 
         # Same ratio, same rows — neither invents a number the other denies.
         assert card["savings_rate"] == tab["months"][-1]["savings_rate"]
+
+
+class TestDebtPayments:
+    async def test_the_card_and_both_debt_series_count_the_same_payment(self, db_session):
+        """The means verdict's debt payments are served by the dashboard; the
+        Savings Rate tab and Income vs Expenses already draw `debt_principal`.
+        Three readers of one class over one window, so one figure."""
+        budget, checking, category = await _budget_with_checking(db_session)
+        loan = await create_account(
+            db_session, budget, "Harborstone Mortgage", account_type="mortgage", on_budget=False
+        )
+        housing = await create_category_group(db_session, budget, "Housing")
+        mortgage = await create_category(db_session, budget, housing, "Mortgage")
+        await create_transaction(db_session, budget, checking, "4000.00", TODAY, cleared="cleared")
+        await create_transaction(
+            db_session, budget, checking, "-600.00", TODAY, category=category, cleared="cleared"
+        )
+        await create_transfer(
+            db_session, budget, checking, loan, "1500.00", TODAY, category=mortgage
+        )
+        await create_transfer(db_session, budget, checking, loan, "250.00", TODAY)
+        await db_session.flush()
+
+        service = ReportService(db_session)
+        card = await service.dashboard_metrics(budget.id, MONTH_START, TODAY)
+        rate = await service.savings_rate(budget.id, months=1)
+        flows = await service.income_vs_expense(budget.id, months=1)
+
+        assert card["debt_payments_this_month"] == Decimal("1750.00")
+        assert rate["months"][-1]["debt_principal"] == card["debt_payments_this_month"]
+        assert flows[-1]["debt_principal"] == card["debt_payments_this_month"]
+        # And what living cost is the chart's spending plus its debt principal.
+        assert card["outflows_this_month"] == flows[-1]["expenses"] + flows[-1]["debt_principal"]
 
 
 class TestTheBurnWindowsAreTheSameWindow:

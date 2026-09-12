@@ -156,6 +156,21 @@ def trailing_start(today: date, days: int) -> date:
     return today - timedelta(days=days - 1)
 
 
+def previous_window(start: date, end: date) -> tuple[date, date]:
+    """The equal-length window immediately before [start, end], both inclusive.
+
+    What "vs prior period" means on a report. The Overview used to take the
+    month before `start` whatever the range was, so a twelve-day "this month"
+    was held against a whole thirty-one-day August and read as spending down by
+    half, while the Cash Flow Sankey's "vs prior period" beside it compared
+    equal lengths. The client's `previousWindow` (utils/dateWindow.ts) is the
+    other side of this rule; `shared/previous_window_cases.json` holds both.
+    """
+    length = end - start
+    prev_end = start - timedelta(days=1)
+    return prev_end - length, prev_end
+
+
 def weekday_occurrences(month: date, weekday: int) -> int:
     """How many times `weekday` (0=Monday … 6=Sunday) falls in `month`'s
     month: 4 or 5, and only ever 4 in a 28-day February.
