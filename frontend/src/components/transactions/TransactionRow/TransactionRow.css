@@ -459,6 +459,18 @@
   .transaction-row:not(.reconciled):active {
     background-color: var(--row-hover-bg);
   }
+
+  /* A tablet edits cells inline (that is gated on width, not touch), and
+     base.css lifts every control to 16px on touch so iOS does not zoom. With
+     their desktop padding the 16px editors stood 27–29px tall and the row
+     grew 6px the moment a cell opened, shoving every row below it. Without
+     the vertical padding they stand as tall as the desktop editors do. */
+  .transaction-row .inline-input,
+  .transaction-row .date-picker,
+  .transaction-row .combobox__input {
+    padding-top: 0;
+    padding-bottom: 0;
+  }
 }
 
 /* Three-line card: payee + amount / category / date · memo · status.

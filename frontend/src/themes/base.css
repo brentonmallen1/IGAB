@@ -357,11 +357,22 @@ a:focus-visible,
   box-shadow: var(--focus-ring);
 }
 
+/* A control's text size. A control drawn larger than the text around it says
+   so with --control-font-size rather than font-size, because the touch floor
+   below overrides font-size outright and can only read the size back from
+   this property. Anything else may keep writing font-size; on touch the floor
+   lifts it to at least 16px. Not inherited, so a size set on one control
+   never reaches another nested under the same element. */
+@property --control-font-size {
+  syntax: "*";
+  inherits: false;
+}
+
 input,
 select,
 textarea {
   font-family: inherit;
-  font-size: inherit;
+  font-size: var(--control-font-size, 1em);
 }
 
 input:focus-visible,
@@ -796,14 +807,29 @@ a {
 
 /* iOS zooms the viewport to any focused control under 16px — and the app's
    viewport tokens deliberately freeze while zoomed, so one undersized input
-   (the NL entry was one) made the whole layout look broken. Floor every
-   focusable text control on touch phones instead of patching per component.
-   max() keeps deliberately larger inputs (the 34px quick-add amount) alone. */
-@media (hover: none) and (max-width: 768px) {
-  input,
+   (the NL entry was one) made the whole layout look broken. Floor every text
+   control on a touch device here instead of patching per component.
+
+   !important, because a floor that can lose is not a floor: written as bare
+   tag selectors it lost to every `.component__input { font-size }` rule —
+   about ninety of them — and zoomed anyway. No other stylesheet declares
+   font-size !important (themes/inputZoom.test.ts), so this one always wins.
+
+   Every touch device, not only phone widths: a phone held sideways and an
+   iPad are both wider than 768px and zoom exactly the same way.
+
+   max() cannot see a font-size this rule has overridden, so a control meant
+   to be larger (the 34px quick-add amount) states its size in
+   --control-font-size, which it reads. The fallback, 1em, is the inherited
+   size: what a control with no size of its own was already drawn at.
+
+   Non-text inputs are left out — iOS never zooms to them, and a checkbox
+   sized in em would otherwise grow. */
+@media (hover: none) {
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"]),
   select,
   textarea {
-    font-size: max(16px, 1em);
+    font-size: max(16px, var(--control-font-size, 1em)) !important;
   }
 }
 

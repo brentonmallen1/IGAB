@@ -5,6 +5,14 @@ interface SheetHistoryState {
 }
 
 /**
+ * The one history.back() a UI close has scheduled and not yet run, shared by
+ * every overlay rather than held per instance. Deferred so whatever opens next
+ * in the same act can cancel it and inherit the entry — the same instance on a
+ * StrictMode re-run, or a different overlay in a sheet-to-sheet handoff.
+ */
+let pendingBack: { timer: number; key: string } | null = null
+
+/**
  * Makes an overlay (bottom sheet, full-screen editor) dismissable with the
  * Android back button / browser back gesture without leaving the page.
  *
@@ -35,21 +43,28 @@ export function useHistoryDismissable(
     onCloseRef.current = onClose
     canCloseRef.current = canClose
   })
-  // history.back() scheduled by a cleanup, cancellable if the effect re-runs
-  // immediately (StrictMode dev remount). Without this, the fake cleanup's
-  // async back() lands after the re-run's pushState and instantly dismisses
-  // any overlay that mounts with open=true (e.g. the transaction editor).
-  const pendingBackRef = useRef<number | null>(null)
-
   useEffect(() => {
     if (!open) return
     closedByPopRef.current = false
-    if (pendingBackRef.current !== null) {
-      window.clearTimeout(pendingBackRef.current)
-      pendingBackRef.current = null
+    const top = (window.history.state as SheetHistoryState | null)?.igabSheet
+    // The entry on top is one a UI close is about to consume. Cancel that
+    // back() and inherit the entry; any other pending back() is left alone.
+    const pending = pendingBack
+    const inherit = pending !== null && pending.key === top
+    if (inherit) {
+      window.clearTimeout(pending.timer)
+      pendingBack = null
     }
-    // Re-runs (StrictMode) find our entry already on top — don't double-push
-    if ((window.history.state as SheetHistoryState | null)?.igabSheet !== key) {
+    if (top === key) {
+      // Our entry is already on top — a StrictMode re-run, or a close and
+      // reopen of the same overlay before its back() landed. Keep it.
+    } else if (inherit) {
+      // Another overlay closed in this same act and was about to consume its
+      // entry. Take the entry over instead of pushing above it: the deferred
+      // back() would otherwise pop OUR entry and close us the moment we opened
+      // (More -> "Ask about your budget" flashed the assistant and dropped it).
+      window.history.replaceState({ igabSheet: key } satisfies SheetHistoryState, '')
+    } else {
       window.history.pushState({ igabSheet: key } satisfies SheetHistoryState, '')
     }
 
@@ -72,15 +87,19 @@ export function useHistoryDismissable(
     return () => {
       window.removeEventListener('popstate', handlePop)
       // Closed via UI (backdrop, Escape, button): consume our history entry.
-      // Deferred so an immediate effect re-run can cancel it.
+      // Deferred so whatever opens in the same act can inherit the entry.
       if (
         !closedByPopRef.current &&
         (window.history.state as SheetHistoryState | null)?.igabSheet === key
       ) {
-        pendingBackRef.current = window.setTimeout(() => {
-          pendingBackRef.current = null
-          window.history.back()
-        }, 0)
+        const scheduled = {
+          key,
+          timer: window.setTimeout(() => {
+            if (pendingBack === scheduled) pendingBack = null
+            window.history.back()
+          }, 0),
+        }
+        pendingBack = scheduled
       }
     }
   }, [open, key])

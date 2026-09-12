@@ -49,11 +49,30 @@ export function Header() {
   const themeRef = useRef<HTMLDivElement>(null)
   // selectedMonth only drives the budget view; elsewhere the nav is dead weight.
   const onBudgetPage = useLocation().pathname === '/budget'
-  // On a phone the header keeps the month nav and search, nothing else. Nine
-  // 44px controls in 342px shrank every one of them, hid the search button
-  // outright and clipped the theme picker at the edge; privacy, light/dark and
-  // the palette already live in the More sheet, and undo/redo join it there.
+  // On a phone the header keeps the month nav, search and the assistant,
+  // nothing else. Nine 44px controls in 342px shrank every one of them, hid the
+  // search button outright and clipped the theme picker at the edge; privacy,
+  // light/dark and the palette already live in the More sheet, and undo/redo
+  // join it there.
   const isMobile = useIsMobile()
+
+  // One element, placed by layout: beside search on a phone, among the desktop
+  // controls otherwise. The assistant is something you reach for while looking
+  // at a figure, so on a phone it earns a header slot rather than a trip
+  // through More.
+  const chatLabel = chatPanelOpen ? 'Close the assistant' : 'Ask about your budget'
+  const chatButton =
+    aiStatus?.enabled === true ? (
+      <button
+        className={`header__icon-btn ${chatPanelOpen ? 'header__icon-btn--active' : ''}`}
+        onClick={toggleChatPanel}
+        aria-pressed={chatPanelOpen}
+        aria-label={chatLabel}
+        title={chatLabel}
+      >
+        <Bot size={16} />
+      </button>
+    ) : null
 
   const canToggleMode = hasBothModes(theme)
   const isLight = canToggleMode && isLightTheme(theme)
@@ -131,24 +150,13 @@ export function Header() {
         </button>
       </div>
 
+      {isMobile && chatButton}
+
       {!isMobile && (
         <>
           <UndoRedoButtons />
 
-          {/* Desktop only, like the controls beside it: on a phone the
-              assistant is opened from the More sheet, because this row stopped
-              having space for a seventh 44px target. */}
-          {aiStatus?.enabled === true && (
-            <button
-              className={`header__icon-btn ${chatPanelOpen ? 'header__icon-btn--active' : ''}`}
-              onClick={toggleChatPanel}
-              aria-pressed={chatPanelOpen}
-              aria-label={chatPanelOpen ? 'Close the assistant' : 'Ask about your budget'}
-              title={chatPanelOpen ? 'Close the assistant' : 'Ask about your budget'}
-            >
-              <Bot size={16} />
-            </button>
-          )}
+          {chatButton}
 
           <button
             className={`header__icon-btn ${privacyMode ? 'header__icon-btn--active' : ''}`}

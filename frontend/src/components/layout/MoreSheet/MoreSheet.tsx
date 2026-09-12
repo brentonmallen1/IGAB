@@ -164,9 +164,9 @@ export function MoreSheet() {
             />
           )}
         </button>
-        {/* The header row stopped having space for a seventh 44px control, so
-            on a phone the assistant is opened from here, like the other
-            desktop-header actions. */}
+        {/* Also beside search in the phone header. Closing this sheet and
+            opening the assistant's in one tap is a handoff of the history
+            entry — see useHistoryDismissable. */}
         {aiStatus?.enabled === true && (
           <button
             className="more-sheet__item press-scale"
