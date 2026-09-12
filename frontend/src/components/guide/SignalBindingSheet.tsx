@@ -7,6 +7,7 @@ import {
   type EntityType,
   type Signal,
 } from '../../api/guide'
+import { parseAmountInput } from '../../utils/money'
 import { GuideDialog } from './GuideDialog'
 
 /**
@@ -45,7 +46,11 @@ export function SignalBindingSheet({
     () => signal?.entities ?? {}
   )
   const [external, setExternal] = useState(() => signal?.external_declared ?? false)
-  const [amount, setAmount] = useState(() => signal?.external_value ?? '')
+  // Text for the input; the served figure is a number. Seeding the number
+  // itself made every save throw on `.trim()` for anyone who had declared one.
+  const [amount, setAmount] = useState(() =>
+    signal?.external_value == null ? '' : String(signal.external_value)
+  )
   const [note, setNote] = useState(() => signal?.note ?? '')
 
   const answered = concept.kind === 'boolean' && concept.binds_to.length === 0
@@ -67,13 +72,23 @@ export function SignalBindingSheet({
 
   async function save(mode: 'manual' | 'dismissed' | 'auto' | 'answer', answer?: boolean) {
     try {
+      // Typed by a person, so `parseAmountInput` — "1,250" is a figure, not a
+      // refusal. Blank stays a complete answer; anything unreadable says so
+      // rather than being sent as nothing. Only Save records an outside amount,
+      // so only Save reads it: a half-typed figure never blocks Don't track.
+      const typed = mode === 'manual' && external ? amount.trim() : ''
+      const externalAmount = typed ? parseAmountInput(typed) : null
+      if (externalAmount !== null && Number.isNaN(externalAmount)) {
+        toast.error('That amount did not parse')
+        return
+      }
       await setBinding.mutateAsync({
         conceptKey: concept.key,
         mode,
         entity_ids: mode === 'manual' ? selected : undefined,
         answer,
         external: mode === 'manual' ? external : false,
-        external_amount: external && amount.trim() ? amount.trim() : null,
+        external_amount: externalAmount,
         note: note.trim() || null,
       })
       onClose()

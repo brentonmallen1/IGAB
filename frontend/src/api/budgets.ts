@@ -254,7 +254,7 @@ export interface BudgetMove {
   month: string
   from_category_id: string | null
   to_category_id: string | null
-  amount: string
+  amount: number
   created_at: string
 }
 

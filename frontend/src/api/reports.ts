@@ -295,10 +295,10 @@ export function useVolatilityReport(budgetId: string | null, months = 12, amorti
 
 export interface SavingsRateMonth {
   month: string
-  income: string
-  spending: string
-  savings: string
-  debt_principal: string
+  income: number
+  spending: number
+  savings: number
+  debt_principal: number
   /** null when there was no income that month — a gap, not a zero. */
   savings_rate: number | null
   savings_rate_with_debt: number | null
@@ -307,10 +307,10 @@ export interface SavingsRateMonth {
 export interface SavingsRateReport {
   months: SavingsRateMonth[]
   summary: {
-    income: string
-    spending: string
-    savings: string
-    debt_principal: string
+    income: number
+    spending: number
+    savings: number
+    debt_principal: number
     savings_rate: number | null
     savings_rate_with_debt: number | null
   }

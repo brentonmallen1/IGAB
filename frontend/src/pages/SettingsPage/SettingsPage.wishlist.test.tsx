@@ -35,8 +35,8 @@ vi.mock('../../stores/confirmStore', async (importOriginal) => ({
 
 const mutate = vi.fn()
 
-const HOLDS_MONEY = { envelopes: ['New Bike'], available: '400.0000', is_empty: false }
-const EMPTY = { envelopes: [], available: '0.0000', is_empty: true }
+const HOLDS_MONEY = { envelopes: ['New Bike'], available: 400, is_empty: false }
+const EMPTY = { envelopes: [], available: 0, is_empty: true }
 
 beforeEach(() => {
   vi.clearAllMocks()

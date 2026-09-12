@@ -41,7 +41,7 @@ export function SignalNote({
 
   const label = concept?.label ?? signal.key
   const kind = concept?.kind ?? 'amount'
-  const figure = (raw: string | null) => formatSignalFigure(raw, kind, formatMoney)
+  const figure = (n: number | null) => formatSignalFigure(n, kind, formatMoney)
 
   const headline = signalHeadline(signal, kind, formatMoney)
   const external = figure(signal.external_value)

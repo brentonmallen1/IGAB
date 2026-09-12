@@ -31,7 +31,6 @@ import { ImportReviewButton } from '../../components/imports/ImportReviewDialog/
 import { formatMoneyWithOptions } from '../../utils/money'
 import { formatDateWithOptions, formatTimeWithOptions } from '../../utils/dates'
 import { useFormatters } from '../../hooks/useFormatters'
-import { parseApiDecimal } from '../../utils/money'
 import { wishlistToggleOutcome } from './wishlistToggle'
 import { useUIStore } from '../../stores/uiStore'
 import { changePassword, useCurrentUser, useLogout } from '../../api/auth'
@@ -171,7 +170,7 @@ export function SettingsPage() {
     const outcome = await wishlistToggleOutcome(next, {
       fetchPreview: () => fetchWishlistRetirePreview(budgetId),
       confirm: confirmAsync,
-      formatMoney: (amount) => formatMoney(parseApiDecimal(amount)),
+      formatMoney,
       onPreviewFailed: () =>
         toast.error('Could not check what turning the wishlist off would move'),
     })

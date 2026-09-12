@@ -4,16 +4,14 @@ export type SignalKind = ConceptInfo['kind']
 
 /**
  * A signal figure in the concept's own units — money for an amount, a
- * percentage for a rate. Null when there is no figure, or it does not parse.
+ * percentage for a rate. Null when there is no figure.
  */
 export function formatSignalFigure(
-  raw: string | null,
+  n: number | null,
   kind: SignalKind,
   formatMoney: (n: number) => string
 ): string | null {
-  if (raw === null) return null
-  const n = Number(raw)
-  if (Number.isNaN(n)) return null
+  if (n === null || Number.isNaN(n)) return null
   return kind === 'rate' ? `${n.toFixed(1)}%` : formatMoney(n)
 }
 
