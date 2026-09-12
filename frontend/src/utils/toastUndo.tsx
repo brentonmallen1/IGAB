@@ -6,6 +6,7 @@
  *   notify('Groceries deleted', { change: result.change_id })  // precise
  *   notify('Assigned $40 to Groceries', 'latest')              // newest change
  *   notify('Saved')                                            // no undo
+ *   notify(<AvailableChangeToast … />, 'latest')               // rich content
  *
  * One implementation of the Undo button, wired to the one undo
  * (`performUndo` in api/changes). It used to have two: this file posted the
@@ -19,7 +20,7 @@
  * shares one id, so a newer one replaces the older: an Undo button never
  * outlives the action it names.
  */
-import { useCallback } from 'react'
+import { useCallback, type ReactElement } from 'react'
 import toast from 'react-hot-toast'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAppStore } from '../stores/appStore'
@@ -32,7 +33,11 @@ export const UNDOABLE_TOAST_MS = 5000
 
 export const HEAD_MOVED_MESSAGE = 'Something changed since — undo it from the Activity page'
 
-export type NotifyUndoable = (message: string, target?: UndoTarget | null) => void
+/** A sentence, or richer content for a toast that has more to show (the
+ *  quick-add's envelope figure). Either way it sits beside the one Undo. */
+export type UndoToastMessage = string | ReactElement
+
+export type NotifyUndoable = (message: UndoToastMessage, target?: UndoTarget | null) => void
 
 export function useUndoToast(accountId?: string | null): NotifyUndoable {
   const qc = useQueryClient()
