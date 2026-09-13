@@ -2,7 +2,7 @@
  * The binding sheet reopens with the amount a person declared holding
  * elsewhere. The server sends that figure as a JSON number; the type said
  * string, the input was seeded with the number, and every save — Save, Reset,
- * Don't track — threw on `.trim()` and toasted "Could not save that".
+ * Don't track — threw on `.trim()` and said "Could not save that".
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
@@ -10,12 +10,8 @@ import userEvent from '@testing-library/user-event'
 import type { ConceptInfo, Signal } from '../../api/guide'
 import { SignalBindingSheet } from './SignalBindingSheet'
 
-const { mutateAsync, toastError } = vi.hoisted(() => ({
-  mutateAsync: vi.fn(),
-  toastError: vi.fn(),
-}))
+const { mutateAsync } = vi.hoisted(() => ({ mutateAsync: vi.fn() }))
 
-vi.mock('react-hot-toast', () => ({ default: { success: vi.fn(), error: toastError } }))
 vi.mock('../../api/guide', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/guide')>()),
   useConceptCandidates: () => ({ data: { category: [] } }),
@@ -69,7 +65,6 @@ beforeEach(async () => {
   await new Promise((r) => setTimeout(r, 0))
   window.history.replaceState(null, '')
   mutateAsync.mockReset().mockResolvedValue({})
-  toastError.mockReset()
 })
 
 describe('SignalBindingSheet', () => {
@@ -77,7 +72,7 @@ describe('SignalBindingSheet', () => {
     renderSheet(signal())
     expect(screen.getByLabelText('Amount (optional)')).toHaveValue('1250')
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
-    expect(toastError).not.toHaveBeenCalled()
+    expect(screen.queryByRole('alert')).toBeNull()
     expect(mutateAsync).toHaveBeenCalledWith(
       expect.objectContaining({ mode: 'manual', external: true, external_amount: 1250 })
     )
@@ -100,14 +95,14 @@ describe('SignalBindingSheet', () => {
     renderSheet(signal({ external_value: null }))
     await userEvent.type(screen.getByLabelText('Amount (optional)'), 'most of it')
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
-    expect(toastError).toHaveBeenCalledWith('That amount did not parse')
+    expect(screen.getByRole('alert')).toHaveTextContent('That amount did not parse')
     expect(mutateAsync).not.toHaveBeenCalled()
   })
 
   it("don't-track still saves for someone who had declared an amount", async () => {
     renderSheet(signal())
     await userEvent.click(screen.getByRole('button', { name: /track this/ }))
-    expect(toastError).not.toHaveBeenCalled()
+    expect(screen.queryByRole('alert')).toBeNull()
     expect(mutateAsync).toHaveBeenCalledWith(expect.objectContaining({ mode: 'dismissed' }))
   })
 
@@ -115,9 +110,19 @@ describe('SignalBindingSheet', () => {
     renderSheet(signal({ external_value: null }))
     await userEvent.type(screen.getByLabelText('Amount (optional)'), 'most of it')
     await userEvent.click(screen.getByRole('button', { name: /track this/ }))
-    expect(toastError).not.toHaveBeenCalled()
+    expect(screen.queryByRole('alert')).toBeNull()
     expect(mutateAsync).toHaveBeenCalledWith(
       expect.objectContaining({ mode: 'dismissed', external_amount: null })
     )
+  })
+
+  it('keeps Save enabled with nothing chosen, and says what it needs', async () => {
+    renderSheet(signal({ external_declared: false, external_value: null, source: 'auto' }))
+    const save = screen.getByRole('button', { name: 'Save' })
+    expect(save).toBeEnabled()
+    expect(save).toHaveClass('dialog-btn', 'dialog-btn--primary')
+    await userEvent.click(save)
+    expect(screen.getByRole('alert')).toHaveTextContent('Pick what holds it')
+    expect(mutateAsync).not.toHaveBeenCalled()
   })
 })

@@ -6,6 +6,10 @@ import { groupedCategorySections } from '../../../utils/categoryPickers'
 import { CategoryCombobox } from '../../common/CategoryCombobox/CategoryCombobox'
 import { GuideDialog } from '../GuideDialog'
 
+/** The form lives in the scroll region; its submit button lives in the pinned
+ *  footer, and `form=` is what joins them. */
+const FORM_ID = 'wishlist-project-form'
+
 interface Props {
   budgetId: string
   project?: WishlistProject | null
@@ -55,8 +59,30 @@ export function ProjectForm({ budgetId, project, onClose }: Props) {
       title={editing ? 'Edit project' : 'Add a project'}
       onClose={onClose}
       historyKey="wishlist-project-form"
+      footer={
+        <div className="dialog-actions">
+          {error && (
+            <span className="dialog-form__error" role="alert">
+              {error}
+            </span>
+          )}
+          <div className="dialog-actions__end">
+            <button type="button" className="dialog-btn dialog-btn--secondary" onClick={onClose}>
+              Cancel
+            </button>
+            <button
+              type="submit"
+              form={FORM_ID}
+              className="dialog-btn dialog-btn--primary"
+              disabled={create.isPending || update.isPending}
+            >
+              {editing ? 'Save' : 'Add project'}
+            </button>
+          </div>
+        </div>
+      }
     >
-      <form className="dialog__body wish-form" onSubmit={submit}>
+      <form id={FORM_ID} className="dialog__body wish-form" onSubmit={submit}>
         <label className="tool__field">
           <span>Project</span>
           <input
@@ -82,19 +108,6 @@ export function ProjectForm({ budgetId, project, onClose }: Props) {
           <span>Notes (optional)</span>
           <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
         </label>
-        {error && <p className="tool__error">{error}</p>}
-        <div className="wish-form__actions">
-          <button type="button" className="guide-link-button" onClick={onClose}>
-            Cancel
-          </button>
-          <button
-            type="submit"
-            className="guide-checkup__run"
-            disabled={create.isPending || update.isPending}
-          >
-            {editing ? 'Save' : 'Add project'}
-          </button>
-        </div>
       </form>
     </GuideDialog>
   )

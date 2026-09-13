@@ -30,6 +30,10 @@ interface Props {
  *  that one is what gets sent. */
 type CoolingSource = 'days' | 'date'
 
+/** The form lives in the scroll region; its submit button lives in the pinned
+ *  footer, and `form=` is what joins them. */
+const FORM_ID = 'wishlist-form'
+
 /**
  * Add or edit a wish. The funding choice is the point of the form: an
  * envelope of its own in the Wishlist group (the default, made with a
@@ -217,8 +221,32 @@ export function WishForm({
       title={editing ? 'Edit wish' : 'Add a wish'}
       onClose={onClose}
       historyKey="wishlist-form"
+      footer={
+        <div className="dialog-actions">
+          {error && (
+            <span className="dialog-form__error" role="alert">
+              {error}
+            </span>
+          )}
+          <div className="dialog-actions__end">
+            <button type="button" className="dialog-btn dialog-btn--secondary" onClick={onClose}>
+              Cancel
+            </button>
+            <button
+              type="submit"
+              form={FORM_ID}
+              className="dialog-btn dialog-btn--primary"
+              disabled={pending}
+            >
+              {editing ? 'Save' : 'Add to the list'}
+            </button>
+          </div>
+        </div>
+      }
     >
-      <form className="dialog__body wish-form" onSubmit={submit}>
+      {/* The fields are the Guide's own (.tool__field, GuidePage.css); the
+          footer and its buttons are every dialog's. */}
+      <form id={FORM_ID} className="dialog__body wish-form" onSubmit={submit}>
         <label className="tool__field">
           <span>What</span>
           <input
@@ -359,16 +387,6 @@ export function WishForm({
           <span>Notes (optional)</span>
           <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
         </label>
-
-        {error && <p className="tool__error">{error}</p>}
-        <div className="wish-form__actions">
-          <button type="button" className="guide-link-button" onClick={onClose}>
-            Cancel
-          </button>
-          <button type="submit" className="guide-checkup__run" disabled={pending}>
-            {editing ? 'Save' : 'Add to the list'}
-          </button>
-        </div>
       </form>
     </GuideDialog>
   )

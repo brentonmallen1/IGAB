@@ -29,7 +29,55 @@ export function ReviewDialog({ budgetId, due, reviewDays, onClose }: Props) {
   const next = () => setIndex((i) => i + 1)
 
   return (
-    <GuideDialog title="Still want these?" onClose={onClose} historyKey="wishlist-review">
+    <GuideDialog
+      title="Still want these?"
+      onClose={onClose}
+      historyKey="wishlist-review"
+      footer={
+        <div className="dialog-actions">
+          {current ? (
+            <>
+              <button
+                type="button"
+                className="dialog-btn dialog-btn--secondary"
+                disabled={pending}
+                onClick={() =>
+                  update.mutate({ id: current.id, status: 'dropped' }, { onSuccess: next })
+                }
+              >
+                Drop it
+              </button>
+              <div className="dialog-actions__end">
+                <button
+                  type="button"
+                  className="dialog-btn dialog-btn--secondary"
+                  disabled={pending}
+                  onClick={() =>
+                    update.mutate({ id: current.id, status: 'done' }, { onSuccess: next })
+                  }
+                >
+                  Done — got it
+                </button>
+                <button
+                  type="button"
+                  className="dialog-btn dialog-btn--primary"
+                  disabled={pending}
+                  onClick={() => affirm.mutate(current.id, { onSuccess: next })}
+                >
+                  Still want it
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="dialog-actions__end">
+              <button type="button" className="dialog-btn dialog-btn--primary" onClick={onClose}>
+                Close
+              </button>
+            </div>
+          )}
+        </div>
+      }
+    >
       <div className="dialog__body wish-review">
         {current ? (
           <>
@@ -48,46 +96,9 @@ export function ReviewDialog({ budgetId, due, reviewDays, onClose }: Props) {
                   `, last affirmed ${fmt.formatDate(current.last_affirmed_at.slice(0, 10))}`}
               </p>
             </div>
-            <div className="wish-review__actions">
-              <button
-                type="button"
-                className="guide-checkup__run"
-                disabled={pending}
-                onClick={() => affirm.mutate(current.id, { onSuccess: next })}
-              >
-                Still want it
-              </button>
-              <button
-                type="button"
-                className="guide-link-button"
-                disabled={pending}
-                onClick={() =>
-                  update.mutate({ id: current.id, status: 'dropped' }, { onSuccess: next })
-                }
-              >
-                Drop it
-              </button>
-              <button
-                type="button"
-                className="guide-link-button"
-                disabled={pending}
-                onClick={() =>
-                  update.mutate({ id: current.id, status: 'done' }, { onSuccess: next })
-                }
-              >
-                Done — got it
-              </button>
-            </div>
           </>
         ) : (
-          <>
-            <p className="wish-review__done">That’s everyone. Next review in {reviewDays} days.</p>
-            <div className="wish-review__actions">
-              <button type="button" className="guide-checkup__run" onClick={onClose}>
-                Close
-              </button>
-            </div>
-          </>
+          <p className="wish-review__done">That’s everyone. Next review in {reviewDays} days.</p>
         )}
       </div>
     </GuideDialog>

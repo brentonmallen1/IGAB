@@ -35,6 +35,7 @@ export function ImportPanel(props: {
   const open = props.open
   const [picked, setPicked] = useState<string[]>([])
   const [destination, setDestination] = useState(0)
+  const [error, setError] = useState<string | null>(null)
   const groups = useCategoryGroups(open ? props.budgetId : null)
   const categories = useCategories(open ? props.budgetId : null)
   const targets = useTargetsByBudget(open ? props.budgetId : null)
@@ -77,9 +78,12 @@ export function ImportPanel(props: {
   function close() {
     props.onClose()
     setPicked([])
+    setError(null)
   }
 
   function importPicked() {
+    // Enabled with nothing picked, like every dialog's primary, and says so.
+    if (picked.length === 0) return setError('Pick at least one category')
     const chosen = new Set(picked)
     const items: DraftItem[] = candidates
       .filter((c) => chosen.has(c.id))
@@ -107,14 +111,16 @@ export function ImportPanel(props: {
 
   const footer =
     loading || empty ? (
-      <div className="planner__import-footer">
-        <button type="button" className="guide-link-button" onClick={close}>
-          Close
-        </button>
+      <div className="dialog-actions">
+        <div className="dialog-actions__end">
+          <button type="button" className="dialog-btn dialog-btn--secondary" onClick={close}>
+            Close
+          </button>
+        </div>
       </div>
     ) : (
-      <div className="planner__import-footer">
-        <label className="planner__import-destination">
+      <div className="dialog-actions planner__import-footer">
+        <label className="dialog-form__field dialog-form__field--inline planner__import-destination">
           <span>Add under</span>
           <select
             aria-label="Which paycheck the rows go under"
@@ -128,16 +134,16 @@ export function ImportPanel(props: {
             ))}
           </select>
         </label>
-        <div className="planner__import-confirm">
-          <button type="button" className="guide-link-button" onClick={close}>
+        {error && picked.length === 0 && (
+          <span className="dialog-form__error" role="alert">
+            {error}
+          </span>
+        )}
+        <div className="dialog-actions__end">
+          <button type="button" className="dialog-btn dialog-btn--secondary" onClick={close}>
             Cancel
           </button>
-          <button
-            type="button"
-            className="guide-checkup__run"
-            disabled={picked.length === 0}
-            onClick={importPicked}
-          >
+          <button type="button" className="dialog-btn dialog-btn--primary" onClick={importPicked}>
             <Plus size={12} aria-hidden /> Add {picked.length || ''}{' '}
             {picked.length === 1 ? 'category' : 'categories'}
           </button>

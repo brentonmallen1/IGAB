@@ -319,27 +319,10 @@
   --scroll-list-max: 22rem;
 }
 
+/* The paycheck picker, an error and the buttons share one footer row; on a
+   narrow sheet the buttons wrap under the picker rather than squeeze it. */
 .planner__import-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--spacing-md);
   flex-wrap: wrap;
-  width: 100%;
-}
-
-.planner__import-destination {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-xs);
-  font-size: var(--font-size-xs);
-  color: var(--text-secondary);
-}
-
-.planner__import-confirm {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-md);
 }
 
 .planner__apply-list {

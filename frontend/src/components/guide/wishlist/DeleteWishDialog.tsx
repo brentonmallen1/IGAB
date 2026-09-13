@@ -37,21 +37,11 @@ export function DeleteWishDialog({ budgetId, wishName, envelope, onClose }: Prop
       title="Delete the envelope too?"
       onClose={onClose}
       historyKey="wishlist-delete-envelope"
-    >
-      <div className="dialog__body wish-review">
-        <p className="wish-review__done">
-          <strong>{wishName}</strong> is off the list. Its envelope <strong>{envelope.name}</strong>{' '}
-          is still in your budget
-          {available > 0 ? ` holding ${formatMoney(available)}` : ''}. Delete it too? Any money in
-          it goes back to To Be Assigned.
-        </p>
-        <div className="wish-review__actions">
-          <button type="button" className="guide-checkup__run" onClick={onClose}>
-            Keep the envelope
-          </button>
+      footer={
+        <div className="dialog-actions">
           <button
             type="button"
-            className="guide-link-button"
+            className="dialog-btn dialog-btn--danger"
             onClick={() => {
               setPhase('deleting')
               void requestDelete({
@@ -63,7 +53,21 @@ export function DeleteWishDialog({ budgetId, wishName, envelope, onClose }: Prop
           >
             Delete the envelope
           </button>
+          <div className="dialog-actions__end">
+            <button type="button" className="dialog-btn dialog-btn--primary" onClick={onClose}>
+              Keep the envelope
+            </button>
+          </div>
         </div>
+      }
+    >
+      <div className="dialog__body wish-review">
+        <p className="wish-review__done">
+          <strong>{wishName}</strong> is off the list. Its envelope <strong>{envelope.name}</strong>{' '}
+          is still in your budget
+          {available > 0 ? ` holding ${formatMoney(available)}` : ''}. Delete it too? Any money in
+          it goes back to To Be Assigned.
+        </p>
       </div>
     </GuideDialog>
   )

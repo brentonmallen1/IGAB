@@ -154,10 +154,17 @@ describe('ImportPanel', () => {
     expect(screen.queryByRole('button', { name: /^add/i })).toBeNull()
   })
 
-  it('cannot confirm an empty pick', async () => {
-    setup()
+  it('says what an empty pick needs instead of adding nothing', async () => {
+    const { onImport } = setup()
     await open()
-    expect(screen.getByRole('button', { name: /add categories/i })).toBeDisabled()
+    const add = screen.getByRole('button', { name: /add categories/i })
+    expect(add).toBeEnabled()
+    await userEvent.click(add)
+    expect(screen.getByRole('alert')).toHaveTextContent('Pick at least one category')
+    expect(onImport).not.toHaveBeenCalled()
+    // Picking one clears it.
+    await userEvent.click(screen.getByText('Rent'))
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 
   it('forgets the pick when cancelled, so reopening does not re-add it', async () => {
@@ -167,6 +174,7 @@ describe('ImportPanel', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(onImport).not.toHaveBeenCalled()
     await open()
-    expect(screen.getByRole('button', { name: /add categories/i })).toBeDisabled()
+    await userEvent.click(screen.getByRole('button', { name: /add categories/i }))
+    expect(onImport).not.toHaveBeenCalled()
   })
 })
