@@ -19,7 +19,13 @@
   border: 1px solid var(--input-border);
   border-radius: var(--border-radius-sm);
   color: var(--text-primary);
-  font-size: var(--font-size-base);
+  font-size: var(--font-size-sm);
+}
+
+.asset-modal__field input:focus,
+.asset-modal__field select:focus {
+  outline: none;
+  border-color: var(--input-focus-ring);
 }
 
 .asset-modal__error {

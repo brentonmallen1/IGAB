@@ -64,11 +64,14 @@
   color: var(--color-accent);
 }
 
+/* The input role tokens, as every other form uses: --input-border is the one
+   contrast.test.ts holds to 3:1, and --bg-secondary painted these fields a
+   step lighter than the valued-asset form beside them in the add-asset flow. */
 .acct-modal__input {
   padding: var(--spacing-xs) var(--spacing-sm);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--input-border);
   border-radius: var(--border-radius-sm);
-  background: var(--bg-secondary);
+  background: var(--input-bg);
   color: var(--text-primary);
   font-size: var(--font-size-sm);
   width: 100%;
@@ -76,7 +79,7 @@
 
 .acct-modal__input:focus {
   outline: none;
-  border-color: var(--color-accent);
+  border-color: var(--input-focus-ring);
 }
 
 /* SimpleFIN linked state */
