@@ -53,6 +53,9 @@ export function PayeeMergeModal({ payees, allPayees, onConfirm, onCancel, isPend
   const [patternAction, setPatternAction] = useState<PatternAction>('keep')
   const [pattern, setPattern] = useState('')
   const [aiCandidates, setAiCandidates] = useState<string[]>([])
+  // Set by the first press of Merge. The message below is derived, not
+  // stored, so it clears itself the moment the form is put right.
+  const [attempted, setAttempted] = useState(false)
   const customInputRef = useRef<HTMLInputElement>(null)
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const aiAvailable = useAIStatus().data?.available === true
@@ -198,17 +201,25 @@ export function PayeeMergeModal({ payees, allPayees, onConfirm, onCancel, isPend
     return warnings
   }, [others, finalPattern, rawNames])
 
-  const patternOk = !patternEditing || (trimmedPattern.length > 0 && !patternInvalid)
-  const targetOk =
-    mode === 'custom'
-      ? customName.trim().length > 0 && !!targetId
-      : mode === 'external'
-        ? !!effectiveTarget
-        : !!targetId
-  const canConfirm = !isPending && patternOk && targetOk
+  // What Merge is waiting for, or null. Merge stays enabled like every
+  // dialog's primary and says this on press: a disabled button with an
+  // invalid pattern three sections up gave no hint which part was wrong.
+  const blocker =
+    mode === 'custom' && !customName.trim()
+      ? 'Enter the new name'
+      : mode === 'external' && !effectiveTarget
+        ? 'Choose the payee to merge into'
+        : !effectiveTarget
+          ? 'Choose the name to keep'
+          : patternInvalid
+            ? 'Fix the match pattern, or turn it off'
+            : patternEditing && !trimmedPattern
+              ? 'Enter a match pattern, or turn it off'
+              : null
 
   function handleConfirm() {
-    if (!effectiveTarget) return
+    setAttempted(true)
+    if (blocker || !effectiveTarget) return
     const config: MergeConfig = {
       targetId: effectiveTarget.id,
       addToMappingSamples,
@@ -220,28 +231,43 @@ export function PayeeMergeModal({ payees, allPayees, onConfirm, onCancel, isPend
 
   return (
     <Dialog
-      title={`Merge ${payees.length} Payees`}
+      title={`Merge ${payees.length} payees`}
       onClose={onCancel}
       historyKey="payee-merge"
       className="pmerge-modal"
       footer={
-        <>
-          <button className="pmerge-btn pmerge-btn--cancel" onClick={onCancel} disabled={isPending}>
-            Cancel
-          </button>
-          <button
-            className="pmerge-btn pmerge-btn--confirm"
-            onClick={handleConfirm}
-            disabled={!canConfirm}
-          >
-            {isPending ? 'Merging…' : `Merge ${payees.length} Payees`}
-          </button>
-        </>
+        <div className="dialog-actions">
+          {attempted && blocker && (
+            <span className="dialog-form__error" role="alert">
+              {blocker}
+            </span>
+          )}
+          <div className="dialog-actions__end">
+            <button
+              type="button"
+              className="dialog-btn dialog-btn--secondary"
+              onClick={onCancel}
+              disabled={isPending}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="dialog-btn dialog-btn--primary"
+              onClick={handleConfirm}
+              disabled={isPending}
+            >
+              {isPending ? 'Merging…' : `Merge ${payees.length} payees`}
+            </button>
+          </div>
+        </div>
       }
     >
       <div className="pmerge-modal__body">
-        <p className="pmerge-section-label">Keep this name</p>
-        <div className="pmerge-options">
+        <p id="pmerge-keep-label" className="pmerge-section-label">
+          Keep this name
+        </p>
+        <div className="pmerge-options" role="radiogroup" aria-labelledby="pmerge-keep-label">
           {/* Only the candidate names scroll; the "existing payee" and
                 "custom name" choices stay in reach however many were selected. */}
           <div className="pmerge-options__names scroll-list">
@@ -309,6 +335,7 @@ export function PayeeMergeModal({ payees, allPayees, onConfirm, onCancel, isPend
                 value={customName}
                 onChange={(e) => setCustomName(e.target.value)}
                 placeholder="Enter a new name…"
+                aria-label="New name"
                 onClick={(e) => e.stopPropagation()}
               />
             ) : (
@@ -321,7 +348,7 @@ export function PayeeMergeModal({ payees, allPayees, onConfirm, onCancel, isPend
 
         <div className="pmerge-divider" />
 
-        <label className="pmerge-checkbox-row">
+        <label className="dialog-form__field dialog-form__field--inline">
           <input
             type="checkbox"
             checked={addToMappingSamples}
@@ -329,7 +356,7 @@ export function PayeeMergeModal({ payees, allPayees, onConfirm, onCancel, isPend
           />
           <span>Add absorbed names to fuzzy match list</span>
         </label>
-        <p className="pmerge-hint">
+        <p className="dialog-form__hint">
           Future imports with these names will automatically match the surviving payee.
         </p>
 
@@ -344,13 +371,11 @@ export function PayeeMergeModal({ payees, allPayees, onConfirm, onCancel, isPend
 
         {hasExistingPattern ? (
           <>
-            <span className="pmerge-checkbox-row pmerge-checkbox-row--static">
-              <span className="pmerge-checkbox-row__text">
-                <Regex size={13} aria-hidden />
-                Match pattern (regex)
-              </span>
+            <span className="pmerge-checkbox-row__text pmerge-pattern-heading">
+              <Regex size={13} aria-hidden />
+              Match pattern (regex)
             </span>
-            <p className="pmerge-hint">
+            <p className="dialog-form__hint">
               <strong>{effectiveTarget?.name}</strong> already has a pattern:{' '}
               <code className="pmerge-existing-pattern">{existingPattern}</code>
             </p>
@@ -391,13 +416,13 @@ export function PayeeMergeModal({ payees, allPayees, onConfirm, onCancel, isPend
               </label>
             </div>
             {!existingPatternValid && (
-              <p className="pmerge-hint">
+              <p className="dialog-form__hint">
                 The stored pattern isn't a valid regex, so it can't be extended — keep it or replace
                 it.
               </p>
             )}
             {patternAction === 'extend' && (
-              <p className="pmerge-hint">
+              <p className="dialog-form__hint">
                 The new pattern is combined with the existing one — names matching either will map
                 to the surviving payee.
               </p>
@@ -405,14 +430,14 @@ export function PayeeMergeModal({ payees, allPayees, onConfirm, onCancel, isPend
           </>
         ) : (
           <>
-            <label className="pmerge-checkbox-row">
+            <label className="dialog-form__field dialog-form__field--inline">
               <input type="checkbox" checked={usePattern} onChange={togglePattern} />
               <span className="pmerge-checkbox-row__text">
                 <Regex size={13} aria-hidden />
                 Set a match pattern (regex)
               </span>
             </label>
-            <p className="pmerge-hint">
+            <p className="dialog-form__hint">
               Incoming transactions whose payee matches this pattern map to the surviving payee —
               useful when banks append random codes. Case-insensitive.
             </p>
@@ -472,9 +497,9 @@ export function PayeeMergeModal({ payees, allPayees, onConfirm, onCancel, isPend
               />
             )}
             {patternInvalid ? (
-              <p className="pmerge-pattern__error">Invalid regular expression</p>
+              <p className="dialog-form__error">Invalid regular expression</p>
             ) : patternEditing && candidates.length === 0 && !trimmedPattern ? (
-              <p className="pmerge-hint">
+              <p className="dialog-form__hint">
                 These names share no obvious structure — write a pattern by hand
                 {aiAvailable ? ', or ask the AI,' : ''} if you still want one.
               </p>

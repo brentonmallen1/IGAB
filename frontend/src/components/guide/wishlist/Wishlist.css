@@ -518,13 +518,6 @@
   color: var(--text-muted);
 }
 
-.wish-form__actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--spacing-md);
-  align-items: center;
-}
-
 .wish-review {
   display: flex;
   flex-direction: column;
@@ -558,12 +551,6 @@
   font-size: var(--font-size-sm);
   color: var(--text-primary);
   line-height: 1.5;
-}
-.wish-review__actions {
-  display: flex;
-  gap: var(--spacing-md);
-  align-items: center;
-  flex-wrap: wrap;
 }
 
 @media (max-width: 768px) {

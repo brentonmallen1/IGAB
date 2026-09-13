@@ -23,7 +23,24 @@ import { BudgetFilterModal } from '../../budget/BudgetFilterModal/BudgetFilterMo
 import { BudgetViewModal } from '../../budget/BudgetViewModal/BudgetViewModal'
 import { useAppStore } from '../../../stores/appStore'
 import { stripComments, topLevelRules } from '../../../test-utils/cssRules'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { ScheduledTransactionEditor } from '../../scheduled/ScheduledTransactionEditor'
+import { DatedAmountForm } from '../DatedAmountForm/DatedAmountForm'
+import { MergePreviewModal } from '../../transactions/MergePreviewModal/MergePreviewModal'
+import { PayeeMergeModal } from '../../payees/PayeeMergeModal/PayeeMergeModal'
+import { CsvImportDialog } from '../../imports/CsvImportDialog/CsvImportDialog'
+import type { PayeeWithCount } from '../../../api/payees'
+import type { Transaction } from '../../../types'
 
+vi.mock('../../../api/scheduledTransactions', () => ({
+  useCreateScheduledTransaction: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useUpdateScheduledTransaction: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useDeleteScheduledTransaction: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}))
+vi.mock('../../../api/ai', () => ({
+  useAIStatus: () => ({ data: { available: false } }),
+  useSuggestRegex: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}))
 vi.mock('../../../api/accounts', () => ({
   useCreateAccount: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useAccounts: () => ({
@@ -144,6 +161,121 @@ describe.each(Object.entries(CONVERTED))('%s, structurally', (_, form) => {
   it('nests no form inside another', () => {
     render(form())
     expect(document.querySelectorAll('form form')).toHaveLength(0)
+  })
+})
+
+// ─── Sweep C: the scheduled, dated-figure, merge and import dialogs ─────────
+
+/** Forms whose fields are the shared field, keyed by a label they carry. */
+const SWEEP_C_FORMS = {
+  'the scheduled-transaction editor': {
+    label: 'Memo',
+    submit: 'Create',
+    render: () => <ScheduledTransactionEditor budgetId="b1" existing={null} onClose={vi.fn()} />,
+  },
+  'the dated-figure form': {
+    label: 'Balance owed',
+    submit: 'Save',
+    render: () => (
+      <DatedAmountForm
+        title="Update balance"
+        amountLabel="Balance owed"
+        pending={false}
+        onSubmit={vi.fn()}
+        onClose={vi.fn()}
+      />
+    ),
+  },
+}
+
+describe.each(Object.entries(SWEEP_C_FORMS))('%s', (_, form) => {
+  it('is a dialog-form whose fields are the shared field', () => {
+    render(form.render())
+    const field = screen.getByLabelText(form.label)
+    expect(field.closest('form')).toHaveClass('dialog-form')
+    expect(field.closest('label')).toHaveClass('dialog-form__field')
+  })
+
+  it('submits from the footer with an enabled shared primary', () => {
+    render(form.render())
+    const submit = screen.getByRole('button', { name: form.submit })
+    expect(submit).toHaveClass('dialog-btn', 'dialog-btn--primary')
+    expect(submit).toBeEnabled()
+    expect(submit.closest('form')).toBeNull()
+    expect(submit.getAttribute('form')).toBe(document.querySelector('form.dialog-form')!.id)
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveClass('dialog-btn--secondary')
+  })
+})
+
+const txn = (id: string, created: string) =>
+  ({
+    id,
+    date: '2026-08-01',
+    amount: -42,
+    payee_id: null,
+    category_id: null,
+    memo: null,
+    import_id: null,
+    import_description: null,
+    sync_id: null,
+    cleared: 'uncleared',
+    created_at: created,
+  }) as unknown as Transaction
+
+const mergePayees = [
+  { id: 'p1', name: 'Harborstone', transaction_count: 3, mapping_samples: [] },
+  { id: 'p2', name: 'HARBORSTONE 01', transaction_count: 1, mapping_samples: [] },
+] as unknown as PayeeWithCount[]
+
+/** Dialogs with no form of their own whose actions are still the shared footer. */
+const SWEEP_C_FOOTERS = {
+  'the transaction merge preview': {
+    primary: 'Merge',
+    render: () => (
+      <MergePreviewModal
+        transactions={[txn('t1', '2026-08-01T00:00:00Z'), txn('t2', '2026-08-02T00:00:00Z')]}
+        payeeMap={new Map()}
+        categoryMap={new Map()}
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+        isPending={false}
+      />
+    ),
+  },
+  'the payee merge': {
+    primary: 'Merge 2 payees',
+    render: () => (
+      <PayeeMergeModal
+        payees={mergePayees}
+        allPayees={mergePayees}
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+        isPending={false}
+      />
+    ),
+  },
+  'the CSV import': {
+    primary: 'Import',
+    render: () => (
+      <QueryClientProvider client={new QueryClient()}>
+        <CsvImportDialog budgetId="b1" accountId="a1" accountName="Checking" onClose={vi.fn()} />
+      </QueryClientProvider>
+    ),
+  },
+}
+
+describe.each(Object.entries(SWEEP_C_FOOTERS))('%s', (_, dialog) => {
+  it('ends its footer with Cancel and an enabled shared primary', () => {
+    render(dialog.render())
+    const cancel = screen.getByRole('button', { name: 'Cancel' })
+    const primary = screen.getByRole('button', { name: dialog.primary })
+    expect(cancel).toHaveClass('dialog-btn', 'dialog-btn--secondary')
+    expect(primary).toHaveClass('dialog-btn', 'dialog-btn--primary')
+    expect(primary).toBeEnabled()
+    const end = primary.closest('.dialog-actions__end')
+    expect(end).not.toBeNull()
+    expect(end).toContainElement(cancel)
+    expect(end!.closest('.dialog-actions')).not.toBeNull()
   })
 })
 

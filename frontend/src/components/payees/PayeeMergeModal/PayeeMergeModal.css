@@ -12,12 +12,10 @@
   min-height: 0;
 }
 
+/* Names the radio group, in the shared field label's type. */
 .pmerge-section-label {
   font-size: var(--font-size-xs);
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  color: var(--text-secondary);
   margin: 0;
 }
 
@@ -111,24 +109,10 @@
   margin: var(--spacing-xs) 0;
 }
 
-.pmerge-checkbox-row {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  cursor: pointer;
-  font-size: var(--font-size-sm);
-  color: var(--text-primary);
-}
-
-.pmerge-checkbox-row input[type="checkbox"] {
+/* Not inside a .dialog-form (its option cards carry inputs of their own
+   styling), so the shared accent tint for checkboxes is restated here. */
+.pmerge-modal__body input[type="checkbox"] {
   accent-color: var(--color-accent);
-  flex-shrink: 0;
-}
-
-.pmerge-hint {
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-  margin: 0;
 }
 
 .pmerge-checkbox-row__text {
@@ -137,8 +121,11 @@
   gap: var(--spacing-xs);
 }
 
-.pmerge-checkbox-row--static {
-  cursor: default;
+/* Where the target already has a pattern there is nothing to switch on:
+   the checkbox row's sentence becomes a heading for the choice below. */
+.pmerge-pattern-heading {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
 }
 
 .pmerge-existing-pattern {
@@ -193,14 +180,15 @@
   font-family: var(--font-mono);
   font-size: var(--font-size-xs);
   color: var(--text-primary);
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
   border-radius: var(--border-radius-sm);
 }
 
 .pmerge-pattern__input:focus {
   outline: none;
-  border-color: var(--color-accent);
+  border-color: var(--input-focus-ring);
+  box-shadow: var(--input-focus-shadow);
 }
 
 .pmerge-pattern__input[aria-invalid="true"] {
@@ -233,12 +221,6 @@
 .pmerge-pattern__suggest--ai:disabled {
   opacity: 0.5;
   cursor: default;
-}
-
-.pmerge-pattern__error {
-  font-size: var(--font-size-xs);
-  color: var(--color-danger);
-  margin: 0;
 }
 
 .pmerge-preview {
@@ -319,45 +301,4 @@
 .pmerge-summary__detail {
   font-size: var(--font-size-xs);
   color: var(--text-muted);
-}
-
-/* Dialog's .dialog__footer carries the rule and the padding. */
-.dialog.pmerge-modal .dialog__footer {
-  justify-content: flex-end;
-}
-
-.pmerge-btn {
-  padding: 6px 16px;
-  border-radius: var(--border-radius-sm);
-  font-size: var(--font-size-sm);
-  font-weight: 500;
-  cursor: pointer;
-  border: 1px solid var(--border-color);
-  transition:
-    opacity 0.15s,
-    background 0.15s;
-}
-
-.pmerge-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.pmerge-btn--cancel {
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-}
-
-.pmerge-btn--cancel:hover:not(:disabled) {
-  background: var(--bg-hover, var(--bg-tertiary));
-}
-
-.pmerge-btn--confirm {
-  background: var(--color-accent);
-  color: var(--bg-primary);
-  border-color: var(--color-accent);
-}
-
-.pmerge-btn--confirm:hover:not(:disabled) {
-  opacity: 0.85;
 }

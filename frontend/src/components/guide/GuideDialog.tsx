@@ -14,15 +14,24 @@ export function GuideDialog({
   title,
   onClose,
   historyKey,
+  footer,
   children,
 }: {
   title: string
   onClose: () => void
   historyKey: string
+  /** Dialog's pinned footer, for the actions. */
+  footer?: ReactNode
   children: ReactNode
 }) {
   return (
-    <Dialog title={title} onClose={onClose} historyKey={historyKey} className="guide-dialog">
+    <Dialog
+      title={title}
+      onClose={onClose}
+      historyKey={historyKey}
+      className="guide-dialog"
+      footer={footer}
+    >
       {children}
     </Dialog>
   )

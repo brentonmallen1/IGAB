@@ -259,8 +259,8 @@
 
 /* ── buttons ────────────────────────────────────────────────────────────── */
 
-/* There is no shared button system — per-component CSS is the house rule —
-   so these match the shape the Guide's dialogs use rather than inventing one. */
+/* The button that opens the review, on the page (ImportReviewButton). The
+   dialog's own buttons are DialogForm.css's `.dialog-btn`. */
 .import-review__btn {
   display: inline-flex;
   align-items: center;
@@ -280,12 +280,6 @@
   color: var(--text-primary);
 }
 
-.import-review__btn--primary {
-  border-color: transparent;
-  background: var(--color-accent);
-  color: var(--bg-primary);
-}
-
 .import-review__btn:disabled {
   opacity: 0.6;
   cursor: default;
@@ -294,7 +288,6 @@
 /* ── footer ─────────────────────────────────────────────────────────────── */
 
 .import-review__pending {
-  flex: 1;
   font-size: var(--font-size-xs);
   color: var(--text-muted);
 }

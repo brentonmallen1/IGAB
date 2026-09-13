@@ -109,30 +109,34 @@ export function MergePreviewModal({
 
   return (
     <Dialog
-      title="Merge Transactions"
+      title="Merge transactions"
       onClose={onCancel}
       historyKey="merge-preview"
       className="merge-modal"
       footer={
-        <>
-          <button
-            className="merge-modal__btn merge-modal__btn--cancel"
-            onClick={onCancel}
-            disabled={isPending}
-          >
-            Cancel
-          </button>
-          <button
-            className="merge-modal__btn merge-modal__btn--confirm"
-            onClick={() => onConfirm(survivorId)}
-            disabled={isPending}
-          >
-            {isPending ? 'Merging…' : 'Confirm Merge'}
-          </button>
-        </>
+        <div className="dialog-actions">
+          <div className="dialog-actions__end">
+            <button
+              type="button"
+              className="dialog-btn dialog-btn--secondary"
+              onClick={onCancel}
+              disabled={isPending}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="dialog-btn dialog-btn--primary"
+              onClick={() => onConfirm(survivorId)}
+              disabled={isPending}
+            >
+              {isPending ? 'Merging…' : 'Merge'}
+            </button>
+          </div>
+        </div>
       }
     >
-      <p className="merge-modal__hint">
+      <p className="dialog-form__hint">
         {reconciledTxn
           ? 'The reconciled transaction will always be kept.'
           : 'Click a transaction to keep it. The other is removed — but nothing it has is lost: a memo, category, payee, receipt or bank details the kept one lacks carry over.'}

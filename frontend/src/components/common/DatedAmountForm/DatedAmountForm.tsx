@@ -1,7 +1,10 @@
 import { useState } from 'react'
 import { parseAmountInput } from '../../../utils/money'
 import { Dialog } from '../Dialog/Dialog'
-import './DatedAmountForm.css'
+
+/** The form lives in the scroll region; its submit button lives in the pinned
+ *  footer, and `form=` is what joins them. */
+const FORM_ID = 'daf-form'
 
 interface Props {
   title: string
@@ -33,11 +36,15 @@ export function DatedAmountForm({
 }: Props) {
   const [amount, setAmount] = useState('')
   const [date, setDate] = useState('')
+  const [error, setError] = useState<string | null>(null)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    // Never a silent return: an unreadable figure used to leave Save doing
+    // nothing at all, with no word as to why.
     const parsed = parseAmountInput(amount)
-    if (isNaN(parsed) || parsed < 0) return
+    if (isNaN(parsed) || parsed < 0) return setError('Enter an amount of zero or more')
+    setError(null)
     await onSubmit(parsed, date || null)
   }
 
@@ -46,20 +53,31 @@ export function DatedAmountForm({
       title={title}
       onClose={onClose}
       historyKey="dated-amount"
-      className="daf"
       footer={
-        <div className="daf__actions">
-          <button type="button" onClick={onClose}>
-            Cancel
-          </button>
-          <button type="submit" form="daf-form" className="primary" disabled={pending}>
-            {pending ? 'Saving…' : 'Save'}
-          </button>
+        <div className="dialog-actions">
+          {error && (
+            <span className="dialog-form__error" role="alert">
+              {error}
+            </span>
+          )}
+          <div className="dialog-actions__end">
+            <button type="button" className="dialog-btn dialog-btn--secondary" onClick={onClose}>
+              Cancel
+            </button>
+            <button
+              type="submit"
+              form={FORM_ID}
+              className="dialog-btn dialog-btn--primary"
+              disabled={pending}
+            >
+              {pending ? 'Saving…' : 'Save'}
+            </button>
+          </div>
         </div>
       }
     >
-      <form id="daf-form" className="daf__form" onSubmit={handleSubmit}>
-        <label>
+      <form id={FORM_ID} className="dialog-form" onSubmit={handleSubmit} noValidate>
+        <label className="dialog-form__field">
           <span>{amountLabel}</span>
           <input
             type="number"
@@ -72,7 +90,7 @@ export function DatedAmountForm({
             placeholder={placeholder}
           />
         </label>
-        <label>
+        <label className="dialog-form__field">
           <span>As of (optional — defaults to today)</span>
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </label>

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import toast from 'react-hot-toast'
 import { useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, Upload } from 'lucide-react'
+import { Upload } from 'lucide-react'
 import { Dialog } from '../../common/Dialog/Dialog'
 import { useFormatters } from '../../../hooks/useFormatters'
 import {
@@ -98,7 +98,13 @@ export function CsvImportDialog({ budgetId, accountId, accountName, onClose }: P
   }
 
   async function commit() {
-    if (!file) return
+    // Enabled before there is anything to import, like every dialog's
+    // primary, and says why on press rather than sitting greyed out.
+    if (!file || !preview) return setError('Choose a CSV file to import')
+    if (preview.new_rows === 0) {
+      return setError(`Every row is already in ${accountName} — nothing to import`)
+    }
+    setError(null)
     setBusy(true)
     try {
       const result = await importCsv(budgetId, accountId, file, mapping)
@@ -128,22 +134,29 @@ export function CsvImportDialog({ budgetId, accountId, accountName, onClose }: P
       historyKey="csv-import"
       width="lg"
       footer={
-        <div className="csv-import__footer">
-          <button type="button" className="settings-btn settings-btn--secondary" onClick={onClose}>
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="settings-btn settings-btn--primary"
-            disabled={!preview || busy || nothingNew}
-            onClick={commit}
-          >
-            {busy
-              ? 'Working…'
-              : preview
-                ? `Import ${preview.new_rows} transaction${preview.new_rows === 1 ? '' : 's'}`
-                : 'Import'}
-          </button>
+        <div className="dialog-actions">
+          {error && (
+            <span className="dialog-form__error" role="alert">
+              {error}
+            </span>
+          )}
+          <div className="dialog-actions__end">
+            <button type="button" className="dialog-btn dialog-btn--secondary" onClick={onClose}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="dialog-btn dialog-btn--primary"
+              disabled={busy}
+              onClick={commit}
+            >
+              {busy
+                ? 'Working…'
+                : preview
+                  ? `Import ${preview.new_rows} transaction${preview.new_rows === 1 ? '' : 's'}`
+                  : 'Import'}
+            </button>
+          </div>
         </div>
       }
     >
@@ -160,12 +173,6 @@ export function CsvImportDialog({ budgetId, accountId, accountName, onClose }: P
             }}
           />
         </label>
-      )}
-
-      {error && (
-        <p className="csv-import__error" role="alert">
-          <AlertTriangle size={13} aria-hidden /> {error}
-        </p>
       )}
 
       {preview && (
@@ -189,26 +196,27 @@ export function CsvImportDialog({ budgetId, accountId, accountName, onClose }: P
             )}
           </div>
 
-          <div className="csv-import__mapping">
-            {FIELDS.map((f) => (
-              <label key={f.key} className="csv-import__field">
-                <span>
-                  {f.label}
-                  {f.hint && <small>{f.hint}</small>}
-                </span>
-                <select
-                  value={mapping[f.key] ?? ''}
-                  onChange={(e) => setColumn(f.key, e.target.value)}
-                >
-                  <option value="">—</option>
-                  {preview.headers.map((h) => (
-                    <option key={h} value={h}>
-                      {h}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ))}
+          {/* The grid is this dialog's; each cell is the shared field. */}
+          <div className="dialog-form csv-import__mapping-form">
+            <div className="csv-import__mapping">
+              {FIELDS.map((f) => (
+                <label key={f.key} className="dialog-form__field">
+                  <span>{f.label}</span>
+                  {f.hint && <small className="dialog-form__hint">{f.hint}</small>}
+                  <select
+                    value={mapping[f.key] ?? ''}
+                    onChange={(e) => setColumn(f.key, e.target.value)}
+                  >
+                    <option value="">—</option>
+                    {preview.headers.map((h) => (
+                      <option key={h} value={h}>
+                        {h}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ))}
+            </div>
           </div>
 
           {preview.date_format && (

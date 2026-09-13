@@ -95,6 +95,7 @@ export function PayeesPage() {
   const [wizardChecked, setWizardChecked] = useState<Set<string>>(new Set())
   const [wizardPeekId, setWizardPeekId] = useState<string | null>(null)
   const [wizardMergePayees, setWizardMergePayees] = useState<PayeeWithCount[] | null>(null)
+  const [wizardError, setWizardError] = useState<string | null>(null)
   const [showCleanupModal, setShowCleanupModal] = useState(false)
   const [sensitivity, setSensitivity] = useState<'strict' | 'balanced' | 'loose'>('balanced')
   const [sortColumn, setSortColumn] = useState<'name' | 'transactions'>('name')
@@ -270,10 +271,14 @@ export function PayeesPage() {
     setWizardIdx(idx)
     setWizardChecked(new Set(groups[idx]?.payees.map((p) => p.id)))
     setWizardPeekId(null)
+    setWizardError(null)
   }
 
   function startWizardMerge() {
-    if (checkedPayees.length < 2) return
+    // Enabled with fewer than two checked, like every dialog's primary: a
+    // disabled button cannot say what it is waiting for.
+    if (checkedPayees.length < 2) return setWizardError('Check at least two payees to merge')
+    setWizardError(null)
     setWizardMergePayees(checkedPayees)
   }
 
@@ -355,49 +360,66 @@ export function PayeesPage() {
 
       {showCleanupModal && (
         <Dialog
-          title="Payee Cleanup"
+          title="Payee cleanup"
           onClose={() => setShowCleanupModal(false)}
           historyKey="payee-cleanup"
           className="payees-wizard"
           footer={
-            <>
-              <button className="payees-btn" onClick={() => setShowCleanupModal(false)}>
-                Cancel
-              </button>
-              <button
-                className="payees-btn payees-btn--primary"
-                onClick={runCleanup}
-                disabled={fetchDuplicates.isPending}
-              >
-                {fetchDuplicates.isPending ? 'Scanning…' : 'Find Duplicates'}
-              </button>
-            </>
+            <div className="dialog-actions">
+              <div className="dialog-actions__end">
+                <button
+                  type="button"
+                  className="dialog-btn dialog-btn--secondary"
+                  onClick={() => setShowCleanupModal(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="dialog-btn dialog-btn--primary"
+                  onClick={runCleanup}
+                  disabled={fetchDuplicates.isPending}
+                >
+                  {fetchDuplicates.isPending ? 'Scanning…' : 'Find duplicates'}
+                </button>
+              </div>
+            </div>
           }
         >
           <div className="payees-wizard__body">
             <p className="payees-wizard__label">Find similar payees to merge</p>
-            <p className="payees-wizard__sub">
+            <p className="dialog-form__hint">
               Names are compared with the bank's store numbers, reference codes and dates set aside,
               so postings that differ only there read as one payee.
             </p>
-            <p className="payees-wizard__sub" style={{ marginTop: 'var(--spacing-md)' }}>
-              Sensitivity:
+            <p id="payees-sensitivity" className="payees-wizard__group-label">
+              Sensitivity
             </p>
-            <div className="payees-wizard__options">
+            <div
+              className="payees-wizard__options"
+              role="group"
+              aria-labelledby="payees-sensitivity"
+            >
               <button
+                type="button"
                 className={`payees-wizard__option ${sensitivity === 'strict' ? 'payees-wizard__option--selected' : ''}`}
+                aria-pressed={sensitivity === 'strict'}
                 onClick={() => setSensitivity('strict')}
               >
                 <strong>Strict</strong> — Only very similar names
               </button>
               <button
+                type="button"
                 className={`payees-wizard__option ${sensitivity === 'balanced' ? 'payees-wizard__option--selected' : ''}`}
+                aria-pressed={sensitivity === 'balanced'}
                 onClick={() => setSensitivity('balanced')}
               >
                 <strong>Balanced</strong> — Recommended
               </button>
               <button
+                type="button"
                 className={`payees-wizard__option ${sensitivity === 'loose' ? 'payees-wizard__option--selected' : ''}`}
+                aria-pressed={sensitivity === 'loose'}
                 onClick={() => setSensitivity('loose')}
               >
                 <strong>Loose</strong> — More suggestions, some may be wrong
@@ -409,34 +431,50 @@ export function PayeesPage() {
 
       {showWizard && currentGroup && (
         <Dialog
-          title={`Cleanup Wizard — ${wizardIdx + 1} of ${wizardGroups.length}`}
+          title={`Cleanup wizard — ${wizardIdx + 1} of ${wizardGroups.length}`}
           onClose={() => setShowWizard(false)}
           historyKey="payee-wizard"
           className="payees-wizard"
           footer={
-            <>
-              <button className="payees-btn" onClick={prevWizard} disabled={wizardIdx === 0}>
+            <div className="dialog-actions">
+              <button
+                type="button"
+                className="dialog-btn dialog-btn--secondary"
+                onClick={prevWizard}
+                disabled={wizardIdx === 0}
+              >
                 Back
               </button>
-              <button className="payees-btn" onClick={nextWizard}>
-                Skip
-              </button>
-              <button
-                className="payees-btn payees-btn--primary"
-                onClick={startWizardMerge}
-                disabled={checkedPayees.length < 2 || mergePayee.isPending || updatePayee.isPending}
-                title={checkedPayees.length < 2 ? 'Check at least 2 payees to merge' : undefined}
-              >
-                Merge {checkedPayees.length}…
-              </button>
-            </>
+              {wizardError && (
+                <span className="dialog-form__error" role="alert">
+                  {wizardError}
+                </span>
+              )}
+              <div className="dialog-actions__end">
+                <button
+                  type="button"
+                  className="dialog-btn dialog-btn--secondary"
+                  onClick={nextWizard}
+                >
+                  Skip
+                </button>
+                <button
+                  type="button"
+                  className="dialog-btn dialog-btn--primary"
+                  onClick={startWizardMerge}
+                  disabled={mergePayee.isPending || updatePayee.isPending}
+                >
+                  Merge {checkedPayees.length}…
+                </button>
+              </div>
+            </div>
           }
         >
           <div className="payees-wizard__body">
             <p className="payees-wizard__label">
               These payees look similar: <strong>{currentGroup.label}</strong>
             </p>
-            <p className="payees-wizard__sub">
+            <p className="dialog-form__hint">
               Uncheck any that don't belong, then merge the rest — you'll choose the surviving name
               next.
             </p>
@@ -453,14 +491,15 @@ export function PayeesPage() {
                         type="checkbox"
                         className="payees-checkbox"
                         checked={isChecked}
-                        onChange={() =>
+                        onChange={() => {
+                          setWizardError(null)
                           setWizardChecked((prev) => {
                             const next = new Set(prev)
                             if (next.has(p.id)) next.delete(p.id)
                             else next.add(p.id)
                             return next
                           })
-                        }
+                        }}
                       />
                       <span>
                         <strong>"{p.name}"</strong>
