@@ -93,7 +93,7 @@ export function AnomaliesReport({ budgetId }: Props) {
             <strong>Sensitivity</strong> controls the threshold: Strict shows only extreme outliers,
             Sensitive shows more subtle changes.
           </p>
-          <ReportScopeNote scope="categories" />
+          <ReportScopeNote report="anomalies" />
         </ReportInfoButton>
         <div className="flex-row">
           <ReportRangeSelect />

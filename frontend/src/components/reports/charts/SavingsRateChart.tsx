@@ -91,7 +91,7 @@ export function SavingsRateReport({ budgetId }: Props) {
             Open the rate to see where the savings went, what paid down debt and where the income
             came from.
           </p>
-          <ReportScopeNote scope="on-budget" />
+          <ReportScopeNote report="savings-rate" />
         </ReportInfoButton>
         <p className="report-section__subtitle">Share of income kept</p>
         <div className="flex-row ms-auto">

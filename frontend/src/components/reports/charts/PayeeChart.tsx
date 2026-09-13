@@ -118,7 +118,7 @@ export function PayeeReport({ budgetId }: Props) {
             utilities, regular vendors. These are the easiest targets for cutting predictable
             spending.
           </p>
-          <ReportScopeNote scope="on-budget-filterable" />
+          <ReportScopeNote report="payees" />
           <SpendingClassNote />
         </ReportInfoButton>
         <p className="report-section__subtitle">

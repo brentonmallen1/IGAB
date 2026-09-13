@@ -107,7 +107,7 @@ export function VolatilityReport({ budgetId }: Props) {
             monthly rate rather than its full size.
           </p>
           <p>Only categories with at least 2 months of data are shown.</p>
-          <ReportScopeNote scope="categories" />
+          <ReportScopeNote report="volatility" />
         </ReportInfoButton>
         <p className="report-section__subtitle">
           Mean monthly spending with min/max range. High variation = unstable spending.

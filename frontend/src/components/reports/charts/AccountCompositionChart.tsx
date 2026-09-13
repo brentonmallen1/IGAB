@@ -66,7 +66,7 @@ export function AccountCompositionReport({ budgetId }: Props) {
             <strong>Net</strong> line is their sum, less any unmanaged debts and plus any stated
             asset values — the same figure the Net Worth report draws.
           </p>
-          <ReportScopeNote scope="all-accounts" />
+          <ReportScopeNote report="account-composition" />
         </ReportInfoButton>
         <div className="flex-row ms-auto">
           <ReportRangeSelect />

@@ -77,7 +77,7 @@ export function SpendingBreakdownReport({ budgetId }: Props) {
             Where the period&apos;s spending went, by group. Click a slice or a row to open that
             group&apos;s categories. Percentages are of what is on screen.
           </p>
-          <ReportScopeNote scope="categories" />
+          <ReportScopeNote report="spending-breakdown" />
         </ReportInfoButton>
         <div className="flex-row">
           {open && (

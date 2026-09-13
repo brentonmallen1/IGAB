@@ -77,7 +77,7 @@ export function OverviewReport({ budgetId }: Props) {
               Savings transfers are not outflows. Shows “—” when no income was recorded. Open it to
               see the figures, the biggest spending categories and the prior period.
             </p>
-            <ReportScopeNote scope="overview" />
+            <ReportScopeNote report="overview" />
           </ReportInfoButton>
           <div className="flex-row ms-auto">
             <button

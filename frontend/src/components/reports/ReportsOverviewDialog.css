@@ -1,0 +1,146 @@
+/* The Reports overview: one table per group. Wide screens read across; the
+   table scrolls sideways in its own box before it squeezes, and a phone (the
+   app's 768px breakpoint, where Dialog is a bottom sheet) stacks each report
+   into a labelled card. */
+
+.reports-overview__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.reports-overview__heading {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.reports-overview__scroll {
+  /* Positioned so the phone's visually hidden header row stays inside it
+     rather than widening the page. */
+  position: relative;
+  overflow-x: auto;
+  background: var(--surface-sunken);
+  border: 1px solid var(--edge);
+  border-radius: var(--border-radius-sm);
+}
+
+.reports-overview__table {
+  width: 100%;
+  min-width: 640px;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.reports-overview__table th {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  text-align: left;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--edge);
+}
+
+.reports-overview__table td {
+  padding: var(--spacing-sm);
+  vertical-align: top;
+  line-height: 1.45;
+  border-bottom: 1px solid var(--edge);
+}
+
+.reports-overview__table th:first-child,
+.reports-overview__table td:first-child {
+  width: 26%;
+}
+
+.reports-overview__table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.reports-overview__report {
+  display: block;
+  padding: 0;
+  background: none;
+  border: none;
+  font: inherit;
+  font-weight: 600;
+  color: var(--color-accent);
+  text-align: left;
+  cursor: pointer;
+}
+
+.reports-overview__report:hover {
+  text-decoration: underline;
+}
+
+.reports-overview__report:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.reports-overview__summary {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-primary);
+}
+
+.reports-overview__row--nested td:first-child {
+  padding-left: var(--spacing-lg);
+}
+
+/* SCOPE_COPY is the sentence after "Accounts:" in a popover; under an
+   Accounts heading it starts the cell. Block, because ::first-letter only
+   applies to one — and a span, so the phone's stacked label is not it. */
+.reports-overview__accounts {
+  display: block;
+}
+
+.reports-overview__accounts::first-letter {
+  text-transform: uppercase;
+}
+
+@media (max-width: 768px) {
+  .reports-overview__table {
+    min-width: 0;
+  }
+  .reports-overview__table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .reports-overview__table tr,
+  .reports-overview__table td {
+    display: block;
+    width: auto;
+  }
+  .reports-overview__table tr {
+    padding: var(--spacing-xs) 0;
+    border-bottom: 1px solid var(--edge);
+  }
+  .reports-overview__table tbody tr:last-child {
+    border-bottom: none;
+  }
+  .reports-overview__table td,
+  .reports-overview__table th:first-child,
+  .reports-overview__table td:first-child {
+    width: auto;
+    padding: 2px var(--spacing-sm);
+    border-bottom: none;
+  }
+  .reports-overview__table td:not(:first-child)::before {
+    content: attr(data-label);
+    display: block;
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+  .reports-overview__row--nested td:first-child {
+    padding-left: var(--spacing-sm);
+  }
+}

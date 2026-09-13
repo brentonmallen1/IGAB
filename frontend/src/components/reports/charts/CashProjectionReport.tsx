@@ -77,7 +77,7 @@ export function CashProjectionReport({ budgetId }: Props) {
             The <strong>dashed line</strong> shows what would happen with only scheduled and
             subscription charges — no random daily spending.
           </p>
-          <ReportScopeNote scope="cash-projection" />
+          <ReportScopeNote report="projection" />
         </ReportInfoButton>
         <div className="flex-row">
           {HORIZON_OPTIONS.map((h) => (

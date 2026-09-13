@@ -94,7 +94,7 @@ export function SpendingTreemapReport({ budgetId }: Props) {
             switch. In Group mode you can click a tile to drill into its categories.
           </p>
           <p>Clicking a category tile opens the list of transactions behind it below the chart.</p>
-          <ReportScopeNote scope="on-budget-filterable" />
+          <ReportScopeNote report="treemap" />
           <SpendingClassNote />
         </ReportInfoButton>
         {groupBy !== 'category' && (
