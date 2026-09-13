@@ -9,7 +9,8 @@ proceeds belong.
 
 So the account says. `accounts.counts_as_savings` is read by the activity
 classifier for off-budget assets only; `account_types.default_counts_as_savings`
-is what a new account of the type starts with. `other_asset` defaults to
+is what a new account of the type starts with, and the built-in descriptions
+for `investment` and `other_asset` are rewritten to say so. `other_asset` defaults to
 false — it is the type people pick for a house or a vehicle — and every other
 type to true.
 
@@ -56,6 +57,27 @@ _PROPERTY_OR_VEHICLE = (
     "([^a-z0-9]|$)"
 )
 
+#: The two built-in descriptions that said every transfer here counts as
+#: saving, rewritten to say the flag decides. Inlined, like the regex.
+_DESCRIPTIONS: list[tuple[str, str]] = [
+    (
+        "investment",
+        "Brokerage, retirement (401k, IRA), HSA, or similar. Off budget: it grows "
+        "your net worth but isn't spendable envelope money. Money you move here "
+        "counts as saving rather than spending, unless you turn off Counts as "
+        "savings on the account. Growth inside the account — dividends, market "
+        "movement — is not counted as saving, because you didn't put it there.",
+    ),
+    (
+        "other_asset",
+        "Anything else you own that counts toward net worth — a house, a car, "
+        "crypto, a manually tracked balance. Off budget. It does not count as "
+        "savings unless you turn Counts as savings on: buying the thing is "
+        "spending and selling it is income. Turn it on for something you save "
+        "into, like crypto.",
+    ),
+]
+
 
 def upgrade() -> None:
     op.add_column(
@@ -88,6 +110,14 @@ def upgrade() -> None:
         ),
         {"pattern": _PROPERTY_OR_VEHICLE},
     )
+    for key, description in _DESCRIPTIONS:
+        conn.execute(
+            sa.text(
+                "UPDATE account_types SET description = :description "
+                "WHERE key = :key AND is_system = true"
+            ),
+            {"key": key, "description": description},
+        )
 
 
 def downgrade() -> None:

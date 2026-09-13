@@ -9,6 +9,8 @@ export interface AccountTypeOption {
   label: string
   classification: 'asset' | 'liability'
   default_on_budget: boolean
+  /** Only read for off-budget assets: see Account.counts_as_savings. */
+  default_counts_as_savings: boolean
   description: string
 }
 
@@ -18,6 +20,7 @@ export const BUILTIN_ACCOUNT_TYPES: AccountTypeOption[] = [
     label: 'Checking',
     classification: 'asset',
     default_on_budget: true,
+    default_counts_as_savings: true,
     description:
       'Everyday spending account. On budget: its balance funds your envelopes, and ' +
       'spending from it needs a category. Moving money between two on-budget ' +
@@ -28,6 +31,7 @@ export const BUILTIN_ACCOUNT_TYPES: AccountTypeOption[] = [
     label: 'Savings',
     classification: 'asset',
     default_on_budget: true,
+    default_counts_as_savings: true,
     description:
       'Money set aside but still yours to plan with. On budget so it can back ' +
       'envelopes like an emergency fund. Because it is on budget, moving money here ' +
@@ -39,6 +43,7 @@ export const BUILTIN_ACCOUNT_TYPES: AccountTypeOption[] = [
     label: 'Cash',
     classification: 'asset',
     default_on_budget: true,
+    default_counts_as_savings: true,
     description: 'Physical cash. Works exactly like checking, just tracked by hand.',
   },
   {
@@ -46,6 +51,7 @@ export const BUILTIN_ACCOUNT_TYPES: AccountTypeOption[] = [
     label: 'Credit Card',
     classification: 'liability',
     default_on_budget: true,
+    default_counts_as_savings: true,
     description:
       'Card debt tracked transaction by transaction. On budget: card spending uses ' +
       'envelope money, and payments are transfers.',
@@ -55,6 +61,7 @@ export const BUILTIN_ACCOUNT_TYPES: AccountTypeOption[] = [
     label: 'Mortgage',
     classification: 'liability',
     default_on_budget: false,
+    default_counts_as_savings: true,
     description:
       'A home loan. Off budget, with APR, payment and payoff tracking attached to ' +
       'the account itself. Money you send here counts as paying down debt, not ' +
@@ -66,6 +73,7 @@ export const BUILTIN_ACCOUNT_TYPES: AccountTypeOption[] = [
     label: 'Auto Loan',
     classification: 'liability',
     default_on_budget: false,
+    default_counts_as_savings: true,
     description:
       'A car, truck, or other vehicle loan. Off budget. Money you send here counts ' +
       "as paying down debt rather than spending. Track the vehicle's value " +
@@ -76,6 +84,7 @@ export const BUILTIN_ACCOUNT_TYPES: AccountTypeOption[] = [
     label: 'Student Loan',
     classification: 'liability',
     default_on_budget: false,
+    default_counts_as_savings: true,
     description:
       'An education loan. Off budget. Money you send here counts as paying down ' +
       'debt, not spending. Several loans that are billed together can be one ' +
@@ -86,6 +95,7 @@ export const BUILTIN_ACCOUNT_TYPES: AccountTypeOption[] = [
     label: 'Loan',
     classification: 'liability',
     default_on_budget: false,
+    default_counts_as_savings: true,
     description:
       'Any other loan — personal, medical, a line of credit. Off budget. Money you ' +
       'send here counts as paying down debt, not spending, so it stays out of your ' +
@@ -97,28 +107,32 @@ export const BUILTIN_ACCOUNT_TYPES: AccountTypeOption[] = [
     label: 'Investment',
     classification: 'asset',
     default_on_budget: false,
+    default_counts_as_savings: true,
     description:
       'Brokerage, retirement (401k, IRA), HSA, or similar. Off budget: it grows ' +
       "your net worth but isn't spendable envelope money. Money you move here " +
-      'counts as saving rather than spending. Growth inside the account — ' +
-      "dividends, market movement — is not counted as saving, because you didn't " +
-      'put it there.',
+      'counts as saving rather than spending, unless you turn off Counts as ' +
+      'savings on the account. Growth inside the account — dividends, market ' +
+      "movement — is not counted as saving, because you didn't put it there.",
   },
   {
     key: 'other_asset',
     label: 'Other Asset',
     classification: 'asset',
     default_on_budget: false,
+    default_counts_as_savings: false,
     description:
-      'Anything else you own that counts toward net worth — property value, crypto, ' +
-      'a manually tracked balance. Off budget, so money moved here counts as saving ' +
-      'rather than spending.',
+      'Anything else you own that counts toward net worth — a house, a car, crypto, ' +
+      'a manually tracked balance. Off budget. It does not count as savings unless ' +
+      'you turn Counts as savings on: buying the thing is spending and selling it ' +
+      'is income. Turn it on for something you save into, like crypto.',
   },
   {
     key: 'other_liability',
     label: 'Other Liability',
     classification: 'liability',
     default_on_budget: false,
+    default_counts_as_savings: true,
     description:
       "Anything else you owe that counts against net worth but isn't budgeted " +
       'transaction by transaction. Money you send here counts as paying down debt ' +
