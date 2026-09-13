@@ -1,9 +1,12 @@
+import { useState } from 'react'
+import { apiErrorMessage } from '../../../api/client'
 import { useUndoToast } from '../../../utils/toastUndo'
 import { useAssignApply, useAssignPreview } from '../../../api/assign'
 import { useFormatters } from '../../../hooks/useFormatters'
 import type { AssignStrategy } from '../../../types'
 import { STRATEGY_META } from '../AssignDropdown/strategyMeta'
 import { Dialog } from '../../common/Dialog/Dialog'
+import '../previewDialog.css'
 import './AssignPreviewModal.css'
 
 interface Props {
@@ -24,6 +27,7 @@ export function AssignPreviewModal({ budgetId, month, strategy, onClose }: Props
   const { data: preview, isLoading } = useAssignPreview(budgetId, month, strategy)
   const apply = useAssignApply(budgetId)
   const notify = useUndoToast()
+  const [error, setError] = useState<string | null>(null)
   const meta = STRATEGY_META[strategy]
   const tbaAfter = Number(preview?.tba_after ?? 0)
   const toAssign = Number(preview?.to_assign ?? 0)
@@ -32,7 +36,20 @@ export function AssignPreviewModal({ budgetId, month, strategy, onClose }: Props
 
   async function handleApply() {
     if (!preview) return
-    const result = await apply.mutateAsync({ month, strategy })
+    // Enabled and asked, like every dialog's primary, rather than inert with
+    // no reason given.
+    if (!hasChanges) {
+      setError('Every category already matches this strategy — nothing to apply.')
+      return
+    }
+    setError(null)
+    let result: Awaited<ReturnType<typeof apply.mutateAsync>>
+    try {
+      result = await apply.mutateAsync({ month, strategy })
+    } catch (err: unknown) {
+      setError(apiErrorMessage(err, 'Could not apply this strategy'))
+      return
+    }
     const assigned = result.to_assign
     const returned = result.to_return
     const parts = []
@@ -51,29 +68,37 @@ export function AssignPreviewModal({ budgetId, month, strategy, onClose }: Props
   // depends on whether the preview found anything to change.
   const footer =
     preview && preview.items.length > 0 ? (
-      <>
-        <div className="assign-preview-modal__tba-summary">
-          <span className="assign-preview-modal__tba-label">TBA:</span>
-          <span className="assign-preview-modal__tba-value">{formatMoney(preview.tba_before)}</span>
-          <span className="assign-preview-modal__tba-arrow">→</span>
-          <span
-            className={`assign-preview-modal__tba-value ${tbaAfter >= 0 ? 'positive' : 'negative'}`}
-          >
-            {formatMoney(tbaAfter)}
+      <div className="dialog-actions preview-dialog__actions">
+        {error ? (
+          <span className="dialog-form__error" role="alert">
+            {error}
           </span>
-        </div>
-        <div className="assign-preview-modal__actions">
+        ) : (
+          <div className="preview-dialog__tba">
+            <span className="preview-dialog__tba-label">TBA:</span>
+            <span className="preview-dialog__tba-value">{formatMoney(preview.tba_before)}</span>
+            <span className="preview-dialog__tba-label">→</span>
+            <span
+              className={`preview-dialog__tba-value ${tbaAfter >= 0 ? 'positive' : 'negative'}`}
+            >
+              {formatMoney(tbaAfter)}
+            </span>
+          </div>
+        )}
+        <div className="dialog-actions__end">
           <button
-            className="assign-preview-modal__btn assign-preview-modal__btn--secondary"
+            type="button"
+            className="dialog-btn dialog-btn--secondary"
             onClick={onClose}
             disabled={apply.isPending}
           >
             Cancel
           </button>
           <button
-            className="assign-preview-modal__btn assign-preview-modal__btn--primary"
+            type="button"
+            className="dialog-btn dialog-btn--primary"
             onClick={handleApply}
-            disabled={apply.isPending || !hasChanges}
+            disabled={apply.isPending}
           >
             {apply.isPending
               ? 'Applying…'
@@ -84,14 +109,15 @@ export function AssignPreviewModal({ budgetId, month, strategy, onClose }: Props
                   : `Apply — ${formatMoney(toAssign)}`}
           </button>
         </div>
-      </>
+      </div>
     ) : !isLoading ? (
-      <button
-        className="assign-preview-modal__btn assign-preview-modal__btn--secondary"
-        onClick={onClose}
-      >
-        Close
-      </button>
+      <div className="dialog-actions">
+        <div className="dialog-actions__end">
+          <button type="button" className="dialog-btn dialog-btn--secondary" onClick={onClose}>
+            Close
+          </button>
+        </div>
+      </div>
     ) : undefined
 
   return (
@@ -102,26 +128,26 @@ export function AssignPreviewModal({ budgetId, month, strategy, onClose }: Props
       className="assign-preview-modal"
       footer={footer}
     >
-      <div className="assign-preview-modal__body">
+      <div className="preview-dialog__body">
         {isLoading ? (
-          <div className="assign-preview-modal__loading">Calculating…</div>
+          <div className="preview-dialog__status">Calculating…</div>
         ) : !preview || preview.items.length === 0 ? (
-          <div className="assign-preview-modal__empty">Nothing to change — you're all set.</div>
+          <div className="preview-dialog__status">Nothing to change — you're all set.</div>
         ) : (
           <>
-            <p className="assign-preview-modal__description">{meta.description}</p>
-            <table className="assign-preview-modal__table">
+            <p className="preview-dialog__description">{meta.description}</p>
+            <table className="preview-dialog__table">
               <caption className="sr-only">Per-category changes for {meta.label}</caption>
               <thead>
                 <tr>
                   <th scope="col">Category</th>
-                  <th scope="col" className="assign-preview-modal__col-num">
+                  <th scope="col" className="preview-dialog__col-num">
                     Current
                   </th>
-                  <th scope="col" className="assign-preview-modal__col-num">
+                  <th scope="col" className="preview-dialog__col-num">
                     Change
                   </th>
-                  <th scope="col" className="assign-preview-modal__col-num">
+                  <th scope="col" className="preview-dialog__col-num">
                     New Total
                   </th>
                 </tr>
@@ -132,11 +158,11 @@ export function AssignPreviewModal({ budgetId, month, strategy, onClose }: Props
                   return (
                     <tr key={item.category_id}>
                       <td>{item.category_name}</td>
-                      <td className="assign-preview-modal__col-num">
+                      <td className="preview-dialog__col-num">
                         {formatMoney(item.current_assigned)}
                       </td>
                       <td
-                        className={`assign-preview-modal__col-num ${
+                        className={`preview-dialog__col-num ${
                           delta > 0
                             ? 'assign-preview-modal__delta--positive'
                             : delta < 0
@@ -147,9 +173,7 @@ export function AssignPreviewModal({ budgetId, month, strategy, onClose }: Props
                         {delta > 0 ? '+' : ''}
                         {formatMoney(delta)}
                       </td>
-                      <td className="assign-preview-modal__col-num">
-                        {formatMoney(item.new_assigned)}
-                      </td>
+                      <td className="preview-dialog__col-num">{formatMoney(item.new_assigned)}</td>
                     </tr>
                   )
                 })}

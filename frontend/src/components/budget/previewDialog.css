@@ -1,0 +1,92 @@
+/* A bulk-assign preview: the assign-strategy preview and Cover overspending.
+
+   Both show a per-category table of what an apply would do, with Ready to
+   Assign before/after beside the buttons. Each had its own copy of this
+   stylesheet — table, empty state, TBA summary, buttons — and they had
+   already drifted: only the strategy preview stacked its footer on a phone,
+   so Cover's summary and its long "Cover — $…" button shared one squeezed
+   row. The buttons and footer row are DialogForm.css's; what is left is the
+   preview itself. Row figures that carry a sign (deltas, overspent) keep
+   their own classes, because base.css's glow list names them. */
+
+/* Dialog's scroll region is the scroller; the body is layout only. */
+.preview-dialog__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.preview-dialog__status {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  text-align: center;
+  padding: var(--spacing-xl) 0;
+}
+
+.preview-dialog__description {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.preview-dialog__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.preview-dialog__table th {
+  text-align: left;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.preview-dialog__table td {
+  padding: 7px 8px;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.preview-dialog__col-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Ready to Assign after the apply, at the start of the footer row. */
+.preview-dialog__tba {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-sm);
+}
+
+.preview-dialog__tba-label {
+  color: var(--text-muted);
+}
+
+.preview-dialog__tba-value {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.preview-dialog__tba-value.positive {
+  color: var(--color-positive);
+}
+
+.preview-dialog__tba-value.negative {
+  color: var(--color-negative);
+}
+
+/* A phone's footer cannot hold the summary and a "Cover — $1,234.00" button
+   on one line; the buttons wrap below it and stay at the end. */
+@media (max-width: 768px) {
+  .dialog-actions.preview-dialog__actions {
+    flex-wrap: wrap;
+  }
+}

@@ -7,15 +7,16 @@
  * thing assigning to the card buys, so the whole red is on offer now and
  * "Still red" means what it says.
  */
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import type { CoverOverspentPreviewResponse } from '../../../api/budgets'
 
+const applyMock = vi.hoisted(() => vi.fn())
 const preview = vi.hoisted(() => ({ current: null as CoverOverspentPreviewResponse | null }))
 
 vi.mock('../../../api/budgets', () => ({
   useCoverOverspentPreview: () => ({ data: preview.current, isLoading: false, refetch: vi.fn() }),
-  useCoverOverspentApply: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useCoverOverspentApply: () => ({ mutateAsync: applyMock, isPending: false }),
   useBudgetMonth: () => ({ data: { cards: [] } }),
 }))
 vi.mock('../../../utils/toastUndo', () => ({ useUndoToast: () => vi.fn() }))
@@ -35,7 +36,12 @@ function item(over: Record<string, unknown> = {}) {
   }
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  // Every test opens a Dialog; drain the deferred history.back() of the last.
+  await new Promise((r) => setTimeout(r, 0))
+  await new Promise((r) => setTimeout(r, 0))
+  window.history.replaceState(null, '')
+  applyMock.mockReset()
   preview.current = {
     items: [item()],
     total_overspent: 30,
@@ -100,5 +106,22 @@ describe('CoverOverspentModal', () => {
     expect(screen.getByText(/\$10\.00\s+retires card debt/)).toBeInTheDocument()
     const cells = screen.getAllByRole('cell')
     expect(cells.at(-1)).toHaveTextContent('-$40.00')
+  })
+
+  it('keeps Cover enabled when Ready to Assign is empty, and says why on click', () => {
+    // Disabled used to be the whole answer, with the reason in a paragraph
+    // above the table that nothing tied to the button.
+    preview.current = {
+      ...preview.current!,
+      items: [item({ proposed_addition: 0, remaining_after: 30 })],
+      total_addition: 0,
+    }
+    open()
+    const cover = screen.getByRole('button', { name: /^Cover/ })
+    expect(cover).toHaveClass('dialog-btn', 'dialog-btn--primary')
+    expect(cover).toBeEnabled()
+    fireEvent.click(cover)
+    expect(screen.getByRole('alert')).toHaveTextContent(/Ready to Assign is empty/)
+    expect(applyMock).not.toHaveBeenCalled()
   })
 })

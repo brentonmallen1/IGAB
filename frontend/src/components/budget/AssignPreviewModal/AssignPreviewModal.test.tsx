@@ -6,22 +6,28 @@
  * That is what they are for — and a table of assigned-before/assigned-after is
  * the one place the consequence does not appear, so the preview says it.
  */
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import type { AssignPreviewResponse } from '../../../api/assign'
 
+const applyMock = vi.hoisted(() => vi.fn())
 const preview = vi.hoisted(() => ({ current: null as AssignPreviewResponse | null }))
 
 vi.mock('../../../api/assign', () => ({
   useAssignPreview: () => ({ data: preview.current, isLoading: false }),
-  useAssignApply: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useAssignApply: () => ({ mutateAsync: applyMock, isPending: false }),
 }))
 vi.mock('../../../utils/toastUndo', () => ({ useUndoToast: () => vi.fn() }))
 vi.mock('../../../hooks/useMediaQuery', () => ({ useIsMobile: () => false }))
 
 import { AssignPreviewModal } from './AssignPreviewModal'
 
-beforeEach(() => {
+beforeEach(async () => {
+  // Every test opens a Dialog; drain the deferred history.back() of the last.
+  await new Promise((r) => setTimeout(r, 0))
+  await new Promise((r) => setTimeout(r, 0))
+  window.history.replaceState(null, '')
+  applyMock.mockReset()
   preview.current = {
     strategy: 'reset_assigned',
     items: [
@@ -84,5 +90,30 @@ describe('AssignPreviewModal', () => {
     open()
     expect(screen.getByText(/Ready to Assign will go negative/)).toBeInTheDocument()
     expect(screen.getByText(/overspent by/)).toBeInTheDocument()
+  })
+
+  it('keeps Apply enabled with nothing to change, and says so instead of applying', () => {
+    // It used to be disabled with no reason given; a primary asks and answers.
+    preview.current = {
+      ...preview.current!,
+      items: [{ ...preview.current!.items[0], delta: 0, new_assigned: 150 }],
+      to_return: 0,
+    }
+    open()
+    const apply = screen.getByRole('button', { name: /^Apply/ })
+    expect(apply).toHaveClass('dialog-btn', 'dialog-btn--primary')
+    expect(apply).toBeEnabled()
+    fireEvent.click(apply)
+    expect(screen.getByRole('alert')).toHaveTextContent(/nothing to apply/)
+    expect(screen.getByRole('alert')).toHaveClass('dialog-form__error')
+    expect(applyMock).not.toHaveBeenCalled()
+  })
+
+  it('shares the footer row and buttons with every dialog', () => {
+    open()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveClass('dialog-btn--secondary')
+    expect(screen.getByRole('button', { name: 'Cancel' }).closest('.dialog-actions')).toHaveClass(
+      'preview-dialog__actions'
+    )
   })
 })

@@ -6,6 +6,7 @@ import {
 } from '../../../api/budgets'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { Dialog } from '../../common/Dialog/Dialog'
+import '../previewDialog.css'
 import './CoverOverspentModal.css'
 import { useUndoToast } from '../../../utils/toastUndo'
 
@@ -31,6 +32,12 @@ export function CoverOverspentModal({ budgetId, month, onClose }: Props) {
 
   async function handleApply() {
     if (!preview) return
+    // Enabled and asked, like every dialog's primary: an inert button with the
+    // reason in a paragraph above it is one nobody connects to the paragraph.
+    if (!canApply) {
+      setError('Ready to Assign is empty — add or move money there first.')
+      return
+    }
     setError(null)
     try {
       const result = await apply.mutateAsync({
@@ -56,36 +63,48 @@ export function CoverOverspentModal({ budgetId, month, onClose }: Props) {
   // depends on whether anything actually needs covering.
   const footer =
     preview && preview.items.length > 0 ? (
-      <>
-        <div className="cover-modal__tba-summary">
-          <span className="cover-modal__tba-label">TBA after:</span>
-          <span
-            className={`cover-modal__tba-value ${preview.tba_after >= 0 ? 'positive' : 'negative'}`}
-          >
-            {formatMoney(preview.tba_after)}
+      <div className="dialog-actions preview-dialog__actions">
+        {error ? (
+          <span className="dialog-form__error" role="alert">
+            {error}
           </span>
-        </div>
-        <div className="cover-modal__actions">
+        ) : (
+          <div className="preview-dialog__tba">
+            <span className="preview-dialog__tba-label">TBA after:</span>
+            <span
+              className={`preview-dialog__tba-value ${preview.tba_after >= 0 ? 'positive' : 'negative'}`}
+            >
+              {formatMoney(preview.tba_after)}
+            </span>
+          </div>
+        )}
+        <div className="dialog-actions__end">
           <button
-            className="cover-modal__btn cover-modal__btn--secondary"
+            type="button"
+            className="dialog-btn dialog-btn--secondary"
             onClick={onClose}
             disabled={apply.isPending}
           >
             Cancel
           </button>
           <button
-            className="cover-modal__btn cover-modal__btn--primary"
+            type="button"
+            className="dialog-btn dialog-btn--primary"
             onClick={handleApply}
-            disabled={apply.isPending || !canApply}
+            disabled={apply.isPending}
           >
             {apply.isPending ? 'Covering…' : `Cover — ${formatMoney(preview.total_addition)}`}
           </button>
         </div>
-      </>
+      </div>
     ) : !isLoading ? (
-      <button className="cover-modal__btn cover-modal__btn--secondary" onClick={onClose}>
-        Close
-      </button>
+      <div className="dialog-actions">
+        <div className="dialog-actions__end">
+          <button type="button" className="dialog-btn dialog-btn--secondary" onClick={onClose}>
+            Close
+          </button>
+        </div>
+      </div>
     ) : undefined
 
   return (
@@ -96,14 +115,14 @@ export function CoverOverspentModal({ budgetId, month, onClose }: Props) {
       className="cover-modal"
       footer={footer}
     >
-      <div className="cover-modal__body">
+      <div className="preview-dialog__body">
         {isLoading ? (
-          <div className="cover-modal__loading">Calculating…</div>
+          <div className="preview-dialog__status">Calculating…</div>
         ) : !preview || preview.items.length === 0 ? (
-          <div className="cover-modal__empty">Nothing is overspent this month.</div>
+          <div className="preview-dialog__status">Nothing is overspent this month.</div>
         ) : (
           <>
-            <p className="cover-modal__description">
+            <p className="preview-dialog__description">
               Ready to Assign ({formatMoney(preview.tba_before)}) will cover these envelopes — in
               full when it stretches, proportionally when it doesn&rsquo;t.
             </p>
@@ -133,21 +152,21 @@ export function CoverOverspentModal({ budgetId, month, onClose }: Props) {
                 )}
               </>
             )}
-            <table className="cover-modal__table">
+            <table className="preview-dialog__table">
               <caption className="sr-only">Overspent categories and proposed coverage</caption>
               <thead>
                 <tr>
                   <th scope="col">Category</th>
-                  <th scope="col" className="cover-modal__col-num">
+                  <th scope="col" className="preview-dialog__col-num">
                     Overspent
                   </th>
-                  <th scope="col" className="cover-modal__col-num">
+                  <th scope="col" className="preview-dialog__col-num">
                     Covering
                   </th>
                   {/* "Still red", not "remaining cash short": the column has
                       to answer the question the grid asks, or a row can read
                       $0.00 beside a cell that is still in the red. */}
-                  <th scope="col" className="cover-modal__col-num">
+                  <th scope="col" className="preview-dialog__col-num">
                     Still red
                   </th>
                 </tr>
@@ -163,10 +182,10 @@ export function CoverOverspentModal({ budgetId, month, onClose }: Props) {
                   return (
                     <tr key={item.category_id}>
                       <td>{item.category_name}</td>
-                      <td className="cover-modal__col-num cover-modal__overspent">
+                      <td className="preview-dialog__col-num cover-modal__overspent">
                         {formatMoney(-item.overspent)}
                       </td>
-                      <td className="cover-modal__col-num cover-modal__covering">
+                      <td className="preview-dialog__col-num cover-modal__covering">
                         +{formatMoney(item.proposed_addition)}
                         {item.credit_overspent > 0 && (
                           <span className="cover-modal__on-card-part">
@@ -175,7 +194,7 @@ export function CoverOverspentModal({ budgetId, month, onClose }: Props) {
                           </span>
                         )}
                       </td>
-                      <td className="cover-modal__col-num">
+                      <td className="preview-dialog__col-num">
                         {stillRed > 0 ? formatMoney(-stillRed) : formatMoney(0)}
                       </td>
                     </tr>
@@ -190,7 +209,6 @@ export function CoverOverspentModal({ budgetId, month, onClose }: Props) {
             )}
           </>
         )}
-        {error && <div className="cover-modal__error">{error}</div>}
       </div>
     </Dialog>
   )
