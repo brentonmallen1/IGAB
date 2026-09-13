@@ -7,6 +7,13 @@ import { useAppStore } from '../../stores/appStore'
 import { useGuideStore } from '../../stores/guideStore'
 import { useGuideOverview, type GuidePreferences } from '../../api/guide'
 
+vi.mock('../../api/moneyRules', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api/moneyRules')>()),
+  useMoneyRules: () => ({ data: undefined, isError: false }),
+  useExplainMove: () => ({ data: undefined, isError: false }),
+  useMoneyMonth: () => ({ data: undefined, isError: false }),
+}))
+
 vi.mock('../../api/guide', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/guide')>()),
   useGuideOverview: vi.fn(),
@@ -65,6 +72,14 @@ describe('GuidePage', () => {
     renderPage('/guide?tab=tools&tool=crystal-ball')
     expect(useGuideStore.getState().activeTab).toBe('tools')
     expect(useGuideStore.getState().activeTool).toBeNull()
+  })
+
+  it('offers How money counts, and its deep link opens it', () => {
+    prefs({ personalization: true, checkup: true })
+    renderPage('/guide?tab=money')
+    expect(screen.getByRole('button', { name: 'How money counts' })).toBeInTheDocument()
+    expect(useGuideStore.getState().activeTab).toBe('money')
+    expect(screen.getByRole('heading', { name: 'How money counts', level: 2 })).toBeInTheDocument()
   })
 
   it('offers no Wishlist tab — the wishlist has a page of its own now', () => {

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Search } from 'lucide-react'
 import { GLOSSARY, glossaryEntry, searchGlossary } from '../../content/glossary'
 import { useGuideStore } from '../../stores/guideStore'
+import { GuideTabLink } from './GuideTabLink'
 
 /**
  * Every definition in one place, searchable.
@@ -85,6 +86,11 @@ export function GlossaryPanel() {
                       <p className="guide-terms__in-app">
                         <span className="guide-terms__in-app-label">In IGAB</span>
                         {entry.inIgab}
+                      </p>
+                    )}
+                    {entry.guideTab && (
+                      <p className="guide-terms__in-app">
+                        <GuideTabLink tab={entry.guideTab} />
                       </p>
                     )}
                     {entry.related && entry.related.length > 0 && (

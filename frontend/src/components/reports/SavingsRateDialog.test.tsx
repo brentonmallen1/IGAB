@@ -3,7 +3,12 @@
  * tests (test_savings_contributors.py) prove they sum to the cards; these pin
  * what a reader sees and that the dialog asks for the window it was given.
  */
-import { render, screen, within } from '@testing-library/react'
+import { render as rtlRender, screen, within } from '@testing-library/react'
+import type { ReactElement } from 'react'
+import { MemoryRouter } from 'react-router-dom'
+
+/** The dialog links to the Guide, so it renders inside a router. */
+const render = (ui: ReactElement) => rtlRender(ui, { wrapper: MemoryRouter })
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SavingsContributors } from '../../api/reports'
@@ -227,6 +232,15 @@ describe('SavingsRateDialog', () => {
     expect(note).toHaveTextContent(/inside a tracked account/)
     expect(note).toHaveTextContent(/between two of your budget accounts/)
     expect(note).toHaveTextContent(/tag the category it leaves from Savings/)
+  })
+
+  it('links what does not count to the Guide tab that shows it at work', () => {
+    open()
+    const note = screen.getByRole('region', { name: 'What does not count' })
+    expect(within(note).getByRole('link', { name: /See how money counts/ })).toHaveAttribute(
+      'href',
+      '/guide?tab=money'
+    )
   })
 
   it('has no rate to explain without income', () => {

@@ -2,6 +2,7 @@ import { useSavingsContributors, type SavingsContributor } from '../../api/repor
 import { useFormatters } from '../../hooks/useFormatters'
 import { SYSTEM_TAG_HELP } from '../settings/TagsPanel/systemTagHelp'
 import { Dialog } from '../common/Dialog/Dialog'
+import { GuideTabLink } from '../guide/GuideTabLink'
 import { ReportErrorState } from './ReportErrorState'
 import { sharePhrase } from './drillDownTotals'
 import { pct } from './charts/savingsRateView'
@@ -144,6 +145,9 @@ function Contributors({
           To count money as saved, transfer it to a tracked (off-budget) account that counts as
           savings, or tag the category it leaves from {SAVINGS_TAG}. Buying or selling something
           tracked that does not count as savings — a car, a house — is spending or income instead.
+        </p>
+        <p className="dialog__body">
+          <GuideTabLink tab="money" />
         </p>
       </DetailSection>
     </>

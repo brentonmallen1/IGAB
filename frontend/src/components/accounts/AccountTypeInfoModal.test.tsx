@@ -8,7 +8,12 @@
  * the decision was made, with no way back to it.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render as rtlRender, screen } from '@testing-library/react'
+import type { ReactElement } from 'react'
+import { MemoryRouter } from 'react-router-dom'
+
+/** The dialog links to the Guide, so it renders inside a router. */
+const render = (ui: ReactElement) => rtlRender(ui, { wrapper: MemoryRouter })
 import { AccountTypeInfoModal } from './AccountTypeInfoModal'
 import { useMoneyRules, type MoneyShape, type MoveExplanation } from '../../api/moneyRules'
 
@@ -72,7 +77,12 @@ const OTHER_ASSET = {
   description: 'A thing you own',
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  // Every test opens the dialog; drain the history.back() the last one
+  // scheduled on close, or it closes this one.
+  await new Promise((r) => setTimeout(r, 0))
+  await new Promise((r) => setTimeout(r, 0))
+  window.history.replaceState(null, '')
   vi.mocked(useMoneyRules).mockReturnValue({
     data: { rules: [], report_families: [], shapes: [SERVED_SHAPE], planned_spend_tag_keys: [] },
   } as unknown as ReturnType<typeof useMoneyRules>)
@@ -131,6 +141,14 @@ describe('AccountTypeInfoModal', () => {
       expect(screen.getByText(/Served selling line: counts as Income/)).toBeInTheDocument()
       expect(screen.getByText(/Ready to Assign goes up by/)).toBeInTheDocument()
       expect(vi.mocked(useMoneyRules)).toHaveBeenCalledWith('b1')
+    })
+
+    it('links to the Guide tab that explains the rules behind the lines', () => {
+      render(<AccountTypeInfoModal types={[OTHER_ASSET]} budgetId="b1" onClose={vi.fn()} />)
+      expect(screen.getByRole('link', { name: /See how money counts/ })).toHaveAttribute(
+        'href',
+        '/guide?tab=money'
+      )
     })
 
     it('draws nothing for a type no served shape matches', () => {

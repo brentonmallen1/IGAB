@@ -9,13 +9,14 @@ import { RoadmapPanel } from '../../components/guide/RoadmapPanel'
 import { GlossaryPanel } from '../../components/guide/GlossaryPanel'
 import { CheckupPanel } from '../../components/guide/CheckupPanel'
 import { ToolsPanel } from '../../components/guide/tools/ToolsPanel'
+import { MoneyPanel } from '../../components/guide/money/MoneyPanel'
 import './GuidePage.css'
 
 /**
  * Guidance and tools — the roadmap, a financial checkup, scenario
- * calculators and a glossary. The wishlist lived here once; it is a working
- * tool rather than guidance, so it has a page of its own now, and old
- * `?tab=wishlist` links are walked over to it.
+ * calculators, how money counts in reports, and a glossary. The wishlist
+ * lived here once; it is a working tool rather than guidance, so it has a
+ * page of its own now, and old `?tab=wishlist` links are walked over to it.
  *
  * Shell-plus-tab-router, the same shape as ReportsPage. The Checkup tab is
  * offered only while health reviews are on — off means the tab, the report
@@ -83,6 +84,8 @@ export function GuidePage() {
         return <CheckupPanel />
       case 'tools':
         return <ToolsPanel />
+      case 'money':
+        return <MoneyPanel />
     }
   }
 

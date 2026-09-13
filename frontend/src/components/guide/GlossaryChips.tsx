@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { GuideTabLink } from './GuideTabLink'
 import { glossaryEntry } from '../../content/glossary'
 
 /**
@@ -44,6 +45,11 @@ export function GlossaryChips({ terms }: { terms: string[] }) {
             <p className="guide-terms__in-app">
               <span className="guide-terms__in-app-label">In IGAB</span>
               {entry.inIgab}
+            </p>
+          )}
+          {entry.guideTab && (
+            <p className="guide-terms__in-app">
+              <GuideTabLink tab={entry.guideTab} />
             </p>
           )}
         </div>

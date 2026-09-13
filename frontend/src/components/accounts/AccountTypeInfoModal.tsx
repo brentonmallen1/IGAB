@@ -3,6 +3,7 @@ import { BUILTIN_ACCOUNT_TYPES } from '../../constants/accountTypes'
 import { useFormatters } from '../../hooks/useFormatters'
 import { budgetEffectLines, shapeFor } from '../../utils/moneyMoves'
 import { Dialog } from '../common/Dialog/Dialog'
+import { GuideTabLink } from '../guide/GuideTabLink'
 import './AccountTypeInfoModal.css'
 
 interface TypeRow {
@@ -119,6 +120,12 @@ export function AccountTypeInfoModal({ onClose, types, context, budgetId }: Prop
             </p>
           </div>
         </div>
+
+        {money && (
+          <p className="type-info__see-how">
+            <GuideTabLink tab="money" />
+          </p>
+        )}
 
         {context === 'import' && (
           <div className="type-info__concepts">

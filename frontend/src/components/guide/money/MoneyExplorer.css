@@ -1,0 +1,131 @@
+.money-explorer__controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.money-explorer__controls .guide-viewswitch {
+  align-self: flex-start;
+  flex-wrap: wrap;
+}
+
+.money-explorer__side {
+  margin: 0;
+  padding: 0;
+  border: none;
+  min-width: 0;
+}
+
+.money-explorer__side legend {
+  padding: 0;
+  margin-bottom: var(--spacing-xs);
+}
+
+.money-explorer__toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+/* The shared field rule widens every input; a checkbox keeps its own size. */
+.money-explorer__toggle input {
+  width: auto;
+}
+
+.money-explorer__status {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+.money-explorer__heading {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+
+.money-explorer__legs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: var(--spacing-sm);
+}
+
+.money-explorer__leg {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-radius: var(--border-radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.money-explorer__leg-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.money-explorer__leg-name {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+
+.money-explorer__leg-side {
+  margin-left: var(--spacing-xs);
+  font-size: var(--font-size-2xs);
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.money-explorer__why,
+.money-explorer__counted {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.money-explorer__effects {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.money-explorer__effects > div {
+  display: grid;
+  grid-template-columns: 7em 1fr;
+  gap: var(--spacing-sm);
+  font-size: var(--font-size-sm);
+}
+
+.money-explorer__effects dt {
+  color: var(--text-muted);
+}
+
+.money-explorer__effects dd {
+  margin: 0;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.money-explorer__assumption {
+  margin: 0;
+  font-size: var(--font-size-2xs);
+  color: var(--text-muted);
+}
+
+@media (max-width: 768px) {
+  .money-explorer__effects > div {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+}
