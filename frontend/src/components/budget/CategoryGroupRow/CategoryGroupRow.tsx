@@ -18,6 +18,7 @@ import { sumBalances } from '../budgetTotals'
 import type { Category, CategoryBalance, CategoryGroup } from '../../../types'
 import '../budgetGrid.css'
 import './CategoryGroupRow.css'
+import { keepsSelection } from '../../../utils/keepsSelection'
 
 interface Props {
   group: CategoryGroup
@@ -188,6 +189,7 @@ export function CategoryGroupRow({
 
   return (
     <div
+      {...keepsSelection}
       className={`category-group-row ${budgetRowMode === 'dense' ? 'category-group-row--dense' : ''}`}
     >
       <div
