@@ -125,21 +125,11 @@
   align-self: flex-start;
 }
 
+/* The reset-password dialog's field and buttons are DialogForm.css. */
 .users-panel__dialog-desc {
+  margin: 0;
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
-}
-
-.users-panel__dialog-input {
-  width: 100%;
-  margin: var(--spacing-sm) 0;
-}
-
-.users-panel__dialog-actions {
-  width: 100%;
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--spacing-sm);
 }
 
 @media (max-width: 768px) {

@@ -4,7 +4,8 @@
  * you cannot deactivate yourself, and everyone else gets both actions.
  */
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import userEvent from '@testing-library/user-event'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ManagedUser } from '../../../api/users'
 
 const USERS: ManagedUser[] = [
@@ -34,10 +35,11 @@ const USERS: ManagedUser[] = [
   },
 ]
 
+const updateUser = vi.hoisted(() => vi.fn((_: unknown) => Promise.resolve({})))
 vi.mock('../../../api/users', () => ({
   useUsers: () => ({ data: USERS, isLoading: false }),
   useCreateUser: () => ({ mutateAsync: vi.fn(), isPending: false }),
-  useUpdateUser: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useUpdateUser: () => ({ mutateAsync: updateUser, isPending: false }),
 }))
 vi.mock('../../../api/auth', () => ({
   useCurrentUser: () => ({ data: USERS[0] }),
@@ -63,5 +65,51 @@ describe('UsersPanel', () => {
   it('marks deactivated accounts', () => {
     render(<UsersPanel />)
     expect(screen.getByText('deactivated')).toBeInTheDocument()
+  })
+})
+
+/**
+ * Set password was disabled until eight characters were typed, with nothing
+ * saying why. It is enabled now and answers a short password in the footer.
+ */
+describe('UsersPanel reset-password dialog', () => {
+  beforeEach(async () => {
+    await new Promise((r) => setTimeout(r, 0))
+    await new Promise((r) => setTimeout(r, 0))
+    window.history.replaceState(null, '')
+    updateUser.mockClear()
+  })
+
+  async function openReset() {
+    render(<UsersPanel />)
+    await userEvent.click(screen.getAllByRole('button', { name: /reset .*password/i })[0])
+  }
+
+  it('is a shared dialog form with a labelled password field', async () => {
+    await openReset()
+    const input = screen.getByLabelText('New password')
+    expect(input.closest('form')).toHaveClass('dialog-form')
+    expect(input.closest('label')).toHaveClass('dialog-form__field')
+    expect(screen.getByRole('button', { name: 'Set password' })).toHaveClass(
+      'dialog-btn',
+      'dialog-btn--primary'
+    )
+  })
+
+  it('keeps Set password enabled and refuses a short password on submit', async () => {
+    await openReset()
+    await userEvent.type(screen.getByLabelText('New password'), 'short')
+    const submit = screen.getByRole('button', { name: 'Set password' })
+    expect(submit).toBeEnabled()
+    await userEvent.click(submit)
+    expect(screen.getByText('Use at least 8 characters')).toHaveClass('dialog-form__error')
+    expect(updateUser).not.toHaveBeenCalled()
+  })
+
+  it('sets a long-enough password', async () => {
+    await openReset()
+    await userEvent.type(screen.getByLabelText('New password'), 'longenough')
+    await userEvent.click(screen.getByRole('button', { name: 'Set password' }))
+    expect(updateUser).toHaveBeenCalledWith({ id: 'u-partner', password: 'longenough' })
   })
 })

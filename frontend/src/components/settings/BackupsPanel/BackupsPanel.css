@@ -132,14 +132,13 @@
   cursor: help;
 }
 
-/* --- Restore dialog body (the panel itself is common/Dialog) --- */
+/* --- Restore dialog body. The panel is common/Dialog; the layout, the
+   checkbox, the error and the buttons are DialogForm.css. Both restore
+   dialogs, installation and per-budget, are drawn from what is left. --- */
 
 .bkp-modal__body {
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-sm);
 }
 
 .bkp-modal__body p {
@@ -162,27 +161,12 @@
   word-break: break-all;
 }
 
+/* The one choice before a restore, set in a well so it is not read past. */
 .bkp-modal__prebackup {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--spacing-sm);
-  cursor: pointer;
   background: var(--surface-sunken);
   border: 1px solid var(--edge);
   border-radius: var(--border-radius-sm);
   padding: var(--spacing-sm);
-}
-
-.bkp-modal__prebackup input {
-  margin-top: 2px;
-  flex-shrink: 0;
-}
-
-.bkp-modal__footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--spacing-sm);
-  width: 100%;
 }
 
 /* --- The blocking restore overlay --- */

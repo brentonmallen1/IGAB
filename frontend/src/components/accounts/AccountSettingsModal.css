@@ -127,7 +127,7 @@
 
 /* Account numbers: masked by default, revealed on demand. */
 .acct-modal__numbers,
-.acct-modal__numbers-form {
+.acct-modal__numbers-editor {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-xs);

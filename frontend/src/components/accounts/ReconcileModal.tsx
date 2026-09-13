@@ -2,6 +2,9 @@ import { parseAmountInput } from '../../utils/money'
 import { useState, useRef, useEffect } from 'react'
 import { Landmark } from 'lucide-react'
 import { Modal } from '../common/Modal/Modal'
+// Modal rather than Dialog — this is one question, not a titled panel — so the
+// shared field and button styles are imported here rather than through Dialog.
+import '../common/Dialog/DialogForm.css'
 import { useReconciliationStatus } from '../../api/reconciliation'
 import { useUIStore } from '../../stores/uiStore'
 import { useFormatters } from '../../hooks/useFormatters'
@@ -23,6 +26,7 @@ export function ReconcileModal({ accountId, accountName }: Props) {
 
   const [showInput, setShowInput] = useState(false)
   const [inputValue, setInputValue] = useState('')
+  const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const { data: status } = useReconciliationStatus(accountId)
@@ -32,14 +36,22 @@ export function ReconcileModal({ accountId, accountName }: Props) {
     if (showInput) inputRef.current?.focus()
   }, [showInput])
 
-  function handleContinue() {
+  function handleContinue(e: React.FormEvent) {
+    e.preventDefault()
+    if (!showInput) return
     // Stripping to [0-9.-] first turned "1.234,56" into "1.234.56".
     // parseAmountInput knows both separator conventions; the sign is
     // recovered separately because a statement balance may be negative.
     const negative = inputValue.trim().startsWith('-')
     const magnitude = parseAmountInput(inputValue.replace('-', ''))
     const balance = negative ? -magnitude : magnitude
-    if (!isNaN(balance)) setReconcileStatementBalance(balance)
+    if (!inputValue.trim() || isNaN(balance)) {
+      // It used to do nothing at all here, and Continue simply did not work.
+      setError('Enter the balance your bank shows')
+      return
+    }
+    setError(null)
+    setReconcileStatementBalance(balance)
   }
 
   return (
@@ -72,51 +84,59 @@ export function ReconcileModal({ accountId, accountName }: Props) {
           </p>
         )}
 
-        {showInput && (
-          <div className="reconcile-modal__input-row">
-            <label htmlFor="reconcile-balance-input" className="reconcile-modal__input-label">
-              What does your bank say?
-            </label>
-            <input
-              id="reconcile-balance-input"
-              ref={inputRef}
-              type="text"
-              inputMode="decimal"
-              className="reconcile-modal__input"
-              placeholder="0.00"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleContinue()}
-            />
-          </div>
-        )}
-
-        <div className="reconcile-modal__actions">
-          <button className="reconcile-modal__btn" onClick={cancelReconciliation}>
-            Cancel
-          </button>
-          {showInput ? (
-            <button
-              className="reconcile-modal__btn reconcile-modal__btn--primary"
-              onClick={handleContinue}
-              disabled={!inputValue.trim()}
-            >
-              Continue
-            </button>
-          ) : (
-            <>
-              <button className="reconcile-modal__btn" onClick={() => setShowInput(true)}>
-                No
-              </button>
-              <button
-                className="reconcile-modal__btn reconcile-modal__btn--primary"
-                onClick={() => setReconcileStatementBalance(clearedBalance)}
-              >
-                Yes
-              </button>
-            </>
+        <form className="dialog-form reconcile-modal__form" onSubmit={handleContinue}>
+          {showInput && (
+            <div className="dialog-form__field reconcile-modal__field">
+              <label htmlFor="reconcile-balance-input">What does your bank say?</label>
+              <input
+                id="reconcile-balance-input"
+                ref={inputRef}
+                type="text"
+                inputMode="decimal"
+                className="reconcile-modal__input"
+                placeholder="0.00"
+                value={inputValue}
+                onChange={(e) => {
+                  setInputValue(e.target.value)
+                  setError(null)
+                }}
+              />
+              {error && <p className="dialog-form__error">{error}</p>}
+            </div>
           )}
-        </div>
+
+          <div className="reconcile-modal__actions">
+            <button
+              type="button"
+              className="dialog-btn dialog-btn--secondary reconcile-modal__btn"
+              onClick={cancelReconciliation}
+            >
+              Cancel
+            </button>
+            {showInput ? (
+              <button type="submit" className="dialog-btn dialog-btn--primary reconcile-modal__btn">
+                Continue
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="dialog-btn dialog-btn--secondary reconcile-modal__btn"
+                  onClick={() => setShowInput(true)}
+                >
+                  No
+                </button>
+                <button
+                  type="button"
+                  className="dialog-btn dialog-btn--primary reconcile-modal__btn"
+                  onClick={() => setReconcileStatementBalance(clearedBalance)}
+                >
+                  Yes
+                </button>
+              </>
+            )}
+          </div>
+        </form>
       </div>
     </Modal>
   )

@@ -191,50 +191,66 @@ function ResetPasswordDialog({
   pending: boolean
 }) {
   const [password, setPassword] = useState('')
+  const [error, setError] = useState<string | null>(null)
   return (
     <Dialog
       title="Reset password"
       onClose={onClose}
       historyKey="reset-password"
-      className="users-panel__dialog"
       footer={
-        <div className="users-panel__dialog-actions">
-          <button type="button" className="settings-btn settings-btn--secondary" onClick={onClose}>
-            Cancel
-          </button>
-          <button
-            type="submit"
-            form="reset-password-form"
-            className="settings-btn settings-btn--primary"
-            disabled={pending || password.length < 8}
-          >
-            {pending ? 'Saving…' : 'Set password'}
-          </button>
+        <div className="dialog-actions">
+          {error && <span className="dialog-form__error">{error}</span>}
+          <div className="dialog-actions__end">
+            <button type="button" className="dialog-btn dialog-btn--secondary" onClick={onClose}>
+              Cancel
+            </button>
+            <button
+              type="submit"
+              form="reset-password-form"
+              className="dialog-btn dialog-btn--primary"
+              disabled={pending}
+            >
+              {pending ? 'Saving…' : 'Set password'}
+            </button>
+          </div>
         </div>
       }
     >
-      <div className="users-panel__dialog-desc">
-        Set a new password for <strong>{user.display_name || user.email}</strong>. Tell them
-        out-of-band; they can change it themselves afterwards in Settings → Account.
-      </div>
+      {/* noValidate: the length is checked on submit and said in the footer,
+          like every other dialog, not in the browser's own bubble. */}
       <form
         id="reset-password-form"
+        className="dialog-form"
+        noValidate
         onSubmit={(e) => {
           e.preventDefault()
+          if (password.length < 8) {
+            setError('Use at least 8 characters')
+            return
+          }
+          setError(null)
           onSubmit(password)
         }}
       >
-        <input
-          className="settings-input users-panel__dialog-input"
-          type="password"
-          placeholder="New password (min 8)"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          minLength={8}
-          required
-          autoFocus
-          autoComplete="new-password"
-        />
+        <p className="users-panel__dialog-desc">
+          Set a new password for <strong>{user.display_name || user.email}</strong>. Tell them
+          out-of-band; they can change it themselves afterwards in Settings → Account.
+        </p>
+        <label className="dialog-form__field">
+          <span>New password</span>
+          <input
+            type="password"
+            placeholder="At least 8 characters"
+            value={password}
+            onChange={(e) => {
+              setPassword(e.target.value)
+              setError(null)
+            }}
+            minLength={8}
+            autoFocus
+            autoComplete="new-password"
+          />
+        </label>
       </form>
     </Dialog>
   )

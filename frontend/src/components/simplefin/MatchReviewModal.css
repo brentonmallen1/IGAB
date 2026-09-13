@@ -164,74 +164,11 @@
   font-size: var(--font-size-xs);
 }
 
-.match-modal__actions {
-  display: flex;
-  gap: var(--spacing-sm);
-}
-
-.match-modal__btn {
-  flex: 1;
-  padding: 7px 12px;
-  border-radius: 5px;
-  font-size: var(--font-size-xs);
-  font-weight: 500;
-  cursor: pointer;
-  border: 1px solid var(--color-border);
-  transition:
-    background 0.15s,
-    opacity 0.15s;
-}
-
-.match-modal__btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.match-modal__btn--accept {
-  background: var(--color-accent);
-  color: var(--text-inverse);
-  border-color: var(--color-accent);
-}
-
-.match-modal__btn--accept:hover:not(:disabled) {
-  opacity: 0.85;
-}
-
-.match-modal__btn--reject {
-  background: var(--color-surface);
-  color: var(--color-text);
-}
-
-.match-modal__btn--reject:hover:not(:disabled) {
-  background: var(--hover-bg);
-}
-
-/* Dialog's .dialog__footer carries the rule and the padding. */
-.dialog.match-modal .dialog__footer {
-  justify-content: space-between;
-}
-
+/* Previous and Next are the shared secondary button with only an icon in it. */
 .match-modal__nav-btn {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 4px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: var(--font-size-xs);
-  color: var(--color-text-muted);
-  padding: 4px 8px;
-  border-radius: 4px;
-}
-
-.match-modal__nav-btn:hover:not(:disabled) {
-  background: var(--hover-bg);
-  color: var(--color-text);
-}
-
-.match-modal__nav-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
+  padding-inline: var(--spacing-sm);
 }
 
 /* The one thing accept changes about the user's entry, said before they
