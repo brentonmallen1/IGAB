@@ -10,6 +10,7 @@ import {
 import { useDragReorder } from '../../../hooks/useDragReorder'
 import { moveItem } from '../../../utils/listOrder'
 import { Dialog } from '../../common/Dialog/Dialog'
+import '../manageList.css'
 import './ManageFiltersModal.css'
 
 interface Props {
@@ -55,16 +56,16 @@ export function ManageFiltersModal({ budgetId, onClose }: Props) {
       historyKey="manage-filters"
       className="manage-filters-modal"
     >
-      <section className="manage-filters-modal__section">
-        <div className="manage-filters-modal__section-header">
+      <section className="manage-list__section">
+        <div className="manage-list__section-header">
           <span>Quick Filters</span>
           <span className="manage-filters-modal__section-hint">Drag or use arrows to reorder</span>
         </div>
-        <div className="manage-filters-modal__list">
+        <div className="manage-list__list">
           {quickFilterOrder.map((filter, index) => (
             <div
               key={filter}
-              className={`manage-filters-modal__row manage-filters-modal__row--quick ${drag.overIndex === index ? 'drag-over' : ''} ${drag.dragIndex === index ? 'dragging' : ''}`}
+              className={`manage-list__row manage-filters-modal__row--quick ${drag.overIndex === index ? 'drag-over' : ''} ${drag.dragIndex === index ? 'dragging' : ''}`}
               draggable
               onDragStart={() => drag.start(index)}
               onDragOver={(e) => {
@@ -90,10 +91,10 @@ export function ManageFiltersModal({ budgetId, onClose }: Props) {
               >
                 <Lock size={12} />
               </span>
-              <div className="manage-filters-modal__row-actions">
+              <div className="manage-list__row-actions">
                 <button
                   type="button"
-                  className="manage-filters-modal__icon-btn"
+                  className="manage-list__icon-btn"
                   onClick={() => drag.moveBy(index, -1)}
                   disabled={index === 0}
                   aria-label={`Move ${QUICK_FILTER_LABELS[filter]} up`}
@@ -103,7 +104,7 @@ export function ManageFiltersModal({ budgetId, onClose }: Props) {
                 </button>
                 <button
                   type="button"
-                  className="manage-filters-modal__icon-btn"
+                  className="manage-list__icon-btn"
                   onClick={() => drag.moveBy(index, 1)}
                   disabled={index === quickFilterOrder.length - 1}
                   aria-label={`Move ${QUICK_FILTER_LABELS[filter]} down`}
@@ -122,27 +123,27 @@ export function ManageFiltersModal({ budgetId, onClose }: Props) {
         </div>
       </section>
 
-      <section className="manage-filters-modal__section">
-        <div className="manage-filters-modal__section-header">
+      <section className="manage-list__section">
+        <div className="manage-list__section-header">
           <span>Saved Filters</span>
-          <button type="button" className="manage-filters-modal__add-btn" onClick={handleNewFilter}>
+          <button type="button" className="manage-list__add-btn" onClick={handleNewFilter}>
             <Plus size={13} />
             New Filter
           </button>
         </div>
         {!filters || filters.length === 0 ? (
-          <p className="manage-filters-modal__empty">
+          <p className="manage-list__empty">
             No custom filters yet. Create one to filter categories by a saved set.
           </p>
         ) : (
-          <div className="manage-filters-modal__list">
+          <div className="manage-list__list">
             {filters.map((saved) => (
-              <div key={saved.id} className="manage-filters-modal__row">
-                <span className="manage-filters-modal__filter-name">{saved.name}</span>
-                <div className="manage-filters-modal__row-actions">
+              <div key={saved.id} className="manage-list__row">
+                <span className="manage-list__name">{saved.name}</span>
+                <div className="manage-list__row-actions">
                   <button
                     type="button"
-                    className="manage-filters-modal__icon-btn"
+                    className="manage-list__icon-btn"
                     onClick={() => handleEditFilter(saved.id)}
                     aria-label={`Edit filter ${saved.name}`}
                     title="Edit filter"
@@ -151,7 +152,7 @@ export function ManageFiltersModal({ budgetId, onClose }: Props) {
                   </button>
                   <button
                     type="button"
-                    className="manage-filters-modal__icon-btn manage-filters-modal__icon-btn--danger"
+                    className="manage-list__icon-btn manage-list__icon-btn--danger"
                     onClick={() => handleDeleteFilter(saved.id)}
                     disabled={deleteFilter.isPending}
                     aria-label={`Delete filter ${saved.name}`}
