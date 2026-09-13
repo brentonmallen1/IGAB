@@ -6,12 +6,6 @@
   --dialog-w: 560px;
 }
 
-.merge-modal__hint {
-  font-size: var(--font-size-xs);
-  color: var(--color-text-muted);
-  margin: 0;
-}
-
 .merge-modal__columns {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -114,45 +108,4 @@
   background: var(--color-info-bg);
   border: 1px solid var(--color-info-border);
   border-radius: 4px;
-}
-
-/* Dialog's .dialog__footer carries the rule and the padding. */
-.dialog.merge-modal .dialog__footer {
-  justify-content: flex-end;
-}
-
-.merge-modal__btn {
-  padding: 6px 16px;
-  border-radius: 5px;
-  font-size: var(--font-size-xs);
-  font-weight: 500;
-  cursor: pointer;
-  border: 1px solid var(--color-border);
-  transition:
-    opacity 0.15s,
-    background 0.15s;
-}
-
-.merge-modal__btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.merge-modal__btn--cancel {
-  background: var(--color-surface);
-  color: var(--color-text);
-}
-
-.merge-modal__btn--cancel:hover:not(:disabled) {
-  background: var(--hover-bg);
-}
-
-.merge-modal__btn--confirm {
-  background: var(--color-accent);
-  color: var(--text-inverse);
-  border-color: var(--color-accent);
-}
-
-.merge-modal__btn--confirm:hover:not(:disabled) {
-  opacity: 0.85;
 }

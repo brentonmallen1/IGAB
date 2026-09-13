@@ -156,39 +156,42 @@ export function ImportReviewDialog({
       historyKey="import-review"
       width="lg"
       footer={
-        <>
+        <div className="dialog-actions">
           <button
             type="button"
-            className="import-review__btn"
+            className="dialog-btn dialog-btn--secondary"
             onClick={() => setStepIndex((i) => i - 1)}
             disabled={stepIndex === 0 || saving}
           >
             Back
           </button>
-          <span className="import-review__pending">
-            {updates.length > 0 &&
-              `${updates.length} categor${updates.length === 1 ? 'y' : 'ies'} to update`}
-          </span>
-          {last ? (
-            <button
-              type="button"
-              className="import-review__btn import-review__btn--primary"
-              onClick={finish}
-              disabled={saving}
-            >
-              {saving ? 'Saving…' : updates.length > 0 ? 'Save and close' : 'Done'}
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="import-review__btn import-review__btn--primary"
-              onClick={() => setStepIndex((i) => i + 1)}
-              disabled={saving}
-            >
-              Next
-            </button>
+          {updates.length > 0 && (
+            <span className="import-review__pending">
+              {`${updates.length} categor${updates.length === 1 ? 'y' : 'ies'} to update`}
+            </span>
           )}
-        </>
+          <div className="dialog-actions__end">
+            {last ? (
+              <button
+                type="button"
+                className="dialog-btn dialog-btn--primary"
+                onClick={finish}
+                disabled={saving}
+              >
+                {saving ? 'Saving…' : updates.length > 0 ? 'Save and close' : 'Done'}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="dialog-btn dialog-btn--primary"
+                onClick={() => setStepIndex((i) => i + 1)}
+                disabled={saving}
+              >
+                Next
+              </button>
+            )}
+          </div>
+        </div>
       }
     >
       <StepRail steps={steps} current={stepIndex} onPick={setStepIndex} />
@@ -875,7 +878,7 @@ function AccountsStep({
               <button
                 key={a.id}
                 type="button"
-                className="import-review__btn"
+                className="dialog-btn dialog-btn--secondary"
                 disabled={update.isPending}
                 onClick={() => update.mutate({ id: a.id, is_closed: false })}
               >

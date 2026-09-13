@@ -46,39 +46,22 @@
   color: var(--color-negative);
 }
 
+.csv-import__mapping-form {
+  margin-bottom: var(--spacing-md);
+}
+
 .csv-import__mapping {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: var(--spacing-sm);
-  margin-bottom: var(--spacing-md);
-}
-
-.csv-import__field {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: var(--font-size-xs);
-  color: var(--text-secondary);
-}
-
-.csv-import__field small {
-  display: block;
-  color: var(--text-muted);
+  /* A hint under some labels and not others; the selects still line up. */
+  align-items: end;
 }
 
 .csv-import__note {
   margin: 0 0 var(--spacing-md);
   font-size: var(--font-size-xs);
   color: var(--text-secondary);
-}
-
-.csv-import__error {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-xs);
-  margin: 0 0 var(--spacing-md);
-  font-size: var(--font-size-sm);
-  color: var(--color-negative);
 }
 
 .csv-import__skipped {
@@ -130,10 +113,4 @@
 
 .csv-import__muted {
   color: var(--text-muted);
-}
-
-.csv-import__footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--spacing-sm);
 }
