@@ -137,6 +137,70 @@ class TestTheRate:
         assert month["savings_rate"] == 0.3
 
 
+async def _linked_transfer(db_session, budget, on_budget, tracked, amount: str):
+    """Both legs, linked — the shape a transfer made in the app has."""
+    leg = await create_transaction(db_session, budget, on_budget, amount, THIS_MONTH)
+    far = await create_transaction(db_session, budget, tracked, str(-Decimal(amount)), THIS_MONTH)
+    leg.transfer_id, far.transfer_id = far.id, leg.id
+    await db_session.flush()
+
+
+class TestAnAssetThatIsNotSavings:
+    """A car tracked as an Other Asset. Before the account could say it was
+    not savings, buying one said the household saved the price, and selling it
+    un-saved the proceeds and never reached income."""
+
+    async def _car(self, db_session, budget):
+        return await create_account(
+            db_session, budget, "Second Car", account_type="other_asset", on_budget=False
+        )
+
+    async def test_selling_a_car_raises_income_and_does_not_lower_saved(self, db_session):
+        w = await _world(db_session)
+        car = await self._car(db_session, w["budget"])
+        await create_transaction(db_session, w["budget"], w["checking"], "4000.00", THIS_MONTH)
+        await _linked_transfer(db_session, w["budget"], w["checking"], car, "4500.00")
+
+        month = (await _rate(db_session, w["budget"]))["months"][-1]
+        assert month["income"] == Decimal("8500.00")
+        assert month["savings"] == Decimal("0")
+        assert month["savings_rate"] == 0.0
+
+    async def test_buying_a_car_is_spending_not_saving(self, db_session):
+        w = await _world(db_session)
+        car = await self._car(db_session, w["budget"])
+        await create_transaction(db_session, w["budget"], w["checking"], "4000.00", THIS_MONTH)
+        await _linked_transfer(db_session, w["budget"], w["checking"], car, "-3000.00")
+
+        month = (await _rate(db_session, w["budget"]))["months"][-1]
+        assert month["savings"] == Decimal("0")
+        assert month["spending"] == Decimal("3000.00")
+        assert month["income"] == Decimal("4000.00")
+
+    async def test_a_brokerage_withdrawal_still_lowers_saved(self, db_session):
+        """The flag changed nothing for an account that is savings: taking
+        money out of one is un-saving, not income."""
+        w = await _world(db_session)
+        await create_transaction(db_session, w["budget"], w["checking"], "4000.00", THIS_MONTH)
+        await _linked_transfer(db_session, w["budget"], w["checking"], w["brokerage"], "1500.00")
+
+        month = (await _rate(db_session, w["budget"]))["months"][-1]
+        assert month["income"] == Decimal("4000.00")
+        assert month["savings"] == Decimal("-1500.00")
+
+    async def test_turning_the_flag_on_makes_the_same_sale_a_withdrawal(self, db_session):
+        w = await _world(db_session)
+        car = await self._car(db_session, w["budget"])
+        await create_transaction(db_session, w["budget"], w["checking"], "4000.00", THIS_MONTH)
+        await _linked_transfer(db_session, w["budget"], w["checking"], car, "1000.00")
+        car.counts_as_savings = True
+        await db_session.flush()
+
+        month = (await _rate(db_session, w["budget"]))["months"][-1]
+        assert month["income"] == Decimal("4000.00")
+        assert month["savings"] == Decimal("-1000.00")
+
+
 class TestEdgeCases:
     async def test_no_income_gives_no_rate(self, db_session):
         w = await _world(db_session)

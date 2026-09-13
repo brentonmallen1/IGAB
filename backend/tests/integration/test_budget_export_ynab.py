@@ -187,7 +187,7 @@ class TestAccountsMember:
         names and a re-import becomes a re-mapping chore."""
         with zipfile.ZipFile(io.BytesIO(await _export(api_client, sample.id))) as archive:
             accounts = archive.read("Accounts.csv").decode()
-        assert "Account,Type,Classification,On Budget,Closed,Note" in accounts
+        assert "Account,Type,Classification,On Budget,Counts As Savings,Closed,Note" in accounts
         assert "checking" in accounts
 
     async def test_a_re_import_gets_the_real_types_rather_than_a_guess(
@@ -206,6 +206,9 @@ class TestAccountsMember:
             exported = parsed.account_types[account_key(account.name)]
             assert account.suggested_type == exported.account_type, account.name
             assert account.suggested_on_budget == exported.on_budget, account.name
+            # Written and read: a car marked not-savings stays not-savings.
+            assert exported.counts_as_savings is not None, account.name
+            assert account.suggested_counts_as_savings == exported.counts_as_savings, account.name
             # Nothing to review: these are not guesses.
             assert account.needs_review is False, account.name
             assert account.suggestion_source == "export", account.name

@@ -306,6 +306,16 @@ class TestCompatibility:
         columns["accounts"] = [c for c in columns["accounts"] if c != "is_closed"]
         assert check_compatibility(_manifest(columns=columns), METADATA).ok
 
+    def test_a_snapshot_from_before_counts_as_savings_still_restores(self):
+        """Both columns are NOT NULL; their server defaults are what let a file
+        taken before e3f1a8c5d920 import at all."""
+        columns = {t.name: list(exported_columns(t)) for t in carried_tables(METADATA)}
+        columns["accounts"] = [c for c in columns["accounts"] if c != "counts_as_savings"]
+        columns["account_types"] = [
+            c for c in columns["account_types"] if c != "default_counts_as_savings"
+        ]
+        assert check_compatibility(_manifest(columns=columns), METADATA).ok
+
     def test_a_required_column_missing_from_the_file_is_refused(self):
         columns = {t.name: list(exported_columns(t)) for t in carried_tables(METADATA)}
         columns["accounts"] = [c for c in columns["accounts"] if c != "name"]

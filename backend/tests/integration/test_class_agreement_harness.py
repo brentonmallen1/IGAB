@@ -15,6 +15,8 @@ accounts, 30 months, a tracked brokerage, a managed mortgage, transfers and
 splits. Hand-built data only contains the cases you remembered.
 """
 
+from decimal import Decimal
+
 import pytest
 from sqlalchemy import case, literal, select
 from sqlalchemy.orm import aliased
@@ -76,6 +78,9 @@ async def _cover_the_rules_the_sample_data_misses(db_session, budget) -> None:
       * an **uncategorized transfer to a tracked asset** — the YNAB-import
         shape the savings rule exists for, where the destination decides the
         class because the user never categorised the leg.
+
+    Plus a shape the rules read an extra column for: transfers with a tracked
+    asset that does not count as savings, in both directions.
     """
     tags = TagRepository(db_session)
     group = await create_category_group(db_session, budget, "Coverage")
@@ -97,6 +102,18 @@ async def _cover_the_rules_the_sample_data_misses(db_session, budget) -> None:
         db_session, budget, "Transfer : Coverage Brokerage", transfer_account_id=brokerage.id
     )
     await create_transaction(db_session, budget, checking, "-300.00", ANCHOR, payee=to_brokerage)
+
+    # A tracked asset that is not savings, both ways, linked: the on-budget leg
+    # takes rule 5's carve-out (spending out, income in) and the far leg must
+    # not. The sample data's vehicle sale covers one direction only.
+    car = await create_account(
+        db_session, budget, "Coverage Car", account_type="other_asset", on_budget=False
+    )
+    for amount in ("-2000.00", "1500.00"):
+        leg = await create_transaction(db_session, budget, checking, amount, ANCHOR)
+        far = await create_transaction(db_session, budget, car, str(-Decimal(amount)), ANCHOR)
+        leg.transfer_id, far.transfer_id = far.id, leg.id
+    await db_session.flush()
 
 
 async def _full_budget(db_session):

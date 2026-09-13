@@ -152,3 +152,52 @@ class TestAccountKey:
         memory."""
         assert account_key("Vehicle-A") != account_key("Vehicle A")
         assert _normalize_for_match("Vehicle-A") == _normalize_for_match("Vehicle A")
+
+
+class TestWhetherItCountsAsSavings:
+    """The savings flag follows the type's ladder — export, memory, name — but
+    only where a tier has an answer: an export or a memory from before the
+    flag existed says nothing, and must not read as false."""
+
+    def test_the_name_is_the_floor(self):
+        assert resolve_account_suggestion("Second Car", POS).counts_as_savings is False
+        assert resolve_account_suggestion("Meridian HSA", POS).counts_as_savings is True
+
+    def test_the_export_outranks_the_name(self):
+        s = resolve_account_suggestion(
+            "Second Car",
+            POS,
+            from_export=ExportedAccount(
+                account_type="other_asset", on_budget=False, counts_as_savings=True
+            ),
+        )
+        assert s.counts_as_savings is True
+
+    def test_memory_outranks_the_name(self):
+        s = resolve_account_suggestion(
+            "Crypto Wallet",
+            POS,
+            remembered=remembered(
+                account_type="other_asset", on_budget=False, counts_as_savings=False
+            ),
+        )
+        assert s.counts_as_savings is False
+
+    def test_an_export_without_the_column_falls_through_to_memory(self):
+        s = resolve_account_suggestion(
+            "Crypto Wallet",
+            POS,
+            from_export=ExportedAccount(account_type="other_asset", on_budget=False),
+            remembered=remembered(
+                account_type="other_asset", on_budget=False, counts_as_savings=False
+            ),
+        )
+        assert s.counts_as_savings is False
+
+    def test_a_memory_from_before_the_flag_falls_through_to_the_name(self):
+        s = resolve_account_suggestion(
+            "Second Car",
+            POS,
+            remembered=remembered(account_type="other_asset", on_budget=False),
+        )
+        assert s.counts_as_savings is False
