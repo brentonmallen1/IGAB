@@ -15,10 +15,19 @@ vi.mock('../../api/budgetSnapshots', () => ({
   useCloneBudget: () => ({ mutateAsync, isPending: false }),
 }))
 vi.mock('../common/Dialog/Dialog', () => ({
-  Dialog: ({ title, children }: { title: string; children: React.ReactNode }) => (
+  Dialog: ({
+    title,
+    children,
+    footer,
+  }: {
+    title: string
+    children: React.ReactNode
+    footer?: React.ReactNode
+  }) => (
     <div>
       <h2>{title}</h2>
       {children}
+      {footer}
     </div>
   ),
 }))
@@ -70,5 +79,17 @@ describe('CloneBudgetModal', () => {
     await userEvent.click(screen.getByRole('button', { name: /copy budget/i }))
     await waitFor(() => expect(mutateAsync).toHaveBeenCalled())
     expect(mutateAsync.mock.calls[0][0].name).toBeUndefined()
+  })
+
+  it('a structure-only copy with its date cleared asks for one instead of sending', async () => {
+    open()
+    await userEvent.click(screen.getByRole('radio', { name: /structure only/i }))
+    await userEvent.clear(screen.getByLabelText(/starting from/i))
+    const submit = screen.getByRole('button', { name: /copy budget/i })
+    // Enabled while empty: the answer is a sentence, not a greyed-out button.
+    expect(submit).toBeEnabled()
+    await userEvent.click(submit)
+    expect(screen.getByText('Pick the day the copy starts from')).toBeInTheDocument()
+    expect(mutateAsync).not.toHaveBeenCalled()
   })
 })

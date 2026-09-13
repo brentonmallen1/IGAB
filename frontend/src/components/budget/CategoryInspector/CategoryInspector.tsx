@@ -20,6 +20,7 @@ import { HistorySection } from './HistorySection'
 import { ClassificationSection } from './ClassificationSection'
 import { MonthSummary } from './MonthSummary'
 import './CategoryInspector.css'
+import { keepsSelection } from '../../../utils/keepsSelection'
 
 interface Props {
   budgetId: string
@@ -101,6 +102,7 @@ export function CategoryInspector({ budgetId, forceOpen = false }: Props) {
 
   return (
     <div
+      {...keepsSelection}
       className={`category-inspector ${categoryInspectorOpen || forceOpen ? '' : 'category-inspector--collapsed'}`}
     >
       {!categoryInspectorOpen && !forceOpen ? (

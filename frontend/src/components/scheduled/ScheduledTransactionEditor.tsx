@@ -15,9 +15,12 @@ import { FREQUENCIES } from '../../utils/schedule'
 import type { ScheduledTransaction } from '../../types'
 import { Dialog } from '../common/Dialog/Dialog'
 import { GroupedCategoryOptions } from '../common/GroupedCategoryOptions/GroupedCategoryOptions'
-import './ScheduledTransactionEditor.css'
 import { confirmAsync } from '../../stores/confirmStore'
 import { apiErrorMessage } from '../../api/client'
+
+/** The form lives in the scroll region; its submit button lives in the pinned
+ *  footer, and `form=` is what joins them. */
+const FORM_ID = 'sched-editor-form'
 
 interface InitialValues {
   account_id?: string
@@ -80,14 +83,26 @@ export function ScheduledTransactionEditor({ budgetId, existing, initial, onClos
   const isTwiceMonthly = frequency === 'twice_monthly'
   const isOnce = frequency === 'once'
 
+  const isPending = create.isPending || update.isPending
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    // Checked here rather than by `required`: the browser's bubble points at
+    // a field the footer's button is not beside, and says nothing on a phone.
+    if (!accountId) {
+      setError('Choose the account this schedule posts to.')
+      return
+    }
     // Was `parseFloat(amount) || 0`, which scheduled a recurring $0.00
     // transaction whenever the amount could not be read — including every
     // "1.234,56" on a decimal-comma locale that utils/money supports.
     const numAmount = parseAmountInput(amount)
     if (isNaN(numAmount) || numAmount <= 0) {
       setError('Enter an amount.')
+      return
+    }
+    if (!startDate) {
+      setError(isOnce ? 'Enter the date.' : 'Enter the start date.')
       return
     }
     const secondDayNum = isTwiceMonthly ? Number(secondDay) : null
@@ -157,212 +172,176 @@ export function ScheduledTransactionEditor({ budgetId, existing, initial, onClos
 
   return (
     <Dialog
-      title={existing ? 'Edit Scheduled Transaction' : 'New Scheduled Transaction'}
+      title={existing ? 'Edit scheduled transaction' : 'New scheduled transaction'}
       onClose={onClose}
       historyKey="scheduled-editor"
-      className="sched-editor"
       footer={
-        <div className="sched-editor__footer">
-          {existing ? (
-            <button
-              type="button"
-              className="sched-editor__btn sched-editor__btn--danger"
-              onClick={handleDelete}
-            >
+        <div className="dialog-actions">
+          {existing && (
+            <button type="button" className="dialog-btn dialog-btn--danger" onClick={handleDelete}>
               Delete
             </button>
-          ) : (
-            <span />
           )}
           {error && (
-            <div className="sched-editor__error" role="alert">
+            <span className="dialog-form__error" role="alert">
               {error}
-            </div>
+            </span>
           )}
-          <div className="sched-editor__footer-actions">
-            <button type="button" className="sched-editor__btn" onClick={onClose}>
+          <div className="dialog-actions__end">
+            <button type="button" className="dialog-btn dialog-btn--secondary" onClick={onClose}>
               Cancel
             </button>
+            {/* The footer is pinned outside the form, so the submit button
+                reaches it by id rather than by containment. */}
             <button
               type="submit"
-              form="sched-editor-form"
-              className="sched-editor__btn sched-editor__btn--primary"
+              form={FORM_ID}
+              className="dialog-btn dialog-btn--primary"
+              disabled={isPending}
             >
-              {existing ? 'Save' : 'Create'}
+              {isPending ? 'Saving…' : existing ? 'Save' : 'Create'}
             </button>
           </div>
         </div>
       }
     >
-      <form id="sched-editor-form" onSubmit={handleSubmit}>
-        <div className="sched-editor__body">
-          <label className="sched-editor__label">
-            Account
+      <form id={FORM_ID} className="dialog-form" onSubmit={handleSubmit} noValidate>
+        <label className="dialog-form__field">
+          <span>Account</span>
+          <select value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+            <option value="">Select account…</option>
+            {accounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <div className="dialog-form__row">
+          <label className="dialog-form__field">
+            <span>Type</span>
             <select
-              className="sched-editor__input"
-              value={accountId}
-              onChange={(e) => setAccountId(e.target.value)}
-              required
+              value={isOutflow ? 'out' : 'in'}
+              onChange={(e) => setIsOutflow(e.target.value === 'out')}
             >
-              <option value="">Select account…</option>
-              {accounts.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
+              <option value="out">Outflow</option>
+              <option value="in">Inflow</option>
             </select>
           </label>
-
-          <div className="sched-editor__row">
-            <label className="sched-editor__label">
-              Type
-              <select
-                className="sched-editor__input"
-                value={isOutflow ? 'out' : 'in'}
-                onChange={(e) => setIsOutflow(e.target.value === 'out')}
-              >
-                <option value="out">Outflow</option>
-                <option value="in">Inflow</option>
-              </select>
-            </label>
-            <label className="sched-editor__label">
-              Amount
-              <input
-                type="number"
-                inputMode="decimal"
-                step="0.01"
-                min="0"
-                className="sched-editor__input"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                required
-              />
-            </label>
-          </div>
-
-          <div className="sched-editor__row">
-            <label className="sched-editor__label">
-              Frequency
-              <select
-                className="sched-editor__input"
-                value={frequency}
-                onChange={(e) => setFrequency(e.target.value)}
-              >
-                {FREQUENCIES.map((f) => (
-                  <option key={f.value} value={f.value}>
-                    {f.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="sched-editor__label">
-              {isOnce ? 'Date' : 'Start Date'}
-              <input
-                type="date"
-                className="sched-editor__input"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                required
-              />
-            </label>
-          </div>
-
-          {isTwiceMonthly && (
-            <label className="sched-editor__label">
-              Second day of the month
-              <input
-                type="number"
-                inputMode="numeric"
-                min="1"
-                max="31"
-                step="1"
-                className="sched-editor__input"
-                value={secondDay}
-                onChange={(e) => setSecondDay(e.target.value)}
-                placeholder="e.g. 15 — the first is the start date's day"
-                required
-              />
-            </label>
-          )}
-
-          {!isOnce && (
-            <label className="sched-editor__label">
-              End Date
-              <input
-                type="date"
-                className="sched-editor__input"
-                value={endDate}
-                min={startDate}
-                onChange={(e) => setEndDate(e.target.value)}
-              />
-            </label>
-          )}
-
-          <label className="sched-editor__label">
-            Transfer to
-            <select
-              className="sched-editor__input"
-              value={transferTo}
-              onChange={(e) => {
-                setTransferTo(e.target.value)
-                if (e.target.value) setCategoryId('')
-              }}
-            >
-              <option value="">Not a transfer</option>
-              {transferTargets.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="sched-editor__label">
-            Category
-            <select
-              className="sched-editor__input"
-              value={categoryId}
-              onChange={(e) => setCategoryId(e.target.value)}
-            >
-              <option value="">No category</option>
-              <GroupedCategoryOptions groups={groupedCategories} />
-            </select>
-          </label>
-
-          <label className="sched-editor__label">
-            Memo
+          <label className="dialog-form__field">
+            <span>Amount</span>
             <input
-              type="text"
-              className="sched-editor__input"
-              value={memo}
-              onChange={(e) => setMemo(e.target.value)}
-              placeholder="Optional…"
+              type="number"
+              inputMode="decimal"
+              step="0.01"
+              min="0"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
             />
           </label>
-
-          <div className="sched-editor__row">
-            <label className="sched-editor__label">
-              Remind days before
-              <input
-                type="number"
-                inputMode="numeric"
-                min="0"
-                step="1"
-                className="sched-editor__input"
-                value={reminderDays}
-                onChange={(e) => setReminderDays(e.target.value)}
-              />
-            </label>
-            <label className="sched-editor__label sched-editor__label--inline">
-              <input
-                type="checkbox"
-                checked={autoCreate}
-                onChange={(e) => setAutoCreate(e.target.checked)}
-              />
-              Auto-create transaction when due
-            </label>
-          </div>
         </div>
+
+        <div className="dialog-form__row">
+          <label className="dialog-form__field">
+            <span>Frequency</span>
+            <select value={frequency} onChange={(e) => setFrequency(e.target.value)}>
+              {FREQUENCIES.map((f) => (
+                <option key={f.value} value={f.value}>
+                  {f.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="dialog-form__field">
+            <span>{isOnce ? 'Date' : 'Start date'}</span>
+            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+          </label>
+        </div>
+
+        {isTwiceMonthly && (
+          <label className="dialog-form__field">
+            <span>Second day of the month</span>
+            <input
+              type="number"
+              inputMode="numeric"
+              min="1"
+              max="31"
+              step="1"
+              value={secondDay}
+              onChange={(e) => setSecondDay(e.target.value)}
+              placeholder="e.g. 15 — the first is the start date's day"
+            />
+          </label>
+        )}
+
+        {!isOnce && (
+          <label className="dialog-form__field">
+            <span>End date</span>
+            <input
+              type="date"
+              value={endDate}
+              min={startDate}
+              onChange={(e) => setEndDate(e.target.value)}
+            />
+          </label>
+        )}
+
+        <label className="dialog-form__field">
+          <span>Transfer to</span>
+          <select
+            value={transferTo}
+            onChange={(e) => {
+              setTransferTo(e.target.value)
+              if (e.target.value) setCategoryId('')
+            }}
+          >
+            <option value="">Not a transfer</option>
+            {transferTargets.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="dialog-form__field">
+          <span>Category</span>
+          <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+            <option value="">No category</option>
+            <GroupedCategoryOptions groups={groupedCategories} />
+          </select>
+        </label>
+
+        <label className="dialog-form__field">
+          <span>Memo</span>
+          <input
+            type="text"
+            value={memo}
+            onChange={(e) => setMemo(e.target.value)}
+            placeholder="Optional…"
+          />
+        </label>
+
+        <label className="dialog-form__field">
+          <span>Remind days before</span>
+          <input
+            type="number"
+            inputMode="numeric"
+            min="0"
+            step="1"
+            value={reminderDays}
+            onChange={(e) => setReminderDays(e.target.value)}
+          />
+        </label>
+        <label className="dialog-form__field dialog-form__field--inline">
+          <input
+            type="checkbox"
+            checked={autoCreate}
+            onChange={(e) => setAutoCreate(e.target.checked)}
+          />
+          <span>Auto-create transaction when due</span>
+        </label>
       </form>
     </Dialog>
   )

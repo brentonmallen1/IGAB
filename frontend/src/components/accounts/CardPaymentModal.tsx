@@ -117,15 +117,33 @@ export function CardPaymentModal({ budgetId, accountId, onClose }: Props) {
   if (!card) return null
 
   return (
-    <Dialog title={`Pay ${card.name}`} onClose={onClose} historyKey="card-payment">
-      <form className="card-payment" onSubmit={handleSubmit}>
-        <label className="card-payment__field">
+    <Dialog
+      title={`Pay ${card.name}`}
+      onClose={onClose}
+      historyKey="card-payment"
+      footer={
+        <div className="dialog-actions">
+          {error && <span className="dialog-form__error">{error}</span>}
+          <div className="dialog-actions__end">
+            <button type="button" className="dialog-btn dialog-btn--secondary" onClick={onClose}>
+              Cancel
+            </button>
+            <button
+              type="submit"
+              form="card-payment-form"
+              className="dialog-btn dialog-btn--primary"
+              disabled={createTxn.isPending}
+            >
+              {createTxn.isPending ? 'Recording…' : 'Record payment'}
+            </button>
+          </div>
+        </div>
+      }
+    >
+      <form id="card-payment-form" className="dialog-form" onSubmit={handleSubmit}>
+        <label className="dialog-form__field">
           <span>From</span>
-          <select
-            className="card-payment__select"
-            value={supplyId}
-            onChange={(e) => setSupplyId(e.target.value)}
-          >
+          <select value={supplyId} onChange={(e) => setSupplyId(e.target.value)}>
             {supplyAccounts.map((a) => (
               <option key={a.id} value={a.id}>
                 {a.name} — {formatMoney(a.balance)}
@@ -134,7 +152,7 @@ export function CardPaymentModal({ budgetId, accountId, onClose }: Props) {
           </select>
         </label>
 
-        <label className="card-payment__field">
+        <label className="dialog-form__field">
           <span>Amount</span>
           <AmountInput
             value={amount}
@@ -160,7 +178,7 @@ export function CardPaymentModal({ budgetId, accountId, onClose }: Props) {
         )}
 
         {isLoan && (
-          <label className="card-payment__field">
+          <label className="dialog-form__field">
             <span>Extra to principal (optional)</span>
             <AmountInput
               value={extra}
@@ -172,29 +190,18 @@ export function CardPaymentModal({ budgetId, accountId, onClose }: Props) {
         )}
 
         {isLoan ? (
-          <p className="card-payment__note">
+          <p className="dialog-form__hint">
             One transfer covers both. Interest accrues on the balance
             {liability?.monthly_interest_now != null &&
               ` (about ${formatMoney(liability.monthly_interest_now)} this month)`}
             , so everything above it — the extra included — reduces principal.
           </p>
         ) : (
-          <p className="card-payment__note">
+          <p className="dialog-form__hint">
             Recorded as a transfer, so it spends this card&apos;s reserve — a plain deposit would
             lower the balance while Ready to pay stood still.
           </p>
         )}
-
-        {error && <p className="card-payment__error">{error}</p>}
-
-        <div className="card-payment__actions">
-          <button type="button" className="card-payment__cancel" onClick={onClose}>
-            Cancel
-          </button>
-          <button type="submit" className="card-payment__submit" disabled={createTxn.isPending}>
-            {createTxn.isPending ? 'Recording…' : 'Record payment'}
-          </button>
-        </div>
       </form>
     </Dialog>
   )

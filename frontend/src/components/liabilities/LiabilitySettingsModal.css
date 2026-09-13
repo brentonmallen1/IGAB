@@ -1,107 +1,6 @@
-/* The overlay, panel, header and footer come from common/Dialog — which also
-   pins the footer, where before it scrolled away with the form. 520 is exactly
-   `.dialog--md`, so no width override is needed. */
-
-/* Dialog's scroll region supplies the padding and the scrolling. */
-.liability-modal__body {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-md);
-}
-
-.liability-modal__row {
-  display: flex;
-  gap: var(--spacing-md);
-}
-
-.liability-modal__row .liability-modal__field {
-  flex: 1;
-  min-width: 0;
-}
-
-.liability-modal__field {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-xs);
-  font-size: var(--font-size-xs);
-  color: var(--text-secondary);
-}
-
-.liability-modal__field input,
-.liability-modal__field select {
-  padding: var(--spacing-xs) var(--spacing-sm);
-  background: var(--input-bg);
-  border: 1px solid var(--input-border);
-  border-radius: var(--border-radius-sm);
-  color: var(--text-primary);
-  font-size: var(--font-size-sm);
-}
-
-.liability-modal__field input:focus,
-.liability-modal__field select:focus {
-  outline: none;
-  border-color: var(--color-accent);
-  box-shadow: var(--input-focus-shadow);
-}
-
-.liability-modal__mode {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-sm);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--border-radius-md);
-  padding: var(--spacing-md);
-}
-
-.liability-modal__mode legend {
-  padding: 0 var(--spacing-xs);
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-}
-
-.liability-modal__mode-option {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-sm);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--border-radius-sm);
-  cursor: pointer;
-  transition:
-    border-color var(--transition-fast),
-    background var(--transition-fast);
-}
-
-.liability-modal__mode-option--active {
-  border-color: var(--color-accent);
-  background: var(--bg-secondary);
-}
-
-.liability-modal__mode-option input {
-  margin-top: 3px;
-  accent-color: var(--color-accent);
-}
-
-.liability-modal__mode-option span {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.liability-modal__mode-option strong {
-  font-size: var(--font-size-sm);
-  color: var(--text-primary);
-  font-weight: 500;
-}
-
-.liability-modal__mode-option small {
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-}
-
-.liability-modal__mode-detail {
-  margin-top: var(--spacing-xs);
-}
+/* The overlay, panel, header and footer come from common/Dialog, and the
+   fields, rows, hints and buttons from its DialogForm.css. What is left here
+   is what only this form has. */
 
 .liability-modal__optional summary {
   font-size: var(--font-size-xs);
@@ -113,12 +12,12 @@
   margin-bottom: var(--spacing-sm);
 }
 
-.liability-modal__promo-toggle {
-  display: flex;
+/* A checkbox beside a title and a line of explanation, so it aligns to the
+   title rather than the middle of the pair. Two classes, to outrank the
+   inline field's centring whichever stylesheet loads first. */
+.dialog-form__field--inline.liability-modal__promo-toggle {
   align-items: flex-start;
-  gap: var(--spacing-sm);
   margin-top: var(--spacing-sm);
-  cursor: pointer;
 }
 
 .liability-modal__promo-toggle input {
@@ -141,66 +40,9 @@
   color: var(--text-muted);
 }
 
-.liability-modal__promo-toggle--sub {
+.dialog-form__field--inline.liability-modal__promo-toggle--sub {
   margin-top: 0;
   align-self: end;
-}
-
-.liability-modal__error {
-  font-size: var(--font-size-xs);
-  color: var(--color-negative);
-}
-
-/* Dialog's .dialog__footer carries the rule and the padding; this only says
-   how Delete and the Cancel/Save pair share the row. */
-.dialog.liability-modal .dialog__footer {
-  justify-content: space-between;
-}
-
-.liability-modal__actions {
-  display: flex;
-  gap: var(--spacing-sm);
-}
-
-.liability-modal__btn {
-  padding: 6px var(--spacing-md);
-  border-radius: var(--border-radius-sm);
-  font-size: var(--font-size-sm);
-  font-weight: 500;
-  cursor: pointer;
-  transition: opacity var(--transition-fast);
-}
-
-.liability-modal__btn--primary {
-  background-color: var(--color-accent);
-  color: var(--text-inverse);
-}
-
-.liability-modal__btn--secondary {
-  background-color: transparent;
-  color: var(--text-secondary);
-  border: 1px solid var(--border-color);
-}
-
-.liability-modal__btn--danger {
-  background-color: transparent;
-  color: var(--color-negative);
-  border: 1px solid var(--color-negative);
-}
-
-.liability-modal__btn:hover:not(:disabled) {
-  opacity: 0.8;
-}
-
-.liability-modal__btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-@media (max-width: 768px) {
-  .liability-modal__row {
-    flex-direction: column;
-  }
 }
 
 /* A minimum payment is a rule, not only a number: two modes, and the second
@@ -237,29 +79,9 @@
   margin-top: var(--spacing-xs);
 }
 
-.liability-modal__rule label {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
 /* The checkbox spans both columns and reads as a sentence, not a field. */
 .liability-modal__rule-check {
   grid-column: 1 / -1;
-  flex-direction: row !important;
-  align-items: center;
-  gap: var(--spacing-xs);
-}
-
-/* The sentence that decides whether every payoff figure is right: what to put
-   in the payment field, said where the field is, not in a warning afterwards. */
-.liability-modal__guidance {
-  margin: 0;
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-  line-height: 1.5;
 }
 
 /* A verb inside a hint: it reads as part of the sentence, not as a control

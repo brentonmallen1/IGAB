@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import { HelpCircle } from 'lucide-react'
 import { useAccounts, useUpdateAccount, useScanDuplicates } from '../../api/accounts'
 import {
   useLinkSimpleFINAccount,
@@ -15,6 +14,7 @@ import { useAppStore } from '../../stores/appStore'
 import { useAccountTypes } from '../../api/accountTypes'
 import { BUILTIN_ACCOUNT_TYPES } from '../../constants/accountTypes'
 import { AccountTypeInfoModal } from './AccountTypeInfoModal'
+import { AccountTypeField } from './AccountTypeField'
 import { CountsAsSavingsField } from './CountsAsSavingsField'
 import './AccountSettingsModal.css'
 import { AccountNumbersSection } from './AccountNumbersSection'
@@ -83,7 +83,10 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
-    if (!name.trim()) return
+    if (!name.trim()) {
+      setSaveError('Give the account a name')
+      return
+    }
     setSaveError(null)
     try {
       await updateAccount.mutateAsync({
@@ -159,244 +162,209 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
         title="Account Settings"
         onClose={onClose}
         historyKey="account-settings"
-        className="acct-modal"
         footer={
-          <div className="acct-modal__footer">
+          <div className="dialog-actions">
             <button
               type="button"
-              className={`acct-modal__btn acct-modal__btn--danger`}
+              className="dialog-btn dialog-btn--danger"
               onClick={handleToggleClosed}
               disabled={updateAccount.isPending}
             >
               {account.is_closed ? 'Reopen Account' : 'Close Account'}
             </button>
             {(saveError || closeError) && (
-              <span className="acct-modal__save-error">{saveError ?? closeError}</span>
+              <span className="dialog-form__error">{saveError ?? closeError}</span>
             )}
-            <button
-              type="button"
-              className="acct-modal__btn acct-modal__btn--cancel"
-              onClick={onClose}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              form="acct-settings-form"
-              className="acct-modal__btn acct-modal__btn--save"
-              disabled={updateAccount.isPending || !name.trim()}
-            >
-              {updateAccount.isPending ? 'Saving…' : 'Save'}
-            </button>
+            <div className="dialog-actions__end">
+              <button type="button" className="dialog-btn dialog-btn--secondary" onClick={onClose}>
+                Cancel
+              </button>
+              <button
+                type="submit"
+                form="acct-settings-form"
+                className="dialog-btn dialog-btn--primary"
+                disabled={updateAccount.isPending}
+              >
+                {updateAccount.isPending ? 'Saving…' : 'Save'}
+              </button>
+            </div>
           </div>
         }
       >
-        <form id="acct-settings-form" onSubmit={handleSave}>
-          <div className="acct-modal__body">
-            {/* Basic fields */}
-            <div className="acct-modal__section">
-              <div className="acct-modal__field">
-                <label className="acct-modal__label">Name</label>
-                <input
-                  ref={nameRef}
-                  className="acct-modal__input"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="acct-modal__field">
-                <label className="acct-modal__label">
-                  Type
+        <form id="acct-settings-form" className="dialog-form" onSubmit={handleSave}>
+          <label className="dialog-form__field">
+            <span>Name</span>
+            <input ref={nameRef} value={name} onChange={(e) => setName(e.target.value)} />
+          </label>
+          <AccountTypeField
+            value={accountType}
+            options={typeOptions}
+            onChange={(key) => {
+              setAccountType(key)
+              // A different type brings its own default for the flag, as on
+              // the New Account form. Saving is still the only thing that
+              // changes the account.
+              const picked = typeOptions.find((t) => t.key === key)
+              if (picked) setCountsAsSavings(picked.default_counts_as_savings)
+            }}
+            onHelp={() => setShowTypeInfo(true)}
+          />
+          <label className="dialog-form__field dialog-form__field--inline">
+            <input
+              type="checkbox"
+              checked={onBudget}
+              onChange={(e) => setOnBudget(e.target.checked)}
+            />
+            <span>On budget</span>
+          </label>
+          <CountsAsSavingsField
+            onBudget={onBudget}
+            classification={typeOptions.find((t) => t.key === accountType)?.classification}
+            checked={countsAsSavings}
+            onChange={setCountsAsSavings}
+          />
+          <label className="dialog-form__field">
+            <span>Note</span>
+            <input
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Optional note…"
+            />
+          </label>
+          <AccountNumbersSection
+            account={account}
+            onSave={(patch) => updateAccount.mutateAsync({ id: accountId, ...patch })}
+          />
+          {/* The answer to "my card came in with three months of history
+              and now everything is red". That spending predates the
+              budget: it is opening debt, not overspending to cover. The
+              hint sits outside the label so it is not part of the name. */}
+          <div className="dialog-form__field">
+            <label htmlFor="acct-budget-start">Budget starts</label>
+            <input
+              id="acct-budget-start"
+              type="date"
+              value={budgetStart}
+              onChange={(e) => setBudgetStart(e.target.value)}
+            />
+            <p className="dialog-form__hint">
+              {budgetStart
+                ? 'Anything before this is opening balance — kept in the register, left ' +
+                  'uncategorized, and not counted as needing a category. On a card it shows ' +
+                  'as Uncovered and is paid down by assigning to the card.'
+                : 'Leave empty to treat this account’s whole history as part of your budget. ' +
+                  'Set a date when an account arrives with history from before you tracked it.'}
+            </p>
+          </div>
+
+          {/* SimpleFIN section */}
+          {firstConnection && (
+            <div className="acct-modal__section acct-modal__section--simplefin">
+              <div className="acct-modal__section-title">SimpleFIN sync</div>
+              {isLinked ? (
+                <div className="acct-modal__sf-linked">
+                  <div className="acct-modal__sf-name">
+                    <span className="acct-modal__sf-badge">Linked</span>
+                    {account.simplefin_account_name ?? account.simplefin_account_id}
+                  </div>
+                  <div className="acct-modal__sf-meta">
+                    {formatSyncAge(account.last_simplefin_sync_at ?? null)}
+                  </div>
+                  <label className="dialog-form__field dialog-form__field--inline">
+                    <input
+                      type="checkbox"
+                      checked={account.simplefin_sync_enabled ?? true}
+                      onChange={(e) => updateSyncSettings.mutate(e.target.checked)}
+                    />
+                    <span>Sync enabled</span>
+                  </label>
                   <button
                     type="button"
-                    className="acct-modal__type-help"
-                    onClick={() => setShowTypeInfo(true)}
-                    aria-label="What do account types mean?"
-                    title="What do account types mean?"
+                    className="dialog-btn dialog-btn--danger acct-modal__start"
+                    onClick={handleUnlink}
+                    disabled={unlink.isPending}
                   >
-                    <HelpCircle size={12} />
+                    Disconnect
                   </button>
-                </label>
-                <select
-                  className="acct-modal__input"
-                  value={accountType}
-                  onChange={(e) => {
-                    setAccountType(e.target.value)
-                    // A different type brings its own default for the flag,
-                    // as on the New Account form. Saving is still the only
-                    // thing that changes the account.
-                    const picked = typeOptions.find((t) => t.key === e.target.value)
-                    if (picked) setCountsAsSavings(picked.default_counts_as_savings)
-                  }}
-                >
-                  {typeOptions.map((t) => (
-                    <option key={t.key} value={t.key}>
-                      {t.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="acct-modal__field acct-modal__field--row">
-                <label className="acct-modal__label">On Budget</label>
-                <input
-                  type="checkbox"
-                  checked={onBudget}
-                  onChange={(e) => setOnBudget(e.target.checked)}
-                />
-              </div>
-              <CountsAsSavingsField
-                onBudget={onBudget}
-                classification={typeOptions.find((t) => t.key === accountType)?.classification}
-                checked={countsAsSavings}
-                onChange={setCountsAsSavings}
-              />
-              <div className="acct-modal__field">
-                <label className="acct-modal__label">Note</label>
-                <input
-                  className="acct-modal__input"
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  placeholder="Optional note…"
-                />
-              </div>
-              <AccountNumbersSection
-                account={account}
-                onSave={(patch) => updateAccount.mutateAsync({ id: accountId, ...patch })}
-              />
-              {/* The answer to "my card came in with three months of history
-                  and now everything is red". That spending predates the
-                  budget: it is opening debt, not overspending to cover. */}
-              <div className="acct-modal__field">
-                <label className="acct-modal__label" htmlFor="acct-budget-start">
-                  Budget starts
-                </label>
-                <input
-                  id="acct-budget-start"
-                  type="date"
-                  className="acct-modal__input"
-                  value={budgetStart}
-                  onChange={(e) => setBudgetStart(e.target.value)}
-                />
-                <p className="acct-modal__hint">
-                  {budgetStart
-                    ? 'Anything before this is opening balance — kept in the register, left ' +
-                      'uncategorized, and not counted as needing a category. On a card it shows ' +
-                      'as Uncovered and is paid down by assigning to the card.'
-                    : 'Leave empty to treat this account’s whole history as part of your budget. ' +
-                      'Set a date when an account arrives with history from before you tracked it.'}
-                </p>
-              </div>
-            </div>
-
-            {/* SimpleFIN section */}
-            {firstConnection && (
-              <div className="acct-modal__section acct-modal__section--simplefin">
-                <div className="acct-modal__section-title">SimpleFIN Sync</div>
-                {isLinked ? (
-                  <div className="acct-modal__sf-linked">
-                    <div className="acct-modal__sf-name">
-                      <span className="acct-modal__sf-badge">Linked</span>
-                      {account.simplefin_account_name ?? account.simplefin_account_id}
-                    </div>
-                    <div className="acct-modal__sf-meta">
-                      {formatSyncAge(account.last_simplefin_sync_at ?? null)}
-                    </div>
-                    <label className="acct-modal__sf-toggle">
-                      <input
-                        type="checkbox"
-                        checked={account.simplefin_sync_enabled ?? true}
-                        onChange={(e) => updateSyncSettings.mutate(e.target.checked)}
-                      />
-                      Sync enabled
-                    </label>
+                </div>
+              ) : (
+                <div className="acct-modal__sf-unlinked">
+                  <span className="acct-modal__sf-none">Not linked to SimpleFIN</span>
+                  {!showLinkPicker ? (
                     <button
                       type="button"
-                      className="acct-modal__sf-disconnect"
-                      onClick={handleUnlink}
-                      disabled={unlink.isPending}
+                      className="dialog-btn dialog-btn--secondary acct-modal__start"
+                      onClick={() => setShowLinkPicker(true)}
                     >
-                      Disconnect
+                      Link account…
                     </button>
-                  </div>
-                ) : (
-                  <div className="acct-modal__sf-unlinked">
-                    <span className="acct-modal__sf-none">Not linked to SimpleFIN</span>
-                    {!showLinkPicker ? (
+                  ) : (
+                    <div className="acct-modal__sf-picker">
+                      <select
+                        defaultValue=""
+                        disabled={link.isPending || remoteLoading}
+                        onChange={(e) => e.target.value && handleLink(e.target.value)}
+                      >
+                        <option value="">
+                          {link.isPending
+                            ? 'Linking…'
+                            : remoteLoading
+                              ? 'Loading accounts…'
+                              : 'Select account…'}
+                        </option>
+                        {remoteAccounts.map((ra) => (
+                          <option key={ra.id} value={ra.id}>
+                            {ra.name ?? ra.id}
+                          </option>
+                        ))}
+                      </select>
                       <button
                         type="button"
-                        className="acct-modal__sf-link-btn"
-                        onClick={() => setShowLinkPicker(true)}
+                        className="dialog-btn dialog-btn--secondary"
+                        onClick={() => {
+                          setShowLinkPicker(false)
+                          setLinkError(null)
+                        }}
                       >
-                        Link account…
+                        Cancel
                       </button>
-                    ) : (
-                      <div className="acct-modal__sf-picker">
-                        <select
-                          className="acct-modal__input"
-                          defaultValue=""
-                          disabled={link.isPending || remoteLoading}
-                          onChange={(e) => e.target.value && handleLink(e.target.value)}
-                        >
-                          <option value="">
-                            {link.isPending
-                              ? 'Linking…'
-                              : remoteLoading
-                                ? 'Loading accounts…'
-                                : 'Select account…'}
-                          </option>
-                          {remoteAccounts.map((ra) => (
-                            <option key={ra.id} value={ra.id}>
-                              {ra.name ?? ra.id}
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          className="acct-modal__sf-cancel"
-                          onClick={() => {
-                            setShowLinkPicker(false)
-                            setLinkError(null)
-                          }}
-                        >
-                          Cancel
-                        </button>
-                        {linkError && <span className="acct-modal__sf-error">{linkError}</span>}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Maintenance section */}
-            <div className="acct-modal__section acct-modal__section--maintenance">
-              <div className="acct-modal__section-title">Maintenance</div>
-              <div className="acct-modal__field acct-modal__field--row acct-modal__field--scan">
-                <span className="acct-modal__scan-label">
-                  Find transactions that may be duplicates
-                </span>
-                <button
-                  type="button"
-                  className="acct-modal__scan-btn"
-                  disabled={scanDuplicates.isPending}
-                  onClick={async () => {
-                    setScanResult(null)
-                    const result = await scanDuplicates.mutateAsync(accountId)
-                    setScanResult(result.created)
-                  }}
-                >
-                  {scanDuplicates.isPending ? 'Scanning…' : 'Scan for Duplicates'}
-                </button>
-              </div>
-              {scanResult !== null && (
-                <p className="acct-modal__scan-result">
-                  {scanResult === 0
-                    ? 'No new potential duplicates found.'
-                    : `Found ${scanResult} potential duplicate pair${scanResult === 1 ? '' : 's'} — review them in the transaction list.`}
-                </p>
+                      {linkError && (
+                        <span className="dialog-form__error acct-modal__sf-error">{linkError}</span>
+                      )}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
+          )}
+
+          {/* Maintenance section */}
+          <div className="acct-modal__section acct-modal__section--maintenance">
+            <div className="acct-modal__section-title">Maintenance</div>
+            <div className="acct-modal__scan">
+              <span className="acct-modal__scan-label">
+                Find transactions that may be duplicates
+              </span>
+              <button
+                type="button"
+                className="dialog-btn dialog-btn--secondary"
+                disabled={scanDuplicates.isPending}
+                onClick={async () => {
+                  setScanResult(null)
+                  const result = await scanDuplicates.mutateAsync(accountId)
+                  setScanResult(result.created)
+                }}
+              >
+                {scanDuplicates.isPending ? 'Scanning…' : 'Scan for Duplicates'}
+              </button>
+            </div>
+            {scanResult !== null && (
+              <p className="acct-modal__scan-result">
+                {scanResult === 0
+                  ? 'No new potential duplicates found.'
+                  : `Found ${scanResult} potential duplicate pair${scanResult === 1 ? '' : 's'} — review them in the transaction list.`}
+              </p>
+            )}
           </div>
         </form>
       </Dialog>

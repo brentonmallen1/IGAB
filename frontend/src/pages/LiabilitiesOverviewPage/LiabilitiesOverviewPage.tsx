@@ -67,10 +67,6 @@ export function LiabilitiesOverviewPage() {
             Track a loan account you already have here, or a liability that lives entirely outside
             this budget — either way you get a payoff date, schedule, and paydown chart.
           </p>
-          <button className="liabilities-page__add" onClick={() => openModal('liability')}>
-            <Plus size={14} />
-            Track a liability
-          </button>
         </div>
       ) : (
         <div className="liabilities-page__grid">

@@ -1,0 +1,192 @@
+/* The form and the buttons inside a Dialog.
+
+   Its own stylesheet beside Dialog.css rather than inside it: Dialog.css is
+   the shell (overlay, panel, header, footer slot) and this is what goes in
+   it. Dialog.tsx imports both, so any component rendering a Dialog has these
+   classes without importing a second file.
+
+   The account, asset and liability dialogs each hand-rolled this — uppercase
+   labels in one, borderless Cancel in another, three submit-button text
+   colours — and the add-asset flow put two of them side by side, where the
+   difference was the first thing anyone saw. Values are the liability
+   dialog's, with the focus border on --input-focus-ring.
+
+   Specificity is one class throughout (the element half of a control rule
+   is wrapped in :where, so it stays one class yet still outranks base.css's
+   bare `input`), so a
+   component that needs a variation writes one class of its own and wins. */
+
+.dialog-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+/* Short fields side by side; a column on a phone. */
+.dialog-form__row {
+  display: flex;
+  gap: var(--spacing-md);
+}
+
+.dialog-form__row > :where(*) {
+  flex: 1;
+  min-width: 0;
+}
+
+/* A <label> wrapping its text and its control, or — where the label carries
+   something that is not the name (a help button, a hint) — a <div> whose
+   <label htmlFor> names the control. */
+.dialog-form__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+/* A checkbox and its sentence on one line. */
+.dialog-form__field--inline {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.dialog-form__hint {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.dialog-form__error {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-negative);
+}
+
+/* Text controls only. A checkbox or radio handed a text field's padding and
+   border is drawn as a box, so they keep their native size. */
+.dialog-form
+  :where(
+    input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"]),
+    select,
+    textarea
+  ) {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: var(--border-radius-sm);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  /* One line, its padding and its border. Stated rather than left to the
+     content because a select and a date input each draw theirs 2px taller
+     than a text input at the same padding — measured 23/25/25 in Chrome —
+     and a column of mixed fields should read as one column. */
+  height: calc(1lh + 2 * var(--spacing-xs) + 2px);
+}
+
+.dialog-form :where(textarea) {
+  height: auto;
+}
+
+.dialog-form
+  :where(
+    input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"]),
+    select,
+    textarea
+  ):focus {
+  outline: none;
+  border-color: var(--input-focus-ring);
+  box-shadow: var(--input-focus-shadow);
+}
+
+.dialog-form :where(input[type="checkbox"], input[type="radio"]) {
+  accent-color: var(--color-accent);
+}
+
+/* Buttons. */
+.dialog-btn {
+  padding: 6px var(--spacing-md);
+  border: 1px solid transparent;
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: opacity var(--transition-fast);
+}
+
+.dialog-btn:hover:not(:disabled) {
+  opacity: 0.8;
+}
+
+.dialog-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dialog-btn--primary {
+  background-color: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--text-inverse);
+}
+
+.dialog-btn--secondary {
+  background-color: transparent;
+  border-color: var(--border-color);
+  color: var(--text-secondary);
+}
+
+.dialog-btn--danger {
+  background-color: transparent;
+  border-color: var(--color-negative);
+  color: var(--color-negative);
+}
+
+/* The footer's row: whatever comes first (Delete, an error) sits at the
+   start, and __end holds Cancel and the primary at the far end. Its own
+   element rather than a .dialog__footer override because on a phone the
+   footer slot is the bottom sheet's, which knows nothing of Dialog's. */
+.dialog-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  width: 100%;
+}
+
+.dialog-actions__end {
+  display: flex;
+  gap: var(--spacing-sm);
+  margin-left: auto;
+}
+
+@media (max-width: 768px) {
+  .dialog-form__row {
+    flex-direction: column;
+  }
+
+  /* A dialog's actions are the thumb's target on a phone. The forms converted
+     onto these buttons (the dated-figure form, the schedule editor) each had
+     their own 44px floor; one rule here keeps it for all of them. */
+  .dialog-btn {
+    min-height: var(--tap-min);
+  }
+}
+
+/* ─── added by sweep A ─── */
+
+/* A checkbox or radio beside more than one line: a choice with a hint under
+   its name (the copy-budget scope), or a sentence that wraps (back up before
+   restoring, in both restore dialogs). With __field--inline. Centred, the box
+   floated beside the middle of the paragraph; it belongs on the first line. */
+.dialog-form__field--multiline {
+  align-items: flex-start;
+}
+
+.dialog-form__field--multiline > :where(input[type="checkbox"], input[type="radio"]) {
+  flex-shrink: 0;
+  margin-top: 0.2em;
+}

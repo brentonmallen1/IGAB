@@ -1,5 +1,6 @@
 import { X } from 'lucide-react'
 import './FloatingSelectionBar.css'
+import { keepsSelection } from '../../../utils/keepsSelection'
 
 interface ButtonProps {
   onClick: () => void
@@ -34,7 +35,7 @@ interface Props {
 
 export function FloatingSelectionBar({ label, sublabel, sublabelPlain, onClose, children }: Props) {
   return (
-    <div className="fsb">
+    <div className="fsb" {...keepsSelection}>
       <button
         className="fsb__close"
         onClick={onClose}

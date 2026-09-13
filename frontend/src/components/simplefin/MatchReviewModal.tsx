@@ -5,9 +5,10 @@ import { usePayees } from '../../api/payees'
 import { useCategories } from '../../api/categories'
 import { useFormatters } from '../../hooks/useFormatters'
 import type { Transaction, TransactionMatch } from '../../types'
-import './MatchReviewModal.css'
 import { useTransaction } from '../../api/transactions'
 import { Dialog } from '../common/Dialog/Dialog'
+// After Dialog, so its one-class variations are declared after the shared ones.
+import './MatchReviewModal.css'
 
 function ConfidenceBar({ score }: { score: number }) {
   const pct = Math.round(score * 100)
@@ -193,39 +194,17 @@ function MergedPreview({
   )
 }
 
-function MatchCard({
-  match,
-  budgetId,
-  onAccepted,
-  onRejected,
-}: {
-  match: TransactionMatch
-  budgetId: string | null
-  onAccepted: () => void
-  onRejected: () => void
-}) {
+function MatchCard({ match, budgetId }: { match: TransactionMatch; budgetId: string | null }) {
   const { formatMoney, formatDate } = useFormatters()
   const { data: syncedTxn, isLoading: loadingS } = useTransaction(match.synced_transaction_id)
   const { data: manualTxn, isLoading: loadingM } = useTransaction(match.manual_transaction_id)
   const { data: payees = [] } = usePayees(budgetId)
   const { data: categories = [] } = useCategories(budgetId)
-  const acceptMatch = useAcceptMatch()
-  const rejectMatch = useRejectMatch()
 
   const payeeMap = new Map(payees.map((p) => [p.id, p.name]))
   const categoryMap = new Map(categories.map((c) => [c.id, c.name]))
 
   const loading = loadingS || loadingM
-
-  async function handleAccept() {
-    await acceptMatch.mutateAsync(match.id)
-    onAccepted()
-  }
-
-  async function handleReject() {
-    await rejectMatch.mutateAsync(match.id)
-    onRejected()
-  }
 
   return (
     <div className="match-modal__card">
@@ -284,23 +263,6 @@ function MatchCard({
           )}
         </>
       )}
-
-      <div className="match-modal__actions">
-        <button
-          className="match-modal__btn match-modal__btn--accept"
-          onClick={handleAccept}
-          disabled={acceptMatch.isPending || rejectMatch.isPending}
-        >
-          Accept link
-        </button>
-        <button
-          className="match-modal__btn match-modal__btn--reject"
-          onClick={handleReject}
-          disabled={acceptMatch.isPending || rejectMatch.isPending}
-        >
-          Keep separate
-        </button>
-      </div>
     </div>
   )
 }
@@ -319,6 +281,9 @@ export function MatchReviewModal({ matches, budgetId, onClose, initialMatchId }:
     return i >= 0 ? i : 0
   })
   const [dismissed, setDismissed] = useState<Set<string>>(new Set())
+  const acceptMatch = useAcceptMatch()
+  const rejectMatch = useRejectMatch()
+  const deciding = acceptMatch.isPending || rejectMatch.isPending
 
   const pending = matches.filter((m) => !dismissed.has(m.id))
   const current = pending[idx] ?? pending[0]
@@ -336,6 +301,12 @@ export function MatchReviewModal({ matches, budgetId, onClose, initialMatchId }:
 
   if (!current) return null
 
+  async function decide(accept: boolean) {
+    const id = current.id
+    await (accept ? acceptMatch : rejectMatch).mutateAsync(id)
+    handleDismiss(id)
+  }
+
   return (
     <Dialog
       // The queue position moves into the title: Dialog takes a string, and
@@ -348,34 +319,55 @@ export function MatchReviewModal({ matches, budgetId, onClose, initialMatchId }:
       onClose={onClose}
       historyKey="match-review"
       className="match-modal"
+      // The decision is the footer's, pinned under a card tall enough to
+      // scroll; moving through the queue sits at the start, where Delete sits
+      // in a settings dialog.
       footer={
-        pending.length > 1 ? (
-          <>
+        <div className="dialog-actions">
+          {pending.length > 1 && (
+            <>
+              <button
+                type="button"
+                className="dialog-btn dialog-btn--secondary match-modal__nav-btn"
+                onClick={() => setIdx((i) => Math.max(0, i - 1))}
+                disabled={idx === 0}
+                aria-label="Previous match"
+              >
+                <ChevronLeft size={13} aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                className="dialog-btn dialog-btn--secondary match-modal__nav-btn"
+                onClick={() => setIdx((i) => Math.min(pending.length - 1, i + 1))}
+                disabled={idx === pending.length - 1}
+                aria-label="Next match"
+              >
+                <ChevronRight size={13} aria-hidden="true" />
+              </button>
+            </>
+          )}
+          <div className="dialog-actions__end">
             <button
-              className="match-modal__nav-btn"
-              onClick={() => setIdx((i) => Math.max(0, i - 1))}
-              disabled={idx === 0}
+              type="button"
+              className="dialog-btn dialog-btn--secondary"
+              onClick={() => void decide(false)}
+              disabled={deciding}
             >
-              <ChevronLeft size={14} /> Previous
+              Keep separate
             </button>
             <button
-              className="match-modal__nav-btn"
-              onClick={() => setIdx((i) => Math.min(pending.length - 1, i + 1))}
-              disabled={idx === pending.length - 1}
+              type="button"
+              className="dialog-btn dialog-btn--primary"
+              onClick={() => void decide(true)}
+              disabled={deciding}
             >
-              Next <ChevronRight size={14} />
+              Accept link
             </button>
-          </>
-        ) : undefined
+          </div>
+        </div>
       }
     >
-      <MatchCard
-        key={current.id}
-        match={current}
-        budgetId={budgetId}
-        onAccepted={() => handleDismiss(current.id)}
-        onRejected={() => handleDismiss(current.id)}
-      />
+      <MatchCard key={current.id} match={current} budgetId={budgetId} />
     </Dialog>
   )
 }

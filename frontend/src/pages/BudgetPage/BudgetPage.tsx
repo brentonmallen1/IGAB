@@ -31,6 +31,7 @@ import {
 import { moveItem } from '../../utils/listOrder'
 import { useDeleteCategoryFlow } from '../../components/budget/DeleteCategoryModal/useDeleteCategoryFlow'
 import './BudgetPage.css'
+import { useDeselectOnOutsidePointer } from './useDeselectOnOutsidePointer'
 import { confirmAsync } from '../../stores/confirmStore'
 
 export function BudgetPage() {
@@ -56,6 +57,7 @@ export function BudgetPage() {
 
   const selectedCategoryIds = useUIStore((s) => s.selectedCategoryIds)
   const clearCategorySelection = useUIStore((s) => s.clearCategorySelection)
+  useDeselectOnOutsidePointer(selectedCategoryIds.size > 0, clearCategorySelection)
   const activeModal = useUIStore((s) => s.activeModal)
   const closeModal = useUIStore((s) => s.closeModal)
   const mobileInspectorOpen = useUIStore((s) => s.mobileInspectorOpen)

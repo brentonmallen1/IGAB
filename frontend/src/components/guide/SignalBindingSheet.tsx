@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react'
-import toast from 'react-hot-toast'
 import {
   useConceptCandidates,
   useSetBinding,
@@ -52,6 +51,7 @@ export function SignalBindingSheet({
     signal?.external_value == null ? '' : String(signal.external_value)
   )
   const [note, setNote] = useState(() => signal?.note ?? '')
+  const [error, setError] = useState<string | null>(null)
 
   const answered = concept.kind === 'boolean' && concept.binds_to.length === 0
 
@@ -71,6 +71,13 @@ export function SignalBindingSheet({
   }
 
   async function save(mode: 'manual' | 'dismissed' | 'auto' | 'answer', answer?: boolean) {
+    setError(null)
+    // Save stays enabled with nothing chosen, like every dialog's primary, and
+    // says what it needs; Don't track and Reset are complete answers alone.
+    if (mode === 'manual' && !hasSelection && !external) {
+      setError('Pick what holds it, or say you hold it elsewhere')
+      return
+    }
     try {
       // Typed by a person, so `parseAmountInput` — "1,250" is a figure, not a
       // refusal. Blank stays a complete answer; anything unreadable says so
@@ -79,7 +86,7 @@ export function SignalBindingSheet({
       const typed = mode === 'manual' && external ? amount.trim() : ''
       const externalAmount = typed ? parseAmountInput(typed) : null
       if (externalAmount !== null && Number.isNaN(externalAmount)) {
-        toast.error('That amount did not parse')
+        setError('That amount did not parse')
         return
       }
       await setBinding.mutateAsync({
@@ -93,12 +100,55 @@ export function SignalBindingSheet({
       })
       onClose()
     } catch {
-      toast.error('Could not save that. Please try again.')
+      setError('Could not save that. Please try again.')
     }
   }
 
   return (
-    <GuideDialog title={concept.label} onClose={onClose} historyKey="guide-binding">
+    <GuideDialog
+      title={concept.label}
+      onClose={onClose}
+      historyKey="guide-binding"
+      footer={
+        answered ? undefined : (
+          <div className="dialog-actions binding__actions">
+            {/* Not a danger action: switching a concept off is an ordinary
+                preference, fully reversible, and red would imply otherwise. */}
+            <button
+              type="button"
+              className="dialog-btn dialog-btn--secondary"
+              onClick={() => save('dismissed')}
+            >
+              Don&rsquo;t track this
+            </button>
+            {error && (
+              <span className="dialog-form__error" role="alert">
+                {error}
+              </span>
+            )}
+            <div className="dialog-actions__end">
+              {signal?.source !== 'auto' && (
+                <button
+                  type="button"
+                  className="dialog-btn dialog-btn--secondary"
+                  onClick={() => save('auto')}
+                >
+                  Reset to automatic
+                </button>
+              )}
+              <button
+                type="button"
+                className="dialog-btn dialog-btn--primary"
+                disabled={setBinding.isPending}
+                onClick={() => save('manual')}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        )
+      }
+    >
       <p className="dialog__body">{concept.prompt}</p>
       {concept.caveat && <p className="dialog__body dialog__body--muted">{concept.caveat}</p>}
 
@@ -112,6 +162,11 @@ export function SignalBindingSheet({
             <span className="guide-branch__answer">No</span>
             <span className="guide-branch__label">It does not</span>
           </button>
+          {error && (
+            <p className="dialog-form__error" role="alert">
+              {error}
+            </p>
+          )}
         </div>
       ) : (
         <>
@@ -179,29 +234,6 @@ export function SignalBindingSheet({
               )}
             </div>
           )}
-
-          <div className="binding__actions">
-            <button
-              type="button"
-              className="binding__save"
-              disabled={setBinding.isPending || (!hasSelection && !external)}
-              onClick={() => save('manual')}
-            >
-              Save
-            </button>
-            {signal?.source !== 'auto' && (
-              <button type="button" className="guide-link-button" onClick={() => save('auto')}>
-                Reset to automatic
-              </button>
-            )}
-            <button
-              type="button"
-              className="guide-link-button binding__dismiss"
-              onClick={() => save('dismissed')}
-            >
-              Don&rsquo;t track this
-            </button>
-          </div>
         </>
       )}
     </GuideDialog>

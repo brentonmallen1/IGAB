@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, Plus, X } from 'lucide-react'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
 import { renderableCategories, renderableGroups } from '../budgetGroups'
@@ -15,6 +15,9 @@ import { Dialog } from '../../common/Dialog/Dialog'
 import { useDragReorder } from '../../../hooks/useDragReorder'
 import { moveItem } from '../../../utils/listOrder'
 import './BudgetViewModal.css'
+
+/** The form scrolls; its submit button is in the pinned footer, joined by id. */
+const FORM_ID = 'view-editor-form'
 
 interface Props {
   budgetId: string
@@ -99,6 +102,8 @@ function ViewEditor({
     )
   })
   const [error, setError] = useState<string | null>(null)
+  const groupsLabelId = useId()
+  const categoriesLabelId = useId()
 
   const nameRef = useRef<HTMLInputElement>(null)
   useEffect(() => {
@@ -173,7 +178,7 @@ function ViewEditor({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     const trimmed = name.trim()
-    if (!trimmed) return
+    if (!trimmed) return setError('Give this view a name')
     setError(null)
 
     try {
@@ -245,50 +250,61 @@ function ViewEditor({
       className="view-editor"
       width="lg"
       footer={
-        <div className="view-editor__footer">
-          {isEdit ? (
+        <div className="dialog-actions">
+          {isEdit && (
             <button
               type="button"
-              className="view-editor__btn view-editor__btn--danger"
+              className="dialog-btn dialog-btn--danger"
               onClick={handleDelete}
+              disabled={isPending || deleteView.isPending}
             >
               Delete
             </button>
-          ) : (
-            <span />
           )}
-          <div className="view-editor__footer-actions">
-            <button type="button" className="view-editor__btn" onClick={onClose}>
-              Cancel
-            </button>
+          {error && (
+            <span className="dialog-form__error" role="alert">
+              {error}
+            </span>
+          )}
+          <div className="dialog-actions__end">
             <button
-              type="submit"
-              form="view-editor-form"
-              className="view-editor__btn view-editor__btn--primary"
+              type="button"
+              className="dialog-btn dialog-btn--secondary"
+              onClick={onClose}
               disabled={isPending}
             >
-              {isEdit ? 'Save' : 'Create'}
+              Cancel
+            </button>
+            {/* The footer is pinned outside the form; `form=` joins them. */}
+            <button
+              type="submit"
+              form={FORM_ID}
+              className="dialog-btn dialog-btn--primary"
+              disabled={isPending}
+            >
+              {isPending ? 'Saving…' : isEdit ? 'Save' : 'Create'}
             </button>
           </div>
         </div>
       }
     >
-      <form id="view-editor-form" className="view-editor__form" onSubmit={handleSubmit}>
-        <p className="view-editor__hint">
+      <form id={FORM_ID} className="dialog-form" onSubmit={handleSubmit}>
+        <p className="dialog-form__hint">
           A view is a different way to arrange the same categories — group them by need and want, or
           however you think. It doesn’t change your budget’s own groups, so you can switch back any
           time. Anything you don’t place shows under <strong>Unassigned</strong>.
         </p>
 
-        <input
-          ref={nameRef}
-          className="view-editor__input"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="View name, e.g. Need / Want / Save"
-          maxLength={100}
-          required
-        />
+        <label className="dialog-form__field">
+          <span>View name</span>
+          <input
+            ref={nameRef}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Need / Want / Save"
+            maxLength={100}
+          />
+        </label>
 
         <label className="view-editor__toggle">
           {/* With no groups, everything is unassigned — hiding the unassigned
@@ -312,173 +328,184 @@ function ViewEditor({
           </span>
         </label>
 
-        <div className="view-editor__section-title">
-          Groups in this view
-          {groupNames.length > 1 && (
-            <span className="view-editor__section-hint"> — drag or use the arrows to reorder</span>
-          )}
-        </div>
-        <div className="view-editor__groups">
-          {groupNames.map((g, index) => (
-            <span
-              key={g}
-              className={
-                'view-editor__chip' +
-                (drag.overIndex === index && drag.dragIndex !== index
-                  ? ' view-editor__chip--drag-over'
-                  : '')
-              }
-              draggable
-              onDragStart={() => drag.start(index)}
-              onDragEnd={drag.end}
-              onDragOver={(e) => {
-                e.preventDefault()
-                drag.over(index)
-              }}
-              onDrop={(e) => {
-                e.preventDefault()
-                drag.drop(index)
-              }}
-            >
-              {/* Editable in place: a group name is the whole label the user
+        <div className="dialog-form__field" role="group" aria-labelledby={groupsLabelId}>
+          <span id={groupsLabelId}>
+            Groups in this view
+            {groupNames.length > 1 && (
+              <span className="view-editor__section-hint">
+                {' '}
+                — drag or use the arrows to reorder
+              </span>
+            )}
+          </span>
+          <div className="view-editor__groups">
+            {groupNames.map((g, index) => (
+              <span
+                key={g}
+                className={
+                  'view-editor__chip' +
+                  (drag.overIndex === index && drag.dragIndex !== index
+                    ? ' view-editor__chip--drag-over'
+                    : '')
+                }
+                draggable
+                onDragStart={() => drag.start(index)}
+                onDragEnd={drag.end}
+                onDragOver={(e) => {
+                  e.preventDefault()
+                  drag.over(index)
+                }}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  drag.drop(index)
+                }}
+              >
+                {/* Editable in place: a group name is the whole label the user
                   reads on the budget page, and getting it wrong should not
                   mean deleting the group and reassigning everything in it. */}
-              {/* Uncontrolled, so a rejected rename (blank or duplicate)
+                {/* Uncontrolled, so a rejected rename (blank or duplicate)
                   used to leave the typed text sitting in the DOM while state
                   kept the old name — two chips could both read "Need" while
                   the payload still said ["Need", "Want"]. Reset the field
                   explicitly whenever the rename does not take. */}
+                <input
+                  className="view-editor__chip-input"
+                  defaultValue={g}
+                  size={Math.max(g.length, 4)}
+                  onBlur={(e) => {
+                    if (!renameGroup(g, e.target.value)) e.target.value = g
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      e.currentTarget.blur()
+                    }
+                    if (e.key === 'Escape') {
+                      e.currentTarget.value = g
+                      e.currentTarget.blur()
+                    }
+                  }}
+                  aria-label={`Rename group ${g}`}
+                  maxLength={100}
+                />
+                {/* Native HTML5 drag never fires on a touch screen. The same
+                  moveBy the drag uses, as buttons — the ManageFiltersModal
+                  pattern — shown where there is no pointer. */}
+                <button
+                  type="button"
+                  className="view-editor__chip-move"
+                  onClick={() => drag.moveBy(index, -1)}
+                  disabled={index === 0}
+                  aria-label={`Move group ${g} earlier`}
+                  title="Move earlier"
+                >
+                  <ChevronLeft size={11} />
+                </button>
+                <button
+                  type="button"
+                  className="view-editor__chip-move"
+                  onClick={() => drag.moveBy(index, 1)}
+                  disabled={index === groupNames.length - 1}
+                  aria-label={`Move group ${g} later`}
+                  title="Move later"
+                >
+                  <ChevronRight size={11} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => removeGroup(g)}
+                  aria-label={`Remove group ${g}`}
+                  className="view-editor__chip-remove"
+                >
+                  <X size={11} />
+                </button>
+              </span>
+            ))}
+            <span className="view-editor__add-group">
               <input
-                className="view-editor__chip-input"
-                defaultValue={g}
-                size={Math.max(g.length, 4)}
-                onBlur={(e) => {
-                  if (!renameGroup(g, e.target.value)) e.target.value = g
-                }}
+                className="view-editor__add-input"
+                aria-label="New group name"
+                value={newGroup}
+                onChange={(e) => setNewGroup(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     e.preventDefault()
-                    e.currentTarget.blur()
-                  }
-                  if (e.key === 'Escape') {
-                    e.currentTarget.value = g
-                    e.currentTarget.blur()
+                    addGroup()
                   }
                 }}
-                aria-label={`Rename group ${g}`}
+                placeholder="Add a group…"
                 maxLength={100}
               />
-              {/* Native HTML5 drag never fires on a touch screen. The same
-                  moveBy the drag uses, as buttons — the ManageFiltersModal
-                  pattern — shown where there is no pointer. */}
               <button
                 type="button"
-                className="view-editor__chip-move"
-                onClick={() => drag.moveBy(index, -1)}
-                disabled={index === 0}
-                aria-label={`Move group ${g} earlier`}
-                title="Move earlier"
+                className="view-editor__add-btn"
+                onClick={addGroup}
+                aria-label="Add group"
               >
-                <ChevronLeft size={11} />
-              </button>
-              <button
-                type="button"
-                className="view-editor__chip-move"
-                onClick={() => drag.moveBy(index, 1)}
-                disabled={index === groupNames.length - 1}
-                aria-label={`Move group ${g} later`}
-                title="Move later"
-              >
-                <ChevronRight size={11} />
-              </button>
-              <button
-                type="button"
-                onClick={() => removeGroup(g)}
-                aria-label={`Remove group ${g}`}
-                className="view-editor__chip-remove"
-              >
-                <X size={11} />
+                <Plus size={12} />
               </button>
             </span>
-          ))}
-          <span className="view-editor__add-group">
-            <input
-              className="view-editor__input view-editor__input--inline"
-              value={newGroup}
-              onChange={(e) => setNewGroup(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  addGroup()
-                }
-              }}
-              placeholder="Add a group…"
-              maxLength={100}
-            />
-            <button type="button" className="view-editor__add-btn" onClick={addGroup}>
-              <Plus size={12} />
-            </button>
-          </span>
+          </div>
         </div>
 
-        <div className="view-editor__section-title">Where each category goes</div>
-        <div className="view-editor__categories">
-          {categories.map((cat) => {
-            const a = assignment[cat.id]
-            // "Hide unassigned categories" claims every unplaced row. Render
-            // that claim on the row itself — a checked, disabled Hide box —
-            // or the flag looks like it did nothing.
-            const hiddenByFlag = effectiveHideUnassigned && !a?.group && !a?.hidden
-            const effectiveHidden = (a?.hidden ?? false) || hiddenByFlag
-            return (
-              <div
-                key={cat.id}
-                className={
-                  'view-editor__row' + (effectiveHidden ? ' view-editor__row--hidden' : '')
-                }
-              >
-                <span className="view-editor__cat">
-                  {cat.name}
-                  <span className="view-editor__cat-group">
-                    {groupNameById.get(cat.category_group_id)}
-                  </span>
-                </span>
-                <select
-                  className="view-editor__select"
-                  value={a?.group ?? ''}
-                  onChange={(e) => assign(cat.id, e.target.value || null)}
-                  disabled={a?.hidden}
-                  aria-label={`Group for ${cat.name}`}
-                >
-                  <option value="">Unassigned</option>
-                  {groupNames.map((g) => (
-                    <option key={g} value={g}>
-                      {g}
-                    </option>
-                  ))}
-                </select>
-                <label
-                  className="view-editor__hide"
-                  title={
-                    hiddenByFlag
-                      ? 'Hidden by “Hide unassigned categories” — assign a group to bring it back'
-                      : 'Leave this category out of this view'
+        <div className="dialog-form__field" role="group" aria-labelledby={categoriesLabelId}>
+          <span id={categoriesLabelId}>Where each category goes</span>
+          <div className="view-editor__categories">
+            {categories.map((cat) => {
+              const a = assignment[cat.id]
+              // "Hide unassigned categories" claims every unplaced row. Render
+              // that claim on the row itself — a checked, disabled Hide box —
+              // or the flag looks like it did nothing.
+              const hiddenByFlag = effectiveHideUnassigned && !a?.group && !a?.hidden
+              const effectiveHidden = (a?.hidden ?? false) || hiddenByFlag
+              return (
+                <div
+                  key={cat.id}
+                  className={
+                    'view-editor__row' + (effectiveHidden ? ' view-editor__row--hidden' : '')
                   }
                 >
-                  <input
-                    type="checkbox"
-                    checked={effectiveHidden}
-                    disabled={hiddenByFlag}
-                    onChange={() => toggleHidden(cat.id)}
-                  />
-                  Hide
-                </label>
-              </div>
-            )
-          })}
+                  <span className="view-editor__cat">
+                    {cat.name}
+                    <span className="view-editor__cat-group">
+                      {groupNameById.get(cat.category_group_id)}
+                    </span>
+                  </span>
+                  <select
+                    className="view-editor__select"
+                    value={a?.group ?? ''}
+                    onChange={(e) => assign(cat.id, e.target.value || null)}
+                    disabled={a?.hidden}
+                    aria-label={`Group for ${cat.name}`}
+                  >
+                    <option value="">Unassigned</option>
+                    {groupNames.map((g) => (
+                      <option key={g} value={g}>
+                        {g}
+                      </option>
+                    ))}
+                  </select>
+                  <label
+                    className="view-editor__hide"
+                    title={
+                      hiddenByFlag
+                        ? 'Hidden by “Hide unassigned categories” — assign a group to bring it back'
+                        : 'Leave this category out of this view'
+                    }
+                  >
+                    <input
+                      type="checkbox"
+                      checked={effectiveHidden}
+                      disabled={hiddenByFlag}
+                      onChange={() => toggleHidden(cat.id)}
+                    />
+                    Hide
+                  </label>
+                </div>
+              )
+            })}
+          </div>
         </div>
-
-        {error && <p className="view-editor__error">{error}</p>}
       </form>
     </Dialog>
   )

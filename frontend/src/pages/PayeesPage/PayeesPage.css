@@ -321,10 +321,11 @@
   margin: 0;
 }
 
-.payees-wizard__sub {
+/* Names the row of sensitivity choices, in the shared field label's type. */
+.payees-wizard__group-label {
+  margin: var(--spacing-sm) 0 0;
   font-size: var(--font-size-xs);
-  color: var(--text-muted);
-  margin: 0;
+  color: var(--text-secondary);
 }
 
 .payees-wizard__options {
@@ -448,11 +449,6 @@
   font-weight: 400;
   color: var(--text-muted);
   margin-left: var(--spacing-xs);
-}
-
-/* Dialog's .dialog__footer carries the rule and the padding. */
-.dialog.payees-wizard .dialog__footer {
-  justify-content: flex-end;
 }
 
 @media (max-width: 768px) {

@@ -52,9 +52,13 @@ export function OnCardsModal({ budgetId, month, onClose }: Props) {
         historyKey="on-cards"
         className="on-cards"
         footer={
-          <button className="on-cards__btn" onClick={onClose}>
-            Close
-          </button>
+          <div className="dialog-actions">
+            <div className="dialog-actions__end">
+              <button type="button" className="dialog-btn dialog-btn--secondary" onClick={onClose}>
+                Close
+              </button>
+            </div>
+          </div>
         }
       >
         <div className="on-cards__body">

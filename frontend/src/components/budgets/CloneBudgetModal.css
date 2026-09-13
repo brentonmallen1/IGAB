@@ -1,26 +1,5 @@
-.clone-modal {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-md);
-  padding: var(--spacing-md);
-}
-
-.clone-modal__field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-}
-
-.clone-modal__input {
-  padding: 6px 8px;
-  border: 1px solid var(--edge-strong);
-  border-radius: var(--border-radius);
-  background: var(--surface-raised);
-  color: var(--text-primary);
-  font-size: var(--font-size-sm);
-}
+/* The fields, hints and buttons are DialogForm.css. What is left is the one
+   thing only this dialog has: a two-way choice drawn as a group. */
 
 .clone-modal__choice {
   display: flex;
@@ -29,60 +8,17 @@
   margin: 0;
   padding: var(--spacing-sm);
   border: 1px solid var(--edge);
-  border-radius: var(--border-radius);
+  border-radius: var(--border-radius-sm);
 }
 
 .clone-modal__choice legend {
-  padding: 0 4px;
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  padding: 0 var(--spacing-xs);
 }
 
+/* The choice's name over its hint. */
 .clone-modal__option {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--spacing-sm);
-  font-size: var(--font-size-sm);
-  color: var(--text-primary);
-}
-
-.clone-modal__option > span {
   display: flex;
   flex-direction: column;
   gap: 2px;
-}
-
-.clone-modal__hint {
-  font-size: var(--font-size-xs);
-  font-weight: 400;
-  color: var(--text-muted);
-}
-
-.clone-modal__actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--spacing-sm);
-}
-
-.clone-modal__btn {
-  padding: 5px 12px;
-  border: 1px solid var(--edge-strong);
-  border-radius: var(--border-radius);
-  background: transparent;
   color: var(--text-primary);
-  font-size: var(--font-size-sm);
-  cursor: pointer;
-}
-
-.clone-modal__btn--primary {
-  background: var(--color-accent);
-  border-color: var(--color-accent);
-  color: var(--bg-primary);
-}
-
-.clone-modal__btn:disabled {
-  opacity: 0.6;
-  cursor: default;
 }

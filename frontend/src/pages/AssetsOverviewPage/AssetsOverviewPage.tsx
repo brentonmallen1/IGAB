@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { Link2, Plus } from 'lucide-react'
 import { useAssets, type Asset } from '../../api/assets'
 import { useLiabilities } from '../../api/liabilities'
-import { AssetSettingsModal } from '../../components/assets/AssetSettingsModal'
+import { AddAssetFlow } from '../../components/assets/AddAssetFlow'
 import { useFormatters } from '../../hooks/useFormatters'
 import { useAppStore } from '../../stores/appStore'
 import { equityOf, liabilitiesSecuredBy } from '../../utils/equity'
@@ -46,7 +46,7 @@ export function AssetsOverviewPage() {
         actions={
           <button className="assets-page__add" onClick={() => setCreating(true)}>
             <Plus size={14} />
-            Track an asset
+            Add an asset
           </button>
         }
       />
@@ -59,12 +59,9 @@ export function AssetsOverviewPage() {
           <p className="assets-page__empty-sub">
             A home, a vehicle — anything whose worth you'd state rather than transact. Its value
             joins net worth from the date you record it, and linking a debt to it shows the equity
-            between the two.
+            between the two. Accounts with transactions, like a brokerage, are listed in the
+            sidebar.
           </p>
-          <button className="assets-page__add" onClick={() => setCreating(true)}>
-            <Plus size={14} />
-            Track an asset
-          </button>
         </div>
       ) : (
         <div className="assets-page__grid">
@@ -110,9 +107,7 @@ export function AssetsOverviewPage() {
         </div>
       )}
 
-      {creating && (
-        <AssetSettingsModal budgetId={budgetId} asset={null} onClose={() => setCreating(false)} />
-      )}
+      {creating && <AddAssetFlow onClose={() => setCreating(false)} />}
     </div>
   )
 }

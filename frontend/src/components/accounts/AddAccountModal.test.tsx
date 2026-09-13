@@ -22,7 +22,11 @@ vi.mock('../../api/accountTypes', () => ({
 const toggle = () => screen.queryByLabelText('Counts as savings') as HTMLInputElement | null
 const typeSelect = () => screen.getByRole('combobox') as HTMLSelectElement
 
-beforeEach(() => {
+beforeEach(async () => {
+  // Every test opens the Dialog; drain the deferred history.back() of the last.
+  await new Promise((r) => setTimeout(r, 0))
+  await new Promise((r) => setTimeout(r, 0))
+  window.history.replaceState(null, '')
   createMutate.mockClear()
   useAppStore.setState({ currentBudgetId: 'b1' })
 })
@@ -50,7 +54,7 @@ describe('AddAccountModal counts-as-savings toggle', () => {
   it('disappears when the asset is put on budget', async () => {
     render(<AddAccountModal onClose={vi.fn()} initialTypeKey="investment" />)
     expect(toggle()).not.toBeNull()
-    await userEvent.click(screen.getByRole('checkbox', { name: '' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'On budget' }))
     expect(toggle()).toBeNull()
   })
 
@@ -61,5 +65,19 @@ describe('AddAccountModal counts-as-savings toggle', () => {
     expect(createMutate).toHaveBeenCalledWith(
       expect.objectContaining({ account_type: 'other_asset', counts_as_savings: false })
     )
+  })
+})
+
+describe('AddAccountModal submit', () => {
+  // Create Account was disabled until a name was typed, so it drew at half
+  // opacity beside the valued-asset form's Save: one primary button, two
+  // colours. Every dialog-form primary stays enabled and says what is missing.
+  it('stays enabled with no name and asks for one on submit', async () => {
+    render(<AddAccountModal onClose={vi.fn()} />)
+    const create = screen.getByRole('button', { name: 'Create Account' })
+    expect(create).toBeEnabled()
+    await userEvent.click(create)
+    expect(screen.getByText('Give the account a name')).toBeInTheDocument()
+    expect(createMutate).not.toHaveBeenCalled()
   })
 })

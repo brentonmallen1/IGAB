@@ -14,6 +14,9 @@ import {
 } from '../../../api/categories'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { parseApiDecimal } from '../../../utils/money'
+// Not a Dialog (it must not close on a backdrop click), so the shared form
+// and button styles are imported by hand rather than arriving with Dialog.tsx.
+import '../../common/Dialog/DialogForm.css'
 import './DeleteCategoryModal.css'
 
 interface Props {
@@ -43,6 +46,7 @@ interface Props {
 export function DeleteCategoryModal({ budgetId, target, month, onClose, onDeleted }: Props) {
   const [moveTo, setMoveTo] = useState<string | null>(null)
   const [mode, setMode] = useState<'move' | 'uncategorize'>('move')
+  const [formError, setFormError] = useState<string | null>(null)
   const { formatMoney } = useFormatters()
 
   const {
@@ -136,6 +140,11 @@ export function DeleteCategoryModal({ budgetId, target, month, onClose, onDelete
 
   async function handleDelete() {
     if (!preview) return
+    if (needsDestination) {
+      setFormError('Choose a category to move the transactions to')
+      return
+    }
+    setFormError(null)
     const result = await deleteCategories.mutateAsync({
       target,
       moveTo: mode === 'move' ? moveTo : null,
@@ -261,7 +270,10 @@ export function DeleteCategoryModal({ budgetId, target, month, onClose, onDelete
                   <div className="delete-category-modal__picker">
                     <CategoryCombobox
                       value={moveTo}
-                      onChange={setMoveTo}
+                      onChange={(id) => {
+                        setMoveTo(id)
+                        setFormError(null)
+                      }}
                       groups={destinations}
                       placeholder="Choose a category…"
                       sheetTitle="Move transactions to"
@@ -275,7 +287,10 @@ export function DeleteCategoryModal({ budgetId, target, month, onClose, onDelete
                     type="radio"
                     name="disposition"
                     checked={mode === 'uncategorize'}
-                    onChange={() => setMode('uncategorize')}
+                    onChange={() => {
+                      setMode('uncategorize')
+                      setFormError(null)
+                    }}
                   />
                   <span>
                     <strong>Leave them uncategorized</strong>
@@ -315,10 +330,10 @@ export function DeleteCategoryModal({ budgetId, target, month, onClose, onDelete
           </>
         )}
 
-        <div className="delete-category-modal__actions">
-          <button type="button" className="delete-category-modal__cancel" onClick={onClose}>
-            Cancel
-          </button>
+        {/* The shared footer row: the non-destructive way out at the start,
+            where a settings dialog keeps Delete, and Cancel beside the
+            confirm at the end. */}
+        <div className="dialog-actions delete-category-modal__actions">
           {/* The third choice, and the one that loses nothing. Gated on the
               archive endpoint's own `may_archive` rather than the delete
               preview's `blocked_by`: the two refuse on different grounds, and
@@ -326,7 +341,7 @@ export function DeleteCategoryModal({ budgetId, target, month, onClose, onDelete
               envelope the archive would then refuse over its balance. */}
           <button
             type="button"
-            className="delete-category-modal__archive"
+            className="dialog-btn dialog-btn--secondary"
             onClick={handleArchive}
             // `may_archive` alone. This used to wave `groupAllArchived`
             // through the gate, because the server refused a group whose
@@ -352,14 +367,27 @@ export function DeleteCategoryModal({ budgetId, target, month, onClose, onDelete
                 ? 'Archive group instead'
                 : 'Archive instead'}
           </button>
-          <button
-            type="button"
-            className="delete-category-modal__confirm"
-            onClick={handleDelete}
-            disabled={!preview || blocked || deleteCategories.isPending || needsDestination}
-          >
-            {deleteCategories.isPending ? 'Deleting…' : 'Delete'}
-          </button>
+          {formError && (
+            <span className="dialog-form__error" role="alert">
+              {formError}
+            </span>
+          )}
+          <div className="dialog-actions__end">
+            <button type="button" className="dialog-btn dialog-btn--secondary" onClick={onClose}>
+              Cancel
+            </button>
+            {/* Disabled only when there is nothing to stand behind — no
+                preview, or a server refusal already stated above. A missing
+                destination is asked for on click, like any form's primary. */}
+            <button
+              type="button"
+              className="dialog-btn dialog-btn--danger"
+              onClick={handleDelete}
+              disabled={!preview || blocked || deleteCategories.isPending}
+            >
+              {deleteCategories.isPending ? 'Deleting…' : 'Delete'}
+            </button>
+          </div>
         </div>
       </div>
     </Modal>

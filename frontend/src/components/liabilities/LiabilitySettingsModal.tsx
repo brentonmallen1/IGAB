@@ -1,6 +1,6 @@
 import { parseAmountInput } from '../../utils/money'
 import type { MinimumPaymentKind } from '../../api/liabilities'
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import toast from 'react-hot-toast'
 import { useAccounts } from '../../api/accounts'
 import { useAccountTypes } from '../../api/accountTypes'
@@ -123,6 +123,7 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
     liability?.credit_limit != null ? String(liability.credit_limit) : ''
   )
   const [error, setError] = useState<string | null>(null)
+  const balanceId = useId()
 
   // A companion liability belongs to its account: the account is where it
   // lives, not a setting on it. Type is already read-only for that reason;
@@ -319,25 +320,23 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
       title={liability ? 'Liability settings' : 'Track a liability'}
       onClose={onClose}
       historyKey="liability-settings"
-      className="liability-modal"
       footer={
-        <>
-          {liability ? (
+        <div className="dialog-actions">
+          {liability && (
             <button
               type="button"
-              className="liability-modal__btn liability-modal__btn--danger"
+              className="dialog-btn dialog-btn--danger"
               onClick={handleDelete}
               disabled={isPending}
             >
               Delete
             </button>
-          ) : (
-            <span />
           )}
-          <div className="liability-modal__actions">
+          {error && <span className="dialog-form__error">{error}</span>}
+          <div className="dialog-actions__end">
             <button
               type="button"
-              className="liability-modal__btn liability-modal__btn--secondary"
+              className="dialog-btn dialog-btn--secondary"
               onClick={onClose}
               disabled={isPending}
             >
@@ -348,17 +347,17 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
             <button
               type="submit"
               form={FORM_ID}
-              className="liability-modal__btn liability-modal__btn--primary"
+              className="dialog-btn dialog-btn--primary"
               disabled={isPending}
             >
               {isPending ? 'Saving…' : liability ? 'Save' : 'Start tracking'}
             </button>
           </div>
-        </>
+        </div>
       }
     >
-      <form id={FORM_ID} className="liability-modal__body" onSubmit={handleSubmit}>
-        <label className="liability-modal__field">
+      <form id={FORM_ID} className="dialog-form" onSubmit={handleSubmit}>
+        <label className="dialog-form__field">
           <span>Name</span>
           <input
             value={name}
@@ -368,9 +367,9 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
           />
         </label>
 
-        <div className="liability-modal__row">
+        <div className="dialog-form__row">
           {mode === 'unmanaged' ? (
-            <label className="liability-modal__field">
+            <label className="dialog-form__field">
               <span>Type</span>
               <select
                 value={liabilityType}
@@ -384,7 +383,7 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
               </select>
             </label>
           ) : (
-            <label className="liability-modal__field">
+            <label className="dialog-form__field">
               <span>Type</span>
               <input
                 type="text"
@@ -394,7 +393,7 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
               />
             </label>
           )}
-          <label className="liability-modal__field">
+          <label className="dialog-form__field">
             <span>Interest rate (% / yr)</span>
             <input
               type="number"
@@ -410,7 +409,7 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
               short input. The minimum-payment rule below is not, which is why
               it gets the full width instead of a third of it. */}
           {isCard && (
-            <label className="liability-modal__field">
+            <label className="dialog-form__field">
               <span>Bill due day</span>
               <input
                 type="number"
@@ -425,7 +424,7 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
             </label>
           )}
           {isCard && (
-            <label className="liability-modal__field">
+            <label className="dialog-form__field">
               <span>Credit limit</span>
               <input
                 type="number"
@@ -441,14 +440,14 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
           )}
         </div>
 
-        <div className="liability-modal__field">
+        <div className="dialog-form__field">
           <span>Minimum payment</span>
           {/* The one sentence that decides whether every payoff figure on
               this liability is right. Entering the whole mortgage bill here
               projects a payoff years early, and the app used to say nothing
               until the number was so wrong it could not have amortized the
               original loan at all. */}
-          <p className="liability-modal__guidance">
+          <p className="dialog-form__hint">
             {isCard
               ? "What the issuer asks for each month. It's the minimum, not what you intend to pay — the paydown page is where you plan more."
               : 'Principal and interest only. If your servicer also collects tax, insurance or PMI, leave those out here and add them below — every payoff figure is computed from P&I.'}
@@ -490,7 +489,7 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
             />
           ) : (
             <div className="liability-modal__rule">
-              <label>
+              <label className="dialog-form__field">
                 <span>Percent of balance</span>
                 {/* Placeholders, not values: a guessed number that looks
                         entered is worse than a blank one. */}
@@ -504,7 +503,7 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
                   placeholder="2"
                 />
               </label>
-              <label>
+              <label className="dialog-form__field">
                 <span>But at least</span>
                 <input
                   type="number"
@@ -516,7 +515,7 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
                   placeholder="35.00"
                 />
               </label>
-              <label className="liability-modal__rule-check">
+              <label className="dialog-form__field dialog-form__field--inline liability-modal__rule-check">
                 <input
                   type="checkbox"
                   checked={minimumPlusInterest}
@@ -531,7 +530,7 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
         {/* Only beside a fixed P&I figure: there is nothing for these to be
             "the rest of" when the payment is a percentage of the balance. */}
         {minimumKind === 'fixed' && !isCard && (
-          <div className="liability-modal__field">
+          <div className="dialog-form__field">
             <span>The rest of the bill</span>
             <PaymentComposition
               rows={components}
@@ -543,7 +542,7 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
         )}
 
         {isCompanion ? (
-          <div className="liability-modal__field">
+          <div className="dialog-form__field">
             <span>Account</span>
             <input
               type="text"
@@ -552,7 +551,7 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
               readOnly
               title="Set by the account this liability lives in — its balance and payments come from that ledger"
             />
-            <small className="liability-modal__hint">
+            <small className="dialog-form__hint">
               The balance follows this account's register.{' '}
               <button
                 type="button"
@@ -565,23 +564,22 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
             </small>
           </div>
         ) : (
-          <div className="liability-modal__field">
+          <div className="dialog-form__field">
             {/* The hint sits OUTSIDE the label: inside, its text joins the
                 field's accessible name and "Current balance owed" stops
                 matching. */}
-            <label>
-              <span>Current balance owed</span>
-              <input
-                type="number"
-                inputMode="decimal"
-                min="0"
-                step="0.01"
-                value={balance}
-                onChange={(e) => setBalance(e.target.value)}
-                placeholder="9480.00"
-              />
-            </label>
-            <small className="liability-modal__hint">
+            <label htmlFor={balanceId}>Current balance owed</label>
+            <input
+              id={balanceId}
+              type="number"
+              inputMode="decimal"
+              min="0"
+              step="0.01"
+              value={balance}
+              onChange={(e) => setBalance(e.target.value)}
+              placeholder="9480.00"
+            />
+            <small className="dialog-form__hint">
               A debt with no account in this budget — update the balance as you pay it down. A loan
               or card you DO have an account for gets its liability with the account, and reads its
               balance from that register.
@@ -591,8 +589,8 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
 
         <details className="liability-modal__optional">
           <summary>Loan details — enables progress &amp; term insights</summary>
-          <div className="liability-modal__row">
-            <label className="liability-modal__field">
+          <div className="dialog-form__row">
+            <label className="dialog-form__field">
               <span>Origination date</span>
               <input
                 type="date"
@@ -600,7 +598,7 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
                 onChange={(e) => setOriginationDate(e.target.value)}
               />
             </label>
-            <label className="liability-modal__field">
+            <label className="dialog-form__field">
               <span>Original principal</span>
               <input
                 type="number"
@@ -611,7 +609,7 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
                 onChange={(e) => setOriginalPrincipal(e.target.value)}
               />
             </label>
-            <label className="liability-modal__field">
+            <label className="dialog-form__field">
               <span>Term (months)</span>
               <input
                 type="number"
@@ -625,7 +623,7 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
             </label>
           </div>
 
-          <label className="liability-modal__promo-toggle">
+          <label className="dialog-form__field dialog-form__field--inline liability-modal__promo-toggle">
             <input
               type="checkbox"
               checked={promoEnabled}
@@ -637,8 +635,8 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
             </span>
           </label>
           {promoEnabled && (
-            <div className="liability-modal__row">
-              <label className="liability-modal__field">
+            <div className="dialog-form__row">
+              <label className="dialog-form__field">
                 <span>Promo ends</span>
                 <input
                   type="date"
@@ -646,7 +644,7 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
                   onChange={(e) => setPromoEndDate(e.target.value)}
                 />
               </label>
-              <label className="liability-modal__promo-toggle liability-modal__promo-toggle--sub">
+              <label className="dialog-form__field dialog-form__field--inline liability-modal__promo-toggle liability-modal__promo-toggle--sub">
                 <input
                   type="checkbox"
                   checked={promoDeferred}
@@ -660,8 +658,6 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
             </div>
           )}
         </details>
-
-        {error && <div className="liability-modal__error">{error}</div>}
       </form>
     </Dialog>
   )

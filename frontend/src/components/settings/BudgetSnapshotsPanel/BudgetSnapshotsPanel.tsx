@@ -71,7 +71,21 @@ function RestoreModal({
 }: RestoreModalProps) {
   const [typed, setTyped] = useState('')
   const [preSnapshot, setPreSnapshot] = useState(true)
-  const matches = typed.trim() === budgetName
+  const [mismatch, setMismatch] = useState(false)
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault()
+    // Enabled from the start, like every dialog's confirm: a near miss is
+    // told so, rather than left facing a greyed-out button with no reason.
+    if (typed.trim() !== budgetName) {
+      setMismatch(true)
+      return
+    }
+    setMismatch(false)
+    onConfirm(typed, preSnapshot)
+  }
+
+  const shown = mismatch ? `Type “${budgetName}” exactly to confirm` : error
 
   return (
     <Dialog
@@ -79,21 +93,25 @@ function RestoreModal({
       onClose={onCancel}
       historyKey="snapshot-restore"
       footer={
-        <div className="bkp-modal__footer">
-          <button className="settings-btn settings-btn--secondary" onClick={onCancel}>
-            Cancel
-          </button>
-          <button
-            className="settings-btn settings-btn--danger"
-            disabled={!matches || isPending}
-            onClick={() => onConfirm(typed, preSnapshot)}
-          >
-            {isPending ? 'Restoring…' : 'Replace this budget'}
-          </button>
+        <div className="dialog-actions">
+          {shown && <span className="dialog-form__error">{shown}</span>}
+          <div className="dialog-actions__end">
+            <button type="button" className="dialog-btn dialog-btn--secondary" onClick={onCancel}>
+              Cancel
+            </button>
+            <button
+              type="submit"
+              form="snapshot-restore-form"
+              className="dialog-btn dialog-btn--danger"
+              disabled={isPending}
+            >
+              {isPending ? 'Restoring…' : 'Replace this budget'}
+            </button>
+          </div>
         </div>
       }
     >
-      <div className="bkp-modal__body">
+      <form id="snapshot-restore-form" className="dialog-form bkp-modal__body" onSubmit={submit}>
         <p className="bkp-modal__warn">
           <AlertTriangle size={16} className="bkp-modal__warn-icon" aria-hidden="true" />
           Everything in this budget is replaced with the {totalRows(inspection.row_counts)} rows in
@@ -101,31 +119,36 @@ function RestoreModal({
           is shared with, and its place in your list.
         </p>
         {inspection.attachments_omitted > 0 && (
-          <p className="snap-note">
+          <p>
             Receipts are not stored in the file. Those still attached to transactions the snapshot
             contains are kept; any attached to newer transactions are let go.
           </p>
         )}
-        <label className="bkp-modal__prebackup">
+        <label className="dialog-form__field dialog-form__field--inline dialog-form__field--multiline bkp-modal__prebackup">
           <input
             type="checkbox"
             checked={preSnapshot}
             onChange={(e) => setPreSnapshot(e.target.checked)}
           />
-          Save a snapshot of the current state first
+          <span>Save a snapshot of the current state first</span>
         </label>
-        <label className="snap-confirm">
-          Type <strong>{budgetName}</strong> to confirm
+        <label className="dialog-form__field">
+          <span>
+            Type <strong>{budgetName}</strong> to confirm
+          </span>
           <input
             type="text"
             value={typed}
-            onChange={(e) => setTyped(e.target.value)}
+            onChange={(e) => {
+              setTyped(e.target.value)
+              setMismatch(false)
+            }}
             autoFocus
             aria-label="Budget name"
+            aria-invalid={mismatch || undefined}
           />
         </label>
-        {error && <div className="bkp-field-error">{error}</div>}
-      </div>
+      </form>
     </Dialog>
   )
 }

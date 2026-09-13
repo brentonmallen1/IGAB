@@ -1,6 +1,5 @@
 import { COUNTS_AS_SAVINGS_HELP } from '../../constants/accountTypes'
 import { isTrackedAsset } from '../../utils/accountKinds'
-import './AccountSettingsModal.css'
 
 interface Props {
   onBudget: boolean
@@ -15,20 +14,15 @@ export function CountsAsSavingsField({ onBudget, classification, checked, onChan
   if (!isTrackedAsset({ on_budget: onBudget, classification: classification ?? null })) {
     return null
   }
+  // The hint sits outside the label: inside, it would join the checkbox's
+  // accessible name and "Counts as savings" would stop matching it.
   return (
-    <div className="acct-modal__field">
-      <div className="acct-modal__field--row acct-modal__field">
-        <label className="acct-modal__label" htmlFor="acct-counts-as-savings">
-          Counts as savings
-        </label>
-        <input
-          id="acct-counts-as-savings"
-          type="checkbox"
-          checked={checked}
-          onChange={(e) => onChange(e.target.checked)}
-        />
-      </div>
-      <p className="acct-modal__hint">{COUNTS_AS_SAVINGS_HELP}</p>
+    <div className="dialog-form__field">
+      <label className="dialog-form__field dialog-form__field--inline">
+        <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+        <span>Counts as savings</span>
+      </label>
+      <p className="dialog-form__hint">{COUNTS_AS_SAVINGS_HELP}</p>
     </div>
   )
 }

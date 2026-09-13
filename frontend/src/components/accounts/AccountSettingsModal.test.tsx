@@ -80,3 +80,51 @@ describe('AccountSettingsModal counts-as-savings toggle', () => {
     expect(toggle()).toBeNull()
   })
 })
+
+/**
+ * The account-numbers editor sits inside the settings form. It used to be a
+ * <form> of its own: the parser drops a nested form, so its Enter and its
+ * "Save numbers" submitted the settings form — name, type, note and all.
+ */
+describe('AccountSettingsModal account numbers', () => {
+  const openEditor = async () => {
+    render(<AccountSettingsModal accountId="car" onClose={vi.fn()} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Add routing / account number…' }))
+  }
+  // The settings save carries the name; the numbers save carries only numbers.
+  const settingsSaves = () =>
+    updateMutate.mock.calls.filter(([arg]) => 'name' in (arg as object)).length
+  const numberSaves = () =>
+    updateMutate.mock.calls.filter(([arg]) => 'account_number' in (arg as object))
+
+  it('renders no form inside another form', async () => {
+    await openEditor()
+    expect(document.querySelectorAll('form form')).toHaveLength(0)
+    expect(document.querySelectorAll('form')).toHaveLength(1)
+  })
+
+  it('saves the numbers without submitting the settings', async () => {
+    await openEditor()
+    await userEvent.type(screen.getByLabelText('Account number'), '12345678')
+    await userEvent.click(screen.getByRole('button', { name: 'Save numbers' }))
+    expect(numberSaves()).toEqual([
+      [{ id: 'car', account_number: '12345678', routing_number: null }],
+    ])
+    expect(settingsSaves()).toBe(0)
+  })
+
+  it('saves the numbers on Enter without submitting the settings', async () => {
+    await openEditor()
+    await userEvent.type(screen.getByLabelText('Routing number'), '123456789{Enter}')
+    expect(numberSaves()).toHaveLength(1)
+    expect(settingsSaves()).toBe(0)
+  })
+
+  it('saves the settings without saving the half-typed numbers', async () => {
+    await openEditor()
+    await userEvent.type(screen.getByLabelText('Account number'), '12345678')
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(settingsSaves()).toBe(1)
+    expect(numberSaves()).toHaveLength(0)
+  })
+})

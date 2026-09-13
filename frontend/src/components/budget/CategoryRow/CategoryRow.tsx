@@ -30,6 +30,7 @@ import { DragHandle } from '../../common/DragHandle/DragHandle'
 import type { Category, CategoryBalance } from '../../../types'
 import '../budgetGrid.css'
 import './CategoryRow.css'
+import { keepsSelection } from '../../../utils/keepsSelection'
 
 interface Props {
   category: Category
@@ -281,6 +282,7 @@ export const CategoryRow = memo(function CategoryRow({
       <div
         className={`category-row budget-grid drag-handle-host ${isSelected ? 'category-row--selected' : ''} ${anySelected ? 'category-row--any-selected' : ''} ${availableClass === 'negative' ? 'category-row--overspent' : ''} ${targetProgress !== null && budgetRowMode === 'expanded' ? 'category-row--has-pill' : ''} ${budgetRowMode === 'dense' ? 'category-row--dense' : ''} ${budgetRowMode === 'compact' ? 'category-row--compact' : ''} ${reorder?.dragIndex === index ? 'drag-handle-host--dragging' : ''} ${reorder && reorder.overIndex === index && reorder.dragIndex !== index ? 'drag-handle-host--drag-over' : ''}`}
         role="row"
+        {...keepsSelection}
         {...(isMobile ? longPress : { onClick: handleRowClick })}
         style={{ cursor: 'default' }}
         onDragOver={

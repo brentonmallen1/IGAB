@@ -58,6 +58,7 @@ import {
 import { useUpdateStatus } from '../../../api/system'
 import { SyncStatusIcon } from '../../simplefin/SyncStatusIcon'
 import { AddAccountModal } from '../../accounts/AddAccountModal'
+import { AddAssetFlow } from '../../assets/AddAssetFlow'
 import { useCurrentUser, useLogout } from '../../../api/auth'
 import { useAppStore } from '../../../stores/appStore'
 import { useUIStore } from '../../../stores/uiStore'
@@ -99,7 +100,7 @@ export function Sidebar() {
 
   const logout = useLogout()
   const { data: me } = useCurrentUser()
-  // Assets "+" opens the add-account modal preset to an off-budget investment
+  // Assets "+" opens the add-asset chooser: an account, or a valued asset
   const [assetModalOpen, setAssetModalOpen] = useState(false)
 
   const { data: connections = [] } = useSimpleFINConnections()
@@ -633,9 +634,7 @@ export function Sidebar() {
         )}
 
         {activeModal?.kind === 'add-account' && <AddAccountModal onClose={closeModal} />}
-        {assetModalOpen && (
-          <AddAccountModal initialTypeKey="investment" onClose={() => setAssetModalOpen(false)} />
-        )}
+        {assetModalOpen && <AddAssetFlow onClose={() => setAssetModalOpen(false)} />}
       </div>
     </aside>
   )

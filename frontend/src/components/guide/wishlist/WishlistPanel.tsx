@@ -444,8 +444,29 @@ export function WishlistPanel() {
           title="Wishlist settings"
           onClose={() => setSettingsOpen(false)}
           historyKey="wishlist-settings"
+          footer={
+            <div className="dialog-actions">
+              <div className="dialog-actions__end">
+                <button
+                  type="button"
+                  className="dialog-btn dialog-btn--secondary"
+                  onClick={() => setSettingsOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  form="wishlist-settings-form"
+                  className="dialog-btn dialog-btn--primary"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          }
         >
           <form
+            id="wishlist-settings-form"
             className="guide-wishlist__settings"
             onSubmit={(e) => {
               e.preventDefault()
@@ -476,18 +497,6 @@ export function WishlistPanel() {
             <p className="wish-form__hint">
               Both apply to wishes you add from now on — nothing already on the list moves.
             </p>
-            <div className="wish-form__actions">
-              <button
-                type="button"
-                className="guide-link-button"
-                onClick={() => setSettingsOpen(false)}
-              >
-                Cancel
-              </button>
-              <button type="submit" className="guide-checkup__run">
-                Save
-              </button>
-            </div>
           </form>
         </GuideDialog>
       )}

@@ -92,19 +92,3 @@
 .on-cards__group-note svg {
   flex-shrink: 0;
 }
-
-.on-cards__btn {
-  padding: 6px var(--spacing-md);
-  border-radius: var(--border-radius-sm);
-  font-size: var(--font-size-sm);
-  font-weight: 500;
-  background-color: transparent;
-  color: var(--text-secondary);
-  border: 1px solid var(--border-color);
-  cursor: pointer;
-  transition: opacity var(--transition-fast);
-}
-
-.on-cards__btn:hover {
-  opacity: 0.8;
-}
