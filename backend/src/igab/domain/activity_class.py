@@ -32,8 +32,9 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import Select, and_, case, func, literal, not_, or_, select
+from sqlalchemy import Boolean, Select, and_, case, func, literal, not_, or_, select
 from sqlalchemy.orm import aliased
+from sqlalchemy.sql import visitors
 from sqlalchemy.sql.elements import ColumnElement
 
 from igab.db.models import (
@@ -205,6 +206,20 @@ _IN_SYSTEM_GROUP = row_category(IN_SYSTEM_GROUP)
 _CATEGORIZED = Transaction.category_id.isnot(None)
 _TRACKED_COUNTERPART = COUNTERPART_OFF_BUDGET
 
+#: Which system tag each tag input reads. `_ROW_FACTS` builds its tag
+#: predicates from this, and `rule_ladder` and the Guide's explorer read it, so
+#: an input and its tag key are paired exactly once.
+TAG_INPUT_KEYS: dict[str, str] = {"tagged_savings": "savings", "tagged_debt": "debt_principal"}
+
+#: The facts both implementations read off the row itself. One dict, splatted
+#: into both `_Inputs` below, so the two cannot come to read them differently.
+_ROW_FACTS: dict[str, Any] = {
+    "categorized": _CATEGORIZED,
+    **{field: _tagged(key) for field, key in TAG_INPUT_KEYS.items()},
+    "in_system_group": _IN_SYSTEM_GROUP,
+    "amount_positive": Transaction.amount > 0,
+}
+
 
 @dataclass(frozen=True)
 class _Inputs:
@@ -228,6 +243,15 @@ class _Inputs:
     tracked_counterpart: Any
     counterpart_counts_as_savings: Any
     transfer_leg: Any
+    # The row's own facts. The shipped and oracle rules both read them straight
+    # off `transactions`, so both instances pass the same expressions; they are
+    # inputs rather than inline so `literal_inputs` can ask the rules about a
+    # row that does not exist (see there).
+    categorized: Any
+    tagged_savings: Any
+    tagged_debt: Any
+    in_system_group: Any
+    amount_positive: Any
 
 
 Rule = tuple[ColumnElement[bool], ActivityClass, ActivityReason]
@@ -264,8 +288,8 @@ def _rules(c: _Inputs) -> list[Rule]:
         # `ReportService.savings_rate`. Tagging an envelope Savings means its
         # outflows count as saving even with no transfer, which is a different
         # claim from "this envelope holds money for a known future bill".
-        (_tagged("savings"), ActivityClass.SAVINGS, ActivityReason.TAGGED_SAVINGS),
-        (_tagged("debt_principal"), ActivityClass.DEBT_PRINCIPAL, ActivityReason.TAGGED_DEBT),
+        (c.tagged_savings, ActivityClass.SAVINGS, ActivityReason.TAGGED_SAVINGS),
+        (c.tagged_debt, ActivityClass.DEBT_PRINCIPAL, ActivityReason.TAGGED_DEBT),
         # Where the money went decides the class, not whether the user bothered to
         # categorize it. An uncategorized transfer to a brokerage is still saving:
         # it leaves the budget and stays in net worth. Requiring a category here
@@ -308,7 +332,7 @@ def _rules(c: _Inputs) -> list[Rule]:
         (
             and_(
                 c.transfer_leg,
-                ~_CATEGORIZED,
+                ~c.categorized,
                 ~and_(
                     c.own_on_budget == True,  # noqa: E712
                     c.tracked_counterpart,
@@ -333,7 +357,7 @@ def _rules(c: _Inputs) -> list[Rule]:
         # clawed-back paycheck is negative income, not spending. Sign still decides
         # for UNcategorized rows, where it is the only signal available.
         (
-            or_(and_(Transaction.amount > 0, ~_CATEGORIZED), _IN_SYSTEM_GROUP),
+            or_(and_(c.amount_positive, ~c.categorized), c.in_system_group),
             ActivityClass.INCOME,
             ActivityReason.UNCATEGORIZED_INFLOW,
         ),
@@ -349,6 +373,7 @@ _SUBQUERY_INPUTS = _Inputs(
     tracked_counterpart=_TRACKED_COUNTERPART,
     counterpart_counts_as_savings=_counterpart_counts_as_savings,
     transfer_leg=TRANSFER_LEG,
+    **_ROW_FACTS,
 )
 
 
@@ -390,6 +415,7 @@ _JOINED_INPUTS = _Inputs(
         Transaction.transfer_id.isnot(None),
         _transfer_payee.transfer_account_id.isnot(None),
     ),
+    **_ROW_FACTS,
 )
 
 #: The shipped rules, reading joined columns.
@@ -448,6 +474,115 @@ ACTIVITY_REASON = case(
     *[(condition, literal(reason.value)) for condition, _, reason in RULES],
     else_=literal(ActivityReason.DEFAULT_SPENDING.value),
 )
+
+# ─── The same rules, about a row that does not exist ─────────────────────────
+#
+# The Guide's "How money counts" explorer asks what a $1,000 transfer from
+# checking to a brokerage WOULD count as. Answering it in TypeScript would be a
+# second rule ladder, and a ladder with two implementations drifts (CLAUDE.md,
+# "One implementation each"). Answering it by writing rows and reading them
+# back would be a transaction the user never made.
+#
+# So the rules are handed literal booleans instead of columns, and the CASE is
+# evaluated with no FROM at all. Chosen over making `_rules` generic over an
+# operator set with a Python evaluator beside it: that would be a second
+# *evaluator* of the one rule list — three-valued `and_`/`~` semantics, the
+# `== True` comparisons — which then needs its own differential test to prove
+# it evaluates the list the way Postgres does. Here there is nothing to prove:
+# Postgres evaluates exactly the CASE the reports run, only its leaves differ,
+# and `_Inputs` already names every leaf the harness compares.
+
+
+@dataclass(frozen=True)
+class LegFacts:
+    """Everything the rules read about one row, as plain booleans.
+
+    The field names are `_Inputs`'s, one for one — `literal_inputs` refuses
+    anything else by construction, so a new input to the rules is a new field
+    here or a TypeError, never a silently defaulted guess.
+    """
+
+    own_on_budget: bool
+    own_is_liability: bool
+    transfer_leg: bool
+    #: The counterpart is resolvable and off budget. False for a plain row.
+    tracked_counterpart: bool
+    #: Coalesced to False (asset) with no counterpart, as both column readers do.
+    counterpart_is_liability: bool
+    #: Coalesced to True with no counterpart, as both column readers do.
+    counterpart_counts_as_savings: bool
+    categorized: bool
+    tagged_savings: bool
+    tagged_debt: bool
+    in_system_group: bool
+    amount_positive: bool
+
+    def __post_init__(self) -> None:
+        # A tag or a system group belongs to a category; a row cannot have one
+        # without the other, and the rules would answer a question no real row
+        # could ask.
+        if (self.tagged_savings or self.tagged_debt or self.in_system_group) and not (
+            self.categorized
+        ):
+            raise ValueError("a tagged or system-group row must be categorized")
+
+
+def literal_inputs(facts: LegFacts) -> _Inputs:
+    """`_Inputs` whose every leaf is a bound boolean literal."""
+    return _Inputs(
+        **{name: literal(value, Boolean()) for name, value in vars(facts).items()},
+    )
+
+
+def literal_class_query(facts: LegFacts) -> Select:
+    """`SELECT <class CASE>, <reason CASE>` for one hypothetical row, no FROM.
+
+    Built from `_rules` and the same CASE shape as ACTIVITY_CLASS and
+    ACTIVITY_REASON, so executing it returns what the shipped expression would
+    say about a real row carrying these facts. The caller executes it; this
+    module stays free of sessions.
+    """
+    rules = _rules(literal_inputs(facts))
+    return select(
+        case(
+            *[(condition, literal(cls.value)) for condition, cls, _ in rules],
+            else_=literal(ActivityClass.SPENDING.value),
+        ).label("cls"),
+        case(
+            *[(condition, literal(reason.value)) for condition, _, reason in rules],
+            else_=literal(ActivityReason.DEFAULT_SPENDING.value),
+        ).label("reason"),
+    )
+
+
+@dataclass(frozen=True)
+class RuleInfo:
+    """One rule of the ladder, for showing it rather than running it."""
+
+    cls: ActivityClass
+    reason: ActivityReason
+    #: The system tag key the rule reads, or None for a rule about accounts.
+    tag_key: str | None
+
+
+def rule_ladder() -> list[RuleInfo]:
+    """The rules in first-match-wins order, then the spending default.
+
+    A rule's tag key is found by walking its condition for the tag inputs
+    rather than by listing which rules are tag rules, so a rule that starts or
+    stops reading a tag changes what the Guide shows with no second edit.
+    """
+    inputs = literal_inputs(LegFacts(**dict.fromkeys(LegFacts.__dataclass_fields__, False)))
+    markers = {id(getattr(inputs, field)): key for field, key in TAG_INPUT_KEYS.items()}
+    ladder: list[RuleInfo] = []
+    for condition, cls, reason in _rules(inputs):
+        keys = [markers[id(node)] for node in visitors.iterate(condition) if id(node) in markers]
+        ladder.append(RuleInfo(cls=cls, reason=reason, tag_key=keys[0] if keys else None))
+    ladder.append(
+        RuleInfo(cls=ActivityClass.SPENDING, reason=ActivityReason.DEFAULT_SPENDING, tag_key=None)
+    )
+    return ladder
+
 
 #: Joins a query must apply before it can use the expressions above.
 #:
@@ -563,6 +698,33 @@ def class_magnitude(buckets: Mapping[str, Decimal], cls: ActivityClass) -> Decim
     return -buckets.get(cls.value, Decimal("0"))
 
 
+#: What each savings rate divides by income: saving alone, or saving plus the
+#: principal paid down. Paying down a mortgage and funding a brokerage both
+#: build net worth, but people think about them differently, so both are shown.
+SAVINGS_RATE_NUMERATORS: dict[str, tuple[ActivityClass, ...]] = {
+    "savings_rate": (ActivityClass.SAVINGS,),
+    "savings_rate_with_debt": SAVINGS_CLASSES,
+}
+
+
+def savings_rates(buckets: Mapping[str, Decimal]) -> dict[str, float | None]:
+    """Both savings rates from class buckets (class value -> signed sum).
+
+    One division for the Savings Rate report and the Guide's worked month, so
+    the example cannot teach a rate the report would not compute.
+
+    With no income the rate is None rather than 0: "no income recorded" and
+    "saved nothing" are different facts, and a chart should show a gap rather
+    than a floor.
+    """
+    income = buckets.get(ActivityClass.INCOME.value, Decimal("0"))
+    rates: dict[str, float | None] = {}
+    for key, classes in SAVINGS_RATE_NUMERATORS.items():
+        numerator = sum((class_magnitude(buckets, c) for c in classes), Decimal("0"))
+        rates[key] = None if income <= 0 else float(numerator / income)
+    return rates
+
+
 def explain(reason: str) -> str:
     """Prose for a reason code, safe for an unknown value from an older row."""
     if reason in SPLIT_REASON_TEXT:
@@ -675,6 +837,12 @@ def counted_class_filter(
     return ACTIVITY_CLASS.in_(sorted(counted_classes(include, scoped_accounts=scoped_accounts)))
 
 
+#: The system tags whose categories' outflows plan reports count as spent even
+#: though their class is not spending — `planned_spend_filter`'s exception,
+#: stated as data so the Guide's explorer can say so without a second list.
+PLANNED_SPEND_TAG_KEYS: tuple[str, ...] = ("savings",)
+
+
 def planned_spend_filter() -> ColumnElement[bool]:
     """What the plan-vs-actual family may count as "spent", whole.
 
@@ -707,7 +875,7 @@ def planned_spend_filter() -> ColumnElement[bool]:
     SPENDING since #182 — and `debt_principal` is money no plan report has
     ever counted as spent.
     """
-    return and_(PLANNED_SPEND_ROW, or_(counted_class_filter(), _tagged("savings")))
+    return and_(PLANNED_SPEND_ROW, or_(counted_class_filter(), _tagged(*PLANNED_SPEND_TAG_KEYS)))
 
 
 # ─── Necessity tiers ─────────────────────────────────────────────────────────
