@@ -173,21 +173,25 @@ function RestoreModal({ file, onConfirm, onCancel, isPending, error }: RestoreMo
       onClose={onCancel}
       historyKey="backup-restore"
       footer={
-        <div className="bkp-modal__footer">
-          <button className="settings-btn settings-btn--secondary" onClick={onCancel}>
-            Cancel
-          </button>
-          <button
-            className="settings-btn settings-btn--danger"
-            onClick={() => onConfirm(preBackup)}
-            disabled={isPending}
-          >
-            {isPending ? 'Starting…' : 'Restore'}
-          </button>
+        <div className="dialog-actions">
+          {error && <span className="dialog-form__error">{error}</span>}
+          <div className="dialog-actions__end">
+            <button type="button" className="dialog-btn dialog-btn--secondary" onClick={onCancel}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="dialog-btn dialog-btn--danger"
+              onClick={() => onConfirm(preBackup)}
+              disabled={isPending}
+            >
+              {isPending ? 'Starting…' : 'Restore'}
+            </button>
+          </div>
         </div>
       }
     >
-      <div className="bkp-modal__body">
+      <div className="dialog-form bkp-modal__body">
         <p className="bkp-modal__warn">
           <AlertTriangle size={16} className="bkp-modal__warn-icon" aria-hidden="true" />
           This replaces <strong>all current data</strong> with the contents of{' '}
@@ -195,7 +199,7 @@ function RestoreModal({ file, onConfirm, onCancel, isPending, error }: RestoreMo
           that backup will be lost.
         </p>
         <p>The app will briefly go offline and restart once the restore finishes.</p>
-        <label className="bkp-modal__prebackup">
+        <label className="dialog-form__field dialog-form__field--inline dialog-form__field--multiline bkp-modal__prebackup">
           <input
             type="checkbox"
             checked={preBackup}
@@ -206,7 +210,6 @@ function RestoreModal({ file, onConfirm, onCancel, isPending, error }: RestoreMo
             can return to
           </span>
         </label>
-        {error && <div className="bkp-field-error">{error}</div>}
       </div>
     </Dialog>
   )

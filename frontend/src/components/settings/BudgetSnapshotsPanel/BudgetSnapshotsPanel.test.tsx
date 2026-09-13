@@ -64,21 +64,46 @@ async function openRestoreDialog() {
 const replaceBtn = () => screen.getByRole('button', { name: 'Replace this budget' })
 
 describe('restoring a budget from a file', () => {
+  // The button is enabled throughout, like every dialog's confirm; the gate is
+  // that pressing it runs nothing and says why until the name matches.
+  const refusal = 'Type “Household” exactly to confirm'
+
   it('refuses until the budget name is typed exactly', async () => {
     await openRestoreDialog()
-    expect(replaceBtn()).toBeDisabled()
+    expect(replaceBtn()).toBeEnabled()
+    await userEvent.click(replaceBtn())
+    expect(screen.getByText(refusal)).toHaveClass('dialog-form__error')
 
     await userEvent.type(screen.getByLabelText('Budget name'), 'Househol')
-    expect(replaceBtn()).toBeDisabled()
+    await userEvent.click(replaceBtn())
+    expect(hooks.restore).not.toHaveBeenCalled()
+    expect(screen.getByText(refusal)).toBeInTheDocument()
 
     await userEvent.type(screen.getByLabelText('Budget name'), 'd')
-    expect(replaceBtn()).toBeEnabled()
+    expect(screen.queryByText(refusal)).toBeNull()
+    await userEvent.click(replaceBtn())
+    expect(hooks.restore).toHaveBeenCalledTimes(1)
   })
 
   it('is case-sensitive — a near miss is still a miss', async () => {
     await openRestoreDialog()
     await userEvent.type(screen.getByLabelText('Budget name'), 'household')
-    expect(replaceBtn()).toBeDisabled()
+    await userEvent.click(replaceBtn())
+    expect(hooks.restore).not.toHaveBeenCalled()
+    expect(screen.getByText(refusal)).toBeInTheDocument()
+  })
+
+  it('draws its footer in the shared dialog buttons, the confirm as danger', async () => {
+    await openRestoreDialog()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveClass(
+      'dialog-btn',
+      'dialog-btn--secondary'
+    )
+    expect(replaceBtn()).toHaveClass('dialog-btn', 'dialog-btn--danger')
+    expect(screen.getByRole('checkbox').closest('label')).toHaveClass(
+      'dialog-form__field',
+      'dialog-form__field--inline'
+    )
   })
 
   it('passes the typed name and the pre-snapshot choice through', async () => {
