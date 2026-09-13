@@ -65,7 +65,7 @@ export function PlanVsRealityReport({ budgetId }: Props) {
             a sign its budget doesn't match how you actually spend. Click a cell to see that month's
             transactions.
           </p>
-          <ReportScopeNote scope="categories" />
+          <ReportScopeNote report="plan-reality" />
         </ReportInfoButton>
         <p className="report-section__subtitle">Assigned vs spent per month — carryover ignored</p>
         <div className="flex-row ms-auto" style={{ flexWrap: 'wrap' }}>

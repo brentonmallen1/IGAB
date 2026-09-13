@@ -75,7 +75,7 @@ export function TimelineReport({ budgetId }: Props) {
             it left your budget, but it isn't spending. Transactions alternate left/right for
             readability. Hover any dot for full details.
           </p>
-          <ReportScopeNote scope="on-budget-filterable" />
+          <ReportScopeNote report="timeline" />
         </ReportInfoButton>
         <p className="report-section__subtitle">
           Largest transactions — size indicates relative magnitude.

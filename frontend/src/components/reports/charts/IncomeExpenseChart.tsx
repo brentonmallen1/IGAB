@@ -110,7 +110,7 @@ export function IncomeExpenseReport({ budgetId }: Props) {
             Months where the blue line is above zero mean you spent less than you earned — a
             positive sign. Dipping below zero means you ran a deficit that month.
           </p>
-          <ReportScopeNote scope="on-budget" />
+          <ReportScopeNote report="income-expense" />
         </ReportInfoButton>
         <div className="flex-row ms-auto">
           <ReportRangeSelect />

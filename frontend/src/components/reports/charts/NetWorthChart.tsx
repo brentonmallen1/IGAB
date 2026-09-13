@@ -63,7 +63,7 @@ export function NetWorthReport({ budgetId }: Props) {
             compose your net worth each month. A growing gap between them means you're building
             wealth.
           </p>
-          <ReportScopeNote scope="all-accounts" />
+          <ReportScopeNote report="net-worth" />
         </ReportInfoButton>
         <div className="flex-row ms-auto">
           <ReportRangeSelect />

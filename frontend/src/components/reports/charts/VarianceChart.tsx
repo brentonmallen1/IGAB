@@ -66,7 +66,7 @@ export function VarianceReport({ budgetId }: Props) {
             <strong>line</strong> is the cumulative drift — if it slopes down, your budget is
             eroding month by month.
           </p>
-          <ReportScopeNote scope="categories" />
+          <ReportScopeNote report="variance" />
         </ReportInfoButton>
         <p className="report-section__subtitle">Running budget drift over time</p>
         <div className="flex-row ms-auto">

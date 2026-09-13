@@ -91,7 +91,7 @@ export function SavingsReport({ budgetId }: Props) {
             categories in the window — to another category or back to To Be Assigned — as the audit
             trail records it. It states the move, nothing about why.
           </p>
-          <ReportScopeNote scope="categories" />
+          <ReportScopeNote report="savings" />
         </ReportInfoButton>
         <div className="flex-row">
           <ReportRangeSelect />

@@ -97,7 +97,7 @@ export function SpendingTrendsReport({ budgetId }: Props) {
             Savings and debt payments are left out unless you include them; a note says how much
             that was, so a car payment that is missing is never mistaken for lost data.
           </p>
-          <ReportScopeNote scope="categories" />
+          <ReportScopeNote report="spending-trends" />
         </ReportInfoButton>
         <div className="flex-row">
           <button
