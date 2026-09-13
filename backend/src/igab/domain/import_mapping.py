@@ -210,6 +210,24 @@ def suggest_account_type(
     return "checking", True, True
 
 
+def suggest_counts_as_savings(name: str) -> bool:
+    """Guess whether an off-budget asset named `name` counts as savings.
+
+    False when the name describes a thing owned — a house, a car, a boat: the
+    `_TRACKED_HINTS` vocabulary, every word of which names property or a
+    vehicle. Money moved into one of those was spent on it, and money out of
+    one is a sale, so neither is saving. Anything else — a brokerage, an HSA,
+    crypto, a manually tracked balance — is assumed to be savings, the
+    behaviour every off-budget asset had before the flag existed.
+
+    Only meaningful for off-budget assets; the classifier never reads the flag
+    on anything else. Migration `e3f1a8c5d920` backfilled existing accounts
+    with a frozen regex copy of this test — change the words here and that
+    migration deliberately does not follow.
+    """
+    return not _matches(_normalize_for_match(name), _TRACKED_HINTS)
+
+
 #: How many leading tokens may form a related-account group.
 #:
 #: One is too coarse and two is the natural size of a thing's name: "Employer

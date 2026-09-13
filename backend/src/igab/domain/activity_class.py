@@ -99,7 +99,8 @@ REASON_TEXT: dict[ActivityReason, str] = {
     ActivityReason.TAGGED_SAVINGS: "its category is tagged as savings",
     ActivityReason.TAGGED_DEBT: "its category is tagged as debt principal",
     ActivityReason.TRANSFER_TO_TRACKED_ASSET: (
-        "it moves money to a tracked account you own, so it builds savings rather than spending it"
+        "it moves money to a tracked account you marked as savings, so it builds savings "
+        "rather than spending it"
     ),
     ActivityReason.TRANSFER_TO_TRACKED_DEBT: (
         "it pays down a tracked debt, which changes what you owe rather than what you spend"
@@ -176,6 +177,13 @@ _counterpart_is_liability = (
     == _LIABILITY
 )
 
+#: Whether the counterpart account counts as savings. Coalesced to true for the
+#: same three-valued reason as `_counterpart_is_liability`: an unresolvable
+#: counterpart must not flip rule 5's carve-out (below) on by reading UNKNOWN.
+_counterpart_counts_as_savings = func.coalesce(
+    _account_field(COUNTERPART_ACCOUNT_ID, Account.counts_as_savings), True
+)
+
 
 # The category-tag predicate lives in txn_filters (category_tagged) — the
 # essentials report needs the same shape, and one SQL spelling is the rule.
@@ -218,6 +226,7 @@ class _Inputs:
     own_is_liability: Any
     counterpart_is_liability: Any
     tracked_counterpart: Any
+    counterpart_counts_as_savings: Any
     transfer_leg: Any
 
 
@@ -245,8 +254,9 @@ def _rules(c: _Inputs) -> list[Rule]:
         # `TestASinkingFundsBillIsPlannedSpend`).
         #
         # Nothing is lost by dropping it. A transfer from the envelope to a
-        # tracked savings account still classes SAVINGS by rule 3 below, which
-        # asks where the money went rather than what the category is called.
+        # tracked asset account marked `counts_as_savings` still classes SAVINGS
+        # by rule 3 below, which asks where the money went rather than what the
+        # category is called.
         # The Savings report is unaffected: it reads the tag and the
         # assignment rows, never the class.
         #
@@ -262,8 +272,19 @@ def _rules(c: _Inputs) -> list[Rule]:
         # meant those legs fell to the neutral bucket below and vanished from the
         # savings rate — and YNAB exports are full of uncategorized
         # tracking-account transfers.
+        #
+        # Only an asset the user says counts as savings, though. Buying a car
+        # moves money into a tracked asset too, and calling that saving said a
+        # household that bought a $9,000 car saved $9,000 that month — and
+        # selling it later un-saved it. A non-savings asset is treated like an
+        # outside payee on the budget side: see rule 5's carve-out.
         (
-            and_(c.transfer_leg, c.tracked_counterpart, ~c.counterpart_is_liability),
+            and_(
+                c.transfer_leg,
+                c.tracked_counterpart,
+                ~c.counterpart_is_liability,
+                c.counterpart_counts_as_savings,
+            ),
             ActivityClass.SAVINGS,
             ActivityReason.TRANSFER_TO_TRACKED_ASSET,
         ),
@@ -277,8 +298,24 @@ def _rules(c: _Inputs) -> list[Rule]:
         # counterpart could not be resolved. A CATEGORIZED unresolvable leg falls
         # past this to the spending rules — it keeps the meaning its category gives
         # it rather than disappearing into a neutral bucket.
+        #
+        # The carve-out: the ON-budget leg of a transfer with a tracked asset
+        # that does not count as savings is not neutral. Money arriving from a
+        # car sale is income ready to assign (rule 8); money leaving to buy one
+        # is spending (the default). The off-budget leg of the same transfer
+        # still lands here — dropping it to rule 6 would call the sale an
+        # investment loss inside the vehicle account.
         (
-            and_(c.transfer_leg, ~_CATEGORIZED),
+            and_(
+                c.transfer_leg,
+                ~_CATEGORIZED,
+                ~and_(
+                    c.own_on_budget == True,  # noqa: E712
+                    c.tracked_counterpart,
+                    ~c.counterpart_is_liability,
+                    ~c.counterpart_counts_as_savings,
+                ),
+            ),
             ActivityClass.TRANSFER_INTERNAL,
             ActivityReason.INTERNAL_TRANSFER,
         ),
@@ -310,6 +347,7 @@ _SUBQUERY_INPUTS = _Inputs(
     own_is_liability=_own_is_liability,
     counterpart_is_liability=_counterpart_is_liability,
     tracked_counterpart=_TRACKED_COUNTERPART,
+    counterpart_counts_as_savings=_counterpart_counts_as_savings,
     transfer_leg=TRANSFER_LEG,
 )
 
@@ -345,6 +383,7 @@ _JOINED_INPUTS = _Inputs(
         func.coalesce(_counterpart_acct.classification, "asset") == _LIABILITY
     ),
     tracked_counterpart=not_(_joined_counterpart_on_budget),
+    counterpart_counts_as_savings=func.coalesce(_counterpart_acct.counts_as_savings, True),
     # `transfer_account_id IS NOT NULL` on the joined payee is exactly what the
     # TRANSFER_PAYEE EXISTS asks, and is two-valued for the same reason.
     transfer_leg=or_(
