@@ -1,43 +1,3 @@
-.view-editor__hint {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: var(--font-size-xs);
-  line-height: 1.5;
-}
-
-.view-editor__hint strong {
-  color: var(--text-secondary);
-}
-
-.view-editor__section-title {
-  margin-top: var(--spacing-xs);
-  color: var(--text-secondary);
-  font-size: var(--font-size-xs);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-}
-
-.view-editor__input {
-  width: 100%;
-  padding: 6px 10px;
-  border: 1px solid var(--input-border, var(--border-color));
-  border-radius: var(--border-radius-sm);
-  background: var(--input-bg);
-  color: var(--text-primary);
-  font-size: var(--font-size-sm);
-}
-
-.view-editor__input:focus-visible {
-  outline: none;
-  border-color: var(--color-accent);
-  box-shadow: var(--input-focus-shadow);
-}
-
-.view-editor__input--inline {
-  width: 160px;
-}
-
 .view-editor__groups {
   display: flex;
   flex-wrap: wrap;
@@ -96,6 +56,11 @@
 
 .view-editor__chip-remove:hover {
   color: var(--color-negative);
+}
+
+/* Sized to a group name, not the row; DialogForm.css paints it. */
+.view-editor__add-input {
+  width: 160px;
 }
 
 .view-editor__add-group {
@@ -162,8 +127,12 @@
   font-size: var(--font-size-xs);
 }
 
+/* A compact per-row control, smaller than a form field on purpose: the list
+   is read down a column of them. Its own height, so DialogForm.css's
+   one-line field height does not apply. */
 .view-editor__select {
   width: 100%;
+  height: auto;
   padding: 3px 6px;
   border: 1px solid var(--input-border, var(--border-color));
   border-radius: var(--border-radius-sm);
@@ -184,54 +153,6 @@
   font-size: var(--font-size-xs);
   white-space: nowrap;
   cursor: pointer;
-}
-
-.view-editor__error {
-  margin: 0;
-  color: var(--color-negative);
-  font-size: var(--font-size-xs);
-}
-
-.view-editor__footer {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--spacing-sm);
-}
-
-.view-editor__footer-actions {
-  display: flex;
-  gap: var(--spacing-xs);
-}
-
-.view-editor__btn {
-  padding: 5px var(--spacing-md);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-sm);
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-  font-size: var(--font-size-sm);
-  cursor: pointer;
-}
-
-.view-editor__btn:hover {
-  background: var(--bg-hover);
-}
-
-.view-editor__btn--primary {
-  background: var(--color-accent);
-  border-color: var(--color-accent);
-  color: var(--text-inverse);
-}
-
-.view-editor__btn--primary:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-
-.view-editor__btn--danger {
-  color: var(--color-negative);
 }
 
 /* Whether the view drops what it hasn't placed. Sits above the groups because
@@ -266,7 +187,10 @@
 /* The group name, editable where it is shown. Borderless until focused so the
    chip still reads as a chip rather than a row of form fields. */
 .view-editor__chip-input {
+  height: auto;
   min-width: 40px;
+  border-radius: 0;
+  line-height: inherit;
   padding: 0 2px;
   border: none;
   border-bottom: 1px dashed transparent;
@@ -283,6 +207,7 @@
 .view-editor__chip-input:focus {
   outline: none;
   border-bottom-color: var(--color-accent);
+  box-shadow: none;
 }
 
 /* A view's group order is its array order, so dragging a chip IS the
@@ -301,13 +226,5 @@
 }
 
 .view-editor__section-hint {
-  font-weight: 400;
   color: var(--text-muted);
-}
-
-/* The form is the dialog's scroll region's only child; it keeps the panel's old rhythm. */
-.view-editor__form {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-sm);
 }

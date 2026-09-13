@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { apiErrorMessage } from '../../../api/client'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
 import { useCreateTag, useTags } from '../../../api/tags'
 import { TagPicker, type TagOption } from '../../common/TagPicker'
@@ -13,6 +14,9 @@ import {
 import { useUIStore } from '../../../stores/uiStore'
 import { Dialog } from '../../common/Dialog/Dialog'
 import './BudgetFilterModal.css'
+
+/** The form scrolls; its submit button is in the pinned footer, joined by id. */
+const FORM_ID = 'filter-modal-form'
 
 interface Props {
   budgetId: string
@@ -55,6 +59,9 @@ export function BudgetFilterModal({ budgetId, filterId, onClose }: Props) {
   )
   const tagById = useMemo(() => new Map(tags.map((t) => [t.id, t])), [tags])
   const nameRef = useRef<HTMLInputElement>(null)
+  const [error, setError] = useState<string | null>(null)
+  const tagsLabelId = useId()
+  const categoriesLabelId = useId()
 
   useEffect(() => {
     nameRef.current?.focus()
@@ -92,29 +99,38 @@ export function BudgetFilterModal({ budgetId, filterId, onClose }: Props) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     const trimmed = name.trim()
-    if (!trimmed) return
+    if (!trimmed) return setError('Give this filter a name')
+    setError(null)
     const categoryIds = Array.from(selectedIds)
-    if (isEdit && existingFilter) {
-      await updateFilter.mutateAsync({
-        id: existingFilter.id,
-        name: trimmed,
-        category_ids: categoryIds,
-        tag_ids: tagIds,
-      })
-    } else {
-      const created = await createFilter.mutateAsync({
-        name: trimmed,
-        category_ids: categoryIds,
-        tag_ids: tagIds,
-      })
-      setActiveFilter(created.id)
+    try {
+      if (isEdit && existingFilter) {
+        await updateFilter.mutateAsync({
+          id: existingFilter.id,
+          name: trimmed,
+          category_ids: categoryIds,
+          tag_ids: tagIds,
+        })
+      } else {
+        const created = await createFilter.mutateAsync({
+          name: trimmed,
+          category_ids: categoryIds,
+          tag_ids: tagIds,
+        })
+        setActiveFilter(created.id)
+      }
+    } catch (err: unknown) {
+      return setError(apiErrorMessage(err, 'Could not save this filter'))
     }
     onClose()
   }
 
   async function handleDelete() {
     if (!existingFilter) return
-    await deleteFilter.mutateAsync(existingFilter.id)
+    try {
+      await deleteFilter.mutateAsync(existingFilter.id)
+    } catch (err: unknown) {
+      return setError(apiErrorMessage(err, 'Could not delete this filter'))
+    }
     if (activeFilterId === existingFilter.id) setActiveFilter(null)
     onClose()
   }
@@ -128,121 +144,121 @@ export function BudgetFilterModal({ budgetId, filterId, onClose }: Props) {
       historyKey="budget-filter"
       className="filter-modal"
       footer={
-        <div className="filter-modal__footer">
+        <div className="dialog-actions">
           {isEdit && (
             <button
               type="button"
-              className="filter-modal__btn filter-modal__btn--danger"
+              className="dialog-btn dialog-btn--danger"
               onClick={handleDelete}
               disabled={isPending}
             >
               Delete
             </button>
           )}
-          <div className="filter-modal__footer-right">
+          {error && (
+            <span className="dialog-form__error" role="alert">
+              {error}
+            </span>
+          )}
+          <div className="dialog-actions__end">
             <button
               type="button"
-              className="filter-modal__btn filter-modal__btn--secondary"
+              className="dialog-btn dialog-btn--secondary"
               onClick={onClose}
+              disabled={isPending}
             >
               Cancel
             </button>
+            {/* The footer is pinned outside the form; `form=` joins them. */}
             <button
               type="submit"
-              form="filter-modal-form"
-              className="filter-modal__btn filter-modal__btn--primary"
+              form={FORM_ID}
+              className="dialog-btn dialog-btn--primary"
               disabled={isPending}
             >
-              Save
+              {isPending ? 'Saving…' : 'Save'}
             </button>
           </div>
         </div>
       }
     >
-      <form id="filter-modal-form" onSubmit={handleSubmit}>
-        <div className="filter-modal__body">
-          <p className="filter-modal__subtitle">
-            Choose a set of categories to include in this custom filter.
-          </p>
+      <form id={FORM_ID} className="dialog-form" onSubmit={handleSubmit}>
+        <p className="dialog-form__hint">
+          Choose a set of categories to include in this custom filter.
+        </p>
 
-          <div className="filter-modal__field">
-            <label className="filter-modal__label" htmlFor="filter-name">
-              Filter Name
-            </label>
-            <input
-              id="filter-name"
-              ref={nameRef}
-              className="filter-modal__input"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Keep 'em short & sweet!"
-              required
+        <label className="dialog-form__field">
+          <span>Filter name</span>
+          <input
+            ref={nameRef}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Keep 'em short & sweet!"
+          />
+        </label>
+
+        <div className="dialog-form__field" role="group" aria-labelledby={tagsLabelId}>
+          <span id={tagsLabelId}>Include every category tagged…</span>
+          <div className="filter-modal__tags">
+            {tagIds.map((id) => {
+              const tag = tagById.get(id)
+              return tag ? (
+                <TagChip
+                  key={id}
+                  name={tag.name}
+                  colorSlot={tag.color_slot}
+                  onRemove={() => setTagIds((prev) => prev.filter((t) => t !== id))}
+                />
+              ) : null
+            })}
+            <TagPicker
+              selectedTagIds={tagIds}
+              tags={tagOptions}
+              onChange={setTagIds}
+              allowCreate
+              onCreateTag={async (name) => {
+                const tag = await createTag.mutateAsync({ name })
+                return { id: tag.id, name: tag.name, color_slot: tag.color_slot }
+              }}
+              triggerLabel="+ Tag"
             />
           </div>
+          <p className="dialog-form__hint">
+            A tag follows its categories: tag one later and it joins this filter; untag it and it
+            leaves.
+          </p>
+        </div>
 
-          <div className="filter-modal__field">
-            <label className="filter-modal__label">Include every category tagged…</label>
-            <div className="filter-modal__tags">
-              {tagIds.map((id) => {
-                const tag = tagById.get(id)
-                return tag ? (
-                  <TagChip
-                    key={id}
-                    name={tag.name}
-                    colorSlot={tag.color_slot}
-                    onRemove={() => setTagIds((prev) => prev.filter((t) => t !== id))}
-                  />
-                ) : null
-              })}
-              <TagPicker
-                selectedTagIds={tagIds}
-                tags={tagOptions}
-                onChange={setTagIds}
-                allowCreate
-                onCreateTag={async (name) => {
-                  const tag = await createTag.mutateAsync({ name })
-                  return { id: tag.id, name: tag.name, color_slot: tag.color_slot }
-                }}
-                triggerLabel="+ Tag"
-              />
-            </div>
-            <p className="filter-modal__hint">
-              A tag follows its categories: tag one later and it joins this filter; untag it and it
-              leaves.
-            </p>
-          </div>
-
-          <div className="filter-modal__field">
-            <label className="filter-modal__label">…and these categories.</label>
-            <div className="filter-modal__category-list">
-              {groups.map((group) => {
-                const groupCats = categories.filter((c) => c.category_group_id === group.id)
-                if (groupCats.length === 0) return null
-                const state = getGroupState(group.id)
-                return (
-                  <div key={group.id} className="filter-modal__group">
-                    <label className="filter-modal__group-header">
-                      <IndeterminateCheckbox
-                        checked={state === 'all'}
-                        indeterminate={state === 'some'}
-                        onChange={() => toggleGroup(group.id)}
+        <div className="dialog-form__field" role="group" aria-labelledby={categoriesLabelId}>
+          <span id={categoriesLabelId}>…and these categories</span>
+          <div className="filter-modal__category-list">
+            {groups.map((group) => {
+              const groupCats = categories.filter((c) => c.category_group_id === group.id)
+              if (groupCats.length === 0) return null
+              const state = getGroupState(group.id)
+              return (
+                <div key={group.id} className="filter-modal__group">
+                  <label className="filter-modal__group-header">
+                    <IndeterminateCheckbox
+                      checked={state === 'all'}
+                      indeterminate={state === 'some'}
+                      onChange={() => toggleGroup(group.id)}
+                    />
+                    <span className="filter-modal__group-name">{group.name}</span>
+                  </label>
+                  {groupCats.map((cat) => (
+                    <label key={cat.id} className="filter-modal__cat-row">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(cat.id)}
+                        onChange={() => toggleCategory(cat.id)}
                       />
-                      <span className="filter-modal__group-name">{group.name}</span>
+                      <span>{cat.name}</span>
                     </label>
-                    {groupCats.map((cat) => (
-                      <label key={cat.id} className="filter-modal__cat-row">
-                        <input
-                          type="checkbox"
-                          checked={selectedIds.has(cat.id)}
-                          onChange={() => toggleCategory(cat.id)}
-                        />
-                        <span>{cat.name}</span>
-                      </label>
-                    ))}
-                  </div>
-                )
-              })}
-            </div>
+                  ))}
+                </div>
+              )
+            })}
           </div>
         </div>
       </form>
