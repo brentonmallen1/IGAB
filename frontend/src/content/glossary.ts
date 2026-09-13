@@ -366,7 +366,7 @@ export const GLOSSARY: GlossaryEntry[] = [
     short: 'The share of your income that you save rather than spend.',
     body: 'The single most useful summary of whether a budget is working over time. The roadmap targets 15% of pre-tax income for retirement specifically, which is a narrower measure than your overall savings rate.',
     inIgab:
-      'Computed in the Savings Rate report, on-budget only, so investment growth is never counted as money you saved.',
+      'Computed in the Savings Rate report, on-budget only, so investment growth is never counted as money you saved. Money moved to a tracked account counts only when that account counts as savings, so buying a car is not saving and selling one is income.',
     related: ['compounding', 'emergency-fund'],
   },
   {

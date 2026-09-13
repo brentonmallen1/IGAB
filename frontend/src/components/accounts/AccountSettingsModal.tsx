@@ -15,6 +15,7 @@ import { useAppStore } from '../../stores/appStore'
 import { useAccountTypes } from '../../api/accountTypes'
 import { BUILTIN_ACCOUNT_TYPES } from '../../constants/accountTypes'
 import { AccountTypeInfoModal } from './AccountTypeInfoModal'
+import { CountsAsSavingsField } from './CountsAsSavingsField'
 import './AccountSettingsModal.css'
 import { AccountNumbersSection } from './AccountNumbersSection'
 import { confirmAsync } from '../../stores/confirmStore'
@@ -56,6 +57,7 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
   const [name, setName] = useState(account?.name ?? '')
   const [accountType, setAccountType] = useState(account?.account_type ?? 'checking')
   const [onBudget, setOnBudget] = useState(account?.on_budget ?? true)
+  const [countsAsSavings, setCountsAsSavings] = useState(account?.counts_as_savings ?? true)
   const [note, setNote] = useState(account?.note ?? '')
   const [budgetStart, setBudgetStart] = useState(account?.budget_start_date ?? '')
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -69,6 +71,7 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
       setName(account.name)
       setAccountType(account.account_type)
       setOnBudget(account.on_budget)
+      setCountsAsSavings(account.counts_as_savings)
       setNote(account.note ?? '')
       setBudgetStart(account.budget_start_date ?? '')
     }
@@ -88,6 +91,7 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
         name: name.trim(),
         account_type: accountType,
         on_budget: onBudget,
+        counts_as_savings: countsAsSavings,
         note: note.trim() || null,
         // Empty clears it: null means "treat all history as budgeted",
         // which is what an account that was never asked does.
@@ -217,7 +221,14 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
                 <select
                   className="acct-modal__input"
                   value={accountType}
-                  onChange={(e) => setAccountType(e.target.value)}
+                  onChange={(e) => {
+                    setAccountType(e.target.value)
+                    // A different type brings its own default for the flag,
+                    // as on the New Account form. Saving is still the only
+                    // thing that changes the account.
+                    const picked = typeOptions.find((t) => t.key === e.target.value)
+                    if (picked) setCountsAsSavings(picked.default_counts_as_savings)
+                  }}
                 >
                   {typeOptions.map((t) => (
                     <option key={t.key} value={t.key}>
@@ -234,6 +245,12 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
                   onChange={(e) => setOnBudget(e.target.checked)}
                 />
               </div>
+              <CountsAsSavingsField
+                onBudget={onBudget}
+                classification={typeOptions.find((t) => t.key === accountType)?.classification}
+                checked={countsAsSavings}
+                onChange={setCountsAsSavings}
+              />
               <div className="acct-modal__field">
                 <label className="acct-modal__label">Note</label>
                 <input

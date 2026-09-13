@@ -30,6 +30,14 @@ export function isCashAccount(account: AccountKindFields): boolean {
   return account.on_budget && account.classification !== 'liability'
 }
 
+/** An off-budget asset — the one kind of account whose `counts_as_savings`
+ * flag means anything. The server reads it only there (rules 3 and 5 in
+ * `domain/activity_class.py`), so this decides where the toggle is offered:
+ * on anything else it would be a switch wired to nothing. */
+export function isTrackedAsset(account: AccountKindFields): boolean {
+  return !account.on_budget && account.classification !== 'liability'
+}
+
 /** Anything owed — a card (on-budget) or a loan (off-budget). The accounts
  * that take a payment, and so the ones whose register offers one. */
 export function isLiabilityAccount(account: AccountKindFields): boolean {

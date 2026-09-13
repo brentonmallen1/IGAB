@@ -37,6 +37,7 @@ function preview(over: Partial<YnabAccountPreview> = {}): YnabAccountPreview {
     related_group: null,
     suggested_skip: false,
     suggested_close: false,
+    suggested_counts_as_savings: true,
     suggestion_source: 'heuristic',
     ...over,
   }
@@ -221,6 +222,19 @@ describe('seeding the form from the server', () => {
     expect(dispositionOf(seeded['Old Cascade Point HYSA'])).toBe('skip')
     expect(dispositionOf(seeded['Sapphire Visa'])).toBe('close')
     expect(seeded['Sapphire Visa'].account_type).toBe('credit_card')
+  })
+
+  it('seeds counts-as-savings from the suggestion, so a car arrives off', () => {
+    const seeded = seedChoices([
+      preview({
+        name: 'Second Car',
+        suggested_type: 'other_asset',
+        suggested_counts_as_savings: false,
+      }),
+      preview({ name: 'Harborstone Brokerage', suggested_type: 'investment' }),
+    ])
+    expect(seeded['Second Car'].counts_as_savings).toBe(false)
+    expect(seeded['Harborstone Brokerage'].counts_as_savings).toBe(true)
   })
 
   it('offers nothing to close when memory already closed them', () => {

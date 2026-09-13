@@ -7,6 +7,8 @@ export interface AccountCreate {
   name: string
   account_type: AccountType
   on_budget?: boolean
+  /** Omitted takes the type's default_counts_as_savings. */
+  counts_as_savings?: boolean
   note?: string
   sort_order?: number
 }

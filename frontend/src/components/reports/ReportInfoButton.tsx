@@ -65,8 +65,9 @@ export function SpendingClassNote() {
   return (
     <p className="info-pop__note">
       Counts spending only. Money moved into savings or investments, or used to pay down a tracked
-      debt, leaves your budget but stays yours — so it is not counted here. Open any transaction to
-      see how it is classified and why.
+      debt, leaves your budget but stays yours — so it is not counted here. Buying something tracked
+      that does not count as savings, like a car, is spending and is counted. Open any transaction
+      to see how it is classified and why.
     </p>
   )
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isCardAccount, isCashAccount, isLiabilityAccount } from './accountKinds'
+import { isCardAccount, isCashAccount, isLiabilityAccount, isTrackedAsset } from './accountKinds'
 
 const acct = (on_budget: boolean, classification: 'asset' | 'liability' | null) => ({
   on_budget,
@@ -25,5 +25,13 @@ describe('accountKinds', () => {
     expect(isLiabilityAccount(acct(false, 'liability'))).toBe(true)
     expect(isLiabilityAccount(acct(true, 'asset'))).toBe(false)
     expect(isLiabilityAccount(acct(false, null))).toBe(false)
+  })
+
+  it('only an off-budget asset offers counts-as-savings', () => {
+    expect(isTrackedAsset(acct(false, 'asset'))).toBe(true)
+    expect(isTrackedAsset(acct(false, null))).toBe(true)
+    expect(isTrackedAsset(acct(true, 'asset'))).toBe(false) // on budget: never savings by transfer
+    expect(isTrackedAsset(acct(false, 'liability'))).toBe(false) // a loan: debt principal
+    expect(isTrackedAsset(acct(true, 'liability'))).toBe(false) // a card
   })
 })

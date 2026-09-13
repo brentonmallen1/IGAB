@@ -9,6 +9,7 @@ export interface AccountTypeInfo {
   label: string
   classification: 'asset' | 'liability'
   default_on_budget: boolean
+  default_counts_as_savings: boolean
   description: string | null
   is_system: boolean
   sort_order: number
@@ -18,6 +19,7 @@ export interface AccountTypeCreate {
   label: string
   classification: 'asset' | 'liability'
   default_on_budget?: boolean
+  default_counts_as_savings?: boolean
   description?: string | null
 }
 
@@ -25,6 +27,7 @@ export interface AccountTypeUpdate {
   label?: string
   classification?: 'asset' | 'liability'
   default_on_budget?: boolean
+  default_counts_as_savings?: boolean
   description?: string | null
   sort_order?: number
 }

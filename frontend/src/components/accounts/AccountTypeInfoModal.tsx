@@ -48,8 +48,10 @@ export function AccountTypeInfoModal({ onClose, types, context }: Props) {
             <p>
               Off-budget (tracking) accounts count toward net worth but stay out of your envelopes.
               Moving money to one is spending as far as the budget is concerned — give that transfer
-              a category. Spending and income reports count on-budget accounts by default; each
-              report's info panel says exactly what it includes.
+              a category. In reports, money into a tracked asset that counts as savings is saving;
+              into one that does not, like a car, it is spending, and money out of it is income.
+              Spending and income reports count on-budget accounts by default; each report's info
+              panel says exactly what it includes.
             </p>
           </div>
           <div className="type-info__concept">

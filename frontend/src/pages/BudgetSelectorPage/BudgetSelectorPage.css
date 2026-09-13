@@ -671,6 +671,23 @@
   cursor: pointer;
 }
 
+/* Offered only on an off-budget asset, the one kind the flag means anything
+   on. Its own line under the pickers, so the fixed columns stay aligned. */
+.ynab-mapping__savings-toggle {
+  grid-column: 2 / -1;
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.ynab-mapping__savings-help {
+  color: var(--text-muted);
+}
+
 .budget-selector__whoami {
   margin-top: var(--spacing-xs);
   font-size: var(--font-size-xs);
@@ -749,6 +766,11 @@
 
   .ynab-mapping__budget-toggle {
     grid-area: toggle;
+    min-height: var(--tap-min);
+  }
+
+  .ynab-mapping__savings-toggle {
+    grid-column: 1 / -1;
     min-height: var(--tap-min);
   }
 }

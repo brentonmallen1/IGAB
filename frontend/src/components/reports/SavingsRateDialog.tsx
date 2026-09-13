@@ -141,8 +141,9 @@ function Contributors({
           rate at all.
         </p>
         <p className="dialog__body">
-          To count money as saved, transfer it to a tracked (off-budget) account, or tag the
-          category it leaves from {SAVINGS_TAG}.
+          To count money as saved, transfer it to a tracked (off-budget) account that counts as
+          savings, or tag the category it leaves from {SAVINGS_TAG}. Buying or selling something
+          tracked that does not count as savings — a car, a house — is spending or income instead.
         </p>
       </DetailSection>
     </>

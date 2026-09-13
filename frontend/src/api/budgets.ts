@@ -487,6 +487,10 @@ export interface YnabAccountPreview {
    *  every import. Home: domain/import_mapping.resolve_account_suggestion. */
   suggested_skip: boolean
   suggested_close: boolean
+  /** Whether this account, if it lands as an off-budget asset, counts as
+   *  savings — the export's column, then memory, then the name (a house or a
+   *  car does not). Home: domain/import_mapping.resolve_account_suggestion. */
+  suggested_counts_as_savings: boolean
   /** Which of the three sources supplied `suggested_type`/`suggested_on_budget`
    *  — not the disposition, which follows its own precedence. "export" = the
    *  real type from an IGAB export's Accounts.csv, "remembered" = what you
@@ -522,6 +526,9 @@ export interface YnabAccountTypeChoice {
    * whole and transfers still pair up) and only hides the account from
    * pickers and report filters. */
   close?: boolean
+  /** Only read for an off-budget asset. Omitted lets the server guess from
+   * the name. */
+  counts_as_savings?: boolean
 }
 
 /** Parse the export without importing — feeds the account-type mapping step */

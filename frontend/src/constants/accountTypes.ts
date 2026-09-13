@@ -152,3 +152,7 @@ export function accountTypeLabel(key: string, registry?: { key: string; label: s
   if (builtin) return builtin
   return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
+
+/** Help line for the Counts as savings toggle, wherever it is offered. */
+export const COUNTS_AS_SAVINGS_HELP =
+  'Off for things like a car or a house: selling one counts as income, buying one as spending.'
