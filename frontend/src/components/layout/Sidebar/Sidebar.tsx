@@ -100,7 +100,7 @@ export function Sidebar() {
 
   const logout = useLogout()
   const { data: me } = useCurrentUser()
-  // Assets "+" opens the add-account modal preset to an off-budget investment
+  // Assets "+" opens the add-asset chooser: an account, or a valued asset
   const [assetModalOpen, setAssetModalOpen] = useState(false)
 
   const { data: connections = [] } = useSimpleFINConnections()
