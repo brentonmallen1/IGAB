@@ -58,6 +58,7 @@ import {
 import { useUpdateStatus } from '../../../api/system'
 import { SyncStatusIcon } from '../../simplefin/SyncStatusIcon'
 import { AddAccountModal } from '../../accounts/AddAccountModal'
+import { AddAssetFlow } from '../../assets/AddAssetFlow'
 import { useCurrentUser, useLogout } from '../../../api/auth'
 import { useAppStore } from '../../../stores/appStore'
 import { useUIStore } from '../../../stores/uiStore'
@@ -634,7 +635,7 @@ export function Sidebar() {
 
         {activeModal?.kind === 'add-account' && <AddAccountModal onClose={closeModal} />}
         {assetModalOpen && (
-          <AddAccountModal initialTypeKey="investment" onClose={() => setAssetModalOpen(false)} />
+          <AddAssetFlow onClose={() => setAssetModalOpen(false)} />
         )}
       </div>
     </aside>

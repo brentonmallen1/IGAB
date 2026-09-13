@@ -80,7 +80,7 @@ export function AssetSettingsModal({ budgetId, asset, onClose, onDeleted }: Prop
   const pending = createAsset.isPending || updateAsset.isPending
 
   return (
-    <Dialog title={asset ? asset.name : 'Track an asset'} onClose={onClose} historyKey="asset">
+    <Dialog title={asset ? asset.name : "Track an asset's value"} onClose={onClose} historyKey="asset">
       <form className="asset-modal" onSubmit={handleSubmit}>
         <label className="asset-modal__field">
           <span>Name</span>
