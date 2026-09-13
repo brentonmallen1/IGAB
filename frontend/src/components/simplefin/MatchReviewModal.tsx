@@ -333,7 +333,7 @@ export function MatchReviewModal({ matches, budgetId, onClose, initialMatchId }:
                 disabled={idx === 0}
                 aria-label="Previous match"
               >
-                <ChevronLeft size={14} aria-hidden="true" />
+                <ChevronLeft size={13} aria-hidden="true" />
               </button>
               <button
                 type="button"
@@ -342,7 +342,7 @@ export function MatchReviewModal({ matches, budgetId, onClose, initialMatchId }:
                 disabled={idx === pending.length - 1}
                 aria-label="Next match"
               >
-                <ChevronRight size={14} aria-hidden="true" />
+                <ChevronRight size={13} aria-hidden="true" />
               </button>
             </>
           )}

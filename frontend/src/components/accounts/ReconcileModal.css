@@ -69,10 +69,11 @@
 
 .reconcile-modal__input {
   width: 100%;
-  /* Larger than the text around it, so --control-font-size as well: base.css's
-     touch floor overrides font-size with max(16px, this) and reads it back. */
-  font-size: var(--font-size-lg);
+  /* Larger than the text around it, so said in --control-font-size, which
+     base.css's touch floor reads back. font-size reads it too, to take back
+     the size DialogForm.css gives every text control. */
   --control-font-size: var(--font-size-lg);
+  font-size: var(--control-font-size);
   font-variant-numeric: tabular-nums;
   text-align: center;
 }

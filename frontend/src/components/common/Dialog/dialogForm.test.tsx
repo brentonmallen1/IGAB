@@ -16,13 +16,40 @@ import { render, screen } from '@testing-library/react'
 import { AddAccountModal } from '../../accounts/AddAccountModal'
 import { AssetSettingsModal } from '../../assets/AssetSettingsModal'
 import { LiabilitySettingsModal } from '../../liabilities/LiabilitySettingsModal'
+import { CardPaymentModal } from '../../accounts/CardPaymentModal'
+import { CloneBudgetModal } from '../../budgets/CloneBudgetModal'
 import { useAppStore } from '../../../stores/appStore'
 import { stripComments, topLevelRules } from '../../../test-utils/cssRules'
 
 vi.mock('../../../api/accounts', () => ({
   useCreateAccount: () => ({ mutateAsync: vi.fn(), isPending: false }),
-  useAccounts: () => ({ data: [] }),
+  useAccounts: () => ({
+    data: [
+      {
+        id: 'chk',
+        name: 'Harborstone Checking',
+        on_budget: true,
+        classification: 'asset',
+        balance: 900,
+      },
+      {
+        id: 'card',
+        name: 'Sapphire Visa',
+        on_budget: true,
+        classification: 'liability',
+        balance: -240,
+      },
+    ],
+  }),
 }))
+vi.mock('../../../api/budgets', () => ({ useBudgetMonth: () => ({ data: undefined }) }))
+vi.mock('../../../api/transactions', () => ({
+  useCreateTransaction: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}))
+vi.mock('../../../api/budgetSnapshots', () => ({
+  useCloneBudget: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}))
+vi.mock('../../../utils/toastUndo', () => ({ useUndoToast: () => vi.fn() }))
 vi.mock('../../../api/accountTypes', () => ({ useAccountTypes: () => ({ data: undefined }) }))
 vi.mock('../../../api/assets', () => ({
   useCreateAsset: () => ({ mutateAsync: vi.fn(), isPending: false }),
@@ -33,6 +60,7 @@ vi.mock('../../../api/liabilities', () => ({
   useCreateLiability: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useUpdateLiability: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useDeleteLiability: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useLiabilities: () => ({ data: [] }),
 }))
 
 beforeEach(async () => {
@@ -73,6 +101,49 @@ describe.each(Object.entries(FORMS))('%s', (_, form) => {
   })
 })
 
+/**
+ * The dialogs converted after the add-asset three. They have no one field in
+ * common to look up by name, so the contract is structural: every text control
+ * is inside a dialog-form, every footer button is a dialog-btn, and a primary
+ * submit is enabled while nothing is pending — it answers an empty form with a
+ * sentence, not a greyed-out button.
+ */
+const CONVERTED = {
+  'the card payment form': () => (
+    <CardPaymentModal budgetId="b1" accountId="card" onClose={vi.fn()} />
+  ),
+  'the copy-budget form': () => (
+    <CloneBudgetModal budgetId="b1" budgetName="Household" onClose={vi.fn()} />
+  ),
+  ...FORMS,
+}
+
+describe.each(Object.entries(CONVERTED))('%s, structurally', (_, form) => {
+  it('puts every text control inside a dialog-form', () => {
+    render(form())
+    const controls = document.querySelectorAll(
+      'input:not([type="checkbox"], [type="radio"], [type="hidden"]), select, textarea'
+    )
+    expect(controls.length).toBeGreaterThan(0)
+    for (const c of controls) expect(c.closest('.dialog-form')).not.toBeNull()
+  })
+
+  it('draws every footer button as a shared button, the submit enabled', () => {
+    render(form())
+    const buttons = document.querySelectorAll('.dialog-actions button')
+    expect(buttons.length).toBeGreaterThan(0)
+    for (const b of buttons) expect(b).toHaveClass('dialog-btn')
+    const submit = document.querySelector('.dialog-actions button[type="submit"]')
+    expect(submit).toHaveClass('dialog-btn--primary')
+    expect(submit).toBeEnabled()
+  })
+
+  it('nests no form inside another', () => {
+    render(form())
+    expect(document.querySelectorAll('form form')).toHaveLength(0)
+  })
+})
+
 describe('DialogForm.css', () => {
   const css = stripComments(readFileSync(resolve(__dirname, 'DialogForm.css'), 'utf8'))
   // Selectors with whitespace collapsed: prettier breaks a long :where() over lines.
@@ -82,6 +153,11 @@ describe('DialogForm.css', () => {
     const control = rules.find(([sel]) => sel.endsWith('select, textarea )'))
     expect(control?.[0]).toMatch(/:not\(\[type="checkbox"\], \[type="radio"\]/)
     expect(control?.[1]).toMatch(/border:\s*1px solid var\(--input-border\)/)
+  })
+
+  it('aligns a multi-line choice to its first line (sweep A)', () => {
+    const multi = rules.find(([sel]) => sel === '.dialog-form__field--multiline')
+    expect(multi?.[1]).toMatch(/align-items:\s*flex-start/)
   })
 
   it('focuses a field on the input focus-ring token', () => {
