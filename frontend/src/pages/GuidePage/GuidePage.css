@@ -890,6 +890,16 @@
   width: 120px;
 }
 
+/* The rules above describe text fields. A checkbox or radio given their
+   padding, 32px min-height and 100%/120px width is drawn as a huge box — the
+   money explorer's toggles and the payoff planner's include column both were.
+   (0,2,1) so it outranks every width rule above. */
+.tool input:is([type="checkbox"], [type="radio"]) {
+  width: auto;
+  min-height: 0;
+  padding: 0;
+}
+
 .tool input,
 .tool select {
   font-variant-numeric: tabular-nums;
