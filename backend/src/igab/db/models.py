@@ -1617,6 +1617,9 @@ class ImportAccountMapping(Base):
     on_budget: Mapped[bool] = mapped_column(Boolean, nullable=False)
     skip: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     close: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    #: Null for a mapping remembered before the step asked; the preview then
+    #: guesses from the name.
+    counts_as_savings: Mapped[bool | None] = mapped_column(Boolean)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )

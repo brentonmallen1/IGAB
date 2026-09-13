@@ -48,6 +48,8 @@ class AccountSpec:
     name: str
     account_type: str  # registry key; classification derives from the type row
     on_budget: bool = True
+    #: None takes the type's default (`AccountType.default_counts_as_savings`).
+    counts_as_savings: bool | None = None
     opening_balance: Decimal = Decimal("0")
     sort_order: int = 0
     is_closed: bool = False
@@ -187,8 +189,10 @@ class OneOffTransfer:
     `TransferSpec` is a recurring habit — the rent, the monthly card payment.
     A card scenario pays on the months it says and not on the others, and
     "pays every month except the current one" is not a habit, it is a story.
-    Never carries a category: both sides are on-budget here, and a categorised
-    transfer is the off-budget spending shape.
+    Never carries a category. The card scenarios' transfers are on-budget on
+    both sides; the one off-budget use is the vehicle sale, which demonstrates
+    the uncategorized shape — money from an asset that is not savings arriving
+    as income.
     """
 
     when: RelDate

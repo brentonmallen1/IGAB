@@ -269,6 +269,13 @@ class YNABParser:
                 account_type=type_key,
                 on_budget=_truthy(row.get("On Budget")),
                 is_closed=_truthy(row.get("Closed")),
+                # Absent from exports written before the column existed: None,
+                # so the preview guesses from the name instead of reading false.
+                counts_as_savings=(
+                    _truthy(row["Counts As Savings"])
+                    if row.get("Counts As Savings") not in (None, "")
+                    else None
+                ),
             )
         return out
 

@@ -21,6 +21,11 @@ counting as savings exactly as it did. The regex below is a frozen copy of
 `suggest_counts_as_savings` as of this revision, inlined so this replays
 identically forever.
 
+The import mapping step's memory gains a nullable `counts_as_savings` too, so
+a choice made there comes back on the next import. Null is every mapping
+remembered before this revision, and means "never asked": the preview guesses
+from the name rather than reading it as false.
+
 The server defaults are load-bearing beyond the backfill: a budget snapshot
 taken before these columns existed restores through INSERTs that do not name
 them (`services/budget_snapshot.py`).
@@ -64,6 +69,11 @@ def upgrade() -> None:
         sa.Column("counts_as_savings", sa.Boolean(), nullable=False, server_default=sa.true()),
     )
 
+    op.add_column(
+        "import_account_mappings",
+        sa.Column("counts_as_savings", sa.Boolean(), nullable=True),
+    )
+
     conn = op.get_bind()
     conn.execute(
         sa.text(
@@ -81,5 +91,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.drop_column("import_account_mappings", "counts_as_savings")
     op.drop_column("accounts", "counts_as_savings")
     op.drop_column("account_types", "default_counts_as_savings")

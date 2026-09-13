@@ -30,6 +30,7 @@ class _Choice(Protocol):
     on_budget: bool
     skip: bool
     close: bool
+    counts_as_savings: bool | None
 
 
 class ImportMappingRepository:
@@ -47,6 +48,7 @@ class ImportMappingRepository:
                 on_budget=row.on_budget,
                 skip=row.skip,
                 close=row.close,
+                counts_as_savings=row.counts_as_savings,
             )
             for row in result.scalars().all()
         }
@@ -73,6 +75,7 @@ class ImportMappingRepository:
                 "on_budget": choice.on_budget,
                 "skip": choice.skip,
                 "close": choice.close and not choice.skip,
+                "counts_as_savings": choice.counts_as_savings,
             }
         if not rows:
             return 0
@@ -86,6 +89,7 @@ class ImportMappingRepository:
                     "on_budget": stmt.excluded.on_budget,
                     "skip": stmt.excluded.skip,
                     "close": stmt.excluded.close,
+                    "counts_as_savings": stmt.excluded.counts_as_savings,
                     # Set explicitly: the model's `onupdate` is a hook on
                     # UPDATE constructs and does not fire for ON CONFLICT.
                     "updated_at": func.now(),

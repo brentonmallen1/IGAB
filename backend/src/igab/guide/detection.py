@@ -387,6 +387,9 @@ class GuideDetection:
                             Account.budget_id == budget_id,
                             Account.is_deleted == False,  # noqa: E712
                             Account.account_type == "investment",
+                            # An investment account someone said is not
+                            # savings is not a retirement contribution either.
+                            Account.counts_as_savings == True,  # noqa: E712
                         )
                     )
                 )

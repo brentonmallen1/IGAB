@@ -11,6 +11,7 @@ class AccountTypeCreate(ApiModel):
     label: str = Field(min_length=1, max_length=50)
     classification: AccountClassification
     default_on_budget: bool = False
+    default_counts_as_savings: bool = True
     description: str | None = None
 
 
@@ -18,6 +19,7 @@ class AccountTypeUpdate(ApiModel):
     label: str | None = Field(default=None, min_length=1, max_length=50)
     classification: AccountClassification | None = None
     default_on_budget: bool | None = None
+    default_counts_as_savings: bool | None = None
     description: str | None = None
     sort_order: int | None = None
 
@@ -29,6 +31,7 @@ class AccountTypeResponse(ApiModel):
     label: str
     classification: str
     default_on_budget: bool
+    default_counts_as_savings: bool
     description: str | None
     is_system: bool
     sort_order: int

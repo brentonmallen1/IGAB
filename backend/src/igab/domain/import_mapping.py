@@ -299,6 +299,9 @@ class ExportedAccount:
     account_type: str
     on_budget: bool
     is_closed: bool = False
+    #: None when the file predates the column, which then falls through to the
+    #: next tier rather than reading as false.
+    counts_as_savings: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -314,6 +317,8 @@ class RememberedChoice:
     on_budget: bool
     skip: bool
     close: bool
+    #: None for a choice remembered before the mapping step asked.
+    counts_as_savings: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -323,6 +328,10 @@ class AccountSuggestion:
     skip: bool
     close: bool
     needs_review: bool
+    #: Follows the `account_type` ladder, tier by tier where the tier has an
+    #: answer, ending at `suggest_counts_as_savings`. Only shown, and only read
+    #: by the classifier, for an off-budget asset.
+    counts_as_savings: bool
     #: Where `account_type`/`on_budget` came from — NOT the disposition, which
     #: follows its own precedence (see `resolve_account_suggestion`). The two
     #: genuinely differ: an IGAB export states the type of an account it also
@@ -345,6 +354,7 @@ def resolve_account_suggestion(
     ==========================  ==========================================
     ``account_type``,           Accounts.csv → remembered → the name
     ``on_budget``
+    ``counts_as_savings``       Accounts.csv → remembered → the name
     ``skip``, ``close``         remembered → Accounts.csv ``Closed`` → keep
     ==========================  ==========================================
 
@@ -379,6 +389,13 @@ def resolve_account_suggestion(
         account_type, on_budget = guess_type, guess_on_budget
         source = "heuristic"
 
+    if from_export is not None and from_export.counts_as_savings is not None:
+        counts_as_savings = from_export.counts_as_savings
+    elif usable is not None and usable.counts_as_savings is not None:
+        counts_as_savings = usable.counts_as_savings
+    else:
+        counts_as_savings = suggest_counts_as_savings(name)
+
     if usable is not None:
         skip, close = usable.skip, usable.close and not usable.skip
     elif from_export is not None:
@@ -393,4 +410,5 @@ def resolve_account_suggestion(
         close=close,
         needs_review=from_export is None and guess_needs_review,
         source=source,
+        counts_as_savings=counts_as_savings,
     )
