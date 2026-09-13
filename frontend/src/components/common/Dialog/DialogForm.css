@@ -168,3 +168,18 @@
     flex-direction: column;
   }
 }
+
+/* ─── added by sweep A ─── */
+
+/* A checkbox or radio beside more than one line: a choice with a hint under
+   its name (the copy-budget scope), or a sentence that wraps (back up before
+   restoring, in both restore dialogs). With __field--inline. Centred, the box
+   floated beside the middle of the paragraph; it belongs on the first line. */
+.dialog-form__field--multiline {
+  align-items: flex-start;
+}
+
+.dialog-form__field--multiline > :where(input[type="checkbox"], input[type="radio"]) {
+  flex-shrink: 0;
+  margin-top: 0.2em;
+}
