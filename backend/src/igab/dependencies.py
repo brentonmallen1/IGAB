@@ -45,6 +45,7 @@ from igab.services.category_plan_service import CategoryPlanService
 from igab.services.category_service import CategoryService
 from igab.services.change_log import ChangeRecorder
 from igab.services.liability_service import LiabilityService
+from igab.services.money_moves_service import MoneyMovesService
 from igab.services.reconciliation_service import ReconciliationService
 from igab.services.report_favorites import ReportFavoritesService
 from igab.services.report_service import ReportService
@@ -259,6 +260,10 @@ def get_liability_service(
     transaction_repo: Annotated[TransactionRepository, Depends(get_transaction_repo)],
 ) -> LiabilityService:
     return LiabilityService(liability_repo, account_repo, category_repo, transaction_repo)
+
+
+def get_money_moves_service(session: SessionDep) -> MoneyMovesService:
+    return MoneyMovesService(session)
 
 
 def get_guide_service(
