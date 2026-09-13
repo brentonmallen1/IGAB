@@ -12,10 +12,13 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { AddAccountModal } from '../../accounts/AddAccountModal'
 import { AssetSettingsModal } from '../../assets/AssetSettingsModal'
 import { LiabilitySettingsModal } from '../../liabilities/LiabilitySettingsModal'
+import { TargetEditor } from '../../budget/TargetEditor'
+import { BudgetFilterModal } from '../../budget/BudgetFilterModal/BudgetFilterModal'
+import { BudgetViewModal } from '../../budget/BudgetViewModal/BudgetViewModal'
 import { useAppStore } from '../../../stores/appStore'
 import { stripComments, topLevelRules } from '../../../test-utils/cssRules'
 
@@ -87,5 +90,92 @@ describe('DialogForm.css', () => {
   it('focuses a field on the input focus-ring token', () => {
     const focus = rules.find(([sel]) => sel.endsWith('textarea ):focus'))
     expect(focus?.[1]).toMatch(/border-color:\s*var\(--input-focus-ring\)/)
+  })
+})
+
+/* ─── sweep B: the budget page's dialogs ─────────────────────────────────── */
+
+// The target editor, the filter editor and the view editor each hand-rolled
+// their labels, inputs and three different footers — the view editor's name
+// field had no label at all, and two of the three disabled Save (or relied on
+// a browser `required` bubble) instead of saying what was missing.
+vi.mock('../../../api/targets', () => ({
+  useUpsertTarget: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useDeleteTarget: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}))
+vi.mock('../../../api/categories', () => ({
+  useCategoryGroups: () => ({ data: [] }),
+  useCategories: () => ({ data: [] }),
+}))
+vi.mock('../../../api/tags', () => ({
+  useTags: () => ({ data: [] }),
+  useCreateTag: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}))
+const createFilter = vi.hoisted(() => vi.fn())
+vi.mock('../../../api/budgetFilters', () => ({
+  useBudgetFilters: () => ({ data: [] }),
+  useCreateBudgetFilter: () => ({ mutateAsync: createFilter, isPending: false }),
+  useUpdateBudgetFilter: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useDeleteBudgetFilter: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}))
+const createView = vi.hoisted(() => vi.fn())
+vi.mock('../../../api/budgetViews', () => ({
+  useBudgetViews: () => ({ data: [] }),
+  useCreateBudgetView: () => ({ mutateAsync: createView, isPending: false }),
+  useUpdateBudgetView: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useDeleteBudgetView: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}))
+
+const BUDGET_FORMS = {
+  'the target editor': {
+    render: () => (
+      <TargetEditor categoryId="c1" categoryName="Groceries" existing={null} onClose={vi.fn()} />
+    ),
+    field: 'Amount',
+    missing: /Enter an amount/,
+    mutate: null,
+  },
+  'the filter editor': {
+    render: () => <BudgetFilterModal budgetId="b1" filterId={null} onClose={vi.fn()} />,
+    field: 'Filter name',
+    missing: /Give this filter a name/,
+    mutate: createFilter,
+  },
+  'the view editor': {
+    render: () => <BudgetViewModal budgetId="b1" viewId={null} onClose={vi.fn()} />,
+    field: 'View name',
+    missing: /Give this view a name/,
+    mutate: createView,
+  },
+}
+
+describe.each(Object.entries(BUDGET_FORMS))('%s', (_, form) => {
+  it('is a dialog-form whose first field is the shared, labelled field', () => {
+    render(form.render())
+    const field = screen.getByLabelText(form.field)
+    expect(field.closest('form')).toHaveClass('dialog-form')
+    expect(field.closest('label')).toHaveClass('dialog-form__field')
+  })
+
+  it('keeps its actions in the footer, in the shared buttons', () => {
+    render(form.render())
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveClass(
+      'dialog-btn',
+      'dialog-btn--secondary'
+    )
+    const submit = document.querySelector('button[type="submit"]')!
+    expect(submit).toHaveClass('dialog-btn', 'dialog-btn--primary')
+    expect(submit.closest('form')).toBeNull()
+    expect(submit.getAttribute('form')).toBe(document.querySelector('form.dialog-form')!.id)
+  })
+
+  it('leaves Save enabled when empty and says what is missing on submit', async () => {
+    render(form.render())
+    const submit = document.querySelector<HTMLButtonElement>('button[type="submit"]')!
+    expect(submit).toBeEnabled()
+    fireEvent.submit(document.querySelector('form.dialog-form')!)
+    const error = await screen.findByText(form.missing)
+    expect(error).toHaveClass('dialog-form__error')
+    if (form.mutate) expect(form.mutate).not.toHaveBeenCalled()
   })
 })

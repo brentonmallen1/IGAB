@@ -192,10 +192,18 @@ describe('DeleteCategoryModal', () => {
     expect(screen.getByRole('radio', { name: /Leave them uncategorized/ })).toBeInTheDocument()
   })
 
-  it('will not delete until a destination is chosen', () => {
+  it('will not delete until a destination is chosen, and asks for one', async () => {
     renderModal()
-    // Move is the default, so the button stays inert until the picker answers.
-    expect(screen.getByRole('button', { name: 'Delete' })).toBeDisabled()
+    // Move is the default. The button used to sit inert with no reason given;
+    // it stays enabled like every dialog's primary and names what is missing.
+    const del = screen.getByRole('button', { name: 'Delete' })
+    expect(del).toBeEnabled()
+    await userEvent.click(del)
+    expect(screen.getByRole('alert')).toHaveTextContent(/Choose a category to move/)
+    expect(deleteMutate).not.toHaveBeenCalled()
+    // Answering the question clears it.
+    await userEvent.click(screen.getByRole('radio', { name: /Leave them uncategorized/ }))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('uncategorizing needs no destination', async () => {
