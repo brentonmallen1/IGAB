@@ -93,3 +93,30 @@
 .type-info__concept p + p {
   margin-top: var(--spacing-xs);
 }
+
+/* Served per account shape: what money in and out of this type counts as, and
+   which budget figure it moves (domain/money_moves.py). */
+.type-info__money {
+  margin: var(--spacing-xs) 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.type-info__money-line {
+  display: flex;
+  gap: var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary, var(--text-muted));
+}
+
+.type-info__money-line dt {
+  flex: none;
+  min-width: 5.5em;
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+
+.type-info__money-line dd {
+  margin: 0;
+}

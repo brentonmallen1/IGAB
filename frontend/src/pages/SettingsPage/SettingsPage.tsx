@@ -634,7 +634,11 @@ export function SettingsPage() {
         <AccountSettingsModal accountId={activeModal.editingId} onClose={closeModal} />
       )}
       {showTypeInfo && (
-        <AccountTypeInfoModal types={typeRows} onClose={() => setShowTypeInfo(false)} />
+        <AccountTypeInfoModal
+          types={typeRows}
+          budgetId={budgetId}
+          onClose={() => setShowTypeInfo(false)}
+        />
       )}
     </SettingsShell>
   )

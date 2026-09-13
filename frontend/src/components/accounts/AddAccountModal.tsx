@@ -170,7 +170,11 @@ export function AddAccountModal({ onClose, initialTypeKey }: Props) {
         </form>
       </Dialog>
       {showTypeInfo && (
-        <AccountTypeInfoModal types={typeRows} onClose={() => setShowTypeInfo(false)} />
+        <AccountTypeInfoModal
+          types={typeRows}
+          budgetId={budgetId}
+          onClose={() => setShowTypeInfo(false)}
+        />
       )}
     </>
   )

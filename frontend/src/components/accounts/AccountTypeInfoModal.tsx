@@ -1,4 +1,7 @@
+import { useMoneyRules, type MoneyShape, type MoveExplanation } from '../../api/moneyRules'
 import { BUILTIN_ACCOUNT_TYPES } from '../../constants/accountTypes'
+import { useFormatters } from '../../hooks/useFormatters'
+import { budgetEffectLines, shapeFor } from '../../utils/moneyMoves'
 import { Dialog } from '../common/Dialog/Dialog'
 import './AccountTypeInfoModal.css'
 
@@ -7,6 +10,7 @@ interface TypeRow {
   label: string
   classification: 'asset' | 'liability'
   default_on_budget: boolean
+  default_counts_as_savings: boolean
   description?: string | null
   is_system?: boolean
 }
@@ -20,12 +24,63 @@ interface Props {
    * what leaving an account out actually costs. Stated explicitly rather
    * than inferred from `types` being absent, so the two stay independent. */
   context?: 'import'
+  /** The budget whose Guide serves the "Money in / Money out" lines. Absent
+   * before a budget exists (the import mapping), where the lines are left out. */
+  budgetId?: string | null
+}
+
+/** The on-budget legs' classes, joined — what the budget's reports see. */
+function countedAs(e: MoveExplanation): string {
+  const labels = [...new Set(e.legs.filter((l) => l.on_budget).map((l) => l.class_label))]
+  return labels.join(' and ')
+}
+
+function MoneyLines({ shape }: { shape: MoneyShape }) {
+  const { formatMoney } = useFormatters()
+  return (
+    <dl className="type-info__money">
+      {(
+        [
+          ['Money in', shape.money_in],
+          ['Money out', shape.money_out],
+        ] as const
+      ).map(([title, example]) => (
+        <div key={title} className="type-info__money-line">
+          <dt>{title}</dt>
+          <dd>
+            {example.description}: counts as {countedAs(example.explanation)}.{' '}
+            {budgetEffectLines(example.explanation.budget_terms, formatMoney).join('. ')}.
+          </dd>
+        </div>
+      ))}
+    </dl>
+  )
+}
+
+function TypeMoneyLines({
+  shapes,
+  classification,
+  onBudget,
+  countsAsSavings,
+}: {
+  shapes: MoneyShape[]
+  classification: 'asset' | 'liability'
+  onBudget: boolean
+  countsAsSavings: boolean
+}) {
+  const shape = shapeFor(shapes, {
+    classification,
+    on_budget: onBudget,
+    counts_as_savings: countsAsSavings,
+  })
+  return shape ? <MoneyLines shape={shape} /> : null
 }
 
 /** What each account type means and implies — mounted wherever a type is
  * chosen (add/edit account, YNAB import mapping). */
-export function AccountTypeInfoModal({ onClose, types, context }: Props) {
+export function AccountTypeInfoModal({ onClose, types, context, budgetId }: Props) {
   const rows = types && types.length > 0 ? types : BUILTIN_ACCOUNT_TYPES
+  const { data: money } = useMoneyRules(context === 'import' ? null : (budgetId ?? null))
 
   return (
     <Dialog
@@ -119,6 +174,14 @@ export function AccountTypeInfoModal({ onClose, types, context }: Props) {
                 {t.description ||
                   `Custom type — counts as ${t.classification === 'liability' ? 'a liability' : 'an asset'} in net worth.`}
               </p>
+              {money && (
+                <TypeMoneyLines
+                  shapes={money.shapes}
+                  classification={t.classification}
+                  onBudget={t.default_on_budget}
+                  countsAsSavings={t.default_counts_as_savings}
+                />
+              )}
             </div>
           ))}
         </div>

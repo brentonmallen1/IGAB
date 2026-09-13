@@ -401,7 +401,11 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
         </form>
       </Dialog>
       {showTypeInfo && (
-        <AccountTypeInfoModal types={typeRows} onClose={() => setShowTypeInfo(false)} />
+        <AccountTypeInfoModal
+          types={typeRows}
+          budgetId={budgetId}
+          onClose={() => setShowTypeInfo(false)}
+        />
       )}
     </>
   )
