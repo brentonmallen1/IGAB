@@ -29,6 +29,7 @@ export function AccountTypesPanel({ budgetId }: Props) {
   const [label, setLabel] = useState('')
   const [classification, setClassification] = useState<'asset' | 'liability'>('asset')
   const [defaultOnBudget, setDefaultOnBudget] = useState(false)
+  const [defaultCountsAsSavings, setDefaultCountsAsSavings] = useState(true)
   const [description, setDescription] = useState('')
 
   function openForm(target: AccountTypeInfo | 'new') {
@@ -37,12 +38,14 @@ export function AccountTypesPanel({ budgetId }: Props) {
       setLabel('')
       setClassification('asset')
       setDefaultOnBudget(false)
+      setDefaultCountsAsSavings(true)
       setDescription('')
     } else {
       setFormTarget(target.id)
       setLabel(target.label)
       setClassification(target.classification)
       setDefaultOnBudget(target.default_on_budget)
+      setDefaultCountsAsSavings(target.default_counts_as_savings)
       setDescription(target.description ?? '')
     }
   }
@@ -54,6 +57,7 @@ export function AccountTypesPanel({ budgetId }: Props) {
       label: label.trim(),
       classification,
       default_on_budget: defaultOnBudget,
+      default_counts_as_savings: defaultCountsAsSavings,
       description: description.trim() || null,
     }
     try {
@@ -93,9 +97,9 @@ export function AccountTypesPanel({ budgetId }: Props) {
           <div className="acct-types__hint">
             A type decides whether an account counts as an asset or a liability, and whether new
             accounts of that type start on budget. Built-in types can't be changed. For accounts
-            kept <em>off</em> budget, these two answers also decide how money you move there is
-            read: into an asset it counts as saving, toward a liability it counts as paying down
-            debt. Neither is spending.
+            kept <em>off</em> budget, these answers also decide how money you move there is read:
+            toward a liability it counts as paying down debt; into an asset it counts as saving when
+            the account counts as savings, and otherwise as spending — a car, a house.
           </div>
         </div>
         <button
@@ -168,8 +172,9 @@ export function AccountTypesPanel({ budgetId }: Props) {
               <option value="liability">Liability (you owe it)</option>
             </select>
             <div className="acct-types__hint">
-              Off budget, an asset makes incoming money count as saving and a liability makes it
-              count as paying down debt. On budget, this only affects net worth.
+              Off budget, a liability makes incoming money count as paying down debt, and an asset
+              makes it count as saving if the account counts as savings. On budget, this only
+              affects net worth.
             </div>
             <label className="acct-types__checkbox">
               <input
@@ -179,6 +184,16 @@ export function AccountTypesPanel({ budgetId }: Props) {
               />
               On budget by default
             </label>
+            {classification === 'asset' && (
+              <label className="acct-types__checkbox">
+                <input
+                  type="checkbox"
+                  checked={defaultCountsAsSavings}
+                  onChange={(e) => setDefaultCountsAsSavings(e.target.checked)}
+                />
+                Counts as savings by default
+              </label>
+            )}
           </div>
           <input
             className="acct-types__input"

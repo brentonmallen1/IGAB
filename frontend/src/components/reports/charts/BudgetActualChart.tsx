@@ -150,7 +150,7 @@ export function BudgetActualReport({ budgetId }: Props) {
             Use the <em>Overspent only</em> filter to focus on problem categories, and{' '}
             <em>Sort by overspent</em> to rank the biggest overruns first.
           </p>
-          <ReportScopeNote scope="categories" />
+          <ReportScopeNote report="budget-actual" />
         </ReportInfoButton>
         <div className="flex-row ms-auto" style={{ flexWrap: 'wrap' }}>
           <label className="report-toggle">

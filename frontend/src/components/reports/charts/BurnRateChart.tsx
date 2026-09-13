@@ -63,7 +63,7 @@ export function BurnRateReport({ budgetId }: Props) {
             more stable and better reflects your true spending rate. A widening gap between them
             signals recent spending changes.
           </p>
-          <ReportScopeNote scope="on-budget" />
+          <ReportScopeNote report="burn-rate" />
           <SpendingClassNote />
         </ReportInfoButton>
         <p className="report-section__subtitle">Monthly spending rolling averages</p>

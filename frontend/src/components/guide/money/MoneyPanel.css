@@ -1,0 +1,44 @@
+.money-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xl);
+  max-width: 960px;
+}
+
+.money-panel__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  scroll-margin-top: var(--spacing-lg);
+}
+
+.money-panel__heading {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+
+.money-panel__lede {
+  margin: 0;
+  max-width: 64ch;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.money-panel__status {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+.money-panel__card {
+  padding: var(--spacing-lg);
+}
+
+@media (max-width: 768px) {
+  .money-panel__card {
+    padding: var(--spacing-md);
+  }
+}

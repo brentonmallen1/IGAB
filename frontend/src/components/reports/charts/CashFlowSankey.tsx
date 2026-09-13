@@ -317,7 +317,7 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
             on every node. In Spent mode, clicking a payee node (or a category node at the payee
             level) lists the transactions behind it below the chart.
           </p>
-          <ReportScopeNote scope="on-budget-filterable" />
+          <ReportScopeNote report="cash-flow" />
         </ReportInfoButton>
         <div className="report-toggle-group">
           <button

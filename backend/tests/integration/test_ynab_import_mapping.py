@@ -342,3 +342,84 @@ async def test_a_close_cased_differently_still_closes(api_client, db_session):
     }
     assert accounts["Home Mortgage"].is_closed is True
     assert accounts["Checking"].is_closed is False
+
+
+ASSETS_REGISTER = """Account,Date,Payee,Category Group,Category,Memo,Outflow,Inflow,Cleared
+Checking,07/01/2026,Employer,Inflow,Ready to Assign,,,"2,000.00",Cleared
+Second Car,07/02/2026,Opening Balance,,,,,"9,000.00",Cleared
+Crypto Wallet,07/03/2026,Opening Balance,,,,,"1,800.00",Cleared
+Maple St House,07/04/2026,Opening Balance,,,,,"300,000.00",Cleared
+"""
+
+
+def _assets_zip() -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("My Budget - Register.csv", ASSETS_REGISTER)
+    return buf.getvalue()
+
+
+class TestCountsAsSavingsThroughTheMappingStep:
+    """A YNAB export says nothing about whether a tracked asset is saved into
+    or is a thing owned, so the name guesses, the mapping step can say
+    otherwise, and what it said comes back on the next import."""
+
+    async def _preview(self, api_client) -> dict:
+        resp = await api_client.post(
+            "/api/v1/budgets/import/preview",
+            files={"file": ("export.zip", _assets_zip(), "application/zip")},
+        )
+        assert resp.status_code == 200, resp.text
+        return {a["name"]: a for a in resp.json()["ynab"]["accounts"]}
+
+    async def test_the_preview_guesses_from_the_name(self, api_client):
+        by_name = await self._preview(api_client)
+        assert by_name["Second Car"]["suggested_counts_as_savings"] is False
+        assert by_name["Maple St House"]["suggested_counts_as_savings"] is False
+        assert by_name["Crypto Wallet"]["suggested_counts_as_savings"] is True
+
+    async def test_the_import_applies_a_choice_and_guesses_where_none_was_sent(
+        self, api_client, db_session
+    ):
+        services = make_services(db_session)
+        mapping = (
+            '{"Checking": {"account_type": "checking", "on_budget": true},'
+            ' "Second Car": {"account_type": "other_asset", "on_budget": false},'
+            ' "Crypto Wallet": {"account_type": "other_asset", "on_budget": false},'
+            ' "Maple St House": {"account_type": "other_asset", "on_budget": false,'
+            ' "counts_as_savings": true}}'
+        )
+        resp = await api_client.post(
+            "/api/v1/budgets/import-ynab",
+            files={"file": ("export.zip", _assets_zip(), "application/zip")},
+            data={"name": "Assets", "account_types": mapping},
+        )
+        assert resp.status_code == 201, resp.text
+        budget_id = uuid.UUID(resp.json()["budget"]["id"])
+
+        accounts = {a.name: a for a in await services.account_repo.get_all(budget_id)}
+        # Guessed from the name, not the Other Asset type default (false).
+        assert accounts["Crypto Wallet"].counts_as_savings is True
+        assert accounts["Second Car"].counts_as_savings is False
+        # Said outright, over the name.
+        assert accounts["Maple St House"].counts_as_savings is True
+
+    async def test_a_choice_comes_back_on_the_next_import(self, api_client):
+        mapping = (
+            '{"Checking": {"account_type": "checking", "on_budget": true},'
+            ' "Second Car": {"account_type": "other_asset", "on_budget": false},'
+            ' "Crypto Wallet": {"account_type": "other_asset", "on_budget": false,'
+            ' "counts_as_savings": false},'
+            ' "Maple St House": {"account_type": "other_asset", "on_budget": false}}'
+        )
+        resp = await api_client.post(
+            "/api/v1/budgets/import-ynab",
+            files={"file": ("export.zip", _assets_zip(), "application/zip")},
+            data={"name": "First", "account_types": mapping},
+        )
+        assert resp.status_code == 201, resp.text
+
+        by_name = await self._preview(api_client)
+        assert by_name["Crypto Wallet"]["suggested_counts_as_savings"] is False
+        # Not sent last time: still the name's guess, not a remembered false.
+        assert by_name["Maple St House"]["suggested_counts_as_savings"] is False

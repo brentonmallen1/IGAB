@@ -70,6 +70,7 @@ def _parse_mirror() -> dict[str, dict]:
         label = _field(block, "label")
         classification = _field(block, "classification")
         on_budget = re.search(r"default_on_budget:\s*(true|false)", block).group(1)
+        counts = re.search(r"default_counts_as_savings:\s*(true|false)", block).group(1)
         # Description may be one string literal or several joined by `+`, and
         # is the last field, so it may end the block without a newline.
         raw = block[block.index("description:") :]
@@ -78,6 +79,7 @@ def _parse_mirror() -> dict[str, dict]:
             "label": label,
             "classification": classification,
             "default_on_budget": on_budget == "true",
+            "default_counts_as_savings": counts == "true",
             "description": description,
         }
     return entries
@@ -101,6 +103,7 @@ def test_each_type_matches_the_backend_seed(builtin):
     assert entry["label"] == builtin.label
     assert entry["classification"] == builtin.classification
     assert entry["default_on_budget"] == builtin.default_on_budget
+    assert entry["default_counts_as_savings"] == builtin.default_counts_as_savings
     assert entry["description"] == builtin.description, (
         f"{builtin.key}: mirror copy has drifted from the backend seed.\n"
         f"  backend: {builtin.description}\n"

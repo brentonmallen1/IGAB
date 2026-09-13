@@ -69,7 +69,7 @@ export function SeasonalityReport({ budgetId }: Props) {
             spikes (holidays, annual subscriptions, seasonal utilities). Hover any cell for the
             exact amount.
           </p>
-          <ReportScopeNote scope="categories" />
+          <ReportScopeNote report="seasonality" />
         </ReportInfoButton>
         <p className="report-section__subtitle">Monthly spending intensity per category</p>
         <div className="flex-row ms-auto">

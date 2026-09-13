@@ -1,0 +1,46 @@
+/* The table scrolls inside its card at phone width rather than widening the
+   page; the prose column is what gives way first. */
+.tag-impact {
+  overflow-x: auto;
+}
+
+.tag-impact__table {
+  width: 100%;
+  min-width: 520px;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.tag-impact__table th,
+.tag-impact__table td {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-top: 1px solid var(--edge);
+  text-align: left;
+  vertical-align: top;
+}
+
+.tag-impact__table thead th {
+  border-top: none;
+  font-size: var(--font-size-2xs);
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.tag-impact__table tbody th {
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.tag-impact__no {
+  color: var(--text-muted);
+}
+
+.tag-impact__does {
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
+  max-width: 60ch;
+}

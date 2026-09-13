@@ -37,7 +37,7 @@ export function choiceForDisposition(
 
 /** Seed the mapping form from the server's suggestion.
  *
- *  All four fields come from the preview. `skip` and `close` used to be
+ *  Every field comes from the preview. `skip` and `close` used to be
  *  hard-coded false here, which threw away a remembered "leave this one out"
  *  on every import — and, for an IGAB export, reopened every closed account.
  */
@@ -50,6 +50,7 @@ export function seedChoices(accounts: YnabAccountPreview[]): Record<string, Ynab
         on_budget: a.suggested_on_budget,
         skip: a.suggested_skip,
         close: a.suggested_close,
+        counts_as_savings: a.suggested_counts_as_savings,
       },
     ])
   )

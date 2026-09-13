@@ -218,7 +218,7 @@ async def create_account(
                 name=body.name,
                 note=body.note,
                 sort_order=body.sort_order,
-                **apply_type(type_row, body.on_budget),
+                **apply_type(type_row, body.on_budget, body.counts_as_savings),
             )
         except DuplicateError as e:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e)) from e
@@ -298,8 +298,9 @@ async def update_account(
             before = snapshot("account", existing)
             if changes.get("account_type") is not None:
                 type_row = await resolve_type(session, existing.budget_id, changes["account_type"])
-                # Retyping re-derives the mirrors; on_budget only changes when
-                # the client asked (the type default is a creation-time hint).
+                # Retyping re-derives the mirrors; on_budget and
+                # counts_as_savings only change when the client asked (the type
+                # defaults are creation-time hints).
                 changes.update(
                     account_type_id=type_row.id,
                     account_type=type_row.key,

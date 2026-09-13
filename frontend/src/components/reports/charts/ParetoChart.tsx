@@ -240,7 +240,7 @@ export function ParetoReport({ budgetId }: Props) {
             category group, category, or payee level.
           </p>
           <p>Click a bar or a table row to see the transactions behind it.</p>
-          <ReportScopeNote scope="on-budget-filterable" />
+          <ReportScopeNote report="pareto" />
           <SpendingClassNote />
         </ReportInfoButton>
         {groupBy !== 'payee' && (

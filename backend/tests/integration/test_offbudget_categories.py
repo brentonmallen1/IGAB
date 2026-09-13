@@ -577,3 +577,34 @@ class TestHistoryBeforeAnAccountJoinedTheBudget:
 
         assert await services.account_repo.get_uncategorized_count(card.id) == 0
         assert await services.account_repo.get_uncategorized_count(checking.id) == 1
+
+
+class TestEveryAccountResponseCarriesTheSavingsFlag:
+    """`counts_as_savings` is a column, not a computed field, but the checklist
+    point is the same: `AccountResponse` requires it, so a path that built a
+    response without it must fail here rather than hand the client an account
+    whose Counts as savings toggle reads a missing value as off."""
+
+    async def test_create_list_get_and_update(self, api_client, db_session):
+        budget = await create_budget(db_session, api_client.test_user)
+        await db_session.commit()
+
+        created = await api_client.post(
+            f"/api/v1/{budget.id}/accounts",
+            json={"name": "Second Car", "account_type": "other_asset"},
+        )
+        assert created.status_code == 201, created.text
+        account_id = created.json()["id"]
+        listed = await api_client.get(f"/api/v1/{budget.id}/accounts")
+        one = await api_client.get(f"/api/v1/accounts/{account_id}")
+        updated = await api_client.patch(
+            f"/api/v1/accounts/{account_id}", json={"note": "sold in spring"}
+        )
+
+        for label, body in [
+            ("create", created.json()),
+            *[("list", row) for row in listed.json()],
+            ("get", one.json()),
+            ("update", updated.json()),
+        ]:
+            assert body["counts_as_savings"] is False, f"{label}: {body}"

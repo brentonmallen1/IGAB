@@ -67,6 +67,37 @@ async def _world(db_session):
     loan = await create_account(
         db_session, budget, "Car Loan", account_type="loan", on_budget=False
     )
+    # Other Asset defaults to not counting as savings — the car.
+    vehicle = await create_account(
+        db_session, budget, "Second Car", account_type="other_asset", on_budget=False
+    )
+    # The same type, marked as savings — crypto someone saves into.
+    crypto = await create_account(
+        db_session,
+        budget,
+        "Crypto Wallet",
+        account_type="other_asset",
+        on_budget=False,
+        counts_as_savings=True,
+    )
+    # An investment someone marked as not savings — the flag is the account's.
+    art = await create_account(
+        db_session,
+        budget,
+        "Art Collection",
+        account_type="investment",
+        on_budget=False,
+        counts_as_savings=False,
+    )
+    # The flag on a liability means nothing: debt stays debt.
+    flagged_loan = await create_account(
+        db_session,
+        budget,
+        "Boat Loan",
+        account_type="loan",
+        on_budget=False,
+        counts_as_savings=False,
+    )
     inflow = await create_category_group(db_session, budget, "Inflow", is_system=True)
     rta = await create_category(db_session, budget, inflow, "Ready to Assign")
     everyday = await create_category_group(db_session, budget, "Everyday")
@@ -93,6 +124,10 @@ async def _world(db_session):
         credit=credit,
         brokerage=brokerage,
         loan=loan,
+        vehicle=vehicle,
+        crypto=crypto,
+        art=art,
+        flagged_loan=flagged_loan,
         rta=rta,
         groceries=groceries,
         fund=fund,
@@ -172,6 +207,53 @@ CASES = [
         SPENDING,
     ),
     ("to an on-budget credit card", "checking", "-200.00", None, "credit", INTERNAL),
+    # ─ tracked assets that do and do not count as savings ────────────────
+    # A savings asset is saving both ways: money out of it un-saves.
+    ("from a tracked asset, uncategorized", "checking", "500.00", None, "brokerage", SAVINGS),
+    ("from a tracked asset, categorized", "checking", "500.00", "groceries", "brokerage", SAVINGS),
+    ("to an Other Asset marked savings", "checking", "-500.00", None, "crypto", SAVINGS),
+    ("from an Other Asset marked savings", "checking", "500.00", None, "crypto", SAVINGS),
+    # A non-savings asset is an outside payee on the budget side. Buying the
+    # car is spending, selling it is income — categorized or not.
+    ("buying a car, uncategorized", "checking", "-9000.00", None, "vehicle", SPENDING),
+    ("buying a car, categorized", "checking", "-9000.00", "groceries", "vehicle", SPENDING),
+    ("selling a car, uncategorized", "checking", "4500.00", None, "vehicle", INCOME),
+    ("selling a car, to the income group", "checking", "4500.00", "rta", "vehicle", INCOME),
+    # A categorized inflow to an ordinary category nets against its spending,
+    # exactly as a refund from an outside payee does.
+    (
+        "selling a car, to an ordinary category",
+        "checking",
+        "4500.00",
+        "groceries",
+        "vehicle",
+        SPENDING,
+    ),
+    ("to an investment marked not savings", "checking", "-800.00", None, "art", SPENDING),
+    ("from an investment marked not savings", "checking", "800.00", None, "art", INCOME),
+    # The brokerage's leg of buying a car with it: rule 5 without the carve-out,
+    # which is for on-budget legs only. (The car's leg of the same move is
+    # rule 3, which does not ask which side of the budget the leg is on, and
+    # is not pinned here.)
+    ("brokerage to a car", "brokerage", "-4500.00", None, "vehicle", INTERNAL),
+    # The flag is read for assets only.
+    (
+        "to a debt marked not savings, uncategorized",
+        "checking",
+        "-275.00",
+        None,
+        "flagged_loan",
+        DEBT,
+    ),
+    (
+        "to a debt marked not savings, categorized",
+        "checking",
+        "-275.00",
+        "groceries",
+        "flagged_loan",
+        DEBT,
+    ),
+    ("from a debt marked not savings", "checking", "1000.00", None, "flagged_loan", DEBT),
     # ─ activity inside tracked accounts ──────────────────────────────────
     ("dividend on a brokerage", "brokerage", "125.00", None, None, RETURN),
     ("fee on a brokerage", "brokerage", "-25.00", None, None, RETURN),
@@ -207,10 +289,14 @@ class TestTheFarSideOfATransferIsNeverDoubleCounted:
     """Only the on-budget leg of an out-of-budget transfer represents money
     leaving. Counting the tracked side too would double it."""
 
-    @pytest.mark.parametrize("target", ["brokerage", "loan"])
-    async def test_tracked_side_is_internal(self, db_session, target):
+    @pytest.mark.parametrize("amount", ["-500.00", "500.00"], ids=["into", "out-of"])
+    @pytest.mark.parametrize("target", ["brokerage", "loan", "vehicle", "crypto", "art"])
+    async def test_tracked_side_is_internal(self, db_session, target, amount):
+        """Including a car's side of its own sale. The on-budget leg's carve-out
+        from rule 5 must not reach this leg: it would fall to rule 6 and call
+        the sale an investment loss inside the vehicle account."""
         w = await _world(db_session)
-        out = await _linked(db_session, w, w.checking, getattr(w, target), "-500.00")
+        out = await _linked(db_session, w, w.checking, getattr(w, target), amount)
         partner = (
             await db_session.execute(select(Transaction).where(Transaction.id == out.transfer_id))
         ).scalar_one()
@@ -263,16 +349,23 @@ class TestOrphanedLegsClassifyLikeLinkedOnes:
     and a native transfer disagree about identical money."""
 
     @pytest.mark.parametrize(
-        "target,expected", [("brokerage", SAVINGS), ("loan", DEBT)], ids=["asset", "debt"]
+        "target,amount,expected",
+        [
+            ("brokerage", "-500.00", SAVINGS),
+            ("loan", "-500.00", DEBT),
+            ("vehicle", "-500.00", SPENDING),
+            ("vehicle", "500.00", INCOME),
+        ],
+        ids=["asset", "debt", "non-savings-asset-out", "non-savings-asset-in"],
     )
-    async def test_orphan_matches_linked(self, db_session, target, expected):
+    async def test_orphan_matches_linked(self, db_session, target, amount, expected):
         w = await _world(db_session)
         account = getattr(w, target)
         payee = await create_payee(
             db_session, w.budget, f"Transfer : {account.name}", transfer_account_id=account.id
         )
         orphan = await create_transaction(
-            db_session, w.budget, w.checking, "-500.00", TODAY, payee=payee
+            db_session, w.budget, w.checking, amount, TODAY, payee=payee
         )
         await db_session.flush()
 

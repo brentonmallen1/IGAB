@@ -74,6 +74,7 @@ ACCOUNT_COLUMNS = (
     "Type",
     "Classification",
     "On Budget",
+    "Counts As Savings",
     "Closed",
     "Note",
 )

@@ -6,6 +6,7 @@ import { REPORT_TABS, TAB_GROUPS, useReportStore, type ReportTab } from '../../s
 import { FAVORITES_LABEL } from '../../pages/ReportsPage/reportNav'
 import { countActiveFilters, hasAnyFilterSupport } from './ReportFilters/activeFilters'
 import { ReportFiltersContent } from './ReportFilters/ReportFiltersBar'
+import { ReportsOverviewButton } from './ReportsOverviewDialog'
 import './ReportsMobileChrome.css'
 
 interface Props {
@@ -68,6 +69,8 @@ export function ReportsMobileChrome({ budgetId, starred, onToggleStar, starPendi
       >
         <Star size={18} fill={isStarred ? 'currentColor' : 'none'} />
       </button>
+
+      <ReportsOverviewButton className="reports-chrome__star" iconSize={18} />
 
       {hasFilters && (
         <button

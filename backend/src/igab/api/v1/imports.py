@@ -348,6 +348,9 @@ class YNABAccountPreview(BaseModel):
     #: — not the disposition, which follows its own precedence. See
     #: `domain.import_mapping.resolve_account_suggestion`.
     suggestion_source: Literal["export", "remembered", "heuristic"]
+    #: Whether this account, if it is an off-budget asset, counts as savings.
+    #: See `resolve_account_suggestion`; the client shows it only for one.
+    suggested_counts_as_savings: bool
 
 
 class YNABPreviewResult(BaseModel):
@@ -378,6 +381,9 @@ class YNABAccountTypeChoice(BaseModel):
     #: keeping every transaction, so net worth over time stays whole and its
     #: transfers still pair up. `skip` erases the history instead.
     close: bool = False
+    #: Only read for an off-budget asset. None lets the importer guess from the
+    #: name (`suggest_counts_as_savings`), for a client that never asked.
+    counts_as_savings: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -397,6 +403,8 @@ class AccountMappingForm:
     #: set, so the two can never disagree downstream.
     choices: dict[str, YNABAccountTypeChoice]
     type_map: dict[str, tuple[str, bool]]
+    #: Only the accounts whose choice said; the rest are guessed at import.
+    savings_map: dict[str, bool]
     skip_accounts: set[str]
     close_accounts: set[str]
 
@@ -410,7 +418,7 @@ def parse_account_types_form(account_types: str | None) -> AccountMappingForm:
     sends both."""
     if not account_types:
         return AccountMappingForm(
-            choices={}, type_map={}, skip_accounts=set(), close_accounts=set()
+            choices={}, type_map={}, savings_map={}, skip_accounts=set(), close_accounts=set()
         )
     try:
         raw = json.loads(account_types)
@@ -441,6 +449,11 @@ def parse_account_types_form(account_types: str | None) -> AccountMappingForm:
     return AccountMappingForm(
         choices=choices,
         type_map=type_map,
+        savings_map={
+            name: choice.counts_as_savings
+            for name, choice in choices.items()
+            if not choice.skip and choice.counts_as_savings is not None
+        },
         skip_accounts={name for name, choice in choices.items() if choice.skip},
         close_accounts={name for name, choice in choices.items() if choice.close},
     )
@@ -509,6 +522,7 @@ def build_ynab_preview(
                 suggested_skip=suggestion.skip,
                 suggested_close=suggestion.close,
                 suggestion_source=suggestion.source,
+                suggested_counts_as_savings=suggestion.counts_as_savings,
             )
         )
     from igab.integrations.ynab.models import anchor_month

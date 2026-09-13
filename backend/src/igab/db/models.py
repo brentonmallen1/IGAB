@@ -179,6 +179,11 @@ class AccountType(Base):
     # 'asset' | 'liability'
     classification: Mapped[str] = mapped_column(String(20), nullable=False)
     default_on_budget: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    # Whether accounts of this type count as savings by default. Only asset
+    # types read it; see Account.counts_as_savings.
+    default_counts_as_savings: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="true"
+    )
     # User-facing explanation of what the type means and implies
     description: Mapped[str | None] = mapped_column(Text)
     is_system: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -225,6 +230,14 @@ class Account(Base):
     # here reads as UNKNOWN in SQL, which makes both `= 'liability'` and its
     # negation decline, silently disabling every rule that branches on it.
     classification: Mapped[str] = mapped_column(String(20), nullable=False)
+    #: Whether money moved into this (off-budget asset) account is saving. A
+    #: brokerage is; a car or a house is not — buying one is spending and
+    #: selling one is income (`domain/activity_class.py`, rules 3 and 5). Read
+    #: only for off-budget assets. The server default lets a budget snapshot
+    #: taken before the column existed still restore.
+    counts_as_savings: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False, server_default="true"
+    )
     is_closed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     note: Mapped[str | None] = mapped_column(Text)
@@ -1604,6 +1617,9 @@ class ImportAccountMapping(Base):
     on_budget: Mapped[bool] = mapped_column(Boolean, nullable=False)
     skip: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     close: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    #: Null for a mapping remembered before the step asked; the preview then
+    #: guesses from the name.
+    counts_as_savings: Mapped[bool | None] = mapped_column(Boolean)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )

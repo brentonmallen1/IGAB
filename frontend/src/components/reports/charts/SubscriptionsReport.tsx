@@ -85,7 +85,7 @@ export function SubscriptionsReport({ budgetId }: Props) {
             at the top is the sum of the categories, so every row adds up to the one above it.{' '}
             <strong>Per Charge</strong> is the typical amount of a single charge.
           </p>
-          <ReportScopeNote scope="on-budget" />
+          <ReportScopeNote report="subscriptions" />
         </ReportInfoButton>
         <ReportRangeSelect />
         <div style={{ marginLeft: 'auto' }}>

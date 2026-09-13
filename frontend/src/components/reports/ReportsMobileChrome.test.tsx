@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import { ReportsMobileChrome } from './ReportsMobileChrome'
 import { useReportStore } from '../../stores/reportStore'
 
@@ -9,7 +9,11 @@ vi.mock('./ReportFilters/ReportFiltersBar', () => ({
 }))
 
 describe('ReportsMobileChrome', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    // Drain the previous test's overlay history pops before resetting it.
+    await new Promise((r) => setTimeout(r, 0))
+    await new Promise((r) => setTimeout(r, 0))
+    window.history.replaceState(null, '')
     window.matchMedia ??= (() => ({ matches: false })) as unknown as typeof window.matchMedia
     window.history.replaceState(null, '', '/reports')
     useReportStore.setState({ activeTab: 'spending-trends', navFavorites: false })
@@ -51,6 +55,18 @@ describe('ReportsMobileChrome', () => {
     expect(screen.getByRole('dialog', { name: 'Filters' })).toBeInTheDocument()
     expect(screen.getByTestId('filters-content')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+  })
+
+  it('opens the reports overview beside the star, and picks a report from it', () => {
+    render(
+      <ReportsMobileChrome budgetId="b1" starred={[]} onToggleStar={() => {}} starPending={false} />
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'About these reports' }))
+    const sheet = screen.getByRole('dialog', { name: 'About these reports' })
+    expect(within(sheet).getByRole('heading', { name: 'Cash Flow' })).toBeInTheDocument()
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Burn Rate' }))
+    expect(useReportStore.getState().activeTab).toBe('burn-rate')
+    expect(screen.queryByRole('dialog', { name: 'About these reports' })).toBeNull()
   })
 
   it('stars the report you are reading', () => {

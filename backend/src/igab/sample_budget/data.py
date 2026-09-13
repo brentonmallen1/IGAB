@@ -28,6 +28,7 @@ from igab.sample_budget.spec import (
     LiabilitySnapshotSpec,
     LiabilitySpec,
     MonthlyTxn,
+    OneOffTransfer,
     OneOffTxn,
     PayeeSpec,
     RelDate,
@@ -63,6 +64,7 @@ WALLET = "Harborview Cash"
 ESPP = "Northgate ESPP"
 CRYPTO = "Crypto Wallet"
 LEGACY = "First National Checking (old)"
+VEHICLE = "Second Car"
 
 FULL = ("full",)
 STARTER = ("starter",)
@@ -103,6 +105,8 @@ _HOUSEHOLD = SampleBudgetSpec(
             HSA,
             "other_asset",
             on_budget=False,
+            # Saved into, so it counts as savings — Other Asset defaults off.
+            counts_as_savings=True,
             opening_balance=_d("2200.00"),
             sort_order=9,
             tiers=FULL,
@@ -135,6 +139,8 @@ _HOUSEHOLD = SampleBudgetSpec(
             ESPP,
             "other_asset",
             on_budget=False,
+            # Saved into, so it counts as savings — Other Asset defaults off.
+            counts_as_savings=True,
             opening_balance=_d("1400.00"),
             sort_order=13,
             tiers=FULL,
@@ -143,6 +149,8 @@ _HOUSEHOLD = SampleBudgetSpec(
             CRYPTO,
             "other_asset",
             on_budget=False,
+            # Saved into, so it counts as savings — Other Asset defaults off.
+            counts_as_savings=True,
             opening_balance=_d("1800.00"),
             sort_order=14,
             tiers=FULL,
@@ -150,6 +158,18 @@ _HOUSEHOLD = SampleBudgetSpec(
         # A checking account from a previous bank, closed after moving — its
         # ledger nets to zero (income in, rent out) so TBA is untouched
         AccountSpec(LEGACY, "checking", sort_order=15, is_closed=True, tiers=FULL),
+        # A second car, sold. Other Asset, and not savings: the sale's
+        # uncategorized transfer into checking is income ready to assign, not a
+        # withdrawal from savings (`activity_class.py`, rules 3 and 5).
+        AccountSpec(
+            VEHICLE,
+            "other_asset",
+            on_budget=False,
+            counts_as_savings=False,
+            opening_balance=_d("4500.00"),
+            sort_order=16,
+            tiers=FULL,
+        ),
     ),
     groups=(
         GroupSpec(
@@ -675,6 +695,19 @@ _HOUSEHOLD = SampleBudgetSpec(
         ),
         OneOffTxn(
             RelDate(28, 2), LEGACY, "Oakwood Property Mgmt", _d("-750.00"), "Rent", tiers=FULL
+        ),
+    ),
+    one_off_transfers=(
+        # The second car sells for what it was carried at, leaving the asset at
+        # zero. Uncategorized on purpose: that is the shape a car sale arrives
+        # in, and it lands in Ready to Assign.
+        OneOffTransfer(
+            when=RelDate(months_ago=4, day=12),
+            from_account=VEHICLE,
+            to_account=CHECKING,
+            amount=_d("4500.00"),
+            memo="Sold the second car",
+            tiers=FULL,
         ),
     ),
     transfers=(

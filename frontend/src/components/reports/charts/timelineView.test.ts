@@ -1,30 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dotSize, largestMagnitude, newestFirst, timelineTone } from './timelineView'
-
-describe('timelineTone', () => {
-  it('gives a mixed split (null class) the neutral tone, not a guess from its sign', () => {
-    // An all-savings split, negative, used to be drawn as a red expense.
-    expect(timelineTone(null)).toBe('neutral')
-  })
-
-  it('gives a class it does not know the neutral tone', () => {
-    expect(timelineTone('a_class_added_later')).toBe('neutral')
-  })
-
-  it('draws savings and debt principal as savings, whatever the sign of the row', () => {
-    // The tone takes no amount at all: a transfer into savings is negative and
-    // is still not an expense.
-    expect(timelineTone('savings')).toBe('savings')
-    expect(timelineTone('debt_principal')).toBe('savings')
-  })
-
-  it('reads spending, interest and income by class', () => {
-    expect(timelineTone('spending')).toBe('expense')
-    expect(timelineTone('debt_interest')).toBe('expense')
-    expect(timelineTone('income')).toBe('income')
-    expect(timelineTone('transfer_internal')).toBe('neutral')
-  })
-})
+import { dotSize, largestMagnitude, newestFirst } from './timelineView'
 
 describe('newestFirst', () => {
   it('draws the server’s size ranking in date order', () => {

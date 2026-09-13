@@ -102,6 +102,7 @@ async def create_account(
     *,
     account_type: str = "checking",
     on_budget: bool = True,
+    counts_as_savings: bool | None = None,
     simplefin_account_id: str | None = None,
 ) -> Account:
     type_row = await resolve_type(session, budget.id, account_type)
@@ -109,7 +110,7 @@ async def create_account(
         budget_id=budget.id,
         name=name or _name("Account"),
         simplefin_account_id=simplefin_account_id,
-        **apply_type(type_row, on_budget),
+        **apply_type(type_row, on_budget, counts_as_savings),
     )
     session.add(account)
     await session.flush()

@@ -23,6 +23,8 @@
  * these to match rather than letting the two drift.
  */
 
+import type { GuideTab } from '../stores/guideStore'
+
 /** Every glossary id, as a literal tuple.
  *
  * Declared separately from GLOSSARY so `GlossaryId` is a union of the actual
@@ -88,6 +90,8 @@ export interface GlossaryEntry {
   inIgab?: string
   related?: GlossaryId[]
   region?: 'us'
+  /** A Guide tab that shows this concept at work, linked beside the entry. */
+  guideTab?: GuideTab
 }
 
 export const GLOSSARY: GlossaryEntry[] = [
@@ -366,8 +370,9 @@ export const GLOSSARY: GlossaryEntry[] = [
     short: 'The share of your income that you save rather than spend.',
     body: 'The single most useful summary of whether a budget is working over time. The roadmap targets 15% of pre-tax income for retirement specifically, which is a narrower measure than your overall savings rate.',
     inIgab:
-      'Computed in the Savings Rate report, on-budget only, so investment growth is never counted as money you saved.',
+      'Computed in the Savings Rate report, on-budget only, so investment growth is never counted as money you saved. Money moved to a tracked account counts only when that account counts as savings, so buying a car is not saving and selling one is income.',
     related: ['compounding', 'emergency-fund'],
+    guideTab: 'money',
   },
   {
     id: 'compounding',

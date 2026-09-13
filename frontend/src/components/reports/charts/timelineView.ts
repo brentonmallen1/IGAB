@@ -1,35 +1,9 @@
 /**
  * How the Event Timeline reads its rows. Pure, so each rule the timeline
  * once got wrong is a one-line test instead of something you have to mount a
- * chart to see.
+ * chart to see. A row's tone is `utils/activityClassTone`, shared with the
+ * Guide.
  */
-
-/** The dot and amount tones `EventTimeline.css` draws. */
-export type TimelineTone = 'income' | 'expense' | 'savings' | 'neutral'
-
-const TONE_BY_CLASS: Record<string, TimelineTone> = {
-  income: 'income',
-  spending: 'expense',
-  savings: 'savings',
-  debt_principal: 'savings',
-  investment_return: 'neutral',
-  debt_interest: 'expense',
-  transfer_internal: 'neutral',
-}
-
-/**
- * Dot colour by what a row means, not which way the amount points — so it
- * takes no amount. A transfer into savings is negative and is not an expense.
- *
- * A null class is a split whose legs disagree, and an unrecognised class is
- * one added server-side since; both get the neutral tone rather than a
- * sign-based guess. Falling back to the sign is the exact mislabelling the
- * activity taxonomy exists to end, and it is how an all-savings split came to
- * be drawn as a red expense.
- */
-export function timelineTone(activityClass: string | null): TimelineTone {
-  return (activityClass !== null && TONE_BY_CLASS[activityClass]) || 'neutral'
-}
 
 /**
  * Newest first. The server ranks by SIZE to pick the largest N; a timeline

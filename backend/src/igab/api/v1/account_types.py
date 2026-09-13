@@ -73,6 +73,7 @@ async def create_account_type(
         label=body.label,
         classification=body.classification.value,
         default_on_budget=body.default_on_budget,
+        default_counts_as_savings=body.default_counts_as_savings,
         description=body.description,
         is_system=False,
     )

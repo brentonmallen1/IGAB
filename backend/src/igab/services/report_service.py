@@ -38,6 +38,7 @@ from igab.domain.activity_class import (
     counted_classes,
     planned_spend_filter,
     rolled_up_classes,
+    savings_rates,
     split_leg_classes,
 )
 
@@ -2404,28 +2405,21 @@ class ReportService:
         show a gap rather than a floor.
         """
 
-        def _rate(numerator: Decimal, income: Decimal) -> float | None:
-            if income <= 0:
-                return None
-            return float(numerator / income)
-
         today = date.today()
         class_series = await self._class_series(budget_id, months, today)
         series: list[dict] = []
+        window: dict[str, Decimal] = {}
         for month, buckets in class_series:
-            income = buckets.get(ActivityClass.INCOME.value, Decimal("0"))
-            savings = class_magnitude(buckets, ActivityClass.SAVINGS)
-            debt = class_magnitude(buckets, ActivityClass.DEBT_PRINCIPAL)
-            spending = class_magnitude(buckets, ActivityClass.SPENDING)
+            for cls, amount in buckets.items():
+                window[cls] = window.get(cls, Decimal("0")) + amount
             series.append(
                 {
                     "month": month,
-                    "income": income,
-                    "spending": spending,
-                    "savings": savings,
-                    "debt_principal": debt,
-                    "savings_rate": _rate(savings, income),
-                    "savings_rate_with_debt": _rate(savings + debt, income),
+                    "income": buckets.get(ActivityClass.INCOME.value, Decimal("0")),
+                    "spending": class_magnitude(buckets, ActivityClass.SPENDING),
+                    "savings": class_magnitude(buckets, ActivityClass.SAVINGS),
+                    "debt_principal": class_magnitude(buckets, ActivityClass.DEBT_PRINCIPAL),
+                    **savings_rates(buckets),
                 }
             )
 
@@ -2443,10 +2437,7 @@ class ReportService:
             "end_date": today,
             "summary": {
                 **totals,
-                "savings_rate": _rate(totals["savings"], totals["income"]),
-                "savings_rate_with_debt": _rate(
-                    totals["savings"] + totals["debt_principal"], totals["income"]
-                ),
+                **savings_rates(window),
             },
         }
 

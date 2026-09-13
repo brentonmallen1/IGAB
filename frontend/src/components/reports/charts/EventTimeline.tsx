@@ -12,7 +12,8 @@ import { ReportNotes } from '../ReportNotes'
 import './EventTimeline.css'
 import { useReportScope } from '../../../stores/reportStore'
 import { drillScope } from '../drillScope'
-import { dotSize, largestMagnitude, newestFirst, timelineTone } from './timelineView'
+import { activityClassTone } from '../../../utils/activityClassTone'
+import { dotSize, largestMagnitude, newestFirst } from './timelineView'
 import { TIMELINE_LIMITS } from './reportControls'
 
 interface Props {
@@ -75,7 +76,7 @@ export function TimelineReport({ budgetId }: Props) {
             it left your budget, but it isn't spending. Transactions alternate left/right for
             readability. Hover any dot for full details.
           </p>
-          <ReportScopeNote scope="on-budget-filterable" />
+          <ReportScopeNote report="timeline" />
         </ReportInfoButton>
         <p className="report-section__subtitle">
           Largest transactions — size indicates relative magnitude.
@@ -129,7 +130,7 @@ export function TimelineReport({ budgetId }: Props) {
             <div className="timeline__track" />
             {transactions.map((tx, i) => {
               const amt = tx.amount
-              const tone = timelineTone(tx.activity_class)
+              const tone = activityClassTone(tx.activity_class)
               const size = dotSize(amt, largestAmt)
               const side = i % 2 === 0 ? 'left' : 'right'
               return (

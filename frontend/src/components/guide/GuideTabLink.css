@@ -1,0 +1,14 @@
+/* Mounted outside the Guide too (report dialogs, the account type explainer),
+   so it carries its own paint rather than leaning on GuidePage.css. */
+.guide-tab-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--color-accent);
+  font-size: var(--font-size-xs);
+  text-decoration: none;
+}
+
+.guide-tab-link:hover {
+  text-decoration: underline;
+}

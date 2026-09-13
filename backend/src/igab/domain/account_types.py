@@ -18,6 +18,11 @@ class BuiltinAccountType:
     default_on_budget: bool
     description: str
     sort_order: int
+    #: Whether an account of this type counts as savings unless its own flag
+    #: says otherwise. Read only for off-budget assets — see
+    #: `Account.counts_as_savings` — so it is true on every type where it has
+    #: no effect, which is the value the column defaults to.
+    default_counts_as_savings: bool = True
 
 
 BUILTIN_ACCOUNT_TYPES: tuple[BuiltinAccountType, ...] = (
@@ -127,11 +132,13 @@ BUILTIN_ACCOUNT_TYPES: tuple[BuiltinAccountType, ...] = (
         description=(
             "Brokerage, retirement (401k, IRA), HSA, or similar. Off budget: it "
             "grows your net worth but isn't spendable envelope money. Money you "
-            "move here counts as saving rather than spending. Growth inside the "
-            "account — dividends, market movement — is not counted as saving, "
-            "because you didn't put it there."
+            "move here counts as saving rather than spending, unless you turn "
+            "off Counts as savings on the account. Growth inside the account — "
+            "dividends, market movement — is not counted as saving, because "
+            "you didn't put it there."
         ),
         sort_order=8,
+        default_counts_as_savings=True,
     ),
     BuiltinAccountType(
         key="other_asset",
@@ -139,11 +146,14 @@ BUILTIN_ACCOUNT_TYPES: tuple[BuiltinAccountType, ...] = (
         classification="asset",
         default_on_budget=False,
         description=(
-            "Anything else you own that counts toward net worth — property "
-            "value, crypto, a manually tracked balance. Off budget, so money "
-            "moved here counts as saving rather than spending."
+            "Anything else you own that counts toward net worth — a house, a "
+            "car, crypto, a manually tracked balance. Off budget. It does not "
+            "count as savings unless you turn Counts as savings on: buying the "
+            "thing is spending and selling it is income. Turn it on for "
+            "something you save into, like crypto."
         ),
         sort_order=9,
+        default_counts_as_savings=False,
     ),
     BuiltinAccountType(
         key="other_liability",

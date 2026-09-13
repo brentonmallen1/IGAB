@@ -73,6 +73,44 @@ class TestAccountUndo:
         [after] = await _accounts(api_client, budget)
         assert after["name"] == "Harborstone Checking"
 
+    async def test_the_savings_flag_is_served_and_its_edit_undoes_back(
+        self, db_session, api_client
+    ):
+        """Undo restores the fields `change_log` snapshots and nothing else, so
+        a flag missing from the "account" tuple would record an edit that ⌘Z
+        reports undoing while the car stays marked as savings."""
+        budget = await _budget(db_session, api_client)
+        r = await api_client.post(
+            f"/api/v1/{budget.id}/accounts",
+            json={"name": "Second Car", "account_type": "other_asset"},
+        )
+        assert r.status_code == 201, r.text
+        car = r.json()
+        assert car["counts_as_savings"] is False, "Other Asset defaults to not savings"
+
+        r = await api_client.patch(
+            f"/api/v1/accounts/{car['id']}", json={"counts_as_savings": True}
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["counts_as_savings"] is True
+
+        undone = await _undo(api_client, budget)
+        assert (undone["entity_type"], undone["action"]) == ("account", "update")
+        [after] = await _accounts(api_client, budget)
+        assert after["counts_as_savings"] is False
+
+    async def test_retyping_leaves_the_savings_flag_alone(self, db_session, api_client):
+        budget = await _budget(db_session, api_client)
+        account = await create_account(
+            db_session, budget, name="Second Car", account_type="other_asset", on_budget=False
+        )
+        await db_session.commit()
+        r = await api_client.patch(
+            f"/api/v1/accounts/{account.id}", json={"account_type": "investment"}
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["counts_as_savings"] is False
+
     async def test_deleting_an_account_undo_restores_its_whole_ledger(self, db_session, api_client):
         budget = await _budget(db_session, api_client)
         account = await create_account(db_session, budget, name="Harborstone Checking")
@@ -171,6 +209,34 @@ class TestAccountTypeUndo:
         assert (undone["entity_type"], undone["action"]) == ("account_type", "update")
         [after] = await _accounts(api_client, budget)
         assert after["classification"] == "asset"
+
+    async def test_a_custom_types_savings_default_undoes_back(self, db_session, api_client):
+        budget = await _budget(db_session, api_client)
+        custom = (
+            await api_client.post(
+                f"/api/v1/{budget.id}/account-types",
+                json={"label": "Collectibles", "classification": "asset"},
+            )
+        ).json()
+        assert custom["default_counts_as_savings"] is True
+        r = await api_client.patch(
+            f"/api/v1/{budget.id}/account-types/{custom['id']}",
+            json={"default_counts_as_savings": False},
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["default_counts_as_savings"] is False
+        r = await api_client.post(
+            f"/api/v1/{budget.id}/accounts",
+            json={"name": "Stamp Album", "account_type": custom["key"]},
+        )
+        assert r.json()["counts_as_savings"] is False, "a new account takes the type's default"
+        await _undo(api_client, budget)  # the account
+
+        undone = await _undo(api_client, budget)
+        assert (undone["entity_type"], undone["action"]) == ("account_type", "update")
+        types = (await api_client.get(f"/api/v1/{budget.id}/account-types")).json()
+        [after] = [t for t in types if t["id"] == custom["id"]]
+        assert after["default_counts_as_savings"] is True
 
     async def test_delete_undo_reinserts_the_type(self, db_session, api_client):
         budget = await _budget(db_session, api_client)

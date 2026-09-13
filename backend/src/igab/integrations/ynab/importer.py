@@ -9,8 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, Category, CategoryGroup
 from igab.domain.dates import add_months
+from igab.domain.enums import AccountClassification
 from igab.domain.import_identity import disambiguate_in_batch, generate_import_id
-from igab.domain.import_mapping import account_key
+from igab.domain.import_mapping import account_key, suggest_counts_as_savings
 from igab.domain.tag_hints import suggest_system_tag
 from igab.domain.transfers import linking_breaks_category_rule
 from igab.integrations.ynab.models import YNABBudget, YNABTransaction, anchor_month, plan_boundary
@@ -218,6 +219,7 @@ class YNABImporter:
         transaction_service: TransactionService,
         assignment_repo: BudgetAssignmentRepository,
         account_types: dict[str, tuple[str, bool]] | None = None,
+        counts_as_savings: dict[str, bool] | None = None,
         skip_accounts: set[str] | None = None,
         close_accounts: set[str] | None = None,
     ) -> None:
@@ -248,6 +250,9 @@ class YNABImporter:
         # account_key → (account_type, on_budget) override; YNAB register
         # exports carry no type info, so callers may supply the mapping.
         self.account_types = {account_key(k): v for k, v in (account_types or {}).items()}
+        # account_key → counts_as_savings, where the mapping step said. An
+        # account it did not answer for is guessed from its name.
+        self.counts_as_savings = {account_key(k): v for k, v in (counts_as_savings or {}).items()}
         # Accounts to leave out entirely. YNAB exports include archived
         # accounts with no marker, so exclusion is a per-account user decision.
         self.skip_accounts = {account_key(name) for name in (skip_accounts or set())}
@@ -344,11 +349,22 @@ class YNABImporter:
             # are always set — imported accounts must not fall out of the
             # sidebar or net worth for lack of a classification.
             type_row = await resolve_type(self.session, self.budget_id, account_type)
+            # The name is the only evidence a YNAB export carries about whether
+            # a tracked asset is a brokerage or a car. Guessed only for an
+            # off-budget asset — the one kind the classifier reads it on —
+            # so every other account keeps its type's default.
+            counts_as_savings = self.counts_as_savings.get(key)
+            if (
+                counts_as_savings is None
+                and not on_budget
+                and type_row.classification == AccountClassification.ASSET
+            ):
+                counts_as_savings = suggest_counts_as_savings(name)
             account = await self.account_repo.create(
                 budget_id=self.budget_id,
                 name=name,
                 is_closed=key in self.close_accounts,
-                **apply_type(type_row, on_budget),
+                **apply_type(type_row, on_budget, counts_as_savings),
             )
             # Importing a budget with a mortgage is the scenario the loan
             # features were built for, and it was the one that never reached

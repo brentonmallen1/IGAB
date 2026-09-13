@@ -172,7 +172,7 @@ class SampleBudgetGenerator:
                 name=acct.name,
                 sort_order=acct.sort_order,
                 is_closed=acct.is_closed,
-                **apply_type(type_row, acct.on_budget),
+                **apply_type(type_row, acct.on_budget, acct.counts_as_savings),
             )
             result.accounts += 1
 

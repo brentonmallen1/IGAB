@@ -265,6 +265,7 @@ async def import_ynab_as_budget(
         transaction_service=txn_service,
         assignment_repo=assignment_repo,
         account_types=form.type_map,
+        counts_as_savings=form.savings_map,
         skip_accounts=form.skip_accounts,
         close_accounts=form.close_accounts,
     )

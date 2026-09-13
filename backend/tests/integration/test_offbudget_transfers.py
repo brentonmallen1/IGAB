@@ -181,3 +181,44 @@ async def test_uncategorized_offbudget_leg_counts_as_uncategorized(db_session):
 
     count = await services.account_repo.get_uncategorized_count(checking.id)
     assert count == 1, "only the off-budget leg needs categorization"
+
+
+async def test_an_uncategorized_car_sale_is_money_to_assign_and_still_unfiled(db_session):
+    """Selling a car tracked as a non-savings Other Asset. The budget side was
+    never in question — any uncategorized inflow to checking raises To Be
+    Assigned — but the leg is a transfer, and a transfer out of the budget is
+    still unfiled work until it has a category. Both are pinned, because the
+    class change (INCOME, not SAVINGS) touches neither filter."""
+    services = make_services(db_session)
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+    checking = await create_account(db_session, budget, "Checking")
+    car = await create_account(
+        db_session, budget, "Second Car", account_type="other_asset", on_budget=False
+    )
+    assert car.counts_as_savings is False, "an Other Asset defaults to not savings"
+
+    before = await services.budgets.get_budget_summary(budget.id, MONTH)
+    await services.transactions.create(
+        budget.id,
+        TransactionCreate(
+            # A transfer always runs from `account_id` to `transfer_account_id`.
+            account_id=car.id,
+            date=TODAY,
+            amount=Decimal("4500.00"),
+            transfer_account_id=checking.id,
+            cleared="cleared",
+        ),
+    )
+
+    after = await services.budgets.get_budget_summary(budget.id, MONTH)
+    assert after.to_be_assigned - before.to_be_assigned == Decimal("4500.00")
+
+    [leg] = await services.transaction_repo.get_for_account(checking.id)
+    assert leg.transfer_id is not None
+    assert leg.needs_category is True
+    assert await services.account_repo.get_uncategorized_count(checking.id) == 1
+
+    results = await ReportService(db_session).income_vs_expense(budget.id, months=1)
+    assert results[-1]["income"] == Decimal("4500.00")
+    await assert_financial_invariants(db_session, budget.id)

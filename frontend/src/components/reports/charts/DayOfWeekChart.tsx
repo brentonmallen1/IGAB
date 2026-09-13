@@ -130,7 +130,7 @@ export function DayPatternsReport({ budgetId }: Props) {
               days need more discipline.
             </p>
             <p>Click a bar to see that weekday's transactions.</p>
-            <ReportScopeNote scope="on-budget-filterable" />
+            <ReportScopeNote report="day-patterns" />
             <SpendingClassNote />
           </ReportInfoButton>
           <div className="ms-auto">
@@ -255,7 +255,7 @@ export function DayPatternsReport({ budgetId }: Props) {
               <strong>Note:</strong> Subscriptions are excluded — they land on their own schedule,
               whatever you do after being paid.
             </p>
-            <ReportScopeNote scope="on-budget" />
+            <ReportScopeNote report="payday-effect" />
             <SpendingClassNote />
           </ReportInfoButton>
           <div

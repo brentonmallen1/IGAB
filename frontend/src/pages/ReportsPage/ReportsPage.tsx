@@ -11,6 +11,7 @@ import {
 } from '../../stores/reportStore'
 import { ReportFiltersBar } from '../../components/reports/ReportFilters/ReportFiltersBar'
 import { ReportsMobileChrome } from '../../components/reports/ReportsMobileChrome'
+import { ReportsOverviewButton } from '../../components/reports/ReportsOverviewDialog'
 import { PageHeader } from '../../components/common/PageHeader/PageHeader'
 import { useIsMobile } from '../../hooks/useMediaQuery'
 import { DrillDownPanel } from '../../components/reports/DrillDownPanel/DrillDownPanel'
@@ -300,6 +301,7 @@ export function ReportsPage() {
           >
             <Star size={15} fill={isStarred ? 'currentColor' : 'none'} />
           </button>
+          <ReportsOverviewButton className="reports-nav__star" iconSize={15} />
         </div>
       </Surface>
 

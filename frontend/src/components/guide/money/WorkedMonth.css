@@ -1,0 +1,101 @@
+.worked-month {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.worked-month__status {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+/* Its own scroller at phone width, so the page never scrolls sideways. */
+.worked-month__scroll {
+  overflow-x: auto;
+}
+
+.worked-month__table {
+  width: 100%;
+  min-width: 460px;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.worked-month__table th,
+.worked-month__table td {
+  padding: var(--spacing-xs) var(--spacing-md);
+  border-top: 1px solid var(--edge);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.worked-month__table thead th {
+  border-top: none;
+  padding-top: var(--spacing-sm);
+  font-size: var(--font-size-2xs);
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.worked-month__table tbody th {
+  font-weight: 400;
+  color: var(--text-primary);
+}
+
+.worked-month__num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.worked-month__table thead .worked-month__num {
+  text-align: right;
+}
+
+.worked-month__classes {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.worked-month__note {
+  font-size: var(--font-size-2xs);
+  color: var(--text-muted);
+}
+
+.worked-month__totals {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
+  gap: var(--spacing-sm);
+}
+
+.worked-month__figure {
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--surface-sunken);
+  border: 1px solid var(--edge);
+  border-radius: var(--border-radius-sm);
+}
+
+.worked-month__figure dt {
+  font-size: var(--font-size-2xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.worked-month__figure dd {
+  margin: 2px 0 0;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.worked-month__figure--rate {
+  border-color: var(--edge-strong);
+}

@@ -5,6 +5,7 @@ import { apiErrorMessage } from '../../api/client'
 import { useAccountTypes } from '../../api/accountTypes'
 import { BUILTIN_ACCOUNT_TYPES } from '../../constants/accountTypes'
 import { AccountTypeInfoModal } from './AccountTypeInfoModal'
+import { CountsAsSavingsField } from './CountsAsSavingsField'
 import { useAppStore } from '../../stores/appStore'
 import { Dialog } from '../common/Dialog/Dialog'
 import './AccountSettingsModal.css'
@@ -28,6 +29,11 @@ export function AddAccountModal({ onClose, initialTypeKey }: Props) {
     () =>
       typeOptions.find((t) => t.key === (initialTypeKey ?? 'checking'))?.default_on_budget ?? true
   )
+  const [countsAsSavings, setCountsAsSavings] = useState(
+    () =>
+      typeOptions.find((t) => t.key === (initialTypeKey ?? 'checking'))
+        ?.default_counts_as_savings ?? true
+  )
   const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [showTypeInfo, setShowTypeInfo] = useState(false)
@@ -42,7 +48,10 @@ export function AddAccountModal({ onClose, initialTypeKey }: Props) {
     // Picking a type resets the checkbox to that type's default; the user can
     // still override it before saving.
     const picked = typeOptions.find((t) => t.key === key)
-    if (picked) setOnBudget(picked.default_on_budget)
+    if (picked) {
+      setOnBudget(picked.default_on_budget)
+      setCountsAsSavings(picked.default_counts_as_savings)
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -54,6 +63,7 @@ export function AddAccountModal({ onClose, initialTypeKey }: Props) {
         name: name.trim(),
         account_type: accountType,
         on_budget: onBudget,
+        counts_as_savings: countsAsSavings,
         note: note.trim() || undefined,
       })
       onClose()
@@ -140,6 +150,12 @@ export function AddAccountModal({ onClose, initialTypeKey }: Props) {
                   onChange={(e) => setOnBudget(e.target.checked)}
                 />
               </div>
+              <CountsAsSavingsField
+                onBudget={onBudget}
+                classification={typeOptions.find((t) => t.key === accountType)?.classification}
+                checked={countsAsSavings}
+                onChange={setCountsAsSavings}
+              />
               <div className="acct-modal__field">
                 <label className="acct-modal__label">Note</label>
                 <input
@@ -154,7 +170,11 @@ export function AddAccountModal({ onClose, initialTypeKey }: Props) {
         </form>
       </Dialog>
       {showTypeInfo && (
-        <AccountTypeInfoModal types={typeRows} onClose={() => setShowTypeInfo(false)} />
+        <AccountTypeInfoModal
+          types={typeRows}
+          budgetId={budgetId}
+          onClose={() => setShowTypeInfo(false)}
+        />
       )}
     </>
   )

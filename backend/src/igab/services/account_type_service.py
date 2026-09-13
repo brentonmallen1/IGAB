@@ -30,14 +30,22 @@ async def resolve_type(session: AsyncSession, budget_id: uuid.UUID, key: str) ->
     return row
 
 
-def apply_type(type_row: AccountType, on_budget: bool | None = None) -> dict[str, Any]:
-    """Account field values the type dictates: an explicit on_budget wins over
-    the type's default; classification always follows the type."""
+def apply_type(
+    type_row: AccountType,
+    on_budget: bool | None = None,
+    counts_as_savings: bool | None = None,
+) -> dict[str, Any]:
+    """Account field values the type dictates at creation: an explicit
+    on_budget or counts_as_savings wins over the type's default; classification
+    always follows the type."""
     return {
         "account_type_id": type_row.id,
         "account_type": type_row.key,
         "classification": type_row.classification,
         "on_budget": type_row.default_on_budget if on_budget is None else on_budget,
+        "counts_as_savings": (
+            type_row.default_counts_as_savings if counts_as_savings is None else counts_as_savings
+        ),
     }
 
 
@@ -60,6 +68,7 @@ async def ensure_account_types_seeded(session: AsyncSession, budget_id: uuid.UUI
                     label=builtin.label,
                     classification=builtin.classification,
                     default_on_budget=builtin.default_on_budget,
+                    default_counts_as_savings=builtin.default_counts_as_savings,
                     description=builtin.description,
                     is_system=True,
                     sort_order=builtin.sort_order,

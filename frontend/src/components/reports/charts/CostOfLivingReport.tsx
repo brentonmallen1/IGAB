@@ -135,7 +135,7 @@ export function CostOfLivingReport({ budgetId }: Props) {
             Each group&apos;s share is of the cost-of-living total, not of income, so the shares add
             to 100%.
           </p>
-          <ReportScopeNote scope="on-budget" />
+          <ReportScopeNote report="cost-of-living" />
         </ReportInfoButton>
         <ReportRangeSelect />
         <div style={{ marginLeft: 'auto' }}>

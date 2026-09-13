@@ -38,7 +38,8 @@ import { confirmAsync } from '../../stores/confirmStore'
 import { SharingModal } from '../../components/budgets/SharingModal'
 import { CloneBudgetModal } from '../../components/budgets/CloneBudgetModal'
 import { useCurrentUser } from '../../api/auth'
-import { BUILTIN_ACCOUNT_TYPES } from '../../constants/accountTypes'
+import { BUILTIN_ACCOUNT_TYPES, COUNTS_AS_SAVINGS_HELP } from '../../constants/accountTypes'
+import { isTrackedAsset } from '../../utils/accountKinds'
 import { AccountTypeInfoModal } from '../../components/accounts/AccountTypeInfoModal'
 import {
   activityLabel,
@@ -725,6 +726,34 @@ export function BudgetSelectorPage() {
                                 />
                                 On budget
                               </label>
+                              {!skipped &&
+                                isTrackedAsset({
+                                  on_budget: choice?.on_budget ?? a.suggested_on_budget,
+                                  classification:
+                                    ACCOUNT_TYPE_OPTIONS.find((o) => o.key === typeKey)
+                                      ?.classification ?? null,
+                                }) && (
+                                  <label
+                                    className="ynab-mapping__savings-toggle"
+                                    title={COUNTS_AS_SAVINGS_HELP}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={
+                                        choice?.counts_as_savings ?? a.suggested_counts_as_savings
+                                      }
+                                      onChange={(e) =>
+                                        updateChoice(a.name, {
+                                          counts_as_savings: e.target.checked,
+                                        })
+                                      }
+                                    />
+                                    Counts as savings
+                                    <span className="ynab-mapping__savings-help">
+                                      {COUNTS_AS_SAVINGS_HELP}
+                                    </span>
+                                  </label>
+                                )}
                               {warning && <p className="ynab-mapping__warn">{warning}</p>}
                             </div>
                           )

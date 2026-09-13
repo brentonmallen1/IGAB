@@ -1,0 +1,36 @@
+.class-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 1px var(--spacing-sm);
+  border: 1px solid var(--edge-strong);
+  border-radius: 999px;
+  background: var(--surface-sunken);
+  color: var(--text-primary);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+}
+
+.class-chip__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
+/* The Event Timeline's roles, the same tokens (EventTimeline.css). */
+.class-chip--income .class-chip__dot {
+  background: var(--color-positive);
+}
+
+.class-chip--expense .class-chip__dot {
+  background: var(--color-negative);
+}
+
+.class-chip--savings .class-chip__dot {
+  background: var(--chart-neutral);
+}
+
+.class-chip--neutral .class-chip__dot {
+  background: var(--text-muted);
+}

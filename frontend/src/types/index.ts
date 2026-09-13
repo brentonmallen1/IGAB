@@ -30,6 +30,10 @@ export interface Account {
   name: string
   account_type: AccountType
   on_budget: boolean
+  /** Whether transfers with this account count as saving — read only for an
+   *  off-budget asset (`utils/accountKinds.isTrackedAsset`). Served from the
+   *  column; the rule is `domain/activity_class.py` rules 3 and 5. */
+  counts_as_savings: boolean
   classification: AccountClassification | null
   is_closed: boolean
   sort_order: number

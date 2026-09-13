@@ -17,6 +17,8 @@ class AccountCreate(ApiModel):
     account_type: str = AccountTypeKey
     # None = use the type's default_on_budget
     on_budget: bool | None = None
+    # None = use the type's default_counts_as_savings
+    counts_as_savings: bool | None = None
     note: str | None = None
     sort_order: int = 0
 
@@ -30,6 +32,9 @@ class AccountUpdate(ApiModel):
     budget_start_date: date | None = None
     account_type: str | None = Field(default=None, pattern=r"^[a-z0-9_]{1,30}$")
     on_budget: bool | None = None
+    #: Whether transfers with this off-budget asset count as saving. A type
+    #: change leaves it alone, the same as `on_budget`.
+    counts_as_savings: bool | None = None
     is_closed: bool | None = None
     note: str | None = None
     sort_order: int | None = None
@@ -45,6 +50,9 @@ class AccountResponse(ApiModel):
     name: str
     account_type: str
     on_budget: bool
+    #: Required: served from the column, and a path that forgot it must raise
+    #: rather than report a car as savings.
+    counts_as_savings: bool
     classification: str | None
     is_closed: bool
     sort_order: int

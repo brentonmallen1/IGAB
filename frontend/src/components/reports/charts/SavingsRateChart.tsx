@@ -79,6 +79,11 @@ export function SavingsRateReport({ budgetId }: Props) {
             counting it would make this number climb in a good market while you did nothing.
           </p>
           <p>
+            Only a tracked account that <strong>counts as savings</strong> is saving. Selling a car
+            or a house tracked as an asset counts as income, and buying one as spending — turn the
+            setting off on the account for things like that.
+          </p>
+          <p>
             A month with no income shows a gap rather than 0%: having no income recorded isn’t the
             same as saving none of it.
           </p>
@@ -86,7 +91,7 @@ export function SavingsRateReport({ budgetId }: Props) {
             Open the rate to see where the savings went, what paid down debt and where the income
             came from.
           </p>
-          <ReportScopeNote scope="on-budget" />
+          <ReportScopeNote report="savings-rate" />
         </ReportInfoButton>
         <p className="report-section__subtitle">Share of income kept</p>
         <div className="flex-row ms-auto">

@@ -131,7 +131,7 @@ export function LiabilitiesReport({ budgetId }: Props) {
             Click a row for the full deep-dive: amortization schedule, paydown chart, payoff pill,
             and what-if extra payments.
           </p>
-          <ReportScopeNote scope="liabilities" />
+          <ReportScopeNote report="liabilities" />
         </ReportInfoButton>
         <div className="flex-row ms-auto" style={{ flexWrap: 'wrap' }}>
           {presentTypes.length > 1 &&

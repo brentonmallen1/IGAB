@@ -118,8 +118,9 @@ async def test_full_tier_shape_and_texture(db_session):
     counts = gen.result
 
     accounts = await AccountRepository(db_session).get_all(budget.id, include_closed=True)
-    # Ten household accounts plus the eight card-shape demos.
-    assert counts.accounts == 25
+    # The household accounts (a sold second car among them) plus the eight
+    # card-shape demos.
+    assert counts.accounts == 26
     types = {a.account_type for a in accounts}
     assert {
         "checking",
@@ -261,6 +262,38 @@ async def test_endpoint_accepts_the_tier(api_client):
     )
     assert response.status_code == 201, response.text
     counts = response.json()["counts"]
-    assert counts["accounts"] == 25
+    assert counts["accounts"] == 26
     assert counts["transactions"] > 1500
     assert counts["liabilities"] == 14
+
+
+async def test_the_sold_car_demonstrates_a_non_savings_asset(db_session):
+    """The demo's one tracked asset that is not savings. Its sale arrives in
+    checking uncategorized and must read as income — the behaviour a person
+    would otherwise have to build by hand to see."""
+    from igab.domain.activity_class import ACTIVITY_CLASS, ActivityClass, apply_class_joins
+    from igab.sample_budget.data import VEHICLE
+
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+    await generate_full(db_session, budget)
+
+    accounts = await AccountRepository(db_session).get_all(budget.id, include_closed=True)
+    [car] = [a for a in accounts if a.name == VEHICLE]
+    assert (car.account_type, car.on_budget, car.counts_as_savings) == ("other_asset", False, False)
+    others = [a for a in accounts if a.account_type == "other_asset" and a.id != car.id]
+    assert others and all(a.counts_as_savings for a in others), "the HSA, ESPP and crypto save"
+
+    far_legs = select(Transaction.transfer_id).where(
+        Transaction.account_id == car.id, Transaction.transfer_id.isnot(None)
+    )
+    rows = (
+        await db_session.execute(
+            apply_class_joins(
+                select(Transaction.id, Transaction.amount, ACTIVITY_CLASS).where(
+                    Transaction.id.in_(far_legs)
+                )
+            )
+        )
+    ).all()
+    assert [(r[1], r[2]) for r in rows] == [(Decimal("4500.0000"), ActivityClass.INCOME.value)]

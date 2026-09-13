@@ -15,7 +15,7 @@ from decimal import Decimal
 
 import pytest
 
-from igab.domain.import_mapping import suggest_account_type
+from igab.domain.import_mapping import suggest_account_type, suggest_counts_as_savings
 
 POS = Decimal("1000")
 NEG = Decimal("-1000")
@@ -200,3 +200,48 @@ class TestInflectedForms:
         """ "discover" (the card) must still not fire on "Discovery" — the
         reason token matching was introduced in the first place."""
         assert suggest_account_type(name)[0] != "credit_card"
+
+
+class TestCountsAsSavings:
+    """Whether an off-budget asset is saved into or is a thing owned. A car
+    guessed as savings says buying it saved the price and selling it un-saved
+    it; the guess only pre-fills the mapping step, which can change it."""
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "Second Car",
+            "Vehicle A",
+            "Maple St House",
+            "Birchwood Property Ferry House",
+            "Lakeside Condo",
+            "Harborstone Boat",
+            "Cedar Grove Land",
+            "Real-Estate Holdings",
+            "Motorcycle",
+            "RV",
+            "Cars",  # stems reach inflections, as for the type guess
+        ],
+    )
+    def test_property_and_vehicles_are_not_savings(self, name):
+        assert suggest_counts_as_savings(name) is False
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "Meridian HSA",
+            "Crypto Wallet",
+            "TreasuryDirect",
+            "Fairview Brokerage",
+            "Northgate ESPP",
+            "Cascade Point HYSA",
+            "Northwind Holdings",  # unrecognised keeps the old behaviour: savings
+        ],
+    )
+    def test_everything_else_is_savings(self, name):
+        assert suggest_counts_as_savings(name) is True
+
+    @pytest.mark.parametrize("name", ["Carmel Fund", "Scarborough Trust", "Homestead Fund"])
+    def test_a_vehicle_word_inside_another_word_does_not_fire(self, name):
+        """Token matching, like the type guess: "car" is not in "Carmel"."""
+        assert suggest_counts_as_savings(name) is True
