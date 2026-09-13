@@ -4,13 +4,14 @@ import { useCreateAsset, useDeleteAsset, useUpdateAsset, type Asset } from '../.
 import { confirmAsync } from '../../stores/confirmStore'
 import { parseAmountInput } from '../../utils/money'
 import { Dialog } from '../common/Dialog/Dialog'
-import './AssetSettingsModal.css'
 
 const TYPES = [
   { value: 'property', label: 'Property' },
   { value: 'vehicle', label: 'Vehicle' },
   { value: 'other', label: 'Something else' },
 ] as const
+
+const FORM_ID = 'asset-settings-form'
 
 interface Props {
   budgetId: string
@@ -80,13 +81,47 @@ export function AssetSettingsModal({ budgetId, asset, onClose, onDeleted }: Prop
   const pending = createAsset.isPending || updateAsset.isPending
 
   return (
-    <Dialog title={asset ? asset.name : "Track an asset's value"} onClose={onClose} historyKey="asset">
-      <form className="asset-modal" onSubmit={handleSubmit}>
-        <label className="asset-modal__field">
+    <Dialog
+      title={asset ? asset.name : "Track an asset's value"}
+      onClose={onClose}
+      historyKey="asset"
+      footer={
+        <div className="dialog-actions">
+          {asset && (
+            <button
+              type="button"
+              className="dialog-btn dialog-btn--danger"
+              onClick={handleDelete}
+              disabled={deleteAsset.isPending}
+            >
+              Stop tracking
+            </button>
+          )}
+          {error && <span className="dialog-form__error">{error}</span>}
+          <div className="dialog-actions__end">
+            <button type="button" className="dialog-btn dialog-btn--secondary" onClick={onClose}>
+              Cancel
+            </button>
+            {/* The footer is pinned outside the form, so the submit button
+                reaches it by id rather than by containment. */}
+            <button
+              type="submit"
+              form={FORM_ID}
+              className="dialog-btn dialog-btn--primary"
+              disabled={pending}
+            >
+              {pending ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        </div>
+      }
+    >
+      <form id={FORM_ID} className="dialog-form" onSubmit={handleSubmit}>
+        <label className="dialog-form__field">
           <span>Name</span>
           <input value={name} onChange={(e) => setName(e.target.value)} autoFocus={!asset} />
         </label>
-        <label className="asset-modal__field">
+        <label className="dialog-form__field">
           <span>Kind</span>
           <select value={assetType ?? 'other'} onChange={(e) => setAssetType(e.target.value)}>
             {TYPES.map((t) => (
@@ -98,7 +133,7 @@ export function AssetSettingsModal({ budgetId, asset, onClose, onDeleted }: Prop
         </label>
         {!asset && (
           <>
-            <label className="asset-modal__field">
+            <label className="dialog-form__field">
               <span>What is it worth?</span>
               <input
                 type="number"
@@ -110,31 +145,12 @@ export function AssetSettingsModal({ budgetId, asset, onClose, onDeleted }: Prop
                 placeholder="Optional — you can add this later"
               />
             </label>
-            <label className="asset-modal__field">
+            <label className="dialog-form__field">
               <span>As of (optional — defaults to today)</span>
               <input type="date" value={asOf} onChange={(e) => setAsOf(e.target.value)} />
             </label>
           </>
         )}
-        {error && <p className="asset-modal__error">{error}</p>}
-        <div className="asset-modal__actions">
-          {asset && (
-            <button
-              type="button"
-              className="asset-modal__delete"
-              onClick={handleDelete}
-              disabled={deleteAsset.isPending}
-            >
-              Stop tracking
-            </button>
-          )}
-          <button type="button" className="asset-modal__cancel" onClick={onClose}>
-            Cancel
-          </button>
-          <button type="submit" className="asset-modal__submit" disabled={pending}>
-            {pending ? 'Saving…' : 'Save'}
-          </button>
-        </div>
       </form>
     </Dialog>
   )

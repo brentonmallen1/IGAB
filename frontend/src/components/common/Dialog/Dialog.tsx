@@ -4,6 +4,7 @@ import { useIsMobile } from '../../../hooks/useMediaQuery'
 import { Modal } from '../Modal/Modal'
 import { BottomSheet } from '../BottomSheet/BottomSheet'
 import './Dialog.css'
+import './DialogForm.css'
 
 /**
  * A dialog that is a centred panel on a desktop and a bottom sheet on a phone.

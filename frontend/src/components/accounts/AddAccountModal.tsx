@@ -1,14 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
-import { HelpCircle } from 'lucide-react'
 import { useCreateAccount } from '../../api/accounts'
 import { apiErrorMessage } from '../../api/client'
 import { useAccountTypes } from '../../api/accountTypes'
 import { BUILTIN_ACCOUNT_TYPES } from '../../constants/accountTypes'
 import { AccountTypeInfoModal } from './AccountTypeInfoModal'
+import { AccountTypeField } from './AccountTypeField'
 import { CountsAsSavingsField } from './CountsAsSavingsField'
 import { useAppStore } from '../../stores/appStore'
 import { Dialog } from '../common/Dialog/Dialog'
-import './AccountSettingsModal.css'
 
 interface Props {
   onClose: () => void
@@ -81,92 +80,64 @@ export function AddAccountModal({ onClose, initialTypeKey }: Props) {
         title="New Account"
         onClose={onClose}
         historyKey="add-account"
-        className="acct-modal"
         footer={
-          <div className="acct-modal__footer">
-            {error && <span className="acct-modal__save-error">{error}</span>}
-            <button
-              type="button"
-              className="acct-modal__btn acct-modal__btn--cancel"
-              onClick={onClose}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              form="add-account-form"
-              className="acct-modal__btn acct-modal__btn--save"
-              disabled={createAccount.isPending || !name.trim()}
-            >
-              {createAccount.isPending ? 'Creating…' : 'Create Account'}
-            </button>
+          <div className="dialog-actions">
+            {error && <span className="dialog-form__error">{error}</span>}
+            <div className="dialog-actions__end">
+              <button type="button" className="dialog-btn dialog-btn--secondary" onClick={onClose}>
+                Cancel
+              </button>
+              <button
+                type="submit"
+                form="add-account-form"
+                className="dialog-btn dialog-btn--primary"
+                disabled={createAccount.isPending || !name.trim()}
+              >
+                {createAccount.isPending ? 'Creating…' : 'Create Account'}
+              </button>
+            </div>
           </div>
         }
       >
-        <form id="add-account-form" onSubmit={handleSubmit}>
-          <div className="acct-modal__body">
-            <div className="acct-modal__section">
-              <div className="acct-modal__field">
-                <label className="acct-modal__label">Name</label>
-                <input
-                  ref={nameRef}
-                  className="acct-modal__input"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  required
-                  placeholder="e.g. Chase Checking"
-                />
-              </div>
-              <div className="acct-modal__field">
-                <label className="acct-modal__label">
-                  Type
-                  <button
-                    type="button"
-                    className="acct-modal__type-help"
-                    onClick={() => setShowTypeInfo(true)}
-                    aria-label="What do account types mean?"
-                    title="What do account types mean?"
-                  >
-                    <HelpCircle size={12} />
-                  </button>
-                </label>
-                <select
-                  className="acct-modal__input"
-                  value={accountType}
-                  onChange={(e) => handleTypeChange(e.target.value)}
-                >
-                  {typeOptions.map((t) => (
-                    <option key={t.key} value={t.key}>
-                      {t.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="acct-modal__field acct-modal__field--row">
-                <label className="acct-modal__label">On Budget</label>
-                <input
-                  type="checkbox"
-                  checked={onBudget}
-                  onChange={(e) => setOnBudget(e.target.checked)}
-                />
-              </div>
-              <CountsAsSavingsField
-                onBudget={onBudget}
-                classification={typeOptions.find((t) => t.key === accountType)?.classification}
-                checked={countsAsSavings}
-                onChange={setCountsAsSavings}
-              />
-              <div className="acct-modal__field">
-                <label className="acct-modal__label">Note</label>
-                <input
-                  className="acct-modal__input"
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  placeholder="Optional note…"
-                />
-              </div>
-            </div>
-          </div>
+        <form id="add-account-form" className="dialog-form" onSubmit={handleSubmit}>
+          <label className="dialog-form__field">
+            <span>Name</span>
+            <input
+              ref={nameRef}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              placeholder="e.g. Chase Checking"
+            />
+          </label>
+          <AccountTypeField
+            value={accountType}
+            options={typeOptions}
+            onChange={handleTypeChange}
+            onHelp={() => setShowTypeInfo(true)}
+          />
+          <label className="dialog-form__field dialog-form__field--inline">
+            <input
+              type="checkbox"
+              checked={onBudget}
+              onChange={(e) => setOnBudget(e.target.checked)}
+            />
+            <span>On budget</span>
+          </label>
+          <CountsAsSavingsField
+            onBudget={onBudget}
+            classification={typeOptions.find((t) => t.key === accountType)?.classification}
+            checked={countsAsSavings}
+            onChange={setCountsAsSavings}
+          />
+          <label className="dialog-form__field">
+            <span>Note</span>
+            <input
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Optional note…"
+            />
+          </label>
         </form>
       </Dialog>
       {showTypeInfo && (

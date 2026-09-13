@@ -4,7 +4,7 @@
  * and offered Checking and Savings, because nothing filtered the picker.
  */
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { Liability } from '../../api/liabilities'
 import { LiabilitySettingsModal } from './LiabilitySettingsModal'
@@ -75,6 +75,13 @@ function companion(overrides: Partial<Liability> = {}): Liability {
     ...overrides,
   }
 }
+
+beforeEach(async () => {
+  // Every test opens the Dialog; drain the deferred history.back() of the last.
+  await new Promise((r) => setTimeout(r, 0))
+  await new Promise((r) => setTimeout(r, 0))
+  window.history.replaceState(null, '')
+})
 
 describe('LiabilitySettingsModal', () => {
   it('shows a companion its account read-only, with no way to move it', () => {

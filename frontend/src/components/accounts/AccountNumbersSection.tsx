@@ -31,9 +31,9 @@ export function AccountNumbersSection({ account, onSave }: Props) {
   if (!account) return null
   if (config && !config.configured) {
     return (
-      <div className="acct-modal__field">
-        <label className="acct-modal__label">Account numbers</label>
-        <p className="acct-modal__hint">
+      <div className="dialog-form__field">
+        <span>Account numbers</span>
+        <p className="dialog-form__hint">
           Not available: this server has no encryption key, so there is nowhere safe to keep them.
           Set SIMPLEFIN_ENCRYPTION_KEY to enable both bank sync and this.
         </p>
@@ -84,37 +84,35 @@ export function AccountNumbersSection({ account, onSave }: Props) {
     revealed ? (value ?? '—') : known ? (tail ? `••••${tail}` : '•••••••••') : '—'
 
   return (
-    <div className="acct-modal__field">
-      <label className="acct-modal__label">Account numbers</label>
+    <div className="dialog-form__field">
+      <span>Account numbers</span>
       {editing ? (
         <form className="acct-modal__numbers-form" onSubmit={save}>
           <input
-            className="acct-modal__input"
             value={routingNumber}
             onChange={(e) => setRoutingNumber(e.target.value)}
             placeholder="Routing number"
             autoComplete="off"
           />
           <input
-            className="acct-modal__input"
             value={accountNumber}
             onChange={(e) => setAccountNumber(e.target.value)}
             placeholder="Account number"
             autoComplete="off"
           />
           <div className="acct-modal__numbers-actions">
-            <button type="submit" className="acct-modal__sf-link-btn" disabled={busy}>
+            <button type="submit" className="dialog-btn dialog-btn--secondary" disabled={busy}>
               {busy ? 'Saving…' : 'Save numbers'}
             </button>
             <button
               type="button"
-              className="acct-modal__sf-cancel"
+              className="dialog-btn dialog-btn--secondary"
               onClick={() => setEditing(false)}
             >
               Cancel
             </button>
           </div>
-          <p className="acct-modal__hint">
+          <p className="dialog-form__hint">
             Stored encrypted; leave both blank and save to remove them. They never appear in the
             activity log.
           </p>
@@ -169,7 +167,7 @@ export function AccountNumbersSection({ account, onSave }: Props) {
             </button>
             <button
               type="button"
-              className="acct-modal__sf-cancel"
+              className="dialog-btn dialog-btn--secondary"
               onClick={() => setEditing(true)}
             >
               Change
@@ -177,7 +175,11 @@ export function AccountNumbersSection({ account, onSave }: Props) {
           </div>
         </div>
       ) : (
-        <button type="button" className="acct-modal__sf-link-btn" onClick={() => setEditing(true)}>
+        <button
+          type="button"
+          className="dialog-btn dialog-btn--secondary acct-modal__start"
+          onClick={() => setEditing(true)}
+        >
           Add routing / account number…
         </button>
       )}
