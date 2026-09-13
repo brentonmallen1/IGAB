@@ -29,11 +29,6 @@
   color: var(--text-secondary);
 }
 
-/* The shared field rule widens every input; a checkbox keeps its own size. */
-.money-explorer__toggle input {
-  width: auto;
-}
-
 .money-explorer__status {
   margin: 0;
   font-size: var(--font-size-sm);
