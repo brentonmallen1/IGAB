@@ -658,7 +658,6 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
             </div>
           )}
         </details>
-
       </form>
     </Dialog>
   )

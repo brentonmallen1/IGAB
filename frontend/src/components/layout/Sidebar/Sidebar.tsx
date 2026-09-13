@@ -634,9 +634,7 @@ export function Sidebar() {
         )}
 
         {activeModal?.kind === 'add-account' && <AddAccountModal onClose={closeModal} />}
-        {assetModalOpen && (
-          <AddAssetFlow onClose={() => setAssetModalOpen(false)} />
-        )}
+        {assetModalOpen && <AddAssetFlow onClose={() => setAssetModalOpen(false)} />}
       </div>
     </aside>
   )
