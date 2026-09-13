@@ -22,7 +22,7 @@ import { TargetEditor } from '../../budget/TargetEditor'
 import { BudgetFilterModal } from '../../budget/BudgetFilterModal/BudgetFilterModal'
 import { BudgetViewModal } from '../../budget/BudgetViewModal/BudgetViewModal'
 import { useAppStore } from '../../../stores/appStore'
-import { stripComments, topLevelRules } from '../../../test-utils/cssRules'
+import { rulesWithContext, stripComments, topLevelRules } from '../../../test-utils/cssRules'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ScheduledTransactionEditor } from '../../scheduled/ScheduledTransactionEditor'
 import { DatedAmountForm } from '../DatedAmountForm/DatedAmountForm'
@@ -281,6 +281,16 @@ describe.each(Object.entries(SWEEP_C_FOOTERS))('%s', (_, dialog) => {
 
 describe('DialogForm.css', () => {
   const css = stripComments(readFileSync(resolve(__dirname, 'DialogForm.css'), 'utf8'))
+
+  // The installed iOS app is the primary phone target; a converted dialog's
+  // buttons lost their own 44px floor when they moved onto the shared button.
+  it('gives a dialog button the touch-target floor on a phone', () => {
+    const phone = rulesWithContext(css).find(
+      (r) =>
+        r.selector.trim() === '.dialog-btn' && r.atRules.some((a) => a.includes('max-width: 768px'))
+    )
+    expect(phone?.body).toMatch(/min-height:\s*var\(--tap-min\)/)
+  })
   // Selectors with whitespace collapsed: prettier breaks a long :where() over lines.
   const rules = topLevelRules(css).map(([sel, body]) => [sel.replace(/\s+/g, ' ').trim(), body])
 

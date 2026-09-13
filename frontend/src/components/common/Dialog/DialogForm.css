@@ -167,6 +167,13 @@
   .dialog-form__row {
     flex-direction: column;
   }
+
+  /* A dialog's actions are the thumb's target on a phone. The forms converted
+     onto these buttons (the dated-figure form, the schedule editor) each had
+     their own 44px floor; one rule here keeps it for all of them. */
+  .dialog-btn {
+    min-height: var(--tap-min);
+  }
 }
 
 /* ─── added by sweep A ─── */
