@@ -67,3 +67,17 @@ describe('AddAccountModal counts-as-savings toggle', () => {
     )
   })
 })
+
+describe('AddAccountModal submit', () => {
+  // Create Account was disabled until a name was typed, so it drew at half
+  // opacity beside the valued-asset form's Save: one primary button, two
+  // colours. Every dialog-form primary stays enabled and says what is missing.
+  it('stays enabled with no name and asks for one on submit', async () => {
+    render(<AddAccountModal onClose={vi.fn()} />)
+    const create = screen.getByRole('button', { name: 'Create Account' })
+    expect(create).toBeEnabled()
+    await userEvent.click(create)
+    expect(screen.getByText('Give the account a name')).toBeInTheDocument()
+    expect(createMutate).not.toHaveBeenCalled()
+  })
+})

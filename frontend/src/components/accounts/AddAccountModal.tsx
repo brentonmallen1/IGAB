@@ -55,7 +55,11 @@ export function AddAccountModal({ onClose, initialTypeKey }: Props) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!name.trim() || !budgetId) return
+    if (!budgetId) return
+    if (!name.trim()) {
+      setError('Give the account a name')
+      return
+    }
     setError(null)
     try {
       await createAccount.mutateAsync({
@@ -91,7 +95,7 @@ export function AddAccountModal({ onClose, initialTypeKey }: Props) {
                 type="submit"
                 form="add-account-form"
                 className="dialog-btn dialog-btn--primary"
-                disabled={createAccount.isPending || !name.trim()}
+                disabled={createAccount.isPending}
               >
                 {createAccount.isPending ? 'Creating…' : 'Create Account'}
               </button>
@@ -106,7 +110,6 @@ export function AddAccountModal({ onClose, initialTypeKey }: Props) {
               ref={nameRef}
               value={name}
               onChange={(e) => setName(e.target.value)}
-              required
               placeholder="e.g. Chase Checking"
             />
           </label>

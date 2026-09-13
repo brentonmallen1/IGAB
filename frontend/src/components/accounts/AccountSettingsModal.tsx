@@ -83,7 +83,10 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
-    if (!name.trim()) return
+    if (!name.trim()) {
+      setSaveError('Give the account a name')
+      return
+    }
     setSaveError(null)
     try {
       await updateAccount.mutateAsync({
@@ -180,7 +183,7 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
                 type="submit"
                 form="acct-settings-form"
                 className="dialog-btn dialog-btn--primary"
-                disabled={updateAccount.isPending || !name.trim()}
+                disabled={updateAccount.isPending}
               >
                 {updateAccount.isPending ? 'Saving…' : 'Save'}
               </button>
@@ -191,7 +194,7 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
         <form id="acct-settings-form" className="dialog-form" onSubmit={handleSave}>
           <label className="dialog-form__field">
             <span>Name</span>
-            <input ref={nameRef} value={name} onChange={(e) => setName(e.target.value)} required />
+            <input ref={nameRef} value={name} onChange={(e) => setName(e.target.value)} />
           </label>
           <AccountTypeField
             value={accountType}
@@ -325,7 +328,9 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
                       >
                         Cancel
                       </button>
-                      {linkError && <span className="dialog-form__error acct-modal__sf-error">{linkError}</span>}
+                      {linkError && (
+                        <span className="dialog-form__error acct-modal__sf-error">{linkError}</span>
+                      )}
                     </div>
                   )}
                 </div>
