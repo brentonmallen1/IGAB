@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 import type {
   CostOfLivingReport,
@@ -29,6 +29,7 @@ import type {
   SpendingTrendsReport,
   IncomeBySourceReport,
   CategoryHistoryReport,
+  ReportSettings,
 } from '../types'
 import { ROOT } from './queryKeys'
 
@@ -445,6 +446,56 @@ export function useEmergencyCoverageReport(budgetId: string | null, months = 12)
     },
     enabled: !!budgetId,
     staleTime: STALE,
+  })
+}
+
+/** The budget's report settings — `services/report_settings.py`. */
+export function useReportSettings(budgetId: string | null) {
+  return useQuery({
+    queryKey: [ROOT.reportSettings, budgetId],
+    queryFn: async () => {
+      const { data } = await apiClient.get<ReportSettings>(`/${budgetId}/reports/settings`)
+      return data
+    },
+    enabled: !!budgetId,
+    staleTime: STALE,
+  })
+}
+
+/**
+ * Everything that reads the essentials figure, which the spread setting moves:
+ * the Overview card, the Essentials and Emergency Fund reports, the Guide's
+ * signals (its emergency-fund target and starter), the checkup and the sizer.
+ * One list, read by the setting's mutation and by undo, so flipping the
+ * setting and undoing the flip stale the same surfaces.
+ */
+export function invalidateAfterReportSettings(qc: QueryClient, budgetId: string | null) {
+  const keys = [
+    [ROOT.reportSettings, budgetId],
+    [ROOT.reports, 'dashboard', budgetId],
+    [ROOT.reports, 'essentials', budgetId],
+    [ROOT.reports, 'emergency-fund', budgetId],
+    [ROOT.guideSignals, budgetId],
+    [ROOT.guideCheckup, budgetId],
+    [ROOT.guideScenario, 'emergency-fund', budgetId],
+  ]
+  return Promise.all(keys.map((queryKey) => qc.invalidateQueries({ queryKey })))
+}
+
+export function useSetReportSettings(budgetId: string | null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (settings: ReportSettings) => {
+      const { data } = await apiClient.put<ReportSettings>(
+        `/${budgetId}/reports/settings`,
+        settings
+      )
+      return data
+    },
+    onSuccess: (data) => {
+      qc.setQueryData([ROOT.reportSettings, budgetId], data)
+      return invalidateAfterReportSettings(qc, budgetId)
+    },
   })
 }
 

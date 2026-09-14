@@ -97,3 +97,10 @@
   font-size: var(--font-size-sm);
   white-space: nowrap;
 }
+
+/* The essentials card's other figure (spread or as paid), on its own line
+   under the reserve so neither number reads as part of the other. */
+.overview-report__sub-line {
+  display: block;
+  font-size: var(--font-size-xs);
+}

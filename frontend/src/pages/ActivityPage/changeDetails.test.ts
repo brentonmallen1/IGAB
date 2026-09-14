@@ -37,6 +37,31 @@ function change(over: Partial<Change>): Change {
 }
 
 describe('summarizeChange', () => {
+  it('says which way the spread-yearly-bills setting was flipped', () => {
+    const flip = (value: unknown) =>
+      summarizeChange(
+        change({
+          entity_type: 'guide_state',
+          action: 'update',
+          before: { _key: 'reports:spread_sinking_funds', _value: null },
+          after: { _key: 'reports:spread_sinking_funds', _value: value },
+        }),
+        names
+      )
+    expect(flip({ on: false })).toBe('Spread yearly bills over 12 months: off')
+    // Turning it back on deletes the row: `_value` null is on.
+    expect(flip(null)).toBe('Spread yearly bills over 12 months: on')
+  })
+
+  it('leaves a guide setting it cannot name without a summary', () => {
+    const row = change({
+      entity_type: 'guide_state',
+      action: 'update',
+      after: { _key: 'prefs', _value: { checkup: false } },
+    })
+    expect(summarizeChange(row, names)).toBe('')
+  })
+
   it('names the payee and account on a transaction, not their ids', () => {
     const summary = summarizeChange(
       change({ after: { amount: '-42.50', payee_id: PAYEE, account_id: ACCOUNT } }),

@@ -443,6 +443,27 @@ describe('OverviewReport metric cards', () => {
     expect(screen.getByText('Groceries')).toBeInTheDocument()
   })
 
+  it('names the as-paid essentials figure under the spread one', () => {
+    setQuery({
+      data: {
+        net_worth: '0',
+        burn_rate_30: '0',
+        burn_rate_90: '0',
+        income_this_month: '0',
+        outflows_this_month: '0',
+        top_categories: [],
+        means_months: [],
+        essentials_monthly: 2200,
+        essentials: { as_paid: 2800, spread: 2200, spread_on: true, monthly: 2200 },
+      },
+    })
+    renderReport(<OverviewReport budgetId="b1" />)
+    expect(card('Essentials / month')).toEqual({
+      value: '$2,200.00',
+      sub: '6-month reserve: $13,200.00$2,200.00/mo spread · $2,800.00/mo as paid',
+    })
+  })
+
   it('asks for categories tagged Essential, not payees, before there is a figure', () => {
     // Essential is a category tag only; a payee tag counts for nothing. The
     // first-run prompt still said "Tag categories or payees Essential".
@@ -1618,6 +1639,7 @@ describe('EssentialsReport table footer', () => {
         window_start: '2026-06-01',
         window_end: '2026-08-31',
         essentials_90d: 6.67,
+        essentials: { as_paid: 6.67, spread: 6.67, spread_on: true, monthly: 6.67 },
         monthly_total_average: 6.67,
         categories: [
           {
@@ -1653,6 +1675,46 @@ describe('EssentialsReport table footer', () => {
   })
 })
 
+describe('EssentialsReport headline', () => {
+  const report = (essentials: object) => ({
+    tagged: true,
+    months: 12,
+    window_start: '2025-09-01',
+    window_end: '2026-08-31',
+    essentials_90d: 0,
+    essentials,
+    monthly_total_average: 2000,
+    categories: [],
+    monthly_series: [],
+    reserve: [],
+    roadmap_range: [3, 6],
+    emergency_fund_balance: null,
+    emergency_fund_source: null,
+    runway_months: null,
+    class_excluded: [],
+  })
+
+  it('headlines the figure the setting picks and names the other', () => {
+    setQuery({
+      data: report({ as_paid: 2800, spread: 2200, spread_on: false, monthly: 2800 }),
+    })
+    renderReport(<EssentialsReport budgetId="b1" />)
+    expect(card('Essentials / month')).toEqual({
+      value: '$2,800.00',
+      sub: '$2,800.00/mo as paid · $2,200.00/mo spread',
+    })
+    expect(
+      screen.getByRole('checkbox', { name: 'Spread yearly bills over 12 months' })
+    ).toBeInTheDocument()
+  })
+
+  it('keeps its plain sub-line when the two agree', () => {
+    setQuery({ data: report({ as_paid: 2000, spread: 2000, spread_on: true, monthly: 2000 }) })
+    renderReport(<EssentialsReport budgetId="b1" />)
+    expect(card('Essentials / month')).toEqual({ value: '$2,000.00', sub: '90-day average' })
+  })
+})
+
 describe('EmergencyCoverageReport', () => {
   const pt = (month: string, coverage: number | null, counted = false) => ({
     month,
@@ -1670,6 +1732,7 @@ describe('EmergencyCoverageReport', () => {
     fund_source: 'Cascade Point HYSA',
     coverage_months: 4,
     essentials_monthly: 1000,
+    essentials: { as_paid: 1000, spread: 1000, spread_on: true, monthly: 1000 },
     target_low: 3000,
     target_high: 6000,
     target_range: [3, 6],
@@ -1708,6 +1771,32 @@ describe('EmergencyCoverageReport', () => {
     })
     renderReport(<EmergencyCoverageReport budgetId="b1" />)
     expect(screen.getByText('+2 months over 4 months')).toBeInTheDocument()
+  })
+
+  it('reads the spread figure and names the as-paid one beside it', () => {
+    setQuery({
+      data: {
+        ...base,
+        essentials_monthly: 2200,
+        essentials: { as_paid: 2800, spread: 2200, spread_on: true, monthly: 2200 },
+        series: [pt('2026-08-01', 4)],
+      },
+    })
+    renderReport(<EmergencyCoverageReport budgetId="b1" />)
+    expect(
+      screen.getByText(
+        /\$2,200\.00\/month over the Guide’s 90-day window, with yearly bills spread/
+      )
+    ).toHaveTextContent('($2,200.00/mo spread · $2,800.00/mo as paid)')
+    expect(
+      screen.getByRole('checkbox', { name: 'Spread yearly bills over 12 months' })
+    ).toBeChecked()
+  })
+
+  it('says nothing more when the two figures agree', () => {
+    setQuery({ data: { ...base, series: [pt('2026-08-01', 4)] } })
+    renderReport(<EmergencyCoverageReport budgetId="b1" />)
+    expect(screen.queryByText(/\/mo as paid/)).toBeNull()
   })
 })
 

@@ -79,7 +79,8 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
   },
   essentials: {
     scope: 'on-budget',
-    summary: 'What a lean month costs; the headline is the last 90 days ÷ 3.',
+    summary:
+      'What a lean month costs; the headline is the last 90 days ÷ 3, with yearly Long-term expense bills spread over 12 months when that is on.',
     counts: 'Spending and debt payments in categories tagged Essential, or bound in the Guide.',
     leavesOut: 'Savings-tagged envelopes, and everything not tagged Essential.',
   },
@@ -94,7 +95,8 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
   'emergency-fund': {
     scope: 'emergency-fund',
     summary: 'How many months of essentials your emergency fund would cover.',
-    counts: 'The fund balance ÷ a three-month average of essentials, against a 3–6 month target.',
+    counts:
+      'The fund balance ÷ a three-month average of essentials (yearly Long-term expense bills spread over 12 months when that is on), against a 3–6 month target.',
     leavesOut: 'Non-essential spending — the target is a lean month, not a normal one.',
   },
   'income-expense': {

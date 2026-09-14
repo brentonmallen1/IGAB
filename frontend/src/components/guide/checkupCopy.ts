@@ -62,7 +62,7 @@ export const CHECKUP_COPY: Record<MetricKey, CheckupExplainer> = {
     glossary: ['credit-utilization', 'balance-transfer'],
   },
   essential_expenses: {
-    what: 'What a lean month costs: your spending on the things you could not do without, averaged over the last 90 days. It is the yardstick the emergency fund is measured against — three months of this is the target.',
+    what: 'What a lean month costs: your spending on the things you could not do without, averaged over the last 90 days, with yearly bills in Long-term expense categories spread over 12 months unless you turn that off. It is the yardstick the emergency fund is measured against — three months of this is the target.',
     why: 'An emergency fund sized against everything you spend is bigger than it needs to be; one sized against essentials is what would actually carry you through a bad month. Until something is tagged Essential this falls back to all your spending, which overstates a lean month.',
     decide: [
       'Tag what you could not do without — rent, groceries, utilities, minimum payments — as Essential, and this narrows to those',

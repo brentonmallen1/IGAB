@@ -12,6 +12,8 @@ import {
   YAxis,
 } from 'recharts'
 import { useEmergencyCoverageReport } from '../../../api/reports'
+import { otherFigureNote } from '../../../utils/essentialsFigures'
+import { SpreadSinkingFundsToggle } from '../../common/SpreadSinkingFundsToggle/SpreadSinkingFundsToggle'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { MetricCard } from '../MetricCard'
 import { MetricRow } from '../MetricRow'
@@ -76,6 +78,7 @@ export function EmergencyCoverageReport({ budgetId }: Props) {
     [`${high}-month target`]: p.target_high,
   }))
   const carriedFrom = carriedFlatFrom(data.series)
+  const other = otherFigureNote(data.essentials, formatMoney)
 
   return (
     <div className="coverage-report">
@@ -88,6 +91,13 @@ export function EmergencyCoverageReport({ budgetId }: Props) {
               cover. Coverage is the fund divided by a trailing three-month average of essentials —
               the same 90-day window the Guide’s target uses, so this page and the roadmap cannot
               tell different stories about the same household.
+            </p>
+            <p>
+              With <strong>Spread yearly bills over 12 months</strong> on, bills in categories
+              tagged Long-term expense count as a twelfth of the last twelve months’ in every
+              month’s average and in the targets, rather than landing whole in the month they were
+              paid. A budget younger than a year has not seen every yearly bill yet, so it reads low
+              until it has.
             </p>
             <p>
               The target moves. {low} months of essentials is not a fixed sum: as spending grows the
@@ -115,6 +125,8 @@ export function EmergencyCoverageReport({ budgetId }: Props) {
             />
           </div>
         </div>
+
+        {data.tagged && <SpreadSinkingFundsToggle budgetId={budgetId} />}
 
         {!data.tagged ? (
           <div className="coverage-report__empty">
@@ -187,7 +199,9 @@ export function EmergencyCoverageReport({ budgetId }: Props) {
 
             <p className="coverage-report__note">
               Coverage is the fund divided by a trailing three-month average of essential spending —{' '}
-              {formatMoney(data.essentials_monthly)}/month over the Guide’s 90-day window. The{' '}
+              {formatMoney(data.essentials.monthly)}/month over the Guide’s 90-day window
+              {data.essentials.spread_on ? ', with yearly bills spread over 12 months' : ''}
+              {other && ` (${other})`}. The{' '}
               <Link to="/reports?tab=essentials">Essentials report</Link> breaks that figure down by
               category.
               {carriedFrom !== null && (

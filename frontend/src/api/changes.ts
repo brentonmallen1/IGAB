@@ -10,6 +10,7 @@ import toast from 'react-hot-toast'
 import { apiClient } from './client'
 import { invalidateAfterCategoryChange } from './invalidateAfterCategoryChange'
 import { invalidateAfterMoneyMove } from './invalidateAfterMoneyMove'
+import { invalidateAfterReportSettings } from './reports'
 import { ROOT } from './queryKeys'
 
 export interface Change {
@@ -352,6 +353,8 @@ export function invalidateAfterUndo(
   qc.invalidateQueries({ queryKey: [ROOT.guideCandidates] })
   qc.invalidateQueries({ queryKey: [ROOT.guideCheckup] })
   qc.invalidateQueries({ queryKey: [ROOT.guideSignals] })
+  // A report setting is guide state too, and it moves the essentials figure.
+  invalidateAfterReportSettings(qc, budgetId)
   qc.invalidateQueries({ queryKey: [ROOT.budgets] })
   qc.invalidateQueries({ queryKey: [ROOT.budgetMembers] })
   qc.invalidateQueries({ queryKey: [ROOT.importSummary] })

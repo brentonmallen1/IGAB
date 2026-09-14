@@ -94,6 +94,7 @@ export const ROOT = {
   reconcileStatus: 'reconcile-status',
   reports: 'reports',
   reportFavorites: 'reportFavorites',
+  reportSettings: 'reportSettings',
   scheduledTransactions: 'scheduled-transactions',
   settings: 'settings',
   similarTransactions: 'similar-transactions',
