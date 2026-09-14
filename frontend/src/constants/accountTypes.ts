@@ -156,3 +156,10 @@ export function accountTypeLabel(key: string, registry?: { key: string; label: s
 /** Help line for the Counts as savings toggle, wherever it is offered. */
 export const COUNTS_AS_SAVINGS_HELP =
   'Off for things like a car or a house: selling one counts as income, buying one as spending.'
+
+/** Help line for the Counts toward emergency fund toggle. */
+export const COUNTS_TOWARD_EMERGENCY_FUND_HELP =
+  'Its whole balance is part of your emergency fund. For an account holding several things, keep it on budget and tag the envelopes instead.'
+
+/** Why the Counts toward emergency fund toggle is disabled. */
+export const COUNTS_TOWARD_EMERGENCY_FUND_NEEDS_SAVINGS = 'Turn on Counts as savings first'

@@ -9,6 +9,9 @@ export interface AccountCreate {
   on_budget?: boolean
   /** Omitted takes the type's default_counts_as_savings. */
   counts_as_savings?: boolean
+  /** Valid only on an off-budget asset that counts as savings; the server
+   *  refuses it anywhere else (`canCountTowardEmergencyFund`). */
+  counts_toward_emergency_fund?: boolean
   note?: string
   sort_order?: number
 }

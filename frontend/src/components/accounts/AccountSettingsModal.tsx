@@ -16,6 +16,8 @@ import { BUILTIN_ACCOUNT_TYPES } from '../../constants/accountTypes'
 import { AccountTypeInfoModal } from './AccountTypeInfoModal'
 import { AccountTypeField } from './AccountTypeField'
 import { CountsAsSavingsField } from './CountsAsSavingsField'
+import { CountsTowardEmergencyFundField } from './CountsTowardEmergencyFundField'
+import { savingsFlagsPayload, useSavingsFlags } from './useSavingsFlags'
 import './AccountSettingsModal.css'
 import { AccountNumbersSection } from './AccountNumbersSection'
 import { confirmAsync } from '../../stores/confirmStore'
@@ -57,7 +59,15 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
   const [name, setName] = useState(account?.name ?? '')
   const [accountType, setAccountType] = useState(account?.account_type ?? 'checking')
   const [onBudget, setOnBudget] = useState(account?.on_budget ?? true)
-  const [countsAsSavings, setCountsAsSavings] = useState(account?.counts_as_savings ?? true)
+  const {
+    countsAsSavings,
+    countsTowardEmergencyFund,
+    setCountsAsSavings,
+    setCountsTowardEmergencyFund,
+  } = useSavingsFlags({
+    countsAsSavings: account?.counts_as_savings ?? true,
+    countsTowardEmergencyFund: account?.counts_toward_emergency_fund ?? false,
+  })
   const [note, setNote] = useState(account?.note ?? '')
   const [budgetStart, setBudgetStart] = useState(account?.budget_start_date ?? '')
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -72,14 +82,17 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
       setAccountType(account.account_type)
       setOnBudget(account.on_budget)
       setCountsAsSavings(account.counts_as_savings)
+      setCountsTowardEmergencyFund(account.counts_toward_emergency_fund)
       setNote(account.note ?? '')
       setBudgetStart(account.budget_start_date ?? '')
     }
-  }, [account])
+  }, [account, setCountsAsSavings, setCountsTowardEmergencyFund])
 
   useEffect(() => {
     nameRef.current?.focus()
   }, [])
+
+  const classification = typeOptions.find((t) => t.key === accountType)?.classification
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
@@ -94,7 +107,10 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
         name: name.trim(),
         account_type: accountType,
         on_budget: onBudget,
-        counts_as_savings: countsAsSavings,
+        ...savingsFlagsPayload(
+          { countsAsSavings, countsTowardEmergencyFund },
+          { onBudget, classification }
+        ),
         note: note.trim() || null,
         // Empty clears it: null means "treat all history as budgeted",
         // which is what an account that was never asked does.
@@ -219,9 +235,16 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
           </label>
           <CountsAsSavingsField
             onBudget={onBudget}
-            classification={typeOptions.find((t) => t.key === accountType)?.classification}
+            classification={classification}
             checked={countsAsSavings}
             onChange={setCountsAsSavings}
+          />
+          <CountsTowardEmergencyFundField
+            onBudget={onBudget}
+            classification={classification}
+            countsAsSavings={countsAsSavings}
+            checked={countsTowardEmergencyFund}
+            onChange={setCountsTowardEmergencyFund}
           />
           <label className="dialog-form__field">
             <span>Note</span>
