@@ -1,80 +1,83 @@
-"""The tag hint table: what the importer writes vs what the review proposes.
+"""The tag hint table: what the import review proposes — and that nothing is
+written from a name.
 
-The distinction is the whole point of the module, so it is pinned by name. A
-hint that quietly gains `applied_on_import=True` starts writing a
-classification override for every future import, which no other test would
-catch.
+The importer used to write Savings from names like "Emergency Fund". A hint
+that quietly gains `applied_on_import=True` would be a proposal turned into a
+silent classification override, so the empty set is pinned by name.
 """
 
 import pytest
 
 from igab.domain.tag_hints import (
     DERIVED_KEYS,
+    IMPLIED_TAGS,
     TAG_HINTS,
     TagSuggestion,
+    implied_by,
     suggest_review_tags,
-    suggest_system_tag,
 )
 
 
-class TestWhatTheImporterApplies:
-    def test_only_savings_is_ever_written(self):
-        applied = {h.system_key for h in TAG_HINTS if h.applied_on_import}
-        assert applied == {"savings"}
-
-    @pytest.mark.parametrize(
-        ("category", "group", "expected"),
-        [
-            ("Savings", "Goals", "savings"),
-            ("Emergency Fund", "Goals", "savings"),
-            ("Rainy Day", "Goals", "savings"),
-        ],
-    )
-    def test_applied_hints_match(self, category, group, expected):
-        assert suggest_system_tag(category, group).system_key == expected
-
-    def test_the_categorys_own_name_wins_over_its_groups(self):
-        assert suggest_system_tag("Savings", "True Expenses").system_key == "savings"
-
-    @pytest.mark.parametrize(
-        ("category", "group"),
-        [
-            ("Groceries", "Everyday"),
-            ("Rent", "Bills"),
-            ("Amazon Prime", "Monthly"),
-            ("Car Loan Payment", "Debt"),
-        ],
-    )
-    def test_proposed_only_keys_are_never_written(self, category, group):
-        """The regression that would turn a proposal into a silent write."""
-        assert suggest_system_tag(category, group) is None
+class TestNothingIsWrittenFromAName:
+    def test_no_hint_is_applied_on_import(self):
+        assert {h.system_key for h in TAG_HINTS if h.applied_on_import} == set()
 
     @pytest.mark.parametrize(
         ("category", "group"),
         [
             # YNAB's default template ships a "True Expenses" group, and the
             # hint matches a GROUP name as well as a category's — so every
-            # ordinary category inside it silently acquired the tag, and its
-            # spending was then reported as saving. The tag is proposal-only
-            # now: the review offers it, the household says yes.
-            ("Clothing", "True Expenses"),
+            # ordinary category inside it used to acquire the tag on import.
             ("Car Repairs", "True Expenses"),
-            ("Vacation", "True Expenses"),
             ("Sinking Fund", "Whatever"),
-            ("Long-Term Care", "Whatever"),
         ],
     )
-    def test_long_term_expense_is_never_written_on_import(self, category, group):
-        applied = suggest_system_tag(category, group)
-        assert applied is None or applied.system_key != "long_term_expense"
-
-    @pytest.mark.parametrize(
-        ("category", "group"),
-        [("Car Repairs", "True Expenses"), ("Sinking Fund", "Whatever")],
-    )
-    def test_but_the_review_still_offers_it(self, category, group):
+    def test_long_term_expense_is_offered(self, category, group):
         keys = {t.system_key for t in suggest_review_tags(category, group)}
         assert "long_term_expense" in keys
+
+
+class TestTheEmergencyFundHint:
+    @pytest.mark.parametrize(
+        ("category", "matched_on"),
+        [("Emergency Fund", "Emergency Fund"), ("Rainy Day", "Rainy Day"), ("Buffer", "Buffer")],
+    )
+    def test_emergency_names_are_offered_emergency_fund(self, category, matched_on):
+        assert suggest_review_tags(category, "Goals") == [
+            TagSuggestion("emergency_fund", matched_on)
+        ]
+
+    def test_savings_names_are_offered_savings(self):
+        assert suggest_review_tags("Savings", "Goals") == [TagSuggestion("savings", "Savings")]
+        assert suggest_review_tags("Nest Egg", "Goals") == [TagSuggestion("savings", "Nest Egg")]
+
+    def test_a_name_offered_both_is_offered_emergency_fund_alone(self):
+        """Emergency fund implies Savings, so offering both would be offering
+        a second copy of one fact."""
+        assert suggest_review_tags("Rainy Day Savings", "Goals") == [
+            TagSuggestion("emergency_fund", "Rainy Day Savings")
+        ]
+
+    def test_an_emergency_fund_category_is_never_offered_savings(self):
+        assert suggest_review_tags("Car Savings", "Goals", held=["emergency_fund"]) == []
+
+    def test_a_held_key_is_not_offered_again(self):
+        assert suggest_review_tags("Savings", "Goals", held=["savings"]) == []
+
+    def test_the_implication_is_one_way(self):
+        """Savings does not imply Emergency fund: most savings is not a fund
+        for surprises."""
+        assert implied_by(["emergency_fund"]) == {"savings"}
+        assert implied_by(["savings"]) == frozenset()
+        assert suggest_review_tags("Emergency Fund", "Goals", held=["savings"]) == [
+            TagSuggestion("emergency_fund", "Emergency Fund")
+        ]
+
+    def test_every_implied_key_is_a_hinted_key(self):
+        hinted = {h.system_key for h in TAG_HINTS}
+        for key, implied in IMPLIED_TAGS.items():
+            assert key in hinted
+            assert set(implied) <= hinted
 
 
 class TestWhatTheReviewProposes:
@@ -105,6 +108,8 @@ class TestWhatTheReviewProposes:
         """A hint nothing can match is a hint that does not exist."""
         proposed = {h.system_key for h in TAG_HINTS if not h.applied_on_import}
         assert proposed == {
+            "savings",
+            "emergency_fund",
             "long_term_expense",
             "subscription",
             "essential",
@@ -149,7 +154,7 @@ class TestWordStartMatching:
 
     @pytest.mark.parametrize("name", ["Savings", "Car Savings", "Savings Goals"])
     def test_a_fragment_matches_any_suffix(self, name):
-        assert suggest_system_tag(name, "Group").system_key == "savings"
+        assert [t.system_key for t in suggest_review_tags(name, "Group")] == ["savings"]
 
     def test_electric_finds_electricity(self):
         offered = {s.system_key: s.matched_on for s in suggest_review_tags("Electricity", "Bills")}

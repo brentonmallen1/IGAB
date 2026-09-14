@@ -99,18 +99,19 @@ export function useSetCategoryTags(budgetId: string | null) {
   })
 }
 
-/** A system tag a category's names point at but it does not carry.
+/** A system tag a category's names point at but it does not carry (nor
+ * implies — an Emergency fund category is never offered Savings).
  *
- * Served, not computed here: the YNAB importer writes tags from the same hint
- * table, so a second spelling in TypeScript would be free to disagree with the
- * one that runs at import time. */
+ * Served, not computed here: the hint table is the server's
+ * (domain/tag_hints.py), and a second spelling in TypeScript would be free to
+ * disagree with it. */
 export interface TagSuggestion {
   category_id: string
   system_key: string
   /** The category's own name or its group's — whichever triggered the hint. */
   matched_on: string
-  /** True when the importer would have written this one; false means it is
-   *  offered in the review and nowhere else. */
+  /** Whether an import writes this one — always false now: nothing is tagged
+   *  from a name. */
   applied_on_import: boolean
 }
 

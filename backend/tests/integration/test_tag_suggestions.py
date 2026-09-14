@@ -1,8 +1,8 @@
 """Proposals the import review offers, and the bulk write that accepts them.
 
-The point of the endpoint pair is that a suggestion is *not* a write. The
-importer applies two keys it is confident about; everything else is offered to
-a person and stays offered until they say so.
+The point of the endpoint pair is that a suggestion is *not* a write. Nothing
+is applied from a name; everything is offered to a person and stays offered
+until they say so.
 """
 
 import pytest
@@ -34,7 +34,7 @@ async def _suggestions(api_client, budget_id):
 
 
 @pytest.mark.asyncio
-async def test_it_proposes_the_keys_the_importer_never_assigns(db_session, api_client):
+async def test_it_proposes_keys_from_names(db_session, api_client):
     budget, _, made = await _budget_with(db_session, api_client, ["Groceries", "Amazon Prime"])
 
     suggestions = await _suggestions(api_client, budget.id)
@@ -49,7 +49,7 @@ async def test_it_proposes_the_keys_the_importer_never_assigns(db_session, api_c
     # Said out loud, so a person can check the guess rather than take it on faith.
     groceries = next(s for s in suggestions if s["category_id"] == str(made["Groceries"].id))
     assert groceries["matched_on"] == "Groceries"
-    # And which of them the importer would have written, which is none of these.
+    # And which of them an import writes, which is none.
     assert all(not s["applied_on_import"] for s in suggestions)
 
 
@@ -62,6 +62,25 @@ async def test_a_category_that_already_carries_the_key_is_not_re_proposed(db_ses
     await db_session.flush()
 
     assert await _suggestions(api_client, budget.id) == []
+
+
+@pytest.mark.asyncio
+async def test_emergency_fund_category_is_not_offered_savings(db_session, api_client):
+    """Emergency fund implies Savings: offering it would be a second copy of a
+    fact the category already carries."""
+    budget, _, made = await _budget_with(
+        db_session, api_client, ["Car Savings", "Rainy Day Savings"], group="Goals"
+    )
+    repo = TagRepository(db_session)
+    fund = await repo.get_system_tag(budget.id, "emergency_fund")
+    await repo.set_category_tags(made["Car Savings"].id, [fund.id])
+    await db_session.flush()
+
+    offered = {
+        (s["category_id"], s["system_key"]) for s in await _suggestions(api_client, budget.id)
+    }
+
+    assert offered == {(str(made["Rainy Day Savings"].id), "emergency_fund")}
 
 
 @pytest.mark.asyncio

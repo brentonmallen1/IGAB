@@ -85,7 +85,7 @@ export interface YnabParity {
   }[]
 }
 
-/** One tag the import applied, and the name that made it. */
+/** One tag an older import applied, and the name that made it. */
 export interface YnabTaggedCategory {
   category_id: string
   system_key: string
@@ -128,13 +128,11 @@ export interface YnabImportResult {
   /** How many of those are one line of a split — unpairable by design, since
    *  a split's money lives on its parent. The rest are worth chasing. */
   transfer_legs_in_splits: number
-  /** Categories tagged Savings from their names — the only key the importer
-   *  applies (backend domain/tag_hints.py) — so the savings report has
-   *  something to show. The tag changes how a category's spending is
-   *  classified, so it is reported rather than applied quietly. */
+  /** Categories an import tagged from their names, and why. Zero and empty
+   *  for every import now — nothing is tagged from a name; the review only
+   *  suggests (backend domain/tag_hints.py). Kept so a summary stored by an
+   *  older import, which tagged Savings, still shows what it did. */
   categories_tagged: number
-  /** Which ones, and why. The count alone cannot answer "show me what you
-   *  did", and nothing on the join table records that a tag was guessed. */
   tagged_categories: YnabTaggedCategory[]
   /** YNAB's Credit Card Payments reserves whose card was never imported —
    *  the matched ones become the card's set-aside assignments. */

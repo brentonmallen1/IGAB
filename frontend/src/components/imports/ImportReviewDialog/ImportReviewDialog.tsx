@@ -726,15 +726,19 @@ function TagsStep({
   return (
     <>
       <p className="dialog__body">
-        A tag decides how a category's spending is counted — money leaving one tagged Savings is
-        saving, not spending, and what you mark Essential is what an emergency fund is measured
-        against. These are the ones the import guessed, plus what the names suggest.
+        A tag decides how a category's money is counted. A Savings category counts as saved either
+        when money is sent out of it or while it is kept there — you choose which on the category —
+        and what you mark Essential is what an emergency fund is measured against. These are
+        suggestions from the names: nothing is tagged until you confirm it.
+        {decidedCount > 0 && ' This import also tagged some categories itself, listed separately.'}
       </p>
 
       <div className="import-review__filters" role="group" aria-label="Which categories to show">
         {(
           [
-            ['decided', `Tagged by the import (${decidedCount})`],
+            // Imports tag nothing now; only a summary stored by an older one
+            // has rows here, and "(0)" would be a filter for nothing.
+            ...(decidedCount > 0 ? [['decided', `Tagged by the import (${decidedCount})`]] : []),
             ['suggested', `Suggested (${suggestedCount})`],
             ['all', `All (${rows.length})`],
           ] as [RowFilter, string][]

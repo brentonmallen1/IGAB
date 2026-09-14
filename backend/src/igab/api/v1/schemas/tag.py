@@ -42,18 +42,17 @@ class SetTagsRequest(ApiModel):
 class TagSuggestionOut(ApiModel):
     """A system tag this category's names point at, which it does not carry.
 
-    Served rather than computed on the client because the server already
-    decides it — the YNAB importer writes tags from the same table. A second
-    spelling in TypeScript would be free to disagree with the one that runs at
-    import time, and the two would drift silently.
+    Served rather than computed on the client because the rule is the
+    server's (`domain.tag_hints`), and a second spelling in TypeScript would be
+    free to disagree with it silently.
     """
 
     category_id: uuid.UUID
     system_key: str
     #: The category's own name or its group's — whichever triggered the hint.
     matched_on: str
-    #: True when the importer would have written this one. False means it is
-    #: offered here and nowhere else.
+    #: Whether an import writes this one. Always False now — nothing is
+    #: written from a name — and kept so the review's shape does not move.
     applied_on_import: bool
 
 
