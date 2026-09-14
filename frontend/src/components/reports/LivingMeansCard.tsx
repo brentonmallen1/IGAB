@@ -4,16 +4,29 @@ import { useFormatters } from '../../hooks/useFormatters'
 import { Dialog } from '../common/Dialog/Dialog'
 import { MetricCard } from './MetricCard'
 import { sharePhrase } from './drillDownTotals'
-import { AT_MEANS_BAND_PCT, meansReading, netPhrase, type MeansReading } from './livingMeans'
+import {
+  AT_MEANS_BAND_PCT,
+  meansLine,
+  meansReading,
+  outflowSharePhrase,
+  type MeansReading,
+} from './livingMeans'
 import { spendingDelta } from './overviewMetrics'
-import { DetailFigure, DetailFigures, DetailRow, DetailRows, DetailSection } from './ReportDetail'
-import './LivingMeansCard.css'
+import {
+  DetailFigure,
+  DetailFigures,
+  DetailList,
+  DetailRow,
+  DetailRows,
+  DetailSection,
+} from './ReportDetail'
+import './MeansStanding.css'
 
 /**
  * The Overview's above/at/below-your-means card, and the dialog it opens.
  *
- * Both read `meansReading` — the verdict, the band and the net live there and
- * nowhere else. This file only lays the served figures out.
+ * Both read `meansReading` — the verdict, the band, the net and the margin live
+ * there and nowhere else. This file only lays the served figures out.
  */
 export function LivingMeansCard({ data }: { data: DashboardMetrics }) {
   const { formatMoney } = useFormatters()
@@ -25,7 +38,7 @@ export function LivingMeansCard({ data }: { data: DashboardMetrics }) {
       <MetricCard
         label="Your Means"
         value={
-          <span className={`living-means__verdict living-means__verdict--${reading.standing}`}>
+          <span className={`means-standing-text means-standing--${reading.standing}`}>
             {reading.short}
           </span>
         }
@@ -36,7 +49,7 @@ export function LivingMeansCard({ data }: { data: DashboardMetrics }) {
         sub={
           reading.standing === 'unknown'
             ? 'No income recorded'
-            : netPhrase(reading.net, formatMoney)
+            : meansLine(data.income_this_month, data.outflows_this_month, formatMoney)
         }
       />
       {open && <LivingMeansDialog data={data} reading={reading} onClose={() => setOpen(false)} />}
@@ -72,6 +85,9 @@ function LivingMeansDialog({
           strong
         />
       </DetailFigures>
+      {reading.margin && (
+        <p className="dialog__body dialog__body--muted">{outflowSharePhrase(reading.margin)}.</p>
+      )}
 
       <DetailSection title="How this is read">
         <p className="dialog__body">
@@ -79,7 +95,7 @@ function LivingMeansDialog({
           is part of what was left over.
         </p>
         {reading.band ? (
-          <ul className="living-means__bands">
+          <DetailList>
             <li>
               <strong>Below your means</strong>: outflows under {formatMoney(reading.band.low)}.
             </li>
@@ -90,7 +106,7 @@ function LivingMeansDialog({
             <li>
               <strong>Above your means</strong>: outflows over {formatMoney(reading.band.high)}.
             </li>
-          </ul>
+          </DetailList>
         ) : (
           <p className="dialog__body dialog__body--muted">
             With no income to measure against, there is no band to read outflows by.

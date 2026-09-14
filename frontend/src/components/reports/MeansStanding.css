@@ -1,0 +1,26 @@
+/* The one colour for each means standing (`livingMeans.ts`'s MeansStanding),
+   shared by the Your Means verdict and the Means trend's value and bars.
+   Each class sets `--means-standing`; a consumer reads it as `color` for text
+   or `fill` for a bar. Written once so the card and the chart beside it can
+   never paint one standing two ways. Colour for the state and nothing else:
+   every use also states the standing in words. */
+
+.means-standing--below {
+  --means-standing: var(--color-positive);
+}
+
+.means-standing--at {
+  --means-standing: var(--color-warning);
+}
+
+.means-standing--above {
+  --means-standing: var(--color-negative);
+}
+
+.means-standing--unknown {
+  --means-standing: var(--text-muted);
+}
+
+.means-standing-text {
+  color: var(--means-standing);
+}

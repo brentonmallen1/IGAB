@@ -59,14 +59,14 @@ afterEach(() => {
 
 describe('LivingMeansCard', () => {
   it.each([
-    ['below', 4000, 'Below', '$1,000.00 left over', 'Living below your means'],
-    ['at', 5200, 'At', '$200.00 short', 'Living at your means'],
-    ['above', 6000, 'Above', '$1,000.00 short', 'Living above your means'],
+    ['below', 4000, 'Below', '$1,000.00 left over · 20% under income', 'Living below your means'],
+    ['at', 5200, 'At', '$200.00 short · 4% over income', 'Living at your means'],
+    ['above', 6000, 'Above', '$1,000.00 short · 20% over income', 'Living above your means'],
   ])('reads %s your means', (standing, outflows, short, sub, label) => {
     render(<LivingMeansCard data={metrics({ outflows_this_month: outflows })} />)
 
     const button = screen.getByRole('button', { name: new RegExp(`^${label}`) })
-    expect(within(button).getByText(short)).toHaveClass(`living-means__verdict--${standing}`)
+    expect(within(button).getByText(short)).toHaveClass(`means-standing--${standing}`)
     expect(value()).toEqual({ text: short, sub })
   })
 
@@ -74,7 +74,7 @@ describe('LivingMeansCard', () => {
     render(<LivingMeansCard data={metrics({ income_this_month: 0 })} />)
 
     const button = screen.getByRole('button', { name: /^No income this period/ })
-    expect(within(button).getByText('—')).toHaveClass('living-means__verdict--unknown')
+    expect(within(button).getByText('—')).toHaveClass('means-standing--unknown')
     expect(value()).toEqual({ text: '—', sub: 'No income recorded' })
     expect(document.body).not.toHaveTextContent(/(above|at|below) your means/i)
   })
@@ -97,6 +97,7 @@ describe('LivingMeansCard', () => {
       Outflows: '$4,000.00',
       'Left over': '$1,000.00',
     })
+    expect(dialog).toHaveTextContent('Outflows were 80% of income.')
     expect(within(dialog).getByText(/savings is not an outflow/i)).toBeInTheDocument()
     expect(dialog).toHaveTextContent('At your means: $4,750.00 to $5,250.00, within 5% of income')
     expect(dialog).toHaveTextContent('Below your means: outflows under $4,750.00.')
@@ -142,6 +143,7 @@ describe('LivingMeansCard', () => {
 
     const dialog = await screen.findByRole('dialog', { name: 'No income this period' })
     expect(dialog).toHaveTextContent('there is no band to read outflows by')
+    expect(dialog).not.toHaveTextContent('Outflows were')
     expect(dialog).toHaveTextContent('No spending in this period.')
     expect(dialog).toHaveTextContent('so nothing to compare')
     expect(dialog).not.toHaveTextContent('% of spending')
@@ -151,7 +153,7 @@ describe('LivingMeansCard', () => {
     useAppStore.setState({ privacyMode: true })
     render(<LivingMeansCard data={metrics()} />)
 
-    expect(value().sub).toBe(`$${PRIVACY_MASK} left over`)
+    expect(value().sub).toBe(`$${PRIVACY_MASK} left over · 20% under income`)
     await userEvent.click(screen.getByRole('button', { name: /Living below your means/ }))
     const dialog = await screen.findByRole('dialog', { name: 'Living below your means' })
     expect(dialog.textContent).not.toMatch(/\$\d/)

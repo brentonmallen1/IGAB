@@ -414,15 +414,26 @@ describe('OverviewReport metric cards', () => {
         debt_payments_this_month: '500',
         outflows_this_month: '3500',
         top_categories: [{ id: 'c1', name: 'Groceries', group_name: 'Everyday', total: 300 }],
-        means_months: [],
+        means_months: [
+          { month: '2026-01-01', income: 4000, outflows: 3000 },
+          { month: '2026-02-01', income: 4000, outflows: 4100 },
+        ],
       },
     })
     renderReport(<OverviewReport budgetId="b1" />)
 
     // 3,500 of outflows on 4,000 of income: the means card leads the row.
     // Its states and dialog are LivingMeansCard.test.tsx.
-    expect(card('Your Means')).toEqual({ value: 'Below', sub: '$500.00 left over' })
+    expect(card('Your Means')).toEqual({
+      value: 'Below',
+      sub: '$500.00 left over · 13% under income',
+    })
     expect(screen.getByRole('button', { name: /^Living below your means/ })).toBeInTheDocument()
+    // Right after it, the same reading over the served months, whatever the range.
+    expect(card('Means trend')).toEqual({ value: 'Keeping 12%', sub: '3-month average' })
+    expect(
+      screen.getByRole('img', { name: '1 of the last 2 months below your means' })
+    ).toBeInTheDocument()
 
     expect(screen.getByText('$1,100.00')).toBeInTheDocument()
     expect(screen.getByText(/\+10\.0%/)).toBeInTheDocument() // net worth delta

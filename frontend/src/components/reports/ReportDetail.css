@@ -50,6 +50,14 @@
   letter-spacing: 0.06em;
 }
 
+.report-detail__list {
+  margin: 0;
+  padding-left: var(--spacing-lg);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  line-height: 1.65;
+}
+
 .report-detail__rows {
   margin: 0;
   padding: 0;

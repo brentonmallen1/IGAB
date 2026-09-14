@@ -37,9 +37,9 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
   overview: {
     scope: 'overview',
     summary:
-      'A snapshot: savings rate, expenses, burn rate, days until zero, essentials, your means.',
+      'A snapshot: savings rate, expenses, burn rate, days until zero, essentials, your means and its trend.',
     counts:
-      'Savings rate is savings ÷ income; days until zero is cash ÷ daily burn; your means is spending plus debt payments against income.',
+      'Savings rate is savings ÷ income; days until zero is cash ÷ daily burn; your means is spending plus debt payments against income, and its trend reads the last 12 complete months.',
     leavesOut:
       'Transfers between budget accounts, and investment growth — cards, loans and investments are not cash on hand.',
   },

@@ -7,7 +7,8 @@ import { exportTransactionsPath, useDashboardMetrics } from '../../api/reports'
 import { useBudgetMonth } from '../../api/budgets'
 import { MetricCard } from './MetricCard'
 import { LivingMeansCard } from './LivingMeansCard'
-import { AT_MEANS_BAND_PCT } from './livingMeans'
+import { MeansTrendCard } from './MeansTrendCard'
+import { AT_MEANS_BAND_PCT, MEANS_TREND_POOL_MONTHS, meansTrend, signedMargin } from './livingMeans'
 import { MetricRow } from './MetricRow'
 import { ReportInfoButton, ReportScopeNote } from './ReportInfoButton'
 import { ReportExportButton } from './ReportExportButton/ReportExportButton'
@@ -48,6 +49,7 @@ export function OverviewReport({ budgetId }: Props) {
   const spendingDeltaPct = spendingDelta(data.expenses_this_month, data.expenses_prev_month)
   const daysUntilZero = roundedDaysUntilZero(data.days_until_zero)
   const sixMonthReserve = essentialsReserve(data.essentials_monthly, 6)
+  const trend = meansTrend(data.means_months)
 
   return (
     <div className="overview-report">
@@ -76,6 +78,13 @@ export function OverviewReport({ budgetId }: Props) {
               within {AT_MEANS_BAND_PCT}% of income either side; above is outflows beyond that.
               Savings transfers are not outflows. Shows “—” when no income was recorded. Open it to
               see the figures, the biggest spending categories and the prior period.
+            </p>
+            <p>
+              <strong>Means trend</strong>: the same reading over the last 12 complete months,
+              whatever range is selected. The figure pools the last {MEANS_TREND_POOL_MONTHS} months
+              — their income added up against their outflows — and says whether that is up or down
+              on the {MEANS_TREND_POOL_MONTHS} before. The bars show each month’s margin, with the
+              same {AT_MEANS_BAND_PCT}% band. Open it for the month-by-month table.
             </p>
             <ReportScopeNote report="overview" />
           </ReportInfoButton>
@@ -116,6 +125,16 @@ export function OverviewReport({ budgetId }: Props) {
                 { metric: 'spent_this_period', value: data.expenses_this_month },
                 { metric: 'debt_payments_this_period', value: data.debt_payments_this_month },
                 { metric: 'outflows_this_period', value: data.outflows_this_month },
+                ...(trend.recent.margin
+                  ? [
+                      {
+                        metric: 'means_trend_3_month_margin_pct',
+                        value: signedMargin(trend.recent.margin),
+                      },
+                    ]
+                  : []),
+                { metric: 'means_trend_months_below', value: trend.belowCount },
+                { metric: 'means_trend_months', value: trend.bars.length },
               ]}
               captureRef={captureRef}
               window={{ start: filters.startDate, end: filters.endDate }}
@@ -124,6 +143,7 @@ export function OverviewReport({ budgetId }: Props) {
         </div>
         <MetricRow ref={captureRef}>
           <LivingMeansCard data={data} />
+          <MeansTrendCard months={data.means_months} />
           {budgetMonth && (
             <MetricCard
               label="To Be Assigned"
