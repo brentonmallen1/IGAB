@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { PositionStrip } from './PositionStrip'
-import { ROADMAP, type SignalKey } from '../../content/roadmap'
+import { ROADMAP } from '../../content/roadmap'
 import { useAppStore } from '../../stores/appStore'
 import { useGuideStore } from '../../stores/guideStore'
 import {
@@ -13,6 +13,7 @@ import {
   type FindingKind,
   type Signal,
 } from '../../api/guide'
+import { makeSignal } from '../../test-utils/factories'
 
 vi.mock('../../api/guide', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/guide')>()),
@@ -21,28 +22,7 @@ vi.mock('../../api/guide', async (importOriginal) => ({
   useGuideCheckup: vi.fn(),
 }))
 
-function signal(key: SignalKey, over: Partial<Signal> = {}): Signal {
-  return {
-    key,
-    tracked: true,
-    source: 'auto',
-    met: null,
-    value: null,
-    detected_value: null,
-    external_value: null,
-    external_declared: false,
-    external_as_of: null,
-    target: null,
-    starter_target: null,
-    starter_met: null,
-    essentials: null,
-    reason: '',
-    entities: {},
-    gaps: [],
-    note: null,
-    ...over,
-  }
-}
+const signal = makeSignal
 
 function finding(kind: FindingKind, concept_key: string, title: string): CheckupFinding {
   return { kind, rank: 1, concept_key, title, detail: '', value: null, target: null, names: [] }

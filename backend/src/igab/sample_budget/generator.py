@@ -245,6 +245,7 @@ class SampleBudgetGenerator:
                     sort_order=ci,
                     linked_account_id=linked,
                     is_archived=cat_spec.is_archived,
+                    savings_mode=cat_spec.savings_mode,
                 )
                 self._categories[cat_spec.name] = category
                 result.categories += 1

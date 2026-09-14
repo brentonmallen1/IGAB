@@ -271,7 +271,7 @@ class GuideService:
             case "budget_exists":
                 return Finding(concept_key=key, met=True, reason="you have a budget")
             case "emergency_fund":
-                return await self.detection.emergency_fund(budget_id, bound)
+                return await self.detection.emergency_fund(budget_id)
             case "essential_expenses":
                 return await self.detection.essential_expenses(budget_id, bound)
             case "high_interest_debt":
@@ -294,7 +294,10 @@ class GuideService:
         """Fold detection and any self-reported amount into one answer."""
         detected = finding.value if finding else None
         external = resolution.external_amount
-        total = fold_external(detected, external)
+        # The emergency fund quotes its own total, the one every report
+        # quotes; folding it again here would be a second spelling of the sum.
+        fund = finding.fund if finding else None
+        total = fund.total if fund is not None else fold_external(detected, external)
 
         target = self._target(key, essentials)
         met = self._met(key, finding, resolution, total, target)
@@ -322,6 +325,7 @@ class GuideService:
             starter = starter_emergency_fund(essentials.value if essentials else None)
             payload["starter_target"] = starter
             payload["starter_met"] = None if total is None else total >= starter
+            payload["fund"] = fund
         if key == "essential_expenses":
             # Both figures, so every surface can show the one the budget does
             # not read beside the one it does. `value` is their `.monthly`.
@@ -579,6 +583,22 @@ class GuideService:
         external: bool = False,
         external_amount: Decimal | None = None,
     ) -> None:
+        concept = CONCEPTS_BY_KEY[concept_key]
+        refused = sorted(
+            t for t, ids in (entity_ids or {}).items() if ids and t not in concept.binds_to
+        )
+        if mode not in ("auto", "dismissed", "answer") and refused:
+            # The picker only offers `binds_to`, so this is a client sending a
+            # mode the concept no longer has. The emergency fund is chosen by
+            # tag and account flag now; a manual row would be one nothing reads.
+            raise InvariantViolation(
+                f"{concept.label} cannot be pointed at {' or '.join(refused)} here."
+                + (
+                    " Tag envelopes Emergency fund or mark an off-budget savings account instead."
+                    if concept_key == "emergency_fund"
+                    else ""
+                )
+            )
         if mode == "auto":
             await self._replace_concept_recorded(budget_id, concept_key, [])
             return

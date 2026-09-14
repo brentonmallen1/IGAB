@@ -78,6 +78,45 @@ class EssentialsFigures(ApiModel):
     monthly: Decimal
 
 
+class FundPartOut(ApiModel):
+    """One envelope or account the emergency fund counted."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    balance: Decimal
+
+
+class FundExternalOut(ApiModel):
+    """What the household said it keeps elsewhere. `declared` with no `amount`
+    is "I have this covered" — never zero."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    declared: bool
+    amount: Decimal | None
+    as_of: date | None
+    note: str | None
+
+
+class EmergencyFundOut(ApiModel):
+    """The emergency fund and exactly what it counted
+    (`services.emergency_fund.EmergencyFund`) — tagged envelopes, marked
+    off-budget accounts and anything kept elsewhere. Nothing is guessed.
+    Every field required: a surface that quotes the total can always say what
+    went into it."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    set_up: bool
+    #: None only when nothing in IGAB was chosen and no figure was declared.
+    total: Decimal | None
+    categories: list[FundPartOut]
+    accounts: list[FundPartOut]
+    external: FundExternalOut
+
+
 class MeansMonth(ApiModel):
     """One complete month of the Overview's Means trend
     (`report_basics.means_months`)."""
@@ -470,10 +509,12 @@ class EssentialsReportResponse(ApiModel):
     reserve: list[ReserveTarget]
     #: The roadmap's full-emergency-fund range, in months.
     roadmap_range: tuple[int, int]
-    #: What the Guide reads as the emergency fund today — the bound
-    #: category or account, else its own detection — and how many lean months
-    #: that covers (`emergency_fund_balance / essentials.monthly`). None when
-    #: nothing looks like a fund, or nothing is tagged Essential yet.
+    #: The emergency fund and what it counted, read whatever the Guide tracks.
+    emergency_fund: EmergencyFundOut
+    #: `emergency_fund.total` and a short description of what was counted, and
+    #: how many lean months the total covers (`total / essentials.monthly`).
+    #: None when nothing was chosen, or nothing is tagged Essential yet. The
+    #: first two go once every surface reads `emergency_fund`.
     emergency_fund_balance: Decimal | None = None
     emergency_fund_source: str | None = None
     runway_months: Decimal | None = None
@@ -1150,7 +1191,10 @@ class EmergencyCoverageResponse(ApiModel):
     #: False when nothing carries the Essential tag — there is no denominator,
     #: so the report explains itself instead of drawing zeroes.
     tagged: bool
-    #: None when no fund has been found or declared.
+    #: The emergency fund and what it counted — the Essentials report's own.
+    fund: EmergencyFundOut
+    #: `fund.total` and a short description of what was counted; None when
+    #: nothing was chosen. They go once every surface reads `fund`.
     fund_balance: Decimal | None
     fund_source: str | None
     #: The Essentials report's own runway, quoted rather than recomputed.

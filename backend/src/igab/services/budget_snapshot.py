@@ -62,11 +62,16 @@ from igab.domain.snapshot_format import (
     decode_row,
     encode_row,
     exported_columns,
+    predates_revision,
 )
 from igab.domain.targets import normalize_legacy_target
 from igab.repositories.tag_repo import seed_system_tags
 from igab.services.account_type_service import ensure_account_types_seeded
 from igab.services.budget_provisioning import grant_owner, unique_budget_name
+from igab.services.emergency_fund_adoption import (
+    ADOPTION_REVISION as EMERGENCY_FUND_ADOPTION_REVISION,
+)
+from igab.services.emergency_fund_adoption import adopt as adopt_emergency_fund
 
 SNAPSHOT_SUFFIX = ".igab.zip"
 
@@ -419,6 +424,7 @@ async def import_snapshot_as_new_budget(
                 plan_for(manifest, None),
                 owner_user_id=user_id,
                 budget_name=resolved,
+                file_revision=manifest.alembic_revision,
             )
     report.warnings = list(verdict.warnings)
     report.attachments_omitted = manifest.attachments.omitted_count
@@ -482,6 +488,7 @@ async def _load(
     owner_user_id: UUID | None = None,
     budget_name: str | None = None,
     target_budget_id: UUID | None = None,
+    file_revision: str = "",
 ) -> ImportReport:
     """The shared core of both ways in: build the id map, insert, then link."""
     budgets = Base.metadata.tables["budgets"]
@@ -542,6 +549,12 @@ async def _load(
     # repair a snapshot taken before a new builtin type or system tag existed.
     await ensure_account_types_seeded(session, budget_id)
     await seed_system_tags(session, budget_id)
+    # A file from before the emergency fund became chosen still carries the
+    # old binding rows: convert them the way the migration converted every
+    # budget. Never on a current file — it has no such rows, and the adopter's
+    # not-guessed notice would be a false alarm.
+    if predates_revision(file_revision, EMERGENCY_FUND_ADOPTION_REVISION, migration_history()):
+        await adopt_emergency_fund(session, budget_id)
 
     return ImportReport(
         budget_id=budget_id,
@@ -853,7 +866,13 @@ async def restore_snapshot_into_budget(
                 else []
             )
             await _clear_budget(session, budget_id)
-            report = await _load(session, archive, plan, target_budget_id=budget_id)
+            report = await _load(
+                session,
+                archive,
+                plan,
+                target_budget_id=budget_id,
+                file_revision=manifest.alembic_revision,
+            )
             report.attachments_dropped = await _reattach(session, held)
     report.warnings = list(verdict.warnings)
     report.attachments_omitted = manifest.attachments.omitted_count

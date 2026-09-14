@@ -90,8 +90,9 @@ export function SavingsModeField({ category, budgetId, tagKeys }: Props) {
       )}
       {sinkingFundToo && (
         <p className="savings-mode__conflict">
-          Tagged {tagName('savings')} and {tagName('long_term_expense')}: it counts as savings, not
-          as a sinking fund.
+          {/* Named from the served role, not a client list of savings tags:
+              Savings and Emergency fund both reach here. */}
+          Also tagged {tagName('long_term_expense')}: it counts as savings, not as a sinking fund.
         </p>
       )}
       {update.isError && (

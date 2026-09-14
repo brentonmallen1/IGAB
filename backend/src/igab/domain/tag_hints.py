@@ -21,6 +21,7 @@ applying, or worse, the reverse.
 """
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import cache
 
@@ -28,6 +29,19 @@ from functools import cache
 #: `guide.wishlist_service`, and re-derived on the next wishlist write, so
 #: offering it would be offering a choice the app immediately overrules.
 DERIVED_KEYS = frozenset({"wishlist"})
+
+#: Tags another tag already means. An Emergency fund category IS a savings
+#: category (`category_filters.SAVINGS_CATEGORY_KEYS`), so offering it the
+#: Savings tag would be offering a second copy of a fact it already carries —
+#: and accepting it would change nothing but the tag list. An implication, not
+#: an auto-add: nothing writes the implied tag.
+IMPLIED_TAGS: dict[str, tuple[str, ...]] = {"emergency_fund": ("savings",)}
+
+
+def with_implied(keys: Iterable[str]) -> frozenset[str]:
+    """These system keys and every key they imply."""
+    held = set(keys)
+    return frozenset(held.union(*(IMPLIED_TAGS.get(k, ()) for k in held)))
 
 
 @dataclass(frozen=True)

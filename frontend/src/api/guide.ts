@@ -3,7 +3,7 @@ import toast from 'react-hot-toast'
 import { apiClient, apiErrorMessage } from './client'
 import type { SignalKey } from '../content/roadmap'
 import { ROOT } from './queryKeys'
-import type { EssentialsFigures } from '../types'
+import type { EmergencyFund, EssentialsFigures } from '../types'
 
 /** How a concept came to be answered. */
 export type SignalSource =
@@ -54,6 +54,10 @@ export interface Signal {
   /** Essential expenses only: both essentials figures, of which `value` is the
    *  `monthly`. null on every other concept. */
   essentials: EssentialsFigures | null
+  /** Emergency fund only: what the fund counted, whose `total` is `value`
+   *  (services/emergency_fund.py). null on every other concept, and on a
+   *  dismissed one. */
+  fund: EmergencyFund | null
   reason: string
   entities: Partial<Record<EntityType, string[]>>
   /** Things that did not count and should be said out loud — a debt with no

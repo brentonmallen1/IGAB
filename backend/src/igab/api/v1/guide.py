@@ -129,16 +129,20 @@ async def set_guide_binding(
     payload: BindingUpdate,
 ) -> None:
     key = _known(concept_key)
-    await service.set_binding(
-        budget_id,
-        key,
-        mode=payload.mode,
-        entity_ids=payload.entity_ids,
-        answer=payload.answer,
-        external=payload.external,
-        external_amount=payload.external_amount,
-        note=payload.note,
-    )
+    try:
+        await service.set_binding(
+            budget_id,
+            key,
+            mode=payload.mode,
+            entity_ids=payload.entity_ids,
+            answer=payload.answer,
+            external=payload.external,
+            external_amount=payload.external_amount,
+            note=payload.note,
+        )
+    except InvariantViolation as e:
+        # An entity type the concept does not bind to.
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e)) from e
 
 
 @router.get("/{budget_id}/guide/preferences", response_model=PreferencesResponse)

@@ -27,7 +27,8 @@ from igab.guide.concepts import (
     essentials_monthly,
 )
 from igab.repositories.transaction_repo import TransactionRepository
-from igab.services.report_basics import class_excluded_note, emergency_fund
+from igab.services.emergency_fund import emergency_fund
+from igab.services.report_basics import class_excluded_note
 from igab.services.report_settings import spread_sinking_funds
 
 
@@ -86,10 +87,12 @@ async def essentials_summary(session: AsyncSession, budget_id: uuid.UUID, months
         {"months": n, "amount": quantize_cents(headline * n)}
         for n in (1, FULL_EMERGENCY_FUND_MONTHS_LOW, FULL_EMERGENCY_FUND_MONTHS_HIGH, 12)
     ]
-    fund_balance, fund_source = await emergency_fund(session, budget_id)
+    # What the household chose to count — read whatever the Guide tracks, so
+    # dismissing the Guide's step never blanks the report.
+    fund = await emergency_fund(session, budget_id, today=today)
     runway = (
-        (fund_balance / headline).quantize(Decimal("0.1"))
-        if fund_balance is not None and headline > 0
+        (fund.total / headline).quantize(Decimal("0.1"))
+        if fund.total is not None and headline > 0
         else None
     )
     base = {
@@ -100,8 +103,11 @@ async def essentials_summary(session: AsyncSession, budget_id: uuid.UUID, months
         "essentials": essentials,
         "reserve": reserve,
         "roadmap_range": (FULL_EMERGENCY_FUND_MONTHS_LOW, FULL_EMERGENCY_FUND_MONTHS_HIGH),
-        "emergency_fund_balance": fund_balance,
-        "emergency_fund_source": fund_source,
+        "emergency_fund": fund,
+        # The old pair, kept beside the composition until the Counting line
+        # replaces what reads them.
+        "emergency_fund_balance": fund.total,
+        "emergency_fund_source": fund.source,
         "runway_months": runway,
     }
     if not tagged:

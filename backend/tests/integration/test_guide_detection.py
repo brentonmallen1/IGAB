@@ -24,6 +24,7 @@ from .factories import (
     create_tag,
     create_transaction,
     create_user,
+    tag_with_system_tags,
 )
 
 TODAY = date.today()
@@ -70,133 +71,48 @@ async def _contribute(session, budget, from_account, to_account, category, amoun
 
 
 class TestEmergencyFund:
-    async def test_prefers_a_savings_tagged_category_named_for_an_emergency(self, db_session):
+    """The Guide's wrapper over `services.emergency_fund` — what it chose and
+    nothing it guessed. The fund's own behaviour is `test_emergency_fund.py`."""
+
+    async def test_reports_what_was_chosen(self, db_session):
         budget = await _budget(db_session)
-        cat = await _savings_category(db_session, budget, "Emergency Fund")
+        group = await create_category_group(db_session, budget, "Goals")
+        cat = await create_category(db_session, budget, group, "House Cushion")
+        await tag_with_system_tags(db_session, cat, "emergency_fund")
         await create_budget_assignment(db_session, budget, cat, THIS_MONTH, "1500.00")
 
         found = await GuideDetection(db_session).emergency_fund(budget.id)
 
         assert found.met is True
         assert found.value == Decimal("1500.00")
-        assert "tagged Savings" in found.reason
-        assert found.entities["category"] == [cat.id]
+        assert found.reason == "what you chose to count"
+        assert found.entities == {"category": [cat.id]}
+        assert found.fund is not None and found.fund.total == Decimal("1500.00")
 
-    async def test_matches_rainy_day_and_buffer_too(self, db_session):
+    async def test_an_empty_chosen_envelope_reports_zero(self, db_session):
+        """Zero is an answer when something was chosen — distinct from nothing
+        chosen at all."""
         budget = await _budget(db_session)
-        cat = await _savings_category(db_session, budget, "Rainy Day")
-        await create_budget_assignment(db_session, budget, cat, THIS_MONTH, "800.00")
-
-        found = await GuideDetection(db_session).emergency_fund(budget.id)
-        assert found.entities["category"] == [cat.id]
-
-    async def test_spending_reduces_the_balance(self, db_session):
-        budget = await _budget(db_session)
-        account = await create_account(db_session, budget, account_type="checking")
-        cat = await _savings_category(db_session, budget, "Emergency Fund")
-        await create_budget_assignment(db_session, budget, cat, THIS_MONTH, "1500.00")
-        await create_transaction(db_session, budget, account, "-400.00", TODAY, category=cat)
-
-        found = await GuideDetection(db_session).emergency_fund(budget.id)
-        assert found.value == Decimal("1100.00")
-
-    async def test_untagged_name_match_is_reported_with_a_weaker_reason(self, db_session):
-        budget = await _budget(db_session)
-        cat = await _savings_category(db_session, budget, "Emergency Fund", tagged=False)
-        await create_budget_assignment(db_session, budget, cat, THIS_MONTH, "900.00")
-
-        found = await GuideDetection(db_session).emergency_fund(budget.id)
-        assert found.value == Decimal("900.00")
-        assert found.reason == "the category name mentions an emergency"
-
-    async def test_falls_back_to_a_savings_account_and_says_so(self, db_session):
-        budget = await _budget(db_session)
-        account = await create_account(db_session, budget, account_type="savings")
-        await create_transaction(db_session, budget, account, "5000.00", TODAY)
-
-        found = await GuideDetection(db_session).emergency_fund(budget.id)
-
-        assert found.value == Decimal("5000.00")
-        # The weaker signal must admit it is weaker: a savings account may be
-        # holding a house deposit.
-        assert "may also be holding other plans" in found.reason
-        assert found.entities["account"] == [account.id]
-
-    async def test_an_empty_envelope_does_not_hide_a_funded_account(self, db_session):
-        """The reported case, and the one the precedence order got wrong.
-
-        Money moved into a savings ACCOUNT without ever being assigned to an
-        emergency envelope: the savings-rate report showed a household saving
-        steadily while Essentials read $0.00 — which is "we found it and it is
-        empty", not "we found nothing". The category matched first and ended
-        the search. Strongest-signal-first still holds; a signal that found
-        nothing simply no longer outranks one that found money.
-        """
-        budget = await _budget(db_session)
-        # The envelope exists and is empty — nothing was ever assigned to it.
-        await _savings_category(db_session, budget, "Emergency Fund", tagged=True)
-        account = await create_account(db_session, budget, account_type="savings")
-        await create_transaction(db_session, budget, account, "5000.00", TODAY)
-
-        found = await GuideDetection(db_session).emergency_fund(budget.id)
-
-        assert found.value == Decimal("5000.00")
-        assert "may also be holding other plans" in found.reason
-
-    async def test_a_funded_envelope_still_wins_over_an_account(self, db_session):
-        """The fallback is a fallback: it only applies where the better signal
-        came up empty."""
-        budget = await _budget(db_session)
-        cat = await _savings_category(db_session, budget, "Emergency Fund", tagged=True)
-        await create_budget_assignment(db_session, budget, cat, THIS_MONTH, "900.00")
-        account = await create_account(db_session, budget, account_type="savings")
-        await create_transaction(db_session, budget, account, "5000.00", TODAY)
-
-        found = await GuideDetection(db_session).emergency_fund(budget.id)
-
-        assert found.value == Decimal("900.00")
-        assert "tagged Savings" in found.reason
-
-    async def test_an_empty_envelope_with_nothing_else_still_reports_zero(self, db_session):
-        """Zero is an answer when it is the only one — distinct from "we could
-        not find anything", which is what the page tells the user."""
-        budget = await _budget(db_session)
-        await _savings_category(db_session, budget, "Emergency Fund", tagged=True)
+        group = await create_category_group(db_session, budget, "Goals")
+        cat = await create_category(db_session, budget, group, "Emergency Fund")
+        await tag_with_system_tags(db_session, cat, "emergency_fund")
 
         found = await GuideDetection(db_session).emergency_fund(budget.id)
 
         assert found.value == Decimal("0")
         assert found.met is False
-        assert "tagged Savings" in found.reason
 
-    async def test_admits_when_it_cannot_tell(self, db_session):
+    async def test_admits_when_nothing_was_chosen(self, db_session):
         budget = await _budget(db_session)
-        group = await create_category_group(db_session, budget, "Bills")
-        await create_category(db_session, budget, group, "Electric")
+        cat = await _savings_category(db_session, budget, "Emergency Fund")
+        await create_budget_assignment(db_session, budget, cat, THIS_MONTH, "1500.00")
 
         found = await GuideDetection(db_session).emergency_fund(budget.id)
 
         assert found.met is None
         assert found.value is None
-        assert "could not find" in found.reason
-
-    async def test_a_binding_overrides_every_heuristic(self, db_session):
-        budget = await _budget(db_session)
-        # A category the heuristic would have picked...
-        decoy = await _savings_category(db_session, budget, "Emergency Fund")
-        await create_budget_assignment(db_session, budget, decoy, THIS_MONTH, "1500.00")
-        # ...and the one the user actually means.
-        group = await create_category_group(db_session, budget, "Other")
-        real = await create_category(db_session, budget, group, "House Cushion")
-        await create_budget_assignment(db_session, budget, real, THIS_MONTH, "4000.00")
-
-        found = await GuideDetection(db_session).emergency_fund(
-            budget.id, bound={"category": (real.id,)}
-        )
-
-        assert found.value == Decimal("4000.00")
-        assert found.entities["category"] == [real.id]
-        assert "you told us" in found.reason
+        assert found.entities == {}
+        assert "nothing has been chosen" in found.reason
 
 
 class TestEssentialExpenses:
@@ -623,143 +539,3 @@ async def test_every_finding_carries_its_reasoning(db_session, concept):
     found = await getattr(GuideDetection(db_session), concept)(budget.id)
     assert found.reason
     assert found.concept_key == concept
-
-
-class TestTheGuideReadsTheBudgetPagesNumber:
-    """The roadmap's figures decide what it tells someone about their money.
-
-    `_category_balance` was `SUM(assigned) + SUM(activity)` over all time —
-    no month buckets, no zero floor, no upper bound on the month. Every case
-    below produced a different number from the budget page, always lower for
-    overspending and higher for pre-assignment, and the emergency-fund verdict
-    is decided by comparing this figure against essential expenses.
-    """
-
-    async def _category_with_history(self, db_session, budget, history):
-        """history: list of (month, assigned, activity)."""
-        group = await create_category_group(db_session, budget, "Savings")
-        category = await create_category(db_session, budget, group, "Emergency Fund")
-        account = await create_account(db_session, budget, "Checking")
-        for month, assigned, activity in history:
-            if assigned is not None:
-                await create_budget_assignment(
-                    db_session, budget, category, month, Decimal(assigned)
-                )
-            if activity is not None:
-                await create_transaction(
-                    db_session,
-                    budget,
-                    account,
-                    activity,
-                    month,
-                    category=category,
-                    cleared="cleared",
-                )
-        return category
-
-    async def _both_numbers(self, db_session, budget, category):
-        from .factories import make_services
-
-        services = make_services(db_session)
-        detection = GuideDetection(db_session)
-        guide = await detection._category_balance(budget.id, [category.id])
-        page = await services.budgets.get_category_balance(category.id, THIS_MONTH)
-        return guide, page.available
-
-    async def test_a_covered_overspend_does_not_follow_the_category_forever(self, db_session):
-        # The headline case. January overspent by 50 and TBA covered it, so
-        # February starts at zero. A running total says 50 less, permanently.
-        budget = await _budget(db_session)
-        last = (THIS_MONTH - timedelta(days=1)).replace(day=1)
-        category = await self._category_with_history(
-            db_session, budget, [(last, "100.00", "-150.00"), (THIS_MONTH, "200.00", None)]
-        )
-
-        guide, page = await self._both_numbers(db_session, budget, category)
-
-        assert guide == page == Decimal("200.00")
-
-    async def test_an_assignment_for_a_future_month_is_not_money_you_have_now(self, db_session):
-        budget = await _budget(db_session)
-        october = (THIS_MONTH + timedelta(days=300)).replace(day=1)
-        category = await self._category_with_history(
-            db_session, budget, [(THIS_MONTH, "100.00", None), (october, "500.00", None)]
-        )
-
-        guide, page = await self._both_numbers(db_session, budget, category)
-
-        assert guide == page == Decimal("100.00")
-
-    async def test_they_agree_on_an_ordinary_history(self, db_session):
-        budget = await _budget(db_session)
-        last = (THIS_MONTH - timedelta(days=1)).replace(day=1)
-        category = await self._category_with_history(
-            db_session, budget, [(last, "300.00", "-120.00"), (THIS_MONTH, "150.00", "-40.00")]
-        )
-
-        guide, page = await self._both_numbers(db_session, budget, category)
-
-        assert guide == page == Decimal("290.00")
-
-    async def test_the_floor_is_per_category_not_across_the_total(self, db_session):
-        # Two categories, one 50 over and one 50 under. Flooring the sum gives
-        # 0; flooring each gives 50. The budget page floors each.
-        budget = await _budget(db_session)
-        last = (THIS_MONTH - timedelta(days=1)).replace(day=1)
-        group = await create_category_group(db_session, budget, "Savings")
-        account = await create_account(db_session, budget, "Checking")
-        over = await create_category(db_session, budget, group, "Over")
-        under = await create_category(db_session, budget, group, "Under")
-        await create_budget_assignment(db_session, budget, over, last, Decimal("0.00"))
-        await create_transaction(
-            db_session, budget, account, "-50.00", last, category=over, cleared="cleared"
-        )
-        await create_budget_assignment(db_session, budget, under, last, Decimal("50.00"))
-
-        detection = GuideDetection(db_session)
-        total = await detection._category_balance(budget.id, [over.id, under.id])
-
-        assert total == Decimal("50.00")
-
-
-class TestTheGuideReadsTheAccountBalanceEveryoneElseReads:
-    async def test_a_pending_row_is_not_money_yet(self, db_session):
-        budget = await _budget(db_session)
-        account = await create_account(db_session, budget, "Savings")
-        await create_transaction(db_session, budget, account, "1000.00", TODAY, cleared="cleared")
-        await create_transaction(db_session, budget, account, "-900.00", TODAY, cleared="pending")
-
-        from .factories import make_services
-
-        services = make_services(db_session)
-        detection = GuideDetection(db_session)
-
-        assert await detection._account_balance([account.id]) == Decimal("1000.00")
-        assert await services.account_repo.get_balance(account.id) == Decimal("1000.00")
-
-    async def test_a_split_totals_the_same_either_way(self, db_session):
-        # LEAF and PARENT_ROW both get this right; pinned so a future change to
-        # BALANCE_ROW cannot quietly start double-counting.
-        budget = await _budget(db_session)
-        account = await create_account(db_session, budget, "Savings")
-        parent = await create_transaction(
-            db_session, budget, account, "-100.00", TODAY, cleared="cleared", is_split=True
-        )
-        for amount in ("-60.00", "-40.00"):
-            await create_transaction(
-                db_session,
-                budget,
-                account,
-                amount,
-                TODAY,
-                cleared="cleared",
-                parent_transaction_id=parent.id,
-            )
-
-        from .factories import make_services
-
-        services = make_services(db_session)
-        detection = GuideDetection(db_session)
-
-        assert await detection._account_balance([account.id]) == Decimal("-100.00")
-        assert await services.account_repo.get_balance(account.id) == Decimal("-100.00")

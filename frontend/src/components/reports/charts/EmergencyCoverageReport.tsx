@@ -140,13 +140,10 @@ export function EmergencyCoverageReport({ budgetId }: Props) {
         ) : data.fund_balance === null ? (
           <div className="coverage-report__empty">
             <p>
-              No emergency fund found yet. IGAB looks for a savings-tagged envelope whose name
-              mentions an emergency, then savings accounts — deliberately narrow, because telling
-              someone they are covered when they are not is the worse mistake.
-            </p>
-            <p>
-              Point the <Link to="/guide">Guide</Link> at whatever you actually keep set aside —
-              including money at another bank — and every figure here fills in.
+              No emergency fund chosen yet. Nothing is guessed: IGAB counts the envelopes you tag{' '}
+              <strong>Emergency fund</strong>, the off-budget savings accounts you mark as counting
+              toward it, and anything you tell the <Link to="/guide">Guide</Link> you keep
+              elsewhere.
             </p>
           </div>
         ) : (

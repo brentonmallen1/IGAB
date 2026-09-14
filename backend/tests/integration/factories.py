@@ -366,6 +366,21 @@ async def create_tag(
     return tag
 
 
+async def tag_with_system_tags(
+    session: AsyncSession, category: Category, *system_keys: str
+) -> None:
+    """Add these system tags to a category, seeding the budget's system tags
+    first — the way a household tags an envelope. Adds; never replaces."""
+    from igab.repositories.tag_repo import TagRepository, seed_system_tags
+
+    await seed_system_tags(session, category.budget_id)
+    tags = TagRepository(session)
+    for key in system_keys:
+        tag = await tags.get_system_tag(category.budget_id, key)
+        assert tag is not None, key
+        await tags.add_category_tag(category.id, tag.id)
+
+
 async def create_liability(
     session: AsyncSession,
     budget: Budget,

@@ -37,10 +37,10 @@ TODAY = date.today()
 MONTHS = [add_months(month_start(TODAY), -n) for n in range(6, 0, -1)]
 
 
-async def _world(db_session, *, fund_name: str = "Emergency Fund"):
+async def _world(db_session, *, in_fund: bool = True):
     """A budget spending exactly $1,000 of essentials in each complete month,
-    with a savings-tagged envelope whose name mentions an emergency — the
-    arrangement detection is most confident about."""
+    with an envelope tagged Emergency fund (`in_fund`) — the only way an
+    envelope counts."""
     services = make_services(db_session)
     user = await create_user(db_session)
     budget = await create_budget(db_session, user)
@@ -48,13 +48,14 @@ async def _world(db_session, *, fund_name: str = "Emergency Fund"):
     bills = await create_category_group(db_session, budget, "Bills")
     rent = await create_category(db_session, budget, bills, "Rent")
     goals = await create_category_group(db_session, budget, "Goals")
-    fund = await create_category(db_session, budget, goals, fund_name)
+    fund = await create_category(db_session, budget, goals, "Emergency Fund")
 
     await seed_system_tags(db_session, budget.id)
     tags = TagRepository(db_session)
     by_key = {t.system_key: t for t in await tags.list_for_budget(budget.id)}
     await tags.set_category_tags(rent.id, [by_key["essential"].id])
-    await tags.set_category_tags(fund.id, [by_key["savings"].id])
+    if in_fund:
+        await tags.set_category_tags(fund.id, [by_key["emergency_fund"].id])
 
     for month in MONTHS:
         await create_transaction(
@@ -100,6 +101,7 @@ async def test_an_account_fund_counts_through_the_last_day_of_each_month(db_sess
     hysa = await create_account(
         db_session, budget, "Cascade Point HYSA", account_type="savings", on_budget=False
     )
+    hysa.counts_toward_emergency_fund = True
     await create_transaction(db_session, budget, hysa, "2000.00", month_end(MONTHS[3]))
 
     report = await EmergencyCoverageService(db_session).coverage(budget.id, months=4)
@@ -143,8 +145,9 @@ async def test_the_headline_is_the_essentials_reports_own_runway(db_session):
 
 async def test_no_fund_draws_no_line(db_session):
     """A zero series is a claim — "you had nothing all year". The honest
-    answer is that the app has not been told what to look at."""
-    _, budget, _fund_cat = await _world(db_session, fund_name="Vacation")
+    answer is that the app has not been told what to look at — and an envelope
+    named "Emergency Fund" is not telling it."""
+    _, budget, _fund_cat = await _world(db_session, in_fund=False)
 
     report = await EmergencyCoverageService(db_session).coverage(budget.id, months=4)
     assert report["fund_balance"] is None
@@ -262,7 +265,7 @@ class TestTheAverageStartsWithTheHistory:
         tags = TagRepository(db_session)
         by_key = {t.system_key: t for t in await tags.list_for_budget(budget.id)}
         await tags.set_category_tags(rent.id, [by_key["essential"].id])
-        await tags.set_category_tags(fund.id, [by_key["savings"].id])
+        await tags.set_category_tags(fund.id, [by_key["emergency_fund"].id])
         await create_transaction(
             db_session, budget, checking, "-4.00", history_from, category=coffee
         )

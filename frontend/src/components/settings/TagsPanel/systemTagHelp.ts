@@ -23,7 +23,13 @@ export const SYSTEM_TAG_HELP: { key: string; name: string; on: string; does: str
     key: 'savings',
     name: 'Savings',
     on: 'categories',
-    does: 'Money leaving a Savings category counts as saving, not spending: it feeds the Savings report and the savings rate, and stays out of burn rate and the spending charts. It still counts against what you assigned to that category, so Budget vs Actual, Cumulative Variance and Plan vs Reality show the envelope being spent down rather than permanently under-spent.',
+    does: 'Money set aside. Each Savings category says how it counts as saved: sent out (money leaving the envelope counts as saving, not spending — for an envelope that feeds an investment or another bank) or kept here (the envelope’s balance is the savings, so assigning to it counts and spending from it does not). Either way it feeds the Savings report and the savings rate, stays out of burn rate and the spending charts, and still counts against what you assigned, so Budget vs Actual shows the envelope being spent down.',
+  },
+  {
+    key: 'emergency_fund',
+    name: 'Emergency fund',
+    on: 'categories',
+    does: 'Money set aside for genuine surprises. Counts as savings (kept here unless you change it) and is what the emergency fund reads, with any off-budget accounts you mark.',
   },
   {
     key: 'long_term_expense',

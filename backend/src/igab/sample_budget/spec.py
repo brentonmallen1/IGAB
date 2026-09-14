@@ -90,6 +90,9 @@ class CategorySpec:
     assignments_are_explicit: bool = False
     is_archived: bool = False
     tiers: tuple[str, ...] = BOTH_TIERS
+    #: `Category.savings_mode` — None lets the tags decide
+    #: (`category_filters.SAVINGS_ROLE`).
+    savings_mode: str | None = None
 
 
 @dataclass(frozen=True)

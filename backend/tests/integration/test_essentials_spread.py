@@ -62,7 +62,7 @@ async def _household(db_session, api_client):
     await tags.set_category_tags(
         insurance.id, [by_key["essential"].id, by_key["long_term_expense"].id]
     )
-    await tags.set_category_tags(fund.id, [by_key["savings"].id])
+    await tags.set_category_tags(fund.id, [by_key["emergency_fund"].id])
 
     # History from over a year back, so every coverage point averages three
     # real months.

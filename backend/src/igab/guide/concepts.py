@@ -76,13 +76,16 @@ CONCEPTS: tuple[Concept, ...] = (
         key="emergency_fund",
         label="Emergency fund",
         kind="amount",
-        binds_to=("category", "account"),
+        # Nothing to bind: the fund is chosen by the Emergency fund tag and the
+        # account flag, which every report reads too (`services.emergency_fund`).
+        # Only "kept elsewhere" is a Guide answer.
+        binds_to=(),
         prompt="Money set aside for genuine surprises, that you could reach the same day.",
         caveat=(
-            "We look for a savings-tagged category or account whose name mentions an "
-            "emergency, a rainy day or a buffer. If yours is named something else — or "
-            "lives at another bank — say so and we will use that instead."
+            "Counts the envelopes you tag Emergency fund, the off-budget accounts you "
+            "mark, and anything you keep elsewhere. Nothing is guessed."
         ),
+        allows_external=True,
         aliases=("rainy day", "buffer"),
     ),
     Concept(

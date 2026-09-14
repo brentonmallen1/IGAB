@@ -23,6 +23,13 @@ SYSTEM_TAGS = [
     # (migration b8e5d1c73a49). Every tag works that way now.
     ("subscription", "Subscription", "purple"),
     ("savings", "Savings", "green"),
+    # What the emergency fund reads: these envelopes' Available, with the
+    # off-budget accounts marked `counts_toward_emergency_fund` and anything
+    # declared as kept elsewhere (`services/emergency_fund.py`). Chosen, never
+    # guessed from a name. It implies Savings (`category_filters.
+    # SAVINGS_CATEGORY_KEYS`) and defaults to kept here; green, beside Savings,
+    # because it is savings.
+    ("emergency_fund", "Emergency fund", "green"),
     # Cadence, not classification. It marks an envelope that saves monthly
     # toward a known annual bill, so the Savings report lists it beside real
     # savings — but the bill itself is a cost, and classifying its payout as

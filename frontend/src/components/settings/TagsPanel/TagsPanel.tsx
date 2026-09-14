@@ -11,6 +11,7 @@ import {
 } from '../../../api/tags'
 import { TagChip, type TagColorSlot } from '../../common/TagChip'
 import { Tooltip } from '../../common/Tooltip/Tooltip'
+import { noticeText } from './tagNotices'
 import './TagsPanel.css'
 import { confirmAsync } from '../../../stores/confirmStore'
 
@@ -27,32 +28,6 @@ const COLOR_SLOTS: TagColorSlot[] = [
 
 interface TagsPanelProps {
   budgetId: string
-}
-
-/**
- * What each migration notice says.
- *
- * Out of the JSX because there are two now, and a ternary chain in a render is
- * where the third one gets written as a bare key. Falls back to the key rather
- * than rendering nothing: a notice with no copy is a bug worth seeing.
- */
-function noticeText(key: string, payload: Record<string, unknown>): string {
-  const removed = Number(payload.payee_tags_removed ?? 0)
-  const tags = `${removed} payee tag${removed === 1 ? ' was' : 's were'} removed`
-  if (key === 'subscription_tag_moved') {
-    return (
-      `Subscription is now a category tag. ${tags} — tag the categories your ` +
-      `subscriptions are filed to (Streaming, Software…) and the report follows them.`
-    )
-  }
-  if (key === 'payee_tags_retired') {
-    return (
-      `Tags now apply to categories only. ${tags} — nothing read them, so no ` +
-      `figure changes. Tag the categories those payees are filed to and every ` +
-      `report that uses tags follows.`
-    )
-  }
-  return key
 }
 
 export function TagsPanel({ budgetId }: TagsPanelProps) {

@@ -250,19 +250,21 @@ _HOUSEHOLD = SampleBudgetSpec(
                 # to sweep in here, which pushed the full tier's fund to
                 # $43,270 against a $10,000 target — four times its own goal,
                 # which reads as a bug in the demo rather than a household.
-                # It is also the denominator of every coverage figure on the
-                # new Emergency Fund report.
+                # It is also the numerator of every coverage figure on the
+                # Emergency Fund report: tagged Emergency fund, which is the
+                # only way anything counts. Savings and sent out alongside it,
+                # exactly what migration e52d44b73edb leaves on a budget that
+                # bound a Savings envelope — so the savings rate reads as it
+                # did.
                 CategorySpec(
                     "Emergency Fund",
                     target=TargetSpec("savings_balance", _d("10000.00")),
-                    tags=("Savings",),
+                    tags=("Savings", "Emergency fund"),
+                    savings_mode="sent_out",
                     monthly_budget=_d("300.00"),
                 ),
-                # Where the leftovers go. Named so it does NOT match
-                # `GuideDetection.EMERGENCY_NAME` (/emergency|rainy.?day|
-                # buffer/i) — "Rainy Day" or "Buffer" here would be detected
-                # as a second emergency fund and quietly double the coverage
-                # every report quotes.
+                # Where the leftovers go. Not tagged Emergency fund, so it is
+                # not part of the fund whatever it is named.
                 CategorySpec(
                     "General Savings",
                     tags=("Savings",),

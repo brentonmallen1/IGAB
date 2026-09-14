@@ -381,39 +381,6 @@ async def savings_contributors(
     }
 
 
-async def emergency_fund(
-    session: AsyncSession, budget_id: uuid.UUID
-) -> tuple[Decimal | None, str | None]:
-    """What the Guide reads as the emergency fund, and why.
-
-    Detection plus any self-reported amount, folded by the same rule the
-    roadmap uses. The docstring here used to promise "One reader ... so the
-    Essentials report and the roadmap quote the same balance" while reading
-    only the detection — so a household keeping most of its buffer at another
-    institution saw the roadmap say $10,240 and this report say $1,240 for one
-    figure. The promise is now kept by calling the same function.
-    """
-    from igab.guide.bindings import fold_external, resolve
-    from igab.guide.detection import GuideDetection
-    from igab.guide.repo import GuideRepository
-
-    rows = await GuideRepository(session).bindings(budget_id)
-    resolution = resolve("emergency_fund", rows)
-    detected: Decimal | None = None
-    reason: str | None = None
-    if resolution.runs_detection:
-        finding = await GuideDetection(session).emergency_fund(
-            budget_id, resolution.entities or None
-        )
-        detected, reason = finding.value, finding.reason
-    total = fold_external(detected, resolution.external_amount)
-    if total is None:
-        return None, None
-    if detected is None:
-        reason = "you told us what you have set aside"
-    return quantize_cents(total), reason
-
-
 #: How many complete months the Overview's Means trend reads, whatever range
 #: the Overview itself is showing.
 MEANS_TREND_MONTHS = 12

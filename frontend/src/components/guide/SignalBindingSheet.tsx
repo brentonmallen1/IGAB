@@ -55,9 +55,20 @@ export function SignalBindingSheet({
 
   const answered = concept.kind === 'boolean' && concept.binds_to.length === 0
 
+  // Only the types this concept binds to. The selection is seeded from the
+  // signal's entities, which for the emergency fund are what its tags and
+  // account flags chose — not bindings — and the server refuses a type the
+  // concept does not bind to.
+  const bindable = useMemo(
+    () =>
+      Object.fromEntries(concept.binds_to.map((type) => [type, selected[type] ?? []])) as Partial<
+        Record<EntityType, string[]>
+      >,
+    [concept.binds_to, selected]
+  )
   const hasSelection = useMemo(
-    () => Object.values(selected).some((ids) => (ids?.length ?? 0) > 0),
-    [selected]
+    () => Object.values(bindable).some((ids) => (ids?.length ?? 0) > 0),
+    [bindable]
   )
 
   function toggle(type: EntityType, id: string) {
@@ -75,7 +86,11 @@ export function SignalBindingSheet({
     // Save stays enabled with nothing chosen, like every dialog's primary, and
     // says what it needs; Don't track and Reset are complete answers alone.
     if (mode === 'manual' && !hasSelection && !external) {
-      setError('Pick what holds it, or say you hold it elsewhere')
+      setError(
+        concept.binds_to.length
+          ? 'Pick what holds it, or say you hold it elsewhere'
+          : 'Say you hold it elsewhere, or choose Don’t track this'
+      )
       return
     }
     try {
@@ -92,7 +107,7 @@ export function SignalBindingSheet({
       await setBinding.mutateAsync({
         conceptKey: concept.key,
         mode,
-        entity_ids: mode === 'manual' ? selected : undefined,
+        entity_ids: mode === 'manual' ? bindable : undefined,
         answer,
         external: mode === 'manual' ? external : false,
         external_amount: externalAmount,

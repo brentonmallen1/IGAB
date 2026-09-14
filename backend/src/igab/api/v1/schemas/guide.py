@@ -6,7 +6,7 @@ from typing import Literal
 from pydantic import Field, model_validator
 
 from igab.api.v1.schemas.base import ApiModel
-from igab.api.v1.schemas.report import EssentialsFigures
+from igab.api.v1.schemas.report import EmergencyFundOut, EssentialsFigures
 
 
 class ConceptInfo(ApiModel):
@@ -50,6 +50,10 @@ class SignalResponse(ApiModel):
     #: The essential-expenses concept only: both essentials figures, of which
     #: `value` is the `.monthly`. None on every other concept.
     essentials: EssentialsFigures | None = None
+    #: The emergency fund only: what it counted (`services.emergency_fund`),
+    #: whose `total` is `value`. None on every other concept, and on a
+    #: dismissed one — the reports still serve it.
+    fund: EmergencyFundOut | None = None
     reason: str = ""
     entities: dict[str, list[str]] = Field(default_factory=dict)
     #: Things worth mentioning that did not count — a debt with no rate on

@@ -34,7 +34,6 @@ beyond its own series and drew $0 under cards reading the real amount.
 """
 
 import uuid
-from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
@@ -51,61 +50,9 @@ from igab.guide.concepts import (
     trailing_average,
 )
 from igab.guide.detection import budget_service_from
-from igab.repositories.account_repo import AccountRepository
 from igab.repositories.transaction_repo import TransactionRepository
-from igab.services.budget_service import BudgetService
+from igab.services.emergency_fund import EmergencyFund, fund_balance_at
 from igab.services.essentials import essentials_summary
-
-
-@dataclass
-class FundEntities:
-    """What counts as the emergency fund, and where its figure comes from."""
-
-    category_ids: list[uuid.UUID]
-    account_ids: list[uuid.UUID]
-    external_amount: Decimal | None
-    external_as_of: date | None
-    source: str | None
-
-    @property
-    def empty(self) -> bool:
-        return not self.category_ids and not self.account_ids and self.external_amount is None
-
-
-async def fund_entities(session: AsyncSession, budget_id: uuid.UUID) -> FundEntities:
-    """The categories and accounts behind `report_basics.emergency_fund`.
-
-    That function returns a total; this returns what it added up, because a
-    history needs the parts. Both fold the same resolution, so the newest
-    point of the series and the headline balance cannot disagree.
-    """
-    from igab.guide.bindings import resolve
-    from igab.guide.detection import GuideDetection
-    from igab.guide.repo import GuideRepository
-
-    rows = await GuideRepository(session).bindings(budget_id)
-    resolution = resolve("emergency_fund", rows)
-
-    entities: dict[str, list[uuid.UUID]] = {}
-    source: str | None = None
-    if resolution.runs_detection:
-        finding = await GuideDetection(session).emergency_fund(
-            budget_id, resolution.entities or None
-        )
-        # A finding that found nothing still names no entities; an empty list
-        # is the honest answer, not a reason to fall back to guessing again.
-        entities = {k: list(v) for k, v in (finding.entities or {}).items()}
-        source = finding.reason
-    if resolution.external_amount is not None and not source:
-        source = "you told us what you have set aside"
-
-    return FundEntities(
-        category_ids=entities.get("category", []),
-        account_ids=entities.get("account", []),
-        external_amount=resolution.external_amount,
-        external_as_of=resolution.external_as_of,
-        source=source,
-    )
 
 
 def history_index(months: list[date], history_from: date | None) -> int:
@@ -142,25 +89,7 @@ class EmergencyCoverageService:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def _fund_balance_at(
-        self, budgets: "BudgetService", entities: FundEntities, month: date, month_end: date
-    ) -> Decimal:
-        total = Decimal("0")
-        for category_id in entities.category_ids:
-            balance = await budgets.get_category_balance(category_id, month)
-            # Per category, because the zero floor is per category — two
-            # envelopes, one $50 over and one $50 under, hold $0 and $50 and
-            # not $0 between them. Same rule as GuideDetection._category_balance.
-            total += balance.available
-        if entities.account_ids:
-            sums = await AccountRepository(self.session).balances_for(
-                entities.account_ids, as_of=month_end
-            )
-            total += sum(sums.values(), Decimal("0"))
-        return quantize_cents(total)
-
     async def coverage(self, budget_id: uuid.UUID, months: int = 12) -> dict:
-        entities = await fund_entities(self.session, budget_id)
         # The budget page's own service, built the way the DI layer builds it,
         # so an envelope's balance here IS the budget page's balance rather
         # than a second derivation pinned equal by a comment.
@@ -171,6 +100,10 @@ class EmergencyCoverageService:
         # months before it (the three-month average needs only two of them).
         lead_in = SPREAD_MONTHS - 1
         summary = await essentials_summary(self.session, budget_id, months=months + lead_in)
+        # The composition the Essentials report quotes — one reading, so the
+        # newest point, the headline and every other surface share a total.
+        fund: EmergencyFund = summary["emergency_fund"]
+        external = fund.external
         spread_on = summary["essentials"].spread_on
         series = summary["monthly_series"]
         totals = [row["total"] for row in series]
@@ -186,12 +119,19 @@ class EmergencyCoverageService:
         # Nothing identified as the fund: draw no line rather than a flat zero
         # one. A zero series is a claim — "you had nothing all year" — and the
         # honest answer is that the app has not been told what to look at.
-        if entities.empty:
+        if not fund.draws_history:
             series = []
         # The newest month the chart can draw. The series runs to the last
         # COMPLETE month, so this is in the past — which is the whole reason
         # the external figure needs clamping below.
         newest_end = _month_end(series[-1]["month"]) if series else None
+        balances = await fund_balance_at(
+            self.session,
+            budget_id,
+            fund,
+            [row["month"] for row in series[lead_in:]],
+            budgets,
+        )
         for i, row in enumerate(series):
             if i < lead_in:
                 continue
@@ -202,7 +142,7 @@ class EmergencyCoverageService:
                 if spread_on
                 else trailing_average(totals, i, first_data=first_data)
             )
-            balance = await self._fund_balance_at(budgets, entities, month, month_end)
+            balance = balances[i - lead_in]
             # A self-reported figure is carried flat from the month it was
             # reported, and "as of now" lands on the newest month the chart
             # draws.
@@ -216,16 +156,14 @@ class EmergencyCoverageService:
             # the report drew $0 and 0.0 months beneath cards reading the real
             # amount. Clamping to the newest point is what "as of now" means
             # on a chart of complete months.
-            reported = entities.external_as_of
+            reported = external.as_of
             if reported is None or (newest_end is not None and reported > newest_end):
                 reported = newest_end
             external_counted = (
-                entities.external_amount is not None
-                and reported is not None
-                and reported <= month_end
+                external.amount is not None and reported is not None and reported <= month_end
             )
             if external_counted:
-                balance = quantize_cents(balance + (entities.external_amount or Decimal("0")))
+                balance = quantize_cents(balance + (external.amount or Decimal("0")))
             points.append(
                 {
                     "month": month,
@@ -239,12 +177,12 @@ class EmergencyCoverageService:
             )
 
         headline = summary["essentials"].monthly
-        balance_now = summary["emergency_fund_balance"]
         return {
             "months": months,
             "tagged": summary["tagged"],
-            "fund_balance": balance_now,
-            "fund_source": summary["emergency_fund_source"],
+            "fund": fund,
+            "fund_balance": fund.total,
+            "fund_source": fund.source,
             # The Essentials report's own runway, quoted rather than recomputed:
             # one figure, so the two reports cannot disagree about coverage.
             "coverage_months": summary["runway_months"],
@@ -256,7 +194,7 @@ class EmergencyCoverageService:
             # A self-reported figure is carried flat from the date it was
             # given. Said out loud, because a flat line drawn without a word
             # reads as a fund that did not move.
-            "external_amount": entities.external_amount,
-            "external_as_of": entities.external_as_of,
+            "external_amount": external.amount,
+            "external_as_of": external.as_of,
             "current_month": first_of_month,
         }

@@ -335,6 +335,10 @@ SAVINGS_ROLE_NONE = "none"
 #: tag row simply matches on Savings alone.
 IS_SAVINGS_CATEGORY = Category.id.in_(tagged_category_ids(*SAVINGS_CATEGORY_KEYS))
 
+#: Carries a live Emergency fund tag — the default half of `SAVINGS_ROLE` and
+#: the category half of `IN_EMERGENCY_FUND`.
+TAGGED_EMERGENCY_FUND = Category.id.in_(tagged_category_ids(EMERGENCY_FUND_KEY))
+
 #: How this category's money counts as saved: 'none' for a category that is not
 #: a savings category, otherwise the stored `savings_mode`, and with no stored
 #: choice the tag's default — kept here for an Emergency fund, sent out for
@@ -349,10 +353,7 @@ SAVINGS_ROLE = case(
     else_=func.coalesce(
         Category.savings_mode,
         case(
-            (
-                Category.id.in_(tagged_category_ids(EMERGENCY_FUND_KEY)),
-                literal(SAVINGS_KEPT_HERE_MODE),
-            ),
+            (TAGGED_EMERGENCY_FUND, literal(SAVINGS_KEPT_HERE_MODE)),
             else_=literal(SAVINGS_SENT_OUT_MODE),
         ),
     ),
@@ -368,6 +369,19 @@ SAVINGS_SENT_OUT = SAVINGS_ROLE == SAVINGS_SENT_OUT_MODE
 #: not the household's to call saved.
 HOLDS_SAVINGS = and_(
     SAVINGS_ROLE == SAVINGS_KEPT_HERE_MODE,
+    LIVE_CATEGORY,
+    not_(IN_SYSTEM_GROUP),
+    not_(LINKED_TO_CARD),
+)
+
+#: An envelope whose Available is part of the emergency fund
+#: (`services/emergency_fund.py`). Chosen by the tag and nothing else — never a
+#: name, never an account type. Whatever its savings mode: the mode decides how
+#: the savings RATE counts the envelope, and a sent-out envelope's not-yet-sent
+#: balance is still money set aside. Live, archived included, not income and
+#: not a card's set-aside — the same envelope terms as `HOLDS_SAVINGS`.
+IN_EMERGENCY_FUND = and_(
+    TAGGED_EMERGENCY_FUND,
     LIVE_CATEGORY,
     not_(IN_SYSTEM_GROUP),
     not_(LINKED_TO_CARD),

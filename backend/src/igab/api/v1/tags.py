@@ -25,7 +25,7 @@ from igab.dependencies import (
     get_change_recorder,
     get_tag_repo,
 )
-from igab.domain.tag_hints import DERIVED_KEYS, TAG_HINTS, suggest_review_tags
+from igab.domain.tag_hints import DERIVED_KEYS, TAG_HINTS, suggest_review_tags, with_implied
 from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.tag_repo import (
     SYSTEM_TAGS,
@@ -275,7 +275,9 @@ async def list_tag_suggestions(
 
     out: list[TagSuggestionOut] = []
     for category, group_name in rows:
-        held = {t.system_key for t in existing.get(category.id, []) if t.system_key}
+        # What a tag already implies is held too: an Emergency fund category
+        # is never offered Savings (`tag_hints.IMPLIED_TAGS`).
+        held = with_implied(t.system_key for t in existing.get(category.id, []) if t.system_key)
         for suggestion in suggest_review_tags(category.name, group_name):
             if suggestion.system_key in held:
                 continue

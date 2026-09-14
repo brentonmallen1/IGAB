@@ -150,7 +150,7 @@ export function EssentialsReport({ budgetId }: Props) {
                 value={formatMoneyOrDash(data.emergency_fund_balance)}
                 sub={
                   data.runway_months === null
-                    ? 'No emergency fund found yet'
+                    ? 'No emergency fund chosen yet'
                     : `${data.runway_months} month${data.runway_months === 1 ? '' : 's'} of essentials`
                 }
                 accent={data.runway_months !== null && data.runway_months >= rangeLow}
@@ -167,8 +167,8 @@ export function EssentialsReport({ budgetId }: Props) {
             </MetricRow>
             <p className="essentials-report__note">
               {data.emergency_fund_source
-                ? `“Saved so far” reads the Guide’s emergency fund — ${data.emergency_fund_source}. `
-                : 'Point the Guide at your emergency fund and “Saved so far” will read it. '}
+                ? `“Saved so far” counts ${data.emergency_fund_source}. `
+                : 'Tag envelopes Emergency fund, or mark an off-budget savings account, and “Saved so far” will count them. '}
               The rest are targets, not balances; the <Link to="/guide">roadmap</Link> tracks
               progress against them.
             </p>

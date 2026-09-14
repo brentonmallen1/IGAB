@@ -1037,6 +1037,36 @@ export interface SeasonalityReport {
   categories: { id: string; name: string }[]
 }
 
+/** One envelope or account the emergency fund counted. */
+export interface FundPart {
+  id: string
+  name: string
+  balance: number
+}
+
+/** What the household said it keeps outside IGAB. `declared` with a null
+ *  `amount` is "I have this covered" — never zero. */
+export interface FundExternal {
+  declared: boolean
+  amount: number | null
+  as_of: string | null
+  note: string | null
+}
+
+/** The emergency fund and exactly what it counted. Served — the home is
+ *  backend/src/igab/services/emergency_fund.py (`EmergencyFundOut`): envelopes
+ *  tagged Emergency fund, off-budget accounts marked "counts toward emergency
+ *  fund", and anything kept elsewhere. Nothing is guessed; never recompute
+ *  `total` here. */
+export interface EmergencyFund {
+  set_up: boolean
+  /** Null only when nothing in IGAB was chosen and no figure was declared. */
+  total: number | null
+  categories: FundPart[]
+  accounts: FundPart[]
+  external: FundExternal
+}
+
 /** What a lean month costs — GET /reports/essentials. `essentials` is the
  *  Guide's figure and the Overview card's; the table averages complete months. */
 /** One month of the emergency-fund coverage report. */
@@ -1060,6 +1090,9 @@ export interface CoveragePoint {
 export interface EmergencyCoverageReport {
   months: number
   tagged: boolean
+  /** The emergency fund and what it counted — the Essentials report's own. */
+  fund: EmergencyFund
+  /** `fund.total` and a short description of what was counted. */
   fund_balance: number | null
   fund_source: string | null
   /** The Essentials report's own runway, quoted rather than recomputed. */
@@ -1094,8 +1127,10 @@ export interface EssentialsReport {
   monthly_series: { month: string; total: number; sinking_total: number }[]
   reserve: { months: number; amount: number }[]
   roadmap_range: [number, number]
-  /** What the Guide reads as the emergency fund today, and how many lean
-   *  months it covers. Null when nothing looks like a fund. */
+  /** The emergency fund and what it counted, whatever the Guide tracks. */
+  emergency_fund: EmergencyFund
+  /** `emergency_fund.total`, a short description of what was counted, and how
+   *  many lean months the total covers. Null when nothing was chosen. */
   emergency_fund_balance: number | null
   emergency_fund_source: string | null
   runway_months: number | null

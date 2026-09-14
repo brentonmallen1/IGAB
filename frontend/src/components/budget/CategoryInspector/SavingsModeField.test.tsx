@@ -101,14 +101,17 @@ describe('SavingsModeField', () => {
     expect(update.mutate).toHaveBeenCalledWith({ id: 'cat-1', savings_mode: 'kept_here' })
   })
 
-  it('says a Savings and Long-term expense category counts as savings', () => {
-    show({}, ['savings', 'long_term_expense'])
-    expect(
-      screen.getByText(
-        'Tagged Savings and Long-term expense: it counts as savings, not as a sinking fund.'
-      )
-    ).toBeInTheDocument()
-  })
+  it.each([['savings'], ['emergency_fund']])(
+    'says a %s and Long-term expense category counts as savings',
+    (key) => {
+      show({}, [key, 'long_term_expense'])
+      expect(
+        screen.getByText(
+          'Also tagged Long-term expense: it counts as savings, not as a sinking fund.'
+        )
+      ).toBeInTheDocument()
+    }
+  )
 
   it('says nothing about sinking funds otherwise', () => {
     show()
