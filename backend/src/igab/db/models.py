@@ -238,6 +238,16 @@ class Account(Base):
     counts_as_savings: Mapped[bool] = mapped_column(
         Boolean, default=True, nullable=False, server_default="true"
     )
+    #: Whether this account's balance is part of the emergency fund. Chosen,
+    #: never guessed. Valid only on an off-budget asset that counts as savings —
+    #: the account endpoints refuse anything else — and read only through
+    #: `txn_filters.EMERGENCY_FUND_ACCOUNT`, which also requires that shape, so
+    #: a flag left on an account that later moves on budget reads false rather
+    #: than counting budget cash twice. The server default lets an older
+    #: snapshot restore.
+    counts_toward_emergency_fund: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default="false"
+    )
     is_closed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     note: Mapped[str | None] = mapped_column(Text)
@@ -448,6 +458,10 @@ class Category(Base):
             unique=True,
             postgresql_where=text("NOT is_deleted"),
         ),
+        CheckConstraint(
+            "savings_mode IN ('sent_out', 'kept_here')",
+            name="ck_categories_savings_mode",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
@@ -479,6 +493,11 @@ class Category(Base):
     linked_liability_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("liabilities.id", ondelete="SET NULL"), index=True
     )
+    #: How a savings category's money counts as saved: 'sent_out' or
+    #: 'kept_here'. The explicit choice only — NULL means the tags decide, and
+    #: the answer is `savings_role`, never this column. Kept when the tags are
+    #: removed, so re-tagging restores what the household chose.
+    savings_mode: Mapped[str | None] = mapped_column(String(10))
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -486,6 +505,14 @@ class Category(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
+
+    #: 'none', 'sent_out' or 'kept_here' — how this category's money counts as
+    #: saved. Not a column: it reads the category's tags, which change without
+    #: this row being touched, and a stored copy would go stale on every tag
+    #: edit. The rule is `SAVINGS_ROLE` (repositories/category_filters.py).
+    #: Populated by `CategoryRepository.with_eligibility`; required in the
+    #: response, so a path that forgets raises.
+    savings_role: Mapped[str] = query_expression()
 
     #: May money be budgeted or moved into this envelope? Not a column, and
     #: none could be: it reads the *group's* is_system and is_archived, which

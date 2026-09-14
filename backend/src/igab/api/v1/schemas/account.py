@@ -19,6 +19,9 @@ class AccountCreate(ApiModel):
     on_budget: bool | None = None
     # None = use the type's default_counts_as_savings
     counts_as_savings: bool | None = None
+    #: Omitted or null starts false. True is refused unless the account is an
+    #: off-budget asset that counts as savings (`EMERGENCY_FUND_ACCOUNT_SHAPE`).
+    counts_toward_emergency_fund: bool | None = None
     note: str | None = None
     sort_order: int = 0
 
@@ -35,6 +38,9 @@ class AccountUpdate(ApiModel):
     #: Whether transfers with this off-budget asset count as saving. A type
     #: change leaves it alone, the same as `on_budget`.
     counts_as_savings: bool | None = None
+    #: True is refused unless the account, with this request's other fields
+    #: applied, is an off-budget asset that counts as savings.
+    counts_toward_emergency_fund: bool | None = None
     is_closed: bool | None = None
     note: str | None = None
     sort_order: int | None = None
@@ -53,6 +59,10 @@ class AccountResponse(ApiModel):
     #: Required: served from the column, and a path that forgot it must raise
     #: rather than report a car as savings.
     counts_as_savings: bool
+    #: The stored choice. Required for the reason `counts_as_savings` is. Whether
+    #: the balance is counted is `txn_filters.EMERGENCY_FUND_ACCOUNT`, which also
+    #: requires the account to still have the shape the flag was set on.
+    counts_toward_emergency_fund: bool
     classification: str | None
     is_closed: bool
     sort_order: int

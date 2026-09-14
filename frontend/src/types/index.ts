@@ -34,6 +34,11 @@ export interface Account {
    *  off-budget asset (`utils/accountKinds.isTrackedAsset`). Served from the
    *  column; the rule is `domain/activity_class.py` rules 3 and 5. */
   counts_as_savings: boolean
+  /** The stored emergency-fund mark. Whether the balance is counted is
+   *  decided on the server — home is `repositories/txn_filters.py
+   *  EMERGENCY_FUND_ACCOUNT`, which also requires an off-budget savings
+   *  account; the server refuses the flag on any other shape. */
+  counts_toward_emergency_fund: boolean
   classification: AccountClassification | null
   is_closed: boolean
   sort_order: number
@@ -121,6 +126,11 @@ export interface TagSimple {
   color_slot: 'red' | 'orange' | 'yellow' | 'green' | 'teal' | 'blue' | 'purple' | 'pink' | null
 }
 
+/** `Category.savings_mode` — see `category_filters.SavingsMode`. */
+export type SavingsMode = 'sent_out' | 'kept_here'
+/** `Category.savings_role` — see `category_filters.SavingsRole`. */
+export type SavingsRole = 'none' | SavingsMode
+
 export interface Category {
   id: string
   category_group_id: string
@@ -151,6 +161,13 @@ export interface Category {
    *  by the cards section and offered by no picker. */
   is_fundable: boolean
   is_categorizable: boolean
+  /** The stored choice only; null when the tags decide. Read `savings_role`
+   *  for the answer. */
+  savings_mode: SavingsMode | null
+  /** How this category's money counts as saved. Served, not derived — home is
+   *  `repositories/category_filters.py SAVINGS_ROLE`: it reads the Savings and
+   *  Emergency fund tags and the default each implies. */
+  savings_role: SavingsRole
   tags?: TagSimple[]
   created_at: string
   updated_at: string

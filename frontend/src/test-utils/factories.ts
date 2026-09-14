@@ -33,6 +33,8 @@ export function makeCategory(over: Partial<Category> = {}): Category {
     is_assignable: true,
     is_fundable: true,
     is_categorizable: true,
+    savings_mode: null,
+    savings_role: 'none',
     created_at: '2026-08-01T00:00:00Z',
     updated_at: '2026-08-01T00:00:00Z',
     tags: [],

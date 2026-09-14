@@ -4,7 +4,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, Category, CategoryGroup
@@ -27,6 +27,7 @@ from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.scheduled_transaction_repo import ScheduledTransactionRepository
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.repositories.transaction_repo import TransactionRepository
+from igab.repositories.txn_filters import EMERGENCY_FUND_ACCOUNT_SHAPE
 from igab.services.account_type_service import apply_type, resolve_type
 from igab.services.card_payment import ensure_payment_category
 from igab.services.liability_service import ensure_for_account
@@ -268,9 +269,14 @@ class YNABImporter:
         self._group_cache: dict[str, CategoryGroup] = {}
         # (group_id, category name lower) → Category
         self._category_cache: dict[tuple[uuid.UUID, str], Category] = {}
+        # account_key → marked emergency fund in the file's Accounts.csv.
+        self._emergency_fund_accounts: set[str] = set()
 
     async def import_budget(self, budget: YNABBudget) -> ImportResult:
         result = ImportResult()
+        self._emergency_fund_accounts = {
+            key for key, exported in budget.account_types.items() if exported.emergency_fund
+        }
         # Before any category exists, so the name-based tagging below has real
         # tags to point at. A budget created by import otherwise reaches the
         # tags endpoint (which backfills) only if the user opens Settings.
@@ -369,6 +375,8 @@ class YNABImporter:
             # Importing a budget with a mortgage is the scenario the loan
             # features were built for, and it was the one that never reached
             # them: the importer creates accounts and never a liability.
+            if key in self._emergency_fund_accounts:
+                await self._restore_emergency_fund_flag(account)
             await ensure_for_account(self.session, account)
             await ensure_payment_category(self.session, account)
             result.accounts_imported += 1
@@ -377,6 +385,22 @@ class YNABImporter:
 
         self._account_cache[key] = account
         return account
+
+    async def _restore_emergency_fund_flag(self, account: Account) -> None:
+        """Carry an IGAB export's emergency-fund mark back onto the account.
+
+        A fact the export states about the account, not a guess, so it is
+        applied — but only where the account as imported still has the shape
+        the flag is valid on (`EMERGENCY_FUND_ACCOUNT_SHAPE`). The mapping step
+        may have moved it on budget or turned off Counts as savings, and an
+        import is not refused for that; the mark is simply not carried.
+        """
+        await self.session.execute(
+            update(Account)
+            .where(Account.id == account.id, EMERGENCY_FUND_ACCOUNT_SHAPE)
+            .values(counts_toward_emergency_fund=True)
+        )
+        await self.session.refresh(account)
 
     def _may_link(self, a: dict, b: dict) -> bool:
         """May these two legs be linked as one transfer?

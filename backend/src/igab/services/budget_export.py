@@ -324,6 +324,7 @@ async def _account_rows(session: AsyncSession, budget_id: UUID) -> list[dict[str
             accounts.c.classification,
             accounts.c.on_budget,
             accounts.c.counts_as_savings,
+            accounts.c.counts_toward_emergency_fund,
             accounts.c.is_closed,
             accounts.c.note,
         )
@@ -337,6 +338,7 @@ async def _account_rows(session: AsyncSession, budget_id: UUID) -> list[dict[str
             "Classification": row.classification,
             "On Budget": "true" if row.on_budget else "false",
             "Counts As Savings": "true" if row.counts_as_savings else "false",
+            "Counts Toward Emergency Fund": "true" if row.counts_toward_emergency_fund else "false",
             "Closed": "true" if row.is_closed else "false",
             "Note": row.note or "",
         }

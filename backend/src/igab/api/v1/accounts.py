@@ -23,7 +23,7 @@ from igab.dependencies import (
     get_transaction_matching_service,
     get_transaction_service,
 )
-from igab.domain.exceptions import DuplicateError, NotFoundError
+from igab.domain.exceptions import DuplicateError, InvariantViolation, NotFoundError
 from igab.repositories.account_repo import AccountRepository, LiabilityDisposition
 from igab.services.account_hygiene import AccountHygieneService
 from igab.services.account_type_service import apply_type, resolve_type
@@ -213,15 +213,23 @@ async def create_account(
     # One batch: the account and whatever it conjured undo as a unit.
     with recorder.batch():
         try:
-            acc = await account_repo.create(
-                budget_id=budget_id,
-                name=body.name,
-                note=body.note,
-                sort_order=body.sort_order,
-                **apply_type(type_row, body.on_budget, body.counts_as_savings),
-            )
+            async with account_repo.session.begin_nested():
+                acc = await account_repo.create(
+                    budget_id=budget_id,
+                    name=body.name,
+                    note=body.note,
+                    sort_order=body.sort_order,
+                    counts_toward_emergency_fund=bool(body.counts_toward_emergency_fund),
+                    **apply_type(type_row, body.on_budget, body.counts_as_savings),
+                )
+                if acc.counts_toward_emergency_fund:
+                    await account_repo.require_emergency_fund_shape(acc.id)
         except DuplicateError as e:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e)) from e
+        except InvariantViolation as e:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e)
+            ) from e
 
         # A liability-classified account gets its companion here, not on first
         # visit to the page: every consumer downstream may assume the row exists.
@@ -306,9 +314,20 @@ async def update_account(
                     account_type=type_row.key,
                     classification=type_row.classification,
                 )
-            acc = await account_repo.update(account_id, **changes)
+            # A savepoint so a refused flag leaves nothing written. Checked
+            # only when this request turns the flag on: one left on from before
+            # is inert (`EMERGENCY_FUND_ACCOUNT` requires the shape too), and
+            # refusing to move such an account on budget would trap it.
+            async with session.begin_nested():
+                acc = await account_repo.update(account_id, **changes)
+                if changes.get("counts_toward_emergency_fund"):
+                    await account_repo.require_emergency_fund_shape(acc.id)
         except NotFoundError as e:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
+        except InvariantViolation as e:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e)
+            ) from e
 
         # Retyping can cross the asset/liability line in either direction, and
         # the companion has to follow — an account that became a loan needs

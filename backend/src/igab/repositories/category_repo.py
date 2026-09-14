@@ -16,6 +16,7 @@ from igab.repositories.category_filters import (
     IS_ASSIGNABLE,
     IS_CATEGORIZABLE,
     IS_FUNDABLE,
+    SAVINGS_ROLE,
     SPENDABLE,
 )
 
@@ -207,18 +208,21 @@ class CategoryRepository(BaseRepository[Category]):
     model = Category
 
     @staticmethod
-    def with_eligibility(stmt: Select[tuple[Category]]) -> Select[tuple[Category]]:
-        """Load `is_assignable` and `is_categorizable` on a Category statement.
+    def with_eligibility[T: tuple[Any, ...]](stmt: Select[T]) -> Select[T]:
+        """Load every served field a `CategoryResponse` carries on a Category
+        statement: the three eligibility flags and `savings_role`.
 
         Every path that serializes a `CategoryResponse` has to go through here.
         The fields are required in the schema, so a path that skips one raises
         rather than quietly reporting every category as ineligible — which
-        would empty the move-money picker with no explanation.
+        would empty the move-money picker with no explanation — or as no
+        savings category at all.
         """
         return stmt.options(
             with_expression(Category.is_assignable, IS_ASSIGNABLE),
             with_expression(Category.is_fundable, IS_FUNDABLE),
             with_expression(Category.is_categorizable, IS_CATEGORIZABLE),
+            with_expression(Category.savings_role, SAVINGS_ROLE),
         )
 
     async def get(self, id: uuid.UUID) -> Category | None:
@@ -342,13 +346,11 @@ class CategoryRepository(BaseRepository[Category]):
         """Categories paired with their group's name — for AI name matching,
         where the same category name in several groups must be
         disambiguated."""
+        # Through `with_eligibility`, not its own list of expressions: this
+        # spelled the three flags out by hand, and a fourth served field would
+        # have been forgotten here first.
         q = (
-            select(Category, CategoryGroup.name)
-            .options(
-                with_expression(Category.is_assignable, IS_ASSIGNABLE),
-                with_expression(Category.is_fundable, IS_FUNDABLE),
-                with_expression(Category.is_categorizable, IS_CATEGORIZABLE),
-            )
+            self.with_eligibility(select(Category, CategoryGroup.name))
             .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
             .where(
                 Category.budget_id == budget_id,
@@ -376,7 +378,7 @@ class CategoryRepository(BaseRepository[Category]):
         classifying its spending is meaningless.
         """
         q = (
-            select(Category, CategoryGroup.name)
+            self.with_eligibility(select(Category, CategoryGroup.name))
             .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
             .where(
                 Category.budget_id == budget_id,
@@ -388,7 +390,9 @@ class CategoryRepository(BaseRepository[Category]):
                 CategoryGroup.sort_order, CategoryGroup.name, Category.sort_order, Category.name
             )
         )
-        result = await self.session.execute(q)
+        # populate_existing, as in `get_all`: `savings_role` reads the tags,
+        # and a row the session already holds would keep its stale answer.
+        result = await self.session.execute(q.execution_options(populate_existing=True))
         return [(row[0], row[1]) for row in result.all()]
 
     async def get_with_tags(self, category_id: uuid.UUID) -> Category | None:

@@ -276,6 +276,7 @@ class YNABParser:
                     if row.get("Counts As Savings") not in (None, "")
                     else None
                 ),
+                emergency_fund=_truthy(row.get("Counts Toward Emergency Fund")),
             )
         return out
 

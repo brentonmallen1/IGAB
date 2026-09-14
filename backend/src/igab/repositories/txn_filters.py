@@ -358,6 +358,38 @@ CASH_ACCOUNT = and_(
     Account.classification != "liability",
 )
 
+#: The only shape `Account.counts_toward_emergency_fund` may be set on: an
+#: off-budget asset that counts as savings. The account endpoints ask this of
+#: the row as it will be, so the refusal and the readers below cannot disagree.
+#:
+#: Each term is load-bearing. On budget, the account's money is already in the
+#: envelopes, and counting the account too counts it twice. A liability is
+#: owed, not held. And without `counts_as_savings` a transfer into the account
+#: classes as spending while the account counts as fund — the household would
+#: be told it spent the money it set aside.
+EMERGENCY_FUND_ACCOUNT_SHAPE = and_(
+    Account.on_budget == False,  # noqa: E712
+    Account.classification != "liability",
+    Account.counts_as_savings == True,  # noqa: E712
+)
+
+#: An account the emergency-fund picker may offer: the valid shape, live and
+#: open.
+EMERGENCY_FUND_ACCOUNT_CANDIDATE = and_(
+    LIVE_ACCOUNT,
+    Account.is_closed == False,  # noqa: E712
+    EMERGENCY_FUND_ACCOUNT_SHAPE,
+)
+
+#: An account whose balance is part of the emergency fund. The flag alone is not
+#: enough: a flag left on an account that later moved on budget, stopped
+#: counting as savings, closed or was deleted reads false here rather than
+#: counting money that is no longer set aside.
+EMERGENCY_FUND_ACCOUNT = and_(
+    EMERGENCY_FUND_ACCOUNT_CANDIDATE,
+    Account.counts_toward_emergency_fund == True,  # noqa: E712
+)
+
 
 #: A transfer leg whose partner never arrived: the payee names another account,
 #: but no row links back. Balances stay right — both sides were written — but

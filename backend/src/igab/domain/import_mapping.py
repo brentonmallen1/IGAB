@@ -302,6 +302,9 @@ class ExportedAccount:
     #: None when the file predates the column, which then falls through to the
     #: next tier rather than reading as false.
     counts_as_savings: bool | None = None
+    #: The account counted toward the emergency fund. False when the file
+    #: predates the column, which is what every account was then.
+    emergency_fund: bool = False
 
 
 @dataclass(frozen=True)
