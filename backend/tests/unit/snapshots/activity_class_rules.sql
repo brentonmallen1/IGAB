@@ -1,9 +1,15 @@
 -- ACTIVITY_CLASS
-CASE WHEN (transactions.category_id IS NOT NULL AND transactions.category_id IN (SELECT category_tags.category_id 
+CASE WHEN (EXISTS (SELECT categories.id 
+FROM categories, transactions 
+WHERE categories.id = transactions.category_id AND CASE WHEN ((categories.id NOT IN (SELECT category_tags.category_id 
 FROM category_tags 
 WHERE category_tags.tag_id IN (SELECT tags.id 
 FROM tags 
-WHERE tags.system_key IN ('savings') AND tags.is_deleted = false))) THEN 'savings' WHEN (transactions.category_id IS NOT NULL AND transactions.category_id IN (SELECT category_tags.category_id 
+WHERE tags.system_key IN ('savings', 'emergency_fund') AND tags.is_deleted = false)))) THEN 'none' ELSE coalesce(categories.savings_mode, CASE WHEN (categories.id IN (SELECT category_tags.category_id 
+FROM category_tags 
+WHERE category_tags.tag_id IN (SELECT tags.id 
+FROM tags 
+WHERE tags.system_key IN ('emergency_fund') AND tags.is_deleted = false))) THEN 'kept_here' ELSE 'sent_out' END) END = 'sent_out')) THEN 'savings' WHEN (transactions.category_id IS NOT NULL AND transactions.category_id IN (SELECT category_tags.category_id 
 FROM category_tags 
 WHERE category_tags.tag_id IN (SELECT tags.id 
 FROM tags 
@@ -13,11 +19,17 @@ WHERE categories.id = transactions.category_id AND (EXISTS (SELECT category_grou
 FROM category_groups 
 WHERE category_groups.id = categories.category_group_id AND category_groups.is_system = true))))) THEN 'income' ELSE 'spending' END
 -- ACTIVITY_REASON
-CASE WHEN (transactions.category_id IS NOT NULL AND transactions.category_id IN (SELECT category_tags.category_id 
+CASE WHEN (EXISTS (SELECT categories.id 
+FROM categories, transactions 
+WHERE categories.id = transactions.category_id AND CASE WHEN ((categories.id NOT IN (SELECT category_tags.category_id 
 FROM category_tags 
 WHERE category_tags.tag_id IN (SELECT tags.id 
 FROM tags 
-WHERE tags.system_key IN ('savings') AND tags.is_deleted = false))) THEN 'tagged_savings' WHEN (transactions.category_id IS NOT NULL AND transactions.category_id IN (SELECT category_tags.category_id 
+WHERE tags.system_key IN ('savings', 'emergency_fund') AND tags.is_deleted = false)))) THEN 'none' ELSE coalesce(categories.savings_mode, CASE WHEN (categories.id IN (SELECT category_tags.category_id 
+FROM category_tags 
+WHERE category_tags.tag_id IN (SELECT tags.id 
+FROM tags 
+WHERE tags.system_key IN ('emergency_fund') AND tags.is_deleted = false))) THEN 'kept_here' ELSE 'sent_out' END) END = 'sent_out')) THEN 'tagged_savings' WHEN (transactions.category_id IS NOT NULL AND transactions.category_id IN (SELECT category_tags.category_id 
 FROM category_tags 
 WHERE category_tags.tag_id IN (SELECT tags.id 
 FROM tags 
@@ -27,11 +39,17 @@ WHERE categories.id = transactions.category_id AND (EXISTS (SELECT category_grou
 FROM category_groups 
 WHERE category_groups.id = categories.category_group_id AND category_groups.is_system = true))))) THEN 'uncategorized_inflow' ELSE 'default_spending' END
 -- ACTIVITY_CLASS_SUBQUERY
-CASE WHEN (transactions.category_id IS NOT NULL AND transactions.category_id IN (SELECT category_tags.category_id 
+CASE WHEN (EXISTS (SELECT categories.id 
+FROM categories, transactions 
+WHERE categories.id = transactions.category_id AND CASE WHEN ((categories.id NOT IN (SELECT category_tags.category_id 
 FROM category_tags 
 WHERE category_tags.tag_id IN (SELECT tags.id 
 FROM tags 
-WHERE tags.system_key IN ('savings') AND tags.is_deleted = false))) THEN 'savings' WHEN (transactions.category_id IS NOT NULL AND transactions.category_id IN (SELECT category_tags.category_id 
+WHERE tags.system_key IN ('savings', 'emergency_fund') AND tags.is_deleted = false)))) THEN 'none' ELSE coalesce(categories.savings_mode, CASE WHEN (categories.id IN (SELECT category_tags.category_id 
+FROM category_tags 
+WHERE category_tags.tag_id IN (SELECT tags.id 
+FROM tags 
+WHERE tags.system_key IN ('emergency_fund') AND tags.is_deleted = false))) THEN 'kept_here' ELSE 'sent_out' END) END = 'sent_out')) THEN 'savings' WHEN (transactions.category_id IS NOT NULL AND transactions.category_id IN (SELECT category_tags.category_id 
 FROM category_tags 
 WHERE category_tags.tag_id IN (SELECT tags.id 
 FROM tags 
@@ -105,11 +123,17 @@ WHERE categories.id = transactions.category_id AND (EXISTS (SELECT category_grou
 FROM category_groups 
 WHERE category_groups.id = categories.category_group_id AND category_groups.is_system = true))))) THEN 'income' ELSE 'spending' END
 -- ACTIVITY_REASON_SUBQUERY
-CASE WHEN (transactions.category_id IS NOT NULL AND transactions.category_id IN (SELECT category_tags.category_id 
+CASE WHEN (EXISTS (SELECT categories.id 
+FROM categories, transactions 
+WHERE categories.id = transactions.category_id AND CASE WHEN ((categories.id NOT IN (SELECT category_tags.category_id 
 FROM category_tags 
 WHERE category_tags.tag_id IN (SELECT tags.id 
 FROM tags 
-WHERE tags.system_key IN ('savings') AND tags.is_deleted = false))) THEN 'tagged_savings' WHEN (transactions.category_id IS NOT NULL AND transactions.category_id IN (SELECT category_tags.category_id 
+WHERE tags.system_key IN ('savings', 'emergency_fund') AND tags.is_deleted = false)))) THEN 'none' ELSE coalesce(categories.savings_mode, CASE WHEN (categories.id IN (SELECT category_tags.category_id 
+FROM category_tags 
+WHERE category_tags.tag_id IN (SELECT tags.id 
+FROM tags 
+WHERE tags.system_key IN ('emergency_fund') AND tags.is_deleted = false))) THEN 'kept_here' ELSE 'sent_out' END) END = 'sent_out')) THEN 'tagged_savings' WHEN (transactions.category_id IS NOT NULL AND transactions.category_id IN (SELECT category_tags.category_id 
 FROM category_tags 
 WHERE category_tags.tag_id IN (SELECT tags.id 
 FROM tags 

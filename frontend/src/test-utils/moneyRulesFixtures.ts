@@ -10,6 +10,7 @@ export const SERVED_RULES: MoneyRule[] = [
     reason: 'tagged_savings',
     reason_text: 'served tag reason',
     tag_key: 'savings',
+    savings_mode: 'sent_out',
     is_default: false,
   },
   {
@@ -19,6 +20,7 @@ export const SERVED_RULES: MoneyRule[] = [
     reason: 'internal_transfer',
     reason_text: 'served transfer reason',
     tag_key: null,
+    savings_mode: null,
     is_default: false,
   },
   {
@@ -28,6 +30,7 @@ export const SERVED_RULES: MoneyRule[] = [
     reason: 'default_spending',
     reason_text: 'served default reason',
     tag_key: null,
+    savings_mode: null,
     is_default: true,
   },
 ]

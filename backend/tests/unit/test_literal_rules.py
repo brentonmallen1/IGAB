@@ -64,14 +64,17 @@ def test_the_literal_rules_read_no_column():
 
 
 def test_tag_inputs_read_the_tags_they_are_named_for():
-    """`_ROW_FACTS` builds each tag predicate from `TAG_INPUT_KEYS`; this pins
-    that the compiled predicate names the key it is paired with."""
+    """`TAG_INPUTS` says which tag (and mode) each row fact reads; this pins
+    that the compiled predicate names the key — and the mode — it is paired
+    with."""
     dialect = postgresql.dialect()
-    for field, key in ac.TAG_INPUT_KEYS.items():
+    for field, tag in ac.TAG_INPUTS.items():
         sql = str(
             ac._ROW_FACTS[field].compile(dialect=dialect, compile_kwargs={"literal_binds": True})
         )
-        assert f"('{key}')" in sql
+        assert f"'{tag.tag_key}'" in sql
+        if tag.savings_mode is not None:
+            assert f"= '{tag.savings_mode}'" in sql
 
 
 def test_the_ladder_follows_the_shipped_rules_in_order():
@@ -82,16 +85,16 @@ def test_the_ladder_follows_the_shipped_rules_in_order():
 
 
 def test_the_ladder_finds_the_tag_rules_by_reading_them():
-    tagged = {r.reason: r.tag_key for r in ac.rule_ladder() if r.tag_key}
+    tagged = {r.reason: (r.tag_key, r.savings_mode) for r in ac.rule_ladder() if r.tag_key}
     assert tagged == {
-        ac.ActivityReason.TAGGED_SAVINGS: "savings",
-        ac.ActivityReason.TAGGED_DEBT: "debt_principal",
+        ac.ActivityReason.TAGGED_SAVINGS: ("savings", "sent_out"),
+        ac.ActivityReason.TAGGED_DEBT: ("debt_principal", None),
     }
 
 
 def test_a_tag_without_a_category_is_refused():
     base = dict.fromkeys(ac.LegFacts.__dataclass_fields__, False)
-    for field in ("tagged_savings", "tagged_debt", "in_system_group"):
+    for field in ("savings_sent_out", "tagged_debt", "in_system_group"):
         try:
             ac.LegFacts(**{**base, field: True})
         except ValueError:

@@ -60,7 +60,7 @@ function contributors(overrides: Partial<SavingsContributors> = {}): SavingsCont
         id: 'c1',
         name: 'Vacation Fund',
         reason: 'tagged_savings',
-        reason_label: 'category tagged Savings',
+        reason_label: 'sent from a Savings category',
         total: 300,
         count: 1,
       },
@@ -170,7 +170,7 @@ describe('SavingsRateDialog', () => {
     open()
     expect(rows('Where the savings went')).toEqual([
       'Brokeragetransfer to a tracked account$800.0080% of savings',
-      'Vacation Fundcategory tagged Savings$300.0030% of savings',
+      'Vacation Fundsent from a Savings category$300.0030% of savings',
       'Rainy Day Reservetransfer to a tracked account-$100.00-10% of savings',
     ])
   })

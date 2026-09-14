@@ -71,6 +71,14 @@ SHAPES: dict[str, tuple[AccountShape, dict]] = {
 }
 
 
+#: kind -> (system tag, stored savings mode) a real category of that kind has.
+CATEGORY_TAGGING: dict[CategoryKind, tuple[str, str | None]] = {
+    CategoryKind.SAVINGS_SENT: ("savings", "sent_out"),
+    CategoryKind.SAVINGS_KEPT: ("savings", "kept_here"),
+    CategoryKind.DEBT_PRINCIPAL: ("debt_principal", None),
+}
+
+
 def _moves() -> list[tuple[str, Move]]:
     cases: list[tuple[str, Move]] = []
     for frm, to in itertools.product(SHAPES, SHAPES):
@@ -127,11 +135,17 @@ async def test_the_served_answer_is_what_the_budget_and_the_classifier_do(db_ses
     inflow = await create_category(db_session, budget, income_group, "Inflow")
     group = await create_category_group(db_session, budget, "Everyday")
     envelope = await create_category(db_session, budget, group, "Envelope")
-    if move.category.value in ("savings", "debt_principal"):
+    # A real category of the kind: the tag it carries and, for the savings
+    # kinds, the mode it counts in — so the shipped classifier reads the same
+    # served role the explorer's literal facts claim.
+    tagging = CATEGORY_TAGGING.get(move.category)
+    if tagging is not None:
+        tag_key, mode = tagging
         tags = TagRepository(db_session)
-        tag = await tags.get_system_tag(budget.id, move.category.value)
+        tag = await tags.get_system_tag(budget.id, tag_key)
         assert tag is not None
         await tags.set_category_tags(envelope.id, [tag.id])
+        envelope.savings_mode = mode
     await create_transaction(db_session, budget, base, "10000", TODAY, category=inflow)
     await create_budget_assignment(db_session, budget, envelope, MONTH, "5000")
     category = {
@@ -205,7 +219,7 @@ def test_every_move_the_explorer_can_offer_is_built():
     without one here would leave its answers unchecked."""
     transfers = [m for _, m in MOVES if m.kind is MoveKind.TRANSFER]
     plain = [m for _, m in MOVES if m.kind is MoveKind.TRANSACTION]
-    # on<->off pairs carry five kinds, everything else only NONE: 12 pairs x 5
-    # plus 13 pairs x 1; on-budget transactions carry five, off-budget one.
-    assert len(transfers) == 12 * 5 + 13
-    assert len(plain) == 4 * 5 + 6
+    # on<->off pairs carry six kinds, everything else only NONE: 12 pairs x 6
+    # plus 13 pairs x 1; on-budget transactions carry six, off-budget one.
+    assert len(transfers) == 12 * 6 + 13
+    assert len(plain) == 4 * 6 + 6

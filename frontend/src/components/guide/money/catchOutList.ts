@@ -63,7 +63,7 @@ export const CATCH_OUTS: CatchOut[] = [
     id: 'savings-tag',
     title: `The ${tagName('savings')} tag counts every outflow as saving`,
     detail: `Spend a vacation fund tagged ${tagName('savings')} on a flight and the flight counts as saved. For money set aside toward a bill, use ${tagName('long_term_expense')}: the bill then counts as spending when it is paid.`,
-    tryIt: preset('transaction', 'checking', 'checking', { category: 'savings' }),
+    tryIt: preset('transaction', 'checking', 'checking', { category: 'savings_sent' }),
   },
   {
     id: 'car-sale',

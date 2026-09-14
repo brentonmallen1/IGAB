@@ -29,7 +29,8 @@ const tagName = (key: string) => SYSTEM_TAG_HELP.find((t) => t.key === key)?.nam
 const CATEGORY_OPTIONS: { value: CategoryKind; label: string }[] = [
   { value: 'none', label: 'No category' },
   { value: 'ordinary', label: 'An ordinary category' },
-  { value: 'savings', label: `A category tagged ${tagName('savings')}` },
+  { value: 'savings_sent', label: `A ${tagName('savings')} category — counts when sent out` },
+  { value: 'savings_kept', label: `A ${tagName('savings')} category — counts while kept here` },
   { value: 'debt_principal', label: `A category tagged ${tagName('debt_principal')}` },
   { value: 'income', label: 'Your income group (Ready to Assign)' },
 ]

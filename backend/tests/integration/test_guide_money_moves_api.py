@@ -59,10 +59,14 @@ class TestMoneyRules:
             "reason": "default_spending",
             "reason_text": "it is ordinary spending from a budget account",
             "tag_key": None,
+            "savings_mode": None,
             "is_default": True,
         }
-        assert [r["tag_key"] for r in rules if r["tag_key"]] == ["savings", "debt_principal"]
-        assert body["planned_spend_tag_keys"] == ["savings"]
+        assert [(r["tag_key"], r["savings_mode"]) for r in rules if r["tag_key"]] == [
+            ("savings", "sent_out"),
+            ("debt_principal", None),
+        ]
+        assert body["planned_spend_tag_keys"] == ["savings", "emergency_fund"]
         families = {f["key"]: f["classes"] for f in body["report_families"]}
         assert families["cost_of_living"] == ["spending", "debt_principal"]
 
@@ -136,7 +140,7 @@ class TestExplain:
     ):
         budget = await create_budget(db_session, api_client.test_user)
         body = await _explain(
-            api_client, budget, _transaction(CHECKING, "out", "250", category="savings")
+            api_client, budget, _transaction(CHECKING, "out", "250", category="savings_sent")
         )
         (leg,) = body["legs"]
         assert leg["cls"] == "savings" and leg["reason"] == "tagged_savings"
@@ -165,7 +169,7 @@ WORKED_MONTH = [
     ("Paycheck from Northwind Payserv", _transaction(CHECKING, "in", "6000", "income")),
     ("Harborstone mortgage payment", _transfer(CHECKING, MORTGAGE, "1800")),
     ("To the brokerage", _transfer(CHECKING, BROKERAGE, "500")),
-    ("Flight from Vacation", _transaction(CHECKING, "out", "250", "savings")),
+    ("Flight from Vacation", _transaction(CHECKING, "out", "250", "savings_sent")),
     ("To Cascade Point HYSA", _transfer(CHECKING, CHECKING, "400")),
     ("Sapphire Visa payment", _transfer(CHECKING, CARD, "900")),
     ("Everyday spending", _transaction(CHECKING, "out", "2300", "ordinary")),

@@ -13,10 +13,12 @@ import pytest
 from igab.domain.activity_class import (
     COST_OF_LIVING_CLASSES,
     SPENDING_CLASSES,
+    TAG_INPUTS,
     ActivityClass,
     ActivityReason,
 )
 from igab.domain.money_moves import (
+    KIND_FOR_INPUT,
     SHAPES,
     AccountShape,
     CategoryKind,
@@ -89,11 +91,37 @@ class TestLegs:
 
     def test_tag_kinds_set_their_own_input_only(self):
         (leg,) = legs(
-            Move(MoveKind.TRANSACTION, CASH, D("1"), CategoryKind.SAVINGS, direction=Direction.OUT)
+            Move(
+                MoveKind.TRANSACTION,
+                CASH,
+                D("1"),
+                CategoryKind.SAVINGS_SENT,
+                direction=Direction.OUT,
+            )
         )
         facts = leg_facts(leg)
-        assert facts.tagged_savings and facts.categorized
+        assert facts.savings_sent_out and facts.categorized
         assert not facts.tagged_debt and not facts.in_system_group
+
+    def test_a_kept_here_savings_category_sets_no_tag_input(self):
+        """Its rows class by where the money went, like any envelope's."""
+        (leg,) = legs(
+            Move(
+                MoveKind.TRANSACTION,
+                CASH,
+                D("1"),
+                CategoryKind.SAVINGS_KEPT,
+                direction=Direction.OUT,
+            )
+        )
+        facts = leg_facts(leg)
+        assert facts.categorized
+        assert not facts.savings_sent_out and not facts.tagged_debt
+
+    def test_every_tag_input_has_a_kind(self):
+        """A tag input with no kind would be False on every explorer leg, and
+        the explorer would teach a rule that never fires."""
+        assert set(KIND_FOR_INPUT) == set(TAG_INPUTS)
 
     def test_a_move_refuses_a_shape_that_does_not_fit_its_kind(self):
         with pytest.raises(ValueError):
@@ -135,12 +163,16 @@ class TestPlannedSpendByTag:
         return explain_move(move, [(cls, ActivityReason.TAGGED_SAVINGS)]).legs[0]
 
     def test_a_savings_tagged_outflow_is_spent_against_the_plan(self):
-        assert self._explain(CategoryKind.SAVINGS, ActivityClass.SAVINGS).planned_spend_by_tag
+        assert self._explain(CategoryKind.SAVINGS_SENT, ActivityClass.SAVINGS).planned_spend_by_tag
+
+    def test_a_kept_here_outflow_that_is_not_spending_is_spent_against_the_plan(self):
+        """A move from a kept-here envelope to a tracked savings account
+        classes SAVINGS by rule 3; the plan still meant that money to leave."""
+        assert self._explain(CategoryKind.SAVINGS_KEPT, ActivityClass.SAVINGS).planned_spend_by_tag
 
     def test_not_a_refund_and_not_other_tags(self):
-        assert not self._explain(
-            CategoryKind.SAVINGS, ActivityClass.SAVINGS, Direction.IN
-        ).planned_spend_by_tag
+        for kind in (CategoryKind.SAVINGS_SENT, CategoryKind.SAVINGS_KEPT):
+            assert not self._explain(kind, ActivityClass.SAVINGS, Direction.IN).planned_spend_by_tag
         assert not self._explain(
             CategoryKind.DEBT_PRINCIPAL, ActivityClass.DEBT_PRINCIPAL
         ).planned_spend_by_tag

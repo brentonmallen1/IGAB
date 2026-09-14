@@ -42,7 +42,14 @@ from igab.db.models import (
     Payee,
     Transaction,
 )
-from igab.repositories.category_filters import IN_SYSTEM_GROUP
+from igab.repositories.category_filters import (
+    IN_SYSTEM_GROUP,
+    IS_SAVINGS_CATEGORY,
+    SAVINGS_CATEGORY_KEYS,
+    SAVINGS_KEY,
+    SAVINGS_SENT_OUT,
+    SAVINGS_SENT_OUT_MODE,
+)
 from igab.repositories.txn_filters import (
     CASH_FLOW_ROW,
     COUNTERPART_ACCOUNT_ID,
@@ -97,7 +104,7 @@ class ActivityReason(StrEnum):
 #: Human-readable copy for each reason, shown wherever a row's class is
 #: explained. Kept next to the rules so the two cannot drift apart.
 REASON_TEXT: dict[ActivityReason, str] = {
-    ActivityReason.TAGGED_SAVINGS: "its category is tagged as savings",
+    ActivityReason.TAGGED_SAVINGS: "its category counts as savings when money is sent out of it",
     ActivityReason.TAGGED_DEBT: "its category is tagged as debt principal",
     ActivityReason.TRANSFER_TO_TRACKED_ASSET: (
         "it moves money to a tracked account you marked as savings, so it builds savings "
@@ -123,7 +130,7 @@ REASON_TEXT: dict[ActivityReason, str] = {
 #: label; these read as one. Kept beside them, and
 #: `test_savings_contributors.py` holds both to every member of the enum.
 REASON_LABEL: dict[ActivityReason, str] = {
-    ActivityReason.TAGGED_SAVINGS: "category tagged Savings",
+    ActivityReason.TAGGED_SAVINGS: "sent from a Savings category",
     ActivityReason.TAGGED_DEBT: "category tagged Debt principal",
     ActivityReason.TRANSFER_TO_TRACKED_ASSET: "transfer to a tracked account",
     ActivityReason.TRANSFER_TO_TRACKED_DEBT: "payment to a tracked debt",
@@ -206,16 +213,40 @@ _IN_SYSTEM_GROUP = row_category(IN_SYSTEM_GROUP)
 _CATEGORIZED = Transaction.category_id.isnot(None)
 _TRACKED_COUNTERPART = COUNTERPART_OFF_BUDGET
 
-#: Which system tag each tag input reads. `_ROW_FACTS` builds its tag
-#: predicates from this, and `rule_ladder` and the Guide's explorer read it, so
-#: an input and its tag key are paired exactly once.
-TAG_INPUT_KEYS: dict[str, str] = {"tagged_savings": "savings", "tagged_debt": "debt_principal"}
+
+@dataclass(frozen=True)
+class TagInput:
+    """What a tag input reads: a system tag, and for a savings input the mode
+    the category must count its savings in."""
+
+    tag_key: str
+    #: None for a tag with no mode.
+    savings_mode: str | None
+
+
+#: Which tag (and mode) each tag input reads. `rule_ladder` and the Guide's
+#: explorer read this, so an input and what it means are paired exactly once.
+#:
+#: `savings_sent_out` is a Savings category — tagged Savings or Emergency fund —
+#: whose savings count when money is sent out of it. A category that keeps its
+#: savings (`kept_here`) is not this input: its rows class by where the money
+#: went, like any envelope's.
+TAG_INPUTS: dict[str, TagInput] = {
+    "savings_sent_out": TagInput(SAVINGS_KEY, SAVINGS_SENT_OUT_MODE),
+    "tagged_debt": TagInput("debt_principal", None),
+}
 
 #: The facts both implementations read off the row itself. One dict, splatted
 #: into both `_Inputs` below, so the two cannot come to read them differently.
+#:
+#: `savings_sent_out` is `category_filters.SAVINGS_SENT_OUT` lifted onto the row
+#: by `row_category`, the lift `_IN_SYSTEM_GROUP` uses: the mode and the
+#: Emergency fund default are decided there, once, for the served
+#: `savings_role` and for this rule alike.
 _ROW_FACTS: dict[str, Any] = {
     "categorized": _CATEGORIZED,
-    **{field: _tagged(key) for field, key in TAG_INPUT_KEYS.items()},
+    "savings_sent_out": row_category(SAVINGS_SENT_OUT),
+    "tagged_debt": _tagged(TAG_INPUTS["tagged_debt"].tag_key),
     "in_system_group": _IN_SYSTEM_GROUP,
     "amount_positive": Transaction.amount > 0,
 }
@@ -248,7 +279,7 @@ class _Inputs:
     # inputs rather than inline so `literal_inputs` can ask the rules about a
     # row that does not exist (see there).
     categorized: Any
-    tagged_savings: Any
+    savings_sent_out: Any
     tagged_debt: Any
     in_system_group: Any
     amount_positive: Any
@@ -288,7 +319,13 @@ def _rules(c: _Inputs) -> list[Rule]:
         # `ReportService.savings_rate`. Tagging an envelope Savings means its
         # outflows count as saving even with no transfer, which is a different
         # claim from "this envelope holds money for a known future bill".
-        (c.tagged_savings, ActivityClass.SAVINGS, ActivityReason.TAGGED_SAVINGS),
+        #
+        # Only a Savings category that counts its savings when they are SENT
+        # OUT — the default for the Savings tag, so no existing figure moved.
+        # A kept-here category's balance is its savings: its outflows fall
+        # through to the rules below, so a car repair paid from it is spending
+        # and a move to a tracked savings account is SAVINGS by rule 3.
+        (c.savings_sent_out, ActivityClass.SAVINGS, ActivityReason.TAGGED_SAVINGS),
         (c.tagged_debt, ActivityClass.DEBT_PRINCIPAL, ActivityReason.TAGGED_DEBT),
         # Where the money went decides the class, not whether the user bothered to
         # categorize it. An uncategorized transfer to a brokerage is still saving:
@@ -512,7 +549,7 @@ class LegFacts:
     #: Coalesced to True with no counterpart, as both column readers do.
     counterpart_counts_as_savings: bool
     categorized: bool
-    tagged_savings: bool
+    savings_sent_out: bool
     tagged_debt: bool
     in_system_group: bool
     amount_positive: bool
@@ -521,7 +558,7 @@ class LegFacts:
         # A tag or a system group belongs to a category; a row cannot have one
         # without the other, and the rules would answer a question no real row
         # could ask.
-        if (self.tagged_savings or self.tagged_debt or self.in_system_group) and not (
+        if (self.savings_sent_out or self.tagged_debt or self.in_system_group) and not (
             self.categorized
         ):
             raise ValueError("a tagged or system-group row must be categorized")
@@ -563,6 +600,8 @@ class RuleInfo:
     reason: ActivityReason
     #: The system tag key the rule reads, or None for a rule about accounts.
     tag_key: str | None
+    #: The savings mode the rule requires of that tag's category, or None.
+    savings_mode: str | None
 
 
 def rule_ladder() -> list[RuleInfo]:
@@ -573,13 +612,25 @@ def rule_ladder() -> list[RuleInfo]:
     stops reading a tag changes what the Guide shows with no second edit.
     """
     inputs = literal_inputs(LegFacts(**dict.fromkeys(LegFacts.__dataclass_fields__, False)))
-    markers = {id(getattr(inputs, field)): key for field, key in TAG_INPUT_KEYS.items()}
+    markers = {id(getattr(inputs, field)): tag for field, tag in TAG_INPUTS.items()}
     ladder: list[RuleInfo] = []
     for condition, cls, reason in _rules(inputs):
-        keys = [markers[id(node)] for node in visitors.iterate(condition) if id(node) in markers]
-        ladder.append(RuleInfo(cls=cls, reason=reason, tag_key=keys[0] if keys else None))
+        tags = [markers[id(node)] for node in visitors.iterate(condition) if id(node) in markers]
+        ladder.append(
+            RuleInfo(
+                cls=cls,
+                reason=reason,
+                tag_key=tags[0].tag_key if tags else None,
+                savings_mode=tags[0].savings_mode if tags else None,
+            )
+        )
     ladder.append(
-        RuleInfo(cls=ActivityClass.SPENDING, reason=ActivityReason.DEFAULT_SPENDING, tag_key=None)
+        RuleInfo(
+            cls=ActivityClass.SPENDING,
+            reason=ActivityReason.DEFAULT_SPENDING,
+            tag_key=None,
+            savings_mode=None,
+        )
     )
     return ladder
 
@@ -840,7 +891,8 @@ def counted_class_filter(
 #: The system tags whose categories' outflows plan reports count as spent even
 #: though their class is not spending — `planned_spend_filter`'s exception,
 #: stated as data so the Guide's explorer can say so without a second list.
-PLANNED_SPEND_TAG_KEYS: tuple[str, ...] = ("savings",)
+#: Every savings category, in either mode: see `planned_spend_filter`.
+PLANNED_SPEND_TAG_KEYS: tuple[str, ...] = SAVINGS_CATEGORY_KEYS
 
 
 def planned_spend_filter() -> ColumnElement[bool]:
@@ -857,25 +909,27 @@ def planned_spend_filter() -> ColumnElement[bool]:
     The caller must still apply `apply_class_joins` — see
     `counted_class_filter` for why the joins cannot be folded in here.
 
-    **The savings tag is the deliberate exception to `counted_classes`.**
-    Tagging an envelope Savings makes its outflows class SAVINGS (rule 1
-    above), which is what the household asked for on the savings rate. On a
-    plan report that meant the envelope's assignments were counted and its
-    spending was not: a Vacation Savings envelope assigned 195 a month and
-    drained by a 390 flight read as a variance of +390 that never closes —
-    permanently under-spent, the same phantom underspend #182 removed for
-    `long_term_expense`. The household PLANNED that money to leave, so
-    against the plan it is spent. "Did this leave the budget as saving?" is
-    a different question, still answered by the class alone: the savings
-    rate, the spending rollups and the necessity tiers read their own row
-    sets and do not move (pinned by
+    **A savings category is the deliberate exception to `counted_classes`.**
+    Whatever its mode, money leaving a Savings (or Emergency fund) envelope
+    is money the household planned to leave, and it can class as something
+    other than spending: SAVINGS by rule 1 when the envelope counts its
+    savings as they are sent out, and SAVINGS by rule 3 when a kept-here
+    envelope moves its balance to a tracked savings account. Counting the
+    envelope's assignments but not that outflow is a phantom underspend: a
+    Vacation Savings envelope assigned 195 a month and drained by a 390 flight
+    read +390 against its plan forever, the gap #182 closed for
+    `long_term_expense`. So against the plan it is spent, in either mode.
+    "Did this leave the budget as saving?" is a different question, still
+    answered by the class alone: the savings rate, the spending rollups and
+    the necessity tiers read their own row sets and do not move (pinned by
     `test_report_envelope_rules.py::TestASavingsTaggedEnvelope`).
 
-    Only `savings`. `long_term_expense` needs no arm — its payout classes
-    SPENDING since #182 — and `debt_principal` is money no plan report has
-    ever counted as spent.
+    An untagged envelope stays out: its transfer to a brokerage is saving the
+    plan never meant as spending (`TestThePlannedSpendUniverse`).
+    `long_term_expense` needs no arm — its payout classes SPENDING since #182 —
+    and `debt_principal` is money no plan report has ever counted as spent.
     """
-    return and_(PLANNED_SPEND_ROW, or_(counted_class_filter(), _tagged(*PLANNED_SPEND_TAG_KEYS)))
+    return and_(PLANNED_SPEND_ROW, or_(counted_class_filter(), row_category(IS_SAVINGS_CATEGORY)))
 
 
 # ─── Necessity tiers ─────────────────────────────────────────────────────────

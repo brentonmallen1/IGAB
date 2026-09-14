@@ -36,10 +36,8 @@ from enum import StrEnum
 
 from igab.domain.activity_class import (
     COST_OF_LIVING_CLASSES,
-    PLANNED_SPEND_TAG_KEYS,
     SAVINGS_RATE_NUMERATORS,
     SPENDING_CLASSES,
-    TAG_INPUT_KEYS,
     ActivityClass,
     ActivityReason,
     LegFacts,
@@ -67,12 +65,16 @@ class Direction(StrEnum):
 
 
 class CategoryKind(StrEnum):
-    """The kind of category a move is filed under. The two tag kinds carry the
-    system tag key they read (`TAG_INPUT_KEYS`), so no second spelling exists."""
+    """The kind of category a move is filed under. Which tag input each kind
+    sets is `KIND_FOR_INPUT`."""
 
     NONE = "none"
     ORDINARY = "ordinary"
-    SAVINGS = "savings"
+    #: A Savings category that counts its savings when money is sent out.
+    SAVINGS_SENT = "savings_sent"
+    #: A Savings category whose balance is its savings. Reads no tag input:
+    #: its rows class by where the money went, like any envelope's.
+    SAVINGS_KEPT = "savings_kept"
     DEBT_PRINCIPAL = "debt_principal"
     #: A category in a system (Income) group — Ready to Assign.
     INCOME = "income"
@@ -204,7 +206,16 @@ def legs(move: Move) -> list[Leg]:
     ]
 
 
-_KIND_BY_TAG_INPUT = {field: CategoryKind(key) for field, key in TAG_INPUT_KEYS.items()}
+#: The category kind that sets each of the classifier's tag inputs
+#: (`activity_class.TAG_INPUTS`). Its keys are held to that dict's by a test, so
+#: a new tag input is a new kind or a failing test, never a silently False fact.
+KIND_FOR_INPUT: dict[str, CategoryKind] = {
+    "savings_sent_out": CategoryKind.SAVINGS_SENT,
+    "tagged_debt": CategoryKind.DEBT_PRINCIPAL,
+}
+
+#: Both savings kinds: plan reports count their outflows as spent.
+SAVINGS_KINDS = (CategoryKind.SAVINGS_SENT, CategoryKind.SAVINGS_KEPT)
 
 
 def leg_facts(leg: Leg) -> LegFacts:
@@ -224,7 +235,7 @@ def leg_facts(leg: Leg) -> LegFacts:
         categorized=leg.category is not CategoryKind.NONE,
         in_system_group=leg.category is CategoryKind.INCOME,
         amount_positive=leg.amount > 0,
-        **{field: leg.category is kind for field, kind in _KIND_BY_TAG_INPUT.items()},
+        **{field: leg.category is kind for field, kind in KIND_FOR_INPUT.items()},
     )
 
 
@@ -283,17 +294,17 @@ def report_families(cls: ActivityClass) -> list[ReportFamily]:
 
 def counts_as_planned_spend_by_tag(leg: Leg, cls: ActivityClass) -> bool:
     """Whether plan reports count this leg as spent through
-    `PLANNED_SPEND_TAG_KEYS` although its class is not spending — the savings
-    tag's outflow, which Budget vs Actual holds against the plan.
+    `PLANNED_SPEND_TAG_KEYS` although its class is not spending — a savings
+    category's outflow, in either mode, which Budget vs Actual holds against
+    the plan.
 
     Stated as the policy's exception only: an on-budget categorized outflow
-    (`PLANNED_SPEND_ROW`'s shape) whose category kind is one of those tags.
+    (`PLANNED_SPEND_ROW`'s shape) from a savings category.
     """
     return (
         leg.shape.on_budget
         and leg.amount < 0
-        and leg.category.value in TAG_INPUT_KEYS.values()
-        and leg.category.value in PLANNED_SPEND_TAG_KEYS
+        and leg.category in SAVINGS_KINDS
         and cls not in SPENDING_CLASSES
     )
 

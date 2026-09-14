@@ -12,7 +12,10 @@ import { ROOT } from './queryKeys'
 export type Classification = 'asset' | 'liability'
 export type MoveKind = 'transfer' | 'transaction'
 export type MoveDirection = 'in' | 'out'
-export type CategoryKind = 'none' | 'ordinary' | 'savings' | 'debt_principal' | 'income'
+/** `savings_sent` / `savings_kept`: a Savings category that counts its savings
+ *  when money is sent out, or while it is kept here (`domain/money_moves.py`). */
+export type CategoryKind =
+  'none' | 'ordinary' | 'savings_sent' | 'savings_kept' | 'debt_principal' | 'income'
 export type LegRole = 'from' | 'to' | 'account'
 export type BudgetTerm = 'ready_to_assign' | 'envelope' | 'card_set_aside' | 'card_uncovered'
 export type ReportFamily =
@@ -81,6 +84,8 @@ export interface MoneyRule {
   reason: string
   reason_text: string
   tag_key: string | null
+  /** The savings mode the rule requires of the tagged category, or null. */
+  savings_mode: 'sent_out' | 'kept_here' | null
   is_default: boolean
 }
 

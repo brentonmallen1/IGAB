@@ -19,7 +19,13 @@ import pytest
 from sqlalchemy import delete, select
 
 from igab.db.models import Transaction
-from igab.domain.activity_class import ACTIVITY_CLASS, ActivityClass, apply_class_joins
+from igab.domain.activity_class import (
+    ACTIVITY_CLASS,
+    ACTIVITY_REASON,
+    ActivityClass,
+    ActivityReason,
+    apply_class_joins,
+)
 from igab.repositories.tag_repo import TagRepository
 
 from .factories import (
@@ -370,3 +376,150 @@ class TestOrphanedLegsClassifyLikeLinkedOnes:
         await db_session.flush()
 
         assert await _classify(db_session, orphan) == expected.value
+
+
+# ─── Savings modes ────────────────────────────────────────────────────────────
+#
+# A Savings category counts its savings either when money is sent out of it
+# (rule 1, what the Savings tag always meant) or while it is kept here (its
+# rows class by where the money went). The upgrade stored no mode anywhere, so
+# NULL must class exactly as the Savings tag did before modes existed.
+
+#: The matrix's shapes a categorized leg can take, from `CASES` itself so a new
+#: shape there is a new shape here.
+_CATEGORIZED_SHAPES = [c for c in CASES if c[3] == "groceries"]
+REASON = ActivityReason
+
+
+async def _class_and_reason(db_session, txn) -> tuple[str, str]:
+    row = (
+        await db_session.execute(
+            apply_class_joins(
+                select(Transaction.id, ACTIVITY_CLASS, ACTIVITY_REASON).where(
+                    Transaction.id == txn.id
+                )
+            )
+        )
+    ).one()
+    return row[1], row[2]
+
+
+async def _book(db_session, w, account, amount, category, counterpart):
+    if counterpart:
+        return await _linked(
+            db_session, w, getattr(w, account), getattr(w, counterpart), amount, category
+        )
+    txn = await create_transaction(
+        db_session, w.budget, getattr(w, account), amount, TODAY, category=category
+    )
+    await db_session.flush()
+    return txn
+
+
+async def _emergency_fund_category(db_session, w, mode):
+    """A category tagged Emergency fund — hand-made tag row, since the tag is not
+    seeded yet — with a stored mode."""
+    everyday = await create_category_group(db_session, w.budget, "Set Aside")
+    category = await create_category(db_session, w.budget, everyday, "Emergency Fund")
+    tag = await create_tag(db_session, w.budget, "Emergency fund", system_key="emergency_fund")
+    await TagRepository(db_session).set_category_tags(category.id, [tag.id])
+    category.savings_mode = mode
+    await db_session.flush()
+    return category
+
+
+class TestSavingsModes:
+    @pytest.mark.parametrize("mode", [None, "sent_out"], ids=["no-mode", "sent-out"])
+    @pytest.mark.parametrize(
+        "case,account,amount,category,counterpart,expected",
+        _CATEGORIZED_SHAPES,
+        ids=[c[0] for c in _CATEGORIZED_SHAPES],
+    )
+    async def test_a_savings_category_with_no_mode_classes_exactly_as_before(
+        self, db_session, mode, case, account, amount, category, counterpart, expected
+    ):
+        """Before modes, a Savings-tagged leg was SAVINGS by rule 1 in every
+        shape — the tag beat every inference. Written by hand, not derived."""
+        w = await _world(db_session)
+        w.fund.savings_mode = mode
+        await db_session.flush()
+
+        txn = await _book(db_session, w, account, amount, w.fund, counterpart)
+
+        assert await _class_and_reason(db_session, txn) == (
+            SAVINGS.value,
+            REASON.TAGGED_SAVINGS.value,
+        ), case
+
+    @pytest.mark.parametrize(
+        "case,account,amount,category,counterpart,expected",
+        _CATEGORIZED_SHAPES,
+        ids=[c[0] for c in _CATEGORIZED_SHAPES],
+    )
+    async def test_a_kept_here_category_classes_like_an_ordinary_one(
+        self, db_session, case, account, amount, category, counterpart, expected
+    ):
+        """Its balance is the savings, so its rows ask where the money went —
+        exactly the answer the matrix pins for Groceries."""
+        w = await _world(db_session)
+        w.fund.savings_mode = "kept_here"
+        await db_session.flush()
+
+        txn = await _book(db_session, w, account, amount, w.fund, counterpart)
+
+        assert (await _class_and_reason(db_session, txn))[0] == expected.value, case
+
+    async def test_a_kept_here_outflow_to_a_payee_is_spending(self, db_session):
+        w = await _world(db_session)
+        w.fund.savings_mode = "kept_here"
+        await db_session.flush()
+        txn = await _book(db_session, w, "checking", "-120.00", w.fund, None)
+        assert await _class_and_reason(db_session, txn) == (
+            SPENDING.value,
+            REASON.DEFAULT_SPENDING.value,
+        )
+
+    async def test_a_kept_here_transfer_to_a_tracked_hysa_is_saving_by_where_it_went(
+        self, db_session
+    ):
+        w = await _world(db_session)
+        w.fund.savings_mode = "kept_here"
+        hysa = await create_account(
+            db_session, w.budget, "Cascade Point HYSA", account_type="savings", on_budget=False
+        )
+        w.hysa = hysa
+        await db_session.flush()
+        txn = await _book(db_session, w, "checking", "-300.00", w.fund, "hysa")
+        assert await _class_and_reason(db_session, txn) == (
+            SAVINGS.value,
+            REASON.TRANSFER_TO_TRACKED_ASSET.value,
+        )
+
+    async def test_an_emergency_fund_set_to_sent_out_fires_the_savings_rule(self, db_session):
+        w = await _world(db_session)
+        fund = await _emergency_fund_category(db_session, w, "sent_out")
+        txn = await _book(db_session, w, "checking", "-120.00", fund, None)
+        assert await _class_and_reason(db_session, txn) == (
+            SAVINGS.value,
+            REASON.TAGGED_SAVINGS.value,
+        )
+
+    async def test_an_emergency_fund_with_no_mode_is_kept_here(self, db_session):
+        """Its default: a repair paid from the fund is spending."""
+        w = await _world(db_session)
+        fund = await _emergency_fund_category(db_session, w, None)
+        txn = await _book(db_session, w, "checking", "-120.00", fund, None)
+        assert await _class_and_reason(db_session, txn) == (
+            SPENDING.value,
+            REASON.DEFAULT_SPENDING.value,
+        )
+
+    async def test_a_mode_on_an_untagged_category_changes_nothing(self, db_session):
+        w = await _world(db_session)
+        w.groceries.savings_mode = "sent_out"
+        await db_session.flush()
+        txn = await _book(db_session, w, "checking", "-50.00", w.groceries, None)
+        assert await _class_and_reason(db_session, txn) == (
+            SPENDING.value,
+            REASON.DEFAULT_SPENDING.value,
+        )

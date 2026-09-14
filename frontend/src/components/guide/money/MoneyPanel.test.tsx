@@ -95,7 +95,7 @@ describe('the rule ladder', () => {
       expect.stringContaining('Otherwise: Served default reason'),
     ])
     expect(within(items[0]).getByText('Served Savings')).toBeInTheDocument()
-    expect(within(items[0]).getByText('tag: Savings')).toBeInTheDocument()
+    expect(within(items[0]).getByText('tag: Savings · when sent out')).toBeInTheDocument()
   })
 })
 

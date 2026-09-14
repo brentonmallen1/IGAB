@@ -165,7 +165,7 @@ class TestWhereTheSavingsWent:
         assert savings["Vacation Fund"]["kind"] == "category"
         assert savings["Vacation Fund"]["id"] == w["vacation"].id
         assert savings["Vacation Fund"]["reason"] == ActivityReason.TAGGED_SAVINGS.value
-        assert savings["Vacation Fund"]["reason_label"] == "category tagged Savings"
+        assert savings["Vacation Fund"]["reason_label"] == "sent from a Savings category"
         assert savings["Vacation Fund"]["total"] == Decimal("310.25")
 
     async def test_a_tagged_envelope_into_a_tracked_account_is_the_account(self, db_session):

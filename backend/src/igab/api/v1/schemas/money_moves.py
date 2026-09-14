@@ -131,6 +131,9 @@ class RuleResponse(ApiModel):
     reason_text: str
     #: The system tag key the rule reads, or None for a rule about accounts.
     tag_key: str | None
+    #: The savings mode the rule requires of the tagged category ('sent_out'
+    #: for the Savings rule), or None.
+    savings_mode: str | None
     #: True for the last entry: what a row is when no rule matched.
     is_default: bool
 

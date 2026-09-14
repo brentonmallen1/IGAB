@@ -16,6 +16,7 @@ widens.
 from datetime import date, timedelta
 from decimal import Decimal
 
+import pytest
 from sqlalchemy import update
 
 from igab.db.models import Category, CategoryGroup
@@ -29,6 +30,7 @@ from .factories import (
     create_budget_assignment,
     create_category,
     create_category_group,
+    create_tag,
     create_transaction,
     create_transfer,
     create_user,
@@ -248,10 +250,11 @@ class TestThePlannedSpendUniverse:
     they counted nothing — and its chronic flag feeds the Guide."""
 
     async def test_a_savings_transfer_is_not_planned_spend(self, db_session):
-        """Out of an UNTAGGED envelope. The class is what excludes it, and a
-        savings TAG on the envelope is the one exception to that — the same
-        shape out of a tagged envelope does count, pinned by
-        `TestASavingsTaggedEnvelope`."""
+        """Out of an UNTAGGED envelope. The class is what excludes it. A
+        savings category — tagged Savings or Emergency fund, in either mode —
+        is the one exception: the same shape out of one does count against its
+        plan, pinned by `test_kept_here_transfer_to_hysa_counts_against_plan`
+        and `TestASavingsTaggedEnvelope`."""
         services, budget, checking, group, cat = await _world(db_session)
         brokerage = await create_account(
             db_session, budget, "Cascade Brokerage", account_type="investment", on_budget=False
@@ -272,6 +275,41 @@ class TestThePlannedSpendUniverse:
         assert variance[-1]["monthly_variance"] == D("500.00")
         assert bva["total_spent"] == D("0")
         assert pvr["total_spent"] == D("0")
+
+    @pytest.mark.parametrize(
+        ("tag_key", "mode"),
+        [("savings", "kept_here"), ("emergency_fund", None)],
+        ids=["savings-kept-here", "emergency-fund-default"],
+    )
+    async def test_kept_here_transfer_to_hysa_counts_against_plan(self, db_session, tag_key, mode):
+        """A kept-here savings envelope moving its balance to a tracked HYSA.
+        The row classes SAVINGS by where it went (rule 3), not by the tag, and
+        the plan still meant that money to leave the envelope. An Emergency
+        fund envelope is kept here by default, and the plan arm must reach it
+        although it carries no Savings tag."""
+        services, budget, checking, group, cat = await _world(db_session)
+        hysa = await create_account(
+            db_session, budget, "Cascade Point HYSA", account_type="savings", on_budget=False
+        )
+        tags = TagRepository(db_session)
+        await seed_system_tags(db_session, budget.id)
+        tag = await tags.get_system_tag(budget.id, tag_key) or await create_tag(
+            db_session, budget, "Emergency fund", system_key=tag_key
+        )
+        await tags.set_category_tags(cat.id, [tag.id])
+        cat.savings_mode = mode
+        await create_budget_assignment(db_session, budget, cat, FIRST, "500.00")
+        await create_transfer(db_session, budget, checking, hysa, "200.00", TODAY, category=cat)
+
+        reports = ReportService(db_session)
+        variance = await reports.cumulative_variance(budget.id, months=1)
+        bva = await reports.budget_vs_actual(budget.id, FIRST, TODAY)
+        pvr = await reports.plan_vs_reality(budget.id, months=1)
+
+        assert variance[-1]["actual_spent"] == D("200.00")
+        assert variance[-1]["monthly_variance"] == D("300.00")
+        assert bva["total_spent"] == D("200.00")
+        assert pvr["total_spent"] == D("200.00")
 
     async def test_tracking_account_activity_is_not_planned_spend(self, db_session):
         services, budget, checking, group, cat = await _world(db_session)
