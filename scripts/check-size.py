@@ -101,9 +101,7 @@ SKIP_SUFFIXES = (".test.ts", ".test.tsx", ".d.ts")
 #: because they shrank. If a number here needs raising to land a change, that
 #: is the gate asking a question — raise the budget deliberately, as above, or
 #: put the code somewhere else. Do not edit a lock upward to get past it.
-OVER_BUDGET: dict[str, int] = {
-    "backend/src/igab/services/report_service.py": 2090,
-}
+OVER_BUDGET: dict[str, int] = {}
 
 _PY_NON_CODE_TOKENS = frozenset(
     {tokenize.COMMENT, tokenize.NL, tokenize.NEWLINE, tokenize.INDENT, tokenize.DEDENT,

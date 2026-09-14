@@ -146,10 +146,10 @@ class TestImportTagging:
         assert result.categories_tagged == 0
 
     async def test_the_report_has_something_to_show_after_an_import(self, db_session):
-        from igab.services.report_service import ReportService
+        from igab.services.savings_report import savings_report
 
         budget, _ = await self._import(db_session, [self._txn("Emergency Fund", "Goals")])
-        report = await ReportService(db_session).savings_report(budget.id, months=12)
+        report = await savings_report(db_session, budget.id, months=12)
         assert len(report["categories"]) == 1
         assert report["categories"][0]["category_name"] == "Emergency Fund"
 

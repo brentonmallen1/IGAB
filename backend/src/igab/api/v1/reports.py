@@ -109,6 +109,7 @@ from igab.services.report_basics import (
 from igab.services.report_favorites import ReportFavoritesService
 from igab.services.report_scope import resolve_category_scope
 from igab.services.report_service import ReportService
+from igab.services.savings_report import savings_report as savings_report_data
 
 
 #: Spending reports mean money spent. Saving into a brokerage and paying down a
@@ -834,7 +835,7 @@ async def savings_report(
     months: ReportMonths = 12,
 ) -> SavingsReportResponse:
     """Savings report — aggregates categories tagged 'savings' or 'long_term_expense'."""
-    data = await report_svc.savings_report(budget_id, months)
+    data = await savings_report_data(report_svc.session, budget_id, months)
     return SavingsReportResponse(
         categories=[SavingsCategory.model_validate(c) for c in data["categories"]],
         summary=SavingsSummary.model_validate(data["summary"]),
