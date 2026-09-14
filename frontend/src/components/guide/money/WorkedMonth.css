@@ -96,6 +96,14 @@
   font-variant-numeric: tabular-nums;
 }
 
+.worked-month__figure-note {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--font-size-2xs);
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
 .worked-month__figure--rate {
   border-color: var(--edge-strong);
 }

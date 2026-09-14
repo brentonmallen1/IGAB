@@ -10,7 +10,7 @@ of those answers already has a home, and this module owns none of them:
   hypothetical leg carries (`leg_facts`);
 - **where a category may sit** is `transfers.leg_may_carry_category`;
 - **which reports count a class** is the class tuples in `activity_class`;
-- **the savings rates** are `activity_class.savings_rates`.
+- **the savings rates**, and what "saved" is made of, are `domain.savings`.
 
 The one thing that is new here is `budget_terms`: which budget figure a move
 changes. That is prose about `BudgetService`'s arithmetic, which cannot be
@@ -36,14 +36,13 @@ from enum import StrEnum
 
 from igab.domain.activity_class import (
     COST_OF_LIVING_CLASSES,
-    SAVINGS_RATE_NUMERATORS,
     SPENDING_CLASSES,
     ActivityClass,
     ActivityReason,
     LegFacts,
     class_magnitude,
-    savings_rates,
 )
+from igab.domain.savings import SAVINGS_RATE_NUMERATORS, SavingsFigure, savings_rates
 from igab.domain.transfers import leg_may_carry_category
 
 #: The situation `budget_terms` describes. Served beside every answer.
@@ -323,16 +322,23 @@ class LegExplanation:
 
 
 @dataclass(frozen=True)
-class Figures:
-    """The report figures a set of legs adds up to."""
+class Flows:
+    """The report figures that are row sums alone: what moved, by class.
+
+    Split from `Figures` because "saved" is not a row sum — its held part is a
+    walk over the budget's envelopes (`domain.savings`) — and some readers
+    need no part of it. The Means trend reads income and outflows for twelve
+    months, the Overview's prior window reads spending; handing either a held
+    figure would mean a twelve-month budget walk for a number nobody reads, or
+    a made-up zero that would be wrong the day someone did read it.
+    """
 
     income: Decimal
     spending: Decimal
     cost_of_living: Decimal
-    savings: Decimal
     debt_principal: Decimal
-    savings_rate: float | None
-    savings_rate_with_debt: float | None
+    #: SAVINGS-class flows — `SavingsFigure.moved`.
+    savings_moved: Decimal
 
 
 def _family_total(buckets: Mapping[str, Decimal], family: ReportFamily) -> Decimal:
@@ -342,15 +348,47 @@ def _family_total(buckets: Mapping[str, Decimal], family: ReportFamily) -> Decim
     return sum((class_magnitude(buckets, c) for c in classes), Decimal("0"))
 
 
-def figures(buckets: Mapping[str, Decimal]) -> Figures:
-    """Report figures from class buckets, through the report's own division."""
-    rates = savings_rates(buckets)
-    return Figures(
+def flows(buckets: Mapping[str, Decimal]) -> Flows:
+    """Row-sum figures from class buckets."""
+    return Flows(
         income=_family_total(buckets, ReportFamily.INCOME),
         spending=_family_total(buckets, ReportFamily.SPENDING),
         cost_of_living=_family_total(buckets, ReportFamily.COST_OF_LIVING),
-        savings=class_magnitude(buckets, ActivityClass.SAVINGS),
         debt_principal=class_magnitude(buckets, ActivityClass.DEBT_PRINCIPAL),
+        savings_moved=class_magnitude(buckets, ActivityClass.SAVINGS),
+    )
+
+
+@dataclass(frozen=True)
+class Figures:
+    """The report figures a set of legs, or a window of rows, adds up to."""
+
+    income: Decimal
+    spending: Decimal
+    cost_of_living: Decimal
+    #: Saved: `savings_moved + savings_held` (`domain.savings`).
+    savings: Decimal
+    savings_moved: Decimal
+    savings_held: Decimal
+    debt_principal: Decimal
+    savings_rate: float | None
+    savings_rate_with_debt: float | None
+
+
+def figures(buckets: Mapping[str, Decimal], held: Decimal) -> Figures:
+    """Report figures from class buckets and the window's held change, through
+    the report's own division. `held` is required: see `savings_rates`."""
+    f = flows(buckets)
+    saved = SavingsFigure(moved=f.savings_moved, held=held)
+    rates = savings_rates(buckets, held)
+    return Figures(
+        income=f.income,
+        spending=f.spending,
+        cost_of_living=f.cost_of_living,
+        savings=saved.total,
+        savings_moved=saved.moved,
+        savings_held=saved.held,
+        debt_principal=f.debt_principal,
         savings_rate=rates["savings_rate"],
         savings_rate_with_debt=rates["savings_rate_with_debt"],
     )
@@ -366,6 +404,12 @@ class MoveExplanation:
     #: Signed class sums over the on-budget legs — what the reports aggregate.
     class_totals: dict[str, Decimal] = field(default_factory=dict)
     net_worth_delta: Decimal = Decimal("0")
+    #: What a kept-here Savings envelope comes to hold: the ENVELOPE term of
+    #: every on-budget leg filed to `SAVINGS_KEPT`, under `ASSUMPTION` (the
+    #: envelope already holds the money, so no floor is crossed). The figure
+    #: `domain.savings` adds to the moved flows; held to `services.
+    #: savings_held.held_between` on real rows by the agreement test.
+    held: Decimal = Decimal("0")
 
 
 def explain_move(
@@ -397,6 +441,14 @@ def explain_move(
             )
         )
     role = category_role(move)
+    held = sum(
+        (
+            _leg_terms(leg).get(BudgetTerm.ENVELOPE, Decimal("0"))
+            for leg in move_legs
+            if leg.category is CategoryKind.SAVINGS_KEPT
+        ),
+        Decimal("0"),
+    )
     return MoveExplanation(
         category_role=role,
         category_applied=move.category is CategoryKind.NONE or role is not None,
@@ -406,16 +458,22 @@ def explain_move(
         # A liability's balance is stored negative, so assets minus debts is
         # the plain sum: a transfer nets to zero, a transaction moves it.
         net_worth_delta=sum((leg.amount for leg in move_legs), Decimal("0")),
+        held=held,
     )
 
 
-def month_buckets(explanations: Sequence[MoveExplanation]) -> dict[str, Decimal]:
-    """Class totals across several moves."""
+def month_buckets(
+    explanations: Sequence[MoveExplanation],
+) -> tuple[dict[str, Decimal], Decimal]:
+    """Class totals and the held change across several moves — the two
+    inputs `figures` reads."""
     total: dict[str, Decimal] = {}
+    held = Decimal("0")
     for explanation in explanations:
         for cls, amount in explanation.class_totals.items():
             total[cls] = total.get(cls, Decimal("0")) + amount
-    return total
+        held += explanation.held
+    return total, held
 
 
 # ─── Account shapes, for the account-type explainer ──────────────────────────

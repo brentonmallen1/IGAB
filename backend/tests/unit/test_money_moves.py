@@ -30,8 +30,10 @@ from igab.domain.money_moves import (
     category_role,
     explain_move,
     figures,
+    flows,
     leg_facts,
     legs,
+    month_buckets,
     report_families,
 )
 
@@ -179,7 +181,7 @@ class TestPlannedSpendByTag:
 
 
 def test_figures_read_the_class_buckets():
-    f = figures({"income": D("6000"), "spending": D("-2550"), "debt_principal": D("-900")})
+    f = figures({"income": D("6000"), "spending": D("-2550"), "debt_principal": D("-900")}, D("0"))
     assert (f.income, f.spending, f.cost_of_living, f.debt_principal) == (
         D("6000"),
         D("2550"),
@@ -192,3 +194,89 @@ def test_figures_read_the_class_buckets():
 def test_every_account_shape_is_explained_once():
     keys = {(s.is_liability, s.on_budget, s.counts_as_savings) for s in SHAPES}
     assert len(keys) == len(SHAPES) == 5
+
+
+class TestHeldByAMove:
+    """`MoveExplanation.held`: the envelope term of legs filed to a kept-here
+    Savings category, and nothing for any other kind."""
+
+    SPEND = (ActivityClass.SPENDING, ActivityReason.DEFAULT_SPENDING)
+
+    def _held(self, move, classes):
+        return explain_move(move, classes).held
+
+    def test_spending_from_a_kept_envelope_lowers_held(self):
+        move = Move(
+            MoveKind.TRANSACTION, CASH, D("120"), CategoryKind.SAVINGS_KEPT, direction=Direction.OUT
+        )
+        assert self._held(move, [self.SPEND]) == D("-120")
+
+    def test_a_card_charge_from_a_kept_envelope_lowers_held(self):
+        move = Move(
+            MoveKind.TRANSACTION, CARD, D("120"), CategoryKind.SAVINGS_KEPT, direction=Direction.OUT
+        )
+        assert self._held(move, [self.SPEND]) == D("-120")
+
+    def test_a_refund_into_a_kept_envelope_raises_held(self):
+        move = Move(
+            MoveKind.TRANSACTION, CASH, D("40"), CategoryKind.SAVINGS_KEPT, direction=Direction.IN
+        )
+        assert self._held(move, [self.SPEND]) == D("40")
+
+    def test_kept_to_a_tracked_savings_account_nets_to_zero_saved(self):
+        """moved +300 by the class, held −300 by the envelope: saved 0."""
+        move = Move(
+            MoveKind.TRANSFER, CASH, D("300"), CategoryKind.SAVINGS_KEPT, to_account=BROKERAGE
+        )
+        tracked = (ActivityClass.SAVINGS, ActivityReason.TRANSFER_TO_TRACKED_ASSET)
+        explained = explain_move(move, [tracked, tracked])
+        assert explained.held == D("-300")
+        buckets, held = month_buckets([explained])
+        f = figures(buckets, held)
+        assert (f.savings_moved, f.savings_held, f.savings) == (D("300"), D("-300"), D("0"))
+
+    @pytest.mark.parametrize(
+        "kind",
+        [
+            CategoryKind.NONE,
+            CategoryKind.ORDINARY,
+            CategoryKind.SAVINGS_SENT,
+            CategoryKind.DEBT_PRINCIPAL,
+        ],
+    )
+    def test_no_other_kind_holds_anything(self, kind):
+        move = Move(MoveKind.TRANSACTION, CASH, D("120"), kind, direction=Direction.OUT)
+        assert self._held(move, [self.SPEND]) == D("0")
+
+    def test_month_buckets_add_up_held(self):
+        out = Move(
+            MoveKind.TRANSACTION, CASH, D("120"), CategoryKind.SAVINGS_KEPT, direction=Direction.OUT
+        )
+        back = Move(
+            MoveKind.TRANSACTION, CASH, D("20"), CategoryKind.SAVINGS_KEPT, direction=Direction.IN
+        )
+        explained = [explain_move(out, [self.SPEND]), explain_move(back, [self.SPEND])]
+        assert month_buckets(explained)[1] == D("-100")
+
+
+def test_figures_add_held_to_moved_and_to_both_rates():
+    f = figures({"income": D("5000"), "savings": D("-400"), "debt_principal": D("-100")}, D("600"))
+    assert (f.savings_moved, f.savings_held, f.savings) == (D("400"), D("600"), D("1000"))
+    assert f.savings_rate == 0.2 and f.savings_rate_with_debt == 0.22
+
+
+def test_flows_are_the_row_sums_figures_read():
+    buckets = {
+        "income": D("5000"),
+        "spending": D("-1000"),
+        "savings": D("-400"),
+        "debt_principal": D("-100"),
+    }
+    fl, fi = flows(buckets), figures(buckets, D("250"))
+    assert (fl.income, fl.spending, fl.cost_of_living, fl.debt_principal, fl.savings_moved) == (
+        fi.income,
+        fi.spending,
+        fi.cost_of_living,
+        fi.debt_principal,
+        fi.savings_moved,
+    )

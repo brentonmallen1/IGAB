@@ -322,6 +322,8 @@ class TestAgreesWithTheCards:
             "end_date": TODAY,
             "income": Decimal("0"),
             "savings": Decimal("0"),
+            "savings_moved": Decimal("0"),
+            "savings_held": Decimal("0"),
             "debt_principal": Decimal("0"),
             "savings_contributors": [],
             "debt_contributors": [],

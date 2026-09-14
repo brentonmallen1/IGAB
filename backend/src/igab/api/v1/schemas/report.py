@@ -33,9 +33,14 @@ class IncomeExpenseMonth(ApiModel):
     #: Money spent. Saving and debt principal are reported separately — both
     #: leave the budget, but neither is spending.
     expenses: Decimal
+    #: Saved: savings_moved + savings_held (`domain.savings`).
     savings: Decimal
+    savings_moved: Decimal
+    savings_held: Decimal
     debt_principal: Decimal
-    #: income - expenses - savings - debt_principal, so the parts reconcile.
+    #: income - expenses - savings_moved - debt_principal: money-moved, so it
+    #: reconciles to the accounts. Held money never left them, so `net` is
+    #: deliberately not reduced by `savings_held` (`income_vs_expense`).
     net: Decimal
 
 
@@ -752,7 +757,10 @@ class SavingsRateMonth(ApiModel):
     month: date
     income: Decimal
     spending: Decimal
+    #: Saved: savings_moved + savings_held (`domain.savings`).
     savings: Decimal
+    savings_moved: Decimal
+    savings_held: Decimal
     debt_principal: Decimal
     #: None when there was no income that month — distinct from a rate of 0,
     #: which would read as "saved nothing out of real income".
@@ -764,6 +772,9 @@ class SavingsRateSummary(ApiModel):
     income: Decimal
     spending: Decimal
     savings: Decimal
+    savings_moved: Decimal
+    #: The months' held added up — the held change over the whole window.
+    savings_held: Decimal
     debt_principal: Decimal
     savings_rate: float | None
     savings_rate_with_debt: float | None
@@ -784,6 +795,8 @@ class SavingsContributor(ApiModel):
     Named by destination: a transfer to a tracked account by that account,
     anything else by its category. `total` is the class magnitude — positive
     for money that left the budget, negative for money drawn back into it.
+    A kept-here Savings envelope's held change is a category row with reason
+    `held_in_savings_envelope`; its `count` is its register rows.
     """
 
     kind: Literal["account", "category"]
@@ -815,7 +828,10 @@ class SavingsContributorsResponse(ApiModel):
     start_date: date
     end_date: date
     income: Decimal
+    #: Saved: savings_moved + savings_held.
     savings: Decimal
+    savings_moved: Decimal
+    savings_held: Decimal
     debt_principal: Decimal
     savings_contributors: list[SavingsContributor]
     debt_contributors: list[SavingsContributor]

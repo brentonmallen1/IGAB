@@ -6,12 +6,11 @@ import { GuideTabLink } from '../guide/GuideTabLink'
 import { ReportErrorState } from './ReportErrorState'
 import { sharePhrase } from './drillDownTotals'
 import { pct } from './charts/savingsRateView'
-import { foldIncomeSources, rateFormula } from './savingsRateBreakdown'
+import { foldIncomeSources, rateFormula, SAVED_DEFINITION } from './savingsRateBreakdown'
 import { DetailFigure, DetailFigures, DetailRow, DetailRows, DetailSection } from './ReportDetail'
 import './SavingsRateDialog.css'
 
 const SAVINGS_TAG = SYSTEM_TAG_HELP.find((t) => t.key === 'savings')?.name ?? 'Savings'
-
 interface Props {
   budgetId: string
   /** The window of the card that opened this — its totals are that card's. */
@@ -96,6 +95,12 @@ function Contributors({
       <DetailFigures>
         <DetailFigure label="Income" value={formatMoney(data.income)} />
         <DetailFigure label="Saved" value={formatMoney(data.savings)} />
+        {data.savings_held !== 0 && (
+          <>
+            <DetailFigure label="Moved to savings" value={formatMoney(data.savings_moved)} />
+            <DetailFigure label="Held in envelopes" value={formatMoney(data.savings_held)} />
+          </>
+        )}
         <DetailFigure label="Debt principal" value={formatMoney(data.debt_principal)} />
       </DetailFigures>
 
@@ -105,7 +110,7 @@ function Contributors({
         whole={data.savings}
         shareLabel="of savings"
         empty="Nothing moved into savings in this period."
-        note={null}
+        note={SAVED_DEFINITION}
       />
       {withDebt && debtSection}
 
@@ -143,8 +148,10 @@ function Contributors({
         </p>
         <p className="dialog__body">
           To count money as saved, transfer it to a tracked (off-budget) account that counts as
-          savings, or tag the category it leaves from {SAVINGS_TAG}. Buying or selling something
-          tracked that does not count as savings — a car, a house — is spending or income instead.
+          savings, or tag its category {SAVINGS_TAG}: set to “sent out”, what leaves the category
+          counts; set to “kept here”, what the envelope holds counts, and spending from it lowers
+          your savings. Buying or selling something tracked that does not count as savings — a car,
+          a house — is spending or income instead.
         </p>
         <p className="dialog__body">
           <GuideTabLink tab="money" />
@@ -177,7 +184,7 @@ function ContributorSection({
         <DetailRows>
           {contributors.map((c) => (
             <DetailRow
-              key={`${c.kind}:${c.id}`}
+              key={`${c.kind}:${c.id}:${c.reason}`}
               name={c.name}
               nameNote={c.reason_label}
               amount={formatMoney(c.total)}

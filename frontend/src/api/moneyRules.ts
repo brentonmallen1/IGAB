@@ -59,7 +59,10 @@ export interface MoneyFigures {
   income: number
   spending: number
   cost_of_living: number
+  /** Saved: `savings_moved + savings_held`. */
   savings: number
+  savings_moved: number
+  savings_held: number
   debt_principal: number
   savings_rate: number | null
   savings_rate_with_debt: number | null
@@ -72,6 +75,8 @@ export interface MoveExplanation {
   legs: MoneyLeg[]
   budget_terms: { term: BudgetTerm; delta: number }[]
   class_totals: Record<string, number>
+  /** What a kept-here Savings envelope comes to hold (`MoveExplanation.held`). */
+  held: number
   figures: MoneyFigures
   net_worth_delta: number
   assumption: string
@@ -110,6 +115,7 @@ export interface MoneyRulesResponse {
 export interface MoneyMonthResponse {
   rows: { label: string; explanation: MoveExplanation }[]
   class_totals: Record<string, number>
+  held: number
   figures: MoneyFigures
 }
 

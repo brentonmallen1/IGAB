@@ -749,33 +749,6 @@ def class_magnitude(buckets: Mapping[str, Decimal], cls: ActivityClass) -> Decim
     return -buckets.get(cls.value, Decimal("0"))
 
 
-#: What each savings rate divides by income: saving alone, or saving plus the
-#: principal paid down. Paying down a mortgage and funding a brokerage both
-#: build net worth, but people think about them differently, so both are shown.
-SAVINGS_RATE_NUMERATORS: dict[str, tuple[ActivityClass, ...]] = {
-    "savings_rate": (ActivityClass.SAVINGS,),
-    "savings_rate_with_debt": SAVINGS_CLASSES,
-}
-
-
-def savings_rates(buckets: Mapping[str, Decimal]) -> dict[str, float | None]:
-    """Both savings rates from class buckets (class value -> signed sum).
-
-    One division for the Savings Rate report and the Guide's worked month, so
-    the example cannot teach a rate the report would not compute.
-
-    With no income the rate is None rather than 0: "no income recorded" and
-    "saved nothing" are different facts, and a chart should show a gap rather
-    than a floor.
-    """
-    income = buckets.get(ActivityClass.INCOME.value, Decimal("0"))
-    rates: dict[str, float | None] = {}
-    for key, classes in SAVINGS_RATE_NUMERATORS.items():
-        numerator = sum((class_magnitude(buckets, c) for c in classes), Decimal("0"))
-        rates[key] = None if income <= 0 else float(numerator / income)
-    return rates
-
-
 def explain(reason: str) -> str:
     """Prose for a reason code, safe for an unknown value from an older row."""
     if reason in SPLIT_REASON_TEXT:

@@ -199,10 +199,43 @@ class TestMonth:
         figures = body["figures"]
         assert (figures["income"], figures["spending"], figures["savings"]) == (10500, 2300, 750)
         assert figures["cost_of_living"] == 4100
+        # Nothing kept here: saved is the moved flows alone.
+        assert (figures["savings_moved"], figures["savings_held"], body["held"]) == (750, 0, 0)
         assert figures["savings_rate"] == pytest.approx(750 / 10500)
         assert figures["savings_rate_with_debt"] == pytest.approx(2550 / 10500)
         dividend = body["rows"][7]["explanation"]["legs"][0]
         assert dividend["cls"] == "investment_return" and dividend["counted_in"] == []
+
+    async def test_a_kept_here_month_serves_held_and_saved_as_moved_plus_held(
+        self, db_session, api_client
+    ):
+        """A $120 repair from a kept-here envelope holds −120; a $300 move from
+        it to a tracked HYSA is moved +300 and held −300. Saved −120."""
+        budget = await create_budget(db_session, api_client.test_user)
+        moves = [
+            ("Car repair", _transaction(CHECKING, "out", "120", "savings_kept")),
+            ("To Cascade Point HYSA", _transfer(CHECKING, BROKERAGE, "300", "savings_kept")),
+        ]
+        r = await api_client.post(
+            f"/api/v1/{budget.id}/guide/money-moves/month",
+            json={"moves": [{**move, "label": label} for label, move in moves]},
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert [row["explanation"]["held"] for row in body["rows"]] == [-120, -300]
+        assert body["held"] == -420
+        figures = body["figures"]
+        assert (figures["savings_moved"], figures["savings_held"], figures["savings"]) == (
+            300,
+            -420,
+            -120,
+        )
+        transfer = body["rows"][1]["explanation"]["figures"]
+        assert (transfer["savings_moved"], transfer["savings_held"], transfer["savings"]) == (
+            300,
+            -300,
+            0,
+        )
 
     async def test_an_empty_month_is_refused(self, db_session, api_client):
         budget = await create_budget(db_session, api_client.test_user)

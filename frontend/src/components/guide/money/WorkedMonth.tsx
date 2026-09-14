@@ -3,6 +3,7 @@ import { useFormatters } from '../../../hooks/useFormatters'
 import { useAppStore } from '../../../stores/appStore'
 import { pct } from '../../reports/charts/savingsRateView'
 import { ClassChip } from './ClassChip'
+import { savedParts } from './moveAnswer'
 import { WORKED_MONTH } from './workedMonthMoves'
 import './WorkedMonth.css'
 
@@ -67,7 +68,11 @@ export function WorkedMonth() {
       <dl className="worked-month__totals">
         <Figure label="Income" value={formatMoney(figures.income)} />
         <Figure label="Spending" value={formatMoney(figures.spending)} />
-        <Figure label="Saved" value={formatMoney(figures.savings)} />
+        <Figure
+          label="Saved"
+          value={formatMoney(figures.savings)}
+          note={savedParts(figures, formatMoney)}
+        />
         <Figure label="Debt principal" value={formatMoney(figures.debt_principal)} />
         <Figure label="Savings rate" value={pct(figures.savings_rate)} emphasis />
         <Figure
@@ -80,11 +85,25 @@ export function WorkedMonth() {
   )
 }
 
-function Figure({ label, value, emphasis }: { label: string; value: string; emphasis?: boolean }) {
+function Figure({
+  label,
+  value,
+  emphasis,
+  note,
+}: {
+  label: string
+  value: string
+  emphasis?: boolean
+  /** Saved's two parts, when anything was held. */
+  note?: string | null
+}) {
   return (
     <div className={`worked-month__figure ${emphasis ? 'worked-month__figure--rate' : ''}`}>
       <dt>{label}</dt>
-      <dd>{value}</dd>
+      <dd>
+        {value}
+        {note && <span className="worked-month__figure-note">{note}</span>}
+      </dd>
     </div>
   )
 }

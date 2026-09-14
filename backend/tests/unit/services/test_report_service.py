@@ -137,7 +137,19 @@ class TestSpendingByCategory:
 
 class TestIncomeVsExpense:
     """The service now groups by activity class in SQL, so the mocked rows are
-    (month, cls, total) rather than raw (date, amount)."""
+    (month, cls, total) rather than raw (date, amount).
+
+    Nothing here holds money in a kept-here envelope, so the held part is
+    pinned to zero rather than mocked query by query; it is a budget walk with
+    its own integration suite (tests/integration/test_savings_held.py)."""
+
+    @pytest.fixture(autouse=True)
+    def _nothing_held(self):
+        async def zeros(session, budget_id, months, today):
+            return [Decimal("0")] * len(months)
+
+        with patch("igab.services.report_service.held_by_month", zeros):
+            yield
 
     @staticmethod
     def _rows(*triples):
@@ -192,8 +204,9 @@ class TestIncomeVsExpense:
         assert result[0]["debt_principal"] == D("200.00")
 
     async def test_the_parts_reconcile(self):
-        """net must stay income minus everything that left, or a stacked chart
-        drifts away from its own total."""
+        """net must stay income minus everything that left the accounts, or a
+        stacked chart drifts away from its own total. Money-moved: with
+        nothing held, saved and moved are the same figure."""
         first = date.today().replace(day=1)
         svc = ReportService(
             make_session(
@@ -208,7 +221,9 @@ class TestIncomeVsExpense:
             )
         )
         r = (await svc.income_vs_expense(BUDGET, months=1))[0]
-        assert r["net"] == r["income"] - r["expenses"] - r["savings"] - r["debt_principal"]
+        assert r["net"] == r["income"] - r["expenses"] - r["savings_moved"] - r["debt_principal"]
+        assert r["savings"] == r["savings_moved"] == D("1000.00")
+        assert r["savings_held"] == D("0")
         assert r["net"] == D("1000.00")
 
     async def test_internal_transfers_are_ignored(self):

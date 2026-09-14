@@ -298,7 +298,12 @@ export interface SavingsRateMonth {
   month: string
   income: number
   spending: number
+  /** Saved: `savings_moved + savings_held` (backend `domain/savings.py`). */
   savings: number
+  /** Money moved into savings — SAVINGS-class flows. */
+  savings_moved: number
+  /** What kept-here Savings envelopes came to hold. */
+  savings_held: number
   debt_principal: number
   /** null when there was no income that month — a gap, not a zero. */
   savings_rate: number | null
@@ -315,6 +320,8 @@ export interface SavingsRateReport {
     income: number
     spending: number
     savings: number
+    savings_moved: number
+    savings_held: number
     debt_principal: number
     savings_rate: number | null
     savings_rate_with_debt: number | null
@@ -337,7 +344,8 @@ export function useSavingsRateReport(budgetId: string | null, months = 12) {
 
 /** One place money counted toward savings (or debt principal) went, named by
  *  destination — `report_basics.savings_contributors` says how. `total` is
- *  negative for money drawn back into the budget. */
+ *  negative for money drawn back into the budget. A kept-here Savings
+ *  envelope's held change is a `category` row with its own served reason. */
 export interface SavingsContributor {
   kind: 'account' | 'category'
   id: string
@@ -354,7 +362,10 @@ export interface SavingsContributors {
   start_date: string
   end_date: string
   income: number
+  /** Saved: `savings_moved + savings_held`. */
   savings: number
+  savings_moved: number
+  savings_held: number
   debt_principal: number
   /** Each list sums to its total exactly, and is ordered by magnitude. */
   savings_contributors: SavingsContributor[]

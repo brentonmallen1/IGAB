@@ -31,12 +31,10 @@ from igab.domain.activity_class import (
     INCOME_ROW,
     ActivityClass,
     apply_class_joins,
-    class_magnitude,
     counted_class_filter,
     counted_classes,
     planned_spend_filter,
     rolled_up_classes,
-    savings_rates,
     split_leg_classes,
 )
 
@@ -56,7 +54,7 @@ from igab.domain.dates import (
 )
 from igab.domain.dates import month_end as _month_end
 from igab.domain.money import format_csv_amount, quantize_cents
-from igab.domain.money_moves import figures
+from igab.domain.money_moves import Figures, figures, flows
 from igab.domain.plan import plan_outcome
 from igab.domain.schedule import projected_occurrences, subscription_occurrences
 from igab.domain.view_arrangement import arrange_by_view
@@ -97,6 +95,7 @@ from igab.services.report_stats import (
     timeline_rows,
     volatility_stats,
 )
+from igab.services.savings_held import held_between, held_by_month
 
 # Report payload shapes.
 #
@@ -167,6 +166,20 @@ def scoped(q, column, ids: Sequence[uuid.UUID] | None):
     the same way.
     """
     return q if ids is None else q.where(column.in_(ids))
+
+
+def _rate_figures(f: Figures) -> dict:
+    """One Savings Rate row — a month or the summary — from its figures."""
+    return {
+        "income": f.income,
+        "spending": f.spending,
+        "savings": f.savings,
+        "savings_moved": f.savings_moved,
+        "savings_held": f.savings_held,
+        "debt_principal": f.debt_principal,
+        "savings_rate": f.savings_rate,
+        "savings_rate_with_debt": f.savings_rate_with_debt,
+    }
 
 
 class ReportService:
@@ -241,25 +254,35 @@ class ReportService:
         budget but stayed in the household's net worth is reported separately as
         `savings` and `debt_principal`.
 
-        `net` remains income minus everything that left, so the four figures
-        still reconcile — a chart can stack them without the total drifting.
-        Internal transfers between two on-budget accounts are excluded: they
-        cancel, and showing them would double the apparent flow.
+        `savings` is saved — moved plus held (`domain.savings`), the figure the
+        Savings Rate tab divides — served with its two parts.
+
+        **`net` is money-moved, deliberately:** income − expenses −
+        `savings_moved` − debt principal. It reconciles to what the on-budget
+        accounts did, and money assigned to a kept-here envelope never left
+        them, so subtracting held would report a deficit the balances do not
+        show. So `net` ≠ income − expenses − savings − debt by exactly
+        `savings_held`, and no more (pinned by
+        `test_income_vs_expense_net_stays_money_moved`). Internal transfers
+        between two on-budget accounts are excluded: they cancel, and showing
+        them would double the apparent flow.
         """
+        today = date.today()
+        series = await self._class_series(budget_id, months, today)
+        held = await held_by_month(self.session, budget_id, [m for m, _ in series], today)
         results = []
-        for month_start, buckets in await self._class_series(budget_id, months, date.today()):
-            income = buckets.get(ActivityClass.INCOME.value, Decimal("0"))
-            expenses = class_magnitude(buckets, ActivityClass.SPENDING)
-            savings = class_magnitude(buckets, ActivityClass.SAVINGS)
-            debt = class_magnitude(buckets, ActivityClass.DEBT_PRINCIPAL)
+        for (month_start, buckets), month_held in zip(series, held, strict=True):
+            f = figures(buckets, month_held)
             results.append(
                 {
                     "month": month_start,
-                    "income": income,
-                    "expenses": expenses,
-                    "savings": savings,
-                    "debt_principal": debt,
-                    "net": income - expenses - savings - debt,
+                    "income": f.income,
+                    "expenses": f.spending,
+                    "savings": f.savings,
+                    "savings_moved": f.savings_moved,
+                    "savings_held": f.savings_held,
+                    "debt_principal": f.debt_principal,
+                    "net": f.income - f.spending - f.savings_moved - f.debt_principal,
                 }
             )
         return results
@@ -402,8 +425,13 @@ class ReportService:
         # brokerage transfer as an expense and reported 0% for a household
         # saving 40%. None, not 0.0, when nothing came in: "no income recorded"
         # and "saved nothing" are different facts.
-        this = figures(_buckets(start_date, end_date))
-        expenses_prev = figures(_buckets(prev_start, prev_end)).spending
+        #
+        # Saved is moved plus held (`domain.savings`), held read over the same
+        # window the frame is cut to: the day before `start` through today at
+        # the latest. The prior window's spending is a row sum, so `flows`.
+        held = await held_between(self.session, budget_id, start_date, min(end_date, today))
+        this = figures(_buckets(start_date, end_date), held)
+        expenses_prev = flows(_buckets(prev_start, prev_end)).spending
 
         # Burn rate is how fast money is consumed, so savings and debt principal
         # are out. This claimed to match the Burn Rate chart "exactly" and did
@@ -1058,7 +1086,12 @@ class ReportService:
         # categories still hang beneath, so the detail is unchanged — only
         # which trunk they belong to.
         CLASS_BRANCH = {
-            ActivityClass.SAVINGS.value: ("__savings__", "Savings"),
+            # "To savings accounts", not "Savings": this chart is money-moved
+            # — SAVINGS-class rows — and a kept-here envelope's held balance
+            # never left the budget, so it is not on this trunk. The Savings
+            # Rate tab's "Saved" adds it; this label must not claim to be that
+            # figure (`test_sankey_spent_mode_is_money_moved`).
+            ActivityClass.SAVINGS.value: ("__savings__", "To savings accounts"),
             ActivityClass.DEBT_PRINCIPAL.value: ("__debt_principal__", "Debt Payments"),
         }
 
@@ -2245,8 +2278,12 @@ class ReportService:
         Two rates, because paying down a mortgage and funding a brokerage both
         build net worth but people think about them differently:
 
-            savings_rate           = savings / income
-            savings_rate_with_debt = (savings + debt_principal) / income
+            savings_rate           = (moved + held) / income
+            savings_rate_with_debt = (moved + held + debt_principal) / income
+
+        `savings` is saved: money moved into savings plus what kept-here
+        Savings envelopes came to hold (`domain.savings`), served with both
+        parts as `savings_moved` and `savings_held`.
 
         Scoped to on-budget accounts, which is what makes the number honest:
         growth inside a tracked account classifies as `investment_return` and
@@ -2260,26 +2297,17 @@ class ReportService:
 
         today = date.today()
         class_series = await self._class_series(budget_id, months, today)
+        axis = [month for month, _ in class_series]
+        held = await held_by_month(self.session, budget_id, axis, today)
         series: list[dict] = []
         window: dict[str, Decimal] = {}
-        for month, buckets in class_series:
+        for (month, buckets), month_held in zip(class_series, held, strict=True):
             for cls, amount in buckets.items():
                 window[cls] = window.get(cls, Decimal("0")) + amount
-            series.append(
-                {
-                    "month": month,
-                    "income": buckets.get(ActivityClass.INCOME.value, Decimal("0")),
-                    "spending": class_magnitude(buckets, ActivityClass.SPENDING),
-                    "savings": class_magnitude(buckets, ActivityClass.SAVINGS),
-                    "debt_principal": class_magnitude(buckets, ActivityClass.DEBT_PRINCIPAL),
-                    **savings_rates(buckets),
-                }
-            )
+            series.append({"month": month, **_rate_figures(figures(buckets, month_held))})
 
-        totals = {
-            key: sum((m[key] for m in series), Decimal("0"))
-            for key in ("income", "spending", "savings", "debt_principal")
-        }
+        # Held over the window is the months' held added up — `month_cuts`
+        # are the window's cuts, so this is `held_between(start, today)`.
         return {
             "months": series,
             # The window the summary covers, served rather than rebuilt from
@@ -2288,10 +2316,7 @@ class ReportService:
             # of exactly these rows.
             "start_date": class_series[0][0],
             "end_date": today,
-            "summary": {
-                **totals,
-                **savings_rates(window),
-            },
+            "summary": _rate_figures(figures(window, sum(held, Decimal("0")))),
         }
 
     # ─── Anomaly Detection ────────────────────────────────────────────────────

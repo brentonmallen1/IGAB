@@ -25,6 +25,24 @@ export function figureLines(figures: MoneyFigures): FigureLine[] {
   )
 }
 
+/** "Held in the envelope: −$120.00" — what a kept-here Savings envelope comes
+ * to hold (served `held`), or null when the move holds nothing. */
+export function heldLine(e: MoveExplanation, formatMoney: (n: number) => string): string | null {
+  if (e.held === 0) return null
+  return `Held in the envelope: ${signedMoney(e.held, formatMoney)}`
+}
+
+/** Saved is moved + held (backend `domain/savings.py`). "moved $300.00 + held
+ * −$420.00" when anything was held; null when saved is the moved figure alone,
+ * so the plain case reads as it always did. */
+export function savedParts(
+  figures: MoneyFigures,
+  formatMoney: (n: number) => string
+): string | null {
+  if (figures.savings_held === 0) return null
+  return `moved ${formatMoney(figures.savings_moved)} + held ${signedMoney(figures.savings_held, formatMoney)}`
+}
+
 /** "Savings rate, Cost of living" from served family keys and served labels. */
 export function familyList(
   keys: readonly ReportFamily[],

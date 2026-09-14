@@ -279,6 +279,12 @@ ON_BUDGET_ACCOUNT = Transaction.account_id.in_(
 #: divided, so the three read one predicate rather than three lists of the same
 #: four clauses. LEAF because a split parent carries no category and so no
 #: class of its own.
+#:
+#: The Budget page's envelope activity sums the same rows
+#: (`TransactionRepository.sum_all_categories_by_month`), and reads it by name:
+#: the savings figure's held part cuts the page's Available with
+#: `sum_categories_dated_after`, and a cut over different rows would hold money
+#: the envelope never had.
 CLASS_TOTAL_ROW = and_(NOT_DELETED, POSTED, LEAF, ON_BUDGET_ACCOUNT)
 
 

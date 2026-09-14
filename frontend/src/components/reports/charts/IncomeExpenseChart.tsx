@@ -28,6 +28,7 @@ import { COLOR_NEGATIVE, COLOR_NET, COLOR_NEUTRAL, COLOR_POSITIVE } from './char
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ReportRangeSelect } from './rangeSelect'
+import { SAVED_DEFINITION } from '../savingsRateBreakdown'
 import './IncomeExpenseChart.css'
 
 interface Props {
@@ -78,6 +79,7 @@ export function IncomeExpenseReport({ budgetId }: Props) {
     month: m.month.slice(0, 7),
     Income: m.income,
     Expenses: m.expenses,
+    // Saved (moved + held) plus debt paid down; `net` stays money-moved.
     Saved: m.savings + m.debt_principal,
     Net: m.net,
   }))
@@ -102,9 +104,13 @@ export function IncomeExpenseReport({ budgetId }: Props) {
             the <strong>net cash flow</strong> (blue line) overlaid.
           </p>
           <p>
-            <strong>Saved</strong> is money that left the budget but stayed yours — moved into
-            savings or investments, or used to pay down a tracked debt. It sits beside expenses
-            rather than inside them, because it isn't money spent.
+            <strong>Saved</strong> is money that stayed yours — moved into savings or investments,
+            held in a kept-here Savings envelope, or used to pay down a tracked debt. It sits beside
+            expenses rather than inside them, because it isn't money spent. {SAVED_DEFINITION}
+          </p>
+          <p>
+            The <strong>net</strong> line counts only money that left your accounts: money held in
+            an envelope is still in them, so it does not lower net.
           </p>
           <p>
             Months where the blue line is above zero mean you spent less than you earned — a
@@ -122,6 +128,8 @@ export function IncomeExpenseReport({ budgetId }: Props) {
                 income: m.income,
                 expenses: m.expenses,
                 savings: m.savings,
+                savings_moved: m.savings_moved,
+                savings_held: m.savings_held,
                 debt_principal: m.debt_principal,
                 net: m.net,
               }))

@@ -95,7 +95,10 @@ class FiguresResponse(ApiModel):
     income: Decimal
     spending: Decimal
     cost_of_living: Decimal
+    #: Saved = savings_moved + savings_held (`domain.savings`).
     savings: Decimal
+    savings_moved: Decimal
+    savings_held: Decimal
     debt_principal: Decimal
     savings_rate: float | None
     savings_rate_with_debt: float | None
@@ -107,6 +110,8 @@ class MoveExplanationResponse(ApiModel):
     legs: list[LegResponse]
     budget_terms: list[BudgetTermResponse]
     class_totals: dict[str, Decimal]
+    #: What a kept-here Savings envelope comes to hold (`MoveExplanation.held`).
+    held: Decimal
     figures: FiguresResponse
     net_worth_delta: Decimal
     assumption: str
@@ -120,6 +125,7 @@ class MonthRowResponse(ApiModel):
 class MoneyMonthResponse(ApiModel):
     rows: list[MonthRowResponse]
     class_totals: dict[str, Decimal]
+    held: Decimal
     figures: FiguresResponse
 
 

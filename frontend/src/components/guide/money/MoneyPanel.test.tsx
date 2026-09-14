@@ -110,6 +110,17 @@ describe('the explorer', () => {
     expect(screen.getByText('Served assumption.')).toBeInTheDocument()
   })
 
+  it('says what a kept-here envelope holds, from the served held figure', () => {
+    serveExplain(explanation({ held: -1000 }))
+    renderPanel()
+    expect(screen.getByText(/Held in the envelope: −\$1,000\.00/)).toBeInTheDocument()
+  })
+
+  it('shows no held line when the move holds nothing', () => {
+    renderPanel()
+    expect(screen.queryByText(/Held in the envelope/)).not.toBeInTheDocument()
+  })
+
   it('disables the category, and says why, when the server says no leg may carry one', () => {
     serveExplain(explanation({ category_role: null }))
     renderPanel()

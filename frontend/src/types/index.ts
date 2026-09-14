@@ -607,9 +607,14 @@ export interface IncomeExpenseMonth {
   /** Money spent. Saving and debt principal are separate — both leave the
    *  budget, but neither is spending. */
   expenses: number
+  /** Saved: `savings_moved + savings_held` (backend `domain/savings.py`). */
   savings: number
+  savings_moved: number
+  savings_held: number
   debt_principal: number
-  /** income - expenses - savings - debt_principal, so the parts reconcile. */
+  /** income - expenses - savings_moved - debt_principal: money that left the
+   *  accounts. Held money never left them, so `net` does not subtract it
+   *  (backend `ReportService.income_vs_expense`). */
   net: number
 }
 

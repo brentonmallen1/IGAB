@@ -23,6 +23,7 @@ import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ReportRangeSelect } from './rangeSelect'
 import { SavingsRateDialog } from '../SavingsRateDialog'
+import { SAVED_DEFINITION } from '../savingsRateBreakdown'
 import { pct, RATE_SERIES, ratePercent, savingsRateTooltipWith } from './savingsRateView'
 import { useReportMonths } from '../../../stores/reportStore'
 
@@ -69,9 +70,11 @@ export function SavingsRateReport({ budgetId }: Props) {
         <ReportInfoButton title="Savings Rate">
           <p>How much of what came in you kept, month by month.</p>
           <p>
-            <strong>Savings rate</strong> = money moved into savings ÷ income. With{' '}
-            <em>“include debt payments”</em> on, money used to pay down a tracked debt counts too —
-            both build what you own rather than consuming it.
+            <strong>Savings rate</strong> = saved ÷ income. {SAVED_DEFINITION} Assigning to a
+            kept-here envelope counts as saved, spending from it lowers saved, and moving its money
+            on to a savings account nets to zero. With <em>“include debt payments”</em> on, money
+            used to pay down a tracked debt counts too — both build what you own rather than
+            consuming it.
           </p>
           <p>
             Growth <em>inside</em> a tracked account — dividends, market movement — is deliberately{' '}
@@ -113,6 +116,8 @@ export function SavingsRateReport({ budgetId }: Props) {
                 income: Number(m.income),
                 spending: Number(m.spending),
                 savings: Number(m.savings),
+                savings_moved: Number(m.savings_moved),
+                savings_held: Number(m.savings_held),
                 debt_principal: Number(m.debt_principal),
                 savings_rate: m.savings_rate,
                 savings_rate_with_debt: m.savings_rate_with_debt,

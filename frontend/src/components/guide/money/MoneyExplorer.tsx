@@ -21,7 +21,7 @@ import {
   type SideState,
   type TypeFacts,
 } from './explorerMove'
-import { familyList, figureLines, netWorthLine, signedMoney } from './moveAnswer'
+import { familyList, figureLines, heldLine, netWorthLine, signedMoney } from './moveAnswer'
 import './MoneyExplorer.css'
 
 const tagName = (key: string) => SYSTEM_TAG_HELP.find((t) => t.key === key)?.name ?? key
@@ -219,6 +219,7 @@ function Answer({
 }) {
   const { formatMoney } = useFormatters()
   const figures = figureLines(data.figures)
+  const held = heldLine(data, formatMoney)
   return (
     <div
       className={`tool__results money-explorer__answer ${stale ? 'tool__results--stale' : ''}`}
@@ -267,6 +268,12 @@ function Answer({
               : figures.map((f) => `${f.label} ${signedMoney(f.value, formatMoney)}`).join(' · ')}
           </dd>
         </div>
+        {held && (
+          <div>
+            <dt>Savings</dt>
+            <dd>{held}. Saved is what moved to savings plus what the envelope holds.</dd>
+          </div>
+        )}
         <div>
           <dt>Net worth</dt>
           <dd>{netWorthLine(data, formatMoney)}</dd>

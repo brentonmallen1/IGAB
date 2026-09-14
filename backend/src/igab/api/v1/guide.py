@@ -321,7 +321,8 @@ def _explanation(e: MoveExplanation) -> MoveExplanationResponse:
             BudgetTermResponse(term=term, delta=delta) for term, delta in e.budget_terms.items()
         ],
         class_totals=e.class_totals,
-        figures=_figures(figures(e.class_totals)),
+        held=e.held,
+        figures=_figures(figures(e.class_totals, e.held)),
         net_worth_delta=e.net_worth_delta,
         assumption=ASSUMPTION,
     )
@@ -403,5 +404,6 @@ async def explain_money_month(
             for m, e in zip(payload.moves, month.moves, strict=True)
         ],
         class_totals=month.class_totals,
+        held=month.held,
         figures=_figures(month.figures),
     )

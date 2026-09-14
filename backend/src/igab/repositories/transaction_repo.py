@@ -48,6 +48,7 @@ from igab.repositories.txn_filters import (
     BANK_UNLINKED,
     CARD_PAYMENT_FROM_CASH,
     CASH_FLOW_ROW,
+    CLASS_TOTAL_ROW,
     COUNTERPART_ACCOUNT_ID,
     DEBT_INTEREST_ROW,
     IN_SINKING_FUND,
@@ -578,6 +579,10 @@ class TransactionRepository(BaseRepository[Transaction]):
         legitimately categorized row is on-budget already — the transfer rule
         guarantees it — so this is a no-op on correct data and a repair on a
         stray row.
+
+        Those four clauses are `CLASS_TOTAL_ROW`, read by name so the
+        envelope's activity and the savings figure's cut
+        (`sum_categories_dated_after`) are one row set.
         """
         result = await self.session.execute(
             select(
@@ -587,10 +592,7 @@ class TransactionRepository(BaseRepository[Transaction]):
             )
             .where(
                 Transaction.category_id == category_id,
-                NOT_DELETED,
-                LEAF,
-                POSTED,
-                ON_BUDGET_ACCOUNT,
+                CLASS_TOTAL_ROW,
                 Transaction.date <= end_date,
             )
             .group_by(TXN_YEAR, TXN_MONTH)
@@ -732,9 +734,9 @@ class TransactionRepository(BaseRepository[Transaction]):
         end_date=None returns all months, including future-dated activity —
         the snapshot rebuild needs the full timeline.
 
-        ON_BUDGET_ACCOUNT for the same reason as `sum_by_category_by_month`:
-        the two must stay predicate-identical, and both must span the same
-        accounts as the balance term.
+        `CLASS_TOTAL_ROW` for the same reason as `sum_by_category_by_month`:
+        the two read one predicate, and it spans the same accounts as the
+        balance term.
         """
         if not category_ids:
             return {}
@@ -747,10 +749,7 @@ class TransactionRepository(BaseRepository[Transaction]):
             )
             .where(
                 Transaction.category_id.in_(category_ids),
-                NOT_DELETED,
-                LEAF,
-                POSTED,
-                ON_BUDGET_ACCOUNT,
+                CLASS_TOTAL_ROW,
             )
             .group_by(Transaction.category_id, TXN_YEAR, TXN_MONTH)
         )
@@ -762,6 +761,57 @@ class TransactionRepository(BaseRepository[Transaction]):
             month = month_of(row)
             out.setdefault(row["category_id"], {})[month] = row["total"]
         return out
+
+    async def sum_categories_dated_after(
+        self,
+        budget_id: uuid.UUID,
+        category_ids: Sequence[uuid.UUID],
+        after: date,
+        through: date,
+    ) -> dict[uuid.UUID, Decimal]:
+        """{category: signed total of its rows dated in (after, through]}.
+
+        The part of a month's envelope activity that has not happened yet on
+        `after` — what `domain.savings.balance_at` takes off the page's
+        Available to read a mid-month balance. Over `CLASS_TOTAL_ROW`, the
+        rows the page's own activity sums (`sum_all_categories_by_month`), so
+        the cut removes exactly rows the Available holds. Categories with no
+        such rows are absent.
+        """
+        if not category_ids or through <= after:
+            return {}
+        result = await self.session.execute(
+            select(Transaction.category_id, func.sum(Transaction.amount).label("total"))
+            .where(
+                Transaction.budget_id == budget_id,
+                Transaction.category_id.in_(list(category_ids)),
+                CLASS_TOTAL_ROW,
+                Transaction.date > after,
+                Transaction.date <= through,
+            )
+            .group_by(Transaction.category_id)
+        )
+        return {row["category_id"]: Decimal(str(row["total"])) for row in result.mappings()}
+
+    async def count_categories_between(
+        self, budget_id: uuid.UUID, category_ids: Sequence[uuid.UUID], start: date, end: date
+    ) -> dict[uuid.UUID, int]:
+        """{category: its `CLASS_TOTAL_ROW` rows dated in [start, end]} — the
+        row count a savings contributor for a kept-here envelope carries."""
+        if not category_ids:
+            return {}
+        result = await self.session.execute(
+            select(Transaction.category_id, func.count().label("n"))
+            .where(
+                Transaction.budget_id == budget_id,
+                Transaction.category_id.in_(list(category_ids)),
+                CLASS_TOTAL_ROW,
+                Transaction.date >= start,
+                Transaction.date <= end,
+            )
+            .group_by(Transaction.category_id)
+        )
+        return {row["category_id"]: int(row["n"]) for row in result.mappings()}
 
     async def sum_credit_outflows_by_category(
         self,

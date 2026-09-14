@@ -41,7 +41,9 @@ from igab.domain.activity_class import (
 )
 from igab.domain.dates import complete_month_window, month_starts
 from igab.domain.money import quantize_cents
-from igab.domain.money_moves import figures
+from igab.domain.money_moves import flows
+from igab.domain.savings import HELD_REASON, HELD_REASON_LABEL
+from igab.repositories.transaction_repo import TransactionRepository
 from igab.repositories.txn_filters import (
     CLASS_TOTAL_ROW,
     LEAF,
@@ -50,6 +52,7 @@ from igab.repositories.txn_filters import (
     POSTED,
     category_tagged,
 )
+from igab.services.savings_held import held_by_envelope
 
 if TYPE_CHECKING:
     from igab.services.report_service import ReportService
@@ -240,9 +243,24 @@ async def savings_contributors(
     range was picked, and the Savings Rate tab's window ends today, so a
     future-dated row is in neither and is not in this either.
 
+    **Held rows.** Saved is moved plus held (`domain.savings`), so each
+    kept-here Savings envelope whose balance changed over the window is a
+    contributor of its own — `reason` `HELD_REASON`, `total` its held change,
+    `count` its register rows in the window (assignments are not rows). Zero
+    changes are omitted. A kept-here envelope's outflow to a tracked account
+    still appears under that account: the pair nets, +300 there and −300 held.
+
     Income is grouped by payee, as Income by Source groups it.
     """
     end = min(end_date, date.today())
+    held = {
+        cid: pair
+        for cid, pair in (await held_by_envelope(session, budget_id, start_date, end)).items()
+        if quantize_cents(pair[1]) != 0
+    }
+    held_counts = await TransactionRepository(session).count_categories_between(
+        budget_id, list(held), start_date, end
+    )
     wanted = [ActivityClass.INCOME.value, *(c.value for c in _CONTRIBUTOR_CLASSES)]
     q = (
         select(
@@ -333,13 +351,29 @@ async def savings_contributors(
             )
         return _by_magnitude(out)
 
+    moved = quantize_cents(class_magnitude(signed, ActivityClass.SAVINGS))
+    held_rows = [
+        {
+            "kind": "category",
+            "id": cid,
+            "name": name,
+            "reason": HELD_REASON,
+            "reason_label": HELD_REASON_LABEL,
+            "total": quantize_cents(amount),
+            "count": held_counts.get(cid, 0),
+        }
+        for cid, (name, amount) in held.items()
+    ]
+    savings_held = sum((quantize_cents(amount) for _, amount in held.values()), Decimal("0"))
     return {
         "start_date": start_date,
         "end_date": end,
         "income": quantize_cents(signed.get(ActivityClass.INCOME.value, Decimal("0"))),
-        "savings": quantize_cents(class_magnitude(signed, ActivityClass.SAVINGS)),
+        "savings": moved + savings_held,
+        "savings_moved": moved,
+        "savings_held": savings_held,
         "debt_principal": quantize_cents(class_magnitude(signed, ActivityClass.DEBT_PRINCIPAL)),
-        "savings_contributors": _contributors(ActivityClass.SAVINGS),
+        "savings_contributors": _by_magnitude(_contributors(ActivityClass.SAVINGS) + held_rows),
         "debt_contributors": _contributors(ActivityClass.DEBT_PRINCIPAL),
         "income_sources": _by_magnitude(
             [{**s, "total": quantize_cents(s["total"])} for s in sources.values()], "payee_name"
@@ -390,10 +424,11 @@ async def means_months(svc: ReportService, budget_id: uuid.UUID, today: date) ->
     months, oldest first — what the Overview's Means trend is drawn from.
 
     **The card's composition, month by month.** Each month's class buckets go
-    through `money_moves.figures`, the same reading `dashboard_metrics` gives
-    the Your Means card: outflows are `cost_of_living` (spending plus debt
-    principal), income is the INCOME class, and money moved into savings is
-    neither. A trend that counted a class the card does not would draw bars
+    through `money_moves.flows`, the row-sum half of the `figures` reading
+    `dashboard_metrics` gives the Your Means card: outflows are
+    `cost_of_living` (spending plus debt principal), income is the INCOME
+    class, and savings — moved or held — are neither, so no held figure is
+    read. A trend that counted a class the card does not would draw bars
     the card beside it contradicts.
 
     **Complete months only, never before the history.** A month in progress
@@ -414,7 +449,7 @@ async def means_months(svc: ReportService, budget_id: uuid.UUID, today: date) ->
     by_month = await svc._monthly_class_totals(budget_id, start, end)
     rows = []
     for month in month_starts(start, end):
-        f = figures(by_month.get(month, {}))
+        f = flows(by_month.get(month, {}))
         rows.append(
             {
                 "month": month,

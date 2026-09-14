@@ -9,7 +9,10 @@
 - **which budget figure moves**, which is prose about `BudgetService` and
   cannot be evaluated over literals at all. Here every move is booked into a
   budget in `ASSUMPTION`'s situation and the served terms must equal the
-  month's actual deltas, exactly: no term missing, none extra.
+  month's actual deltas, exactly: no term missing, none extra;
+- **what a kept-here Savings envelope comes to hold** (`MoveExplanation.held`),
+  held to `savings_held.held_between` over the real rows before and after —
+  the figure the reports add to the moved flows.
 
 Every shape pair crossed with every category kind the pair may carry, plus
 every plain transaction. A combination the explorer offers and this file does
@@ -38,6 +41,7 @@ from igab.domain.money_moves import (
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.services.card_payment import ensure_payment_category
 from igab.services.money_moves_service import MoneyMovesService
+from igab.services.savings_held import held_between
 from igab.services.transaction_service import TransactionCreate
 
 from .factories import (
@@ -160,6 +164,7 @@ async def test_the_served_answer_is_what_the_budget_and_the_classifier_do(db_ses
     await db_session.flush()
 
     before = await _snapshot(services, budget, envelope)
+    held_before = await held_between(db_session, budget.id, MONTH, TODAY)
     if move.kind is MoveKind.TRANSFER:
         assert target is not None
         created = await services.transactions.create(
@@ -184,6 +189,7 @@ async def test_the_served_answer_is_what_the_budget_and_the_classifier_do(db_ses
         rows = {LegRole.ACCOUNT: row.id}
     await db_session.flush()
     after = await _snapshot(services, budget, envelope)
+    held_after = await held_between(db_session, budget.id, MONTH, TODAY)
 
     explanation = await MoneyMovesService(db_session).explain(move)
 
@@ -191,6 +197,14 @@ async def test_the_served_answer_is_what_the_budget_and_the_classifier_do(db_ses
     assert explanation.budget_terms == actual_terms, (
         f"{name}: the explorer says {explanation.budget_terms}, the budget moved {actual_terms}"
     )
+
+    assert explanation.held == held_after - held_before, (
+        f"{name}: the explorer says held {explanation.held}, the budget held "
+        f"{held_after - held_before}"
+    )
+    if move.category is CategoryKind.SAVINGS_KEPT and category_role(move) is not None:
+        # A kept-here envelope is the only kind that holds: never silently 0.
+        assert explanation.held != 0, name
 
     classified = {
         r.id: (r.cls, r.reason)
