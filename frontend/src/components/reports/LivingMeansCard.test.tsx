@@ -32,6 +32,7 @@ function metrics(overrides: Partial<DashboardMetrics> = {}): DashboardMetrics {
       { id: 'c2', name: 'Dining', group_name: 'Everyday', total: 600 },
       { id: 'c3', name: 'Fuel', group_name: 'Transport', total: 300 },
     ],
+    means_months: [],
     ...overrides,
   }
 }

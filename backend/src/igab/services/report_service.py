@@ -28,7 +28,6 @@ from igab.db.models import (
 )
 from igab.domain.activity_class import (
     ACTIVITY_CLASS,
-    COST_OF_LIVING_CLASSES,
     INCOME_ROW,
     ActivityClass,
     apply_class_joins,
@@ -58,6 +57,7 @@ from igab.domain.dates import (
 )
 from igab.domain.dates import month_end as _month_end
 from igab.domain.money import format_csv_amount, quantize_cents
+from igab.domain.money_moves import figures
 from igab.domain.plan import plan_outcome
 from igab.domain.schedule import projected_occurrences, subscription_occurrences
 from igab.domain.view_arrangement import arrange_by_view
@@ -95,6 +95,7 @@ from igab.repositories.txn_filters import (
 from igab.services.report_basics import (
     class_excluded_note,
     emergency_fund,
+    means_months,
 )
 from igab.services.report_stats import (
     anomaly_rows,
@@ -393,18 +394,23 @@ class ReportService:
             totals = window.group_by("cls").agg(pl.col("amount").sum())
             return {cls: Decimal(str(amount)) for cls, amount in totals.iter_rows()}
 
-        this, prev = _buckets(start_date, end_date), _buckets(prev_start, prev_end)
-        income_this = this.get(ActivityClass.INCOME.value, Decimal("0"))
-        expenses_this = class_magnitude(this, ActivityClass.SPENDING)
-        savings_this = class_magnitude(this, ActivityClass.SAVINGS)
-        expenses_prev = class_magnitude(prev, ActivityClass.SPENDING)
-        # What living cost over the window — spending plus debt payments — from
-        # the one tuple Cost of Living and the Essentials figures read, so the
-        # Overview's means verdict cannot count a class those reports do not.
-        # Debt payments are served beside it because the verdict's dialog names
-        # them; savings are neither: they are what was left over.
-        debt_payments_this = class_magnitude(this, ActivityClass.DEBT_PRINCIPAL)
-        outflows_this = sum((class_magnitude(this, c) for c in COST_OF_LIVING_CLASSES), Decimal(0))
+        # The window's figures through `money_moves.figures`, the one reading
+        # of class buckets the report tabs and the Guide's worked month share.
+        # This card flipped each class's sign itself beside it — the same
+        # arithmetic twice, one refactor from disagreeing. `cost_of_living` is
+        # every class in COST_OF_LIVING_CLASSES, the one tuple Cost of Living
+        # and the Essentials figures read, so the Overview's means verdict
+        # cannot count a class those reports do not. Debt payments are served
+        # beside it because the verdict's dialog names them; savings are
+        # neither: they are what was left over.
+        #
+        # The savings rate is savings / income, the ratio the Savings Rate tab
+        # shows by default. The old (income - expenses) / income counted a
+        # brokerage transfer as an expense and reported 0% for a household
+        # saving 40%. None, not 0.0, when nothing came in: "no income recorded"
+        # and "saved nothing" are different facts.
+        this = figures(_buckets(start_date, end_date))
+        expenses_prev = figures(_buckets(prev_start, prev_end)).spending
 
         # Burn rate is how fast money is consumed, so savings and debt principal
         # are out. This claimed to match the Burn Rate chart "exactly" and did
@@ -433,16 +439,6 @@ class ReportService:
         # None until something is tagged: the untagged fallback IS burn rate,
         # and a second card saying the same number would mislead.
         essentials_monthly, essentials_tagged = await self._essentials_monthly(budget_id, today)
-
-        # savings / income, the same ratio the Savings Rate tab shows by
-        # default. The old (income - expenses) / income counted a brokerage
-        # transfer as an expense and so reported 0% for a household saving 40%.
-        #
-        # None, not 0.0, when nothing came in — the same answer the Savings Rate
-        # tab gives, for the reason its docstring states: "no income recorded"
-        # and "saved nothing" are different facts. The two carried the same
-        # label and disagreed on exactly the months a new budget starts with.
-        savings_rate = float(savings_this / income_this) if income_this > 0 else None
 
         # Days until zero — runway is CASH divided by burn, and the pot is
         # the budget's cash (`sum_on_budget_balance`, the Ready-to-Assign
@@ -476,14 +472,15 @@ class ReportService:
             "burn_rate_90": burn_90,
             "essentials_monthly": essentials_monthly,
             "essentials_tagged": essentials_tagged,
-            "savings_rate": savings_rate,
+            "savings_rate": this.savings_rate,
             "days_until_zero": days_until_zero,
-            "income_this_month": income_this,
-            "expenses_this_month": expenses_this,
+            "income_this_month": this.income,
+            "expenses_this_month": this.spending,
             "expenses_prev_month": expenses_prev,
-            "debt_payments_this_month": debt_payments_this,
-            "outflows_this_month": outflows_this,
+            "debt_payments_this_month": this.debt_principal,
+            "outflows_this_month": this.cost_of_living,
             "top_categories": top_cats,
+            "means_months": await means_months(self, budget_id, today),
         }
 
     # ─── Net Worth History ────────────────────────────────────────────────────

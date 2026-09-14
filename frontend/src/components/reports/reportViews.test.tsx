@@ -414,6 +414,7 @@ describe('OverviewReport metric cards', () => {
         debt_payments_this_month: '500',
         outflows_this_month: '3500',
         top_categories: [{ id: 'c1', name: 'Groceries', group_name: 'Everyday', total: 300 }],
+        means_months: [],
       },
     })
     renderReport(<OverviewReport budgetId="b1" />)
@@ -442,6 +443,7 @@ describe('OverviewReport metric cards', () => {
         income_this_month: '0',
         outflows_this_month: '0',
         top_categories: [],
+        means_months: [],
       },
     })
     renderReport(<OverviewReport budgetId="b1" />)
@@ -496,6 +498,7 @@ describe('the savings-rate cards open what contributed', () => {
     debt_payments_this_month: 500,
     outflows_this_month: 3000,
     top_categories: [],
+    means_months: [],
   }
 
   it('the Overview card asks for the range the Overview shows', () => {

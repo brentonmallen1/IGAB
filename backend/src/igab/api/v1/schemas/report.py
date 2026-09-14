@@ -53,6 +53,18 @@ class TopCategory(ApiModel):
     total: Decimal
 
 
+class MeansMonth(ApiModel):
+    """One complete month of the Overview's Means trend
+    (`report_basics.means_months`)."""
+
+    month: date
+    #: The INCOME class, as `income_this_month` counts it.
+    income: Decimal
+    #: COST_OF_LIVING_CLASSES, as `outflows_this_month` counts it: spending
+    #: plus debt payments, never savings.
+    outflows: Decimal
+
+
 class DashboardMetrics(ApiModel):
     # `to_be_assigned` lived here, defaulted to zero and populated by no code
     # path. The Overview's card reads the budget-month endpoint's own figure,
@@ -84,6 +96,11 @@ class DashboardMetrics(ApiModel):
     #: Overview's above/at/below-your-means verdict reads it against income.
     outflows_this_month: Decimal
     top_categories: list[TopCategory]
+    #: The last 12 COMPLETE months, oldest first, whatever the requested
+    #: window — fewer on a budget whose history is younger, none on an empty
+    #: one; a month with no activity inside the window is zeros. Required: the
+    #: Means trend card has no other source.
+    means_months: list[MeansMonth]
 
 
 # ─── Net Worth ────────────────────────────────────────────────────────────────

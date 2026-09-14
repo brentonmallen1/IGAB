@@ -692,6 +692,21 @@ export interface DashboardMetrics {
    *  Read against income by `components/reports/livingMeans.ts`. */
   outflows_this_month: number
   top_categories: { id: string; name: string; group_name: string; total: number }[]
+  /** The last 12 complete months, oldest first, whatever the requested window
+   *  — fewer on a younger budget, none on an empty one; a quiet month inside
+   *  the window is zeros. Served by `report_basics.means_months` with the
+   *  composition `outflows_this_month` uses; read by `livingMeans.meansTrend`. */
+  means_months: MeansMonth[]
+}
+
+/** One complete month of the Overview's Means trend. `income` is the INCOME
+ *  class and `outflows` is COST_OF_LIVING_CLASSES, exactly as the window's
+ *  `income_this_month` / `outflows_this_month`. Server-computed. */
+export interface MeansMonth {
+  /** The month's first day, YYYY-MM-DD. */
+  month: string
+  income: number
+  outflows: number
 }
 
 export interface NetWorthPoint {

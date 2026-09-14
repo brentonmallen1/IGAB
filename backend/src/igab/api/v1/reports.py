@@ -36,6 +36,7 @@ from igab.api.v1.schemas.report import (
     LiabilitiesBalancePoint,
     LiabilitiesReportItem,
     LiabilitiesReportResponse,
+    MeansMonth,
     NetWorthPoint,
     NetWorthResponse,
     PaydayEffectDay,
@@ -293,8 +294,9 @@ async def dashboard_metrics(
     end = end_date or today
     data = await report_svc.dashboard_metrics(budget_id, start, end)
     return DashboardMetrics(
-        **{k: v for k, v in data.items() if k != "top_categories"},
+        **{k: v for k, v in data.items() if k not in ("top_categories", "means_months")},
         top_categories=[TopCategory.model_validate(c) for c in data["top_categories"]],
+        means_months=[MeansMonth.model_validate(m) for m in data["means_months"]],
     )
 
 

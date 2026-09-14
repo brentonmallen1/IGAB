@@ -1,5 +1,6 @@
 """The basic reports: spending over time for a chosen scope, income by
-source, and what the essentials reserve is measured against.
+source, what the essentials reserve is measured against, and the months the
+Overview's Means trend is drawn from.
 
 Split from report_service.py, which is over the file-length budget and may
 only shrink. These read the same predicates it does — `spending_trends`
@@ -40,6 +41,7 @@ from igab.domain.activity_class import (
 )
 from igab.domain.dates import complete_month_window, month_starts
 from igab.domain.money import quantize_cents
+from igab.domain.money_moves import figures
 from igab.repositories.txn_filters import (
     CLASS_TOTAL_ROW,
     LEAF,
@@ -376,6 +378,51 @@ async def emergency_fund(
     if detected is None:
         reason = "you told us what you have set aside"
     return quantize_cents(total), reason
+
+
+#: How many complete months the Overview's Means trend reads, whatever range
+#: the Overview itself is showing.
+MEANS_TREND_MONTHS = 12
+
+
+async def means_months(svc: ReportService, budget_id: uuid.UUID, today: date) -> list[dict]:
+    """Income and outflows for each of the last `MEANS_TREND_MONTHS` complete
+    months, oldest first — what the Overview's Means trend is drawn from.
+
+    **The card's composition, month by month.** Each month's class buckets go
+    through `money_moves.figures`, the same reading `dashboard_metrics` gives
+    the Your Means card: outflows are `cost_of_living` (spending plus debt
+    principal), income is the INCOME class, and money moved into savings is
+    neither. A trend that counted a class the card does not would draw bars
+    the card beside it contradicts.
+
+    **Complete months only, never before the history.** A month in progress
+    reads as a surplus every morning of it — the pay landed on the 1st, the
+    bills have not — so the running month is out (`complete_month_window`).
+    The window starts no earlier than the budget's first row: a month before
+    anything was recorded is not a month of zero income, and a budget with
+    no rows at all has no months. Inside the window a month with no activity
+    is served as zeros, so the axis has no gaps.
+
+    Independent of the Overview's selected range on purpose: the trend is
+    "the last year", and a one-month range would leave it a single bar.
+    """
+    earliest = await svc.txns.earliest_date(budget_id)
+    if earliest is None:
+        return []
+    start, end = complete_month_window(today, MEANS_TREND_MONTHS, earliest)
+    by_month = await svc._monthly_class_totals(budget_id, start, end)
+    rows = []
+    for month in month_starts(start, end):
+        f = figures(by_month.get(month, {}))
+        rows.append(
+            {
+                "month": month,
+                "income": quantize_cents(f.income),
+                "outflows": quantize_cents(f.cost_of_living),
+            }
+        )
+    return rows
 
 
 class RecurringSpend(TypedDict):
