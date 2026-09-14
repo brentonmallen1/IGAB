@@ -3,7 +3,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import Field
+from pydantic import ConfigDict, Field
 
 from igab.api.v1.schemas.base import ApiModel
 
@@ -53,6 +53,26 @@ class TopCategory(ApiModel):
     total: Decimal
 
 
+class EssentialsFigures(ApiModel):
+    """What a lean month costs, both ways (`guide.concepts.EssentialsMonthly`).
+
+    `as_paid` is the 90-day figure as bills landed; `spread` swaps the
+    sinking-fund (Long-term expense) bills in it for a twelfth of the last
+    365 days' worth. `spread_on` is the budget's setting and `monthly` the one
+    it selects — what every target, runway and reserve reads. Both are always
+    served, so a surface can show the other beside it.
+    """
+
+    # Validated from the dataclass itself: `monthly` is its property, and the
+    # rule choosing it is not respelled here.
+    model_config = ConfigDict(from_attributes=True)
+
+    as_paid: Decimal
+    spread: Decimal
+    spread_on: bool
+    monthly: Decimal
+
+
 class MeansMonth(ApiModel):
     """One complete month of the Overview's Means trend
     (`report_basics.means_months`)."""
@@ -79,6 +99,9 @@ class DashboardMetrics(ApiModel):
     #: number the Guide's emergency-fund target is built from. None until
     #: something is tagged Essential (untagged, it would equal burn rate).
     essentials_monthly: Decimal | None
+    #: Both essentials figures; `essentials_monthly` is their `.monthly`. None
+    #: exactly when `essentials_monthly` is — nothing tagged Essential yet.
+    essentials: EssentialsFigures | None
     essentials_tagged: bool
     #: None when no income was recorded in the window — the Savings Rate tab's
     #: convention, and a gap rather than a floor on the chart.
@@ -407,8 +430,14 @@ class EssentialsCategory(ApiModel):
 
 
 class EssentialsMonth(ApiModel):
+    """One complete month of essential spending, as paid — a chart of what
+    was spent never spreads a bill."""
+
     month: date
     total: Decimal
+    #: The part of `total` filed to a sinking fund (`IN_SINKING_FUND`), so the
+    #: coverage series can spread it.
+    sinking_total: Decimal
 
 
 class ReserveTarget(ApiModel):
@@ -430,6 +459,9 @@ class EssentialsReportResponse(ApiModel):
     window_start: date
     window_end: date
     essentials_90d: Decimal
+    #: Both essentials figures; `essentials_90d` is their `.monthly`. Served
+    #: whether or not anything is tagged — zeros when nothing is.
+    essentials: EssentialsFigures
     monthly_total_average: Decimal
     categories: list[EssentialsCategory]
     monthly_series: list[EssentialsMonth]
@@ -1065,6 +1097,18 @@ class ReportFavoritesUpdate(ApiModel):
     tabs: list[str] = Field(default_factory=list, max_length=64)
 
 
+# ─── Report settings ─────────────────────────────────────────────────────────
+
+
+class ReportSettings(ApiModel):
+    """Per-budget settings that change what the reports count
+    (`services/report_settings.py`). The PUT sends the whole object."""
+
+    #: Spread sinking-fund (Long-term expense) bills over twelve months in the
+    #: essentials figures. On with no stored choice.
+    spread_sinking_funds: bool
+
+
 # ─── Emergency fund coverage ─────────────────────────────────────────────────
 
 
@@ -1100,6 +1144,9 @@ class EmergencyCoverageResponse(ApiModel):
     #: The Essentials report's own runway, quoted rather than recomputed.
     coverage_months: Decimal | None
     essentials_monthly: Decimal
+    #: The Essentials report's own figures, quoted; `essentials_monthly` is
+    #: their `.monthly`.
+    essentials: EssentialsFigures
     target_low: Decimal
     target_high: Decimal
     target_range: tuple[int, int]

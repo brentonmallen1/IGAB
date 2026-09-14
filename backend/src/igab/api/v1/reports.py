@@ -51,6 +51,7 @@ from igab.api.v1.schemas.report import (
     ReportFavoritesResponse,
     ReportFavoritesUpdate,
     ReportRangeResponse,
+    ReportSettings,
     SavingsCategory,
     SavingsContributorsResponse,
     SavingsRateResponse,
@@ -96,6 +97,7 @@ from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.tag_repo import TagRepository
 from igab.services.budget_service import BudgetService
 from igab.services.emergency_coverage import EmergencyCoverageService
+from igab.services.essentials import essentials_summary
 from igab.services.liability_service import LiabilityService
 from igab.services.report_basics import (
     cost_of_living,
@@ -110,6 +112,7 @@ from igab.services.report_basics import (
 from igab.services.report_favorites import ReportFavoritesService
 from igab.services.report_scope import resolve_category_scope
 from igab.services.report_service import ReportService
+from igab.services.report_settings import set_spread_sinking_funds, spread_sinking_funds
 from igab.services.savings_report import savings_report as savings_report_data
 
 
@@ -192,6 +195,26 @@ async def set_report_favorites(
     payload: ReportFavoritesUpdate,
 ) -> ReportFavoritesResponse:
     return ReportFavoritesResponse(tabs=await service.set_favorites(budget_id, payload.tabs))
+
+
+@router.get("/{budget_id}/reports/settings", response_model=ReportSettings)
+async def report_settings(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    session: SessionDep,
+) -> ReportSettings:
+    return ReportSettings(spread_sinking_funds=await spread_sinking_funds(session, budget_id))
+
+
+@router.put("/{budget_id}/reports/settings", response_model=ReportSettings)
+async def set_report_settings(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    session: SessionDep,
+    payload: ReportSettings,
+) -> ReportSettings:
+    on = await set_spread_sinking_funds(session, budget_id, payload.spread_sinking_funds)
+    return ReportSettings(spread_sinking_funds=on)
 
 
 @router.get("/{budget_id}/reports/range", response_model=ReportRangeResponse)
@@ -633,10 +656,10 @@ async def seasonality_report(
 async def essentials_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
-    report_svc: Annotated[ReportService, Depends(get_report_service)],
+    session: SessionDep,
     months: ReportMonths = 12,
 ) -> EssentialsReportResponse:
-    return EssentialsReportResponse(**await report_svc.essentials_summary(budget_id, months))
+    return EssentialsReportResponse(**await essentials_summary(session, budget_id, months))
 
 
 @router.get("/{budget_id}/reports/payee-analysis", response_model=PayeeAnalysisResponse)

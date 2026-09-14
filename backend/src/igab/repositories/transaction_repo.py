@@ -34,6 +34,7 @@ from igab.domain.activity_class import (
     apply_class_joins,
     tier_scope,
 )
+from igab.guide.concepts import EssentialsWindows, essentials_since, sinking_since
 from igab.repositories.base import BaseRepository
 from igab.repositories.category_filters import (
     IS_CATEGORIZABLE,
@@ -49,6 +50,7 @@ from igab.repositories.txn_filters import (
     CASH_FLOW_ROW,
     COUNTERPART_ACCOUNT_ID,
     DEBT_INTEREST_ROW,
+    IN_SINKING_FUND,
     LEAF,
     LOAN_PAYMENT_ROW,
     NEEDS_CATEGORY,
@@ -1231,6 +1233,36 @@ class TransactionRepository(BaseRepository[Transaction]):
         ).scalar_one()
         return Decimal(total), basis
 
+    async def essential_windows(
+        self,
+        budget_id: uuid.UUID,
+        today: date,
+        bound_categories: Sequence[uuid.UUID] | None = None,
+        tier: NecessityTier = NecessityTier.ESSENTIAL,
+    ) -> tuple[EssentialsWindows, str]:
+        """The three signed sums `guide.concepts.essentials_monthly` reads, in
+        one query over `essential_spend`'s scope, and the rule that scoped it.
+
+        One scan of the 365-day window with FILTERed sums, so the 90-day total
+        and its sinking-fund part are the same rows by construction — the
+        spread figure subtracts one from the other, and two queries would be
+        two chances to disagree about a row.
+        """
+        scope, basis = await self._necessity_scope(budget_id, tier, bound_categories)
+        recent = Transaction.date >= essentials_since(today)
+
+        def _sum(*where):
+            return func.coalesce(func.sum(Transaction.amount).filter(*where), 0)
+
+        q = (
+            select(_sum(recent), _sum(recent, IN_SINKING_FUND), _sum(IN_SINKING_FUND))
+            .select_from(Transaction)
+            .where(*self._necessity_where(budget_id, sinking_since(today), today, scope))
+        )
+        row = (await self.session.execute(apply_class_joins(q))).one()
+        windows = EssentialsWindows(*(Decimal(v) for v in row))
+        return windows, basis
+
     async def essential_tagged_categories(self, budget_id: uuid.UUID) -> list:
         """(id, name, group_name) for every category tagged Essential that is
         still on the budget.
@@ -1284,11 +1316,16 @@ class TransactionRepository(BaseRepository[Transaction]):
         bound_categories: Sequence[uuid.UUID] | None = None,
         tier: NecessityTier = NecessityTier.ESSENTIAL,
     ) -> tuple[list, str]:
-        """(category_id, category_name, group_name, month, total) rows over the
-        same predicate as `essential_spend`, grouped by calendar month. A
-        payee-tagged row without a category groups under None."""
+        """(category_id, category_name, group_name, month, total, sinking) rows
+        over the same predicate as `essential_spend`, grouped by calendar
+        month. A payee-tagged row without a category groups under None.
+
+        `sinking` is `IN_SINKING_FUND`, a property of the row's category, so
+        grouping by it never splits a category's month: it lets the coverage
+        series spread sinking-fund bills without a second query."""
         scope, basis = await self._necessity_scope(budget_id, tier, bound_categories)
         month = func.date_trunc(literal_column("'month'"), Transaction.date).label("month")
+        sinking = IN_SINKING_FUND.label("sinking")
         q = (
             select(
                 Transaction.category_id,
@@ -1296,12 +1333,13 @@ class TransactionRepository(BaseRepository[Transaction]):
                 CategoryGroup.name.label("group_name"),
                 month,
                 func.sum(Transaction.amount).label("total"),
+                sinking,
             )
             .select_from(Transaction)
             .outerjoin(Category, Category.id == Transaction.category_id)
             .outerjoin(CategoryGroup, CategoryGroup.id == Category.category_group_id)
             .where(*self._necessity_where(budget_id, since, until, scope))
-            .group_by(Transaction.category_id, Category.name, CategoryGroup.name, month)
+            .group_by(Transaction.category_id, Category.name, CategoryGroup.name, month, sinking)
         )
         rows = (await self.session.execute(apply_class_joins(q))).all()
         return list(rows), basis

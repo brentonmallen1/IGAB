@@ -372,3 +372,21 @@ HOLDS_SAVINGS = and_(
     not_(IN_SYSTEM_GROUP),
     not_(LINKED_TO_CARD),
 )
+
+
+# ─── Sinking funds ───────────────────────────────────────────────────────────
+
+#: The system tag for money set aside for a known, irregular bill — a sinking
+#: fund. Never savings and never the emergency fund.
+SINKING_FUND_KEY = "long_term_expense"
+
+#: A live category tagged Long-term expense that is NOT a savings category. The
+#: essentials figures spread its bills over twelve months
+#: (`guide.concepts.essentials_monthly`). A category tagged both is not a
+#: sinking fund: no silent precedence between the two tags — its outflows count
+#: as saved or held, which is not a bill to spread, and the inspector says so.
+IS_SINKING_FUND = and_(
+    LIVE_CATEGORY,
+    Category.id.in_(tagged_category_ids(SINKING_FUND_KEY)),
+    not_(IS_SAVINGS_CATEGORY),
+)

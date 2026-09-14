@@ -35,6 +35,7 @@ function signal(key: SignalKey, over: Partial<Signal> = {}): Signal {
     target: null,
     starter_target: null,
     starter_met: null,
+    essentials: null,
     reason: '',
     entities: {},
     gaps: [],

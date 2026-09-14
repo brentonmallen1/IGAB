@@ -751,6 +751,10 @@ async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: in
     are the ones a budget already has, the shape a household thinks in —
     Housing, Utilities, Groceries.
 
+    **As paid, never spread.** A twelve-month average of complete months
+    already spreads a yearly bill by construction, so the budget's
+    spread-sinking-funds setting (`services/essentials.py`) does not apply here.
+
     `basis` says how the wide tier was decided: the tags, or everything.
     "all" means nothing is tagged yet, and the caller must say so rather than
     present a figure that equals plain burn rate.

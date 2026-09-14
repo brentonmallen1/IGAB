@@ -47,6 +47,7 @@ from igab.domain.enums import ScheduleFrequency
 from igab.domain.payee_names import BALANCE_ADJUSTMENT_PAYEES
 from igab.repositories.category_filters import (
     IN_SYSTEM_GROUP,
+    IS_SINKING_FUND,
     SPENDABLE,
     tagged_category_ids,
 )
@@ -588,6 +589,12 @@ def row_category(predicate):
         .correlate(Transaction)
         .exists()
     )
+
+
+#: A row filed to a sinking fund (`category_filters.IS_SINKING_FUND`): the rows
+#: the essentials figures spread over twelve months when the budget's
+#: "spread yearly bills" setting is on.
+IN_SINKING_FUND = row_category(IS_SINKING_FUND)
 
 
 #: A card row the budget has no claim on: **the complement**, written as

@@ -3,6 +3,7 @@ import toast from 'react-hot-toast'
 import { apiClient, apiErrorMessage } from './client'
 import type { SignalKey } from '../content/roadmap'
 import { ROOT } from './queryKeys'
+import type { EssentialsFigures } from '../types'
 
 /** How a concept came to be answered. */
 export type SignalSource =
@@ -50,6 +51,9 @@ export interface Signal {
    *  roadmap's starter step reads these; the full step reads `target`/`met`. */
   starter_target: number | null
   starter_met: boolean | null
+  /** Essential expenses only: both essentials figures, of which `value` is the
+   *  `monthly`. null on every other concept. */
+  essentials: EssentialsFigures | null
   reason: string
   entities: Partial<Record<EntityType, string[]>>
   /** Things that did not count and should be said out loud — a debt with no
@@ -384,6 +388,7 @@ export interface EmergencyFundResponse {
   months: number
   monthly_contribution: number
   essentials_monthly: number | null
+  essentials: EssentialsFigures | null
   current: number | null
   target: number | null
   gap: number | null

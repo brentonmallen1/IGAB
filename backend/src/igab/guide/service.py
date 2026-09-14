@@ -322,6 +322,10 @@ class GuideService:
             starter = starter_emergency_fund(essentials.value if essentials else None)
             payload["starter_target"] = starter
             payload["starter_met"] = None if total is None else total >= starter
+        if key == "essential_expenses":
+            # Both figures, so every surface can show the one the budget does
+            # not read beside the one it does. `value` is their `.monthly`.
+            payload["essentials"] = finding.essentials if finding else None
         return payload
 
     def _target(self, key: str, essentials: Finding | None) -> Decimal | None:
@@ -497,12 +501,14 @@ class GuideService:
         """
         signals = await self.signals(budget_id)
         by_key = {c["key"]: c for c in signals["concepts"]}
+        essentials = by_key.get("essential_expenses", {})
         return emergency_fund(
             current=by_key.get("emergency_fund", {}).get("value"),
-            essentials_monthly=by_key.get("essential_expenses", {}).get("value"),
+            essentials_monthly=essentials.get("value"),
             months=months,
             monthly_contribution=monthly_contribution,
             today=date.today(),
+            essentials=essentials.get("essentials"),
         )
 
     # ── candidates for the binding picker ────────────────────────────────────

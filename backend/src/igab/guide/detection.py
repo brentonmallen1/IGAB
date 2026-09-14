@@ -27,8 +27,7 @@ from igab.guide.concepts import (
     HIGH_INTEREST_APR,
     MODERATE_INTEREST_APR,
     MORTGAGE_KINDS,
-    essentials_per_month,
-    essentials_since,
+    EssentialsMonthly,
 )
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import (
@@ -50,6 +49,7 @@ from igab.repositories.txn_filters import (
 )
 from igab.services.budget_service import BudgetService
 from igab.services.category_service import CategoryService
+from igab.services.essentials import essentials_figures
 from igab.services.liability_service import LiabilityService
 
 TWO_PLACES = Decimal("0.01")
@@ -90,6 +90,9 @@ class Finding:
     #: Rows worth mentioning even though they did not count — a card with no
     #: rate recorded, say. A gap in the data is a nudge, not a silence.
     gaps: list[str] = field(default_factory=list)
+    #: The essential-expenses concept only: both essentials figures
+    #: (`services.essentials.essentials_figures`); `value` is their `.monthly`.
+    essentials: EssentialsMonthly | None = None
 
 
 def budget_service_from(session: AsyncSession) -> BudgetService:
@@ -259,27 +262,27 @@ class GuideDetection:
     ) -> Finding:
         """Roughly what a month costs — what an emergency fund is measured against.
 
-        One query (TransactionRepository.essential_spend) answers this, the
-        Overview's essentials card and the Essentials report, so the roadmap's
-        target and the reports quote one figure. Precedence: categories the
-        user bound here, else what they tagged Essential, else all spending.
+        One entry point (`services.essentials.essentials_figures`) answers
+        this, the Overview's essentials card and the Essentials report, so the
+        roadmap's target and the reports quote one figure — spread or as paid,
+        as the budget's setting says. Precedence: categories the user bound
+        here, else what they tagged Essential, else all spending.
         """
-        today = date.today()
-        total, basis = await self.txns.essential_spend(
-            budget_id, essentials_since(today), today, bound.get("category") if bound else None
+        figures, basis = await essentials_figures(
+            self.session, budget_id, date.today(), bound.get("category") if bound else None
         )
         reason = {
             "bound": "the categories you told us are essential",
             "tag": "the categories you tagged Essential",
             "all": "your average spending over the last 90 days",
         }[basis]
-        monthly = essentials_per_month(total)
         return Finding(
             concept_key="essential_expenses",
-            met=monthly > 0,
-            value=monthly,
+            met=figures.monthly > 0,
+            value=figures.monthly,
             reason=reason,
             entities={k: list(v) for k, v in (bound or {}).items()},
+            essentials=figures,
         )
 
     # ── what the household owes ──────────────────────────────────────────────

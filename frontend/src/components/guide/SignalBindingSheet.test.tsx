@@ -45,6 +45,7 @@ function signal(over: Partial<Signal> = {}): Signal {
     target: 4000,
     starter_target: 1000,
     starter_met: true,
+    essentials: null,
     reason: '',
     entities: {},
     gaps: [],

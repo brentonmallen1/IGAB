@@ -682,6 +682,24 @@ export type AssignStrategy =
 
 // ─── Report Types ───────────────────────────────────────────────────────────
 
+/** What a lean month costs, both ways — served by the dashboard, the
+ *  Essentials and Emergency Fund reports, the Guide's essential-expenses signal
+ *  and the sizer. Home: `guide/concepts.py::essentials_monthly`, read through
+ *  `services/essentials.py`. `as_paid` is the 90-day figure as bills landed;
+ *  `spread` swaps Long-term expense bills for a twelfth of the year's;
+ *  `spread_on` is the budget's setting and `monthly` the one it selects. */
+export interface EssentialsFigures {
+  as_paid: number
+  spread: number
+  spread_on: boolean
+  monthly: number
+}
+
+/** GET/PUT /reports/settings — `services/report_settings.py`. */
+export interface ReportSettings {
+  spread_sinking_funds: boolean
+}
+
 export interface DashboardMetrics {
   net_worth: number
   net_worth_prev: number
@@ -692,6 +710,8 @@ export interface DashboardMetrics {
    *  is tagged Essential (untagged it would equal burn rate). Server-computed:
    *  TransactionRepository.essential_spend. */
   essentials_monthly: number | null
+  /** Both essentials figures; null exactly when `essentials_monthly` is. */
+  essentials: EssentialsFigures | null
   essentials_tagged: boolean
   /** null when no income was recorded in the window — a gap, not a floor.
    *  "No income" and "saved nothing" are different facts. */
@@ -1042,6 +1062,7 @@ export interface EmergencyCoverageReport {
   /** The Essentials report's own runway, quoted rather than recomputed. */
   coverage_months: number | null
   essentials_monthly: number
+  essentials: EssentialsFigures
   target_low: number
   target_high: number
   target_range: [number, number]
@@ -1057,6 +1078,7 @@ export interface EssentialsReport {
   window_start: string
   window_end: string
   essentials_90d: number
+  essentials: EssentialsFigures
   monthly_total_average: number
   categories: {
     category_id: string | null
@@ -1066,7 +1088,9 @@ export interface EssentialsReport {
     monthly_average: number
     months_with_spend: number
   }[]
-  monthly_series: { month: string; total: number }[]
+  /** As paid, never spread; `sinking_total` is the part of `total` filed to a
+   *  sinking fund (Long-term expense). */
+  monthly_series: { month: string; total: number; sinking_total: number }[]
   reserve: { months: number; amount: number }[]
   roadmap_range: [number, number]
   /** What the Guide reads as the emergency fund today, and how many lean

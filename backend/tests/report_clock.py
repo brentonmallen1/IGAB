@@ -19,8 +19,8 @@ from unittest.mock import patch
 
 @contextmanager
 def report_today(today: date) -> Iterator[date]:
-    """`date.today()` inside the report service, report_basics and savings_report
-    returns `today`."""
+    """`date.today()` inside the report service, report_basics, savings_report
+    and essentials returns `today`."""
 
     class _Pinned(date):
         @classmethod
@@ -33,5 +33,6 @@ def report_today(today: date) -> Iterator[date]:
         patch("igab.services.report_service.date", _Pinned),
         patch("igab.services.report_basics.date", _Pinned),
         patch("igab.services.savings_report.date", _Pinned),
+        patch("igab.services.essentials.date", _Pinned),
     ):
         yield today

@@ -15,7 +15,7 @@ from typing import Literal
 
 from igab.domain.dates import add_months
 from igab.domain.money import quantize_cents
-from igab.guide.concepts import emergency_fund_target
+from igab.guide.concepts import EssentialsMonthly, emergency_fund_target
 from igab.services.amortization import (
     DEFAULT_CAP_MONTHS,
     CascadeDebt,
@@ -251,6 +251,9 @@ class EmergencyFundPlan:
     gap: Decimal | None
     months_to_fund: int | None
     funded_by: date | None
+    #: Both essentials figures, as the signal served them; `essentials_monthly`
+    #: is their `.monthly`. None when the signal has none.
+    essentials: EssentialsMonthly | None = None
 
 
 def emergency_fund(
@@ -259,6 +262,7 @@ def emergency_fund(
     months: int,
     monthly_contribution: Decimal,
     today: date,
+    essentials: EssentialsMonthly | None = None,
 ) -> EmergencyFundPlan:
     """`months` of essential spending, and how long the gap takes to fill.
 
@@ -272,7 +276,9 @@ def emergency_fund(
         raise ValueError("monthly_contribution must be non-negative")
     contribution = quantize_cents(monthly_contribution)
     if essentials_monthly is None or essentials_monthly <= ZERO:
-        return EmergencyFundPlan(months, contribution, None, current, None, None, None, None)
+        return EmergencyFundPlan(
+            months, contribution, None, current, None, None, None, None, essentials
+        )
 
     target = emergency_fund_target(essentials_monthly, months)
     plan = EmergencyFundPlan(
@@ -284,6 +290,7 @@ def emergency_fund(
         gap=None,
         months_to_fund=None,
         funded_by=None,
+        essentials=essentials,
     )
     if current is None:
         return plan

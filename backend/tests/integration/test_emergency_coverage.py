@@ -13,13 +13,14 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from igab.domain.dates import add_months, month_end, month_start
+from igab.guide.concepts import trailing_average
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.services.emergency_coverage import (
     EmergencyCoverageService,
     coverage_months,
     history_index,
-    trailing_average,
 )
+from igab.services.essentials import essentials_summary
 
 from .factories import (
     create_account,
@@ -128,13 +129,12 @@ async def test_the_target_band_is_served_per_month(db_session):
 async def test_the_headline_is_the_essentials_reports_own_runway(db_session):
     """Quoted, not recomputed: two reports that each divide the same pair of
     numbers are two reports that can disagree."""
-    from igab.services.report_service import ReportService
 
     services, budget, fund = await _world(db_session)
     await _fund(services, budget, fund, MONTHS[4], "3000.00")
 
     report = await EmergencyCoverageService(db_session).coverage(budget.id, months=4)
-    essentials = await ReportService(db_session).essentials_summary(budget.id, 4)
+    essentials = await essentials_summary(db_session, budget.id, 4)
 
     assert report["coverage_months"] == essentials["runway_months"]
     assert report["fund_balance"] == essentials["emergency_fund_balance"]

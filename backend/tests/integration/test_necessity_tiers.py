@@ -35,8 +35,8 @@ from igab.guide.concepts import essentials_since
 from igab.guide.detection import GuideDetection
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.repositories.transaction_repo import TransactionRepository
+from igab.services.essentials import essentials_summary
 from igab.services.report_basics import cost_of_living
-from igab.services.report_service import ReportService
 
 from .factories import (
     create_account,
@@ -326,7 +326,7 @@ class TestCostOfLivingQuotesTheEssentialsReport:
     async def test_steady_spending(self, db_session):
         budget = await self._rent(db_session, premium=False)
         col = await cost_of_living(db_session, budget.id, months=12)
-        ess = await ReportService(db_session).essentials_summary(budget.id, 12)
+        ess = await essentials_summary(db_session, budget.id, 12)
         assert col["avg_monthly_essentials"] == ess["monthly_total_average"] == D("3000.00")
 
     async def test_a_lumpy_month_at_the_far_end(self, db_session):
@@ -334,7 +334,7 @@ class TestCostOfLivingQuotesTheEssentialsReport:
         # (the premium's month was outside its window) against 3,100.
         budget = await self._rent(db_session, premium=True)
         col = await cost_of_living(db_session, budget.id, months=12)
-        ess = await ReportService(db_session).essentials_summary(budget.id, 12)
+        ess = await essentials_summary(db_session, budget.id, 12)
         assert col["avg_monthly_essentials"] == ess["monthly_total_average"] == D("3100.00")
         assert (col["window_start"], col["window_end"]) == (
             ess["window_start"],
@@ -357,7 +357,7 @@ class TestTheEmergencyFundStaysLean:
         """
         budget, *_ = await _household(db_session)
         report = await cost_of_living(db_session, budget.id, months=2)
-        summary = await ReportService(db_session).essentials_summary(budget.id, 2)
+        summary = await essentials_summary(db_session, budget.id, 2)
 
         assert report["avg_monthly_cost_of_living"] != report["avg_monthly_essentials"]
         # The Essentials report — which sizes the fund — reads the lean tier.
@@ -374,7 +374,7 @@ class TestTheEmergencyFundStaysLean:
         1,800 would be 600.00. Hand-computed, not derived.
         """
         budget, *_ = await _household(db_session)
-        summary = await ReportService(db_session).essentials_summary(budget.id, 1)
+        summary = await essentials_summary(db_session, budget.id, 1)
         guide = await GuideDetection(db_session).essential_expenses(budget.id)
 
         assert summary["essentials_90d"] == D("466.67")

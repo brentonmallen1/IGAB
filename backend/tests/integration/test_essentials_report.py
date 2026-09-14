@@ -8,6 +8,7 @@ from decimal import Decimal
 
 from igab.guide.detection import GuideDetection
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
+from igab.services.essentials import essentials_summary
 from igab.services.report_service import ReportService
 from igab.services.transaction_service import SplitSpec
 
@@ -50,7 +51,7 @@ async def test_is_empty_without_tags(db_session):
     services, budget, checking, rent, fun, tags, essential = await _world(db_session)
     await create_transaction(db_session, budget, checking, "-1200.00", TODAY, category=rent)
 
-    report = await ReportService(db_session).essentials_summary(budget.id, 6)
+    report = await essentials_summary(db_session, budget.id, 6)
     assert report["tagged"] is False
     assert report["categories"] == [] and report["essentials_90d"] == Decimal("0")
 
@@ -76,7 +77,7 @@ async def test_counts_category_tagged_spending(db_session):
     )
     await create_transaction(db_session, budget, checking, "-300.00", last_month, category=fun)
 
-    report = await ReportService(db_session).essentials_summary(budget.id, 1)
+    report = await essentials_summary(db_session, budget.id, 1)
 
     assert report["tagged"] is True
     by_name = {c["name"]: c for c in report["categories"]}
@@ -94,7 +95,7 @@ async def test_uses_complete_months_only(db_session):
     )
     await create_transaction(db_session, budget, checking, "-1200.00", TODAY, category=rent)
 
-    report = await ReportService(db_session).essentials_summary(budget.id, 1)
+    report = await essentials_summary(db_session, budget.id, 1)
     assert report["window_end"] == TODAY.replace(day=1) - timedelta(days=1)
     assert report["categories"][0]["total"] == Decimal("1200.00"), "this month is not counted"
 
@@ -120,7 +121,7 @@ async def test_excludes_transfers_and_savings_classes(db_session):
     )
     assert pending.cleared == "pending"
 
-    report = await ReportService(db_session).essentials_summary(budget.id, 1)
+    report = await essentials_summary(db_session, budget.id, 1)
     # Both tagged categories are listed — a tagged category the reader pointed
     # at must not simply be absent, which is the complaint
     # `essential_excluded_by_class` was written for ("I tagged ten and two
@@ -147,7 +148,7 @@ async def test_split_lines_count_under_their_own_category(db_session):
             SplitSpec(amount=Decimal("-40.00"), category_id=fun.id),
         ],
     )
-    report = await ReportService(db_session).essentials_summary(budget.id, 1)
+    report = await essentials_summary(db_session, budget.id, 1)
     assert [(c["name"], c["total"]) for c in report["categories"]] == [("Rent", Decimal("60.00"))]
 
 
@@ -159,7 +160,7 @@ async def test_reserve_targets_are_one_three_six_twelve_months(db_session):
             db_session, budget, checking, "-1200.00", TODAY - timedelta(days=offset), category=rent
         )
 
-    report = await ReportService(db_session).essentials_summary(budget.id, 12)
+    report = await essentials_summary(db_session, budget.id, 12)
     assert report["essentials_90d"] == Decimal("1200.00")
     assert [(r["months"], r["amount"]) for r in report["reserve"]] == [
         (1, Decimal("1200.00")),
@@ -186,7 +187,7 @@ async def test_guide_overview_and_report_agree_on_the_ninety_day_figure(db_sessi
     reports = ReportService(db_session)
     guide = await GuideDetection(db_session).essential_expenses(budget.id)
     metrics = await reports.dashboard_metrics(budget.id, TODAY - timedelta(days=30), TODAY)
-    report = await reports.essentials_summary(budget.id, 12)
+    report = await essentials_summary(db_session, budget.id, 12)
 
     assert guide.value == Decimal("1200.00")
     assert metrics["essentials_monthly"] == guide.value and metrics["essentials_tagged"] is True
@@ -217,7 +218,7 @@ async def test_lists_every_tagged_category_even_with_no_spending(db_session):
         db_session, budget, checking, "-1200.00", _first_of_last_month(), category=rent
     )
 
-    report = await ReportService(db_session).essentials_summary(budget.id, 6)
+    report = await essentials_summary(db_session, budget.id, 6)
     names = [c["name"] for c in report["categories"]]
     assert sorted(names) == ["Insurance", "Rent", "Sewer", "Water"]
 
@@ -256,5 +257,5 @@ async def test_archived_categories_leave_the_essentials_list(db_session):
     await db_session.flush()
     await tags.set_category_tags(archived.id, [essential.id])
 
-    report = await ReportService(db_session).essentials_summary(budget.id, 6)
+    report = await essentials_summary(db_session, budget.id, 6)
     assert [c["name"] for c in report["categories"]] == ["Rent"]

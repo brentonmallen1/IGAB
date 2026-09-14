@@ -34,9 +34,9 @@ from igab.repositories.transaction_repo import TransactionRepository
 from igab.sample_budget.data import CAT_HOME_MAINT
 from igab.sample_budget.generator import SampleBudgetGenerator
 from igab.services.emergency_coverage import EmergencyCoverageService
+from igab.services.essentials import essentials_summary
 from igab.services.report_basics import cost_of_living
 from igab.services.report_favorites import ReportFavoritesService
-from igab.services.report_service import ReportService
 
 from .factories import create_budget, create_user
 
@@ -85,7 +85,7 @@ async def _tier_category_ids(db_session, budget) -> tuple[set[str], set[str]]:
     """(wide, lean): the category ids Cost of Living's groups and the
     Essentials table carry over the same twelve months."""
     report = await cost_of_living(db_session, budget.id, months=12)
-    lean = await ReportService(db_session).essentials_summary(budget.id, 12)
+    lean = await essentials_summary(db_session, budget.id, 12)
     wide_ids = {cid for g in report["groups"] for cid in g["category_ids"]}
     lean_ids = {str(c["category_id"]) for c in lean["categories"]}
     return wide_ids, lean_ids
@@ -103,7 +103,7 @@ async def test_the_essentials_family_has_something_to_say(db_session):
     them, and it was False on both tiers."""
     for tier in ("starter", "full"):
         budget, _ = await _world(db_session, tier)
-        report = await ReportService(db_session).essentials_summary(budget.id, 12)
+        report = await essentials_summary(db_session, budget.id, 12)
 
         assert report["tagged"] is True, tier
         assert report["essentials_90d"] > Decimal("1000"), tier
@@ -124,7 +124,7 @@ async def test_nothing_is_tagged_essential_and_then_not_counted(db_session):
     because the combination was dodged."""
     for tier in ("starter", "full"):
         budget, _ = await _world(db_session, tier)
-        report = await ReportService(db_session).essentials_summary(budget.id, 12)
+        report = await essentials_summary(db_session, budget.id, 12)
         assert report["class_excluded"] == [], tier
 
 
@@ -133,7 +133,7 @@ async def test_the_full_tier_counts_its_mortgage_as_a_cost_of_living(db_session)
     thing a household cannot cut and its rows classify as DEBT_PRINCIPAL, so
     before `COST_OF_LIVING_CLASSES` it counted for nothing."""
     budget, _ = await _world(db_session, "full")
-    report = await ReportService(db_session).essentials_summary(budget.id, 12)
+    report = await essentials_summary(db_session, budget.id, 12)
 
     names = {c["name"] for c in report["categories"]}
     assert any("Mortgage" in n for n in names)
@@ -221,7 +221,7 @@ async def test_the_demo_actually_shows_a_gap(db_session):
     # The gap is nameable, not just non-zero: the wide tier must reach groups
     # the lean one does not.
     wide_groups = {g["group_name"] for g in report["groups"]}
-    lean = await ReportService(db_session).essentials_summary(budget.id, 12)
+    lean = await essentials_summary(db_session, budget.id, 12)
     lean_groups = {c["group_name"] for c in lean["categories"]}
     assert wide_groups - lean_groups, (
         f"every group in the wide tier is also in the lean one: {sorted(wide_groups)}"

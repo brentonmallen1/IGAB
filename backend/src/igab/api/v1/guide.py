@@ -284,7 +284,8 @@ async def scenario_emergency_fund(
     plan = await service.emergency_fund_plan(
         budget_id, payload.months, payload.monthly_contribution
     )
-    return EmergencyFundResponse.model_validate(asdict(plan))
+    # The figures object itself, not `asdict`'s copy: `monthly` is a property.
+    return EmergencyFundResponse.model_validate({**asdict(plan), "essentials": plan.essentials})
 
 
 # ── how money counts ─────────────────────────────────────────────────────────

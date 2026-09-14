@@ -12,6 +12,12 @@ December, not about the fund. Three months is the Guide's own window
 (`ESSENTIALS_WINDOW_DAYS` is 90) so this line and the roadmap's target cannot
 tell different stories about the same household.
 
+**Sinking-fund bills are spread** when the budget's setting is on, exactly as
+the headline spreads them (`guide.concepts.spread_average`): the rest of a
+month's essentials takes the trailing three-month average, and the sinking
+part is the twelve months ending there divided by twelve. Off, every point is
+the plain trailing average. Charts of what was spent never spread.
+
 **The target moves.** Three months of essentials is not a fixed sum: as
 spending grows the target grows with it, and a fund that stood still can lose
 coverage without losing a cent. Serving the band per month rather than as one
@@ -40,15 +46,15 @@ from igab.domain.money import quantize_cents
 from igab.guide.concepts import (
     FULL_EMERGENCY_FUND_MONTHS_HIGH,
     FULL_EMERGENCY_FUND_MONTHS_LOW,
+    SPREAD_MONTHS,
+    spread_average,
+    trailing_average,
 )
 from igab.guide.detection import budget_service_from
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.budget_service import BudgetService
-
-#: Months of spending averaged into the denominator. The Guide's essentials
-#: window is 90 days; this is that window said in months.
-TRAILING_MONTHS = 3
+from igab.services.essentials import essentials_summary
 
 
 @dataclass
@@ -100,35 +106,6 @@ async def fund_entities(session: AsyncSession, budget_id: uuid.UUID) -> FundEnti
         external_as_of=resolution.external_as_of,
         source=source,
     )
-
-
-def trailing_average(
-    totals: list[Decimal], index: int, window: int = TRAILING_MONTHS, *, first_data: int = 0
-) -> Decimal:
-    """Mean of the `window` months ending at `index`, over what exists.
-
-    Early months have less history behind them, and dividing three months of
-    spending by three when only one has happened would halve the denominator
-    and double the coverage — a chart that opens on a reassuring number it
-    then walks back.
-
-    `first_data` is the index of the first month the budget has any history
-    for (`history_index`). Months before it are not months a household spent
-    nothing — they are months the budget did not exist — and averaging their
-    zeros in did exactly what the paragraph above warns against from the other
-    direction: a young budget's chart opened at 6.0 months of runway, because
-    two thirds of its denominator was a period with no data.
-
-    **The one deliberate divergence.** The headline (`essentials_90d`) is the
-    Guide's figure, 90 days divided by three whatever the budget's age. For a
-    budget with under three complete months of history, the newest point here
-    divides by the months that exist and the headline still by three, so the
-    two differ — by at most a factor of three, and only until the third
-    complete month. Pinned in `test_emergency_coverage.py`.
-    """
-    start = max(first_data, index - window + 1)
-    span = totals[start : index + 1]
-    return quantize_cents(sum(span, Decimal("0")) / len(span)) if span else Decimal("0")
 
 
 def history_index(months: list[date], history_from: date | None) -> int:
@@ -183,8 +160,6 @@ class EmergencyCoverageService:
         return quantize_cents(total)
 
     async def coverage(self, budget_id: uuid.UUID, months: int = 12) -> dict:
-        from igab.services.report_service import ReportService
-
         entities = await fund_entities(self.session, budget_id)
         # The budget page's own service, built the way the DI layer builds it,
         # so an envelope's balance here IS the budget page's balance rather
@@ -192,13 +167,14 @@ class EmergencyCoverageService:
         budgets = budget_service_from(self.session)
 
         # The essentials window needs a run-up: the first point's denominator
-        # is a three-month average, so it needs the two months before it.
-        lead_in = TRAILING_MONTHS - 1
-        summary = await ReportService(self.session).essentials_summary(
-            budget_id, months=months + lead_in
-        )
+        # spreads sinking-fund bills over twelve months, so it needs the eleven
+        # months before it (the three-month average needs only two of them).
+        lead_in = SPREAD_MONTHS - 1
+        summary = await essentials_summary(self.session, budget_id, months=months + lead_in)
+        spread_on = summary["essentials"].spread_on
         series = summary["monthly_series"]
         totals = [row["total"] for row in series]
+        sinking = [row["sinking_total"] for row in series]
         first_data = history_index(
             [row["month"] for row in series],
             await TransactionRepository(self.session).earliest_date(budget_id),
@@ -221,7 +197,11 @@ class EmergencyCoverageService:
                 continue
             month: date = row["month"]
             month_end = _month_end(month)
-            essentials = trailing_average(totals, i, first_data=first_data)
+            essentials = (
+                spread_average(totals, sinking, i, first_data=first_data)
+                if spread_on
+                else trailing_average(totals, i, first_data=first_data)
+            )
             balance = await self._fund_balance_at(budgets, entities, month, month_end)
             # A self-reported figure is carried flat from the month it was
             # reported, and "as of now" lands on the newest month the chart
@@ -258,7 +238,7 @@ class EmergencyCoverageService:
                 }
             )
 
-        headline = summary["essentials_90d"]
+        headline = summary["essentials"].monthly
         balance_now = summary["emergency_fund_balance"]
         return {
             "months": months,
@@ -269,6 +249,7 @@ class EmergencyCoverageService:
             # one figure, so the two reports cannot disagree about coverage.
             "coverage_months": summary["runway_months"],
             "essentials_monthly": headline,
+            "essentials": summary["essentials"],
             "target_low": quantize_cents(headline * FULL_EMERGENCY_FUND_MONTHS_LOW),
             "target_high": quantize_cents(headline * FULL_EMERGENCY_FUND_MONTHS_HIGH),
             "target_range": (FULL_EMERGENCY_FUND_MONTHS_LOW, FULL_EMERGENCY_FUND_MONTHS_HIGH),

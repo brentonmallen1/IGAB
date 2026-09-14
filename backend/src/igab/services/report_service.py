@@ -31,7 +31,6 @@ from igab.domain.activity_class import (
     INCOME_ROW,
     ActivityClass,
     apply_class_joins,
-    basis_is_chosen,
     class_magnitude,
     counted_class_filter,
     counted_classes,
@@ -61,12 +60,6 @@ from igab.domain.money_moves import figures
 from igab.domain.plan import plan_outcome
 from igab.domain.schedule import projected_occurrences, subscription_occurrences
 from igab.domain.view_arrangement import arrange_by_view
-from igab.guide.concepts import (
-    FULL_EMERGENCY_FUND_MONTHS_HIGH,
-    FULL_EMERGENCY_FUND_MONTHS_LOW,
-    essentials_per_month,
-    essentials_since,
-)
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_filters import BUDGETED_ENVELOPE
 from igab.repositories.transaction_repo import TransactionRepository
@@ -92,9 +85,9 @@ from igab.repositories.txn_filters import (
     reapplied_by_schedule,
     reapplied_by_subscriptions,
 )
+from igab.services.essentials import reported_essentials
 from igab.services.report_basics import (
     class_excluded_note,
-    emergency_fund,
     means_months,
 )
 from igab.services.report_stats import (
@@ -438,7 +431,7 @@ class ReportService:
         # so this card and the roadmap's emergency-fund target never disagree.
         # None until something is tagged: the untagged fallback IS burn rate,
         # and a second card saying the same number would mislead.
-        essentials_monthly, essentials_tagged = await self._essentials_monthly(budget_id, today)
+        essentials, essentials_tagged = await reported_essentials(self.session, budget_id, today)
 
         # Days until zero — runway is CASH divided by burn, and the pot is
         # the budget's cash (`sum_on_budget_balance`, the Ready-to-Assign
@@ -470,7 +463,8 @@ class ReportService:
             "net_worth_prev": net_worth_prev,
             "burn_rate_30": burn_30,
             "burn_rate_90": burn_90,
-            "essentials_monthly": essentials_monthly,
+            "essentials_monthly": essentials.monthly if essentials_tagged else None,
+            "essentials": essentials if essentials_tagged else None,
             "essentials_tagged": essentials_tagged,
             "savings_rate": this.savings_rate,
             "days_until_zero": days_until_zero,
@@ -1828,132 +1822,6 @@ class ReportService:
         ]
 
         return {"cells": cells, "months": months_list, "categories": categories}
-
-    # ─── Essentials ───────────────────────────────────────────────────────────
-
-    async def _essentials_monthly(
-        self, budget_id: uuid.UUID, today: date
-    ) -> tuple[Decimal | None, bool]:
-        """(monthly essentials over the Guide's window, anything tagged?)."""
-        total, basis = await self.txns.essential_spend(budget_id, essentials_since(today), today)
-        if not basis_is_chosen(basis):
-            return None, False
-        return essentials_per_month(total), True
-
-    async def essentials_summary(self, budget_id: uuid.UUID, months: int = 12) -> dict:
-        """What a lean month costs, and what a reserve of N months would be.
-
-        The headline (`essentials_90d`) is the Guide's figure — rolling 90 days
-        ÷ 3 — so the Overview card, this report and the roadmap's target quote
-        one number. The per-category table averages over `months` COMPLETE
-        months instead: a partial current month would drag every average
-        down. That divergence is deliberate and pinned by test.
-        """
-        today = date.today()
-        # Not clamped to the budget's history, unlike volatility: the table
-        # divides by `months` and Emergency Coverage reads it, so clamping is a
-        # change to both figures rather than to a window.
-        window_start, window_end = complete_month_window(today, months)
-        months_list = month_starts(window_start, window_end)
-
-        essentials_90d, tagged = await self._essentials_monthly(budget_id, today)
-        headline = essentials_90d or Decimal("0")
-        reserve = [
-            {"months": n, "amount": quantize_cents(headline * n)}
-            for n in (1, FULL_EMERGENCY_FUND_MONTHS_LOW, FULL_EMERGENCY_FUND_MONTHS_HIGH, 12)
-        ]
-        fund_balance, fund_source = await emergency_fund(self.session, budget_id)
-        runway = (
-            (fund_balance / headline).quantize(Decimal("0.1"))
-            if fund_balance is not None and headline > 0
-            else None
-        )
-        base = {
-            "tagged": tagged,
-            "months": months,
-            "window_start": window_start,
-            "window_end": window_end,
-            "essentials_90d": headline,
-            "reserve": reserve,
-            "roadmap_range": (FULL_EMERGENCY_FUND_MONTHS_LOW, FULL_EMERGENCY_FUND_MONTHS_HIGH),
-            "emergency_fund_balance": fund_balance,
-            "emergency_fund_source": fund_source,
-            "runway_months": runway,
-        }
-        if not tagged:
-            return {
-                **base,
-                "monthly_total_average": Decimal("0"),
-                "categories": [],
-                "monthly_series": [{"month": m, "total": Decimal("0")} for m in months_list],
-                # Nothing is tagged, so nothing was pointed at and nothing is
-                # missing — but the key is always present, or the client has to
-                # know which branch produced its response.
-                "class_excluded": [],
-            }
-
-        rows, _ = await self.txns.essential_spend_by_category_month(
-            budget_id, window_start, window_end
-        )
-        by_category: dict[str | None, dict] = {}
-        # Seeded with every tagged category BEFORE the rows are read, so one
-        # that was not spent in this window lands at zero instead of vanishing.
-        # Built from rows alone, the list silently became "the tagged
-        # categories that happened to have transactions", which sorted by total
-        # is indistinguishable from a top-N — the report showed 5 of 8 and
-        # looked capped.
-        for tagged_cat in await self.txns.essential_tagged_categories(budget_id):
-            by_category[str(tagged_cat.id)] = {
-                "category_id": tagged_cat.id,
-                "name": tagged_cat.name,
-                "group_name": tagged_cat.group_name,
-                "total": Decimal("0"),
-                "months_with_spend": 0,
-            }
-        by_month: dict[date, Decimal] = {m: Decimal("0") for m in months_list}
-        for r in rows:
-            key = str(r.category_id) if r.category_id else None
-            magnitude = -Decimal(r.total)  # spending is stored negative
-            entry = by_category.setdefault(
-                key,
-                {
-                    "category_id": r.category_id,
-                    "name": r.category_name or "Uncategorized",
-                    "group_name": r.group_name,
-                    "total": Decimal("0"),
-                    "months_with_spend": 0,
-                },
-            )
-            entry["total"] += magnitude
-            entry["months_with_spend"] += 1
-            month = r.month.date() if hasattr(r.month, "date") else r.month
-            by_month[month] = by_month.get(month, Decimal("0")) + magnitude
-
-        # By spend, then by name — so the zero rows sort to the bottom in a
-        # readable order rather than in whatever order they were seeded.
-        categories = sorted(by_category.values(), key=lambda c: (-c["total"], c["name"]))
-        for c in categories:
-            c["total"] = quantize_cents(c["total"])
-            c["monthly_average"] = quantize_cents(c["total"] / months)
-        grand = sum((c["total"] for c in categories), Decimal("0"))
-        # What was tagged and still not counted. Tagging a category is pointing
-        # at it, which is the condition the note was written for — and the case
-        # that misled: a mortgage tagged Essential is now counted, but a
-        # category tagged Essential AND Savings still is not, and silence there
-        # would be the same bug wearing a different class.
-        excluded, _ = await self.txns.essential_excluded_by_class(
-            budget_id, window_start, window_end
-        )
-        return {
-            **base,
-            "monthly_total_average": quantize_cents(grand / months),
-            "categories": categories,
-            "monthly_series": [
-                {"month": m, "total": quantize_cents(by_month.get(m, Decimal("0")))}
-                for m in months_list
-            ],
-            "class_excluded": class_excluded_note(excluded, scoped=True) or [],
-        }
 
     # ─── Payee Analysis ───────────────────────────────────────────────────────
 

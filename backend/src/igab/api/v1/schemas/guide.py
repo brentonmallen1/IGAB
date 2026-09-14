@@ -6,6 +6,7 @@ from typing import Literal
 from pydantic import Field, model_validator
 
 from igab.api.v1.schemas.base import ApiModel
+from igab.api.v1.schemas.report import EssentialsFigures
 
 
 class ConceptInfo(ApiModel):
@@ -46,6 +47,9 @@ class SignalResponse(ApiModel):
     #: `target` / `met`. None on every other concept.
     starter_target: Decimal | None = None
     starter_met: bool | None = None
+    #: The essential-expenses concept only: both essentials figures, of which
+    #: `value` is the `.monthly`. None on every other concept.
+    essentials: EssentialsFigures | None = None
     reason: str = ""
     entities: dict[str, list[str]] = Field(default_factory=dict)
     #: Things worth mentioning that did not count — a debt with no rate on
@@ -329,6 +333,9 @@ class EmergencyFundResponse(ApiModel):
     months: int
     monthly_contribution: Decimal
     essentials_monthly: Decimal | None
+    #: The essentials signal's figures; `essentials_monthly` is their
+    #: `.monthly`. None when the signal has no figure.
+    essentials: EssentialsFigures | None
     current: Decimal | None
     target: Decimal | None
     gap: Decimal | None
