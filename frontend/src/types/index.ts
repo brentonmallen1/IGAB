@@ -705,12 +705,10 @@ export interface DashboardMetrics {
   net_worth_prev: number
   burn_rate_30: number
   burn_rate_90: number
-  /** Monthly essential spending over the Guide's 90-day window — the number
-   *  the roadmap's emergency-fund target is built from. null until something
-   *  is tagged Essential (untagged it would equal burn rate). Server-computed:
-   *  TransactionRepository.essential_spend. */
-  essentials_monthly: number | null
-  /** Both essentials figures; null exactly when `essentials_monthly` is. */
+  /** What a lean month costs, both ways — the figures the roadmap's
+   *  emergency-fund target is built from. null until something is tagged
+   *  Essential (untagged it would equal burn rate). Server-computed:
+   *  `services/essentials.py`. */
   essentials: EssentialsFigures | null
   essentials_tagged: boolean
   /** null when no income was recorded in the window — a gap, not a floor.
@@ -1034,7 +1032,7 @@ export interface SeasonalityReport {
   categories: { id: string; name: string }[]
 }
 
-/** What a lean month costs — GET /reports/essentials. `essentials_90d` is the
+/** What a lean month costs — GET /reports/essentials. `essentials` is the
  *  Guide's figure and the Overview card's; the table averages complete months. */
 /** One month of the emergency-fund coverage report. */
 export interface CoveragePoint {
@@ -1061,7 +1059,6 @@ export interface EmergencyCoverageReport {
   fund_source: string | null
   /** The Essentials report's own runway, quoted rather than recomputed. */
   coverage_months: number | null
-  essentials_monthly: number
   essentials: EssentialsFigures
   target_low: number
   target_high: number
@@ -1077,7 +1074,6 @@ export interface EssentialsReport {
   months: number
   window_start: string
   window_end: string
-  essentials_90d: number
   essentials: EssentialsFigures
   monthly_total_average: number
   categories: {

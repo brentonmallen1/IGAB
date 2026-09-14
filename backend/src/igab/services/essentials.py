@@ -66,7 +66,7 @@ async def reported_essentials(
 async def essentials_summary(session: AsyncSession, budget_id: uuid.UUID, months: int = 12) -> dict:
     """What a lean month costs, and what a reserve of N months would be.
 
-    The headline (`essentials_90d`) is the Guide's figure — rolling 90 days
+    The headline (`essentials`) is the Guide's figure — rolling 90 days
     ÷ 3 — so the Overview card, this report and the roadmap's target quote
     one number. The per-category table averages over `months` COMPLETE
     months instead: a partial current month would drag every average
@@ -97,7 +97,6 @@ async def essentials_summary(session: AsyncSession, budget_id: uuid.UUID, months
         "months": months,
         "window_start": window_start,
         "window_end": window_end,
-        "essentials_90d": headline,
         "essentials": essentials,
         "reserve": reserve,
         "roadmap_range": (FULL_EMERGENCY_FUND_MONTHS_LOW, FULL_EMERGENCY_FUND_MONTHS_HIGH),

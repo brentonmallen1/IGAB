@@ -95,12 +95,9 @@ class DashboardMetrics(ApiModel):
     net_worth_prev: Decimal
     burn_rate_30: Decimal
     burn_rate_90: Decimal
-    #: Monthly essential spending over the Guide's 90-day window — the same
-    #: number the Guide's emergency-fund target is built from. None until
-    #: something is tagged Essential (untagged, it would equal burn rate).
-    essentials_monthly: Decimal | None
-    #: Both essentials figures; `essentials_monthly` is their `.monthly`. None
-    #: exactly when `essentials_monthly` is — nothing tagged Essential yet.
+    #: What a lean month costs, both ways — the figures the Guide's
+    #: emergency-fund target is built from. None until something is tagged
+    #: Essential (untagged, it would equal burn rate).
     essentials: EssentialsFigures | None
     essentials_tagged: bool
     #: None when no income was recorded in the window — the Savings Rate tab's
@@ -448,7 +445,8 @@ class ReserveTarget(ApiModel):
 class EssentialsReportResponse(ApiModel):
     """What a lean month costs, from what the household tagged Essential.
 
-    `essentials_90d` is the Guide's figure (rolling 90 days ÷ 3) and what the
+    `essentials` is the Guide's figure (rolling 90 days ÷ 3, sinking-fund bills
+    spread when the budget's setting is on) and what the
     Overview card shows; the per-category table averages over `months`
     complete months instead. `tagged` is False until something carries the
     tag — then every figure is 0 and the UI says where to apply it.
@@ -458,20 +456,18 @@ class EssentialsReportResponse(ApiModel):
     months: int
     window_start: date
     window_end: date
-    essentials_90d: Decimal
-    #: Both essentials figures; `essentials_90d` is their `.monthly`. Served
-    #: whether or not anything is tagged — zeros when nothing is.
+    #: Served whether or not anything is tagged — zeros when nothing is.
     essentials: EssentialsFigures
     monthly_total_average: Decimal
     categories: list[EssentialsCategory]
     monthly_series: list[EssentialsMonth]
-    #: 1 / 3 / 6 / 12 months of essentials, from `essentials_90d`.
+    #: 1 / 3 / 6 / 12 months of essentials, from `essentials.monthly`.
     reserve: list[ReserveTarget]
     #: The roadmap's full-emergency-fund range, in months.
     roadmap_range: tuple[int, int]
     #: What the Guide reads as the emergency fund today — the bound
     #: category or account, else its own detection — and how many lean months
-    #: that covers (`emergency_fund_balance / essentials_90d`). None when
+    #: that covers (`emergency_fund_balance / essentials.monthly`). None when
     #: nothing looks like a fund, or nothing is tagged Essential yet.
     emergency_fund_balance: Decimal | None = None
     emergency_fund_source: str | None = None
@@ -1143,9 +1139,7 @@ class EmergencyCoverageResponse(ApiModel):
     fund_source: str | None
     #: The Essentials report's own runway, quoted rather than recomputed.
     coverage_months: Decimal | None
-    essentials_monthly: Decimal
-    #: The Essentials report's own figures, quoted; `essentials_monthly` is
-    #: their `.monthly`.
+    #: The Essentials report's own figures, quoted; the targets read `.monthly`.
     essentials: EssentialsFigures
     target_low: Decimal
     target_high: Decimal

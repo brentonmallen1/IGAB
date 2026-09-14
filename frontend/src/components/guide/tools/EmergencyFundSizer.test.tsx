@@ -20,7 +20,6 @@ import { EmergencyFundSizer } from './EmergencyFundSizer'
 const response = (over: Partial<EmergencyFundResponse>): EmergencyFundResponse => ({
   months: 3,
   monthly_contribution: 0,
-  essentials_monthly: 2200,
   essentials: { as_paid: 2800, spread: 2200, spread_on: true, monthly: 2200 },
   current: 1000,
   target: 6600,
@@ -54,7 +53,6 @@ describe('EmergencyFundSizer essentials', () => {
 
   it('shows one figure when the two agree', () => {
     plan.data = response({
-      essentials_monthly: 2000,
       essentials: { as_paid: 2000, spread: 2000, spread_on: true, monthly: 2000 },
     })
     renderSizer()
@@ -63,7 +61,7 @@ describe('EmergencyFundSizer essentials', () => {
   })
 
   it('asks for Essential tags when there is no figure', () => {
-    plan.data = response({ essentials_monthly: null, essentials: null, target: null, gap: null })
+    plan.data = response({ essentials: null, target: null, gap: null })
     renderSizer()
     expect(screen.getByText(/tag what you could not do without as Essential/)).toBeInTheDocument()
   })

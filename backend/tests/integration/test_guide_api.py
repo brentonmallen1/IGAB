@@ -726,7 +726,7 @@ class TestScenarios:
 
         assert r.status_code == 200, r.text
         body = r.json()
-        assert money(body["essentials_monthly"]) == Decimal("1000.00")
+        assert money(body["essentials"]["monthly"]) == Decimal("1000.00")
         # 240 in the budget plus 500 declared elsewhere — the roadmap's number.
         assert money(body["current"]) == Decimal("740.00")
         assert money(body["target"]) == Decimal("3000.00")

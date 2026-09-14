@@ -138,7 +138,7 @@ async def test_the_headline_is_the_essentials_reports_own_runway(db_session):
 
     assert report["coverage_months"] == essentials["runway_months"]
     assert report["fund_balance"] == essentials["emergency_fund_balance"]
-    assert report["essentials_monthly"] == essentials["essentials_90d"]
+    assert report["essentials"] == essentials["essentials"]
 
 
 async def test_no_fund_draws_no_line(db_session):
@@ -309,6 +309,6 @@ class TestTheAverageStartsWithTheHistory:
         [point] = report["series"]
         assert point["essentials"] == Decimal("1000.00")
         assert point["coverage_months"] == Decimal("2.0")
-        assert report["essentials_monthly"] == Decimal("333.33")
+        assert report["essentials"].monthly == Decimal("333.33")
         assert report["coverage_months"] == Decimal("6.0")
-        assert point["essentials"] <= report["essentials_monthly"] * 3 + Decimal("0.01")
+        assert point["essentials"] <= report["essentials"].monthly * 3 + Decimal("0.01")

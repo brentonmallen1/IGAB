@@ -248,7 +248,6 @@ class EmergencyCoverageService:
             # The Essentials report's own runway, quoted rather than recomputed:
             # one figure, so the two reports cannot disagree about coverage.
             "coverage_months": summary["runway_months"],
-            "essentials_monthly": headline,
             "essentials": summary["essentials"],
             "target_low": quantize_cents(headline * FULL_EMERGENCY_FUND_MONTHS_LOW),
             "target_high": quantize_cents(headline * FULL_EMERGENCY_FUND_MONTHS_HIGH),

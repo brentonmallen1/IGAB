@@ -435,7 +435,7 @@ class TestABudgetWithNoTransactionsStillOwnsThings:
         card = await ReportService(db_session).dashboard_metrics(budget.id, MONTH_START, TODAY)
 
         assert card["essentials_tagged"] is True
-        assert card["essentials_monthly"] == Decimal("0")
+        assert card["essentials"].monthly == Decimal("0")
 
 
 class TestNetWorthAtTheWindowStart:

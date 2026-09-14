@@ -463,7 +463,6 @@ class ReportService:
             "net_worth_prev": net_worth_prev,
             "burn_rate_30": burn_30,
             "burn_rate_90": burn_90,
-            "essentials_monthly": essentials.monthly if essentials_tagged else None,
             "essentials": essentials if essentials_tagged else None,
             "essentials_tagged": essentials_tagged,
             "savings_rate": this.savings_rate,

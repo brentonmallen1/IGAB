@@ -453,7 +453,6 @@ describe('OverviewReport metric cards', () => {
         outflows_this_month: '0',
         top_categories: [],
         means_months: [],
-        essentials_monthly: 2200,
         essentials: { as_paid: 2800, spread: 2200, spread_on: true, monthly: 2200 },
       },
     })
@@ -520,7 +519,6 @@ describe('the savings-rate cards open what contributed', () => {
     net_worth_prev: 0,
     burn_rate_30: 0,
     burn_rate_90: 0,
-    essentials_monthly: null,
     essentials_tagged: false,
     savings_rate: 0.25,
     days_until_zero: null,
@@ -1638,7 +1636,6 @@ describe('EssentialsReport table footer', () => {
         months: 3,
         window_start: '2026-06-01',
         window_end: '2026-08-31',
-        essentials_90d: 6.67,
         essentials: { as_paid: 6.67, spread: 6.67, spread_on: true, monthly: 6.67 },
         monthly_total_average: 6.67,
         categories: [
@@ -1681,7 +1678,6 @@ describe('EssentialsReport headline', () => {
     months: 12,
     window_start: '2025-09-01',
     window_end: '2026-08-31',
-    essentials_90d: 0,
     essentials,
     monthly_total_average: 2000,
     categories: [],
@@ -1731,7 +1727,6 @@ describe('EmergencyCoverageReport', () => {
     fund_balance: 4000,
     fund_source: 'Cascade Point HYSA',
     coverage_months: 4,
-    essentials_monthly: 1000,
     essentials: { as_paid: 1000, spread: 1000, spread_on: true, monthly: 1000 },
     target_low: 3000,
     target_high: 6000,
@@ -1777,7 +1772,6 @@ describe('EmergencyCoverageReport', () => {
     setQuery({
       data: {
         ...base,
-        essentials_monthly: 2200,
         essentials: { as_paid: 2800, spread: 2200, spread_on: true, monthly: 2200 },
         series: [pt('2026-08-01', 4)],
       },

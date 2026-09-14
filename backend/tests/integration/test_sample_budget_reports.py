@@ -106,7 +106,7 @@ async def test_the_essentials_family_has_something_to_say(db_session):
         report = await essentials_summary(db_session, budget.id, 12)
 
         assert report["tagged"] is True, tier
-        assert report["essentials_90d"] > Decimal("1000"), tier
+        assert report["essentials"].monthly > Decimal("1000"), tier
         assert len(report["categories"]) >= 5, tier
         assert all(m["total"] > 0 for m in report["monthly_series"]), tier
 
@@ -139,7 +139,7 @@ async def test_the_full_tier_counts_its_mortgage_as_a_cost_of_living(db_session)
     assert any("Mortgage" in n for n in names)
     # The mortgage alone is $2,444/mo, so a report that dropped it would come
     # in under half of this.
-    assert report["essentials_90d"] > Decimal("4000")
+    assert report["essentials"].monthly > Decimal("4000")
 
 
 async def test_the_emergency_fund_report_draws_a_real_line(db_session):

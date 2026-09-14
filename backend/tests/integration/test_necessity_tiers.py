@@ -365,7 +365,7 @@ class TestTheEmergencyFundStaysLean:
 
     async def test_the_figure_that_sizes_the_fund_is_the_lean_one(self, db_session):
         """The table above is not what sizes the fund. The headline is —
-        `essentials_90d`, rolling 90 days ÷ 3 — and the reserve, the Emergency
+        `essentials`, rolling 90 days ÷ 3 — and the reserve, the Emergency
         Coverage headline and the Guide's target all read it. A cleanup that
         gave `essential_spend` the wide tier by default, or passed it there,
         moved every one of them while the table-only pin above stayed green.
@@ -377,7 +377,7 @@ class TestTheEmergencyFundStaysLean:
         summary = await essentials_summary(db_session, budget.id, 1)
         guide = await GuideDetection(db_session).essential_expenses(budget.id)
 
-        assert summary["essentials_90d"] == D("466.67")
+        assert summary["essentials"].monthly == D("466.67")
         assert guide.value == D("466.67")
         reserve = {r["months"]: r["amount"] for r in summary["reserve"]}
         assert reserve[3] == D("1400.01")
@@ -388,7 +388,7 @@ class TestTheEmergencyFundStaysLean:
             budget.id, essentials_since(today), today, tier=NecessityTier.COST_OF_LIVING
         )
         assert -wide == EXPECTED.cost_of_living
-        assert summary["essentials_90d"] < D("600.00")
+        assert summary["essentials"].monthly < D("600.00")
 
 
 async def _rent_and_streaming(db_session, *, tag_streaming: bool):

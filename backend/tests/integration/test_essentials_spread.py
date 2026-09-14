@@ -88,6 +88,10 @@ async def _get(api_client, path: str, **params) -> dict:
     return r.json()
 
 
+async def _dashboard_monthly(api_client, base: str) -> Decimal:
+    return money((await _get(api_client, f"{base}/reports/dashboard"))["essentials"]["monthly"])
+
+
 async def _set_spread(api_client, budget, on: bool) -> dict:
     r = await api_client.put(
         f"/api/v1/{budget.id}/reports/settings", json={"spread_sinking_funds": on}
@@ -124,13 +128,9 @@ def _assert_reads(s: dict[str, dict], monthly: Decimal, *, spread_on: bool) -> N
     for surface in ("dashboard", "essentials", "coverage", "signal", "sizer"):
         assert figures(s[surface]["essentials"]) == both, surface
 
-    # The old single figures carry `.monthly`, and everything built on them
-    # follows: reserve, targets, the Guide's emergency-fund target.
-    assert money(s["dashboard"]["essentials_monthly"]) == monthly
-    assert money(s["essentials"]["essentials_90d"]) == monthly
-    assert money(s["coverage"]["essentials_monthly"]) == monthly
+    # Everything built on `.monthly` follows it: the signal's value, the
+    # reserve, the targets, the Guide's emergency-fund target and starter.
     assert money(s["signal"]["value"]) == monthly
-    assert money(s["sizer"]["essentials_monthly"]) == monthly
 
     three = monthly * 3
     reserve = {r["months"]: money(r["amount"]) for r in s["essentials"]["reserve"]}
@@ -240,17 +240,17 @@ async def test_turning_it_off_is_undoable_and_recorded(db_session, api_client):
     latest = changes[0]
     assert latest["entity_type"] == "guide_state"
     assert latest["after"] == {"_key": SPREAD_SINKING_FUNDS_KEY, "_value": {"on": False}}
-    assert money((await _get(api_client, f"{base}/reports/dashboard"))["essentials_monthly"]) == (
-        AS_PAID
-    )
+    assert money(
+        (await _get(api_client, f"{base}/reports/dashboard"))["essentials"]["monthly"]
+    ) == (AS_PAID)
 
     r = await api_client.post(f"{base}/changes/undo")
     assert r.status_code == 200, r.text
 
     assert await _get(api_client, f"{base}/reports/settings") == {"spread_sinking_funds": True}
-    assert money((await _get(api_client, f"{base}/reports/dashboard"))["essentials_monthly"]) == (
-        SPREAD
-    )
+    assert money(
+        (await _get(api_client, f"{base}/reports/dashboard"))["essentials"]["monthly"]
+    ) == (SPREAD)
 
 
 async def test_the_setting_is_per_budget(db_session, api_client):
@@ -262,4 +262,4 @@ async def test_the_setting_is_per_budget(db_session, api_client):
         "spread_sinking_funds": True
     }
     two_report = await _get(api_client, f"/api/v1/{two.id}/reports/essentials")
-    assert money(two_report["essentials_90d"]) == SPREAD
+    assert money(two_report["essentials"]["monthly"]) == SPREAD

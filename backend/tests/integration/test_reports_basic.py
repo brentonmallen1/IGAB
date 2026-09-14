@@ -261,7 +261,7 @@ class TestEssentialsRunway:
         assert r.status_code == 200, r.text
         body = r.json()
         # 250 of essential spend in the last 90 days ÷ 3 = 83.33 a month.
-        headline = Decimal(str(body["essentials_90d"]))
+        headline = Decimal(str(body["essentials"]["monthly"]))
         assert headline == Decimal("83.33")
         assert Decimal(str(body["emergency_fund_balance"])) == Decimal("500.00")
         assert body["emergency_fund_source"]

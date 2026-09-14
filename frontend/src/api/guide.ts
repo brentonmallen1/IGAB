@@ -387,7 +387,6 @@ export interface EmergencyFundRequest {
 export interface EmergencyFundResponse {
   months: number
   monthly_contribution: number
-  essentials_monthly: number | null
   essentials: EssentialsFigures | null
   current: number | null
   target: number | null

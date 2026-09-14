@@ -53,12 +53,12 @@ async def test_is_empty_without_tags(db_session):
 
     report = await essentials_summary(db_session, budget.id, 6)
     assert report["tagged"] is False
-    assert report["categories"] == [] and report["essentials_90d"] == Decimal("0")
+    assert report["categories"] == [] and report["essentials"].monthly == Decimal("0")
 
     metrics = await ReportService(db_session).dashboard_metrics(
         budget.id, TODAY - timedelta(days=30), TODAY
     )
-    assert metrics["essentials_monthly"] is None and metrics["essentials_tagged"] is False
+    assert metrics["essentials"] is None and metrics["essentials_tagged"] is False
 
 
 async def test_counts_category_tagged_spending(db_session):
@@ -161,7 +161,7 @@ async def test_reserve_targets_are_one_three_six_twelve_months(db_session):
         )
 
     report = await essentials_summary(db_session, budget.id, 12)
-    assert report["essentials_90d"] == Decimal("1200.00")
+    assert report["essentials"].monthly == Decimal("1200.00")
     assert [(r["months"], r["amount"]) for r in report["reserve"]] == [
         (1, Decimal("1200.00")),
         (3, Decimal("3600.00")),
@@ -190,8 +190,8 @@ async def test_guide_overview_and_report_agree_on_the_ninety_day_figure(db_sessi
     report = await essentials_summary(db_session, budget.id, 12)
 
     assert guide.value == Decimal("1200.00")
-    assert metrics["essentials_monthly"] == guide.value and metrics["essentials_tagged"] is True
-    assert report["essentials_90d"] == guide.value
+    assert metrics["essentials"].monthly == guide.value and metrics["essentials_tagged"] is True
+    assert report["essentials"].monthly == guide.value
     assert "tagged Essential" in guide.reason
 
 

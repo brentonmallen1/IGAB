@@ -332,9 +332,8 @@ class EmergencyFundResponse(ApiModel):
 
     months: int
     monthly_contribution: Decimal
-    essentials_monthly: Decimal | None
-    #: The essentials signal's figures; `essentials_monthly` is their
-    #: `.monthly`. None when the signal has no figure.
+    #: The essentials signal's figures; the target reads `.monthly`. None when
+    #: the signal has no figure.
     essentials: EssentialsFigures | None
     current: Decimal | None
     target: Decimal | None
