@@ -12,6 +12,7 @@ import {
 import { TagChip, type TagColorSlot } from '../../common/TagChip'
 import { Tooltip } from '../../common/Tooltip/Tooltip'
 import { noticeText } from './tagNotices'
+import { TagMembershipDialog } from '../../tags/TagMembershipDialog'
 import './TagsPanel.css'
 import { confirmAsync } from '../../../stores/confirmStore'
 
@@ -41,6 +42,9 @@ export function TagsPanel({ budgetId }: TagsPanelProps) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
   const [editColor, setEditColor] = useState<TagColorSlot | null>(null)
+
+  // The tag whose checklist is open.
+  const [choosing, setChoosing] = useState<Tag | null>(null)
 
   const [newName, setNewName] = useState('')
   const [newColor, setNewColor] = useState<TagColorSlot | null>(null)
@@ -166,9 +170,18 @@ export function TagsPanel({ budgetId }: TagsPanelProps) {
                   <div className="tags-panel__preview">
                     <TagChip name={tag.name} colorSlot={tag.color_slot} />
                   </div>
-                  <span className="tags-panel__counts">
-                    {tag.category_count} categor{tag.category_count === 1 ? 'y' : 'ies'}
-                  </span>
+                  {tag.hand_settable ? (
+                    <button
+                      type="button"
+                      className="tags-panel__counts tags-panel__counts--button"
+                      onClick={() => setChoosing(tag)}
+                      aria-label={`${countLabel(tag.category_count)} tagged ${tag.name} — choose`}
+                    >
+                      {countLabel(tag.category_count)}
+                    </button>
+                  ) : (
+                    <span className="tags-panel__counts">{countLabel(tag.category_count)}</span>
+                  )}
                   <div className="tags-panel__actions">
                     <button
                       type="button"
@@ -206,6 +219,15 @@ export function TagsPanel({ budgetId }: TagsPanelProps) {
         <div className="tags-panel__empty">No tags yet. Create one below.</div>
       )}
 
+      {choosing && (
+        <TagMembershipDialog
+          budgetId={budgetId}
+          tagId={choosing.id}
+          tagName={choosing.name}
+          onClose={() => setChoosing(null)}
+        />
+      )}
+
       <form className="tags-panel__add-form" onSubmit={handleAdd}>
         <input
           type="text"
@@ -235,4 +257,8 @@ export function TagsPanel({ budgetId }: TagsPanelProps) {
       </form>
     </div>
   )
+}
+
+function countLabel(n: number): string {
+  return `${n} categor${n === 1 ? 'y' : 'ies'}`
 }

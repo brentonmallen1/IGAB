@@ -33,6 +33,31 @@
   white-space: nowrap;
 }
 
+.tags-panel__counts--button {
+  padding: var(--spacing-xs) 0;
+  background: none;
+  border: 0;
+  color: var(--text-secondary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.tags-panel__counts--button:hover {
+  color: var(--text-primary);
+}
+
+.tags-panel__counts--button:focus-visible {
+  outline: 2px solid var(--input-focus-ring);
+  outline-offset: 2px;
+}
+
+@media (max-width: 768px) {
+  .tags-panel__counts--button {
+    min-height: var(--tap-min);
+  }
+}
+
 .tags-panel__actions {
   display: flex;
   gap: var(--spacing-xs);

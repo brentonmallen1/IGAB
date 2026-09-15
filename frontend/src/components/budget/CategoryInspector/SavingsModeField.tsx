@@ -2,22 +2,10 @@ import { useUpdateCategory } from '../../../api/categories'
 import { apiErrorMessage } from '../../../api/client'
 import type { Category, SavingsMode } from '../../../types'
 import { SYSTEM_TAG_HELP } from '../../settings/TagsPanel/systemTagHelp'
+import { DEFAULT_MARKER, SAVINGS_MODE_OPTIONS } from '../../../utils/savingsModes'
 import './SavingsModeField.css'
 
 const tagName = (key: string) => SYSTEM_TAG_HELP.find((t) => t.key === key)?.name ?? key
-
-const CHOICES: { mode: SavingsMode; label: string; consequence: string }[] = [
-  {
-    mode: 'sent_out',
-    label: 'sent out of this envelope',
-    consequence: 'Spending or transfers from here count as saved; assigning doesn’t.',
-  },
-  {
-    mode: 'kept_here',
-    label: 'kept in this envelope',
-    consequence: 'What this envelope holds is saved; spending from it lowers your savings.',
-  },
-]
 
 interface Props {
   category: Category
@@ -53,7 +41,7 @@ export function SavingsModeField({ category, budgetId, tagKeys }: Props) {
   return (
     <fieldset className="savings-mode" disabled={update.isPending}>
       <legend className="savings-mode__legend">Counts as saved when money is:</legend>
-      {CHOICES.map((choice) => {
+      {SAVINGS_MODE_OPTIONS.map((choice) => {
         const id = `${name}-${choice.mode}`
         return (
           <div key={choice.mode} className="savings-mode__option">
@@ -72,7 +60,7 @@ export function SavingsModeField({ category, budgetId, tagKeys }: Props) {
                 {!explicit && role === choice.mode && (
                   <>
                     {' '}
-                    <span className="savings-mode__default">(default)</span>
+                    <span className="savings-mode__default">{DEFAULT_MARKER}</span>
                   </>
                 )}
               </span>
