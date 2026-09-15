@@ -34,6 +34,7 @@ import {
 } from './coverageView'
 import { useReportMonths } from '../../../stores/reportStore'
 import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
+import { GuideTabLink } from '../../guide/GuideTabLink'
 import './EmergencyCoverageReport.css'
 
 interface Props {
@@ -108,6 +109,11 @@ export function EmergencyCoverageReport({ budgetId }: Props) {
             </p>
             <p>
               The roadmap suggests {low}–{high} months once expensive debt is gone.
+            </p>
+            <p>
+              <GuideTabLink tab="aside" anchor="emergency-fund">
+                What the emergency fund counts
+              </GuideTabLink>
             </p>
           </ReportInfoButton>
           <div className="flex-row ms-auto">

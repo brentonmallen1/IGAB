@@ -1,7 +1,9 @@
 import { useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useMoneyRules } from '../../../api/moneyRules'
 import { useAppStore } from '../../../stores/appStore'
 import { Surface } from '../../common/Surface'
+import { guideTabHref } from '../../../utils/guideLinks'
 import { CatchOuts } from '../CatchOuts'
 import { CATCH_OUTS } from './catchOutList'
 import { DEFAULT_EXPLORER, type ExplorerState } from './explorerMove'
@@ -40,7 +42,8 @@ export function MoneyPanel() {
           <p className="guide-roadmap__lede">
             Every transaction is counted as income, spending, saving or just a move between your
             accounts. Two facts decide which, and the reports and your savings rate add up the
-            result.
+            result. For savings, the emergency fund and sinking funds, see{' '}
+            <Link to={guideTabHref('aside')}>Setting money aside</Link>.
           </p>
         </div>
       </header>

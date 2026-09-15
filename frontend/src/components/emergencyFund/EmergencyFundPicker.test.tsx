@@ -2,7 +2,9 @@
  * The emergency fund picker: envelopes, accounts and kept elsewhere, saved as
  * one PUT.
  */
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render as rtlRender, screen, waitFor, within } from '@testing-library/react'
+import type { ReactElement } from 'react'
+import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EmergencyFundPicker as PickerData } from '../../api/emergencyFund'
 import {
@@ -36,6 +38,9 @@ vi.mock('../../api/guide', () => ({
 }))
 
 import { EmergencyFundPicker } from './EmergencyFundPicker'
+
+/** Rendered inside a router: the surface links into the Guide. */
+const render = (ui: ReactElement) => rtlRender(ui, { wrapper: MemoryRouter })
 
 function show(from?: 'guide') {
   const onClose = vi.fn()

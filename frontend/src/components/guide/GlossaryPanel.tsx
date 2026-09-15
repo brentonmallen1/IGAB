@@ -88,11 +88,14 @@ export function GlossaryPanel() {
                         {entry.inIgab}
                       </p>
                     )}
-                    {entry.guideTab && (
-                      <p className="guide-terms__in-app">
-                        <GuideTabLink tab={entry.guideTab} />
+                    {entry.guideLinks?.map((target) => (
+                      <p
+                        key={`${target.tab}#${target.anchor ?? ''}`}
+                        className="guide-terms__in-app"
+                      >
+                        <GuideTabLink {...target} />
                       </p>
-                    )}
+                    ))}
                     {entry.related && entry.related.length > 0 && (
                       <div className="guide-terms__row">
                         <span className="guide-terms__label">See also</span>

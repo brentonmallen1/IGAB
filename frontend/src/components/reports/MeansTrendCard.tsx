@@ -24,6 +24,7 @@ import {
   DetailRows,
   DetailSection,
 } from './ReportDetail'
+import { GuideTabLink } from '../guide/GuideTabLink'
 import './MeansStanding.css'
 
 /**
@@ -136,6 +137,11 @@ function MeansTrendDialog({ trend, onClose }: { trend: MeansTrend; onClose: () =
             it is part of what was kept.
           </li>
         </DetailList>
+        <p className="dialog__body">
+          <GuideTabLink tab="aside" anchor="means-trend">
+            How the Means trend reads
+          </GuideTabLink>
+        </p>
       </DetailSection>
     </Dialog>
   )

@@ -15,6 +15,7 @@ import {
   parseExternal,
   type ExternalDraft,
 } from './pickerChoice'
+import { GuideTabLink } from '../guide/GuideTabLink'
 import './EmergencyFundPicker.css'
 
 export const PICKER_TITLE = 'What your emergency fund counts'
@@ -142,7 +143,10 @@ export function EmergencyFundPicker({ budgetId, from, onClose }: Props) {
       ) : (
         <form id={formId} className="dialog-form ef-picker" onSubmit={submit} noValidate>
           <p className="dialog-form__hint">
-            Nothing is guessed: the fund is exactly what you choose here.
+            Nothing is guessed: the fund is exactly what you choose here.{' '}
+            <GuideTabLink tab="aside" anchor="emergency-fund">
+              What counts
+            </GuideTabLink>
           </p>
           <section className="ef-picker__section" aria-labelledby={`${formId}-envelopes`}>
             <h4 id={`${formId}-envelopes`} className="ef-picker__title">

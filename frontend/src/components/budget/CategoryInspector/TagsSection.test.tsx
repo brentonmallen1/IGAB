@@ -3,7 +3,9 @@
  * category, reading which tags are on it from the budget's tag list — the
  * category's own tags carry no system key.
  */
-import { render, screen } from '@testing-library/react'
+import { render as rtlRender, screen } from '@testing-library/react'
+import type { ReactElement } from 'react'
+import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 import { makeCategory } from '../../../test-utils/factories'
 
@@ -28,6 +30,9 @@ vi.mock('../../../api/categories', () => ({
 }))
 
 import { TagsSection } from './TagsSection'
+
+/** Rendered inside a router: the surface links into the Guide. */
+const render = (ui: ReactElement) => rtlRender(ui, { wrapper: MemoryRouter })
 
 const SAVINGS = { id: 't-sav', name: 'Savings', color_slot: 'green' as const }
 const LONG_TERM = { id: 't-lte', name: 'Long-term expense', color_slot: 'blue' as const }

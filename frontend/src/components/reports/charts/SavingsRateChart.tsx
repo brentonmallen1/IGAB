@@ -26,6 +26,7 @@ import { SavingsRateDialog } from '../SavingsRateDialog'
 import { SAVED_DEFINITION } from '../savingsRateBreakdown'
 import { pct, RATE_SERIES, ratePercent, savingsRateTooltipWith } from './savingsRateView'
 import { useReportMonths } from '../../../stores/reportStore'
+import { GuideTabLink } from '../../guide/GuideTabLink'
 
 interface Props {
   budgetId: string
@@ -93,6 +94,11 @@ export function SavingsRateReport({ budgetId }: Props) {
           <p>
             Open the rate to see where the savings went, what paid down debt and where the income
             came from.
+          </p>
+          <p>
+            <GuideTabLink tab="aside" anchor="savings-modes">
+              How Savings envelopes count
+            </GuideTabLink>
           </p>
           <ReportScopeNote report="savings-rate" />
         </ReportInfoButton>

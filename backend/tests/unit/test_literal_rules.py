@@ -72,7 +72,9 @@ def test_tag_inputs_read_the_tags_they_are_named_for():
         sql = str(
             ac._ROW_FACTS[field].compile(dialect=dialect, compile_kwargs={"literal_binds": True})
         )
-        assert f"'{tag.tag_key}'" in sql
+        assert tag.tag_key in tag.tag_keys
+        for key in tag.tag_keys:
+            assert f"'{key}'" in sql, (field, key)
         if tag.savings_mode is not None:
             assert f"= '{tag.savings_mode}'" in sql
 
@@ -89,6 +91,11 @@ def test_the_ladder_finds_the_tag_rules_by_reading_them():
     assert tagged == {
         ac.ActivityReason.TAGGED_SAVINGS: ("savings", "sent_out"),
         ac.ActivityReason.TAGGED_DEBT: ("debt_principal", None),
+    }
+    keys = {r.reason: r.tag_keys for r in ac.rule_ladder() if r.tag_key}
+    assert keys == {
+        ac.ActivityReason.TAGGED_SAVINGS: ("savings", "emergency_fund"),
+        ac.ActivityReason.TAGGED_DEBT: ("debt_principal",),
     }
 
 

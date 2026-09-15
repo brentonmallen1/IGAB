@@ -21,6 +21,10 @@ export const ASIDE_ANCHORS = [
 
 export type AsideAnchor = (typeof ASIDE_ANCHORS)[number]
 
+/** A Guide tab to link to, and a section of it where the tab has sections. */
+export type GuideLinkTarget =
+  { tab: Exclude<GuideTab, 'aside'>; anchor?: never } | { tab: 'aside'; anchor?: AsideAnchor }
+
 /** "/guide?tab=money", or "/guide?tab=aside#savings-modes" with a section. */
 export function guideTabHref(tab: GuideTab, anchor?: string): string {
   return `/guide?tab=${tab}${anchor ? `#${anchor}` : ''}`

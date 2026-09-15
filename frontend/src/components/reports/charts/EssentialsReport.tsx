@@ -26,6 +26,7 @@ import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ChartTooltip } from './ChartTooltip'
 import { CHART_COLORS, COLOR_NET } from './chartColors'
 import { columnTotal, shareOfLeanMonth, worstMonth } from './essentialsView'
+import { GuideTabLink } from '../../guide/GuideTabLink'
 import './EssentialsReport.css'
 import { useReportMonths } from '../../../stores/reportStore'
 
@@ -87,6 +88,11 @@ export function EssentialsReport({ budgetId }: Props) {
             <p>
               A reserve is that monthly figure times the months you want covered. The roadmap
               suggests {rangeLow}–{rangeHigh} months once expensive debt is gone.
+            </p>
+            <p>
+              <GuideTabLink tab="aside" anchor="sinking-funds">
+                How spread bills count
+              </GuideTabLink>
             </p>
           </ReportInfoButton>
           <div className="flex-row ms-auto">

@@ -2,13 +2,18 @@
  * The Overview's Means trend card and its dialog. The trend's arithmetic is
  * `livingMeans.test.ts`; these pin what a reader sees and can reach.
  */
-import { render, screen, within } from '@testing-library/react'
+import { render as rtlRender, screen, within } from '@testing-library/react'
+import type { ReactElement } from 'react'
+import { MemoryRouter } from 'react-router-dom'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { useAppStore } from '../../stores/appStore'
 import { PRIVACY_MASK } from '../../utils/money'
 import type { MeansMonth } from '../../types'
 import { MeansTrendCard } from './MeansTrendCard'
+
+/** Rendered inside a router: the surface links into the Guide. */
+const render = (ui: ReactElement) => rtlRender(ui, { wrapper: MemoryRouter })
 
 const m = (month: string, income: number, outflows: number): MeansMonth => ({
   month,
@@ -106,6 +111,10 @@ describe('MeansTrendCard', () => {
     expect(within(dialog).getByText(/Money moved into savings is not an outflow/)).toBeVisible()
     expect(dialog).toHaveTextContent('within 5% of income either side')
     expect(dialog).toHaveTextContent('4 of the last 6 months below your means.')
+    expect(within(dialog).getByRole('link', { name: /How the Means trend reads/ })).toHaveAttribute(
+      'href',
+      '/guide?tab=aside#means-trend'
+    )
   })
 
   it('masks every amount in privacy mode, and keeps the percentages', async () => {

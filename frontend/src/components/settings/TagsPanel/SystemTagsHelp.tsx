@@ -1,6 +1,7 @@
 import { Fragment } from 'react'
 import { InfoPopover, InfoSection } from '../../common/InfoPopover/InfoPopover'
 import { SYSTEM_TAG_HELP } from './systemTagHelp'
+import { GuideTabLink } from '../../guide/GuideTabLink'
 
 export function SystemTagsHelp() {
   return (
@@ -29,6 +30,11 @@ export function SystemTagsHelp() {
         <p>
           Tag a category from its inspector on the Budget page. Any other tag you create is a label
           for filtering and grouping — it changes no number.
+        </p>
+        <p>
+          <GuideTabLink tab="aside" anchor="which-tag">
+            Which tag do I use?
+          </GuideTabLink>
         </p>
       </InfoSection>
     </InfoPopover>

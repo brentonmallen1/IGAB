@@ -352,6 +352,7 @@ async def money_rules(
                 reason_text=REASON_TEXT[rule.reason],
                 tag_key=rule.tag_key,
                 savings_mode=rule.savings_mode,
+                tag_keys=list(rule.tag_keys),
                 is_default=i == len(ladder) - 1,
             )
             for i, rule in enumerate(ladder)

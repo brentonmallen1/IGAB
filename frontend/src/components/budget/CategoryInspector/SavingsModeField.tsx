@@ -3,6 +3,7 @@ import { apiErrorMessage } from '../../../api/client'
 import type { Category, SavingsMode } from '../../../types'
 import { systemTagName } from '../../settings/TagsPanel/systemTagHelp'
 import { DEFAULT_MARKER, SAVINGS_MODE_OPTIONS } from '../../../utils/savingsModes'
+import { GuideTabLink } from '../../guide/GuideTabLink'
 import './SavingsModeField.css'
 
 interface Props {
@@ -69,6 +70,9 @@ export function SavingsModeField({ category, budgetId, tagKeys }: Props) {
           </div>
         )
       })}
+      <GuideTabLink tab="aside" anchor="savings-modes">
+        How this counts
+      </GuideTabLink>
       {explicit && (
         <button type="button" className="savings-mode__reset" onClick={() => choose(null)}>
           Use default

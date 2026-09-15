@@ -155,7 +155,10 @@ function Contributors({
           — a car, a house — is spending or income instead.
         </p>
         <p className="dialog__body">
-          <GuideTabLink tab="money" />
+          <GuideTabLink tab="money" />{' '}
+          <GuideTabLink tab="aside" anchor="savings-modes">
+            How Savings envelopes count
+          </GuideTabLink>
         </p>
       </DetailSection>
     </>

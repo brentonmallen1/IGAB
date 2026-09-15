@@ -147,6 +147,9 @@ class RuleResponse(ApiModel):
     #: The savings mode the rule requires of the tagged category ('sent_out'
     #: for the Savings rule), or None.
     savings_mode: str | None
+    #: Every system tag the rule reads — `tag_key` and the tags that imply it
+    #: (Emergency fund reads the Savings rule). Empty for an account rule.
+    tag_keys: list[str]
     #: True for the last entry: what a row is when no rule matched.
     is_default: bool
 

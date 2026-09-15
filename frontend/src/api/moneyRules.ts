@@ -1,6 +1,7 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { apiClient } from './client'
 import { ROOT } from './queryKeys'
+import type { SavingsMode } from '../types'
 
 /**
  * "How money counts", answered by the server's own classifier
@@ -17,6 +18,12 @@ export type MoveDirection = 'in' | 'out'
  *  when money is sent out, or while it is kept here (`domain/money_moves.py`). */
 export type CategoryKind =
   'none' | 'ordinary' | 'savings_sent' | 'savings_kept' | 'debt_principal' | 'income'
+/** The explorer's category kind for each savings mode — the two kinds a Savings
+ *  or Emergency fund category can be (`domain/money_moves.py` SAVINGS_KINDS). */
+export const SAVINGS_MODE_KIND: Record<SavingsMode, CategoryKind> = {
+  sent_out: 'savings_sent',
+  kept_here: 'savings_kept',
+}
 export type LegRole = 'from' | 'to' | 'account'
 export type BudgetTerm = 'ready_to_assign' | 'envelope' | 'card_set_aside' | 'card_uncovered'
 export type ReportFamily =
@@ -93,6 +100,9 @@ export interface MoneyRule {
   tag_key: string | null
   /** The savings mode the rule requires of the tagged category, or null. */
   savings_mode: 'sent_out' | 'kept_here' | null
+  /** Every system tag the rule reads: `tag_key` and the tags that imply it
+   *  (Emergency fund reads the Savings rule). Empty for an account rule. */
+  tag_keys: string[]
   is_default: boolean
 }
 

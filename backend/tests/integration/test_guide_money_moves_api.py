@@ -60,11 +60,17 @@ class TestMoneyRules:
             "reason_text": "it is ordinary spending from a budget account",
             "tag_key": None,
             "savings_mode": None,
+            "tag_keys": [],
             "is_default": True,
         }
         assert [(r["tag_key"], r["savings_mode"]) for r in rules if r["tag_key"]] == [
             ("savings", "sent_out"),
             ("debt_principal", None),
+        ]
+        # Emergency fund implies Savings, so the Savings rule reads both.
+        assert [r["tag_keys"] for r in rules if r["tag_key"]] == [
+            ["savings", "emergency_fund"],
+            ["debt_principal"],
         ]
         assert body["planned_spend_tag_keys"] == ["savings", "emergency_fund"]
         families = {f["key"]: f["classes"] for f in body["report_families"]}

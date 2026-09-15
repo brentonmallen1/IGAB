@@ -19,6 +19,7 @@ import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ChartTooltip } from './ChartTooltip'
 import { OnTheWaySection, SavedSection, SinkingFundsSection } from './SavingsSections'
+import { GuideTabLink } from '../../guide/GuideTabLink'
 import './SavingsReport.css'
 import { useReportMonths } from '../../../stores/reportStore'
 import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
@@ -85,6 +86,11 @@ export function SavingsReport({ budgetId }: Props) {
             <strong>What pulled from savings</strong> lists money moved <em>out</em> of Savings and
             Emergency fund envelopes in the window — to another category or back to Ready to Assign
             — as the audit trail records it.
+          </p>
+          <p>
+            <GuideTabLink tab="aside" anchor="savings-report">
+              How the three parts count
+            </GuideTabLink>
           </p>
           <ReportScopeNote report="savings" />
         </ReportInfoButton>

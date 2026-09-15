@@ -5,6 +5,7 @@ import {
   type CategoryKind,
   type MoneyRulesResponse,
   type MoveExplanation,
+  SAVINGS_MODE_KIND,
 } from '../../../api/moneyRules'
 import { BUILTIN_ACCOUNT_TYPES } from '../../../constants/accountTypes'
 import { useFormatters } from '../../../hooks/useFormatters'
@@ -12,6 +13,7 @@ import { useAppStore } from '../../../stores/appStore'
 import { isTrackedAsset } from '../../../utils/accountKinds'
 import { budgetEffectLines } from '../../../utils/moneyMoves'
 import { systemTagName } from '../../settings/TagsPanel/systemTagHelp'
+import { GuideTabLink } from '../GuideTabLink'
 import { ClassChip } from './ClassChip'
 import {
   EXPLORER_AMOUNT,
@@ -35,6 +37,8 @@ const CATEGORY_OPTIONS: { value: CategoryKind; label: string }[] = [
   { value: 'debt_principal', label: `A category tagged ${systemTagName('debt_principal')}` },
   { value: 'income', label: 'Your income group (Ready to Assign)' },
 ]
+
+const SAVINGS_KINDS: readonly CategoryKind[] = Object.values(SAVINGS_MODE_KIND)
 
 interface Props {
   state: ExplorerState
@@ -123,6 +127,13 @@ export function MoneyExplorer({ state, onChange, families }: Props) {
                 </option>
               ))}
             </select>
+            {!categoryBlocked && SAVINGS_KINDS.includes(state.category) && (
+              <span className="tool__hint">
+                <GuideTabLink tab="aside" anchor="savings-modes">
+                  Sent out or kept here?
+                </GuideTabLink>
+              </span>
+            )}
             {categoryBlocked && (
               <span id="money-explorer-no-category" className="tool__hint">
                 Neither side can hold a category: only a budget account’s row can, and on a transfer
@@ -272,7 +283,12 @@ function Answer({
         {held && (
           <div>
             <dt>Savings</dt>
-            <dd>{held}. Saved is what moved to savings plus what the envelope holds.</dd>
+            <dd>
+              {held}. Saved is what moved to savings plus what the envelope holds.{' '}
+              <GuideTabLink tab="aside" anchor="savings-modes">
+                How kept here counts
+              </GuideTabLink>
+            </dd>
           </div>
         )}
         <div>

@@ -3,7 +3,9 @@
  * categories only, checked from the served role, saved through the category
  * update so the change log can undo it.
  */
-import { render, screen } from '@testing-library/react'
+import { render as rtlRender, screen } from '@testing-library/react'
+import type { ReactElement } from 'react'
+import { MemoryRouter } from 'react-router-dom'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { makeCategory } from '../../../test-utils/factories'
@@ -21,6 +23,9 @@ vi.mock('../../../api/categories', () => ({
 }))
 
 import { SavingsModeField } from './SavingsModeField'
+
+/** Rendered inside a router: the surface links into the Guide. */
+const render = (ui: ReactElement) => rtlRender(ui, { wrapper: MemoryRouter })
 
 function show(over: Partial<Category> = {}, tagKeys: string[] = ['savings']) {
   return render(
@@ -125,5 +130,13 @@ describe('SavingsModeField', () => {
     show()
     expect(sentOut()).toBeDisabled()
     expect(screen.getByRole('alert')).toHaveTextContent('Could not save how this category counts')
+  })
+
+  it('links to how the two modes count', () => {
+    show()
+    expect(screen.getByRole('link', { name: /How this counts/ })).toHaveAttribute(
+      'href',
+      '/guide?tab=aside#savings-modes'
+    )
   })
 })

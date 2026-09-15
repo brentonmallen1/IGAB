@@ -169,6 +169,49 @@ describe('the tag table', () => {
     expect(within(savings).getByText('Served Savings')).toBeInTheDocument()
     expect(within(essential).getByText('No')).toBeInTheDocument()
   })
+
+  it('shows the Savings rule with its served mode on Savings and on Emergency fund', () => {
+    renderPanel()
+    const table = screen.getByRole('table', { name: 'What each tag does' })
+    for (const name of ['Savings', 'Emergency fund']) {
+      const row = within(table).getByRole('rowheader', { name }).closest('tr')!
+      expect(within(row).getByText('Served Savings')).toBeInTheDocument()
+      expect(within(row).getByText('when sent out')).toBeInTheDocument()
+    }
+    for (const name of ['Long-term expense', 'Cost of living']) {
+      const row = within(table).getByRole('rowheader', { name }).closest('tr')!
+      expect(within(row).getByText('No')).toBeInTheDocument()
+    }
+  })
+
+  it('gives Emergency fund no class when the served rule does not read it', () => {
+    vi.mocked(useMoneyRules).mockReturnValue({
+      data: {
+        rules: SERVED_RULES.map((r) => ({ ...r, tag_keys: r.tag_key ? [r.tag_key] : [] })),
+        report_families: [],
+        shapes: [],
+        planned_spend_tag_keys: [],
+      },
+      isError: false,
+    } as unknown as ReturnType<typeof useMoneyRules>)
+    renderPanel()
+    const table = screen.getByRole('table', { name: 'What each tag does' })
+    const fund = within(table).getByRole('rowheader', { name: 'Emergency fund' }).closest('tr')!
+    expect(within(fund).getByText('No')).toBeInTheDocument()
+  })
+
+  it('links on to Setting money aside, and from the tag table to its savings modes', () => {
+    renderPanel()
+    const hrefs = screen
+      .getAllByRole('link', { name: /Setting money aside/ })
+      .map((l) => l.getAttribute('href'))
+    expect(hrefs).toContain('/guide?tab=aside')
+    const table = screen.getByRole('table', { name: 'What each tag does' }).parentElement!
+    expect(within(table).getByRole('link', { name: /Setting money aside/ })).toHaveAttribute(
+      'href',
+      '/guide?tab=aside#savings-modes'
+    )
+  })
 })
 
 describe('the worked month', () => {

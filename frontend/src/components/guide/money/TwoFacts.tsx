@@ -1,4 +1,5 @@
 import { systemTagName } from '../../settings/TagsPanel/systemTagHelp'
+import { GuideTabLink } from '../GuideTabLink'
 import './TwoFacts.css'
 
 /** The two things every rule below reads. */
@@ -26,7 +27,10 @@ export function TwoFacts() {
           category set to sent out, or one tagged <strong>{systemTagName('debt_principal')}</strong>
           , counts its outflows that way, wherever the money went. A {systemTagName('savings')}{' '}
           category kept here counts by where the money went, like any other; its balance is what
-          counts as saved.
+          counts as saved.{' '}
+          <GuideTabLink tab="aside" anchor="savings-modes">
+            How the two Savings modes count
+          </GuideTabLink>
         </p>
         <p>
           A category in your income group means the money is income, ready to assign. No category on

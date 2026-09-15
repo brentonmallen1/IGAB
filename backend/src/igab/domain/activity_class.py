@@ -222,6 +222,10 @@ class TagInput:
     tag_key: str
     #: None for a tag with no mode.
     savings_mode: str | None
+    #: Every system tag that sets this input — `tag_key` and the tags that
+    #: imply it (Emergency fund implies Savings). The constant the predicate
+    #: itself reads, so the Guide can say which tags a rule covers.
+    tag_keys: tuple[str, ...]
 
 
 #: Which tag (and mode) each tag input reads. `rule_ladder` and the Guide's
@@ -232,8 +236,8 @@ class TagInput:
 #: savings (`kept_here`) is not this input: its rows class by where the money
 #: went, like any envelope's.
 TAG_INPUTS: dict[str, TagInput] = {
-    "savings_sent_out": TagInput(SAVINGS_KEY, SAVINGS_SENT_OUT_MODE),
-    "tagged_debt": TagInput("debt_principal", None),
+    "savings_sent_out": TagInput(SAVINGS_KEY, SAVINGS_SENT_OUT_MODE, SAVINGS_CATEGORY_KEYS),
+    "tagged_debt": TagInput("debt_principal", None, ("debt_principal",)),
 }
 
 #: The facts both implementations read off the row itself. One dict, splatted
@@ -602,6 +606,8 @@ class RuleInfo:
     tag_key: str | None
     #: The savings mode the rule requires of that tag's category, or None.
     savings_mode: str | None
+    #: Every tag the rule reads (`TagInput.tag_keys`); empty for an account rule.
+    tag_keys: tuple[str, ...]
 
 
 def rule_ladder() -> list[RuleInfo]:
@@ -622,6 +628,7 @@ def rule_ladder() -> list[RuleInfo]:
                 reason=reason,
                 tag_key=tags[0].tag_key if tags else None,
                 savings_mode=tags[0].savings_mode if tags else None,
+                tag_keys=tags[0].tag_keys if tags else (),
             )
         )
     ladder.append(
@@ -630,6 +637,7 @@ def rule_ladder() -> list[RuleInfo]:
             reason=ActivityReason.DEFAULT_SPENDING,
             tag_key=None,
             savings_mode=None,
+            tag_keys=(),
         )
     )
     return ladder

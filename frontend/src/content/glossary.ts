@@ -23,7 +23,8 @@
  * these to match rather than letting the two drift.
  */
 
-import type { GuideTab } from '../stores/guideStore'
+import { AT_MEANS_BAND_PCT, MEANS_TREND_POOL_MONTHS } from '../components/reports/livingMeans'
+import type { GuideLinkTarget } from '../utils/guideLinks'
 
 /** Every glossary id, as a literal tuple.
  *
@@ -56,6 +57,7 @@ export const GLOSSARY_IDS = [
   '529',
   'taxable-account',
   'savings-rate',
+  'living-within-means',
   'compounding',
   'pending',
   'uncleared',
@@ -90,8 +92,9 @@ export interface GlossaryEntry {
   inIgab?: string
   related?: GlossaryId[]
   region?: 'us'
-  /** A Guide tab that shows this concept at work, linked beside the entry. */
-  guideTab?: GuideTab
+  /** Guide tabs (and sections) that show this concept at work, linked beside
+   *  the entry. */
+  guideLinks?: GuideLinkTarget[]
 }
 
 export const GLOSSARY: GlossaryEntry[] = [
@@ -175,6 +178,7 @@ export const GLOSSARY: GlossaryEntry[] = [
     inIgab:
       'Chosen, not guessed. Tag the envelopes that hold it Emergency fund, mark any off-budget savings account that holds it Counts toward emergency fund, and add any amount you keep elsewhere. Every surface that quotes the fund says what it counted.',
     related: ['sinking-fund', 'savings-rate'],
+    guideLinks: [{ tab: 'aside', anchor: 'emergency-fund' }],
   },
   {
     id: 'essential-expenses',
@@ -214,6 +218,7 @@ export const GLOSSARY: GlossaryEntry[] = [
     inIgab:
       'A category tagged Long-term expense, ideally with a target. It is never savings and never the emergency fund: the bill counts as spending when you pay it, and the Savings report lists it under Sinking funds.',
     related: ['emergency-fund', 'target'],
+    guideLinks: [{ tab: 'aside', anchor: 'sinking-funds' }],
   },
   {
     id: 'apr',
@@ -373,8 +378,18 @@ export const GLOSSARY: GlossaryEntry[] = [
     body: 'The single most useful summary of whether a budget is working over time. The roadmap targets 15% of pre-tax income for retirement specifically, which is a narrower measure than your overall savings rate.',
     inIgab:
       'Computed in the Savings Rate report as saved ÷ income, where saved is money moved into savings plus what kept-here Savings envelopes came to hold. On-budget only, so investment growth is never counted as money you saved. Money moved to a tracked account counts only when that account counts as savings, so buying a car is not saving and selling one is income.',
-    related: ['compounding', 'emergency-fund'],
-    guideTab: 'money',
+    related: ['compounding', 'emergency-fund', 'living-within-means'],
+    guideLinks: [{ tab: 'money' }, { tab: 'aside', anchor: 'savings-modes' }],
+  },
+  {
+    id: 'living-within-means',
+    term: 'Living within your means',
+    aliases: ['means', 'paycheck to paycheck', 'means trend', 'spending less than you earn'],
+    short: 'Spending less than comes in, month after month.',
+    body: 'The plainest test of a budget: does what you earn cover what living costs, with some left over? One month says little — a yearly bill or a three-paycheck month swings it — so the trend over a year is what shows whether you are moving away from paycheck to paycheck.',
+    inIgab: `Your Means on the Overview compares take-home income with spending plus debt payments; within ${AT_MEANS_BAND_PCT}% either way reads as at your means. The Means trend card pools the last ${MEANS_TREND_POOL_MONTHS} complete months and shows the last twelve. Money moved to savings is not an outflow.`,
+    related: ['savings-rate', 'essential-expenses'],
+    guideLinks: [{ tab: 'aside', anchor: 'means-trend' }],
   },
   {
     id: 'compounding',

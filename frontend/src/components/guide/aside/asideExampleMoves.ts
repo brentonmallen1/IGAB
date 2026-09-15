@@ -4,18 +4,17 @@
  * lesson — and every figure is answered by `POST guide/money-moves/month`.
  * Names are the shared invented vocabulary; nothing here is anybody's budget.
  */
-import type { CategoryKind, MonthMoveRequest } from '../../../api/moneyRules'
+import {
+  SAVINGS_MODE_KIND,
+  type CategoryKind,
+  type MonthMoveRequest,
+} from '../../../api/moneyRules'
 import type { SavingsMode } from '../../../types'
 import { builtinShape } from '../money/explorerMove'
 
 const checking = builtinShape('checking')
 /** Cascade Point HYSA: off budget, counting as savings. */
 const hysa = { ...builtinShape('savings', false), counts_as_savings: true }
-
-export const MODE_KIND: Record<SavingsMode, CategoryKind> = {
-  sent_out: 'savings_sent',
-  kept_here: 'savings_kept',
-}
 
 /** A move, and for each mode a short line on why it counts the way it does.
  * The line is prose; the amount it counts as is served. */
@@ -70,8 +69,8 @@ function month(kind: CategoryKind): ExampleMove[] {
 }
 
 export const GENERAL_SAVINGS_MONTH: Record<SavingsMode, ExampleMove[]> = {
-  sent_out: month(MODE_KIND.sent_out),
-  kept_here: month(MODE_KIND.kept_here),
+  sent_out: month(SAVINGS_MODE_KIND.sent_out),
+  kept_here: month(SAVINGS_MODE_KIND.kept_here),
 }
 
 /** The requests alone, as the month endpoint takes them. Built once per mode
