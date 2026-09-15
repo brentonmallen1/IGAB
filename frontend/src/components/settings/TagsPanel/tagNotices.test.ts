@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { noticeText } from './tagNotices'
+import { noticeOpensPicker, noticeText } from './tagNotices'
 
 describe('noticeText', () => {
   it('says what the emergency fund adoption tagged and marked', () => {
@@ -50,5 +50,13 @@ describe('noticeText', () => {
 
   it('falls back to the key for a notice with no copy', () => {
     expect(noticeText('something_new', {})).toBe('something_new')
+  })
+})
+
+describe('noticeOpensPicker', () => {
+  it('offers the picker from both emergency-fund notices and nothing else', () => {
+    expect(noticeOpensPicker('emergency_fund_chosen')).toBe(true)
+    expect(noticeOpensPicker('emergency_fund_not_guessed')).toBe(true)
+    expect(noticeOpensPicker('payee_tags_retired')).toBe(false)
   })
 })

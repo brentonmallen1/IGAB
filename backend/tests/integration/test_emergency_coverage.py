@@ -139,7 +139,7 @@ async def test_the_headline_is_the_essentials_reports_own_runway(db_session):
     essentials = await essentials_summary(db_session, budget.id, 4)
 
     assert report["coverage_months"] == essentials["runway_months"]
-    assert report["fund_balance"] == essentials["emergency_fund_balance"]
+    assert report["fund"].total == essentials["emergency_fund"].total
     assert report["essentials"] == essentials["essentials"]
 
 
@@ -150,7 +150,7 @@ async def test_no_fund_draws_no_line(db_session):
     _, budget, _fund_cat = await _world(db_session, in_fund=False)
 
     report = await EmergencyCoverageService(db_session).coverage(budget.id, months=4)
-    assert report["fund_balance"] is None
+    assert report["fund"].total is None
     assert report["series"] == []
 
 
@@ -225,7 +225,7 @@ async def test_a_self_reported_fund_reaches_the_newest_point(db_session, api_cli
     assert [p["external_counted"] for p in body["series"]][:-1] == [False] * (
         len(body["series"]) - 1
     )
-    assert Decimal(str(body["fund_balance"])) == Decimal("4000.00")
+    assert Decimal(str(body["fund"]["total"])) == Decimal("4000.00")
 
 
 class TestTheAverageStartsWithTheHistory:

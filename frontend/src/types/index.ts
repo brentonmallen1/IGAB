@@ -1092,9 +1092,6 @@ export interface EmergencyCoverageReport {
   tagged: boolean
   /** The emergency fund and what it counted — the Essentials report's own. */
   fund: EmergencyFund
-  /** `fund.total` and a short description of what was counted. */
-  fund_balance: number | null
-  fund_source: string | null
   /** The Essentials report's own runway, quoted rather than recomputed. */
   coverage_months: number | null
   essentials: EssentialsFigures
@@ -1129,10 +1126,8 @@ export interface EssentialsReport {
   roadmap_range: [number, number]
   /** The emergency fund and what it counted, whatever the Guide tracks. */
   emergency_fund: EmergencyFund
-  /** `emergency_fund.total`, a short description of what was counted, and how
-   *  many lean months the total covers. Null when nothing was chosen. */
-  emergency_fund_balance: number | null
-  emergency_fund_source: string | null
+  /** How many lean months `emergency_fund.total` covers. Null when nothing
+   *  was chosen, or nothing is tagged Essential. */
   runway_months: number | null
   /** Tagged Essential and still not counted, by class — see
    *  `CostOfLivingReport.class_excluded`. */

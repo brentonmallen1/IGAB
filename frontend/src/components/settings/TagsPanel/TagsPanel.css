@@ -223,6 +223,7 @@
 
 .tags-panel__notice {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   gap: var(--spacing-md);
   margin-bottom: var(--spacing-md);
@@ -233,7 +234,12 @@
   color: var(--text-primary);
 }
 
-.tags-panel__notice-dismiss {
+.tags-panel__notice > span {
+  flex: 1 1 16rem;
+}
+
+.tags-panel__notice-dismiss,
+.tags-panel__notice-action {
   flex-shrink: 0;
   padding: 2px var(--spacing-sm);
   border: 1px solid var(--edge-strong);

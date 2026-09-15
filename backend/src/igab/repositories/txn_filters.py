@@ -374,18 +374,23 @@ CASH_ACCOUNT = and_(
 #: owed, not held. And without `counts_as_savings` a transfer into the account
 #: classes as spending while the account counts as fund — the household would
 #: be told it spent the money it set aside.
-EMERGENCY_FUND_ACCOUNT_SHAPE = and_(
+_OFF_BUDGET_ASSET = and_(
     Account.on_budget == False,  # noqa: E712
     Account.classification != "liability",
+)
+EMERGENCY_FUND_ACCOUNT_SHAPE = and_(
+    _OFF_BUDGET_ASSET,
     Account.counts_as_savings == True,  # noqa: E712
 )
 
-#: An account the emergency-fund picker may offer: the valid shape, live and
-#: open.
+#: An account the emergency-fund picker may offer: a live, open off-budget
+#: asset. `counts_as_savings` is NOT required — the picker turns it on in the
+#: same save that marks the account (`services/emergency_fund_choice.py`), so
+#: an off-budget reserve nobody marked as savings yet is still choosable.
 EMERGENCY_FUND_ACCOUNT_CANDIDATE = and_(
     LIVE_ACCOUNT,
     Account.is_closed == False,  # noqa: E712
-    EMERGENCY_FUND_ACCOUNT_SHAPE,
+    _OFF_BUDGET_ASSET,
 )
 
 #: An account whose balance is part of the emergency fund. The flag alone is not
@@ -394,6 +399,7 @@ EMERGENCY_FUND_ACCOUNT_CANDIDATE = and_(
 #: counting money that is no longer set aside.
 EMERGENCY_FUND_ACCOUNT = and_(
     EMERGENCY_FUND_ACCOUNT_CANDIDATE,
+    EMERGENCY_FUND_ACCOUNT_SHAPE,
     Account.counts_toward_emergency_fund == True,  # noqa: E712
 )
 

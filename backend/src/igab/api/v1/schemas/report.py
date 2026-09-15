@@ -511,12 +511,9 @@ class EssentialsReportResponse(ApiModel):
     roadmap_range: tuple[int, int]
     #: The emergency fund and what it counted, read whatever the Guide tracks.
     emergency_fund: EmergencyFundOut
-    #: `emergency_fund.total` and a short description of what was counted, and
-    #: how many lean months the total covers (`total / essentials.monthly`).
-    #: None when nothing was chosen, or nothing is tagged Essential yet. The
-    #: first two go once every surface reads `emergency_fund`.
-    emergency_fund_balance: Decimal | None = None
-    emergency_fund_source: str | None = None
+    #: How many lean months `emergency_fund.total` covers
+    #: (`total / essentials.monthly`). None when nothing was chosen, or nothing
+    #: is tagged Essential yet.
     runway_months: Decimal | None = None
     #: Tagged Essential and still not counted, by class — see
     #: `CostOfLivingResponse.class_excluded`.
@@ -1193,10 +1190,6 @@ class EmergencyCoverageResponse(ApiModel):
     tagged: bool
     #: The emergency fund and what it counted — the Essentials report's own.
     fund: EmergencyFundOut
-    #: `fund.total` and a short description of what was counted; None when
-    #: nothing was chosen. They go once every surface reads `fund`.
-    fund_balance: Decimal | None
-    fund_source: str | None
     #: The Essentials report's own runway, quoted rather than recomputed.
     coverage_months: Decimal | None
     #: The Essentials report's own figures, quoted; the targets read `.monthly`.

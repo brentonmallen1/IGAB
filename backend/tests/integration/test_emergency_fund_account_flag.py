@@ -158,9 +158,11 @@ class TestThePredicates:
         assert resp.json()["counts_toward_emergency_fund"] is True, "the choice is kept"
         assert await _counted(db_session, budget) == set()
 
-    async def test_closed_or_not_savings_reads_false_and_is_no_candidate(
+    async def test_closed_or_not_savings_reads_false_and_only_closed_is_no_candidate(
         self, db_session, api_client
     ):
+        """A candidate need not count as savings yet: the picker turns that on
+        in the save that marks it. Closed is never offered."""
         budget = await _budget(db_session, api_client)
         closed = await create_account(
             db_session, budget, "Old Reserve", account_type="savings", on_budget=False
@@ -179,7 +181,8 @@ class TestThePredicates:
 
         assert await _counted(db_session, budget) == {"Harborstone Reserve"}
         assert await _counted(db_session, budget, EMERGENCY_FUND_ACCOUNT_CANDIDATE) == {
-            "Harborstone Reserve"
+            "Harborstone Reserve",
+            "Cascade Point HYSA",
         }
 
     async def test_a_candidate_need_not_be_marked(self, db_session):

@@ -41,6 +41,11 @@ vi.mock('../../api/reports', async (importOriginal) => {
 vi.mock('../../api/payees', () => ({ usePayees: () => ({ data: undefined }) }))
 vi.mock('../../api/budgets', () => ({ useBudgetMonth: () => ({ data: undefined }) }))
 vi.mock('../../api/accountTypes', () => ({ useAccountTypes: () => ({ data: undefined }) }))
+// The Counting line reads its own query; pickerSurfaces.test.tsx covers it.
+vi.mock('../../api/emergencyFund', () => ({
+  useEmergencyFund: () => ({ data: undefined }),
+  useSetEmergencyFund: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}))
 
 import { useReportStore } from '../../stores/reportStore'
 import { useAppStore } from '../../stores/appStore'
@@ -1666,8 +1671,6 @@ describe('EssentialsReport table footer', () => {
           accounts: [],
           external: { declared: false, amount: null, as_of: null, note: null },
         },
-        emergency_fund_balance: null,
-        emergency_fund_source: null,
         runway_months: null,
         class_excluded: [],
       },
@@ -1698,8 +1701,6 @@ describe('EssentialsReport headline', () => {
       accounts: [],
       external: { declared: false, amount: null, as_of: null, note: null },
     },
-    emergency_fund_balance: null,
-    emergency_fund_source: null,
     runway_months: null,
     class_excluded: [],
   })
@@ -1745,8 +1746,6 @@ describe('EmergencyCoverageReport', () => {
       accounts: [{ id: 'a1', name: 'Cascade Point HYSA', balance: 4000 }],
       external: { declared: false, amount: null, as_of: null, note: null },
     },
-    fund_balance: 4000,
-    fund_source: 'Cascade Point HYSA',
     coverage_months: 4,
     essentials: { as_paid: 1000, spread: 1000, spread_on: true, monthly: 1000 },
     target_low: 3000,

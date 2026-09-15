@@ -11,6 +11,7 @@ import {
   YAxis,
 } from 'recharts'
 import { useEssentialsReport } from '../../../api/reports'
+import { EmergencyFundCounting } from '../../emergencyFund/EmergencyFundCounting'
 import { otherFigureNote } from '../../../utils/essentialsFigures'
 import { SpreadSinkingFundsToggle } from '../../common/SpreadSinkingFundsToggle/SpreadSinkingFundsToggle'
 import { useFormatters } from '../../../hooks/useFormatters'
@@ -147,7 +148,7 @@ export function EssentialsReport({ budgetId }: Props) {
               })}
               <MetricCard
                 label="Saved so far"
-                value={formatMoneyOrDash(data.emergency_fund_balance)}
+                value={formatMoneyOrDash(data.emergency_fund.total)}
                 sub={
                   data.runway_months === null
                     ? 'No emergency fund chosen yet'
@@ -165,12 +166,12 @@ export function EssentialsReport({ budgetId }: Props) {
                 />
               )}
             </MetricRow>
+            <div className="essentials-report__note">
+              <EmergencyFundCounting budgetId={budgetId} />
+            </div>
             <p className="essentials-report__note">
-              {data.emergency_fund_source
-                ? `“Saved so far” counts ${data.emergency_fund_source}. `
-                : 'Tag envelopes Emergency fund, or mark an off-budget savings account, and “Saved so far” will count them. '}
-              The rest are targets, not balances; the <Link to="/guide">roadmap</Link> tracks
-              progress against them.
+              “Saved so far” is the emergency fund; the rest are targets, not balances. The{' '}
+              <Link to="/guide">roadmap</Link> tracks progress against them.
             </p>
 
             {/* Two windows on one screen, deliberately (see

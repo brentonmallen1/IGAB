@@ -83,3 +83,10 @@ export function noticeText(key: string, payload: Payload): string {
   }
   return key
 }
+
+/** The notices about the emergency fund, which offer [Choose what counts]. */
+const PICKER_NOTICES = new Set(['emergency_fund_chosen', 'emergency_fund_not_guessed'])
+
+export function noticeOpensPicker(key: string): boolean {
+  return PICKER_NOTICES.has(key)
+}

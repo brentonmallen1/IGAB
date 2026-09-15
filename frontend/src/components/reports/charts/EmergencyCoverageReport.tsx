@@ -12,6 +12,7 @@ import {
   YAxis,
 } from 'recharts'
 import { useEmergencyCoverageReport } from '../../../api/reports'
+import { EmergencyFundCounting } from '../../emergencyFund/EmergencyFundCounting'
 import { otherFigureNote } from '../../../utils/essentialsFigures'
 import { SpreadSinkingFundsToggle } from '../../common/SpreadSinkingFundsToggle/SpreadSinkingFundsToggle'
 import { useFormatters } from '../../../hooks/useFormatters'
@@ -79,6 +80,7 @@ export function EmergencyCoverageReport({ budgetId }: Props) {
   }))
   const carriedFrom = carriedFlatFrom(data.series)
   const other = otherFigureNote(data.essentials, formatMoney)
+  const fundTotal = data.fund.total
 
   return (
     <div className="coverage-report">
@@ -137,14 +139,14 @@ export function EmergencyCoverageReport({ budgetId }: Props) {
               what to tag.
             </p>
           </div>
-        ) : data.fund_balance === null ? (
+        ) : fundTotal === null ? (
           <div className="coverage-report__empty">
             <p>
               No emergency fund chosen yet. Nothing is guessed: IGAB counts the envelopes you tag{' '}
-              <strong>Emergency fund</strong>, the off-budget savings accounts you mark as counting
-              toward it, and anything you tell the <Link to="/guide">Guide</Link> you keep
-              elsewhere.
+              <strong>Emergency fund</strong>, the off-budget accounts you mark as counting toward
+              it, and anything you say you keep elsewhere.
             </p>
+            <EmergencyFundCounting budgetId={budgetId} />
           </div>
         ) : (
           <div ref={captureRef}>
@@ -160,30 +162,26 @@ export function EmergencyCoverageReport({ budgetId }: Props) {
                 accent={where === 'within' || where === 'above'}
                 warning={where === 'below'}
               />
-              <MetricCard
-                label="Fund"
-                value={formatMoney(data.fund_balance)}
-                sub={data.fund_source ?? undefined}
-              />
+              <MetricCard label="Fund" value={formatMoney(fundTotal)} />
               <MetricCard
                 label={`${low}-month target`}
                 value={formatMoney(data.target_low)}
                 sub={
-                  data.fund_balance >= data.target_low
+                  fundTotal >= data.target_low
                     ? 'Reached'
-                    : `${formatMoney(data.target_low - data.fund_balance)} to go`
+                    : `${formatMoney(data.target_low - fundTotal)} to go`
                 }
-                accent={data.fund_balance >= data.target_low}
+                accent={fundTotal >= data.target_low}
               />
               <MetricCard
                 label={`${high}-month target`}
                 value={formatMoney(data.target_high)}
                 sub={
-                  data.fund_balance >= data.target_high
+                  fundTotal >= data.target_high
                     ? 'Reached'
-                    : `${formatMoney(data.target_high - data.fund_balance)} to go`
+                    : `${formatMoney(data.target_high - fundTotal)} to go`
                 }
-                accent={data.fund_balance >= data.target_high}
+                accent={fundTotal >= data.target_high}
               />
               {toTarget !== null && (
                 <MetricCard
@@ -193,6 +191,8 @@ export function EmergencyCoverageReport({ budgetId }: Props) {
                 />
               )}
             </MetricRow>
+
+            <EmergencyFundCounting budgetId={budgetId} />
 
             <p className="coverage-report__note">
               Coverage is the fund divided by a trailing three-month average of essential spending —{' '}

@@ -22,6 +22,7 @@ describe('invalidateAfterTagChange', () => {
       [ROOT.guideSignals, 'b1'],
       [ROOT.guideCheckup, 'b1'],
       [ROOT.guideScenario],
+      [ROOT.emergencyFund, 'b1'],
       [ROOT.changes],
     ].map((k) => JSON.stringify(k))
     expect(new Set(got)).toEqual(new Set(expected))

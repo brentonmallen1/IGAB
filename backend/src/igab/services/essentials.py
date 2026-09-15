@@ -104,10 +104,6 @@ async def essentials_summary(session: AsyncSession, budget_id: uuid.UUID, months
         "reserve": reserve,
         "roadmap_range": (FULL_EMERGENCY_FUND_MONTHS_LOW, FULL_EMERGENCY_FUND_MONTHS_HIGH),
         "emergency_fund": fund,
-        # The old pair, kept beside the composition until the Counting line
-        # replaces what reads them.
-        "emergency_fund_balance": fund.total,
-        "emergency_fund_source": fund.source,
         "runway_months": runway,
     }
     if not tagged:

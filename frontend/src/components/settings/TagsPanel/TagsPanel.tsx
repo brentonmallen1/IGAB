@@ -11,8 +11,9 @@ import {
 } from '../../../api/tags'
 import { TagChip, type TagColorSlot } from '../../common/TagChip'
 import { Tooltip } from '../../common/Tooltip/Tooltip'
-import { noticeText } from './tagNotices'
+import { noticeOpensPicker, noticeText } from './tagNotices'
 import { TagMembershipDialog } from '../../tags/TagMembershipDialog'
+import { EmergencyFundPicker } from '../../emergencyFund/EmergencyFundPicker'
 import './TagsPanel.css'
 import { confirmAsync } from '../../../stores/confirmStore'
 
@@ -45,6 +46,9 @@ export function TagsPanel({ budgetId }: TagsPanelProps) {
 
   // The tag whose checklist is open.
   const [choosing, setChoosing] = useState<Tag | null>(null)
+  // The Emergency fund row and its notices open the picker instead: the fund
+  // is envelopes AND accounts AND what is kept elsewhere, chosen in one place.
+  const [pickingFund, setPickingFund] = useState(false)
 
   const [newName, setNewName] = useState('')
   const [newColor, setNewColor] = useState<TagColorSlot | null>(null)
@@ -100,6 +104,15 @@ export function TagsPanel({ budgetId }: TagsPanelProps) {
       {notices.map((n) => (
         <div key={n.key} className="tags-panel__notice" role="status">
           <span>{noticeText(n.key, n.payload)}</span>
+          {noticeOpensPicker(n.key) && (
+            <button
+              type="button"
+              className="tags-panel__notice-action"
+              onClick={() => setPickingFund(true)}
+            >
+              Choose what counts
+            </button>
+          )}
           <button
             type="button"
             className="tags-panel__notice-dismiss"
@@ -174,7 +187,11 @@ export function TagsPanel({ budgetId }: TagsPanelProps) {
                     <button
                       type="button"
                       className="tags-panel__counts tags-panel__counts--button"
-                      onClick={() => setChoosing(tag)}
+                      onClick={() =>
+                        tag.system_key === 'emergency_fund'
+                          ? setPickingFund(true)
+                          : setChoosing(tag)
+                      }
                       aria-label={`${countLabel(tag.category_count)} tagged ${tag.name} — choose`}
                     >
                       {countLabel(tag.category_count)}
@@ -226,6 +243,10 @@ export function TagsPanel({ budgetId }: TagsPanelProps) {
           tagName={choosing.name}
           onClose={() => setChoosing(null)}
         />
+      )}
+
+      {pickingFund && (
+        <EmergencyFundPicker budgetId={budgetId} onClose={() => setPickingFund(false)} />
       )}
 
       <form className="tags-panel__add-form" onSubmit={handleAdd}>

@@ -70,6 +70,7 @@ export const ROOT = {
   changes: 'changes',
   coverOverspentPreview: 'coverOverspentPreview',
   currentUser: 'currentUser',
+  emergencyFund: 'emergency-fund',
   guide: 'guide',
   guideCandidates: 'guide-candidates',
   guideCheckup: 'guide-checkup',

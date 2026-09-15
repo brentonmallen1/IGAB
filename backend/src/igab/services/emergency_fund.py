@@ -106,21 +106,6 @@ class EmergencyFund:
         declared figure to carry. A declaration with no figure draws nothing."""
         return bool(self.parts) or self.external.amount is not None
 
-    @property
-    def source(self) -> str | None:
-        """A short description of what was counted, or None when nothing was.
-
-        "Emergency Fund, Harborstone Reserve and an amount kept elsewhere".
-        """
-        names = [p.name for p in self.parts]
-        if self.external.declared:
-            names.append("an amount kept elsewhere")
-        if not names:
-            return None
-        if len(names) == 1:
-            return names[0]
-        return f"{', '.join(names[:-1])} and {names[-1]}"
-
 
 def _parts_total(parts: Sequence[FundPart]) -> Decimal | None:
     if not parts:
@@ -137,7 +122,7 @@ def _service(session: AsyncSession, budget_service: BudgetService | None) -> Bud
     return budget_service_from(session)
 
 
-async def _chosen(
+async def chosen(
     session: AsyncSession, budget_id: uuid.UUID
 ) -> tuple[list[tuple[uuid.UUID, str]], list[tuple[uuid.UUID, str]]]:
     """(envelopes, accounts) the household chose, by name."""
@@ -179,7 +164,7 @@ async def emergency_fund(
     """The emergency fund today: what was chosen, what each part holds, and
     the total every surface quotes."""
     today = today or date.today()
-    categories, accounts = await _chosen(session, budget_id)
+    categories, accounts = await chosen(session, budget_id)
     external = await _external(session, budget_id)
 
     category_parts: tuple[FundPart, ...] = ()

@@ -26,6 +26,7 @@ export function invalidateAfterTagChange(qc: QueryClient, budgetId: string | nul
     [ROOT.guideSignals, budgetId],
     [ROOT.guideCheckup, budgetId],
     [ROOT.guideScenario],
+    [ROOT.emergencyFund, budgetId],
     [ROOT.changes],
   ]
   return Promise.all(roots.map((queryKey) => qc.invalidateQueries({ queryKey }))).then(

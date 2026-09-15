@@ -290,7 +290,7 @@ class TestExternal:
         report = (await api_client.get(f"/api/v1/{budget.id}/reports/essentials")).json()
 
         assert roadmap == Decimal("10240.00")
-        assert Decimal(report["emergency_fund_balance"]) == roadmap
+        assert Decimal(str(report["emergency_fund"]["total"])) == roadmap
 
     async def test_a_declared_amount_alone_reaches_the_report(self, db_session, api_client):
         """Nothing in the budget to detect, and a figure the person gave us.
@@ -303,7 +303,7 @@ class TestExternal:
 
         report = (await api_client.get(f"/api/v1/{budget.id}/reports/essentials")).json()
 
-        assert Decimal(report["emergency_fund_balance"]) == Decimal("4500")
+        assert Decimal(str(report["emergency_fund"]["total"])) == Decimal("4500")
 
     async def test_external_without_a_figure_still_counts_as_handled(self, db_session, api_client):
         budget = await _budget(db_session, api_client)

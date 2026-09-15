@@ -181,8 +181,6 @@ class EmergencyCoverageService:
             "months": months,
             "tagged": summary["tagged"],
             "fund": fund,
-            "fund_balance": fund.total,
-            "fund_source": fund.source,
             # The Essentials report's own runway, quoted rather than recomputed:
             # one figure, so the two reports cannot disagree about coverage.
             "coverage_months": summary["runway_months"],

@@ -82,6 +82,7 @@ class GuideService:
         target_service: TargetService | None = None,
         report_service: ReportService | None = None,
         liability_service: LiabilityService | None = None,
+        changes: ChangeRecorder | None = None,
     ) -> None:
         self.session = session
         self.repo = GuideRepository(session)
@@ -97,7 +98,9 @@ class GuideService:
         # (change_log.py) — each is a user decision, so each undoes. The
         # checkup's last-run stamp does NOT: it is the timestamp of the run
         # itself, and undoing it would falsify history.
-        self.changes = ChangeRecorder(session)
+        # A caller composing a Guide write into its own batch (the emergency
+        # fund picker) hands in its recorder, so the rows undo as one step.
+        self.changes = changes or ChangeRecorder(session)
 
     # ── preferences ──────────────────────────────────────────────────────────
 
@@ -627,6 +630,52 @@ class GuideService:
                     }
                 )
 
+        await self._replace_concept_recorded(budget_id, concept_key, rows)
+
+    async def replace_external(
+        self,
+        budget_id: uuid.UUID,
+        concept_key: str,
+        *,
+        declared: bool,
+        amount: Decimal | None,
+        note: str | None,
+        chosen_elsewhere: bool,
+    ) -> None:
+        """Set only what a concept keeps outside IGAB — the emergency fund
+        picker's "Kept elsewhere" — through the one recorded writer.
+
+        `declared` False removes the external rows. A dismissal survives only
+        when nothing is chosen at all (`chosen_elsewhere` says whether the
+        caller's own save chose envelopes or accounts): choosing what counts is
+        asking the Guide to track it again, and a dismissal beside a choice
+        would hide the kept-elsewhere part (`bindings.resolve` lets a dismissal
+        win). Manual rows are not kept — a concept written here binds nothing.
+
+        An unchanged declaration keeps its `as_of`, so saving the picker without
+        touching the amount does not re-date the figure or record a change.
+        """
+        existing = [b for b in await self.repo.bindings(budget_id) if b.concept_key == concept_key]
+        rows: list[dict[str, Any]] = []
+        if declared:
+            prior = [b for b in existing if b.mode == "external"]
+            unchanged = (
+                len(prior) == 1
+                and prior[0].amount == amount
+                and (prior[0].note or None) == (note or None)
+            )
+            rows.append(
+                {
+                    "mode": "external",
+                    "amount": amount,
+                    "as_of": prior[0].as_of if unchanged else date.today(),
+                    "note": note,
+                }
+            )
+        elif not chosen_elsewhere:
+            rows.extend(
+                {"mode": "dismissed", "note": b.note} for b in existing if b.mode == "dismissed"
+            )
         await self._replace_concept_recorded(budget_id, concept_key, rows)
 
     async def _replace_concept_recorded(

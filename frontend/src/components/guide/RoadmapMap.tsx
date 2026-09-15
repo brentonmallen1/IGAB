@@ -11,7 +11,7 @@ import { useCheckupLeds } from './useCheckupLeds'
 import { useRoadmapPosition } from './useRoadmapPosition'
 import { MarkGlyph } from './PositionStrip'
 import { StepLed } from './StepLed'
-import { SignalBindingSheet } from './SignalBindingSheet'
+import { SignalEditor } from './SignalEditor'
 import type { SignalKey } from '../../content/roadmap'
 
 const MIN_SCALE = 0.35
@@ -303,7 +303,7 @@ export function RoadmapMap() {
       {/* Reading a box uses the same component the other views render, so a
           node's content is defined in exactly one place. */}
       {correctingConcept && (
-        <SignalBindingSheet
+        <SignalEditor
           budgetId={guide.budgetId!}
           concept={correctingConcept}
           signal={guide.signals.get(correctingConcept.key)}

@@ -113,7 +113,6 @@ async def test_emergency_fund_is_tagged_plus_flagged_plus_external(db_session, a
     assert (fund.external.declared, fund.external.amount) == (True, D("1000"))
     assert fund.total == D("9400.00")
     assert fund.set_up is True
-    assert fund.source == "Emergency Fund, Cascade Point HYSA and an amount kept elsewhere"
 
 
 async def test_nothing_is_guessed_from_names_or_account_types(db_session, api_client):
@@ -295,13 +294,14 @@ async def test_every_surface_quotes_one_total(db_session, api_client):
         await api_client.get(f"/api/v1/{budget.id}/reports/emergency-fund", params={"months": 3})
     ).json()
 
+    picker = (await api_client.get(f"/api/v1/{budget.id}/emergency-fund")).json()
+
     totals = {
+        "picker": money(picker["fund"]["total"]),
         "signal value": money(signal["value"]),
         "signal fund": money(signal["fund"]["total"]),
         "essentials": money(essentials["emergency_fund"]["total"]),
-        "essentials balance": money(essentials["emergency_fund_balance"]),
         "coverage fund": money(coverage["fund"]["total"]),
-        "coverage balance": money(coverage["fund_balance"]),
         "newest point": money(coverage["series"][-1]["fund_balance"]),
     }
     assert set(totals.values()) == {D("9400.00")}, totals

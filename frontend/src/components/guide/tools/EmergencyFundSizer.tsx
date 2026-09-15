@@ -7,6 +7,7 @@ import { useDebouncedValue } from '../../../hooks/useDebouncedValue'
 import { parseAmountInput } from '../../../utils/money'
 import { otherFigureNote } from '../../../utils/essentialsFigures'
 import { SpreadSinkingFundsToggle } from '../../common/SpreadSinkingFundsToggle/SpreadSinkingFundsToggle'
+import { EmergencyFundCounting } from '../../emergencyFund/EmergencyFundCounting'
 
 /**
  * Months of essential spending, from the roadmap's own figures.
@@ -105,10 +106,11 @@ export function EmergencyFundSizer() {
               {data.target !== null ? formatMoney(Number(data.target)) : '—'}
             </dd>
             <dt>Emergency fund today</dt>
-            <dd className="tabular">
-              {data.current !== null
-                ? formatMoney(Number(data.current))
-                : 'nothing found — correct it on the roadmap'}
+            <dd>
+              {data.current !== null && (
+                <span className="tabular">{formatMoney(Number(data.current))}</span>
+              )}
+              {budgetId && <EmergencyFundCounting budgetId={budgetId} />}
             </dd>
             <dt>Still to save</dt>
             <dd className="tabular">{data.gap !== null ? formatMoney(Number(data.gap)) : '—'}</dd>

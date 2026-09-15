@@ -150,7 +150,7 @@ async def test_the_emergency_fund_report_draws_a_real_line(db_session):
         budget, _ = await _world(db_session, tier)
         report = await EmergencyCoverageService(db_session).coverage(budget.id, months=12)
 
-        assert report["fund_balance"] is not None, tier
+        assert report["fund"].total is not None, tier
         assert report["coverage_months"] is not None, tier
         assert len(report["series"]) == 12, tier
         assert all(p["coverage_months"] is not None for p in report["series"]), tier
@@ -169,7 +169,7 @@ async def test_the_fund_is_short_of_the_band_so_the_report_has_a_gap_to_show(db_
 
     low, _high = report["target_range"]
     assert report["coverage_months"] < low
-    assert report["fund_balance"] < report["target_low"]
+    assert report["fund"].total < report["target_low"]
 
 
 async def test_the_budget_bar_and_the_reports_scope_have_saved_filters(db_session):

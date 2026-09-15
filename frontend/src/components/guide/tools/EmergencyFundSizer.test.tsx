@@ -14,6 +14,11 @@ vi.mock('../../../api/reports', () => ({
   useSetReportSettings: () => ({ mutate: vi.fn(), isPending: false }),
 }))
 
+vi.mock('../../../api/emergencyFund', () => ({
+  useEmergencyFund: () => ({ data: undefined }),
+  useSetEmergencyFund: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}))
+
 import { useAppStore } from '../../../stores/appStore'
 import { EmergencyFundSizer } from './EmergencyFundSizer'
 

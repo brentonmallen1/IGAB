@@ -263,8 +263,7 @@ class TestEssentialsRunway:
         # 250 of essential spend in the last 90 days ÷ 3 = 83.33 a month.
         headline = Decimal(str(body["essentials"]["monthly"]))
         assert headline == Decimal("83.33")
-        assert Decimal(str(body["emergency_fund_balance"])) == Decimal("500.00")
-        assert body["emergency_fund_source"] == "Emergency Fund"
+        assert [c["name"] for c in body["emergency_fund"]["categories"]] == ["Emergency Fund"]
         assert body["emergency_fund"]["set_up"] is True
         assert Decimal(str(body["emergency_fund"]["total"])) == Decimal("500.00")
         assert Decimal(str(body["runway_months"])) == (Decimal("500") / headline).quantize(
@@ -275,7 +274,7 @@ class TestEssentialsRunway:
         budget, *_ = await _setup(db_session, api_client)
         r = await api_client.get(f"/api/v1/{budget.id}/reports/essentials")
         body = r.json()
-        assert body["emergency_fund_balance"] is None
+        assert body["runway_months"] is None
         assert body["emergency_fund"] == {
             "set_up": False,
             "total": None,
