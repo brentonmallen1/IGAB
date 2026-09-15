@@ -77,10 +77,9 @@ describe('EmergencyFundPicker', () => {
   it('sends one payload: envelope diff, modes, the full account set and the external part', async () => {
     const onClose = show()
     fireEvent.click(screen.getByRole('checkbox', { name: /Groceries/ }))
-    fireEvent.change(
-      screen.getByRole('combobox', { name: 'Groceries counts as saved when money is' }),
-      { target: { value: 'sent_out' } }
-    )
+    fireEvent.change(screen.getByRole('combobox', { name: 'Groceries counts as saved' }), {
+      target: { value: 'sent_out' },
+    })
     fireEvent.click(screen.getByRole('checkbox', { name: /Cascade Point HYSA/ }))
     fireEvent.change(amount(), { target: { value: '1,250.50' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))

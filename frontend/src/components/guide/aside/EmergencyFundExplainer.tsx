@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { sectionHref } from '../../../pages/SettingsPage/settingsSections'
 import { guideToolHref } from '../../../utils/guideLinks'
-import { savingsModeShort } from '../../../utils/savingsModes'
+import { savingsModeLabel } from '../../../utils/savingsModes'
 import { EmergencyFundCountingView } from '../../emergencyFund/EmergencyFundCounting'
 import { systemTagName } from '../../settings/TagsPanel/systemTagHelp'
 import { EXAMPLE_FUND } from './exampleFund'
@@ -83,9 +83,9 @@ export function EmergencyFundExplainer() {
       </div>
 
       <p className="guide-article__lede">
-        {FUND_TAG} envelopes have the same {savingsModeShort('sent_out')} /{' '}
-        {savingsModeShort('kept_here')} setting as {systemTagName('savings')}, and start as{' '}
-        {savingsModeShort('kept_here')}. The setting changes your savings rate, never the emergency
+        {FUND_TAG} envelopes have the same choice as {systemTagName('savings')} — counts as saved{' '}
+        {savingsModeLabel('kept_here')}, or {savingsModeLabel('sent_out')} — and start counting{' '}
+        {savingsModeLabel('kept_here')}. The choice changes your savings rate, never the emergency
         fund total, which always reads the envelope’s balance.
       </p>
     </div>

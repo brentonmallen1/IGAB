@@ -29,10 +29,13 @@ import './MoneyExplorer.css'
 const CATEGORY_OPTIONS: { value: CategoryKind; label: string }[] = [
   { value: 'none', label: 'No category' },
   { value: 'ordinary', label: 'An ordinary category' },
-  { value: 'savings_sent', label: `A ${systemTagName('savings')} category — counts when sent out` },
   {
     value: 'savings_kept',
-    label: `A ${systemTagName('savings')} category — counts while kept here`,
+    label: `A ${systemTagName('savings')} category — counts while it’s in the budget`,
+  },
+  {
+    value: 'savings_sent',
+    label: `A ${systemTagName('savings')} category — counts when it leaves the budget`,
   },
   { value: 'debt_principal', label: `A category tagged ${systemTagName('debt_principal')}` },
   { value: 'income', label: 'Your income group (Ready to Assign)' },
@@ -130,7 +133,7 @@ export function MoneyExplorer({ state, onChange, families }: Props) {
             {!categoryBlocked && SAVINGS_KINDS.includes(state.category) && (
               <span className="tool__hint">
                 <GuideTabLink tab="aside" anchor="savings-modes">
-                  Sent out or kept here?
+                  In the budget or leaving it?
                 </GuideTabLink>
               </span>
             )}
@@ -286,7 +289,7 @@ function Answer({
             <dd>
               {held}. Saved is what moved to savings plus what the envelope holds.{' '}
               <GuideTabLink tab="aside" anchor="savings-modes">
-                How kept here counts
+                How in-the-budget savings count
               </GuideTabLink>
             </dd>
           </div>

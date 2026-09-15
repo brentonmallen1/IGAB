@@ -104,7 +104,7 @@ class ActivityReason(StrEnum):
 #: Human-readable copy for each reason, shown wherever a row's class is
 #: explained. Kept next to the rules so the two cannot drift apart.
 REASON_TEXT: dict[ActivityReason, str] = {
-    ActivityReason.TAGGED_SAVINGS: "its category counts as savings when money is sent out of it",
+    ActivityReason.TAGGED_SAVINGS: "its category counts money as saved when it leaves the budget",
     ActivityReason.TAGGED_DEBT: "its category is tagged as debt principal",
     ActivityReason.TRANSFER_TO_TRACKED_ASSET: (
         "it moves money to a tracked account you marked as savings, so it builds savings "
@@ -130,7 +130,7 @@ REASON_TEXT: dict[ActivityReason, str] = {
 #: label; these read as one. Kept beside them, and
 #: `test_savings_contributors.py` holds both to every member of the enum.
 REASON_LABEL: dict[ActivityReason, str] = {
-    ActivityReason.TAGGED_SAVINGS: "sent from a Savings category",
+    ActivityReason.TAGGED_SAVINGS: "left the budget from a Savings category",
     ActivityReason.TAGGED_DEBT: "category tagged Debt principal",
     ActivityReason.TRANSFER_TO_TRACKED_ASSET: "transfer to a tracked account",
     ActivityReason.TRANSFER_TO_TRACKED_DEBT: "payment to a tracked debt",

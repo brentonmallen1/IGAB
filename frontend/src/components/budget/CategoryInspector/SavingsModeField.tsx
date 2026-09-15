@@ -14,7 +14,8 @@ interface Props {
 }
 
 /**
- * How a savings category's money counts as saved: sent out, or kept here.
+ * How a savings category's money counts as saved: while it's in the budget, or
+ * when it leaves the budget.
  *
  * Renders only for a category the server calls a savings category
  * (`savings_role`). Which option is checked is the served role, never a
@@ -39,7 +40,7 @@ export function SavingsModeField({ category, budgetId, tagKeys }: Props) {
 
   return (
     <fieldset className="savings-mode" disabled={update.isPending}>
-      <legend className="savings-mode__legend">Counts as saved when money is:</legend>
+      <legend className="savings-mode__legend">Counts as saved:</legend>
       {SAVINGS_MODE_OPTIONS.map((choice) => {
         const id = `${name}-${choice.mode}`
         return (

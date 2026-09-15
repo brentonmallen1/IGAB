@@ -2,7 +2,7 @@ import type { MoneyRule } from '../../../api/moneyRules'
 import { SYSTEM_TAG_HELP } from '../../settings/TagsPanel/systemTagHelp'
 import { GuideTabLink } from '../GuideTabLink'
 import { ClassChip } from './ClassChip'
-import { MODE_PHRASE } from './moveAnswer'
+import { savingsModeLabel } from '../../../utils/savingsModes'
 import './TagImpact.css'
 
 /** What each system tag does. The words are the Tags panel's own; whether a
@@ -31,7 +31,9 @@ export function TagImpact({ rules }: { rules: MoneyRule[] }) {
                     <span className="tag-impact__class">
                       <ClassChip cls={rule.cls} label={rule.class_label} />
                       {rule.savings_mode && (
-                        <span className="tag-impact__mode">{MODE_PHRASE[rule.savings_mode]}</span>
+                        <span className="tag-impact__mode">
+                          {savingsModeLabel(rule.savings_mode)}
+                        </span>
                       )}
                     </span>
                   ) : (

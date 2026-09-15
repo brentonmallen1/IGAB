@@ -105,8 +105,9 @@ export function IncomeExpenseReport({ budgetId }: Props) {
           </p>
           <p>
             <strong>Saved</strong> is money that stayed yours — moved into savings or investments,
-            held in a kept-here Savings envelope, or used to pay down a tracked debt. It sits beside
-            expenses rather than inside them, because it isn't money spent. {SAVED_DEFINITION}
+            held in a Savings envelope that counts while it’s in the budget, or used to pay down a
+            tracked debt. It sits beside expenses rather than inside them, because it isn't money
+            spent. {SAVED_DEFINITION}
           </p>
           <p>
             The <strong>net</strong> line counts only money that left your accounts: money held in

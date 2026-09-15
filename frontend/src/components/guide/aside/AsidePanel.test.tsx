@@ -105,7 +105,9 @@ describe('Setting money aside', () => {
   it('asks for the sent-out month first and shows its served rows and total', () => {
     renderPanel()
     expect(vi.mocked(useMoneyMonth)).toHaveBeenCalledWith('b1', GENERAL_SAVINGS_REQUESTS.sent_out)
-    const table = screen.getByRole('table', { name: /General Savings, sent out/ })
+    const table = screen.getByRole('table', {
+      name: /General Savings, counted as saved when it leaves the budget/,
+    })
     const repair = within(table)
       .getByRole('rowheader', { name: /Car repair/ })
       .closest('tr')!
@@ -114,14 +116,16 @@ describe('Setting money aside', () => {
     expect(screen.getByText('Either way, $79.00 is still in the envelope.')).toBeInTheDocument()
   })
 
-  it('switches to kept here and shows that served month', async () => {
+  it('switches to in the budget and shows that served month', async () => {
     renderPanel()
-    await userEvent.click(screen.getByRole('radio', { name: 'Kept here' }))
+    await userEvent.click(screen.getByRole('radio', { name: 'In budget' }))
     expect(vi.mocked(useMoneyMonth)).toHaveBeenLastCalledWith(
       'b1',
       GENERAL_SAVINGS_REQUESTS.kept_here
     )
-    const table = screen.getByRole('table', { name: /General Savings, kept here/ })
+    const table = screen.getByRole('table', {
+      name: /General Savings, counted as saved while it’s in the budget/,
+    })
     const assign = within(table)
       .getByRole('rowheader', { name: /Assigned/ })
       .closest('tr')!
@@ -202,7 +206,11 @@ describe('Setting money aside', () => {
 
   it('lists its catch-outs with no try action', () => {
     renderPanel()
-    expect(screen.getByText(/A sent out envelope counts a repair as saved/)).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        /An envelope that counts as saved when it leaves the budget counts a repair as saved/
+      )
+    ).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Try it/ })).not.toBeInTheDocument()
   })
 })

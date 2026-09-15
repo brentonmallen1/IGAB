@@ -47,7 +47,7 @@ function month(kind: CategoryKind): ExampleMove[] {
         amount: 120,
       },
       why: {
-        sent_out: 'Money leaving a sent-out envelope counts as saved, wherever it goes.',
+        sent_out: 'It left the budget from this envelope, so it counts as saved, wherever it went.',
         kept_here: 'Spending from it is spending, and lowers what it holds.',
       },
     },
@@ -61,7 +61,7 @@ function month(kind: CategoryKind): ExampleMove[] {
         amount: 300,
       },
       why: {
-        sent_out: 'Sent out to a savings account.',
+        sent_out: 'It left the budget for an off-budget savings account.',
         kept_here: 'Saved already: it moved from one kind of savings to another.',
       },
     },

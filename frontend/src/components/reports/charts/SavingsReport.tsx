@@ -59,15 +59,15 @@ export function SavingsReport({ budgetId }: Props) {
         <ReportInfoButton title="Savings">
           <p>The report has three parts, each with its own total. They are never added together.</p>
           <p>
-            <strong>Saved</strong> is Savings and Emergency fund envelopes set to{' '}
-            <strong>kept here</strong>, plus off-budget accounts marked{' '}
+            <strong>Saved</strong> is Savings and Emergency fund envelopes that count{' '}
+            <strong>while it’s in the budget</strong>, plus off-budget accounts marked{' '}
             <strong>Counts as savings</strong>. Moving money from such an envelope to such an
             account leaves Saved unchanged.
           </p>
           <p>
-            <strong>On the way to savings</strong> is what Savings envelopes set to{' '}
-            <strong>sent out</strong> still hold. That money counts as saved when it leaves the
-            envelope, so it is shown here and not added to Saved.
+            <strong>On the way to savings</strong> is what Savings envelopes that count{' '}
+            <strong>when it leaves the budget</strong> still hold. That money counts as saved when
+            it leaves the budget, so it is shown here and not added to Saved.
           </p>
           <p>
             <strong>Sinking funds</strong> are envelopes tagged <strong>Long-term expense</strong>:

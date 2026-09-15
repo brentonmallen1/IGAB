@@ -36,9 +36,9 @@ export const BUILTIN_ACCOUNT_TYPES: AccountTypeOption[] = [
       'Money set aside but still yours to plan with. On budget so it can back ' +
       'envelopes like an emergency fund. Because it is on budget, moving money here ' +
       'is not counted as saving — the money never left your budget, and your ' +
-      'envelopes say what it is for: keep savings in Savings envelopes set to kept ' +
-      'here. To count the account itself, take it off budget and turn on Counts as ' +
-      'savings.',
+      'envelopes say what it is for: keep savings in Savings envelopes that count ' +
+      'while money is in the budget. To count the account itself, take it off ' +
+      'budget and turn on Counts as savings.',
   },
   {
     key: 'cash',

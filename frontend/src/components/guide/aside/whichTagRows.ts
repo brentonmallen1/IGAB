@@ -33,7 +33,7 @@ export const WHICH_TAG_ROWS: WhichTagRow[] = [
     purpose: 'Money moved each month to a savings account you track, like Cascade Point HYSA',
     tags: ['savings'],
     mode: 'either',
-    note: 'Kept here counts it when you assign it; sent out counts it when you move it.',
+    note: 'While it’s in the budget counts it when you assign it; when it leaves the budget counts it when you move it off budget.',
   },
   {
     id: 'cushion',

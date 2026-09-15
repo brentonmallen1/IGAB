@@ -1,14 +1,14 @@
 import type { MoneyRule } from '../../../api/moneyRules'
 import { systemTagName } from '../../settings/TagsPanel/systemTagHelp'
+import { savingsModeLabel } from '../../../utils/savingsModes'
 import { ClassChip } from './ClassChip'
-import { MODE_PHRASE } from './moveAnswer'
 import './RuleLadder.css'
 
-/** "tag: Savings · when sent out" — the mode is served with the rule. */
+/** "tag: Savings · when it leaves the budget" — the mode is served with the rule. */
 const tagChip = (rule: Pick<MoneyRule, 'tag_key' | 'savings_mode'>) =>
   rule.tag_key === null
     ? ''
-    : `tag: ${systemTagName(rule.tag_key)}${rule.savings_mode ? ` · ${MODE_PHRASE[rule.savings_mode]}` : ''}`
+    : `tag: ${systemTagName(rule.tag_key)}${rule.savings_mode ? ` · ${savingsModeLabel(rule.savings_mode)}` : ''}`
 
 const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1)
 

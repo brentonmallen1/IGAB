@@ -45,9 +45,7 @@ describe('TagsSection', () => {
         budgetId="b1"
       />
     )
-    expect(
-      screen.getByRole('group', { name: 'Counts as saved when money is:' })
-    ).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'Counts as saved:' })).toBeInTheDocument()
     expect(screen.getByText(/it counts as savings, not as a sinking fund/)).toBeInTheDocument()
   })
 

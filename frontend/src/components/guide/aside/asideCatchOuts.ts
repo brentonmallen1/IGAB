@@ -2,21 +2,21 @@
  * What catches people out about setting money aside. Prose only: the claims
  * are the ones the examples above this list show with served figures.
  */
-import { savingsModeShort } from '../../../utils/savingsModes'
+import { savingsModeLabel } from '../../../utils/savingsModes'
 import type { CatchOutItem } from '../CatchOuts'
 import { systemTagName } from '../../settings/TagsPanel/systemTagHelp'
 
 const SAVINGS = systemTagName('savings')
 const SINKING = systemTagName('long_term_expense')
 const FUND = systemTagName('emergency_fund')
-const SENT = savingsModeShort('sent_out')
-const KEPT = savingsModeShort('kept_here')
+const SENT = savingsModeLabel('sent_out')
+const KEPT = savingsModeLabel('kept_here')
 
 export const ASIDE_CATCH_OUTS: CatchOutItem[] = [
   {
     id: 'sent-out-repair',
-    title: `A ${SENT} envelope counts a repair as saved`,
-    detail: `Money leaving a ${SAVINGS} envelope set to ${SENT} counts as saved, wherever it goes. For a fund you spend from, set it to ${KEPT}: spending from it is then spending.`,
+    title: `An envelope that counts as saved ${SENT} counts a repair as saved`,
+    detail: `A ${SAVINGS} envelope that counts as saved ${SENT} counts a repair paid from it, since that money left the budget. For a fund you spend from, set it to count as saved ${KEPT}: spending from it is then spending.`,
   },
   {
     id: 'savings-and-sinking',

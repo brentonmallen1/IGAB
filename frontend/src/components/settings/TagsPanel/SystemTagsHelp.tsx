@@ -10,7 +10,7 @@ export function SystemTagsHelp() {
         Every budget gets these tags. Their colour is yours to change; their names are not, and they
         cannot be deleted — unlike your own tags they change what the reports read, and the name is
         how you know which is which. Only some change how a transaction <strong>counts</strong>: a
-        Savings category set to sent out, and Debt principal.
+        Savings category that counts when money leaves the budget, and Debt principal.
       </p>
 
       <InfoSection title="Each one">

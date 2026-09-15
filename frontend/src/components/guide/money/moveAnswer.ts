@@ -2,12 +2,7 @@
  * How a served explanation reads. Composition of served facts only — every
  * number and class here arrived in the response.
  */
-import type {
-  MoneyFigures,
-  MoneyRule,
-  MoveExplanation,
-  ReportFamily,
-} from '../../../api/moneyRules'
+import type { MoneyFigures, MoveExplanation, ReportFamily } from '../../../api/moneyRules'
 
 export interface FigureLine {
   key: keyof MoneyFigures
@@ -30,7 +25,7 @@ export function figureLines(figures: MoneyFigures): FigureLine[] {
   )
 }
 
-/** "Held in the envelope: −$120.00" — what a kept-here Savings envelope comes
+/** "Held in the envelope: −$120.00" — what a Savings envelope that counts while money is in the budget comes
  * to hold (served `held`), or null when the move holds nothing. */
 export function heldLine(e: MoveExplanation, formatMoney: (n: number) => string): string | null {
   if (e.held === 0) return null
@@ -67,10 +62,4 @@ export function netWorthLine(e: MoveExplanation, formatMoney: (n: number) => str
  * read differently at a glance. */
 export function signedMoney(value: number, formatMoney: (n: number) => string): string {
   return value > 0 ? `+${formatMoney(value)}` : `−${formatMoney(Math.abs(value))}`
-}
-
-/** "when sent out" — how a served savings mode reads beside a rule. */
-export const MODE_PHRASE: Record<NonNullable<MoneyRule['savings_mode']>, string> = {
-  sent_out: 'when sent out',
-  kept_here: 'while kept here',
 }

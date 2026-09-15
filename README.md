@@ -101,8 +101,8 @@ export a report as CSV, JSON, or PNG.
 - Auto-assign and quick-budget helpers for funding categories
 - Custom saved budget views (filter and arrange the grid the way you think)
 - Tags on categories — mark what is *Essential* and the cost-of-living and
-  emergency-fund reports read it; *Savings* counts an envelope as saved when money
-  is sent out of it or while it is kept there; *Emergency fund* is the fund you
+  emergency-fund reports read it; *Savings* counts an envelope as saved while it's
+  in the budget or when it leaves the budget; *Emergency fund* is the fund you
   choose, never a guess; *Long-term expense* marks a sinking fund, never savings
 - Per-budget currency, date, and time formats
 

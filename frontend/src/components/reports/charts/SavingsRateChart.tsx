@@ -71,11 +71,11 @@ export function SavingsRateReport({ budgetId }: Props) {
         <ReportInfoButton title="Savings Rate">
           <p>How much of what came in you kept, month by month.</p>
           <p>
-            <strong>Savings rate</strong> = saved ÷ income. {SAVED_DEFINITION} Assigning to a
-            kept-here envelope counts as saved, spending from it lowers saved, and moving its money
-            on to a savings account nets to zero. With <em>“include debt payments”</em> on, money
-            used to pay down a tracked debt counts too — both build what you own rather than
-            consuming it.
+            <strong>Savings rate</strong> = saved ÷ income. {SAVED_DEFINITION} Assigning to an
+            envelope that counts while it’s in the budget counts as saved, spending from it lowers
+            saved, and moving its money on to a savings account nets to zero. With{' '}
+            <em>“include debt payments”</em> on, money used to pay down a tracked debt counts too —
+            both build what you own rather than consuming it.
           </p>
           <p>
             Growth <em>inside</em> a tracked account — dividends, market movement — is deliberately{' '}
@@ -169,7 +169,7 @@ export function SavingsRateReport({ budgetId }: Props) {
         {!hasAnything ? (
           <div className="reports-empty">
             No income or savings recorded yet. Once money comes in and some of it is saved — moved
-            to a savings or investment account, or kept in a Savings envelope — the rate appears
+            to a savings or investment account, or held in a Savings envelope — the rate appears
             here.
           </div>
         ) : (

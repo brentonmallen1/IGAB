@@ -377,7 +377,7 @@ export const GLOSSARY: GlossaryEntry[] = [
     short: 'The share of your income that you save rather than spend.',
     body: 'The single most useful summary of whether a budget is working over time. The roadmap targets 15% of pre-tax income for retirement specifically, which is a narrower measure than your overall savings rate.',
     inIgab:
-      'Computed in the Savings Rate report as saved ÷ income, where saved is money moved into savings plus what kept-here Savings envelopes came to hold. On-budget only, so investment growth is never counted as money you saved. Money moved to a tracked account counts only when that account counts as savings, so buying a car is not saving and selling one is income.',
+      'Computed in the Savings Rate report as saved ÷ income, where saved is money moved into savings plus what Savings envelopes that count while money is in the budget came to hold. In the budget means money held in your on-budget accounts; leaving the budget means moving it to an off-budget account or paying it somewhere IGAB doesn’t track. On-budget only, so investment growth is never counted as money you saved. Money moved to a tracked account counts only when that account counts as savings, so buying a car is not saving and selling one is income.',
     related: ['compounding', 'emergency-fund', 'living-within-means'],
     guideLinks: [{ tab: 'money' }, { tab: 'aside', anchor: 'savings-modes' }],
   },

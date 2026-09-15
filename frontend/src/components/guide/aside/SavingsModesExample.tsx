@@ -3,7 +3,7 @@ import { useMoneyMonth } from '../../../api/moneyRules'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { useAppStore } from '../../../stores/appStore'
 import type { SavingsMode } from '../../../types'
-import { SAVINGS_MODE_OPTIONS } from '../../../utils/savingsModes'
+import { SAVINGS_MODE_OPTIONS, savingsModeLabel } from '../../../utils/savingsModes'
 import { signedMoney } from '../money/moveAnswer'
 import { GENERAL_SAVINGS_MONTH, GENERAL_SAVINGS_REQUESTS } from './asideExampleMoves'
 import { envelopeLeft } from './savingsMonth'
@@ -16,7 +16,7 @@ function savedText(value: number, formatMoney: (n: number) => string) {
   return value === 0 ? formatMoney(0) : signedMoney(value, formatMoney)
 }
 
-/** One month in General Savings, sent out or kept here — rows and total served. */
+/** One month in General Savings, counted either way — rows and total served. */
 export function SavingsModesExample() {
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const [mode, setMode] = useState<SavingsMode>('sent_out')
@@ -27,7 +27,7 @@ export function SavingsModesExample() {
   return (
     <div className="savings-modes-example surface surface--raised">
       <fieldset className="savings-modes-example__switch">
-        <legend className="savings-modes-example__legend">Counts as saved when money is</legend>
+        <legend className="savings-modes-example__legend">Counts as saved</legend>
         {SAVINGS_MODE_OPTIONS.map((option) => (
           <label
             key={option.mode}
@@ -58,7 +58,7 @@ export function SavingsModesExample() {
           <div className="savings-modes-example__scroll">
             <table
               className="savings-modes-example__table"
-              aria-label={`One month in General Savings, ${SAVINGS_MODE_OPTIONS.find((o) => o.mode === mode)?.short}`}
+              aria-label={`One month in General Savings, counted as saved ${savingsModeLabel(mode)}`}
             >
               <thead>
                 <tr>

@@ -1,5 +1,5 @@
 /**
- * "Counts as saved when money is: sent out / kept here" — on savings
+ * "Counts as saved: while it’s in the budget / when it leaves the budget" — on savings
  * categories only, checked from the served role, saved through the category
  * update so the change log can undo it.
  */
@@ -37,8 +37,8 @@ function show(over: Partial<Category> = {}, tagKeys: string[] = ['savings']) {
   )
 }
 
-const sentOut = () => screen.getByRole('radio', { name: /sent out of this envelope/ })
-const keptHere = () => screen.getByRole('radio', { name: /kept in this envelope/ })
+const sentOut = () => screen.getByRole('radio', { name: /when it leaves the budget/ })
+const keptHere = () => screen.getByRole('radio', { name: /while it’s in the budget/ })
 
 beforeEach(() => {
   update.mutate.mockReset()
@@ -55,9 +55,7 @@ describe('SavingsModeField', () => {
 
   it('asks the question as a group, checked from the served role', () => {
     show({ savings_role: 'kept_here' })
-    expect(
-      screen.getByRole('group', { name: 'Counts as saved when money is:' })
-    ).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'Counts as saved:' })).toBeInTheDocument()
     expect(keptHere()).toBeChecked()
     expect(sentOut()).not.toBeChecked()
   })
@@ -65,10 +63,10 @@ describe('SavingsModeField', () => {
   it('says what each choice does', () => {
     show()
     expect(sentOut()).toHaveAccessibleDescription(
-      'Spending or transfers from here count as saved; assigning doesn’t.'
+      'Anything that leaves this envelope counts as saved — a transfer to an off-budget account or a payment anywhere IGAB doesn’t track; assigning doesn’t.'
     )
     expect(keptHere()).toHaveAccessibleDescription(
-      'What this envelope holds is saved; spending from it lowers your savings.'
+      'What this envelope holds is saved, whichever on-budget account the money sits in; spending from it lowers your savings.'
     )
   })
 
@@ -80,14 +78,14 @@ describe('SavingsModeField', () => {
 
   it('marks the served role as the default when nothing is stored, with no reset', () => {
     show({ savings_mode: null, savings_role: 'kept_here' })
-    expect(keptHere()).toHaveAccessibleName('kept in this envelope (default)')
-    expect(sentOut()).toHaveAccessibleName('sent out of this envelope')
+    expect(keptHere()).toHaveAccessibleName('while it’s in the budget (default)')
+    expect(sentOut()).toHaveAccessibleName('when it leaves the budget')
     expect(screen.queryByRole('button', { name: 'Use default' })).not.toBeInTheDocument()
   })
 
   it('drops the marker and offers "Use default" once a mode is chosen', async () => {
     show({ savings_mode: 'kept_here', savings_role: 'kept_here' })
-    expect(keptHere()).toHaveAccessibleName('kept in this envelope')
+    expect(keptHere()).toHaveAccessibleName('while it’s in the budget')
 
     await userEvent.click(screen.getByRole('button', { name: 'Use default' }))
     expect(update.mutate).toHaveBeenCalledWith({ id: 'cat-1', savings_mode: null })

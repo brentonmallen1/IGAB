@@ -66,7 +66,7 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
     scope: 'savings',
     summary: 'What you have saved, what is on the way to savings, and your sinking funds.',
     counts:
-      'Saved: kept-here Savings and Emergency fund envelopes plus off-budget savings accounts; on the way: sent-out Savings envelopes; sinking funds: Long-term expense envelopes with their targets.',
+      'Saved: Savings and Emergency fund envelopes that count while money is in the budget, plus off-budget savings accounts; on the way: Savings envelopes that count when money leaves the budget; sinking funds: Long-term expense envelopes with their targets.',
     leavesOut:
       'On-budget accounts, and untagged envelopes — the three parts are never added together.',
   },
@@ -74,7 +74,7 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
     scope: 'on-budget',
     summary: 'How much of what came in you kept, month by month.',
     counts:
-      'Saved — money moved to savings, including transfers to tracked accounts that count as savings, plus what kept-here Savings envelopes came to hold — ÷ income, plus debt principal when included.',
+      'Saved — money moved to savings, including transfers to tracked accounts that count as savings, plus what Savings envelopes that count while money is in the budget came to hold — ÷ income, plus debt principal when included.',
     leavesOut:
       'Transfers between budget accounts, spending, investment growth and interest inside tracked accounts.',
   },

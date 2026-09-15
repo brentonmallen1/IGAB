@@ -95,7 +95,9 @@ describe('the rule ladder', () => {
       expect.stringContaining('Otherwise: Served default reason'),
     ])
     expect(within(items[0]).getByText('Served Savings')).toBeInTheDocument()
-    expect(within(items[0]).getByText('tag: Savings · when sent out')).toBeInTheDocument()
+    expect(
+      within(items[0]).getByText('tag: Savings · when it leaves the budget')
+    ).toBeInTheDocument()
   })
 })
 
@@ -176,7 +178,7 @@ describe('the tag table', () => {
     for (const name of ['Savings', 'Emergency fund']) {
       const row = within(table).getByRole('rowheader', { name }).closest('tr')!
       expect(within(row).getByText('Served Savings')).toBeInTheDocument()
-      expect(within(row).getByText('when sent out')).toBeInTheDocument()
+      expect(within(row).getByText('when it leaves the budget')).toBeInTheDocument()
     }
     for (const name of ['Long-term expense', 'Cost of living']) {
       const row = within(table).getByRole('rowheader', { name }).closest('tr')!

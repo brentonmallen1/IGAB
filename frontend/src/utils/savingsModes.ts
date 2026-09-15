@@ -11,7 +11,7 @@ import type { SavingsMode, SavingsRole } from '../types'
  */
 export interface SavingsModeOption {
   mode: SavingsMode
-  /** The inspector's sentence end: "Counts as saved when money is: …". */
+  /** The inspector's sentence end: "Counts as saved: …". */
   label: string
   /** Short enough for one checklist row. */
   short: string
@@ -20,22 +20,36 @@ export interface SavingsModeOption {
 
 export const SAVINGS_MODE_OPTIONS: readonly SavingsModeOption[] = [
   {
-    mode: 'sent_out',
-    label: 'sent out of this envelope',
-    short: 'sent out',
-    consequence: 'Spending or transfers from here count as saved; assigning doesn’t.',
+    mode: 'kept_here',
+    label: 'while it’s in the budget',
+    short: 'in budget',
+    consequence:
+      'What this envelope holds is saved, whichever on-budget account the money sits in; spending from it lowers your savings.',
   },
   {
-    mode: 'kept_here',
-    label: 'kept in this envelope',
-    short: 'kept here',
-    consequence: 'What this envelope holds is saved; spending from it lowers your savings.',
+    mode: 'sent_out',
+    label: 'when it leaves the budget',
+    short: 'leaves budget',
+    consequence:
+      'Anything that leaves this envelope counts as saved — a transfer to an off-budget account or a payment anywhere IGAB doesn’t track; assigning doesn’t.',
   },
 ]
+
+/** What "in the budget" and "leaving the budget" mean, for any place that
+ *  defines the two choices rather than just offering them. */
+export const SAVINGS_MODES_DEFINITION =
+  'In the budget means money held in your on-budget accounts; leaving the budget means moving it to an off-budget account or paying it somewhere IGAB doesn’t track.'
 
 /** The marker beside the choice the tags would make with nothing stored. */
 export const DEFAULT_MARKER = '(default)'
 
 export function savingsModeShort(mode: SavingsRole): string | null {
   return SAVINGS_MODE_OPTIONS.find((o) => o.mode === mode)?.short ?? null
+}
+
+/** The full words, for prose: "counts as saved when it leaves the budget". */
+export function savingsModeLabel(mode: SavingsMode): string {
+  const option = SAVINGS_MODE_OPTIONS.find((o) => o.mode === mode)
+  if (!option) throw new Error(`No savings mode ${mode}`)
+  return option.label
 }

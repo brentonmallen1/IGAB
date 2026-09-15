@@ -727,7 +727,7 @@ function TagsStep({
     <>
       <p className="dialog__body">
         A tag decides what the reports read for a category. A Savings category counts as saved
-        either when money is sent out of it or while it is kept there — you choose which on the
+        either while it’s in the budget or when it leaves the budget — you choose which on the
         category. Emergency fund marks the envelopes your fund is, Long-term expense a sinking fund
         for a planned bill, and what you mark Essential is what an emergency fund is measured
         against. These are suggestions from the names: nothing is tagged until you confirm it.

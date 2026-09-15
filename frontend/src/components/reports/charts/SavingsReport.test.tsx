@@ -159,7 +159,9 @@ describe('SavingsReport sections', () => {
     renderReport(EMPTY)
     expect(within(section('Saved')).getByText(/Nothing saved here yet/)).toBeInTheDocument()
     expect(
-      within(section('On the way to savings')).getByText('No sent-out Savings envelopes.')
+      within(section('On the way to savings')).getByText(
+        'No Savings envelopes that count when money leaves the budget.'
+      )
     ).toBeInTheDocument()
     expect(within(section('Sinking funds')).getByText(/No sinking funds/)).toBeInTheDocument()
   })

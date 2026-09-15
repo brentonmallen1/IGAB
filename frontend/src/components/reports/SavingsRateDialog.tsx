@@ -149,10 +149,11 @@ function Contributors({
         <p className="dialog__body">
           To count money as saved, transfer it to a tracked (off-budget) account that counts as
           savings — no tag needed. For money that goes somewhere IGAB does not track, tag its
-          category {SAVINGS_TAG} set to “sent out”: what leaves the category counts. To keep savings
-          in an envelope, set it to “kept here”: what the envelope holds counts, and spending from
-          it lowers your savings. Buying or selling something tracked that does not count as savings
-          — a car, a house — is spending or income instead.
+          category {SAVINGS_TAG} and count it “when it leaves the budget”: what leaves the category
+          counts. To keep savings in an envelope, count it “while it’s in the budget”: what the
+          envelope holds counts, and spending from it lowers your savings. Buying or selling
+          something tracked that does not count as savings — a car, a house — is spending or income
+          instead.
         </p>
         <p className="dialog__body">
           <GuideTabLink tab="money" />{' '}

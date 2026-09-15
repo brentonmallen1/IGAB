@@ -62,7 +62,7 @@ function contributors(overrides: Partial<SavingsContributors> = {}): SavingsCont
         id: 'c1',
         name: 'Vacation Fund',
         reason: 'tagged_savings',
-        reason_label: 'sent from a Savings category',
+        reason_label: 'left the budget from a Savings category',
         total: 300,
         count: 1,
       },
@@ -173,7 +173,7 @@ describe('SavingsRateDialog', () => {
     expect(figures()).not.toHaveProperty('Held in envelopes')
     const section = screen.getByRole('region', { name: 'Where the savings went' })
     expect(section).toHaveTextContent(
-      'Saved = moved to savings + held in kept-here Savings envelopes.'
+      'Saved = moved to savings + held in Savings envelopes that count while money is in the budget.'
     )
   })
 
@@ -216,7 +216,7 @@ describe('SavingsRateDialog', () => {
     open()
     expect(rows('Where the savings went')).toEqual([
       'Brokeragetransfer to a tracked account$800.0080% of savings',
-      'Vacation Fundsent from a Savings category$300.0030% of savings',
+      'Vacation Fundleft the budget from a Savings category$300.0030% of savings',
       'Rainy Day Reservetransfer to a tracked account-$100.00-10% of savings',
     ])
   })
@@ -281,7 +281,7 @@ describe('SavingsRateDialog', () => {
     // somewhere untracked, or for savings kept in the envelope.
     expect(note).toHaveTextContent(/counts as savings — no tag needed/)
     expect(note).toHaveTextContent(/somewhere IGAB does not track, tag its category Savings/)
-    expect(note).toHaveTextContent(/“kept here”: what the envelope holds counts/)
+    expect(note).toHaveTextContent(/“while it’s in the budget”: what the envelope holds counts/)
   })
 
   it('links what does not count to the Guide tab that shows it at work', () => {

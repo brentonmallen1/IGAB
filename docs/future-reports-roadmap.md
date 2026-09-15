@@ -282,8 +282,8 @@ themes; suite green.
 
 ## R2 — Tag-aware report semantics (S, depends on R1)
 
-> **Superseded (2026-09-15).** Savings is now one tag with a per-category mode (sent out /
-> kept here), Emergency fund is its own tag, and Long-term expense is a sinking fund that is
+> **Superseded (2026-09-15).** Savings is now one tag with a per-category mode (while it's
+> in the budget / when it leaves the budget), Emergency fund is its own tag, and Long-term expense is a sinking fund that is
 > never savings — see `domain/activity_class.py` and `services/savings_report.py`. The
 > savings routing below describes the original design, not current behaviour.
 

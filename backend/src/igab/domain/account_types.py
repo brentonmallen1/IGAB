@@ -48,8 +48,8 @@ BUILTIN_ACCOUNT_TYPES: tuple[BuiltinAccountType, ...] = (
             "back envelopes like an emergency fund. Because it is on budget, "
             "moving money here is not counted as saving — the money never left "
             "your budget, and your envelopes say what it is for: keep savings in "
-            "Savings envelopes set to kept here. To count the account itself, "
-            "take it off budget and turn on Counts as savings."
+            "Savings envelopes that count while money is in the budget. To count "
+            "the account itself, take it off budget and turn on Counts as savings."
         ),
         sort_order=1,
     ),

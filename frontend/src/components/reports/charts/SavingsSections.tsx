@@ -142,16 +142,17 @@ export function SavedSection({ saved }: { saved: SavingsSaved }) {
       total={saved.total}
       lede={
         <>
-          Kept-here Savings and Emergency fund envelopes, plus off-budget accounts that count as
-          savings. Moving money from one to the other doesn&apos;t change this total.
+          Savings and Emergency fund envelopes that count while money is in the budget, plus
+          off-budget accounts that count as savings. Moving money from one to the other doesn&apos;t
+          change this total.
         </>
       }
     >
       {empty ? (
         <Empty>
-          Nothing saved here yet. Set a Savings envelope to <strong>kept here</strong>, tag an
-          envelope <strong>Emergency fund</strong>, or mark an off-budget account{' '}
-          <strong>Counts as savings</strong>.
+          Nothing saved here yet. Set a Savings envelope to count{' '}
+          <strong>while it’s in the budget</strong>, tag an envelope <strong>Emergency fund</strong>
+          , or mark an off-budget account <strong>Counts as savings</strong>.
         </Empty>
       ) : (
         <>
@@ -207,13 +208,13 @@ export function OnTheWaySection({ section }: { section: SavingsSection }) {
       total={section.total}
       lede={
         <>
-          What sent-out Savings envelopes hold until the money leaves. It counts as saved when it is
-          sent, so it isn&apos;t added to Saved.
+          What Savings envelopes that count when money leaves the budget still hold. It counts as
+          saved when it leaves, so it isn&apos;t added to Saved.
         </>
       }
     >
       {section.envelopes.length === 0 ? (
-        <Empty>No sent-out Savings envelopes.</Empty>
+        <Empty>No Savings envelopes that count when money leaves the budget.</Empty>
       ) : (
         <EnvelopeTable
           caption="Envelopes on the way to savings"

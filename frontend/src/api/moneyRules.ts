@@ -15,7 +15,7 @@ export type Classification = 'asset' | 'liability'
 export type MoveKind = 'transfer' | 'transaction' | 'assign'
 export type MoveDirection = 'in' | 'out'
 /** `savings_sent` / `savings_kept`: a Savings category that counts its savings
- *  when money is sent out, or while it is kept here (`domain/money_moves.py`). */
+ *  when money leaves the budget, or while it is in the budget (`domain/money_moves.py`). */
 export type CategoryKind =
   'none' | 'ordinary' | 'savings_sent' | 'savings_kept' | 'debt_principal' | 'income'
 /** The explorer's category kind for each savings mode — the two kinds a Savings

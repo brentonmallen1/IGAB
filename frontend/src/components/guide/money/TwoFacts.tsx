@@ -24,10 +24,11 @@ export function TwoFacts() {
         <h3 className="money-facts__title">2. What the category is tagged</h3>
         <p>
           Most categories are just categories. A <strong>{systemTagName('savings')}</strong>{' '}
-          category set to sent out, or one tagged <strong>{systemTagName('debt_principal')}</strong>
-          , counts its outflows that way, wherever the money went. A {systemTagName('savings')}{' '}
-          category kept here counts by where the money went, like any other; its balance is what
-          counts as saved.{' '}
+          category that counts when money leaves the budget, or one tagged{' '}
+          <strong>{systemTagName('debt_principal')}</strong>, counts its outflows that way, wherever
+          the money went. A {systemTagName('savings')} category that counts while money is in the
+          budget counts by where the money went, like any other; its balance is what counts as
+          saved.{' '}
           <GuideTabLink tab="aside" anchor="savings-modes">
             How the two Savings modes count
           </GuideTabLink>

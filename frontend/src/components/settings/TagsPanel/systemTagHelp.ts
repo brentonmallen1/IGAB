@@ -12,6 +12,8 @@
  * .essential_spend (essential, cost of living). Presentation only: nothing
  * here decides how money is counted, it says how it is.
  */
+import { SAVINGS_MODES_DEFINITION } from '../../../utils/savingsModes'
+
 export const SYSTEM_TAG_HELP: { key: string; name: string; on: string; does: string }[] = [
   {
     key: 'subscription',
@@ -23,13 +25,13 @@ export const SYSTEM_TAG_HELP: { key: string; name: string; on: string; does: str
     key: 'savings',
     name: 'Savings',
     on: 'categories',
-    does: 'Money set aside. Each Savings category counts in one of two ways. Sent out: money leaving the envelope counts as saved, not spending — for an envelope that feeds an investment, a retirement account or another bank. Kept here: the envelope’s balance is the savings — assigning to it counts as saved, spending from it is spending and lowers what you saved, and moving it to an off-budget savings account changes nothing. Either way it feeds the Savings report and the savings rate, and still counts against what you assigned, so Budget vs Actual shows the envelope being spent down.',
+    does: `Money set aside. Each Savings category counts as saved in one of two ways. While it’s in the budget: the envelope’s balance is the savings — assigning to it counts as saved, spending from it is spending and lowers what you saved, and moving it to an off-budget savings account changes nothing. When it leaves the budget: money leaving the envelope counts as saved, not spending — for an envelope that feeds an investment, a retirement account or another bank. ${SAVINGS_MODES_DEFINITION} Either way it feeds the Savings report and the savings rate, and still counts against what you assigned, so Budget vs Actual shows the envelope being spent down.`,
   },
   {
     key: 'emergency_fund',
     name: 'Emergency fund',
     on: 'categories',
-    does: 'Money set aside for genuine surprises, chosen by you and never guessed. It counts as savings (kept here unless you change it). The emergency fund is these envelopes’ Available, plus the off-budget accounts you mark Counts toward emergency fund, plus anything you say you keep elsewhere. Sent out or kept here changes your savings rate, never the fund’s total.',
+    does: 'Money set aside for genuine surprises, chosen by you and never guessed. It counts as savings (while it’s in the budget, unless you change it). The emergency fund is these envelopes’ Available, plus the off-budget accounts you mark Counts toward emergency fund, plus anything you say you keep elsewhere. Counting it while it’s in the budget or when it leaves the budget changes your savings rate, never the fund’s total.',
   },
   {
     key: 'long_term_expense',

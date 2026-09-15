@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import type { AsideAnchor } from '../../../utils/guideLinks'
 import { guideTabHref } from '../../../utils/guideLinks'
+import { SAVINGS_MODES_DEFINITION } from '../../../utils/savingsModes'
 import { CatchOuts } from '../CatchOuts'
 import { ASIDE_CATCH_OUTS } from './asideCatchOuts'
 import { EmergencyFundExplainer } from './EmergencyFundExplainer'
@@ -62,7 +63,7 @@ export function AsidePanel() {
       <Section
         anchor="savings-modes"
         title="Two ways a Savings category counts"
-        lede="The question is when money counts as saved: when you set it aside, or when it leaves the budget. Each Savings category picks one. Sent out suits money on its way to a savings vehicle you may not track; kept here suits money that stays in the budget, like a cushion or a down payment."
+        lede={`The question is when money counts as saved: while it’s in the budget, or when it leaves the budget. Each Savings category picks one. ${SAVINGS_MODES_DEFINITION} Counting while it’s in the budget suits money that stays there, like a cushion or a down payment; counting when it leaves suits money on its way to a savings vehicle you may not track.`}
       >
         <SavingsModesExample />
       </Section>

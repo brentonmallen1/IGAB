@@ -70,9 +70,9 @@ export function OverviewReport({ budgetId }: Props) {
               is built from. Yearly bills in Long-term expense categories are spread over 12 months
               when that setting is on (Essentials report), and the as-paid figure is shown beside
               it. Shows “—” until something is tagged. <strong>Savings Rate</strong>: Saved ÷ Income
-              — money moved into savings or investments, or held in a kept-here Savings envelope,
-              not simply money left over. Shows “—” for a window with no income. Open it to see
-              where the savings went and where the income came from.{' '}
+              — money moved into savings or investments, or held in a Savings envelope that counts
+              while it’s in the budget, not simply money left over. Shows “—” for a window with no
+              income. Open it to see where the savings went and where the income came from.{' '}
               <strong>Days Until Zero</strong>: cash on hand ÷ daily burn rate — how long the
               budget’s cash accounts would last at this pace. Cards, loans and tracked investments
               are out: net worth is not money you can spend next week.

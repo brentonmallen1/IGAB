@@ -51,7 +51,8 @@ export function CategoryMembershipList({ rows, draft, onChange, savingsTag, labe
       </label>
       {savingsTag && (
         <p className="dialog-form__hint">
-          Each checked envelope counts as saved when money is sent out of it, or kept in it.
+          Each checked envelope counts as saved while it’s in the budget, or when it leaves the
+          budget.
         </p>
       )}
       <div
@@ -127,7 +128,7 @@ function ModeSelect({
     <select
       id={id}
       className="membership-list__mode"
-      aria-label={`${row.name} counts as saved when money is`}
+      aria-label={`${row.name} counts as saved`}
       value={value}
       onChange={(e) => onChoose(e.target.value === '' ? null : (e.target.value as SavingsMode))}
     >
