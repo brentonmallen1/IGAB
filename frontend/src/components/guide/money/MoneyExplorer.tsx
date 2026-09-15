@@ -11,7 +11,7 @@ import { useFormatters } from '../../../hooks/useFormatters'
 import { useAppStore } from '../../../stores/appStore'
 import { isTrackedAsset } from '../../../utils/accountKinds'
 import { budgetEffectLines } from '../../../utils/moneyMoves'
-import { SYSTEM_TAG_HELP } from '../../settings/TagsPanel/systemTagHelp'
+import { systemTagName } from '../../settings/TagsPanel/systemTagHelp'
 import { ClassChip } from './ClassChip'
 import {
   EXPLORER_AMOUNT,
@@ -24,14 +24,15 @@ import {
 import { familyList, figureLines, heldLine, netWorthLine, signedMoney } from './moveAnswer'
 import './MoneyExplorer.css'
 
-const tagName = (key: string) => SYSTEM_TAG_HELP.find((t) => t.key === key)?.name ?? key
-
 const CATEGORY_OPTIONS: { value: CategoryKind; label: string }[] = [
   { value: 'none', label: 'No category' },
   { value: 'ordinary', label: 'An ordinary category' },
-  { value: 'savings_sent', label: `A ${tagName('savings')} category — counts when sent out` },
-  { value: 'savings_kept', label: `A ${tagName('savings')} category — counts while kept here` },
-  { value: 'debt_principal', label: `A category tagged ${tagName('debt_principal')}` },
+  { value: 'savings_sent', label: `A ${systemTagName('savings')} category — counts when sent out` },
+  {
+    value: 'savings_kept',
+    label: `A ${systemTagName('savings')} category — counts while kept here`,
+  },
+  { value: 'debt_principal', label: `A category tagged ${systemTagName('debt_principal')}` },
   { value: 'income', label: 'Your income group (Ready to Assign)' },
 ]
 

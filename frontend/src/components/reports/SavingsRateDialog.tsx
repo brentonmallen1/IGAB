@@ -1,6 +1,6 @@
 import { useSavingsContributors, type SavingsContributor } from '../../api/reports'
 import { useFormatters } from '../../hooks/useFormatters'
-import { SYSTEM_TAG_HELP } from '../settings/TagsPanel/systemTagHelp'
+import { systemTagName } from '../settings/TagsPanel/systemTagHelp'
 import { Dialog } from '../common/Dialog/Dialog'
 import { GuideTabLink } from '../guide/GuideTabLink'
 import { ReportErrorState } from './ReportErrorState'
@@ -10,7 +10,7 @@ import { foldIncomeSources, rateFormula, SAVED_DEFINITION } from './savingsRateB
 import { DetailFigure, DetailFigures, DetailRow, DetailRows, DetailSection } from './ReportDetail'
 import './SavingsRateDialog.css'
 
-const SAVINGS_TAG = SYSTEM_TAG_HELP.find((t) => t.key === 'savings')?.name ?? 'Savings'
+const SAVINGS_TAG = systemTagName('savings')
 interface Props {
   budgetId: string
   /** The window of the card that opened this — its totals are that card's. */

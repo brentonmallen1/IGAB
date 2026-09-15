@@ -79,6 +79,7 @@ export const ROOT = {
   guideMoneyRules: 'guide-money-rules',
   guideScenario: 'guide-scenario',
   guideSignals: 'guide-signals',
+  guideSpreadExample: 'guide-spread-example',
   importSummary: 'importSummary',
   liabilities: 'liabilities',
   liabilityAmortization: 'liabilityAmortization',

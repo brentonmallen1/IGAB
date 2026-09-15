@@ -2,15 +2,11 @@
  * The things that catch people out, each with the move that shows it. The
  * prose is ours; what the move counts as is served when "Try it" loads it.
  */
-import { SYSTEM_TAG_HELP } from '../../settings/TagsPanel/systemTagHelp'
+import { systemTagName } from '../../settings/TagsPanel/systemTagHelp'
+import type { CatchOutItem } from '../CatchOuts'
 import { preset, type ExplorerState } from './explorerMove'
 
-const tagName = (key: string) => SYSTEM_TAG_HELP.find((t) => t.key === key)?.name ?? key
-
-export interface CatchOut {
-  id: string
-  title: string
-  detail: string
+export interface CatchOut extends CatchOutItem {
   /** Loads the explorer with the move this describes, so the claim can be
    * checked against the served answer rather than taken on trust. */
   tryIt: ExplorerState
@@ -61,8 +57,8 @@ export const CATCH_OUTS: CatchOut[] = [
   },
   {
     id: 'savings-tag',
-    title: `A ${tagName('savings')} category set to sent out counts every outflow as saved`,
-    detail: `Pay for a flight from a ${tagName('savings')} envelope set to sent out and the flight counts as saved. For a fund you spend from, set it to kept here: spending from it is then spending. For money set aside toward a planned bill, use ${tagName('long_term_expense')}: the bill counts as spending when it is paid.`,
+    title: `A ${systemTagName('savings')} category set to sent out counts every outflow as saved`,
+    detail: `Pay for a flight from a ${systemTagName('savings')} envelope set to sent out and the flight counts as saved. For a fund you spend from, set it to kept here: spending from it is then spending. For money set aside toward a planned bill, use ${systemTagName('long_term_expense')}: the bill counts as spending when it is paid.`,
     tryIt: preset('transaction', 'checking', 'checking', { category: 'savings_sent' }),
   },
   {

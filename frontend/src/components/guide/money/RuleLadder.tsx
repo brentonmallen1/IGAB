@@ -1,15 +1,13 @@
 import type { MoneyRule } from '../../../api/moneyRules'
-import { SYSTEM_TAG_HELP } from '../../settings/TagsPanel/systemTagHelp'
+import { systemTagName } from '../../settings/TagsPanel/systemTagHelp'
 import { ClassChip } from './ClassChip'
 import './RuleLadder.css'
-
-const tagName = (key: string) => SYSTEM_TAG_HELP.find((t) => t.key === key)?.name ?? key
 
 /** "tag: Savings · when sent out" — the mode is served with the rule. */
 const tagChip = (rule: Pick<MoneyRule, 'tag_key' | 'savings_mode'>) =>
   rule.tag_key === null
     ? ''
-    : `tag: ${tagName(rule.tag_key)}${rule.savings_mode ? ` · ${MODE_PHRASE[rule.savings_mode]}` : ''}`
+    : `tag: ${systemTagName(rule.tag_key)}${rule.savings_mode ? ` · ${MODE_PHRASE[rule.savings_mode]}` : ''}`
 
 const MODE_PHRASE: Record<NonNullable<MoneyRule['savings_mode']>, string> = {
   sent_out: 'when sent out',

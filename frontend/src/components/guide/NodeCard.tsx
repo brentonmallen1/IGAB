@@ -5,6 +5,7 @@ import type { ConceptInfo, Signal } from '../../api/guide'
 import { GlossaryChips } from './GlossaryChips'
 import { SignalNote } from './SignalNote'
 import { TOOLS } from './tools/toolRegistry'
+import { guideToolHref } from '../../utils/guideLinks'
 
 export type NodeState = 'visible' | 'pending' | 'skipped'
 
@@ -153,10 +154,7 @@ export function NodeCard({
       {((node.appLinks && node.appLinks.length > 0) || node.tool) && (
         <div className="guide-node__links">
           {node.tool && (
-            <Link
-              to={`/guide?tab=tools&tool=${node.tool}`}
-              className="guide-node__link guide-node__link--tool"
-            >
+            <Link to={guideToolHref(node.tool)} className="guide-node__link guide-node__link--tool">
               {TOOLS[node.tool].linkLabel}
             </Link>
           )}

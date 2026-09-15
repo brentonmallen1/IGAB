@@ -109,6 +109,32 @@ export function useGuideOverview(budgetId: string | null) {
   })
 }
 
+/** "Setting money aside"'s spread example — invented inputs, every figure
+ *  computed by the essentials and emergency-fund arithmetic the reports run
+ *  (`backend/.../guide/examples.py`). */
+export interface SpreadExample {
+  /** As paid, in the quarter a $2,400 yearly bill landed in / any other. */
+  as_paid_after_bill: number
+  as_paid_otherwise: number
+  spread: number
+  bill_monthly_share: number
+  goal_months: number
+  goal_as_paid_after_bill: number
+  goal_as_paid_otherwise: number
+  goal_spread: number
+}
+
+export function useSpreadExample(budgetId: string | null) {
+  return useQuery({
+    queryKey: [ROOT.guideSpreadExample, budgetId],
+    queryFn: () =>
+      apiClient.get<SpreadExample>(`/${budgetId}/guide/examples/spread`).then((r) => r.data),
+    enabled: !!budgetId,
+    // Fixed inputs: it changes only with a deploy.
+    staleTime: Infinity,
+  })
+}
+
 export function useGuideSignals(budgetId: string | null, enabled = true) {
   return useQuery({
     queryKey: [ROOT.guideSignals, budgetId],

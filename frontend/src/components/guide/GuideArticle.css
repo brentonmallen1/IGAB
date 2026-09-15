@@ -1,0 +1,110 @@
+/* The long-form Guide tabs — How money counts and Setting money aside — read
+   as one kind of page: a header, then titled sections of prose, tables and
+   worked examples. Their shared shape lives here once. */
+
+.guide-article {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xl);
+  max-width: 960px;
+}
+
+.guide-article__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  scroll-margin-top: var(--spacing-lg);
+}
+
+.guide-article__heading {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+
+.guide-article__lede {
+  margin: 0;
+  max-width: 64ch;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.guide-article__status {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+.guide-article__card {
+  padding: var(--spacing-lg);
+}
+
+/* Prose inside a card: paragraphs and bullet lists at reading size. */
+.guide-article__prose {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.guide-article__prose p,
+.guide-article__prose ul {
+  margin: 0;
+}
+
+.guide-article__prose ul {
+  padding-left: var(--spacing-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.guide-article__prose strong {
+  color: var(--text-primary);
+  font-weight: var(--font-weight-semibold);
+}
+
+.guide-article__prose-title {
+  margin: 0 0 var(--spacing-xs);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+
+/* Cards side by side, one column at phone width. */
+.guide-article__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: var(--spacing-md);
+}
+
+/* "Open the Savings report →" under a section. */
+.guide-article__links {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs) var(--spacing-md);
+  font-size: var(--font-size-xs);
+}
+
+.guide-article__link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap-min);
+  color: var(--color-accent);
+  text-decoration: none;
+}
+
+.guide-article__link:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 768px) {
+  .guide-article__card {
+    padding: var(--spacing-md);
+  }
+}

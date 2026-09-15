@@ -1,11 +1,9 @@
 import { useUpdateCategory } from '../../../api/categories'
 import { apiErrorMessage } from '../../../api/client'
 import type { Category, SavingsMode } from '../../../types'
-import { SYSTEM_TAG_HELP } from '../../settings/TagsPanel/systemTagHelp'
+import { systemTagName } from '../../settings/TagsPanel/systemTagHelp'
 import { DEFAULT_MARKER, SAVINGS_MODE_OPTIONS } from '../../../utils/savingsModes'
 import './SavingsModeField.css'
-
-const tagName = (key: string) => SYSTEM_TAG_HELP.find((t) => t.key === key)?.name ?? key
 
 interface Props {
   category: Category
@@ -80,7 +78,8 @@ export function SavingsModeField({ category, budgetId, tagKeys }: Props) {
         <p className="savings-mode__conflict">
           {/* Named from the served role, not a client list of savings tags:
               Savings and Emergency fund both reach here. */}
-          Also tagged {tagName('long_term_expense')}: it counts as savings, not as a sinking fund.
+          Also tagged {systemTagName('long_term_expense')}: it counts as savings, not as a sinking
+          fund.
         </p>
       )}
       {update.isError && (

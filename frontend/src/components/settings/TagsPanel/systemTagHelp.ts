@@ -62,3 +62,12 @@ export const SYSTEM_TAG_HELP: { key: string; name: string; on: string; does: str
     does: 'Applied by the wishlist itself to every envelope that funds an open wish, and removed when none does — nothing to tag by hand. Reports and tag filters can read it.',
   },
 ]
+
+/** A system tag's name as the Tags panel writes it — read, never retyped, by
+ * every sentence that names a tag. An unknown key throws: a sentence naming a
+ * tag that does not exist is a bug to surface, not a raw key to print. */
+export function systemTagName(key: string): string {
+  const tag = SYSTEM_TAG_HELP.find((t) => t.key === key)
+  if (!tag) throw new Error(`no system tag '${key}'`)
+  return tag.name
+}

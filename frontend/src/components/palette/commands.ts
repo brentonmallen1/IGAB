@@ -23,6 +23,7 @@ import {
 } from 'lucide-react'
 import { REPORT_TABS, TAB_GROUPS } from '../../stores/reportStore'
 import { GUIDE_TABS } from '../../stores/guideStore'
+import { guideTabHref, guideToolHref } from '../../utils/guideLinks'
 import { TOOLS } from '../guide/tools/toolRegistry'
 import {
   SETTINGS_PAGES,
@@ -281,7 +282,7 @@ export function guideCommands(ctx: DerivedCommandCtx): AppCommand[] {
       section: 'Navigate' as const,
       keywords: 'guide roadmap',
       icon: Compass,
-      run: (c: CommandCtx) => c.navigate(`/guide?tab=${tab.id}`),
+      run: (c: CommandCtx) => c.navigate(guideTabHref(tab.id)),
     })
   )
   const tools: AppCommand[] = Object.values(TOOLS).map((tool) => ({
@@ -290,7 +291,7 @@ export function guideCommands(ctx: DerivedCommandCtx): AppCommand[] {
     section: 'Tools' as const,
     keywords: 'guide calculator tool',
     icon: Calculator,
-    run: (c: CommandCtx) => c.navigate(`/guide?tab=tools&tool=${tool.id}`),
+    run: (c: CommandCtx) => c.navigate(guideToolHref(tool.id)),
   }))
   return [...tabs, ...tools]
 }
