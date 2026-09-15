@@ -156,6 +156,11 @@ class TestExplain:
             _transaction(CHECKING, "sideways"),
             _transaction(CHECKING, "in", amount="0"),
             _transaction(CHECKING, "in", category="groceries"),
+            {"kind": "transfer", "to_account": CHECKING, "amount": "10", "category": "none"},
+            {"kind": "assign", "amount": "10", "category": "none"},
+            {"kind": "assign", "amount": "10", "category": "income"},
+            {"kind": "assign", "account": CHECKING, "amount": "10", "category": "ordinary"},
+            {"kind": "assign", "direction": "in", "amount": "10", "category": "ordinary"},
         ],
     )
     async def test_a_move_that_does_not_fit_its_kind_is_refused(self, db_session, api_client, body):

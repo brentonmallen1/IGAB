@@ -19,6 +19,7 @@ from igab.domain.money_moves import (
     Move,
     MoveKind,
     ReportFamily,
+    move_shape_error,
 )
 
 Classification = Literal["asset", "liability"]
@@ -39,8 +40,9 @@ class AccountShapeIn(ApiModel):
 
 class MoneyMoveRequest(ApiModel):
     kind: MoveKind
-    #: The from-account of a transfer, or the one account of a transaction.
-    account: AccountShapeIn
+    #: The from-account of a transfer, or the one account of a transaction;
+    #: absent for an assign.
+    account: AccountShapeIn | None = None
     to_account: AccountShapeIn | None = None
     direction: Direction | None = None
     category: CategoryKind = CategoryKind.NONE
@@ -48,16 +50,21 @@ class MoneyMoveRequest(ApiModel):
 
     @model_validator(mode="after")
     def _shape_matches_kind(self) -> "MoneyMoveRequest":
-        if self.kind is MoveKind.TRANSFER and (self.to_account is None or self.direction):
-            raise ValueError("a transfer names to_account and no direction")
-        if self.kind is MoveKind.TRANSACTION and (self.to_account or self.direction is None):
-            raise ValueError("a transaction names a direction and no to_account")
+        error = move_shape_error(
+            self.kind,
+            has_account=self.account is not None,
+            has_to_account=self.to_account is not None,
+            has_direction=self.direction is not None,
+            category=self.category,
+        )
+        if error:
+            raise ValueError(error)
         return self
 
     def to_domain(self) -> Move:
         return Move(
             kind=self.kind,
-            account=self.account.to_domain(),
+            account=self.account.to_domain() if self.account else None,
             to_account=self.to_account.to_domain() if self.to_account else None,
             direction=self.direction,
             category=self.category,

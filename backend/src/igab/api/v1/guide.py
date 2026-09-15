@@ -26,6 +26,7 @@ from igab.api.v1.schemas.guide import (
     PreferencesResponse,
     PreferencesUpdate,
     SignalsResponse,
+    SpreadExampleResponse,
     StepUpdate,
     WishlistRetirePreview,
 )
@@ -66,6 +67,7 @@ from igab.domain.money_moves import (
     figures,
 )
 from igab.guide.concepts import CONCEPT_KEYS
+from igab.guide.examples import spread_example
 from igab.guide.scenarios import LoanCandidate
 from igab.guide.service import GuideService
 from igab.services.amortization import CascadeDebt
@@ -411,3 +413,16 @@ async def explain_money_month(
         held=month.held,
         figures=_figures(month.figures),
     )
+
+
+# ── setting money aside ──────────────────────────────────────────────────────
+# Invented examples, computed by the functions the reports run.
+
+
+@router.get("/{budget_id}/guide/examples/spread", response_model=SpreadExampleResponse)
+async def guide_spread_example(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+) -> SpreadExampleResponse:
+    """A yearly bill as paid and spread, and the goal each figure sizes."""
+    return SpreadExampleResponse.model_validate(asdict(spread_example()))

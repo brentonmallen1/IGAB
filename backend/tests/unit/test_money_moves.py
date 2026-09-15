@@ -21,6 +21,7 @@ from igab.domain.money_moves import (
     KIND_FOR_INPUT,
     SHAPES,
     AccountShape,
+    BudgetTerm,
     CategoryKind,
     Direction,
     LegRole,
@@ -280,3 +281,58 @@ def test_flows_are_the_row_sums_figures_read():
         fi.debt_principal,
         fi.savings_moved,
     )
+
+
+class TestAssign:
+    """`MoveKind.ASSIGN`: no legs, Ready to Assign down and the envelope up,
+    held only by a kept-here Savings envelope."""
+
+    def _explain(self, kind):
+        return explain_move(Move(MoveKind.ASSIGN, None, D("500"), kind), [])
+
+    @pytest.mark.parametrize(
+        "kind",
+        [
+            CategoryKind.ORDINARY,
+            CategoryKind.SAVINGS_SENT,
+            CategoryKind.SAVINGS_KEPT,
+            CategoryKind.DEBT_PRINCIPAL,
+        ],
+    )
+    def test_ready_to_assign_down_the_envelope_up_nothing_classed(self, kind):
+        explained = self._explain(kind)
+        assert explained.legs == [] and explained.class_totals == {}
+        assert explained.budget_terms == {
+            BudgetTerm.READY_TO_ASSIGN: D("-500"),
+            BudgetTerm.ENVELOPE: D("500"),
+        }
+        assert explained.category_applied and explained.net_worth_delta == 0
+
+    def test_only_a_kept_here_envelope_holds_it(self):
+        assert self._explain(CategoryKind.SAVINGS_KEPT).held == D("500")
+        for kind in (CategoryKind.ORDINARY, CategoryKind.SAVINGS_SENT):
+            assert self._explain(kind).held == 0
+
+    def test_an_assign_to_a_kept_envelope_is_saved(self):
+        buckets, held = month_buckets([self._explain(CategoryKind.SAVINGS_KEPT)])
+        f = figures(buckets, held)
+        assert (f.savings_moved, f.savings_held, f.savings) == (D("0"), D("500"), D("500"))
+
+    @pytest.mark.parametrize(
+        ("account", "category", "direction"),
+        [
+            (CASH, CategoryKind.ORDINARY, None),
+            (None, CategoryKind.NONE, None),
+            (None, CategoryKind.INCOME, None),
+            (None, CategoryKind.ORDINARY, Direction.IN),
+        ],
+    )
+    def test_an_assign_that_names_an_account_or_no_envelope_is_refused(
+        self, account, category, direction
+    ):
+        with pytest.raises(ValueError):
+            Move(MoveKind.ASSIGN, account, D("500"), category, direction=direction)
+
+    def test_a_transfer_or_transaction_without_an_account_is_refused(self):
+        with pytest.raises(ValueError):
+            Move(MoveKind.TRANSACTION, None, D("500"), direction=Direction.IN)

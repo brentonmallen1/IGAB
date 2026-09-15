@@ -56,6 +56,10 @@ class MoveKind(StrEnum):
     TRANSFER = "transfer"
     #: One leg: money arrives from, or leaves to, someone outside.
     TRANSACTION = "transaction"
+    #: No leg: money given a job, from Ready to Assign into a category. No
+    #: account moves and no row is classified; the budget and, for a kept-here
+    #: Savings envelope, the held figure are what change.
+    ASSIGN = "assign"
 
 
 class Direction(StrEnum):
@@ -138,11 +142,47 @@ class AccountShape:
         return self.on_budget and self.is_liability
 
 
+#: The kinds of category money can be assigned to: an Income-group category is
+#: Ready to Assign itself, and assigning needs a category.
+ASSIGNABLE_KINDS = (
+    CategoryKind.ORDINARY,
+    CategoryKind.SAVINGS_SENT,
+    CategoryKind.SAVINGS_KEPT,
+    CategoryKind.DEBT_PRINCIPAL,
+)
+
+
+def move_shape_error(
+    kind: MoveKind,
+    *,
+    has_account: bool,
+    has_to_account: bool,
+    has_direction: bool,
+    category: CategoryKind,
+) -> str | None:
+    """Why these fields do not make a move of this kind, or None when they do.
+    One statement of the shape, read by the domain record and the request."""
+    if kind is MoveKind.ASSIGN:
+        if has_account or has_to_account or has_direction:
+            return "an assign names no account and no direction"
+        if category not in ASSIGNABLE_KINDS:
+            return "an assign names a category that can hold money"
+        return None
+    if not has_account:
+        return f"a {kind.value} names an account"
+    if kind is MoveKind.TRANSFER and (not has_to_account or has_direction):
+        return "a transfer names a to-account and no direction"
+    if kind is MoveKind.TRANSACTION and (has_to_account or not has_direction):
+        return "a transaction names a direction and no to-account"
+    return None
+
+
 @dataclass(frozen=True)
 class Move:
     kind: MoveKind
-    #: The from-account of a transfer, or the one account of a transaction.
-    account: AccountShape
+    #: The from-account of a transfer, or the one account of a transaction;
+    #: None for an assign, which moves no account.
+    account: AccountShape | None
     amount: Decimal
     category: CategoryKind = CategoryKind.NONE
     to_account: AccountShape | None = None
@@ -151,10 +191,15 @@ class Move:
     def __post_init__(self) -> None:
         if self.amount <= 0:
             raise ValueError("a move's amount is a positive size; direction says which way")
-        if self.kind is MoveKind.TRANSFER and (self.to_account is None or self.direction):
-            raise ValueError("a transfer names a to-account and no direction")
-        if self.kind is MoveKind.TRANSACTION and (self.to_account or self.direction is None):
-            raise ValueError("a transaction names a direction and no to-account")
+        error = move_shape_error(
+            self.kind,
+            has_account=self.account is not None,
+            has_to_account=self.to_account is not None,
+            has_direction=self.direction is not None,
+            category=self.category,
+        )
+        if error:
+            raise ValueError(error)
 
 
 @dataclass(frozen=True)
@@ -169,7 +214,11 @@ class Leg:
 
 
 def category_role(move: Move) -> LegRole | None:
-    """Which leg may carry the move's category, or None when neither may."""
+    """Which leg may carry the move's category, or None when neither may —
+    and None for an assign, which has no legs."""
+    if move.kind is MoveKind.ASSIGN:
+        return None
+    assert move.account is not None
     if move.kind is MoveKind.TRANSACTION:
         return LegRole.ACCOUNT if leg_may_carry_category(move.account.on_budget) else None
     assert move.to_account is not None
@@ -181,7 +230,11 @@ def category_role(move: Move) -> LegRole | None:
 
 
 def legs(move: Move) -> list[Leg]:
-    """The rows this move would write, with the category on the leg allowed it."""
+    """The rows this move would write, with the category on the leg allowed it.
+    An assign writes none."""
+    if move.kind is MoveKind.ASSIGN:
+        return []
+    assert move.account is not None
     carrier = category_role(move)
 
     def filed(role: LegRole) -> CategoryKind:
@@ -279,6 +332,10 @@ def _leg_terms(leg: Leg) -> dict[BudgetTerm, Decimal]:
 
 def budget_terms(move: Move) -> dict[BudgetTerm, Decimal]:
     """The budget figures a move changes and by how much, zeros dropped."""
+    if move.kind is MoveKind.ASSIGN:
+        # BudgetService: an assignment is subtracted from Ready to Assign and
+        # added to the envelope's Available, in the month it is made.
+        return {BudgetTerm.READY_TO_ASSIGN: -move.amount, BudgetTerm.ENVELOPE: move.amount}
     total: dict[BudgetTerm, Decimal] = {}
     for leg in legs(move):
         for term, delta in _leg_terms(leg).items():
@@ -405,8 +462,9 @@ class MoveExplanation:
     class_totals: dict[str, Decimal] = field(default_factory=dict)
     net_worth_delta: Decimal = Decimal("0")
     #: What a kept-here Savings envelope comes to hold: the ENVELOPE term of
-    #: every on-budget leg filed to `SAVINGS_KEPT`, under `ASSUMPTION` (the
-    #: envelope already holds the money, so no floor is crossed). The figure
+    #: every on-budget leg filed to `SAVINGS_KEPT`, or of an assign to one,
+    #: under `ASSUMPTION` (the envelope already holds the money, so no floor is
+    #: crossed). The figure
     #: `domain.savings` adds to the moved flows; held to `services.
     #: savings_held.held_between` on real rows by the agreement test.
     held: Decimal = Decimal("0")
@@ -441,19 +499,27 @@ def explain_move(
             )
         )
     role = category_role(move)
-    held = sum(
-        (
-            _leg_terms(leg).get(BudgetTerm.ENVELOPE, Decimal("0"))
-            for leg in move_legs
-            if leg.category is CategoryKind.SAVINGS_KEPT
-        ),
-        Decimal("0"),
-    )
+    terms = budget_terms(move)
+    if move.kind is MoveKind.ASSIGN:
+        # No leg carries the category: the assign itself fills the envelope.
+        kept = move.category is CategoryKind.SAVINGS_KEPT
+        held = terms[BudgetTerm.ENVELOPE] if kept else Decimal("0")
+    else:
+        held = sum(
+            (
+                _leg_terms(leg).get(BudgetTerm.ENVELOPE, Decimal("0"))
+                for leg in move_legs
+                if leg.category is CategoryKind.SAVINGS_KEPT
+            ),
+            Decimal("0"),
+        )
     return MoveExplanation(
         category_role=role,
-        category_applied=move.category is CategoryKind.NONE or role is not None,
+        category_applied=(
+            move.kind is MoveKind.ASSIGN or move.category is CategoryKind.NONE or role is not None
+        ),
         legs=explained,
-        budget_terms=budget_terms(move),
+        budget_terms=terms,
         class_totals=totals,
         # A liability's balance is stored negative, so assets minus debts is
         # the plain sum: a transfer nets to zero, a transaction moves it.

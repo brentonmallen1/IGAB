@@ -15,8 +15,9 @@
   the figure the reports add to the moved flows.
 
 Every shape pair crossed with every category kind the pair may carry, plus
-every plain transaction. A combination the explorer offers and this file does
-not build is a combination nobody checked.
+every plain transaction, plus an assign to every kind of envelope (a real
+`BudgetAssignment` through `BudgetService.set_assignment`). A combination the
+explorer offers and this file does not build is a combination nobody checked.
 """
 
 import itertools
@@ -29,6 +30,7 @@ from sqlalchemy import select
 from igab.db.models import Transaction
 from igab.domain.activity_class import ACTIVITY_CLASS, ACTIVITY_REASON, apply_class_joins
 from igab.domain.money_moves import (
+    ASSIGNABLE_KINDS,
     AccountShape,
     BudgetTerm,
     CategoryKind,
@@ -97,6 +99,8 @@ def _moves() -> list[tuple[str, Move]]:
             if kind is not CategoryKind.NONE and category_role(move) is None:
                 continue
             cases.append((f"{name}:{direction.value}:{kind.value}", move))
+    for kind in ASSIGNABLE_KINDS:
+        cases.append((f"assign:{kind.value}", Move(MoveKind.ASSIGN, None, AMOUNT, kind)))
     return cases
 
 
@@ -157,7 +161,9 @@ async def test_the_served_answer_is_what_the_budget_and_the_classifier_do(db_ses
         CategoryKind.INCOME: inflow,
     }.get(move.category, envelope)
 
-    source = await _account(db_session, budget, _shape_name(move.account), "Move From")
+    source = None
+    if move.account is not None:
+        source = await _account(db_session, budget, _shape_name(move.account), "Move From")
     target = None
     if move.to_account is not None:
         target = await _account(db_session, budget, _shape_name(move.to_account), "Move To")
@@ -165,8 +171,15 @@ async def test_the_served_answer_is_what_the_budget_and_the_classifier_do(db_ses
 
     before = await _snapshot(services, budget, envelope)
     held_before = await held_between(db_session, budget.id, MONTH, TODAY)
-    if move.kind is MoveKind.TRANSFER:
-        assert target is not None
+    rows = {}
+    if move.kind is MoveKind.ASSIGN:
+        # A real BudgetAssignment, through the service the Budget page uses:
+        # the month's 5,000 becomes 5,000 + AMOUNT.
+        await services.budgets.set_assignment(
+            budget.id, envelope.id, MONTH, Decimal("5000") + AMOUNT
+        )
+    elif move.kind is MoveKind.TRANSFER:
+        assert source is not None and target is not None
         created = await services.transactions.create(
             budget.id,
             TransactionCreate(
@@ -182,6 +195,7 @@ async def test_the_served_answer_is_what_the_budget_and_the_classifier_do(db_ses
         partner = await db_session.get(Transaction, created.transfer_id)
         rows = {LegRole.FROM: created.id, LegRole.TO: partner.id}
     else:
+        assert source is not None
         sign = 1 if move.direction is Direction.IN else -1
         row = await create_transaction(
             db_session, budget, source, sign * AMOUNT, TODAY, category=category
@@ -202,7 +216,9 @@ async def test_the_served_answer_is_what_the_budget_and_the_classifier_do(db_ses
         f"{name}: the explorer says held {explanation.held}, the budget held "
         f"{held_after - held_before}"
     )
-    if move.category is CategoryKind.SAVINGS_KEPT and category_role(move) is not None:
+    if move.category is CategoryKind.SAVINGS_KEPT and (
+        category_role(move) is not None or move.kind is MoveKind.ASSIGN
+    ):
         # A kept-here envelope is the only kind that holds: never silently 0.
         assert explanation.held != 0, name
 
@@ -237,3 +253,5 @@ def test_every_move_the_explorer_can_offer_is_built():
     # plus 13 pairs x 1; on-budget transactions carry six, off-budget one.
     assert len(transfers) == 12 * 6 + 13
     assert len(plain) == 4 * 6 + 6
+    assigns = [m for _, m in MOVES if m.kind is MoveKind.ASSIGN]
+    assert {m.category for m in assigns} == set(ASSIGNABLE_KINDS)

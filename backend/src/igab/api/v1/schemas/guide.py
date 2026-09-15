@@ -344,3 +344,17 @@ class EmergencyFundResponse(ApiModel):
     gap: Decimal | None
     months_to_fund: int | None
     funded_by: date | None
+
+
+class SpreadExampleResponse(ApiModel):
+    """The Guide's invented spread example (`guide/examples.py`), every figure
+    computed by the essentials and emergency-fund arithmetic the reports run."""
+
+    as_paid_after_bill: Decimal
+    as_paid_otherwise: Decimal
+    spread: Decimal
+    bill_monthly_share: Decimal
+    goal_months: int
+    goal_as_paid_after_bill: Decimal
+    goal_as_paid_otherwise: Decimal
+    goal_spread: Decimal

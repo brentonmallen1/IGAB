@@ -10,7 +10,8 @@ import { ROOT } from './queryKeys'
  */
 
 export type Classification = 'asset' | 'liability'
-export type MoveKind = 'transfer' | 'transaction'
+/** `assign`: from Ready to Assign into a category — no account, no legs. */
+export type MoveKind = 'transfer' | 'transaction' | 'assign'
 export type MoveDirection = 'in' | 'out'
 /** `savings_sent` / `savings_kept`: a Savings category that counts its savings
  *  when money is sent out, or while it is kept here (`domain/money_moves.py`). */
@@ -29,8 +30,9 @@ export interface AccountShapeIn {
 
 export interface MoneyMoveRequest {
   kind: MoveKind
-  /** The from-account of a transfer, or the one account of a transaction. */
-  account: AccountShapeIn
+  /** The from-account of a transfer, or the one account of a transaction;
+   *  absent for an assign. */
+  account?: AccountShapeIn | null
   to_account?: AccountShapeIn | null
   direction?: MoveDirection | null
   category: CategoryKind

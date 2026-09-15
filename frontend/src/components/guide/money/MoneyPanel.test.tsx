@@ -155,7 +155,7 @@ describe('the explorer', () => {
       screen.getByRole('button', { name: /Try it in the explorer: Selling something/ })
     )
     const last = vi.mocked(useExplainMove).mock.lastCall?.[1] as MoneyMoveRequest
-    expect(last.account.counts_as_savings).toBe(false)
+    expect(last.account?.counts_as_savings).toBe(false)
     expect(last.to_account?.on_budget).toBe(true)
   })
 })
