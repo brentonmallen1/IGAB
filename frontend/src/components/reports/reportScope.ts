@@ -40,8 +40,8 @@ export const SCOPE_COPY: Record<ReportAccountScope, string> = {
     'net worth spans every account; the income, spending, and burn ' +
     'metrics count on-budget accounts only.',
   'emergency-fund':
-    'whatever the Guide reads as your emergency fund — the envelopes or ' +
-    'accounts it is bound to, plus any amount you told it you keep elsewhere.',
+    'the emergency fund you chose — envelopes tagged Emergency fund, off-budget ' +
+    'accounts marked Counts toward emergency fund, and any amount you keep elsewhere.',
   savings:
     'off-budget accounts that count as savings, beside your envelopes. ' +
     'On-budget accounts are never added — their money is already in the envelopes.',

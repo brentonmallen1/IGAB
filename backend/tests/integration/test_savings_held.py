@@ -17,10 +17,12 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
+from sqlalchemy import update
 
-from igab.db.models import CategoryGroup
+from igab.db.models import Category, CategoryGroup
 from igab.domain.savings import HELD_REASON, HELD_REASON_LABEL
 from igab.guide.detection import GuideDetection
+from igab.repositories.category_filters import IS_SAVINGS_CATEGORY
 from igab.repositories.import_anchor_repo import anchor_rows
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.services.card_payment import ensure_payment_category
@@ -514,27 +516,29 @@ async def test_retirement_contributions_ignore_held(db_session):
 
 # ─── Nothing kept here, nothing changed ───────────────────────────────────────
 
-#: Every savings figure the sample budget served before held existed, at a
-#: pinned anchor. The sample keeps nothing here yet, so held is zero
-#: everywhere and each figure must be exactly what it was.
+#: Every savings figure the full sample serves at a pinned anchor once each of
+#: its savings categories is set to sent out — the shape every budget had
+#: before savings modes existed. Held is zero everywhere, so each figure is the
+#: money-moved figure the savings rate always served.
+#:
+#: Pinned before the sample itself changed as `test_sent_out_figures_unchanged
+#: _by_this_branch`, against the sample's pre-branch figures. The sample now
+#: keeps Emergency Fund and General Savings here and moves money from them to
+#: Harborstone Reserve and Cascade Point HYSA, and Vacation is a sinking fund,
+#: so the golden was regenerated from the new sample with its kept-here
+#: envelopes stripped back to sent out. What it pins is unchanged: a budget with
+#: only sent-out categories reads exactly as money moved.
 GOLDEN = json.loads((Path(__file__).parent / "savings_golden_sample.json").read_text())
 
 
-async def test_sent_out_figures_unchanged_by_this_branch(db_session, monkeypatch):
-    import tests.integration.test_sample_budget_reports as sample
-
-    monkeypatch.setattr(sample, "ANCHOR", TODAY)
-    user = await create_user(db_session)
-    budget = await create_budget(db_session, user)
-    await sample._generate(db_session, budget, "full")
+async def _served_figures(db_session, budget) -> tuple[dict, dict]:
+    """(the figures the golden pins, the savings-rate tab they came from)."""
     svc = ReportService(db_session)
-
     tab = await svc.savings_rate(budget.id, 12)
     ive = await svc.income_vs_expense(budget.id, 12)
     d1 = await svc.dashboard_metrics(budget.id, MAR, date(2026, 3, 31))
     d6 = await svc.dashboard_metrics(budget.id, date(2025, 10, 1), date(2026, 3, 31))
     c = await savings_contributors(db_session, budget.id, tab["start_date"], tab["end_date"])
-
     served = {
         "summary": {
             k: str(tab["summary"][k])
@@ -563,6 +567,28 @@ async def test_sent_out_figures_unchanged_by_this_branch(db_session, monkeypatch
             [[x["name"], x["reason"], str(x["total"])] for x in c["savings_contributors"]],
         ],
     }
+    return served, tab
+
+
+async def test_a_budget_with_only_sent_out_categories_reads_as_money_moved(db_session, monkeypatch):
+    import tests.integration.test_sample_budget_reports as sample
+
+    monkeypatch.setattr(sample, "ANCHOR", TODAY)
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+    await sample._generate(db_session, budget, "full")
+    await db_session.execute(
+        update(Category)
+        .where(Category.budget_id == budget.id, IS_SAVINGS_CATEGORY)
+        .values(savings_mode="sent_out")
+        .execution_options(synchronize_session=False)
+    )
+
+    served, tab = await _served_figures(db_session, budget)
+
     assert served == GOLDEN
     assert tab["summary"]["savings_held"] == 0
+    assert tab["summary"]["savings"] == tab["summary"]["savings_moved"]
     assert all(m["savings_held"] == 0 for m in tab["months"])
+    assert all(m["savings"] == m["savings_moved"] for m in tab["months"])
+    assert all(reason != HELD_REASON for _, reason, _ in served["contrib"][1])

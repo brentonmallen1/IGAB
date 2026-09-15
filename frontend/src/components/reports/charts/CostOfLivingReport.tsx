@@ -164,7 +164,7 @@ export function CostOfLivingReport({ budgetId }: Props) {
 
       {/* What was tagged and still not counted. This report counts debt
           payments, so the sentence must not say "spending": a mortgage IS
-          here now, and a category tagged both Essential and Savings is not. */}
+          here now, and a category tagged Essential and Savings set to sent out is not. */}
       <ReportNotes report={data} toggleAvailable={false} counts="a cost of living" />
 
       {data.groups.length === 0 ? (

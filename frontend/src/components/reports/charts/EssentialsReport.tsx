@@ -125,8 +125,8 @@ export function EssentialsReport({ budgetId }: Props) {
         ) : (
           <div ref={captureRef}>
             {/* Tagged Essential and still not counted. The mortgage case is
-                counted now; a category tagged both Essential and Savings is
-                not, and silence there would be the same bug in a new class. */}
+                counted now; a category tagged Essential and Savings set to
+                sent out is not, and silence there would be the same bug in a new class. */}
             <ReportNotes report={data} toggleAvailable={false} counts="a cost of living" />
             <MetricRow>
               <MetricCard

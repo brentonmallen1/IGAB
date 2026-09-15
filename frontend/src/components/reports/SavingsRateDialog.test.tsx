@@ -277,8 +277,11 @@ describe('SavingsRateDialog', () => {
     const note = screen.getByRole('region', { name: 'What does not count' })
     expect(note).toHaveTextContent(/inside a tracked account/)
     expect(note).toHaveTextContent(/between two of your budget accounts/)
-    expect(note).toHaveTextContent(/tag its category Savings/)
-    expect(note).toHaveTextContent(/“kept here”, what the envelope holds counts/)
+    // A tracked savings account needs no tag; the tag is for money that goes
+    // somewhere untracked, or for savings kept in the envelope.
+    expect(note).toHaveTextContent(/counts as savings — no tag needed/)
+    expect(note).toHaveTextContent(/somewhere IGAB does not track, tag its category Savings/)
+    expect(note).toHaveTextContent(/“kept here”: what the envelope holds counts/)
   })
 
   it('links what does not count to the Guide tab that shows it at work', () => {

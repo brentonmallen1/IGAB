@@ -65,6 +65,11 @@ ESPP = "Northgate ESPP"
 CRYPTO = "Crypto Wallet"
 LEGACY = "First National Checking (old)"
 VEHICLE = "Second Car"
+# Off-budget savings, one per way an envelope can reach one: the Emergency
+# Fund's reserve (marked Counts toward emergency fund) and General Savings'
+# high-yield account (counts as savings, not part of the fund).
+RESERVE = "Harborstone Reserve"
+HYSA = "Cascade Point HYSA"
 
 FULL = ("full",)
 STARTER = ("starter",)
@@ -170,6 +175,28 @@ _HOUSEHOLD = SampleBudgetSpec(
             sort_order=16,
             tiers=FULL,
         ),
+        # Fed $100 a month from the Emergency Fund envelope. Off budget and
+        # marked, so the fund counts it; the envelope is kept here, so the
+        # transfer nets to zero in the savings figure. Opens empty, so the
+        # fund's total is exactly what the envelope was assigned.
+        AccountSpec(
+            RESERVE,
+            "savings",
+            on_budget=False,
+            counts_as_savings=True,
+            counts_toward_emergency_fund=True,
+            sort_order=17,
+        ),
+        # Where General Savings (kept here) moves money to earn interest:
+        # savings, but not the emergency fund.
+        AccountSpec(
+            HYSA,
+            "savings",
+            on_budget=False,
+            counts_as_savings=True,
+            opening_balance=_d("2000.00"),
+            sort_order=18,
+        ),
     ),
     groups=(
         GroupSpec(
@@ -250,30 +277,35 @@ _HOUSEHOLD = SampleBudgetSpec(
                 # to sweep in here, which pushed the full tier's fund to
                 # $43,270 against a $10,000 target — four times its own goal,
                 # which reads as a bug in the demo rather than a household.
-                # It is also the numerator of every coverage figure on the
-                # Emergency Fund report: tagged Emergency fund, which is the
-                # only way anything counts. Savings and sent out alongside it,
-                # exactly what migration e52d44b73edb leaves on a budget that
-                # bound a Savings envelope — so the savings rate reads as it
-                # did.
+                #
+                # Tagged Emergency fund and nothing else: the tag implies
+                # Savings and defaults to kept here, so assigning is saved and
+                # the $100 a month it moves to Harborstone Reserve nets to
+                # zero. The fund is this envelope plus that account — the
+                # numerator of every coverage figure.
                 CategorySpec(
                     "Emergency Fund",
                     target=TargetSpec("savings_balance", _d("10000.00")),
-                    tags=("Savings", "Emergency fund"),
-                    savings_mode="sent_out",
+                    tags=("Emergency fund",),
                     monthly_budget=_d("300.00"),
                 ),
-                # Where the leftovers go. Not tagged Emergency fund, so it is
-                # not part of the fund whatever it is named.
+                # Where the leftovers go, kept here: its balance is savings,
+                # and its monthly move to Cascade Point HYSA nets to zero. Not
+                # tagged Emergency fund, so not part of the fund whatever it
+                # is named.
                 CategorySpec(
                     "General Savings",
                     tags=("Savings",),
+                    savings_mode="kept_here",
                     sweep_remainder=True,
                 ),
+                # A sinking fund: money set aside for a planned trip. Its
+                # flights and hotel are spending when they are paid, never
+                # savings.
                 CategorySpec(
                     "Vacation",
                     target=TargetSpec("monthly_funding", _d("150.00")),
-                    tags=("Savings", "Travel"),
+                    tags=("Long-term expense", "Travel"),
                     monthly_budget=_d("150.00"),
                 ),
                 CategorySpec(
@@ -281,8 +313,13 @@ _HOUSEHOLD = SampleBudgetSpec(
                     target=TargetSpec("savings_balance", _d("1800.00"), target_date=RelDate(-6, 1)),
                     monthly_budget=_d("150.00"),
                 ),
-                CategorySpec("Investing", tags=("Savings",)),
-                CategorySpec("Health Savings", tags=("Savings",), tiers=FULL),
+                # Sent out: every dollar that leaves for the brokerage, the Roth
+                # or the HSA is saved the day it leaves (the classifier's
+                # Savings rule), and what waits in the envelope is on the way.
+                CategorySpec("Investing", tags=("Savings",), savings_mode="sent_out"),
+                CategorySpec(
+                    "Health Savings", tags=("Savings",), savings_mode="sent_out", tiers=FULL
+                ),
                 CategorySpec("Wedding Fund", is_archived=True, tiers=FULL),
                 CategorySpec("Moving 2024", is_archived=True, tiers=FULL),
             ),
@@ -716,6 +753,22 @@ _HOUSEHOLD = SampleBudgetSpec(
         TransferSpec(CHECKING, SAVINGS, day=2, amount=_d("400.00"), memo="Monthly savings"),
         TransferSpec(
             CHECKING,
+            RESERVE,
+            day=8,
+            amount=_d("100.00"),
+            category="Emergency Fund",
+            memo="Emergency reserve",
+        ),
+        TransferSpec(
+            CHECKING,
+            HYSA,
+            day=8,
+            amount=_d("200.00"),
+            category="General Savings",
+            memo="Move to high-yield savings",
+        ),
+        TransferSpec(
+            CHECKING,
             CAR_LOAN,
             day=10,
             amount=_d("275.00"),
@@ -906,11 +959,11 @@ _HOUSEHOLD = SampleBudgetSpec(
     # `effective_category_ids` the budget page uses.
     filters=(
         BudgetFilterSpec("Essentials", tags=("Essential",)),
-        BudgetFilterSpec("Savings goals", tags=("Savings",)),
+        BudgetFilterSpec("Savings", tags=("Savings", "Emergency fund")),
         BudgetFilterSpec("Subscriptions", tags=("Subscription",)),
         # Full only: the starter's control opens on three, the full tier's on
         # five, so the demo shows a list that is plainly a list.
-        BudgetFilterSpec("Set aside monthly", tags=("Long-term expense",), tiers=FULL),
+        BudgetFilterSpec("Sinking funds", tags=("Long-term expense",), tiers=FULL),
         # The one filter built from named categories rather than a tag, so
         # the demo shows both shapes. It cannot be tag-based: the payments it
         # names are transfers to tracked loan accounts, which the classifier

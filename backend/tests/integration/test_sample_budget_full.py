@@ -118,9 +118,9 @@ async def test_full_tier_shape_and_texture(db_session):
     counts = gen.result
 
     accounts = await AccountRepository(db_session).get_all(budget.id, include_closed=True)
-    # The household accounts (a sold second car among them) plus the eight
-    # card-shape demos.
-    assert counts.accounts == 26
+    # The household accounts (a sold second car and the two off-budget savings
+    # accounts among them) plus the eight card-shape demos.
+    assert counts.accounts == 28
     types = {a.account_type for a in accounts}
     assert {
         "checking",
@@ -151,11 +151,13 @@ async def test_full_tier_shape_and_texture(db_session):
             y, m = y - 1, 12
 
     # Register texture, calibrated to the real export (~10% transfer legs,
-    # ~9% split lines, overwhelmingly reconciled history). Transfers run a
-    # little hotter than a typical real register on purpose — spending
-    # transfers to off-budget accounts are a feature worth showcasing.
+    # ~9% split lines, overwhelmingly reconciled history). Transfers run
+    # hotter than a typical real register on purpose — spending transfers to
+    # off-budget accounts are a feature worth showcasing, and the two monthly
+    # moves from kept-here envelopes to Harborstone Reserve and Cascade Point
+    # HYSA took the share from about 20% to about 24%.
     transfer_legs = sum(1 for t in txns if t.transfer_id is not None)
-    assert 0.08 <= transfer_legs / len(txns) <= 0.22
+    assert 0.08 <= transfer_legs / len(txns) <= 0.26
     split_lines = sum(1 for t in txns if t.parent_transaction_id is not None)
     assert 0.05 <= split_lines / len(txns) <= 0.14
     reconciled = sum(1 for t in txns if t.cleared == "reconciled")
@@ -262,7 +264,7 @@ async def test_endpoint_accepts_the_tier(api_client):
     )
     assert response.status_code == 201, response.text
     counts = response.json()["counts"]
-    assert counts["accounts"] == 26
+    assert counts["accounts"] == 28
     assert counts["transactions"] > 1500
     assert counts["liabilities"] == 14
 

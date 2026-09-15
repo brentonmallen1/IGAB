@@ -71,9 +71,10 @@ async def test_generation_covers_every_entity_kind(db_session):
 
     accounts = await AccountRepository(db_session).get_all(budget.id)
     types = {a.account_type for a in accounts}
-    # Checking, Savings, the everyday Visa, a car loan, a dental plan — plus
-    # the starter's two card-shape demos (carrying-debt, month-ended-short).
-    assert counts.accounts == 7
+    # Checking, Savings, the everyday Visa, a car loan, a brokerage, the two
+    # off-budget savings accounts (Harborstone Reserve, Cascade Point HYSA) —
+    # plus the starter's two card-shape demos (carrying-debt, month-ended-short).
+    assert counts.accounts == 9
     assert {"checking", "savings", "credit_card", "auto_loan", "investment"} <= types
 
     txns = await _transactions(db_session, budget.id)

@@ -43,7 +43,7 @@ export const CHECKUP_COPY: Record<MetricKey, CheckupExplainer> = {
     decide: [
       'Whether to keep paying extra on debt, or pause and rebuild the cushion first',
       'How much to set aside each month and when it will be enough — the sizer works it through',
-      'What counts: tag what you could not do without as Essential, and point the roadmap at the right envelope if it guessed wrong',
+      'What counts: tag what you could not do without as Essential, and choose the fund itself — envelopes tagged Emergency fund, marked off-budget accounts, anything kept elsewhere; nothing is guessed',
     ],
     stage: 'full-emergency-fund',
     tool: 'emergency-fund',

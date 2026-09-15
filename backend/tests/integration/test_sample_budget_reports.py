@@ -251,3 +251,75 @@ async def test_the_debt_half_of_the_tier_needs_no_tag(db_session):
     car = await _category_id(db_session, budget, "Car Payment")
     assert car in wide_ids, "the untagged car payment did not reach Cost of Living"
     assert car not in lean_ids
+
+
+async def test_the_sample_demos_both_savings_modes_and_a_marked_account(db_session):
+    """Every way money is set aside, on both tiers:
+
+    - Emergency Fund is tagged Emergency fund only and reads kept here; the
+      fund is that envelope plus Harborstone Reserve, the marked account it
+      feeds $100 a month.
+    - General Savings is kept here and feeds Cascade Point HYSA, which counts
+      as savings and is not the fund.
+    - Investing is sent out: on the way to savings, not Saved.
+    - Vacation is a sinking fund, never savings.
+    """
+    from igab.repositories.category_filters import SAVINGS_ROLE
+    from igab.services.emergency_fund import emergency_fund
+    from igab.services.savings_report import savings_report
+
+    for tier in ("starter", "full"):
+        budget, _ = await _world(db_session, tier)
+        roles = dict(
+            (
+                await db_session.execute(
+                    select(Category.name, SAVINGS_ROLE).where(
+                        Category.budget_id == budget.id,
+                        Category.name.in_(
+                            ["Emergency Fund", "General Savings", "Investing", "Vacation"]
+                        ),
+                    )
+                )
+            ).all()
+        )
+        assert roles == {
+            "Emergency Fund": "kept_here",
+            "General Savings": "kept_here",
+            "Investing": "sent_out",
+            "Vacation": "none",
+        }, tier
+
+        fund = await emergency_fund(db_session, budget.id)
+        assert [p.name for p in fund.categories] == ["Emergency Fund"], tier
+        assert [p.name for p in fund.accounts] == ["Harborstone Reserve"], tier
+        assert fund.accounts[0].balance > 0, tier
+
+        report = await savings_report(db_session, budget.id, months=12)
+        saved = {e["category_name"] for e in report["saved"]["envelopes"]}
+        assert saved == {"Emergency Fund", "General Savings"}, tier
+        accounts = {a["name"] for a in report["saved"]["accounts"]}
+        assert {"Harborstone Reserve", "Cascade Point HYSA"} <= accounts, tier
+        assert "Investing" in {e["category_name"] for e in report["on_the_way"]["envelopes"]}
+        assert "Vacation" in {e["category_name"] for e in report["sinking_funds"]["envelopes"]}
+
+
+async def test_the_reserve_transfer_moves_nothing_in_the_fund(db_session):
+    """The Emergency Fund envelope sends $100 a month to Harborstone Reserve,
+    and the fund counts both: its total is every dollar ever assigned to the
+    envelope, exactly as it was when the envelope kept all of it."""
+    from sqlalchemy import func
+
+    from igab.db.models import BudgetAssignment
+    from igab.services.emergency_fund import emergency_fund
+
+    for tier in ("starter", "full"):
+        budget, _ = await _world(db_session, tier)
+        fund = await emergency_fund(db_session, budget.id)
+        assigned = (
+            await db_session.execute(
+                select(func.sum(BudgetAssignment.assigned)).where(
+                    BudgetAssignment.category_id == fund.categories[0].id
+                )
+            )
+        ).scalar_one()
+        assert fund.total == assigned, tier

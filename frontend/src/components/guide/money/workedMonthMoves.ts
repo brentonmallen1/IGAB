@@ -35,7 +35,7 @@ export const WORKED_MONTH: MonthMoveRequest[] = [
     amount: 500,
   },
   {
-    label: 'Flight, from a Savings-tagged Vacation category',
+    label: 'Flight, from a Vacation category tagged Savings and set to sent out',
     kind: 'transaction',
     account: checking,
     direction: 'out',

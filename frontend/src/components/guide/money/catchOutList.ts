@@ -21,7 +21,7 @@ export const CATCH_OUTS: CatchOut[] = [
     id: 'on-budget-hysa',
     title: 'Moving money to an on-budget savings account is not saving',
     detail:
-      'Both accounts are in the budget, so the money never left it. Take the account off budget, or tag the category it leaves from, if you want it counted.',
+      'Both accounts are in the budget, so the money never left it — and a move between two on-budget accounts carries no category to tag. To count it, take the account off budget and turn on Counts as savings, or keep it on budget and set aside money in Savings envelopes set to kept here.',
     tryIt: preset('transfer', 'checking', 'savings'),
   },
   {
@@ -61,8 +61,8 @@ export const CATCH_OUTS: CatchOut[] = [
   },
   {
     id: 'savings-tag',
-    title: `The ${tagName('savings')} tag counts every outflow as saving`,
-    detail: `Spend a vacation fund tagged ${tagName('savings')} on a flight and the flight counts as saved. For money set aside toward a bill, use ${tagName('long_term_expense')}: the bill then counts as spending when it is paid.`,
+    title: `A ${tagName('savings')} category set to sent out counts every outflow as saved`,
+    detail: `Pay for a flight from a ${tagName('savings')} envelope set to sent out and the flight counts as saved. For a fund you spend from, set it to kept here: spending from it is then spending. For money set aside toward a planned bill, use ${tagName('long_term_expense')}: the bill counts as spending when it is paid.`,
     tryIt: preset('transaction', 'checking', 'checking', { category: 'savings_sent' }),
   },
   {

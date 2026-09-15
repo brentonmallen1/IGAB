@@ -291,7 +291,7 @@ export const ROADMAP: RoadmapStage[] = [
         title: 'Save $1,000, or one month of expenses — whichever is larger',
         body: 'Keep it somewhere you can reach the same day: checking or plain savings. This is not an investment.',
         detail:
-          'The point of this money is not growth, it is speed. A car repair or an urgent flight is exactly when you cannot afford to wait for a transfer to settle or to sell something at a bad moment. Chasing a slightly better rate here trades away the only feature that matters.\n\nThis is a starter buffer, not the finished one — the roadmap comes back to grow it to three to six months once expensive debt is out of the way.',
+          'The point of this money is not growth, it is speed. A car repair or an urgent flight is exactly when you cannot afford to wait for a transfer to settle or to sell something at a bad moment. Chasing a slightly better rate here trades away the only feature that matters.\n\nThis is a starter buffer, not the finished one — the roadmap comes back to grow it to three to six months once expensive debt is out of the way.\n\nIn IGAB the fund is what you choose, never a guess: tag the envelope that holds it Emergency fund, mark an off-budget savings account that holds it, or add an amount you keep elsewhere.',
         glossary: ['emergency-fund', 'sinking-fund'],
         appLinks: [{ label: 'Open your budget', to: '/budget' }],
         signal: 'emergency_fund',
@@ -439,7 +439,7 @@ export const ROADMAP: RoadmapStage[] = [
         title: 'Build up to three to six months of living expenses',
         body: 'Measure against what you would actually spend in a lean month — essentials, not your current spending.',
         detail:
-          'Where you land in the three-to-six range depends on how quickly you could replace your income. A two-earner household in a field that hires constantly can reasonably sit at the low end. A single earner, a specialised role, a long typical job search, or self-employment all argue for the high end.\n\nKeep it accessible — a savings or checking account, same as the starter fund. This is still not money to invest.',
+          'Where you land in the three-to-six range depends on how quickly you could replace your income. A two-earner household in a field that hires constantly can reasonably sit at the low end. A single earner, a specialised role, a long typical job search, or self-employment all argue for the high end.\n\nKeep it accessible — a savings or checking account, same as the starter fund. This is still not money to invest.\n\nThe fund counts what you chose for the starter step — Emergency fund envelopes, marked off-budget accounts and anything kept elsewhere — so growing it is a matter of assigning more, not setting it up again.',
         glossary: ['emergency-fund'],
         appLinks: [
           { label: 'Open your budget', to: '/budget' },
@@ -533,7 +533,7 @@ export const ROADMAP: RoadmapStage[] = [
         title: 'Save for it in checking or savings',
         body: 'Money you will need within a few years does not belong in the market. Give it its own category so it is never accidentally spent.',
         detail:
-          'This is what a sinking fund is for: a known expense, a known rough date, funded a little each month instead of arriving as a crisis. In IGAB, that is a category with a target — the budget then tells you each month whether you are on pace.',
+          'This is what a sinking fund is for: a known expense, a known rough date, funded a little each month instead of arriving as a crisis. In IGAB, that is a category tagged Long-term expense with a target — the budget then tells you each month whether you are on pace, and the bill counts as spending when you pay it, never as savings.',
         glossary: ['sinking-fund', 'target'],
         appLinks: [{ label: 'Open your budget', to: '/budget' }],
       },

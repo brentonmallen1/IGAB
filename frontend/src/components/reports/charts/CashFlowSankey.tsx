@@ -422,8 +422,14 @@ export function CashFlowSankeyReport({ budgetId }: Props) {
                 }
               />
             )}
+            {/* Money moved — the "To savings accounts" trunk. Not "Saved":
+                that figure (Savings Rate) adds what kept-here envelopes hold,
+                which never left the budget and is not on this diagram. */}
             {data.total_savings !== null && Number(data.total_savings) > 0 && (
-              <MetricCard label="Saved" value={formatMoney(Number(data.total_savings))} />
+              <MetricCard
+                label="Moved to savings"
+                value={formatMoney(Number(data.total_savings))}
+              />
             )}
             {data.total_debt_principal !== null && Number(data.total_debt_principal) > 0 && (
               <MetricCard

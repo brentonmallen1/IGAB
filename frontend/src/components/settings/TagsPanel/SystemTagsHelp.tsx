@@ -7,8 +7,9 @@ export function SystemTagsHelp() {
     <InfoPopover title="System tags" label="What system tags do" width={440}>
       <p>
         Every budget gets these tags. Their colour is yours to change; their names are not, and they
-        cannot be deleted — unlike your own tags they change how IGAB <strong>counts</strong> money,
-        and the name is how you know which is which.
+        cannot be deleted — unlike your own tags they change what the reports read, and the name is
+        how you know which is which. Only some change how a transaction <strong>counts</strong>: a
+        Savings category set to sent out, and Debt principal.
       </p>
 
       <InfoSection title="Each one">

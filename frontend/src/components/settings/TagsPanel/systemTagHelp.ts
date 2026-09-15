@@ -23,19 +23,19 @@ export const SYSTEM_TAG_HELP: { key: string; name: string; on: string; does: str
     key: 'savings',
     name: 'Savings',
     on: 'categories',
-    does: 'Money set aside. Each Savings category says how it counts as saved: sent out (money leaving the envelope counts as saving, not spending — for an envelope that feeds an investment or another bank) or kept here (the envelope’s balance is the savings, so assigning to it counts and spending from it does not). Either way it feeds the Savings report and the savings rate, stays out of burn rate and the spending charts, and still counts against what you assigned, so Budget vs Actual shows the envelope being spent down.',
+    does: 'Money set aside. Each Savings category counts in one of two ways. Sent out: money leaving the envelope counts as saved, not spending — for an envelope that feeds an investment, a retirement account or another bank. Kept here: the envelope’s balance is the savings — assigning to it counts as saved, spending from it is spending and lowers what you saved, and moving it to an off-budget savings account changes nothing. Either way it feeds the Savings report and the savings rate, and still counts against what you assigned, so Budget vs Actual shows the envelope being spent down.',
   },
   {
     key: 'emergency_fund',
     name: 'Emergency fund',
     on: 'categories',
-    does: 'Money set aside for genuine surprises. Counts as savings (kept here unless you change it) and is what the emergency fund reads, with any off-budget accounts you mark.',
+    does: 'Money set aside for genuine surprises, chosen by you and never guessed. It counts as savings (kept here unless you change it). The emergency fund is these envelopes’ Available, plus the off-budget accounts you mark Counts toward emergency fund, plus anything you say you keep elsewhere. Sent out or kept here changes your savings rate, never the fund’s total.',
   },
   {
     key: 'long_term_expense',
     name: 'Long-term expense',
     on: 'categories',
-    does: 'Marks a sinking fund — money set aside monthly toward a known annual bill. It appears in the Savings report beside your savings, and the bill itself still counts as spending when you pay it.',
+    does: 'A sinking fund — money set aside monthly toward a planned, irregular bill: insurance, property tax, a trip. Never savings and never the emergency fund: the bill counts as spending when you pay it, and the Savings report lists the envelope under Sinking funds, apart from Saved. Tagged Essential too, its bills are spread over 12 months in the essentials figures unless you turn that off. A category tagged Savings as well counts as savings instead.',
   },
   {
     key: 'debt_principal',
@@ -53,7 +53,7 @@ export const SYSTEM_TAG_HELP: { key: string; name: string; on: string; does: str
     key: 'cost_of_living',
     name: 'Cost of living',
     on: 'categories',
-    does: 'Committed but not strictly necessary — a subscription, a gym, a maintenance fund you would cancel in a genuine emergency but pay every month otherwise. The Cost of Living report counts it together with your Essential categories and your debt payments; the gap between that and Essentials alone is what a lean month could shed.',
+    does: 'Committed but not strictly necessary — a subscription, a gym, a membership you would cancel in a genuine emergency but pay every month otherwise. The Cost of Living report counts it together with your Essential categories and your debt payments; the gap between that and Essentials alone is what a lean month could shed.',
   },
   {
     key: 'wishlist',

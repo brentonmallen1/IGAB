@@ -24,9 +24,10 @@ export function TwoFacts() {
       <section className="money-facts__fact surface surface--raised">
         <h3 className="money-facts__title">2. What the category is tagged</h3>
         <p>
-          Most categories are just categories. Tag one <strong>{tagName('savings')}</strong> or{' '}
-          <strong>{tagName('debt_principal')}</strong> and its outflows count that way, wherever the
-          money went.
+          Most categories are just categories. A <strong>{tagName('savings')}</strong> category set
+          to sent out, or one tagged <strong>{tagName('debt_principal')}</strong>, counts its
+          outflows that way, wherever the money went. A {tagName('savings')} category kept here
+          counts by where the money went, like any other; its balance is what counts as saved.
         </p>
         <p>
           A category in your income group means the money is income, ready to assign. No category on

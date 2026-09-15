@@ -74,7 +74,7 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
     scope: 'on-budget',
     summary: 'How much of what came in you kept, month by month.',
     counts:
-      'Savings — including transfers to tracked accounts marked as savings — ÷ income, plus debt principal when included.',
+      'Saved — money moved to savings, including transfers to tracked accounts that count as savings, plus what kept-here Savings envelopes came to hold — ÷ income, plus debt principal when included.',
     leavesOut:
       'Transfers between budget accounts, spending, investment growth and interest inside tracked accounts.',
   },
@@ -83,7 +83,7 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
     summary:
       'What a lean month costs; the headline is the last 90 days ÷ 3, with yearly Long-term expense bills spread over 12 months when that is on.',
     counts: 'Spending and debt payments in categories tagged Essential, or bound in the Guide.',
-    leavesOut: 'Savings-tagged envelopes, and everything not tagged Essential.',
+    leavesOut: 'Money that counts as saved, and everything not tagged Essential.',
   },
   'cost-of-living': {
     scope: 'on-budget',
@@ -103,7 +103,8 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
   'income-expense': {
     scope: 'on-budget',
     summary: 'Income against expenses each month, with the net.',
-    counts: 'Income, spending, savings and debt principal; net is income minus the other three.',
+    counts:
+      'Income, spending, saved and debt principal; net is income minus spending, money moved to savings and debt principal — money held in an envelope never left.',
     leavesOut: 'Transfers between budget accounts, and activity inside tracked accounts.',
   },
   'income-sources': {
@@ -128,7 +129,8 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
   'cash-flow': {
     scope: 'on-budget-filterable',
     summary: 'A Sankey of income flowing into spending, spent or budgeted.',
-    counts: 'Income into spending by group, with separate savings and debt trunks.',
+    counts:
+      'Income into spending by group, with a debt trunk and a To savings accounts trunk of money moved to savings — not what envelopes hold.',
     leavesOut: 'Transfers between budget accounts.',
   },
   projection: {
@@ -140,7 +142,8 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
   'budget-actual': {
     scope: 'categories',
     summary: 'What you assigned to each category against what you spent.',
-    counts: 'Assigned vs spent, where spent includes outflows from Savings-tagged envelopes.',
+    counts:
+      'Assigned vs spent, where spent includes outflows from Savings and Emergency fund envelopes.',
     leavesOut:
       'Refunds do not reduce spent; money moved out of an envelope lowers its plan instead.',
   },
@@ -154,7 +157,7 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
     scope: 'categories',
     summary: 'The running total of assigned minus spent.',
     counts:
-      'Assigned vs spent each month, where spent includes outflows from Savings-tagged envelopes.',
+      'Assigned vs spent each month, where spent includes outflows from Savings and Emergency fund envelopes.',
     leavesOut: 'Refunds do not reduce spent.',
   },
   volatility: {
@@ -205,7 +208,7 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
     scope: 'categories',
     summary: "Each month's plan against that month's spending, ignoring carryover.",
     counts:
-      'Assigned vs spent per category-month, where spent includes outflows from Savings-tagged envelopes.',
+      'Assigned vs spent per category-month, where spent includes outflows from Savings and Emergency fund envelopes.',
     leavesOut: 'Carryover from earlier months, and refunds do not reduce spent.',
   },
   anomalies: {

@@ -726,10 +726,11 @@ function TagsStep({
   return (
     <>
       <p className="dialog__body">
-        A tag decides how a category's money is counted. A Savings category counts as saved either
-        when money is sent out of it or while it is kept there — you choose which on the category —
-        and what you mark Essential is what an emergency fund is measured against. These are
-        suggestions from the names: nothing is tagged until you confirm it.
+        A tag decides what the reports read for a category. A Savings category counts as saved
+        either when money is sent out of it or while it is kept there — you choose which on the
+        category. Emergency fund marks the envelopes your fund is, Long-term expense a sinking fund
+        for a planned bill, and what you mark Essential is what an emergency fund is measured
+        against. These are suggestions from the names: nothing is tagged until you confirm it.
         {decidedCount > 0 && ' This import also tagged some categories itself, listed separately.'}
       </p>
 

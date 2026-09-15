@@ -117,7 +117,9 @@ async def _cover_the_rules_the_sample_data_misses(db_session, budget) -> None:
 
     # Savings modes. A kept-here Savings envelope moving its balance to a
     # tracked savings account reads no tag input — it must reach
-    # TRANSFER_TO_TRACKED_ASSET by where the money went. And an Emergency fund
+    # TRANSFER_TO_TRACKED_ASSET by where the money went. The sample carries
+    # that shape too (General Savings → Cascade Point HYSA, Emergency Fund →
+    # Harborstone Reserve); this row keeps it covered if the sample changes. And an Emergency fund
     # envelope set to sent out must fire the Savings rule without carrying the
     # Savings tag. The mode is a column the rule reads through the category,
     # so both implementations have to agree about it.

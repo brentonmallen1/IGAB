@@ -282,6 +282,11 @@ themes; suite green.
 
 ## R2 — Tag-aware report semantics (S, depends on R1)
 
+> **Superseded (2026-09-15).** Savings is now one tag with a per-category mode (sent out /
+> kept here), Emergency fund is its own tag, and Long-term expense is a sinking fund that is
+> never savings — see `domain/activity_class.py` and `services/savings_report.py`. The
+> savings routing below describes the original design, not current behaviour.
+
 **Goal**: make tags mean something in reports — savings-tagged categories read as
 saving (not spending) in the Sankey, can be excluded from Pareto/Treemap, and tags
 join the shared report filter bar. Delivers the long-standing checklist idea: a

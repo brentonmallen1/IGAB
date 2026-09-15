@@ -50,6 +50,9 @@ class AccountSpec:
     on_budget: bool = True
     #: None takes the type's default (`AccountType.default_counts_as_savings`).
     counts_as_savings: bool | None = None
+    #: Valid only on an off-budget asset that counts as savings; the generator
+    #: refuses any other shape (`AccountRepository.require_emergency_fund_shape`).
+    counts_toward_emergency_fund: bool = False
     opening_balance: Decimal = Decimal("0")
     sort_order: int = 0
     is_closed: bool = False

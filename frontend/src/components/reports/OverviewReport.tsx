@@ -69,12 +69,13 @@ export function OverviewReport({ budgetId }: Props) {
               Essential — what a lean month costs, and the figure the Guide’s emergency-fund target
               is built from. Yearly bills in Long-term expense categories are spread over 12 months
               when that setting is on (Essentials report), and the as-paid figure is shown beside
-              it. Shows “—” until something is tagged. <strong>Savings Rate</strong>: Savings ÷
-              Income — money moved into savings or investments, not simply money left over. Shows
-              “—” for a window with no income. Open it to see where the savings went and where the
-              income came from. <strong>Days Until Zero</strong>: cash on hand ÷ daily burn rate —
-              how long the budget’s cash accounts would last at this pace. Cards, loans and tracked
-              investments are out: net worth is not money you can spend next week.
+              it. Shows “—” until something is tagged. <strong>Savings Rate</strong>: Saved ÷ Income
+              — money moved into savings or investments, or held in a kept-here Savings envelope,
+              not simply money left over. Shows “—” for a window with no income. Open it to see
+              where the savings went and where the income came from.{' '}
+              <strong>Days Until Zero</strong>: cash on hand ÷ daily burn rate — how long the
+              budget’s cash accounts would last at this pace. Cards, loans and tracked investments
+              are out: net worth is not money you can spend next week.
             </p>
             <p>
               <strong>Your Means</strong>: income against what living cost over the range — spending

@@ -82,9 +82,9 @@ export function SavingsRateReport({ budgetId }: Props) {
             counting it would make this number climb in a good market while you did nothing.
           </p>
           <p>
-            Only a tracked account that <strong>counts as savings</strong> is saving. Selling a car
-            or a house tracked as an asset counts as income, and buying one as spending — turn the
-            setting off on the account for things like that.
+            Of your tracked accounts, only one that <strong>counts as savings</strong> is saving.
+            Selling a car or a house tracked as an asset counts as income, and buying one as
+            spending — turn the setting off on the account for things like that.
           </p>
           <p>
             A month with no income shows a gap rather than 0%: having no income recorded isn’t the
@@ -162,8 +162,9 @@ export function SavingsRateReport({ budgetId }: Props) {
 
         {!hasAnything ? (
           <div className="reports-empty">
-            No income or savings recorded yet. Once money comes in and some of it moves to a savings
-            or investment account, the rate appears here.
+            No income or savings recorded yet. Once money comes in and some of it is saved — moved
+            to a savings or investment account, or kept in a Savings envelope — the rate appears
+            here.
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={chartHeight}>

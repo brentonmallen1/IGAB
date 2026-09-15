@@ -172,8 +172,12 @@ class SampleBudgetGenerator:
                 name=acct.name,
                 sort_order=acct.sort_order,
                 is_closed=acct.is_closed,
+                counts_toward_emergency_fund=acct.counts_toward_emergency_fund,
                 **apply_type(type_row, acct.on_budget, acct.counts_as_savings),
             )
+            if acct.counts_toward_emergency_fund:
+                # The endpoints' refusal, asked of the row as written.
+                await self.account_repo.require_emergency_fund_shape(self._accounts[acct.name].id)
             result.accounts += 1
 
     def _write_import_anchor(self, spec, anchor: date):
