@@ -47,17 +47,13 @@ from igab.api.v1.schemas.report import (
     PayeeTrend,
     PlanRealityCategory,
     PlanRealityResponse,
-    ReportDrains,
     ReportFavoritesResponse,
     ReportFavoritesUpdate,
     ReportRangeResponse,
     ReportSettings,
-    SavingsCategory,
     SavingsContributorsResponse,
     SavingsRateResponse,
     SavingsReportResponse,
-    SavingsSummary,
-    SavingsUnrecovered,
     SeasonalityResponse,
     SpendingCategory,
     SpendingClassExcluded,
@@ -859,15 +855,9 @@ async def savings_report(
     report_svc: Annotated[ReportService, Depends(get_report_service)],
     months: ReportMonths = 12,
 ) -> SavingsReportResponse:
-    """Savings report — aggregates categories tagged 'savings' or 'long_term_expense'."""
+    """Savings report — Saved, On the way to savings, and Sinking funds."""
     data = await savings_report_data(report_svc.session, budget_id, months)
-    return SavingsReportResponse(
-        categories=[SavingsCategory.model_validate(c) for c in data["categories"]],
-        summary=SavingsSummary.model_validate(data["summary"]),
-        months=data["months"],
-        drains=ReportDrains.model_validate(data["drains"]),
-        unrecovered=[SavingsUnrecovered.model_validate(u) for u in data["unrecovered"]],
-    )
+    return SavingsReportResponse.model_validate(data)
 
 
 @router.get("/{budget_id}/reports/anomalies", response_model=AnomalyReportResponse)

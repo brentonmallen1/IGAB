@@ -383,6 +383,19 @@ EMERGENCY_FUND_ACCOUNT_SHAPE = and_(
     Account.counts_as_savings == True,  # noqa: E712
 )
 
+#: An account whose balance is savings: a live off-budget asset that counts as
+#: savings — the shape above, which is also the account the classifier's rule 3
+#: (`domain/activity_class.py`, TRANSFER_TO_TRACKED_ASSET) sends saved money
+#: into. The Savings report lists these under Saved.
+#:
+#: On-budget accounts are never here, whatever their type: their money is
+#: already in the envelopes, and the envelopes say what each dollar is for.
+#: Closed accounts stay in — a closed account's past balances were savings —
+#: and the report omits one that held nothing in its window.
+#: `test_savings_report_sections.py` pins that this and rule 3 agree on every
+#: account shape.
+SAVINGS_ACCOUNT = and_(LIVE_ACCOUNT, EMERGENCY_FUND_ACCOUNT_SHAPE)
+
 #: An account the emergency-fund picker may offer: a live, open off-budget
 #: asset. `counts_as_savings` is NOT required — the picker turns it on in the
 #: same save that marks the account (`services/emergency_fund_choice.py`), so

@@ -15,6 +15,7 @@ export type ReportAccountScope =
   | 'liabilities'
   | 'overview'
   | 'emergency-fund'
+  | 'savings'
   | 'wishlist'
 
 /** The sentence after "Accounts:" — the info popovers prefix it, the Reports
@@ -41,5 +42,8 @@ export const SCOPE_COPY: Record<ReportAccountScope, string> = {
   'emergency-fund':
     'whatever the Guide reads as your emergency fund — the envelopes or ' +
     'accounts it is bound to, plus any amount you told it you keep elsewhere.',
+  savings:
+    'off-budget accounts that count as savings, beside your envelopes. ' +
+    'On-budget accounts are never added — their money is already in the envelopes.',
   wishlist: 'none — it reads your wishlist, not transactions.',
 }

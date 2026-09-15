@@ -6,6 +6,7 @@ from typing import Literal
 from pydantic import ConfigDict, Field
 
 from igab.api.v1.schemas.base import ApiModel
+from igab.domain.enums import TargetStatus
 
 # ─── Existing ─────────────────────────────────────────────────────────────────
 
@@ -730,7 +731,20 @@ class SubscriptionsReportResponse(ApiModel):
 # ─── Savings Report ──────────────────────────────────────────────────────────
 
 
-class SavingsCategory(ApiModel):
+class SavingsTargetOut(ApiModel):
+    """An envelope's target, as the Budget page judges it this month."""
+
+    type: str
+    amount: Decimal
+    target_date: date | None
+    #: The Budget page's pill (`TargetService.calculate_status`).
+    status: TargetStatus
+    #: Available ÷ amount for a savings-balance target, floored at 0 and not
+    #: capped. None for a funding target, which asks for a pace, not a balance.
+    progress: Decimal | None
+
+
+class SavingsEnvelopeOut(ApiModel):
     category_id: uuid.UUID
     category_name: str
     group_name: str
@@ -740,15 +754,42 @@ class SavingsCategory(ApiModel):
     #: `SavingsReportResponse.unrecovered`). Absent, not zero.
     monthly_balances: list[Decimal | None]
     current_balance: Decimal
-    target_balance: Decimal | None
-    total_inflow: Decimal  # total assigned/deposited in the period
+    #: Positive assignments in the window.
+    total_inflow: Decimal
+    target: SavingsTargetOut | None
 
 
-class SavingsSummary(ApiModel):
-    total_balance: Decimal  # sum of current balances
-    total_inflow: Decimal  # sum of inflows in the period
-    avg_monthly_inflow: Decimal
-    category_count: int
+class SavingsAccountOut(ApiModel):
+    """An off-budget account that counts as savings (`txn_filters.SAVINGS_ACCOUNT`)."""
+
+    account_id: uuid.UUID
+    name: str
+    account_type: str
+    #: Balance through each month's end, the running month through today. None
+    #: before the account's first row.
+    monthly_balances: list[Decimal | None]
+    current_balance: Decimal
+
+
+class SavingsSavedOut(ApiModel):
+    """Kept-here Savings and Emergency fund envelopes plus off-budget savings
+    accounts. `total = envelopes_total + accounts_total`; envelopes count at
+    their carryover-floored Available."""
+
+    total: Decimal
+    envelopes_total: Decimal
+    accounts_total: Decimal
+    #: Saved at each month's end, aligned with `months`.
+    monthly_totals: list[Decimal]
+    envelopes: list[SavingsEnvelopeOut]
+    accounts: list[SavingsAccountOut]
+
+
+class SavingsSectionOut(ApiModel):
+    """On the way to savings, or Sinking funds: never added to Saved."""
+
+    total: Decimal
+    envelopes: list[SavingsEnvelopeOut]
 
 
 class ReportDrainMove(ApiModel):
@@ -779,9 +820,16 @@ class SavingsUnrecovered(ApiModel):
 
 
 class SavingsReportResponse(ApiModel):
-    categories: list[SavingsCategory]
-    summary: SavingsSummary
+    """The Savings report in three parts (`services/savings_report.py`)."""
+
+    saved: SavingsSavedOut
+    #: What sent-out Savings envelopes hold until the money leaves.
+    on_the_way: SavingsSectionOut
+    #: Long-term expense envelopes that are not savings.
+    sinking_funds: SavingsSectionOut
     months: list[date]
+    #: Moves out of Savings and Emergency fund envelopes (both modes), not
+    #: sinking funds.
     drains: ReportDrains
     #: Envelopes whose line starts late, so the page can say why rather than
     #: draw a gap nobody explained.

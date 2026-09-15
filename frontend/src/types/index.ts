@@ -1304,7 +1304,20 @@ export interface SubscriptionsReport {
   months: string[]
 }
 
-export interface SavingsCategory {
+/** An envelope's target on the Savings report, judged as the Budget page
+ *  judges it this month. */
+export interface SavingsTarget {
+  type: string
+  amount: number
+  target_date: string | null
+  /** The Budget page's pill (`TargetService.calculate_status`). */
+  status: TargetStatus
+  /** Available ÷ amount for a savings-balance target, floored at 0 and NOT
+   *  capped at 1. null for a funding target, which asks for a pace. */
+  progress: number | null
+}
+
+export interface SavingsEnvelope {
   category_id: string
   category_name: string
   group_name: string
@@ -1314,15 +1327,38 @@ export interface SavingsCategory {
    *  `SavingsReport.unrecovered`. Absent, not zero: draw a gap. */
   monthly_balances: (number | null)[]
   current_balance: number
-  target_balance: number | null
+  /** Positive assignments in the window. */
   total_inflow: number
+  target: SavingsTarget | null
 }
 
-export interface SavingsSummary {
-  total_balance: number
-  total_inflow: number
-  avg_monthly_inflow: number
-  category_count: number
+/** An off-budget account that counts as savings (`txn_filters.SAVINGS_ACCOUNT`).
+ *  On-budget accounts are never listed: their money is in the envelopes. */
+export interface SavingsAccount {
+  account_id: string
+  name: string
+  account_type: string
+  /** Balance through each month's end; null before the account's first row. */
+  monthly_balances: (number | null)[]
+  current_balance: number
+}
+
+/** Kept-here Savings and Emergency fund envelopes plus off-budget savings
+ *  accounts. Envelopes count at their carryover-floored Available. */
+export interface SavingsSaved {
+  total: number
+  envelopes_total: number
+  accounts_total: number
+  /** Saved at each month's end, aligned with `SavingsReport.months`. */
+  monthly_totals: number[]
+  envelopes: SavingsEnvelope[]
+  accounts: SavingsAccount[]
+}
+
+/** On the way to savings, or Sinking funds — never added to Saved. */
+export interface SavingsSection {
+  total: number
+  envelopes: SavingsEnvelope[]
 }
 
 export interface ReportDrainMove {
@@ -1351,10 +1387,16 @@ export interface SavingsUnrecovered {
   starts_from: string
 }
 
+/** The Savings report in three parts — home is backend
+ *  `services/savings_report.py`. */
 export interface SavingsReport {
-  categories: SavingsCategory[]
-  summary: SavingsSummary
+  saved: SavingsSaved
+  /** What sent-out Savings envelopes hold until the money leaves. */
+  on_the_way: SavingsSection
+  /** Long-term expense envelopes that are not savings. */
+  sinking_funds: SavingsSection
   months: string[]
+  /** Moves out of Savings and Emergency fund envelopes, not sinking funds. */
   drains: ReportDrains
   unrecovered: SavingsUnrecovered[]
 }

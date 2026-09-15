@@ -63,11 +63,12 @@ export const REPORT_CATALOG: Record<ReportTab, ReportCatalogEntry> = {
     leavesOut: 'Debts you have not added as a liability; tags and activity classes play no part.',
   },
   savings: {
-    scope: 'categories',
-    summary: 'Balances and assignments of your savings envelopes.',
+    scope: 'savings',
+    summary: 'What you have saved, what is on the way to savings, and your sinking funds.',
     counts:
-      'Envelopes tagged Savings or Long-term expense — their Available and what was assigned.',
-    leavesOut: 'Untagged envelopes, and the activity class of the transactions inside them.',
+      'Saved: kept-here Savings and Emergency fund envelopes plus off-budget savings accounts; on the way: sent-out Savings envelopes; sinking funds: Long-term expense envelopes with their targets.',
+    leavesOut:
+      'On-budget accounts, and untagged envelopes — the three parts are never added together.',
   },
   'savings-rate': {
     scope: 'on-budget',

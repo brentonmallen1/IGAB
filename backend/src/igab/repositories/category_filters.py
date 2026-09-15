@@ -367,12 +367,14 @@ SAVINGS_SENT_OUT = SAVINGS_ROLE == SAVINGS_SENT_OUT_MODE
 #: nothing; archived stays IN, because an archived envelope still holds money.
 #: Not a system (income) group and not a card's set-aside, whose balances are
 #: not the household's to call saved.
-HOLDS_SAVINGS = and_(
-    SAVINGS_ROLE == SAVINGS_KEPT_HERE_MODE,
-    LIVE_CATEGORY,
-    not_(IN_SYSTEM_GROUP),
-    not_(LINKED_TO_CARD),
-)
+_SAVINGS_ENVELOPE = and_(LIVE_CATEGORY, not_(IN_SYSTEM_GROUP), not_(LINKED_TO_CARD))
+HOLDS_SAVINGS = and_(SAVINGS_ROLE == SAVINGS_KEPT_HERE_MODE, _SAVINGS_ENVELOPE)
+
+#: A sent-out savings envelope — the same envelope terms as `HOLDS_SAVINGS`. Its
+#: Available is money on the way to savings: it counts as saved when it leaves
+#: (rule 1), so the Savings report shows the balance beside Saved and never in
+#: it — adding it would count the same dollars again the day they are sent.
+SENDS_SAVINGS = and_(SAVINGS_SENT_OUT, _SAVINGS_ENVELOPE)
 
 #: An envelope whose Available is part of the emergency fund
 #: (`services/emergency_fund.py`). Chosen by the tag and nothing else — never a
@@ -380,12 +382,7 @@ HOLDS_SAVINGS = and_(
 #: the savings RATE counts the envelope, and a sent-out envelope's not-yet-sent
 #: balance is still money set aside. Live, archived included, not income and
 #: not a card's set-aside — the same envelope terms as `HOLDS_SAVINGS`.
-IN_EMERGENCY_FUND = and_(
-    TAGGED_EMERGENCY_FUND,
-    LIVE_CATEGORY,
-    not_(IN_SYSTEM_GROUP),
-    not_(LINKED_TO_CARD),
-)
+IN_EMERGENCY_FUND = and_(TAGGED_EMERGENCY_FUND, _SAVINGS_ENVELOPE)
 
 
 # ─── Sinking funds ───────────────────────────────────────────────────────────

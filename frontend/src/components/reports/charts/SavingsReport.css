@@ -43,3 +43,80 @@
   color: var(--color-warning);
   font-weight: 500;
 }
+
+/* The three sections: Saved, On the way to savings, Sinking funds. Each
+   states its own total; none is added to another. */
+
+.savings-section {
+  margin-top: var(--spacing-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.savings-section__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  border-bottom: 1px solid var(--edge);
+  padding-bottom: var(--spacing-xs);
+}
+
+.savings-section__title {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.savings-section__total {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.savings-section__lede,
+.savings-section__split {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  line-height: 1.5;
+  max-width: 78ch;
+}
+
+.savings-section__empty {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  padding: var(--spacing-sm) 0;
+}
+
+.savings-section__muted {
+  color: var(--text-muted);
+}
+
+.savings-section__table-wrap {
+  overflow-x: auto;
+}
+
+.savings-target {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  min-width: 10rem;
+}
+
+.savings-target__bar {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--edge);
+  overflow: hidden;
+}
+
+.savings-target__fill {
+  height: 100%;
+  background: var(--color-accent);
+}
