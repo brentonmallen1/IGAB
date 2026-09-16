@@ -127,6 +127,36 @@ async def _cleanup_ai_jobs() -> None:
     await cleanup_old_jobs()
 
 
+async def _cleanup_sync_logs() -> None:
+    """Nightly retention pass over the bank-sync log.
+
+    Only log rows. The transactions a sync imported are the user's records and
+    are never in scope here.
+    """
+    from igab.db.session import AsyncSessionLocal
+    from igab.repositories.settings_repo import SettingsRepository
+    from igab.repositories.sync_run_repo import SyncRunRepository
+    from igab.services.settings_service import SettingsService
+
+    async with AsyncSessionLocal() as session:
+        try:
+            raw = await SettingsService(SettingsRepository(session)).get("sync_log_retention_days")
+            try:
+                days = int(raw or "30")
+            except ValueError:
+                days = 30
+            if days <= 0:
+                return
+            removed = await SyncRunRepository(session).purge_older_than(days)
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            logger.exception("sync log retention cleanup failed")
+            return
+    if removed:
+        logger.info("simplefin: retention cleanup removed %d old sync run(s)", removed)
+
+
 async def _sweep_attachments() -> None:
     from igab.tasks.attachment_sweep import sweep_attachments
 
@@ -171,6 +201,14 @@ def start_scheduler() -> None:
         hour=3,
         minute=45,
         id="cleanup_ai_jobs",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        _cleanup_sync_logs,
+        trigger="cron",
+        hour=3,
+        minute=50,
+        id="cleanup_sync_logs",
         replace_existing=True,
     )
     scheduler.start()

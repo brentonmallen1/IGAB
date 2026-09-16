@@ -1,4 +1,5 @@
 import logging
+import uuid
 from typing import Annotated
 
 import httpx
@@ -14,7 +15,11 @@ from igab.api.v1.schemas.simplefin import (
     SimpleFINSetupRequest,
     SimpleFINUpdateRequest,
     SyncAllResult,
+    SyncHealthResponse,
     SyncResult,
+    SyncRunDetailResponse,
+    SyncRunListResponse,
+    SyncRunResponse,
     TransactionMatchResponse,
 )
 from igab.dependencies import (
@@ -26,6 +31,7 @@ from igab.dependencies import (
     get_account_repo,
     get_change_recorder,
     get_simplefin_service,
+    get_sync_run_repo,
     get_transaction_matching_service,
 )
 from igab.integrations.simplefin.encryption import (
@@ -34,6 +40,7 @@ from igab.integrations.simplefin.encryption import (
     key_problem,
 )
 from igab.repositories.account_repo import AccountRepository
+from igab.repositories.sync_run_repo import SyncRunRepository
 from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match
 from igab.services.simplefin_service import SimpleFINService
 from igab.services.transaction_matching_service import TransactionMatchingService
@@ -334,3 +341,60 @@ async def reject_match(
     matching_svc: Annotated[TransactionMatchingService, Depends(get_transaction_matching_service)],
 ) -> None:
     await matching_svc.reject_match(match_id)
+
+
+# ─── Sync log ─────────────────────────────────────────────────────────────────
+#
+# Literal sub-paths are declared BEFORE the `{run_id}` route: FastAPI matches
+# in declaration order, so "/sync-runs/health" would otherwise be parsed as a
+# run id and 422 on the UUID. Same trap as the note in ai_chat.py.
+
+
+@router.get("/{budget_id}/simplefin/sync-runs/health", response_model=SyncHealthResponse)
+async def get_sync_health(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    runs: Annotated[SyncRunRepository, Depends(get_sync_run_repo)],
+) -> SyncHealthResponse:
+    """Whether anything about bank sync needs attention right now.
+
+    This is what badges the nav. It reads the most recent run only: a finding
+    from three runs ago would claim a link is broken after it was fixed, and
+    an app that cries wolf is one whose badges get ignored — which is the
+    failure mode this whole feature exists to correct.
+    """
+    latest = await runs.latest_with_orphans(budget_id)
+    if latest is None:
+        return SyncHealthResponse()
+    return SyncHealthResponse(
+        orphaned_links=latest.orphaned_links,
+        needs_auth=[e for e in latest.bank_errors if e.get("code") == "con.auth"],
+        last_run_at=latest.created_at,
+    )
+
+
+@router.get("/{budget_id}/simplefin/sync-runs", response_model=SyncRunListResponse)
+async def list_sync_runs(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    runs: Annotated[SyncRunRepository, Depends(get_sync_run_repo)],
+    limit: int = 50,
+    offset: int = 0,
+) -> SyncRunListResponse:
+    rows, total = await runs.list_runs(budget_id=budget_id, limit=min(limit, 200), offset=offset)
+    return SyncRunListResponse(
+        runs=[SyncRunResponse.model_validate(r) for r in rows], total_count=total
+    )
+
+
+@router.get("/{budget_id}/simplefin/sync-runs/{run_id}", response_model=SyncRunDetailResponse)
+async def get_sync_run(
+    budget_id: BudgetAccess,
+    run_id: uuid.UUID,
+    current_user: CurrentUser,
+    runs: Annotated[SyncRunRepository, Depends(get_sync_run_repo)],
+) -> SyncRunDetailResponse:
+    run = await runs.get(run_id)
+    if run is None or run.budget_id != budget_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sync run not found")
+    return SyncRunDetailResponse.model_validate(run)

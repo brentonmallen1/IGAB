@@ -1,6 +1,7 @@
 import { PageHeader } from '../../components/common/PageHeader/PageHeader'
 import { useCurrentUser } from '../../api/auth'
 import { useSimpleFINConfig } from '../../api/simplefin'
+import { SyncLogsPanel } from '../../components/settings/SyncLogsPanel/SyncLogsPanel'
 import { Surface } from '../../components/common/Surface'
 import { AISettingsPanel } from '../../components/settings/AISettingsPanel'
 import { BackupsPanel } from '../../components/settings/BackupsPanel/BackupsPanel'
@@ -80,6 +81,14 @@ export function SystemPage() {
               <SimpleFINPanel />
             </div>
           </Surface>
+
+          {me?.is_admin && (
+            <Surface as="section" className="settings-section" id="sync-logs" title="Sync Logs">
+              <div className="settings-section__body">
+                <SyncLogsPanel />
+              </div>
+            </Surface>
+          )}
 
           <AISettingsPanel />
 
