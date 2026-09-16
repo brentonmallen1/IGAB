@@ -16,10 +16,12 @@ Tests for TransactionMatchingService:
 import uuid
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from igab.domain.sync_window import SIMPLEFIN_MAX_WINDOW_DAYS, SYNC_OVERLAP_DAYS
 from igab.integrations.simplefin.client import SimpleFINFeed
 from igab.services.simplefin_service import (
     ACCOUNT_DAILY_LIMIT,
@@ -72,6 +74,9 @@ def make_account(
     first_sync_complete: bool = True,
     budget_id: uuid.UUID | None = None,
     budget_start_date: date | None = None,
+    last_simplefin_sync_at: datetime | None = None,
+    name: str = "Checking",
+    simplefin_account_name: str | None = None,
 ) -> MagicMock:
     acct = MagicMock()
     acct.id = uuid.uuid4()
@@ -83,6 +88,11 @@ def make_account(
     # "did this row predate the account?" check would compare a date against a
     # Mock and raise. The default is the real default — no start date set.
     acct.budget_start_date = budget_start_date
+    # Same trap, and the one the request window now reads: an unset Mock here
+    # is compared against a datetime when sizing the lookback.
+    acct.last_simplefin_sync_at = last_simplefin_sync_at
+    acct.name = name
+    acct.simplefin_account_name = simplefin_account_name
     return acct
 
 
@@ -237,46 +247,61 @@ class TestRateLimitStatus:
 
 
 class TestLookbackCalculation:
+    """The window the bridge is asked for.
+
+    These used to pin the opposite rule: the window was anchored to the
+    *oldest* cleared row, so a YNAB backfill of six years moved the anchor to
+    2020 and every sync then asked for 2,247 days against a documented 90-day
+    cap. The bridge capped it server-side and said so in `errlist`, which the
+    app discarded. Anchoring is now to the last sync; `domain/sync_window.py`
+    owns the arithmetic and tests it exhaustively.
+    """
+
     @pytest.fixture
     def svc(self) -> SimpleFINService:
-        s = SimpleFINService(
+        return SimpleFINService(
             session=MagicMock(),
             repo=MagicMock(),
             account_repo=MagicMock(),
             txn_repo=MagicMock(),
             txn_service=MagicMock(),
         )
-        return s
 
-    @pytest.mark.asyncio
-    async def test_first_sync_uses_90_days(self, svc: SimpleFINService) -> None:
-        since = await svc._get_lookback_since(account_ids=[uuid.uuid4()], first_sync=True)
-        assert since is not None
+    @staticmethod
+    def _account(last_sync: datetime | None):
+        return SimpleNamespace(id=uuid.uuid4(), last_simplefin_sync_at=last_sync)
+
+    def test_first_sync_uses_90_days(self, svc: SimpleFINService) -> None:
+        window = svc._lookback_window([self._account(None)], True)
         expected = datetime.now(UTC) - timedelta(days=90)
-        assert abs((since - expected).total_seconds()) < 5
+        assert abs((window.start - expected).total_seconds()) < 5
 
-    @pytest.mark.asyncio
-    async def test_subsequent_sync_uses_oldest_cleared_minus_24h(
+    def test_subsequent_sync_follows_the_last_sync_not_the_oldest_row(
         self, svc: SimpleFINService
     ) -> None:
-        acct_id = uuid.uuid4()
-        oldest = today_utc() - timedelta(days=10)
-        svc.txn_repo.get_oldest_cleared_date_for_account = AsyncMock(return_value=oldest)
+        """The regression. A six-year history must not widen the request."""
+        last = datetime.now(UTC) - timedelta(days=1)
+        window = svc._lookback_window([self._account(last)], False)
+        assert window.days <= SYNC_OVERLAP_DAYS + 1
 
-        since = await svc._get_lookback_since(account_ids=[acct_id], first_sync=False)
-        assert since is not None
-        expected = datetime.combine(oldest, datetime.min.time(), tzinfo=UTC) - timedelta(hours=24)
-        assert abs((since - expected).total_seconds()) < 5
+    def test_never_asks_for_more_than_the_bridge_cap(self, svc: SimpleFINService) -> None:
+        stale = datetime.now(UTC) - timedelta(days=2247)
+        window = svc._lookback_window([self._account(stale)], False)
+        assert window.days <= SIMPLEFIN_MAX_WINDOW_DAYS
 
-    @pytest.mark.asyncio
-    async def test_subsequent_sync_falls_back_to_90_days_when_no_cleared(
-        self, svc: SimpleFINService
-    ) -> None:
-        svc.txn_repo.get_oldest_cleared_date_for_account = AsyncMock(return_value=None)
-        since = await svc._get_lookback_since(account_ids=[uuid.uuid4()], first_sync=False)
-        assert since is not None
+    def test_falls_back_to_90_days_when_nothing_has_synced(self, svc: SimpleFINService) -> None:
+        window = svc._lookback_window([self._account(None)], False)
         expected = datetime.now(UTC) - timedelta(days=90)
-        assert abs((since - expected).total_seconds()) < 5
+        assert abs((window.start - expected).total_seconds()) < 5
+
+    def test_anchors_to_the_least_recently_synced_target(self, svc: SimpleFINService) -> None:
+        """An account newly added to an established connection must not be
+        shortchanged by its neighbours' freshness."""
+        fresh = self._account(datetime.now(UTC) - timedelta(hours=1))
+        behind = self._account(datetime.now(UTC) - timedelta(days=20))
+        window = svc._lookback_window([fresh, behind], False)
+        expected = behind.last_simplefin_sync_at - timedelta(days=SYNC_OVERLAP_DAYS)
+        assert abs((window.start - expected).total_seconds()) < 5
 
 
 # ─── Sync Flow ────────────────────────────────────────────────────────────────

@@ -29,20 +29,26 @@ from rapidfuzz import fuzz
 DATE_WINDOW_DAYS = 5
 
 
-def payee_similarity(a: str | None, b: str | None, *, unknown: float) -> float:
-    """0..1 similarity, or `unknown` when either side has no payee.
+def name_similarity(a: str | None, b: str | None, *, unknown: float) -> float:
+    """0..1 similarity of two names, or `unknown` when either side is missing.
 
-    `unknown` is required and has no default on purpose: "how much does a
-    missing payee count for" is a scoring decision each caller has to own,
-    and defaulting it is how the two implementations came to disagree
-    silently.
+    The generic primitive. `unknown` is required and has no default on
+    purpose: "how much does a missing name count for" is a scoring decision
+    each caller has to own, and defaulting it is how two payee
+    implementations came to disagree silently.
 
     WRatio combines ratio, partial_ratio, token_sort and token_set and takes
-    the best — it is what makes a raw bank description match a cleaned payee.
+    the best — it is what makes a raw bank description match a cleaned payee,
+    and an account's bank string match the one stored when it was linked.
     """
     if not a or not b:
         return unknown
     return fuzz.WRatio(a.lower(), b.lower()) / 100.0
+
+
+def payee_similarity(a: str | None, b: str | None, *, unknown: float) -> float:
+    """`name_similarity` under the name transaction matching asks for it by."""
+    return name_similarity(a, b, unknown=unknown)
 
 
 def best_payee_similarity(
