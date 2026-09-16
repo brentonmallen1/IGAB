@@ -2,12 +2,21 @@ import { Cloud, CloudOff, CloudAlert, RefreshCw } from 'lucide-react'
 import type { Account } from '../../types'
 import './SyncStatusIcon.css'
 
-type SyncState = 'fresh' | 'stale' | 'error' | 'syncing' | 'disabled' | 'never'
+type SyncState = 'fresh' | 'stale' | 'error' | 'broken' | 'syncing' | 'disabled' | 'never'
 
-export function getSyncState(account: Account, isSyncing: boolean): SyncState {
+/**
+ * `broken` outranks every age-based state, and is the one this used to miss.
+ *
+ * A re-linked bank account syncs on schedule, succeeds, and matches nothing —
+ * so it stayed `fresh` for nine days while importing none of its
+ * transactions. Age says only that the app asked recently, never that the
+ * answer was any good.
+ */
+export function getSyncState(account: Account, isSyncing: boolean, hasFault = false): SyncState {
   if (!account.simplefin_account_id) return 'disabled'
   if (!account.simplefin_sync_enabled) return 'disabled'
   if (isSyncing) return 'syncing'
+  if (hasFault) return 'broken'
   if (!account.last_simplefin_sync_at) return 'never'
   const ageMs = Date.now() - new Date(account.last_simplefin_sync_at).getTime()
   const ageHours = ageMs / (1000 * 60 * 60)
@@ -32,12 +41,20 @@ interface Props {
   isSyncing?: boolean
   onSyncClick?: (e: React.MouseEvent) => void
   lastSyncError?: string | null
+  /** This account's bank link no longer resolves — see `useSyncFaults`. */
+  fault?: string | null
 }
 
-export function SyncStatusIcon({ account, isSyncing = false, onSyncClick, lastSyncError }: Props) {
+export function SyncStatusIcon({
+  account,
+  isSyncing = false,
+  onSyncClick,
+  lastSyncError,
+  fault,
+}: Props) {
   if (!account.simplefin_account_id) return null
 
-  const state = getSyncState(account, isSyncing)
+  const state = getSyncState(account, isSyncing, Boolean(fault))
 
   const tooltipLines = [
     state === 'disabled'
@@ -46,8 +63,11 @@ export function SyncStatusIcon({ account, isSyncing = false, onSyncClick, lastSy
         ? 'Never synced — click to sync'
         : state === 'syncing'
           ? 'Syncing…'
-          : formatSyncAge(account.last_simplefin_sync_at),
-    ...(lastSyncError ? [`Last error: ${lastSyncError}`] : []),
+          : state === 'broken'
+            ? (fault as string)
+            : formatSyncAge(account.last_simplefin_sync_at),
+    ...(state === 'broken' ? [formatSyncAge(account.last_simplefin_sync_at)] : []),
+    ...(lastSyncError && state !== 'broken' ? [`Last error: ${lastSyncError}`] : []),
     ...(state === 'stale' || state === 'error' ? ['Click to sync now'] : []),
   ]
 

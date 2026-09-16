@@ -30,7 +30,8 @@
 }
 
 .sync-status-icon--error,
-.sync-status-icon--never {
+.sync-status-icon--never,
+.sync-status-icon--broken {
   color: var(--color-negative);
 }
 

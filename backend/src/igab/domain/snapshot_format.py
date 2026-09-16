@@ -125,6 +125,13 @@ SNAPSHOT_OMITTED: Mapping[str, str] = MappingProxyType(
         "did, not a part of the budget, and it is what retention prunes.",
         "ai_call_payloads": "Whole prompts and whole model responses, with the "
         "budget's real figures and payee names rendered into them.",
+        "sync_runs": "The bank-sync log. A record of what this installation "
+        "did, not part of the budget, and what retention prunes. Carrying it "
+        'would also restore stale findings as live ones: a months-old "this '
+        'account no longer matches the bank" would badge a link that was '
+        "fixed long ago.",
+        "sync_run_accounts": "Rides out with its run, and names the bank's own "
+        "account strings besides.",
     }
 )
 

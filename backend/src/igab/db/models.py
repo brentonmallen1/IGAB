@@ -2270,3 +2270,108 @@ class AICallPayload(Base):
     )
 
     call: Mapped["AICall"] = relationship(back_populates="payload")
+
+
+class SyncRun(Base):
+    """One bank sync, and what it actually did.
+
+    Nothing recorded a sync before this. The only durable trace was
+    `last_sync_at` on the connection and a `last_sync_error` that a successful
+    run cleared — so a sync that succeeded while importing none of an
+    account's transactions left behind exactly the same state as one that
+    worked. That is how a re-linked bank account went nine days unnoticed:
+    the app had no memory of what any run had done.
+
+    Modelled on `ai_calls`: a light row per run, kept for a retention window,
+    with the per-account detail in a child table so the list stays cheap.
+
+    Not `ImportBatch`, which is a different thing wearing a similar name: that
+    records a *file* import and has no window, no connection and no
+    per-account outcome. It is also dead code, but `transactions.import_batch_id`
+    still references its table, so retiring it is its own change.
+    """
+
+    __tablename__ = "sync_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    #: The only total order. `created_at` is func.now(), the TRANSACTION
+    #: timestamp, so a sync-all writing several runs stamps them all
+    #: identically and "the latest run" becomes a coin flip — the same trap
+    #: `change_log.seq` exists for.
+    seq: Mapped[int] = mapped_column(BigInteger, Identity(), unique=True, nullable=False)
+    connection_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("simplefin_connections.id", ondelete="CASCADE")
+    )
+    budget_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="CASCADE")
+    )
+    #: manual | scheduled | account — how the run was started.
+    trigger: Mapped[str] = mapped_column(String(20), default="manual", nullable=False)
+    #: ok | error | rate_limited | degraded. "degraded" is the state that did
+    #: not exist: the request succeeded and the outcome was still wrong.
+    status: Mapped[str] = mapped_column(String(20), default="ok", nullable=False)
+    #: What was asked of the bridge. A window wider than 90 days is capped
+    #: server-side, so recording it is how that becomes visible.
+    window_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    window_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    duration_ms: Mapped[int | None] = mapped_column(Integer)
+    error: Mapped[str | None] = mapped_column(Text)
+    #: The bridge's own `errlist`, which the client used to discard.
+    bank_errors: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+    #: Accounts whose stored bank id the feed no longer offers, with the
+    #: replacement each should be relinked to.
+    orphaned_links: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+    feed_txn_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    imported: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    skipped: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    #: Counts by `domain.enums.SkipReason`. One undifferentiated `skipped` is
+    #: what made the outage unreadable.
+    skip_reasons: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    matched: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    adopted: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    cleared: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    review_queued: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    removed_pending: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    anchored: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    accounts: Mapped[list["SyncRunAccount"]] = relationship(
+        back_populates="run", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (Index("ix_sync_runs_connection_created", "connection_id", "created_at"),)
+
+
+class SyncRunAccount(Base):
+    """What one sync run did to one account.
+
+    `feed_newest_date` is the field worth the whole table: an account whose
+    newest bank row is three months old is broken, and no count of imported
+    or skipped rows says so.
+    """
+
+    __tablename__ = "sync_run_accounts"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    sync_run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sync_runs.id", ondelete="CASCADE"), nullable=False
+    )
+    account_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="SET NULL")
+    )
+    account_name: Mapped[str | None] = mapped_column(String(255))
+    simplefin_account_id: Mapped[str | None] = mapped_column(String(255))
+    #: Zero here, on an account the run was told to sync, is the signature of
+    #: a bank link that no longer resolves.
+    feed_txn_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    feed_oldest_date: Mapped[date | None] = mapped_column(Date)
+    feed_newest_date: Mapped[date | None] = mapped_column(Date)
+    imported: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    adopted: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    #: True when the bank replaced every transaction id on this account.
+    reidentified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    orphaned: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    run: Mapped["SyncRun"] = relationship(back_populates="accounts")

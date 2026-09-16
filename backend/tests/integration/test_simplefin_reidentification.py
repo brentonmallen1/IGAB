@@ -285,3 +285,80 @@ async def test_skip_reasons_always_sum_to_skipped(db_session):
         second = await svc.sync(conn.id, budget.id)
     for result in (first, second):
         assert sum(result["skip_reasons"].values()) == result["skipped"], result
+
+
+async def test_every_run_leaves_a_record(db_session):
+    """Nothing recorded a sync before this. `last_sync_at` plus an error field
+    a successful run cleared meant a sync that imported nothing looked exactly
+    like one that worked."""
+    from igab.repositories.sync_run_repo import SyncRunRepository
+
+    services, budget, account, conn = await _setup(db_session)
+    start = date.today() - timedelta(days=30)
+
+    with PATCH_DECRYPT:
+        await _service(services, _feed(OLD_ACCT, "old", start)).sync(conn.id, budget.id)
+
+    runs, total = await SyncRunRepository(db_session).list_runs(budget_id=budget.id)
+    assert total == 1
+    run = await SyncRunRepository(db_session).get(runs[0].id)
+    assert run.status == "ok"
+    assert run.imported == len(HISTORY)
+    assert run.feed_txn_count == len(HISTORY)
+    assert run.window_start is not None
+    assert run.duration_ms is not None
+
+    [row] = run.accounts
+    assert row.account_name == "Harborstone Checking"
+    assert row.feed_txn_count == len(HISTORY)
+    assert row.feed_newest_date == start + timedelta(days=len(HISTORY) - 1)
+    assert row.orphaned is False
+
+
+async def test_an_orphaned_account_is_recorded_as_degraded_with_no_feed_rows(db_session):
+    """The signature, in one row: the run was told to sync this account and
+    the feed offered it nothing at all."""
+    from igab.repositories.sync_run_repo import SyncRunRepository
+
+    services, budget, account, conn = await _setup(db_session)
+    start = date.today() - timedelta(days=30)
+
+    with PATCH_DECRYPT:
+        await _service(services, _feed(NEW_ACCT, "new", start), names={NEW_ACCT: BANK_NAME}).sync(
+            conn.id, budget.id
+        )
+
+    repo = SyncRunRepository(db_session)
+    runs, _ = await repo.list_runs(budget_id=budget.id)
+    run = await repo.get(runs[0].id)
+
+    assert run.status == "degraded"
+    assert run.skip_reasons == {"foreign_account": len(HISTORY)}
+    assert run.orphaned_links[0]["suggested_feed_name"] == BANK_NAME
+
+    [row] = run.accounts
+    assert row.orphaned is True
+    assert row.feed_txn_count == 0
+    assert row.feed_newest_date is None
+
+
+async def test_a_reidentified_account_is_recorded_as_such(db_session):
+    from igab.repositories.sync_run_repo import SyncRunRepository
+
+    services, budget, account, conn = await _setup(db_session)
+    start = date.today() - timedelta(days=30)
+    with PATCH_DECRYPT:
+        await _service(services, _feed(OLD_ACCT, "old", start)).sync(conn.id, budget.id)
+    account.simplefin_account_id = NEW_ACCT
+    await db_session.flush()
+    with PATCH_DECRYPT:
+        await _service(services, _feed(NEW_ACCT, "new", start), names={NEW_ACCT: BANK_NAME}).sync(
+            conn.id, budget.id
+        )
+
+    repo = SyncRunRepository(db_session)
+    runs, total = await repo.list_runs(budget_id=budget.id)
+    assert total == 2
+    latest = await repo.get(runs[0].id)
+    assert latest.adopted == len(HISTORY)
+    assert latest.accounts[0].reidentified is True

@@ -41,6 +41,7 @@ from igab.integrations.simplefin.encryption import (
 from igab.integrations.simplefin.limits import ACCOUNT_DAILY_LIMIT, GLOBAL_DAILY_LIMIT
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.simplefin_repo import SimpleFINRepository
+from igab.repositories.sync_run_repo import SyncRunRepository
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.transaction_matching_service import (
     TransactionMatchingService,
@@ -386,6 +387,7 @@ class SimpleFINService:
         sync_type: SyncType = "global",
         account_simplefin_id: str | None = None,
     ) -> dict:
+        started_at = datetime.now(UTC)
         conn = await self.repo.get(connection_id)
         if conn is None:
             return {"imported": 0, "skipped": 0, "error": "Connection not found"}
@@ -708,6 +710,30 @@ class SimpleFINService:
         )
 
         skipped = sum(skips.values())
+        await self._record_run(
+            connection_id=connection_id,
+            budget_id=budget_id,
+            sync_type=sync_type,
+            window=window,
+            started_at=started_at,
+            targets=targets,
+            feed=feed_data,
+            audit=audit,
+            adoption_ids=adoption_ids,
+            fault=fault,
+            counts={
+                "feed_txn_count": len(txns_raw),
+                "imported": imported,
+                "skipped": skipped,
+                "matched": matched,
+                "adopted": adopted,
+                "cleared": cleared,
+                "review_queued": review_queued,
+                "removed_pending": removed_pending,
+                "anchored": anchored,
+            },
+            skip_reasons={r.value: n for r, n in skips.items()},
+        )
         logger.info(
             "simplefin: sync %s connection=%s window_start=%s feed_rows=%d "
             "imported=%d adopted=%d matched=%d cleared=%d skipped=%d (%s)",
@@ -752,6 +778,80 @@ class SimpleFINService:
             ],
             **rate_status,
         }
+
+    async def _record_run(
+        self,
+        *,
+        connection_id: uuid.UUID,
+        budget_id: uuid.UUID,
+        sync_type: SyncType,
+        window: SyncWindow,
+        started_at: datetime,
+        targets: list[Account],
+        feed: SimpleFINFeed,
+        audit: LinkAudit,
+        adoption_ids: set[uuid.UUID],
+        fault: str | None,
+        counts: dict[str, int],
+        skip_reasons: dict[str, int],
+    ) -> None:
+        """Leave a record of what this run did.
+
+        Written in the sync's own transaction: the counts are only true if the
+        rows they describe were committed, and a run that rolls back should
+        take its own record with it. That is the opposite trade from
+        `ai/call_log.py`, whose whole point is surviving a failed request —
+        the failure paths here record themselves separately, before returning.
+        """
+        orphaned_ids = {o.account_id for o in audit.orphaned}
+        per_account = []
+        for account in targets:
+            rows = [
+                t for t in feed.transactions if t.get("account_id") == account.simplefin_account_id
+            ]
+            dates = sorted(d for d in (_feed_record(t).date for t in rows) if d is not None)
+            per_account.append(
+                {
+                    "account_id": account.id,
+                    "account_name": account.name,
+                    "simplefin_account_id": account.simplefin_account_id,
+                    "feed_txn_count": len(rows),
+                    "feed_oldest_date": dates[0] if dates else None,
+                    "feed_newest_date": dates[-1] if dates else None,
+                    "imported": 0,
+                    "adopted": 0,
+                    "reidentified": account.id in adoption_ids,
+                    "orphaned": account.id in orphaned_ids,
+                }
+            )
+
+        await SyncRunRepository(self.session).create(
+            connection_id=connection_id,
+            budget_id=budget_id,
+            trigger="account" if sync_type == "account" else "global",
+            status="degraded" if fault else "ok",
+            window_start=window.start,
+            window_end=window.end,
+            duration_ms=int((datetime.now(UTC) - started_at).total_seconds() * 1000),
+            error=fault,
+            bank_errors=[
+                {"code": e.code, "message": e.message, "connection_id": e.connection_id}
+                for e in feed.errors
+            ],
+            orphaned_links=[
+                {
+                    "account_id": str(o.account_id),
+                    "account_name": o.account_name,
+                    "stored_simplefin_id": o.stored_simplefin_id,
+                    "suggested_feed_id": o.suggested_feed_id,
+                    "suggested_feed_name": o.suggested_feed_name,
+                }
+                for o in audit.orphaned
+            ],
+            skip_reasons=skip_reasons,
+            accounts=per_account,
+            **counts,
+        )
 
     def _audit_links(self, targets: list[Account], feed: SimpleFINFeed) -> LinkAudit:
         """Which of this run's bank links still resolve against the feed."""
