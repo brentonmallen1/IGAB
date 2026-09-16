@@ -100,6 +100,29 @@ PROVISIONALLY_LINKED = and_(
     Transaction.cleared.in_(("pending", "uncleared")),
 )
 
+
+def orphaned_link(feed_sync_ids: Collection[str]):
+    """Rows carrying a bank id the feed no longer reports.
+
+    Only meaningful for an account the bank has re-identified (see
+    `domain.bank_identity.account_was_reidentified`), and the sync offers
+    these as dedup candidates only for that run. Outside that case the same
+    predicate would match every row that has simply aged out of the fetched
+    window, and offering those would let a fresh posting absorb an unrelated
+    row from months ago.
+
+    Without it, a re-linked account has no path back to its own history: its
+    rows are not `BANK_UNLINKED` (they hold the retired id) and not
+    `PROVISIONALLY_LINKED` (they posted long ago), so the candidate search
+    returns nothing and every feed row is written as a duplicate. That is
+    exactly how one sync wrote 277 twins of reconciled transactions.
+    """
+    return and_(
+        Transaction.sync_id.isnot(None),
+        Transaction.sync_id.notin_(list(feed_sync_ids)),
+    )
+
+
 #: A row the user (or their file import) wrote and no bank feed has touched —
 #: what the review-queue matcher pairs a freshly synced row against.
 #: `sync_id` alone misses id-less feeds: a sync-created row without a bank id

@@ -60,6 +60,12 @@ UNIGRAMS = {
 BIGRAMS = {
     "09d162fa55b1db96", "1a7d0ae5fd57c70b", "1c4f30b2571bff36", "30e6e59dae1afedc",
     "6e8af52a4fc562ba", "7b8fce79d7683357", "9ecfbcd384d94894", "bcb7efe2c01e5f56",
+    # The bank behind a real account here. It reached a test verbatim while
+    # writing up a sync bug, copied out of a live probe's output -- which is
+    # exactly how the first leak happened. Its account's own name is NOT
+    # listed: "everyday checking" identifies nobody and this repo already uses
+    # it as fictional account naming, which is the generic-word trap above.
+    "311ff2d71234e230",
 }
 #: Account, loan, policy and payment reference numbers.
 NUMBERS = {

@@ -57,6 +57,7 @@ import {
 } from '../../../api/simplefin'
 import { useUpdateStatus } from '../../../api/system'
 import { SyncStatusIcon } from '../../simplefin/SyncStatusIcon'
+import { hasSyncFault, useSyncHealth } from '../../../api/syncLogs'
 import { AddAccountModal } from '../../accounts/AddAccountModal'
 import { AddAssetFlow } from '../../assets/AddAssetFlow'
 import { useCurrentUser, useLogout } from '../../../api/auth'
@@ -87,6 +88,19 @@ export function Sidebar() {
   const { data: liabilities = [] } = useLiabilities(budgetId)
   const { data: trackedAssets = [] } = useAssets(budgetId)
   const updateAvailable = useUpdateStatus().data?.update_available === true
+  // A bank link that stopped resolving. Badged because the failure it stands
+  // for is invisible by construction: the sync succeeds, the icon stays
+  // fresh, and the account simply imports nothing.
+  const { data: syncHealth } = useSyncHealth(budgetId)
+  const syncFaults = new Map(
+    (syncHealth?.orphaned_links ?? []).map((o) => [
+      o.account_id,
+      o.suggested_feed_name
+        ? `No longer offered by the bank — relink to "${o.suggested_feed_name}"`
+        : 'No longer offered by the bank — relink in account settings',
+    ])
+  )
+  const syncFault = hasSyncFault(syncHealth)
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed)
   const toggleSidebarCollapsed = useUIStore((s) => s.toggleSidebarCollapsed)
   const sidebarWidth = useUIStore((s) => s.sidebarWidth)
@@ -153,6 +167,7 @@ export function Sidebar() {
         isSyncing={syncMutation.isPending && syncingAccountId === acc.simplefin_account_id}
         onSyncClick={(e) => handleAccountSync(acc, e)}
         lastSyncError={primaryConnection?.last_sync_error}
+        fault={syncFaults.get(acc.id)}
       />
     )
   }
@@ -342,11 +357,18 @@ export function Sidebar() {
           >
             <Server size={16} />
             {!collapsed && <span>System</span>}
-            {updateAvailable && (
+            {syncFault ? (
               <span
-                className="count-badge count-badge--dot count-badge--accent"
-                title="Update available — see System → Updates"
+                className="count-badge count-badge--dot count-badge--warning"
+                title="A bank connection needs attention — see System → Sync Logs"
               />
+            ) : (
+              updateAvailable && (
+                <span
+                  className="count-badge count-badge--dot count-badge--accent"
+                  title="Update available — see System → Updates"
+                />
+              )
             )}
           </NavLink>
           {me && (

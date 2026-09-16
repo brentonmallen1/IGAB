@@ -10,15 +10,71 @@ import httpx
 logger = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True)
+class SimpleFINError:
+    """One entry from the response's `errlist`.
+
+    The Bridge's own guide says "Always show those errors to your end users",
+    and for nine days this app did the opposite: it parsed them, logged them
+    at WARNING into a root logger nothing had configured, and displayed
+    nothing. `con.auth` ("Auth required") is the one that matters most — it
+    names an institution whose link has lapsed, and it is per-account.
+    """
+
+    code: str
+    message: str
+    #: The Bridge's institution-connection id, when the error names one.
+    connection_id: str | None = None
+
+    @property
+    def needs_auth(self) -> bool:
+        return self.code == "con.auth"
+
+
 @dataclass
 class SimpleFINFeed:
-    """One `/accounts` fetch: the transactions in the window, and the balance
-    the bank reported for each account (keyed by SimpleFIN account id).
-    Both come from the same response — a second request would double the
+    """One `/accounts` fetch: the transactions in the window, the balance
+    the bank reported for each account (keyed by SimpleFIN account id), the
+    name it gave each account, and any errors it reported.
+    All come from the same response — a second request would double the
     hit against the bridge's rate limit for data it already sent."""
 
     transactions: list[dict]
     balances: dict[str, Decimal] = field(default_factory=dict)
+    #: SimpleFIN account id -> the name the bank reports for it. What an
+    #: orphaned link is matched against when suggesting a replacement.
+    account_names: dict[str, str] = field(default_factory=dict)
+    errors: list[SimpleFINError] = field(default_factory=list)
+
+
+def _parse_errors(data: dict) -> list["SimpleFINError"]:
+    """Read the response's errors, new spelling first.
+
+    Protocol v2 replaced the flat `errors` array of display strings with
+    structured `errlist` entries carrying a code. Both may appear — the
+    Bridge's own docs still reference each in different sections — so the
+    structured list wins and the legacy one fills in only when it is all
+    there is.
+    """
+    errlist = data.get("errlist")
+    if isinstance(errlist, list) and errlist:
+        parsed = []
+        for entry in errlist:
+            if not isinstance(entry, dict):
+                parsed.append(SimpleFINError(code="gen.unknown", message=str(entry)))
+                continue
+            parsed.append(
+                SimpleFINError(
+                    code=str(entry.get("code") or "gen.unknown"),
+                    message=str(entry.get("msg") or entry.get("message") or ""),
+                    connection_id=entry.get("conn_id"),
+                )
+            )
+        return parsed
+    legacy = data.get("errors")
+    if isinstance(legacy, list):
+        return [SimpleFINError(code="gen.unknown", message=str(e)) for e in legacy if e]
+    return []
 
 
 def _extract_auth(access_url: str) -> tuple[str, tuple[str, str]]:
@@ -103,13 +159,22 @@ class SimpleFINClient:
             resp.raise_for_status()
             data = resp.json()
 
-        if data.get("errors"):
-            logger.warning("SimpleFIN errlist: %s", data["errors"])
+        errors = _parse_errors(data)
+        if errors:
+            logger.warning(
+                "simplefin: bridge reported %d error(s): %s",
+                len(errors),
+                "; ".join(f"{e.code}: {e.message}" for e in errors),
+            )
 
         transactions = []
         balances: dict[str, Decimal] = {}
+        account_names: dict[str, str] = {}
         for account in data.get("accounts", []):
             acct_id = account.get("id")
+            name = account.get("name")
+            if acct_id and name:
+                account_names[acct_id] = str(name)
             raw_balance = account.get("balance")
             if acct_id and raw_balance is not None:
                 try:
@@ -120,4 +185,9 @@ class SimpleFINClient:
                     logger.warning("Unparseable SimpleFIN balance %r for %s", raw_balance, acct_id)
             for txn in account.get("transactions", []):
                 transactions.append({**txn, "account_id": acct_id})
-        return SimpleFINFeed(transactions=transactions, balances=balances)
+        return SimpleFINFeed(
+            transactions=transactions,
+            balances=balances,
+            account_names=account_names,
+            errors=errors,
+        )

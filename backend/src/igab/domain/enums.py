@@ -78,3 +78,30 @@ class OverspendingHandling(StrEnum):
 class AccountClassification(StrEnum):
     ASSET = "asset"
     LIABILITY = "liability"
+
+
+class SkipReason(StrEnum):
+    """Why one bank feed row produced no change.
+
+    A single `skipped` counter used to stand for all six of these, and that
+    is how an account went nine days importing nothing while reporting
+    success: 500-odd rows belonging to no linked account read exactly like
+    500-odd rows that were already filed. "Skipped" is only ever actionable
+    when it says which of these it means.
+    """
+
+    #: The row belongs to a bank account no synced budget account claims.
+    #: Ordinary for accounts the user never linked — and the signature of a
+    #: re-issued account id when it is the *only* thing an account produces.
+    FOREIGN_ACCOUNT = "foreign_account"
+    #: The feed's account id matched a target set entry but no account object.
+    ACCOUNT_NOT_FOUND = "account_not_found"
+    #: The bank changed a user-entered row's amount, and there is no matching
+    #: service configured to ask about it.
+    NO_MATCHER = "no_matcher"
+    #: The review copy collided with an existing row's bank id.
+    REVIEW_IMPORT_DUPLICATE = "review_import_duplicate"
+    #: Known id, nothing changed. The benign one: a re-sync of a filed row.
+    ALREADY_POSTED = "already_posted"
+    #: Writing the row hit the account's unique bank-id index.
+    DUPLICATE_SYNC_ID = "duplicate_sync_id"

@@ -31,6 +31,7 @@ from igab.repositories.scheduled_transaction_repo import ScheduledTransactionRep
 from igab.repositories.settings_repo import SettingsRepository
 from igab.repositories.simplefin_repo import SimpleFINRepository
 from igab.repositories.snapshot_repo import SnapshotRepository
+from igab.repositories.sync_run_repo import SyncRunRepository
 from igab.repositories.tag_repo import TagRepository
 from igab.repositories.target_repo import TargetRepository
 from igab.repositories.transaction_match_repo import TransactionMatchRepository
@@ -114,6 +115,10 @@ def get_account_repo(session: SessionDep) -> AccountRepository:
 
 def get_account_type_repo(session: SessionDep) -> AccountTypeRepository:
     return AccountTypeRepository(session)
+
+
+def get_sync_run_repo(session: SessionDep) -> SyncRunRepository:
+    return SyncRunRepository(session)
 
 
 def get_attachment_repo(session: SessionDep) -> AttachmentRepository:

@@ -27,6 +27,8 @@ EDITABLE_KEYS = {
     "ai_chat_timeout_s",
     "ai_chat_num_ctx",
     "ai_activity_retention_days",
+    "sync_log_retention_days",
+    "simplefin_auto_relink",
     "backup_interval_hours",
     "backup_keep_days",
     "backup_keep_min",

@@ -14,7 +14,7 @@ Fictional data only: this repository is public (CLAUDE.md).
 """
 
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
 
@@ -46,6 +46,8 @@ from igab.db.models import (
     ImportAnchor,
     ImportBatch,
     ReconciliationSnapshot,
+    SyncRun,
+    SyncRunAccount,
     TransactionAttachment,
     TransactionMatch,
     User,
@@ -488,6 +490,46 @@ async def build_full_budget(session: AsyncSession, owner: User) -> FullBudget:
                 ai_call_id=tool_call.id,
             ),
         ]
+    )
+    await session.flush()
+
+    # Also SNAPSHOT_OMITTED, and for the same two reasons: it is a log of what
+    # this installation did, and a restored stale finding would badge a bank
+    # link that was fixed months ago. Budget delete must still take it.
+    sync_run = SyncRun(
+        budget_id=budget.id,
+        connection_id=None,
+        trigger="global",
+        status="degraded",
+        window_start=datetime(2026, 9, 1, tzinfo=UTC),
+        duration_ms=840,
+        error='"Checking" is no longer offered by the bank',
+        bank_errors=[{"code": "con.auth", "message": "Auth required", "connection_id": "MBR-1"}],
+        orphaned_links=[
+            {
+                "account_id": str(checking.id),
+                "account_name": "Checking",
+                "stored_simplefin_id": "ACT-retired",
+                "suggested_feed_id": "ACT-current",
+                "suggested_feed_name": "HARBORSTONE EVERYDAY CHECKING",
+            }
+        ],
+        feed_txn_count=12,
+        imported=0,
+        skipped=12,
+        skip_reasons={"foreign_account": 12},
+    )
+    session.add(sync_run)
+    await session.flush()
+    session.add(
+        SyncRunAccount(
+            sync_run_id=sync_run.id,
+            account_id=checking.id,
+            account_name="Checking",
+            simplefin_account_id="ACT-retired",
+            feed_txn_count=0,
+            orphaned=True,
+        )
     )
     await session.flush()
 

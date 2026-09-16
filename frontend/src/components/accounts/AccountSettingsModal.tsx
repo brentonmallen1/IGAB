@@ -10,6 +10,9 @@ import {
 import { formatSyncAge } from '../simplefin/SyncStatusIcon'
 import { Dialog } from '../common/Dialog/Dialog'
 import { useFormatters } from '../../hooks/useFormatters'
+import { AlertTriangle } from 'lucide-react'
+
+import { useSyncHealth } from '../../api/syncLogs'
 import { useAppStore } from '../../stores/appStore'
 import { useAccountTypes } from '../../api/accountTypes'
 import { BUILTIN_ACCOUNT_TYPES } from '../../constants/accountTypes'
@@ -30,6 +33,9 @@ interface Props {
 
 export function AccountSettingsModal({ accountId, onClose }: Props) {
   const budgetId = useAppStore((s) => s.currentBudgetId)
+  // Whether *this* account is the one whose bank link stopped resolving.
+  const { data: syncHealth } = useSyncHealth(budgetId)
+  const orphan = syncHealth?.orphaned_links.find((o) => o.account_id === account?.id)
   const { data: accounts } = useAccounts(budgetId, { includeClosed: true })
   const account = accounts?.find((a) => a.id === accountId)
   const { formatMoney } = useFormatters()
@@ -286,6 +292,34 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
               <div className="acct-modal__section-title">SimpleFIN sync</div>
               {isLinked ? (
                 <div className="acct-modal__sf-linked">
+                  {orphan && (
+                    /* The bank reissued this account's id, so the link still
+                       looks fine and imports nothing. One button, because the
+                       alternative is matching bank strings by eye in a list
+                       of twenty. */
+                    <div className="acct-modal__sf-orphan">
+                      <AlertTriangle size={13} />
+                      <div>
+                        <strong>This link no longer resolves.</strong> The bank stopped offering{' '}
+                        <code>{account.simplefin_account_id}</code>, so nothing has imported since.
+                        {orphan.suggested_feed_id && (
+                          <>
+                            {' '}
+                            <button
+                              type="button"
+                              className="dialog-btn dialog-btn--secondary"
+                              disabled={link.isPending}
+                              onClick={() => handleLink(orphan.suggested_feed_id as string)}
+                            >
+                              {link.isPending
+                                ? 'Relinking…'
+                                : `Relink to ${orphan.suggested_feed_name ?? orphan.suggested_feed_id}`}
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
                   <div className="acct-modal__sf-name">
                     <span className="acct-modal__sf-badge">Linked</span>
                     {account.simplefin_account_name ?? account.simplefin_account_id}
