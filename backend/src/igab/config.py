@@ -6,6 +6,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
+    # Logging. Without a configured root logger the app's own logger.info
+    # calls go nowhere: uvicorn configures its own loggers and leaves the
+    # root at WARNING, which is why `docker logs` showed nothing at all
+    # while a bank account quietly imported nothing for nine days.
+    LOG_LEVEL: str = "INFO"
+
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://igab:changeme@localhost:5432/igab"
     DB_POOL_SIZE: int = 5

@@ -33,6 +33,30 @@
 }
 
 /* SimpleFIN linked state */
+.acct-modal__sf-orphan {
+  display: flex;
+  gap: var(--spacing-xs);
+  align-items: flex-start;
+  padding: var(--spacing-sm);
+  margin-bottom: var(--spacing-sm);
+  border-left: 2px solid var(--color-negative);
+  border-radius: var(--border-radius-sm);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.acct-modal__sf-orphan code {
+  font-size: 11px;
+  color: var(--text-secondary);
+  word-break: break-all;
+}
+
+.acct-modal__sf-orphan button {
+  margin-top: var(--spacing-xs);
+}
+
 .acct-modal__sf-linked {
   display: flex;
   flex-direction: column;

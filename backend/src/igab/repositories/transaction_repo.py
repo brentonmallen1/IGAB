@@ -64,6 +64,7 @@ from igab.repositories.txn_filters import (
     UNPAIRED_TRANSFER_LEG,
     USER_ENTERED,
     in_category_scope,
+    orphaned_link,
     search_matches,
     sync_created_pending,
 )
@@ -1452,6 +1453,24 @@ class TransactionRepository(BaseRepository[Transaction]):
             found.update(row[0] for row in result.all() if row[0])
         return found
 
+    async def get_sync_ids_for_account(
+        self, account_id: uuid.UUID, *, since: date | None = None
+    ) -> set[str]:
+        """Every bank id this account currently holds, for comparison against
+        the feed's. Scoped to the fetched window by default — ids older than
+        the window could not appear in the feed either way, and leaving them
+        in only inflates the set.
+        """
+        query = select(Transaction.sync_id).where(
+            Transaction.account_id == account_id,
+            Transaction.sync_id.isnot(None),
+            Transaction.is_deleted == False,  # noqa: E712
+        )
+        if since is not None:
+            query = query.where(Transaction.date >= since)
+        result = await self.session.execute(query)
+        return {row[0] for row in result.all() if row[0]}
+
     async def find_existing_match_candidates(
         self,
         account_id: uuid.UUID,
@@ -1461,6 +1480,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         limit: int = 5,
         exclude_ids: Collection[uuid.UUID] | None = None,
         include_provisional: bool = False,
+        orphaned_feed_sync_ids: Collection[str] | None = None,
     ) -> list[tuple[Transaction, str | None]]:
         """Return (Transaction, payee_name) candidates matching by exact amount and date window.
 
@@ -1471,12 +1491,21 @@ class TransactionRepository(BaseRepository[Transaction]):
         include_provisional: also offer PROVISIONALLY_LINKED rows (see
         txn_filters) — for a posted feed record, whose bank may have
         re-identified it since the pending record those rows were linked to.
+        orphaned_feed_sync_ids: the feed's own ids for this account, passed
+        only when the bank has re-identified the account wholesale. Rows
+        holding an id outside that set are then offered too, so the account's
+        existing history can adopt the new ids instead of being duplicated.
         """
         from datetime import timedelta
 
         date_low = txn_date - timedelta(days=date_window_days)
         date_high = txn_date + timedelta(days=date_window_days)
-        linked = or_(BANK_UNLINKED, PROVISIONALLY_LINKED) if include_provisional else BANK_UNLINKED
+        states = [BANK_UNLINKED]
+        if include_provisional:
+            states.append(PROVISIONALLY_LINKED)
+        if orphaned_feed_sync_ids:
+            states.append(orphaned_link(orphaned_feed_sync_ids))
+        linked = or_(*states) if len(states) > 1 else states[0]
         query = (
             select(Transaction, Payee.name)
             .outerjoin(Payee, Transaction.payee_id == Payee.id)

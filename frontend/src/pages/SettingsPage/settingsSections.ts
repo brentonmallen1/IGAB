@@ -42,6 +42,7 @@ export type SettingsSectionId =
   | 'data'
   | 'updates'
   | 'simplefin'
+  | 'sync-logs'
   | 'ai'
   | 'users'
 
@@ -95,6 +96,13 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
   },
   { id: 'updates', label: 'Updates', page: 'system', keywords: 'version release' },
   { id: 'simplefin', label: 'SimpleFIN', page: 'system', keywords: 'bank sync connection' },
+  {
+    id: 'sync-logs',
+    label: 'Sync Logs',
+    page: 'system',
+    adminOnly: true,
+    keywords: 'sync history bank simplefin log diagnostics skipped imported',
+  },
   { id: 'ai', label: 'AI', page: 'system', keywords: 'ollama model receipts' },
   { id: 'users', label: 'Users', page: 'system', adminOnly: true, keywords: 'household admin' },
 ]

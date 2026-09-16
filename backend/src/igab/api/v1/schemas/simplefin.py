@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from pydantic import field_validator
@@ -80,13 +80,46 @@ class LinkSimpleFINRequest(ApiModel):
     simplefin_account_name: str | None = None
 
 
+class OrphanedLinkInfo(ApiModel):
+    """An account whose bank link the feed no longer offers.
+
+    Carries its own suggested replacement so the UI can offer a one-click
+    relink rather than making the user match bank strings by eye.
+    """
+
+    account_id: uuid.UUID
+    account_name: str
+    stored_simplefin_id: str
+    suggested_feed_id: str | None = None
+    suggested_feed_name: str | None = None
+
+
+class BankErrorInfo(ApiModel):
+    """One entry from the bridge's `errlist`. `con.auth` means an institution
+    needs re-authenticating, and the bridge's guide is explicit that these
+    must be shown to the user."""
+
+    code: str
+    message: str
+    connection_id: str | None = None
+
+
 class SyncResult(ApiModel):
     imported: int
     skipped: int
+    #: Why each skipped row was skipped. A single count conflating "belonged
+    #: to no linked account" with "already filed" is what made a nine-day
+    #: outage read as a normal sync.
+    skip_reasons: dict[str, int] = {}
     matched: int = 0
+    #: Rows whose bank id was replaced wholesale and re-stamped onto the
+    #: existing row, rather than imported beside it as a duplicate.
+    adopted: int = 0
     review_queued: int = 0
     cleared: int = 0
     removed_pending: int = 0
+    orphaned_links: list[OrphanedLinkInfo] = []
+    bank_errors: list[BankErrorInfo] = []
     #: Accounts whose first sync wrote a Starting Balance row to anchor the
     #: ledger to the bank's reported balance — the 90-day window cannot
     #: carry an older carried balance any other way.
@@ -104,7 +137,12 @@ class ConnectionSyncOutcome(ApiModel):
     connection_id: uuid.UUID
     imported: int = 0
     skipped: int = 0
+    adopted: int = 0
     error: str | None = None
+    #: Carried per connection, not just in the totals: a broken link on one
+    #: bank is the whole story of that connection's run.
+    orphaned_links: list[OrphanedLinkInfo] = []
+    bank_errors: list[BankErrorInfo] = []
 
 
 class SyncAllResult(ApiModel):
@@ -117,7 +155,9 @@ class SyncAllResult(ApiModel):
 
     imported: int
     skipped: int
+    skip_reasons: dict[str, int] = {}
     matched: int = 0
+    adopted: int = 0
     review_queued: int = 0
     cleared: int = 0
     removed_pending: int = 0
@@ -155,3 +195,77 @@ class TransactionMatchResponse(ApiModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class SyncRunAccountResponse(ApiModel):
+    """What one run did to one account.
+
+    `feed_txn_count == 0` on an account the run was told to sync is the
+    signature of a bank link that no longer resolves, and `feed_newest_date`
+    is what says an account has quietly stopped receiving anything.
+    """
+
+    account_id: uuid.UUID | None = None
+    account_name: str | None = None
+    simplefin_account_id: str | None = None
+    feed_txn_count: int = 0
+    feed_oldest_date: date | None = None
+    feed_newest_date: date | None = None
+    imported: int = 0
+    adopted: int = 0
+    reidentified: bool = False
+    orphaned: bool = False
+
+    model_config = {"from_attributes": True}
+
+
+class SyncRunResponse(ApiModel):
+    id: uuid.UUID
+    connection_id: uuid.UUID | None = None
+    trigger: str
+    status: str
+    window_start: datetime | None = None
+    window_end: datetime | None = None
+    duration_ms: int | None = None
+    error: str | None = None
+    bank_errors: list[BankErrorInfo] = []
+    orphaned_links: list[OrphanedLinkInfo] = []
+    feed_txn_count: int = 0
+    imported: int = 0
+    skipped: int = 0
+    skip_reasons: dict[str, int] = {}
+    matched: int = 0
+    adopted: int = 0
+    cleared: int = 0
+    review_queued: int = 0
+    removed_pending: int = 0
+    anchored: int = 0
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class SyncRunDetailResponse(SyncRunResponse):
+    accounts: list[SyncRunAccountResponse] = []
+
+
+class SyncRunListResponse(ApiModel):
+    runs: list[SyncRunResponse]
+    total_count: int
+
+
+class SyncHealthResponse(ApiModel):
+    """Whether anything about bank sync needs attention right now.
+
+    Read from the most recent run rather than the most recent *problem*: the
+    question is "is this broken now", and a stale finding would answer it
+    wrongly in both directions.
+    """
+
+    orphaned_links: list[OrphanedLinkInfo] = []
+    needs_auth: list[BankErrorInfo] = []
+    last_run_at: datetime | None = None
+
+    @property
+    def clean(self) -> bool:
+        return not self.orphaned_links and not self.needs_auth

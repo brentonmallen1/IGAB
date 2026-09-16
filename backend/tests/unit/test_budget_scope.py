@@ -69,7 +69,12 @@ class TestEveryTableIsClassified:
         # log. Both cascade on budget delete and both are SNAPSHOT_OMITTED: a
         # transcript is prose the user typed about their own accounts, and a
         # snapshot is a file they hand to someone else.
-        assert counted[Scope.OWNED] == 29
+        # 30: `sync_runs` joined (2026-09-15) — one row per bank sync, so that
+        # "this account imported nothing again" is a thing the app can know.
+        # Cascades on budget delete and is SNAPSHOT_OMITTED: it is a log of
+        # what this installation did, and a restored stale finding would badge
+        # a bank link that was fixed months ago.
+        assert counted[Scope.OWNED] == 30
         # 12: `asset_value_snapshots` rides in as its child, and
         # `budget_filter_tags` joined (2026-09-06) — a filter's tag axis,
         # scoped through its filter like `budget_filter_categories`.
@@ -77,7 +82,10 @@ class TestEveryTableIsClassified:
         # anchored through its parent. `ai_messages` has FKs to two in-graph
         # tables, so its column order is what makes the conversation the
         # anchor rather than the call — see the note on the model.
-        assert counted[Scope.CHILD] == 14
+        # 15: `sync_run_accounts` joined (2026-09-15), anchored through its
+        # run. Its FK to `accounts` is ON DELETE SET NULL, so a deleted
+        # account leaves the log readable rather than taking it with it.
+        assert counted[Scope.CHILD] == 15
         # 4: `import_account_mappings` joined as global (2026-09-06) — the
         # import mapping step's memory, keyed by account name and per user. It
         # exists to outlive the budget an import built, so budget scope is the
