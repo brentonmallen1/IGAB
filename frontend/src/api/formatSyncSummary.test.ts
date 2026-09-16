@@ -73,7 +73,9 @@ describe('formatSyncSummary', () => {
     })
     const summary = formatSyncSummary(
       result({
-        connections: [connection({ orphaned_links: [orphan('Harborstone Checking'), orphan('Savings')] })],
+        connections: [
+          connection({ orphaned_links: [orphan('Harborstone Checking'), orphan('Savings')] }),
+        ],
       })
     )
     expect(summary).toContain('2 accounts')

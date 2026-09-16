@@ -61,7 +61,9 @@ describe('runVerdict', () => {
 
 describe('runHeadline', () => {
   it('names the account instead of counting skips', () => {
-    expect(runHeadline(run({ orphaned_links: [ORPHAN], skipped: 586 }))).toContain('Harborstone Checking')
+    expect(runHeadline(run({ orphaned_links: [ORPHAN], skipped: 586 }))).toContain(
+      'Harborstone Checking'
+    )
   })
 
   it('counts accounts when several are orphaned', () => {

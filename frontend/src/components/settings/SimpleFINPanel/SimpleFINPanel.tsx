@@ -116,10 +116,9 @@ export function SimpleFINPanel() {
             <span>
               Relink automatically when a bank reissues an account
               <small>
-                Only when exactly one bank account carries this account&rsquo;s own name. A
-                similar name is offered for you to confirm instead — two cards at one bank
-                read almost alike, and a wrong relink files one account&rsquo;s transactions
-                into another.
+                Only when exactly one bank account carries this account&rsquo;s own name. A similar
+                name is offered for you to confirm instead — two cards at one bank read almost
+                alike, and a wrong relink files one account&rsquo;s transactions into another.
               </small>
             </span>
           </label>
