@@ -31,6 +31,10 @@ from .factories import (
 OLD_ACCT = "ACT-old"
 NEW_ACCT = "ACT-new"
 BANK_NAME = "HARBORSTONE EVERYDAY CHECKING"
+#: Close enough to be suggested, not close enough to be acted on. The three
+#: tests below are about the path that still needs a person: auto-relink only
+#: ever fires on an exact name match.
+BANK_NAME_SIMILAR = "HARBORSTONE EVERYDAY CHECKING — Primary"
 
 PATCH_DECRYPT = patch("igab.services.simplefin_service.decrypt", return_value="https://u:p@x.test")
 
@@ -94,7 +98,9 @@ async def _setup(db_session):
     services = make_services(db_session)
     user = await create_user(db_session)
     budget = await create_budget(db_session, user)
-    account = await create_account(db_session, budget, "Harborstone Checking", simplefin_account_id=OLD_ACCT)
+    account = await create_account(
+        db_session, budget, "Harborstone Checking", simplefin_account_id=OLD_ACCT
+    )
     account.simplefin_account_name = BANK_NAME
     conn = await create_simplefin_connection(db_session, user)
     await db_session.flush()
@@ -220,7 +226,7 @@ async def test_orphaned_link_is_reported_and_recorded(db_session):
     # The feed offers only the new account; the budget still points at the old.
     with PATCH_DECRYPT:
         result = await _service(
-            services, _feed(NEW_ACCT, "new", start), names={NEW_ACCT: BANK_NAME}
+            services, _feed(NEW_ACCT, "new", start), names={NEW_ACCT: BANK_NAME_SIMILAR}
         ).sync(conn.id, budget.id)
 
     assert result["imported"] == 0
@@ -324,9 +330,9 @@ async def test_an_orphaned_account_is_recorded_as_degraded_with_no_feed_rows(db_
     start = date.today() - timedelta(days=30)
 
     with PATCH_DECRYPT:
-        await _service(services, _feed(NEW_ACCT, "new", start), names={NEW_ACCT: BANK_NAME}).sync(
-            conn.id, budget.id
-        )
+        await _service(
+            services, _feed(NEW_ACCT, "new", start), names={NEW_ACCT: BANK_NAME_SIMILAR}
+        ).sync(conn.id, budget.id)
 
     repo = SyncRunRepository(db_session)
     runs, _ = await repo.list_runs(budget_id=budget.id)
@@ -334,7 +340,7 @@ async def test_an_orphaned_account_is_recorded_as_degraded_with_no_feed_rows(db_
 
     assert run.status == "degraded"
     assert run.skip_reasons == {"foreign_account": len(HISTORY)}
-    assert run.orphaned_links[0]["suggested_feed_name"] == BANK_NAME
+    assert run.orphaned_links[0]["suggested_feed_name"] == BANK_NAME_SIMILAR
 
     [row] = run.accounts
     assert row.orphaned is True
@@ -362,3 +368,153 @@ async def test_a_reidentified_account_is_recorded_as_such(db_session):
     latest = await repo.get(runs[0].id)
     assert latest.adopted == len(HISTORY)
     assert latest.accounts[0].reidentified is True
+
+
+async def test_sync_all_carries_the_fault_to_the_toast(db_session):
+    """The sidebar's sync button posts to sync-all, and `formatSyncSummary`
+    reads `connections[].orphaned_links`. Totals alone cannot say which bank
+    stopped working, so the per-connection list is what the message needs."""
+    services, budget, account, conn = await _setup(db_session)
+    start = date.today() - timedelta(days=30)
+
+    svc = _service(services, _feed(NEW_ACCT, "new", start), names={NEW_ACCT: BANK_NAME_SIMILAR})
+    with PATCH_DECRYPT:
+        result = await svc.sync_all(conn.user_id, budget.id)
+
+    assert result["imported"] == 0
+    assert result["skip_reasons"] == {"foreign_account": len(HISTORY)}
+
+    [outcome] = result["connections"]
+    assert outcome["orphaned_links"][0]["account_name"] == "Harborstone Checking"
+    assert outcome["orphaned_links"][0]["suggested_feed_name"] == BANK_NAME_SIMILAR
+
+
+async def test_sync_all_totals_adoptions(db_session):
+    services, budget, account, conn = await _setup(db_session)
+    start = date.today() - timedelta(days=30)
+    with PATCH_DECRYPT:
+        await _service(services, _feed(OLD_ACCT, "old", start)).sync(conn.id, budget.id)
+    account.simplefin_account_id = NEW_ACCT
+    await db_session.flush()
+
+    svc = _service(services, _feed(NEW_ACCT, "new", start), names={NEW_ACCT: BANK_NAME})
+    with PATCH_DECRYPT:
+        result = await svc.sync_all(conn.user_id, budget.id)
+
+    assert result["adopted"] == len(HISTORY)
+    assert result["connections"][0]["adopted"] == len(HISTORY)
+
+
+async def test_an_exact_name_match_relinks_and_catches_up_in_one_sync(db_session):
+    """The whole point: the bank reissues an id, and the next sync repoints the
+    account, adopts its existing rows, and imports what was missed — without
+    anyone noticing anything was wrong."""
+    services, budget, account, conn = await _setup(db_session)
+    start = date.today() - timedelta(days=30)
+
+    with PATCH_DECRYPT:
+        await _service(services, _feed(OLD_ACCT, "old", start)).sync(conn.id, budget.id)
+    rows_before = len(await _live_rows(db_session, account.id))
+
+    # The bridge reissues the account id AND every transaction id, and adds a
+    # transaction that arrived while the link was broken. The budget account
+    # is NOT relinked by hand.
+    feed = _feed(NEW_ACCT, "new", start) + [
+        bank_txn("new-late", "-31.00", date.today(), account=NEW_ACCT, payee="CORNER MARKET")
+    ]
+    with PATCH_DECRYPT:
+        result = await _service(services, feed, names={NEW_ACCT: BANK_NAME}).sync(
+            conn.id, budget.id
+        )
+
+    await db_session.refresh(account)
+    assert account.simplefin_account_id == NEW_ACCT, "the account repointed itself"
+    assert result["adopted"] == rows_before, "existing rows took the new ids"
+    assert result["imported"] == 1, "and the missed transaction arrived"
+    assert len(await _live_rows(db_session, account.id)) == rows_before + 1
+
+
+async def test_a_similar_name_is_never_relinked_automatically(db_session):
+    """Two of one person's brokerage accounts score 0.95 against each other.
+    A wrong relink files one account's transactions into another, so a similar
+    name is only ever offered."""
+    services, budget, account, conn = await _setup(db_session)
+    account.simplefin_account_name = "Cascade Point Brokerage - Retirement"
+    await db_session.flush()
+    start = date.today() - timedelta(days=30)
+
+    with PATCH_DECRYPT:
+        result = await _service(
+            services,
+            _feed(NEW_ACCT, "new", start),
+            names={NEW_ACCT: "Cascade Point Brokerage - Non-retirement"},
+        ).sync(conn.id, budget.id)
+
+    await db_session.refresh(account)
+    assert account.simplefin_account_id == OLD_ACCT, "left alone for a person to decide"
+    orphan = result["orphaned_links"][0]
+    assert orphan["suggested_feed_id"] == NEW_ACCT, "but the suggestion is still offered"
+
+
+async def test_two_candidates_sharing_a_name_relink_neither(db_session):
+    """Ambiguity disqualifies: nothing distinguishes them."""
+    services, budget, account, conn = await _setup(db_session)
+    start = date.today() - timedelta(days=30)
+
+    feed = _feed(NEW_ACCT, "new", start) + _feed("ACT-twin", "twin", start)
+    with PATCH_DECRYPT:
+        await _service(services, feed, names={NEW_ACCT: BANK_NAME, "ACT-twin": BANK_NAME}).sync(
+            conn.id, budget.id
+        )
+
+    await db_session.refresh(account)
+    assert account.simplefin_account_id == OLD_ACCT
+
+
+async def test_auto_relink_can_be_switched_off(db_session):
+    services, budget, account, conn = await _setup(db_session)
+    from igab.repositories.settings_repo import SettingsRepository
+    from igab.services.settings_service import SettingsService
+
+    await SettingsService(SettingsRepository(db_session)).set("simplefin_auto_relink", "false")
+    await db_session.flush()
+    start = date.today() - timedelta(days=30)
+
+    with PATCH_DECRYPT:
+        result = await _service(
+            services, _feed(NEW_ACCT, "new", start), names={NEW_ACCT: BANK_NAME}
+        ).sync(conn.id, budget.id)
+
+    await db_session.refresh(account)
+    assert account.simplefin_account_id == OLD_ACCT
+    assert result["orphaned_links"][0]["account_name"] == "Harborstone Checking"
+
+
+async def test_an_automatic_relink_is_undoable(db_session):
+    """Recorded like a manual one, so Cmd+Z reaches it and the change log says
+    it happened rather than implying it was always so."""
+    from sqlalchemy import select
+
+    from igab.db.models import ChangeLog
+
+    services, budget, account, conn = await _setup(db_session)
+    start = date.today() - timedelta(days=30)
+    with PATCH_DECRYPT:
+        await _service(services, _feed(NEW_ACCT, "new", start), names={NEW_ACCT: BANK_NAME}).sync(
+            conn.id, budget.id
+        )
+
+    rows = (
+        (
+            await db_session.execute(
+                select(ChangeLog).where(
+                    ChangeLog.entity_type == "account", ChangeLog.entity_id == account.id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert rows, "the relink left a change-log entry"
+    assert rows[-1].before["simplefin_account_id"] == OLD_ACCT
+    assert rows[-1].after["simplefin_account_id"] == NEW_ACCT

@@ -4,6 +4,7 @@ import {
   useSimpleFINRateLimitStatus,
   useUpdateSimpleFINConnection,
 } from '../../../api/simplefin'
+import { useSettings, useUpdateSetting } from '../../../api/settings'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { confirmAsync } from '../../../stores/confirmStore'
 import { SimpleFINConfigNotice, SimpleFINSetup } from '../../simplefin/SimpleFINSetup'
@@ -23,6 +24,12 @@ export function SimpleFINPanel() {
   const { formatDateTime } = useFormatters()
   const { data: connections } = useSimpleFINConnections()
   const updateConnection = useUpdateSimpleFINConnection()
+  const { data: appSettings } = useSettings()
+  const updateSetting = useUpdateSetting()
+  // Default on: the failure it prevents is silent, and the guard is an exact
+  // name match rather than a resemblance.
+  const autoRelink =
+    (appSettings?.find((x) => x.key === 'simplefin_auto_relink')?.value ?? 'true') === 'true'
   const deleteConnection = useDeleteSimpleFINConnection()
 
   const firstConnectionId = connections && connections.length > 0 ? connections[0].id : null
@@ -94,6 +101,28 @@ export function SimpleFINPanel() {
               )}
             </div>
           )}
+
+          <label className="sf-autorelink">
+            <input
+              type="checkbox"
+              checked={autoRelink}
+              onChange={(e) =>
+                updateSetting.mutate({
+                  key: 'simplefin_auto_relink',
+                  value: e.target.checked ? 'true' : 'false',
+                })
+              }
+            />
+            <span>
+              Relink automatically when a bank reissues an account
+              <small>
+                Only when exactly one bank account carries this account&rsquo;s own name. A
+                similar name is offered for you to confirm instead — two cards at one bank
+                read almost alike, and a wrong relink files one account&rsquo;s transactions
+                into another.
+              </small>
+            </span>
+          </label>
 
           <div style={{ paddingTop: 4 }}>
             <button

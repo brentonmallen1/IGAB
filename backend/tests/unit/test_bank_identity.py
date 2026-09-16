@@ -56,7 +56,9 @@ class TestAccountWasReidentified:
 
 
 class TestAuditLinks:
-    def _account(self, name="Harborstone Checking", sf_id="ACT-old", known_as="HARBORSTONE EVERYDAY CHECKING"):
+    def _account(
+        self, name="Harborstone Checking", sf_id="ACT-old", known_as="HARBORSTONE EVERYDAY CHECKING"
+    ):
         return LinkedAccount(
             id=uuid.uuid4(),
             name=name,
@@ -86,7 +88,9 @@ class TestAuditLinks:
         """ "Harborstone Checking" resembles nothing the bank says; the name stored at
         link time is what identifies the account."""
         audit = audit_links(
-            linked=[self._account(name="Harborstone Checking", known_as="HARBORSTONE EVERYDAY CHECKING")],
+            linked=[
+                self._account(name="Harborstone Checking", known_as="HARBORSTONE EVERYDAY CHECKING")
+            ],
             feed=[FeedAccount(id="ACT-new", name="HARBORSTONE EVERYDAY CHECKING")],
         )
         assert audit.orphaned[0].suggested_feed_id == "ACT-new"
@@ -113,7 +117,8 @@ class TestAuditLinks:
     def test_healthy_links_are_clean(self):
         account = self._account(sf_id="ACT-live")
         audit = audit_links(
-            linked=[account], feed=[FeedAccount(id="ACT-live", name="HARBORSTONE EVERYDAY CHECKING")]
+            linked=[account],
+            feed=[FeedAccount(id="ACT-live", name="HARBORSTONE EVERYDAY CHECKING")],
         )
         assert audit.clean
         assert audit.unclaimed == []

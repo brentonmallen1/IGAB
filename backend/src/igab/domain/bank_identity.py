@@ -87,6 +87,11 @@ class OrphanedLink:
     suggested_feed_id: str | None = None
     suggested_feed_name: str | None = None
     suggestion_score: float = 0.0
+    #: The suggestion is the *same name*, not merely a similar one, and no
+    #: other unclaimed account shares it. Only this may be acted on without
+    #: asking: two of one person's brokerage accounts score 0.95 against each
+    #: other, so a similar name is evidence for a human and nothing more.
+    suggestion_is_exact: bool = False
 
 
 @dataclass(frozen=True)
@@ -131,17 +136,45 @@ def audit_links(*, linked: list[LinkedAccount], feed: list[FeedAccount]) -> Link
         if account.simplefin_account_id in feed_by_id:
             continue
         best, score = _best_replacement(account, unclaimed)
+        exact = _exact_replacement(account, unclaimed)
+        # An exact match is always also the best fuzzy one, so it leads.
+        chosen = exact or best
         orphaned.append(
             OrphanedLink(
                 account_id=account.id,
                 account_name=account.name,
                 stored_simplefin_id=account.simplefin_account_id,
-                suggested_feed_id=best.feed_id if best else None,
-                suggested_feed_name=best.feed_name if best else None,
-                suggestion_score=score,
+                suggested_feed_id=chosen.feed_id if chosen else None,
+                suggested_feed_name=chosen.feed_name if chosen else None,
+                suggestion_score=1.0 if exact else score,
+                suggestion_is_exact=exact is not None,
             )
         )
     return LinkAudit(orphaned=orphaned, unclaimed=unclaimed)
+
+
+def _normalized(name: str | None) -> str:
+    return " ".join((name or "").split()).casefold()
+
+
+def _exact_replacement(
+    account: LinkedAccount, candidates: list[UnclaimedFeed]
+) -> UnclaimedFeed | None:
+    """The one unclaimed account carrying this account's own bank name.
+
+    The only evidence strong enough to act on unasked. A re-linked
+    institution reissues the id and keeps the name, which is precisely the
+    case that cost nine days; anything short of the same name is a guess, and
+    a wrong relink files one account's transactions into another.
+
+    Ambiguity disqualifies: if two unclaimed accounts share the name, nothing
+    distinguishes them.
+    """
+    known_as = _normalized(account.simplefin_account_name)
+    if not known_as:
+        return None
+    exact = [c for c in candidates if _normalized(c.feed_name) == known_as]
+    return exact[0] if len(exact) == 1 else None
 
 
 def _best_replacement(
@@ -152,6 +185,11 @@ def _best_replacement(
     Scored against the name the feed used at link time when there is one —
     the user's own rename ("Harborstone Checking") rarely resembles the bank's string
     ("HARBORSTONE EVERYDAY CHECKING").
+
+    A lone candidate still has to clear the threshold, but has no runner-up to
+    beat. That is why this result may only ever be *offered*: two of one
+    person's brokerage accounts score 0.95 against each other, and with one of
+    them unclaimed the margin test has nothing to compare against.
     """
     if not candidates:
         return None, 0.0

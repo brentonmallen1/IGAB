@@ -43,6 +43,7 @@ from igab.repositories.account_repo import AccountRepository
 from igab.repositories.simplefin_repo import SimpleFINRepository
 from igab.repositories.sync_run_repo import SyncRunRepository
 from igab.repositories.transaction_repo import TransactionRepository
+from igab.services.change_log import snapshot, snapshots_match
 from igab.services.transaction_matching_service import (
     TransactionMatchingService,
     calculate_confidence,
@@ -467,6 +468,14 @@ class SimpleFINService:
                 "; ".join(o.account_name for o in audit.orphaned),
             )
 
+        # Heal what can be healed before importing, so one run both relinks
+        # and catches up. Safe only because a re-linked account now adopts its
+        # own history instead of duplicating it — without that, this would
+        # automate the 277-duplicate failure across every account at once.
+        relinked = await self._auto_relink(targets, audit)
+        if relinked:
+            audit = self._audit_links(targets, feed_data)
+
         # Accounts the bank re-identified wholesale. For those, and only for
         # this run, the dedup ladder is allowed to see the account's own
         # bank-linked history, so its rows adopt the new ids instead of being
@@ -778,6 +787,68 @@ class SimpleFINService:
             ],
             **rate_status,
         }
+
+    async def _auto_relink(self, targets: list[Account], audit: LinkAudit) -> list[str]:
+        """Repoint an orphaned account at the bank account carrying its own name.
+
+        Only an exact name match, and only when exactly one unclaimed account
+        has it. A similar name is not evidence: two of one person's brokerage
+        accounts score 0.95 against each other, and a wrong relink files one
+        account's transactions into another — the worst thing this app can do.
+        Anything less certain waits for a person, who gets the suggestion
+        prefilled.
+
+        Recorded like a manual relink, so it undoes with Cmd+Z and appears in
+        the change log as something that happened rather than something that
+        was always true.
+        """
+        if not audit.orphaned:
+            return []
+        if not await self._auto_relink_enabled():
+            return []
+
+        by_id = {a.id: a for a in targets}
+        relinked: list[str] = []
+        for orphan in audit.orphaned:
+            if not orphan.suggestion_is_exact or not orphan.suggested_feed_id:
+                continue
+            account = by_id.get(orphan.account_id)
+            if account is None:
+                continue
+            before = snapshot("account", account)
+            updated = await self.account_repo.update(
+                account.id,
+                simplefin_account_id=orphan.suggested_feed_id,
+                simplefin_account_name=orphan.suggested_feed_name,
+            )
+            after = snapshot("account", updated)
+            if snapshots_match(after, before):
+                await self.txn_service.changes.record(
+                    budget_id=updated.budget_id,
+                    entity_type="account",
+                    entity_id=updated.id,
+                    action="update",
+                    before=before,
+                    after=after,
+                )
+            # `targets` is read again below for the id set and the per-account
+            # log rows, so the in-memory row has to move with the database.
+            account.simplefin_account_id = orphan.suggested_feed_id
+            account.simplefin_account_name = orphan.suggested_feed_name
+            relinked.append(orphan.account_name)
+            logger.warning(
+                "simplefin: relinked %r to %r — the bank reissued its account id",
+                orphan.account_name,
+                orphan.suggested_feed_name,
+            )
+        return relinked
+
+    async def _auto_relink_enabled(self) -> bool:
+        from igab.repositories.settings_repo import SettingsRepository
+        from igab.services.settings_service import SettingsService
+
+        raw = await SettingsService(SettingsRepository(self.session)).get("simplefin_auto_relink")
+        return (raw or "true").strip().lower() not in ("false", "0", "no", "off")
 
     async def _record_run(
         self,
