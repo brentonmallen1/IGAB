@@ -32,6 +32,11 @@ vi.mock('../../api/simplefin', () => {
     useUpdateAccountSimpleFINSettings: idle,
   }
 })
+// The modal asks whether this account's bank link still resolves, so it can
+// offer a one-click relink. Nothing is broken in these fixtures.
+vi.mock('../../api/syncLogs', () => ({
+  useSyncHealth: () => ({ data: { orphaned_links: [], needs_auth: [], last_run_at: null } }),
+}))
 // No registry yet: the form falls back to the built-in mirror.
 vi.mock('../../api/accountTypes', () => ({
   useAccountTypes: () => ({ data: undefined }),
