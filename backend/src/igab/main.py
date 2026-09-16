@@ -46,8 +46,29 @@ def _validate_security_config() -> None:
         )
 
 
+def _configure_logging() -> None:
+    """Give the app's own loggers somewhere to go.
+
+    Uvicorn configures `uvicorn.*` and leaves the root logger alone, so every
+    `logger.info` in this codebase was discarded before this existed — which
+    is why `docker logs` had nothing to say about a bank sync that imported
+    nothing for nine days. `force=True` because uvicorn may have installed a
+    handler already.
+    """
+    level = logging.getLevelNamesMapping().get(settings.LOG_LEVEL.upper(), logging.INFO)
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
+        force=True,
+    )
+    # SQLAlchemy at INFO echoes every statement; the app's own level should
+    # not drag the whole query log in with it.
+    logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    _configure_logging()
     _validate_security_config()
     await init_db()
     await _bootstrap_admin()

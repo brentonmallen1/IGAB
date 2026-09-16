@@ -80,13 +80,46 @@ class LinkSimpleFINRequest(ApiModel):
     simplefin_account_name: str | None = None
 
 
+class OrphanedLinkInfo(ApiModel):
+    """An account whose bank link the feed no longer offers.
+
+    Carries its own suggested replacement so the UI can offer a one-click
+    relink rather than making the user match bank strings by eye.
+    """
+
+    account_id: uuid.UUID
+    account_name: str
+    stored_simplefin_id: str
+    suggested_feed_id: str | None = None
+    suggested_feed_name: str | None = None
+
+
+class BankErrorInfo(ApiModel):
+    """One entry from the bridge's `errlist`. `con.auth` means an institution
+    needs re-authenticating, and the bridge's guide is explicit that these
+    must be shown to the user."""
+
+    code: str
+    message: str
+    connection_id: str | None = None
+
+
 class SyncResult(ApiModel):
     imported: int
     skipped: int
+    #: Why each skipped row was skipped. A single count conflating "belonged
+    #: to no linked account" with "already filed" is what made a nine-day
+    #: outage read as a normal sync.
+    skip_reasons: dict[str, int] = {}
     matched: int = 0
+    #: Rows whose bank id was replaced wholesale and re-stamped onto the
+    #: existing row, rather than imported beside it as a duplicate.
+    adopted: int = 0
     review_queued: int = 0
     cleared: int = 0
     removed_pending: int = 0
+    orphaned_links: list[OrphanedLinkInfo] = []
+    bank_errors: list[BankErrorInfo] = []
     #: Accounts whose first sync wrote a Starting Balance row to anchor the
     #: ledger to the bank's reported balance — the 90-day window cannot
     #: carry an older carried balance any other way.
@@ -104,7 +137,12 @@ class ConnectionSyncOutcome(ApiModel):
     connection_id: uuid.UUID
     imported: int = 0
     skipped: int = 0
+    adopted: int = 0
     error: str | None = None
+    #: Carried per connection, not just in the totals: a broken link on one
+    #: bank is the whole story of that connection's run.
+    orphaned_links: list[OrphanedLinkInfo] = []
+    bank_errors: list[BankErrorInfo] = []
 
 
 class SyncAllResult(ApiModel):
@@ -117,7 +155,9 @@ class SyncAllResult(ApiModel):
 
     imported: int
     skipped: int
+    skip_reasons: dict[str, int] = {}
     matched: int = 0
+    adopted: int = 0
     review_queued: int = 0
     cleared: int = 0
     removed_pending: int = 0

@@ -106,6 +106,12 @@ async def process_auto_simplefin_sync() -> None:
 
             await session.commit()
         except Exception:
+            # Logged, not swallowed. Anything escaping `sync()` leaves no
+            # `last_sync_error` behind — that field is only written for the
+            # failures the service catches itself — so without this line an
+            # hourly sync could fail forever with no log line, no record and
+            # no change in the UI. Its sibling job above has always logged.
+            logger.exception("Automatic SimpleFIN sync failed")
             await session.rollback()
 
 

@@ -28,7 +28,7 @@ from igab.domain.matching import (
     payee_similarity,
 )
 from igab.domain.payee_names import STARTING_BALANCE_PAYEE
-from igab.domain.sync_window import SyncWindow, live_window
+from igab.domain.sync_window import SIMPLEFIN_MAX_WINDOW_DAYS, SyncWindow, live_window
 from igab.domain.transfers import PairableLeg, pair_legs
 from igab.integrations.simplefin.client import SimpleFINClient, SimpleFINError, SimpleFINFeed
 from igab.integrations.simplefin.encryption import (
@@ -274,25 +274,34 @@ class SimpleFINService:
             "imported": 0,
             "skipped": 0,
             "matched": 0,
+            "adopted": 0,
             "review_queued": 0,
             "cleared": 0,
             "removed_pending": 0,
             "anchored": 0,
         }
+        skip_reasons: Counter[str] = Counter()
         outcomes: list[dict] = []
         for conn in await self.repo.get_all_for_user(user_id):
             result = await self.sync(conn.id, budget_id, sync_type="global")
             for key in totals:
                 totals[key] += int(result.get(key) or 0)
+            skip_reasons.update(result.get("skip_reasons") or {})
             outcomes.append(
                 {
                     "connection_id": conn.id,
                     "imported": int(result.get("imported") or 0),
                     "skipped": int(result.get("skipped") or 0),
+                    "adopted": int(result.get("adopted") or 0),
                     "error": result.get("error"),
+                    # Per connection, not only in the totals: a broken link on
+                    # one bank is the whole story of that connection's run,
+                    # and a total of "skipped 586" hides which bank it was.
+                    "orphaned_links": result.get("orphaned_links") or [],
+                    "bank_errors": result.get("bank_errors") or [],
                 }
             )
-        return {**totals, "connections": outcomes}
+        return {**totals, "skip_reasons": dict(skip_reasons), "connections": outcomes}
 
     async def update_connection(
         self, connection_id: uuid.UUID, **kwargs: object
@@ -461,7 +470,7 @@ class SimpleFINService:
         # bank-linked history, so its rows adopt the new ids instead of being
         # duplicated wholesale.
         feed_ids_by_account = self._feed_sync_ids_by_account(txns_raw)
-        adoption_ids = await self._accounts_to_adopt(targets, feed_ids_by_account, since)
+        adoption_ids = await self._accounts_to_adopt(targets, feed_ids_by_account)
         if adoption_ids:
             logger.warning(
                 "simplefin: %d account(s) were re-identified by the bank; "
@@ -564,7 +573,12 @@ class SimpleFINService:
                 # the new `sync_id` as provenance, which a reconciled row
                 # accepts because reconciliation locks only amount, date,
                 # cleared and account. Its category, payee and memo survive.
-                was_linked = best_match.sync_id is not None
+                #
+                # Only counted as an adoption in adoption mode. A posted
+                # record claiming the row that held its own pending id is the
+                # ordinary re-identification the ladder has always done, and
+                # it is a match.
+                was_adopted = adopting and best_match.sync_id is not None
                 outcome = await self.txn_service.apply_bank_posting(
                     best_match, feed, confirmed=False
                 )
@@ -577,7 +591,7 @@ class SimpleFINService:
                     if "cleared" in outcome.updates:
                         cleared += 1
                     consumed_ids.add(best_match.id)
-                    if was_linked:
+                    if was_adopted:
                         adopted += 1
                     else:
                         matched += 1
@@ -779,15 +793,21 @@ class SimpleFINService:
         self,
         targets: list[Account],
         feed_ids_by_account: dict[str, set[str]],
-        since: datetime | None,
     ) -> set[uuid.UUID]:
         """Accounts whose transaction ids the bank replaced wholesale.
 
         Their existing rows are neither unlinked nor provisional, so the
         ordinary candidate search cannot see them and every feed row would be
         written as a duplicate of a row already filed — 277 of them, once.
+
+        Stored ids are read over the bridge's full 90-day reach, not over
+        this run's request window. An incremental window is only days wide,
+        which would leave too few stored ids to tell a re-identification from
+        a quiet week — and a wider stored set can only make the comparison
+        *safer*, since one id in common is enough to prove the link still
+        holds.
         """
-        window_start = since.date() if since else None
+        window_start = today_utc() - timedelta(days=SIMPLEFIN_MAX_WINDOW_DAYS)
         adopting: set[uuid.UUID] = set()
         for account in targets:
             feed_ids = feed_ids_by_account.get(account.simplefin_account_id or "", set())
