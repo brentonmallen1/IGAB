@@ -503,7 +503,7 @@ class TestTheNodesCanBeDrilled:
         }
         assert {n["name"] for n in pseudo.values()} == {
             "Uncategorized",
-            "Savings",
+            "To savings accounts",
             "Debt Payments",
         }
         for node in pseudo.values():
@@ -576,7 +576,7 @@ async def test_every_category_node_drills_to_exactly_what_it_counted(db_session)
     pseudo = {n["name"]: n for n in categories if n["entity_id"] is None}
 
     assert {name: n["activity_classes"] for name, n in pseudo.items()} == {
-        "Savings": ["savings"],
+        "To savings accounts": ["savings"],
         "Debt Payments": ["debt_principal"],
         "Uncategorized": ["spending"],
     }

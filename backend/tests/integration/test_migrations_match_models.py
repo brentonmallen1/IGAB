@@ -53,7 +53,7 @@ def scratch_dbs():
         admin.dispose()
 
 
-def _run_migrations(database: str) -> None:
+def _run_migrations(database: str, target: str = "head") -> None:
     """Run the chain in a subprocess with DATABASE_URL pointed at the scratch db.
 
     In-process will not do. alembic/env.py overwrites `sqlalchemy.url` from
@@ -73,13 +73,13 @@ def _run_migrations(database: str) -> None:
         "PYTHONPATH": os.path.join(root, "src"),
     }
     result = subprocess.run(
-        ["uv", "run", "alembic", "upgrade", "head"],
+        ["uv", "run", "alembic", "upgrade", target],
         cwd=root,
         env=env,
         capture_output=True,
         text=True,
     )
-    assert result.returncode == 0, f"alembic upgrade head failed:\n{result.stderr}"
+    assert result.returncode == 0, f"alembic upgrade {target} failed:\n{result.stderr}"
 
 
 def _shape(engine, table: str) -> dict:
@@ -134,3 +134,41 @@ def test_migrations_produce_the_model_schema(scratch_dbs):
     finally:
         migrated.dispose()
         modelled.dispose()
+
+
+def test_migrations_adopt_emergency_bindings(scratch_dbs):
+    """Migration e52d44b73edb over every case in `emergency_fund_adoption_cases`
+    — the same rows and outcomes the snapshot restore's adopter is held to.
+
+    Upgraded through the real chain to the revision before, the old binding
+    rows inserted, then upgraded to head."""
+    from .emergency_fund_adoption_cases import (
+        PRE_ADOPTION_REVISION,
+        assert_chosen_adopted,
+        assert_dismissed_adopted,
+        assert_guess_only_adopted,
+        build_chosen,
+        build_dismissed,
+        build_guess_only,
+        insert_budget,
+    )
+
+    database, _ = scratch_dbs
+    _run_migrations(database, PRE_ADOPTION_REVISION)
+    engine = create_engine(_url(database))
+    try:
+        with engine.begin() as conn:
+            chosen = build_chosen(conn, insert_budget(conn, "Chosen"))
+            guess_only = insert_budget(conn, "Guess only")
+            build_guess_only(conn, guess_only)
+            dismissed = insert_budget(conn, "Dismissed")
+            build_dismissed(conn, dismissed)
+
+        _run_migrations(database)
+
+        with engine.connect() as conn:
+            assert_chosen_adopted(conn, chosen)
+            assert_guess_only_adopted(conn, guess_only)
+            assert_dismissed_adopted(conn, dismissed)
+    finally:
+        engine.dispose()

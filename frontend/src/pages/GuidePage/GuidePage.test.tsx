@@ -17,7 +17,11 @@ vi.mock('../../api/moneyRules', async (importOriginal) => ({
 vi.mock('../../api/guide', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api/guide')>()),
   useGuideOverview: vi.fn(),
+  useSpreadExample: () => ({ data: undefined, isError: false }),
 }))
+
+// recharts measures its container; jsdom has none.
+vi.mock('../../components/reports/MeansTrendChart', () => ({ MeansTrendChart: () => null }))
 
 function prefs(preferences: Omit<GuidePreferences, 'wishlist'> & { wishlist?: boolean }) {
   preferences = { wishlist: true, ...preferences }
@@ -80,6 +84,27 @@ describe('GuidePage', () => {
     expect(screen.getByRole('button', { name: 'How money counts' })).toBeInTheDocument()
     expect(useGuideStore.getState().activeTab).toBe('money')
     expect(screen.getByRole('heading', { name: 'How money counts', level: 2 })).toBeInTheDocument()
+  })
+
+  it('offers Setting money aside after How money counts, and its deep link opens it', () => {
+    prefs({ personalization: true, checkup: true })
+    renderPage('/guide?tab=aside')
+    const tabs = screen.getAllByRole('button').map((b) => b.textContent)
+    expect(tabs.indexOf('Setting money aside')).toBe(tabs.indexOf('How money counts') + 1)
+    expect(useGuideStore.getState().activeTab).toBe('aside')
+    expect(
+      screen.getByRole('heading', { name: 'Setting money aside', level: 2 })
+    ).toBeInTheDocument()
+  })
+
+  it('a link to a section of the tab scrolls to that section', () => {
+    const scrolled = vi.fn()
+    Element.prototype.scrollIntoView = scrolled
+    prefs({ personalization: true, checkup: true })
+    renderPage('/guide?tab=aside#emergency-fund')
+    expect(useGuideStore.getState().activeTab).toBe('aside')
+    expect(scrolled).toHaveBeenCalledTimes(1)
+    expect(scrolled.mock.contexts[0]).toHaveProperty('id', 'emergency-fund')
   })
 
   it('offers no Wishlist tab — the wishlist has a page of its own now', () => {

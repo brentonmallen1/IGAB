@@ -141,7 +141,7 @@ class TestCategoryClassification:
         body = await _get(api_client, fund.id)
 
         assert body["dominant"] == "savings"
-        assert "tagged as savings" in body["explanation"]
+        assert "counts money as saved when it leaves the budget" in body["explanation"]
 
     async def test_no_activity_means_no_classes_and_no_badge(self, api_client, db_session):
         budget, _, _, group, _ = await _world(db_session, api_client.test_user)

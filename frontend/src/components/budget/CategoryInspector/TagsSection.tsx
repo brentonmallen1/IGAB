@@ -3,6 +3,7 @@ import { TagChip } from '../../common/TagChip'
 import { TagPicker, type TagOption } from '../../common/TagPicker'
 import type { Category } from '../../../types'
 import { SystemTagsHelp } from '../../settings/TagsPanel/SystemTagsHelp'
+import { SavingsModeField } from './SavingsModeField'
 
 interface TagsSectionProps {
   category: Category
@@ -15,6 +16,11 @@ export function TagsSection({ category, budgetId }: TagsSectionProps) {
   const createTag = useCreateTag(budgetId)
 
   const selectedTagIds = category.tags?.map((t) => t.id) ?? []
+  // The category's tags carry no system key; the budget's tag list does.
+  const tagKeys = selectedTagIds.flatMap((id) => {
+    const key = allTags?.find((t) => t.id === id)?.system_key
+    return key ? [key] : []
+  })
 
   const tagOptions: TagOption[] =
     allTags?.map((t) => ({
@@ -66,6 +72,7 @@ export function TagsSection({ category, budgetId }: TagsSectionProps) {
             ghost
           />
         </div>
+        <SavingsModeField category={category} budgetId={budgetId} tagKeys={tagKeys} />
       </div>
     </div>
   )

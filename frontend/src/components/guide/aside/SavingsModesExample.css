@@ -1,0 +1,124 @@
+.savings-modes-example {
+  padding: var(--spacing-md) var(--spacing-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.savings-modes-example__switch {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.savings-modes-example__legend {
+  padding: 0;
+  margin-bottom: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.savings-modes-example__option {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  min-height: var(--tap-min);
+  padding: 0 var(--spacing-md);
+  border: 1px solid var(--edge);
+  border-radius: var(--border-radius-md);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.savings-modes-example__option--on {
+  border-color: var(--color-accent);
+  color: var(--text-primary);
+}
+
+.savings-modes-example__option input {
+  margin: 0;
+  accent-color: var(--color-accent);
+}
+
+.savings-modes-example__status {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+/* Its own scroller at phone width, so the page never scrolls sideways. */
+.savings-modes-example__scroll {
+  overflow-x: auto;
+}
+
+.savings-modes-example__table {
+  width: 100%;
+  min-width: 480px;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.savings-modes-example__table th,
+.savings-modes-example__table td {
+  padding: var(--spacing-xs) var(--spacing-md);
+  border-top: 1px solid var(--edge);
+  text-align: left;
+  vertical-align: top;
+}
+
+.savings-modes-example__table thead th {
+  border-top: none;
+  font-size: var(--font-size-2xs);
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.savings-modes-example__table tbody th {
+  font-weight: 400;
+  color: var(--text-primary);
+}
+
+.savings-modes-example__table tfoot th,
+.savings-modes-example__table tfoot td {
+  border-top: 1px solid var(--edge-strong);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+
+.savings-modes-example__amount {
+  display: block;
+  font-size: var(--font-size-2xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.savings-modes-example__table .savings-modes-example__num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.savings-modes-example__why {
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
+}
+
+.savings-modes-example__note {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+@media (max-width: 768px) {
+  .savings-modes-example {
+    padding: var(--spacing-md);
+  }
+}

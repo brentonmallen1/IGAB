@@ -1,0 +1,143 @@
+import { useId, useState } from 'react'
+import type { MembershipCategory } from '../../api/tags'
+import type { SavingsMode } from '../../types'
+import { DEFAULT_MARKER, SAVINGS_MODE_OPTIONS, savingsModeShort } from '../../utils/savingsModes'
+import {
+  chooseMode,
+  draftMode,
+  groupRows,
+  servedDefault,
+  toggleChecked,
+  type MembershipDraft,
+} from './membershipList'
+import './CategoryMembershipList.css'
+
+interface Props {
+  rows: readonly MembershipCategory[]
+  draft: MembershipDraft
+  onChange: (draft: MembershipDraft) => void
+  /** The tag makes a category a savings category (served `savings_tag`), so
+   *  each checked row says how its money counts as saved. */
+  savingsTag: boolean
+  /** Names the checklist for assistive tech: "Categories tagged Essential". */
+  label: string
+}
+
+/**
+ * A tag's checklist: every taggable category, grouped as on the Budget page,
+ * with a filter. Controlled — the dialog or picker holding it owns the draft
+ * and sends `membershipDiff` on Save.
+ *
+ * The list scrolls inside a fixed-height region, so the dialog around it does
+ * not grow with the budget and the filter stays in view.
+ */
+export function CategoryMembershipList({ rows, draft, onChange, savingsTag, label }: Props) {
+  const [filter, setFilter] = useState('')
+  const base = useId()
+  const groups = groupRows(rows, filter)
+
+  return (
+    <div className="membership-list">
+      <label className="dialog-form__field membership-list__filter" htmlFor={`${base}-filter`}>
+        Filter
+        <input
+          id={`${base}-filter`}
+          type="search"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          placeholder="Category or group"
+          autoComplete="off"
+        />
+      </label>
+      {savingsTag && (
+        <p className="dialog-form__hint">
+          Each checked envelope counts as saved while it’s in the budget, or when it leaves the
+          budget.
+        </p>
+      )}
+      <div
+        className="membership-list__scroll surface surface--sunken"
+        role="group"
+        aria-label={label}
+      >
+        {groups.length === 0 ? (
+          <p className="membership-list__empty">
+            {rows.length === 0 ? 'No categories to tag yet.' : 'Nothing matches that filter.'}
+          </p>
+        ) : (
+          groups.map((group) => (
+            <div key={group.groupId} className="membership-list__group">
+              <div className="membership-list__group-name" aria-hidden>
+                {group.groupName}
+              </div>
+              <ul className="membership-list__rows">
+                {group.rows.map((row) => {
+                  const id = `${base}-${row.id}`
+                  const checked = draft.checked.has(row.id)
+                  return (
+                    <li key={row.id} className="membership-list__row">
+                      <label className="membership-list__choice" htmlFor={id}>
+                        <input
+                          id={id}
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => onChange(toggleChecked(draft, row.id))}
+                        />
+                        <span className="membership-list__name">
+                          {row.name}
+                          <span className="sr-only">, {group.groupName}</span>
+                        </span>
+                        {row.is_archived && (
+                          <span className="membership-list__archived">archived</span>
+                        )}
+                      </label>
+                      {savingsTag && checked && (
+                        <ModeSelect
+                          id={`${id}-mode`}
+                          row={row}
+                          draft={draft}
+                          onChoose={(mode) => onChange(chooseMode(draft, row.id, mode))}
+                        />
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ModeSelect({
+  id,
+  row,
+  draft,
+  onChoose,
+}: {
+  id: string
+  row: MembershipCategory
+  draft: MembershipDraft
+  onChoose: (mode: SavingsMode | null) => void
+}) {
+  const known = servedDefault(draft, row)
+  const value = draftMode(draft, row) ?? ''
+  return (
+    <select
+      id={id}
+      className="membership-list__mode"
+      aria-label={`${row.name} counts as saved`}
+      value={value}
+      onChange={(e) => onChoose(e.target.value === '' ? null : (e.target.value as SavingsMode))}
+    >
+      <option value="">{known ? `${savingsModeShort(known)} ${DEFAULT_MARKER}` : `default`}</option>
+      {SAVINGS_MODE_OPTIONS.filter((o) => o.mode !== known).map((o) => (
+        <option key={o.mode} value={o.mode}>
+          {o.short}
+        </option>
+      ))}
+    </select>
+  )
+}

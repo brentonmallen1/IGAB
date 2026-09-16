@@ -13,13 +13,14 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from igab.domain.dates import add_months, month_end, month_start
+from igab.guide.concepts import trailing_average
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.services.emergency_coverage import (
     EmergencyCoverageService,
     coverage_months,
     history_index,
-    trailing_average,
 )
+from igab.services.essentials import essentials_summary
 
 from .factories import (
     create_account,
@@ -36,10 +37,10 @@ TODAY = date.today()
 MONTHS = [add_months(month_start(TODAY), -n) for n in range(6, 0, -1)]
 
 
-async def _world(db_session, *, fund_name: str = "Emergency Fund"):
+async def _world(db_session, *, in_fund: bool = True):
     """A budget spending exactly $1,000 of essentials in each complete month,
-    with a savings-tagged envelope whose name mentions an emergency — the
-    arrangement detection is most confident about."""
+    with an envelope tagged Emergency fund (`in_fund`) — the only way an
+    envelope counts."""
     services = make_services(db_session)
     user = await create_user(db_session)
     budget = await create_budget(db_session, user)
@@ -47,13 +48,14 @@ async def _world(db_session, *, fund_name: str = "Emergency Fund"):
     bills = await create_category_group(db_session, budget, "Bills")
     rent = await create_category(db_session, budget, bills, "Rent")
     goals = await create_category_group(db_session, budget, "Goals")
-    fund = await create_category(db_session, budget, goals, fund_name)
+    fund = await create_category(db_session, budget, goals, "Emergency Fund")
 
     await seed_system_tags(db_session, budget.id)
     tags = TagRepository(db_session)
     by_key = {t.system_key: t for t in await tags.list_for_budget(budget.id)}
     await tags.set_category_tags(rent.id, [by_key["essential"].id])
-    await tags.set_category_tags(fund.id, [by_key["savings"].id])
+    if in_fund:
+        await tags.set_category_tags(fund.id, [by_key["emergency_fund"].id])
 
     for month in MONTHS:
         await create_transaction(
@@ -99,6 +101,7 @@ async def test_an_account_fund_counts_through_the_last_day_of_each_month(db_sess
     hysa = await create_account(
         db_session, budget, "Cascade Point HYSA", account_type="savings", on_budget=False
     )
+    hysa.counts_toward_emergency_fund = True
     await create_transaction(db_session, budget, hysa, "2000.00", month_end(MONTHS[3]))
 
     report = await EmergencyCoverageService(db_session).coverage(budget.id, months=4)
@@ -128,26 +131,26 @@ async def test_the_target_band_is_served_per_month(db_session):
 async def test_the_headline_is_the_essentials_reports_own_runway(db_session):
     """Quoted, not recomputed: two reports that each divide the same pair of
     numbers are two reports that can disagree."""
-    from igab.services.report_service import ReportService
 
     services, budget, fund = await _world(db_session)
     await _fund(services, budget, fund, MONTHS[4], "3000.00")
 
     report = await EmergencyCoverageService(db_session).coverage(budget.id, months=4)
-    essentials = await ReportService(db_session).essentials_summary(budget.id, 4)
+    essentials = await essentials_summary(db_session, budget.id, 4)
 
     assert report["coverage_months"] == essentials["runway_months"]
-    assert report["fund_balance"] == essentials["emergency_fund_balance"]
-    assert report["essentials_monthly"] == essentials["essentials_90d"]
+    assert report["fund"].total == essentials["emergency_fund"].total
+    assert report["essentials"] == essentials["essentials"]
 
 
 async def test_no_fund_draws_no_line(db_session):
     """A zero series is a claim — "you had nothing all year". The honest
-    answer is that the app has not been told what to look at."""
-    _, budget, _fund_cat = await _world(db_session, fund_name="Vacation")
+    answer is that the app has not been told what to look at — and an envelope
+    named "Emergency Fund" is not telling it."""
+    _, budget, _fund_cat = await _world(db_session, in_fund=False)
 
     report = await EmergencyCoverageService(db_session).coverage(budget.id, months=4)
-    assert report["fund_balance"] is None
+    assert report["fund"].total is None
     assert report["series"] == []
 
 
@@ -222,7 +225,7 @@ async def test_a_self_reported_fund_reaches_the_newest_point(db_session, api_cli
     assert [p["external_counted"] for p in body["series"]][:-1] == [False] * (
         len(body["series"]) - 1
     )
-    assert Decimal(str(body["fund_balance"])) == Decimal("4000.00")
+    assert Decimal(str(body["fund"]["total"])) == Decimal("4000.00")
 
 
 class TestTheAverageStartsWithTheHistory:
@@ -262,7 +265,7 @@ class TestTheAverageStartsWithTheHistory:
         tags = TagRepository(db_session)
         by_key = {t.system_key: t for t in await tags.list_for_budget(budget.id)}
         await tags.set_category_tags(rent.id, [by_key["essential"].id])
-        await tags.set_category_tags(fund.id, [by_key["savings"].id])
+        await tags.set_category_tags(fund.id, [by_key["emergency_fund"].id])
         await create_transaction(
             db_session, budget, checking, "-4.00", history_from, category=coffee
         )
@@ -309,6 +312,6 @@ class TestTheAverageStartsWithTheHistory:
         [point] = report["series"]
         assert point["essentials"] == Decimal("1000.00")
         assert point["coverage_months"] == Decimal("2.0")
-        assert report["essentials_monthly"] == Decimal("333.33")
+        assert report["essentials"].monthly == Decimal("333.33")
         assert report["coverage_months"] == Decimal("6.0")
-        assert point["essentials"] <= report["essentials_monthly"] * 3 + Decimal("0.01")
+        assert point["essentials"] <= report["essentials"].monthly * 3 + Decimal("0.01")

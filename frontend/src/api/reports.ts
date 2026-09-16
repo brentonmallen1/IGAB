@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 import type {
   CostOfLivingReport,
@@ -29,6 +29,7 @@ import type {
   SpendingTrendsReport,
   IncomeBySourceReport,
   CategoryHistoryReport,
+  ReportSettings,
 } from '../types'
 import { ROOT } from './queryKeys'
 
@@ -297,7 +298,12 @@ export interface SavingsRateMonth {
   month: string
   income: number
   spending: number
+  /** Saved: `savings_moved + savings_held` (backend `domain/savings.py`). */
   savings: number
+  /** Money moved into savings — SAVINGS-class flows. */
+  savings_moved: number
+  /** What kept-here Savings envelopes came to hold. */
+  savings_held: number
   debt_principal: number
   /** null when there was no income that month — a gap, not a zero. */
   savings_rate: number | null
@@ -314,6 +320,8 @@ export interface SavingsRateReport {
     income: number
     spending: number
     savings: number
+    savings_moved: number
+    savings_held: number
     debt_principal: number
     savings_rate: number | null
     savings_rate_with_debt: number | null
@@ -336,7 +344,8 @@ export function useSavingsRateReport(budgetId: string | null, months = 12) {
 
 /** One place money counted toward savings (or debt principal) went, named by
  *  destination — `report_basics.savings_contributors` says how. `total` is
- *  negative for money drawn back into the budget. */
+ *  negative for money drawn back into the budget. A kept-here Savings
+ *  envelope's held change is a `category` row with its own served reason. */
 export interface SavingsContributor {
   kind: 'account' | 'category'
   id: string
@@ -353,7 +362,10 @@ export interface SavingsContributors {
   start_date: string
   end_date: string
   income: number
+  /** Saved: `savings_moved + savings_held`. */
   savings: number
+  savings_moved: number
+  savings_held: number
   debt_principal: number
   /** Each list sums to its total exactly, and is ordered by magnitude. */
   savings_contributors: SavingsContributor[]
@@ -445,6 +457,56 @@ export function useEmergencyCoverageReport(budgetId: string | null, months = 12)
     },
     enabled: !!budgetId,
     staleTime: STALE,
+  })
+}
+
+/** The budget's report settings — `services/report_settings.py`. */
+export function useReportSettings(budgetId: string | null) {
+  return useQuery({
+    queryKey: [ROOT.reportSettings, budgetId],
+    queryFn: async () => {
+      const { data } = await apiClient.get<ReportSettings>(`/${budgetId}/reports/settings`)
+      return data
+    },
+    enabled: !!budgetId,
+    staleTime: STALE,
+  })
+}
+
+/**
+ * Everything that reads the essentials figure, which the spread setting moves:
+ * the Overview card, the Essentials and Emergency Fund reports, the Guide's
+ * signals (its emergency-fund target and starter), the checkup and the sizer.
+ * One list, read by the setting's mutation and by undo, so flipping the
+ * setting and undoing the flip stale the same surfaces.
+ */
+export function invalidateAfterReportSettings(qc: QueryClient, budgetId: string | null) {
+  const keys = [
+    [ROOT.reportSettings, budgetId],
+    [ROOT.reports, 'dashboard', budgetId],
+    [ROOT.reports, 'essentials', budgetId],
+    [ROOT.reports, 'emergency-fund', budgetId],
+    [ROOT.guideSignals, budgetId],
+    [ROOT.guideCheckup, budgetId],
+    [ROOT.guideScenario, 'emergency-fund', budgetId],
+  ]
+  return Promise.all(keys.map((queryKey) => qc.invalidateQueries({ queryKey })))
+}
+
+export function useSetReportSettings(budgetId: string | null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (settings: ReportSettings) => {
+      const { data } = await apiClient.put<ReportSettings>(
+        `/${budgetId}/reports/settings`,
+        settings
+      )
+      return data
+    },
+    onSuccess: (data) => {
+      qc.setQueryData([ROOT.reportSettings, budgetId], data)
+      return invalidateAfterReportSettings(qc, budgetId)
+    },
   })
 }
 

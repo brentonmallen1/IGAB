@@ -36,6 +36,7 @@ from igab.api.v1.schemas.report import (
     LiabilitiesBalancePoint,
     LiabilitiesReportItem,
     LiabilitiesReportResponse,
+    MeansMonth,
     NetWorthPoint,
     NetWorthResponse,
     PaydayEffectDay,
@@ -46,16 +47,13 @@ from igab.api.v1.schemas.report import (
     PayeeTrend,
     PlanRealityCategory,
     PlanRealityResponse,
-    ReportDrains,
     ReportFavoritesResponse,
     ReportFavoritesUpdate,
     ReportRangeResponse,
-    SavingsCategory,
+    ReportSettings,
     SavingsContributorsResponse,
     SavingsRateResponse,
     SavingsReportResponse,
-    SavingsSummary,
-    SavingsUnrecovered,
     SeasonalityResponse,
     SpendingCategory,
     SpendingClassExcluded,
@@ -95,6 +93,7 @@ from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.tag_repo import TagRepository
 from igab.services.budget_service import BudgetService
 from igab.services.emergency_coverage import EmergencyCoverageService
+from igab.services.essentials import essentials_summary
 from igab.services.liability_service import LiabilityService
 from igab.services.report_basics import (
     cost_of_living,
@@ -109,6 +108,8 @@ from igab.services.report_basics import (
 from igab.services.report_favorites import ReportFavoritesService
 from igab.services.report_scope import resolve_category_scope
 from igab.services.report_service import ReportService
+from igab.services.report_settings import set_spread_sinking_funds, spread_sinking_funds
+from igab.services.savings_report import savings_report as savings_report_data
 
 
 #: Spending reports mean money spent. Saving into a brokerage and paying down a
@@ -190,6 +191,26 @@ async def set_report_favorites(
     payload: ReportFavoritesUpdate,
 ) -> ReportFavoritesResponse:
     return ReportFavoritesResponse(tabs=await service.set_favorites(budget_id, payload.tabs))
+
+
+@router.get("/{budget_id}/reports/settings", response_model=ReportSettings)
+async def report_settings(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    session: SessionDep,
+) -> ReportSettings:
+    return ReportSettings(spread_sinking_funds=await spread_sinking_funds(session, budget_id))
+
+
+@router.put("/{budget_id}/reports/settings", response_model=ReportSettings)
+async def set_report_settings(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    session: SessionDep,
+    payload: ReportSettings,
+) -> ReportSettings:
+    on = await set_spread_sinking_funds(session, budget_id, payload.spread_sinking_funds)
+    return ReportSettings(spread_sinking_funds=on)
 
 
 @router.get("/{budget_id}/reports/range", response_model=ReportRangeResponse)
@@ -292,8 +313,9 @@ async def dashboard_metrics(
     end = end_date or today
     data = await report_svc.dashboard_metrics(budget_id, start, end)
     return DashboardMetrics(
-        **{k: v for k, v in data.items() if k != "top_categories"},
+        **{k: v for k, v in data.items() if k not in ("top_categories", "means_months")},
         top_categories=[TopCategory.model_validate(c) for c in data["top_categories"]],
+        means_months=[MeansMonth.model_validate(m) for m in data["means_months"]],
     )
 
 
@@ -630,10 +652,10 @@ async def seasonality_report(
 async def essentials_report(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
-    report_svc: Annotated[ReportService, Depends(get_report_service)],
+    session: SessionDep,
     months: ReportMonths = 12,
 ) -> EssentialsReportResponse:
-    return EssentialsReportResponse(**await report_svc.essentials_summary(budget_id, months))
+    return EssentialsReportResponse(**await essentials_summary(session, budget_id, months))
 
 
 @router.get("/{budget_id}/reports/payee-analysis", response_model=PayeeAnalysisResponse)
@@ -833,15 +855,9 @@ async def savings_report(
     report_svc: Annotated[ReportService, Depends(get_report_service)],
     months: ReportMonths = 12,
 ) -> SavingsReportResponse:
-    """Savings report — aggregates categories tagged 'savings' or 'long_term_expense'."""
-    data = await report_svc.savings_report(budget_id, months)
-    return SavingsReportResponse(
-        categories=[SavingsCategory.model_validate(c) for c in data["categories"]],
-        summary=SavingsSummary.model_validate(data["summary"]),
-        months=data["months"],
-        drains=ReportDrains.model_validate(data["drains"]),
-        unrecovered=[SavingsUnrecovered.model_validate(u) for u in data["unrecovered"]],
-    )
+    """Savings report — Saved, On the way to savings, and Sinking funds."""
+    data = await savings_report_data(report_svc.session, budget_id, months)
+    return SavingsReportResponse.model_validate(data)
 
 
 @router.get("/{budget_id}/reports/anomalies", response_model=AnomalyReportResponse)

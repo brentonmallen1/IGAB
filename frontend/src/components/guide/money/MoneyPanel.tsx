@@ -1,15 +1,18 @@
 import { useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useMoneyRules } from '../../../api/moneyRules'
 import { useAppStore } from '../../../stores/appStore'
 import { Surface } from '../../common/Surface'
-import { CatchOuts } from './CatchOuts'
+import { guideTabHref } from '../../../utils/guideLinks'
+import { CatchOuts } from '../CatchOuts'
+import { CATCH_OUTS } from './catchOutList'
 import { DEFAULT_EXPLORER, type ExplorerState } from './explorerMove'
 import { MoneyExplorer } from './MoneyExplorer'
 import { RuleLadder } from './RuleLadder'
 import { TagImpact } from './TagImpact'
 import { TwoFacts } from './TwoFacts'
 import { WorkedMonth } from './WorkedMonth'
-import './MoneyPanel.css'
+import '../GuideArticle.css'
 
 /**
  * How money counts: what decides whether a row is income, spending, saving or
@@ -32,43 +35,44 @@ export function MoneyPanel() {
   }
 
   return (
-    <section className="money-panel">
+    <section className="guide-article">
       <header className="guide-roadmap__header">
         <div>
           <h2 className="guide-roadmap__title">How money counts</h2>
           <p className="guide-roadmap__lede">
             Every transaction is counted as income, spending, saving or just a move between your
             accounts. Two facts decide which, and the reports and your savings rate add up the
-            result.
+            result. For savings, the emergency fund and sinking funds, see{' '}
+            <Link to={guideTabHref('aside')}>Setting money aside</Link>.
           </p>
         </div>
       </header>
 
-      <div className="money-panel__section">
-        <h3 className="money-panel__heading">Two facts decide it</h3>
+      <div className="guide-article__section">
+        <h3 className="guide-article__heading">Two facts decide it</h3>
         <TwoFacts />
       </div>
 
-      <div className="money-panel__section">
-        <h3 className="money-panel__heading">The rules, in order</h3>
-        <p className="money-panel__lede">
+      <div className="guide-article__section">
+        <h3 className="guide-article__heading">The rules, in order</h3>
+        <p className="guide-article__lede">
           Each transaction is checked against these from the top, and the first that matches
           decides. A tag you chose always comes before a guess from the accounts.
         </p>
         {isError ? (
-          <p className="money-panel__status">The rules could not be loaded.</p>
+          <p className="guide-article__status">The rules could not be loaded.</p>
         ) : rules ? (
           <RuleLadder rules={rules.rules} />
         ) : (
-          <p className="money-panel__status">Loading…</p>
+          <p className="guide-article__status">Loading…</p>
         )}
       </div>
 
-      <section className="money-panel__section" ref={explorerRef} aria-labelledby="money-try">
-        <h3 className="money-panel__heading" id="money-try">
+      <section className="guide-article__section" ref={explorerRef} aria-labelledby="money-try">
+        <h3 className="guide-article__heading" id="money-try">
           Try a move
         </h3>
-        <Surface as="div" className="money-panel__card">
+        <Surface as="div" className="guide-article__card">
           <MoneyExplorer
             state={explorer}
             onChange={setExplorer}
@@ -77,22 +81,29 @@ export function MoneyPanel() {
         </Surface>
       </section>
 
-      <div className="money-panel__section">
-        <h3 className="money-panel__heading">What the tags do</h3>
+      <div className="guide-article__section">
+        <h3 className="guide-article__heading">What the tags do</h3>
         {rules && <TagImpact rules={rules.rules} />}
       </div>
 
-      <div className="money-panel__section">
-        <h3 className="money-panel__heading">A worked month</h3>
-        <p className="money-panel__lede">
+      <div className="guide-article__section">
+        <h3 className="guide-article__heading">A worked month</h3>
+        <p className="guide-article__lede">
           One made-up household’s month, counted the way your reports would count it.
         </p>
         <WorkedMonth />
       </div>
 
-      <div className="money-panel__section">
-        <h3 className="money-panel__heading">Things that catch people out</h3>
-        <CatchOuts onTry={tryIt} />
+      <div className="guide-article__section">
+        <h3 className="guide-article__heading">Things that catch people out</h3>
+        <CatchOuts
+          items={CATCH_OUTS}
+          action={{
+            label: 'Try it',
+            describe: (c) => `Try it in the explorer: ${c.title}`,
+            run: (c) => tryIt(c.tryIt),
+          }}
+        />
       </div>
     </section>
   )

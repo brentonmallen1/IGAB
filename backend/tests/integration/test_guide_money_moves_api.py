@@ -59,10 +59,20 @@ class TestMoneyRules:
             "reason": "default_spending",
             "reason_text": "it is ordinary spending from a budget account",
             "tag_key": None,
+            "savings_mode": None,
+            "tag_keys": [],
             "is_default": True,
         }
-        assert [r["tag_key"] for r in rules if r["tag_key"]] == ["savings", "debt_principal"]
-        assert body["planned_spend_tag_keys"] == ["savings"]
+        assert [(r["tag_key"], r["savings_mode"]) for r in rules if r["tag_key"]] == [
+            ("savings", "sent_out"),
+            ("debt_principal", None),
+        ]
+        # Emergency fund implies Savings, so the Savings rule reads both.
+        assert [r["tag_keys"] for r in rules if r["tag_key"]] == [
+            ["savings", "emergency_fund"],
+            ["debt_principal"],
+        ]
+        assert body["planned_spend_tag_keys"] == ["savings", "emergency_fund"]
         families = {f["key"]: f["classes"] for f in body["report_families"]}
         assert families["cost_of_living"] == ["spending", "debt_principal"]
 
@@ -136,7 +146,7 @@ class TestExplain:
     ):
         budget = await create_budget(db_session, api_client.test_user)
         body = await _explain(
-            api_client, budget, _transaction(CHECKING, "out", "250", category="savings")
+            api_client, budget, _transaction(CHECKING, "out", "250", category="savings_sent")
         )
         (leg,) = body["legs"]
         assert leg["cls"] == "savings" and leg["reason"] == "tagged_savings"
@@ -152,6 +162,11 @@ class TestExplain:
             _transaction(CHECKING, "sideways"),
             _transaction(CHECKING, "in", amount="0"),
             _transaction(CHECKING, "in", category="groceries"),
+            {"kind": "transfer", "to_account": CHECKING, "amount": "10", "category": "none"},
+            {"kind": "assign", "amount": "10", "category": "none"},
+            {"kind": "assign", "amount": "10", "category": "income"},
+            {"kind": "assign", "account": CHECKING, "amount": "10", "category": "ordinary"},
+            {"kind": "assign", "direction": "in", "amount": "10", "category": "ordinary"},
         ],
     )
     async def test_a_move_that_does_not_fit_its_kind_is_refused(self, db_session, api_client, body):
@@ -165,7 +180,7 @@ WORKED_MONTH = [
     ("Paycheck from Northwind Payserv", _transaction(CHECKING, "in", "6000", "income")),
     ("Harborstone mortgage payment", _transfer(CHECKING, MORTGAGE, "1800")),
     ("To the brokerage", _transfer(CHECKING, BROKERAGE, "500")),
-    ("Flight from Vacation", _transaction(CHECKING, "out", "250", "savings")),
+    ("Flight from Vacation", _transaction(CHECKING, "out", "250", "savings_sent")),
     ("To Cascade Point HYSA", _transfer(CHECKING, CHECKING, "400")),
     ("Sapphire Visa payment", _transfer(CHECKING, CARD, "900")),
     ("Everyday spending", _transaction(CHECKING, "out", "2300", "ordinary")),
@@ -195,10 +210,43 @@ class TestMonth:
         figures = body["figures"]
         assert (figures["income"], figures["spending"], figures["savings"]) == (10500, 2300, 750)
         assert figures["cost_of_living"] == 4100
+        # Nothing kept here: saved is the moved flows alone.
+        assert (figures["savings_moved"], figures["savings_held"], body["held"]) == (750, 0, 0)
         assert figures["savings_rate"] == pytest.approx(750 / 10500)
         assert figures["savings_rate_with_debt"] == pytest.approx(2550 / 10500)
         dividend = body["rows"][7]["explanation"]["legs"][0]
         assert dividend["cls"] == "investment_return" and dividend["counted_in"] == []
+
+    async def test_a_kept_here_month_serves_held_and_saved_as_moved_plus_held(
+        self, db_session, api_client
+    ):
+        """A $120 repair from a kept-here envelope holds −120; a $300 move from
+        it to a tracked HYSA is moved +300 and held −300. Saved −120."""
+        budget = await create_budget(db_session, api_client.test_user)
+        moves = [
+            ("Car repair", _transaction(CHECKING, "out", "120", "savings_kept")),
+            ("To Cascade Point HYSA", _transfer(CHECKING, BROKERAGE, "300", "savings_kept")),
+        ]
+        r = await api_client.post(
+            f"/api/v1/{budget.id}/guide/money-moves/month",
+            json={"moves": [{**move, "label": label} for label, move in moves]},
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert [row["explanation"]["held"] for row in body["rows"]] == [-120, -300]
+        assert body["held"] == -420
+        figures = body["figures"]
+        assert (figures["savings_moved"], figures["savings_held"], figures["savings"]) == (
+            300,
+            -420,
+            -120,
+        )
+        transfer = body["rows"][1]["explanation"]["figures"]
+        assert (transfer["savings_moved"], transfer["savings_held"], transfer["savings"]) == (
+            300,
+            -300,
+            0,
+        )
 
     async def test_an_empty_month_is_refused(self, db_session, api_client):
         budget = await create_budget(db_session, api_client.test_user)

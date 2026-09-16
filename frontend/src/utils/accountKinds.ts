@@ -38,6 +38,18 @@ export function isTrackedAsset(account: AccountKindFields): boolean {
   return !account.on_budget && account.classification !== 'liability'
 }
 
+/** Whether "Counts toward emergency fund" can be on: an off-budget asset that
+ * counts as savings — the server's `txn_filters.EMERGENCY_FUND_ACCOUNT_SHAPE`,
+ * which refuses the flag anywhere else with a 422. On budget, the envelopes
+ * already say what the money is for; without Counts as savings a transfer in
+ * would class as spending while the balance counts as fund. The form reads
+ * this before any round trip, so it never sends a flag the server refuses. */
+export function canCountTowardEmergencyFund(
+  account: AccountKindFields & { counts_as_savings: boolean }
+): boolean {
+  return isTrackedAsset(account) && account.counts_as_savings
+}
+
 /** Anything owed — a card (on-budget) or a loan (off-budget). The accounts
  * that take a payment, and so the ones whose register offers one. */
 export function isLiabilityAccount(account: AccountKindFields): boolean {

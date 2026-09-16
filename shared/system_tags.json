@@ -3,6 +3,7 @@
   "keys": [
     "subscription",
     "savings",
+    "emergency_fund",
     "long_term_expense",
     "debt_principal",
     "essential",

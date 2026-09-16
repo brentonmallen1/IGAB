@@ -28,17 +28,13 @@ from igab.db.models import (
 )
 from igab.domain.activity_class import (
     ACTIVITY_CLASS,
-    COST_OF_LIVING_CLASSES,
     INCOME_ROW,
     ActivityClass,
     apply_class_joins,
-    basis_is_chosen,
-    class_magnitude,
     counted_class_filter,
     counted_classes,
     planned_spend_filter,
     rolled_up_classes,
-    savings_rates,
     split_leg_classes,
 )
 
@@ -48,7 +44,6 @@ from igab.domain.activity_class import (
 # predicate is vacuously true, keeping one uniform rule.
 from igab.domain.concentration import items_to_share
 from igab.domain.dates import (
-    add_months,
     clamped_month_end,
     complete_month_window,
     month_starts,
@@ -59,15 +54,10 @@ from igab.domain.dates import (
 )
 from igab.domain.dates import month_end as _month_end
 from igab.domain.money import format_csv_amount, quantize_cents
+from igab.domain.money_moves import Figures, figures, flows
 from igab.domain.plan import plan_outcome
 from igab.domain.schedule import projected_occurrences, subscription_occurrences
 from igab.domain.view_arrangement import arrange_by_view
-from igab.guide.concepts import (
-    FULL_EMERGENCY_FUND_MONTHS_HIGH,
-    FULL_EMERGENCY_FUND_MONTHS_LOW,
-    essentials_per_month,
-    essentials_since,
-)
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_filters import BUDGETED_ENVELOPE
 from igab.repositories.transaction_repo import TransactionRepository
@@ -93,9 +83,10 @@ from igab.repositories.txn_filters import (
     reapplied_by_schedule,
     reapplied_by_subscriptions,
 )
+from igab.services.essentials import reported_essentials
 from igab.services.report_basics import (
     class_excluded_note,
-    emergency_fund,
+    means_months,
 )
 from igab.services.report_stats import (
     anomaly_rows,
@@ -104,6 +95,7 @@ from igab.services.report_stats import (
     timeline_rows,
     volatility_stats,
 )
+from igab.services.savings_held import held_between, held_by_month
 
 # Report payload shapes.
 #
@@ -136,16 +128,6 @@ class ChronicCategory(TypedDict):
     total_spent: Decimal
     avg_overspend: Decimal
     chronic: bool
-
-
-class SavingsCategory(TypedDict):
-    category_id: str
-    category_name: str
-    group_name: str
-    monthly_balances: list[Decimal | None]
-    current_balance: Decimal
-    target_balance: Decimal | None
-    total_inflow: Decimal
 
 
 #: The smallest inflow that counts as a payday.
@@ -184,6 +166,20 @@ def scoped(q, column, ids: Sequence[uuid.UUID] | None):
     the same way.
     """
     return q if ids is None else q.where(column.in_(ids))
+
+
+def _rate_figures(f: Figures) -> dict:
+    """One Savings Rate row — a month or the summary — from its figures."""
+    return {
+        "income": f.income,
+        "spending": f.spending,
+        "savings": f.savings,
+        "savings_moved": f.savings_moved,
+        "savings_held": f.savings_held,
+        "debt_principal": f.debt_principal,
+        "savings_rate": f.savings_rate,
+        "savings_rate_with_debt": f.savings_rate_with_debt,
+    }
 
 
 class ReportService:
@@ -258,25 +254,35 @@ class ReportService:
         budget but stayed in the household's net worth is reported separately as
         `savings` and `debt_principal`.
 
-        `net` remains income minus everything that left, so the four figures
-        still reconcile — a chart can stack them without the total drifting.
-        Internal transfers between two on-budget accounts are excluded: they
-        cancel, and showing them would double the apparent flow.
+        `savings` is saved — moved plus held (`domain.savings`), the figure the
+        Savings Rate tab divides — served with its two parts.
+
+        **`net` is money-moved, deliberately:** income − expenses −
+        `savings_moved` − debt principal. It reconciles to what the on-budget
+        accounts did, and money assigned to a kept-here envelope never left
+        them, so subtracting held would report a deficit the balances do not
+        show. So `net` ≠ income − expenses − savings − debt by exactly
+        `savings_held`, and no more (pinned by
+        `test_income_vs_expense_net_stays_money_moved`). Internal transfers
+        between two on-budget accounts are excluded: they cancel, and showing
+        them would double the apparent flow.
         """
+        today = date.today()
+        series = await self._class_series(budget_id, months, today)
+        held = await held_by_month(self.session, budget_id, [m for m, _ in series], today)
         results = []
-        for month_start, buckets in await self._class_series(budget_id, months, date.today()):
-            income = buckets.get(ActivityClass.INCOME.value, Decimal("0"))
-            expenses = class_magnitude(buckets, ActivityClass.SPENDING)
-            savings = class_magnitude(buckets, ActivityClass.SAVINGS)
-            debt = class_magnitude(buckets, ActivityClass.DEBT_PRINCIPAL)
+        for (month_start, buckets), month_held in zip(series, held, strict=True):
+            f = figures(buckets, month_held)
             results.append(
                 {
                     "month": month_start,
-                    "income": income,
-                    "expenses": expenses,
-                    "savings": savings,
-                    "debt_principal": debt,
-                    "net": income - expenses - savings - debt,
+                    "income": f.income,
+                    "expenses": f.spending,
+                    "savings": f.savings,
+                    "savings_moved": f.savings_moved,
+                    "savings_held": f.savings_held,
+                    "debt_principal": f.debt_principal,
+                    "net": f.income - f.spending - f.savings_moved - f.debt_principal,
                 }
             )
         return results
@@ -404,18 +410,28 @@ class ReportService:
             totals = window.group_by("cls").agg(pl.col("amount").sum())
             return {cls: Decimal(str(amount)) for cls, amount in totals.iter_rows()}
 
-        this, prev = _buckets(start_date, end_date), _buckets(prev_start, prev_end)
-        income_this = this.get(ActivityClass.INCOME.value, Decimal("0"))
-        expenses_this = class_magnitude(this, ActivityClass.SPENDING)
-        savings_this = class_magnitude(this, ActivityClass.SAVINGS)
-        expenses_prev = class_magnitude(prev, ActivityClass.SPENDING)
-        # What living cost over the window — spending plus debt payments — from
-        # the one tuple Cost of Living and the Essentials figures read, so the
-        # Overview's means verdict cannot count a class those reports do not.
-        # Debt payments are served beside it because the verdict's dialog names
-        # them; savings are neither: they are what was left over.
-        debt_payments_this = class_magnitude(this, ActivityClass.DEBT_PRINCIPAL)
-        outflows_this = sum((class_magnitude(this, c) for c in COST_OF_LIVING_CLASSES), Decimal(0))
+        # The window's figures through `money_moves.figures`, the one reading
+        # of class buckets the report tabs and the Guide's worked month share.
+        # This card flipped each class's sign itself beside it — the same
+        # arithmetic twice, one refactor from disagreeing. `cost_of_living` is
+        # every class in COST_OF_LIVING_CLASSES, the one tuple Cost of Living
+        # and the Essentials figures read, so the Overview's means verdict
+        # cannot count a class those reports do not. Debt payments are served
+        # beside it because the verdict's dialog names them; savings are
+        # neither: they are what was left over.
+        #
+        # The savings rate is savings / income, the ratio the Savings Rate tab
+        # shows by default. The old (income - expenses) / income counted a
+        # brokerage transfer as an expense and reported 0% for a household
+        # saving 40%. None, not 0.0, when nothing came in: "no income recorded"
+        # and "saved nothing" are different facts.
+        #
+        # Saved is moved plus held (`domain.savings`), held read over the same
+        # window the frame is cut to: the day before `start` through today at
+        # the latest. The prior window's spending is a row sum, so `flows`.
+        held = await held_between(self.session, budget_id, start_date, min(end_date, today))
+        this = figures(_buckets(start_date, end_date), held)
+        expenses_prev = flows(_buckets(prev_start, prev_end)).spending
 
         # Burn rate is how fast money is consumed, so savings and debt principal
         # are out. This claimed to match the Burn Rate chart "exactly" and did
@@ -443,17 +459,7 @@ class ReportService:
         # so this card and the roadmap's emergency-fund target never disagree.
         # None until something is tagged: the untagged fallback IS burn rate,
         # and a second card saying the same number would mislead.
-        essentials_monthly, essentials_tagged = await self._essentials_monthly(budget_id, today)
-
-        # savings / income, the same ratio the Savings Rate tab shows by
-        # default. The old (income - expenses) / income counted a brokerage
-        # transfer as an expense and so reported 0% for a household saving 40%.
-        #
-        # None, not 0.0, when nothing came in — the same answer the Savings Rate
-        # tab gives, for the reason its docstring states: "no income recorded"
-        # and "saved nothing" are different facts. The two carried the same
-        # label and disagreed on exactly the months a new budget starts with.
-        savings_rate = float(savings_this / income_this) if income_this > 0 else None
+        essentials, essentials_tagged = await reported_essentials(self.session, budget_id, today)
 
         # Days until zero — runway is CASH divided by burn, and the pot is
         # the budget's cash (`sum_on_budget_balance`, the Ready-to-Assign
@@ -485,16 +491,17 @@ class ReportService:
             "net_worth_prev": net_worth_prev,
             "burn_rate_30": burn_30,
             "burn_rate_90": burn_90,
-            "essentials_monthly": essentials_monthly,
+            "essentials": essentials if essentials_tagged else None,
             "essentials_tagged": essentials_tagged,
-            "savings_rate": savings_rate,
+            "savings_rate": this.savings_rate,
             "days_until_zero": days_until_zero,
-            "income_this_month": income_this,
-            "expenses_this_month": expenses_this,
+            "income_this_month": this.income,
+            "expenses_this_month": this.spending,
             "expenses_prev_month": expenses_prev,
-            "debt_payments_this_month": debt_payments_this,
-            "outflows_this_month": outflows_this,
+            "debt_payments_this_month": this.debt_principal,
+            "outflows_this_month": this.cost_of_living,
             "top_categories": top_cats,
+            "means_months": await means_months(self, budget_id, today),
         }
 
     # ─── Net Worth History ────────────────────────────────────────────────────
@@ -1079,7 +1086,12 @@ class ReportService:
         # categories still hang beneath, so the detail is unchanged — only
         # which trunk they belong to.
         CLASS_BRANCH = {
-            ActivityClass.SAVINGS.value: ("__savings__", "Savings"),
+            # "To savings accounts", not "Savings": this chart is money-moved
+            # — SAVINGS-class rows — and a kept-here envelope's held balance
+            # never left the budget, so it is not on this trunk. The Savings
+            # Rate tab's "Saved" adds it; this label must not claim to be that
+            # figure (`test_sankey_spent_mode_is_money_moved`).
+            ActivityClass.SAVINGS.value: ("__savings__", "To savings accounts"),
             ActivityClass.DEBT_PRINCIPAL.value: ("__debt_principal__", "Debt Payments"),
         }
 
@@ -1843,132 +1855,6 @@ class ReportService:
 
         return {"cells": cells, "months": months_list, "categories": categories}
 
-    # ─── Essentials ───────────────────────────────────────────────────────────
-
-    async def _essentials_monthly(
-        self, budget_id: uuid.UUID, today: date
-    ) -> tuple[Decimal | None, bool]:
-        """(monthly essentials over the Guide's window, anything tagged?)."""
-        total, basis = await self.txns.essential_spend(budget_id, essentials_since(today), today)
-        if not basis_is_chosen(basis):
-            return None, False
-        return essentials_per_month(total), True
-
-    async def essentials_summary(self, budget_id: uuid.UUID, months: int = 12) -> dict:
-        """What a lean month costs, and what a reserve of N months would be.
-
-        The headline (`essentials_90d`) is the Guide's figure — rolling 90 days
-        ÷ 3 — so the Overview card, this report and the roadmap's target quote
-        one number. The per-category table averages over `months` COMPLETE
-        months instead: a partial current month would drag every average
-        down. That divergence is deliberate and pinned by test.
-        """
-        today = date.today()
-        # Not clamped to the budget's history, unlike volatility: the table
-        # divides by `months` and Emergency Coverage reads it, so clamping is a
-        # change to both figures rather than to a window.
-        window_start, window_end = complete_month_window(today, months)
-        months_list = month_starts(window_start, window_end)
-
-        essentials_90d, tagged = await self._essentials_monthly(budget_id, today)
-        headline = essentials_90d or Decimal("0")
-        reserve = [
-            {"months": n, "amount": quantize_cents(headline * n)}
-            for n in (1, FULL_EMERGENCY_FUND_MONTHS_LOW, FULL_EMERGENCY_FUND_MONTHS_HIGH, 12)
-        ]
-        fund_balance, fund_source = await emergency_fund(self.session, budget_id)
-        runway = (
-            (fund_balance / headline).quantize(Decimal("0.1"))
-            if fund_balance is not None and headline > 0
-            else None
-        )
-        base = {
-            "tagged": tagged,
-            "months": months,
-            "window_start": window_start,
-            "window_end": window_end,
-            "essentials_90d": headline,
-            "reserve": reserve,
-            "roadmap_range": (FULL_EMERGENCY_FUND_MONTHS_LOW, FULL_EMERGENCY_FUND_MONTHS_HIGH),
-            "emergency_fund_balance": fund_balance,
-            "emergency_fund_source": fund_source,
-            "runway_months": runway,
-        }
-        if not tagged:
-            return {
-                **base,
-                "monthly_total_average": Decimal("0"),
-                "categories": [],
-                "monthly_series": [{"month": m, "total": Decimal("0")} for m in months_list],
-                # Nothing is tagged, so nothing was pointed at and nothing is
-                # missing — but the key is always present, or the client has to
-                # know which branch produced its response.
-                "class_excluded": [],
-            }
-
-        rows, _ = await self.txns.essential_spend_by_category_month(
-            budget_id, window_start, window_end
-        )
-        by_category: dict[str | None, dict] = {}
-        # Seeded with every tagged category BEFORE the rows are read, so one
-        # that was not spent in this window lands at zero instead of vanishing.
-        # Built from rows alone, the list silently became "the tagged
-        # categories that happened to have transactions", which sorted by total
-        # is indistinguishable from a top-N — the report showed 5 of 8 and
-        # looked capped.
-        for tagged_cat in await self.txns.essential_tagged_categories(budget_id):
-            by_category[str(tagged_cat.id)] = {
-                "category_id": tagged_cat.id,
-                "name": tagged_cat.name,
-                "group_name": tagged_cat.group_name,
-                "total": Decimal("0"),
-                "months_with_spend": 0,
-            }
-        by_month: dict[date, Decimal] = {m: Decimal("0") for m in months_list}
-        for r in rows:
-            key = str(r.category_id) if r.category_id else None
-            magnitude = -Decimal(r.total)  # spending is stored negative
-            entry = by_category.setdefault(
-                key,
-                {
-                    "category_id": r.category_id,
-                    "name": r.category_name or "Uncategorized",
-                    "group_name": r.group_name,
-                    "total": Decimal("0"),
-                    "months_with_spend": 0,
-                },
-            )
-            entry["total"] += magnitude
-            entry["months_with_spend"] += 1
-            month = r.month.date() if hasattr(r.month, "date") else r.month
-            by_month[month] = by_month.get(month, Decimal("0")) + magnitude
-
-        # By spend, then by name — so the zero rows sort to the bottom in a
-        # readable order rather than in whatever order they were seeded.
-        categories = sorted(by_category.values(), key=lambda c: (-c["total"], c["name"]))
-        for c in categories:
-            c["total"] = quantize_cents(c["total"])
-            c["monthly_average"] = quantize_cents(c["total"] / months)
-        grand = sum((c["total"] for c in categories), Decimal("0"))
-        # What was tagged and still not counted. Tagging a category is pointing
-        # at it, which is the condition the note was written for — and the case
-        # that misled: a mortgage tagged Essential is now counted, but a
-        # category tagged Essential AND Savings still is not, and silence there
-        # would be the same bug wearing a different class.
-        excluded, _ = await self.txns.essential_excluded_by_class(
-            budget_id, window_start, window_end
-        )
-        return {
-            **base,
-            "monthly_total_average": quantize_cents(grand / months),
-            "categories": categories,
-            "monthly_series": [
-                {"month": m, "total": quantize_cents(by_month.get(m, Decimal("0")))}
-                for m in months_list
-            ],
-            "class_excluded": class_excluded_note(excluded, scoped=True) or [],
-        }
-
     # ─── Payee Analysis ───────────────────────────────────────────────────────
 
     async def payee_analysis(
@@ -2392,8 +2278,12 @@ class ReportService:
         Two rates, because paying down a mortgage and funding a brokerage both
         build net worth but people think about them differently:
 
-            savings_rate           = savings / income
-            savings_rate_with_debt = (savings + debt_principal) / income
+            savings_rate           = (moved + held) / income
+            savings_rate_with_debt = (moved + held + debt_principal) / income
+
+        `savings` is saved: money moved into savings plus what kept-here
+        Savings envelopes came to hold (`domain.savings`), served with both
+        parts as `savings_moved` and `savings_held`.
 
         Scoped to on-budget accounts, which is what makes the number honest:
         growth inside a tracked account classifies as `investment_return` and
@@ -2407,26 +2297,17 @@ class ReportService:
 
         today = date.today()
         class_series = await self._class_series(budget_id, months, today)
+        axis = [month for month, _ in class_series]
+        held = await held_by_month(self.session, budget_id, axis, today)
         series: list[dict] = []
         window: dict[str, Decimal] = {}
-        for month, buckets in class_series:
+        for (month, buckets), month_held in zip(class_series, held, strict=True):
             for cls, amount in buckets.items():
                 window[cls] = window.get(cls, Decimal("0")) + amount
-            series.append(
-                {
-                    "month": month,
-                    "income": buckets.get(ActivityClass.INCOME.value, Decimal("0")),
-                    "spending": class_magnitude(buckets, ActivityClass.SPENDING),
-                    "savings": class_magnitude(buckets, ActivityClass.SAVINGS),
-                    "debt_principal": class_magnitude(buckets, ActivityClass.DEBT_PRINCIPAL),
-                    **savings_rates(buckets),
-                }
-            )
+            series.append({"month": month, **_rate_figures(figures(buckets, month_held))})
 
-        totals = {
-            key: sum((m[key] for m in series), Decimal("0"))
-            for key in ("income", "spending", "savings", "debt_principal")
-        }
+        # Held over the window is the months' held added up — `month_cuts`
+        # are the window's cuts, so this is `held_between(start, today)`.
         return {
             "months": series,
             # The window the summary covers, served rather than rebuilt from
@@ -2435,140 +2316,7 @@ class ReportService:
             # of exactly these rows.
             "start_date": class_series[0][0],
             "end_date": today,
-            "summary": {
-                **totals,
-                **savings_rates(window),
-            },
-        }
-
-    # ─── Savings Report ───────────────────────────────────────────────────────
-
-    async def savings_report(self, budget_id: uuid.UUID, months: int = 12) -> dict:
-        """Aggregate categories tagged with 'savings' or 'long_term_expense'."""
-        from igab.repositories.tag_repo import TagRepository
-
-        tag_repo = TagRepository(self.session)
-
-        # Get category IDs tagged with savings or long_term_expense
-        savings_cat_ids = await tag_repo.get_category_ids_by_system_keys(
-            budget_id, ["savings", "long_term_expense"]
-        )
-        # No early return, tagged or not: two returned two empties (`months`
-        # [] beside the window) and one dropped the drains this path keeps.
-
-        # Date range
-        end_date = date.today()
-        month_list = report_months(end_date, months)
-        start_date = month_list[0]
-
-        # What pulled from savings: moves out of every tagged envelope in the
-        # window, a since-deleted one included (the move happened), named on
-        # both sides. The same rows the wishlist reads for its envelopes.
-        from igab.domain.drains import drains_total, shape_drains
-        from igab.repositories.budget_move_repo import BudgetMoveRepository
-        from igab.repositories.category_repo import CategoryRepository
-
-        moves = await BudgetMoveRepository(self.session).outflows_from(
-            budget_id, list(savings_cat_ids), start_date, end_date
-        )
-        every_category = await CategoryRepository(self.session).get_all(
-            budget_id, include_archived=True
-        )
-        all_names = {c.id: c.name for c in every_category}
-        shaped = shape_drains(moves, all_names)
-        drains = {
-            "total": drains_total(shaped),
-            "moves": [d.__dict__ for d in shaped],
-        }
-
-        # Get category info and current balances
-        cat_info_q = (
-            select(
-                Category.id,
-                Category.name,
-                CategoryGroup.name.label("group_name"),
-            )
-            .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
-            .where(
-                Category.id.in_(savings_cat_ids),
-                # A tag outlives the category it was on. Without these the
-                # report drew a row for a soft-deleted envelope, gave it the
-                # assignments it once held as a "balance", and counted it in
-                # category_count. SPENT_ENVELOPE is the wrong rule here: this
-                # is a question about where money IS, not where it went.
-                BUDGETED_ENVELOPE,
-            )
-        )
-        cat_info_rows = (await self.session.execute(cat_info_q)).all()
-        cat_info = {str(r.id): {"name": r.name, "group_name": r.group_name} for r in cat_info_rows}
-        # Everything below walks only the envelopes that survived that filter.
-        savings_cat_ids = [c for c in savings_cat_ids if str(c) in cat_info]
-
-        # Available from the Budget page's own walk (`envelope_series`), never
-        # a copy of it. This method once kept a running total — carrying an
-        # overspend forward forever where the walk floors it between months —
-        # and then a re-assembly that skipped the card correction, so a card
-        # charge refunded to the envelope read $100 here and $0 on the page.
-        # Assignments go unbounded below: a pre-window overspend is floored
-        # where it happened. On an imported budget the months before the
-        # import are walked back from YNAB's figure; an envelope whose history
-        # cannot reproduce it starts late, and `unrecovered` says so.
-        from igab.guide.detection import budget_service_from
-
-        series = await budget_service_from(self.session).envelope_series(
-            budget_id, list(savings_cat_ids), month_list
-        )
-        categories: list[SavingsCategory] = []
-        unrecovered: list[dict] = []
-        for cid in savings_cat_ids:
-            info, s = cat_info[str(cid)], series[cid]
-            if s.unrecovered_through is not None:
-                unrecovered.append(
-                    {
-                        "category_id": str(cid),
-                        "category_name": info["name"],
-                        "starts_from": add_months(s.unrecovered_through, 1),
-                    }
-                )
-            categories.append(
-                {
-                    "category_id": str(cid),
-                    "category_name": info["name"],
-                    "group_name": info["group_name"],
-                    "monthly_balances": s.available,
-                    "current_balance": s.latest(),
-                    "target_balance": None,  # Could fetch from category targets
-                    "total_inflow": sum((a for a in s.assigned if a > 0), Decimal("0")),
-                }
-            )
-
-        # Sort by current balance descending
-        categories.sort(key=lambda x: x["current_balance"], reverse=True)
-
-        # Summary
-        total_balance = sum((c["current_balance"] for c in categories), Decimal("0"))
-        total_inflow = sum((c["total_inflow"] for c in categories), Decimal("0"))
-        # Every month in the window, the one in progress included — a
-        # deliberate difference from the spending averages, which divide by
-        # COMPLETE months (`domain.dates.complete_month_window`).
-        #
-        # Inflow here is ASSIGNED money, and assigning is a monthly act rather
-        # than something that accrues by the day: an envelope funded on the
-        # 1st has this month's whole inflow on record. Excluding the running
-        # month would understate a household that has already budgeted it.
-        avg_monthly = total_inflow / len(month_list) if month_list else Decimal("0")
-
-        return {
-            "categories": categories,
-            "summary": {
-                "total_balance": total_balance,
-                "total_inflow": total_inflow,
-                "avg_monthly_inflow": quantize_cents(avg_monthly),
-                "category_count": len(categories),
-            },
-            "months": month_list,
-            "drains": drains,
-            "unrecovered": unrecovered,
+            "summary": _rate_figures(figures(window, sum(held, Decimal("0")))),
         }
 
     # ─── Anomaly Detection ────────────────────────────────────────────────────

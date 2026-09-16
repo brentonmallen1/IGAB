@@ -50,6 +50,12 @@ export function DetailSection({ title, children }: { title: string; children: Re
   )
 }
 
+/** A bulleted list of explanatory sentences — the bands a verdict reads by,
+ *  the notes on how a figure is read. */
+export function DetailList({ children }: { children: ReactNode }) {
+  return <ul className="report-detail__list">{children}</ul>
+}
+
 export function DetailRows({ children }: { children: ReactNode }) {
   return <ol className="report-detail__rows">{children}</ol>
 }

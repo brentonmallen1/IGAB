@@ -42,6 +42,7 @@ from .factories import (
     create_category,
     create_category_group,
     create_payee,
+    create_tag,
     create_transaction,
     create_user,
 )
@@ -113,6 +114,36 @@ async def _cover_the_rules_the_sample_data_misses(db_session, budget) -> None:
         leg = await create_transaction(db_session, budget, checking, amount, ANCHOR)
         far = await create_transaction(db_session, budget, car, str(-Decimal(amount)), ANCHOR)
         leg.transfer_id, far.transfer_id = far.id, leg.id
+
+    # Savings modes. A kept-here Savings envelope moving its balance to a
+    # tracked savings account reads no tag input — it must reach
+    # TRANSFER_TO_TRACKED_ASSET by where the money went. The sample carries
+    # that shape too (General Savings → Cascade Point HYSA, Emergency Fund →
+    # Harborstone Reserve); this row keeps it covered if the sample changes. And an Emergency fund
+    # envelope set to sent out must fire the Savings rule without carrying the
+    # Savings tag. The mode is a column the rule reads through the category,
+    # so both implementations have to agree about it.
+    savings_tag = await tags.get_system_tag(budget.id, "savings")
+    assert savings_tag is not None
+    kept = await create_category(db_session, budget, group, "Rainy Day Kept Here")
+    await tags.set_category_tags(kept.id, [savings_tag.id])
+    kept.savings_mode = "kept_here"
+    hysa = await create_account(
+        db_session, budget, "Coverage HYSA", account_type="savings", on_budget=False
+    )
+    out = await create_transaction(db_session, budget, checking, "-250.00", ANCHOR, category=kept)
+    into = await create_transaction(db_session, budget, hysa, "250.00", ANCHOR)
+    out.transfer_id, into.transfer_id = into.id, out.id
+
+    emergency_tag = await tags.get_system_tag(budget.id, "emergency_fund") or await create_tag(
+        db_session, budget, "Emergency fund", system_key="emergency_fund"
+    )
+    sent = await create_category(db_session, budget, group, "Emergency Fund Sent Out")
+    await tags.set_category_tags(sent.id, [emergency_tag.id])
+    sent.savings_mode = "sent_out"
+    await create_transaction(
+        db_session, budget, checking, "-90.00", ANCHOR, category=sent, payee=shop
+    )
     await db_session.flush()
 
 
@@ -160,6 +191,39 @@ class TestTheFixtureExercisesEveryRule:
             f"no row in the fixture reaches: {sorted(missing)} — a rewrite could "
             "break those rules with every differential check still green"
         )
+
+    async def test_the_savings_mode_rows_take_their_rules(self, db_session):
+        """The coverage rows above are only worth their place if they reach the
+        rule they were added for — in both implementations."""
+        from igab.db.models import Category
+
+        budget = await _full_budget(db_session)
+        for cls, reason in (
+            (ACTIVITY_CLASS, ACTIVITY_REASON),
+            (ACTIVITY_CLASS_SUBQUERY, ACTIVITY_REASON_SUBQUERY),
+        ):
+            q = (
+                select(Category.name, cls, reason)
+                .select_from(Transaction)
+                .join(Category, Category.id == Transaction.category_id)
+                .where(
+                    Transaction.budget_id == budget.id,
+                    Category.name.in_(["Rainy Day Kept Here", "Emergency Fund Sent Out"]),
+                )
+            )
+            if cls is ACTIVITY_CLASS:
+                q = apply_class_joins(q)
+            rows = {r[0]: (r[1], r[2]) for r in (await db_session.execute(q)).all()}
+            assert rows == {
+                "Rainy Day Kept Here": (
+                    ActivityClass.SAVINGS.value,
+                    ActivityReason.TRANSFER_TO_TRACKED_ASSET.value,
+                ),
+                "Emergency Fund Sent Out": (
+                    ActivityClass.SAVINGS.value,
+                    ActivityReason.TAGGED_SAVINGS.value,
+                ),
+            }
 
 
 class TestTheHarnessCatchesWhatItIsFor:

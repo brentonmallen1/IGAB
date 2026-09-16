@@ -58,6 +58,7 @@ beforeEach(async () => {
     classification: 'asset',
     on_budget: false,
     counts_as_savings: false,
+    counts_toward_emergency_fund: false,
     is_closed: false,
     note: null,
     budget_start_date: null,
@@ -83,6 +84,41 @@ describe('AccountSettingsModal counts-as-savings toggle', () => {
     account.current = { ...account.current, on_budget: true }
     render(<AccountSettingsModal accountId="car" onClose={vi.fn()} />)
     expect(toggle()).toBeNull()
+  })
+})
+
+describe('AccountSettingsModal emergency-fund mark', () => {
+  const mark = () =>
+    screen.queryByRole('checkbox', { name: 'Counts toward emergency fund' }) as HTMLInputElement
+
+  beforeEach(() => {
+    account.current = {
+      ...account.current,
+      id: 'reserve',
+      name: 'Harborstone Reserve',
+      account_type: 'savings',
+      counts_as_savings: true,
+      counts_toward_emergency_fund: true,
+    }
+  })
+
+  it('shows the stored mark and saves it', async () => {
+    render(<AccountSettingsModal accountId="reserve" onClose={vi.fn()} />)
+    expect(mark().checked).toBe(true)
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(updateMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'reserve', counts_toward_emergency_fund: true })
+    )
+  })
+
+  it('clears it when Counts as savings is turned off', async () => {
+    render(<AccountSettingsModal accountId="reserve" onClose={vi.fn()} />)
+    await userEvent.click(toggle()!)
+    expect(mark()).toBeDisabled()
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(updateMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ counts_as_savings: false, counts_toward_emergency_fund: false })
+    )
   })
 })
 

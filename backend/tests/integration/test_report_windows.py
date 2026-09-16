@@ -202,5 +202,5 @@ class TestEssentialsIsASubsetOfBurn:
         guide = await GuideDetection(db_session).essential_expenses(budget.id)
 
         assert metrics["burn_rate_90"] == D("200.00")
-        assert metrics["essentials_monthly"] == metrics["burn_rate_90"]
+        assert metrics["essentials"].monthly == metrics["burn_rate_90"]
         assert guide.value == metrics["burn_rate_90"]

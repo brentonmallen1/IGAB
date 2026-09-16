@@ -17,6 +17,8 @@
 // an imported factory at all. They still have to gain a served field by hand —
 // which is a limitation of the mock hoisting, not a copy anyone chose.
 import type { Category, CategoryBalance, CategoryGroup } from '../types'
+import type { Signal } from '../api/guide'
+import type { SignalKey } from '../content/roadmap'
 
 export function makeCategory(over: Partial<Category> = {}): Category {
   return {
@@ -33,6 +35,8 @@ export function makeCategory(over: Partial<Category> = {}): Category {
     is_assignable: true,
     is_fundable: true,
     is_categorizable: true,
+    savings_mode: null,
+    savings_role: 'none',
     created_at: '2026-08-01T00:00:00Z',
     updated_at: '2026-08-01T00:00:00Z',
     tags: [],
@@ -79,4 +83,30 @@ export function makeCategoryBalance(over: Partial<CategoryBalance> = {}): Catego
     credit_overspent: 0,
     ...over,
   } as CategoryBalance
+}
+
+/** A Guide signal with nothing detected, tracked and automatic. Three tests
+ *  spelled this literal out, and each broke when the server served `fund`. */
+export function makeSignal(key: SignalKey, over: Partial<Signal> = {}): Signal {
+  return {
+    key,
+    tracked: true,
+    source: 'auto',
+    met: null,
+    value: null,
+    detected_value: null,
+    external_value: null,
+    external_declared: false,
+    external_as_of: null,
+    target: null,
+    starter_target: null,
+    starter_met: null,
+    essentials: null,
+    fund: null,
+    reason: '',
+    entities: {},
+    gaps: [],
+    note: null,
+    ...over,
+  }
 }

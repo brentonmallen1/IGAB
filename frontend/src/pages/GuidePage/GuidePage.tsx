@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useGuideStore, GUIDE_TABS, type GuideTab } from '../../stores/guideStore'
 import { TOOL_IDS, type ToolId } from '../../content/roadmap'
 import { GLOSSARY_IDS, type GlossaryId } from '../../content/glossary'
@@ -10,11 +10,14 @@ import { GlossaryPanel } from '../../components/guide/GlossaryPanel'
 import { CheckupPanel } from '../../components/guide/CheckupPanel'
 import { ToolsPanel } from '../../components/guide/tools/ToolsPanel'
 import { MoneyPanel } from '../../components/guide/money/MoneyPanel'
+import { AsidePanel } from '../../components/guide/aside/AsidePanel'
+import { useAnchorScroll } from '../../hooks/useAnchorScroll'
 import './GuidePage.css'
 
 /**
  * Guidance and tools — the roadmap, a financial checkup, scenario
- * calculators, how money counts in reports, and a glossary. The wishlist
+ * calculators, how money counts in reports, what setting money aside counts
+ * as, and a glossary. The wishlist
  * lived here once; it is a working tool rather than guidance, so it has a
  * page of its own now, and old `?tab=wishlist` links are walked over to it.
  *
@@ -54,6 +57,8 @@ export function GuidePage() {
   // takes over — the same shape ReportsPage uses for `?tab=`.
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
+  // `/guide?tab=aside#emergency-fund` lands on the section, not the tab's top.
+  useAnchorScroll(useLocation().hash)
   useEffect(() => {
     const tab = searchParams.get('tab')
     const tool = searchParams.get('tool')
@@ -86,6 +91,8 @@ export function GuidePage() {
         return <ToolsPanel />
       case 'money':
         return <MoneyPanel />
+      case 'aside':
+        return <AsidePanel />
     }
   }
 

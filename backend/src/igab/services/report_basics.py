@@ -1,5 +1,6 @@
 """The basic reports: spending over time for a chosen scope, income by
-source, and what the essentials reserve is measured against.
+source, what the essentials reserve is measured against, and the months the
+Overview's Means trend is drawn from.
 
 Split from report_service.py, which is over the file-length budget and may
 only shrink. These read the same predicates it does — `spending_trends`
@@ -40,6 +41,9 @@ from igab.domain.activity_class import (
 )
 from igab.domain.dates import complete_month_window, month_starts
 from igab.domain.money import quantize_cents
+from igab.domain.money_moves import flows
+from igab.domain.savings import HELD_REASON, HELD_REASON_LABEL
+from igab.repositories.transaction_repo import TransactionRepository
 from igab.repositories.txn_filters import (
     CLASS_TOTAL_ROW,
     LEAF,
@@ -48,6 +52,7 @@ from igab.repositories.txn_filters import (
     POSTED,
     category_tagged,
 )
+from igab.services.savings_held import held_by_envelope
 
 if TYPE_CHECKING:
     from igab.services.report_service import ReportService
@@ -238,9 +243,24 @@ async def savings_contributors(
     range was picked, and the Savings Rate tab's window ends today, so a
     future-dated row is in neither and is not in this either.
 
+    **Held rows.** Saved is moved plus held (`domain.savings`), so each
+    kept-here Savings envelope whose balance changed over the window is a
+    contributor of its own — `reason` `HELD_REASON`, `total` its held change,
+    `count` its register rows in the window (assignments are not rows). Zero
+    changes are omitted. A kept-here envelope's outflow to a tracked account
+    still appears under that account: the pair nets, +300 there and −300 held.
+
     Income is grouped by payee, as Income by Source groups it.
     """
     end = min(end_date, date.today())
+    held = {
+        cid: pair
+        for cid, pair in (await held_by_envelope(session, budget_id, start_date, end)).items()
+        if quantize_cents(pair[1]) != 0
+    }
+    held_counts = await TransactionRepository(session).count_categories_between(
+        budget_id, list(held), start_date, end
+    )
     wanted = [ActivityClass.INCOME.value, *(c.value for c in _CONTRIBUTOR_CLASSES)]
     q = (
         select(
@@ -331,13 +351,29 @@ async def savings_contributors(
             )
         return _by_magnitude(out)
 
+    moved = quantize_cents(class_magnitude(signed, ActivityClass.SAVINGS))
+    held_rows = [
+        {
+            "kind": "category",
+            "id": cid,
+            "name": name,
+            "reason": HELD_REASON,
+            "reason_label": HELD_REASON_LABEL,
+            "total": quantize_cents(amount),
+            "count": held_counts.get(cid, 0),
+        }
+        for cid, (name, amount) in held.items()
+    ]
+    savings_held = sum((quantize_cents(amount) for _, amount in held.values()), Decimal("0"))
     return {
         "start_date": start_date,
         "end_date": end,
         "income": quantize_cents(signed.get(ActivityClass.INCOME.value, Decimal("0"))),
-        "savings": quantize_cents(class_magnitude(signed, ActivityClass.SAVINGS)),
+        "savings": moved + savings_held,
+        "savings_moved": moved,
+        "savings_held": savings_held,
         "debt_principal": quantize_cents(class_magnitude(signed, ActivityClass.DEBT_PRINCIPAL)),
-        "savings_contributors": _contributors(ActivityClass.SAVINGS),
+        "savings_contributors": _by_magnitude(_contributors(ActivityClass.SAVINGS) + held_rows),
         "debt_contributors": _contributors(ActivityClass.DEBT_PRINCIPAL),
         "income_sources": _by_magnitude(
             [{**s, "total": quantize_cents(s["total"])} for s in sources.values()], "payee_name"
@@ -345,37 +381,50 @@ async def savings_contributors(
     }
 
 
-async def emergency_fund(
-    session: AsyncSession, budget_id: uuid.UUID
-) -> tuple[Decimal | None, str | None]:
-    """What the Guide reads as the emergency fund, and why.
+#: How many complete months the Overview's Means trend reads, whatever range
+#: the Overview itself is showing.
+MEANS_TREND_MONTHS = 12
 
-    Detection plus any self-reported amount, folded by the same rule the
-    roadmap uses. The docstring here used to promise "One reader ... so the
-    Essentials report and the roadmap quote the same balance" while reading
-    only the detection — so a household keeping most of its buffer at another
-    institution saw the roadmap say $10,240 and this report say $1,240 for one
-    figure. The promise is now kept by calling the same function.
+
+async def means_months(svc: ReportService, budget_id: uuid.UUID, today: date) -> list[dict]:
+    """Income and outflows for each of the last `MEANS_TREND_MONTHS` complete
+    months, oldest first — what the Overview's Means trend is drawn from.
+
+    **The card's composition, month by month.** Each month's class buckets go
+    through `money_moves.flows`, the row-sum half of the `figures` reading
+    `dashboard_metrics` gives the Your Means card: outflows are
+    `cost_of_living` (spending plus debt principal), income is the INCOME
+    class, and savings — moved or held — are neither, so no held figure is
+    read. A trend that counted a class the card does not would draw bars
+    the card beside it contradicts.
+
+    **Complete months only, never before the history.** A month in progress
+    reads as a surplus every morning of it — the pay landed on the 1st, the
+    bills have not — so the running month is out (`complete_month_window`).
+    The window starts no earlier than the budget's first row: a month before
+    anything was recorded is not a month of zero income, and a budget with
+    no rows at all has no months. Inside the window a month with no activity
+    is served as zeros, so the axis has no gaps.
+
+    Independent of the Overview's selected range on purpose: the trend is
+    "the last year", and a one-month range would leave it a single bar.
     """
-    from igab.guide.bindings import fold_external, resolve
-    from igab.guide.detection import GuideDetection
-    from igab.guide.repo import GuideRepository
-
-    rows = await GuideRepository(session).bindings(budget_id)
-    resolution = resolve("emergency_fund", rows)
-    detected: Decimal | None = None
-    reason: str | None = None
-    if resolution.runs_detection:
-        finding = await GuideDetection(session).emergency_fund(
-            budget_id, resolution.entities or None
+    earliest = await svc.txns.earliest_date(budget_id)
+    if earliest is None:
+        return []
+    start, end = complete_month_window(today, MEANS_TREND_MONTHS, earliest)
+    by_month = await svc._monthly_class_totals(budget_id, start, end)
+    rows = []
+    for month in month_starts(start, end):
+        f = flows(by_month.get(month, {}))
+        rows.append(
+            {
+                "month": month,
+                "income": quantize_cents(f.income),
+                "outflows": quantize_cents(f.cost_of_living),
+            }
         )
-        detected, reason = finding.value, finding.reason
-    total = fold_external(detected, resolution.external_amount)
-    if total is None:
-        return None, None
-    if detected is None:
-        reason = "you told us what you have set aside"
-    return quantize_cents(total), reason
+    return rows
 
 
 class RecurringSpend(TypedDict):
@@ -703,6 +752,10 @@ async def cost_of_living(session: AsyncSession, budget_id: uuid.UUID, months: in
     Essentials report cannot disagree about what Essentials holds. The groups
     are the ones a budget already has, the shape a household thinks in —
     Housing, Utilities, Groceries.
+
+    **As paid, never spread.** A twelve-month average of complete months
+    already spreads a yearly bill by construction, so the budget's
+    spread-sinking-funds setting (`services/essentials.py`) does not apply here.
 
     `basis` says how the wide tier was decided: the tags, or everything.
     "all" means nothing is tagged yet, and the caller must say so rather than

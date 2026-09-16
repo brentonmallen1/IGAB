@@ -34,6 +34,11 @@ export interface Account {
    *  off-budget asset (`utils/accountKinds.isTrackedAsset`). Served from the
    *  column; the rule is `domain/activity_class.py` rules 3 and 5. */
   counts_as_savings: boolean
+  /** The stored emergency-fund mark. Whether the balance is counted is
+   *  decided on the server — home is `repositories/txn_filters.py
+   *  EMERGENCY_FUND_ACCOUNT`, which also requires an off-budget savings
+   *  account; the server refuses the flag on any other shape. */
+  counts_toward_emergency_fund: boolean
   classification: AccountClassification | null
   is_closed: boolean
   sort_order: number
@@ -121,6 +126,11 @@ export interface TagSimple {
   color_slot: 'red' | 'orange' | 'yellow' | 'green' | 'teal' | 'blue' | 'purple' | 'pink' | null
 }
 
+/** `Category.savings_mode` — see `category_filters.SavingsMode`. */
+export type SavingsMode = 'sent_out' | 'kept_here'
+/** `Category.savings_role` — see `category_filters.SavingsRole`. */
+export type SavingsRole = 'none' | SavingsMode
+
 export interface Category {
   id: string
   category_group_id: string
@@ -151,6 +161,13 @@ export interface Category {
    *  by the cards section and offered by no picker. */
   is_fundable: boolean
   is_categorizable: boolean
+  /** The stored choice only; null when the tags decide. Read `savings_role`
+   *  for the answer. */
+  savings_mode: SavingsMode | null
+  /** How this category's money counts as saved. Served, not derived — home is
+   *  `repositories/category_filters.py SAVINGS_ROLE`: it reads the Savings and
+   *  Emergency fund tags and the default each implies. */
+  savings_role: SavingsRole
   tags?: TagSimple[]
   created_at: string
   updated_at: string
@@ -590,9 +607,14 @@ export interface IncomeExpenseMonth {
   /** Money spent. Saving and debt principal are separate — both leave the
    *  budget, but neither is spending. */
   expenses: number
+  /** Saved: `savings_moved + savings_held` (backend `domain/savings.py`). */
   savings: number
+  savings_moved: number
+  savings_held: number
   debt_principal: number
-  /** income - expenses - savings - debt_principal, so the parts reconcile. */
+  /** income - expenses - savings_moved - debt_principal: money that left the
+   *  accounts. Held money never left them, so `net` does not subtract it
+   *  (backend `ReportService.income_vs_expense`). */
   net: number
 }
 
@@ -665,16 +687,34 @@ export type AssignStrategy =
 
 // ─── Report Types ───────────────────────────────────────────────────────────
 
+/** What a lean month costs, both ways — served by the dashboard, the
+ *  Essentials and Emergency Fund reports, the Guide's essential-expenses signal
+ *  and the sizer. Home: `guide/concepts.py::essentials_monthly`, read through
+ *  `services/essentials.py`. `as_paid` is the 90-day figure as bills landed;
+ *  `spread` swaps Long-term expense bills for a twelfth of the year's;
+ *  `spread_on` is the budget's setting and `monthly` the one it selects. */
+export interface EssentialsFigures {
+  as_paid: number
+  spread: number
+  spread_on: boolean
+  monthly: number
+}
+
+/** GET/PUT /reports/settings — `services/report_settings.py`. */
+export interface ReportSettings {
+  spread_sinking_funds: boolean
+}
+
 export interface DashboardMetrics {
   net_worth: number
   net_worth_prev: number
   burn_rate_30: number
   burn_rate_90: number
-  /** Monthly essential spending over the Guide's 90-day window — the number
-   *  the roadmap's emergency-fund target is built from. null until something
-   *  is tagged Essential (untagged it would equal burn rate). Server-computed:
-   *  TransactionRepository.essential_spend. */
-  essentials_monthly: number | null
+  /** What a lean month costs, both ways — the figures the roadmap's
+   *  emergency-fund target is built from. null until something is tagged
+   *  Essential (untagged it would equal burn rate). Server-computed:
+   *  `services/essentials.py`. */
+  essentials: EssentialsFigures | null
   essentials_tagged: boolean
   /** null when no income was recorded in the window — a gap, not a floor.
    *  "No income" and "saved nothing" are different facts. */
@@ -692,6 +732,21 @@ export interface DashboardMetrics {
    *  Read against income by `components/reports/livingMeans.ts`. */
   outflows_this_month: number
   top_categories: { id: string; name: string; group_name: string; total: number }[]
+  /** The last 12 complete months, oldest first, whatever the requested window
+   *  — fewer on a younger budget, none on an empty one; a quiet month inside
+   *  the window is zeros. Served by `report_basics.means_months` with the
+   *  composition `outflows_this_month` uses; read by `livingMeans.meansTrend`. */
+  means_months: MeansMonth[]
+}
+
+/** One complete month of the Overview's Means trend. `income` is the INCOME
+ *  class and `outflows` is COST_OF_LIVING_CLASSES, exactly as the window's
+ *  `income_this_month` / `outflows_this_month`. Server-computed. */
+export interface MeansMonth {
+  /** The month's first day, YYYY-MM-DD. */
+  month: string
+  income: number
+  outflows: number
 }
 
 export interface NetWorthPoint {
@@ -982,7 +1037,37 @@ export interface SeasonalityReport {
   categories: { id: string; name: string }[]
 }
 
-/** What a lean month costs — GET /reports/essentials. `essentials_90d` is the
+/** One envelope or account the emergency fund counted. */
+export interface FundPart {
+  id: string
+  name: string
+  balance: number
+}
+
+/** What the household said it keeps outside IGAB. `declared` with a null
+ *  `amount` is "I have this covered" — never zero. */
+export interface FundExternal {
+  declared: boolean
+  amount: number | null
+  as_of: string | null
+  note: string | null
+}
+
+/** The emergency fund and exactly what it counted. Served — the home is
+ *  backend/src/igab/services/emergency_fund.py (`EmergencyFundOut`): envelopes
+ *  tagged Emergency fund, off-budget accounts marked "counts toward emergency
+ *  fund", and anything kept elsewhere. Nothing is guessed; never recompute
+ *  `total` here. */
+export interface EmergencyFund {
+  set_up: boolean
+  /** Null only when nothing in IGAB was chosen and no figure was declared. */
+  total: number | null
+  categories: FundPart[]
+  accounts: FundPart[]
+  external: FundExternal
+}
+
+/** What a lean month costs — GET /reports/essentials. `essentials` is the
  *  Guide's figure and the Overview card's; the table averages complete months. */
 /** One month of the emergency-fund coverage report. */
 export interface CoveragePoint {
@@ -1005,11 +1090,11 @@ export interface CoveragePoint {
 export interface EmergencyCoverageReport {
   months: number
   tagged: boolean
-  fund_balance: number | null
-  fund_source: string | null
+  /** The emergency fund and what it counted — the Essentials report's own. */
+  fund: EmergencyFund
   /** The Essentials report's own runway, quoted rather than recomputed. */
   coverage_months: number | null
-  essentials_monthly: number
+  essentials: EssentialsFigures
   target_low: number
   target_high: number
   target_range: [number, number]
@@ -1024,7 +1109,7 @@ export interface EssentialsReport {
   months: number
   window_start: string
   window_end: string
-  essentials_90d: number
+  essentials: EssentialsFigures
   monthly_total_average: number
   categories: {
     category_id: string | null
@@ -1034,13 +1119,15 @@ export interface EssentialsReport {
     monthly_average: number
     months_with_spend: number
   }[]
-  monthly_series: { month: string; total: number }[]
+  /** As paid, never spread; `sinking_total` is the part of `total` filed to a
+   *  sinking fund (Long-term expense). */
+  monthly_series: { month: string; total: number; sinking_total: number }[]
   reserve: { months: number; amount: number }[]
   roadmap_range: [number, number]
-  /** What the Guide reads as the emergency fund today, and how many lean
-   *  months it covers. Null when nothing looks like a fund. */
-  emergency_fund_balance: number | null
-  emergency_fund_source: string | null
+  /** The emergency fund and what it counted, whatever the Guide tracks. */
+  emergency_fund: EmergencyFund
+  /** How many lean months `emergency_fund.total` covers. Null when nothing
+   *  was chosen, or nothing is tagged Essential. */
   runway_months: number | null
   /** Tagged Essential and still not counted, by class — see
    *  `CostOfLivingReport.class_excluded`. */
@@ -1217,7 +1304,20 @@ export interface SubscriptionsReport {
   months: string[]
 }
 
-export interface SavingsCategory {
+/** An envelope's target on the Savings report, judged as the Budget page
+ *  judges it this month. */
+export interface SavingsTarget {
+  type: string
+  amount: number
+  target_date: string | null
+  /** The Budget page's pill (`TargetService.calculate_status`). */
+  status: TargetStatus
+  /** Available ÷ amount for a savings-balance target, floored at 0 and NOT
+   *  capped at 1. null for a funding target, which asks for a pace. */
+  progress: number | null
+}
+
+export interface SavingsEnvelope {
   category_id: string
   category_name: string
   group_name: string
@@ -1227,15 +1327,38 @@ export interface SavingsCategory {
    *  `SavingsReport.unrecovered`. Absent, not zero: draw a gap. */
   monthly_balances: (number | null)[]
   current_balance: number
-  target_balance: number | null
+  /** Positive assignments in the window. */
   total_inflow: number
+  target: SavingsTarget | null
 }
 
-export interface SavingsSummary {
-  total_balance: number
-  total_inflow: number
-  avg_monthly_inflow: number
-  category_count: number
+/** An off-budget account that counts as savings (`txn_filters.SAVINGS_ACCOUNT`).
+ *  On-budget accounts are never listed: their money is in the envelopes. */
+export interface SavingsAccount {
+  account_id: string
+  name: string
+  account_type: string
+  /** Balance through each month's end; null before the account's first row. */
+  monthly_balances: (number | null)[]
+  current_balance: number
+}
+
+/** Kept-here Savings and Emergency fund envelopes plus off-budget savings
+ *  accounts. Envelopes count at their carryover-floored Available. */
+export interface SavingsSaved {
+  total: number
+  envelopes_total: number
+  accounts_total: number
+  /** Saved at each month's end, aligned with `SavingsReport.months`. */
+  monthly_totals: number[]
+  envelopes: SavingsEnvelope[]
+  accounts: SavingsAccount[]
+}
+
+/** On the way to savings, or Sinking funds — never added to Saved. */
+export interface SavingsSection {
+  total: number
+  envelopes: SavingsEnvelope[]
 }
 
 export interface ReportDrainMove {
@@ -1264,10 +1387,16 @@ export interface SavingsUnrecovered {
   starts_from: string
 }
 
+/** The Savings report in three parts — home is backend
+ *  `services/savings_report.py`. */
 export interface SavingsReport {
-  categories: SavingsCategory[]
-  summary: SavingsSummary
+  saved: SavingsSaved
+  /** What sent-out Savings envelopes hold until the money leaves. */
+  on_the_way: SavingsSection
+  /** Long-term expense envelopes that are not savings. */
+  sinking_funds: SavingsSection
   months: string[]
+  /** Moves out of Savings and Emergency fund envelopes, not sinking funds. */
   drains: ReportDrains
   unrecovered: SavingsUnrecovered[]
 }

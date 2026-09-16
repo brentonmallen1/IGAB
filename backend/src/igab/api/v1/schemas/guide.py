@@ -6,6 +6,7 @@ from typing import Literal
 from pydantic import Field, model_validator
 
 from igab.api.v1.schemas.base import ApiModel
+from igab.api.v1.schemas.report import EmergencyFundOut, EssentialsFigures
 
 
 class ConceptInfo(ApiModel):
@@ -46,6 +47,13 @@ class SignalResponse(ApiModel):
     #: `target` / `met`. None on every other concept.
     starter_target: Decimal | None = None
     starter_met: bool | None = None
+    #: The essential-expenses concept only: both essentials figures, of which
+    #: `value` is the `.monthly`. None on every other concept.
+    essentials: EssentialsFigures | None = None
+    #: The emergency fund only: what it counted (`services.emergency_fund`),
+    #: whose `total` is `value`. None on every other concept, and on a
+    #: dismissed one — the reports still serve it.
+    fund: EmergencyFundOut | None = None
     reason: str = ""
     entities: dict[str, list[str]] = Field(default_factory=dict)
     #: Things worth mentioning that did not count — a debt with no rate on
@@ -328,9 +336,25 @@ class EmergencyFundResponse(ApiModel):
 
     months: int
     monthly_contribution: Decimal
-    essentials_monthly: Decimal | None
+    #: The essentials signal's figures; the target reads `.monthly`. None when
+    #: the signal has no figure.
+    essentials: EssentialsFigures | None
     current: Decimal | None
     target: Decimal | None
     gap: Decimal | None
     months_to_fund: int | None
     funded_by: date | None
+
+
+class SpreadExampleResponse(ApiModel):
+    """The Guide's invented spread example (`guide/examples.py`), every figure
+    computed by the essentials and emergency-fund arithmetic the reports run."""
+
+    as_paid_after_bill: Decimal
+    as_paid_otherwise: Decimal
+    spread: Decimal
+    bill_monthly_share: Decimal
+    goal_months: int
+    goal_as_paid_after_bill: Decimal
+    goal_as_paid_otherwise: Decimal
+    goal_spread: Decimal

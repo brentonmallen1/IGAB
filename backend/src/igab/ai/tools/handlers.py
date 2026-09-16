@@ -202,6 +202,8 @@ async def income_vs_expense(ctx: ToolContext, args: dict) -> dict:
             "income": money(r["income"]),
             "expenses": money(r["expenses"]),
             "savings": money(r["savings"]),
+            "savings_moved": money(r["savings_moved"]),
+            "savings_held": money(r["savings_held"]),
             "net": money(r["net"]),
         }
         for r in rows
@@ -221,6 +223,8 @@ async def savings_rate(ctx: ToolContext, args: dict) -> dict:
                 else str(m.get("month")),
                 "income": money(m.get("income")),
                 "savings": money(m.get("savings")),
+                "savings_moved": money(m.get("savings_moved")),
+                "savings_held": money(m.get("savings_held")),
                 "savings_rate": m.get("savings_rate"),
             }
             for m in data.get("months", [])[:36]

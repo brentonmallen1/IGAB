@@ -23,8 +23,10 @@ import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ReportRangeSelect } from './rangeSelect'
 import { SavingsRateDialog } from '../SavingsRateDialog'
+import { SAVED_DEFINITION } from '../savingsRateBreakdown'
 import { pct, RATE_SERIES, ratePercent, savingsRateTooltipWith } from './savingsRateView'
 import { useReportMonths } from '../../../stores/reportStore'
+import { GuideTabLink } from '../../guide/GuideTabLink'
 
 interface Props {
   budgetId: string
@@ -69,7 +71,9 @@ export function SavingsRateReport({ budgetId }: Props) {
         <ReportInfoButton title="Savings Rate">
           <p>How much of what came in you kept, month by month.</p>
           <p>
-            <strong>Savings rate</strong> = money moved into savings ÷ income. With{' '}
+            <strong>Savings rate</strong> = saved ÷ income. {SAVED_DEFINITION} Assigning to an
+            envelope that counts while it’s in the budget counts as saved, spending from it lowers
+            saved, and moving its money on to a savings account nets to zero. With{' '}
             <em>“include debt payments”</em> on, money used to pay down a tracked debt counts too —
             both build what you own rather than consuming it.
           </p>
@@ -79,9 +83,9 @@ export function SavingsRateReport({ budgetId }: Props) {
             counting it would make this number climb in a good market while you did nothing.
           </p>
           <p>
-            Only a tracked account that <strong>counts as savings</strong> is saving. Selling a car
-            or a house tracked as an asset counts as income, and buying one as spending — turn the
-            setting off on the account for things like that.
+            Of your tracked accounts, only one that <strong>counts as savings</strong> is saving.
+            Selling a car or a house tracked as an asset counts as income, and buying one as
+            spending — turn the setting off on the account for things like that.
           </p>
           <p>
             A month with no income shows a gap rather than 0%: having no income recorded isn’t the
@@ -90,6 +94,11 @@ export function SavingsRateReport({ budgetId }: Props) {
           <p>
             Open the rate to see where the savings went, what paid down debt and where the income
             came from.
+          </p>
+          <p>
+            <GuideTabLink tab="aside" anchor="savings-modes">
+              How Savings envelopes count
+            </GuideTabLink>
           </p>
           <ReportScopeNote report="savings-rate" />
         </ReportInfoButton>
@@ -113,6 +122,8 @@ export function SavingsRateReport({ budgetId }: Props) {
                 income: Number(m.income),
                 spending: Number(m.spending),
                 savings: Number(m.savings),
+                savings_moved: Number(m.savings_moved),
+                savings_held: Number(m.savings_held),
                 debt_principal: Number(m.debt_principal),
                 savings_rate: m.savings_rate,
                 savings_rate_with_debt: m.savings_rate_with_debt,
@@ -157,8 +168,9 @@ export function SavingsRateReport({ budgetId }: Props) {
 
         {!hasAnything ? (
           <div className="reports-empty">
-            No income or savings recorded yet. Once money comes in and some of it moves to a savings
-            or investment account, the rate appears here.
+            No income or savings recorded yet. Once money comes in and some of it is saved — moved
+            to a savings or investment account, or held in a Savings envelope — the rate appears
+            here.
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={chartHeight}>

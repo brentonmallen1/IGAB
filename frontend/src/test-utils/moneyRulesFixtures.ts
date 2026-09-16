@@ -10,6 +10,8 @@ export const SERVED_RULES: MoneyRule[] = [
     reason: 'tagged_savings',
     reason_text: 'served tag reason',
     tag_key: 'savings',
+    savings_mode: 'sent_out',
+    tag_keys: ['savings', 'emergency_fund'],
     is_default: false,
   },
   {
@@ -19,6 +21,8 @@ export const SERVED_RULES: MoneyRule[] = [
     reason: 'internal_transfer',
     reason_text: 'served transfer reason',
     tag_key: null,
+    savings_mode: null,
+    tag_keys: [],
     is_default: false,
   },
   {
@@ -28,6 +32,8 @@ export const SERVED_RULES: MoneyRule[] = [
     reason: 'default_spending',
     reason_text: 'served default reason',
     tag_key: null,
+    savings_mode: null,
+    tag_keys: [],
     is_default: true,
   },
 ]
@@ -37,6 +43,8 @@ export const ZERO_FIGURES = {
   spending: 0,
   cost_of_living: 0,
   savings: 0,
+  savings_moved: 0,
+  savings_held: 0,
   debt_principal: 0,
   savings_rate: null,
   savings_rate_with_debt: null,
@@ -74,6 +82,7 @@ export function explanation(over: Partial<MoveExplanation> = {}): MoveExplanatio
     ],
     budget_terms: [{ term: 'ready_to_assign', delta: 1000 }],
     class_totals: { income: 1000 },
+    held: 0,
     figures: { ...ZERO_FIGURES, income: 1000 },
     net_worth_delta: 0,
     assumption: 'Served assumption.',

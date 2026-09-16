@@ -2,15 +2,11 @@
  * The things that catch people out, each with the move that shows it. The
  * prose is ours; what the move counts as is served when "Try it" loads it.
  */
-import { SYSTEM_TAG_HELP } from '../../settings/TagsPanel/systemTagHelp'
+import { systemTagName } from '../../settings/TagsPanel/systemTagHelp'
+import type { CatchOutItem } from '../CatchOuts'
 import { preset, type ExplorerState } from './explorerMove'
 
-const tagName = (key: string) => SYSTEM_TAG_HELP.find((t) => t.key === key)?.name ?? key
-
-export interface CatchOut {
-  id: string
-  title: string
-  detail: string
+export interface CatchOut extends CatchOutItem {
   /** Loads the explorer with the move this describes, so the claim can be
    * checked against the served answer rather than taken on trust. */
   tryIt: ExplorerState
@@ -21,7 +17,7 @@ export const CATCH_OUTS: CatchOut[] = [
     id: 'on-budget-hysa',
     title: 'Moving money to an on-budget savings account is not saving',
     detail:
-      'Both accounts are in the budget, so the money never left it. Take the account off budget, or tag the category it leaves from, if you want it counted.',
+      'Both accounts are in the budget, so the money never left it — and a move between two on-budget accounts carries no category to tag. To count it, take the account off budget and turn on Counts as savings, or keep it on budget and set aside money in Savings envelopes that count while it’s in the budget.',
     tryIt: preset('transfer', 'checking', 'savings'),
   },
   {
@@ -61,9 +57,9 @@ export const CATCH_OUTS: CatchOut[] = [
   },
   {
     id: 'savings-tag',
-    title: `The ${tagName('savings')} tag counts every outflow as saving`,
-    detail: `Spend a vacation fund tagged ${tagName('savings')} on a flight and the flight counts as saved. For money set aside toward a bill, use ${tagName('long_term_expense')}: the bill then counts as spending when it is paid.`,
-    tryIt: preset('transaction', 'checking', 'checking', { category: 'savings' }),
+    title: `A ${systemTagName('savings')} category that counts when money leaves the budget counts every outflow as saved`,
+    detail: `Pay for a flight from a ${systemTagName('savings')} envelope that counts when money leaves the budget and the flight counts as saved. For a fund you spend from, set it to count while it’s in the budget: spending from it is then spending. For money set aside toward a planned bill, use ${systemTagName('long_term_expense')}: the bill counts as spending when it is paid.`,
+    tryIt: preset('transaction', 'checking', 'checking', { category: 'savings_sent' }),
   },
   {
     id: 'car-sale',

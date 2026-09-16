@@ -35,8 +35,10 @@ export const BUILTIN_ACCOUNT_TYPES: AccountTypeOption[] = [
     description:
       'Money set aside but still yours to plan with. On budget so it can back ' +
       'envelopes like an emergency fund. Because it is on budget, moving money here ' +
-      'is not counted as saving — the money never left your budget. Tag a category ' +
-      'as Savings if you want it counted.',
+      'is not counted as saving — the money never left your budget, and your ' +
+      'envelopes say what it is for: keep savings in Savings envelopes that count ' +
+      'while money is in the budget. To count the account itself, take it off ' +
+      'budget and turn on Counts as savings.',
   },
   {
     key: 'cash',
@@ -156,3 +158,10 @@ export function accountTypeLabel(key: string, registry?: { key: string; label: s
 /** Help line for the Counts as savings toggle, wherever it is offered. */
 export const COUNTS_AS_SAVINGS_HELP =
   'Off for things like a car or a house: selling one counts as income, buying one as spending.'
+
+/** Help line for the Counts toward emergency fund toggle. */
+export const COUNTS_TOWARD_EMERGENCY_FUND_HELP =
+  'Its whole balance is part of your emergency fund. For an account holding several things, keep it on budget and tag the envelopes instead.'
+
+/** Why the Counts toward emergency fund toggle is disabled. */
+export const COUNTS_TOWARD_EMERGENCY_FUND_NEEDS_SAVINGS = 'Turn on Counts as savings first'

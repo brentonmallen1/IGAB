@@ -14,7 +14,7 @@ from decimal import Decimal
 from sqlalchemy import select
 
 from igab.db.models import Tag
-from igab.domain.tag_hints import suggest_review_tags, suggest_system_tag
+from igab.domain.tag_hints import suggest_review_tags
 from igab.integrations.ynab.models import YNABBudget, YNABTransaction
 from igab.repositories.tag_repo import SYSTEM_TAGS, TagRepository, seed_system_tags
 
@@ -33,28 +33,19 @@ async def _system_keys(db_session, budget) -> set[str]:
     return {t.system_key for t in rows if t.system_key}
 
 
-class TestSuggestSystemTag:
+class TestNamesAreSuggestionsOnly:
     def test_reads_the_obvious_names(self):
-        assert suggest_system_tag("Savings", "Goals").system_key == "savings"
-        assert suggest_system_tag("Emergency Fund", "Goals").system_key == "savings"
+        assert [t.system_key for t in suggest_review_tags("Savings", "Goals")] == ["savings"]
+        assert [t.system_key for t in suggest_review_tags("Emergency Fund", "Goals")] == [
+            "emergency_fund"
+        ]
 
-    def test_long_term_expense_is_offered_not_written(self):
-        """It used to be written on import, matching a GROUP name as well as a
-        category's — so YNAB's default "True Expenses" group tagged every
-        ordinary category inside it, and their spending was reported as saving.
-        """
-        assert suggest_system_tag("Car Repairs", "True Expenses") is None
-        assert suggest_system_tag("Sinking Fund", "Whatever") is None
+    def test_long_term_expense_is_offered(self):
         offered = {t.system_key for t in suggest_review_tags("Sinking Fund", "Whatever")}
         assert offered == {"long_term_expense"}
 
-    def test_the_categorys_own_name_wins_over_its_group(self):
-        # A "Savings" category inside "True Expenses" is savings.
-        assert suggest_system_tag("Savings", "True Expenses").system_key == "savings"
-
     def test_says_nothing_when_nothing_is_obvious(self):
-        assert suggest_system_tag("Groceries", "Everyday") is None
-        assert suggest_system_tag("Rent", "Bills") is None
+        assert suggest_review_tags("Pocket Money", "Everyday") == []
 
 
 class TestBackfill:
@@ -130,28 +121,23 @@ class TestImportTagging:
             cleared="cleared",
         )
 
-    async def test_an_imported_savings_category_is_tagged(self, db_session):
-        """Otherwise a YNAB import produces a savings report that is empty
-        forever — nothing else tags categories, and the only place to do it by
-        hand is a panel the user has no reason to open."""
-        budget, result = await self._import(db_session, [self._txn("Emergency Fund", "Goals")])
-        assert result.categories_tagged == 1
+    async def test_an_import_tags_nothing_from_a_name(self, db_session):
+        """The importer used to write Savings onto "Emergency Fund". A Savings
+        category now also says whether its money is sent out or kept, and the
+        emergency fund is chosen — a name decides neither, so the review
+        suggests and the household says yes."""
+        budget, result = await self._import(
+            db_session,
+            [self._txn("Emergency Fund", "Goals"), self._txn("Savings", "Goals")],
+        )
+        assert result.categories_tagged == 0
+        assert result.tagged_categories == []
 
         tag_repo = TagRepository(db_session)
-        tagged = await tag_repo.get_category_ids_by_system_keys(budget.id, ["savings"])
-        assert len(tagged) == 1
-
-    async def test_an_ordinary_category_is_left_alone(self, db_session):
-        _, result = await self._import(db_session, [self._txn("Groceries", "Everyday")])
-        assert result.categories_tagged == 0
-
-    async def test_the_report_has_something_to_show_after_an_import(self, db_session):
-        from igab.services.report_service import ReportService
-
-        budget, _ = await self._import(db_session, [self._txn("Emergency Fund", "Goals")])
-        report = await ReportService(db_session).savings_report(budget.id, months=12)
-        assert len(report["categories"]) == 1
-        assert report["categories"][0]["category_name"] == "Emergency Fund"
+        tagged = await tag_repo.get_category_ids_by_system_keys(
+            budget.id, ["savings", "emergency_fund"]
+        )
+        assert tagged == set()
 
     async def test_a_users_existing_tags_are_never_rewritten(self, db_session):
         """Only newly created categories are tagged. An existing category's

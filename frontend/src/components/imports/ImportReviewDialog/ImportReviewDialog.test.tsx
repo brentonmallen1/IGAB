@@ -183,6 +183,29 @@ describe('the tag step', () => {
     expect(screen.queryByText('Rent')).not.toBeInTheDocument()
   })
 
+  it('an import that tagged nothing opens on suggestions, with no empty filter', async () => {
+    const user = userEvent.setup()
+    open({ categories_tagged: 0, tagged_categories: [] })
+    await goToTags(user)
+
+    expect(screen.queryByRole('button', { name: /Tagged by the import/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Suggested/ })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
+    expect(screen.getByText(/nothing is tagged until you confirm it/)).toBeInTheDocument()
+    expect(screen.queryByText(/also tagged some categories itself/)).not.toBeInTheDocument()
+  })
+
+  it('an older import that did tag keeps its filter and says so', async () => {
+    const user = userEvent.setup()
+    open()
+    await goToTags(user)
+
+    expect(screen.getByRole('button', { name: 'Tagged by the import (1)' })).toBeInTheDocument()
+    expect(screen.getByText(/also tagged some categories itself/)).toBeInTheDocument()
+  })
+
   it('never offers a category from a system group', async () => {
     const user = userEvent.setup()
     open()

@@ -35,6 +35,7 @@ from igab.domain.money_moves import (
 class MonthExplanation:
     moves: list[MoveExplanation]
     class_totals: dict[str, Decimal]
+    held: Decimal
     figures: Figures
 
 
@@ -63,9 +64,9 @@ class MoneyMovesService:
 
     async def month(self, moves: Sequence[Move]) -> MonthExplanation:
         explained = [await self.explain(move) for move in moves]
-        buckets = month_buckets(explained)
+        buckets, held = month_buckets(explained)
         return MonthExplanation(
-            moves=explained, class_totals=dict(buckets), figures=figures(buckets)
+            moves=explained, class_totals=buckets, held=held, figures=figures(buckets, held)
         )
 
     async def shapes(self) -> list[ShapeExplanation]:

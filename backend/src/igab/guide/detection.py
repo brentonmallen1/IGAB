@@ -10,7 +10,6 @@ a roadmap that tells someone they have no emergency fund when they do is worse
 than one that admits it cannot tell.
 """
 
-import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import date, timedelta
@@ -19,16 +18,14 @@ from decimal import Decimal
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from igab.db.models import Account, AccountType, Category, Liability, Transaction
+from igab.db.models import Account, AccountType, Liability, Transaction
 from igab.domain.activity_class import ACTIVITY_CLASS, ActivityClass, apply_class_joins
-from igab.domain.dates import month_start
 from igab.domain.money import quantize_cents
 from igab.guide.concepts import (
     HIGH_INTEREST_APR,
     MODERATE_INTEREST_APR,
     MORTGAGE_KINDS,
-    essentials_per_month,
-    essentials_since,
+    EssentialsMonthly,
 )
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import (
@@ -42,7 +39,6 @@ from igab.repositories.snapshot_repo import SnapshotRepository
 from igab.repositories.tag_repo import TagRepository
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.repositories.txn_filters import (
-    BALANCE_ROW,
     COUNTERPART_ACCOUNT_ID,
     LEAF,
     NOT_DELETED,
@@ -50,6 +46,8 @@ from igab.repositories.txn_filters import (
 )
 from igab.services.budget_service import BudgetService
 from igab.services.category_service import CategoryService
+from igab.services.emergency_fund import EmergencyFund, emergency_fund
+from igab.services.essentials import essentials_figures
 from igab.services.liability_service import LiabilityService
 
 TWO_PLACES = Decimal("0.01")
@@ -63,11 +61,6 @@ def _cents(value: Decimal) -> Decimal:
     the guide could report a figure one cent off the page it says it mirrors.
     """
     return quantize_cents(value)
-
-
-#: Names that suggest an emergency fund. Deliberately narrow — a false match
-#: here tells someone they are covered when they are not.
-EMERGENCY_NAME = re.compile(r"emergency|rainy.?day|buffer", re.I)
 
 
 @dataclass
@@ -90,6 +83,12 @@ class Finding:
     #: Rows worth mentioning even though they did not count — a card with no
     #: rate recorded, say. A gap in the data is a nudge, not a silence.
     gaps: list[str] = field(default_factory=list)
+    #: The essential-expenses concept only: both essentials figures
+    #: (`services.essentials.essentials_figures`); `value` is their `.monthly`.
+    essentials: EssentialsMonthly | None = None
+    #: The emergency-fund concept only: the whole composition
+    #: (`services.emergency_fund`), whose `total` the signal quotes.
+    fund: EmergencyFund | None = None
 
 
 def budget_service_from(session: AsyncSession) -> BudgetService:
@@ -154,104 +153,39 @@ class GuideDetection:
 
     # ── money the household has set aside ────────────────────────────────────
 
-    async def emergency_fund(
-        self, budget_id: uuid.UUID, bound: dict[str, tuple[uuid.UUID, ...]] | None = None
-    ) -> Finding:
-        """How much is reachable today if something goes wrong.
+    async def emergency_fund(self, budget_id: uuid.UUID) -> Finding:
+        """How much is set aside for a genuine surprise — what the household
+        chose to count, never a guess (`services.emergency_fund`).
 
-        Looks for a savings-tagged category whose name mentions an emergency
-        first, because that is the arrangement the app can be most confident
-        about. Falls back to savings accounts, which is a weaker signal — a
-        savings account may be holding a house deposit.
+        `value` is what IGAB can see: the tagged envelopes and marked accounts,
+        without any amount declared as kept elsewhere, which the signal folds
+        on top. `fund` is the whole composition, so the signal quotes the one
+        total every report quotes.
+
+        It used to guess — a category named for an emergency, else every
+        savings-type account — and a house deposit could be reported as a
+        household's emergency fund with nothing on screen saying so.
         """
-        if bound:
-            total = await self._balance_of(budget_id, bound)
+        fund = await emergency_fund(self.session, budget_id, self.budget)
+        if not fund.set_up:
             return Finding(
                 concept_key="emergency_fund",
-                met=total > 0,
-                value=total,
-                reason="you told us what counts as your emergency fund",
-                entities={k: list(v) for k, v in bound.items()},
+                met=None,
+                reason="nothing has been chosen to count as your emergency fund yet",
+                fund=fund,
             )
-
-        savings_tagged = await self.tags.get_category_ids_by_system_keys(budget_id, ["savings"])
-        rows = (
-            await self.session.execute(
-                select(Category.id, Category.name).where(
-                    Category.budget_id == budget_id,
-                    Category.is_deleted == False,  # noqa: E712
-                )
-            )
-        ).all()
-        named = [r for r in rows if EMERGENCY_NAME.search(r.name or "")]
-
-        matched = [r.id for r in named if r.id in savings_tagged]
-
-        # Precedence, strongest signal first — but a signal that found NOTHING
-        # must not hide one that found money. An envelope called "Emergency
-        # Fund" sitting at zero because the money lives in a savings account
-        # used to end the search here and report $0, which the Essentials
-        # report renders as no emergency fund at all while the savings-rate
-        # report shows the same household saving steadily.
-        candidates: list[tuple[Decimal, str, dict[str, list[uuid.UUID]]]] = []
-        if matched:
-            candidates.append(
-                (
-                    await self._category_balance(budget_id, matched),
-                    "the category is tagged Savings and its name mentions an emergency",
-                    {"category": matched},
-                )
-            )
-        if named:
-            ids = [r.id for r in named]
-            candidates.append(
-                (
-                    await self._category_balance(budget_id, ids),
-                    "the category name mentions an emergency",
-                    {"category": ids},
-                )
-            )
-        accounts = (
-            (
-                await self.session.execute(
-                    select(Account.id).where(
-                        Account.budget_id == budget_id,
-                        Account.is_deleted == False,  # noqa: E712
-                        Account.account_type == "savings",
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
-        if accounts:
-            candidates.append(
-                (
-                    await self._account_balance(list(accounts)),
-                    "this is your savings account, which may also be holding other plans",
-                    {"account": list(accounts)},
-                )
-            )
-
-        # Not summed: an on-budget savings account's balance is the same money
-        # its envelopes hold, so adding the two counts it twice.
-        chosen = next((c for c in candidates if c[0] > 0), None) or (
-            candidates[0] if candidates else None
-        )
-        if chosen is not None:
-            total, reason, entities = chosen
-            return Finding(
-                concept_key="emergency_fund",
-                met=total > 0,
-                value=total,
-                reason=reason,
-                entities=entities,
-            )
-
+        entities: dict[str, list[uuid.UUID]] = {}
+        if fund.categories:
+            entities["category"] = [p.id for p in fund.categories]
+        if fund.accounts:
+            entities["account"] = [p.id for p in fund.accounts]
         return Finding(
             concept_key="emergency_fund",
-            met=None,
-            reason="we could not find anything that looks like an emergency fund",
+            met=None if fund.total is None else fund.total > 0,
+            value=fund.in_budget,
+            reason="what you chose to count",
+            entities=entities,
+            fund=fund,
         )
 
     async def essential_expenses(
@@ -259,27 +193,27 @@ class GuideDetection:
     ) -> Finding:
         """Roughly what a month costs — what an emergency fund is measured against.
 
-        One query (TransactionRepository.essential_spend) answers this, the
-        Overview's essentials card and the Essentials report, so the roadmap's
-        target and the reports quote one figure. Precedence: categories the
-        user bound here, else what they tagged Essential, else all spending.
+        One entry point (`services.essentials.essentials_figures`) answers
+        this, the Overview's essentials card and the Essentials report, so the
+        roadmap's target and the reports quote one figure — spread or as paid,
+        as the budget's setting says. Precedence: categories the user bound
+        here, else what they tagged Essential, else all spending.
         """
-        today = date.today()
-        total, basis = await self.txns.essential_spend(
-            budget_id, essentials_since(today), today, bound.get("category") if bound else None
+        figures, basis = await essentials_figures(
+            self.session, budget_id, date.today(), bound.get("category") if bound else None
         )
         reason = {
             "bound": "the categories you told us are essential",
             "tag": "the categories you tagged Essential",
             "all": "your average spending over the last 90 days",
         }[basis]
-        monthly = essentials_per_month(total)
         return Finding(
             concept_key="essential_expenses",
-            met=monthly > 0,
-            value=monthly,
+            met=figures.monthly > 0,
+            value=figures.monthly,
             reason=reason,
             entities={k: list(v) for k, v in (bound or {}).items()},
+            essentials=figures,
         )
 
     # ── what the household owes ──────────────────────────────────────────────
@@ -460,68 +394,3 @@ class GuideDetection:
             reason=reason,
             entities={"account": accounts},
         )
-
-    # ── shared helpers ───────────────────────────────────────────────────────
-
-    async def _balance_of(
-        self, budget_id: uuid.UUID, bound: dict[str, tuple[uuid.UUID, ...]]
-    ) -> Decimal:
-        total = Decimal("0")
-        if bound.get("category"):
-            total += await self._category_balance(budget_id, list(bound["category"]))
-        if bound.get("account"):
-            total += await self._account_balance(list(bound["account"]))
-        return _cents(total)
-
-    async def _category_balance(
-        self, budget_id: uuid.UUID, category_ids: list[uuid.UUID]
-    ) -> Decimal:
-        """What has accumulated in these categories, as the budget page reads it.
-
-        This used to be `SUM(assigned) + SUM(activity)` over all time, which is
-        not the budget page's number and is not what a user would recognise: it
-        carried overspending forward that the budget had already covered from
-        To Be Assigned, and it counted assignments for months that have not
-        arrived. Any category that ever overspent read permanently low — and
-        this figure decides whether the roadmap tells someone they have no
-        emergency fund.
-
-        It then re-ran the budget page's two queries here and called the same
-        carryover simulation — a second copy of one rule, pinned equal by a
-        test. Now it asks the budget service, so there is one reading to pin.
-        The totals are summed per category because the zero floor is per
-        category: two categories, one $50 over and one $50 under, carry $0 and
-        $50 — not $0 between them.
-        """
-        if not category_ids:
-            return Decimal("0")
-        month = month_start(date.today())
-        total = Decimal("0")
-        for category_id in category_ids:
-            balance = await self.budget.get_category_balance(category_id, month)
-            total += balance.available
-        return _cents(total)
-
-    async def _account_balance(self, account_ids: list[uuid.UUID]) -> Decimal:
-        """The same rows AccountRepository.get_balance sums.
-
-        Was NOT_DELETED + LEAF, which counted pending auth holds as real money
-        — nothing else in the app does, so the guide's account figure drifted
-        from the sidebar's by whatever was on hold.
-
-        LEAF and PARENT_ROW both total a split correctly (LEAF takes the
-        children and skips the parent; PARENT_ROW does the reverse), so that
-        half was never wrong. Using BALANCE_ROW is still what stops the two
-        answers from being arrived at separately.
-        """
-        if not account_ids:
-            return Decimal("0")
-        total = (
-            await self.session.execute(
-                select(func.coalesce(func.sum(Transaction.amount), 0)).where(
-                    Transaction.account_id.in_(account_ids),
-                    BALANCE_ROW,
-                )
-            )
-        ).scalar_one()
-        return _cents(Decimal(total))

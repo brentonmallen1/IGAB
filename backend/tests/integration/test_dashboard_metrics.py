@@ -21,6 +21,7 @@ from igab.repositories.asset_repo import AssetRepository
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.services.report_service import ReportService
 from igab.services.transaction_service import TransactionCreate
+from tests.report_clock import report_today
 
 from .factories import (
     create_account,
@@ -434,7 +435,7 @@ class TestABudgetWithNoTransactionsStillOwnsThings:
         card = await ReportService(db_session).dashboard_metrics(budget.id, MONTH_START, TODAY)
 
         assert card["essentials_tagged"] is True
-        assert card["essentials_monthly"] == Decimal("0")
+        assert card["essentials"].monthly == Decimal("0")
 
 
 class TestNetWorthAtTheWindowStart:
@@ -640,3 +641,203 @@ class TestThePriorPeriodIsTheSameLength:
 
         assert card["expenses_this_month"] == Decimal("300.00")
         assert card["expenses_prev_month"] == Decimal("140.00")
+
+
+class TestTheWindowFiguresComeFromOneReading:
+    async def test_every_window_figure_is_unchanged_by_reading_through_figures(self, db_session):
+        """`dashboard_metrics` flipped each class's sign itself beside
+        `money_moves.figures`, which the tabs and the Guide read. It now calls
+        it; every served figure is pinned here by hand, so the switch could
+        not move one.
+
+        In the window: 5,000 in, 3,000 on groceries, 2,000 to a brokerage,
+        1,000 on the mortgage, and a 200 refund on groceries. In the ten days
+        before it: 450 on groceries."""
+        budget = await create_budget(db_session, await create_user(db_session))
+        checking = await create_account(db_session, budget, "Checking")
+        brokerage = await create_account(
+            db_session, budget, "Brokerage", account_type="investment", on_budget=False
+        )
+        loan = await create_account(
+            db_session, budget, "Harborstone Mortgage", account_type="mortgage", on_budget=False
+        )
+        group = await create_category_group(db_session, budget, "Everyday")
+        groceries = await create_category(db_session, budget, group, "Groceries")
+        investing = await create_category(db_session, budget, group, "Investing")
+        mortgage = await create_category(db_session, budget, group, "Mortgage")
+        start, today = date(2026, 3, 6), date(2026, 3, 15)
+
+        await create_transaction(db_session, budget, checking, "5000.00", start)
+        await create_transaction(
+            db_session, budget, checking, "-3000.00", start, category=groceries
+        )
+        await create_transaction(db_session, budget, checking, "200.00", today, category=groceries)
+        await create_transfer(
+            db_session, budget, checking, brokerage, "2000.00", today, category=investing
+        )
+        await create_transfer(
+            db_session, budget, checking, loan, "1000.00", today, category=mortgage
+        )
+        await create_transaction(
+            db_session, budget, checking, "-450.00", date(2026, 3, 1), category=groceries
+        )
+
+        with report_today(today):
+            card = await ReportService(db_session).dashboard_metrics(budget.id, start, today)
+
+        assert card["income_this_month"] == Decimal("5000.00")
+        assert card["expenses_this_month"] == Decimal("2800.00")
+        assert card["expenses_prev_month"] == Decimal("450.00")
+        assert card["debt_payments_this_month"] == Decimal("1000.00")
+        assert card["outflows_this_month"] == Decimal("3800.00")
+        assert card["savings_rate"] == pytest.approx(0.4)
+
+
+class TestMeansMonths:
+    """The months the Overview's Means trend is drawn from. Pinned to
+    2026-03-15, so the twelve complete months are March 2025 to February 2026."""
+
+    TODAY = date(2026, 3, 15)
+
+    async def _checking(self, db_session):
+        budget = await create_budget(db_session, await create_user(db_session))
+        checking = await create_account(db_session, budget, "Checking")
+        group = await create_category_group(db_session, budget, "Everyday")
+        groceries = await create_category(db_session, budget, group, "Groceries")
+        return budget, checking, groceries
+
+    async def _months(self, db_session, budget, start=None, end=None):
+        with report_today(self.TODAY):
+            card = await ReportService(db_session).dashboard_metrics(
+                budget.id, start or date(2026, 3, 1), end or self.TODAY
+            )
+        return card["means_months"]
+
+    async def test_means_months_are_twelve_complete_months(self, db_session):
+        """Twelve, whatever range the Overview is showing, and never the month
+        in progress: its pay has landed and its bills have not."""
+        budget, checking, groceries = await self._checking(db_session)
+        await create_transaction(db_session, budget, checking, "900.00", date(2024, 6, 3))
+        await create_transaction(db_session, budget, checking, "4000.00", date(2026, 2, 2))
+        await create_transaction(
+            db_session, budget, checking, "-3000.00", date(2026, 2, 20), category=groceries
+        )
+        # The running month: in no row.
+        await create_transaction(db_session, budget, checking, "5000.00", date(2026, 3, 2))
+
+        months = await self._months(db_session, budget, date(2026, 3, 10), self.TODAY)
+
+        assert [m["month"] for m in months] == [
+            date(2025, 3, 1),
+            date(2025, 4, 1),
+            date(2025, 5, 1),
+            date(2025, 6, 1),
+            date(2025, 7, 1),
+            date(2025, 8, 1),
+            date(2025, 9, 1),
+            date(2025, 10, 1),
+            date(2025, 11, 1),
+            date(2025, 12, 1),
+            date(2026, 1, 1),
+            date(2026, 2, 1),
+        ]
+        assert months[-1] == {
+            "month": date(2026, 2, 1),
+            "income": Decimal("4000.00"),
+            "outflows": Decimal("3000.00"),
+        }
+
+    async def test_means_months_young_budget_serves_fewer(self, db_session):
+        """A month before the first row is a month nobody recorded, not a
+        month of zero income. A budget with no rows has no months."""
+        budget, checking, _ = await self._checking(db_session)
+        assert await self._months(db_session, budget) == []
+
+        await create_transaction(db_session, budget, checking, "1200.00", date(2025, 12, 20))
+        months = await self._months(db_session, budget)
+
+        assert [m["month"] for m in months] == [
+            date(2025, 12, 1),
+            date(2026, 1, 1),
+            date(2026, 2, 1),
+        ]
+
+    async def test_means_months_young_budget_started_this_month_serves_none(self, db_session):
+        budget, checking, _ = await self._checking(db_session)
+        await create_transaction(db_session, budget, checking, "1200.00", date(2026, 3, 2))
+        assert await self._months(db_session, budget) == []
+
+    async def test_means_months_include_empty_months(self, db_session):
+        """A quiet month inside the window is zeros, not a gap in the axis."""
+        budget, checking, groceries = await self._checking(db_session)
+        await create_transaction(db_session, budget, checking, "3000.00", date(2025, 11, 5))
+        await create_transaction(
+            db_session, budget, checking, "-250.00", date(2026, 2, 5), category=groceries
+        )
+
+        months = await self._months(db_session, budget)
+
+        assert months == [
+            {"month": date(2025, 11, 1), "income": Decimal("3000.00"), "outflows": Decimal("0.00")},
+            {"month": date(2025, 12, 1), "income": Decimal("0.00"), "outflows": Decimal("0.00")},
+            {"month": date(2026, 1, 1), "income": Decimal("0.00"), "outflows": Decimal("0.00")},
+            {"month": date(2026, 2, 1), "income": Decimal("0.00"), "outflows": Decimal("250.00")},
+        ]
+
+    async def test_means_month_counts_what_the_card_counts(self, db_session):
+        """A savings transfer is not an outflow; a debt payment is — the Your
+        Means card's composition, month by month. The card over the same
+        month must read the same two figures."""
+        budget, checking, groceries = await self._checking(db_session)
+        brokerage = await create_account(
+            db_session, budget, "Cascade Point HYSA", account_type="savings", on_budget=False
+        )
+        loan = await create_account(
+            db_session, budget, "Harborstone Mortgage", account_type="mortgage", on_budget=False
+        )
+        group = await create_category_group(db_session, budget, "Goals")
+        saving = await create_category(db_session, budget, group, "General Savings")
+        mortgage = await create_category(db_session, budget, group, "Mortgage")
+        feb = date(2026, 2, 10)
+        await create_transaction(db_session, budget, checking, "5000.00", feb)
+        await create_transaction(db_session, budget, checking, "-2000.00", feb, category=groceries)
+        await create_transfer(
+            db_session, budget, checking, brokerage, "1500.00", feb, category=saving
+        )
+        await create_transfer(db_session, budget, checking, loan, "900.00", feb, category=mortgage)
+        # Refunds net against what living cost, as on the card.
+        await create_transaction(db_session, budget, checking, "100.00", feb, category=groceries)
+
+        months = await self._months(db_session, budget, date(2026, 2, 1), date(2026, 2, 28))
+
+        with report_today(self.TODAY):
+            card = await ReportService(db_session).dashboard_metrics(
+                budget.id, date(2026, 2, 1), date(2026, 2, 28)
+            )
+        assert months == [
+            {
+                "month": date(2026, 2, 1),
+                "income": Decimal("5000.00"),
+                "outflows": Decimal("2800.00"),
+            }
+        ]
+        assert card["income_this_month"] == months[0]["income"]
+        assert card["outflows_this_month"] == months[0]["outflows"]
+
+    async def test_the_served_dashboard_carries_means_months(self, api_client, db_session):
+        """Required on the schema: the route must serialize it."""
+        budget = await create_budget(db_session, api_client.test_user)
+        checking = await create_account(db_session, budget, "Checking")
+        await create_transaction(db_session, budget, checking, "800.00", date(2026, 2, 3))
+        await db_session.flush()
+
+        with report_today(self.TODAY):
+            resp = await api_client.get(
+                f"/api/v1/{budget.id}/reports/dashboard",
+                params={"start_date": "2026-03-01", "end_date": "2026-03-15"},
+            )
+
+        assert resp.status_code == 200
+        assert resp.json()["means_months"] == [
+            {"month": "2026-02-01", "income": 800.0, "outflows": 0.0}
+        ]

@@ -14,12 +14,14 @@ from igab.db.models import (
     LiabilityBalanceSnapshot,
     Transaction,
 )
+from igab.domain.exceptions import InvariantViolation
 from igab.repositories.base import BaseRepository
 from igab.repositories.txn_filters import (
     BALANCE_ROW,
     CARD_ACCOUNT,
     CASH_ACCOUNT,
     CLEARED,
+    EMERGENCY_FUND_ACCOUNT_SHAPE,
     LIVE_ACCOUNT,
     NEEDS_CATEGORY,
     NOT_DELETED,
@@ -42,6 +44,15 @@ _UNMANAGED_KIND: dict[str, str] = {
     "student_loan": "student",
     "credit_card": "credit_card",
 }
+
+
+#: Why an account cannot count toward the emergency fund — see
+#: `txn_filters.EMERGENCY_FUND_ACCOUNT_SHAPE` for the reason behind each term.
+EMERGENCY_FUND_SHAPE_REFUSAL = (
+    "Only an off-budget savings account can count toward the emergency fund: "
+    "turn off On budget and turn on Counts as savings first. A budget account's "
+    "money is already in your envelopes, and a loan is owed rather than held."
+)
 
 
 class AccountRepository(BaseRepository[Account]):
@@ -186,6 +197,22 @@ class AccountRepository(BaseRepository[Account]):
         )
         counts = {account_id: n for account_id, n in result.all()}
         return {account_id: counts.get(account_id, 0) for account_id in account_ids}
+
+    async def require_emergency_fund_shape(self, account_id: uuid.UUID) -> None:
+        """Refuse an emergency-fund flag on an account of the wrong shape.
+
+        Asked of the row as written — after the same request's other fields —
+        through `EMERGENCY_FUND_ACCOUNT_SHAPE`, the predicate the fund's
+        readers use, so the refusal and the readers cannot disagree. The
+        caller writes inside a savepoint and lets this raise out of it.
+        """
+        allowed = (
+            await self.session.execute(
+                select(EMERGENCY_FUND_ACCOUNT_SHAPE).where(Account.id == account_id)
+            )
+        ).scalar_one_or_none()
+        if not allowed:
+            raise InvariantViolation(EMERGENCY_FUND_SHAPE_REFUSAL)
 
     async def get_balance(self, account_id: uuid.UUID) -> Decimal:
         return (await self.balances_for([account_id]))[account_id]

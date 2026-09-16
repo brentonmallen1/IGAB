@@ -8,6 +8,7 @@ import { GlossaryChips } from './GlossaryChips'
 import { NameChips } from './NameChips'
 import { TOOLS } from './tools/toolRegistry'
 import { stagesForFinding } from './checkupLeds'
+import { guideToolHref } from '../../utils/guideLinks'
 import {
   explainerFor,
   formatMetricTarget,
@@ -110,7 +111,7 @@ export function CheckupBlock({ metric, finding, thresholds, onGoToStage }: Props
             </button>
           )}
           {copy?.tool && (
-            <Link to={`/guide?tab=tools&tool=${copy.tool}`} className="guide-link-button">
+            <Link to={guideToolHref(copy.tool)} className="guide-link-button">
               {TOOLS[copy.tool].linkLabel}
             </Link>
           )}

@@ -5,13 +5,15 @@ import {
   type CategoryKind,
   type MoneyRulesResponse,
   type MoveExplanation,
+  SAVINGS_MODE_KIND,
 } from '../../../api/moneyRules'
 import { BUILTIN_ACCOUNT_TYPES } from '../../../constants/accountTypes'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { useAppStore } from '../../../stores/appStore'
 import { isTrackedAsset } from '../../../utils/accountKinds'
 import { budgetEffectLines } from '../../../utils/moneyMoves'
-import { SYSTEM_TAG_HELP } from '../../settings/TagsPanel/systemTagHelp'
+import { systemTagName } from '../../settings/TagsPanel/systemTagHelp'
+import { GuideTabLink } from '../GuideTabLink'
 import { ClassChip } from './ClassChip'
 import {
   EXPLORER_AMOUNT,
@@ -21,18 +23,25 @@ import {
   type SideState,
   type TypeFacts,
 } from './explorerMove'
-import { familyList, figureLines, netWorthLine, signedMoney } from './moveAnswer'
+import { familyList, figureLines, heldLine, netWorthLine, signedMoney } from './moveAnswer'
 import './MoneyExplorer.css'
-
-const tagName = (key: string) => SYSTEM_TAG_HELP.find((t) => t.key === key)?.name ?? key
 
 const CATEGORY_OPTIONS: { value: CategoryKind; label: string }[] = [
   { value: 'none', label: 'No category' },
   { value: 'ordinary', label: 'An ordinary category' },
-  { value: 'savings', label: `A category tagged ${tagName('savings')}` },
-  { value: 'debt_principal', label: `A category tagged ${tagName('debt_principal')}` },
+  {
+    value: 'savings_kept',
+    label: `A ${systemTagName('savings')} category — counts while it’s in the budget`,
+  },
+  {
+    value: 'savings_sent',
+    label: `A ${systemTagName('savings')} category — counts when it leaves the budget`,
+  },
+  { value: 'debt_principal', label: `A category tagged ${systemTagName('debt_principal')}` },
   { value: 'income', label: 'Your income group (Ready to Assign)' },
 ]
+
+const SAVINGS_KINDS: readonly CategoryKind[] = Object.values(SAVINGS_MODE_KIND)
 
 interface Props {
   state: ExplorerState
@@ -121,6 +130,13 @@ export function MoneyExplorer({ state, onChange, families }: Props) {
                 </option>
               ))}
             </select>
+            {!categoryBlocked && SAVINGS_KINDS.includes(state.category) && (
+              <span className="tool__hint">
+                <GuideTabLink tab="aside" anchor="savings-modes">
+                  In the budget or leaving it?
+                </GuideTabLink>
+              </span>
+            )}
             {categoryBlocked && (
               <span id="money-explorer-no-category" className="tool__hint">
                 Neither side can hold a category: only a budget account’s row can, and on a transfer
@@ -218,6 +234,7 @@ function Answer({
 }) {
   const { formatMoney } = useFormatters()
   const figures = figureLines(data.figures)
+  const held = heldLine(data, formatMoney)
   return (
     <div
       className={`tool__results money-explorer__answer ${stale ? 'tool__results--stale' : ''}`}
@@ -266,6 +283,17 @@ function Answer({
               : figures.map((f) => `${f.label} ${signedMoney(f.value, formatMoney)}`).join(' · ')}
           </dd>
         </div>
+        {held && (
+          <div>
+            <dt>Savings</dt>
+            <dd>
+              {held}. Saved is what moved to savings plus what the envelope holds.{' '}
+              <GuideTabLink tab="aside" anchor="savings-modes">
+                How in-the-budget savings count
+              </GuideTabLink>
+            </dd>
+          </div>
+        )}
         <div>
           <dt>Net worth</dt>
           <dd>{netWorthLine(data, formatMoney)}</dd>

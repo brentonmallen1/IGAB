@@ -1,0 +1,47 @@
+.means-example {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.means-example__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.means-example__tag {
+  font-size: var(--font-size-2xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.means-example__metric {
+  max-width: 320px;
+}
+
+.means-example__legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs) var(--spacing-md);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.means-example__legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+/* The standing's colour, from MeansStanding.css — the same one the bars use. */
+.means-example__swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--means-standing);
+}

@@ -20,6 +20,7 @@ from igab.api.v1 import (
     category_plans,
     changes,
     credit_scores,
+    emergency_fund,
     guide,
     imports,
     liabilities,
@@ -54,6 +55,7 @@ api_router.include_router(system.router, tags=["system"])
 api_router.include_router(backups.router, tags=["backups"])
 api_router.include_router(reports.router, tags=["reports"])
 api_router.include_router(guide.router, tags=["guide"])
+api_router.include_router(emergency_fund.router, tags=["emergency-fund"])
 api_router.include_router(wishlist.router, tags=["wishlist"])
 api_router.include_router(ai.router, tags=["ai"])
 api_router.include_router(ai_jobs.router, tags=["ai-jobs"])

@@ -9,6 +9,7 @@ const TAGS = vi.hoisted(() => [
     system_key: 'savings',
     color_slot: 'green',
     category_count: 2,
+    hand_settable: true,
   },
   {
     id: 'mine',
@@ -16,6 +17,15 @@ const TAGS = vi.hoisted(() => [
     system_key: null,
     color_slot: 'pink',
     category_count: 0,
+    hand_settable: true,
+  },
+  {
+    id: 'wish',
+    name: 'Wishlist',
+    system_key: 'wishlist',
+    color_slot: 'blue',
+    category_count: 1,
+    hand_settable: false,
   },
 ])
 vi.mock('../../../api/tags', () => ({
@@ -25,6 +35,15 @@ vi.mock('../../../api/tags', () => ({
   useCreateTag: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useUpdateTag: () => ({ mutateAsync: updateMutate, isPending: false }),
   useDeleteTag: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useTagMembership: (_b: string, tagId: string) => ({
+    data: {
+      tag: { id: tagId, name: 'Savings', system_key: 'savings', savings_tag: true },
+      categories: [],
+    },
+    isLoading: false,
+    isError: false,
+  }),
+  useSetTagMembership: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }))
 
 import { TagsPanel } from './TagsPanel'
@@ -59,5 +78,32 @@ describe('TagsPanel system tags', () => {
       name: 'Holidays',
       color_slot: 'pink',
     })
+  })
+})
+
+describe('TagsPanel category counts', () => {
+  beforeEach(async () => {
+    // Opening the dialog in more than one test: drain the overlay's deferred
+    // history.back() (see overlay-tests-need-history-drain).
+    await new Promise((r) => setTimeout(r, 0))
+    await new Promise((r) => setTimeout(r, 0))
+    window.history.replaceState(null, '')
+  })
+
+  it('opens the checklist from a hand-settable tag’s count', async () => {
+    render(<TagsPanel budgetId="b1" />)
+    fireEvent.click(screen.getByRole('button', { name: /^2 categories tagged Savings/ }))
+    expect(await screen.findByText('Categories tagged Savings')).toBeInTheDocument()
+  })
+
+  it('offers the user’s own tags too', async () => {
+    render(<TagsPanel budgetId="b1" />)
+    expect(screen.getByRole('button', { name: /^0 categories tagged Holiday/ })).toBeInTheDocument()
+  })
+
+  it('keeps Wishlist’s count as plain text — the wishlist sets it', () => {
+    render(<TagsPanel budgetId="b1" />)
+    expect(screen.getByText('1 category')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /tagged Wishlist/ })).not.toBeInTheDocument()
   })
 })

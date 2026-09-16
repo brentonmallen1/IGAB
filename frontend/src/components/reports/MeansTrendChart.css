@@ -1,0 +1,22 @@
+/* The Means trend's bars take their colour from MeansStanding.css
+   (`--means-standing`); this file only lays the chart out. */
+
+.means-trend-chart {
+  width: 100%;
+  min-width: 0;
+}
+
+.means-trend-chart__bar {
+  fill: var(--means-standing);
+}
+
+.means-trend-chart__band {
+  fill: var(--text-muted);
+  fill-opacity: 0.12;
+}
+
+.means-trend-chart__zero line,
+line.means-trend-chart__zero {
+  stroke: var(--border-color);
+  stroke-width: 1.5;
+}

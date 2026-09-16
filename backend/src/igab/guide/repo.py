@@ -48,6 +48,12 @@ class GuideRepository:
             self.session.add(binding)
             created.append(binding)
         await self.session.flush()
+        # Read back what the database stored: `amount` is Numeric(19, 4), so a
+        # figure written as Decimal("1000") reads as 1000.0000. The change log
+        # dumps these rows, and undo compares that dump against a fresh read —
+        # the unrefreshed "1000" refused every undo of a declared amount.
+        for binding in created:
+            await self.session.refresh(binding)
         return created
 
     async def clear_concept(self, budget_id: uuid.UUID, concept_key: str) -> None:

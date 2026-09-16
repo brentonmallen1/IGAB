@@ -1,0 +1,100 @@
+.membership-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  min-width: 0;
+}
+
+/* A fixed height, not a max: the dialog keeps one footprint whether the
+   budget has six categories or sixty, and the filter never scrolls away. */
+.membership-list__scroll {
+  height: min(20rem, calc(var(--app-h) * 0.45));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--edge);
+  /* The .sr-only group names inside anchor here, not on the page. */
+  position: relative;
+}
+
+.membership-list__empty {
+  margin: 0;
+  padding: var(--spacing-md);
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+.membership-list__group + .membership-list__group {
+  border-top: 1px solid var(--edge);
+}
+
+.membership-list__group-name {
+  padding: var(--spacing-xs) var(--spacing-sm) 0;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-secondary);
+}
+
+.membership-list__rows {
+  margin: 0;
+  padding: 0 0 var(--spacing-xs);
+  list-style: none;
+}
+
+.membership-list__row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: 0 var(--spacing-sm);
+  min-width: 0;
+}
+
+.membership-list__choice {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--spacing-sm);
+  min-width: 0;
+  min-height: 28px;
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.membership-list__choice input {
+  flex-shrink: 0;
+  margin: 0;
+  accent-color: var(--color-accent);
+}
+
+.membership-list__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.membership-list__archived {
+  flex-shrink: 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+/* A fixed width, so rows line up and the control does not resize with the
+   longest option. */
+.membership-list__mode.membership-list__mode {
+  flex-shrink: 0;
+  width: 9.5rem;
+  height: auto;
+  padding: 2px var(--spacing-xs);
+  font-size: var(--font-size-xs);
+}
+
+@media (max-width: 768px) {
+  .membership-list__choice {
+    min-height: var(--tap-min);
+  }
+
+  .membership-list__mode.membership-list__mode {
+    width: 7.5rem;
+    min-height: 32px;
+  }
+}

@@ -47,6 +47,7 @@ from igab.domain.enums import ScheduleFrequency
 from igab.domain.payee_names import BALANCE_ADJUSTMENT_PAYEES
 from igab.repositories.category_filters import (
     IN_SYSTEM_GROUP,
+    IS_SINKING_FUND,
     SPENDABLE,
     tagged_category_ids,
 )
@@ -301,6 +302,12 @@ ON_BUDGET_ACCOUNT = Transaction.account_id.in_(
 #: divided, so the three read one predicate rather than three lists of the same
 #: four clauses. LEAF because a split parent carries no category and so no
 #: class of its own.
+#:
+#: The Budget page's envelope activity sums the same rows
+#: (`TransactionRepository.sum_all_categories_by_month`), and reads it by name:
+#: the savings figure's held part cuts the page's Available with
+#: `sum_categories_dated_after`, and a cut over different rows would hold money
+#: the envelope never had.
 CLASS_TOTAL_ROW = and_(NOT_DELETED, POSTED, LEAF, ON_BUDGET_ACCOUNT)
 
 
@@ -379,6 +386,57 @@ CASH_ACCOUNT = and_(
     LIVE_ACCOUNT,
     Account.on_budget == True,  # noqa: E712
     Account.classification != "liability",
+)
+
+#: The only shape `Account.counts_toward_emergency_fund` may be set on: an
+#: off-budget asset that counts as savings. The account endpoints ask this of
+#: the row as it will be, so the refusal and the readers below cannot disagree.
+#:
+#: Each term is load-bearing. On budget, the account's money is already in the
+#: envelopes, and counting the account too counts it twice. A liability is
+#: owed, not held. And without `counts_as_savings` a transfer into the account
+#: classes as spending while the account counts as fund — the household would
+#: be told it spent the money it set aside.
+_OFF_BUDGET_ASSET = and_(
+    Account.on_budget == False,  # noqa: E712
+    Account.classification != "liability",
+)
+EMERGENCY_FUND_ACCOUNT_SHAPE = and_(
+    _OFF_BUDGET_ASSET,
+    Account.counts_as_savings == True,  # noqa: E712
+)
+
+#: An account whose balance is savings: a live off-budget asset that counts as
+#: savings — the shape above, which is also the account the classifier's rule 3
+#: (`domain/activity_class.py`, TRANSFER_TO_TRACKED_ASSET) sends saved money
+#: into. The Savings report lists these under Saved.
+#:
+#: On-budget accounts are never here, whatever their type: their money is
+#: already in the envelopes, and the envelopes say what each dollar is for.
+#: Closed accounts stay in — a closed account's past balances were savings —
+#: and the report omits one that held nothing in its window.
+#: `test_savings_report_sections.py` pins that this and rule 3 agree on every
+#: account shape.
+SAVINGS_ACCOUNT = and_(LIVE_ACCOUNT, EMERGENCY_FUND_ACCOUNT_SHAPE)
+
+#: An account the emergency-fund picker may offer: a live, open off-budget
+#: asset. `counts_as_savings` is NOT required — the picker turns it on in the
+#: same save that marks the account (`services/emergency_fund_choice.py`), so
+#: an off-budget reserve nobody marked as savings yet is still choosable.
+EMERGENCY_FUND_ACCOUNT_CANDIDATE = and_(
+    LIVE_ACCOUNT,
+    Account.is_closed == False,  # noqa: E712
+    _OFF_BUDGET_ASSET,
+)
+
+#: An account whose balance is part of the emergency fund. The flag alone is not
+#: enough: a flag left on an account that later moved on budget, stopped
+#: counting as savings, closed or was deleted reads false here rather than
+#: counting money that is no longer set aside.
+EMERGENCY_FUND_ACCOUNT = and_(
+    EMERGENCY_FUND_ACCOUNT_CANDIDATE,
+    EMERGENCY_FUND_ACCOUNT_SHAPE,
+    Account.counts_toward_emergency_fund == True,  # noqa: E712
 )
 
 
@@ -579,6 +637,12 @@ def row_category(predicate):
         .correlate(Transaction)
         .exists()
     )
+
+
+#: A row filed to a sinking fund (`category_filters.IS_SINKING_FUND`): the rows
+#: the essentials figures spread over twelve months when the budget's
+#: "spread yearly bills" setting is on.
+IN_SINKING_FUND = row_category(IS_SINKING_FUND)
 
 
 #: A card row the budget has no claim on: **the complement**, written as

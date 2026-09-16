@@ -1,0 +1,66 @@
+.which-tag {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+/* Its own scroller at phone width, so the page never scrolls sideways. */
+.which-tag__scroll {
+  overflow-x: auto;
+}
+
+.which-tag__table {
+  width: 100%;
+  min-width: 440px;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+
+.which-tag__table th,
+.which-tag__table td {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-top: 1px solid var(--edge);
+  text-align: left;
+  vertical-align: top;
+}
+
+.which-tag__table thead th {
+  border-top: none;
+  font-size: var(--font-size-2xs);
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.which-tag__table tbody th {
+  width: 55%;
+  font-weight: 400;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.which-tag__tag {
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+
+.which-tag__mode {
+  color: var(--text-secondary);
+}
+
+.which-tag__note {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.which-tag__warning {
+  margin: 0;
+  max-width: 64ch;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}

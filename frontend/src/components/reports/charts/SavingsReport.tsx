@@ -3,13 +3,11 @@ import {
   Area,
   AreaChart,
   CartesianGrid,
-  Legend,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts'
-import { useNavigate } from 'react-router-dom'
 import { useSavingsReport } from '../../../api/reports'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { ReportErrorState } from '../ReportErrorState'
@@ -20,6 +18,8 @@ import { chartColor } from './chartColors'
 import { ReportInfoButton, ReportScopeNote } from '../ReportInfoButton'
 import { ReportExportButton } from '../ReportExportButton/ReportExportButton'
 import { ChartTooltip } from './ChartTooltip'
+import { OnTheWaySection, SavedSection, SinkingFundsSection } from './SavingsSections'
+import { GuideTabLink } from '../../guide/GuideTabLink'
 import './SavingsReport.css'
 import { useReportMonths } from '../../../stores/reportStore'
 import { useMoneyAxis } from '../../../hooks/useMoneyAxis'
@@ -29,67 +29,68 @@ interface Props {
 }
 
 export function SavingsReport({ budgetId }: Props) {
-  const navigate = useNavigate()
   const { formatMoney, formatDate, formatMonth, formatMonthShort } = useFormatters()
   const moneyAxis = useMoneyAxis()
   const months = useReportMonths()
   const { data, isLoading, isError, error, refetch } = useSavingsReport(budgetId, months)
   const captureRef = useRef<HTMLDivElement>(null)
 
-  const categories = useMemo(() => data?.categories ?? [], [data])
-  const summary = data?.summary
-  const monthLabels = useMemo(() => data?.months ?? [], [data])
-
-  const chartData = useMemo(() => {
-    if (!monthLabels.length || !categories.length) return []
-
-    return monthLabels.map((monthStr, idx) => {
-      const entry: Record<string, string | number | null> = { month: formatMonthShort(monthStr) }
-
-      for (const cat of categories) {
-        // null, not 0: a month the server has no figure for is a gap, not an
-        // empty envelope.
-        entry[cat.category_name] = cat.monthly_balances[idx] ?? null
-      }
-
-      return entry
-    })
-  }, [monthLabels, categories, formatMonthShort])
+  // One served series: Saved at each month's end. The envelopes count at
+  // their floored Available there, which is the server's rule, so the chart
+  // draws the total rather than stacking rows that would not add up to it.
+  const chartData = useMemo(
+    () =>
+      (data?.months ?? []).map((m, i) => ({
+        month: formatMonthShort(m),
+        Saved: data?.saved.monthly_totals[i] ?? 0,
+      })),
+    [data, formatMonthShort]
+  )
 
   if (isLoading) {
     return <div className="report-loading">Loading...</div>
   }
   if (isError) return <ReportErrorState error={error} onRetry={() => refetch()} />
 
-  const hasData = categories.length > 0
-
   return (
     <div className="report-section surface">
       <div className="report-section__header">
         <h2 className="report-section__title">Savings</h2>
         <ReportInfoButton title="Savings">
+          <p>The report has three parts, each with its own total. They are never added together.</p>
           <p>
-            This report tracks categories you&apos;ve tagged with <strong>Savings</strong> or{' '}
-            <strong>Long-term expense</strong>.
+            <strong>Saved</strong> is Savings and Emergency fund envelopes that count{' '}
+            <strong>while it’s in the budget</strong>, plus off-budget accounts marked{' '}
+            <strong>Counts as savings</strong>. Moving money from such an envelope to such an
+            account leaves Saved unchanged.
           </p>
           <p>
-            The chart shows each category&apos;s balance at the end of every month — the same
-            Available the Budget page shows. <strong>Total Balance</strong> is the sum of all
-            savings category balances. <strong>Avg Monthly Inflow</strong> shows how much
-            you&apos;re typically adding.
+            <strong>On the way to savings</strong> is what Savings envelopes that count{' '}
+            <strong>when it leaves the budget</strong> still hold. That money counts as saved when
+            it leaves the budget, so it is shown here and not added to Saved.
           </p>
           <p>
-            On a budget imported from YNAB, months before the import are worked back from
-            YNAB&apos;s own balance at the import.
+            <strong>Sinking funds</strong> are envelopes tagged <strong>Long-term expense</strong>:
+            money spoken for by a planned bill. They are never savings.
           </p>
           <p>
-            To track a category, open it on the Budget page and add the <strong>Savings</strong> tag
-            in the panel that opens.
+            On-budget accounts are never added: their money is already in your envelopes, which say
+            what each dollar is for.
           </p>
           <p>
-            <strong>What pulled from savings</strong> lists money moved <em>out</em> of these
-            categories in the window — to another category or back to To Be Assigned — as the audit
-            trail records it. It states the move, nothing about why.
+            Envelope balances are the Available the Budget page shows; an overspent envelope counts
+            as nothing toward its section. On a budget imported from YNAB, months before the import
+            are worked back from YNAB&apos;s own balance.
+          </p>
+          <p>
+            <strong>What pulled from savings</strong> lists money moved <em>out</em> of Savings and
+            Emergency fund envelopes in the window — to another category or back to Ready to Assign
+            — as the audit trail records it.
+          </p>
+          <p>
+            <GuideTabLink tab="aside" anchor="savings-report">
+              How the three parts count
+            </GuideTabLink>
           </p>
           <ReportScopeNote report="savings" />
         </ReportInfoButton>
@@ -100,113 +101,101 @@ export function SavingsReport({ budgetId }: Props) {
           <ReportExportButton
             reportId="savings"
             getRows={() =>
-              categories.map((c) => ({
-                category: c.category_name,
-                group: c.group_name,
-                current_balance: c.current_balance,
-                total_inflow: c.total_inflow,
-              }))
+              data
+                ? [
+                    ...data.saved.envelopes.map((e) => ({
+                      section: 'Saved',
+                      name: e.category_name,
+                      group: e.group_name,
+                      balance: e.current_balance,
+                    })),
+                    ...data.saved.accounts.map((a) => ({
+                      section: 'Saved',
+                      name: a.name,
+                      group: '',
+                      balance: a.current_balance,
+                    })),
+                    ...data.on_the_way.envelopes.map((e) => ({
+                      section: 'On the way to savings',
+                      name: e.category_name,
+                      group: e.group_name,
+                      balance: e.current_balance,
+                    })),
+                    ...data.sinking_funds.envelopes.map((e) => ({
+                      section: 'Sinking funds',
+                      name: e.category_name,
+                      group: e.group_name,
+                      balance: e.current_balance,
+                    })),
+                  ]
+                : []
             }
             captureRef={captureRef}
           />
         </div>
       </div>
 
-      {!hasData ? (
-        <div className="reports-empty">
-          <p>No savings categories tracked yet.</p>
-          {/* This report is tag-driven and nothing else says so, so an empty
-              state that only restates the emptiness leaves the user to guess
-              which of "no savings" and "not set up" they are looking at. */}
-          <p style={{ fontSize: 'var(--font-size-xs)', marginTop: 8 }}>
-            This report follows the categories you tag as <strong>Savings</strong> or{' '}
-            <strong>Long-term expense</strong> — not your savings accounts.
-          </p>
-          <p style={{ fontSize: 'var(--font-size-xs)', marginTop: 8 }}>
-            Open a category on the Budget page and add the tag in the panel that opens; it will show
-            up here.
-          </p>
-          <button
-            type="button"
-            className="report-btn"
-            style={{ marginTop: 12 }}
-            onClick={() => navigate('/budget')}
-          >
-            Go to the Budget page
-          </button>
-        </div>
-      ) : (
+      {data && (
         <div ref={captureRef} className="report-capture">
           <MetricRow>
-            <MetricCard label="Total Balance" value={formatMoney(summary?.total_balance ?? 0)} />
-            {/* Every month in the window, this one included — assigning is a
-                monthly act, not something that accrues by the day, so an
-                envelope funded on the 1st has its whole inflow on record.
-                Deliberately unlike the spending averages, which divide by
-                complete months. */}
+            <MetricCard label="Saved" value={formatMoney(data.saved.total)} />
             <MetricCard
-              label="Avg Monthly Inflow"
-              value={formatMoney(summary?.avg_monthly_inflow ?? 0)}
-              sub="assigned, per month"
+              label="On the way to savings"
+              value={formatMoney(data.on_the_way.total)}
+              sub="not in Saved"
             />
             <MetricCard
-              label="Categories"
-              value={String(summary?.category_count ?? 0)}
-              sub="tracked"
+              label="Sinking funds"
+              value={formatMoney(data.sinking_funds.total)}
+              sub="spoken for"
             />
           </MetricRow>
 
-          <div className="report-chart" style={{ height: 300 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
-                <XAxis
-                  dataKey="month"
-                  tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
-                  axisLine={{ stroke: 'var(--border-color)' }}
-                  tickLine={false}
-                />
-                <YAxis
-                  {...moneyAxis}
-                  tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <Tooltip
-                  content={({ active, payload, label }) => (
-                    <ChartTooltip
-                      active={active}
-                      payload={payload
-                        ?.filter((p) => p.value != null)
-                        .map((p) => ({
+          {data.saved.total !== 0 && (
+            <div className="report-chart" style={{ height: 240 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
+                  <XAxis
+                    dataKey="month"
+                    tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
+                    axisLine={{ stroke: 'var(--border-color)' }}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    {...moneyAxis}
+                    tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <Tooltip
+                    content={({ active, payload, label }) => (
+                      <ChartTooltip
+                        active={active}
+                        payload={payload?.map((p) => ({
                           name: String(p.name ?? ''),
                           value: Number(p.value),
                           color: p.color,
                           fill: p.fill,
                         }))}
-                      label={String(label ?? '')}
-                      showTotal
-                      formatter={formatMoney}
-                    />
-                  )}
-                />
-                <Legend />
-                {categories.slice(0, 10).map((cat, idx) => (
-                  <Area
-                    key={cat.category_id}
-                    type="monotone"
-                    dataKey={cat.category_name}
-                    stackId="stack"
-                    fill={chartColor(idx)}
-                    stroke={chartColor(idx)}
-                    fillOpacity={0.6}
+                        label={String(label ?? '')}
+                        formatter={formatMoney}
+                      />
+                    )}
                   />
-                ))}
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
+                  <Area
+                    type="monotone"
+                    dataKey="Saved"
+                    fill={chartColor(0)}
+                    stroke={chartColor(0)}
+                    fillOpacity={0.4}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          )}
 
-          {data && data.unrecovered.length > 0 && (
+          {data.unrecovered.length > 0 && (
             <p className="reports-note" role="note">
               {data.unrecovered
                 .map((u) => `${u.category_name} starts in ${formatMonth(u.starts_from)}`)
@@ -216,41 +205,16 @@ export function SavingsReport({ budgetId }: Props) {
             </p>
           )}
 
-          <table className="report-table">
-            <caption className="sr-only">Savings category balances</caption>
-            <thead>
-              <tr>
-                <th scope="col" style={{ textAlign: 'left' }}>
-                  Category
-                </th>
-                <th scope="col" style={{ textAlign: 'left' }}>
-                  Group
-                </th>
-                <th scope="col" style={{ textAlign: 'right' }}>
-                  Balance
-                </th>
-                <th scope="col" style={{ textAlign: 'right' }}>
-                  Inflow
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {categories.map((cat) => (
-                <tr key={cat.category_id}>
-                  <td>{cat.category_name}</td>
-                  <td style={{ color: 'var(--text-muted)' }}>{cat.group_name}</td>
-                  <td style={{ textAlign: 'right' }}>{formatMoney(cat.current_balance)}</td>
-                  <td style={{ textAlign: 'right' }}>{formatMoney(cat.total_inflow)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <SavedSection saved={data.saved} />
+          <OnTheWaySection section={data.on_the_way} />
+          <SinkingFundsSection section={data.sinking_funds} />
 
-          {data && data.drains.moves.length > 0 && (
+          {data.drains.moves.length > 0 && (
             <section className="report-drains">
               <h3 className="report-drains__title">What pulled from savings</h3>
               <p className="report-drains__total">
-                {formatMoney(data.drains.total)} moved out of savings categories in this window.
+                {formatMoney(data.drains.total)} moved out of Savings and Emergency fund envelopes
+                in this window.
               </p>
               <ul className="report-drains__list">
                 {data.drains.moves.map((m) => (

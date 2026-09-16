@@ -3,9 +3,10 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import Field
+from pydantic import ConfigDict, Field
 
 from igab.api.v1.schemas.base import ApiModel
+from igab.domain.enums import TargetStatus
 
 # ─── Existing ─────────────────────────────────────────────────────────────────
 
@@ -33,9 +34,14 @@ class IncomeExpenseMonth(ApiModel):
     #: Money spent. Saving and debt principal are reported separately — both
     #: leave the budget, but neither is spending.
     expenses: Decimal
+    #: Saved: savings_moved + savings_held (`domain.savings`).
     savings: Decimal
+    savings_moved: Decimal
+    savings_held: Decimal
     debt_principal: Decimal
-    #: income - expenses - savings - debt_principal, so the parts reconcile.
+    #: income - expenses - savings_moved - debt_principal: money-moved, so it
+    #: reconciles to the accounts. Held money never left them, so `net` is
+    #: deliberately not reduced by `savings_held` (`income_vs_expense`).
     net: Decimal
 
 
@@ -53,6 +59,77 @@ class TopCategory(ApiModel):
     total: Decimal
 
 
+class EssentialsFigures(ApiModel):
+    """What a lean month costs, both ways (`guide.concepts.EssentialsMonthly`).
+
+    `as_paid` is the 90-day figure as bills landed; `spread` swaps the
+    sinking-fund (Long-term expense) bills in it for a twelfth of the last
+    365 days' worth. `spread_on` is the budget's setting and `monthly` the one
+    it selects — what every target, runway and reserve reads. Both are always
+    served, so a surface can show the other beside it.
+    """
+
+    # Validated from the dataclass itself: `monthly` is its property, and the
+    # rule choosing it is not respelled here.
+    model_config = ConfigDict(from_attributes=True)
+
+    as_paid: Decimal
+    spread: Decimal
+    spread_on: bool
+    monthly: Decimal
+
+
+class FundPartOut(ApiModel):
+    """One envelope or account the emergency fund counted."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    balance: Decimal
+
+
+class FundExternalOut(ApiModel):
+    """What the household said it keeps elsewhere. `declared` with no `amount`
+    is "I have this covered" — never zero."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    declared: bool
+    amount: Decimal | None
+    as_of: date | None
+    note: str | None
+
+
+class EmergencyFundOut(ApiModel):
+    """The emergency fund and exactly what it counted
+    (`services.emergency_fund.EmergencyFund`) — tagged envelopes, marked
+    off-budget accounts and anything kept elsewhere. Nothing is guessed.
+    Every field required: a surface that quotes the total can always say what
+    went into it."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    set_up: bool
+    #: None only when nothing in IGAB was chosen and no figure was declared.
+    total: Decimal | None
+    categories: list[FundPartOut]
+    accounts: list[FundPartOut]
+    external: FundExternalOut
+
+
+class MeansMonth(ApiModel):
+    """One complete month of the Overview's Means trend
+    (`report_basics.means_months`)."""
+
+    month: date
+    #: The INCOME class, as `income_this_month` counts it.
+    income: Decimal
+    #: COST_OF_LIVING_CLASSES, as `outflows_this_month` counts it: spending
+    #: plus debt payments, never savings.
+    outflows: Decimal
+
+
 class DashboardMetrics(ApiModel):
     # `to_be_assigned` lived here, defaulted to zero and populated by no code
     # path. The Overview's card reads the budget-month endpoint's own figure,
@@ -63,10 +140,10 @@ class DashboardMetrics(ApiModel):
     net_worth_prev: Decimal
     burn_rate_30: Decimal
     burn_rate_90: Decimal
-    #: Monthly essential spending over the Guide's 90-day window — the same
-    #: number the Guide's emergency-fund target is built from. None until
-    #: something is tagged Essential (untagged, it would equal burn rate).
-    essentials_monthly: Decimal | None
+    #: What a lean month costs, both ways — the figures the Guide's
+    #: emergency-fund target is built from. None until something is tagged
+    #: Essential (untagged, it would equal burn rate).
+    essentials: EssentialsFigures | None
     essentials_tagged: bool
     #: None when no income was recorded in the window — the Savings Rate tab's
     #: convention, and a gap rather than a floor on the chart.
@@ -84,6 +161,11 @@ class DashboardMetrics(ApiModel):
     #: Overview's above/at/below-your-means verdict reads it against income.
     outflows_this_month: Decimal
     top_categories: list[TopCategory]
+    #: The last 12 COMPLETE months, oldest first, whatever the requested
+    #: window — fewer on a budget whose history is younger, none on an empty
+    #: one; a month with no activity inside the window is zeros. Required: the
+    #: Means trend card has no other source.
+    means_months: list[MeansMonth]
 
 
 # ─── Net Worth ────────────────────────────────────────────────────────────────
@@ -390,8 +472,14 @@ class EssentialsCategory(ApiModel):
 
 
 class EssentialsMonth(ApiModel):
+    """One complete month of essential spending, as paid — a chart of what
+    was spent never spreads a bill."""
+
     month: date
     total: Decimal
+    #: The part of `total` filed to a sinking fund (`IN_SINKING_FUND`), so the
+    #: coverage series can spread it.
+    sinking_total: Decimal
 
 
 class ReserveTarget(ApiModel):
@@ -402,7 +490,8 @@ class ReserveTarget(ApiModel):
 class EssentialsReportResponse(ApiModel):
     """What a lean month costs, from what the household tagged Essential.
 
-    `essentials_90d` is the Guide's figure (rolling 90 days ÷ 3) and what the
+    `essentials` is the Guide's figure (rolling 90 days ÷ 3, sinking-fund bills
+    spread when the budget's setting is on) and what the
     Overview card shows; the per-category table averages over `months`
     complete months instead. `tagged` is False until something carries the
     tag — then every figure is 0 and the UI says where to apply it.
@@ -412,20 +501,20 @@ class EssentialsReportResponse(ApiModel):
     months: int
     window_start: date
     window_end: date
-    essentials_90d: Decimal
+    #: Served whether or not anything is tagged — zeros when nothing is.
+    essentials: EssentialsFigures
     monthly_total_average: Decimal
     categories: list[EssentialsCategory]
     monthly_series: list[EssentialsMonth]
-    #: 1 / 3 / 6 / 12 months of essentials, from `essentials_90d`.
+    #: 1 / 3 / 6 / 12 months of essentials, from `essentials.monthly`.
     reserve: list[ReserveTarget]
     #: The roadmap's full-emergency-fund range, in months.
     roadmap_range: tuple[int, int]
-    #: What the Guide reads as the emergency fund today — the bound
-    #: category or account, else its own detection — and how many lean months
-    #: that covers (`emergency_fund_balance / essentials_90d`). None when
-    #: nothing looks like a fund, or nothing is tagged Essential yet.
-    emergency_fund_balance: Decimal | None = None
-    emergency_fund_source: str | None = None
+    #: The emergency fund and what it counted, read whatever the Guide tracks.
+    emergency_fund: EmergencyFundOut
+    #: How many lean months `emergency_fund.total` covers
+    #: (`total / essentials.monthly`). None when nothing was chosen, or nothing
+    #: is tagged Essential yet.
     runway_months: Decimal | None = None
     #: Tagged Essential and still not counted, by class — see
     #: `CostOfLivingResponse.class_excluded`.
@@ -642,7 +731,20 @@ class SubscriptionsReportResponse(ApiModel):
 # ─── Savings Report ──────────────────────────────────────────────────────────
 
 
-class SavingsCategory(ApiModel):
+class SavingsTargetOut(ApiModel):
+    """An envelope's target, as the Budget page judges it this month."""
+
+    type: str
+    amount: Decimal
+    target_date: date | None
+    #: The Budget page's pill (`TargetService.calculate_status`).
+    status: TargetStatus
+    #: Available ÷ amount for a savings-balance target, floored at 0 and not
+    #: capped. None for a funding target, which asks for a pace, not a balance.
+    progress: Decimal | None
+
+
+class SavingsEnvelopeOut(ApiModel):
     category_id: uuid.UUID
     category_name: str
     group_name: str
@@ -652,15 +754,42 @@ class SavingsCategory(ApiModel):
     #: `SavingsReportResponse.unrecovered`). Absent, not zero.
     monthly_balances: list[Decimal | None]
     current_balance: Decimal
-    target_balance: Decimal | None
-    total_inflow: Decimal  # total assigned/deposited in the period
+    #: Positive assignments in the window.
+    total_inflow: Decimal
+    target: SavingsTargetOut | None
 
 
-class SavingsSummary(ApiModel):
-    total_balance: Decimal  # sum of current balances
-    total_inflow: Decimal  # sum of inflows in the period
-    avg_monthly_inflow: Decimal
-    category_count: int
+class SavingsAccountOut(ApiModel):
+    """An off-budget account that counts as savings (`txn_filters.SAVINGS_ACCOUNT`)."""
+
+    account_id: uuid.UUID
+    name: str
+    account_type: str
+    #: Balance through each month's end, the running month through today. None
+    #: before the account's first row.
+    monthly_balances: list[Decimal | None]
+    current_balance: Decimal
+
+
+class SavingsSavedOut(ApiModel):
+    """Kept-here Savings and Emergency fund envelopes plus off-budget savings
+    accounts. `total = envelopes_total + accounts_total`; envelopes count at
+    their carryover-floored Available."""
+
+    total: Decimal
+    envelopes_total: Decimal
+    accounts_total: Decimal
+    #: Saved at each month's end, aligned with `months`.
+    monthly_totals: list[Decimal]
+    envelopes: list[SavingsEnvelopeOut]
+    accounts: list[SavingsAccountOut]
+
+
+class SavingsSectionOut(ApiModel):
+    """On the way to savings, or Sinking funds: never added to Saved."""
+
+    total: Decimal
+    envelopes: list[SavingsEnvelopeOut]
 
 
 class ReportDrainMove(ApiModel):
@@ -691,9 +820,16 @@ class SavingsUnrecovered(ApiModel):
 
 
 class SavingsReportResponse(ApiModel):
-    categories: list[SavingsCategory]
-    summary: SavingsSummary
+    """The Savings report in three parts (`services/savings_report.py`)."""
+
+    saved: SavingsSavedOut
+    #: What sent-out Savings envelopes hold until the money leaves.
+    on_the_way: SavingsSectionOut
+    #: Long-term expense envelopes that are not savings.
+    sinking_funds: SavingsSectionOut
     months: list[date]
+    #: Moves out of Savings and Emergency fund envelopes (both modes), not
+    #: sinking funds.
     drains: ReportDrains
     #: Envelopes whose line starts late, so the page can say why rather than
     #: draw a gap nobody explained.
@@ -707,7 +843,10 @@ class SavingsRateMonth(ApiModel):
     month: date
     income: Decimal
     spending: Decimal
+    #: Saved: savings_moved + savings_held (`domain.savings`).
     savings: Decimal
+    savings_moved: Decimal
+    savings_held: Decimal
     debt_principal: Decimal
     #: None when there was no income that month — distinct from a rate of 0,
     #: which would read as "saved nothing out of real income".
@@ -719,6 +858,9 @@ class SavingsRateSummary(ApiModel):
     income: Decimal
     spending: Decimal
     savings: Decimal
+    savings_moved: Decimal
+    #: The months' held added up — the held change over the whole window.
+    savings_held: Decimal
     debt_principal: Decimal
     savings_rate: float | None
     savings_rate_with_debt: float | None
@@ -739,6 +881,8 @@ class SavingsContributor(ApiModel):
     Named by destination: a transfer to a tracked account by that account,
     anything else by its category. `total` is the class magnitude — positive
     for money that left the budget, negative for money drawn back into it.
+    A kept-here Savings envelope's held change is a category row with reason
+    `held_in_savings_envelope`; its `count` is its register rows.
     """
 
     kind: Literal["account", "category"]
@@ -770,7 +914,10 @@ class SavingsContributorsResponse(ApiModel):
     start_date: date
     end_date: date
     income: Decimal
+    #: Saved: savings_moved + savings_held.
     savings: Decimal
+    savings_moved: Decimal
+    savings_held: Decimal
     debt_principal: Decimal
     savings_contributors: list[SavingsContributor]
     debt_contributors: list[SavingsContributor]
@@ -1048,6 +1195,18 @@ class ReportFavoritesUpdate(ApiModel):
     tabs: list[str] = Field(default_factory=list, max_length=64)
 
 
+# ─── Report settings ─────────────────────────────────────────────────────────
+
+
+class ReportSettings(ApiModel):
+    """Per-budget settings that change what the reports count
+    (`services/report_settings.py`). The PUT sends the whole object."""
+
+    #: Spread sinking-fund (Long-term expense) bills over twelve months in the
+    #: essentials figures. On with no stored choice.
+    spread_sinking_funds: bool
+
+
 # ─── Emergency fund coverage ─────────────────────────────────────────────────
 
 
@@ -1077,12 +1236,12 @@ class EmergencyCoverageResponse(ApiModel):
     #: False when nothing carries the Essential tag — there is no denominator,
     #: so the report explains itself instead of drawing zeroes.
     tagged: bool
-    #: None when no fund has been found or declared.
-    fund_balance: Decimal | None
-    fund_source: str | None
+    #: The emergency fund and what it counted — the Essentials report's own.
+    fund: EmergencyFundOut
     #: The Essentials report's own runway, quoted rather than recomputed.
     coverage_months: Decimal | None
-    essentials_monthly: Decimal
+    #: The Essentials report's own figures, quoted; the targets read `.monthly`.
+    essentials: EssentialsFigures
     target_low: Decimal
     target_high: Decimal
     target_range: tuple[int, int]

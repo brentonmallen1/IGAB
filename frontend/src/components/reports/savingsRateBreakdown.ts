@@ -10,6 +10,11 @@ export function rateFormula(withDebt: boolean): string {
   return withDebt ? '(Saved + Debt principal) ÷ Income' : 'Saved ÷ Income'
 }
 
+/** What "Saved" is made of (backend `domain/savings.py`) — one sentence for
+ *  every report surface that shows the figure. */
+export const SAVED_DEFINITION =
+  'Saved = moved to savings + held in Savings envelopes that count while money is in the budget.'
+
 /** How many income sources the dialog names before folding the rest. */
 export const TOP_INCOME_SOURCES = 5
 

@@ -1,0 +1,37 @@
+.ef-counting {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.ef-counting__label {
+  color: var(--text-muted);
+}
+
+.ef-counting__change {
+  padding: 0;
+  background: none;
+  border: 0;
+  font-size: inherit;
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.ef-counting__change:hover {
+  color: var(--text-primary);
+}
+
+.ef-counting__change:focus-visible {
+  outline: 2px solid var(--input-focus-ring);
+  outline-offset: 2px;
+}
+
+@media (max-width: 768px) {
+  .ef-counting__change {
+    min-height: var(--tap-min);
+  }
+}

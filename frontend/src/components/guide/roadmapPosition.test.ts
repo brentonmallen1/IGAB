@@ -1,29 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { ROADMAP, findStage, type SignalKey, type StageId } from '../../content/roadmap'
+import { ROADMAP, findStage, type StageId } from '../../content/roadmap'
 import type { CheckupFinding, FindingKind, Signal } from '../../api/guide'
 import { roadmapPosition, stageStatus, type PositionInputs } from './roadmapPosition'
+import { makeSignal } from '../../test-utils/factories'
 
-function signal(key: SignalKey, over: Partial<Signal> = {}): Signal {
-  return {
-    key,
-    tracked: true,
-    source: 'auto',
-    met: null,
-    value: null,
-    detected_value: null,
-    external_value: null,
-    external_declared: false,
-    external_as_of: null,
-    target: null,
-    starter_target: null,
-    starter_met: null,
-    reason: '',
-    entities: {},
-    gaps: [],
-    note: null,
-    ...over,
-  }
-}
+const signal = makeSignal
 
 function finding(kind: FindingKind, concept_key: string, title: string): CheckupFinding {
   return { kind, rank: 1, concept_key, title, detail: '', value: null, target: null, names: [] }

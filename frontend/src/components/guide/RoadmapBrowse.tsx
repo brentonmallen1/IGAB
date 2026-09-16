@@ -3,7 +3,7 @@ import { ROADMAP } from '../../content/roadmap'
 import { useGuideStore } from '../../stores/guideStore'
 import { stepColor } from './stepColor'
 import { NodeCard } from './NodeCard'
-import { SignalBindingSheet } from './SignalBindingSheet'
+import { SignalEditor } from './SignalEditor'
 import { useGuideSignalMap } from './useGuideSignalMap'
 import { useCheckupLeds } from './useCheckupLeds'
 import { useRoadmapPosition } from './useRoadmapPosition'
@@ -100,7 +100,7 @@ export function RoadmapBrowse() {
         )
       })}
       {concept && guide.budgetId && (
-        <SignalBindingSheet
+        <SignalEditor
           budgetId={guide.budgetId}
           concept={concept}
           signal={guide.signals.get(concept.key)}

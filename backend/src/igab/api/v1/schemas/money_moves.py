@@ -19,6 +19,7 @@ from igab.domain.money_moves import (
     Move,
     MoveKind,
     ReportFamily,
+    move_shape_error,
 )
 
 Classification = Literal["asset", "liability"]
@@ -39,8 +40,9 @@ class AccountShapeIn(ApiModel):
 
 class MoneyMoveRequest(ApiModel):
     kind: MoveKind
-    #: The from-account of a transfer, or the one account of a transaction.
-    account: AccountShapeIn
+    #: The from-account of a transfer, or the one account of a transaction;
+    #: absent for an assign.
+    account: AccountShapeIn | None = None
     to_account: AccountShapeIn | None = None
     direction: Direction | None = None
     category: CategoryKind = CategoryKind.NONE
@@ -48,16 +50,21 @@ class MoneyMoveRequest(ApiModel):
 
     @model_validator(mode="after")
     def _shape_matches_kind(self) -> "MoneyMoveRequest":
-        if self.kind is MoveKind.TRANSFER and (self.to_account is None or self.direction):
-            raise ValueError("a transfer names to_account and no direction")
-        if self.kind is MoveKind.TRANSACTION and (self.to_account or self.direction is None):
-            raise ValueError("a transaction names a direction and no to_account")
+        error = move_shape_error(
+            self.kind,
+            has_account=self.account is not None,
+            has_to_account=self.to_account is not None,
+            has_direction=self.direction is not None,
+            category=self.category,
+        )
+        if error:
+            raise ValueError(error)
         return self
 
     def to_domain(self) -> Move:
         return Move(
             kind=self.kind,
-            account=self.account.to_domain(),
+            account=self.account.to_domain() if self.account else None,
             to_account=self.to_account.to_domain() if self.to_account else None,
             direction=self.direction,
             category=self.category,
@@ -95,7 +102,10 @@ class FiguresResponse(ApiModel):
     income: Decimal
     spending: Decimal
     cost_of_living: Decimal
+    #: Saved = savings_moved + savings_held (`domain.savings`).
     savings: Decimal
+    savings_moved: Decimal
+    savings_held: Decimal
     debt_principal: Decimal
     savings_rate: float | None
     savings_rate_with_debt: float | None
@@ -107,6 +117,8 @@ class MoveExplanationResponse(ApiModel):
     legs: list[LegResponse]
     budget_terms: list[BudgetTermResponse]
     class_totals: dict[str, Decimal]
+    #: What a kept-here Savings envelope comes to hold (`MoveExplanation.held`).
+    held: Decimal
     figures: FiguresResponse
     net_worth_delta: Decimal
     assumption: str
@@ -120,6 +132,7 @@ class MonthRowResponse(ApiModel):
 class MoneyMonthResponse(ApiModel):
     rows: list[MonthRowResponse]
     class_totals: dict[str, Decimal]
+    held: Decimal
     figures: FiguresResponse
 
 
@@ -131,6 +144,12 @@ class RuleResponse(ApiModel):
     reason_text: str
     #: The system tag key the rule reads, or None for a rule about accounts.
     tag_key: str | None
+    #: The savings mode the rule requires of the tagged category ('sent_out'
+    #: for the Savings rule), or None.
+    savings_mode: str | None
+    #: Every system tag the rule reads — `tag_key` and the tags that imply it
+    #: (Emergency fund reads the Savings rule). Empty for an account rule.
+    tag_keys: list[str]
     #: True for the last entry: what a row is when no rule matched.
     is_default: bool
 

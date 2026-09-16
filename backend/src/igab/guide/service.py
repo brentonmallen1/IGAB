@@ -82,6 +82,7 @@ class GuideService:
         target_service: TargetService | None = None,
         report_service: ReportService | None = None,
         liability_service: LiabilityService | None = None,
+        changes: ChangeRecorder | None = None,
     ) -> None:
         self.session = session
         self.repo = GuideRepository(session)
@@ -97,7 +98,9 @@ class GuideService:
         # (change_log.py) — each is a user decision, so each undoes. The
         # checkup's last-run stamp does NOT: it is the timestamp of the run
         # itself, and undoing it would falsify history.
-        self.changes = ChangeRecorder(session)
+        # A caller composing a Guide write into its own batch (the emergency
+        # fund picker) hands in its recorder, so the rows undo as one step.
+        self.changes = changes or ChangeRecorder(session)
 
     # ── preferences ──────────────────────────────────────────────────────────
 
@@ -271,7 +274,7 @@ class GuideService:
             case "budget_exists":
                 return Finding(concept_key=key, met=True, reason="you have a budget")
             case "emergency_fund":
-                return await self.detection.emergency_fund(budget_id, bound)
+                return await self.detection.emergency_fund(budget_id)
             case "essential_expenses":
                 return await self.detection.essential_expenses(budget_id, bound)
             case "high_interest_debt":
@@ -294,7 +297,10 @@ class GuideService:
         """Fold detection and any self-reported amount into one answer."""
         detected = finding.value if finding else None
         external = resolution.external_amount
-        total = fold_external(detected, external)
+        # The emergency fund quotes its own total, the one every report
+        # quotes; folding it again here would be a second spelling of the sum.
+        fund = finding.fund if finding else None
+        total = fund.total if fund is not None else fold_external(detected, external)
 
         target = self._target(key, essentials)
         met = self._met(key, finding, resolution, total, target)
@@ -322,6 +328,11 @@ class GuideService:
             starter = starter_emergency_fund(essentials.value if essentials else None)
             payload["starter_target"] = starter
             payload["starter_met"] = None if total is None else total >= starter
+            payload["fund"] = fund
+        if key == "essential_expenses":
+            # Both figures, so every surface can show the one the budget does
+            # not read beside the one it does. `value` is their `.monthly`.
+            payload["essentials"] = finding.essentials if finding else None
         return payload
 
     def _target(self, key: str, essentials: Finding | None) -> Decimal | None:
@@ -497,12 +508,14 @@ class GuideService:
         """
         signals = await self.signals(budget_id)
         by_key = {c["key"]: c for c in signals["concepts"]}
+        essentials = by_key.get("essential_expenses", {})
         return emergency_fund(
             current=by_key.get("emergency_fund", {}).get("value"),
-            essentials_monthly=by_key.get("essential_expenses", {}).get("value"),
+            essentials_monthly=essentials.get("value"),
             months=months,
             monthly_contribution=monthly_contribution,
             today=date.today(),
+            essentials=essentials.get("essentials"),
         )
 
     # ── candidates for the binding picker ────────────────────────────────────
@@ -573,6 +586,22 @@ class GuideService:
         external: bool = False,
         external_amount: Decimal | None = None,
     ) -> None:
+        concept = CONCEPTS_BY_KEY[concept_key]
+        refused = sorted(
+            t for t, ids in (entity_ids or {}).items() if ids and t not in concept.binds_to
+        )
+        if mode not in ("auto", "dismissed", "answer") and refused:
+            # The picker only offers `binds_to`, so this is a client sending a
+            # mode the concept no longer has. The emergency fund is chosen by
+            # tag and account flag now; a manual row would be one nothing reads.
+            raise InvariantViolation(
+                f"{concept.label} cannot be pointed at {' or '.join(refused)} here."
+                + (
+                    " Tag envelopes Emergency fund or mark an off-budget savings account instead."
+                    if concept_key == "emergency_fund"
+                    else ""
+                )
+            )
         if mode == "auto":
             await self._replace_concept_recorded(budget_id, concept_key, [])
             return
@@ -601,6 +630,52 @@ class GuideService:
                     }
                 )
 
+        await self._replace_concept_recorded(budget_id, concept_key, rows)
+
+    async def replace_external(
+        self,
+        budget_id: uuid.UUID,
+        concept_key: str,
+        *,
+        declared: bool,
+        amount: Decimal | None,
+        note: str | None,
+        chosen_elsewhere: bool,
+    ) -> None:
+        """Set only what a concept keeps outside IGAB — the emergency fund
+        picker's "Kept elsewhere" — through the one recorded writer.
+
+        `declared` False removes the external rows. A dismissal survives only
+        when nothing is chosen at all (`chosen_elsewhere` says whether the
+        caller's own save chose envelopes or accounts): choosing what counts is
+        asking the Guide to track it again, and a dismissal beside a choice
+        would hide the kept-elsewhere part (`bindings.resolve` lets a dismissal
+        win). Manual rows are not kept — a concept written here binds nothing.
+
+        An unchanged declaration keeps its `as_of`, so saving the picker without
+        touching the amount does not re-date the figure or record a change.
+        """
+        existing = [b for b in await self.repo.bindings(budget_id) if b.concept_key == concept_key]
+        rows: list[dict[str, Any]] = []
+        if declared:
+            prior = [b for b in existing if b.mode == "external"]
+            unchanged = (
+                len(prior) == 1
+                and prior[0].amount == amount
+                and (prior[0].note or None) == (note or None)
+            )
+            rows.append(
+                {
+                    "mode": "external",
+                    "amount": amount,
+                    "as_of": prior[0].as_of if unchanged else date.today(),
+                    "note": note,
+                }
+            )
+        elif not chosen_elsewhere:
+            rows.extend(
+                {"mode": "dismissed", "note": b.note} for b in existing if b.mode == "dismissed"
+            )
         await self._replace_concept_recorded(budget_id, concept_key, rows)
 
     async def _replace_concept_recorded(

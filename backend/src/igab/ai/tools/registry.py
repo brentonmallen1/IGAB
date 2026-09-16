@@ -137,14 +137,24 @@ TOOLS: tuple[ToolSpec, ...] = (
     ),
     ToolSpec(
         name="income_vs_expense",
-        description="Income, expenses, savings and debt principal per month.",
+        description=(
+            "Income, expenses, savings and debt principal per month. 'savings' is saved: "
+            "money moved into savings ('savings_moved') plus the balance held in Savings "
+            "envelopes that count while money is in the budget ('savings_held'). 'net' "
+            "subtracts only the moved part."
+        ),
         parameters=_obj({"months": _MONTHS}),
         handler=handlers.income_vs_expense,
         delegates_to="ReportService.income_vs_expense",
     ),
     ToolSpec(
         name="savings_rate",
-        description="What share of income was kept, per month and overall.",
+        description=(
+            "What share of income was kept, per month and overall. Saved = money moved into "
+            "savings ('savings_moved') plus what Savings envelopes that count while money is in "
+            "the budget came to hold "
+            "('savings_held'); the rate divides that total by income."
+        ),
         parameters=_obj({"months": _MONTHS}),
         handler=handlers.savings_rate,
         delegates_to="ReportService.savings_rate",

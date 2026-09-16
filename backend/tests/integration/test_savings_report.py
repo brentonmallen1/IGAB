@@ -1,4 +1,9 @@
-"""Savings report: envelope balances over time for savings-tagged categories.
+"""Savings report: envelope balances over time, by section.
+
+Which section an envelope sits in — Saved, On the way to savings, Sinking funds
+— is `test_savings_report_sections.py`. This suite pins what every envelope row
+says, whichever section it is in: its balances, inflow, drains and gaps. A
+Savings tag with no mode is sent out, so most envelopes here are On the way.
 
 **The balance is the envelope's Available, computed by `domain.carryover`** —
 the same walk the Budget page uses, floored between months. This suite used to
@@ -27,7 +32,7 @@ from igab.domain.drains import GONE_LABEL, TBA_LABEL
 from igab.repositories.import_anchor_repo import anchor_rows
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.services.card_payment import ensure_payment_category
-from igab.services.report_service import ReportService
+from igab.services.savings_report import savings_report
 from tests.report_clock import report_today
 
 from .factories import (
@@ -42,6 +47,15 @@ from .factories import (
 )
 
 TODAY = date.today()
+
+
+def _rows(data) -> list[dict]:
+    """Every envelope row, whichever section serves it."""
+    return (
+        data["saved"]["envelopes"]
+        + data["on_the_way"]["envelopes"]
+        + data["sinking_funds"]["envelopes"]
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -95,7 +109,7 @@ async def _anchor(db_session, budget, opening_month, available):
 
 async def test_balances_carry_prior_history_then_accumulate_monthly(db_session):
     budget, checking, group, tag_repo = await _setup(db_session)
-    ef = await _tagged_category(db_session, budget, group, tag_repo, "Emergency Fund", "savings")
+    ef = await _tagged_category(db_session, budget, group, tag_repo, "House Deposit", "savings")
     lt = await _tagged_category(
         db_session, budget, group, tag_repo, "New Roof", "long_term_expense"
     )
@@ -110,15 +124,15 @@ async def test_balances_carry_prior_history_then_accumulate_monthly(db_session):
     # long_term_expense categories belong in the report too
     await create_budget_assignment(db_session, budget, lt, months_ago(0), "250.00")
 
-    data = await ReportService(db_session).savings_report(budget.id, months=3)
+    data = await savings_report(db_session, budget.id, months=3)
 
     assert data["months"] == [months_ago(2), months_ago(1), months_ago(0)]
-    by_name = {c["category_name"]: c for c in data["categories"]}
+    by_name = {c["category_name"]: c for c in _rows(data)}
 
     # 1000 assigned less 100 spent five months ago ends that month at 900,
     # which carries in; then +500, then +500 less 200; the current month has no
     # data of its own so it reads the carried 1700.
-    ef_row = by_name["Emergency Fund"]
+    ef_row = by_name["House Deposit"]
     assert ef_row["monthly_balances"] == [
         Decimal("1400.00"),
         Decimal("1700.00"),
@@ -135,14 +149,13 @@ async def test_balances_carry_prior_history_then_accumulate_monthly(db_session):
     ]
     assert lt_row["total_inflow"] == Decimal("250.00")
 
-    # Sorted by current balance descending
-    assert [c["category_name"] for c in data["categories"]] == ["Emergency Fund", "New Roof"]
-
-    summary = data["summary"]
-    assert summary["total_balance"] == Decimal("1950.00")
-    assert summary["total_inflow"] == Decimal("1250.00")
-    assert summary["avg_monthly_inflow"] == Decimal("416.67")  # 1250 / 3 window months
-    assert summary["category_count"] == 2
+    # A Savings tag with no mode is sent out; a Long-term expense is a sinking
+    # fund. Neither is Saved.
+    assert [c["category_name"] for c in data["on_the_way"]["envelopes"]] == ["House Deposit"]
+    assert [c["category_name"] for c in data["sinking_funds"]["envelopes"]] == ["New Roof"]
+    assert data["on_the_way"]["total"] == Decimal("1700.00")
+    assert data["sinking_funds"]["total"] == Decimal("250.00")
+    assert data["saved"]["total"] == Decimal("0")
 
 
 async def test_negative_assignment_reduces_balance_but_not_inflow(db_session):
@@ -152,9 +165,9 @@ async def test_negative_assignment_reduces_balance_but_not_inflow(db_session):
     await create_budget_assignment(db_session, budget, fund, months_ago(1), "500.00")
     await create_budget_assignment(db_session, budget, fund, months_ago(0), "-300.00")
 
-    data = await ReportService(db_session).savings_report(budget.id, months=3)
+    data = await savings_report(db_session, budget.id, months=3)
 
-    row = data["categories"][0]
+    row = _rows(data)[0]
     assert row["monthly_balances"] == [
         Decimal("0"),
         Decimal("500.00"),
@@ -162,7 +175,6 @@ async def test_negative_assignment_reduces_balance_but_not_inflow(db_session):
     ]
     # Money moved OUT via a negative assignment is not an inflow
     assert row["total_inflow"] == Decimal("500.00")
-    assert data["summary"]["total_inflow"] == Decimal("500.00")
 
 
 async def test_pending_and_deleted_excluded_split_child_counted(db_session):
@@ -188,9 +200,9 @@ async def test_pending_and_deleted_excluded_split_child_counted(db_session):
         db_session, budget, checking, "-5.00", months_ago(0), category=fund, is_deleted=True
     )
 
-    data = await ReportService(db_session).savings_report(budget.id, months=3)
+    data = await savings_report(db_session, budget.id, months=3)
 
-    row = data["categories"][0]
+    row = _rows(data)[0]
     # Only the split child's -20 is real posted activity
     assert row["monthly_balances"][-1] == Decimal("-20.00")
     assert row["current_balance"] == Decimal("-20.00")
@@ -200,16 +212,19 @@ async def test_no_tagged_categories_is_empty(db_session):
     user = await create_user(db_session)
     budget = await create_budget(db_session, user)
 
-    data = await ReportService(db_session).savings_report(budget.id, months=3)
+    data = await savings_report(db_session, budget.id, months=3)
 
     assert data == {
-        "categories": [],
-        "summary": {
-            "total_balance": Decimal("0"),
-            "total_inflow": Decimal("0"),
-            "avg_monthly_inflow": Decimal("0"),
-            "category_count": 0,
+        "saved": {
+            "total": Decimal("0"),
+            "envelopes_total": Decimal("0"),
+            "accounts_total": Decimal("0"),
+            "monthly_totals": [Decimal("0")] * 3,
+            "envelopes": [],
+            "accounts": [],
         },
+        "on_the_way": {"total": Decimal("0"), "envelopes": []},
+        "sinking_funds": {"total": Decimal("0"), "envelopes": []},
         # The window, as every other savings report states it. This read []
         # while a budget whose only tagged envelope was deleted read the
         # window: one empty report, two API shapes.
@@ -236,8 +251,8 @@ async def test_a_month_that_overspent_hands_zero_to_the_next(db_session):
     await create_budget_assignment(db_session, budget, fund, months_ago(1), "300.00")
     await create_budget_assignment(db_session, budget, fund, months_ago(0), "300.00")
 
-    data = await ReportService(db_session).savings_report(budget.id, months=3)
-    row = data["categories"][0]
+    data = await savings_report(db_session, budget.id, months=3)
+    row = _rows(data)[0]
 
     # -200 is absorbed by TBA, so the next month opens at 0, not at -200.
     # The running total answered [-200.00, 100.00, 400.00].
@@ -262,8 +277,8 @@ async def test_an_overspend_before_the_window_is_floored_where_it_happened(db_se
     await create_transaction(db_session, budget, checking, "-300.00", months_ago(5), category=fund)
     await create_budget_assignment(db_session, budget, fund, months_ago(4), "500.00")
 
-    data = await ReportService(db_session).savings_report(budget.id, months=3)
-    row = data["categories"][0]
+    data = await savings_report(db_session, budget.id, months=3)
+    row = _rows(data)[0]
 
     assert row["monthly_balances"] == [Decimal("500.00")] * 3
     for month, balance in zip(data["months"], row["monthly_balances"], strict=True):
@@ -291,9 +306,9 @@ async def test_current_balance_equals_the_budget_pages_available(db_session):
     await create_transaction(db_session, budget, checking, "-90.00", months_ago(1), category=fund)
     await create_budget_assignment(db_session, budget, fund, months_ago(0), "175.00")
 
-    report = await ReportService(db_session).savings_report(budget.id, months=6)
+    report = await savings_report(db_session, budget.id, months=6)
 
-    assert report["categories"][0]["current_balance"] == await _page_available(
+    assert _rows(report)[0]["current_balance"] == await _page_available(
         db_session, budget, fund, TODAY
     )
 
@@ -313,10 +328,10 @@ async def test_a_row_later_this_month_moves_the_balance_as_it_moves_the_page(db_
     await create_budget_assignment(db_session, budget, fund, months_ago(0), "500.00")
     await create_transaction(db_session, budget, checking, "-120.00", last_day, category=fund)
 
-    report = await ReportService(db_session).savings_report(budget.id, months=3)
+    report = await savings_report(db_session, budget.id, months=3)
 
-    assert report["categories"][0]["current_balance"] == Decimal("380.00")
-    assert report["categories"][0]["current_balance"] == await _page_available(
+    assert _rows(report)[0]["current_balance"] == Decimal("380.00")
+    assert _rows(report)[0]["current_balance"] == await _page_available(
         db_session, budget, fund, TODAY
     )
 
@@ -335,12 +350,12 @@ async def test_activity_on_an_off_budget_account_moves_neither_figure(db_session
     await create_budget_assignment(db_session, budget, fund, months_ago(0), "500.00")
     await create_transaction(db_session, budget, tracked, "-120.00", months_ago(0), category=fund)
 
-    report = await ReportService(db_session).savings_report(budget.id, months=3)
+    report = await savings_report(db_session, budget.id, months=3)
     grid = await make_services(db_session).budgets.get_category_balance(fund.id, TODAY)
 
     # The off-budget row is not budget activity: 500, not 380.
-    assert report["categories"][0]["current_balance"] == Decimal("500.00")
-    assert report["categories"][0]["current_balance"] == grid.available
+    assert _rows(report)[0]["current_balance"] == Decimal("500.00")
+    assert _rows(report)[0]["current_balance"] == grid.available
 
 
 async def test_a_soft_deleted_envelope_is_not_a_row(db_session):
@@ -349,7 +364,7 @@ async def test_a_soft_deleted_envelope_is_not_a_row(db_session):
     once held as a balance, and counted toward `category_count`.
     """
     budget, checking, group, tag_repo = await _setup(db_session)
-    live = await _tagged_category(db_session, budget, group, tag_repo, "Emergency Fund", "savings")
+    live = await _tagged_category(db_session, budget, group, tag_repo, "House Deposit", "savings")
     gone = await _tagged_category(db_session, budget, group, tag_repo, "Old Goal", "savings")
 
     await create_budget_assignment(db_session, budget, live, months_ago(0), "200.00")
@@ -357,11 +372,10 @@ async def test_a_soft_deleted_envelope_is_not_a_row(db_session):
     gone.is_deleted = True
     await db_session.flush()
 
-    data = await ReportService(db_session).savings_report(budget.id, months=3)
+    data = await savings_report(db_session, budget.id, months=3)
 
-    assert [c["category_name"] for c in data["categories"]] == ["Emergency Fund"]
-    assert data["summary"]["category_count"] == 1
-    assert data["summary"]["total_balance"] == Decimal("200.00")
+    assert [c["category_name"] for c in _rows(data)] == ["House Deposit"]
+    assert data["on_the_way"]["total"] == Decimal("200.00")
 
 
 @pytest.mark.parametrize("live_sibling", [False, True], ids=["all-filtered", "live-sibling"])
@@ -369,13 +383,13 @@ async def test_a_deleted_envelopes_drain_does_not_hang_on_a_live_sibling(db_sess
     """Drains read every tagged envelope, a deleted one included: the move
     happened while it was savings. When the deleted one was the only tagged
     envelope, an early return served an empty report without them — so a
-    40.00 move out of "Old Goal" showed while "Emergency Fund" was tagged and
+    40.00 move out of "Old Goal" showed while "House Deposit" was tagged and
     vanished when it was not.
     """
     budget, checking, group, tag_repo = await _setup(db_session)
     if live_sibling:
         live = await _tagged_category(
-            db_session, budget, group, tag_repo, "Emergency Fund", "savings"
+            db_session, budget, group, tag_repo, "House Deposit", "savings"
         )
         await create_budget_assignment(db_session, budget, live, months_ago(0), "200.00")
     gone = await _tagged_category(db_session, budget, group, tag_repo, "Old Goal", "savings")
@@ -392,10 +406,10 @@ async def test_a_deleted_envelopes_drain_does_not_hang_on_a_live_sibling(db_sess
     gone.is_deleted = True
     await db_session.flush()
 
-    data = await ReportService(db_session).savings_report(budget.id, months=3)
+    data = await savings_report(db_session, budget.id, months=3)
 
     assert data["months"] == [months_ago(2), months_ago(1), months_ago(0)]
-    assert data["summary"]["category_count"] == (1 if live_sibling else 0)
+    assert len(_rows(data)) == (1 if live_sibling else 0)
     assert data["drains"]["total"] == Decimal("40.00")
     assert [(m["from_name"], m["to_name"], m["amount"]) for m in data["drains"]["moves"]] == [
         (GONE_LABEL, TBA_LABEL, Decimal("40.00"))
@@ -404,19 +418,18 @@ async def test_a_deleted_envelopes_drain_does_not_hang_on_a_live_sibling(db_sess
 
 async def test_the_window_has_exactly_the_months_asked_for(db_session):
     """`months=N` is N buckets. It used to be N+1, so the picker's
-    "All time (N months)" drew a leading empty column and the average inflow
-    was divided by N+1.
+    "All time (N months)" drew a leading empty column.
     """
     budget, checking, group, tag_repo = await _setup(db_session)
     fund = await _tagged_category(db_session, budget, group, tag_repo, "Vacation", "savings")
     await create_budget_assignment(db_session, budget, fund, months_ago(0), "600.00")
 
-    data = await ReportService(db_session).savings_report(budget.id, months=6)
+    data = await savings_report(db_session, budget.id, months=6)
 
     assert len(data["months"]) == 6
     assert data["months"] == [months_ago(n) for n in range(5, -1, -1)]
-    assert len(data["categories"][0]["monthly_balances"]) == 6
-    assert data["summary"]["avg_monthly_inflow"] == Decimal("100.00")  # 600 / 6
+    assert len(_rows(data)[0]["monthly_balances"]) == 6
+    assert _rows(data)[0]["total_inflow"] == Decimal("600.00")
 
 
 async def test_an_imported_budget_walks_back_from_ynabs_figure(db_session):
@@ -426,14 +439,14 @@ async def test_an_imported_budget_walks_back_from_ynabs_figure(db_session):
     deposits. The months before are walked back from YNAB's own figure.
     """
     budget, checking, group, tag_repo = await _setup(db_session)
-    fund = await _tagged_category(db_session, budget, group, tag_repo, "Emergency Fund", "savings")
+    fund = await _tagged_category(db_session, budget, group, tag_repo, "House Deposit", "savings")
     for n in range(6, 1, -1):
         await create_budget_assignment(db_session, budget, fund, months_ago(n), "200.00")
     await create_budget_assignment(db_session, budget, fund, months_ago(0), "50.00")
     await _anchor(db_session, budget, months_ago(2), {fund.id: Decimal("1000.00")})
 
-    data = await ReportService(db_session).savings_report(budget.id, months=6)
-    row = data["categories"][0]
+    data = await savings_report(db_session, budget.id, months=6)
+    row = _rows(data)[0]
 
     # 1000 at the import, 200 a month before it; then the anchored months.
     # Before: [0, 0, 0, 1000, 1000, 1050].
@@ -462,9 +475,9 @@ async def test_an_envelope_whose_history_cannot_reach_ynabs_figure_starts_late(d
     await create_budget_assignment(db_session, budget, fund, months_ago(0), "50.00")
     await _anchor(db_session, budget, months_ago(2), {fund.id: Decimal("100.00")})
 
-    data = await ReportService(db_session).savings_report(budget.id, months=6)
+    data = await savings_report(db_session, budget.id, months=6)
 
-    assert data["categories"][0]["monthly_balances"] == [
+    assert _rows(data)[0]["monthly_balances"] == [
         None,
         None,
         None,
@@ -497,8 +510,8 @@ async def test_a_card_refund_reads_as_the_budget_page_does(db_session):
     )
     await create_budget_assignment(db_session, budget, fund, months_ago(0), "40.00")
 
-    data = await ReportService(db_session).savings_report(budget.id, months=3)
-    row = data["categories"][0]
+    data = await savings_report(db_session, budget.id, months=3)
+    row = _rows(data)[0]
 
     # Before: [-100, 100, 140].
     assert row["monthly_balances"] == [Decimal("-100.00"), Decimal("0.00"), Decimal("40.00")]

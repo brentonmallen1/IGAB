@@ -446,14 +446,20 @@ def check_compatibility(
     return Compatibility(tuple(refusals), tuple(warnings), dropped)
 
 
+def predates_revision(file_revision: str, revision: str, revision_history: Sequence[str]) -> bool:
+    """Whether a file exported at `file_revision` was taken before `revision`.
+
+    False whenever age cannot be known — no history, or either revision not in
+    it (a file from a newer IGAB) — so a caller acting on "older" never acts on
+    a guess.
+    """
+    if file_revision not in revision_history or revision not in revision_history:
+        return False
+    return revision_history.index(file_revision) < revision_history.index(revision)
+
+
 def _revision_refusals(manifest: SnapshotManifest, revision_history: Sequence[str]) -> list[str]:
-    if not revision_history or manifest.alembic_revision not in revision_history:
-        return []
-    if MIN_SUPPORTED_REVISION not in revision_history:
-        return []
-    if revision_history.index(manifest.alembic_revision) >= revision_history.index(
-        MIN_SUPPORTED_REVISION
-    ):
+    if not predates_revision(manifest.alembic_revision, MIN_SUPPORTED_REVISION, revision_history):
         return []
     return [
         f"This snapshot predates migration {MIN_SUPPORTED_REVISION}, which "

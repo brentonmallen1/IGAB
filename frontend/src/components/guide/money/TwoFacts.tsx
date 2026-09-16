@@ -1,7 +1,6 @@
-import { SYSTEM_TAG_HELP } from '../../settings/TagsPanel/systemTagHelp'
+import { systemTagName } from '../../settings/TagsPanel/systemTagHelp'
+import { GuideTabLink } from '../GuideTabLink'
 import './TwoFacts.css'
-
-const tagName = (key: string) => SYSTEM_TAG_HELP.find((t) => t.key === key)?.name ?? key
 
 /** The two things every rule below reads. */
 export function TwoFacts() {
@@ -24,9 +23,15 @@ export function TwoFacts() {
       <section className="money-facts__fact surface surface--raised">
         <h3 className="money-facts__title">2. What the category is tagged</h3>
         <p>
-          Most categories are just categories. Tag one <strong>{tagName('savings')}</strong> or{' '}
-          <strong>{tagName('debt_principal')}</strong> and its outflows count that way, wherever the
-          money went.
+          Most categories are just categories. A <strong>{systemTagName('savings')}</strong>{' '}
+          category that counts when money leaves the budget, or one tagged{' '}
+          <strong>{systemTagName('debt_principal')}</strong>, counts its outflows that way, wherever
+          the money went. A {systemTagName('savings')} category that counts while money is in the
+          budget counts by where the money went, like any other; its balance is what counts as
+          saved.{' '}
+          <GuideTabLink tab="aside" anchor="savings-modes">
+            How the two Savings modes count
+          </GuideTabLink>
         </p>
         <p>
           A category in your income group means the money is income, ready to assign. No category on

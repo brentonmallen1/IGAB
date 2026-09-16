@@ -7,10 +7,12 @@ import { exportTransactionsPath, useDashboardMetrics } from '../../api/reports'
 import { useBudgetMonth } from '../../api/budgets'
 import { MetricCard } from './MetricCard'
 import { LivingMeansCard } from './LivingMeansCard'
-import { AT_MEANS_BAND_PCT } from './livingMeans'
+import { MeansTrendCard } from './MeansTrendCard'
+import { AT_MEANS_BAND_PCT, MEANS_TREND_POOL_MONTHS, meansTrend, signedMargin } from './livingMeans'
 import { MetricRow } from './MetricRow'
 import { ReportInfoButton, ReportScopeNote } from './ReportInfoButton'
 import { ReportExportButton } from './ReportExportButton/ReportExportButton'
+import { otherFigureNote } from '../../utils/essentialsFigures'
 import { useFormatters } from '../../hooks/useFormatters'
 import { ReportErrorState } from './ReportErrorState'
 import { SavingsRateDialog } from './SavingsRateDialog'
@@ -47,7 +49,9 @@ export function OverviewReport({ budgetId }: Props) {
   const netWorthDeltaPct = netWorthDelta(data.net_worth, data.net_worth_prev)
   const spendingDeltaPct = spendingDelta(data.expenses_this_month, data.expenses_prev_month)
   const daysUntilZero = roundedDaysUntilZero(data.days_until_zero)
-  const sixMonthReserve = essentialsReserve(data.essentials_monthly, 6)
+  const sixMonthReserve = essentialsReserve(data.essentials?.monthly, 6)
+  const otherEssentials = otherFigureNote(data.essentials, formatMoney)
+  const trend = meansTrend(data.means_months)
 
   return (
     <div className="overview-report">
@@ -63,12 +67,15 @@ export function OverviewReport({ budgetId }: Props) {
               <strong>Burn Rate</strong>: average monthly spending over the last 30 or 90 days.{' '}
               <strong>Essentials</strong>: the same 90-day average, counting only categories tagged
               Essential — what a lean month costs, and the figure the Guide’s emergency-fund target
-              is built from. Shows “—” until something is tagged. <strong>Savings Rate</strong>:
-              Savings ÷ Income — money moved into savings or investments, not simply money left
-              over. Shows “—” for a window with no income. Open it to see where the savings went and
-              where the income came from. <strong>Days Until Zero</strong>: cash on hand ÷ daily
-              burn rate — how long the budget’s cash accounts would last at this pace. Cards, loans
-              and tracked investments are out: net worth is not money you can spend next week.
+              is built from. Yearly bills in Long-term expense categories are spread over 12 months
+              when that setting is on (Essentials report), and the as-paid figure is shown beside
+              it. Shows “—” until something is tagged. <strong>Savings Rate</strong>: Saved ÷ Income
+              — money moved into savings or investments, or held in a Savings envelope that counts
+              while it’s in the budget, not simply money left over. Shows “—” for a window with no
+              income. Open it to see where the savings went and where the income came from.{' '}
+              <strong>Days Until Zero</strong>: cash on hand ÷ daily burn rate — how long the
+              budget’s cash accounts would last at this pace. Cards, loans and tracked investments
+              are out: net worth is not money you can spend next week.
             </p>
             <p>
               <strong>Your Means</strong>: income against what living cost over the range — spending
@@ -76,6 +83,13 @@ export function OverviewReport({ budgetId }: Props) {
               within {AT_MEANS_BAND_PCT}% of income either side; above is outflows beyond that.
               Savings transfers are not outflows. Shows “—” when no income was recorded. Open it to
               see the figures, the biggest spending categories and the prior period.
+            </p>
+            <p>
+              <strong>Means trend</strong>: the same reading over the last 12 complete months,
+              whatever range is selected. The figure pools the last {MEANS_TREND_POOL_MONTHS} months
+              — their income added up against their outflows — and says whether that is up or down
+              on the {MEANS_TREND_POOL_MONTHS} before. The bars show each month’s margin, with the
+              same {AT_MEANS_BAND_PCT}% band. Open it for the month-by-month table.
             </p>
             <ReportScopeNote report="overview" />
           </ReportInfoButton>
@@ -103,8 +117,12 @@ export function OverviewReport({ budgetId }: Props) {
                 { metric: 'net_worth', value: data.net_worth },
                 { metric: 'burn_rate_30', value: data.burn_rate_30 },
                 { metric: 'burn_rate_90', value: data.burn_rate_90 },
-                ...(data.essentials_monthly != null
-                  ? [{ metric: 'essentials_monthly', value: data.essentials_monthly }]
+                ...(data.essentials
+                  ? [
+                      { metric: 'essentials_monthly', value: data.essentials.monthly },
+                      { metric: 'essentials_as_paid', value: data.essentials.as_paid },
+                      { metric: 'essentials_spread', value: data.essentials.spread },
+                    ]
                   : []),
                 ...(data.savings_rate !== null
                   ? [{ metric: 'savings_rate_pct', value: ratePercent(data.savings_rate) }]
@@ -116,6 +134,16 @@ export function OverviewReport({ budgetId }: Props) {
                 { metric: 'spent_this_period', value: data.expenses_this_month },
                 { metric: 'debt_payments_this_period', value: data.debt_payments_this_month },
                 { metric: 'outflows_this_period', value: data.outflows_this_month },
+                ...(trend.recent.margin
+                  ? [
+                      {
+                        metric: 'means_trend_3_month_margin_pct',
+                        value: signedMargin(trend.recent.margin),
+                      },
+                    ]
+                  : []),
+                { metric: 'means_trend_months_below', value: trend.belowCount },
+                { metric: 'means_trend_months', value: trend.bars.length },
               ]}
               captureRef={captureRef}
               window={{ start: filters.startDate, end: filters.endDate }}
@@ -124,6 +152,7 @@ export function OverviewReport({ budgetId }: Props) {
         </div>
         <MetricRow ref={captureRef}>
           <LivingMeansCard data={data} />
+          <MeansTrendCard months={data.means_months} />
           {budgetMonth && (
             <MetricCard
               label="To Be Assigned"
@@ -147,11 +176,18 @@ export function OverviewReport({ budgetId }: Props) {
           />
           <MetricCard
             label="Essentials / month"
-            value={data.essentials_monthly != null ? formatMoney(data.essentials_monthly) : '—'}
+            value={data.essentials ? formatMoney(data.essentials.monthly) : '—'}
             sub={
-              sixMonthReserve != null
-                ? `6-month reserve: ${formatMoney(sixMonthReserve)}`
-                : 'Tag categories Essential'
+              sixMonthReserve != null ? (
+                <>
+                  6-month reserve: {formatMoney(sixMonthReserve)}
+                  {otherEssentials && (
+                    <span className="overview-report__sub-line">{otherEssentials}</span>
+                  )}
+                </>
+              ) : (
+                'Tag categories Essential'
+              )
             }
           />
           <MetricCard

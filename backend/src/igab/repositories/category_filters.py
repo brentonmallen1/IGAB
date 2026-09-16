@@ -50,7 +50,9 @@ back on a credit card — and is deliberately not an offering rule; see its own
 comment for why archived categories stay in it.
 """
 
-from sqlalchemy import and_, func, not_, or_, select
+from typing import Literal, get_args
+
+from sqlalchemy import and_, case, func, literal, not_, or_, select
 
 from igab.db.models import Category, CategoryGroup, Tag, category_tags
 
@@ -301,3 +303,101 @@ def tagged_category_ids(*system_keys: str):
         Tag.is_deleted == False,  # noqa: E712
     )
     return select(category_tags.c.category_id).where(category_tags.c.tag_id.in_(tag_ids))
+
+
+# ─── Savings categories ──────────────────────────────────────────────────────
+#
+# How a category's money counts as saved, stated once. The classifier's rule 1
+# (`domain/activity_class.py`), the plan reports' savings exception, the
+# served `Category.savings_role` and the Savings report all read these — a
+# second spelling of "which envelopes are savings, and how" is exactly how a
+# savings rate and the report beside it come to disagree.
+
+#: The system tag that makes a category a savings category.
+SAVINGS_KEY = "savings"
+#: The emergency-fund tag. It implies Savings: an emergency fund is money set
+#: aside, and asking the household to apply both tags would let the two drift.
+EMERGENCY_FUND_KEY = "emergency_fund"
+#: Either tag makes a category a savings category.
+SAVINGS_CATEGORY_KEYS: tuple[str, ...] = (SAVINGS_KEY, EMERGENCY_FUND_KEY)
+
+#: The two stored choices (`Category.savings_mode`), spelled once: the schema
+#: types, the constants below and the model's check constraint read this.
+SavingsMode = Literal["sent_out", "kept_here"]
+SAVINGS_SENT_OUT_MODE, SAVINGS_KEPT_HERE_MODE = get_args(SavingsMode)
+#: What `SAVINGS_ROLE` serves: a mode, or 'none' for a category that is not a
+#: savings category.
+SavingsRole = Literal["none"] | SavingsMode
+SAVINGS_ROLE_NONE = "none"
+
+#: Carries a live Savings or Emergency fund tag. `Category.id` is NOT NULL, so
+#: the IN is two-valued and safe under negation. A budget with no Emergency fund
+#: tag row simply matches on Savings alone.
+IS_SAVINGS_CATEGORY = Category.id.in_(tagged_category_ids(*SAVINGS_CATEGORY_KEYS))
+
+#: Carries a live Emergency fund tag — the default half of `SAVINGS_ROLE` and
+#: the category half of `IN_EMERGENCY_FUND`.
+TAGGED_EMERGENCY_FUND = Category.id.in_(tagged_category_ids(EMERGENCY_FUND_KEY))
+
+#: How this category's money counts as saved: 'none' for a category that is not
+#: a savings category, otherwise the stored `savings_mode`, and with no stored
+#: choice the tag's default — kept here for an Emergency fund, sent out for
+#: Savings (what the Savings tag always meant, so no existing figure moves).
+#:
+#: A stored mode on an untagged category is kept and ignored: it serves 'none',
+#: and re-tagging brings the household's choice back. Served as
+#: `Category.savings_role` rather than stored, because tags change without the
+#: category row changing.
+SAVINGS_ROLE = case(
+    (not_(IS_SAVINGS_CATEGORY), literal(SAVINGS_ROLE_NONE)),
+    else_=func.coalesce(
+        Category.savings_mode,
+        case(
+            (TAGGED_EMERGENCY_FUND, literal(SAVINGS_KEPT_HERE_MODE)),
+            else_=literal(SAVINGS_SENT_OUT_MODE),
+        ),
+    ),
+)
+
+#: A savings category whose outflows count as saved — rule 1 of the classifier.
+#: Never NULL: every arm of `SAVINGS_ROLE` is a literal or coalesced to one.
+SAVINGS_SENT_OUT = SAVINGS_ROLE == SAVINGS_SENT_OUT_MODE
+
+#: An envelope whose balance is savings. Live, because a deleted envelope holds
+#: nothing; archived stays IN, because an archived envelope still holds money.
+#: Not a system (income) group and not a card's set-aside, whose balances are
+#: not the household's to call saved.
+_SAVINGS_ENVELOPE = and_(LIVE_CATEGORY, not_(IN_SYSTEM_GROUP), not_(LINKED_TO_CARD))
+HOLDS_SAVINGS = and_(SAVINGS_ROLE == SAVINGS_KEPT_HERE_MODE, _SAVINGS_ENVELOPE)
+
+#: A sent-out savings envelope — the same envelope terms as `HOLDS_SAVINGS`. Its
+#: Available is money on the way to savings: it counts as saved when it leaves
+#: (rule 1), so the Savings report shows the balance beside Saved and never in
+#: it — adding it would count the same dollars again the day they are sent.
+SENDS_SAVINGS = and_(SAVINGS_SENT_OUT, _SAVINGS_ENVELOPE)
+
+#: An envelope whose Available is part of the emergency fund
+#: (`services/emergency_fund.py`). Chosen by the tag and nothing else — never a
+#: name, never an account type. Whatever its savings mode: the mode decides how
+#: the savings RATE counts the envelope, and a sent-out envelope's not-yet-sent
+#: balance is still money set aside. Live, archived included, not income and
+#: not a card's set-aside — the same envelope terms as `HOLDS_SAVINGS`.
+IN_EMERGENCY_FUND = and_(TAGGED_EMERGENCY_FUND, _SAVINGS_ENVELOPE)
+
+
+# ─── Sinking funds ───────────────────────────────────────────────────────────
+
+#: The system tag for money set aside for a known, irregular bill — a sinking
+#: fund. Never savings and never the emergency fund.
+SINKING_FUND_KEY = "long_term_expense"
+
+#: A live category tagged Long-term expense that is NOT a savings category. The
+#: essentials figures spread its bills over twelve months
+#: (`guide.concepts.essentials_monthly`). A category tagged both is not a
+#: sinking fund: no silent precedence between the two tags — its outflows count
+#: as saved or held, which is not a bill to spread, and the inspector says so.
+IS_SINKING_FUND = and_(
+    LIVE_CATEGORY,
+    Category.id.in_(tagged_category_ids(SINKING_FUND_KEY)),
+    not_(IS_SAVINGS_CATEGORY),
+)

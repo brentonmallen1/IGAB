@@ -5,6 +5,9 @@ import { useEmergencyFundPlan, useGuideOverview } from '../../../api/guide'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { useDebouncedValue } from '../../../hooks/useDebouncedValue'
 import { parseAmountInput } from '../../../utils/money'
+import { otherFigureNote } from '../../../utils/essentialsFigures'
+import { SpreadSinkingFundsToggle } from '../../common/SpreadSinkingFundsToggle/SpreadSinkingFundsToggle'
+import { EmergencyFundCounting } from '../../emergencyFund/EmergencyFundCounting'
 
 /**
  * Months of essential spending, from the roadmap's own figures.
@@ -13,6 +16,10 @@ import { parseAmountInput } from '../../../utils/money'
  * roadmap shows (including anything declared as held elsewhere), and the
  * only arithmetic is months × essentials, the gap, and how long the gap
  * takes at what you put aside — all served, none re-derived here.
+ *
+ * Essentials is the 90-day figure with yearly Long-term expense bills spread
+ * over twelve months when the budget's setting is on; the toggle is here
+ * because the target moves with it, and the other figure is named beside it.
  */
 export function EmergencyFundSizer() {
   const budgetId = useAppStore((s) => s.currentBudgetId)
@@ -32,6 +39,7 @@ export function EmergencyFundSizer() {
   const settled = useDebouncedValue(parsedContribution.value)
   const body = useMemo(() => ({ months, monthly_contribution: settled }), [months, settled])
   const { data } = useEmergencyFundPlan(budgetId, body)
+  const other = otherFigureNote(data?.essentials, formatMoney)
 
   return (
     <div className="tool">
@@ -70,13 +78,18 @@ export function EmergencyFundSizer() {
         </label>
       </div>
 
+      <SpreadSinkingFundsToggle budgetId={budgetId} />
+
       {data && (
         <div className="tool__results">
           <dl className="tool__facts tool__facts--wide">
             <dt>Essential spending, per month</dt>
             <dd className="tabular">
-              {data.essentials_monthly !== null ? (
-                formatMoney(Number(data.essentials_monthly))
+              {data.essentials !== null ? (
+                <>
+                  {formatMoney(data.essentials.monthly)}
+                  {other && <span className="tool__hint"> ({other})</span>}
+                </>
               ) : (
                 <>
                   not known yet —{' '}
@@ -93,10 +106,11 @@ export function EmergencyFundSizer() {
               {data.target !== null ? formatMoney(Number(data.target)) : '—'}
             </dd>
             <dt>Emergency fund today</dt>
-            <dd className="tabular">
-              {data.current !== null
-                ? formatMoney(Number(data.current))
-                : 'nothing found — correct it on the roadmap'}
+            <dd>
+              {data.current !== null && (
+                <span className="tabular">{formatMoney(Number(data.current))}</span>
+              )}
+              {budgetId && <EmergencyFundCounting budgetId={budgetId} />}
             </dd>
             <dt>Still to save</dt>
             <dd className="tabular">{data.gap !== null ? formatMoney(Number(data.gap)) : '—'}</dd>

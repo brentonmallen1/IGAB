@@ -225,7 +225,7 @@ class YNABParityOut(BaseModel):
 
 
 class YNABTaggedCategory(BaseModel):
-    """One tag the import applied, and the name that made it."""
+    """One tag an older import applied, and the name that made it."""
 
     category_id: uuid.UUID
     system_key: str
@@ -271,13 +271,10 @@ class YNABImportResult(BaseModel):
     #: fields live on a split's parent), so a review can say which part of the
     #: total is worth chasing and which is not.
     transfer_legs_in_splits: int = 0
-    #: Categories tagged Savings from their names — the only key the importer
-    #: applies (`domain.tag_hints`). The tag changes how that category's
-    #: spending is classified, so the count is shown rather than applied
-    #: quietly.
+    #: Categories an import tagged from their names, and why. Zero and empty
+    #: for every import now — the import writes no tags — and kept so a summary
+    #: stored by an older import that tagged Savings still renders.
     categories_tagged: int = 0
-    #: Which ones, and why. The count cannot answer "show me what you did",
-    #: and nothing on the join table records that a tag was guessed.
     tagged_categories: list[YNABTaggedCategory] = Field(default_factory=list)
     #: YNAB's Credit Card Payments reserves whose card was never imported —
     #: the matched ones become the card's set-aside assignments. The money is

@@ -1,6 +1,7 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { apiClient } from './client'
 import { ROOT } from './queryKeys'
+import type { SavingsMode } from '../types'
 
 /**
  * "How money counts", answered by the server's own classifier
@@ -10,9 +11,19 @@ import { ROOT } from './queryKeys'
  */
 
 export type Classification = 'asset' | 'liability'
-export type MoveKind = 'transfer' | 'transaction'
+/** `assign`: from Ready to Assign into a category — no account, no legs. */
+export type MoveKind = 'transfer' | 'transaction' | 'assign'
 export type MoveDirection = 'in' | 'out'
-export type CategoryKind = 'none' | 'ordinary' | 'savings' | 'debt_principal' | 'income'
+/** `savings_sent` / `savings_kept`: a Savings category that counts its savings
+ *  when money leaves the budget, or while it is in the budget (`domain/money_moves.py`). */
+export type CategoryKind =
+  'none' | 'ordinary' | 'savings_sent' | 'savings_kept' | 'debt_principal' | 'income'
+/** The explorer's category kind for each savings mode — the two kinds a Savings
+ *  or Emergency fund category can be (`domain/money_moves.py` SAVINGS_KINDS). */
+export const SAVINGS_MODE_KIND: Record<SavingsMode, CategoryKind> = {
+  sent_out: 'savings_sent',
+  kept_here: 'savings_kept',
+}
 export type LegRole = 'from' | 'to' | 'account'
 export type BudgetTerm = 'ready_to_assign' | 'envelope' | 'card_set_aside' | 'card_uncovered'
 export type ReportFamily =
@@ -26,8 +37,9 @@ export interface AccountShapeIn {
 
 export interface MoneyMoveRequest {
   kind: MoveKind
-  /** The from-account of a transfer, or the one account of a transaction. */
-  account: AccountShapeIn
+  /** The from-account of a transfer, or the one account of a transaction;
+   *  absent for an assign. */
+  account?: AccountShapeIn | null
   to_account?: AccountShapeIn | null
   direction?: MoveDirection | null
   category: CategoryKind
@@ -56,7 +68,10 @@ export interface MoneyFigures {
   income: number
   spending: number
   cost_of_living: number
+  /** Saved: `savings_moved + savings_held`. */
   savings: number
+  savings_moved: number
+  savings_held: number
   debt_principal: number
   savings_rate: number | null
   savings_rate_with_debt: number | null
@@ -69,6 +84,8 @@ export interface MoveExplanation {
   legs: MoneyLeg[]
   budget_terms: { term: BudgetTerm; delta: number }[]
   class_totals: Record<string, number>
+  /** What a kept-here Savings envelope comes to hold (`MoveExplanation.held`). */
+  held: number
   figures: MoneyFigures
   net_worth_delta: number
   assumption: string
@@ -81,6 +98,11 @@ export interface MoneyRule {
   reason: string
   reason_text: string
   tag_key: string | null
+  /** The savings mode the rule requires of the tagged category, or null. */
+  savings_mode: 'sent_out' | 'kept_here' | null
+  /** Every system tag the rule reads: `tag_key` and the tags that imply it
+   *  (Emergency fund reads the Savings rule). Empty for an account rule. */
+  tag_keys: string[]
   is_default: boolean
 }
 
@@ -105,6 +127,7 @@ export interface MoneyRulesResponse {
 export interface MoneyMonthResponse {
   rows: { label: string; explanation: MoveExplanation }[]
   class_totals: Record<string, number>
+  held: number
   figures: MoneyFigures
 }
 

@@ -165,7 +165,7 @@ describe('categoryNodeDrill', () => {
   // used to drill with `uncategorized: true` alone and open the union of all
   // three — a $500 Savings node listing $1,580.
   it.each([
-    ['Savings', ['savings']],
+    ['To savings accounts', ['savings']],
     ['Debt Payments', ['debt_principal']],
     ['Uncategorized', ['spending']],
   ])('%s lists only its own classes, by the absence of a category', (name, classes) => {

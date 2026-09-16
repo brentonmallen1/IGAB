@@ -26,6 +26,7 @@ from igab.api.v1.schemas.guide import (
     PreferencesResponse,
     PreferencesUpdate,
     SignalsResponse,
+    SpreadExampleResponse,
     StepUpdate,
     WishlistRetirePreview,
 )
@@ -66,6 +67,7 @@ from igab.domain.money_moves import (
     figures,
 )
 from igab.guide.concepts import CONCEPT_KEYS
+from igab.guide.examples import spread_example
 from igab.guide.scenarios import LoanCandidate
 from igab.guide.service import GuideService
 from igab.services.amortization import CascadeDebt
@@ -129,16 +131,20 @@ async def set_guide_binding(
     payload: BindingUpdate,
 ) -> None:
     key = _known(concept_key)
-    await service.set_binding(
-        budget_id,
-        key,
-        mode=payload.mode,
-        entity_ids=payload.entity_ids,
-        answer=payload.answer,
-        external=payload.external,
-        external_amount=payload.external_amount,
-        note=payload.note,
-    )
+    try:
+        await service.set_binding(
+            budget_id,
+            key,
+            mode=payload.mode,
+            entity_ids=payload.entity_ids,
+            answer=payload.answer,
+            external=payload.external,
+            external_amount=payload.external_amount,
+            note=payload.note,
+        )
+    except InvariantViolation as e:
+        # An entity type the concept does not bind to.
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e)) from e
 
 
 @router.get("/{budget_id}/guide/preferences", response_model=PreferencesResponse)
@@ -284,7 +290,8 @@ async def scenario_emergency_fund(
     plan = await service.emergency_fund_plan(
         budget_id, payload.months, payload.monthly_contribution
     )
-    return EmergencyFundResponse.model_validate(asdict(plan))
+    # The figures object itself, not `asdict`'s copy: `monthly` is a property.
+    return EmergencyFundResponse.model_validate({**asdict(plan), "essentials": plan.essentials})
 
 
 # ── how money counts ─────────────────────────────────────────────────────────
@@ -320,7 +327,8 @@ def _explanation(e: MoveExplanation) -> MoveExplanationResponse:
             BudgetTermResponse(term=term, delta=delta) for term, delta in e.budget_terms.items()
         ],
         class_totals=e.class_totals,
-        figures=_figures(figures(e.class_totals)),
+        held=e.held,
+        figures=_figures(figures(e.class_totals, e.held)),
         net_worth_delta=e.net_worth_delta,
         assumption=ASSUMPTION,
     )
@@ -343,6 +351,8 @@ async def money_rules(
                 reason=rule.reason.value,
                 reason_text=REASON_TEXT[rule.reason],
                 tag_key=rule.tag_key,
+                savings_mode=rule.savings_mode,
+                tag_keys=list(rule.tag_keys),
                 is_default=i == len(ladder) - 1,
             )
             for i, rule in enumerate(ladder)
@@ -401,5 +411,19 @@ async def explain_money_month(
             for m, e in zip(payload.moves, month.moves, strict=True)
         ],
         class_totals=month.class_totals,
+        held=month.held,
         figures=_figures(month.figures),
     )
+
+
+# ── setting money aside ──────────────────────────────────────────────────────
+# Invented examples, computed by the functions the reports run.
+
+
+@router.get("/{budget_id}/guide/examples/spread", response_model=SpreadExampleResponse)
+async def guide_spread_example(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+) -> SpreadExampleResponse:
+    """A yearly bill as paid and spread, and the goal each figure sizes."""
+    return SpreadExampleResponse.model_validate(asdict(spread_example()))

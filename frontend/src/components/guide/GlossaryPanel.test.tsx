@@ -22,6 +22,27 @@ describe('a glossary entry with a Guide tab', () => {
       'href',
       '/guide?tab=money'
     )
+    expect(screen.getByRole('link', { name: /See setting money aside/ })).toHaveAttribute(
+      'href',
+      '/guide?tab=aside#savings-modes'
+    )
+  })
+
+  it.each([
+    ['Emergency fund', '/guide?tab=aside#emergency-fund'],
+    ['Sinking fund', '/guide?tab=aside#sinking-funds'],
+    ['Living within your means', '/guide?tab=aside#means-trend'],
+  ])('links %s to its section of Setting money aside', async (term, href) => {
+    render(
+      <MemoryRouter>
+        <GlossaryPanel />
+      </MemoryRouter>
+    )
+    await userEvent.click(screen.getByRole('button', { name: new RegExp(`^${term}`) }))
+    expect(screen.getByRole('link', { name: /See setting money aside/ })).toHaveAttribute(
+      'href',
+      href
+    )
   })
 
   it('draws no link on an entry without one', async () => {
@@ -30,7 +51,7 @@ describe('a glossary entry with a Guide tab', () => {
         <GlossaryPanel />
       </MemoryRouter>
     )
-    const plain = GLOSSARY.find((e) => !e.guideTab)!
+    const plain = GLOSSARY.find((e) => !e.guideLinks)!
     await userEvent.click(screen.getByRole('button', { name: new RegExp(`^${plain.term}`) }))
     expect(screen.queryByRole('link', { name: /See / })).not.toBeInTheDocument()
   })

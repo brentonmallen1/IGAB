@@ -1,0 +1,60 @@
+.ef-picker__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  min-width: 0;
+}
+
+.ef-picker__section + .ef-picker__section {
+  padding-top: var(--spacing-md);
+  border-top: 1px solid var(--edge);
+}
+
+.ef-picker__title {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-primary);
+}
+
+.ef-picker__empty {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+.ef-picker__accounts {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ef-picker__account .dialog-form__field--inline {
+  min-height: 28px;
+  color: var(--text-primary);
+}
+
+.ef-picker__account-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ef-picker__account-balance {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+/* Under the name, past the checkbox. */
+.ef-picker__also {
+  padding-left: calc(13px + var(--spacing-sm));
+}
+
+@media (max-width: 768px) {
+  .ef-picker__account .dialog-form__field--inline,
+  .ef-picker .dialog-form__field--inline {
+    min-height: var(--tap-min);
+  }
+}

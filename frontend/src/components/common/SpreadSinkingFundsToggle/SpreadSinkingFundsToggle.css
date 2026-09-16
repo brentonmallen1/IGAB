@@ -1,0 +1,32 @@
+.spread-toggle {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: var(--spacing-sm) 0;
+}
+
+.spread-toggle__label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+  width: fit-content;
+}
+
+.spread-toggle__input {
+  margin: 0;
+  accent-color: var(--color-accent);
+}
+
+.spread-toggle__input:disabled + span {
+  color: var(--text-muted);
+}
+
+.spread-toggle__hint {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  max-width: 64ch;
+}

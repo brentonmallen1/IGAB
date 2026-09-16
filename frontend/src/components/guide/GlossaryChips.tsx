@@ -47,11 +47,11 @@ export function GlossaryChips({ terms }: { terms: string[] }) {
               {entry.inIgab}
             </p>
           )}
-          {entry.guideTab && (
-            <p className="guide-terms__in-app">
-              <GuideTabLink tab={entry.guideTab} />
+          {entry.guideLinks?.map((target) => (
+            <p key={`${target.tab}#${target.anchor ?? ''}`} className="guide-terms__in-app">
+              <GuideTabLink {...target} />
             </p>
-          )}
+          ))}
         </div>
       )}
     </div>

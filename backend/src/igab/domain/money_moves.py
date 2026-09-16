@@ -10,7 +10,7 @@ of those answers already has a home, and this module owns none of them:
   hypothetical leg carries (`leg_facts`);
 - **where a category may sit** is `transfers.leg_may_carry_category`;
 - **which reports count a class** is the class tuples in `activity_class`;
-- **the savings rates** are `activity_class.savings_rates`.
+- **the savings rates**, and what "saved" is made of, are `domain.savings`.
 
 The one thing that is new here is `budget_terms`: which budget figure a move
 changes. That is prose about `BudgetService`'s arithmetic, which cannot be
@@ -36,16 +36,13 @@ from enum import StrEnum
 
 from igab.domain.activity_class import (
     COST_OF_LIVING_CLASSES,
-    PLANNED_SPEND_TAG_KEYS,
-    SAVINGS_RATE_NUMERATORS,
     SPENDING_CLASSES,
-    TAG_INPUT_KEYS,
     ActivityClass,
     ActivityReason,
     LegFacts,
     class_magnitude,
-    savings_rates,
 )
+from igab.domain.savings import SAVINGS_RATE_NUMERATORS, SavingsFigure, savings_rates
 from igab.domain.transfers import leg_may_carry_category
 
 #: The situation `budget_terms` describes. Served beside every answer.
@@ -59,6 +56,10 @@ class MoveKind(StrEnum):
     TRANSFER = "transfer"
     #: One leg: money arrives from, or leaves to, someone outside.
     TRANSACTION = "transaction"
+    #: No leg: money given a job, from Ready to Assign into a category. No
+    #: account moves and no row is classified; the budget and, for a kept-here
+    #: Savings envelope, the held figure are what change.
+    ASSIGN = "assign"
 
 
 class Direction(StrEnum):
@@ -67,12 +68,16 @@ class Direction(StrEnum):
 
 
 class CategoryKind(StrEnum):
-    """The kind of category a move is filed under. The two tag kinds carry the
-    system tag key they read (`TAG_INPUT_KEYS`), so no second spelling exists."""
+    """The kind of category a move is filed under. Which tag input each kind
+    sets is `KIND_FOR_INPUT`."""
 
     NONE = "none"
     ORDINARY = "ordinary"
-    SAVINGS = "savings"
+    #: A Savings category that counts its savings when money is sent out.
+    SAVINGS_SENT = "savings_sent"
+    #: A Savings category whose balance is its savings. Reads no tag input:
+    #: its rows class by where the money went, like any envelope's.
+    SAVINGS_KEPT = "savings_kept"
     DEBT_PRINCIPAL = "debt_principal"
     #: A category in a system (Income) group — Ready to Assign.
     INCOME = "income"
@@ -137,11 +142,47 @@ class AccountShape:
         return self.on_budget and self.is_liability
 
 
+#: The kinds of category money can be assigned to: an Income-group category is
+#: Ready to Assign itself, and assigning needs a category.
+ASSIGNABLE_KINDS = (
+    CategoryKind.ORDINARY,
+    CategoryKind.SAVINGS_SENT,
+    CategoryKind.SAVINGS_KEPT,
+    CategoryKind.DEBT_PRINCIPAL,
+)
+
+
+def move_shape_error(
+    kind: MoveKind,
+    *,
+    has_account: bool,
+    has_to_account: bool,
+    has_direction: bool,
+    category: CategoryKind,
+) -> str | None:
+    """Why these fields do not make a move of this kind, or None when they do.
+    One statement of the shape, read by the domain record and the request."""
+    if kind is MoveKind.ASSIGN:
+        if has_account or has_to_account or has_direction:
+            return "an assign names no account and no direction"
+        if category not in ASSIGNABLE_KINDS:
+            return "an assign names a category that can hold money"
+        return None
+    if not has_account:
+        return f"a {kind.value} names an account"
+    if kind is MoveKind.TRANSFER and (not has_to_account or has_direction):
+        return "a transfer names a to-account and no direction"
+    if kind is MoveKind.TRANSACTION and (has_to_account or not has_direction):
+        return "a transaction names a direction and no to-account"
+    return None
+
+
 @dataclass(frozen=True)
 class Move:
     kind: MoveKind
-    #: The from-account of a transfer, or the one account of a transaction.
-    account: AccountShape
+    #: The from-account of a transfer, or the one account of a transaction;
+    #: None for an assign, which moves no account.
+    account: AccountShape | None
     amount: Decimal
     category: CategoryKind = CategoryKind.NONE
     to_account: AccountShape | None = None
@@ -150,10 +191,15 @@ class Move:
     def __post_init__(self) -> None:
         if self.amount <= 0:
             raise ValueError("a move's amount is a positive size; direction says which way")
-        if self.kind is MoveKind.TRANSFER and (self.to_account is None or self.direction):
-            raise ValueError("a transfer names a to-account and no direction")
-        if self.kind is MoveKind.TRANSACTION and (self.to_account or self.direction is None):
-            raise ValueError("a transaction names a direction and no to-account")
+        error = move_shape_error(
+            self.kind,
+            has_account=self.account is not None,
+            has_to_account=self.to_account is not None,
+            has_direction=self.direction is not None,
+            category=self.category,
+        )
+        if error:
+            raise ValueError(error)
 
 
 @dataclass(frozen=True)
@@ -168,7 +214,11 @@ class Leg:
 
 
 def category_role(move: Move) -> LegRole | None:
-    """Which leg may carry the move's category, or None when neither may."""
+    """Which leg may carry the move's category, or None when neither may —
+    and None for an assign, which has no legs."""
+    if move.kind is MoveKind.ASSIGN:
+        return None
+    assert move.account is not None
     if move.kind is MoveKind.TRANSACTION:
         return LegRole.ACCOUNT if leg_may_carry_category(move.account.on_budget) else None
     assert move.to_account is not None
@@ -180,7 +230,11 @@ def category_role(move: Move) -> LegRole | None:
 
 
 def legs(move: Move) -> list[Leg]:
-    """The rows this move would write, with the category on the leg allowed it."""
+    """The rows this move would write, with the category on the leg allowed it.
+    An assign writes none."""
+    if move.kind is MoveKind.ASSIGN:
+        return []
+    assert move.account is not None
     carrier = category_role(move)
 
     def filed(role: LegRole) -> CategoryKind:
@@ -204,7 +258,16 @@ def legs(move: Move) -> list[Leg]:
     ]
 
 
-_KIND_BY_TAG_INPUT = {field: CategoryKind(key) for field, key in TAG_INPUT_KEYS.items()}
+#: The category kind that sets each of the classifier's tag inputs
+#: (`activity_class.TAG_INPUTS`). Its keys are held to that dict's by a test, so
+#: a new tag input is a new kind or a failing test, never a silently False fact.
+KIND_FOR_INPUT: dict[str, CategoryKind] = {
+    "savings_sent_out": CategoryKind.SAVINGS_SENT,
+    "tagged_debt": CategoryKind.DEBT_PRINCIPAL,
+}
+
+#: Both savings kinds: plan reports count their outflows as spent.
+SAVINGS_KINDS = (CategoryKind.SAVINGS_SENT, CategoryKind.SAVINGS_KEPT)
 
 
 def leg_facts(leg: Leg) -> LegFacts:
@@ -224,7 +287,7 @@ def leg_facts(leg: Leg) -> LegFacts:
         categorized=leg.category is not CategoryKind.NONE,
         in_system_group=leg.category is CategoryKind.INCOME,
         amount_positive=leg.amount > 0,
-        **{field: leg.category is kind for field, kind in _KIND_BY_TAG_INPUT.items()},
+        **{field: leg.category is kind for field, kind in KIND_FOR_INPUT.items()},
     )
 
 
@@ -269,6 +332,10 @@ def _leg_terms(leg: Leg) -> dict[BudgetTerm, Decimal]:
 
 def budget_terms(move: Move) -> dict[BudgetTerm, Decimal]:
     """The budget figures a move changes and by how much, zeros dropped."""
+    if move.kind is MoveKind.ASSIGN:
+        # BudgetService: an assignment is subtracted from Ready to Assign and
+        # added to the envelope's Available, in the month it is made.
+        return {BudgetTerm.READY_TO_ASSIGN: -move.amount, BudgetTerm.ENVELOPE: move.amount}
     total: dict[BudgetTerm, Decimal] = {}
     for leg in legs(move):
         for term, delta in _leg_terms(leg).items():
@@ -283,17 +350,17 @@ def report_families(cls: ActivityClass) -> list[ReportFamily]:
 
 def counts_as_planned_spend_by_tag(leg: Leg, cls: ActivityClass) -> bool:
     """Whether plan reports count this leg as spent through
-    `PLANNED_SPEND_TAG_KEYS` although its class is not spending — the savings
-    tag's outflow, which Budget vs Actual holds against the plan.
+    `PLANNED_SPEND_TAG_KEYS` although its class is not spending — a savings
+    category's outflow, in either mode, which Budget vs Actual holds against
+    the plan.
 
     Stated as the policy's exception only: an on-budget categorized outflow
-    (`PLANNED_SPEND_ROW`'s shape) whose category kind is one of those tags.
+    (`PLANNED_SPEND_ROW`'s shape) from a savings category.
     """
     return (
         leg.shape.on_budget
         and leg.amount < 0
-        and leg.category.value in TAG_INPUT_KEYS.values()
-        and leg.category.value in PLANNED_SPEND_TAG_KEYS
+        and leg.category in SAVINGS_KINDS
         and cls not in SPENDING_CLASSES
     )
 
@@ -312,16 +379,23 @@ class LegExplanation:
 
 
 @dataclass(frozen=True)
-class Figures:
-    """The report figures a set of legs adds up to."""
+class Flows:
+    """The report figures that are row sums alone: what moved, by class.
+
+    Split from `Figures` because "saved" is not a row sum — its held part is a
+    walk over the budget's envelopes (`domain.savings`) — and some readers
+    need no part of it. The Means trend reads income and outflows for twelve
+    months, the Overview's prior window reads spending; handing either a held
+    figure would mean a twelve-month budget walk for a number nobody reads, or
+    a made-up zero that would be wrong the day someone did read it.
+    """
 
     income: Decimal
     spending: Decimal
     cost_of_living: Decimal
-    savings: Decimal
     debt_principal: Decimal
-    savings_rate: float | None
-    savings_rate_with_debt: float | None
+    #: SAVINGS-class flows — `SavingsFigure.moved`.
+    savings_moved: Decimal
 
 
 def _family_total(buckets: Mapping[str, Decimal], family: ReportFamily) -> Decimal:
@@ -331,15 +405,47 @@ def _family_total(buckets: Mapping[str, Decimal], family: ReportFamily) -> Decim
     return sum((class_magnitude(buckets, c) for c in classes), Decimal("0"))
 
 
-def figures(buckets: Mapping[str, Decimal]) -> Figures:
-    """Report figures from class buckets, through the report's own division."""
-    rates = savings_rates(buckets)
-    return Figures(
+def flows(buckets: Mapping[str, Decimal]) -> Flows:
+    """Row-sum figures from class buckets."""
+    return Flows(
         income=_family_total(buckets, ReportFamily.INCOME),
         spending=_family_total(buckets, ReportFamily.SPENDING),
         cost_of_living=_family_total(buckets, ReportFamily.COST_OF_LIVING),
-        savings=class_magnitude(buckets, ActivityClass.SAVINGS),
         debt_principal=class_magnitude(buckets, ActivityClass.DEBT_PRINCIPAL),
+        savings_moved=class_magnitude(buckets, ActivityClass.SAVINGS),
+    )
+
+
+@dataclass(frozen=True)
+class Figures:
+    """The report figures a set of legs, or a window of rows, adds up to."""
+
+    income: Decimal
+    spending: Decimal
+    cost_of_living: Decimal
+    #: Saved: `savings_moved + savings_held` (`domain.savings`).
+    savings: Decimal
+    savings_moved: Decimal
+    savings_held: Decimal
+    debt_principal: Decimal
+    savings_rate: float | None
+    savings_rate_with_debt: float | None
+
+
+def figures(buckets: Mapping[str, Decimal], held: Decimal) -> Figures:
+    """Report figures from class buckets and the window's held change, through
+    the report's own division. `held` is required: see `savings_rates`."""
+    f = flows(buckets)
+    saved = SavingsFigure(moved=f.savings_moved, held=held)
+    rates = savings_rates(buckets, held)
+    return Figures(
+        income=f.income,
+        spending=f.spending,
+        cost_of_living=f.cost_of_living,
+        savings=saved.total,
+        savings_moved=saved.moved,
+        savings_held=saved.held,
+        debt_principal=f.debt_principal,
         savings_rate=rates["savings_rate"],
         savings_rate_with_debt=rates["savings_rate_with_debt"],
     )
@@ -355,6 +461,13 @@ class MoveExplanation:
     #: Signed class sums over the on-budget legs — what the reports aggregate.
     class_totals: dict[str, Decimal] = field(default_factory=dict)
     net_worth_delta: Decimal = Decimal("0")
+    #: What a kept-here Savings envelope comes to hold: the ENVELOPE term of
+    #: every on-budget leg filed to `SAVINGS_KEPT`, or of an assign to one,
+    #: under `ASSUMPTION` (the envelope already holds the money, so no floor is
+    #: crossed). The figure
+    #: `domain.savings` adds to the moved flows; held to `services.
+    #: savings_held.held_between` on real rows by the agreement test.
+    held: Decimal = Decimal("0")
 
 
 def explain_move(
@@ -386,25 +499,47 @@ def explain_move(
             )
         )
     role = category_role(move)
+    terms = budget_terms(move)
+    if move.kind is MoveKind.ASSIGN:
+        # No leg carries the category: the assign itself fills the envelope.
+        kept = move.category is CategoryKind.SAVINGS_KEPT
+        held = terms[BudgetTerm.ENVELOPE] if kept else Decimal("0")
+    else:
+        held = sum(
+            (
+                _leg_terms(leg).get(BudgetTerm.ENVELOPE, Decimal("0"))
+                for leg in move_legs
+                if leg.category is CategoryKind.SAVINGS_KEPT
+            ),
+            Decimal("0"),
+        )
     return MoveExplanation(
         category_role=role,
-        category_applied=move.category is CategoryKind.NONE or role is not None,
+        category_applied=(
+            move.kind is MoveKind.ASSIGN or move.category is CategoryKind.NONE or role is not None
+        ),
         legs=explained,
-        budget_terms=budget_terms(move),
+        budget_terms=terms,
         class_totals=totals,
         # A liability's balance is stored negative, so assets minus debts is
         # the plain sum: a transfer nets to zero, a transaction moves it.
         net_worth_delta=sum((leg.amount for leg in move_legs), Decimal("0")),
+        held=held,
     )
 
 
-def month_buckets(explanations: Sequence[MoveExplanation]) -> dict[str, Decimal]:
-    """Class totals across several moves."""
+def month_buckets(
+    explanations: Sequence[MoveExplanation],
+) -> tuple[dict[str, Decimal], Decimal]:
+    """Class totals and the held change across several moves — the two
+    inputs `figures` reads."""
     total: dict[str, Decimal] = {}
+    held = Decimal("0")
     for explanation in explanations:
         for cls, amount in explanation.class_totals.items():
             total[cls] = total.get(cls, Decimal("0")) + amount
-    return total
+        held += explanation.held
+    return total, held
 
 
 # ─── Account shapes, for the account-type explainer ──────────────────────────

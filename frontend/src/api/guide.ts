@@ -3,6 +3,7 @@ import toast from 'react-hot-toast'
 import { apiClient, apiErrorMessage } from './client'
 import type { SignalKey } from '../content/roadmap'
 import { ROOT } from './queryKeys'
+import type { EmergencyFund, EssentialsFigures } from '../types'
 
 /** How a concept came to be answered. */
 export type SignalSource =
@@ -50,6 +51,13 @@ export interface Signal {
    *  roadmap's starter step reads these; the full step reads `target`/`met`. */
   starter_target: number | null
   starter_met: boolean | null
+  /** Essential expenses only: both essentials figures, of which `value` is the
+   *  `monthly`. null on every other concept. */
+  essentials: EssentialsFigures | null
+  /** Emergency fund only: what the fund counted, whose `total` is `value`
+   *  (services/emergency_fund.py). null on every other concept, and on a
+   *  dismissed one. */
+  fund: EmergencyFund | null
   reason: string
   entities: Partial<Record<EntityType, string[]>>
   /** Things that did not count and should be said out loud — a debt with no
@@ -98,6 +106,32 @@ export function useGuideOverview(budgetId: string | null) {
     queryFn: () => apiClient.get<GuideOverview>(`/${budgetId}/guide`).then((r) => r.data),
     enabled: !!budgetId,
     staleTime: 60_000,
+  })
+}
+
+/** "Setting money aside"'s spread example — invented inputs, every figure
+ *  computed by the essentials and emergency-fund arithmetic the reports run
+ *  (`backend/.../guide/examples.py`). */
+export interface SpreadExample {
+  /** As paid, in the quarter a $2,400 yearly bill landed in / any other. */
+  as_paid_after_bill: number
+  as_paid_otherwise: number
+  spread: number
+  bill_monthly_share: number
+  goal_months: number
+  goal_as_paid_after_bill: number
+  goal_as_paid_otherwise: number
+  goal_spread: number
+}
+
+export function useSpreadExample(budgetId: string | null) {
+  return useQuery({
+    queryKey: [ROOT.guideSpreadExample, budgetId],
+    queryFn: () =>
+      apiClient.get<SpreadExample>(`/${budgetId}/guide/examples/spread`).then((r) => r.data),
+    enabled: !!budgetId,
+    // Fixed inputs: it changes only with a deploy.
+    staleTime: Infinity,
   })
 }
 
@@ -383,7 +417,7 @@ export interface EmergencyFundRequest {
 export interface EmergencyFundResponse {
   months: number
   monthly_contribution: number
-  essentials_monthly: number | null
+  essentials: EssentialsFigures | null
   current: number | null
   target: number | null
   gap: number | null

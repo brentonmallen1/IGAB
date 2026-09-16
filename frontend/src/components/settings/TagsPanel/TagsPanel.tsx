@@ -11,6 +11,9 @@ import {
 } from '../../../api/tags'
 import { TagChip, type TagColorSlot } from '../../common/TagChip'
 import { Tooltip } from '../../common/Tooltip/Tooltip'
+import { noticeOpensPicker, noticeText } from './tagNotices'
+import { TagMembershipDialog } from '../../tags/TagMembershipDialog'
+import { EmergencyFundPicker } from '../../emergencyFund/EmergencyFundPicker'
 import './TagsPanel.css'
 import { confirmAsync } from '../../../stores/confirmStore'
 
@@ -29,32 +32,6 @@ interface TagsPanelProps {
   budgetId: string
 }
 
-/**
- * What each migration notice says.
- *
- * Out of the JSX because there are two now, and a ternary chain in a render is
- * where the third one gets written as a bare key. Falls back to the key rather
- * than rendering nothing: a notice with no copy is a bug worth seeing.
- */
-function noticeText(key: string, payload: Record<string, unknown>): string {
-  const removed = Number(payload.payee_tags_removed ?? 0)
-  const tags = `${removed} payee tag${removed === 1 ? ' was' : 's were'} removed`
-  if (key === 'subscription_tag_moved') {
-    return (
-      `Subscription is now a category tag. ${tags} — tag the categories your ` +
-      `subscriptions are filed to (Streaming, Software…) and the report follows them.`
-    )
-  }
-  if (key === 'payee_tags_retired') {
-    return (
-      `Tags now apply to categories only. ${tags} — nothing read them, so no ` +
-      `figure changes. Tag the categories those payees are filed to and every ` +
-      `report that uses tags follows.`
-    )
-  }
-  return key
-}
-
 export function TagsPanel({ budgetId }: TagsPanelProps) {
   const { data: tags, isLoading } = useTags(budgetId)
   const { data: notices = [] } = useTagNotices(budgetId)
@@ -66,6 +43,12 @@ export function TagsPanel({ budgetId }: TagsPanelProps) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
   const [editColor, setEditColor] = useState<TagColorSlot | null>(null)
+
+  // The tag whose checklist is open.
+  const [choosing, setChoosing] = useState<Tag | null>(null)
+  // The Emergency fund row and its notices open the picker instead: the fund
+  // is envelopes AND accounts AND what is kept elsewhere, chosen in one place.
+  const [pickingFund, setPickingFund] = useState(false)
 
   const [newName, setNewName] = useState('')
   const [newColor, setNewColor] = useState<TagColorSlot | null>(null)
@@ -121,6 +104,15 @@ export function TagsPanel({ budgetId }: TagsPanelProps) {
       {notices.map((n) => (
         <div key={n.key} className="tags-panel__notice" role="status">
           <span>{noticeText(n.key, n.payload)}</span>
+          {noticeOpensPicker(n.key) && (
+            <button
+              type="button"
+              className="tags-panel__notice-action"
+              onClick={() => setPickingFund(true)}
+            >
+              Choose what counts
+            </button>
+          )}
           <button
             type="button"
             className="tags-panel__notice-dismiss"
@@ -191,9 +183,22 @@ export function TagsPanel({ budgetId }: TagsPanelProps) {
                   <div className="tags-panel__preview">
                     <TagChip name={tag.name} colorSlot={tag.color_slot} />
                   </div>
-                  <span className="tags-panel__counts">
-                    {tag.category_count} categor{tag.category_count === 1 ? 'y' : 'ies'}
-                  </span>
+                  {tag.hand_settable ? (
+                    <button
+                      type="button"
+                      className="tags-panel__counts tags-panel__counts--button"
+                      onClick={() =>
+                        tag.system_key === 'emergency_fund'
+                          ? setPickingFund(true)
+                          : setChoosing(tag)
+                      }
+                      aria-label={`${countLabel(tag.category_count)} tagged ${tag.name} — choose`}
+                    >
+                      {countLabel(tag.category_count)}
+                    </button>
+                  ) : (
+                    <span className="tags-panel__counts">{countLabel(tag.category_count)}</span>
+                  )}
                   <div className="tags-panel__actions">
                     <button
                       type="button"
@@ -231,6 +236,19 @@ export function TagsPanel({ budgetId }: TagsPanelProps) {
         <div className="tags-panel__empty">No tags yet. Create one below.</div>
       )}
 
+      {choosing && (
+        <TagMembershipDialog
+          budgetId={budgetId}
+          tagId={choosing.id}
+          tagName={choosing.name}
+          onClose={() => setChoosing(null)}
+        />
+      )}
+
+      {pickingFund && (
+        <EmergencyFundPicker budgetId={budgetId} onClose={() => setPickingFund(false)} />
+      )}
+
       <form className="tags-panel__add-form" onSubmit={handleAdd}>
         <input
           type="text"
@@ -260,4 +278,8 @@ export function TagsPanel({ budgetId }: TagsPanelProps) {
       </form>
     </div>
   )
+}
+
+function countLabel(n: number): string {
+  return `${n} categor${n === 1 ? 'y' : 'ies'}`
 }

@@ -41,6 +41,11 @@ vi.mock('../../api/reports', async (importOriginal) => {
 vi.mock('../../api/payees', () => ({ usePayees: () => ({ data: undefined }) }))
 vi.mock('../../api/budgets', () => ({ useBudgetMonth: () => ({ data: undefined }) }))
 vi.mock('../../api/accountTypes', () => ({ useAccountTypes: () => ({ data: undefined }) }))
+// The Counting line reads its own query; pickerSurfaces.test.tsx covers it.
+vi.mock('../../api/emergencyFund', () => ({
+  useEmergencyFund: () => ({ data: undefined }),
+  useSetEmergencyFund: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}))
 
 import { useReportStore } from '../../stores/reportStore'
 import { useAppStore } from '../../stores/appStore'
@@ -414,14 +419,26 @@ describe('OverviewReport metric cards', () => {
         debt_payments_this_month: '500',
         outflows_this_month: '3500',
         top_categories: [{ id: 'c1', name: 'Groceries', group_name: 'Everyday', total: 300 }],
+        means_months: [
+          { month: '2026-01-01', income: 4000, outflows: 3000 },
+          { month: '2026-02-01', income: 4000, outflows: 4100 },
+        ],
       },
     })
     renderReport(<OverviewReport budgetId="b1" />)
 
     // 3,500 of outflows on 4,000 of income: the means card leads the row.
     // Its states and dialog are LivingMeansCard.test.tsx.
-    expect(card('Your Means')).toEqual({ value: 'Below', sub: '$500.00 left over' })
+    expect(card('Your Means')).toEqual({
+      value: 'Below',
+      sub: '$500.00 left over · 13% under income',
+    })
     expect(screen.getByRole('button', { name: /^Living below your means/ })).toBeInTheDocument()
+    // Right after it, the same reading over the served months, whatever the range.
+    expect(card('Means trend')).toEqual({ value: 'Keeping 12%', sub: '3-month average' })
+    expect(
+      screen.getByRole('img', { name: '1 of the last 2 months below your means' })
+    ).toBeInTheDocument()
 
     expect(screen.getByText('$1,100.00')).toBeInTheDocument()
     expect(screen.getByText(/\+10\.0%/)).toBeInTheDocument() // net worth delta
@@ -429,6 +446,26 @@ describe('OverviewReport metric cards', () => {
     expect(screen.getByText('25.0%')).toBeInTheDocument() // savings rate
     expect(screen.getByText('46d')).toBeInTheDocument() // rounded days until zero
     expect(screen.getByText('Groceries')).toBeInTheDocument()
+  })
+
+  it('names the as-paid essentials figure under the spread one', () => {
+    setQuery({
+      data: {
+        net_worth: '0',
+        burn_rate_30: '0',
+        burn_rate_90: '0',
+        income_this_month: '0',
+        outflows_this_month: '0',
+        top_categories: [],
+        means_months: [],
+        essentials: { as_paid: 2800, spread: 2200, spread_on: true, monthly: 2200 },
+      },
+    })
+    renderReport(<OverviewReport budgetId="b1" />)
+    expect(card('Essentials / month')).toEqual({
+      value: '$2,200.00',
+      sub: '6-month reserve: $13,200.00$2,200.00/mo spread · $2,800.00/mo as paid',
+    })
   })
 
   it('asks for categories tagged Essential, not payees, before there is a figure', () => {
@@ -442,6 +479,7 @@ describe('OverviewReport metric cards', () => {
         income_this_month: '0',
         outflows_this_month: '0',
         top_categories: [],
+        means_months: [],
       },
     })
     renderReport(<OverviewReport budgetId="b1" />)
@@ -486,7 +524,6 @@ describe('the savings-rate cards open what contributed', () => {
     net_worth_prev: 0,
     burn_rate_30: 0,
     burn_rate_90: 0,
-    essentials_monthly: null,
     essentials_tagged: false,
     savings_rate: 0.25,
     days_until_zero: null,
@@ -496,6 +533,7 @@ describe('the savings-rate cards open what contributed', () => {
     debt_payments_this_month: 500,
     outflows_this_month: 3000,
     top_categories: [],
+    means_months: [],
   }
 
   it('the Overview card asks for the range the Overview shows', () => {
@@ -577,42 +615,6 @@ describe('the savings-rate cards open what contributed', () => {
     setQuery({ data: { ...tab, summary: { ...tab.summary, savings_rate_with_debt: -0.03 } } })
     renderReport(<SavingsRateReport budgetId="b1" />)
     expect(card('Savings Rate (with debt)').value).toBe('-3.0%')
-  })
-})
-
-describe('SavingsReport before an import', () => {
-  // An imported budget whose history could not be walked back from YNAB's
-  // figure before August: those months are null — a gap, not an empty
-  // envelope — and the page has to say why.
-  const data = {
-    categories: [
-      {
-        category_id: 'c1',
-        category_name: 'Vacation',
-        group_name: 'Goals',
-        monthly_balances: [null, null, 100, 150],
-        current_balance: 150,
-        target_balance: null,
-        total_inflow: 250,
-      },
-    ],
-    summary: { total_balance: 150, total_inflow: 250, avg_monthly_inflow: 62.5, category_count: 1 },
-    months: ['2026-06-01', '2026-07-01', '2026-08-01', '2026-09-01'],
-    drains: { total: 0, moves: [] },
-    unrecovered: [{ category_id: 'c1', category_name: 'Vacation', starts_from: '2026-08-01' }],
-  }
-
-  it('names the envelope that starts late, and why', () => {
-    setQuery({ data })
-    renderReport(<SavingsReport budgetId="b1" />)
-    const note = screen.getByText(/Vacation starts in/)
-    expect(note).toHaveTextContent(/doesn.t reproduce YNAB.s balance/)
-  })
-
-  it('says nothing when every month has a figure', () => {
-    setQuery({ data: { ...data, unrecovered: [] } })
-    renderReport(<SavingsReport budgetId="b1" />)
-    expect(screen.queryByText(/reproduce YNAB/)).not.toBeInTheDocument()
   })
 })
 
@@ -1603,7 +1605,7 @@ describe('EssentialsReport table footer', () => {
         months: 3,
         window_start: '2026-06-01',
         window_end: '2026-08-31',
-        essentials_90d: 6.67,
+        essentials: { as_paid: 6.67, spread: 6.67, spread_on: true, monthly: 6.67 },
         monthly_total_average: 6.67,
         categories: [
           {
@@ -1626,8 +1628,13 @@ describe('EssentialsReport table footer', () => {
         monthly_series: [],
         reserve: [],
         roadmap_range: [3, 6],
-        emergency_fund_balance: null,
-        emergency_fund_source: null,
+        emergency_fund: {
+          set_up: false,
+          total: null,
+          categories: [],
+          accounts: [],
+          external: { declared: false, amount: null, as_of: null, note: null },
+        },
         runway_months: null,
         class_excluded: [],
       },
@@ -1636,6 +1643,50 @@ describe('EssentialsReport table footer', () => {
     const footer = screen.getByText('All essentials').closest('tr')
     expect(footer).toHaveTextContent('$20.00')
     expect(footer).not.toHaveTextContent('$20.01')
+  })
+})
+
+describe('EssentialsReport headline', () => {
+  const report = (essentials: object) => ({
+    tagged: true,
+    months: 12,
+    window_start: '2025-09-01',
+    window_end: '2026-08-31',
+    essentials,
+    monthly_total_average: 2000,
+    categories: [],
+    monthly_series: [],
+    reserve: [],
+    roadmap_range: [3, 6],
+    emergency_fund: {
+      set_up: false,
+      total: null,
+      categories: [],
+      accounts: [],
+      external: { declared: false, amount: null, as_of: null, note: null },
+    },
+    runway_months: null,
+    class_excluded: [],
+  })
+
+  it('headlines the figure the setting picks and names the other', () => {
+    setQuery({
+      data: report({ as_paid: 2800, spread: 2200, spread_on: false, monthly: 2800 }),
+    })
+    renderReport(<EssentialsReport budgetId="b1" />)
+    expect(card('Essentials / month')).toEqual({
+      value: '$2,800.00',
+      sub: '$2,800.00/mo as paid · $2,200.00/mo spread',
+    })
+    expect(
+      screen.getByRole('checkbox', { name: 'Spread yearly bills over 12 months' })
+    ).toBeInTheDocument()
+  })
+
+  it('keeps its plain sub-line when the two agree', () => {
+    setQuery({ data: report({ as_paid: 2000, spread: 2000, spread_on: true, monthly: 2000 }) })
+    renderReport(<EssentialsReport budgetId="b1" />)
+    expect(card('Essentials / month')).toEqual({ value: '$2,000.00', sub: '90-day average' })
   })
 })
 
@@ -1652,10 +1703,15 @@ describe('EmergencyCoverageReport', () => {
   const base = {
     months: 12,
     tagged: true,
-    fund_balance: 4000,
-    fund_source: 'Cascade Point HYSA',
+    fund: {
+      set_up: true,
+      total: 4000,
+      categories: [],
+      accounts: [{ id: 'a1', name: 'Cascade Point HYSA', balance: 4000 }],
+      external: { declared: false, amount: null, as_of: null, note: null },
+    },
     coverage_months: 4,
-    essentials_monthly: 1000,
+    essentials: { as_paid: 1000, spread: 1000, spread_on: true, monthly: 1000 },
     target_low: 3000,
     target_high: 6000,
     target_range: [3, 6],
@@ -1694,6 +1750,31 @@ describe('EmergencyCoverageReport', () => {
     })
     renderReport(<EmergencyCoverageReport budgetId="b1" />)
     expect(screen.getByText('+2 months over 4 months')).toBeInTheDocument()
+  })
+
+  it('reads the spread figure and names the as-paid one beside it', () => {
+    setQuery({
+      data: {
+        ...base,
+        essentials: { as_paid: 2800, spread: 2200, spread_on: true, monthly: 2200 },
+        series: [pt('2026-08-01', 4)],
+      },
+    })
+    renderReport(<EmergencyCoverageReport budgetId="b1" />)
+    expect(
+      screen.getByText(
+        /\$2,200\.00\/month over the Guide’s 90-day window, with yearly bills spread/
+      )
+    ).toHaveTextContent('($2,200.00/mo spread · $2,800.00/mo as paid)')
+    expect(
+      screen.getByRole('checkbox', { name: 'Spread yearly bills over 12 months' })
+    ).toBeChecked()
+  })
+
+  it('says nothing more when the two figures agree', () => {
+    setQuery({ data: { ...base, series: [pt('2026-08-01', 4)] } })
+    renderReport(<EmergencyCoverageReport budgetId="b1" />)
+    expect(screen.queryByText(/\/mo as paid/)).toBeNull()
   })
 })
 

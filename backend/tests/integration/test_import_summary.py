@@ -60,23 +60,21 @@ class TestItSurvivesTheRequest:
         assert stored["anchor_skipped_reason"] == "no plan in the export"
 
     @pytest.mark.asyncio
-    async def test_it_names_the_categories_it_tagged(self, api_client):
-        """A count cannot answer "show me what you did"."""
+    async def test_it_tags_nothing_and_still_serves_the_fields(self, api_client):
+        """An import writes no tags now — "Emergency Fund" is suggested in the
+        review, not tagged. The fields stay, so a summary stored by an import
+        that did tag still renders what it did."""
         body = await _import(api_client)
         budget_id = body["budget"]["id"]
 
         stored = (await api_client.get(f"/api/v1/{budget_id}/import-summary")).json()["summary"]
-        tagged = stored["tagged_categories"]
 
-        assert stored["categories_tagged"] == len(tagged)
-        by_key = {t["system_key"]: t for t in tagged}
-        assert "savings" in by_key
-        # And why. "Emergency Fund" sits in a group called "Savings" and both
-        # names point at the same key -- the category's own wins, which is the
-        # precedence that makes a "Savings" category inside "True Expenses"
-        # savings rather than a long-term expense.
-        assert by_key["savings"]["matched_on"] == "Emergency Fund"
-        assert uuid.UUID(by_key["savings"]["category_id"])
+        assert stored["categories_tagged"] == 0
+        assert stored["tagged_categories"] == []
+        suggestions = (await api_client.get(f"/api/v1/{budget_id}/tags/suggestions")).json()
+        assert ("emergency_fund", "Emergency Fund") in {
+            (s["system_key"], s["matched_on"]) for s in suggestions
+        }
 
     @pytest.mark.asyncio
     async def test_a_budget_that_was_never_imported_reports_nothing(self, api_client, db_session):

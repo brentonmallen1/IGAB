@@ -8,8 +8,12 @@ from igab.api.route import CommitRoute
 from igab.api.v1.schemas.base import ApiModel
 from igab.api.v1.schemas.tag import (
     BulkSetCategoryTagsRequest,
+    MembershipCategoryOut,
+    MembershipTagOut,
     SetTagsRequest,
     TagCreate,
+    TagMembershipOut,
+    TagMembershipUpdate,
     TagOut,
     TagOutSimple,
     TagSuggestionOut,
@@ -25,7 +29,9 @@ from igab.dependencies import (
     get_change_recorder,
     get_tag_repo,
 )
+from igab.domain.exceptions import InvariantViolation
 from igab.domain.tag_hints import DERIVED_KEYS, TAG_HINTS, suggest_review_tags
+from igab.repositories.category_filters import SAVINGS_CATEGORY_KEYS
 from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.tag_repo import (
     SYSTEM_TAGS,
@@ -34,41 +40,28 @@ from igab.repositories.tag_repo import (
     seed_system_tags,
 )
 from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match
+from igab.services.tag_membership import (
+    category_tag_ids,
+    membership,
+    record_membership,
+    refuse_derived,
+    set_membership,
+)
 
 router = APIRouter(route_class=CommitRoute)
 
 Recorder = Annotated[ChangeRecorder, Depends(get_change_recorder)]
 
 
-async def _membership(session: AsyncSession, assoc, owner_col: str, owner_id) -> list[str]:
-    """The raw tag ids on one category/payee, sorted for == — recorded as
-    `_tag_ids` bookkeeping on membership updates (the rows are hard-replaced
-    on every set, so undo rebuilds them rather than flipping fields)."""
-    return sorted(
-        str(t)
-        for t in (
-            await session.execute(select(assoc.c.tag_id).where(assoc.c[owner_col] == owner_id))
-        ).scalars()
+def _tag_out(tag, category_count: int) -> TagOut:
+    return TagOut(
+        id=tag.id,
+        name=tag.name,
+        system_key=tag.system_key,
+        color_slot=tag.color_slot,
+        category_count=category_count,
+        hand_settable=tag.system_key not in DERIVED_KEYS,
     )
-
-
-async def _record_membership(
-    recorder: ChangeRecorder,
-    budget_id,
-    entity_type: str,
-    owner_id,
-    before_ids: list[str],
-    after_ids: list[str],
-) -> None:
-    if before_ids != after_ids:
-        await recorder.record(
-            budget_id=budget_id,
-            entity_type=entity_type,
-            entity_id=owner_id,
-            action="update",
-            before={"_tag_ids": before_ids},
-            after={"_tag_ids": after_ids},
-        )
 
 
 @router.get("/{budget_id}/tags", response_model=list[TagOut])
@@ -88,16 +81,7 @@ async def list_tags(
         await seed_system_tags(tag_repo.session, budget_id)
         tags_with_counts = await tag_repo.list_for_budget_with_counts(budget_id)
 
-    return [
-        TagOut(
-            id=tag.id,
-            name=tag.name,
-            system_key=tag.system_key,
-            color_slot=tag.color_slot,
-            category_count=cat_count,
-        )
-        for tag, cat_count in tags_with_counts
-    ]
+    return [_tag_out(tag, cat_count) for tag, cat_count in tags_with_counts]
 
 
 @router.post("/{budget_id}/tags", response_model=TagOut, status_code=status.HTTP_201_CREATED)
@@ -131,13 +115,7 @@ async def create_tag(
         action="create",
         after=snapshot("tag", tag),
     )
-    return TagOut(
-        id=tag.id,
-        name=tag.name,
-        system_key=tag.system_key,
-        color_slot=tag.color_slot,
-        category_count=0,
-    )
+    return _tag_out(tag, 0)
 
 
 @router.patch("/{budget_id}/tags/{tag_id}", response_model=TagOut)
@@ -191,14 +169,8 @@ async def update_tag(
     tags_with_counts = await tag_repo.list_for_budget_with_counts(budget_id)
     for t, cat_count in tags_with_counts:
         if t.id == tag_id:
-            return TagOut(
-                id=t.id,
-                name=t.name,
-                system_key=t.system_key,
-                color_slot=t.color_slot,
-                category_count=cat_count,
-            )
-    return TagOut.model_validate(tag)
+            return _tag_out(t, cat_count)
+    return _tag_out(tag, 0)
 
 
 @router.delete("/{budget_id}/tags/{tag_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -275,10 +247,10 @@ async def list_tag_suggestions(
 
     out: list[TagSuggestionOut] = []
     for category, group_name in rows:
-        held = {t.system_key for t in existing.get(category.id, []) if t.system_key}
-        for suggestion in suggest_review_tags(category.name, group_name):
-            if suggestion.system_key in held:
-                continue
+        held = [t.system_key for t in existing.get(category.id, []) if t.system_key]
+        # Minus what the category carries, and what that implies: an Emergency
+        # fund category is never offered Savings (`tag_hints.IMPLIED_TAGS`).
+        for suggestion in suggest_review_tags(category.name, group_name, held):
             out.append(
                 TagSuggestionOut(
                     category_id=category.id,
@@ -322,29 +294,18 @@ async def bulk_set_category_tags(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=f"Tag {tag_id} not found",
                 )
-            if tag.system_key in DERIVED_KEYS:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=(
-                        f"The {tag.name} tag is set by the wishlist itself, from which "
-                        "envelopes fund an open wish. Setting it by hand would be undone "
-                        "on the next wishlist change."
-                    ),
-                )
+            try:
+                refuse_derived(tag)
+            except InvariantViolation as e:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
 
     # One batch: the review is a single decision, so it undoes as one.
     with recorder.batch():
         for update in body.updates:
-            before_ids = await _membership(
-                tag_repo.session, category_tags, "category_id", update.category_id
-            )
+            before_ids = await category_tag_ids(tag_repo.session, update.category_id)
             await tag_repo.set_category_tags(update.category_id, update.tag_ids)
-            after_ids = await _membership(
-                tag_repo.session, category_tags, "category_id", update.category_id
-            )
-            await _record_membership(
-                recorder, budget_id, "category_tags", update.category_id, before_ids, after_ids
-            )
+            after_ids = await category_tag_ids(tag_repo.session, update.category_id)
+            await record_membership(recorder, budget_id, update.category_id, before_ids, after_ids)
 
 
 @router.put("/{budget_id}/categories/{category_id}/tags", response_model=list[TagOutSimple])
@@ -364,14 +325,83 @@ async def set_category_tags(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Tag {tag_id} not found",
             )
-    before_ids = await _membership(tag_repo.session, category_tags, "category_id", category_id)
+    before_ids = await category_tag_ids(tag_repo.session, category_id)
     await tag_repo.set_category_tags(category_id, body.tag_ids)
-    after_ids = await _membership(tag_repo.session, category_tags, "category_id", category_id)
-    await _record_membership(
-        recorder, budget_id, "category_tags", category_id, before_ids, after_ids
-    )
+    after_ids = await category_tag_ids(tag_repo.session, category_id)
+    await record_membership(recorder, budget_id, category_id, before_ids, after_ids)
     tags_map = await tag_repo.get_tags_for_categories([category_id])
     return [TagOutSimple.model_validate(t) for t in tags_map.get(category_id, [])]
+
+
+# ─── One tag's checklist ─────────────────────────────────────────────────────
+#
+# The other direction from the inspector: every category a tag could be on,
+# and a diff to apply (`services/tag_membership.py`).
+
+
+async def membership_out(session: AsyncSession, budget_id, tag) -> TagMembershipOut:
+    rows = await membership(session, budget_id, tag)
+    return TagMembershipOut(
+        tag=MembershipTagOut(
+            id=tag.id,
+            name=tag.name,
+            system_key=tag.system_key,
+            savings_tag=tag.system_key in SAVINGS_CATEGORY_KEYS,
+        ),
+        categories=[
+            # Validated from a dict: the columns are plain strings to the type
+            # checker, and the schema's Literals are what check them.
+            MembershipCategoryOut.model_validate(
+                {
+                    "id": r.category.id,
+                    "name": r.category.name,
+                    "group_id": r.category.category_group_id,
+                    "group_name": r.group_name,
+                    "is_archived": r.category.is_archived,
+                    "member": r.member,
+                    "savings_role": r.category.savings_role,
+                    "savings_mode": r.category.savings_mode,
+                }
+            )
+            for r in rows
+        ],
+    )
+
+
+@router.get("/{budget_id}/tags/{tag_id}/membership", response_model=TagMembershipOut)
+async def get_tag_membership(
+    budget_id: BudgetAccess,
+    tag_id: TagAccess,
+    current_user: CurrentUser,
+    tag_repo: Annotated[TagRepository, Depends(get_tag_repo)],
+) -> TagMembershipOut:
+    tag = await tag_repo.get_or_raise(tag_id)
+    return await membership_out(tag_repo.session, budget_id, tag)
+
+
+@router.put("/{budget_id}/tags/{tag_id}/categories", response_model=TagMembershipOut)
+async def set_tag_membership(
+    budget_id: BudgetAccess,
+    tag_id: TagAccess,
+    body: TagMembershipUpdate,
+    current_user: CurrentUser,
+    tag_repo: Annotated[TagRepository, Depends(get_tag_repo)],
+    recorder: Recorder,
+) -> TagMembershipOut:
+    tag = await tag_repo.get_or_raise(tag_id)
+    try:
+        await set_membership(
+            tag_repo.session,
+            recorder,
+            budget_id,
+            tag,
+            add=set(body.add),
+            remove=set(body.remove),
+            savings_modes=body.savings_modes,
+        )
+    except InvariantViolation as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(e)) from e
+    return await membership_out(tag_repo.session, budget_id, tag)
 
 
 # ─── Payee tags: retired ──────────────────────────────────────────────────────

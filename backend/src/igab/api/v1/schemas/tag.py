@@ -2,6 +2,7 @@ import uuid
 from typing import Literal
 
 from igab.api.v1.schemas.base import ApiModel
+from igab.repositories.category_filters import SavingsMode, SavingsRole
 
 TagColorSlot = Literal["red", "orange", "yellow", "green", "teal", "blue", "purple", "pink"]
 
@@ -22,8 +23,10 @@ class TagOut(ApiModel):
     system_key: str | None
     color_slot: str | None
     category_count: int = 0
-
-    model_config = {"from_attributes": True}
+    #: False for a tag the app sets itself (`tag_hints.DERIVED_KEYS` — the
+    #: wishlist's), which the membership endpoints refuse. The Tags panel offers
+    #: its checklist only where this is true.
+    hand_settable: bool
 
 
 class TagOutSimple(ApiModel):
@@ -42,18 +45,17 @@ class SetTagsRequest(ApiModel):
 class TagSuggestionOut(ApiModel):
     """A system tag this category's names point at, which it does not carry.
 
-    Served rather than computed on the client because the server already
-    decides it — the YNAB importer writes tags from the same table. A second
-    spelling in TypeScript would be free to disagree with the one that runs at
-    import time, and the two would drift silently.
+    Served rather than computed on the client because the rule is the
+    server's (`domain.tag_hints`), and a second spelling in TypeScript would be
+    free to disagree with it silently.
     """
 
     category_id: uuid.UUID
     system_key: str
     #: The category's own name or its group's — whichever triggered the hint.
     matched_on: str
-    #: True when the importer would have written this one. False means it is
-    #: offered here and nowhere else.
+    #: Whether an import writes this one. Always False now — nothing is
+    #: written from a name — and kept so the review's shape does not move.
     applied_on_import: bool
 
 
@@ -66,3 +68,45 @@ class CategoryTagsUpdate(ApiModel):
 
 class BulkSetCategoryTagsRequest(ApiModel):
     updates: list[CategoryTagsUpdate]
+
+
+class MembershipTagOut(ApiModel):
+    id: uuid.UUID
+    name: str
+    system_key: str | None
+    #: Carrying it makes a category a savings category
+    #: (`category_filters.SAVINGS_CATEGORY_KEYS`), so each checked row says how
+    #: its money counts as saved.
+    savings_tag: bool
+
+
+class MembershipCategoryOut(ApiModel):
+    """One row of a tag's checklist — every taggable category, member or not."""
+
+    id: uuid.UUID
+    name: str
+    group_id: uuid.UUID
+    group_name: str
+    is_archived: bool
+    #: Carries this tag now.
+    member: bool
+    #: `category_filters.SAVINGS_ROLE` as it stands — 'none' for a category
+    #: that is not a savings category.
+    savings_role: SavingsRole
+    #: The stored choice; None lets the tags decide (the role is the default).
+    savings_mode: SavingsMode | None
+
+
+class TagMembershipOut(ApiModel):
+    tag: MembershipTagOut
+    categories: list[MembershipCategoryOut]
+
+
+class TagMembershipUpdate(ApiModel):
+    """A diff against the checklist as loaded, not the full member set: two
+    screens editing different rows of one tag do not undo each other."""
+
+    add: list[uuid.UUID] = []
+    remove: list[uuid.UUID] = []
+    #: Category id → how its money counts as saved; null = back to the default.
+    savings_modes: dict[uuid.UUID, SavingsMode | None] = {}

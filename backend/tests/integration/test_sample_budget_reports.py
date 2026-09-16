@@ -34,9 +34,9 @@ from igab.repositories.transaction_repo import TransactionRepository
 from igab.sample_budget.data import CAT_HOME_MAINT
 from igab.sample_budget.generator import SampleBudgetGenerator
 from igab.services.emergency_coverage import EmergencyCoverageService
+from igab.services.essentials import essentials_summary
 from igab.services.report_basics import cost_of_living
 from igab.services.report_favorites import ReportFavoritesService
-from igab.services.report_service import ReportService
 
 from .factories import create_budget, create_user
 
@@ -85,7 +85,7 @@ async def _tier_category_ids(db_session, budget) -> tuple[set[str], set[str]]:
     """(wide, lean): the category ids Cost of Living's groups and the
     Essentials table carry over the same twelve months."""
     report = await cost_of_living(db_session, budget.id, months=12)
-    lean = await ReportService(db_session).essentials_summary(budget.id, 12)
+    lean = await essentials_summary(db_session, budget.id, 12)
     wide_ids = {cid for g in report["groups"] for cid in g["category_ids"]}
     lean_ids = {str(c["category_id"]) for c in lean["categories"]}
     return wide_ids, lean_ids
@@ -103,10 +103,10 @@ async def test_the_essentials_family_has_something_to_say(db_session):
     them, and it was False on both tiers."""
     for tier in ("starter", "full"):
         budget, _ = await _world(db_session, tier)
-        report = await ReportService(db_session).essentials_summary(budget.id, 12)
+        report = await essentials_summary(db_session, budget.id, 12)
 
         assert report["tagged"] is True, tier
-        assert report["essentials_90d"] > Decimal("1000"), tier
+        assert report["essentials"].monthly > Decimal("1000"), tier
         assert len(report["categories"]) >= 5, tier
         assert all(m["total"] > 0 for m in report["monthly_series"]), tier
 
@@ -124,7 +124,7 @@ async def test_nothing_is_tagged_essential_and_then_not_counted(db_session):
     because the combination was dodged."""
     for tier in ("starter", "full"):
         budget, _ = await _world(db_session, tier)
-        report = await ReportService(db_session).essentials_summary(budget.id, 12)
+        report = await essentials_summary(db_session, budget.id, 12)
         assert report["class_excluded"] == [], tier
 
 
@@ -133,13 +133,13 @@ async def test_the_full_tier_counts_its_mortgage_as_a_cost_of_living(db_session)
     thing a household cannot cut and its rows classify as DEBT_PRINCIPAL, so
     before `COST_OF_LIVING_CLASSES` it counted for nothing."""
     budget, _ = await _world(db_session, "full")
-    report = await ReportService(db_session).essentials_summary(budget.id, 12)
+    report = await essentials_summary(db_session, budget.id, 12)
 
     names = {c["name"] for c in report["categories"]}
     assert any("Mortgage" in n for n in names)
     # The mortgage alone is $2,444/mo, so a report that dropped it would come
     # in under half of this.
-    assert report["essentials_90d"] > Decimal("4000")
+    assert report["essentials"].monthly > Decimal("4000")
 
 
 async def test_the_emergency_fund_report_draws_a_real_line(db_session):
@@ -150,7 +150,7 @@ async def test_the_emergency_fund_report_draws_a_real_line(db_session):
         budget, _ = await _world(db_session, tier)
         report = await EmergencyCoverageService(db_session).coverage(budget.id, months=12)
 
-        assert report["fund_balance"] is not None, tier
+        assert report["fund"].total is not None, tier
         assert report["coverage_months"] is not None, tier
         assert len(report["series"]) == 12, tier
         assert all(p["coverage_months"] is not None for p in report["series"]), tier
@@ -169,7 +169,7 @@ async def test_the_fund_is_short_of_the_band_so_the_report_has_a_gap_to_show(db_
 
     low, _high = report["target_range"]
     assert report["coverage_months"] < low
-    assert report["fund_balance"] < report["target_low"]
+    assert report["fund"].total < report["target_low"]
 
 
 async def test_the_budget_bar_and_the_reports_scope_have_saved_filters(db_session):
@@ -221,7 +221,7 @@ async def test_the_demo_actually_shows_a_gap(db_session):
     # The gap is nameable, not just non-zero: the wide tier must reach groups
     # the lean one does not.
     wide_groups = {g["group_name"] for g in report["groups"]}
-    lean = await ReportService(db_session).essentials_summary(budget.id, 12)
+    lean = await essentials_summary(db_session, budget.id, 12)
     lean_groups = {c["group_name"] for c in lean["categories"]}
     assert wide_groups - lean_groups, (
         f"every group in the wide tier is also in the lean one: {sorted(wide_groups)}"
@@ -251,3 +251,75 @@ async def test_the_debt_half_of_the_tier_needs_no_tag(db_session):
     car = await _category_id(db_session, budget, "Car Payment")
     assert car in wide_ids, "the untagged car payment did not reach Cost of Living"
     assert car not in lean_ids
+
+
+async def test_the_sample_demos_both_savings_modes_and_a_marked_account(db_session):
+    """Every way money is set aside, on both tiers:
+
+    - Emergency Fund is tagged Emergency fund only and reads kept here; the
+      fund is that envelope plus Harborstone Reserve, the marked account it
+      feeds $100 a month.
+    - General Savings is kept here and feeds Cascade Point HYSA, which counts
+      as savings and is not the fund.
+    - Investing is sent out: on the way to savings, not Saved.
+    - Vacation is a sinking fund, never savings.
+    """
+    from igab.repositories.category_filters import SAVINGS_ROLE
+    from igab.services.emergency_fund import emergency_fund
+    from igab.services.savings_report import savings_report
+
+    for tier in ("starter", "full"):
+        budget, _ = await _world(db_session, tier)
+        roles = dict(
+            (
+                await db_session.execute(
+                    select(Category.name, SAVINGS_ROLE).where(
+                        Category.budget_id == budget.id,
+                        Category.name.in_(
+                            ["Emergency Fund", "General Savings", "Investing", "Vacation"]
+                        ),
+                    )
+                )
+            ).all()
+        )
+        assert roles == {
+            "Emergency Fund": "kept_here",
+            "General Savings": "kept_here",
+            "Investing": "sent_out",
+            "Vacation": "none",
+        }, tier
+
+        fund = await emergency_fund(db_session, budget.id)
+        assert [p.name for p in fund.categories] == ["Emergency Fund"], tier
+        assert [p.name for p in fund.accounts] == ["Harborstone Reserve"], tier
+        assert fund.accounts[0].balance > 0, tier
+
+        report = await savings_report(db_session, budget.id, months=12)
+        saved = {e["category_name"] for e in report["saved"]["envelopes"]}
+        assert saved == {"Emergency Fund", "General Savings"}, tier
+        accounts = {a["name"] for a in report["saved"]["accounts"]}
+        assert {"Harborstone Reserve", "Cascade Point HYSA"} <= accounts, tier
+        assert "Investing" in {e["category_name"] for e in report["on_the_way"]["envelopes"]}
+        assert "Vacation" in {e["category_name"] for e in report["sinking_funds"]["envelopes"]}
+
+
+async def test_the_reserve_transfer_moves_nothing_in_the_fund(db_session):
+    """The Emergency Fund envelope sends $100 a month to Harborstone Reserve,
+    and the fund counts both: its total is every dollar ever assigned to the
+    envelope, exactly as it was when the envelope kept all of it."""
+    from sqlalchemy import func
+
+    from igab.db.models import BudgetAssignment
+    from igab.services.emergency_fund import emergency_fund
+
+    for tier in ("starter", "full"):
+        budget, _ = await _world(db_session, tier)
+        fund = await emergency_fund(db_session, budget.id)
+        assigned = (
+            await db_session.execute(
+                select(func.sum(BudgetAssignment.assigned)).where(
+                    BudgetAssignment.category_id == fund.categories[0].id
+                )
+            )
+        ).scalar_one()
+        assert fund.total == assigned, tier

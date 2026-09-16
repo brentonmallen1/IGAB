@@ -29,6 +29,7 @@ from decimal import Decimal
 
 from igab.domain.activity_class import COST_OF_LIVING_CLASSES, SPENDING_CLASSES, ActivityClass
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
+from igab.services.essentials import essentials_summary
 from igab.services.report_basics import cost_of_living, spending_trends
 from igab.services.report_service import ReportService
 
@@ -104,7 +105,7 @@ class TestTheMortgageIsACostOfLiving:
     async def test_the_essentials_report_counts_it_too(self, db_session):
         """One query behind all of these, so the figures cannot disagree."""
         budget, *_ = await _household(db_session)
-        report = await ReportService(db_session).essentials_summary(budget.id, 2)
+        report = await essentials_summary(db_session, budget.id, 2)
 
         by_name = {c["name"]: c for c in report["categories"]}
         assert by_name["Mortgage"]["total"] == D("3000.00")
@@ -114,9 +115,9 @@ class TestTheMortgageIsACostOfLiving:
         """The emergency-fund target is measured against this. A fund sized to
         a household's costs must cover the roof over it."""
         budget, *_ = await _household(db_session)
-        report = await ReportService(db_session).essentials_summary(budget.id, 2)
+        report = await essentials_summary(db_session, budget.id, 2)
         # Rolling 90 days ÷ 3, over one month's activity: 3400 / 3.
-        assert report["essentials_90d"] == D("1133.33")
+        assert report["essentials"].monthly == D("1133.33")
 
     async def test_the_loan_side_of_the_transfer_is_not_counted_twice(self, db_session):
         """The inflow leg lands on an off-budget account, which every reader

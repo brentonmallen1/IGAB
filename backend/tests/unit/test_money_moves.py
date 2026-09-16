@@ -13,12 +13,15 @@ import pytest
 from igab.domain.activity_class import (
     COST_OF_LIVING_CLASSES,
     SPENDING_CLASSES,
+    TAG_INPUTS,
     ActivityClass,
     ActivityReason,
 )
 from igab.domain.money_moves import (
+    KIND_FOR_INPUT,
     SHAPES,
     AccountShape,
+    BudgetTerm,
     CategoryKind,
     Direction,
     LegRole,
@@ -28,8 +31,10 @@ from igab.domain.money_moves import (
     category_role,
     explain_move,
     figures,
+    flows,
     leg_facts,
     legs,
+    month_buckets,
     report_families,
 )
 
@@ -89,11 +94,37 @@ class TestLegs:
 
     def test_tag_kinds_set_their_own_input_only(self):
         (leg,) = legs(
-            Move(MoveKind.TRANSACTION, CASH, D("1"), CategoryKind.SAVINGS, direction=Direction.OUT)
+            Move(
+                MoveKind.TRANSACTION,
+                CASH,
+                D("1"),
+                CategoryKind.SAVINGS_SENT,
+                direction=Direction.OUT,
+            )
         )
         facts = leg_facts(leg)
-        assert facts.tagged_savings and facts.categorized
+        assert facts.savings_sent_out and facts.categorized
         assert not facts.tagged_debt and not facts.in_system_group
+
+    def test_a_kept_here_savings_category_sets_no_tag_input(self):
+        """Its rows class by where the money went, like any envelope's."""
+        (leg,) = legs(
+            Move(
+                MoveKind.TRANSACTION,
+                CASH,
+                D("1"),
+                CategoryKind.SAVINGS_KEPT,
+                direction=Direction.OUT,
+            )
+        )
+        facts = leg_facts(leg)
+        assert facts.categorized
+        assert not facts.savings_sent_out and not facts.tagged_debt
+
+    def test_every_tag_input_has_a_kind(self):
+        """A tag input with no kind would be False on every explorer leg, and
+        the explorer would teach a rule that never fires."""
+        assert set(KIND_FOR_INPUT) == set(TAG_INPUTS)
 
     def test_a_move_refuses_a_shape_that_does_not_fit_its_kind(self):
         with pytest.raises(ValueError):
@@ -135,19 +166,23 @@ class TestPlannedSpendByTag:
         return explain_move(move, [(cls, ActivityReason.TAGGED_SAVINGS)]).legs[0]
 
     def test_a_savings_tagged_outflow_is_spent_against_the_plan(self):
-        assert self._explain(CategoryKind.SAVINGS, ActivityClass.SAVINGS).planned_spend_by_tag
+        assert self._explain(CategoryKind.SAVINGS_SENT, ActivityClass.SAVINGS).planned_spend_by_tag
+
+    def test_a_kept_here_outflow_that_is_not_spending_is_spent_against_the_plan(self):
+        """A move from a kept-here envelope to a tracked savings account
+        classes SAVINGS by rule 3; the plan still meant that money to leave."""
+        assert self._explain(CategoryKind.SAVINGS_KEPT, ActivityClass.SAVINGS).planned_spend_by_tag
 
     def test_not_a_refund_and_not_other_tags(self):
-        assert not self._explain(
-            CategoryKind.SAVINGS, ActivityClass.SAVINGS, Direction.IN
-        ).planned_spend_by_tag
+        for kind in (CategoryKind.SAVINGS_SENT, CategoryKind.SAVINGS_KEPT):
+            assert not self._explain(kind, ActivityClass.SAVINGS, Direction.IN).planned_spend_by_tag
         assert not self._explain(
             CategoryKind.DEBT_PRINCIPAL, ActivityClass.DEBT_PRINCIPAL
         ).planned_spend_by_tag
 
 
 def test_figures_read_the_class_buckets():
-    f = figures({"income": D("6000"), "spending": D("-2550"), "debt_principal": D("-900")})
+    f = figures({"income": D("6000"), "spending": D("-2550"), "debt_principal": D("-900")}, D("0"))
     assert (f.income, f.spending, f.cost_of_living, f.debt_principal) == (
         D("6000"),
         D("2550"),
@@ -160,3 +195,144 @@ def test_figures_read_the_class_buckets():
 def test_every_account_shape_is_explained_once():
     keys = {(s.is_liability, s.on_budget, s.counts_as_savings) for s in SHAPES}
     assert len(keys) == len(SHAPES) == 5
+
+
+class TestHeldByAMove:
+    """`MoveExplanation.held`: the envelope term of legs filed to a kept-here
+    Savings category, and nothing for any other kind."""
+
+    SPEND = (ActivityClass.SPENDING, ActivityReason.DEFAULT_SPENDING)
+
+    def _held(self, move, classes):
+        return explain_move(move, classes).held
+
+    def test_spending_from_a_kept_envelope_lowers_held(self):
+        move = Move(
+            MoveKind.TRANSACTION, CASH, D("120"), CategoryKind.SAVINGS_KEPT, direction=Direction.OUT
+        )
+        assert self._held(move, [self.SPEND]) == D("-120")
+
+    def test_a_card_charge_from_a_kept_envelope_lowers_held(self):
+        move = Move(
+            MoveKind.TRANSACTION, CARD, D("120"), CategoryKind.SAVINGS_KEPT, direction=Direction.OUT
+        )
+        assert self._held(move, [self.SPEND]) == D("-120")
+
+    def test_a_refund_into_a_kept_envelope_raises_held(self):
+        move = Move(
+            MoveKind.TRANSACTION, CASH, D("40"), CategoryKind.SAVINGS_KEPT, direction=Direction.IN
+        )
+        assert self._held(move, [self.SPEND]) == D("40")
+
+    def test_kept_to_a_tracked_savings_account_nets_to_zero_saved(self):
+        """moved +300 by the class, held −300 by the envelope: saved 0."""
+        move = Move(
+            MoveKind.TRANSFER, CASH, D("300"), CategoryKind.SAVINGS_KEPT, to_account=BROKERAGE
+        )
+        tracked = (ActivityClass.SAVINGS, ActivityReason.TRANSFER_TO_TRACKED_ASSET)
+        explained = explain_move(move, [tracked, tracked])
+        assert explained.held == D("-300")
+        buckets, held = month_buckets([explained])
+        f = figures(buckets, held)
+        assert (f.savings_moved, f.savings_held, f.savings) == (D("300"), D("-300"), D("0"))
+
+    @pytest.mark.parametrize(
+        "kind",
+        [
+            CategoryKind.NONE,
+            CategoryKind.ORDINARY,
+            CategoryKind.SAVINGS_SENT,
+            CategoryKind.DEBT_PRINCIPAL,
+        ],
+    )
+    def test_no_other_kind_holds_anything(self, kind):
+        move = Move(MoveKind.TRANSACTION, CASH, D("120"), kind, direction=Direction.OUT)
+        assert self._held(move, [self.SPEND]) == D("0")
+
+    def test_month_buckets_add_up_held(self):
+        out = Move(
+            MoveKind.TRANSACTION, CASH, D("120"), CategoryKind.SAVINGS_KEPT, direction=Direction.OUT
+        )
+        back = Move(
+            MoveKind.TRANSACTION, CASH, D("20"), CategoryKind.SAVINGS_KEPT, direction=Direction.IN
+        )
+        explained = [explain_move(out, [self.SPEND]), explain_move(back, [self.SPEND])]
+        assert month_buckets(explained)[1] == D("-100")
+
+
+def test_figures_add_held_to_moved_and_to_both_rates():
+    f = figures({"income": D("5000"), "savings": D("-400"), "debt_principal": D("-100")}, D("600"))
+    assert (f.savings_moved, f.savings_held, f.savings) == (D("400"), D("600"), D("1000"))
+    assert f.savings_rate == 0.2 and f.savings_rate_with_debt == 0.22
+
+
+def test_flows_are_the_row_sums_figures_read():
+    buckets = {
+        "income": D("5000"),
+        "spending": D("-1000"),
+        "savings": D("-400"),
+        "debt_principal": D("-100"),
+    }
+    fl, fi = flows(buckets), figures(buckets, D("250"))
+    assert (fl.income, fl.spending, fl.cost_of_living, fl.debt_principal, fl.savings_moved) == (
+        fi.income,
+        fi.spending,
+        fi.cost_of_living,
+        fi.debt_principal,
+        fi.savings_moved,
+    )
+
+
+class TestAssign:
+    """`MoveKind.ASSIGN`: no legs, Ready to Assign down and the envelope up,
+    held only by a kept-here Savings envelope."""
+
+    def _explain(self, kind):
+        return explain_move(Move(MoveKind.ASSIGN, None, D("500"), kind), [])
+
+    @pytest.mark.parametrize(
+        "kind",
+        [
+            CategoryKind.ORDINARY,
+            CategoryKind.SAVINGS_SENT,
+            CategoryKind.SAVINGS_KEPT,
+            CategoryKind.DEBT_PRINCIPAL,
+        ],
+    )
+    def test_ready_to_assign_down_the_envelope_up_nothing_classed(self, kind):
+        explained = self._explain(kind)
+        assert explained.legs == [] and explained.class_totals == {}
+        assert explained.budget_terms == {
+            BudgetTerm.READY_TO_ASSIGN: D("-500"),
+            BudgetTerm.ENVELOPE: D("500"),
+        }
+        assert explained.category_applied and explained.net_worth_delta == 0
+
+    def test_only_a_kept_here_envelope_holds_it(self):
+        assert self._explain(CategoryKind.SAVINGS_KEPT).held == D("500")
+        for kind in (CategoryKind.ORDINARY, CategoryKind.SAVINGS_SENT):
+            assert self._explain(kind).held == 0
+
+    def test_an_assign_to_a_kept_envelope_is_saved(self):
+        buckets, held = month_buckets([self._explain(CategoryKind.SAVINGS_KEPT)])
+        f = figures(buckets, held)
+        assert (f.savings_moved, f.savings_held, f.savings) == (D("0"), D("500"), D("500"))
+
+    @pytest.mark.parametrize(
+        ("account", "category", "direction"),
+        [
+            (CASH, CategoryKind.ORDINARY, None),
+            (None, CategoryKind.NONE, None),
+            (None, CategoryKind.INCOME, None),
+            (None, CategoryKind.ORDINARY, Direction.IN),
+        ],
+    )
+    def test_an_assign_that_names_an_account_or_no_envelope_is_refused(
+        self, account, category, direction
+    ):
+        with pytest.raises(ValueError):
+            Move(MoveKind.ASSIGN, account, D("500"), category, direction=direction)
+
+    def test_a_transfer_or_transaction_without_an_account_is_refused(self):
+        with pytest.raises(ValueError):
+            Move(MoveKind.TRANSACTION, None, D("500"), direction=Direction.IN)

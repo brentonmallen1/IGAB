@@ -10,6 +10,7 @@ from igab.api.v1.schemas.tag import TagOutSimple
 from igab.domain.enums import TargetStatus, TargetType
 from igab.domain.money import Money
 from igab.domain.targets import MAX_FUNDING_DAY
+from igab.repositories.category_filters import SavingsMode, SavingsRole
 
 
 class CategoryGroupCreate(ApiModel):
@@ -274,6 +275,11 @@ class CategoryUpdate(ApiModel):
     sort_order: int | None = None
     note: str | None = None
     category_group_id: uuid.UUID | None = None
+    #: How a savings category's money counts as saved. Omitted leaves it alone;
+    #: an explicit null clears it back to the tags' default. Accepted whatever
+    #: the category's tags are: the choice is kept, and `savings_role` serves
+    #: 'none' until the category is a savings category.
+    savings_mode: SavingsMode | None = None
 
 
 class CategoryTargetCreate(ApiModel):
@@ -399,6 +405,17 @@ class CategoryResponse(ApiModel):
     #: May a transaction leg be filed here? Differs from is_assignable on
     #: system groups — income is filed into one — and on linked categories.
     is_categorizable: bool
+    #: The stored choice only, NULL when the tags decide. Read `savings_role`
+    #: for the answer.
+    savings_mode: SavingsMode | None
+    #: How this category's money counts as saved: 'none', 'sent_out' or
+    #: 'kept_here'. Computed by the server from `SAVINGS_ROLE`
+    #: (repositories/category_filters.py), because it reads the tags and the
+    #: default an Emergency fund tag implies.
+    #:
+    #: Required for the reason its siblings are: a path that forgets must
+    #: raise, not report a savings envelope as an ordinary one.
+    savings_role: SavingsRole
     created_at: datetime.datetime
     updated_at: datetime.datetime
     tags: list[TagOutSimple] = []

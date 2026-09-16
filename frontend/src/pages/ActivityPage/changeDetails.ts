@@ -9,6 +9,7 @@
  * own list of which fields are references.
  */
 import type { Change } from '../../api/changes'
+import { guideStateSummary } from './changeLabels'
 import { parseApiDecimal } from '../../utils/money'
 import { truncateLabel } from '../../utils/truncateLabel'
 
@@ -150,6 +151,7 @@ function changedFields(change: Change): string[] {
 }
 
 function summarizeUpdate(change: Change, names: Names): string {
+  if (change.entity_type === 'guide_state') return guideStateSummary(change.after) ?? ''
   const after = change.after ?? {}
   const changed = changedFields(change)
   if (changed.length === 0) return ''

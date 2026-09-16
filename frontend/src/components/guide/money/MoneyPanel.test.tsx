@@ -95,7 +95,9 @@ describe('the rule ladder', () => {
       expect.stringContaining('Otherwise: Served default reason'),
     ])
     expect(within(items[0]).getByText('Served Savings')).toBeInTheDocument()
-    expect(within(items[0]).getByText('tag: Savings')).toBeInTheDocument()
+    expect(
+      within(items[0]).getByText('tag: Savings · when it leaves the budget')
+    ).toBeInTheDocument()
   })
 })
 
@@ -108,6 +110,17 @@ describe('the explorer', () => {
     expect(screen.getByText(/Ready to Assign goes up by/)).toBeInTheDocument()
     expect(screen.getByText(/Unchanged — the money only moved/)).toBeInTheDocument()
     expect(screen.getByText('Served assumption.')).toBeInTheDocument()
+  })
+
+  it('says what a kept-here envelope holds, from the served held figure', () => {
+    serveExplain(explanation({ held: -1000 }))
+    renderPanel()
+    expect(screen.getByText(/Held in the envelope: −\$1,000\.00/)).toBeInTheDocument()
+  })
+
+  it('shows no held line when the move holds nothing', () => {
+    renderPanel()
+    expect(screen.queryByText(/Held in the envelope/)).not.toBeInTheDocument()
   })
 
   it('disables the category, and says why, when the server says no leg may carry one', () => {
@@ -144,7 +157,7 @@ describe('the explorer', () => {
       screen.getByRole('button', { name: /Try it in the explorer: Selling something/ })
     )
     const last = vi.mocked(useExplainMove).mock.lastCall?.[1] as MoneyMoveRequest
-    expect(last.account.counts_as_savings).toBe(false)
+    expect(last.account?.counts_as_savings).toBe(false)
     expect(last.to_account?.on_budget).toBe(true)
   })
 })
@@ -157,6 +170,49 @@ describe('the tag table', () => {
     const essential = within(table).getByRole('rowheader', { name: 'Essential' }).closest('tr')!
     expect(within(savings).getByText('Served Savings')).toBeInTheDocument()
     expect(within(essential).getByText('No')).toBeInTheDocument()
+  })
+
+  it('shows the Savings rule with its served mode on Savings and on Emergency fund', () => {
+    renderPanel()
+    const table = screen.getByRole('table', { name: 'What each tag does' })
+    for (const name of ['Savings', 'Emergency fund']) {
+      const row = within(table).getByRole('rowheader', { name }).closest('tr')!
+      expect(within(row).getByText('Served Savings')).toBeInTheDocument()
+      expect(within(row).getByText('when it leaves the budget')).toBeInTheDocument()
+    }
+    for (const name of ['Long-term expense', 'Cost of living']) {
+      const row = within(table).getByRole('rowheader', { name }).closest('tr')!
+      expect(within(row).getByText('No')).toBeInTheDocument()
+    }
+  })
+
+  it('gives Emergency fund no class when the served rule does not read it', () => {
+    vi.mocked(useMoneyRules).mockReturnValue({
+      data: {
+        rules: SERVED_RULES.map((r) => ({ ...r, tag_keys: r.tag_key ? [r.tag_key] : [] })),
+        report_families: [],
+        shapes: [],
+        planned_spend_tag_keys: [],
+      },
+      isError: false,
+    } as unknown as ReturnType<typeof useMoneyRules>)
+    renderPanel()
+    const table = screen.getByRole('table', { name: 'What each tag does' })
+    const fund = within(table).getByRole('rowheader', { name: 'Emergency fund' }).closest('tr')!
+    expect(within(fund).getByText('No')).toBeInTheDocument()
+  })
+
+  it('links on to Setting money aside, and from the tag table to its savings modes', () => {
+    renderPanel()
+    const hrefs = screen
+      .getAllByRole('link', { name: /Setting money aside/ })
+      .map((l) => l.getAttribute('href'))
+    expect(hrefs).toContain('/guide?tab=aside')
+    const table = screen.getByRole('table', { name: 'What each tag does' }).parentElement!
+    expect(within(table).getByRole('link', { name: /Setting money aside/ })).toHaveAttribute(
+      'href',
+      '/guide?tab=aside#savings-modes'
+    )
   })
 })
 

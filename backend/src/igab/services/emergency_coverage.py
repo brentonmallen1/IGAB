@@ -12,6 +12,12 @@ December, not about the fund. Three months is the Guide's own window
 (`ESSENTIALS_WINDOW_DAYS` is 90) so this line and the roadmap's target cannot
 tell different stories about the same household.
 
+**Sinking-fund bills are spread** when the budget's setting is on, exactly as
+the headline spreads them (`guide.concepts.spread_average`): the rest of a
+month's essentials takes the trailing three-month average, and the sinking
+part is the twelve months ending there divided by twelve. Off, every point is
+the plain trailing average. Charts of what was spent never spread.
+
 **The target moves.** Three months of essentials is not a fixed sum: as
 spending grows the target grows with it, and a fund that stood still can lose
 coverage without losing a cent. Serving the band per month rather than as one
@@ -28,7 +34,6 @@ beyond its own series and drew $0 under cards reading the real amount.
 """
 
 import uuid
-from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
@@ -40,95 +45,14 @@ from igab.domain.money import quantize_cents
 from igab.guide.concepts import (
     FULL_EMERGENCY_FUND_MONTHS_HIGH,
     FULL_EMERGENCY_FUND_MONTHS_LOW,
+    SPREAD_MONTHS,
+    spread_average,
+    trailing_average,
 )
 from igab.guide.detection import budget_service_from
-from igab.repositories.account_repo import AccountRepository
 from igab.repositories.transaction_repo import TransactionRepository
-from igab.services.budget_service import BudgetService
-
-#: Months of spending averaged into the denominator. The Guide's essentials
-#: window is 90 days; this is that window said in months.
-TRAILING_MONTHS = 3
-
-
-@dataclass
-class FundEntities:
-    """What counts as the emergency fund, and where its figure comes from."""
-
-    category_ids: list[uuid.UUID]
-    account_ids: list[uuid.UUID]
-    external_amount: Decimal | None
-    external_as_of: date | None
-    source: str | None
-
-    @property
-    def empty(self) -> bool:
-        return not self.category_ids and not self.account_ids and self.external_amount is None
-
-
-async def fund_entities(session: AsyncSession, budget_id: uuid.UUID) -> FundEntities:
-    """The categories and accounts behind `report_basics.emergency_fund`.
-
-    That function returns a total; this returns what it added up, because a
-    history needs the parts. Both fold the same resolution, so the newest
-    point of the series and the headline balance cannot disagree.
-    """
-    from igab.guide.bindings import resolve
-    from igab.guide.detection import GuideDetection
-    from igab.guide.repo import GuideRepository
-
-    rows = await GuideRepository(session).bindings(budget_id)
-    resolution = resolve("emergency_fund", rows)
-
-    entities: dict[str, list[uuid.UUID]] = {}
-    source: str | None = None
-    if resolution.runs_detection:
-        finding = await GuideDetection(session).emergency_fund(
-            budget_id, resolution.entities or None
-        )
-        # A finding that found nothing still names no entities; an empty list
-        # is the honest answer, not a reason to fall back to guessing again.
-        entities = {k: list(v) for k, v in (finding.entities or {}).items()}
-        source = finding.reason
-    if resolution.external_amount is not None and not source:
-        source = "you told us what you have set aside"
-
-    return FundEntities(
-        category_ids=entities.get("category", []),
-        account_ids=entities.get("account", []),
-        external_amount=resolution.external_amount,
-        external_as_of=resolution.external_as_of,
-        source=source,
-    )
-
-
-def trailing_average(
-    totals: list[Decimal], index: int, window: int = TRAILING_MONTHS, *, first_data: int = 0
-) -> Decimal:
-    """Mean of the `window` months ending at `index`, over what exists.
-
-    Early months have less history behind them, and dividing three months of
-    spending by three when only one has happened would halve the denominator
-    and double the coverage — a chart that opens on a reassuring number it
-    then walks back.
-
-    `first_data` is the index of the first month the budget has any history
-    for (`history_index`). Months before it are not months a household spent
-    nothing — they are months the budget did not exist — and averaging their
-    zeros in did exactly what the paragraph above warns against from the other
-    direction: a young budget's chart opened at 6.0 months of runway, because
-    two thirds of its denominator was a period with no data.
-
-    **The one deliberate divergence.** The headline (`essentials_90d`) is the
-    Guide's figure, 90 days divided by three whatever the budget's age. For a
-    budget with under three complete months of history, the newest point here
-    divides by the months that exist and the headline still by three, so the
-    two differ — by at most a factor of three, and only until the third
-    complete month. Pinned in `test_emergency_coverage.py`.
-    """
-    start = max(first_data, index - window + 1)
-    span = totals[start : index + 1]
-    return quantize_cents(sum(span, Decimal("0")) / len(span)) if span else Decimal("0")
+from igab.services.emergency_fund import EmergencyFund, fund_balance_at
+from igab.services.essentials import essentials_summary
 
 
 def history_index(months: list[date], history_from: date | None) -> int:
@@ -165,40 +89,25 @@ class EmergencyCoverageService:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def _fund_balance_at(
-        self, budgets: "BudgetService", entities: FundEntities, month: date, month_end: date
-    ) -> Decimal:
-        total = Decimal("0")
-        for category_id in entities.category_ids:
-            balance = await budgets.get_category_balance(category_id, month)
-            # Per category, because the zero floor is per category — two
-            # envelopes, one $50 over and one $50 under, hold $0 and $50 and
-            # not $0 between them. Same rule as GuideDetection._category_balance.
-            total += balance.available
-        if entities.account_ids:
-            sums = await AccountRepository(self.session).balances_for(
-                entities.account_ids, as_of=month_end
-            )
-            total += sum(sums.values(), Decimal("0"))
-        return quantize_cents(total)
-
     async def coverage(self, budget_id: uuid.UUID, months: int = 12) -> dict:
-        from igab.services.report_service import ReportService
-
-        entities = await fund_entities(self.session, budget_id)
         # The budget page's own service, built the way the DI layer builds it,
         # so an envelope's balance here IS the budget page's balance rather
         # than a second derivation pinned equal by a comment.
         budgets = budget_service_from(self.session)
 
         # The essentials window needs a run-up: the first point's denominator
-        # is a three-month average, so it needs the two months before it.
-        lead_in = TRAILING_MONTHS - 1
-        summary = await ReportService(self.session).essentials_summary(
-            budget_id, months=months + lead_in
-        )
+        # spreads sinking-fund bills over twelve months, so it needs the eleven
+        # months before it (the three-month average needs only two of them).
+        lead_in = SPREAD_MONTHS - 1
+        summary = await essentials_summary(self.session, budget_id, months=months + lead_in)
+        # The composition the Essentials report quotes — one reading, so the
+        # newest point, the headline and every other surface share a total.
+        fund: EmergencyFund = summary["emergency_fund"]
+        external = fund.external
+        spread_on = summary["essentials"].spread_on
         series = summary["monthly_series"]
         totals = [row["total"] for row in series]
+        sinking = [row["sinking_total"] for row in series]
         first_data = history_index(
             [row["month"] for row in series],
             await TransactionRepository(self.session).earliest_date(budget_id),
@@ -210,19 +119,30 @@ class EmergencyCoverageService:
         # Nothing identified as the fund: draw no line rather than a flat zero
         # one. A zero series is a claim — "you had nothing all year" — and the
         # honest answer is that the app has not been told what to look at.
-        if entities.empty:
+        if not fund.draws_history:
             series = []
         # The newest month the chart can draw. The series runs to the last
         # COMPLETE month, so this is in the past — which is the whole reason
         # the external figure needs clamping below.
         newest_end = _month_end(series[-1]["month"]) if series else None
+        balances = await fund_balance_at(
+            self.session,
+            budget_id,
+            fund,
+            [row["month"] for row in series[lead_in:]],
+            budgets,
+        )
         for i, row in enumerate(series):
             if i < lead_in:
                 continue
             month: date = row["month"]
             month_end = _month_end(month)
-            essentials = trailing_average(totals, i, first_data=first_data)
-            balance = await self._fund_balance_at(budgets, entities, month, month_end)
+            essentials = (
+                spread_average(totals, sinking, i, first_data=first_data)
+                if spread_on
+                else trailing_average(totals, i, first_data=first_data)
+            )
+            balance = balances[i - lead_in]
             # A self-reported figure is carried flat from the month it was
             # reported, and "as of now" lands on the newest month the chart
             # draws.
@@ -236,16 +156,14 @@ class EmergencyCoverageService:
             # the report drew $0 and 0.0 months beneath cards reading the real
             # amount. Clamping to the newest point is what "as of now" means
             # on a chart of complete months.
-            reported = entities.external_as_of
+            reported = external.as_of
             if reported is None or (newest_end is not None and reported > newest_end):
                 reported = newest_end
             external_counted = (
-                entities.external_amount is not None
-                and reported is not None
-                and reported <= month_end
+                external.amount is not None and reported is not None and reported <= month_end
             )
             if external_counted:
-                balance = quantize_cents(balance + (entities.external_amount or Decimal("0")))
+                balance = quantize_cents(balance + (external.amount or Decimal("0")))
             points.append(
                 {
                     "month": month,
@@ -258,17 +176,15 @@ class EmergencyCoverageService:
                 }
             )
 
-        headline = summary["essentials_90d"]
-        balance_now = summary["emergency_fund_balance"]
+        headline = summary["essentials"].monthly
         return {
             "months": months,
             "tagged": summary["tagged"],
-            "fund_balance": balance_now,
-            "fund_source": summary["emergency_fund_source"],
+            "fund": fund,
             # The Essentials report's own runway, quoted rather than recomputed:
             # one figure, so the two reports cannot disagree about coverage.
             "coverage_months": summary["runway_months"],
-            "essentials_monthly": headline,
+            "essentials": summary["essentials"],
             "target_low": quantize_cents(headline * FULL_EMERGENCY_FUND_MONTHS_LOW),
             "target_high": quantize_cents(headline * FULL_EMERGENCY_FUND_MONTHS_HIGH),
             "target_range": (FULL_EMERGENCY_FUND_MONTHS_LOW, FULL_EMERGENCY_FUND_MONTHS_HIGH),
@@ -276,7 +192,7 @@ class EmergencyCoverageService:
             # A self-reported figure is carried flat from the date it was
             # given. Said out loud, because a flat line drawn without a word
             # reads as a fund that did not move.
-            "external_amount": entities.external_amount,
-            "external_as_of": entities.external_as_of,
+            "external_amount": external.amount,
+            "external_as_of": external.as_of,
             "current_month": first_of_month,
         }

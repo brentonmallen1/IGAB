@@ -1,0 +1,88 @@
+.savings-mode {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  margin: 0;
+  padding: var(--spacing-sm) 0 0;
+  border: 0;
+  border-top: 1px solid var(--edge);
+  min-width: 0;
+}
+
+.savings-mode__legend {
+  padding: 0;
+  margin-bottom: var(--spacing-xs);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.savings-mode__option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.savings-mode__choice {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.savings-mode__choice input {
+  margin: 0;
+  accent-color: var(--color-accent);
+}
+
+.savings-mode__choice input:focus-visible {
+  outline: 2px solid var(--input-focus-ring);
+  outline-offset: 2px;
+}
+
+.savings-mode__default {
+  color: var(--text-muted);
+}
+
+.savings-mode__consequence {
+  margin: 0;
+  /* Under the label text, past the radio. */
+  padding-left: calc(13px + var(--spacing-sm));
+  font-size: var(--font-size-xs);
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.savings-mode__reset {
+  align-self: flex-start;
+  padding: 0;
+  background: none;
+  border: 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.savings-mode__reset:hover {
+  color: var(--text-primary);
+}
+
+.savings-mode__reset:focus-visible {
+  outline: 2px solid var(--input-focus-ring);
+  outline-offset: 2px;
+}
+
+.savings-mode__conflict {
+  margin: var(--spacing-xs) 0 0;
+  padding-left: var(--spacing-sm);
+  border-left: 2px solid var(--color-warning);
+  font-size: var(--font-size-xs);
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.savings-mode:disabled .savings-mode__choice {
+  cursor: progress;
+}

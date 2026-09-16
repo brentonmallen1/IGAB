@@ -14,6 +14,7 @@ from .factories import (
     create_liability,
     create_transaction,
     money,
+    tag_with_system_tags,
 )
 
 TODAY = date.today()
@@ -46,18 +47,22 @@ class TestOverview:
         budget = await _budget(db_session, api_client)
         body = (await api_client.get(f"/api/v1/{budget.id}/guide")).json()
         ef = next(c for c in body["concepts"] if c["key"] == "emergency_fund")
-        assert set(ef["binds_to"]) == {"category", "account"}
+        # Chosen by tag and account flag; only "kept elsewhere" is an answer.
+        assert ef["binds_to"] == []
         assert ef["allows_external"] is True
+        retirement = next(c for c in body["concepts"] if c["key"] == "retirement_contributions")
+        assert set(retirement["binds_to"]) == {"category", "account"}
         # Debt cannot be held "elsewhere" in a way that changes the advice.
         debt = next(c for c in body["concepts"] if c["key"] == "high_interest_debt")
         assert debt["allows_external"] is False
 
 
 class TestSignals:
-    async def test_detects_an_emergency_fund(self, db_session, api_client):
+    async def test_reads_the_chosen_emergency_fund(self, db_session, api_client):
         budget = await _budget(db_session, api_client)
         group = await create_category_group(db_session, budget, "Savings")
         cat = await create_category(db_session, budget, group, "Emergency Fund")
+        await tag_with_system_tags(db_session, cat, "emergency_fund")
         await create_budget_assignment(db_session, budget, cat, THIS_MONTH, "1200.00")
 
         body = (await api_client.get(f"/api/v1/{budget.id}/guide/signals")).json()
@@ -67,11 +72,16 @@ class TestSignals:
         assert Decimal(ef["value"]) == Decimal("1200.00")
         assert ef["source"] == "auto"
         assert ef["reason"]
+        assert ef["fund"]["set_up"] is True
+        assert [(c["name"], money(c["balance"])) for c in ef["fund"]["categories"]] == [
+            ("Emergency Fund", Decimal("1200.00"))
+        ]
 
     async def test_personalization_off_runs_no_detection(self, db_session, api_client):
         budget = await _budget(db_session, api_client)
         group = await create_category_group(db_session, budget, "Savings")
         cat = await create_category(db_session, budget, group, "Emergency Fund")
+        await tag_with_system_tags(db_session, cat, "emergency_fund")
         await create_budget_assignment(db_session, budget, cat, THIS_MONTH, "1200.00")
 
         await api_client.put(
@@ -104,6 +114,7 @@ class TestSignals:
             )
         savings = await create_category_group(db_session, budget, "Savings")
         ef = await create_category(db_session, budget, savings, "Emergency Fund")
+        await tag_with_system_tags(db_session, ef, "emergency_fund")
         await create_budget_assignment(db_session, budget, ef, THIS_MONTH, "1500.00")
 
         body = (await api_client.get(f"/api/v1/{budget.id}/guide/signals")).json()
@@ -121,7 +132,8 @@ class TestSignals:
     async def test_an_empty_fund_has_no_starter_verdict_to_clear(self, db_session, api_client):
         budget = await _budget(db_session, api_client)
         group = await create_category_group(db_session, budget, "Savings")
-        await create_category(db_session, budget, group, "Emergency Fund")
+        empty = await create_category(db_session, budget, group, "Emergency Fund")
+        await tag_with_system_tags(db_session, empty, "emergency_fund")
 
         body = (await api_client.get(f"/api/v1/{budget.id}/guide/signals")).json()
         fund = _concept(body, "emergency_fund")
@@ -143,24 +155,22 @@ class TestSignals:
 
 
 class TestBindings:
-    async def test_pointing_a_concept_at_a_category(self, db_session, api_client):
+    async def test_pointing_a_concept_at_an_account(self, db_session, api_client):
         budget = await _budget(db_session, api_client)
-        group = await create_category_group(db_session, budget, "Savings")
-        decoy = await create_category(db_session, budget, group, "Emergency Fund")
-        await create_budget_assignment(db_session, budget, decoy, THIS_MONTH, "1200.00")
-        real = await create_category(db_session, budget, group, "House Cushion")
-        await create_budget_assignment(db_session, budget, real, THIS_MONTH, "5000.00")
+        brokerage = await create_account(
+            db_session, budget, "Brokerage", account_type="investment", on_budget=False
+        )
 
         r = await api_client.put(
-            f"/api/v1/{budget.id}/guide/bindings/emergency_fund",
-            json={"mode": "manual", "entity_ids": {"category": [str(real.id)]}},
+            f"/api/v1/{budget.id}/guide/bindings/retirement_contributions",
+            json={"mode": "manual", "entity_ids": {"account": [str(brokerage.id)]}},
         )
         assert r.status_code == 204
 
         body = (await api_client.get(f"/api/v1/{budget.id}/guide/signals")).json()
-        ef = _concept(body, "emergency_fund")
-        assert Decimal(ef["value"]) == Decimal("5000.00")
-        assert ef["source"] == "manual"
+        retirement = _concept(body, "retirement_contributions")
+        assert retirement["source"] == "manual"
+        assert retirement["entities"] == {"account": [str(brokerage.id)]}
 
     async def test_dismissing_stops_the_claim(self, db_session, api_client):
         budget = await _budget(db_session, api_client)
@@ -178,6 +188,7 @@ class TestBindings:
         budget = await _budget(db_session, api_client)
         group = await create_category_group(db_session, budget, "Savings")
         cat = await create_category(db_session, budget, group, "Emergency Fund")
+        await tag_with_system_tags(db_session, cat, "emergency_fund")
         await create_budget_assignment(db_session, budget, cat, THIS_MONTH, "1200.00")
 
         await api_client.put(
@@ -228,13 +239,13 @@ class TestExternal:
         budget = await _budget(db_session, api_client)
         group = await create_category_group(db_session, budget, "Savings")
         cat = await create_category(db_session, budget, group, "Emergency Fund")
+        await tag_with_system_tags(db_session, cat, "emergency_fund")
         await create_budget_assignment(db_session, budget, cat, THIS_MONTH, "1240.00")
 
         await api_client.put(
             f"/api/v1/{budget.id}/guide/bindings/emergency_fund",
             json={
                 "mode": "manual",
-                "entity_ids": {"category": [str(cat.id)]},
                 "external": True,
                 "external_amount": "9000",
                 "note": "credit union",
@@ -248,7 +259,7 @@ class TestExternal:
         assert Decimal(ef["value"]) == Decimal("10240.00")
         assert Decimal(ef["detected_value"]) == Decimal("1240.00")
         assert Decimal(ef["external_value"]) == Decimal("9000")
-        assert ef["source"] == "manual+external"
+        assert ef["source"] == "external"
         assert ef["external_as_of"] == TODAY.isoformat()
 
     async def test_the_essentials_report_quotes_the_same_total(self, db_session, api_client):
@@ -263,12 +274,12 @@ class TestExternal:
         budget = await _budget(db_session, api_client)
         group = await create_category_group(db_session, budget, "Savings")
         cat = await create_category(db_session, budget, group, "Emergency Fund")
+        await tag_with_system_tags(db_session, cat, "emergency_fund")
         await create_budget_assignment(db_session, budget, cat, THIS_MONTH, "1240.00")
         await api_client.put(
             f"/api/v1/{budget.id}/guide/bindings/emergency_fund",
             json={
                 "mode": "manual",
-                "entity_ids": {"category": [str(cat.id)]},
                 "external": True,
                 "external_amount": "9000",
             },
@@ -279,7 +290,7 @@ class TestExternal:
         report = (await api_client.get(f"/api/v1/{budget.id}/reports/essentials")).json()
 
         assert roadmap == Decimal("10240.00")
-        assert Decimal(report["emergency_fund_balance"]) == roadmap
+        assert Decimal(str(report["emergency_fund"]["total"])) == roadmap
 
     async def test_a_declared_amount_alone_reaches_the_report(self, db_session, api_client):
         """Nothing in the budget to detect, and a figure the person gave us.
@@ -292,7 +303,7 @@ class TestExternal:
 
         report = (await api_client.get(f"/api/v1/{budget.id}/reports/essentials")).json()
 
-        assert Decimal(report["emergency_fund_balance"]) == Decimal("4500")
+        assert Decimal(str(report["emergency_fund"]["total"])) == Decimal("4500")
 
     async def test_external_without_a_figure_still_counts_as_handled(self, db_session, api_client):
         budget = await _budget(db_session, api_client)
@@ -353,9 +364,12 @@ class TestCandidates:
         await create_liability(db_session, budget, "Visa")
 
         ef = (await api_client.get(f"/api/v1/{budget.id}/guide/candidates/emergency_fund")).json()
-        assert set(ef["options"]) == {"category", "account"}
-        # The picker must never offer a liability as an emergency fund.
-        assert "liability" not in ef["options"]
+        # Chosen by tag and account flag, so there is nothing to bind to.
+        assert ef["options"] == {}
+        retirement = (
+            await api_client.get(f"/api/v1/{budget.id}/guide/candidates/retirement_contributions")
+        ).json()
+        assert set(retirement["options"]) == {"category", "account"}
 
         debt = (
             await api_client.get(f"/api/v1/{budget.id}/guide/candidates/high_interest_debt")
@@ -503,6 +517,7 @@ class TestCheckup:
         )
         group = await create_category_group(db_session, budget, "Savings")
         cat = await create_category(db_session, budget, group, "Emergency Fund")
+        await tag_with_system_tags(db_session, cat, "emergency_fund")
         await create_budget_assignment(db_session, budget, cat, THIS_MONTH, "200.00")
 
         body = (await api_client.get(f"/api/v1/{budget.id}/guide/checkup")).json()
@@ -516,7 +531,8 @@ class TestCheckup:
         """$0 is a different sentence from "below the starter amount"."""
         budget = await _budget(db_session, api_client)
         group = await create_category_group(db_session, budget, "Savings")
-        await create_category(db_session, budget, group, "Emergency Fund")
+        empty = await create_category(db_session, budget, group, "Emergency Fund")
+        await tag_with_system_tags(db_session, empty, "emergency_fund")
 
         body = (await api_client.get(f"/api/v1/{budget.id}/guide/checkup")).json()
 
@@ -581,6 +597,7 @@ class TestCheckup:
         await create_transaction(db_session, budget, account, "500.00", TODAY)
         group = await create_category_group(db_session, budget, "Savings")
         cat = await create_category(db_session, budget, group, "Emergency Fund")
+        await tag_with_system_tags(db_session, cat, "emergency_fund")
         await create_budget_assignment(db_session, budget, cat, THIS_MONTH, "200.00")
 
         before = (await api_client.get(f"/api/v1/{budget.id}/guide/checkup")).json()
@@ -591,7 +608,6 @@ class TestCheckup:
             f"/api/v1/{budget.id}/guide/bindings/emergency_fund",
             json={
                 "mode": "manual",
-                "entity_ids": {"category": [str(cat.id)]},
                 "external": True,
                 "external_amount": "250000",
             },
@@ -707,12 +723,12 @@ class TestScenarios:
         )
         savings = await create_category_group(db_session, budget, "Savings")
         ef = await create_category(db_session, budget, savings, "Emergency Fund")
+        await tag_with_system_tags(db_session, ef, "emergency_fund")
         await create_budget_assignment(db_session, budget, ef, THIS_MONTH, "240.00")
         await api_client.put(
             f"/api/v1/{budget.id}/guide/bindings/emergency_fund",
             json={
                 "mode": "manual",
-                "entity_ids": {"category": [str(ef.id)]},
                 "external": True,
                 "external_amount": "500",
             },
@@ -726,7 +742,7 @@ class TestScenarios:
 
         assert r.status_code == 200, r.text
         body = r.json()
-        assert money(body["essentials_monthly"]) == Decimal("1000.00")
+        assert money(body["essentials"]["monthly"]) == Decimal("1000.00")
         # 240 in the budget plus 500 declared elsewhere — the roadmap's number.
         assert money(body["current"]) == Decimal("740.00")
         assert money(body["target"]) == Decimal("3000.00")

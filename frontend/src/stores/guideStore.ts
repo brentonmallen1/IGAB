@@ -4,7 +4,7 @@ import { PERSIST_KEYS } from './persistKeys'
 import type { StageId, ToolId } from '../content/roadmap'
 import type { GlossaryId } from '../content/glossary'
 
-export type GuideTab = 'roadmap' | 'checkup' | 'tools' | 'money' | 'glossary'
+export type GuideTab = 'roadmap' | 'checkup' | 'tools' | 'money' | 'aside' | 'glossary'
 
 export interface GuideTabDef {
   id: GuideTab
@@ -16,6 +16,7 @@ export const GUIDE_TABS: GuideTabDef[] = [
   { id: 'checkup', label: 'Checkup' },
   { id: 'tools', label: 'Tools' },
   { id: 'money', label: 'How money counts' },
+  { id: 'aside', label: 'Setting money aside' },
   { id: 'glossary', label: 'Glossary' },
 ]
 

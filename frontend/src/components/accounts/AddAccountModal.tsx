@@ -6,6 +6,8 @@ import { BUILTIN_ACCOUNT_TYPES } from '../../constants/accountTypes'
 import { AccountTypeInfoModal } from './AccountTypeInfoModal'
 import { AccountTypeField } from './AccountTypeField'
 import { CountsAsSavingsField } from './CountsAsSavingsField'
+import { CountsTowardEmergencyFundField } from './CountsTowardEmergencyFundField'
+import { savingsFlagsPayload, useSavingsFlags } from './useSavingsFlags'
 import { useAppStore } from '../../stores/appStore'
 import { Dialog } from '../common/Dialog/Dialog'
 
@@ -28,11 +30,17 @@ export function AddAccountModal({ onClose, initialTypeKey }: Props) {
     () =>
       typeOptions.find((t) => t.key === (initialTypeKey ?? 'checking'))?.default_on_budget ?? true
   )
-  const [countsAsSavings, setCountsAsSavings] = useState(
-    () =>
+  const {
+    countsAsSavings,
+    countsTowardEmergencyFund,
+    setCountsAsSavings,
+    setCountsTowardEmergencyFund,
+  } = useSavingsFlags({
+    countsAsSavings:
       typeOptions.find((t) => t.key === (initialTypeKey ?? 'checking'))
-        ?.default_counts_as_savings ?? true
-  )
+        ?.default_counts_as_savings ?? true,
+    countsTowardEmergencyFund: false,
+  })
   const [note, setNote] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [showTypeInfo, setShowTypeInfo] = useState(false)
@@ -41,6 +49,8 @@ export function AddAccountModal({ onClose, initialTypeKey }: Props) {
   useEffect(() => {
     nameRef.current?.focus()
   }, [])
+
+  const classification = typeOptions.find((t) => t.key === accountType)?.classification
 
   function handleTypeChange(key: string) {
     setAccountType(key)
@@ -66,7 +76,10 @@ export function AddAccountModal({ onClose, initialTypeKey }: Props) {
         name: name.trim(),
         account_type: accountType,
         on_budget: onBudget,
-        counts_as_savings: countsAsSavings,
+        ...savingsFlagsPayload(
+          { countsAsSavings, countsTowardEmergencyFund },
+          { onBudget, classification }
+        ),
         note: note.trim() || undefined,
       })
       onClose()
@@ -129,9 +142,16 @@ export function AddAccountModal({ onClose, initialTypeKey }: Props) {
           </label>
           <CountsAsSavingsField
             onBudget={onBudget}
-            classification={typeOptions.find((t) => t.key === accountType)?.classification}
+            classification={classification}
             checked={countsAsSavings}
             onChange={setCountsAsSavings}
+          />
+          <CountsTowardEmergencyFundField
+            onBudget={onBudget}
+            classification={classification}
+            countsAsSavings={countsAsSavings}
+            checked={countsTowardEmergencyFund}
+            onChange={setCountsTowardEmergencyFund}
           />
           <label className="dialog-form__field">
             <span>Note</span>

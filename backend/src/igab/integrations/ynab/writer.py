@@ -75,6 +75,7 @@ ACCOUNT_COLUMNS = (
     "Classification",
     "On Budget",
     "Counts As Savings",
+    "Counts Toward Emergency Fund",
     "Closed",
     "Note",
 )

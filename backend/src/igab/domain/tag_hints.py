@@ -1,26 +1,21 @@
-"""What a category's name says about how its money should be classified.
+"""What a category's name suggests about how its money should be counted.
 
 Pure: no session, no budget, no tag rows — just names in, system keys out, so
 every fragment is a one-line test.
 
-Two callers with different consequences, and the difference is the whole point
-of this module:
-
-- The YNAB importer **writes** a tag for a fresh category (`suggest_system_tag`).
-  The Savings tag overrides classification outright (see
-  `domain.activity_class`), so a wrong guess here silently moves burn rate,
-  savings rate and the spending charts. That is why only `savings`, the one
-  unmistakable key, is applied.
-- The import review **proposes** the rest (`suggest_review_tags`), unchecked,
-  for a person to accept. A proposal that misses costs nothing; one that is
-  clever and wrong costs trust.
-
-One table serves both, flagged. Two lists would drift, and the drift would be
-invisible: the review would stop offering what the importer had started
-applying, or worse, the reverse.
+**Suggestions only.** The import review proposes these, unchecked, for a person
+to accept (`suggest_review_tags`); nothing writes a tag from a name. The YNAB
+importer used to write one — Savings, from names like "Emergency Fund" and
+"Rainy Day" — and that tag overrides classification, so a wrong guess silently
+moved burn rate and the savings rate. Once Savings grew a "sent out / kept here"
+choice and the emergency fund became something chosen, not guessed, a name was
+no longer enough to decide either, and the write path went
+(`integrations/ynab/importer.py`). A proposal that misses costs nothing; one
+that is clever and wrong costs trust.
 """
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import cache
 
@@ -29,14 +24,25 @@ from functools import cache
 #: offering it would be offering a choice the app immediately overrules.
 DERIVED_KEYS = frozenset({"wishlist"})
 
+#: Tags another tag already means. An Emergency fund category IS a savings
+#: category (`category_filters.SAVINGS_CATEGORY_KEYS`), so offering it the
+#: Savings tag would be offering a second copy of a fact it already carries —
+#: and accepting it would change nothing but the tag list. An implication, not
+#: an auto-add: nothing writes the implied tag.
+IMPLIED_TAGS: dict[str, tuple[str, ...]] = {"emergency_fund": ("savings",)}
+
+
+def implied_by(keys: Iterable[str]) -> frozenset[str]:
+    """Every key these system keys imply."""
+    return frozenset().union(*(IMPLIED_TAGS.get(k, ()) for k in keys))
+
 
 @dataclass(frozen=True)
 class TagSuggestion:
     """A key these names point at, and the name that pointed at it.
 
-    Both callers need the "why": the importer records it so the review can
-    show its working, and the review renders it. A suggestion a person cannot
-    check is one they have to take on faith.
+    The review renders the "why": a suggestion a person cannot check is one
+    they have to take on faith.
     """
 
     system_key: str
@@ -51,8 +57,10 @@ class TagHint:
     #: "Savings" and "Car Savings". Not bare substrings either -- that is what
     #: would make "rent" match "Parents" and "Different".
     fragments: tuple[str, ...]
-    #: True  -> the importer writes this tag when it matches.
-    #: False -> only ever offered in the review, never written by the import.
+    #: Whether the importer writes this tag. False for every hint: served as
+    #: `TagSuggestionOut.applied_on_import` so an old import's review still
+    #: reads, and pinned empty by `test_tag_hints.py` — a hint that gains True
+    #: would need a write path, which no longer exists.
     applied_on_import: bool
 
 
@@ -64,14 +72,12 @@ class TagHint:
 #: categories the hint was written for.
 _SUBSCRIPTION = ("subscription", "streaming", "membership", "prime", "netflix", "spotify")
 
-#: Kept short and obvious rather than clever, in both halves. The applied half
-#: is one key, `savings`; it was two until `long_term_expense` stopped
-#: overriding classification. Widening it is how proposals would turn into
-#: silent writes.
+#: Kept short and obvious rather than clever.
 TAG_HINTS: tuple[TagHint, ...] = (
-    TagHint("savings", ("saving", "emergency fund", "rainy day", "nest egg"), True),
-    # Proposed only, from here down.
-    #
+    # Savings no longer claims "emergency fund" or "rainy day": those name the
+    # Emergency fund tag now, which implies Savings (`IMPLIED_TAGS`).
+    TagHint("savings", ("saving", "nest egg"), False),
+    TagHint("emergency_fund", ("emergency", "rainy day", "buffer"), False),
     # `long_term_expense` was written on import until it stopped overriding
     # classification. Its fragments match a GROUP name as well as a category's,
     # and YNAB's default template ships a group called "True Expenses" — so
@@ -98,7 +104,6 @@ TAG_HINTS: tuple[TagHint, ...] = (
     # tags, which is why an imported budget's Essentials report is empty — and
     # a tier that a subscription- or membership-shaped category can be OFFERED
     # is the only realistic path to a non-empty gap on an imported budget.
-    # Proposal only, like everything below the first entry.
     TagHint("cost_of_living", (*_SUBSCRIPTION, "gym", "storage", "maintenance"), False),
     TagHint("debt_principal", ("loan payment", "debt payment", "principal"), False),
 )
@@ -127,30 +132,16 @@ def _matched_name(hint: TagHint, category_name: str, group_name: str) -> str | N
     return None
 
 
-def suggest_system_tag(category_name: str, group_name: str) -> TagSuggestion | None:
-    """The one system tag an imported category's names point at, if any.
+def suggest_review_tags(
+    category_name: str, group_name: str, held: Iterable[str] = ()
+) -> list[TagSuggestion]:
+    """Every system key these names point at that the category does not
+    already carry, in `TAG_HINTS` order.
 
-    The category's own name wins over its group's, which is why this cannot
-    just be `suggest_review_tags(...)[0]` — the two answer different questions,
-    one picking a single winner and one listing every candidate.
-
-    Applied hints only. The importer must never start writing what the review
-    exists to propose — and only `savings` is applied now. The precedence used
-    to be illustrated with a "True Expenses" group, which was exactly the
-    problem: YNAB's default template ships that group, and matching on a GROUP
-    name wrote `long_term_expense` onto every ordinary category inside it.
-    """
-    for haystack in (category_name, group_name):
-        for hint in TAG_HINTS:
-            if not hint.applied_on_import:
-                continue
-            if _pattern(hint.fragments).search(haystack.lower()):
-                return TagSuggestion(system_key=hint.system_key, matched_on=haystack)
-    return None
-
-
-def suggest_review_tags(category_name: str, group_name: str) -> list[TagSuggestion]:
-    """Every system key these names point at, in `TAG_HINTS` order.
+    `held` is the category's system keys. A key a held or suggested tag
+    implies is not offered (`IMPLIED_TAGS`): an Emergency fund category is
+    never offered Savings, and "Rainy Day Savings" is offered Emergency fund
+    alone.
 
     A category can be offered more than one — "Car Insurance" is plausibly
     both essential and a long-term expense, and picking one for the user would
@@ -171,4 +162,6 @@ def suggest_review_tags(category_name: str, group_name: str) -> list[TagSuggesti
         matched = _matched_name(hint, category_name, group_name)
         if matched is not None:
             out.append(TagSuggestion(system_key=hint.system_key, matched_on=matched))
-    return out
+    held_keys = set(held)
+    implied = implied_by(held_keys | {x.system_key for x in out})
+    return [x for x in out if x.system_key not in held_keys and x.system_key not in implied]

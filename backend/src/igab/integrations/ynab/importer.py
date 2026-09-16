@@ -4,7 +4,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, Category, CategoryGroup
@@ -12,7 +12,6 @@ from igab.domain.dates import add_months
 from igab.domain.enums import AccountClassification
 from igab.domain.import_identity import disambiguate_in_batch, generate_import_id
 from igab.domain.import_mapping import account_key, suggest_counts_as_savings
-from igab.domain.tag_hints import suggest_system_tag
 from igab.domain.transfers import linking_breaks_category_rule
 from igab.integrations.ynab.models import YNABBudget, YNABTransaction, anchor_month, plan_boundary
 from igab.integrations.ynab.oracle import ynab_rta
@@ -25,8 +24,9 @@ from igab.repositories.category_repo import (
 from igab.repositories.import_anchor_repo import ImportAnchorRepository, anchor_rows
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.scheduled_transaction_repo import ScheduledTransactionRepository
-from igab.repositories.tag_repo import TagRepository, seed_system_tags
+from igab.repositories.tag_repo import seed_system_tags
 from igab.repositories.transaction_repo import TransactionRepository
+from igab.repositories.txn_filters import EMERGENCY_FUND_ACCOUNT_SHAPE
 from igab.services.account_type_service import apply_type, resolve_type
 from igab.services.card_payment import ensure_payment_category
 from igab.services.liability_service import ensure_for_account
@@ -86,7 +86,9 @@ def is_credit_card_payments_group(group: str) -> bool:
 
 @dataclass
 class TaggedCategory:
-    """One tag the import applied, and why."""
+    """One tag an import applied, and why. No import applies one any more
+    (`domain.tag_hints`); the shape stays so a stored summary from an import
+    that did still reads."""
 
     category_id: uuid.UUID
     system_key: str
@@ -150,15 +152,11 @@ class ImportResult:
     #: so the number the user is shown is the number of rows they can act on —
     #: they are repairable by hand from the register like any orphan leg.
     transfer_legs_in_splits: int = 0
-    #: Categories the import tagged Savings from their names — the only key
-    #: it applies (`domain.tag_hints`). Reported because the tag changes how
-    #: that category's spending is classified in reports — applying it
-    #: silently would be a number moving for a reason the user never saw.
+    #: Categories an import tagged from their names, and which. Always zero
+    #: and empty now: the import writes no tags, and the review only suggests
+    #: (`domain.tag_hints`). Kept so a summary stored by an older import — which
+    #: tagged Savings — still renders what it did.
     categories_tagged: int = 0
-    #: Which categories, and what key each was given. The count alone cannot
-    #: answer the question the review exists for -- "show me what you did" --
-    #: and it cannot be recovered later either, because nothing on the join
-    #: table records whether a tag was guessed or chosen.
     tagged_categories: list["TaggedCategory"] = field(default_factory=list)
     #: Plan rows in YNAB's Credit Card Payments group whose card was never
     #: imported (skipped, or not on budget) — the matched ones land on the
@@ -232,7 +230,6 @@ class YNABImporter:
         self.transaction_repo = transaction_repo
         self.transaction_service = transaction_service
         self.assignment_repo = assignment_repo
-        self.tag_repo = TagRepository(session)
         self.anchor_repo = ImportAnchorRepository(session)
         # Held-out rows go through the service, not a bulk insert: there are
         # few of them, and the service is what records them in the change log.
@@ -268,9 +265,14 @@ class YNABImporter:
         self._group_cache: dict[str, CategoryGroup] = {}
         # (group_id, category name lower) → Category
         self._category_cache: dict[tuple[uuid.UUID, str], Category] = {}
+        # account_key → marked emergency fund in the file's Accounts.csv.
+        self._emergency_fund_accounts: set[str] = set()
 
     async def import_budget(self, budget: YNABBudget) -> ImportResult:
         result = ImportResult()
+        self._emergency_fund_accounts = {
+            key for key, exported in budget.account_types.items() if exported.emergency_fund
+        }
         # Before any category exists, so the name-based tagging below has real
         # tags to point at. A budget created by import otherwise reaches the
         # tags endpoint (which backfills) only if the user opens Settings.
@@ -369,6 +371,8 @@ class YNABImporter:
             # Importing a budget with a mortgage is the scenario the loan
             # features were built for, and it was the one that never reached
             # them: the importer creates accounts and never a liability.
+            if key in self._emergency_fund_accounts:
+                await self._restore_emergency_fund_flag(account)
             await ensure_for_account(self.session, account)
             await ensure_payment_category(self.session, account)
             result.accounts_imported += 1
@@ -377,6 +381,22 @@ class YNABImporter:
 
         self._account_cache[key] = account
         return account
+
+    async def _restore_emergency_fund_flag(self, account: Account) -> None:
+        """Carry an IGAB export's emergency-fund mark back onto the account.
+
+        A fact the export states about the account, not a guess, so it is
+        applied — but only where the account as imported still has the shape
+        the flag is valid on (`EMERGENCY_FUND_ACCOUNT_SHAPE`). The mapping step
+        may have moved it on budget or turned off Counts as savings, and an
+        import is not refused for that; the mark is simply not carried.
+        """
+        await self.session.execute(
+            update(Account)
+            .where(Account.id == account.id, EMERGENCY_FUND_ACCOUNT_SHAPE)
+            .values(counts_toward_emergency_fund=True)
+        )
+        await self.session.refresh(account)
 
     def _may_link(self, a: dict, b: dict) -> bool:
         """May these two legs be linked as one transfer?
@@ -452,41 +472,9 @@ class YNABImporter:
                     sort_order=sort_order,
                 )
                 result.categories_imported += 1
-                await self._suggest_tag(category, group.name, result)
             self._category_cache[cache_key] = category
 
         return self._category_cache[cache_key]
-
-    async def _suggest_tag(self, category: Category, group_name: str, result: ImportResult) -> None:
-        """Tag a freshly created category when its name plainly says what it is.
-
-        Without this a YNAB import produces a savings report that is empty
-        forever: nothing else tags categories, and the only place to do it by
-        hand is a section of the category inspector the user has no reason to
-        open. Counted in the summary, because a tag that changes how money is
-        classified must not be applied silently.
-
-        New categories only — an existing category's tags are the user's.
-
-        Records which category got which key, not just how many: the import
-        review opens on exactly these rows, and no other source can say which
-        of a category's tags the app guessed.
-        """
-        suggestion = suggest_system_tag(category.name, group_name)
-        if suggestion is None:
-            return
-        tag = await self.tag_repo.get_system_tag(self.budget_id, suggestion.system_key)
-        if tag is None:
-            return
-        await self.tag_repo.set_category_tags(category.id, [tag.id])
-        result.categories_tagged += 1
-        result.tagged_categories.append(
-            TaggedCategory(
-                category_id=category.id,
-                system_key=suggestion.system_key,
-                matched_on=suggestion.matched_on,
-            )
-        )
 
     async def _resolve_payees(
         self, budget: YNABBudget, payee_names: set[str], result: ImportResult

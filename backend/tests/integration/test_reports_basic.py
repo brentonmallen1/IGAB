@@ -248,10 +248,10 @@ class TestEssentialsRunway:
         await seed_system_tags(db_session, budget.id)
         tags = TagRepository(db_session)
         essential = await tags.get_system_tag(budget.id, "essential")
-        savings = await tags.get_system_tag(budget.id, "savings")
+        fund_tag = await tags.get_system_tag(budget.id, "emergency_fund")
         await tags.set_category_tags(groceries.id, [essential.id])
         emergency = await create_category(db_session, budget, group, "Emergency Fund")
-        await tags.set_category_tags(emergency.id, [savings.id])
+        await tags.set_category_tags(emergency.id, [fund_tag.id])
         await db_session.commit()
         # 500 into the fund: assigned this month, nothing spent.
         await create_budget_assignment(db_session, budget, emergency, THIS, "500.00")
@@ -261,10 +261,11 @@ class TestEssentialsRunway:
         assert r.status_code == 200, r.text
         body = r.json()
         # 250 of essential spend in the last 90 days ÷ 3 = 83.33 a month.
-        headline = Decimal(str(body["essentials_90d"]))
+        headline = Decimal(str(body["essentials"]["monthly"]))
         assert headline == Decimal("83.33")
-        assert Decimal(str(body["emergency_fund_balance"])) == Decimal("500.00")
-        assert body["emergency_fund_source"]
+        assert [c["name"] for c in body["emergency_fund"]["categories"]] == ["Emergency Fund"]
+        assert body["emergency_fund"]["set_up"] is True
+        assert Decimal(str(body["emergency_fund"]["total"])) == Decimal("500.00")
         assert Decimal(str(body["runway_months"])) == (Decimal("500") / headline).quantize(
             Decimal("0.1")
         )
@@ -273,7 +274,14 @@ class TestEssentialsRunway:
         budget, *_ = await _setup(db_session, api_client)
         r = await api_client.get(f"/api/v1/{budget.id}/reports/essentials")
         body = r.json()
-        assert body["emergency_fund_balance"] is None
+        assert body["runway_months"] is None
+        assert body["emergency_fund"] == {
+            "set_up": False,
+            "total": None,
+            "categories": [],
+            "accounts": [],
+            "external": {"declared": False, "amount": None, "as_of": None, "note": None},
+        }
         assert body["runway_months"] is None
 
 
