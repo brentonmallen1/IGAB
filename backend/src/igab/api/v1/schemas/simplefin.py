@@ -80,6 +80,14 @@ class LinkSimpleFINRequest(ApiModel):
     simplefin_account_name: str | None = None
 
 
+class RefetchRequest(ApiModel):
+    """Which connection to ask. An account does not record its connection —
+    the link is by bank account id — and the modal already knows which one
+    it listed the account from."""
+
+    connection_id: uuid.UUID
+
+
 class OrphanedLinkInfo(ApiModel):
     """An account whose bank link the feed no longer offers.
 
@@ -104,6 +112,20 @@ class BankErrorInfo(ApiModel):
     connection_id: str | None = None
 
 
+class BalanceDriftInfo(ApiModel):
+    """A reconciled account whose ledger disagrees with the bank after a sync.
+
+    The bank's figure was always stored; what was missing was anyone saying
+    so at the moment it changed. A gap here is the sync's own admission that
+    something did not arrive.
+    """
+
+    account_id: uuid.UUID
+    account_name: str
+    bank_balance: Decimal
+    ledger_cleared_balance: Decimal
+
+
 class SyncResult(ApiModel):
     imported: int
     skipped: int
@@ -120,6 +142,7 @@ class SyncResult(ApiModel):
     removed_pending: int = 0
     orphaned_links: list[OrphanedLinkInfo] = []
     bank_errors: list[BankErrorInfo] = []
+    balance_drift: list[BalanceDriftInfo] = []
     #: Accounts whose first sync wrote a Starting Balance row to anchor the
     #: ledger to the bank's reported balance — the 90-day window cannot
     #: carry an older carried balance any other way.
@@ -143,6 +166,7 @@ class ConnectionSyncOutcome(ApiModel):
     #: bank is the whole story of that connection's run.
     orphaned_links: list[OrphanedLinkInfo] = []
     bank_errors: list[BankErrorInfo] = []
+    balance_drift: list[BalanceDriftInfo] = []
 
 
 class SyncAllResult(ApiModel):
@@ -215,6 +239,8 @@ class SyncRunAccountResponse(ApiModel):
     adopted: int = 0
     reidentified: bool = False
     orphaned: bool = False
+    bank_balance: Decimal | None = None
+    ledger_cleared_balance: Decimal | None = None
 
     model_config = {"from_attributes": True}
 
@@ -230,6 +256,7 @@ class SyncRunResponse(ApiModel):
     error: str | None = None
     bank_errors: list[BankErrorInfo] = []
     orphaned_links: list[OrphanedLinkInfo] = []
+    balance_drift: list[BalanceDriftInfo] = []
     feed_txn_count: int = 0
     imported: int = 0
     skipped: int = 0
@@ -264,8 +291,9 @@ class SyncHealthResponse(ApiModel):
 
     orphaned_links: list[OrphanedLinkInfo] = []
     needs_auth: list[BankErrorInfo] = []
+    balance_drift: list[BalanceDriftInfo] = []
     last_run_at: datetime | None = None
 
     @property
     def clean(self) -> bool:
-        return not self.orphaned_links and not self.needs_auth
+        return not self.orphaned_links and not self.needs_auth and not self.balance_drift

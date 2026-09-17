@@ -9,6 +9,7 @@ import type {
   TransactionMatch,
 } from '../types'
 import { ROOT } from './queryKeys'
+import { parseApiDecimal } from '../utils/money'
 
 /**
  * Whether the server can run bank sync. Asked before the setup form is shown:
@@ -145,6 +146,19 @@ export interface BankError {
   connection_id: string | null
 }
 
+/**
+ * A reconciled account whose ledger disagrees with the bank after a sync.
+ * The sync's own admission that something did not arrive — the number that
+ * would have named a missing $1,240.17 the hour it happened, had anything
+ * said it aloud. Amounts are the server's canonical strings.
+ */
+export interface BalanceDrift {
+  account_id: string
+  account_name: string
+  bank_balance: string
+  ledger_cleared_balance: string
+}
+
 export interface ConnectionSyncOutcome {
   connection_id: string
   imported: number
@@ -153,6 +167,7 @@ export interface ConnectionSyncOutcome {
   error: string | null
   orphaned_links: OrphanedLink[]
   bank_errors: BankError[]
+  balance_drift: BalanceDrift[]
 }
 
 export interface SyncAllResult {
@@ -207,7 +222,41 @@ export function useSyncAllSimpleFIN(budgetId: string | null) {
  * has to stay a line long, and the connection carries its own error for the
  * settings page to show in full.
  */
-export function formatSyncSummary(result: SyncAllResult): string {
+export function formatSyncSummary(result: SyncAllResult | SyncResult): string {
+  return formatSyncAll('connections' in result ? result : asSyncAll(result))
+}
+
+/**
+ * A single-connection sync, in the shape of a sync-all of one. The account
+ * page used to compose its own line for these — "Imported 0, skipped 586"
+ * lived on after the sidebar's copy learned to name a broken link.
+ */
+function asSyncAll(result: SyncResult): SyncAllResult {
+  return {
+    imported: result.imported,
+    skipped: result.skipped,
+    skip_reasons: result.skip_reasons,
+    matched: result.matched,
+    adopted: result.adopted,
+    review_queued: result.review_queued,
+    cleared: result.cleared,
+    removed_pending: result.removed_pending,
+    connections: [
+      {
+        connection_id: '',
+        imported: result.imported,
+        skipped: result.skipped,
+        adopted: result.adopted,
+        error: result.error,
+        orphaned_links: result.orphaned_links ?? [],
+        bank_errors: result.bank_errors ?? [],
+        balance_drift: result.balance_drift ?? [],
+      },
+    ],
+  }
+}
+
+function formatSyncAll(result: SyncAllResult): string {
   const orphans = result.connections.flatMap((c) => c.orphaned_links ?? [])
   if (orphans.length > 0) {
     const names = orphans.map((o) => o.account_name)
@@ -232,10 +281,32 @@ export function formatSyncSummary(result: SyncAllResult): string {
   // "Nothing new" is the honest reading when every skip was a row already
   // filed, and it is what the benign case actually means.
   parts.push(describeSkips(result))
-  const summary = parts.filter(Boolean).join(', ')
-  if (failed === 0) return summary
-  const banks = failed === 1 ? '1 connection' : `${failed} connections`
-  return `${summary} — ${banks} could not sync`
+  let summary = parts.filter(Boolean).join(', ')
+  if (failed > 0) {
+    const banks = failed === 1 ? '1 connection' : `${failed} connections`
+    summary = `${summary} — ${banks} could not sync`
+  }
+  // After the counts, never instead of them: an import of 24 rows that still
+  // leaves the ledger off from the bank is both things at once.
+  const drift = describeDrift(result.connections.flatMap((c) => c.balance_drift ?? []))
+  return drift ? `${summary} — ${drift}` : summary
+}
+
+/**
+ * The gap between a reconciled account's ledger and its bank, in one clause.
+ * Plain digits rather than the user's currency format: this line also lands
+ * in a toast from a hook with no formatter, and the sync log shows the same
+ * figures beside each other.
+ */
+export function describeDrift(drifts: BalanceDrift[]): string {
+  if (drifts.length === 0) return ''
+  if (drifts.length > 1) return `${drifts.length} accounts are off from what the bank reports`
+  const [d] = drifts
+  const gap = Math.abs(parseApiDecimal(d.bank_balance) - parseApiDecimal(d.ledger_cleared_balance))
+  return `${d.account_name} is off from the bank by ${gap.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })} — something may not have been pulled in`
 }
 
 /** The `skipped` half of the summary, in the terms the count actually means. */
@@ -262,6 +333,31 @@ export function useLinkSimpleFINAccount(accountId: string) {
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: [ROOT.accounts] })
+    },
+  })
+}
+
+/**
+ * Ask the bank for the full 90 days again, for one account. The recovery
+ * after a gap — safe to press any time, because rows already held re-stamp
+ * or skip and only what is missing imports.
+ */
+export function useRefetchSimpleFINAccount(accountId: string, budgetId: string | null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (connectionId: string) =>
+      apiClient
+        .post<SyncResult>(`/accounts/${accountId}/simplefin-refetch`, {
+          connection_id: connectionId,
+        })
+        .then((r) => r.data),
+    onSuccess: () => {
+      invalidateAfterImport(qc, budgetId)
+      qc.invalidateQueries({ queryKey: [ROOT.simplefinConnections] })
+      qc.invalidateQueries({ queryKey: [ROOT.simplefinRateLimit] })
+      qc.invalidateQueries({ queryKey: [ROOT.simplefinMatches] })
+      qc.invalidateQueries({ queryKey: [ROOT.syncHealth] })
+      qc.invalidateQueries({ queryKey: [ROOT.syncRuns] })
     },
   })
 }

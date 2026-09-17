@@ -67,9 +67,24 @@
 /* Quiet, one line: the bank disagreeing with the ledger is information,
    not an alarm — Reconcile is the calm way back to agreement. */
 .account-page__bank-reports {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-xs);
   margin-top: var(--spacing-xs);
   font-size: var(--font-size-xs);
   color: var(--text-muted);
+}
+
+.account-page__bank-reports svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+/* On an account that gets reconciled, a gap after a sync is a fault: the
+   sync's own admission that rows did not arrive. Same tone as the sidebar's
+   sync badge. */
+.account-page__bank-reports--fault {
+  color: var(--color-negative);
 }
 
 .account-page__balance-item {

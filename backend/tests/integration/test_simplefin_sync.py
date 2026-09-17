@@ -954,9 +954,18 @@ async def test_reidentified_posting_keeps_the_users_category_on_a_bank_pending_r
     assert pending.category_id == cat.id and pending.memo == "lunch" and pending.approved
 
 
-async def test_legacy_cleared_row_without_bank_posted_date_is_not_reidentified(db_session):
-    """Rows linked before bank_posted_date existed are cleared with a NULL
-    posted date. They must never absorb a foreign same-amount bank id."""
+async def test_cleared_row_whose_bank_id_vanished_adopts_the_posting(db_session):
+    """A cleared row holds a bank id the feed no longer reports, and the
+    feed has a same-amount posting the same day under a new id.
+
+    This used to assert the opposite — that the row must never "absorb a
+    foreign bank id" — which is the 277-duplicate failure in miniature: a
+    bank that re-links an account re-issues every id, and the register's
+    only way back to its own history is to let a row inside the fetched
+    window take the id the bank now uses. The bank was asked about that day
+    and did not mention `old-1`; by the bridge's own contract that id is
+    retired. A legacy row with no `bank_posted_date` is judged by its date.
+    """
     services, user, budget, account, conn = await _sync_setup(db_session)
     day = date.today() - timedelta(days=1)
     legacy = await create_transaction(
@@ -973,11 +982,12 @@ async def test_legacy_cleared_row_without_bank_posted_date_is_not_reidentified(d
     with PATCH_DECRYPT:
         result = await svc.sync(conn.id, budget.id)
 
-    assert result["imported"] == 1 and result["matched"] == 0
+    assert result["imported"] == 0 and result["adopted"] == 1, result
     rows = await _live_rows(db_session, account.id)
-    assert len(rows) == 2
+    assert len(rows) == 1, "the posting is the row it already had"
     await db_session.refresh(legacy)
-    assert legacy.sync_id == "old-1"
+    assert legacy.sync_id == "t-new"
+    assert legacy.cleared == "cleared"
 
 
 async def test_pending_feed_row_never_claims_a_provisionally_linked_row(db_session):

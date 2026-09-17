@@ -2348,6 +2348,10 @@ class SyncRun(Base):
     #: Accounts whose stored bank id the feed no longer offers, with the
     #: replacement each should be relinked to.
     orphaned_links: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+    #: Reconciled accounts whose ledger disagreed with the bank once this
+    #: run's rows were in — see domain.bank_balance. The health check reads
+    #: it from the latest run, so a gap badges the nav until a sync closes it.
+    balance_drift: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
     feed_txn_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     imported: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     skipped: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
@@ -2397,8 +2401,13 @@ class SyncRunAccount(Base):
     feed_newest_date: Mapped[date | None] = mapped_column(Date)
     imported: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     adopted: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    #: True when the bank replaced every transaction id on this account.
+    #: True when this run re-stamped existing rows with ids the bank re-issued.
     reidentified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     orphaned: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    #: The bank's balance as this run received it, beside the ledger's cleared
+    #: total once the run's rows were in. A gap between them on a reconciled
+    #: account is the run's fault line (domain.bank_balance).
+    bank_balance: Mapped[Decimal | None] = mapped_column(Numeric(19, 4))
+    ledger_cleared_balance: Mapped[Decimal | None] = mapped_column(Numeric(19, 4))
 
     run: Mapped["SyncRun"] = relationship(back_populates="accounts")

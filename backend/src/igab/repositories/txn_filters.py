@@ -101,25 +101,38 @@ PROVISIONALLY_LINKED = and_(
 )
 
 
-def orphaned_link(feed_sync_ids: Collection[str]):
-    """Rows carrying a bank id the feed no longer reports.
+def orphaned_link(feed_sync_ids: Collection[str], since: date):
+    """Rows carrying a bank id the bank was asked about and did not report.
 
-    Only meaningful for an account the bank has re-identified (see
-    `domain.bank_identity.account_was_reidentified`), and the sync offers
-    these as dedup candidates only for that run. Outside that case the same
-    predicate would match every row that has simply aged out of the fetched
-    window, and offering those would let a fresh posting absorb an unrelated
-    row from months ago.
+    Two conditions, and the second is what makes the first safe:
 
-    Without it, a re-linked account has no path back to its own history: its
-    rows are not `BANK_UNLINKED` (they hold the retired id) and not
-    `PROVISIONALLY_LINKED` (they posted long ago), so the candidate search
-    returns nothing and every feed row is written as a duplicate. That is
-    exactly how one sync wrote 277 twins of reconciled transactions.
+    - the row's id is absent from the feed's ids for its account, and
+    - the row falls inside the window the feed was fetched for — by the
+      bank's own posting date when it has one, otherwise the row's date.
+
+    A bank that re-links an account re-issues every transaction id, so the
+    account's whole history comes back under names the register has never
+    seen. Those rows are not `BANK_UNLINKED` (they hold the retired id) and
+    not `PROVISIONALLY_LINKED` (they posted long ago), so without this the
+    candidate search returns nothing and every feed row is written as a
+    duplicate — 277 twins of reconciled transactions, once.
+
+    The window bound is the difference between "the bank no longer reports
+    this id" and "the bank was not asked": a weekly charge dated before the
+    window is not evidence of anything, and offering it would let this week's
+    charge absorb last week's. A row *inside* the window whose id the feed
+    omits is, by the bridge's own contract, an id the bank has retired.
+
+    This used to be gated per account, on every stored id being absent from
+    the feed at once. That gate failed the first time it was needed twice:
+    after a partial catch-up the account held both retired and current ids,
+    so it no longer looked re-identified, and its remaining history was
+    invisible again.
     """
     return and_(
         Transaction.sync_id.isnot(None),
         Transaction.sync_id.notin_(list(feed_sync_ids)),
+        func.coalesce(Transaction.bank_posted_date, Transaction.date) >= since,
     )
 
 

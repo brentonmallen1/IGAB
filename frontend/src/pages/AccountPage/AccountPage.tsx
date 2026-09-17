@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import {
+  AlertTriangle,
   CalendarClock,
   CheckCircle,
   CircleDot,
@@ -27,7 +28,12 @@ import { LiabilitySettingsModal } from '../../components/liabilities/LiabilitySe
 import { MatchReviewModal } from '../../components/simplefin/MatchReviewModal'
 import { useAccounts } from '../../api/accounts'
 import { useLiabilities } from '../../api/liabilities'
-import { useSimpleFINConnections, useSyncSimpleFIN, usePendingMatches } from '../../api/simplefin'
+import {
+  formatSyncSummary,
+  useSimpleFINConnections,
+  useSyncSimpleFIN,
+  usePendingMatches,
+} from '../../api/simplefin'
 import { useAppStore } from '../../stores/appStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useFormatters } from '../../hooks/useFormatters'
@@ -106,13 +112,16 @@ export function AccountPage() {
         toast.error(result.error)
         setSyncMsg(null)
       } else {
-        const parts = [`Imported ${result.imported}`, `skipped ${result.skipped}`]
-        if (result.matched) parts.push(`matched ${result.matched}`)
-        if (result.cleared) parts.push(`cleared ${result.cleared}`)
-        if (result.review_queued) parts.push(`${result.review_queued} need review`)
-        const msg = parts.join(', ')
+        // The same line the sidebar's sync shows — this page used to compose
+        // its own, which went on saying "Imported 0, skipped 586" after the
+        // shared one had learned to name a broken link.
+        const msg = formatSyncSummary(result)
         setSyncMsg(msg)
-        toast.success(msg)
+        if (result.orphaned_links.length > 0 || result.balance_drift.length > 0) {
+          toast.error(msg)
+        } else {
+          toast.success(msg)
+        }
       }
     } catch {
       toast.error('Sync failed — check your connection')
@@ -264,15 +273,28 @@ export function AccountPage() {
           )}
           {/* The bank's own figure, written every sync. Shown only when it
               disagrees with the cleared balance — agreement is the normal
-              state and needs no line — and it names the fix rather than
-              adjusting anything itself: drift is Reconcile's job. */}
-          {account.simplefin_balance !== null &&
-            account.simplefin_balance !== account.cleared_balance && (
-              <div className="account-page__bank-reports">
-                Bank reports {formatMoney(account.simplefin_balance)} — differs from the cleared
-                balance by{' '}
-                {formatMoney(Math.abs(account.simplefin_balance - account.cleared_balance))}.
-                Reconcile to bring them together.
+              state and needs no line. `bank_drift` is served: the sync
+              decides on the same rule whether a run is degraded. On an
+              account that gets reconciled, a gap after a sync usually means
+              rows the sync never asked for, so the line says so and names
+              both ways back to agreement. */}
+          {account.bank_drift !== null &&
+            account.simplefin_balance !== null &&
+            account.bank_drift !== 0 && (
+              <div
+                className={`account-page__bank-reports${
+                  account.last_reconciled_at ? ' account-page__bank-reports--fault' : ''
+                }`}
+              >
+                <AlertTriangle size={11} aria-hidden />
+                <span>
+                  Bank reports {formatMoney(account.simplefin_balance)} —{' '}
+                  {formatMoney(Math.abs(account.bank_drift))}{' '}
+                  {account.bank_drift > 0 ? 'more' : 'less'} than the cleared balance here.
+                  {account.last_reconciled_at
+                    ? ' Something may not have been pulled in: fetch the last 90 days again from account settings, then reconcile.'
+                    : ' Reconcile to bring them together.'}
+                </span>
               </div>
             )}
         </div>

@@ -18,7 +18,7 @@ class TestLiveWindow:
         2020 and every sync then asked for 2,247 days. The window now follows
         the last sync, and history has no say in it at all."""
         window = live_window(now=NOW, last_sync_at=NOW - timedelta(days=1), first_sync=False)
-        assert window.days <= SYNC_OVERLAP_DAYS + 1
+        assert (NOW - window.start).days <= SYNC_OVERLAP_DAYS + 1
         assert window.end is None
 
     def test_never_exceeds_the_bridge_cap(self):
@@ -28,7 +28,7 @@ class TestLiveWindow:
                 last_sync_at=NOW - timedelta(days=days_since_sync),
                 first_sync=False,
             )
-            assert window.days <= SIMPLEFIN_MAX_WINDOW_DAYS, days_since_sync
+            assert (NOW - window.start).days <= SIMPLEFIN_MAX_WINDOW_DAYS, days_since_sync
 
     def test_a_dormant_connection_is_floored_not_widened(self):
         window = live_window(now=NOW, last_sync_at=NOW - timedelta(days=400), first_sync=False)

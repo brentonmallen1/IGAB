@@ -14,22 +14,19 @@ data:
   at all (`BANK_UNLINKED`), and these rows carry the *old* link. One sync
   wrote 277 duplicates of already-reconciled transactions.
 
-The two rules here are the detectors for those, kept pure so every branch is
-a one-line test: `audit_links` compares stored ids to the feed's, and
-`account_was_reidentified` says when a wholesale id swap has happened and the
-sync should adopt rather than create.
+`audit_links` is the detector for the first, kept pure so every branch is a
+one-line test. The second is answered row by row in
+`repositories.txn_filters.orphaned_link`: a row inside the fetched window
+whose id the feed omits is one the bank has retired. An account-level gate
+("every stored id is absent from the feed") used to live here; it failed the
+first time it was needed twice, because after a partial catch-up the account
+held both retired and current ids and no longer looked re-identified.
 """
 
 import uuid
 from dataclasses import dataclass
 
 from igab.domain.matching import name_similarity
-
-#: Below this many ids on either side, disjointness is not evidence. A quiet
-#: account with two rows in the window can go disjoint for ordinary reasons
-#: (both rows aged out, the bank re-posted a hold), and adoption is too
-#: powerful to hand to a coincidence.
-MIN_IDS_FOR_REIDENTIFICATION = 5
 
 #: How alike two account names must be before one is offered as the other's
 #: replacement. High on purpose: the suggestion prefills a relink, and a
@@ -40,20 +37,6 @@ LINK_SUGGESTION_THRESHOLD = 0.75
 #: same bank read almost alike ("Visa Signature ...848" / "...849"), and a
 #: near-tie is exactly when a human should choose.
 LINK_SUGGESTION_MARGIN = 0.10
-
-
-def account_was_reidentified(*, feed_sync_ids: set[str], stored_sync_ids: set[str]) -> bool:
-    """True when every id the bank now reports is one this account has never seen.
-
-    A re-linked institution replaces its transaction ids in one step, so the
-    two sets go fully disjoint. Any overlap at all means business as usual —
-    an ordinary sync always re-reports rows the register already holds.
-    """
-    if len(feed_sync_ids) < MIN_IDS_FOR_REIDENTIFICATION:
-        return False
-    if len(stored_sync_ids) < MIN_IDS_FOR_REIDENTIFICATION:
-        return False
-    return feed_sync_ids.isdisjoint(stored_sync_ids)
 
 
 @dataclass(frozen=True)

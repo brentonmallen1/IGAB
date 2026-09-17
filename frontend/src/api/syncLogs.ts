@@ -9,7 +9,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import { apiClient } from './client'
 import { ROOT } from './queryKeys'
-import type { BankError, OrphanedLink } from './simplefin'
+import type { BalanceDrift, BankError, OrphanedLink } from './simplefin'
 
 export interface SyncRunAccount {
   account_id: string | null
@@ -22,8 +22,13 @@ export interface SyncRunAccount {
   feed_newest_date: string | null
   imported: number
   adopted: number
+  /** This run re-stamped existing rows with ids the bank re-issued. */
   reidentified: boolean
   orphaned: boolean
+  /** The bank's balance as the run received it, and the ledger's cleared
+   *  total once the run's rows were in. Canonical decimal strings. */
+  bank_balance: string | null
+  ledger_cleared_balance: string | null
 }
 
 export interface SyncRun {
@@ -38,6 +43,8 @@ export interface SyncRun {
   error: string | null
   bank_errors: BankError[]
   orphaned_links: OrphanedLink[]
+  /** Reconciled accounts the run left off from the bank. */
+  balance_drift: BalanceDrift[]
   feed_txn_count: number
   imported: number
   skipped: number
@@ -58,6 +65,7 @@ export interface SyncRunDetail extends SyncRun {
 export interface SyncHealth {
   orphaned_links: OrphanedLink[]
   needs_auth: BankError[]
+  balance_drift: BalanceDrift[]
   last_run_at: string | null
 }
 
@@ -107,5 +115,9 @@ export function useSyncHealth(budgetId: string | null) {
 
 export function hasSyncFault(health: SyncHealth | undefined): boolean {
   if (!health) return false
-  return health.orphaned_links.length > 0 || health.needs_auth.length > 0
+  return (
+    health.orphaned_links.length > 0 ||
+    health.needs_auth.length > 0 ||
+    health.balance_drift.length > 0
+  )
 }

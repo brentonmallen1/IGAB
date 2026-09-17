@@ -23,6 +23,7 @@ from igab.dependencies import (
     get_transaction_matching_service,
     get_transaction_service,
 )
+from igab.domain.bank_balance import bank_drift
 from igab.domain.exceptions import DuplicateError, InvariantViolation, NotFoundError
 from igab.repositories.account_repo import AccountRepository, LiabilityDisposition
 from igab.services.account_hygiene import AccountHygieneService
@@ -101,6 +102,7 @@ async def list_accounts(
         resp.cleared_balance = cleared
         resp.uncleared_balance = balance - cleared
         resp.pending_balance = pending_balances[acc.id]
+        resp.bank_drift = bank_drift(acc.simplefin_balance, cleared)
         resp.uncategorized_count = uncategorized[acc.id]
         result.append(resp)
     return result
@@ -267,6 +269,7 @@ async def get_account(
     resp.cleared_balance = cleared
     resp.uncleared_balance = balance - cleared
     resp.pending_balance = await account_repo.get_pending_balance(acc.id)
+    resp.bank_drift = bank_drift(acc.simplefin_balance, cleared)
     resp.uncategorized_count = await account_repo.get_uncategorized_count(acc.id)
     return resp
 

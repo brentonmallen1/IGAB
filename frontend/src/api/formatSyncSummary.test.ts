@@ -18,6 +18,7 @@ function connection(over: Partial<ConnectionSyncOutcome> = {}): ConnectionSyncOu
     error: null,
     orphaned_links: [],
     bank_errors: [],
+    balance_drift: [],
     ...over,
   }
 }
@@ -144,5 +145,64 @@ describe('formatSyncSummary', () => {
   it('reports a mixed run without a skip clause when nothing was skipped', () => {
     const summary = formatSyncSummary(result({ imported: 4, matched: 2, cleared: 1 }))
     expect(summary).toBe('Imported 4, matched 2, cleared 1')
+  })
+
+  it('says how far the ledger is off from the bank, after the counts', () => {
+    // The missing $1,240.17: two dozen rows posted in days the sync never asked
+    // for. The run that followed imported plenty and reported success.
+    const summary = formatSyncSummary(
+      result({
+        imported: 28,
+        connections: [
+          connection({
+            imported: 28,
+            balance_drift: [
+              {
+                account_id: 'a1',
+                account_name: 'Harborstone Checking',
+                bank_balance: '8213.5500',
+                ledger_cleared_balance: '9453.7200',
+              },
+            ],
+          }),
+        ],
+      })
+    )
+    expect(summary).toMatch(/^Imported 28/)
+    expect(summary).toContain('Harborstone Checking is off from the bank by 1,240.17')
+    expect(summary).toContain('may not have been pulled in')
+  })
+
+  it('reads a single-connection sync the same way as a sync-all', () => {
+    // The account page composed its own line for these, and it went on
+    // saying "Imported 0, skipped 586" after this one learned better.
+    const single = formatSyncSummary({
+      imported: 0,
+      skipped: 586,
+      skip_reasons: { foreign_account: 586 },
+      matched: 0,
+      adopted: 0,
+      review_queued: 0,
+      cleared: 0,
+      removed_pending: 0,
+      orphaned_links: [
+        {
+          account_id: 'a1',
+          account_name: 'Harborstone Checking',
+          stored_simplefin_id: 'ACT-old',
+          suggested_feed_id: 'ACT-new',
+          suggested_feed_name: 'HARBORSTONE EVERYDAY CHECKING',
+        },
+      ],
+      bank_errors: [],
+      balance_drift: [],
+      error: null,
+      global_used: null,
+      global_remaining: null,
+      account_used: null,
+      account_remaining: null,
+    })
+    expect(single).toContain('Harborstone Checking')
+    expect(single).toContain('relink')
   })
 })

@@ -1,58 +1,14 @@
-"""The two detectors for a bank that re-issued its identifiers.
+"""The detector for a bank that re-issued its account identifier.
 
-Each case here is named for the incident it prevents: an account that went
-nine days importing nothing because its `ACT-…` changed, and the sync that
-then wrote 277 duplicates of reconciled rows because the register's own
-history was invisible to the dedup ladder.
+Named for the incident it prevents: an account that went nine days importing
+nothing because its `ACT-…` changed. The row-level half — adopting re-issued
+transaction ids instead of duplicating the history — is a SQL predicate,
+covered in tests/integration/test_simplefin_reidentification.py.
 """
 
 import uuid
 
-from igab.domain.bank_identity import (
-    MIN_IDS_FOR_REIDENTIFICATION,
-    FeedAccount,
-    LinkedAccount,
-    account_was_reidentified,
-    audit_links,
-)
-
-
-def _ids(prefix: str, n: int) -> set[str]:
-    return {f"{prefix}-{i}" for i in range(n)}
-
-
-class TestAccountWasReidentified:
-    def test_wholesale_replacement_is_reidentification(self):
-        """The 277-duplicate case: every id in the feed is one we've never seen."""
-        assert account_was_reidentified(
-            feed_sync_ids=_ids("new", 40), stored_sync_ids=_ids("old", 300)
-        )
-
-    def test_any_overlap_is_an_ordinary_sync(self):
-        """One shared id is proof the link still holds. An ordinary sync always
-        re-reports rows the register already has."""
-        feed = _ids("new", 40) | {"shared-1"}
-        stored = _ids("old", 300) | {"shared-1"}
-        assert not account_was_reidentified(feed_sync_ids=feed, stored_sync_ids=stored)
-
-    def test_quiet_account_never_trips_it(self):
-        """Two rows can go disjoint for dull reasons. Adoption is too powerful
-        to hand to a coincidence."""
-        small = MIN_IDS_FOR_REIDENTIFICATION - 1
-        assert not account_was_reidentified(
-            feed_sync_ids=_ids("new", small), stored_sync_ids=_ids("old", 300)
-        )
-        assert not account_was_reidentified(
-            feed_sync_ids=_ids("new", 40), stored_sync_ids=_ids("old", small)
-        )
-
-    def test_empty_sides_are_not_evidence(self):
-        assert not account_was_reidentified(feed_sync_ids=set(), stored_sync_ids=_ids("o", 50))
-        assert not account_was_reidentified(feed_sync_ids=_ids("n", 50), stored_sync_ids=set())
-
-    def test_a_first_sync_is_not_reidentification(self):
-        """Nothing stored yet — there is no history to adopt."""
-        assert not account_was_reidentified(feed_sync_ids=_ids("new", 90), stored_sync_ids=set())
+from igab.domain.bank_identity import FeedAccount, LinkedAccount, audit_links
 
 
 class TestAuditLinks:

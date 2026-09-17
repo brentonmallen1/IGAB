@@ -51,9 +51,10 @@ import { useGuideOverview } from '../../../api/guide'
 import { useLiabilities } from '../../../api/liabilities'
 import { useAssets } from '../../../api/assets'
 import {
+  describeDrift,
   useSimpleFINConnections,
-  useSyncSimpleFIN,
   useSimpleFINRateLimitStatus,
+  useSyncSimpleFIN,
 } from '../../../api/simplefin'
 import { useUpdateStatus } from '../../../api/system'
 import { SyncStatusIcon } from '../../simplefin/SyncStatusIcon'
@@ -92,14 +93,18 @@ export function Sidebar() {
   // for is invisible by construction: the sync succeeds, the icon stays
   // fresh, and the account simply imports nothing.
   const { data: syncHealth } = useSyncHealth(budgetId)
-  const syncFaults = new Map(
-    (syncHealth?.orphaned_links ?? []).map((o) => [
+  const syncFaults = new Map([
+    ...(syncHealth?.balance_drift ?? []).map((d): [string, string] => [
+      d.account_id,
+      `${describeDrift([d])} — fetch the last 90 days again in account settings`,
+    ]),
+    ...(syncHealth?.orphaned_links ?? []).map((o): [string, string] => [
       o.account_id,
       o.suggested_feed_name
         ? `No longer offered by the bank — relink to "${o.suggested_feed_name}"`
         : 'No longer offered by the bank — relink in account settings',
-    ])
-  )
+    ]),
+  ])
   const syncFault = hasSyncFault(syncHealth)
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed)
   const toggleSidebarCollapsed = useUIStore((s) => s.toggleSidebarCollapsed)

@@ -282,12 +282,22 @@ class TestLookbackCalculation:
         """The regression. A six-year history must not widen the request."""
         last = datetime.now(UTC) - timedelta(days=1)
         window = svc._lookback_window([self._account(last)], False)
-        assert window.days <= SYNC_OVERLAP_DAYS + 1
+        assert (datetime.now(UTC) - window.start).days <= SYNC_OVERLAP_DAYS + 1
 
     def test_never_asks_for_more_than_the_bridge_cap(self, svc: SimpleFINService) -> None:
         stale = datetime.now(UTC) - timedelta(days=2247)
         window = svc._lookback_window([self._account(stale)], False)
-        assert window.days <= SIMPLEFIN_MAX_WINDOW_DAYS
+        assert (datetime.now(UTC) - window.start).days <= SIMPLEFIN_MAX_WINDOW_DAYS
+
+    def test_one_unstamped_target_means_the_full_window(self, svc: SimpleFINService) -> None:
+        """A relink clears the account's stamp so it is owed the full window.
+        The first version dropped missing stamps from the minimum, so the
+        relinked account inherited its neighbours' few days — and the days
+        its broken link had missed were never asked for."""
+        fresh = datetime.now(UTC) - timedelta(hours=1)
+        window = svc._lookback_window([self._account(fresh), self._account(None)], False)
+        expected = datetime.now(UTC) - timedelta(days=90)
+        assert abs((window.start - expected).total_seconds()) < 5
 
     def test_falls_back_to_90_days_when_nothing_has_synced(self, svc: SimpleFINService) -> None:
         window = svc._lookback_window([self._account(None)], False)

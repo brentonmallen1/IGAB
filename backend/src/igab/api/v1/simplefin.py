@@ -10,6 +10,7 @@ from igab.api.v1.schemas.simplefin import (
     AccountSyncStatusResponse,
     LinkSimpleFINRequest,
     RateLimitStatus,
+    RefetchRequest,
     SimpleFINConfigResponse,
     SimpleFINConnectionResponse,
     SimpleFINSetupRequest,
@@ -245,13 +246,51 @@ async def link_account(
     account_repo: Annotated[AccountRepository, Depends(get_account_repo)],
     recorder: Annotated[ChangeRecorder, Depends(get_change_recorder)],
 ) -> None:
+    # A relink also forgets when the account last synced, so the next run
+    # asks the bank for the full window rather than the days since the run
+    # that served nothing. The first relink after the bridge re-issued an
+    # account id was followed by a sync anchored to the broken run's own
+    # stamp, and the days the broken link had missed were never requested.
     await _recorded_account_update(
         recorder,
         account_repo,
         account_id,
         simplefin_account_id=body.simplefin_account_id,
         simplefin_account_name=body.simplefin_account_name,
+        last_simplefin_sync_at=None,
     )
+
+
+@router.post("/accounts/{account_id}/simplefin-refetch", response_model=SyncResult)
+async def refetch_account(
+    account_id: AccountAccess,
+    body: RefetchRequest,
+    current_user: CurrentUser,
+    account_repo: Annotated[AccountRepository, Depends(get_account_repo)],
+    svc: Annotated[SimpleFINService, Depends(get_simplefin_service)],
+) -> SyncResult:
+    """Ask the bank for the full window again, for this account only.
+
+    The recovery after a gap: forget when the account last synced and run an
+    account-scoped sync, so the request reaches back the bridge's whole
+    90 days. Safe to press at any time — rows the register already holds
+    re-stamp or skip, and only what is missing imports — which is what makes
+    it a button rather than a support procedure.
+    """
+    account = await account_repo.get_or_raise(account_id)
+    if not account.simplefin_account_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Account is not linked")
+    conn = await svc.repo.get(body.connection_id)
+    if conn is None or conn.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Connection not found")
+    await account_repo.update(account_id, last_simplefin_sync_at=None)
+    result = await svc.sync(
+        body.connection_id,
+        account.budget_id,
+        sync_type="account",
+        account_simplefin_id=account.simplefin_account_id,
+    )
+    return SyncResult(**result)
 
 
 @router.delete("/accounts/{account_id}/link-simplefin", status_code=204)
@@ -369,6 +408,7 @@ async def get_sync_health(
     return SyncHealthResponse(
         orphaned_links=latest.orphaned_links,
         needs_auth=[e for e in latest.bank_errors if e.get("code") == "con.auth"],
+        balance_drift=latest.balance_drift,
         last_run_at=latest.created_at,
     )
 

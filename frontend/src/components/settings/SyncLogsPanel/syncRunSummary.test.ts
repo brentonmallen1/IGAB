@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { SyncRun, SyncRunAccount } from '../../../api/syncLogs'
-import { accountNote, runHeadline, runVerdict, windowDays } from './syncRunSummary'
+import { accountNote, describeWindow, runHeadline, runVerdict, windowDays } from './syncRunSummary'
 
 function run(over: Partial<SyncRun> = {}): SyncRun {
   return {
@@ -15,6 +15,7 @@ function run(over: Partial<SyncRun> = {}): SyncRun {
     error: null,
     bank_errors: [],
     orphaned_links: [],
+    balance_drift: [],
     feed_txn_count: 0,
     imported: 0,
     skipped: 0,
@@ -28,6 +29,13 @@ function run(over: Partial<SyncRun> = {}): SyncRun {
     created_at: '2026-09-16T01:00:00Z',
     ...over,
   }
+}
+
+const DRIFT = {
+  account_id: 'a1',
+  account_name: 'Harborstone Checking',
+  bank_balance: '8213.5500',
+  ledger_cleared_balance: '9453.7200',
 }
 
 const ORPHAN = {
@@ -51,6 +59,11 @@ describe('runVerdict', () => {
 
   it('counts an adoption as work, not quiet', () => {
     expect(runVerdict(run({ adopted: 277 }))).toBe('worked')
+  })
+
+  it('calls a run that left a reconciled account off from the bank broken', () => {
+    // Imported 28 and reported success, with 24 rows still missing.
+    expect(runVerdict(run({ imported: 28, balance_drift: [DRIFT] }))).toBe('broken')
   })
 
   it('reports failure and rate limiting separately', () => {
@@ -79,6 +92,26 @@ describe('runHeadline', () => {
 
   it('lists what a working run did', () => {
     expect(runHeadline(run({ imported: 53, adopted: 277 }))).toBe('53 imported, 277 re-linked')
+  })
+
+  it('leads with the gap when the ledger is off from the bank', () => {
+    expect(runHeadline(run({ imported: 28, balance_drift: [DRIFT] }))).toContain(
+      'off from the bank by 1,240.17'
+    )
+  })
+})
+
+describe('describeWindow', () => {
+  it('names the start date, which is where a gap shows', () => {
+    // The run that missed 24 rows posted on the 8th and 9th asked from the 11th.
+    const text = describeWindow(
+      run({ window_start: '2026-09-11T12:00:00Z', created_at: '2026-09-16T12:00:00Z' })
+    )
+    expect(text).toMatch(/Sep 11 → now \(5 days\)/)
+  })
+
+  it('is null when no window was recorded', () => {
+    expect(describeWindow(run())).toBeNull()
   })
 })
 
@@ -114,6 +147,8 @@ describe('accountNote', () => {
       adopted: 0,
       reidentified: false,
       orphaned: false,
+      bank_balance: null,
+      ledger_cleared_balance: null,
       ...over,
     }
   }

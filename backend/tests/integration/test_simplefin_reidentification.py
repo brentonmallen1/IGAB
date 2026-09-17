@@ -10,11 +10,13 @@ retired one.
 """
 
 from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 from unittest.mock import patch
 
 from sqlalchemy import select
 
-from igab.db.models import Transaction
+from igab.db.models import Account, Transaction
+from igab.domain.sync_window import SIMPLEFIN_MAX_WINDOW_DAYS
 from igab.integrations.simplefin.client import SimpleFINError, SimpleFINFeed
 from igab.services.simplefin_service import SimpleFINService
 
@@ -40,15 +42,30 @@ PATCH_DECRYPT = patch("igab.services.simplefin_service.decrypt", return_value="h
 
 
 class FakeClient:
-    def __init__(self, payload, names=None, errors=None):
+    """A bridge that answers from a fixed payload.
+
+    `honour_window` makes it behave like the real one — a row posted before
+    `since` is not returned — which is the only way to test that a window
+    was wide enough. The `since` of every request is kept for the same
+    reason.
+    """
+
+    def __init__(self, payload, names=None, errors=None, balances=None, honour_window=False):
         self.payload = payload
         self.names = names or {}
         self.errors = errors or []
+        self.balances = balances or {}
+        self.honour_window = honour_window
+        self.requests: list[datetime | None] = []
 
     async def get_feed(self, access_url: str, since=None) -> SimpleFINFeed:
+        self.requests.append(since)
+        rows = self.payload
+        if self.honour_window and since is not None:
+            rows = [t for t in rows if t["posted"] >= since.timestamp()]
         return SimpleFINFeed(
-            transactions=self.payload,
-            balances={},
+            transactions=rows,
+            balances=dict(self.balances),
             account_names=dict(self.names),
             errors=list(self.errors),
         )
@@ -72,9 +89,8 @@ def bank_txn(txn_id: str, amount: str, on: date, *, account: str, payee: str) ->
     }
 
 
-#: Eight is above MIN_IDS_FOR_REIDENTIFICATION, so the wholesale swap below is
-#: evidence rather than coincidence. Amounts are distinct so each feed row has
-#: exactly one candidate and the pairing is unambiguous.
+#: Amounts are distinct so each feed row has exactly one candidate and the
+#: pairing is unambiguous.
 HISTORY = [
     ("-12.50", "CORNER MARKET"),
     ("-40.00", "HARBORSTONE FUEL"),
@@ -107,7 +123,9 @@ async def _setup(db_session):
     return services, budget, account, conn
 
 
-def _service(services, payload, names=None, errors=None) -> SimpleFINService:
+def _service(
+    services, payload, names=None, errors=None, balances=None, honour_window=False
+) -> SimpleFINService:
     svc = SimpleFINService(
         session=services.session,
         repo=services.simplefin_repo,
@@ -116,8 +134,21 @@ def _service(services, payload, names=None, errors=None) -> SimpleFINService:
         txn_service=services.transactions,
         matching_service=services.matching,
     )
-    svc.client = FakeClient(payload, names, errors)
+    svc.client = FakeClient(payload, names, errors, balances, honour_window)
     return svc
+
+
+async def _relink(db_session, account: Account, feed_id: str) -> None:
+    """What the link endpoint does: repoint the account and forget when it
+    last synced, so the next run asks for the full window."""
+    account.simplefin_account_id = feed_id
+    account.last_simplefin_sync_at = None
+    await db_session.flush()
+
+
+async def _synced_at(db_session, account: Account, when: datetime) -> None:
+    account.last_simplefin_sync_at = when
+    await db_session.flush()
 
 
 async def _live_rows(db_session, account_id) -> list[Transaction]:
@@ -131,7 +162,16 @@ async def _live_rows(db_session, account_id) -> list[Transaction]:
 
 
 async def test_relinked_account_adopts_its_history_instead_of_duplicating_it(db_session):
-    """The 277-duplicate regression, end to end."""
+    """The 277-duplicate regression, end to end — in the shape that broke it
+    the second time.
+
+    After the first fix, a relinked account caught up through a window a few
+    days wide, so its recent rows took the new bank ids while everything
+    older kept the retired ones. A wider re-fetch then found the account
+    holding both, decided it had *not* been re-identified, and would have
+    written every retired-id row again. Adoption is now decided per row: an
+    id the bank was asked about and did not report is one it has retired.
+    """
     services, budget, account, conn = await _setup(db_session)
     start = date.today() - timedelta(days=30)
 
@@ -150,29 +190,51 @@ async def test_relinked_account_adopts_its_history_instead_of_duplicating_it(db_
         row.cleared = "reconciled"
     await db_session.flush()
 
-    # The user relinks at the bridge: new account id, and every transaction
-    # arrives with an id the register has never seen.
+    # The bank re-issued every id. The first catch-up only reached the last
+    # three rows, so the account now holds five retired ids and three new.
     account.simplefin_account_id = NEW_ACCT
+    await _synced_at(db_session, account, datetime.now(UTC))
+    recent = _feed(NEW_ACCT, "new", start)[-3:]
+    with PATCH_DECRYPT:
+        partial = await _service(services, recent, names={NEW_ACCT: BANK_NAME}).sync(
+            conn.id, budget.id
+        )
+    assert partial["adopted"] == 0, "outside the window asked for: not evidence, not adopted"
+    assert partial["imported"] == 3, "and so, honestly, imported"
+    for row in await _live_rows(db_session, account.id):
+        if row.sync_id.startswith("new-"):
+            await services.transactions.delete(budget.id, row.id, source="system")
+    await db_session.flush()
+    rows = await _live_rows(db_session, account.id)
+    for row, feed_row in zip(sorted(rows, key=lambda r: r.date)[-3:], recent):
+        row.sync_id = feed_row["id"]
     await db_session.flush()
 
+    # Now the full window, with one row the broken link missed.
+    await _relink(db_session, account, NEW_ACCT)
+    feed = _feed(NEW_ACCT, "new", start) + [
+        bank_txn("new-late", "-31.00", date.today(), account=NEW_ACCT, payee="CORNER MARKET")
+    ]
     with PATCH_DECRYPT:
-        second = await _service(
-            services, _feed(NEW_ACCT, "new", start), names={NEW_ACCT: BANK_NAME}
-        ).sync(conn.id, budget.id)
+        second = await _service(services, feed, names={NEW_ACCT: BANK_NAME}).sync(
+            conn.id, budget.id
+        )
 
     assert second.get("error") is None, second
-    assert second["adopted"] == len(HISTORY), second
-    assert second["imported"] == 0, second
+    assert second["adopted"] == len(HISTORY) - 3, second
+    assert second["imported"] == 1, second
+    assert second["skip_reasons"] == {"already_posted": 3}
 
     after = await _live_rows(db_session, account.id)
-    assert len(after) == len(HISTORY), "a re-link must not double the register"
+    assert len(after) == len(HISTORY) + 1, "a re-fetch must not double the register"
 
     # The adopted rows carry the new bank ids, so the *next* sync recognises
     # them — without this the duplication simply recurs on the next run.
-    assert {r.sync_id for r in after} == {f"new-{i}" for i in range(len(HISTORY))}
+    assert {r.sync_id for r in after} == {f"new-{i}" for i in range(len(HISTORY))} | {"new-late"}
     # And they are still the user's rows.
-    assert all(r.category_id == category.id for r in after)
-    assert all(r.cleared == "reconciled" for r in after)
+    history = [r for r in after if r.sync_id != "new-late"]
+    assert all(r.category_id == category.id for r in history)
+    assert all(r.cleared == "reconciled" for r in history)
 
 
 async def test_adoption_is_stable_on_a_second_sync(db_session):
@@ -183,8 +245,7 @@ async def test_adoption_is_stable_on_a_second_sync(db_session):
 
     with PATCH_DECRYPT:
         await _service(services, _feed(OLD_ACCT, "old", start)).sync(conn.id, budget.id)
-    account.simplefin_account_id = NEW_ACCT
-    await db_session.flush()
+    await _relink(db_session, account, NEW_ACCT)
 
     with PATCH_DECRYPT:
         svc = _service(services, _feed(NEW_ACCT, "new", start), names={NEW_ACCT: BANK_NAME})
@@ -215,6 +276,191 @@ async def test_ordinary_sync_never_adopts(db_session):
     assert second["adopted"] == 0
     assert second["imported"] == 1
     assert len(await _live_rows(db_session, account.id)) == len(HISTORY) + 1
+
+
+async def test_a_row_outside_the_window_asked_for_is_never_offered(db_session):
+    """The bound that makes row-level adoption safe.
+
+    Last week's $12.50 at the market holds a bank id today's feed does not
+    mention — because the feed was asked for the last two days, not because
+    the bank retired the id. Offering it would let this week's identical
+    charge absorb last week's. The same feed over a window that *covers* last
+    week is a different claim, and then the row is offered.
+    """
+    services, budget, account, conn = await _setup(db_session)
+    start = date.today() - timedelta(days=8)
+    with PATCH_DECRYPT:
+        await _service(services, _feed(OLD_ACCT, "old", start)).sync(conn.id, budget.id)
+
+    today_row = bank_txn(
+        "old-again", "-12.50", date.today(), account=OLD_ACCT, payee="CORNER MARKET"
+    )
+    payload = _feed(OLD_ACCT, "old", start)[-2:] + [today_row]
+
+    # Two-day window: the week-old row is outside it, so its absent id is not
+    # evidence, and today's charge imports clean.
+    await _synced_at(db_session, account, datetime.now(UTC) - timedelta(days=2))
+    with PATCH_DECRYPT:
+        narrow = await _service(services, payload).sync(conn.id, budget.id)
+    assert narrow["imported"] == 1
+    assert narrow["adopted"] == 0
+    assert narrow["review_queued"] == 0
+    for row in await _live_rows(db_session, account.id):
+        if row.sync_id == "old-again":
+            await services.transactions.delete(budget.id, row.id, source="system")
+    await db_session.flush()
+
+    # Full window: the same absent id now means the bank was asked about
+    # that week and did not report it, so the row is offered. Eight days
+    # apart, it is offered for review rather than taken — the ladder's
+    # ordinary judgment, not this rule's.
+    await _synced_at(db_session, account, datetime.now(UTC) - timedelta(days=30))
+    with PATCH_DECRYPT:
+        wide = await _service(services, payload).sync(conn.id, budget.id)
+    assert wide["imported"] == 1
+    assert wide["review_queued"] == 1
+
+
+async def test_an_orphaned_account_does_not_advance_its_window(db_session):
+    """The stamp says when the bank last served this account, not when a sync
+    last ran. Advancing it on runs that served the account nothing is how a
+    relinked account came back asking for the days since the *break* rather
+    than the days since it was last served — and 24 posted rows were never
+    requested.
+    """
+    services, budget, account, conn = await _setup(db_session)
+    start = date.today() - timedelta(days=30)
+    with PATCH_DECRYPT:
+        await _service(services, _feed(OLD_ACCT, "old", start)).sync(conn.id, budget.id)
+    await db_session.refresh(account)
+    served_at = account.last_simplefin_sync_at
+    assert served_at is not None
+
+    # The bank re-issues the id under a name auto-relink will not act on.
+    # Two hourly runs go by.
+    with PATCH_DECRYPT:
+        svc = _service(services, _feed(NEW_ACCT, "new", start), names={NEW_ACCT: BANK_NAME_SIMILAR})
+        await svc.sync(conn.id, budget.id)
+        await svc.sync(conn.id, budget.id)
+
+    await db_session.refresh(account)
+    assert account.last_simplefin_sync_at == served_at
+
+
+async def test_an_automatic_relink_asks_for_the_full_window(db_session):
+    """A relink in the middle of a run cannot make do with the feed already
+    in hand: that feed was fetched for the days since the runs that served
+    this account nothing. The run asks again, from the floor, before
+    importing — so the days the broken link missed arrive in the same run.
+    """
+    services, budget, account, conn = await _setup(db_session)
+    start = date.today() - timedelta(days=30)
+    with PATCH_DECRYPT:
+        await _service(services, _feed(OLD_ACCT, "old", start)).sync(conn.id, budget.id)
+    rows_before = len(await _live_rows(db_session, account.id))
+
+    # The account was served an hour ago (as far as its stamp knows), and a
+    # row posted twenty days ago is what the broken link missed.
+    await _synced_at(db_session, account, datetime.now(UTC) - timedelta(hours=1))
+    missed = bank_txn(
+        "new-missed",
+        "-31.00",
+        date.today() - timedelta(days=20),
+        account=NEW_ACCT,
+        payee="CORNER MARKET",
+    )
+    svc = _service(
+        services,
+        _feed(NEW_ACCT, "new", start) + [missed],
+        names={NEW_ACCT: BANK_NAME},
+        honour_window=True,
+    )
+    await db_session.refresh(conn)
+    quota_before = conn.global_requests_today
+    with PATCH_DECRYPT:
+        result = await svc.sync(conn.id, budget.id)
+
+    assert len(svc.client.requests) == 2, "fetched once narrow, then again from the floor"
+    floor = datetime.now(UTC) - timedelta(days=SIMPLEFIN_MAX_WINDOW_DAYS)
+    assert abs((svc.client.requests[1] - floor).total_seconds()) < 60
+    assert result["adopted"] == rows_before
+    assert result["imported"] == 1, "the missed row arrived in the same run"
+    await db_session.refresh(conn)
+    assert conn.global_requests_today == quota_before + 2, "both requests count against the quota"
+
+
+async def test_a_reconciled_account_off_from_the_bank_is_a_fault(db_session):
+    """The bank's balance was stored every sync and shown on one page. A gap
+    on a reconciled account now reaches the run, the connection's error and
+    the health check — the sync's own admission that something did not
+    arrive."""
+    from igab.repositories.sync_run_repo import SyncRunRepository
+
+    services, budget, account, conn = await _setup(db_session)
+    account.last_reconciled_at = datetime.now(UTC)
+    await db_session.flush()
+    start = date.today() - timedelta(days=30)
+    ledger = sum(Decimal(amount) for amount, _payee in HISTORY)
+
+    with PATCH_DECRYPT:
+        first = await _service(
+            services, _feed(OLD_ACCT, "old", start), balances={OLD_ACCT: ledger}
+        ).sync(conn.id, budget.id)
+    assert first["balance_drift"] == [], "the ledger agrees with the bank"
+
+    with PATCH_DECRYPT:
+        result = await _service(
+            services,
+            _feed(OLD_ACCT, "old", start),
+            balances={OLD_ACCT: ledger - Decimal("1240.17")},
+        ).sync(conn.id, budget.id)
+
+    [drift] = result["balance_drift"]
+    assert drift["account_name"] == "Harborstone Checking"
+    assert Decimal(drift["bank_balance"]) == ledger - Decimal("1240.17")
+    assert Decimal(drift["ledger_cleared_balance"]) == ledger
+    await db_session.refresh(conn)
+    assert "off by 1,240.17" in conn.last_sync_error
+
+    repo = SyncRunRepository(db_session)
+    runs, _ = await repo.list_runs(budget_id=budget.id)
+    run = await repo.get(runs[0].id)
+    assert run.status == "degraded"
+    assert run.balance_drift[0]["account_name"] == "Harborstone Checking"
+    [row] = run.accounts
+    assert row.bank_balance == ledger - Decimal("1240.17")
+    assert row.ledger_cleared_balance == ledger
+
+
+async def test_an_unreconciled_account_off_from_the_bank_is_not_a_fault(db_session):
+    """A mortgage accrues interest between statements and a 401k moves with
+    the market. Flagging those would light the badge permanently."""
+    services, budget, account, conn = await _setup(db_session)
+    start = date.today() - timedelta(days=30)
+    with PATCH_DECRYPT:
+        await _service(services, _feed(OLD_ACCT, "old", start)).sync(conn.id, budget.id)
+    with PATCH_DECRYPT:
+        result = await _service(
+            services, _feed(OLD_ACCT, "old", start), balances={OLD_ACCT: Decimal("999.99")}
+        ).sync(conn.id, budget.id)
+    assert result["balance_drift"] == []
+    await db_session.refresh(conn)
+    assert conn.last_sync_error is None
+
+
+async def test_a_first_sync_anchors_before_it_judges_drift(db_session):
+    """The opening-balance anchor closes the gap a 90-day window cannot
+    carry; a fresh account must not be flagged for its own pre-history."""
+    services, budget, account, conn = await _setup(db_session)
+    account.last_reconciled_at = datetime.now(UTC)
+    await db_session.flush()
+    start = date.today() - timedelta(days=30)
+    with PATCH_DECRYPT:
+        result = await _service(
+            services, _feed(OLD_ACCT, "old", start), balances={OLD_ACCT: Decimal("5000")}
+        ).sync(conn.id, budget.id)
+    assert result["anchored"] == 1
+    assert result["balance_drift"] == []
 
 
 async def test_orphaned_link_is_reported_and_recorded(db_session):
@@ -355,8 +601,7 @@ async def test_a_reidentified_account_is_recorded_as_such(db_session):
     start = date.today() - timedelta(days=30)
     with PATCH_DECRYPT:
         await _service(services, _feed(OLD_ACCT, "old", start)).sync(conn.id, budget.id)
-    account.simplefin_account_id = NEW_ACCT
-    await db_session.flush()
+    await _relink(db_session, account, NEW_ACCT)
     with PATCH_DECRYPT:
         await _service(services, _feed(NEW_ACCT, "new", start), names={NEW_ACCT: BANK_NAME}).sync(
             conn.id, budget.id
@@ -394,8 +639,7 @@ async def test_sync_all_totals_adoptions(db_session):
     start = date.today() - timedelta(days=30)
     with PATCH_DECRYPT:
         await _service(services, _feed(OLD_ACCT, "old", start)).sync(conn.id, budget.id)
-    account.simplefin_account_id = NEW_ACCT
-    await db_session.flush()
+    await _relink(db_session, account, NEW_ACCT)
 
     svc = _service(services, _feed(NEW_ACCT, "new", start), names={NEW_ACCT: BANK_NAME})
     with PATCH_DECRYPT:
@@ -518,3 +762,69 @@ async def test_an_automatic_relink_is_undoable(db_session):
     assert rows, "the relink left a change-log entry"
     assert rows[-1].before["simplefin_account_id"] == OLD_ACCT
     assert rows[-1].after["simplefin_account_id"] == NEW_ACCT
+
+
+async def test_the_link_endpoint_forgets_when_the_account_last_synced(db_session, api_client):
+    """A relink by hand resets the window the same way an automatic one does."""
+    budget = await create_budget(db_session, api_client.test_user)
+    account = await create_account(db_session, budget, simplefin_account_id=OLD_ACCT)
+    account.last_simplefin_sync_at = datetime.now(UTC)
+    await db_session.commit()
+
+    r = await api_client.post(
+        f"/api/v1/accounts/{account.id}/link-simplefin",
+        json={"simplefin_account_id": NEW_ACCT, "simplefin_account_name": BANK_NAME},
+    )
+    assert r.status_code == 204, r.text
+    await db_session.refresh(account)
+    assert account.simplefin_account_id == NEW_ACCT
+    assert account.last_simplefin_sync_at is None
+
+
+async def test_refetch_asks_for_the_full_window_and_duplicates_nothing(db_session, api_client):
+    """The recovery button. Pressed on an account with nothing missing it
+    changes nothing; pressed after a gap it imports exactly the gap."""
+    from igab.dependencies import get_simplefin_service
+    from igab.main import app
+
+    budget = await create_budget(db_session, api_client.test_user)
+    account = await create_account(
+        db_session, budget, "Harborstone Checking", simplefin_account_id=OLD_ACCT
+    )
+    conn = await create_simplefin_connection(db_session, api_client.test_user)
+    await db_session.commit()
+    services = make_services(db_session)
+    start = date.today() - timedelta(days=30)
+    missed = bank_txn(
+        "old-missed",
+        "-31.00",
+        date.today() - timedelta(days=20),
+        account=OLD_ACCT,
+        payee="CORNER MARKET",
+    )
+    svc = _service(services, _feed(OLD_ACCT, "old", start) + [missed], honour_window=True)
+    app.dependency_overrides[get_simplefin_service] = lambda: svc
+    try:
+        # The account's stamp says it was served an hour ago; the row twenty
+        # days back is what a broken link missed.
+        with PATCH_DECRYPT:
+            await svc.sync(conn.id, budget.id)
+        await db_session.commit()
+        await db_session.refresh(account)
+        assert account.last_simplefin_sync_at is not None
+        rows_before = len(await _live_rows(db_session, account.id))
+
+        with PATCH_DECRYPT:
+            r = await api_client.post(
+                f"/api/v1/accounts/{account.id}/simplefin-refetch",
+                json={"connection_id": str(conn.id)},
+            )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["imported"] == 0, "nothing was missing after a full first sync"
+        assert body["skip_reasons"] == {"already_posted": len(HISTORY) + 1}
+        assert len(await _live_rows(db_session, account.id)) == rows_before
+        floor = datetime.now(UTC) - timedelta(days=SIMPLEFIN_MAX_WINDOW_DAYS)
+        assert abs((svc.client.requests[-1] - floor).total_seconds()) < 60
+    finally:
+        app.dependency_overrides.pop(get_simplefin_service, None)
