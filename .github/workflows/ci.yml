@@ -70,7 +70,7 @@ jobs:
       # moving major tags after v7, so @v10 does not resolve. Dependabot's
       # github-actions ecosystem keeps this current.
       - name: Set up uv
-        uses: astral-sh/setup-uv@v10.0.1
+        uses: astral-sh/setup-uv@v10.1.0
         with:
           enable-cache: true
           cache-dependency-glob: backend/uv.lock
