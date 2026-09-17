@@ -6,6 +6,7 @@
  * "0 imported, 500+ skipped" described both a broken bank link and a quiet
  * morning with nothing new.
  */
+import { describeDrift } from '../../../api/simplefin'
 import type { SyncRun, SyncRunAccount } from '../../../api/syncLogs'
 
 /** Names for `domain.enums.SkipReason`, in the terms a person would use. */
@@ -31,6 +32,7 @@ export type RunVerdict = 'broken' | 'failed' | 'limited' | 'quiet' | 'worked'
  */
 export function runVerdict(run: SyncRun): RunVerdict {
   if (run.orphaned_links.length > 0 || run.status === 'degraded') return 'broken'
+  if (run.balance_drift.length > 0) return 'broken'
   if (run.status === 'error') return 'failed'
   if (run.status === 'rate_limited') return 'limited'
   if (run.imported === 0 && run.adopted === 0 && run.matched === 0) return 'quiet'
@@ -44,6 +46,7 @@ export function runHeadline(run: SyncRun): string {
       ? `${names[0]} no longer matches an account at the bank`
       : `${names.length} accounts no longer match an account at the bank`
   }
+  if (run.balance_drift.length > 0) return describeDrift(run.balance_drift)
   if (run.error) return run.error
   const parts: string[] = []
   if (run.imported) parts.push(`${run.imported} imported`)
@@ -53,6 +56,20 @@ export function runHeadline(run: SyncRun): string {
   if (run.review_queued) parts.push(`${run.review_queued} to review`)
   if (parts.length === 0) return 'Nothing new'
   return parts.join(', ')
+}
+
+/**
+ * The window the bridge was asked for, as a sentence: "Sep 11 → now (6 days)".
+ * The start date is the part that matters — a gap in the register is a run
+ * whose window began after the rows were posted, and only the date says so.
+ */
+export function describeWindow(run: SyncRun): string | null {
+  const days = windowDays(run)
+  if (days == null || !run.window_start) return null
+  const fmt = (iso: string) =>
+    new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  const end = run.window_end ? fmt(run.window_end) : 'now'
+  return `${fmt(run.window_start)} → ${end} (${days} day${days === 1 ? '' : 's'})`
 }
 
 /** How wide a window the bridge was asked for — over 90 days is capped. */

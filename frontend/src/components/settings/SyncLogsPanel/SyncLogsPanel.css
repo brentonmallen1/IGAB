@@ -191,6 +191,13 @@
   color: var(--color-negative);
 }
 
+/* A ledger that does not match the bank's figure beside it. Informational on
+   an unreconciled account (a loan accrues, a fund moves); the run's fault
+   block above the table says when it is more than that. */
+.sync-run__off {
+  color: var(--color-negative);
+}
+
 .sync-run__note {
   color: var(--text-secondary);
 }

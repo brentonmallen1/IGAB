@@ -3,9 +3,12 @@ import { AlertTriangle, ChevronDown, ChevronRight, Link2, RefreshCw } from 'luci
 
 import { useSyncRun, useSyncRuns, type SyncRun, type SyncRunAccount } from '../../../api/syncLogs'
 import { useAppStore } from '../../../stores/appStore'
+import { parseApiDecimal } from '../../../utils/money'
+import { useFormatters } from '../../../hooks/useFormatters'
 import {
   accountNote,
   describeSkipReason,
+  describeWindow,
   runHeadline,
   runVerdict,
   windowDays,
@@ -111,6 +114,18 @@ function RunDetail({ runId, budgetId }: { runId: string; budgetId: string }) {
         </div>
       ))}
 
+      {run.balance_drift.map((drift) => (
+        <div key={drift.account_id} className="sync-run__fault">
+          <AlertTriangle size={13} />
+          <div>
+            <strong>{drift.account_name}</strong> is off from what the bank reports — the ledger
+            here does not add up to the bank&rsquo;s balance. Rows may have posted in days this sync
+            never asked for: fetch the last 90 days again from that account&rsquo;s settings, then
+            reconcile.
+          </div>
+        </div>
+      ))}
+
       {run.bank_errors.map((err, i) => (
         <div key={`${err.code}-${i}`} className="sync-run__fault sync-run__fault--bank">
           <AlertTriangle size={13} />
@@ -122,7 +137,7 @@ function RunDetail({ runId, budgetId }: { runId: string; budgetId: string }) {
 
       <dl className="sync-run__facts">
         <Fact label="Window asked for">
-          {days == null ? '—' : `${days} day${days === 1 ? '' : 's'}`}
+          {describeWindow(run) ?? '—'}
           {days != null && days > 90 && (
             <span className="sync-run__warn"> — over the bridge&rsquo;s 90-day limit</span>
           )}
@@ -158,7 +173,10 @@ function RunDetail({ runId, budgetId }: { runId: string; budgetId: string }) {
             <tr>
               <th>Account</th>
               <th>Rows</th>
+              <th>Oldest at bank</th>
               <th>Newest at bank</th>
+              <th>Bank balance</th>
+              <th>Ledger</th>
               <th />
             </tr>
           </thead>
@@ -175,11 +193,20 @@ function RunDetail({ runId, budgetId }: { runId: string; budgetId: string }) {
 
 function AccountRow({ a }: { a: SyncRunAccount }) {
   const note = accountNote(a)
+  const { formatMoney } = useFormatters()
+  const money = (v: string | null) => (v == null ? '—' : formatMoney(parseApiDecimal(v)))
+  const off =
+    a.bank_balance != null &&
+    a.ledger_cleared_balance != null &&
+    parseApiDecimal(a.bank_balance) !== parseApiDecimal(a.ledger_cleared_balance)
   return (
     <tr className={a.orphaned ? 'sync-run__account--orphaned' : undefined}>
       <td>{a.account_name ?? a.simplefin_account_id}</td>
       <td>{a.feed_txn_count}</td>
+      <td>{a.feed_oldest_date ?? '—'}</td>
       <td>{a.feed_newest_date ?? '—'}</td>
+      <td className="tabular">{money(a.bank_balance)}</td>
+      <td className={`tabular${off ? ' sync-run__off' : ''}`}>{money(a.ledger_cleared_balance)}</td>
       <td className="sync-run__note">
         {note && (
           <>

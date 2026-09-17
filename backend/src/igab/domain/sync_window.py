@@ -19,7 +19,7 @@ branch is a one-line test.
 """
 
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 
 #: The bridge's documented cap. Not a tuning knob — requests wider than this
 #: are capped server-side, silently as far as the transaction data goes.
@@ -42,11 +42,6 @@ class SyncWindow:
 
     start: datetime
     end: datetime | None = None
-
-    @property
-    def days(self) -> int:
-        end = self.end or datetime.now(UTC)
-        return (end - self.start).days
 
 
 def live_window(*, now: datetime, last_sync_at: datetime | None, first_sync: bool) -> SyncWindow:

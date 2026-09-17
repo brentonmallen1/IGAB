@@ -88,6 +88,11 @@ class AccountResponse(ApiModel):
     simplefin_balance: Decimal | None = None
     # Computed
     balance: Decimal = Decimal("0")
+    #: `simplefin_balance - cleared_balance`, signed, or null when the bank
+    #: has reported nothing. Served rather than computed on the client because
+    #: the sync decides on the same rule whether a run is degraded
+    #: (domain.bank_balance).
+    bank_drift: Decimal | None = None
     cleared_balance: Decimal = Decimal("0")
     uncleared_balance: Decimal = Decimal("0")
     #: Authorised by the bank, not yet posted. NOT a term in

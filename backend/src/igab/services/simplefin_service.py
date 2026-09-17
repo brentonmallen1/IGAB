@@ -2,6 +2,7 @@ import asyncio
 import logging
 import uuid
 from collections import Counter
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
@@ -11,11 +12,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, SimpleFINConnection, Transaction
+from igab.domain.bank_balance import BalanceDrift, describe_drift, drift_is_a_fault
 from igab.domain.bank_identity import (
     FeedAccount,
     LinkAudit,
     LinkedAccount,
-    account_was_reidentified,
     audit_links,
 )
 from igab.domain.bank_posting import FeedRecord, Review
@@ -28,7 +29,7 @@ from igab.domain.matching import (
     payee_similarity,
 )
 from igab.domain.payee_names import STARTING_BALANCE_PAYEE
-from igab.domain.sync_window import SIMPLEFIN_MAX_WINDOW_DAYS, SyncWindow, live_window
+from igab.domain.sync_window import SyncWindow, live_window
 from igab.domain.transfers import PairableLeg, pair_legs
 from igab.integrations.simplefin.client import SimpleFINClient, SimpleFINError, SimpleFINFeed
 from igab.integrations.simplefin.encryption import (
@@ -203,13 +204,19 @@ def _decide_match(
     return _MatchDecision("review", best[0], best[3])
 
 
-def _fault_summary(audit: LinkAudit, errors: list[SimpleFINError]) -> str | None:
+def _fault_summary(
+    audit: LinkAudit,
+    errors: list[SimpleFINError],
+    drifts: Sequence[tuple[Account, BalanceDrift]] = (),
+) -> str | None:
     """One line for the connection's error field, or None when all is well.
 
     Orphaned links lead because they are the fault the user can fix and the
     one that silently stops an account importing. `con.auth` follows: the
     bridge is naming an institution whose credentials have lapsed, and the
-    guide is explicit that those must be shown.
+    guide is explicit that those must be shown. A reconciled account whose
+    ledger no longer matches the bank comes last: it is the sync's own
+    admission that something did not arrive.
     """
     parts: list[str] = []
     for orphan in audit.orphaned:
@@ -220,7 +227,21 @@ def _fault_summary(audit: LinkAudit, errors: list[SimpleFINError]) -> str | None
         )
         parts.append(f'"{orphan.account_name}" is no longer offered by the bank{fix}')
     parts.extend(e.message for e in errors if e.needs_auth)
+    parts.extend(describe_drift(account.name, drift) for account, drift in drifts)
     return "; ".join(parts) or None
+
+
+def _drift_records(drifts: list[tuple[Account, BalanceDrift]]) -> list[dict]:
+    """The drift list as the run record, the result and the health check carry it."""
+    return [
+        {
+            "account_id": str(account.id),
+            "account_name": account.name,
+            "bank_balance": str(drift.reported),
+            "ledger_cleared_balance": str(drift.ledger_cleared),
+        }
+        for account, drift in drifts
+    ]
 
 
 class RateLimitError(IGABError):
@@ -301,6 +322,7 @@ class SimpleFINService:
                     # and a total of "skipped 586" hides which bank it was.
                     "orphaned_links": result.get("orphaned_links") or [],
                     "bank_errors": result.get("bank_errors") or [],
+                    "balance_drift": result.get("balance_drift") or [],
                 }
             )
         return {**totals, "skip_reasons": dict(skip_reasons), "connections": outcomes}
@@ -348,16 +370,20 @@ class SimpleFINService:
             )
 
     async def _bump_request_count(
-        self, connection_id: uuid.UUID, conn: SimpleFINConnection, sync_type: SyncType
+        self,
+        connection_id: uuid.UUID,
+        conn: SimpleFINConnection,
+        sync_type: SyncType,
+        requests: int = 1,
     ) -> None:
         today = today_utc()
         is_new_day = conn.last_request_date != today
         global_today = 0 if is_new_day else conn.global_requests_today
         account_today = 0 if is_new_day else conn.account_requests_today
         if sync_type == "global":
-            global_today += 1
+            global_today += requests
         else:
-            account_today += 1
+            account_today += requests
         await self.repo.update(
             connection_id,
             last_request_date=today,
@@ -371,15 +397,37 @@ class SimpleFINService:
 
         Anchored to the *earliest* `last_simplefin_sync_at` among the targets,
         so an account added to an established connection is not shortchanged
-        by its neighbours' freshness. `domain.sync_window` floors the result
-        at the bridge's 90-day cap.
+        by its neighbours' freshness — and a target with no stamp at all
+        means the full window, not "ignore it". A relink clears the stamp
+        for exactly this reason; the first version of this dropped missing
+        stamps from the minimum, so a relinked account inherited the window
+        of the runs that had served it nothing. `domain.sync_window` floors
+        the result at the bridge's 90-day cap.
         """
-        stamps = [a.last_simplefin_sync_at for a in targets if a.last_simplefin_sync_at]
+        stamps: list[datetime] = []
+        for account in targets:
+            if account.last_simplefin_sync_at is None:
+                stamps = []
+                break
+            stamps.append(account.last_simplefin_sync_at)
         return live_window(
             now=datetime.now(UTC),
             last_sync_at=min(stamps) if stamps else None,
             first_sync=first_sync,
         )
+
+    async def _fetch_feed(self, access_url: str, since: datetime) -> SimpleFINFeed:
+        """One request to the bridge, retried. Raises the last error."""
+        last_error: Exception | None = None
+        for attempt in range(MAX_RETRY_ATTEMPTS):
+            try:
+                return await self.client.get_feed(access_url, since=since)
+            except Exception as exc:
+                last_error = exc
+                if attempt < MAX_RETRY_ATTEMPTS - 1:
+                    await asyncio.sleep(RETRY_BASE_DELAY * (2**attempt))
+        assert last_error is not None
+        raise last_error
 
     async def sync(
         self,
@@ -433,28 +481,18 @@ class SimpleFINService:
             )
             return {"imported": 0, "skipped": 0, "error": error_msg}
 
-        feed_data = SimpleFINFeed(transactions=[])
-        last_error: Exception | None = None
-        for attempt in range(MAX_RETRY_ATTEMPTS):
-            try:
-                feed_data = await self.client.get_feed(access_url, since=since)
-                last_error = None
-                break
-            except Exception as exc:
-                last_error = exc
-                if attempt < MAX_RETRY_ATTEMPTS - 1:
-                    await asyncio.sleep(RETRY_BASE_DELAY * (2**attempt))
-
-        if last_error is not None:
-            error_msg = str(last_error)
+        requests_made = 0
+        try:
+            feed_data = await self._fetch_feed(access_url, since)
+            requests_made += 1
+        except Exception as exc:
+            error_msg = str(exc)
             await self.repo.update(
                 connection_id,
                 last_sync_error=error_msg,
                 last_sync_error_at=datetime.now(UTC),
             )
             return {"imported": 0, "skipped": 0, "error": error_msg}
-
-        txns_raw = feed_data.transactions
 
         # Which bank accounts the feed actually offered, and which of our
         # links still resolve. Run before the loop because an orphaned link
@@ -474,26 +512,41 @@ class SimpleFINService:
         # automate the 277-duplicate failure across every account at once.
         relinked = await self._auto_relink(targets, audit)
         if relinked:
+            # The feed in hand was fetched for the days since the runs that
+            # served this account nothing. A relinked account needs the full
+            # window — the days the broken link missed are exactly what it is
+            # owed — so ask again, once, before importing anything. One extra
+            # request against the quota, only on the run that heals a link.
+            full = self._lookback_window(targets, is_first_sync)
+            if full.start < since:
+                window, since = full, full.start
+                try:
+                    feed_data = await self._fetch_feed(access_url, since)
+                    requests_made += 1
+                except Exception as exc:
+                    error_msg = str(exc)
+                    await self.repo.update(
+                        connection_id,
+                        last_sync_error=error_msg,
+                        last_sync_error_at=datetime.now(UTC),
+                    )
+                    return {"imported": 0, "skipped": 0, "error": error_msg}
             audit = self._audit_links(targets, feed_data)
 
-        # Accounts the bank re-identified wholesale. For those, and only for
-        # this run, the dedup ladder is allowed to see the account's own
-        # bank-linked history, so its rows adopt the new ids instead of being
-        # duplicated wholesale.
+        txns_raw = feed_data.transactions
+        # The feed's own ids per bank account. A row inside the window whose
+        # id is missing here is one the bank has retired — the dedup ladder
+        # offers such rows so they adopt the new id instead of being
+        # duplicated (txn_filters.orphaned_link).
         feed_ids_by_account = self._feed_sync_ids_by_account(txns_raw)
-        adoption_ids = await self._accounts_to_adopt(targets, feed_ids_by_account)
-        if adoption_ids:
-            logger.warning(
-                "simplefin: %d account(s) were re-identified by the bank; "
-                "adopting new transaction ids onto existing rows",
-                len(adoption_ids),
-            )
 
         target_sf_ids = {a.simplefin_account_id for a in targets}
         imported = 0
         skips: Counter[SkipReason] = Counter()
         matched = 0
         adopted = 0
+        imported_by_account: Counter[uuid.UUID] = Counter()
+        adopted_by_account: Counter[uuid.UUID] = Counter()
         review_queued = 0
         cleared = 0
         # Rows claimed this run — matched candidates, review candidates, and
@@ -558,12 +611,9 @@ class SimpleFINService:
                     continue
 
             # Dedup against rows that lack a bank link (YNAB imports, manual
-            # entries, CSV imports) — and, for a posted record, rows whose
-            # link is to a pending record the bank may have re-identified.
-            # An account the bank re-identified also offers its own
-            # bank-linked history here; anywhere else that would let a fresh
-            # posting absorb an unrelated row that merely aged out.
-            adopting = account.id in adoption_ids
+            # entries, CSV imports); for a posted record, rows whose link is
+            # to a pending record the bank may have re-identified; and rows
+            # inside the window whose bank id the feed no longer reports.
             candidates = await self.txn_repo.find_existing_match_candidates(
                 account.id,
                 feed.amount,
@@ -571,9 +621,8 @@ class SimpleFINService:
                 date_window_days=DEDUP_DATE_WINDOW_DAYS,
                 exclude_ids=consumed_ids,
                 include_provisional=feed.posted,
-                orphaned_feed_sync_ids=(
-                    feed_ids_by_account.get(acct_sf_id, set()) if adopting else None
-                ),
+                orphaned_feed_sync_ids=feed_ids_by_account.get(acct_sf_id, set()),
+                orphaned_since=since.date(),
             )
             decision = _decide_match(feed.payee, feed.date, feed.posted, candidates)
 
@@ -585,11 +634,14 @@ class SimpleFINService:
                 # accepts because reconciliation locks only amount, date,
                 # cleared and account. Its category, payee and memo survive.
                 #
-                # Only counted as an adoption in adoption mode. A posted
-                # record claiming the row that held its own pending id is the
-                # ordinary re-identification the ladder has always done, and
-                # it is a match.
-                was_adopted = adopting and best_match.sync_id is not None
+                # Adopted, not matched, when the row it claims had already
+                # posted under the retired id. A posted record claiming the
+                # row that held its own *pending* id is the ordinary
+                # re-identification the ladder has always done — a match.
+                was_adopted = best_match.sync_id is not None and best_match.cleared in (
+                    "cleared",
+                    "reconciled",
+                )
                 outcome = await self.txn_service.apply_bank_posting(
                     best_match, feed, confirmed=False
                 )
@@ -604,6 +656,7 @@ class SimpleFINService:
                     consumed_ids.add(best_match.id)
                     if was_adopted:
                         adopted += 1
+                        adopted_by_account[account.id] += 1
                     else:
                         matched += 1
                     continue
@@ -629,6 +682,7 @@ class SimpleFINService:
             elif self.matching_service is not None:
                 await self.matching_service.try_match(new_txn)
             imported += 1
+            imported_by_account[account.id] += 1
 
         # After the loop: rows whose bank id vanished from the feed. Only rows
         # inside the fetched window are judged, and only when the feed
@@ -696,21 +750,45 @@ class SimpleFINService:
             budget_id, [txn for txn, _feed in created_this_run]
         )
 
-        # Update per-account sync state
-        now = datetime.now(UTC)
+        # Does the ledger now agree with the bank? Asked after every row is
+        # in, and only of accounts the user reconciles — see
+        # domain.bank_balance for why a mortgage's drift is not a fault.
+        drifts: list[tuple[Account, BalanceDrift]] = []
+        ledger_cleared: dict[uuid.UUID, Decimal] = {}
         for account in targets:
+            reported = feed_data.balances.get(account.simplefin_account_id or "")
+            if reported is None:
+                continue
+            cleared_total = await self.account_repo.get_cleared_balance(account.id)
+            ledger_cleared[account.id] = cleared_total
+            drift = drift_is_a_fault(
+                reported, cleared_total, reconciled=account.last_reconciled_at is not None
+            )
+            if drift is not None:
+                drifts.append((account, drift))
+
+        # Update per-account sync state — for the accounts this feed actually
+        # served. An orphaned account keeps the stamp of the last run that
+        # reached it, so the window a relink asks for starts there. Stamping
+        # it anyway is how a relinked account came back with a window that
+        # began after the days its broken link had missed.
+        now = datetime.now(UTC)
+        orphaned_ids = {o.account_id for o in audit.orphaned}
+        for account in targets:
+            if account.id in orphaned_ids:
+                continue
             await self.account_repo.update(
                 account.id,
                 last_simplefin_sync_at=now,
                 first_sync_complete=True,
             )
 
-        await self._bump_request_count(connection_id, conn, sync_type)
+        await self._bump_request_count(connection_id, conn, sync_type, requests=requests_made)
         # A run that could not reach an account, or that the bridge reported
         # errors for, is not a clean sync — and `last_sync_error` is the one
         # field the settings panel already renders in full. Clearing it on a
         # degraded run is how a broken link stayed invisible for nine days.
-        fault = _fault_summary(audit, feed_data.errors)
+        fault = _fault_summary(audit, feed_data.errors, drifts)
         await self.repo.update(
             connection_id,
             last_sync_at=now,
@@ -728,7 +806,10 @@ class SimpleFINService:
             targets=targets,
             feed=feed_data,
             audit=audit,
-            adoption_ids=adoption_ids,
+            imported_by_account=imported_by_account,
+            adopted_by_account=adopted_by_account,
+            ledger_cleared=ledger_cleared,
+            drifts=drifts,
             fault=fault,
             counts={
                 "feed_txn_count": len(txns_raw),
@@ -785,6 +866,7 @@ class SimpleFINService:
                 {"code": e.code, "message": e.message, "connection_id": e.connection_id}
                 for e in feed_data.errors
             ],
+            "balance_drift": _drift_records(drifts),
             **rate_status,
         }
 
@@ -816,10 +898,14 @@ class SimpleFINService:
             if account is None:
                 continue
             before = snapshot("account", account)
+            # The stamp goes too, like the link endpoint's: the window this
+            # account is owed starts at the floor, not at the last run that
+            # served it nothing.
             updated = await self.account_repo.update(
                 account.id,
                 simplefin_account_id=orphan.suggested_feed_id,
                 simplefin_account_name=orphan.suggested_feed_name,
+                last_simplefin_sync_at=None,
             )
             after = snapshot("account", updated)
             if snapshots_match(after, before):
@@ -835,6 +921,7 @@ class SimpleFINService:
             # log rows, so the in-memory row has to move with the database.
             account.simplefin_account_id = orphan.suggested_feed_id
             account.simplefin_account_name = orphan.suggested_feed_name
+            account.last_simplefin_sync_at = None
             relinked.append(orphan.account_name)
             logger.warning(
                 "simplefin: relinked %r to %r — the bank reissued its account id",
@@ -861,7 +948,10 @@ class SimpleFINService:
         targets: list[Account],
         feed: SimpleFINFeed,
         audit: LinkAudit,
-        adoption_ids: set[uuid.UUID],
+        imported_by_account: Counter[uuid.UUID],
+        adopted_by_account: Counter[uuid.UUID],
+        ledger_cleared: dict[uuid.UUID, Decimal],
+        drifts: list[tuple[Account, BalanceDrift]],
         fault: str | None,
         counts: dict[str, int],
         skip_reasons: dict[str, int],
@@ -889,10 +979,12 @@ class SimpleFINService:
                     "feed_txn_count": len(rows),
                     "feed_oldest_date": dates[0] if dates else None,
                     "feed_newest_date": dates[-1] if dates else None,
-                    "imported": 0,
-                    "adopted": 0,
-                    "reidentified": account.id in adoption_ids,
+                    "imported": imported_by_account[account.id],
+                    "adopted": adopted_by_account[account.id],
+                    "reidentified": adopted_by_account[account.id] > 0,
                     "orphaned": account.id in orphaned_ids,
+                    "bank_balance": feed.balances.get(account.simplefin_account_id or ""),
+                    "ledger_cleared_balance": ledger_cleared.get(account.id),
                 }
             )
 
@@ -919,6 +1011,7 @@ class SimpleFINService:
                 }
                 for o in audit.orphaned
             ],
+            balance_drift=_drift_records(drifts),
             skip_reasons=skip_reasons,
             accounts=per_account,
             **counts,
@@ -959,35 +1052,6 @@ class SimpleFINService:
             if acct and sync_id:
                 by_account.setdefault(acct, set()).add(sync_id)
         return by_account
-
-    async def _accounts_to_adopt(
-        self,
-        targets: list[Account],
-        feed_ids_by_account: dict[str, set[str]],
-    ) -> set[uuid.UUID]:
-        """Accounts whose transaction ids the bank replaced wholesale.
-
-        Their existing rows are neither unlinked nor provisional, so the
-        ordinary candidate search cannot see them and every feed row would be
-        written as a duplicate of a row already filed — 277 of them, once.
-
-        Stored ids are read over the bridge's full 90-day reach, not over
-        this run's request window. An incremental window is only days wide,
-        which would leave too few stored ids to tell a re-identification from
-        a quiet week — and a wider stored set can only make the comparison
-        *safer*, since one id in common is enough to prove the link still
-        holds.
-        """
-        window_start = today_utc() - timedelta(days=SIMPLEFIN_MAX_WINDOW_DAYS)
-        adopting: set[uuid.UUID] = set()
-        for account in targets:
-            feed_ids = feed_ids_by_account.get(account.simplefin_account_id or "", set())
-            if not feed_ids:
-                continue
-            stored = await self.txn_repo.get_sync_ids_for_account(account.id, since=window_start)
-            if account_was_reidentified(feed_sync_ids=feed_ids, stored_sync_ids=stored):
-                adopting.add(account.id)
-        return adopting
 
     async def _pair_transfer_legs(
         self, budget_id: uuid.UUID, created: list[Transaction]

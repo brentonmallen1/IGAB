@@ -53,6 +53,10 @@ export interface Account {
   first_sync_complete: boolean
   last_simplefin_sync_at: string | null
   simplefin_balance: number | null
+  /** `simplefin_balance - cleared_balance`, signed; null when the bank has
+   *  reported nothing. Served (backend: domain/bank_balance.py) — the sync
+   *  decides on the same rule whether a run is degraded. */
+  bank_drift: number | null
   balance: number
   cleared_balance: number
   uncleared_balance: number
@@ -1518,9 +1522,17 @@ export interface SimpleFINRateLimitStatus {
 export interface SyncResult {
   imported: number
   skipped: number
+  skip_reasons?: Record<string, number>
   matched: number
+  adopted: number
   review_queued: number
   cleared: number
+  removed_pending: number
+  /** See api/simplefin.ts for the shapes; typed there so the summary formatter
+   *  can read a single-connection result and a sync-all the same way. */
+  orphaned_links: import('../api/simplefin').OrphanedLink[]
+  bank_errors: import('../api/simplefin').BankError[]
+  balance_drift: import('../api/simplefin').BalanceDrift[]
   error: string | null
   global_used: number | null
   global_remaining: number | null

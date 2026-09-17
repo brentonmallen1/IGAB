@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useAccounts, useUpdateAccount, useScanDuplicates } from '../../api/accounts'
 import {
   useLinkSimpleFINAccount,
+  formatSyncSummary,
+  useRefetchSimpleFINAccount,
   useUnlinkSimpleFINAccount,
   useUpdateAccountSimpleFINSettings,
   useSimpleFINConnections,
@@ -11,6 +13,7 @@ import { formatSyncAge } from '../simplefin/SyncStatusIcon'
 import { Dialog } from '../common/Dialog/Dialog'
 import { useFormatters } from '../../hooks/useFormatters'
 import { AlertTriangle } from 'lucide-react'
+import toast from 'react-hot-toast'
 
 import { useSyncHealth } from '../../api/syncLogs'
 import { useAppStore } from '../../stores/appStore'
@@ -54,6 +57,7 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
   )
   const link = useLinkSimpleFINAccount(accountId)
   const unlink = useUnlinkSimpleFINAccount(accountId)
+  const refetch = useRefetchSimpleFINAccount(accountId, budgetId)
   const updateSyncSettings = useUpdateAccountSimpleFINSettings(accountId)
   const scanDuplicates = useScanDuplicates()
   const [scanResult, setScanResult] = useState<number | null>(null)
@@ -160,6 +164,17 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
       setShowLinkPicker(false)
     } catch {
       setLinkError('Failed to link — please try again')
+    }
+  }
+
+  async function handleRefetch() {
+    if (!firstConnection) return
+    try {
+      const result = await refetch.mutateAsync(firstConnection.id)
+      if (result.error) toast.error(result.error)
+      else toast.success(formatSyncSummary(result))
+    } catch {
+      toast.error('Could not reach the bank — try again in a moment')
     }
   }
 
@@ -335,6 +350,24 @@ export function AccountSettingsModal({ accountId, onClose }: Props) {
                     />
                     <span>Sync enabled</span>
                   </label>
+                  {/* The recovery after a gap. A sync only asks the bank for
+                      the days since it last served this account; after the
+                      bank re-linked, or when the balance here is off from
+                      the bank's, the missing days are behind that. Safe any
+                      time: rows already here re-stamp or skip, and only
+                      what is missing imports. */}
+                  <button
+                    type="button"
+                    className="dialog-btn dialog-btn--secondary acct-modal__start"
+                    onClick={handleRefetch}
+                    disabled={refetch.isPending}
+                  >
+                    {refetch.isPending ? 'Fetching…' : 'Fetch the last 90 days again'}
+                  </button>
+                  <p className="dialog-form__hint">
+                    For after your bank re-linked this account, or when the balance here is off from
+                    what the bank reports. Nothing already here is duplicated.
+                  </p>
                   <button
                     type="button"
                     className="dialog-btn dialog-btn--danger acct-modal__start"
