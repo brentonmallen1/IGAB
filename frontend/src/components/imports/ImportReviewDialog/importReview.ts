@@ -10,7 +10,7 @@ import type { TagSuggestion } from '../../../api/tags'
 import type { YnabHeldOutFuture, YnabImportResult, YnabTaggedCategory } from '../../../api/imports'
 import type { ScheduledTransaction } from '../../../types'
 
-export type StepId = 'summary' | 'upcoming' | 'tags' | 'accounts'
+export type StepId = 'summary' | 'upcoming' | 'tags' | 'accounts' | 'loans'
 
 /**
  * Which steps this budget has.
@@ -22,11 +22,25 @@ export type StepId = 'summary' | 'upcoming' | 'tags' | 'accounts'
  * The upcoming step exists only when the import held rows out: YNAB exports
  * a scheduled transaction as its next date with no cadence, and this is the
  * one place the cadence gets asked for.
+ *
+ * The loans step likewise appears only when there is something to ask. A YNAB
+ * export carries no account metadata at all — no rate, no minimum payment, no
+ * payoff date — so every liability arrives inert, and an imported loan reads a
+ * full month of interest below its source until someone supplies the terms.
+ * Nothing else in the app knows an import just happened, which is why the ask
+ * belongs here. It is last: it is the only step about a single account rather
+ * than the budget, and the least urgent of them.
  */
-export function stepsFor(summary: YnabImportResult | null | undefined): StepId[] {
-  if (!summary) return ['tags', 'accounts']
+export function stepsFor(
+  summary: YnabImportResult | null | undefined,
+  loansNeedingTerms = 0
+): StepId[] {
+  const loans: StepId[] = loansNeedingTerms > 0 ? ['loans'] : []
+  if (!summary) return ['tags', 'accounts', ...loans]
   const upcoming = (summary.held_out_future ?? []).length > 0
-  return upcoming ? ['summary', 'upcoming', 'tags', 'accounts'] : ['summary', 'tags', 'accounts']
+  return upcoming
+    ? ['summary', 'upcoming', 'tags', 'accounts', ...loans]
+    : ['summary', 'tags', 'accounts', ...loans]
 }
 
 export interface UpcomingRow {

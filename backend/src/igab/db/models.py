@@ -271,6 +271,17 @@ class Account(Base):
     first_sync_complete: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     last_simplefin_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     simplefin_balance: Mapped[Decimal | None] = mapped_column(Numeric(19, 4))
+    #: Which way round this institution reports a debt — 'ledger' (IGAB's own
+    #: frame, a debt is negative) or 'lender' (a debt is positive, a payment
+    #: negative). See `domain/bank_frame.py`.
+    #:
+    #: Decided from the first decisive observation and then KEPT, which is the
+    #: load-bearing part: a card can legitimately be overpaid and a loan can
+    #: legitimately report an escrow overage, so re-detecting every sync would
+    #: flip an account's sign on an ordinary month. Null until a balance with
+    #: a sign has been seen; a null syncs verbatim, exactly as every account
+    #: did before the column existed.
+    simplefin_sign_frame: Mapped[str | None] = mapped_column(String(10))
     last_reconciled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_reconciled_balance: Mapped[Decimal | None] = mapped_column(Numeric(19, 4))
     #: The day this account joined the budget. Rows dated before it are opening
@@ -2352,6 +2363,11 @@ class SyncRun(Base):
     #: run's rows were in — see domain.bank_balance. The health check reads
     #: it from the latest run, so a gap badges the nav until a sync closes it.
     balance_drift: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+    #: First syncs whose opening-balance row was declined as implausible —
+    #: see `domain.bank_balance.anchor_verdict`. A refused anchor is the one
+    #: outcome the drift check structurally cannot report, because the anchor
+    #: is the row that defines drift to be zero.
+    refused_anchors: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
     #: The change-log batch every write of this run landed in. The sync
     #: log's "Undo this run" takes the batch back as a unit; Cmd+Z cannot,
     #: because these are not the person's own edits.
@@ -2414,5 +2430,14 @@ class SyncRunAccount(Base):
     #: account is the run's fault line (domain.bank_balance).
     bank_balance: Mapped[Decimal | None] = mapped_column(Numeric(19, 4))
     ledger_cleared_balance: Mapped[Decimal | None] = mapped_column(Numeric(19, 4))
+    #: Whether the two figures above agreed, for EVERY account the run
+    #: touched — tracking accounts included, with no reconciled gate.
+    #:
+    #: `drift_is_a_fault` deliberately only raises on a reconciled account,
+    #: which is right for alerting and left a whole class invisible: an
+    #: inverted mortgage sat at a seven-figure error and nothing recorded
+    #: that its two balances had ever disagreed. This is the quiet record,
+    #: not the alarm. Null when either figure is unknown.
+    balance_agrees: Mapped[bool | None] = mapped_column(Boolean)
 
     run: Mapped["SyncRun"] = relationship(back_populates="accounts")

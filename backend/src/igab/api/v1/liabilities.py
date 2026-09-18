@@ -32,6 +32,7 @@ from igab.dependencies import (
     get_liability_service,
 )
 from igab.domain.credit import utilization_percent
+from igab.domain.interest import monthly_interest
 from igab.domain.payment_composition import (
     CompositionError,
     check_composition,
@@ -42,7 +43,7 @@ from igab.domain.payment_composition import (
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.liability_repo import LiabilityRepository
-from igab.services.amortization import AmortizationResult, amortization_schedule, quantize_cents
+from igab.services.amortization import AmortizationResult, amortization_schedule
 from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match
 from igab.services.liability_service import LIABILITY_CLASSIFICATION, LiabilityService
 from igab.utils.clock import recorded_on, today_utc
@@ -125,12 +126,12 @@ def _minimum_due_now(liability, balance: Decimal) -> Decimal | None:
     rule = LiabilityService.minimum_payment_rule(liability)
     if not rule.usable:
         return None
-    monthly_interest = (
-        quantize_cents(balance * liability.interest_rate / Decimal("1200"))
+    interest = (
+        monthly_interest(balance, liability.interest_rate)
         if liability.interest_rate is not None
         else Decimal("0")
     )
-    return rule.billed(balance, monthly_interest)
+    return rule.billed(balance, interest)
 
 
 async def _liability_out(
@@ -198,7 +199,7 @@ async def _liability_out(
         origination_date=liability.origination_date,
         original_principal=liability.original_principal,
         monthly_interest_now=(
-            quantize_cents(status_.current_balance * liability.interest_rate / Decimal("1200"))
+            monthly_interest(status_.current_balance, liability.interest_rate)
             if liability.interest_rate is not None
             else None
         ),
@@ -213,6 +214,8 @@ async def _liability_out(
         composition_check=composition.verdict,
         composition_gap=composition.gap,
         recent_interest_average=status_.average_interest,
+        estimated_interest_this_month=status_.estimated_interest_this_month,
+        balance_with_estimate=status_.balance_with_estimate,
         uncounted_deposits=status_.uncounted_deposits,
         implied_term_months=implied_term_months,
         implied_never_pays_off=implied_never_pays_off,

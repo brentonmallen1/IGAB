@@ -13,6 +13,7 @@ from igab.integrations.ynab.models import (
     plan_boundary,
 )
 from igab.integrations.ynab.oracle import (
+    account_balances,
     anchored_expected,
     export_consistency,
     subset_sums,
@@ -602,3 +603,62 @@ class TestAnchoredExpected:
         o = ynab_rta(self._b(), date(2026, 7, 1), credit_card_accounts={"Sapphire Visa"})
         assert o.assigned_after == D("25")
         assert o.cash_balance == D("800")
+
+
+class TestAccountBalances:
+    """The one figure a tracking account has.
+
+    Ready to Assign, envelopes and card reserves are all blind to an
+    off-budget account, so a loan could import with its register inverted or
+    a month short and every other parity term would still report a match.
+    """
+
+    def test_sums_every_row_of_each_account(self):
+        b = budget(
+            [
+                txn("Everyday Checking", date(2026, 9, 2), "-40"),
+                txn("Everyday Checking", date(2026, 9, 3), "-60"),
+                inflow("Everyday Checking", date(2026, 9, 4), "500"),
+            ]
+        )
+        assert account_balances(b) == {"everyday checking": D("400")}
+
+    def test_tracking_accounts_are_included(self):
+        """The whole point: a mortgage contributes to nothing else here."""
+        b = budget(
+            [
+                txn("Harborstone Mortgage", date(2026, 9, 2), "-248900"),
+                txn("Harborstone Mortgage", date(2026, 9, 3), "620"),
+            ]
+        )
+        assert account_balances(b) == {"harborstone mortgage": D("-248280")}
+
+    def test_names_are_matched_case_insensitively(self):
+        b = budget(
+            [
+                txn("Sapphire Visa", date(2026, 9, 2), "-40"),
+                txn("sapphire visa", date(2026, 9, 3), "-60"),
+            ]
+        )
+        assert account_balances(b) == {"sapphire visa": D("-100")}
+
+    def test_a_split_is_counted_once(self):
+        """A split parent carries the sum of its legs and the legs are not
+        separate rows, so summing `amount` must not double it."""
+        b = budget(
+            [
+                txn(
+                    "Everyday Checking",
+                    date(2026, 9, 2),
+                    "-100",
+                    splits=(
+                        YNABSplitLeg(None, "Groceries", None, D("-60")),
+                        YNABSplitLeg(None, "Household", None, D("-40")),
+                    ),
+                )
+            ]
+        )
+        assert account_balances(b) == {"everyday checking": D("-100")}
+
+    def test_an_empty_export_compares_nothing(self):
+        assert account_balances(budget([])) == {}

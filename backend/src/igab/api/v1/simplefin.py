@@ -441,6 +441,10 @@ async def get_sync_health(
         orphaned_links=latest.orphaned_links,
         needs_auth=[e for e in latest.bank_errors if e.get("code") == "con.auth"],
         balance_drift=still_off,
+        # Not re-judged like drift above: a refusal is a statement about
+        # what the run declined to write, and nothing the user does to the
+        # register afterwards makes it untrue. It clears on the next sync.
+        refused_anchors=list(latest.refused_anchors or []),
         unserved=[
             UnservedAccount(account_id=a.account_id, account_name=a.account_name)
             for a in accounts

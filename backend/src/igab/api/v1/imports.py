@@ -38,6 +38,7 @@ from igab.integrations.ynab.importer import YNABImporter
 from igab.integrations.ynab.parser import YNABParser
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import CategoryRepository
+from igab.repositories.liability_repo import LiabilityRepository
 from igab.repositories.payee_repo import PayeeRepository
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match
@@ -56,6 +57,27 @@ class ImportSummaryOut(BaseModel):
 
     summary: "YNABImportResult | None" = None
     reviewed_at: datetime | None = None
+    #: Loan and card accounts in this budget with no interest rate on file.
+    #:
+    #: A YNAB export carries no account metadata at all — no rate, no minimum
+    #: payment, no payoff date — so every liability arrives inert and its
+    #: page can claim nothing: no schedule, no payoff date, and no estimate
+    #: for the current month's interest, which is the figure that makes an
+    #: imported loan read a full month low against its source. The rate has
+    #: to come from the user, and this is what lets the review ask.
+    #:
+    #: Queried live rather than recorded at import time: a loan without terms
+    #: is worth naming whether it arrived yesterday or was added by hand
+    #: since, and it disappears from the list the moment someone fills it in.
+    liabilities_needing_terms: list["LiabilityNeedingTerms"] = Field(default_factory=list)
+
+
+class LiabilityNeedingTerms(BaseModel):
+    """One liability the review can offer to complete."""
+
+    id: uuid.UUID
+    account_id: uuid.UUID | None = None
+    name: str
 
 
 class InsertRow(TypedDict):
@@ -221,6 +243,14 @@ class YNABParityOut(BaseModel):
     #: scripts/card_reserve_probe.py overlay IGAB's reserve against YNAB's
     #: own figures on a long-lived install, no zip required.
     ccp_available_history: dict[str, dict[date, Decimal]] = Field(default_factory=dict)
+    #: Every account's register total, the file's against the ledger's,
+    #: tracking accounts included. The terms above are all blind to an
+    #: off-budget account — a loan has no envelope and contributes nothing
+    #: to Ready to Assign — so this is the only one that can see a loan
+    #: imported a month of interest short, or with its signs inverted.
+    accounts_compared: int = 0
+    accounts_differing: int = 0
+    account_differences: list[YNABParityDifference] = Field(default_factory=list)
     consistency: YNABExportConsistencyOut
 
 
@@ -625,6 +655,12 @@ async def ynab_parity_or_none(
             for d in report.card_history
         ],
         ccp_available_history=report.ccp_available_history,
+        accounts_compared=report.accounts_compared,
+        accounts_differing=report.accounts_differing,
+        account_differences=[
+            YNABParityDifference(name=d.name, igab=d.igab, ynab=d.ynab)
+            for d in report.account_differences
+        ],
         consistency=YNABExportConsistencyOut(
             self_consistent=report.consistency.self_consistent,
             carryover_rows_checked=report.consistency.carryover_rows_checked,
@@ -895,7 +931,16 @@ async def get_import_summary(
         if budget.import_summary is not None
         else None
     )
-    return ImportSummaryOut(summary=summary, reviewed_at=budget.import_reviewed_at)
+    needing = await LiabilityRepository(session).get_all(budget_id)
+    return ImportSummaryOut(
+        summary=summary,
+        reviewed_at=budget.import_reviewed_at,
+        liabilities_needing_terms=[
+            LiabilityNeedingTerms(id=row.id, account_id=row.linked_account_id, name=row.name)
+            for row in needing
+            if row.interest_rate is None and not row.is_deleted
+        ],
+    )
 
 
 @router.post("/{budget_id}/import-summary/reviewed", status_code=status.HTTP_204_NO_CONTENT)

@@ -78,6 +78,20 @@ PENDING_ROW = and_(NOT_DELETED, PARENT_ROW, not_(POSTED))
 #: questions: POSTED is "has this moved", CLEARED is "has the bank agreed".
 CLEARED = Transaction.cleared.in_(("cleared", "reconciled"))
 
+#: Everything a reconcile still has to look at.
+#:
+#: `reconciled` is a terminal value of the same column, not a flag beside it,
+#: so "not yet reconciled" is its complement and nothing else: a pending row,
+#: an uncleared one, and a cleared one the bank has agreed to but the person
+#: has not signed off are all equally unreconciled.
+#:
+#: Deliberately NOT the complement of CLEARED. `is: cleared` means the
+#: `cleared` value exactly and so happens to exclude reconciled rows, which
+#: is a per-value equality rather than a statement about reconciliation —
+#: reading it as one would leave pending and uncleared rows out of the answer
+#: to "what is left to do", which is the whole question.
+NOT_RECONCILED = Transaction.cleared != "reconciled"
+
 #: Bank-identity states of a row, for the sync's candidate search.
 #:
 #: BANK_UNLINKED — no bank id at all: a YNAB/CSV import or a hand-typed row.

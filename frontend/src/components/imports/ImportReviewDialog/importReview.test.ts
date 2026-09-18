@@ -295,3 +295,33 @@ describe('setTags', () => {
     ])
   })
 })
+
+describe('the loan terms step', () => {
+  // A YNAB export carries no account metadata at all, so every liability
+  // arrives inert and an imported loan reads a month of interest below the
+  // balance its source showed. Nothing else in the app knows an import just
+  // happened, which is why the ask belongs in the review.
+  it('is absent when every loan already has its terms', () => {
+    expect(stepsFor(summary(), 0)).toEqual(['summary', 'tags', 'accounts'])
+  })
+
+  it('appears last when a loan is missing them', () => {
+    expect(stepsFor(summary(), 1)).toEqual(['summary', 'tags', 'accounts', 'loans'])
+  })
+
+  it('appears for a budget with no stored summary too', () => {
+    // Imported before IGAB kept a record: still has loans, still needs terms.
+    expect(stepsFor(null, 2)).toEqual(['tags', 'accounts', 'loans'])
+  })
+
+  it('sits after upcoming when both are present', () => {
+    const withHeldOut = summary({
+      held_out_future: [{ scheduled_transaction_id: 's1' }] as never,
+    })
+    expect(stepsFor(withHeldOut, 1)).toEqual(['summary', 'upcoming', 'tags', 'accounts', 'loans'])
+  })
+
+  it('defaults to absent, so existing callers are unchanged', () => {
+    expect(stepsFor(summary())).toEqual(['summary', 'tags', 'accounts'])
+  })
+})

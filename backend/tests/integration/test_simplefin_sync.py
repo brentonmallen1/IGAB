@@ -1380,3 +1380,180 @@ async def test_without_a_budget_start_date_every_row_is_categorized_as_before(db
 
     rows = await _live_rows(db_session, account.id)
     assert [t.category_id for t in rows if t.sync_id == "t-old"] == [groceries.id]
+
+
+# ─── A lender's frame ────────────────────────────────────────────────────────
+# A servicer reports a loan the way a lender does: the balance is a positive
+# amount OWED and a payment is negative. IGAB holds the opposite convention.
+# Nothing reconciled the two, and the first sync of a mortgage composed five
+# defensible steps into a silent inversion — an opening balance of roughly
+# twice the loan, a positive ledger, six duplicated payments, and a liability
+# page reporting the mortgage paid off while net worth counted it as an asset.
+#
+# Figures are invented and rescaled throughout: a card owing 2,690 against a
+# 200 payment carries the same ratio as the real pair.
+
+
+async def _lender_setup(db_session, *, account_type="credit_card"):
+    """A liability account whose bank reports debts as positive."""
+    services = make_services(db_session)
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+    account = await create_account(
+        db_session,
+        budget,
+        "Sapphire Visa",
+        account_type=account_type,
+        on_budget=account_type == "credit_card",
+        simplefin_account_id=SF_ACCT,
+    )
+    conn = await create_simplefin_connection(db_session, user)
+    return services, user, budget, account, conn
+
+
+async def test_a_lender_frame_liability_lands_the_right_way_round(db_session):
+    """The whole defect, end to end.
+
+    The bank says "+2,690 owed" and reports the month's payment as -200.
+    Correct: the register holds a 200 INFLOW and the ledger reads -2,690.
+    Before the fix the anchor wrote roughly twice the balance and the ledger
+    came out positive.
+    """
+    services, user, budget, account, conn = await _lender_setup(db_session)
+    today = date.today()
+    payload = [bank_txn("t-pay", "-200.00", today - timedelta(days=5), payee="PAYMENT THANK YOU")]
+    svc = _service(services, payload, balances={SF_ACCT: Decimal("2690.00")})
+
+    with PATCH_DECRYPT:
+        result = await svc.sync(conn.id, budget.id)
+    await db_session.flush()
+
+    assert result.get("error") is None, result
+    rows = await _live_rows(db_session, account.id)
+    payment = next(r for r in rows if r.sync_id == "t-pay")
+    assert payment.amount == Decimal("200.00"), "a payment reduces a debt: an inflow"
+
+    anchor = next(r for r in rows if r.sync_id is None)
+    assert anchor.amount == Decimal("-2890.00")
+    assert sum(r.amount for r in rows) == Decimal("-2690.00"), "a debt, not an asset"
+    assert not result["refused_anchors"]
+
+
+async def test_the_frame_is_remembered_and_an_overpaid_card_does_not_flip_it(db_session):
+    """The trap the persisted frame exists for.
+
+    Sync once against a positive balance, so 'lender' is decided and stored.
+    Then the user overpays and the bank reports a CREDIT balance, which looks
+    like the ledger frame. Re-detecting would flip that month's rows.
+    """
+    services, user, budget, account, conn = await _lender_setup(db_session)
+    today = date.today()
+    svc = _service(services, [], balances={SF_ACCT: Decimal("2690.00")})
+    with PATCH_DECRYPT:
+        await svc.sync(conn.id, budget.id)
+    await db_session.refresh(account)
+    assert account.simplefin_sign_frame == "lender"
+
+    later = _service(
+        services,
+        [bank_txn("t-refund", "-40.00", today - timedelta(days=1), payee="REFUND")],
+        balances={SF_ACCT: Decimal("-40.00")},
+    )
+    with PATCH_DECRYPT:
+        await later.sync(conn.id, budget.id)
+    await db_session.refresh(account)
+    await db_session.flush()
+
+    assert account.simplefin_sign_frame == "lender", "the institution did not change convention"
+    rows = await _live_rows(db_session, account.id)
+    refund = next(r for r in rows if r.sync_id == "t-refund")
+    assert refund.amount == Decimal("40.00"), "still flipped, as the stored frame says"
+
+
+async def test_an_asset_account_is_never_flipped(db_session):
+    """The catastrophic false positive: a checking account holds a positive
+    balance in both frames, so there is nothing to detect and nothing to
+    flip."""
+    services, user, budget, account, conn = await _sync_setup(db_session)
+    today = date.today()
+    svc = _service(
+        services,
+        [bank_txn("t-1", "-100.00", today - timedelta(days=5))],
+        balances={SF_ACCT: Decimal("2400.00")},
+    )
+    with PATCH_DECRYPT:
+        await svc.sync(conn.id, budget.id)
+    await db_session.refresh(account)
+    await db_session.flush()
+
+    assert account.simplefin_sign_frame == "ledger"
+    rows = await _live_rows(db_session, account.id)
+    assert next(r for r in rows if r.sync_id == "t-1").amount == Decimal("-100.00")
+    assert sum(r.amount for r in rows) == Decimal("2400.00")
+
+
+async def test_an_undecidable_balance_leaves_the_frame_unset(db_session):
+    """A zero balance is evidence of nothing. Pinning a frame on it would
+    fix the wrong convention for the life of the account."""
+    services, user, budget, account, conn = await _lender_setup(db_session)
+    svc = _service(services, [], balances={SF_ACCT: Decimal("0")})
+    with PATCH_DECRYPT:
+        await svc.sync(conn.id, budget.id)
+    await db_session.refresh(account)
+    assert account.simplefin_sign_frame is None
+
+
+async def test_a_refused_anchor_degrades_the_run_and_names_the_account(db_session):
+    """The backstop, exercised where the frame fix cannot reach: the frame was
+    already (wrongly) remembered as 'ledger', so the feed is taken verbatim and
+    the anchor would leave a card holding money."""
+    services, user, budget, account, conn = await _lender_setup(db_session)
+    account.simplefin_sign_frame = "ledger"
+    await db_session.flush()
+    today = date.today()
+    svc = _service(
+        services,
+        [bank_txn("t-1", "-200.00", today - timedelta(days=5))],
+        balances={SF_ACCT: Decimal("2690.00")},
+    )
+    with PATCH_DECRYPT:
+        result = await svc.sync(conn.id, budget.id)
+    await db_session.flush()
+
+    assert result["anchored"] == 0
+    assert len(result["refused_anchors"]) == 1
+    assert "Sapphire Visa" in result["refused_anchors"][0]
+    rows = await _live_rows(db_session, account.id)
+    assert all(r.sync_id is not None for r in rows), "no opening balance was written"
+
+
+async def test_every_account_records_whether_its_balance_agrees(db_session):
+    """A tracking account sits outside every existing comparison — parity,
+    drift and the badge all skip it — so an inverted mortgage disagreed with
+    its bank by seven figures with nothing recording the fact."""
+    from igab.db.models import SyncRun, SyncRunAccount
+
+    services, user, budget, account, conn = await _sync_setup(db_session)
+    today = date.today()
+    svc = _service(
+        services,
+        [bank_txn("t-1", "-100.00", today - timedelta(days=5))],
+        balances={SF_ACCT: Decimal("2400.00")},
+    )
+    with PATCH_DECRYPT:
+        await svc.sync(conn.id, budget.id)
+    await db_session.flush()
+
+    run = (
+        await db_session.execute(select(SyncRun).order_by(SyncRun.seq.desc()).limit(1))
+    ).scalar_one()
+    per_account = (
+        (
+            await db_session.execute(
+                select(SyncRunAccount).where(SyncRunAccount.sync_run_id == run.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert [a.balance_agrees for a in per_account] == [True]

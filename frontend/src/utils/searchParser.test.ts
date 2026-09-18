@@ -1030,3 +1030,45 @@ describe('chip provenance round-trips', () => {
     expect(parseTransactionSearch(current, CATS, PAYEES, ACCTS, NOW).text).toBe('coffee')
   })
 })
+
+describe('is: unreconciled', () => {
+  // `reconciled` is a terminal value of the `cleared` column rather than a
+  // flag beside it, so "not yet reconciled" is its complement and nothing
+  // else: pending, uncleared and cleared rows alike are all still waiting.
+  it('parses the spaced and compact forms', () => {
+    expect(parse('is: unreconciled').unreconciled).toBe(true)
+    expect(parse('is:unreconciled').unreconciled).toBe(true)
+  })
+
+  it('counts as an active filter', () => {
+    expect(hasActiveFilters(parse('is: unreconciled'))).toBe(true)
+  })
+
+  it('is not the same as excluding cleared rows', () => {
+    // The trap this term exists for: `is: cleared` is a per-value equality
+    // that happens to exclude reconciled rows. Reading it as "what is left
+    // to reconcile" would leave out every pending and uncleared row, which
+    // is most of the answer.
+    const filters = parse('is: unreconciled')
+    expect(filters.cleared).toBeUndefined()
+    expect(filters.excludeCleared).toBeUndefined()
+  })
+
+  it('reads NOT is: unreconciled as reconciled', () => {
+    expect(parse('NOT is: unreconciled').cleared).toBe('reconciled')
+    expect(parse('NOT is:unreconciled').cleared).toBe('reconciled')
+    expect(parse('NOT is: unreconciled').unreconciled).toBeUndefined()
+  })
+
+  it('survives an OR with another term', () => {
+    const filters = parse('is: unreconciled OR is: unapproved')
+    expect(filters.unreconciled).toBe(true)
+    expect(filters.unapproved).toBe(true)
+    expect(filters.isOrMode).toBe(true)
+  })
+
+  it('offers a removable chip', () => {
+    const chips = describeSearchChips('is: unreconciled', EMPTY_MAP, EMPTY_MAP, EMPTY_MAP, NOW)
+    expect(chips.map((c) => c.label)).toContain('Not reconciled')
+  })
+})

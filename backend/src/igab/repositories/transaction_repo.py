@@ -56,6 +56,7 @@ from igab.repositories.txn_filters import (
     LOAN_PAYMENT_ROW,
     NEEDS_CATEGORY,
     NOT_DELETED,
+    NOT_RECONCILED,
     ON_BUDGET_ACCOUNT,
     ON_CARD_ACCOUNT,
     PAIRABLE_LEG,
@@ -163,6 +164,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         search: str | None = None,
         cleared: str | None = None,
         exclude_cleared: str | None = None,
+        unreconciled: bool = False,
         uncategorized: bool = False,
         unapproved: bool = False,
         is_or_mode: bool = False,
@@ -202,6 +204,8 @@ class TransactionRepository(BaseRepository[Transaction]):
             q = q.where(Transaction.cleared == cleared)
         if exclude_cleared:
             q = q.where(Transaction.cleared != exclude_cleared)
+        if unreconciled:
+            q = q.where(NOT_RECONCILED)
         # NEEDS_CATEGORY, not a local spelling of it. This filter kept the
         # pre-fix rule after every other site moved, so the account register's
         # Uncategorized filter still listed unpaired transfer legs while the
@@ -276,6 +280,7 @@ class TransactionRepository(BaseRepository[Transaction]):
         day_of_week: int | None = None,
         cleared: str | None = None,
         exclude_cleared: str | None = None,
+        unreconciled: bool = False,
         uncategorized: bool = False,
         no_category: bool = False,
         unapproved: bool = False,
@@ -364,6 +369,8 @@ class TransactionRepository(BaseRepository[Transaction]):
             where.append(Transaction.cleared == cleared)
         if exclude_cleared:
             where.append(Transaction.cleared != exclude_cleared)
+        if unreconciled:
+            where.append(NOT_RECONCILED)
         # The same rule the needs-attention badge counts. They disagreed: this
         # excluded neither transfers nor off-budget rows, so pressing the badge
         # opened a list longer than the badge promised.
