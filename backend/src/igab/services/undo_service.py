@@ -182,6 +182,39 @@ class UndoService(UndoRestores):
             await self.session.flush()
         return BatchUndo(undone, [])
 
+    async def undo_batch_leniently(self, budget_id: uuid.UUID, batch_id: uuid.UUID) -> BatchUndo:
+        """Take back every change in a batch that still can be, and report
+        the rest — for a bank sync's batch, whose hundreds of writes a person
+        may have edited since in places.
+
+        The strict `undo_batch` refuses the whole batch on the first row
+        edited since, which is right for a split or a merge (half of one is
+        nonsense) and useless for a sync: the point is to remove what the run
+        did wrong, and a row the person has since categorised is a row they
+        have adopted. Each change gets its own savepoint, so a refusal leaves
+        nothing half-applied.
+        """
+        changes = await self.repo.get_batch(budget_id, batch_id)
+        if not changes:
+            raise NotFoundError("change batch", str(batch_id))
+        undone: list[uuid.UUID] = []
+        skipped: list[uuid.UUID] = []
+        for change in changes:
+            if change.undone_at is not None:
+                continue
+            try:
+                async with self.session.begin_nested():
+                    await self._apply(change, False)
+                    _mark_undone(change)
+                    await self.session.flush()
+            except UndoConflict:
+                skipped.append(change.id)
+                continue
+            undone.append(change.id)
+        if not undone and not skipped:
+            raise UndoConflict("This run has already been undone")
+        return BatchUndo(undone, skipped)
+
     async def _undo_move_groups(self, groups: list[list[ChangeLog]], force: bool) -> "BatchUndo":
         """Undo a batch of budget moves, move by move, skipping the ones whose
         envelope has been assigned by hand since.

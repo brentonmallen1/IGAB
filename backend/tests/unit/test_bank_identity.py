@@ -107,3 +107,19 @@ class TestAuditLinks:
             feed=[FeedAccount(id="ACT-live", name="HARBORSTONE EVERYDAY CHECKING")],
         )
         assert audit.orphaned[0].suggested_feed_id is None
+
+    def test_an_orphan_with_no_replacement_during_an_auth_lapse_says_so(self):
+        """An institution the bridge cannot reach reports nothing for its
+        accounts. That reads exactly like a re-issued id, and "relink it" is
+        the wrong advice — there is nothing to relink to."""
+        audit = audit_links(linked=[self._account()], feed=[], needs_auth=True)
+        assert audit.orphaned[0].may_need_auth is True
+
+    def test_an_orphan_with_a_replacement_is_a_relink_even_during_an_auth_lapse(self):
+        audit = audit_links(
+            linked=[self._account()],
+            feed=[FeedAccount(id="ACT-new", name="HARBORSTONE EVERYDAY CHECKING")],
+            needs_auth=True,
+        )
+        assert audit.orphaned[0].may_need_auth is False
+        assert audit.orphaned[0].suggested_feed_id == "ACT-new"

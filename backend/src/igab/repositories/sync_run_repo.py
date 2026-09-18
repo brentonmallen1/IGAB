@@ -65,6 +65,10 @@ class SyncRunRepository:
         )
         return result.scalar_one_or_none()
 
+    async def mark_undone(self, run: SyncRun) -> None:
+        run.undone_at = datetime.now(UTC)
+        await self.session.flush()
+
     async def purge_older_than(self, days: int) -> int:
         """Drop runs past the retention window. Returns how many went."""
         cutoff = datetime.now(UTC) - timedelta(days=days)

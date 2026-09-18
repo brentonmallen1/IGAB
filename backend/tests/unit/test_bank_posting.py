@@ -224,3 +224,32 @@ def test_feed_record_from_a_bank_row_prefers_its_bank_values():
     )
     g = FeedRecord.from_transaction(bare)
     assert g.amount == D("-1") and g.date == JUL_10 and not g.posted and g.source == "simplefin"
+
+
+def test_pending_split_parent_with_changed_amount_is_review_not_rewritten():
+    """A restaurant hold split while pending; the tip posts. The parent's
+    amount used to take the bank's figure while its lines still summed to
+    the old one — the branch had no split guard at all."""
+    out = posting_updates(
+        row(cleared="pending", is_split=True, sync_id="t1"),
+        feed(amount=D("-60.00")),
+        confirmed=False,
+    )
+    assert isinstance(out, Review)
+    assert "split" in out.reason
+
+
+def test_pending_transfer_leg_with_changed_amount_is_review():
+    out = posting_updates(
+        row(cleared="pending", is_transfer_leg=True, sync_id="t1"),
+        feed(amount=D("-60.00")),
+        confirmed=False,
+    )
+    assert isinstance(out, Review)
+    assert "transfer" in out.reason
+
+
+def test_pending_split_parent_same_amount_still_posts():
+    out = apply(row(cleared="pending", is_split=True, sync_id="t1"), feed())
+    assert out["cleared"] == "cleared"
+    assert "amount" not in out

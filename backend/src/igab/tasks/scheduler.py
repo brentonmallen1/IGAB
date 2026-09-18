@@ -101,16 +101,30 @@ async def process_auto_simplefin_sync() -> None:
                     build_transaction_matching_service(session, txn_svc),
                 )
 
+                # Per budget, committed as it goes — the same shape as the
+                # scheduled-transactions job above, and for the same reason:
+                # one bad run must not roll back every other connection's
+                # imports for the hour, and a failure must say whose it was.
                 for budget in budgets:
-                    await svc.sync(conn.id, budget.id, sync_type="global")
-
-            await session.commit()
+                    try:
+                        result = await svc.sync(conn.id, budget.id, sync_type="global")
+                        await session.commit()
+                    except Exception:
+                        await session.rollback()
+                        logger.exception(
+                            "Automatic SimpleFIN sync failed for connection %s budget %s",
+                            conn.id,
+                            budget.id,
+                        )
+                        continue
+                    if result.get("error"):
+                        logger.warning(
+                            "simplefin: scheduled sync connection=%s budget=%s: %s",
+                            conn.id,
+                            budget.id,
+                            result["error"],
+                        )
         except Exception:
-            # Logged, not swallowed. Anything escaping `sync()` leaves no
-            # `last_sync_error` behind — that field is only written for the
-            # failures the service catches itself — so without this line an
-            # hourly sync could fail forever with no log line, no record and
-            # no change in the UI. Its sibling job above has always logged.
             logger.exception("Automatic SimpleFIN sync failed")
             await session.rollback()
 

@@ -3,11 +3,12 @@ import logging
 import uuid
 from collections import Counter
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Literal
 
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -157,11 +158,25 @@ def _feed_record(t: dict) -> FeedRecord:
     )
 
 
+#: Below this, a candidate that carries the bank's OWN descriptor contradicts
+#: the feed's rather than merely differing from it, and the structural
+#: shortcut (same amount, a day apart, nothing else nearby) may not take it
+#: unasked: "BIGGBY COFFEE" and "HOME DEPOT" are two purchases, and merging
+#: them loses one. A row a person typed is judged as before — their "Rent"
+#: never resembles the bank's "CHECK 1234", and that pair is one payment.
+#: The floor applies only where both sides are the bank's words. Two
+#: unrelated descriptors score around 0.3 on shared punctuation and store
+#: numbers alone; the same merchant under two spellings scores above 0.9.
+DEDUP_STRUCTURAL_MIN_PAYEE = 0.5
+
+
 @dataclass(frozen=True)
 class _MatchDecision:
     action: Literal["auto", "review", "create"]
     candidate: Transaction | None = None
     score: float = 0.0
+    #: Days between the feed record and the candidate's comparable date.
+    days: int = 0
 
 
 def _decide_match(
@@ -193,32 +208,61 @@ def _decide_match(
                 similarity,
                 abs((txn_date - against).days),
                 _dedup_score(similarity, txn_date, against),
+                bool(txn.bank_payee or txn.import_description),
             )
         )
 
     best = max(scored, key=lambda s: s[3])
     if best[3] >= DEDUP_AUTO_MATCH_THRESHOLD:
         if best[2] <= DEDUP_AUTO_DATE_MAX_DAYS:
-            return _MatchDecision("auto", best[0], best[3])
+            return _MatchDecision("auto", best[0], best[3], best[2])
         # A candidate this strong but this distant (long settlement? weekly
         # recurring charge?) makes every structural shortcut below unsafe —
         # a human sorts it out.
-        return _MatchDecision("review", best[0], best[3])
+        return _MatchDecision("review", best[0], best[3], best[2])
 
     if is_posted:
         near = [s for s in scored if s[2] <= DEDUP_TIGHT_DATE_DAYS]
         if len(near) == 1:
-            return _MatchDecision("auto", near[0][0], near[0][3])
+            txn, similarity, days, score, bank_words = near[0]
+            # Same amount, a day apart, nothing else in reach — near-certain
+            # identity, unless the bank's own descriptor on the row says
+            # otherwise (see DEDUP_STRUCTURAL_MIN_PAYEE).
+            if bank_words and similarity < DEDUP_STRUCTURAL_MIN_PAYEE:
+                return _MatchDecision("review", txn, score, days)
+            return _MatchDecision("auto", txn, score, days)
         if len(near) > 1:
             # Same-amount, same-day rows (recurring purchases, split legs):
             # payee similarity is the only disambiguator left. A clear winner
             # takes the match; a near-tie goes to human review over a guess.
             near.sort(key=lambda s: (-s[1], s[2]))
             if near[0][1] - near[1][1] >= DEDUP_TIEBREAK_MARGIN:
-                return _MatchDecision("auto", near[0][0], near[0][3])
-            return _MatchDecision("review", near[0][0], near[0][3])
+                return _MatchDecision("auto", near[0][0], near[0][3], near[0][2])
+            return _MatchDecision("review", near[0][0], near[0][3], near[0][2])
 
-    return _MatchDecision("review", best[0], best[3])
+    return _MatchDecision("review", best[0], best[3], best[2])
+
+
+@dataclass
+class _Tally:
+    """What one run has done so far — shared by the two posting passes."""
+
+    imported: int = 0
+    matched: int = 0
+    adopted: int = 0
+    review_queued: int = 0
+    cleared: int = 0
+    skips: Counter[SkipReason] = field(default_factory=Counter)
+    imported_by_account: Counter[uuid.UUID] = field(default_factory=Counter)
+    adopted_by_account: Counter[uuid.UUID] = field(default_factory=Counter)
+    #: Rows claimed this run — matched candidates, review candidates, and
+    #: rows we created. Excluded from later candidate queries so two
+    #: identical feed rows can never collapse onto the same existing row
+    #: (or onto each other, for id-less feeds).
+    consumed_ids: set[uuid.UUID] = field(default_factory=set)
+    #: Rows this run created, with the feed record each came from — the
+    #: stale-link pass looks among them for a re-identified posting.
+    created_this_run: list[tuple[Transaction, FeedRecord]] = field(default_factory=list)
 
 
 def _fault_summary(
@@ -237,11 +281,12 @@ def _fault_summary(
     """
     parts: list[str] = []
     for orphan in audit.orphaned:
-        fix = (
-            f' — relink it to "{orphan.suggested_feed_name}"'
-            if orphan.suggested_feed_name
-            else " — relink it in account settings"
-        )
+        if orphan.suggested_feed_name:
+            fix = f' — relink it to "{orphan.suggested_feed_name}"'
+        elif orphan.may_need_auth:
+            fix = " — an institution needs re-authenticating at the bridge"
+        else:
+            fix = " — relink it in account settings"
         parts.append(f'"{orphan.account_name}" is no longer offered by the bank{fix}')
     parts.extend(e.message for e in errors if e.needs_auth)
     parts.extend(describe_drift(account.name, drift) for account, drift in drifts)
@@ -374,12 +419,17 @@ class SimpleFINService:
             "resets_at": _next_midnight_utc(),
         }
 
-    def _check_rate_limit(self, conn: SimpleFINConnection, sync_type: SyncType) -> None:
+    def _check_rate_limit(
+        self, conn: SimpleFINConnection, sync_type: SyncType, pending: int = 0
+    ) -> None:
+        """`pending`: requests this run has already made and not yet counted."""
         today = today_utc()
         is_new_day = conn.last_request_date != today
-        if is_new_day:
-            return
-        used = conn.global_requests_today if sync_type == "global" else conn.account_requests_today
+        used = pending
+        if not is_new_day:
+            used += (
+                conn.global_requests_today if sync_type == "global" else conn.account_requests_today
+            )
         limit = GLOBAL_DAILY_LIMIT if sync_type == "global" else ACCOUNT_DAILY_LIMIT
         if used >= limit:
             raise RateLimitError(
@@ -407,6 +457,47 @@ class SimpleFINService:
             global_requests_today=global_today,
             account_requests_today=account_today,
         )
+
+    async def _lock_connection(self, connection_id: uuid.UUID) -> None:
+        """A transaction-scoped advisory lock keyed on the connection."""
+        key = int.from_bytes(connection_id.bytes[:8], "big", signed=True)
+        await self.session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": key})
+
+    async def _fail(
+        self,
+        connection_id: uuid.UUID,
+        budget_id: uuid.UUID,
+        sync_type: SyncType,
+        started_at: datetime,
+        error: str,
+        *,
+        status: str = "error",
+        window: SyncWindow | None = None,
+    ) -> dict:
+        """A run that could not proceed: recorded on the connection and in
+        the sync log, then reported. A quota-throttled hourly run used to
+        return an error dict the scheduler discarded — no log line, no error
+        on the connection, no run — which is the nine-day failure's shape."""
+        await self.repo.update(
+            connection_id,
+            last_sync_error=error,
+            last_sync_error_at=datetime.now(UTC),
+        )
+        await SyncRunRepository(self.session).create(
+            connection_id=connection_id,
+            budget_id=budget_id,
+            trigger="account" if sync_type == "account" else "global",
+            status=status,
+            window_start=window.start if window else None,
+            window_end=window.end if window else None,
+            duration_ms=int((datetime.now(UTC) - started_at).total_seconds() * 1000),
+            error=error,
+            accounts=[],
+        )
+        logger.warning(
+            "simplefin: sync %s connection=%s %s: %s", sync_type, connection_id, status, error
+        )
+        return {"imported": 0, "skipped": 0, "error": error}
 
     @staticmethod
     def _lookback_window(targets: list[Account], first_sync: bool) -> SyncWindow:
@@ -454,6 +545,14 @@ class SimpleFINService:
         account_simplefin_id: str | None = None,
     ) -> dict:
         started_at = datetime.now(UTC)
+        # One sync per connection at a time, for the length of this
+        # transaction. The hourly job and a person pressing Sync can land in
+        # the same second on different sessions; without this each computes
+        # its own candidates for the same feed rows, and the second to commit
+        # either duplicates a row or re-points one the first already claimed.
+        # Taken before the connection is read, so the request counters this
+        # run adds to are the ones the other run left behind.
+        await self._lock_connection(connection_id)
         conn = await self.repo.get(connection_id)
         if conn is None:
             return {"imported": 0, "skipped": 0, "error": "Connection not found"}
@@ -464,7 +563,9 @@ class SimpleFINService:
         try:
             self._check_rate_limit(conn, sync_type)
         except RateLimitError as e:
-            return {"imported": 0, "skipped": 0, "error": str(e)}
+            return await self._fail(
+                connection_id, budget_id, sync_type, started_at, str(e), status="rate_limited"
+            )
 
         # Determine which accounts to sync
         all_linked = await self.account_repo.get_linked_simplefin_accounts(budget_id)
@@ -490,27 +591,59 @@ class SimpleFINService:
             # Recorded like any other sync failure so the connection carries
             # the reason in the UI, rather than the request 500-ing with
             # "Internal server error" every time the scheduler runs.
-            error_msg = str(exc)
-            await self.repo.update(
-                connection_id,
-                last_sync_error=error_msg,
-                last_sync_error_at=datetime.now(UTC),
-            )
-            return {"imported": 0, "skipped": 0, "error": error_msg}
+            return await self._fail(connection_id, budget_id, sync_type, started_at, str(exc))
 
         requests_made = 0
         try:
             feed_data = await self._fetch_feed(access_url, since)
             requests_made += 1
         except Exception as exc:
-            error_msg = str(exc)
-            await self.repo.update(
-                connection_id,
-                last_sync_error=error_msg,
-                last_sync_error_at=datetime.now(UTC),
+            return await self._fail(
+                connection_id, budget_id, sync_type, started_at, str(exc), window=window
             )
-            return {"imported": 0, "skipped": 0, "error": error_msg}
 
+        # Everything this run writes — imports, adoptions, relinks, the rows
+        # it removes, the merges it accepts — is one change-log batch, so the
+        # run can be taken back as a unit from the sync log. ⌘Z never reaches
+        # these (they are not the person's own edits); this is their undo.
+        run_batch = self.txn_service.changes.batch()
+        run_batch_id = run_batch.__enter__()
+        try:
+            return await self._sync_locked(
+                connection_id,
+                budget_id,
+                sync_type,
+                started_at,
+                conn,
+                targets,
+                first_sync_ids,
+                is_first_sync,
+                window,
+                access_url,
+                feed_data,
+                requests_made,
+                run_batch_id,
+            )
+        finally:
+            run_batch.__exit__(None, None, None)
+
+    async def _sync_locked(
+        self,
+        connection_id: uuid.UUID,
+        budget_id: uuid.UUID,
+        sync_type: SyncType,
+        started_at: datetime,
+        conn: SimpleFINConnection,
+        targets: list[Account],
+        first_sync_ids: set[uuid.UUID],
+        is_first_sync: bool,
+        window: SyncWindow,
+        access_url: str,
+        feed_data: SimpleFINFeed,
+        requests_made: int,
+        run_batch_id: uuid.UUID | None,
+    ) -> dict:
+        since = window.start
         # Which bank accounts the feed actually offered, and which of our
         # links still resolve. Run before the loop because an orphaned link
         # explains every skip that follows it, and because a target that
@@ -536,18 +669,22 @@ class SimpleFINService:
             # request against the quota, only on the run that heals a link.
             full = self._lookback_window(targets, is_first_sync)
             if full.start < since:
-                window, since = full, full.start
                 try:
+                    # The first request was checked; this one was not. With
+                    # no headroom left the relink stands and the wider fetch
+                    # waits for the next run, whose window is the floor
+                    # anyway (the stamp is gone).
+                    self._check_rate_limit(conn, sync_type, pending=requests_made)
+                    window, since = full, full.start
                     feed_data = await self._fetch_feed(access_url, since)
                     requests_made += 1
+                except RateLimitError as exc:
+                    logger.warning("simplefin: relink refetch deferred to the next run: %s", exc)
                 except Exception as exc:
-                    error_msg = str(exc)
-                    await self.repo.update(
-                        connection_id,
-                        last_sync_error=error_msg,
-                        last_sync_error_at=datetime.now(UTC),
+                    await self._bump_request_count(connection_id, conn, sync_type, requests_made)
+                    return await self._fail(
+                        connection_id, budget_id, sync_type, started_at, str(exc), window=window
                     )
-                    return {"imported": 0, "skipped": 0, "error": error_msg}
             audit = self._audit_links(targets, feed_data)
 
         txns_raw = feed_data.transactions
@@ -558,22 +695,19 @@ class SimpleFINService:
         feed_ids_by_account = self._feed_sync_ids_by_account(txns_raw)
 
         target_sf_ids = {a.simplefin_account_id for a in targets}
-        imported = 0
-        skips: Counter[SkipReason] = Counter()
-        matched = 0
-        adopted = 0
-        imported_by_account: Counter[uuid.UUID] = Counter()
-        adopted_by_account: Counter[uuid.UUID] = Counter()
-        review_queued = 0
-        cleared = 0
-        # Rows claimed this run — matched candidates, review candidates, and
-        # rows we created. Excluded from later candidate queries so two
-        # identical feed rows can never collapse onto the same existing row
-        # (or onto each other, for id-less feeds).
-        consumed_ids: set[uuid.UUID] = set()
-        # Rows this run created, with the feed record each came from — the
-        # stale-link pass below looks among them for a re-identified posting.
-        created_this_run: list[tuple[Transaction, FeedRecord]] = []
+        tally = _Tally()
+        by_sf_id = {a.simplefin_account_id: a for a in targets}
+        prepared: list[tuple[Account, FeedRecord]] = []
+        for t in txns_raw:
+            acct_sf_id = t.get("account_id")
+            if acct_sf_id not in target_sf_ids:
+                tally.skips[SkipReason.FOREIGN_ACCOUNT] += 1
+                continue
+            account = by_sf_id.get(acct_sf_id)
+            if account is None:
+                tally.skips[SkipReason.ACCOUNT_NOT_FOUND] += 1
+                continue
+            prepared.append((account, _feed_record(t)))
 
         # How a posting reaches the row it belongs to, in order:
         #   1. Same bank id — the identity path. Most banks keep the id from
@@ -581,136 +715,58 @@ class SimpleFINService:
         #      scoring: same amount clears in place; a different amount on a
         #      user-entered row goes to the review queue.
         #   2. New id, same amount — the exact-amount candidate ladder, which
-        #      also sees PROVISIONALLY_LINKED rows for a posted record.
+        #      also sees PROVISIONALLY_LINKED rows for a posted record, and
+        #      rows in the window whose bank id the feed no longer reports.
         #   3. New id, different amount — the stale-link pass after the loop,
         #      the only step that needs payee similarity.
-        for t in txns_raw:
-            acct_sf_id = t.get("account_id")
-            if acct_sf_id not in target_sf_ids:
-                skips[SkipReason.FOREIGN_ACCOUNT] += 1
-                continue
-
-            account = next((a for a in targets if a.simplefin_account_id == acct_sf_id), None)
-            if account is None:
-                skips[SkipReason.ACCOUNT_NOT_FOUND] += 1
-                continue
-
-            feed = _feed_record(t)
-
-            if feed.sync_id is not None:
-                existing = await self.txn_repo.find_by_sync_id(account.id, feed.sync_id)
-                if existing is not None:
-                    consumed_ids.add(existing.id)
-                    outcome = await self.txn_service.apply_bank_posting(
-                        existing, feed, confirmed=False
-                    )
-                    if isinstance(outcome, Review):
-                        if self.matching_service is None:
-                            # Nowhere to queue the question — leave the row
-                            # as it is rather than write a duplicate nobody
-                            # will be asked about.
-                            skips[SkipReason.NO_MATCHER] += 1
-                            continue
-                        new_txn = await self._import_for_review(budget_id, account, feed, existing)
-                        if new_txn is None:
-                            skips[SkipReason.REVIEW_IMPORT_DUPLICATE] += 1
-                        else:
-                            consumed_ids.add(new_txn.id)
-                            created_this_run.append((new_txn, feed))
-                            imported += 1
-                            review_queued += 1
-                    elif "cleared" in outcome.updates:
-                        cleared += 1
-                    else:
-                        # Provenance may have been refreshed; the row's state
-                        # did not change.
-                        skips[SkipReason.ALREADY_POSTED] += 1
-                    continue
-
-            # Dedup against rows that lack a bank link (YNAB imports, manual
-            # entries, CSV imports); for a posted record, rows whose link is
-            # to a pending record the bank may have re-identified; and rows
-            # inside the window whose bank id the feed no longer reports.
-            candidates = await self.txn_repo.find_existing_match_candidates(
-                account.id,
-                feed.amount,
-                feed.date,
-                date_window_days=DEDUP_DATE_WINDOW_DAYS,
-                exclude_ids=consumed_ids,
-                include_provisional=feed.posted,
-                orphaned_feed_sync_ids=feed_ids_by_account.get(acct_sf_id, set()),
-                orphaned_since=since.date(),
+        #
+        # In two passes, because feed order is not evidence. A record whose
+        # own twin is a day away must not lose it to a record processed
+        # earlier that had no twin and reached out for the nearest one — and
+        # having consumed it, sent the next record reaching further still.
+        # So every record that can claim a row on its own day claims first;
+        # only then may the rest look wider.
+        since_date = since.date()
+        deferred: list[tuple[Account, FeedRecord]] = []
+        for account, feed in prepared:
+            feed_ids = feed_ids_by_account.get(account.simplefin_account_id or "", set())
+            if not await self._post_feed_row(
+                budget_id, account, feed, feed_ids, since_date, tally, strict=True
+            ):
+                deferred.append((account, feed))
+        for account, feed in deferred:
+            feed_ids = feed_ids_by_account.get(account.simplefin_account_id or "", set())
+            await self._post_feed_row(
+                budget_id, account, feed, feed_ids, since_date, tally, strict=False
             )
-            decision = _decide_match(feed.payee, feed.date, feed.posted, candidates)
 
-            if decision.action == "auto" and decision.candidate is not None:
-                best_match = decision.candidate
-                # A candidate that already carries a (now retired) bank id is
-                # being re-identified, not cleared: `posting_updates` writes
-                # the new `sync_id` as provenance, which a reconciled row
-                # accepts because reconciliation locks only amount, date,
-                # cleared and account. Its category, payee and memo survive.
-                #
-                # Adopted, not matched, when the row it claims had already
-                # posted under the retired id. A posted record claiming the
-                # row that held its own *pending* id is the ordinary
-                # re-identification the ladder has always done — a match.
-                was_adopted = best_match.sync_id is not None and best_match.cleared in (
-                    "cleared",
-                    "reconciled",
-                )
-                outcome = await self.txn_service.apply_bank_posting(
-                    best_match, feed, confirmed=False
-                )
-                if isinstance(outcome, Review):
-                    # Candidates share the feed's exact amount, so this cannot
-                    # happen today. If it ever does, the review queue is the
-                    # honest fallback — never a silent row beside a linked one.
-                    decision = _MatchDecision("review", best_match, decision.score)
-                else:
-                    if "cleared" in outcome.updates:
-                        cleared += 1
-                    consumed_ids.add(best_match.id)
-                    if was_adopted:
-                        adopted += 1
-                        adopted_by_account[account.id] += 1
-                    else:
-                        matched += 1
-                    continue
-
-            new_txn = await self._import_feed_row(budget_id, account, feed)
-            if new_txn is None:
-                skips[SkipReason.DUPLICATE_SYNC_ID] += 1
-                continue
-            consumed_ids.add(new_txn.id)
-            created_this_run.append((new_txn, feed))
-            if decision.action == "review" and decision.candidate is not None:
-                if self.matching_service is not None:
-                    await self.matching_service.match_repo.create(
-                        synced_transaction_id=new_txn.id,
-                        manual_transaction_id=decision.candidate.id,
-                        confidence_score=decision.score,
-                    )
-                    # One review claim per candidate per run: a second
-                    # identical feed row must queue against a different
-                    # existing row, or import clean.
-                    consumed_ids.add(decision.candidate.id)
-                    review_queued += 1
-            elif self.matching_service is not None:
-                await self.matching_service.try_match(new_txn)
-            imported += 1
-            imported_by_account[account.id] += 1
+        imported = tally.imported
+        skips = tally.skips
+        matched = tally.matched
+        adopted = tally.adopted
+        review_queued = tally.review_queued
+        cleared = tally.cleared
+        imported_by_account = tally.imported_by_account
+        adopted_by_account = tally.adopted_by_account
+        created_this_run = tally.created_this_run
 
         # After the loop: rows whose bank id vanished from the feed. Only rows
         # inside the fetched window are judged, and only when the feed
         # actually returned data (an empty feed proves nothing).
         removed_pending = 0
+        orphaned_ids = {o.account_id for o in audit.orphaned}
         if txns_raw:
             feed_sync_ids = {
                 (t.get("id") or "").strip() for t in txns_raw if (t.get("id") or "").strip()
             }
             window_start = since.date() if since is not None else None
             for account in targets:
+                # Only accounts this feed actually served. An orphaned account
+                # has no rows in the feed at all, so every id it holds looks
+                # "vanished" — and this pass deleted its pending rows every
+                # hour for as long as the link stayed broken.
+                if account.id in orphaned_ids:
+                    continue
                 # A pending row the sync itself created: the bank dropped the
                 # auth, or re-identified it at posting with a changed amount
                 # (a same-amount re-id was absorbed in the loop). Recorded, so
@@ -790,7 +846,6 @@ class SimpleFINService:
         # it anyway is how a relinked account came back with a window that
         # began after the days its broken link had missed.
         now = datetime.now(UTC)
-        orphaned_ids = {o.account_id for o in audit.orphaned}
         for account in targets:
             if account.id in orphaned_ids:
                 continue
@@ -828,6 +883,7 @@ class SimpleFINService:
             ledger_cleared=ledger_cleared,
             drifts=drifts,
             fault=fault,
+            change_batch_id=run_batch_id,
             counts={
                 "feed_txn_count": len(txns_raw),
                 "imported": imported,
@@ -876,6 +932,7 @@ class SimpleFINService:
                     "stored_simplefin_id": o.stored_simplefin_id,
                     "suggested_feed_id": o.suggested_feed_id,
                     "suggested_feed_name": o.suggested_feed_name,
+                    "may_need_auth": o.may_need_auth,
                 }
                 for o in audit.orphaned
             ],
@@ -886,6 +943,135 @@ class SimpleFINService:
             "balance_drift": _drift_records(drifts),
             **rate_status,
         }
+
+    async def _post_feed_row(
+        self,
+        budget_id: uuid.UUID,
+        account: Account,
+        feed: FeedRecord,
+        feed_ids: set[str],
+        since_date: date,
+        tally: _Tally,
+        *,
+        strict: bool,
+    ) -> bool:
+        """Post one feed record. Returns False when `strict` and the record
+        could not be settled on its own day — the caller brings it back in
+        the second pass, where the wider window is allowed.
+
+        Nothing is written or consumed for a deferred record.
+        """
+        if feed.sync_id is not None:
+            existing = await self.txn_repo.find_by_sync_id(account.id, feed.sync_id)
+            if existing is None and await self.txn_repo.was_deleted_by_user(
+                account.id, feed.sync_id
+            ):
+                # The person removed this one. A bank that keeps reporting
+                # it is not evidence they changed their mind; the row used to
+                # come back on the next run, every run.
+                tally.skips[SkipReason.DELETED_BY_USER] += 1
+                return True
+            if existing is not None:
+                tally.consumed_ids.add(existing.id)
+                outcome = await self.txn_service.apply_bank_posting(existing, feed, confirmed=False)
+                if isinstance(outcome, Review):
+                    if self.matching_service is None:
+                        # Nowhere to queue the question — leave the row as
+                        # it is rather than write a duplicate nobody will be
+                        # asked about.
+                        tally.skips[SkipReason.NO_MATCHER] += 1
+                        return True
+                    new_txn = await self._import_for_review(budget_id, account, feed, existing)
+                    if new_txn is None:
+                        tally.skips[SkipReason.REVIEW_IMPORT_DUPLICATE] += 1
+                    else:
+                        tally.consumed_ids.add(new_txn.id)
+                        tally.created_this_run.append((new_txn, feed))
+                        tally.imported += 1
+                        tally.imported_by_account[account.id] += 1
+                        tally.review_queued += 1
+                elif "cleared" in outcome.updates:
+                    tally.cleared += 1
+                else:
+                    # Provenance may have been refreshed; the row's state did
+                    # not change.
+                    tally.skips[SkipReason.ALREADY_POSTED] += 1
+                return True
+
+        # Dedup against rows that lack a bank link (YNAB imports, manual
+        # entries, CSV imports); for a posted record, rows whose link is to a
+        # pending record the bank may have re-identified; and rows inside the
+        # window whose bank id the feed no longer reports.
+        candidates = await self.txn_repo.find_existing_match_candidates(
+            account.id,
+            feed.amount,
+            feed.date,
+            date_window_days=DEDUP_DATE_WINDOW_DAYS,
+            exclude_ids=tally.consumed_ids,
+            include_provisional=feed.posted,
+            orphaned_feed_sync_ids=feed_ids,
+            orphaned_since=since_date,
+        )
+        decision = _decide_match(feed.payee, feed.date, feed.posted, candidates)
+        if strict and not (decision.action == "auto" and decision.days == 0):
+            return False
+
+        if decision.action == "auto" and decision.candidate is not None:
+            best_match = decision.candidate
+            # A candidate that already carries a (now retired) bank id is
+            # being re-identified, not cleared: `posting_updates` writes the
+            # new `sync_id` as provenance, which a reconciled row accepts
+            # because reconciliation locks only amount, date, cleared and
+            # account. Its category, payee and memo survive.
+            #
+            # Adopted, not matched, when the row it claims had already posted
+            # under the retired id. A posted record claiming the row that
+            # held its own *pending* id is the ordinary re-identification the
+            # ladder has always done — a match.
+            was_adopted = best_match.sync_id is not None and best_match.cleared in (
+                "cleared",
+                "reconciled",
+            )
+            outcome = await self.txn_service.apply_bank_posting(best_match, feed, confirmed=False)
+            if isinstance(outcome, Review):
+                # Candidates share the feed's exact amount, so this cannot
+                # happen today. If it ever does, the review queue is the
+                # honest fallback — never a silent row beside a linked one.
+                decision = _MatchDecision("review", best_match, decision.score, decision.days)
+            else:
+                if "cleared" in outcome.updates:
+                    tally.cleared += 1
+                tally.consumed_ids.add(best_match.id)
+                if was_adopted:
+                    tally.adopted += 1
+                    tally.adopted_by_account[account.id] += 1
+                else:
+                    tally.matched += 1
+                return True
+
+        new_txn = await self._import_feed_row(budget_id, account, feed)
+        if new_txn is None:
+            tally.skips[SkipReason.DUPLICATE_SYNC_ID] += 1
+            return True
+        tally.consumed_ids.add(new_txn.id)
+        tally.created_this_run.append((new_txn, feed))
+        if decision.action == "review" and decision.candidate is not None:
+            if self.matching_service is not None:
+                await self.matching_service.match_repo.create(
+                    synced_transaction_id=new_txn.id,
+                    manual_transaction_id=decision.candidate.id,
+                    confidence_score=decision.score,
+                )
+                # One review claim per candidate per run: a second identical
+                # feed row must queue against a different existing row, or
+                # import clean.
+                tally.consumed_ids.add(decision.candidate.id)
+                tally.review_queued += 1
+        elif self.matching_service is not None:
+            await self.matching_service.try_match(new_txn)
+        tally.imported += 1
+        tally.imported_by_account[account.id] += 1
+        return True
 
     async def _auto_relink(self, targets: list[Account], audit: LinkAudit) -> list[str]:
         """Repoint an orphaned account at the bank account carrying its own name.
@@ -970,6 +1156,7 @@ class SimpleFINService:
         ledger_cleared: dict[uuid.UUID, Decimal],
         drifts: list[tuple[Account, BalanceDrift]],
         fault: str | None,
+        change_batch_id: uuid.UUID | None,
         counts: dict[str, int],
         skip_reasons: dict[str, int],
     ) -> None:
@@ -1025,10 +1212,12 @@ class SimpleFINService:
                     "stored_simplefin_id": o.stored_simplefin_id,
                     "suggested_feed_id": o.suggested_feed_id,
                     "suggested_feed_name": o.suggested_feed_name,
+                    "may_need_auth": o.may_need_auth,
                 }
                 for o in audit.orphaned
             ],
             balance_drift=_drift_records(drifts),
+            change_batch_id=change_batch_id,
             skip_reasons=skip_reasons,
             accounts=per_account,
             **counts,
@@ -1043,6 +1232,7 @@ class SimpleFINService:
         # an account with no activity is still claimed, not orphaned.
         feed_ids = set(feed.account_names) | set(feed.balances) | set(counts)
         return audit_links(
+            needs_auth=any(e.needs_auth for e in feed.errors),
             linked=[
                 LinkedAccount(
                     id=a.id,

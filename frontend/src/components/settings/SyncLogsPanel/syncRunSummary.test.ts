@@ -26,6 +26,8 @@ function run(over: Partial<SyncRun> = {}): SyncRun {
     review_queued: 0,
     removed_pending: 0,
     anchored: 0,
+    change_batch_id: null,
+    undone_at: null,
     created_at: '2026-09-16T01:00:00Z',
     ...over,
   }
@@ -55,6 +57,10 @@ describe('runVerdict', () => {
   it('distinguishes a quiet run from a working one', () => {
     expect(runVerdict(run({ skipped: 512, skip_reasons: { already_posted: 512 } }))).toBe('quiet')
     expect(runVerdict(run({ imported: 3 }))).toBe('worked')
+  })
+
+  it('calls an undone run undone, whatever it did', () => {
+    expect(runVerdict(run({ imported: 28, undone_at: '2026-09-18T00:30:00Z' }))).toBe('undone')
   })
 
   it('counts an adoption as work, not quiet', () => {

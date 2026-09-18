@@ -2352,6 +2352,11 @@ class SyncRun(Base):
     #: run's rows were in — see domain.bank_balance. The health check reads
     #: it from the latest run, so a gap badges the nav until a sync closes it.
     balance_drift: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+    #: The change-log batch every write of this run landed in. The sync
+    #: log's "Undo this run" takes the batch back as a unit; Cmd+Z cannot,
+    #: because these are not the person's own edits.
+    change_batch_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    undone_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     feed_txn_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     imported: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     skipped: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

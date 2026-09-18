@@ -5,9 +5,10 @@
  * field that a successful run cleared meant a sync importing none of an
  * account's transactions left the same trace as one that worked.
  */
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { apiClient } from './client'
+import { invalidateAfterImport } from './invalidateAfterImport'
 import { ROOT } from './queryKeys'
 import type { BalanceDrift, BankError, OrphanedLink } from './simplefin'
 
@@ -55,6 +56,9 @@ export interface SyncRun {
   review_queued: number
   removed_pending: number
   anchored: number
+  /** Present when the run's writes can be taken back as a unit. */
+  change_batch_id: string | null
+  undone_at: string | null
   created_at: string
 }
 
@@ -62,10 +66,18 @@ export interface SyncRunDetail extends SyncRun {
   accounts: SyncRunAccount[]
 }
 
+/** An account the latest run was told to sync and the feed offered nothing
+ *  for — no rows, no balance. Whatever the cause, it has stopped. */
+export interface UnservedAccount {
+  account_id: string
+  account_name: string | null
+}
+
 export interface SyncHealth {
   orphaned_links: OrphanedLink[]
   needs_auth: BankError[]
   balance_drift: BalanceDrift[]
+  unserved: UnservedAccount[]
   last_run_at: string | null
 }
 
@@ -118,6 +130,29 @@ export function hasSyncFault(health: SyncHealth | undefined): boolean {
   return (
     health.orphaned_links.length > 0 ||
     health.needs_auth.length > 0 ||
-    health.balance_drift.length > 0
+    health.balance_drift.length > 0 ||
+    (health.unserved ?? []).length > 0
   )
+}
+
+/**
+ * Take back everything one run wrote. Rows the person has edited since are
+ * left alone; the result says how many.
+ */
+export function useUndoSyncRun(budgetId: string | null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (runId: string) => {
+      const { data } = await apiClient.post<{ undone: number; skipped: number }>(
+        `/${budgetId}/simplefin/sync-runs/${runId}/undo`
+      )
+      return data
+    },
+    onSuccess: () => {
+      invalidateAfterImport(qc, budgetId)
+      qc.invalidateQueries({ queryKey: [ROOT.syncRuns] })
+      qc.invalidateQueries({ queryKey: [ROOT.syncRun] })
+      qc.invalidateQueries({ queryKey: [ROOT.syncHealth] })
+    },
+  })
 }

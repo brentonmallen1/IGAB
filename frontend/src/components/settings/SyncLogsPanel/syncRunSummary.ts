@@ -6,7 +6,7 @@
  * "0 imported, 500+ skipped" described both a broken bank link and a quiet
  * morning with nothing new.
  */
-import { describeDrift } from '../../../api/simplefin'
+import { describeDrift, describeOrphanFix } from '../../../api/simplefin'
 import type { SyncRun, SyncRunAccount } from '../../../api/syncLogs'
 
 /** Names for `domain.enums.SkipReason`, in the terms a person would use. */
@@ -17,13 +17,14 @@ const SKIP_LABELS: Record<string, string> = {
   review_import_duplicate: 'were already queued for review',
   already_posted: 'were already filed, and unchanged',
   duplicate_sync_id: 'were already in the register under the same bank id',
+  deleted_by_user: 'were deleted here on purpose, and stay deleted',
 }
 
 export function describeSkipReason(reason: string): string {
   return SKIP_LABELS[reason] ?? reason.replace(/_/g, ' ')
 }
 
-export type RunVerdict = 'broken' | 'failed' | 'limited' | 'quiet' | 'worked'
+export type RunVerdict = 'undone' | 'broken' | 'failed' | 'limited' | 'quiet' | 'worked'
 
 /**
  * What a run amounts to. `broken` outranks everything: a run that succeeded
@@ -31,6 +32,7 @@ export type RunVerdict = 'broken' | 'failed' | 'limited' | 'quiet' | 'worked'
  * it is the one a status of "ok" used to hide.
  */
 export function runVerdict(run: SyncRun): RunVerdict {
+  if (run.undone_at) return 'undone'
   if (run.orphaned_links.length > 0 || run.status === 'degraded') return 'broken'
   if (run.balance_drift.length > 0) return 'broken'
   if (run.status === 'error') return 'failed'
@@ -42,9 +44,10 @@ export function runVerdict(run: SyncRun): RunVerdict {
 export function runHeadline(run: SyncRun): string {
   if (run.orphaned_links.length > 0) {
     const names = run.orphaned_links.map((o) => o.account_name)
-    return names.length === 1
-      ? `${names[0]} no longer matches an account at the bank`
-      : `${names.length} accounts no longer match an account at the bank`
+    if (run.orphaned_links.length === 1) {
+      return `${names[0]} could not be matched at the bank — ${describeOrphanFix(run.orphaned_links[0])}`
+    }
+    return `${names.length} accounts no longer match an account at the bank`
   }
   if (run.balance_drift.length > 0) return describeDrift(run.balance_drift)
   if (run.error) return run.error

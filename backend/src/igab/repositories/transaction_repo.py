@@ -1119,6 +1119,26 @@ class TransactionRepository(BaseRepository[Transaction]):
         )
         return result.scalar_one_or_none()
 
+    async def was_deleted_by_user(self, account_id: uuid.UUID, sync_id: str) -> bool:
+        """A soft-deleted row still holding this bank id.
+
+        A row the person deleted keeps its id; a row the sync removed itself
+        (a pending hold the bank dropped) gives the id up first, and a merge
+        moves the id to the survivor. So a deleted row that still carries the
+        id is a person's decision, and the feed reporting the id again is not
+        grounds to overrule it.
+        """
+        result = await self.session.execute(
+            select(Transaction.id)
+            .where(
+                Transaction.account_id == account_id,
+                Transaction.sync_id == sync_id,
+                Transaction.is_deleted == True,  # noqa: E712
+            )
+            .limit(1)
+        )
+        return result.scalar_one_or_none() is not None
+
     async def find_stale_pending_synced(
         self,
         account_id: uuid.UUID,
@@ -1596,7 +1616,12 @@ class TransactionRepository(BaseRepository[Transaction]):
             )
             # Nearest-first, so the LIMIT can't evict the true match when many
             # same-amount rows crowd the window (daily coffee, weekly fill-ups).
-            .order_by(func.abs(Transaction.date - txn_date), Transaction.date.desc())
+            # On the date the caller scores with — the bank's posting date
+            # when the row has one — or the two disagree about "nearest".
+            .order_by(
+                func.abs(func.coalesce(Transaction.bank_posted_date, Transaction.date) - txn_date),
+                Transaction.date.desc(),
+            )
             .limit(limit)
         )
         if exclude_ids:

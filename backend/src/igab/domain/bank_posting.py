@@ -19,7 +19,11 @@ The rule, by what the row is:
 - **A bank-created `pending` row** (the sync wrote it) takes the bank's
   posted values wholesale: amount, date, cleared. Holds routinely change at
   posting (tips, gas) and the user never typed that amount. The prior date
-  and amount are kept once as `entered_date` / `entered_amount`.
+  and amount are kept once as `entered_date` / `entered_amount`. Unless the
+  user has since split it or made it a transfer leg: then a changed amount
+  is `Review`, exactly as for a user-entered row, because the lines (or the
+  partner) would no longer add up to it and nothing here can say how they
+  should.
 - **A user-entered row** (`uncleared` or `cleared`) clears when the bank
   posts the same amount, keeping the user's ledger date — budget months
   follow it. When the bank posts a *different* amount, the answer is
@@ -159,6 +163,12 @@ def posting_updates(row: RowState, feed: FeedRecord, *, confirmed: bool) -> Outc
         amount_differs = feed.amount != row.amount
 
         if row.cleared == "pending":
+            if amount_differs and (row.is_split or row.is_transfer_leg):
+                # The hold was split, or paired, while pending. The bank's
+                # final amount cannot be written onto a parent whose lines
+                # still sum to the old one — and this branch used to do
+                # exactly that, silently, for every restaurant tip.
+                return _refuse_structured(row, feed)
             updates["cleared"] = "cleared"
             if amount_differs:
                 updates["amount"] = feed.amount

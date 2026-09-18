@@ -75,6 +75,11 @@ class OrphanedLink:
     #: asking: two of one person's brokerage accounts score 0.95 against each
     #: other, so a similar name is evidence for a human and nothing more.
     suggestion_is_exact: bool = False
+    #: The bridge reported an institution needing re-authentication in the
+    #: same response, and nothing in the feed looks like this account. That
+    #: is what a lapsed login looks like from here — the account is not gone,
+    #: it is unreachable — and "relink it" would be the wrong advice.
+    may_need_auth: bool = False
 
 
 @dataclass(frozen=True)
@@ -96,7 +101,9 @@ class LinkAudit:
         return not self.orphaned
 
 
-def audit_links(*, linked: list[LinkedAccount], feed: list[FeedAccount]) -> LinkAudit:
+def audit_links(
+    *, linked: list[LinkedAccount], feed: list[FeedAccount], needs_auth: bool = False
+) -> LinkAudit:
     """Reconcile the budget's bank links against what the feed actually offers.
 
     An orphan is paired with a suggested replacement only when one unclaimed
@@ -131,6 +138,7 @@ def audit_links(*, linked: list[LinkedAccount], feed: list[FeedAccount]) -> Link
                 suggested_feed_name=chosen.feed_name if chosen else None,
                 suggestion_score=1.0 if exact else score,
                 suggestion_is_exact=exact is not None,
+                may_need_auth=needs_auth and chosen is None,
             )
         )
     return LinkAudit(orphaned=orphaned, unclaimed=unclaimed)
