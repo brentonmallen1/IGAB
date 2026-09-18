@@ -60,6 +60,7 @@ export function transactionFilterParams(filters: TransactionFilters): Record<str
   if (filters.amountMax != null) params.amount_max = filters.amountMax
   if (filters.hasAttachment != null) params.has_attachment = filters.hasAttachment
   if (filters.excludeCleared) params.exclude_cleared = filters.excludeCleared
+  if (filters.unreconciled) params.unreconciled = true
   if (filters.startDate) params.start_date = filters.startDate
   if (filters.endDate) params.end_date = filters.endDate
   if (filters.direction) params.direction = filters.direction
