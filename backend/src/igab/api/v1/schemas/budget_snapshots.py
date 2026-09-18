@@ -9,6 +9,10 @@ class SnapshotFile(ApiModel):
     name: str
     size_bytes: int
     modified_at: datetime
+    #: Whether the schedule wrote this rather than a person. The list badges
+    #: it, and it is also what says which files retention may delete — a
+    #: person's own snapshot is never pruned.
+    scheduled: bool = False
 
 
 class SnapshotCreated(ApiModel):

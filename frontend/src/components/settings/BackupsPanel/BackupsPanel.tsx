@@ -17,6 +17,7 @@ import {
   useRunBackup,
   type BackupFile,
 } from '../../../api/backups'
+import { NumberSettingRow } from '../NumberSettingRow'
 import { useSettings, useUpdateSetting } from '../../../api/settings'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { formatBytes } from '../../../utils/formatBytes'
@@ -37,67 +38,6 @@ const KIND_LABEL: Record<BackupFile['kind'], string> = {
   db: 'Database',
   attachments: 'Attachments',
   prerestore: 'Pre-restore',
-}
-
-interface NumberSettingRowProps {
-  label: string
-  desc: string
-  settingKey: string
-  min: number
-  max: number
-}
-
-function NumberSettingRow({ label, desc, settingKey, min, max }: NumberSettingRowProps) {
-  const { data: appSettings } = useSettings()
-  const updateSetting = useUpdateSetting()
-  const saved = appSettings?.find((s) => s.key === settingKey)?.value ?? ''
-  const [draft, setDraft] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  async function commit() {
-    if (draft === null || draft === saved) {
-      setDraft(null)
-      return
-    }
-    const n = Number(draft)
-    if (!Number.isInteger(n) || n < min || n > max) {
-      setError(`Must be between ${min} and ${max}`)
-      return
-    }
-    setError(null)
-    try {
-      await updateSetting.mutateAsync({ key: settingKey, value: String(n) })
-      setDraft(null)
-    } catch {
-      setError('Could not save — is the server reachable?')
-    }
-  }
-
-  return (
-    <div className="settings-row">
-      <div>
-        <div className="settings-row__label">{label}</div>
-        <div className="settings-row__desc">{desc}</div>
-        {error && <div className="bkp-field-error">{error}</div>}
-      </div>
-      <input
-        type="number"
-        inputMode="numeric"
-        className="settings-input bkp-number-input"
-        min={min}
-        max={max}
-        value={draft ?? saved}
-        onChange={(e) => {
-          setDraft(e.target.value)
-          setError(null)
-        }}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
-        }}
-      />
-    </div>
-  )
 }
 
 function RecipientSettingRow() {

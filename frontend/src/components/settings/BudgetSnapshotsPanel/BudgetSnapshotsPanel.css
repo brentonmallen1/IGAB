@@ -74,3 +74,28 @@
   color: var(--text-secondary);
   font-size: var(--font-size-xs);
 }
+
+/* Which snapshots the schedule wrote. Quiet on purpose — it is a provenance
+   note, not a state change, and the only thing it governs is which files
+   retention may delete. */
+.snap-auto-badge {
+  margin-left: var(--spacing-xs);
+  padding: 1px 5px;
+  border: 1px solid var(--edge);
+  border-radius: 999px;
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.snap-schedule-note {
+  margin-bottom: var(--spacing-sm);
+}
+
+/* A backup that has been silently failing is worse than no backup, so the
+   last run's failure is the one thing here that is allowed to be loud. */
+.snap-schedule-error {
+  color: var(--color-negative);
+}

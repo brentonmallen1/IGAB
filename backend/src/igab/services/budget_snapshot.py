@@ -96,9 +96,29 @@ def slugify(name: str) -> str:
     return slug or "budget"
 
 
-def snapshot_filename(budget_name: str, when: datetime | None = None) -> str:
+#: What marks a snapshot the schedule took rather than a person.
+#:
+#: In the NAME, because the name is the only thing that survives every way a
+#: snapshot can be handled: copied off the volume, restored from, listed by
+#: `ls`. A sidecar file or a manifest field would be the obvious home and
+#: would be wrong the first time someone moved a file — and retention DELETES
+#: files, so "which ones are mine" has to be answerable from the file itself.
+AUTO_MARKER = "-auto"
+
+
+def snapshot_filename(
+    budget_name: str, when: datetime | None = None, *, scheduled: bool = False
+) -> str:
     stamp = (when or datetime.now(tz=UTC)).strftime("%Y%m%d-%H%M%S")
-    return f"{slugify(budget_name)}-{stamp}{SNAPSHOT_SUFFIX}"
+    marker = AUTO_MARKER if scheduled else ""
+    return f"{slugify(budget_name)}-{stamp}{marker}{SNAPSHOT_SUFFIX}"
+
+
+def is_scheduled_snapshot(name: str) -> bool:
+    """Whether the schedule wrote this file. One spelling, beside the builder
+    that produces it — retention prunes on this answer, and a second reading
+    of the same name is how a person's own snapshot gets deleted."""
+    return name.endswith(f"{AUTO_MARKER}{SNAPSHOT_SUFFIX}")
 
 
 def snapshot_path(budget_id: UUID, name: str) -> Path:
@@ -131,6 +151,7 @@ def list_snapshots(budget_id: UUID) -> list[dict[str, Any]]:
             "name": entry.name,
             "size_bytes": entry.stat().st_size,
             "modified_at": datetime.fromtimestamp(entry.stat().st_mtime, tz=UTC),
+            "scheduled": is_scheduled_snapshot(entry.name),
         }
         for entry in entries
         if entry.is_file() and entry.name.endswith(SNAPSHOT_SUFFIX)
@@ -791,7 +812,7 @@ def plan_for(manifest: SnapshotManifest, target_budget_id: UUID | None) -> Impor
 
 
 async def write_kept_snapshot(
-    session: AsyncSession, budget_id: UUID, *, app_version: str
+    session: AsyncSession, budget_id: UUID, *, app_version: str, scheduled: bool = False
 ) -> tuple[Path, SnapshotManifest]:
     """Export a budget into its own folder on the backups volume.
 
@@ -813,7 +834,7 @@ async def write_kept_snapshot(
                 app_version=app_version,
                 alembic_revision=await current_revision(session),
             )
-        final = directory / snapshot_filename(manifest.budget_name)
+        final = directory / snapshot_filename(manifest.budget_name, scheduled=scheduled)
         tmp_path.replace(final)
     except BaseException:
         tmp_path.unlink(missing_ok=True)
