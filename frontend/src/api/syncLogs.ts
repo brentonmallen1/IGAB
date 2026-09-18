@@ -30,6 +30,11 @@ export interface SyncRunAccount {
    *  total once the run's rows were in. Canonical decimal strings. */
   bank_balance: string | null
   ledger_cleared_balance: string | null
+  /** Whether those two agreed. Null when either was unknown, which is not
+   *  the same as disagreeing. Recorded for EVERY account a run touched,
+   *  unlike `balance_drift`, which is deliberately only about reconciled
+   *  ones — a tracking account had nowhere to be checked before. */
+  balance_agrees: boolean | null
 }
 
 export interface SyncRun {
@@ -46,6 +51,9 @@ export interface SyncRun {
   orphaned_links: OrphanedLink[]
   /** Reconciled accounts the run left off from the bank. */
   balance_drift: BalanceDrift[]
+  /** Opening balances this run declined to write, one sentence each: a
+   *  first sync that would have left a liability holding money. */
+  refused_anchors: string[]
   feed_txn_count: number
   imported: number
   skipped: number
@@ -77,6 +85,7 @@ export interface SyncHealth {
   orphaned_links: OrphanedLink[]
   needs_auth: BankError[]
   balance_drift: BalanceDrift[]
+  refused_anchors: string[]
   unserved: UnservedAccount[]
   last_run_at: string | null
 }

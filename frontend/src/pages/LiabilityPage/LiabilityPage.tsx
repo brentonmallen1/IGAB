@@ -312,6 +312,18 @@ export function LiabilityPage() {
         </div>
       )}
 
+      {liability.balance_source === 'inverted' && (
+        <div className="liability-page__hint liability-page__hint--warning">
+          <span>
+            This account's register says it <strong>holds</strong>{' '}
+            {formatMoney(liability.current_balance)}, but its bank says it owes money. Both cannot
+            be true, so no balance is claimed above. This usually means the rows arrived with their
+            signs reversed — a bank that reports debts as positive numbers. Sync the account again
+            to pick up the corrected signs, then reconcile it.
+          </span>
+        </div>
+      )}
+
       {liability.promo_projection &&
         liability.promo_end_date &&
         (liability.promo_projection.clears_before_promo ? (
@@ -352,10 +364,23 @@ export function LiabilityPage() {
       )}
 
       <MetricRow>
+        {/* The estimate rides as a SUB-line, never folded into the value.
+            A loan imported from YNAB reads one month of interest low,
+            because the source derives the current month's charge from the
+            terms and only writes a register row at reconcile time. Adding
+            it to the balance itself would leave a figure that agrees with
+            the source and matches no register — and would be reconciled
+            twice the moment the real row arrives. The server suppresses it
+            for any month that already carries a posted charge. */}
         <MetricCard
           variant="raised"
           label="Current Balance"
           value={formatMoney(liability.current_balance)}
+          sub={
+            liability.estimated_interest_this_month !== null
+              ? `+${formatMoney(liability.estimated_interest_this_month)} interest this month (estimated, not yet posted)`
+              : undefined
+          }
           accent
         />
         {/* 0% is a real rate here — promo cards have one — so an unset rate

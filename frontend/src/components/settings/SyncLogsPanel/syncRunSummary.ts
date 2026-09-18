@@ -35,6 +35,10 @@ export function runVerdict(run: SyncRun): RunVerdict {
   if (run.undone_at) return 'undone'
   if (run.orphaned_links.length > 0 || run.status === 'degraded') return 'broken'
   if (run.balance_drift.length > 0) return 'broken'
+  // A run that declined to write an opening balance is broken, not quiet:
+  // the account it refused is left without the row that makes its ledger
+  // mean anything, and nothing else in this log would say so.
+  if ((run.refused_anchors?.length ?? 0) > 0) return 'broken'
   if (run.status === 'error') return 'failed'
   if (run.status === 'rate_limited') return 'limited'
   if (run.imported === 0 && run.adopted === 0 && run.matched === 0) return 'quiet'
@@ -48,6 +52,15 @@ export function runHeadline(run: SyncRun): string {
       return `${names[0]} could not be matched at the bank — ${describeOrphanFix(run.orphaned_links[0])}`
     }
     return `${names.length} accounts no longer match an account at the bank`
+  }
+  // Ahead of drift: the run declined to write something, which outranks a
+  // gap it merely observed. The server's sentence already names the account
+  // and says what to do, so it is shown whole rather than summarised.
+  if ((run.refused_anchors?.length ?? 0) > 0) {
+    const [first] = run.refused_anchors
+    return run.refused_anchors.length === 1
+      ? first
+      : `${run.refused_anchors.length} accounts could not be given an opening balance`
   }
   if (run.balance_drift.length > 0) return describeDrift(run.balance_drift)
   if (run.error) return run.error
@@ -92,5 +105,9 @@ export function accountNote(account: SyncRunAccount): string | null {
   if (account.orphaned) return 'The bank no longer offers this account — relink it'
   if (account.feed_txn_count === 0) return 'The bank returned nothing for this account'
   if (account.reidentified) return 'The bank reissued every id; existing rows adopted them'
+  // Said only when it is news. `true` is the ordinary case and would be
+  // noise on every row; `null` means one of the two figures was unknown,
+  // which is not a disagreement anyone should be shown.
+  if (account.balance_agrees === false) return 'The ledger does not match the balance the bank sent'
   return null
 }

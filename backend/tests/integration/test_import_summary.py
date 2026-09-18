@@ -84,7 +84,11 @@ class TestItSurvivesTheRequest:
 
         resp = await api_client.get(f"/api/v1/{budget.id}/import-summary")
         assert resp.status_code == 200
-        assert resp.json() == {"summary": None, "reviewed_at": None}
+        assert resp.json() == {
+            "summary": None,
+            "reviewed_at": None,
+            "liabilities_needing_terms": [],
+        }
 
 
 class TestSeenOnce:
@@ -153,3 +157,44 @@ class TestHeldOutRows:
         summary = resp.json()["summary"]
         assert summary["held_out_future"] == []
         assert summary["held_out_splits_uncategorized"] == 0
+
+
+class TestLoansWithoutTerms:
+    """A YNAB export carries no account metadata — no rate, no minimum
+    payment, no payoff date — so every liability arrives inert. The review is
+    where the user is asked, because nothing else in the app knows an import
+    just happened.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_loan_without_a_rate_is_named(self, api_client, db_session):
+        budget = await create_budget(db_session, api_client.test_user)
+        made = await api_client.post(
+            f"/api/v1/{budget.id}/accounts",
+            json={"name": "Harborstone Auto Loan", "account_type": "loan", "on_budget": False},
+        )
+        assert made.status_code == 201, made.text
+
+        resp = await api_client.get(f"/api/v1/{budget.id}/import-summary")
+        named = resp.json()["liabilities_needing_terms"]
+        assert [row["name"] for row in named] == ["Harborstone Auto Loan"]
+        assert named[0]["account_id"] == made.json()["id"]
+
+    @pytest.mark.asyncio
+    async def test_it_disappears_once_the_rate_is_filled_in(self, api_client, db_session):
+        """Queried live rather than recorded at import time, so answering the
+        question is what clears it — no second flag to keep in step."""
+        budget = await create_budget(db_session, api_client.test_user)
+        await api_client.post(
+            f"/api/v1/{budget.id}/accounts",
+            json={"name": "Harborstone Auto Loan", "account_type": "loan", "on_budget": False},
+        )
+        listed = await api_client.get(f"/api/v1/{budget.id}/liabilities")
+        liability_id = listed.json()[0]["id"]
+        patched = await api_client.patch(
+            f"/api/v1/{budget.id}/liabilities/{liability_id}", json={"interest_rate": "6.125"}
+        )
+        assert patched.status_code == 200, patched.text
+
+        resp = await api_client.get(f"/api/v1/{budget.id}/import-summary")
+        assert resp.json()["liabilities_needing_terms"] == []

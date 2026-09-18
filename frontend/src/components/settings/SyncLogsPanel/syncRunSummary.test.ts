@@ -16,6 +16,7 @@ function run(over: Partial<SyncRun> = {}): SyncRun {
     bank_errors: [],
     orphaned_links: [],
     balance_drift: [],
+    refused_anchors: [],
     feed_txn_count: 0,
     imported: 0,
     skipped: 0,
@@ -155,6 +156,7 @@ describe('accountNote', () => {
       orphaned: false,
       bank_balance: null,
       ledger_cleared_balance: null,
+      balance_agrees: null,
       ...over,
     }
   }
@@ -171,7 +173,56 @@ describe('accountNote', () => {
     expect(accountNote(account({ reidentified: true }))).toContain('adopted')
   })
 
+  it('says when the ledger did not match the bank', () => {
+    expect(accountNote(account({ balance_agrees: false }))).toContain('does not match')
+  })
+
+  it('stays quiet when they agreed', () => {
+    expect(accountNote(account({ balance_agrees: true }))).toBeNull()
+  })
+
+  it('stays quiet when one of the figures was unknown', () => {
+    // Null is not a disagreement. Treating it as one would warn on every
+    // account whose bank reported no balance.
+    expect(accountNote(account({ balance_agrees: null }))).toBeNull()
+  })
+
   it('says nothing about an ordinary account', () => {
     expect(accountNote(account())).toBeNull()
+  })
+})
+
+describe('a refused opening balance', () => {
+  // A first sync that would have left a liability holding money. The one
+  // outcome the drift line structurally cannot report, because an anchor is
+  // the row that defines drift to be zero — the check reads its own output.
+  const REFUSAL =
+    'Sapphire Visa: the bank reports 2,690.00 on an account that owes money, so no opening ' +
+    'balance was written against its register of -200.00. This usually means the feed reports ' +
+    'debts as positive — reconcile the account or check the sign of its imported rows.'
+
+  it('is broken, not quiet', () => {
+    expect(runVerdict(run({ refused_anchors: [REFUSAL] }))).toBe('broken')
+  })
+
+  it('shows the server sentence whole, so the account is named', () => {
+    const headline = runHeadline(run({ refused_anchors: [REFUSAL] }))
+    expect(headline).toContain('Sapphire Visa')
+    expect(headline).toContain('reconcile')
+  })
+
+  it('counts them when several accounts were refused', () => {
+    expect(runHeadline(run({ refused_anchors: [REFUSAL, REFUSAL] }))).toBe(
+      '2 accounts could not be given an opening balance'
+    )
+  })
+
+  it('outranks drift, which it would otherwise hide', () => {
+    const headline = runHeadline(run({ refused_anchors: [REFUSAL], balance_drift: [DRIFT] }))
+    expect(headline).toContain('Sapphire Visa')
+  })
+
+  it('leaves an ordinary run alone', () => {
+    expect(runVerdict(run({ imported: 3, refused_anchors: [] }))).toBe('worked')
   })
 })

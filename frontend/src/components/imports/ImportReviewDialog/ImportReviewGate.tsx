@@ -27,6 +27,7 @@ export function ImportReviewGate({ budgetId }: { budgetId: string | null }) {
     <ImportReviewDialog
       budgetId={budgetId}
       summary={data.summary}
+      loansNeedingTerms={data.liabilities_needing_terms ?? []}
       onClose={() => setDismissed(true)}
     />
   )

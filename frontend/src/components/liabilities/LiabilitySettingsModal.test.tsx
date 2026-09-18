@@ -39,6 +39,8 @@ function companion(overrides: Partial<Liability> = {}): Liability {
     linked_category_id: null,
     current_balance: 9000,
     balance_source: 'ledger',
+    estimated_interest_this_month: null,
+    balance_with_estimate: 0,
     interest_rate: 6,
     minimum_payment: 400,
     minimum_payment_kind: 'fixed',

@@ -24,9 +24,11 @@ export function PayoffPill({ liability }: Props) {
   const interestLine =
     liability.recent_interest_average !== null
       ? `of which ~${formatMoney(liability.recent_interest_average)} was interest`
-      : liability.monthly_interest_now !== null
-        ? `this month's interest is ~${formatMoney(liability.monthly_interest_now)}`
-        : null
+      : liability.estimated_interest_this_month !== null
+        ? `this month's interest is ~${formatMoney(liability.estimated_interest_this_month)} (estimated)`
+        : liability.monthly_interest_now !== null
+          ? `this month's interest is ~${formatMoney(liability.monthly_interest_now)}`
+          : null
   // Payments are transfers into the account. A deposit typed straight onto
   // the loan is left out, and that has to be said rather than silently
   // shown as a lower pace.
@@ -35,11 +37,28 @@ export function PayoffPill({ liability }: Props) {
       ? `${formatMoney(liability.uncounted_deposits)} of plain deposits on this account were not counted as payments — record payments as transfers from the paying account so they are.`
       : null
 
-  if (liability.current_balance === 0) {
+  // An inverted register reports its magnitude, not zero, so this branch
+  // would not fire on it — but the guard is explicit because "Paid off" on a
+  // debt that is not paid off is the single worst thing this component can
+  // say, and it has said it before.
+  if (liability.current_balance === 0 && liability.balance_source !== 'inverted') {
     return (
       <div className="payoff-pill payoff-pill--paid">
         <CheckCircle2 size={18} />
         <div className="payoff-pill__main">Paid off</div>
+      </div>
+    )
+  }
+
+  // The register contradicts the account's own kind. Nothing below can be
+  // computed from a balance nobody is claiming.
+  if (liability.balance_source === 'inverted') {
+    return (
+      <div className="payoff-pill">
+        <div className="payoff-pill__main">No balance to read</div>
+        <div className="payoff-pill__sub">
+          This account's register disagrees with its bank about which way round it runs.
+        </div>
       </div>
     )
   }

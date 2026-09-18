@@ -24,7 +24,11 @@ export interface Liability {
    * manual balance stands in until an opening balance is added */
   /** 'empty' = linked to an account with no transactions and no remembered
    *  balance. Distinct from a real zero, which means paid off. */
-  balance_source: 'ledger' | 'manual' | 'manual_fallback' | 'empty'
+  /** 'inverted' = the register says this account HOLDS money while its bank
+   *  says it OWES money. Both cannot be true, and reporting the
+   *  contradiction as $0 owed is how a sign-flipped mortgage showed a green
+   *  "Paid off" pill. Never render a paid-off state on this source. */
+  balance_source: 'ledger' | 'manual' | 'manual_fallback' | 'empty' | 'inverted'
   /** Null until the terms are filled in — see terms_complete */
   interest_rate: number | null
   minimum_payment: number | null
@@ -58,6 +62,14 @@ export interface Liability {
    * the same window; null until 2+ months carry any. The actual figure where
    * one exists — `monthly_interest_now` is the modelled one. */
   recent_interest_average: number | null
+  /** This month's interest modelled from the terms, or null when nothing is
+   * claimed: no rate on file, or a month that already has a posted charge.
+   * An ESTIMATE — it must stay visibly distinct from a posted row, or it
+   * gets reconciled twice. Served, never computed here (see CLAUDE.md's
+   * boundary rule): the server owns what counts as a posted charge. */
+  estimated_interest_this_month: number | null
+  /** current_balance plus that estimate; equal to it when there is none. */
+  balance_with_estimate: number
   /** Positive rows with no partner account in the window — a balance
    * adjustment, or a payment typed without a transfer. Not counted as
    * payments, and said so. */
