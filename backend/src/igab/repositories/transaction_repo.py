@@ -1573,11 +1573,16 @@ class TransactionRepository(BaseRepository[Transaction]):
 
         date_low = txn_date - timedelta(days=date_window_days)
         date_high = txn_date + timedelta(days=date_window_days)
-        states = [BANK_UNLINKED]
+        # Each state carries its own date bound. A row a person typed may sit
+        # days from the bank's posting date, so those get the wide window; a
+        # row the bank itself posted is compared on the bank's own date and
+        # gets a tight one (see txn_filters.ADOPTION_DATE_WINDOW_DAYS).
+        typed_window = Transaction.date.between(date_low, date_high)
+        states = [and_(BANK_UNLINKED, typed_window)]
         if include_provisional:
-            states.append(PROVISIONALLY_LINKED)
+            states.append(and_(PROVISIONALLY_LINKED, typed_window))
         if orphaned_feed_sync_ids and orphaned_since is not None:
-            states.append(orphaned_link(orphaned_feed_sync_ids, orphaned_since))
+            states.append(orphaned_link(orphaned_feed_sync_ids, orphaned_since, txn_date))
         linked = or_(*states) if len(states) > 1 else states[0]
         query = (
             select(Transaction, Payee.name)
@@ -1585,7 +1590,6 @@ class TransactionRepository(BaseRepository[Transaction]):
             .where(
                 Transaction.account_id == account_id,
                 Transaction.amount == amount,
-                Transaction.date.between(date_low, date_high),
                 linked,
                 Transaction.is_deleted == False,  # noqa: E712
                 Transaction.parent_transaction_id.is_(None),

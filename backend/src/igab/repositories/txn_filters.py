@@ -17,7 +17,7 @@ once — when the transaction posts. This mirrors AccountRepository.get_balance.
 import re
 import uuid
 from collections.abc import Collection, Sequence
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Protocol
 
@@ -101,7 +101,20 @@ PROVISIONALLY_LINKED = and_(
 )
 
 
-def orphaned_link(feed_sync_ids: Collection[str], since: date):
+#: How far apart two *bank* postings may be and still be the same transaction
+#: re-identified. Tight on purpose, and nothing like the window used for rows
+#: a person typed: both sides of this comparison are the same bank's own
+#: posting date for the same purchase, so a re-issued id keeps the date it
+#: had. A recurring charge — the same coffee, the same amount, every week —
+#: is the case this protects. With a ten-day window, a genuinely missing row
+#: reached back and claimed last week's identical charge, queued the pair for
+#: review, and consumed it; the next feed row then found its own twin taken
+#: and claimed the week before that. Four duplicates of reconciled rows, in
+#: one run, from one button.
+ADOPTION_DATE_WINDOW_DAYS = 2
+
+
+def orphaned_link(feed_sync_ids: Collection[str], since: date, feed_date: date):
     """Rows carrying a bank id the bank was asked about and did not report.
 
     Two conditions, and the second is what makes the first safe:
@@ -117,11 +130,11 @@ def orphaned_link(feed_sync_ids: Collection[str], since: date):
     candidate search returns nothing and every feed row is written as a
     duplicate — 277 twins of reconciled transactions, once.
 
-    The window bound is the difference between "the bank no longer reports
-    this id" and "the bank was not asked": a weekly charge dated before the
-    window is not evidence of anything, and offering it would let this week's
-    charge absorb last week's. A row *inside* the window whose id the feed
-    omits is, by the bridge's own contract, an id the bank has retired.
+    The `since` bound is the difference between "the bank no longer reports
+    this id" and "the bank was not asked": a row outside the fetched window
+    is not evidence of anything. `feed_date` is the second, tighter bound —
+    see ADOPTION_DATE_WINDOW_DAYS. Both sides carry the same bank's posting
+    date, so a re-identified row sits on the same day, not near it.
 
     This used to be gated per account, on every stored id being absent from
     the feed at once. That gate failed the first time it was needed twice:
@@ -129,10 +142,15 @@ def orphaned_link(feed_sync_ids: Collection[str], since: date):
     so it no longer looked re-identified, and its remaining history was
     invisible again.
     """
+    posted = func.coalesce(Transaction.bank_posted_date, Transaction.date)
     return and_(
         Transaction.sync_id.isnot(None),
         Transaction.sync_id.notin_(list(feed_sync_ids)),
-        func.coalesce(Transaction.bank_posted_date, Transaction.date) >= since,
+        posted >= since,
+        posted.between(
+            feed_date - timedelta(days=ADOPTION_DATE_WINDOW_DAYS),
+            feed_date + timedelta(days=ADOPTION_DATE_WINDOW_DAYS),
+        ),
     )
 
 
