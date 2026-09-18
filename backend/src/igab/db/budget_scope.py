@@ -72,6 +72,11 @@ GLOBAL_TABLES: Mapping[str, str] = MappingProxyType(
         "an import built -- deleting that budget is exactly when it is wanted "
         "-- so it cannot be budget-scoped, and a snapshot must not carry one "
         "person's answers into another install.",
+        "api_keys": "A read-only credential belonging to a USER, not a "
+        "budget. It outlives any one budget and may reach several; the "
+        "budgets it reaches are the join table, which IS budget-scoped and "
+        "cascades. A snapshot must never carry one -- it is a credential, "
+        "and the file is something the person hands to someone else.",
     }
 )
 

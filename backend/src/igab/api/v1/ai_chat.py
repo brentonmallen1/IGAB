@@ -26,7 +26,7 @@ from igab.ai.context_window import result_char_budget
 from igab.ai.features import FEATURES
 from igab.ai.gateway import AIGateway
 from igab.ai.prompts import render_page_context
-from igab.ai.tools.context import ToolContext
+from igab.ai.tools.context import build_tool_context
 from igab.api.route import CommitRoute
 from igab.api.v1.schemas.ai_chat import (
     AICallDetailResponse,
@@ -77,49 +77,6 @@ def _client_today(raw: str | None) -> date:
         except ValueError:
             pass
     return datetime.now(UTC).date()
-
-
-async def _tool_context(session, budget_id: uuid.UUID, today: date) -> ToolContext:
-    """Build the services a tool may delegate to.
-
-    Constructed directly rather than through the request's dependency graph,
-    because the streaming path builds this against its own session.
-    """
-    from igab.guide.service import GuideService
-    from igab.repositories.account_repo import AccountRepository
-    from igab.repositories.category_repo import (
-        BudgetAssignmentRepository,
-        CategoryGroupRepository,
-        CategoryRepository,
-    )
-    from igab.repositories.payee_repo import PayeeRepository
-    from igab.repositories.snapshot_repo import SnapshotRepository
-    from igab.repositories.transaction_repo import TransactionRepository
-    from igab.services.budget_service import BudgetService
-    from igab.services.report_service import ReportService
-
-    category_repo = CategoryRepository(session)
-    account_repo = AccountRepository(session)
-    transaction_repo = TransactionRepository(session)
-    return ToolContext(
-        budget_id=budget_id,
-        today=today,
-        session=session,
-        reports=ReportService(session),
-        budgets=BudgetService(
-            account_repo,
-            category_repo,
-            CategoryGroupRepository(session),
-            BudgetAssignmentRepository(session),
-            transaction_repo,
-            snapshot_repo=SnapshotRepository(session),
-        ),
-        guide=GuideService(session),
-        categories=category_repo,
-        accounts=account_repo,
-        transactions=transaction_repo,
-        payees=PayeeRepository(session),
-    )
 
 
 def _sse(event: str, data: dict[str, Any]) -> str:
@@ -212,7 +169,7 @@ async def chat(
         try:
             # Its own session: the request's has been committed and handed back.
             async with AsyncSessionLocal() as stream_session:
-                tool_ctx = await _tool_context(stream_session, budget_id, today)
+                tool_ctx = await build_tool_context(stream_session, budget_id, today)
                 tool_ctx.result_max_chars = result_max_chars
                 async for event in chat_engine.run_turn(
                     gateway=gateway,

@@ -123,6 +123,77 @@ class Budget(Base):
     )
 
 
+class ApiKey(Base):
+    """A long-lived, read-only credential for reaching this budget from an
+    assistant.
+
+    The app's own auth is a 30-minute JWT with a 90-day refresh token, and
+    neither fits here: an MCP client is configured once and left alone, and a
+    refresh token can mint full WRITE access to everything the person owns.
+    A key is the narrow thing instead — read-only, scoped to named budgets,
+    revocable on its own without signing anyone out.
+
+    Vendor-agnostic by construction: it is a bearer token, so anything that
+    can set an Authorization header can use it. There is no OAuth flow to
+    implement per client.
+
+    Only the HASH is stored. The key is shown once, on creation, and cannot
+    be recovered — the same reason a password is not stored in the clear, and
+    the reason the UI has to say so at the moment it shows one.
+    """
+
+    __tablename__ = "api_keys"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    #: What the person called it — "Claude on the laptop". Only ever for them.
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    #: SHA-256 of the key. Not bcrypt: this is a 256-bit random secret, not a
+    #: password, so there is no low-entropy guess to slow down, and a key is
+    #: verified on every request.
+    key_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    #: The first few characters, kept in the clear so a list can say WHICH
+    #: key a row is without being able to reconstruct it.
+    prefix: Mapped[str] = mapped_column(String(16), nullable=False)
+    #: Reserved, and today always "read". A write scope would need every tool
+    #: to declare what it writes; the column exists so that arriving later is
+    #: a migration rather than a redesign.
+    scopes: Mapped[str] = mapped_column(String(40), default="read", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    #: Revoked rather than deleted, so a key that turns up in a log can still
+    #: be identified afterwards.
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    budgets: Mapped[list["ApiKeyBudget"]] = relationship(
+        back_populates="api_key", cascade="all, delete-orphan"
+    )
+
+
+class ApiKeyBudget(Base):
+    """Which budgets one key may read.
+
+    A join table rather than a column on the key: the answer is a set, and a
+    key that reached every budget its owner has would silently widen the
+    moment they made another one.
+    """
+
+    __tablename__ = "api_key_budgets"
+
+    api_key_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("api_keys.id", ondelete="CASCADE"), primary_key=True
+    )
+    budget_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("budgets.id", ondelete="CASCADE"), primary_key=True
+    )
+
+    api_key: Mapped["ApiKey"] = relationship(back_populates="budgets")
+
+
 class BudgetMember(Base):
     """Who can use a budget, and at what level.
 

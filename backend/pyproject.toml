@@ -26,6 +26,7 @@ dependencies = [
     # PDF rendering for receipt attachments (thumbnails + AI rasterization).
     # AGPL-3.0 — deliberate choice: copyleft is acceptable for this project.
     "pymupdf>=1.24.0",
+    "mcp>=2.2,<3",
 ]
 
 [dependency-groups]

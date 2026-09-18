@@ -13,6 +13,7 @@ passing while the table is quietly missed.
 Fictional data only: this repository is public (CLAUDE.md).
 """
 
+import hashlib
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
@@ -27,6 +28,8 @@ from igab.db.models import (
     AIConversation,
     AIJob,
     AIMessage,
+    ApiKey,
+    ApiKeyBudget,
     Budget,
     BudgetFilter,
     BudgetFilterCategory,
@@ -531,6 +534,25 @@ async def build_full_budget(session: AsyncSession, owner: User) -> FullBudget:
             orphaned=True,
         )
     )
+    await session.flush()
+
+    # A read-only API key pointed at this budget. The KEY is global — a
+    # credential belonging to a user, which outlives any one budget — but the
+    # link saying which budgets it may read is budget-scoped and cascades, so
+    # deleting a budget cannot leave it reachable by an assistant. Also
+    # SNAPSHOT_OMITTED, for the reason budget_members is: it is authorization,
+    # and a snapshot is a file the person hands to someone else.
+    api_key = ApiKey(
+        user_id=owner.id,
+        name="Claude on the laptop",
+        # Derived from the budget: the fixture builds more than one budget
+        # per test, and key_hash is unique across the installation.
+        key_hash=hashlib.sha256(f"fixture-{budget.id}".encode()).hexdigest(),
+        prefix="igab_fixture",
+    )
+    session.add(api_key)
+    await session.flush()
+    session.add(ApiKeyBudget(api_key_id=api_key.id, budget_id=budget.id))
     await session.flush()
 
     return FullBudget(

@@ -397,6 +397,18 @@ async def get_current_user(
     credentials: Annotated[HTTPAuthorizationCredentials, Depends(bearer_scheme)],
     auth_service: Annotated[AuthService, Depends(get_auth_service)],
 ) -> User:
+    # An API key is a different credential for a different door, and it is
+    # READ-ONLY by design. Letting it fall through to the JWT decoder would
+    # fail it as an "invalid token" — true, useless, and exactly the kind of
+    # answer that costs an evening. Say which door it belongs to.
+    from igab.services.api_key_service import looks_like_api_key
+
+    if looks_like_api_key(credentials.credentials):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="An IGAB API key is only accepted by the MCP endpoint at /api/v1/mcp.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     try:
         return await auth_service.get_current_user(credentials.credentials)
     except AuthenticationError as e:

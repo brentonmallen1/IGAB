@@ -74,7 +74,13 @@ class TestEveryTableIsClassified:
         # Cascades on budget delete and is SNAPSHOT_OMITTED: it is a log of
         # what this installation did, and a restored stale finding would badge
         # a bank link that was fixed months ago.
-        assert counted[Scope.OWNED] == 30
+        # 31: `api_key_budgets` joined (2026-09-18) — which read-only API
+        # keys may reach this budget. Cascades on budget delete (a deleted
+        # budget must not stay reachable by a key) and is SNAPSHOT_OMITTED
+        # for the same reason `budget_members` is: it is authorization, and
+        # carrying it would point the exporter's keys at the importer's
+        # budget.
+        assert counted[Scope.OWNED] == 31
         # 12: `asset_value_snapshots` rides in as its child, and
         # `budget_filter_tags` joined (2026-09-06) — a filter's tag axis,
         # scoped through its filter like `budget_filter_categories`.
@@ -90,7 +96,11 @@ class TestEveryTableIsClassified:
         # import mapping step's memory, keyed by account name and per user. It
         # exists to outlive the budget an import built, so budget scope is the
         # one thing it must not have.
-        assert counted[Scope.GLOBAL] == 4
+        # 5: `api_keys` joined as global (2026-09-18) — a read-only
+        # credential belonging to a USER. It outlives any one budget and may
+        # reach several; the budgets it reaches are `api_key_budgets`, which
+        # IS budget-scoped and cascades.
+        assert counted[Scope.GLOBAL] == 5
         assert counted[Scope.EXCLUDED] == 0
 
     def test_the_fixpoint_reaches_grandchildren(self):

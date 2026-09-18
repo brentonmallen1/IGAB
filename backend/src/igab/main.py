@@ -10,6 +10,7 @@ from igab.api.v1.router import api_router
 from igab.config import settings
 from igab.db.session import engine, init_db
 from igab.domain.exceptions import IGABError, NotFoundError
+from igab.mcp.server import mcp_app
 from igab.tasks.ai_worker import ai_worker
 from igab.tasks.scheduler import start_scheduler, stop_scheduler
 
@@ -66,6 +67,12 @@ def _configure_logging() -> None:
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
 
 
+#: Built once, at import, so the mount and the lifespan below hold the SAME
+#: app — the session manager lives on it, and two instances would mean
+#: starting one and serving the other.
+_mcp_app = mcp_app()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _configure_logging()
@@ -76,7 +83,12 @@ async def lifespan(app: FastAPI):
     start_scheduler()
     await ai_worker.startup_recovery()
     ai_worker.start()
-    yield
+    # A MOUNTED sub-app's lifespan never runs — Starlette only calls the
+    # outermost one — and the MCP transport's session manager is started by
+    # its lifespan. Without this every request reaches it and fails with
+    # "Task group is not initialized", which reads like a bug in the SDK.
+    async with _mcp_app.router.lifespan_context(_mcp_app):
+        yield
     await ai_worker.stop()
     stop_scheduler()
     await engine.dispose()
@@ -214,6 +226,12 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 
 
 app.include_router(api_router, prefix="/api/v1")
+
+# The MCP endpoint is its own ASGI app, mounted rather than routed: it speaks
+# a protocol, not REST, and it authenticates with an API key instead of the
+# session JWT every route above takes. Under /api/v1 so the existing nginx
+# `location /api/` proxies it with no config change and no second port.
+app.mount("/api/v1/mcp", _mcp_app)
 
 
 @app.get("/health")
