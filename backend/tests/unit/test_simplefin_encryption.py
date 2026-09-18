@@ -139,6 +139,11 @@ def _service_with_recording_client() -> tuple[SimpleFINService, MagicMock]:
         txn_repo=MagicMock(),
         txn_service=MagicMock(),
     )
+    # The run's writes are one change-log batch; a mock recorder still
+    # has to hand out a context manager, and a mock repo must not answer
+    # the tombstone lookup with a truthy MagicMock.
+    svc.txn_service.changes = MagicMock()
+    svc.txn_repo.was_deleted_by_user = AsyncMock(return_value=False)
     svc.client = MagicMock(claim_access_url=AsyncMock(return_value="https://u:p@bridge/simplefin"))
     return svc, svc.client
 

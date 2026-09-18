@@ -194,6 +194,13 @@ function MergedPreview({
   )
 }
 
+/** Days between the two rows on the bank's posting date where each has one. */
+function postedGapDays(a: Transaction, b: Transaction): number {
+  const da = new Date(a.bank_posted_date ?? a.date).getTime()
+  const db = new Date(b.bank_posted_date ?? b.date).getTime()
+  return Math.round(Math.abs(da - db) / 86_400_000)
+}
+
 function MatchCard({ match, budgetId }: { match: TransactionMatch; budgetId: string | null }) {
   const { formatMoney, formatDate } = useFormatters()
   const { data: syncedTxn, isLoading: loadingS } = useTransaction(match.synced_transaction_id)
@@ -247,6 +254,29 @@ function MatchCard({ match, budgetId }: { match: TransactionMatch; budgetId: str
                 Bank posted <strong>{formatMoney(Math.abs(syncedTxn.amount))}</strong>, your entry
                 says <strong>{formatMoney(Math.abs(manualTxn.amount))}</strong> — accepting updates
                 your entry to the bank's amount and keeps the original in its bank record.
+              </span>
+            </div>
+          )}
+
+          {syncedTxn &&
+            manualTxn &&
+            (manualTxn.cleared === 'reconciled' || syncedTxn.cleared === 'reconciled') && (
+              <div className="match-modal__callout" role="note">
+                <AlertTriangle size={13} aria-hidden />
+                <span>
+                  One of these is <strong>reconciled</strong>. Accepting keeps the reconciled row
+                  and removes the other, so only accept if they are the same purchase.
+                </span>
+              </div>
+            )}
+
+          {syncedTxn && manualTxn && postedGapDays(syncedTxn, manualTxn) >= 2 && (
+            <div className="match-modal__callout" role="note">
+              <AlertTriangle size={13} aria-hidden />
+              <span>
+                These posted <strong>{postedGapDays(syncedTxn, manualTxn)} days apart</strong>. A
+                charge that repeats — the same coffee every week — looks like this; check the dates
+                before accepting.
               </span>
             </div>
           )}

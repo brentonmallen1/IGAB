@@ -137,6 +137,16 @@ export interface OrphanedLink {
   stored_simplefin_id: string
   suggested_feed_id: string | null
   suggested_feed_name: string | null
+  /** The bridge reported an institution needing re-authentication and
+   *  offered no replacement: the account is unreachable, not gone. */
+  may_need_auth?: boolean
+}
+
+/** What an orphaned link asks of the person, in one clause. */
+export function describeOrphanFix(o: OrphanedLink): string {
+  if (o.suggested_feed_name) return `relink to "${o.suggested_feed_name}"`
+  if (o.may_need_auth) return 'an institution needs re-authenticating at the SimpleFIN bridge'
+  return 'relink in account settings'
 }
 
 /** One entry from the bridge's `errlist`. `con.auth` means re-authentication. */
@@ -261,6 +271,9 @@ function formatSyncAll(result: SyncAllResult): string {
   if (orphans.length > 0) {
     const names = orphans.map((o) => o.account_name)
     const who = names.length === 1 ? names[0] : `${names.length} accounts`
+    if (orphans.every((o) => o.may_need_auth)) {
+      return `${who} could not be reached — an institution needs re-authenticating at the SimpleFIN bridge`
+    }
     return `${who} no longer match an account at the bank — relink to resume importing`
   }
 

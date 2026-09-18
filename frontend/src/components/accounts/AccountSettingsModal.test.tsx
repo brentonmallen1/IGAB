@@ -38,7 +38,13 @@ vi.mock('../../api/simplefin', () => {
 // offer a one-click relink. Nothing is broken in these fixtures.
 vi.mock('../../api/syncLogs', () => ({
   useSyncHealth: () => ({
-    data: { orphaned_links: [], needs_auth: [], balance_drift: [], last_run_at: null },
+    data: {
+      orphaned_links: [],
+      needs_auth: [],
+      balance_drift: [],
+      unserved: [],
+      last_run_at: null,
+    },
   }),
 }))
 // No registry yet: the form falls back to the built-in mirror.

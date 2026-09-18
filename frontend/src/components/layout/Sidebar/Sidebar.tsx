@@ -52,6 +52,7 @@ import { useLiabilities } from '../../../api/liabilities'
 import { useAssets } from '../../../api/assets'
 import {
   describeDrift,
+  describeOrphanFix,
   useSimpleFINConnections,
   useSimpleFINRateLimitStatus,
   useSyncSimpleFIN,
@@ -98,11 +99,13 @@ export function Sidebar() {
       d.account_id,
       `${describeDrift([d])} — fetch the last 90 days again in account settings`,
     ]),
+    ...(syncHealth?.unserved ?? []).map((u): [string, string] => [
+      u.account_id,
+      'The bank returned nothing for this account on the last sync — it has stopped importing',
+    ]),
     ...(syncHealth?.orphaned_links ?? []).map((o): [string, string] => [
       o.account_id,
-      o.suggested_feed_name
-        ? `No longer offered by the bank — relink to "${o.suggested_feed_name}"`
-        : 'No longer offered by the bank — relink in account settings',
+      `No longer offered by the bank — ${describeOrphanFix(o)}`,
     ]),
   ])
   const syncFault = hasSyncFault(syncHealth)

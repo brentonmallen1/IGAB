@@ -56,6 +56,24 @@
   color: var(--bg-primary);
 }
 
+.sync-run__pill--undone {
+  color: var(--text-muted);
+  border-color: var(--edge-strong);
+}
+
+.sync-run__fault--undone {
+  color: var(--text-muted);
+  border-left-color: var(--edge-strong);
+}
+
+.sync-run__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin: var(--spacing-sm) 0;
+  flex-wrap: wrap;
+}
+
 .sync-run__pill--limited {
   background: var(--color-warning);
   color: var(--bg-primary);

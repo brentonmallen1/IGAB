@@ -723,6 +723,12 @@ class TransactionService:
                 await self.match_repo.cancel_pending_for_transaction(transaction_id)
 
             txn_before = snapshot("transaction", txn)
+            if source != "manual" and txn.sync_id is not None:
+                # The sync removing its own row is not a person's decision
+                # about that bank record. Give the id up so the row is not a
+                # tombstone (transaction_repo.was_deleted_by_user); the
+                # snapshot above still carries it for undo.
+                await self.transaction_repo.update(transaction_id, sync_id=None)
             await self.transaction_repo.soft_delete(transaction_id)
             await self._record_txn(txn, "delete", before=txn_before, source=source, refresh=False)
         return batch_id
@@ -778,10 +784,11 @@ class TransactionService:
         with self.changes.batch():
             updated = await self.transaction_repo.update(txn.id, **outcome.updates)
             await self._record_txn(updated, "update", before=before, source="system")
-            if "cleared" in outcome.updates and txn.is_split:
-                await self._mirror_children(
-                    txn.id, source="system", cleared=outcome.updates["cleared"]
-                )
+            # The mirror invariant, same as an edit's: lines follow their
+            # parent's date and cleared state. A posting can move both.
+            mirrored = {k: outcome.updates[k] for k in ("date", "cleared") if k in outcome.updates}
+            if mirrored and txn.is_split:
+                await self._mirror_children(txn.id, source="system", **mirrored)
         return outcome
 
     async def release_bank_link(self, txn: Transaction) -> None:

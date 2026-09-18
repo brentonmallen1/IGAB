@@ -1,7 +1,16 @@
 import { useState } from 'react'
 import { AlertTriangle, ChevronDown, ChevronRight, Link2, RefreshCw } from 'lucide-react'
 
-import { useSyncRun, useSyncRuns, type SyncRun, type SyncRunAccount } from '../../../api/syncLogs'
+import toast from 'react-hot-toast'
+
+import {
+  useSyncRun,
+  useSyncRuns,
+  useUndoSyncRun,
+  type SyncRun,
+  type SyncRunAccount,
+} from '../../../api/syncLogs'
+import { confirmAsync } from '../../../stores/confirmStore'
 import { useAppStore } from '../../../stores/appStore'
 import { parseApiDecimal } from '../../../utils/money'
 import { useFormatters } from '../../../hooks/useFormatters'
@@ -89,7 +98,33 @@ function RunRow({ run, budgetId }: { run: SyncRun; budgetId: string }) {
 
 function RunDetail({ runId, budgetId }: { runId: string; budgetId: string }) {
   const { data: run, isLoading } = useSyncRun(budgetId, runId)
+  const undo = useUndoSyncRun(budgetId)
   if (isLoading || !run) return <div className="sync-run__detail">Loading…</div>
+
+  const touched = run.imported + run.adopted + run.matched + run.cleared + run.removed_pending
+  const canUndo = !!run.change_batch_id && !run.undone_at && touched > 0
+
+  async function handleUndo() {
+    if (!run) return
+    const ok = await confirmAsync({
+      title: 'Undo this sync?',
+      message:
+        `Takes back what this run did: ${run.imported} imported, ${run.adopted} re-linked, ` +
+        `${run.matched} matched, ${run.removed_pending} removed. Rows you have edited since are ` +
+        'left alone.',
+      confirmLabel: 'Undo run',
+      destructive: true,
+    })
+    if (!ok) return
+    try {
+      const result = await undo.mutateAsync(run.id)
+      const parts = [`Undid ${result.undone} change${result.undone === 1 ? '' : 's'}`]
+      if (result.skipped) parts.push(`${result.skipped} edited since were left alone`)
+      toast.success(parts.join(' — '))
+    } catch {
+      toast.error('Could not undo this run')
+    }
+  }
 
   const days = windowDays(run)
   const skips = Object.entries(run.skip_reasons)
@@ -106,6 +141,12 @@ function RunDetail({ runId, budgetId }: { runId: string; budgetId: string }) {
               <>
                 It looks like <strong>{orphan.suggested_feed_name}</strong> is its replacement —
                 relink it in that account&rsquo;s settings to resume importing.
+              </>
+            ) : orphan.may_need_auth ? (
+              <>
+                The bridge also reported an institution needing re-authentication, so this is more
+                likely a lapsed login than a re-issued account: sign in again at the SimpleFIN
+                bridge. Nothing was removed here.
               </>
             ) : (
               <>Relink it in that account&rsquo;s settings to resume importing.</>
@@ -134,6 +175,13 @@ function RunDetail({ runId, budgetId }: { runId: string; budgetId: string }) {
           </div>
         </div>
       ))}
+
+      {run.undone_at && (
+        <div className="sync-run__fault sync-run__fault--undone">
+          <RefreshCw size={13} />
+          <div>This run was undone {new Date(run.undone_at).toLocaleString()}.</div>
+        </div>
+      )}
 
       <dl className="sync-run__facts">
         <Fact label="Window asked for">
@@ -164,6 +212,23 @@ function RunDetail({ runId, budgetId }: { runId: string; budgetId: string }) {
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {canUndo && (
+        <div className="sync-run__actions">
+          <button
+            type="button"
+            className="dialog-btn dialog-btn--secondary"
+            onClick={() => void handleUndo()}
+            disabled={undo.isPending}
+          >
+            {undo.isPending ? 'Undoing…' : 'Undo this run'}
+          </button>
+          <span className="sync-run__hint">
+            Takes back every row this run imported, re-linked or removed. Rows you edited since
+            stay.
+          </span>
         </div>
       )}
 

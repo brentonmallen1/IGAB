@@ -115,6 +115,10 @@ UNTRACKED_UUIDS: Mapping[tuple[str, str], str] = MappingProxyType(
         "POLYMORPHIC_REFERENCES.",
         ("change_log", "batch_id"): "Correlates change_log rows belonging to "
         "one compound operation. Not a row id in any table.",
+        ("sync_runs", "change_batch_id"): "The change_log batch_id a bank sync's "
+        "writes landed in, so the run can be undone as a unit. Same nature as "
+        "change_log.batch_id: a correlation value, not a row id. sync_runs is "
+        "SNAPSHOT_OMITTED anyway.",
     }
 )
 

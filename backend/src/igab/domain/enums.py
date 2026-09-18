@@ -105,3 +105,7 @@ class SkipReason(StrEnum):
     ALREADY_POSTED = "already_posted"
     #: Writing the row hit the account's unique bank-id index.
     DUPLICATE_SYNC_ID = "duplicate_sync_id"
+    #: The bank still reports a row the person deleted here. Stays deleted:
+    #: a deletion is a decision, and the feed repeating itself is not new
+    #: evidence. Undo the delete to have it back.
+    DELETED_BY_USER = "deleted_by_user"

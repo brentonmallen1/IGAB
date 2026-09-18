@@ -479,6 +479,11 @@ class TestSimpleFINSyncDeduplication:
             txn_repo=AsyncMock(),
             txn_service=AsyncMock(),
         )
+        # The run's writes are one change-log batch; a mock recorder still
+        # has to hand out a context manager, and a mock repo must not answer
+        # the tombstone lookup with a truthy MagicMock.
+        svc.txn_service.changes = MagicMock()
+        svc.txn_repo.was_deleted_by_user = AsyncMock(return_value=False)
         svc.session.begin_nested = MagicMock(return_value=AsyncMock())
         # The posting rule is written by TransactionService; bind the real
         # writer to this test's mocked repo so txn_repo.update stays observable.
@@ -857,6 +862,11 @@ class TestDedupScoring:
             txn_repo=AsyncMock(),
             txn_service=AsyncMock(),
         )
+        # The run's writes are one change-log batch; a mock recorder still
+        # has to hand out a context manager, and a mock repo must not answer
+        # the tombstone lookup with a truthy MagicMock.
+        svc.txn_service.changes = MagicMock()
+        svc.txn_repo.was_deleted_by_user = AsyncMock(return_value=False)
         svc.session.begin_nested = MagicMock(return_value=AsyncMock())
         svc.txn_repo.find_stale_pending_synced = AsyncMock(return_value=[])
 

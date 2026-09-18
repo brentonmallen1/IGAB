@@ -100,6 +100,10 @@ class OrphanedLinkInfo(ApiModel):
     stored_simplefin_id: str
     suggested_feed_id: str | None = None
     suggested_feed_name: str | None = None
+    #: The bridge reported an institution needing re-authentication in the
+    #: same response and offered no replacement: the account is unreachable,
+    #: not gone, and the fix is at the bridge rather than a relink here.
+    may_need_auth: bool = False
 
 
 class BankErrorInfo(ApiModel):
@@ -267,9 +271,29 @@ class SyncRunResponse(ApiModel):
     review_queued: int = 0
     removed_pending: int = 0
     anchored: int = 0
+    #: Present when the run's writes can be taken back as a unit.
+    change_batch_id: uuid.UUID | None = None
+    undone_at: datetime | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class SyncRunUndoResult(ApiModel):
+    """What "Undo this run" managed. `skipped` are changes left in place
+    because the row was edited since — the person's later word wins."""
+
+    undone: int
+    skipped: int
+
+
+class UnservedAccount(ApiModel):
+    """An account the latest run was told to sync and the feed offered
+    nothing for — no rows and no balance. The link is broken or the
+    institution is unreachable; either way the account has stopped."""
+
+    account_id: uuid.UUID
+    account_name: str | None = None
 
 
 class SyncRunDetailResponse(SyncRunResponse):
@@ -291,9 +315,12 @@ class SyncHealthResponse(ApiModel):
 
     orphaned_links: list[OrphanedLinkInfo] = []
     needs_auth: list[BankErrorInfo] = []
+    #: Re-checked against the ledger as it is now, not as the run left it,
+    #: so deleting the duplicates clears the badge without another sync.
     balance_drift: list[BalanceDriftInfo] = []
+    unserved: list[UnservedAccount] = []
     last_run_at: datetime | None = None
 
     @property
     def clean(self) -> bool:
-        return not self.orphaned_links and not self.needs_auth and not self.balance_drift
+        return not (self.orphaned_links or self.needs_auth or self.balance_drift or self.unserved)

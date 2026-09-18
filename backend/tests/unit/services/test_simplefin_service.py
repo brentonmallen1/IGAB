@@ -326,6 +326,11 @@ class TestSyncFlow:
             txn_repo=AsyncMock(),
             txn_service=AsyncMock(),
         )
+        # The run's writes are one change-log batch; a mock recorder still
+        # has to hand out a context manager, and a mock repo must not answer
+        # the tombstone lookup with a truthy MagicMock.
+        svc.txn_service.changes = MagicMock()
+        svc.txn_repo.was_deleted_by_user = AsyncMock(return_value=False)
         # begin_nested is used as an async context manager (savepoint per row)
         svc.session.begin_nested = MagicMock(return_value=AsyncMock())
         # The posting rule is written by TransactionService. Give the mocked
@@ -1538,6 +1543,24 @@ class TestMatchDecision:
         d = _decide_match("COMENITY PAY VI WEB PYMT", today_utc(), True, [cand])
         assert d.action == "auto"
         assert d.candidate is cand[0]
+
+    def test_bank_descriptor_that_contradicts_the_feed_goes_to_review(self) -> None:
+        """The structural shortcut takes a lone same-amount row a day away
+        regardless of payee — which is right for a row a person typed
+        ("Rent" never resembles "CHECK 1234") and wrong when the row carries
+        the bank's own words: "HOME DEPOT" and "TRADER JOE'S" the same day
+        are two purchases, and merging them loses one."""
+        cand = _candidate(days_ago=0, payee="Home Depot")
+        cand[0].bank_payee = "HOME DEPOT #4411"
+        d = _decide_match("TRADER JOE'S #552", today_utc(), True, [cand])
+        assert d.action == "review"
+        assert d.candidate is cand[0]
+
+    def test_bank_descriptor_that_agrees_still_auto_matches(self) -> None:
+        cand = _candidate(days_ago=1, payee="Trader Joe's")
+        cand[0].bank_payee = "TRADER JOE'S #552"
+        d = _decide_match("TRADER JOES 552", today_utc(), True, [cand])
+        assert d.action == "auto"
 
     def test_check_descriptor_one_day_off_auto_matches(self) -> None:
         cand = _candidate(days_ago=1, payee="Lawn Service")

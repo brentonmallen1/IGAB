@@ -21,7 +21,9 @@ from igab.api.v1.schemas.simplefin import (
     SyncRunDetailResponse,
     SyncRunListResponse,
     SyncRunResponse,
+    SyncRunUndoResult,
     TransactionMatchResponse,
+    UnservedAccount,
 )
 from igab.dependencies import (
     AccountAccess,
@@ -34,7 +36,10 @@ from igab.dependencies import (
     get_simplefin_service,
     get_sync_run_repo,
     get_transaction_matching_service,
+    get_undo_service,
 )
+from igab.domain.bank_balance import drift_is_a_fault
+from igab.domain.exceptions import NotFoundError
 from igab.integrations.simplefin.encryption import (
     GENERATE_KEY_COMMAND,
     SimpleFINNotConfigured,
@@ -45,6 +50,7 @@ from igab.repositories.sync_run_repo import SyncRunRepository
 from igab.services.change_log import ChangeRecorder, snapshot, snapshots_match
 from igab.services.simplefin_service import SimpleFINService
 from igab.services.transaction_matching_service import TransactionMatchingService
+from igab.services.undo_service import BatchUndo, UndoService
 
 logger = logging.getLogger(__name__)
 
@@ -394,6 +400,7 @@ async def get_sync_health(
     budget_id: BudgetAccess,
     current_user: CurrentUser,
     runs: Annotated[SyncRunRepository, Depends(get_sync_run_repo)],
+    account_repo: Annotated[AccountRepository, Depends(get_account_repo)],
 ) -> SyncHealthResponse:
     """Whether anything about bank sync needs attention right now.
 
@@ -405,12 +412,79 @@ async def get_sync_health(
     latest = await runs.latest_with_orphans(budget_id)
     if latest is None:
         return SyncHealthResponse()
+    detail = await runs.get(latest.id)
+    accounts = detail.accounts if detail is not None else []
+
+    # Drift is re-judged against the ledger as it stands now. The run said
+    # "off by X"; the person then deleted the duplicates; the badge must not
+    # go on saying X until the next hourly run happens to agree.
+    still_off: list[dict] = []
+    for entry in latest.balance_drift:
+        try:
+            account = await account_repo.get_or_raise(uuid.UUID(str(entry.get("account_id"))))
+        except (NotFoundError, ValueError):
+            continue
+        cleared = await account_repo.get_cleared_balance(account.id)
+        drift = drift_is_a_fault(
+            account.simplefin_balance, cleared, reconciled=account.last_reconciled_at is not None
+        )
+        if drift is not None:
+            still_off.append(
+                {
+                    **entry,
+                    "bank_balance": str(drift.reported),
+                    "ledger_cleared_balance": str(drift.ledger_cleared),
+                }
+            )
+
     return SyncHealthResponse(
         orphaned_links=latest.orphaned_links,
         needs_auth=[e for e in latest.bank_errors if e.get("code") == "con.auth"],
-        balance_drift=latest.balance_drift,
+        balance_drift=still_off,
+        unserved=[
+            UnservedAccount(account_id=a.account_id, account_name=a.account_name)
+            for a in accounts
+            if a.account_id is not None
+            and (a.orphaned or (a.feed_txn_count == 0 and a.bank_balance is None))
+        ],
         last_run_at=latest.created_at,
     )
+
+
+@router.post("/{budget_id}/simplefin/sync-runs/{run_id}/undo", response_model=SyncRunUndoResult)
+async def undo_sync_run(
+    budget_id: BudgetAccess,
+    run_id: uuid.UUID,
+    current_user: CurrentUser,
+    runs: Annotated[SyncRunRepository, Depends(get_sync_run_repo)],
+    undo: Annotated[UndoService, Depends(get_undo_service)],
+) -> SyncRunUndoResult:
+    """Take back what one run wrote — the imports, the adoptions, the rows
+    it removed, the relink — as one unit. Rows the person has edited since
+    are left alone and counted as skipped.
+
+    This is the recovery a bad run needs and never had: ⌘Z skips sync
+    changes by design, and "revert everything after a point" also reverts
+    the person's own work since.
+    """
+    run = await runs.get(run_id)
+    if run is None or run.budget_id != budget_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sync run not found")
+    if run.change_batch_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This run predates per-run undo and cannot be taken back as a unit",
+        )
+    if run.undone_at is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Already undone")
+    try:
+        result = await undo.undo_batch_leniently(budget_id, run.change_batch_id)
+    except NotFoundError:
+        # Nothing was recorded — a run that imported nothing has nothing to
+        # take back, and saying so is the honest outcome.
+        result = BatchUndo([], [])
+    await runs.mark_undone(run)
+    return SyncRunUndoResult(undone=len(result.undone), skipped=len(result.skipped))
 
 
 @router.get("/{budget_id}/simplefin/sync-runs", response_model=SyncRunListResponse)

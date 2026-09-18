@@ -18,7 +18,10 @@ from sqlalchemy import select
 from igab.db.models import Account, Transaction
 from igab.domain.sync_window import SIMPLEFIN_MAX_WINDOW_DAYS
 from igab.integrations.simplefin.client import SimpleFINError, SimpleFINFeed
+from igab.integrations.simplefin.limits import GLOBAL_DAILY_LIMIT
 from igab.services.simplefin_service import SimpleFINService
+from igab.services.transaction_service import TransactionCreate, TransactionUpdate
+from igab.utils.clock import today_utc
 
 from .factories import (
     create_account,
@@ -922,3 +925,257 @@ async def test_a_row_the_user_dated_earlier_adopts_on_the_banks_posted_date(db_s
     assert len(rows) == 1
     assert rows[0].sync_id == "new-bill"
     assert rows[0].date == entered_on, "the person's date is theirs, not the bank's"
+
+
+def pending_txn(txn_id: str, amount: str, on: date, *, account: str, payee: str) -> dict:
+    """A hold the bank has authorised but not posted."""
+    return {
+        "id": txn_id,
+        "account_id": account,
+        "amount": amount,
+        "payee": payee,
+        "description": f"{payee} AUTH",
+        "posted": 0,
+        "transacted_at": _ts(on),
+    }
+
+
+async def test_an_orphaned_accounts_pending_rows_survive_the_broken_link(db_session):
+    """While a link was broken, every hourly run deleted the account's
+    pending rows: the feed had no rows for it at all, so each id it held
+    looked "vanished" to the stale-pending pass. Nothing the feed did not
+    serve may be judged by that feed."""
+    services, budget, account, conn = await _setup(db_session)
+    hold = pending_txn("old-hold", "-40.00", date.today(), account=OLD_ACCT, payee="CASCADE COFFEE")
+    with PATCH_DECRYPT:
+        await _service(services, [hold]).sync(conn.id, budget.id)
+    [row] = await _live_rows(db_session, account.id)
+    assert row.cleared == "pending"
+
+    # The bank re-issues the id under a name auto-relink will not act on.
+    start = date.today() - timedelta(days=30)
+    with PATCH_DECRYPT:
+        result = await _service(
+            services, _feed(NEW_ACCT, "new", start), names={NEW_ACCT: BANK_NAME_SIMILAR}
+        ).sync(conn.id, budget.id)
+
+    assert result["removed_pending"] == 0
+    assert [r.cleared for r in await _live_rows(db_session, account.id)] == ["pending"]
+
+
+async def test_a_rate_limited_run_is_recorded(db_session):
+    """A quota-throttled hourly run returned an error dict the scheduler
+    discarded: no log line, no error on the connection, no run. The shape of
+    the nine-day failure, again."""
+    from igab.repositories.sync_run_repo import SyncRunRepository
+
+    services, budget, account, conn = await _setup(db_session)
+    conn.last_request_date = today_utc()
+    conn.global_requests_today = GLOBAL_DAILY_LIMIT
+    await db_session.flush()
+
+    with PATCH_DECRYPT:
+        result = await _service(services, []).sync(conn.id, budget.id)
+
+    assert "limit" in result["error"]
+    runs, _ = await SyncRunRepository(db_session).list_runs(budget_id=budget.id)
+    assert runs[0].status == "rate_limited"
+    assert runs[0].error == result["error"]
+    await db_session.refresh(conn)
+    assert conn.last_sync_error == result["error"]
+
+
+async def test_a_failed_fetch_is_recorded(db_session):
+    from igab.repositories.sync_run_repo import SyncRunRepository
+
+    services, budget, account, conn = await _setup(db_session)
+    svc = _service(services, [])
+
+    class Refusing:
+        async def get_feed(self, access_url, since=None):
+            raise RuntimeError("bridge unreachable")
+
+    svc.client = Refusing()
+    with PATCH_DECRYPT:
+        result = await svc.sync(conn.id, budget.id)
+    assert result["error"] == "bridge unreachable"
+    runs, _ = await SyncRunRepository(db_session).list_runs(budget_id=budget.id)
+    assert runs[0].status == "error"
+    assert runs[0].window_start is not None
+
+
+async def test_a_row_the_person_deleted_stays_deleted(db_session):
+    """Nothing remembered the deletion: the id was found on no live row, so
+    the next sync imported it again. A deletion is a decision."""
+    services, budget, account, conn = await _setup(db_session)
+    start = date.today() - timedelta(days=30)
+    with PATCH_DECRYPT:
+        await _service(services, _feed(OLD_ACCT, "old", start)).sync(conn.id, budget.id)
+    rows = await _live_rows(db_session, account.id)
+    victim = next(r for r in rows if r.sync_id == "old-0")
+    await services.transactions.delete(budget.id, victim.id)
+    await db_session.flush()
+
+    with PATCH_DECRYPT:
+        again = await _service(services, _feed(OLD_ACCT, "old", start)).sync(conn.id, budget.id)
+
+    assert again["imported"] == 0
+    assert again["skip_reasons"]["deleted_by_user"] == 1
+    assert len(await _live_rows(db_session, account.id)) == len(HISTORY) - 1
+
+
+async def test_a_hold_the_sync_itself_removed_may_come_back(db_session):
+    """The sync's own sweep is not a person's decision. A hold the bank
+    dropped and later reports again is news, and it imports."""
+    services, budget, account, conn = await _setup(db_session)
+    hold = pending_txn("old-hold", "-40.00", date.today(), account=OLD_ACCT, payee="CASCADE COFFEE")
+    with PATCH_DECRYPT:
+        await _service(services, [hold]).sync(conn.id, budget.id)
+        # The bank drops it: a feed that still serves the account but omits
+        # the hold. Then it reports the hold again.
+        other = bank_txn("old-x", "-5.00", date.today(), account=OLD_ACCT, payee="CORNER MARKET")
+        swept = await _service(services, [other]).sync(conn.id, budget.id)
+        back = await _service(services, [other, hold]).sync(conn.id, budget.id)
+
+    assert swept["removed_pending"] == 1
+    assert back["imported"] == 1
+    assert back["skip_reasons"].get("deleted_by_user", 0) == 0
+
+
+async def test_hand_typed_recurring_rows_match_their_own_day(db_session):
+    """Feed order is not evidence. The person typed today's coffee but not
+    last week's. Last week's feed record, processed first, used to reach
+    forward a week, take today's typed row for review, and consume it — so
+    today's feed record then imported beside its own typed twin."""
+    services, budget, account, conn = await _setup(db_session)
+    today = date.today()
+    typed = await services.transactions.create(
+        budget.id,
+        TransactionCreate(
+            account_id=account.id,
+            date=today,
+            amount=Decimal("-8.68"),
+            payee_name="Cascade Coffee",
+            category_id=None,
+            cleared="uncleared",
+            approved=True,
+            auto_categorize=False,
+        ),
+    )
+    feed = [
+        bank_txn(
+            "c-last", "-8.68", today - timedelta(days=7), account=OLD_ACCT, payee="CASCADE COFFEE"
+        ),
+        bank_txn("c-today", "-8.68", today, account=OLD_ACCT, payee="CASCADE COFFEE"),
+    ]
+    with PATCH_DECRYPT:
+        result = await _service(services, feed).sync(conn.id, budget.id)
+
+    assert result["matched"] == 1, "today's record took today's typed row"
+    assert result["imported"] == 1, "last week's imported clean"
+    assert result["review_queued"] == 0
+    rows = await _live_rows(db_session, account.id)
+    assert len(rows) == 2
+    await db_session.refresh(typed)
+    assert typed.sync_id == "c-today"
+
+
+async def test_a_run_can_be_undone_as_a_unit(db_session, api_client):
+    """The recovery a bad run needs and never had. Rows the person edited
+    since stay, and are counted."""
+    from igab.dependencies import get_simplefin_service
+    from igab.main import app
+    from igab.repositories.sync_run_repo import SyncRunRepository
+
+    budget = await create_budget(db_session, api_client.test_user)
+    account = await create_account(
+        db_session, budget, "Harborstone Checking", simplefin_account_id=OLD_ACCT
+    )
+    conn = await create_simplefin_connection(db_session, api_client.test_user)
+    await db_session.commit()
+    services = make_services(db_session)
+    start = date.today() - timedelta(days=30)
+    svc = _service(services, _feed(OLD_ACCT, "old", start))
+    app.dependency_overrides[get_simplefin_service] = lambda: svc
+    try:
+        with PATCH_DECRYPT:
+            first = await svc.sync(conn.id, budget.id)
+        await db_session.commit()
+        assert first["imported"] == len(HISTORY)
+        runs, _ = await SyncRunRepository(db_session).list_runs(budget_id=budget.id)
+        run = runs[0]
+        assert run.change_batch_id is not None
+
+        # The person filed one of the imported rows since.
+        group = await create_category_group(db_session, budget)
+        category = await create_category(db_session, budget, group, "Coffee")
+        rows = await _live_rows(db_session, account.id)
+        kept = rows[0]
+        await services.transactions.update(
+            budget.id, kept.id, TransactionUpdate(category_id=category.id)
+        )
+        await db_session.commit()
+
+        r = await api_client.post(f"/api/v1/{budget.id}/simplefin/sync-runs/{run.id}/undo")
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["undone"] == len(HISTORY) - 1
+        assert body["skipped"] == 1
+
+        remaining = await _live_rows(db_session, account.id)
+        assert [t.id for t in remaining] == [kept.id]
+        await db_session.refresh(run)
+        assert run.undone_at is not None
+
+        r = await api_client.post(f"/api/v1/{budget.id}/simplefin/sync-runs/{run.id}/undo")
+        assert r.status_code == 409
+    finally:
+        app.dependency_overrides.pop(get_simplefin_service, None)
+
+
+async def test_the_health_badge_clears_when_the_ledger_is_fixed(db_session, api_client):
+    """Health re-judges drift against the ledger as it stands. The run said
+    off by X; the person deleted the duplicate; the badge must not go on
+    saying X until the next hourly run happens to agree."""
+    budget = await create_budget(db_session, api_client.test_user)
+    account = await create_account(
+        db_session, budget, "Harborstone Checking", simplefin_account_id=OLD_ACCT
+    )
+    account.last_reconciled_at = datetime.now(UTC)
+    conn = await create_simplefin_connection(db_session, api_client.test_user)
+    await db_session.commit()
+    services = make_services(db_session)
+    start = date.today() - timedelta(days=30)
+    ledger = sum(Decimal(amount) for amount, _payee in HISTORY)
+    with PATCH_DECRYPT:
+        await _service(services, _feed(OLD_ACCT, "old", start), balances={OLD_ACCT: ledger}).sync(
+            conn.id, budget.id
+        )
+    # A duplicate the person typed by hand, so the ledger is off by it.
+    extra = await services.transactions.create(
+        budget.id,
+        TransactionCreate(
+            account_id=account.id,
+            date=date.today(),
+            amount=Decimal("-12.50"),
+            payee_name="Corner Market",
+            category_id=None,
+            cleared="cleared",
+            approved=True,
+            auto_categorize=False,
+        ),
+    )
+    with PATCH_DECRYPT:
+        await _service(services, _feed(OLD_ACCT, "old", start), balances={OLD_ACCT: ledger}).sync(
+            conn.id, budget.id
+        )
+    await db_session.commit()
+
+    r = await api_client.get(f"/api/v1/{budget.id}/simplefin/sync-runs/health")
+    assert r.status_code == 200, r.text
+    assert len(r.json()["balance_drift"]) == 1
+
+    await services.transactions.delete(budget.id, extra.id)
+    await db_session.commit()
+    r = await api_client.get(f"/api/v1/{budget.id}/simplefin/sync-runs/health")
+    assert r.json()["balance_drift"] == [], "fixed by hand, no sync needed"
