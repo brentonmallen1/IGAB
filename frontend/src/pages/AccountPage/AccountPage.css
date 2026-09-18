@@ -10,8 +10,12 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--spacing-xl);
-  padding: var(--spacing-lg) var(--spacing-lg);
+  gap: var(--spacing-lg);
+  /* Tightened deliberately: every row this band occupies is a row of the
+     register it sits above, and the header is read once per visit while the
+     register is read continuously. Vertical padding is the smaller of the
+     two — the side gutter still matches the page. */
+  padding: var(--spacing-sm) var(--spacing-lg);
   flex-shrink: 0;
 }
 
@@ -19,13 +23,13 @@
 .account-page__header-left {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-md);
+  gap: var(--spacing-xs);
 }
 
 .account-page__identity {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
 /* The account name keeps its display size on a desktop; on a phone it is in
@@ -36,8 +40,34 @@
   line-height: 1.1;
 }
 
-/* The compact balance line, phones only (see the toggle in AccountPage.tsx). */
-.account-page__balances-toggle {
+/* The fold control, at every width. It carries the working balance so the
+   folded header still answers the question you came to the page with, and
+   it is a real button so the fold is reachable by keyboard. */
+.account-page__header-toggle {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-sm);
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  text-align: left;
+  cursor: pointer;
+}
+
+.account-page__header-toggle:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.account-page__header-toggle .account-page__balance-value {
+  font-size: var(--font-size-xl);
+  font-weight: 700;
+}
+
+/* Folded is now a state at every width, not a phone special case. */
+.account-page__balances--collapsed {
   display: none;
 }
 
@@ -54,7 +84,7 @@
 .account-page__status-row {
   display: flex;
   align-items: center;
-  gap: var(--spacing-md);
+  gap: var(--spacing-sm);
 }
 
 /* Balance equation row */
@@ -70,7 +100,7 @@
   display: flex;
   align-items: flex-start;
   gap: var(--spacing-xs);
-  margin-top: var(--spacing-xs);
+  margin-top: 2px;
   font-size: var(--font-size-xs);
   color: var(--text-muted);
 }
@@ -325,25 +355,10 @@
     font-size: 10px;
   }
 
-  .account-page__balances-toggle {
-    display: flex;
-    align-items: baseline;
-    gap: var(--spacing-sm);
+  /* The fold control itself is defined above, for every width. A phone adds
+     only the tap floor (themes/tapTargets.test.ts holds every control to it). */
+  .account-page__header-toggle {
     min-height: var(--tap-min);
-    padding: 0;
-    border: none;
-    background: none;
-    color: var(--text-muted);
-    text-align: left;
-  }
-
-  .account-page__balances-toggle .account-page__balance-value {
-    font-size: var(--font-size-xl);
-    font-weight: 700;
-  }
-
-  .account-page__balances--collapsed {
-    display: none;
   }
 
   .account-page__balances {
@@ -383,7 +398,9 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
-  margin-top: var(--spacing-xs);
+  /* Compounds with the column gap above it; 2px is the hairline separation
+     this line needs, not a second full step. */
+  margin-top: 2px;
   color: var(--text-muted);
   font-size: var(--font-size-xs);
 }

@@ -37,6 +37,7 @@ import {
 import { useAppStore } from '../../stores/appStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useFormatters } from '../../hooks/useFormatters'
+import { resolveHeaderCollapsed } from './headerCollapse'
 import './AccountPage.css'
 import { Pill } from '../../components/common/Pill/Pill'
 import { Surface } from '../../components/common/Surface'
@@ -92,13 +93,18 @@ export function AccountPage() {
   const { data: pendingMatches = [] } = usePendingMatches(budgetId)
   const [showMatchModal, setShowMatchModal] = useState(false)
   const [showCsvImport, setShowCsvImport] = useState(false)
-  const [balancesOpen, setBalancesOpen] = useState(false)
+  const storedHeaderCollapsed = useUIStore((s) => s.accountHeaderCollapsed)
+  const setHeaderCollapsed = useUIStore((s) => s.setAccountHeaderCollapsed)
 
   // The modal asks the opening question; once a statement balance is set the
   // floating bar takes over and tracks the difference live.
   const isReconcilingHere = isReconciling && reconcileAccountId === accountId
   const showReconcileModal = isReconcilingHere && reconcileStatementBalance === null
   const showReconcileBar = isReconcilingHere && reconcileStatementBalance !== null
+  // One rule, three inputs — see headerCollapse.ts. Derived rather than
+  // stored, so finishing a reconcile restores whatever the person had chosen
+  // without anything having to remember it.
+  const headerCollapsed = resolveHeaderCollapsed(storedHeaderCollapsed, isMobile, isReconcilingHere)
 
   async function handleSync() {
     if (!firstConnection || !account?.simplefin_account_id) return
@@ -158,76 +164,79 @@ export function AccountPage() {
               back
               className="account-page__name-header"
               meta={
-                <div className="account-page__status-row">
-                  {account.on_budget ? (
-                    <Pill
-                      tone="outline"
-                      title="On budget — spending here comes out of your envelope categories"
-                    >
-                      <Wallet size={12} />
-                      On budget
+                headerCollapsed ? null : (
+                  <div className="account-page__status-row">
+                    {account.on_budget ? (
+                      <Pill
+                        tone="outline"
+                        title="On budget — spending here comes out of your envelope categories"
+                      >
+                        <Wallet size={12} />
+                        On budget
+                      </Pill>
+                    ) : (
+                      <Pill
+                        tone="outline"
+                        title="Tracking — counted in net worth only; transactions here don't need categories"
+                      >
+                        <Telescope size={12} />
+                        Tracking
+                      </Pill>
+                    )}
+                    {isConnected && (
+                      <Pill tone="positive">
+                        <LinkIcon size={12} />
+                        Connected
+                      </Pill>
+                    )}
+                    <Pill tone="outline">
+                      <Lock size={12} />
+                      {formatReconcileAge(account.last_reconciled_at)}
                     </Pill>
-                  ) : (
-                    <Pill
-                      tone="outline"
-                      title="Tracking — counted in net worth only; transactions here don't need categories"
-                    >
-                      <Telescope size={12} />
-                      Tracking
-                    </Pill>
-                  )}
-                  {isConnected && (
-                    <Pill tone="positive">
-                      <LinkIcon size={12} />
-                      Connected
-                    </Pill>
-                  )}
-                  <Pill tone="outline">
-                    <Lock size={12} />
-                    {formatReconcileAge(account.last_reconciled_at)}
-                  </Pill>
-                  {/* Rows before this date are deliberately not flagged as needing
+                    {/* Rows before this date are deliberately not flagged as needing
                   a category, so the date has to be visible somewhere. An
                   unexplained absence of nagging is as confusing as the nagging
                   it replaced. */}
-                  {account.budget_start_date && (
-                    <Pill
-                      tone="outline"
-                      title={
-                        'Anything before this date is opening balance: kept in the register, left ' +
-                        'uncategorized on purpose, and not counted as needing a category. On a card ' +
-                        'it shows as Uncovered and is paid down by assigning to the card.'
-                      }
-                    >
-                      <CalendarClock size={12} />
-                      Budget starts {formatDate(account.budget_start_date)}
-                    </Pill>
-                  )}
-                </div>
+                    {account.budget_start_date && (
+                      <Pill
+                        tone="outline"
+                        title={
+                          'Anything before this date is opening balance: kept in the register, left ' +
+                          'uncategorized on purpose, and not counted as needing a category. On a card ' +
+                          'it shows as Uncovered and is paid down by assigning to the card.'
+                        }
+                      >
+                        <CalendarClock size={12} />
+                        Budget starts {formatDate(account.budget_start_date)}
+                      </Pill>
+                    )}
+                  </div>
+                )
               }
             />
           </div>
-          {/* Three figures on a desktop; on a phone the working balance alone,
-              with the equation behind a caret — a 200px header on a 390pt
-              screen left the register one row tall. */}
-          {isMobile && (
-            <button
-              type="button"
-              className="account-page__balances-toggle"
-              onClick={() => setBalancesOpen((v) => !v)}
-              aria-expanded={balancesOpen}
-              aria-controls="account-balances"
-            >
-              <span className={`account-page__balance-value ${workingClass}`}>
-                {formatMoney(account.balance)}
-              </span>
-              <span className="account-page__balance-label">Working balance</span>
-              {balancesOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-            </button>
-          )}
+          {/* Folded, the header keeps the one figure you navigate by. Every
+              row it gives back is a row of the statement you can see while
+              reconciling, which is when the rest of this earns its place
+              least — a 200px header on a 390pt screen left the register one
+              row tall. */}
+          <button
+            type="button"
+            className="account-page__header-toggle"
+            onClick={() => setHeaderCollapsed(!headerCollapsed)}
+            aria-expanded={!headerCollapsed}
+            aria-controls="account-header-detail"
+            title={headerCollapsed ? 'Show account details' : 'Hide account details'}
+          >
+            <span className={`account-page__balance-value ${workingClass}`}>
+              {formatMoney(account.balance)}
+            </span>
+            <span className="account-page__balance-label">Working balance</span>
+            {headerCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+          </button>
           <div
-            id="account-balances"
-            className={`account-page__balances ${isMobile && !balancesOpen ? 'account-page__balances--collapsed' : ''}`}
+            id="account-header-detail"
+            className={`account-page__balances ${headerCollapsed ? 'account-page__balances--collapsed' : ''}`}
           >
             <div className="account-page__balance-item">
               <span className={`account-page__balance-value ${clearedClass}`}>
@@ -262,7 +271,7 @@ export function AccountPage() {
               (backend: txn_filters.PENDING_ROW). That is defensible and it is
               also why the total has to be said: otherwise the register shows
               rows that add up to nothing anywhere. */}
-          {account.pending_balance !== 0 && (
+          {!headerCollapsed && account.pending_balance !== 0 && (
             <div className="account-page__pending">
               <Hourglass size={11} aria-hidden />
               <span className="account-page__pending-value tabular">
@@ -278,7 +287,8 @@ export function AccountPage() {
               account that gets reconciled, a gap after a sync usually means
               rows the sync never asked for, so the line says so and names
               both ways back to agreement. */}
-          {account.bank_drift !== null &&
+          {!headerCollapsed &&
+            account.bank_drift !== null &&
             account.simplefin_balance !== null &&
             account.bank_drift !== 0 && (
               <div
