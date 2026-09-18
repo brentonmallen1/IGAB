@@ -104,6 +104,10 @@ async def list_account_transactions(
     search: str | None = None,
     cleared: str | None = None,
     exclude_cleared: str | None = None,
+    #: Everything a reconcile still has to look at: pending, uncleared, and
+    #: cleared rows the bank has agreed to but the person has not signed off.
+    #: One predicate, `txn_filters.NOT_RECONCILED`, so both listings agree.
+    unreconciled: bool = False,
     uncategorized: bool = False,
     unapproved: bool = False,
     is_or_mode: bool = False,
@@ -129,6 +133,7 @@ async def list_account_transactions(
         search=search,
         cleared=cleared,
         exclude_cleared=exclude_cleared,
+        unreconciled=unreconciled,
         uncategorized=uncategorized,
         unapproved=unapproved,
         is_or_mode=is_or_mode,
@@ -177,6 +182,10 @@ async def list_budget_transactions(
     day_of_week: int | None = Query(None, ge=0, le=6),
     cleared: str | None = None,
     exclude_cleared: str | None = None,
+    #: Everything a reconcile still has to look at: pending, uncleared, and
+    #: cleared rows the bank has agreed to but the person has not signed off.
+    #: One predicate, `txn_filters.NOT_RECONCILED`, so both listings agree.
+    unreconciled: bool = False,
     uncategorized: bool = False,
     #: Rows with no category at all, for a report bucket defined by that
     #: absence. Not `uncategorized`, which is the register's needs-a-category
@@ -238,6 +247,7 @@ async def list_budget_transactions(
         day_of_week=day_of_week,
         cleared=cleared,
         exclude_cleared=exclude_cleared,
+        unreconciled=unreconciled,
         uncategorized=uncategorized,
         no_category=no_category,
         unapproved=unapproved,

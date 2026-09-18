@@ -25,6 +25,14 @@ export interface TransactionFilters {
    *  "names a transfer payee but has no partner". This is what the account
    *  hygiene panel links to. */
   unpairedTransfers?: boolean
+  /** Everything a reconcile still has to look at: pending, uncleared, and
+   *  cleared rows the bank has agreed to but the person has not signed off.
+   *
+   *  Deliberately not `excludeCleared: 'reconciled'`. That spelling exists
+   *  and means the same rows today, but it reads as "hide one value" rather
+   *  than "what is left to do", and the two would drift the first time a
+   *  cleared state was added. Served by `txn_filters.NOT_RECONCILED`. */
+  unreconciled?: boolean
   isOrMode?: boolean
 }
 
@@ -36,6 +44,7 @@ export function hasActiveFilters(f: TransactionFilters): boolean {
     f.uncategorized ||
     f.unapproved ||
     f.unpairedTransfers ||
+    f.unreconciled ||
     (f.categoryIds?.length ?? 0) > 0 ||
     (f.payeeIds?.length ?? 0) > 0 ||
     (f.accountIds?.length ?? 0) > 0 ||
@@ -385,6 +394,7 @@ function applyIsValue(result: TransactionFilters, val: string): void {
   else if (val === 'unapproved') result.unapproved = true
   else if (val === 'transfer') result.isTransfer = true
   else if (val === 'unpaired') result.unpairedTransfers = true
+  else if (val === 'unreconciled') result.unreconciled = true
   else if (DIRECTION_VALUES.has(val)) result.direction = val as 'inflow' | 'outflow'
   else if (CLEARED_VALUES.has(val)) result.cleared = val
 }
@@ -395,6 +405,7 @@ function isRecognizedIsValue(val: string): boolean {
     val === 'unapproved' ||
     val === 'transfer' ||
     val === 'unpaired' ||
+    val === 'unreconciled' ||
     DIRECTION_VALUES.has(val) ||
     CLEARED_VALUES.has(val)
   )
@@ -632,6 +643,7 @@ function mergeWithOr(segments: TransactionFilters[]): TransactionFilters {
     if (seg.unapproved) merged.unapproved = true
     if (seg.uncategorized) merged.uncategorized = true
     if (seg.unpairedTransfers) merged.unpairedTransfers = true
+    if (seg.unreconciled) merged.unreconciled = true
     if (seg.cleared) merged.cleared = seg.cleared
     if (seg.text) textParts.push(seg.text)
     if (seg.categoryIds) allCategoryIds.push(...seg.categoryIds)
@@ -714,6 +726,14 @@ function parseSearch(
           exclusions.isTransfer = false
           emit('Not transfer', [notAt, i, i + 1])
           i++
+        } else if (val === 'unreconciled') {
+          // The complement of a complement: everything NOT still to be
+          // looked at is exactly what has been reconciled. Expressed as the
+          // positive filter rather than a second negative field, so there is
+          // one way to say it and one predicate behind it.
+          exclusions.cleared = 'reconciled'
+          emit('Reconciled', [notAt, i, i + 1])
+          i++
         }
         continue
       }
@@ -727,6 +747,11 @@ function parseSearch(
       if (isMatch && isMatch[1] === 'transfer') {
         exclusions.isTransfer = false
         emit('Not transfer', [notAt, i])
+        continue
+      }
+      if (isMatch && isMatch[1] === 'unreconciled') {
+        exclusions.cleared = 'reconciled'
+        emit('Reconciled', [notAt, i])
         continue
       }
       // NOT has: attachment — rows without an image
@@ -845,6 +870,10 @@ export const SEARCH_SUGGESTIONS = [
   { syntax: 'is: uncleared ', description: 'Uncleared transactions' },
   { syntax: 'is: pending ', description: 'Pending transactions' },
   { syntax: 'is: reconciled ', description: 'Reconciled transactions' },
+  {
+    syntax: 'is: unreconciled ',
+    description: 'Anything a reconcile still has to look at',
+  },
   { syntax: 'is: inflow ', description: 'Money in (positive amounts)' },
   { syntax: 'is: outflow ', description: 'Money out (negative amounts)' },
   { syntax: 'is: transfer ', description: 'Transfers between accounts' },
@@ -950,6 +979,7 @@ const IS_LABELS: Record<string, string> = {
   inflow: 'Inflow',
   outflow: 'Outflow',
   transfer: 'Transfer',
+  unreconciled: 'Not reconciled',
 }
 
 /**

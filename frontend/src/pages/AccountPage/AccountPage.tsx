@@ -182,10 +182,21 @@ export function AccountPage() {
                       Connected
                     </Pill>
                   )}
-                  <Pill tone="outline">
-                    <Lock size={12} />
-                    {formatReconcileAge(account.last_reconciled_at)}
-                  </Pill>
+                  {/* The pill states a fact and now offers the question it
+                      raises: what is still waiting to be reconciled. A button
+                      around it rather than on it — Pill renders a span, and
+                      a click handler on a span is not reachable by keyboard. */}
+                  <button
+                    type="button"
+                    className="account-page__pill-button"
+                    onClick={() => setTransactionSearch('is: unreconciled')}
+                    title="Show everything this account still has to reconcile"
+                  >
+                    <Pill tone="outline">
+                      <Lock size={12} />
+                      {formatReconcileAge(account.last_reconciled_at)}
+                    </Pill>
+                  </button>
                   {/* Rows before this date are deliberately not flagged as needing
                   a category, so the date has to be visible somewhere. An
                   unexplained absence of nagging is as confusing as the nagging

@@ -95,3 +95,58 @@ async def test_budget_direction_and_transfer_combine(api_client, db_session):
     budget, _, _, _, _, _, transfer_in = await _setup(api_client, db_session)
     rows = await _fetch_budget(api_client, budget.id, direction="inflow", is_transfer="true")
     assert _ids(rows) == {str(transfer_in.id)}
+
+
+# ─── What a reconcile still has to look at ───────────────────────────────────
+# `reconciled` is a terminal value of the `cleared` column rather than a flag
+# beside it, so "not yet reconciled" is its complement and nothing else.
+
+
+async def _reconcile_setup(api_client, db_session):
+    """One account holding every cleared state there is."""
+    budget = await create_budget(db_session, api_client.test_user)
+    checking = await create_account(db_session, budget, "Everyday Checking")
+    rows = {
+        state: await create_transaction(
+            db_session, budget, checking, "-10.00", TODAY, cleared=state
+        )
+        for state in ("uncleared", "cleared", "pending", "reconciled")
+    }
+    await db_session.flush()
+    return budget, checking, rows
+
+
+async def test_unreconciled_lists_every_state_but_reconciled(api_client, db_session):
+    """Pending and uncleared rows are the bulk of what a reconcile faces, and
+    the obvious spelling — `is: cleared`, which means the value `cleared`
+    exactly — would have left all of them out."""
+    _budget, checking, rows = await _reconcile_setup(api_client, db_session)
+
+    listed = await _fetch_account(api_client, checking.id, unreconciled=True)
+
+    assert _ids(listed) == {
+        str(rows["uncleared"].id),
+        str(rows["cleared"].id),
+        str(rows["pending"].id),
+    }
+    assert str(rows["reconciled"].id) not in _ids(listed)
+
+
+async def test_unreconciled_agrees_across_both_listings(api_client, db_session):
+    """One predicate, two query paths. Every register in the app reaches one
+    of these, and a filter that meant different things in each is the shape
+    of defect this repo has been bitten by repeatedly."""
+    budget, checking, _rows = await _reconcile_setup(api_client, db_session)
+
+    from_account = await _fetch_account(api_client, checking.id, unreconciled=True)
+    from_budget = await _fetch_budget(api_client, budget.id, unreconciled=True)
+
+    assert _ids(from_account) == _ids(from_budget)
+
+
+async def test_without_the_filter_every_row_is_listed(api_client, db_session):
+    """The filter is opt-in: nothing changes for a register that has not
+    asked for it."""
+    _budget, checking, rows = await _reconcile_setup(api_client, db_session)
+    listed = await _fetch_account(api_client, checking.id)
+    assert _ids(listed) == {str(r.id) for r in rows.values()}
