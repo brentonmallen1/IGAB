@@ -153,6 +153,11 @@ REDACT_ON_NEW_BUDGET: Mapping[tuple[str, str], Any] = MappingProxyType(
         ("accounts", "simplefin_account_id"): None,
         ("accounts", "simplefin_account_name"): None,
         ("accounts", "simplefin_balance"): None,
+        # The remembered sign frame is a fact about an institution reached
+        # through a link the copy does not have. Kept, it would apply one
+        # bank's convention to whatever the copy is later linked to — and a
+        # wrongly remembered frame inverts every amount it touches.
+        ("accounts", "simplefin_sign_frame"): None,
         ("accounts", "last_simplefin_sync_at"): None,
         # Back to the schema default rather than to False: the copy is not
         # connected to anything, so the source's paused/enabled preference

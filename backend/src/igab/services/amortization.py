@@ -16,6 +16,7 @@ from decimal import ROUND_CEILING, Decimal
 from typing import Literal
 
 from igab.domain.dates import add_months
+from igab.domain.interest import monthly_rate as _monthly_rate
 from igab.domain.minimum_payment import FIXED, MinimumPaymentRule, as_rule
 from igab.domain.money import quantize_cents
 
@@ -98,7 +99,7 @@ def amortization_schedule(
             schedule=[], never_pays_off=False, payoff_date=start_date, total_interest=ZERO
         )
 
-    monthly_rate = annual_rate / Decimal("100") / Decimal("12")
+    monthly_rate = _monthly_rate(annual_rate)
     schedule: list[AmortizationMonth] = []
     total_interest = ZERO
 
@@ -249,7 +250,7 @@ def promo_outlook(
 
     deferred_estimate: Decimal | None = None
     if deferred_interest:
-        monthly_rate = annual_rate / Decimal("100") / Decimal("12")
+        monthly_rate = _monthly_rate(annual_rate)
         estimate = ZERO
         if origination_date is not None:
             elapsed = max(0, _month_diff(origination_date, as_of))
@@ -456,7 +457,7 @@ def payoff_cascade(
     # would roll nothing forward — so the last amount actually asked for is
     # captured as it is charged.
     last_due = dict.fromkeys(balances, ZERO)
-    rates = {d.key: d.annual_rate / Decimal("100") / Decimal("12") for d in attack}
+    rates = {d.key: _monthly_rate(d.annual_rate) for d in attack}
     interest_total = dict.fromkeys(balances, ZERO)
     principal_total = dict.fromkeys(balances, ZERO)
     payoff: dict[str, date | None] = dict.fromkeys(balances)
@@ -582,7 +583,7 @@ def level_payment(principal: Decimal, annual_rate: Decimal, term_months: int) ->
         raise ValueError("term_months must be positive")
     if principal < ZERO or annual_rate < ZERO:
         raise ValueError("principal and annual_rate must be non-negative")
-    monthly_rate = annual_rate / Decimal("100") / Decimal("12")
+    monthly_rate = _monthly_rate(annual_rate)
     if monthly_rate == ZERO:
         exact = principal / term_months
     else:
@@ -608,7 +609,7 @@ def interest_over(
     if months < 0:
         raise ValueError("months must be non-negative")
     rule = as_rule(payment)
-    monthly_rate = annual_rate / Decimal("100") / Decimal("12")
+    monthly_rate = _monthly_rate(annual_rate)
     balance = quantize_cents(balance)
     total = ZERO
     for _ in range(months):
@@ -628,7 +629,7 @@ def future_value_monthly(contribution: Decimal, annual_rate: Decimal, months: in
     not a market projection."""
     if months < 0 or contribution < ZERO or annual_rate < ZERO:
         raise ValueError("months, contribution and annual_rate must be non-negative")
-    monthly_rate = annual_rate / Decimal("100") / Decimal("12")
+    monthly_rate = _monthly_rate(annual_rate)
     balance = ZERO
     for _ in range(months):
         balance = quantize_cents(balance * (1 + monthly_rate)) + contribution

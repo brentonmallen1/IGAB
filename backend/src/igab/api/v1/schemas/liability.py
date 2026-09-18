@@ -158,6 +158,15 @@ class LiabilityOut(ApiModel):
     # window (None until 2+ months carry any). The actual figure where one
     # exists; `monthly_interest_now` is the modelled one.
     recent_interest_average: Decimal | None
+    #: This month's interest modelled from the terms, present only when the
+    #: month has no posted interest row yet. Required, not optional: a path
+    #: that forgets it must raise rather than quietly report a balance that
+    #: is one month's interest low, which is the defect this field exists
+    #: for. Null is the honest "not claimed" — see
+    #: `LiabilityService.estimated_interest_this_month`.
+    estimated_interest_this_month: Decimal | None
+    #: `current_balance` plus that estimate; equal to it when there is none.
+    balance_with_estimate: Decimal
     # Positive rows on the ledger with no partner account in the window. Not
     # payments — a balance adjustment, or a payment typed without a transfer
     # — and said out loud rather than silently left out.

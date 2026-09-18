@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, Liability
 from igab.domain.dates import add_months, complete_month_window, month_start, month_starts
+from igab.domain.interest import monthly_interest
 from igab.domain.minimum_payment import FIXED, MinimumPaymentRule
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import CategoryRepository
@@ -49,7 +50,7 @@ ZERO = Decimal("0")
 
 PAYMENT_LOOKBACK_MONTHS = 6
 
-BalanceSource = Literal["ledger", "manual", "manual_fallback", "empty"]
+BalanceSource = Literal["ledger", "manual", "manual_fallback", "empty", "inverted"]
 
 LIABILITY_CLASSIFICATION = "liability"
 
@@ -148,6 +149,29 @@ async def release_for_account(session: AsyncSession, account: Account) -> None:
         await session.flush()
 
 
+def _charged_interest(
+    interest_by_month: dict[date, Decimal],
+    payments_by_month: dict[date, Decimal],
+    month: date,
+) -> Decimal:
+    """Interest genuinely charged in `month`, as a positive figure.
+
+    The guard is the whole point and it is easy to miss: on a tracked debt a
+    plain outflow IS an interest charge (`activity_class`), and so is the
+    origination row that opens the account with its whole principal. That row
+    lands in a month with no payment, so requiring a payment in the same month
+    is what stops a 24,000 loan being read as 24,000 of interest.
+
+    One implementation because two readers need it — the trailing-months
+    average on the liability page, and the "has this month already been
+    charged?" question the estimate is suppressed by. Answering those
+    differently would let a month be simultaneously charged and not charged.
+    """
+    if payments_by_month.get(month, ZERO) <= ZERO:
+        return ZERO
+    return max(ZERO, -interest_by_month.get(month, ZERO))
+
+
 def _month_index(d: date) -> int:
     return d.year * 12 + (d.month - 1)
 
@@ -177,6 +201,15 @@ class LiabilityStatus:
     # so "$3,000/mo, of which ~$1,619 is interest" is a fact, not an estimate.
     recent_interest: list[Decimal] = field(default_factory=list)
     average_interest: Decimal | None = None
+    #: This month's interest modelled from the terms, or None when it is not
+    #: claimed — no rate, no balance, or a month that already has a posted
+    #: interest row. An ESTIMATE, and labelled as one everywhere it shows:
+    #: it must stay visibly distinct from a posted row or it gets reconciled
+    #: twice. See `estimated_interest_this_month`.
+    estimated_interest_this_month: Decimal | None = None
+    #: `current_balance` plus that estimate. Equal to the balance when there
+    #: is no estimate, so a caller can render it unconditionally.
+    balance_with_estimate: Decimal = ZERO
     # Positive rows on the ledger with no partner account over the window —
     # not counted as payments, so the page can say so.
     uncounted_deposits: Decimal = ZERO
@@ -194,6 +227,42 @@ class LiabilityService:
         self.account_repo = account_repo
         self.category_repo = category_repo
         self.transaction_repo = transaction_repo
+
+    async def estimated_interest_this_month(
+        self, liability: Liability, balance: Decimal, as_of: date | None = None
+    ) -> Decimal | None:
+        """This month's interest, modelled from the terms — or None.
+
+        The gap this closes: a loan account imported from YNAB reads one full
+        month of interest LOW, because YNAB shows a current-month interest
+        charge derived from the loan terms and only turns it into a register
+        row when the account is reconciled. The figure is not in the export,
+        and the export has nowhere to carry the rate either, so no import can
+        recover it. The user supplies the terms; this derives the charge.
+
+        None means "not claimed", and there are three honest reasons for it:
+        no rate on file (the imported case until someone fills it in), no
+        balance to charge interest on, and — the one that matters — a month
+        that ALREADY HAS a posted interest row. Reconciling in the source
+        application materialises the charge; adding an estimate on top of it
+        would count the same money twice, which is the exact failure the
+        source application has when you reconcile mid-month.
+        """
+        rate = liability.interest_rate
+        if rate is None or balance <= ZERO or liability.linked_account_id is None:
+            return None
+        as_of = as_of or today_utc()
+        this_month = month_start(as_of)
+        through = add_months(this_month, 1)
+        posted = await self.transaction_repo.sum_debt_interest_by_month(
+            liability.linked_account_id, end_date=through
+        )
+        payments = await self.transaction_repo.sum_loan_payments_by_month(
+            liability.linked_account_id, end_date=through
+        )
+        if _charged_interest(posted, payments, this_month) != ZERO:
+            return None
+        return monthly_interest(balance, rate)
 
     @staticmethod
     def mode(liability: Liability) -> str:
@@ -265,6 +334,13 @@ class LiabilityService:
         that register is EMPTY and a manual balance survives from before
         linking: a mortgage freshly linked to a transaction-less account must
         not report $0 owed ("Paid off") until the user seeds the register.
+
+        The sources are four answers to one question, and the distinctions
+        are the point: "empty" is nothing to read, "manual_fallback" is
+        something remembered from before the link, "inverted" is a register
+        that contradicts the account's own kind, and only "ledger" is the
+        ordinary reading. Collapsing any of them into $0 owed reports a debt
+        as settled.
         """
         if liability.linked_account_id is not None:
             txn_count = await self.transaction_repo.count_for_account(liability.linked_account_id)
@@ -278,8 +354,41 @@ class LiabilityService:
                 # for an opening balance instead.
                 return ZERO, "empty"
             account_balance = await self.account_repo.get_balance(liability.linked_account_id)
+            if account_balance > ZERO and await self._bank_says_it_owes(
+                liability.linked_account_id
+            ):
+                # The register says this account HOLDS money while the bank
+                # says it OWES money. Both cannot be true, and the clamp
+                # below would report the contradiction as $0 owed — which is
+                # how an inverted mortgage, its whole register sign-flipped
+                # by a lender-frame feed, showed a green "Paid off" pill on a
+                # seven-figure loan while net worth counted it as an asset.
+                #
+                # The bank's own figure is what makes this safe to claim. A
+                # positive ledger ALONE is ordinary: a card overpaid by $50
+                # is a real thing, and the floor below is the right answer
+                # for it — there the bank would report a credit balance too,
+                # and this branch stays shut.
+                return quantize_cents(account_balance), "inverted"
             return max(ZERO, quantize_cents(-account_balance)), "ledger"
         return max(ZERO, quantize_cents(liability.manual_balance or ZERO)), "manual"
+
+    async def _bank_says_it_owes(self, account_id: uuid.UUID) -> bool:
+        """Whether the linked bank balance says this account is in debt.
+
+        None — no link, or a link that has never reported — is not evidence
+        and answers False: an unlinked liability with a positive register is
+        an overpayment, not a contradiction anyone can demonstrate.
+
+        Reads the STORED balance, which the sync writes already normalised
+        into IGAB's frame (`services/simplefin_frame.py`). An install still
+        carrying a pre-normalisation figure answers False here and heals on
+        its next sync, which is the honest order: the evidence has to be
+        trustworthy before a page accuses a register of being wrong.
+        """
+        account = await self.account_repo.get(account_id)
+        reported = account.simplefin_balance if account is not None else None
+        return reported is not None and reported < ZERO
 
     async def get_recent_monthly_payments(
         self,
@@ -347,10 +456,7 @@ class LiabilityService:
             liability.linked_account_id, end_date=current
         )
         return (
-            [
-                max(ZERO, -interest.get(m, ZERO)) if payments.get(m, ZERO) > ZERO else ZERO
-                for m in window
-            ],
+            [_charged_interest(interest, payments, m) for m in window],
             sum((deposits.get(m, ZERO) for m in window), ZERO),
         )
 
@@ -425,6 +531,8 @@ class LiabilityService:
                     liability.original_principal,
                 )
 
+        estimated = await self.estimated_interest_this_month(liability, balance, as_of)
+
         return LiabilityStatus(
             liability=liability,
             mode=self.mode(liability),
@@ -438,6 +546,8 @@ class LiabilityService:
             promo=promo,
             recent_interest=interest,
             average_interest=typical_recent_payment(interest),
+            estimated_interest_this_month=estimated,
+            balance_with_estimate=balance + (estimated or ZERO),
             uncounted_deposits=uncounted,
         )
 

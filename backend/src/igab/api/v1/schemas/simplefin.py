@@ -147,6 +147,11 @@ class SyncResult(ApiModel):
     orphaned_links: list[OrphanedLinkInfo] = []
     bank_errors: list[BankErrorInfo] = []
     balance_drift: list[BalanceDriftInfo] = []
+    #: Opening balances this run declined to write because the gap did not
+    #: have the shape of pre-window history — a sign flip, or a gap larger
+    #: than the balance the bank reports. Each entry is one sentence naming
+    #: both figures and what to do. See `domain.bank_balance.anchor_verdict`.
+    refused_anchors: list[str] = []
     #: Accounts whose first sync wrote a Starting Balance row to anchor the
     #: ledger to the bank's reported balance — the 90-day window cannot
     #: carry an older carried balance any other way.
@@ -171,6 +176,7 @@ class ConnectionSyncOutcome(ApiModel):
     orphaned_links: list[OrphanedLinkInfo] = []
     bank_errors: list[BankErrorInfo] = []
     balance_drift: list[BalanceDriftInfo] = []
+    refused_anchors: list[str] = []
 
 
 class SyncAllResult(ApiModel):
@@ -245,6 +251,11 @@ class SyncRunAccountResponse(ApiModel):
     orphaned: bool = False
     bank_balance: Decimal | None = None
     ledger_cleared_balance: Decimal | None = None
+    #: Whether those two agreed. None when either was unknown, which is not
+    #: the same as disagreeing. Recorded for every account the run touched,
+    #: unlike `balance_drift`, which is deliberately only about reconciled
+    #: ones — a tracking account's balance had nowhere to be checked before.
+    balance_agrees: bool | None = None
 
     model_config = {"from_attributes": True}
 
@@ -261,6 +272,7 @@ class SyncRunResponse(ApiModel):
     bank_errors: list[BankErrorInfo] = []
     orphaned_links: list[OrphanedLinkInfo] = []
     balance_drift: list[BalanceDriftInfo] = []
+    refused_anchors: list[str] = []
     feed_txn_count: int = 0
     imported: int = 0
     skipped: int = 0
@@ -318,9 +330,20 @@ class SyncHealthResponse(ApiModel):
     #: Re-checked against the ledger as it is now, not as the run left it,
     #: so deleting the duplicates clears the badge without another sync.
     balance_drift: list[BalanceDriftInfo] = []
+    #: Opening balances this run declined to write because the gap did not
+    #: have the shape of pre-window history — a sign flip, or a gap larger
+    #: than the balance the bank reports. Each entry is one sentence naming
+    #: both figures and what to do. See `domain.bank_balance.anchor_verdict`.
+    refused_anchors: list[str] = []
     unserved: list[UnservedAccount] = []
     last_run_at: datetime | None = None
 
     @property
     def clean(self) -> bool:
-        return not (self.orphaned_links or self.needs_auth or self.balance_drift or self.unserved)
+        return not (
+            self.orphaned_links
+            or self.needs_auth
+            or self.balance_drift
+            or self.refused_anchors
+            or self.unserved
+        )
