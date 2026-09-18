@@ -10,7 +10,13 @@ import type { SnapshotInspection } from '../../../api/budgetSnapshots'
 
 const hooks = vi.hoisted(() => ({
   restore: vi.fn(),
-  files: [] as { name: string; size_bytes: number; modified_at: string }[],
+  files: [] as {
+    name: string
+    size_bytes: number
+    modified_at: string
+    scheduled?: boolean
+  }[],
+  settings: [] as { key: string; value: string }[],
 }))
 
 vi.mock('../../../api/budgetSnapshots', () => ({
@@ -26,7 +32,16 @@ vi.mock('../../../api/budgetSnapshots', () => ({
   tooLargeMessage: () => null,
 }))
 
+// The panel reads two job-written settings (when the schedule last ran, and
+// what it reported) and renders the interval controls from the same source.
+vi.mock('../../../api/settings', () => ({
+  useSettings: () => ({ data: hooks.settings }),
+  useUpdateSetting: () => ({ mutateAsync: vi.fn() }),
+}))
+
 import { BudgetSnapshotsPanel } from './BudgetSnapshotsPanel'
+
+const NOW = '2026-09-18T02:00:00Z'
 
 const INSPECTION: SnapshotInspection = {
   format: 'igab-budget-snapshot',
@@ -161,5 +176,50 @@ describe('the snapshots panel layout', () => {
     render(<BudgetSnapshotsPanel budgetId="b1" budgetName="Household" />)
     // The panel's own copy stopped at MB and would have said "3072.0 MB".
     expect(screen.getByText('3.00 GB')).toBeInTheDocument()
+  })
+})
+
+describe('automatic snapshots', () => {
+  beforeEach(() => {
+    hooks.files = []
+    hooks.settings = []
+  })
+
+  it('marks the ones the schedule wrote', () => {
+    // The badge is what says which files retention may delete: a snapshot
+    // someone asked for is never pruned.
+    hooks.files = [
+      {
+        name: 'household-20260903-020000-auto.igab.zip',
+        size_bytes: 120,
+        modified_at: NOW,
+        scheduled: true,
+      },
+      { name: 'household-20260815-134500.igab.zip', size_bytes: 120, modified_at: NOW },
+    ]
+    render(<BudgetSnapshotsPanel budgetId="b1" budgetName="Household" />)
+    expect(screen.getAllByText('auto')).toHaveLength(1)
+  })
+
+  it('says when the schedule last ran', () => {
+    hooks.settings = [{ key: 'snapshot_last_auto_at', value: '2026-09-18T02:00:00Z' }]
+    render(<BudgetSnapshotsPanel budgetId="b1" budgetName="Household" />)
+    expect(screen.getByText(/Last automatic snapshot/)).toBeInTheDocument()
+  })
+
+  it('says out loud when the last run failed', () => {
+    // A backup that has been silently failing for six weeks is worse than no
+    // backup, because it was believed.
+    hooks.settings = [
+      { key: 'snapshot_last_auto_at', value: '2026-09-18T02:00:00Z' },
+      { key: 'snapshot_last_auto_error', value: 'No space left on device' },
+    ]
+    render(<BudgetSnapshotsPanel budgetId="b1" budgetName="Household" />)
+    expect(screen.getByText(/No space left on device/)).toBeInTheDocument()
+  })
+
+  it('stays quiet when the schedule has never run', () => {
+    render(<BudgetSnapshotsPanel budgetId="b1" budgetName="Household" />)
+    expect(screen.queryByText(/Last automatic snapshot/)).not.toBeInTheDocument()
   })
 })

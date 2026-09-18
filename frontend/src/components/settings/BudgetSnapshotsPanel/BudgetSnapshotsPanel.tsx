@@ -40,6 +40,8 @@ import {
   type SnapshotInspection,
 } from '../../../api/budgetSnapshots'
 import { apiErrorMessage } from '../../../api/client'
+import { useSettings } from '../../../api/settings'
+import { NumberSettingRow } from '../NumberSettingRow'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { formatBytes } from '../../../utils/formatBytes'
 import { Dialog } from '../../common/Dialog/Dialog'
@@ -222,7 +224,13 @@ export function BudgetSnapshotsPanel({ budgetId, budgetName }: Props) {
     }
   }
 
+  const { data: appSettings } = useSettings()
   const kept = files ?? []
+  // Written by the job, read here: "it has been failing for six weeks" is
+  // the thing a backup page has to be able to say out loud.
+  const lastAuto = appSettings?.find((x) => x.key === 'snapshot_last_auto_at')?.value || null
+  const lastAutoError =
+    appSettings?.find((x) => x.key === 'snapshot_last_auto_error')?.value || null
 
   return (
     <div className="bkp-panel">
@@ -294,6 +302,33 @@ export function BudgetSnapshotsPanel({ budgetId, budgetName }: Props) {
           </div>
         </div>
 
+        {/* The schedule lives inside this group rather than in one of its
+            own: an automatic snapshot IS a snapshot on the server, and a
+            fourth look-alike section is what this panel's layout was
+            reorganised to avoid. */}
+        <NumberSettingRow
+          label="Take one automatically"
+          desc="Hours between automatic snapshots of every budget — 0 turns them off (0–168)"
+          settingKey="snapshot_interval_hours"
+          min={0}
+          max={168}
+        />
+        <NumberSettingRow
+          label="Automatic snapshots kept"
+          desc="How many to keep per budget. Only automatic ones are ever deleted — a snapshot you take yourself is kept until you remove it (1–100)"
+          settingKey="snapshot_keep_count"
+          min={1}
+          max={100}
+        />
+        {lastAuto && (
+          <div className="settings-row__desc snap-schedule-note">
+            Last automatic snapshot: {formatDateTime(lastAuto)}.
+            {lastAutoError && (
+              <span className="snap-schedule-error"> Last run reported: {lastAutoError}</span>
+            )}
+          </div>
+        )}
+
         <div className="bkp-files">
           {isLoading ? (
             <div className="bkp-files__empty">Loading…</div>
@@ -320,6 +355,10 @@ export function BudgetSnapshotsPanel({ budgetId, budgetName }: Props) {
                       <span className="bkp-table__name-inner">
                         <Database size={13} aria-hidden="true" />
                         {f.name}
+                        {/* Which ones the schedule wrote, because those are
+                            the ones retention may delete. A snapshot you
+                            asked for is never pruned. */}
+                        {f.scheduled && <span className="snap-auto-badge">auto</span>}
                       </span>
                     </td>
                     <td>{formatBytes(f.size_bytes)}</td>

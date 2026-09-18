@@ -171,6 +171,12 @@ async def _cleanup_sync_logs() -> None:
         logger.info("simplefin: retention cleanup removed %d old sync run(s)", removed)
 
 
+async def _run_scheduled_snapshots() -> None:
+    from igab.tasks.snapshot_job import run_scheduled_snapshots
+
+    await run_scheduled_snapshots()
+
+
 async def _sweep_attachments() -> None:
     from igab.tasks.attachment_sweep import sweep_attachments
 
@@ -215,6 +221,16 @@ def start_scheduler() -> None:
         hour=3,
         minute=45,
         id="cleanup_ai_jobs",
+        replace_existing=True,
+    )
+    # Hourly, but the job itself decides whether enough time has passed —
+    # the interval is a setting, so it cannot be a cron expression fixed at
+    # startup without a restart to change it.
+    scheduler.add_job(
+        _run_scheduled_snapshots,
+        trigger="cron",
+        minute=20,
+        id="scheduled_budget_snapshots",
         replace_existing=True,
     )
     scheduler.add_job(

@@ -33,6 +33,8 @@ EDITABLE_KEYS = {
     "backup_keep_days",
     "backup_keep_min",
     "backup_age_recipient",
+    "snapshot_interval_hours",
+    "snapshot_keep_count",
     "update_check_enabled",
     *DEFAULT_PROMPTS.keys(),
 }
@@ -43,6 +45,15 @@ _BACKUP_INT_BOUNDS = {
     "backup_interval_hours": (1, 168),
     "backup_keep_days": (1, 365),
     "backup_keep_min": (1, 100),
+    # 0 is the off switch for automatic budget snapshots, so this one starts
+    # at zero where the whole-install backup above starts at one: that agent
+    # is always meant to be running, and a per-budget snapshot schedule is a
+    # convenience someone may not want at all.
+    "snapshot_interval_hours": (0, 168),
+    # Never 0 — retention of nothing would be a mass delete dressed as a
+    # setting. Turning the schedule off is what "off" means, and
+    # domain/snapshot_retention.py refuses a non-positive count as well.
+    "snapshot_keep_count": (1, 100),
 }
 
 

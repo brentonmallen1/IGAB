@@ -18,6 +18,11 @@ export interface BudgetSnapshotFile {
   name: string
   size_bytes: number
   modified_at: string
+  /** Whether the schedule wrote this rather than a person. The list badges
+   *  it, and it is what says which files retention may delete — a snapshot
+   *  someone asked for is never pruned. Served, not inferred from the name:
+   *  the server owns that reading (services/budget_snapshot.py). */
+  scheduled?: boolean
 }
 
 export interface SnapshotCreated {
