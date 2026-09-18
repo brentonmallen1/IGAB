@@ -112,6 +112,22 @@ def _calculate_dedup_score(
     return _dedup_score(_payee_similarity(synced_payee, existing_payee), synced_date, existing_date)
 
 
+def _comparable_date(txn: Transaction) -> date:
+    """The date to compare a row against a feed record on.
+
+    The bank's own posting date when the row has one, because the feed
+    record's date is a bank date too and the two are then the same kind of
+    fact. A row a person typed has no posting date and is compared on the
+    date they entered — which is why the two can sit days apart and still be
+    one transaction.
+
+    Without this, a row whose bank posted it on the 25th but which the user
+    dated the 16th scored as nine days distant from its own re-issued
+    posting, missed the auto threshold, and was written again as a duplicate.
+    """
+    return txn.bank_posted_date or txn.date
+
+
 def _row_payee_strings(txn: Transaction, payee_name: str | None) -> list[str | None]:
     """Every string a row keeps for its merchant — the user's payee and the
     bank's own pending strings. See domain.matching.best_payee_similarity."""
@@ -170,12 +186,13 @@ def _decide_match(
         similarity = best_payee_similarity(
             _row_payee_strings(txn, payee_name), synced_payee, unknown=_UNKNOWN_PAYEE_SCORE
         )
+        against = _comparable_date(txn)
         scored.append(
             (
                 txn,
                 similarity,
-                abs((txn_date - txn.date).days),
-                _dedup_score(similarity, txn_date, txn.date),
+                abs((txn_date - against).days),
+                _dedup_score(similarity, txn_date, against),
             )
         )
 

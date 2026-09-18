@@ -279,46 +279,45 @@ async def test_ordinary_sync_never_adopts(db_session):
 
 
 async def test_a_row_outside_the_window_asked_for_is_never_offered(db_session):
-    """The bound that makes row-level adoption safe.
+    """The `since` bound that makes row-level adoption safe.
 
-    Last week's $12.50 at the market holds a bank id today's feed does not
-    mention — because the feed was asked for the last two days, not because
-    the bank retired the id. Offering it would let this week's identical
-    charge absorb last week's. The same feed over a window that *covers* last
-    week is a different claim, and then the row is offered.
+    A row holds a bank id the feed does not mention. That means one of two
+    opposite things, and only the window separates them: the bank was asked
+    about that day and dropped the id (retired — adopt), or the bank was
+    never asked (no evidence — leave it alone). Here the feed carries a
+    record on the row's own day, so the date rule admits it either way, and
+    the window is the only thing deciding.
     """
     services, budget, account, conn = await _setup(db_session)
     start = date.today() - timedelta(days=8)
     with PATCH_DECRYPT:
         await _service(services, _feed(OLD_ACCT, "old", start)).sync(conn.id, budget.id)
+    rows_before = len(await _live_rows(db_session, account.id))
 
-    today_row = bank_txn(
-        "old-again", "-12.50", date.today(), account=OLD_ACCT, payee="CORNER MARKET"
-    )
-    payload = _feed(OLD_ACCT, "old", start)[-2:] + [today_row]
+    # The bank re-reports that same first purchase, same day, under a new id.
+    reissued = bank_txn("new-first", HISTORY[0][0], start, account=OLD_ACCT, payee=HISTORY[0][1])
 
-    # Two-day window: the week-old row is outside it, so its absent id is not
-    # evidence, and today's charge imports clean.
+    # Asked for the last two days only: the row sits eight days back, outside
+    # what was requested, so its missing id proves nothing and the record
+    # imports rather than claiming it.
     await _synced_at(db_session, account, datetime.now(UTC) - timedelta(days=2))
     with PATCH_DECRYPT:
-        narrow = await _service(services, payload).sync(conn.id, budget.id)
+        narrow = await _service(services, [reissued]).sync(conn.id, budget.id)
+    assert narrow["adopted"] == 0, "the bank was never asked about that day"
     assert narrow["imported"] == 1
-    assert narrow["adopted"] == 0
-    assert narrow["review_queued"] == 0
     for row in await _live_rows(db_session, account.id):
-        if row.sync_id == "old-again":
+        if row.sync_id == "new-first":
             await services.transactions.delete(budget.id, row.id, source="system")
     await db_session.flush()
 
-    # Full window: the same absent id now means the bank was asked about
-    # that week and did not report it, so the row is offered. Eight days
-    # apart, it is offered for review rather than taken — the ladder's
-    # ordinary judgment, not this rule's.
+    # Asked for the full window: the same absent id now means the bank was
+    # asked and did not report it, so the row adopts the new id in place.
     await _synced_at(db_session, account, datetime.now(UTC) - timedelta(days=30))
     with PATCH_DECRYPT:
-        wide = await _service(services, payload).sync(conn.id, budget.id)
-    assert wide["imported"] == 1
-    assert wide["review_queued"] == 1
+        wide = await _service(services, [reissued]).sync(conn.id, budget.id)
+    assert wide["adopted"] == 1, wide
+    assert wide["imported"] == 0
+    assert len(await _live_rows(db_session, account.id)) == rows_before
 
 
 async def test_an_orphaned_account_does_not_advance_its_window(db_session):
@@ -828,3 +827,98 @@ async def test_refetch_asks_for_the_full_window_and_duplicates_nothing(db_sessio
         assert abs((svc.client.requests[-1] - floor).total_seconds()) < 60
     finally:
         app.dependency_overrides.pop(get_simplefin_service, None)
+
+
+async def test_a_recurring_charge_never_adopts_a_neighbouring_weeks_row(db_session):
+    """The duplicate cascade a 90-day refetch produced on a real budget.
+
+    A coffee at the same price every week. One week's row was genuinely
+    missing, so its feed record found no twin on its own day — and with the
+    wide window used for rows a person typed, it reached back seven days,
+    claimed the previous week's reconciled row, queued the pair for review
+    and consumed it. The next feed record then found its own twin taken and
+    claimed the week before that. Four duplicates of reconciled rows in one
+    run, and a review queue full of pairs that were never the same purchase.
+
+    Both sides here are the same bank's posting date for the same coffee, so
+    the only honest answer is the same day.
+    """
+    services, budget, account, conn = await _setup(db_session)
+    weeks = [date.today() - timedelta(days=d) for d in (35, 28, 21, 14, 7)]
+    coffee = [
+        bank_txn(f"old-c{i}", "-8.68", when, account=OLD_ACCT, payee="CASCADE COFFEE")
+        for i, when in enumerate(weeks)
+    ]
+
+    # Every week but the most recent is already in the register, reconciled.
+    with PATCH_DECRYPT:
+        await _service(services, coffee[:-1]).sync(conn.id, budget.id)
+    for row in await _live_rows(db_session, account.id):
+        row.cleared = "reconciled"
+    await db_session.flush()
+    assert len(await _live_rows(db_session, account.id)) == len(weeks) - 1
+
+    # The bank re-issues every id and the full window is asked for again —
+    # including the week that was missing.
+    await _relink(db_session, account, OLD_ACCT)
+    fresh = [
+        bank_txn(f"new-c{i}", "-8.68", when, account=OLD_ACCT, payee="CASCADE COFFEE")
+        for i, when in enumerate(weeks)
+    ]
+    with PATCH_DECRYPT:
+        result = await _service(services, fresh).sync(conn.id, budget.id)
+
+    assert result["adopted"] == len(weeks) - 1, "each week took its own new id"
+    assert result["imported"] == 1, "only the missing week is new"
+    assert result["review_queued"] == 0, "no week is ever offered against another"
+    rows = await _live_rows(db_session, account.id)
+    assert len(rows) == len(weeks), "a refetch must not duplicate a recurring charge"
+    assert {r.sync_id for r in rows} == {f"new-c{i}" for i in range(len(weeks))}
+
+
+async def test_a_row_the_user_dated_earlier_adopts_on_the_banks_posted_date(db_session):
+    """The other half, and the reason the window cannot simply be tightened
+    on the row's own date.
+
+    A bill the user entered on the 16th posted at the bank on the 25th; the
+    two were merged, so the row carries the user's date and the bank's
+    posting date. When the bank re-issued the id, comparing on the user's
+    date made the row look nine days from its own posting — past the auto
+    threshold — and the payment was written a second time.
+    """
+    services, budget, account, conn = await _setup(db_session)
+    posted_on = date.today() - timedelta(days=20)
+    entered_on = posted_on - timedelta(days=9)
+
+    with PATCH_DECRYPT:
+        await _service(
+            services,
+            [
+                bank_txn(
+                    "old-bill", "-125.00", posted_on, account=OLD_ACCT, payee="NORTHWIND UTILITIES"
+                )
+            ],
+        ).sync(conn.id, budget.id)
+    [row] = await _live_rows(db_session, account.id)
+    # What a merge leaves behind: the person's date, the bank's posting date.
+    row.date = entered_on
+    row.cleared = "reconciled"
+    await db_session.flush()
+
+    await _relink(db_session, account, OLD_ACCT)
+    with PATCH_DECRYPT:
+        result = await _service(
+            services,
+            [
+                bank_txn(
+                    "new-bill", "-125.00", posted_on, account=OLD_ACCT, payee="NORTHWIND UTILITIES"
+                )
+            ],
+        ).sync(conn.id, budget.id)
+
+    assert result["adopted"] == 1, result
+    assert result["imported"] == 0, "the bill must not be written twice"
+    rows = await _live_rows(db_session, account.id)
+    assert len(rows) == 1
+    assert rows[0].sync_id == "new-bill"
+    assert rows[0].date == entered_on, "the person's date is theirs, not the bank's"

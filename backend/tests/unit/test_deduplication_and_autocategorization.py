@@ -885,6 +885,9 @@ class TestDedupScoring:
         unrelated_txn.id = uuid.uuid4()
         unrelated_txn.sync_id = None
         unrelated_txn.date = date.today()
+        # Same trap again: scoring compares a row on the bank's posting date
+        # when it has one, so a MagicMock here fails the date arithmetic.
+        unrelated_txn.bank_posted_date = None
         unrelated_txn.cleared = "cleared"
 
         svc.repo.get = AsyncMock(return_value=conn)
