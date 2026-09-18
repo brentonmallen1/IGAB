@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { ALL_QUICK_FILTERS, mergeQuickFilterOrder, normalizeBudgetRowMode } from './uiStore'
+import {
+  ALL_QUICK_FILTERS,
+  mergeQuickFilterOrder,
+  normalizeBudgetRowMode,
+  useUIStore,
+} from './uiStore'
 
 describe('mergeQuickFilterOrder', () => {
   it('a persisted order without pending gains it', () => {
@@ -36,5 +41,36 @@ describe('normalizeBudgetRowMode', () => {
     expect(normalizeBudgetRowMode('dense')).toBe('dense')
     expect(normalizeBudgetRowMode(undefined)).toBe('expanded')
     expect(normalizeBudgetRowMode('bogus')).toBe('expanded')
+  })
+})
+
+describe('the account header fold', () => {
+  it('survives a reload', () => {
+    // A standing choice, like the budget page's group folds and its cards
+    // strip: someone who works from the register should not refold the
+    // header on every visit.
+    const partialize = useUIStore.persist.getOptions().partialize
+    expect(partialize).toBeDefined()
+    const kept = partialize!({
+      ...useUIStore.getState(),
+      accountHeaderCollapsed: true,
+    } as never) as Record<string, unknown>
+    expect(kept.accountHeaderCollapsed).toBe(true)
+  })
+
+  it('starts unchosen, which is not the same as open', () => {
+    // Null is what lets a phone start folded and a desktop start open
+    // without either being a decision anyone made — see headerCollapse.ts.
+    expect(useUIStore.getState().accountHeaderCollapsed).toBeNull()
+  })
+
+  it('takes a value rather than toggling', () => {
+    // The rendered state is derived from three inputs, so "the opposite of
+    // what is stored" is not reliably "the opposite of what you can see":
+    // during a reconcile the header is folded whatever the store says.
+    useUIStore.getState().setAccountHeaderCollapsed(true)
+    expect(useUIStore.getState().accountHeaderCollapsed).toBe(true)
+    useUIStore.getState().setAccountHeaderCollapsed(false)
+    expect(useUIStore.getState().accountHeaderCollapsed).toBe(false)
   })
 })

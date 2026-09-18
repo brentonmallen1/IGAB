@@ -110,6 +110,15 @@ interface UIState {
    *  cards strip is not a category group. */
   creditCardsCollapsed: boolean
   toggleCreditCardsCollapsed: () => void
+  /** The account header, folded away — null until the person has chosen.
+   *
+   *  Null is not false. It is what lets a phone start folded and a desktop
+   *  start open without either being a decision anyone made, and it is what
+   *  a reconcile can override without erasing. See
+   *  `pages/AccountPage/headerCollapse.ts`, which is the only place these
+   *  three inputs are combined. */
+  accountHeaderCollapsed: boolean | null
+  setAccountHeaderCollapsed: (collapsed: boolean) => void
   /** One slot, so opening a dialog closes whatever was open.
    *
    *  This was eight independent booleans, each with its own editing-id and its
@@ -272,6 +281,7 @@ export const useUIStore = create<UIState>()(
     (set, get) => ({
       collapsedGroups: new Set(),
       creditCardsCollapsed: false,
+      accountHeaderCollapsed: null,
       activeModal: null,
       sidebarCollapsed: false,
       sidebarWidth: SIDEBAR_MIN_WIDTH,
@@ -315,6 +325,12 @@ export const useUIStore = create<UIState>()(
         }),
       toggleCreditCardsCollapsed: () =>
         set((s) => ({ creditCardsCollapsed: !s.creditCardsCollapsed })),
+
+      // Takes the value rather than toggling: the rendered state is derived
+      // from three inputs, so "the opposite of what is stored" is not
+      // reliably "the opposite of what you can see" — during a reconcile the
+      // header is folded whatever the stored value says.
+      setAccountHeaderCollapsed: (collapsed) => set({ accountHeaderCollapsed: collapsed }),
 
       openModal: (kind, editingId) => set({ activeModal: { kind, editingId: editingId ?? null } }),
       closeModal: () => set({ activeModal: null }),
@@ -568,6 +584,9 @@ export const useUIStore = create<UIState>()(
         collapsedGroups: [...s.collapsedGroups],
         // Folding the cards strip is the same kind of standing choice.
         creditCardsCollapsed: s.creditCardsCollapsed,
+        // As is folding the account header — someone who works from the
+        // register should not refold it every visit.
+        accountHeaderCollapsed: s.accountHeaderCollapsed,
       }),
       merge: (persisted, current) => {
         const saved = (persisted ?? {}) as Partial<
