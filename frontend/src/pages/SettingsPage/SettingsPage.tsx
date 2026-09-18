@@ -21,6 +21,7 @@ import { AccountSettingsModal } from '../../components/accounts/AccountSettingsM
 import { AccountTypeInfoModal } from '../../components/accounts/AccountTypeInfoModal'
 import { ArrowRight, HelpCircle } from 'lucide-react'
 import { IntegrityPanel } from '../../components/settings/IntegrityPanel/IntegrityPanel'
+import { ApiKeysPanel } from '../../components/settings/ApiKeysPanel/ApiKeysPanel'
 import { BudgetSnapshotsPanel } from '../../components/settings/BudgetSnapshotsPanel/BudgetSnapshotsPanel'
 import { SETTINGS_PAGES, visibleSettingsSections } from './settingsSections'
 import { SettingsShell } from '../../components/settings/SettingsShell/SettingsShell'
@@ -627,6 +628,14 @@ export function SettingsPage() {
               Sign out
             </button>
           </div>
+        </div>
+      </Surface>
+
+      {/* Assistant access. Under Account rather than under a budget: a key
+          belongs to the person and may span several budgets. */}
+      <Surface as="section" className="settings-section" id="api-keys" title="Assistant Access">
+        <div className="settings-section__body">
+          <ApiKeysPanel />
         </div>
       </Surface>
 

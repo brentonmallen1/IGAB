@@ -132,6 +132,10 @@ SNAPSHOT_OMITTED: Mapping[str, str] = MappingProxyType(
         "fixed long ago.",
         "sync_run_accounts": "Rides out with its run, and names the bank's own "
         "account strings besides.",
+        "api_key_budgets": "Which read-only keys may reach this budget. "
+        "Authorization, like budget_members: carrying it would point the "
+        "exporter's assistant keys at the importer's budget. The key itself "
+        "lives on the other side of the join and is not budget data at all.",
     }
 )
 

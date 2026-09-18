@@ -7,6 +7,7 @@ from igab.api.v1 import (
     ai,
     ai_chat,
     ai_jobs,
+    api_keys,
     assets,
     attachments,
     auth,
@@ -53,6 +54,7 @@ api_router.include_router(imports.router, tags=["imports"])
 api_router.include_router(settings.router, tags=["settings"])
 api_router.include_router(system.router, tags=["system"])
 api_router.include_router(backups.router, tags=["backups"])
+api_router.include_router(api_keys.router, tags=["api-keys"])
 api_router.include_router(reports.router, tags=["reports"])
 api_router.include_router(guide.router, tags=["guide"])
 api_router.include_router(emergency_fund.router, tags=["emergency-fund"])

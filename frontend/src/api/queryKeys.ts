@@ -50,6 +50,7 @@ export const ROOT = {
   attachmentCheck: 'attachmentCheck',
   attachments: 'attachments',
   backups: 'backups',
+  apiKeys: 'api-keys',
   budgetFilters: 'budgetFilters',
   budgetMembers: 'budget-members',
   budgetMonth: 'budgetMonth',

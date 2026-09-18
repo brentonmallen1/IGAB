@@ -39,6 +39,7 @@ export type SettingsSectionId =
   | 'integrity'
   | 'budget-backups'
   | 'account'
+  | 'api-keys'
   | 'data'
   | 'updates'
   | 'simplefin'
@@ -85,6 +86,12 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     keywords: 'snapshot export duplicate restore download',
   },
   { id: 'account', label: 'Account', page: 'settings', keywords: 'password sign out' },
+  {
+    id: 'api-keys',
+    label: 'Assistant Access',
+    page: 'settings',
+    keywords: 'mcp api key token claude assistant ai read-only integration',
+  },
   // "Backups" sat directly under "Budget Backups" in the nav, and the nav is
   // the only thing that distinguishes them. This one is the whole install.
   {

@@ -1,0 +1,22 @@
+/* A revoked key stays listed so it can still be identified from a config
+   file or a log — quietened, not hidden. */
+.api-key--revoked {
+  opacity: 0.55;
+}
+
+.api-key__badge {
+  margin-left: var(--spacing-xs);
+  padding: 1px 5px;
+  border: 1px solid var(--edge);
+  border-radius: 999px;
+  color: var(--color-negative);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* The one thing on this screen that must not be skimmed past: the key is
+   shown once and the server cannot show it again. */
+.api-key__warning {
+  color: var(--color-warning);
+}
