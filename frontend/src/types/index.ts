@@ -1533,6 +1533,8 @@ export interface SyncResult {
   orphaned_links: import('../api/simplefin').OrphanedLink[]
   bank_errors: import('../api/simplefin').BankError[]
   balance_drift: import('../api/simplefin').BalanceDrift[]
+  /** Opening balances the run declined to write. See api/simplefin.ts. */
+  refused_anchors?: string[]
   error: string | null
   global_used: number | null
   global_remaining: number | null

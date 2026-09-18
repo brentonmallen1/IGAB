@@ -34,7 +34,7 @@ from igab.integrations.ynab.parser import YNABParser
 from igab.repositories.category_repo import CategoryRepository
 from igab.services.budget_export import NOT_CARRIED
 
-from .factories import create_budget, create_user, make_services
+from .factories import create_budget, create_transaction, create_user, make_services
 from .test_sample_budget import ANCHOR, generate_sample
 
 
@@ -163,6 +163,12 @@ class TestItAgreesWithTheBudgetItCameFrom:
             )
             assert report.top_differences == [], f"{month}: {report.top_differences}"
             assert report.categories_differing == 0, month
+            # Every account's register total, tracking accounts included.
+            # A whole sample budget round-tripped through the export is the
+            # strongest evidence this check does not cry wolf: it compares
+            # every account there is, on-budget and off.
+            assert report.accounts_compared > 0, month
+            assert report.account_differences == [], f"{month}: {report.account_differences}"
 
 
 class TestItSaysWhatItDropped:
@@ -307,3 +313,44 @@ class TestAmountsAndDates:
         parsed = _parse(await _export(api_client, sample.id), tmp_path)
         for txn in parsed.transactions:
             assert isinstance(txn.amount, Decimal)
+
+
+class TestItNoticesAnAccountThatDoesNotAgree:
+    """The gap this check closes.
+
+    Ready to Assign, envelope balances and card reserves are every term
+    parity had, and an off-budget tracking account contributes to none of
+    them. A loan imported with its signs inverted, or a month of rows short,
+    left `matches: true` behind it — correctly by parity's own definition
+    and uselessly in practice.
+    """
+
+    async def test_an_account_whose_ledger_moved_is_reported(
+        self, api_client, db_session, sample, tmp_path
+    ):
+        parsed = _parse(await _export(api_client, sample.id), tmp_path)
+        services = make_services(db_session)
+        month = max(row.month for row in parsed.plan_rows)
+
+        # Move one account's ledger after the export was taken: the file and
+        # the budget now disagree by exactly this row.
+        accounts = await services.account_repo.get_all(sample.id, include_closed=True)
+        moved = next(a for a in accounts if not a.on_budget)
+        await create_transaction(db_session, sample, moved, Decimal("-1234.56"), date.today())
+        await db_session.flush()
+
+        report = await check_parity(
+            services.budgets,
+            CategoryRepository(db_session),
+            sample.id,
+            parsed,
+            month,
+            accounts=None,
+            credit_card_accounts=[],
+        )
+
+        named = [d for d in report.account_differences if d.name == moved.name]
+        assert named, f"{moved.name} not reported: {report.account_differences}"
+        assert named[0].igab - named[0].ynab == Decimal("-1234.56")
+        assert report.accounts_differing >= 1
+        assert report.matches is False, "an account that disagrees is not a match"

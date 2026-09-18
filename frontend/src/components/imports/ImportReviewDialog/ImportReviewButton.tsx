@@ -29,6 +29,7 @@ export function ImportReviewButton({ budgetId }: { budgetId: string | null }) {
         <ImportReviewDialog
           budgetId={budgetId}
           summary={data?.summary ?? null}
+          loansNeedingTerms={data?.liabilities_needing_terms ?? []}
           onClose={() => setOpen(false)}
         />
       )}

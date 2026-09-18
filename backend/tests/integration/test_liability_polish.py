@@ -258,3 +258,154 @@ async def test_typical_recent_payment_from_ledger(api_client, db_session):
     # 6450 owed × 6% / 12
     assert money(body["monthly_interest_now"]) == Decimal("32.25")
     assert body["balance_source"] == "ledger"
+
+
+# ─── A register that contradicts the account's kind ──────────────────────────
+
+
+async def test_a_positive_ledger_on_a_liability_reads_inverted_not_paid_off(api_client, db_session):
+    """The clamp that turned a corrupted mortgage into a green Paid off pill.
+
+    `max(0, -ledger)` treats the impossible state and the settled state
+    identically. A liability account cannot hold money, so a positive ledger
+    is not a paid-off loan — it is a register whose signs are inverted, and
+    the page has to say so rather than congratulate the user.
+    """
+    budget = await create_budget(db_session, api_client.test_user)
+    made = await api_client.post(
+        f"/api/v1/{budget.id}/accounts",
+        json={"name": "Harborstone Mortgage", "account_type": "mortgage", "on_budget": False},
+    )
+    assert made.status_code == 201, made.text
+    account_id = made.json()["id"]
+    account = await AccountRepository(db_session).get(uuid.UUID(account_id))
+    assert account is not None
+
+    # The inversion: a lender-frame feed taken verbatim leaves the register
+    # holding the balance rather than owing it, while the bank goes on
+    # reporting a debt. That disagreement is the evidence — a positive
+    # register alone is an overpayment and floors at zero, as it always has.
+    await create_transaction(db_session, budget, account, Decimal("248900.00"), TODAY)
+    account.simplefin_balance = Decimal("-248900.00")
+    await db_session.flush()
+
+    listed = await api_client.get(f"/api/v1/{budget.id}/liabilities")
+    companion = next(item for item in listed.json() if item["linked_account_id"] == account_id)
+    assert companion["balance_source"] == "inverted"
+    assert money(companion["current_balance"]) == Decimal("248900.00"), (
+        "the magnitude, so the page can show what it found"
+    )
+    assert money(companion["current_balance"]) != Decimal("0"), "never Paid off"
+
+
+async def test_an_overpaid_card_still_floors_at_zero(api_client, db_session):
+    """The false positive the bank-evidence rule exists to avoid. Overpaying
+    a card by $50 is ordinary, the bank agrees you are in credit, and the
+    answer is the long-standing floor — not an accusation."""
+    budget = await create_budget(db_session, api_client.test_user)
+    made = await api_client.post(
+        f"/api/v1/{budget.id}/accounts",
+        json={"name": "Sapphire Visa", "account_type": "credit_card", "on_budget": True},
+    )
+    account_id = made.json()["id"]
+    account = await AccountRepository(db_session).get(uuid.UUID(account_id))
+    assert account is not None
+    await create_transaction(db_session, budget, account, Decimal("50.00"), TODAY)
+    account.simplefin_balance = Decimal("50.00")
+    await db_session.flush()
+
+    listed = await api_client.get(f"/api/v1/{budget.id}/liabilities")
+    companion = next(item for item in listed.json() if item["linked_account_id"] == account_id)
+    assert companion["balance_source"] == "ledger"
+    assert money(companion["current_balance"]) == Decimal("0")
+
+
+# ─── The estimated interest a YNAB export cannot carry ───────────────────────
+# A loan imported from YNAB reads one month of interest low: YNAB derives a
+# current-month charge from the loan terms and only turns it into a register
+# row at reconcile time. The figure is not in the export and the export has
+# nowhere to carry the rate either, so the user supplies the terms.
+
+
+async def _loan_with_terms(api_client, db_session, *, rate: str | None, balance: str = "24000.00"):
+    budget = await create_budget(db_session, api_client.test_user)
+    made = await api_client.post(
+        f"/api/v1/{budget.id}/accounts",
+        json={"name": "Harborstone Auto Loan", "account_type": "loan", "on_budget": False},
+    )
+    account_id = made.json()["id"]
+    account = await AccountRepository(db_session).get(uuid.UUID(account_id))
+    assert account is not None
+    # Dated well before this month: the origination row is a plain outflow
+    # too, and a loan opened in the same month as a payment would be read as
+    # that month's interest charge.
+    await create_transaction(
+        db_session, budget, account, Decimal(f"-{balance}"), _month_start(TODAY, 6)
+    )
+
+    listed = await api_client.get(f"/api/v1/{budget.id}/liabilities")
+    companion = next(item for item in listed.json() if item["linked_account_id"] == account_id)
+    if rate is not None:
+        patched = await api_client.patch(
+            f"/api/v1/{budget.id}/liabilities/{companion['id']}",
+            json={"interest_rate": rate},
+        )
+        assert patched.status_code == 200, patched.text
+    return budget, account, companion
+
+
+async def test_an_imported_loan_claims_no_estimate_until_terms_are_filled_in(
+    api_client, db_session
+):
+    """The imported case: the rate column is null because the export
+    structurally cannot fill it, so nothing is claimed. Null is the honest
+    answer, and it is exactly why the user has to be asked."""
+    budget, _account, companion = await _loan_with_terms(api_client, db_session, rate=None)
+    row = await _get_liability(api_client, budget.id, companion["id"])
+    assert row["interest_rate"] is None
+    assert row["estimated_interest_this_month"] is None
+    assert money(row["balance_with_estimate"]) == money(row["current_balance"])
+
+
+async def test_estimated_interest_is_shown_once_the_terms_are_known(api_client, db_session):
+    """6% a year on 24,000 is 120.00 a month — and it is added to the
+    balance separately, never folded into the posted figure."""
+    budget, _account, companion = await _loan_with_terms(api_client, db_session, rate="6")
+    row = await _get_liability(api_client, budget.id, companion["id"])
+    assert money(row["current_balance"]) == Decimal("24000.00")
+    assert money(row["estimated_interest_this_month"]) == Decimal("120.00")
+    assert money(row["balance_with_estimate"]) == Decimal("24120.00")
+
+
+async def test_estimated_interest_is_suppressed_by_a_posted_interest_row(api_client, db_session):
+    """Ordering matters. Reconciling in the source application materialises
+    the charge as a real row; adding the estimate on top of it would count
+    the same money twice."""
+    budget, account, companion = await _loan_with_terms(api_client, db_session, rate="6")
+    checking = await create_account(db_session, budget, "Everyday Checking")
+    # The real shape of the month after a reconcile: the payment posted, and
+    # reconciling materialised the interest charge as a real row beside it.
+    # A plain outflow on a tracked debt IS an interest charge, but only in a
+    # month a payment also arrived — which is what keeps the origination row
+    # from being read as one.
+    await create_transfer(db_session, budget, checking, account, "500.00", TODAY)
+    await create_transaction(db_session, budget, account, Decimal("-120.00"), TODAY)
+
+    row = await _get_liability(api_client, budget.id, companion["id"])
+    assert row["estimated_interest_this_month"] is None, "the month already has one"
+    assert money(row["current_balance"]) == Decimal("23620.00")
+    assert money(row["balance_with_estimate"]) == money(row["current_balance"])
+
+
+async def test_a_payment_alone_does_not_suppress_the_estimate(api_client, db_session):
+    """The reported gap is open for exactly this window: the payment has
+    posted, the account has not been reconciled, so the charge is still only
+    an estimate and the balance reads one month of interest low without it."""
+    budget, account, companion = await _loan_with_terms(api_client, db_session, rate="6")
+    checking = await create_account(db_session, budget, "Everyday Checking")
+    await create_transfer(db_session, budget, checking, account, "500.00", TODAY)
+
+    row = await _get_liability(api_client, budget.id, companion["id"])
+    assert money(row["current_balance"]) == Decimal("23500.00")
+    assert money(row["estimated_interest_this_month"]) == Decimal("117.50")
+    assert money(row["balance_with_estimate"]) == Decimal("23617.50")

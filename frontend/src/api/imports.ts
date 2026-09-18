@@ -56,6 +56,18 @@ export interface YnabParity {
    *  YNAB shipped. A differing card is an envelope that detached from its
    *  ledger over the imported history — checked at import because that is
    *  when the drift is largest and the user has no baseline to notice it. */
+  /** Every account's register total, the file's against the ledger's,
+   *  tracking accounts included. Every other term here is blind to an
+   *  off-budget account — a loan has no envelope and contributes nothing to
+   *  Ready to Assign — so this is the only one that can see a loan imported
+   *  a month short or with its signs inverted. */
+  accounts_compared: number
+  accounts_differing: number
+  account_differences: {
+    name: string
+    igab: string
+    ynab: string
+  }[]
   cards_compared: number
   cards_differing: number
   card_differences: {
@@ -232,9 +244,27 @@ export async function importCsv(
  * for one imported before this was recorded. Both are ordinary — the review
  * still opens, it just has nothing to report about the event and goes straight
  * to what can still be changed. */
+/** One liability the review can offer to complete. */
+export interface LoanNeedingTerms {
+  id: string
+  account_id: string | null
+  name: string
+}
+
 export interface ImportSummary {
   summary: YnabImportResult | null
   reviewed_at: string | null
+  /** Loans and cards in this budget with no interest rate on file.
+   *
+   * A YNAB export carries no account metadata at all — no rate, no minimum
+   * payment, no payoff date — so every liability arrives inert: no schedule,
+   * no payoff date, and no estimate for the current month's interest, which
+   * is the figure that makes an imported loan read a full month low against
+   * its source. The rate has to come from the user, and the review is the
+   * only place that knows an import just happened.
+   *
+   * Queried live, so filling a rate in is what clears the entry. */
+  liabilities_needing_terms?: LoanNeedingTerms[]
 }
 
 export const importSummaryKey = (budgetId: string | null) => [ROOT.importSummary, budgetId]

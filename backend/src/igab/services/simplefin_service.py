@@ -13,7 +13,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, SimpleFINConnection, Transaction
-from igab.domain.bank_balance import BalanceDrift, describe_drift, drift_is_a_fault
+from igab.domain.bank_balance import (
+    BalanceDrift,
+    anchor_verdict,
+    describe_drift,
+    describe_refused_anchor,
+    drift_is_a_fault,
+)
 from igab.domain.bank_identity import (
     FeedAccount,
     LinkAudit,
@@ -46,6 +52,8 @@ from igab.repositories.simplefin_repo import SimpleFINRepository
 from igab.repositories.sync_run_repo import SyncRunRepository
 from igab.repositories.transaction_repo import TransactionRepository
 from igab.services.change_log import snapshot, snapshots_match
+from igab.services.liability_service import LIABILITY_CLASSIFICATION
+from igab.services.simplefin_frame import normalise_feed
 from igab.services.transaction_matching_service import (
     TransactionMatchingService,
     calculate_confidence,
@@ -269,6 +277,7 @@ def _fault_summary(
     audit: LinkAudit,
     errors: list[SimpleFINError],
     drifts: Sequence[tuple[Account, BalanceDrift]] = (),
+    refused_anchors: Sequence[str] = (),
 ) -> str | None:
     """One line for the connection's error field, or None when all is well.
 
@@ -290,7 +299,18 @@ def _fault_summary(
         parts.append(f'"{orphan.account_name}" is no longer offered by the bank{fix}')
     parts.extend(e.message for e in errors if e.needs_auth)
     parts.extend(describe_drift(account.name, drift) for account, drift in drifts)
+    # Last, and never silent: a refused opening balance is the one outcome
+    # the drift line above structurally cannot report.
+    parts.extend(refused_anchors)
     return "; ".join(parts) or None
+
+
+def _balances_agree(reported: Decimal | None, ledger: Decimal | None) -> bool | None:
+    """Whether the bank and the ledger matched. None when either is unknown —
+    which is not the same as disagreeing, and must not be recorded as one."""
+    if reported is None or ledger is None:
+        return None
+    return reported == ledger
 
 
 def _drift_records(drifts: list[tuple[Account, BalanceDrift]]) -> list[dict]:
@@ -385,6 +405,7 @@ class SimpleFINService:
                     "orphaned_links": result.get("orphaned_links") or [],
                     "bank_errors": result.get("bank_errors") or [],
                     "balance_drift": result.get("balance_drift") or [],
+                    "refused_anchors": result.get("refused_anchors") or [],
                 }
             )
         return {**totals, "skip_reasons": dict(skip_reasons), "connections": outcomes}
@@ -687,6 +708,13 @@ class SimpleFINService:
                     )
             audit = self._audit_links(targets, feed_data)
 
+        # Put the feed into IGAB's frame before ANY of it is read. A lender
+        # reports a debt as a positive balance and a payment as a negative
+        # amount; the matcher, the anchor, the drift check and the run record
+        # all read these figures, so the flip happens once, here, or it
+        # happens inconsistently in four places (services/simplefin_frame.py).
+        feed_data, sign_frames = await normalise_feed(self.account_repo, targets, feed_data)
+
         txns_raw = feed_data.transactions
         # The feed's own ids per bank account. A row inside the window whose
         # id is missing here is one the bank has retired — the dedup ladder
@@ -805,14 +833,18 @@ class SimpleFINService:
         # account it lands in Ready to Assign, on a card it shows as
         # Uncovered — exactly where pre-history debt belongs.
         anchored = 0
+        refused_anchors: list[str] = []
         for account in targets:
             reported = feed_data.balances.get(account.simplefin_account_id or "")
             if reported is None:
                 continue
             await self.account_repo.update(account.id, simplefin_balance=reported)
             if account.id in first_sync_ids:
-                if await self._anchor_opening_balance(budget_id, account, reported) is not None:
+                anchor, refusal = await self._anchor_opening_balance(budget_id, account, reported)
+                if anchor is not None:
                     anchored += 1
+                elif refusal is not None:
+                    refused_anchors.append(refusal)
 
         # Two legs of one movement arrive on two accounts with ordinary bank
         # payees and nothing linking them. Pair them now, while it is still
@@ -834,6 +866,13 @@ class SimpleFINService:
                 continue
             cleared_total = await self.account_repo.get_cleared_balance(account.id)
             ledger_cleared[account.id] = cleared_total
+            # Deliberately measured AFTER the anchor, which makes a written
+            # anchor's drift zero by construction. That is not the blind spot
+            # it looks like: the anchor is a legitimate explanation of the
+            # gap — pre-window history a 90-day feed cannot carry — and
+            # measuring before it would flag every first sync of an account
+            # that had any. The gap that is NOT explained is an anchor that
+            # was refused, and that is reported as its own fault above.
             drift = drift_is_a_fault(
                 reported, cleared_total, reconciled=account.last_reconciled_at is not None
             )
@@ -860,7 +899,7 @@ class SimpleFINService:
         # errors for, is not a clean sync — and `last_sync_error` is the one
         # field the settings panel already renders in full. Clearing it on a
         # degraded run is how a broken link stayed invisible for nine days.
-        fault = _fault_summary(audit, feed_data.errors, drifts)
+        fault = _fault_summary(audit, feed_data.errors, drifts, refused_anchors)
         await self.repo.update(
             connection_id,
             last_sync_at=now,
@@ -882,6 +921,7 @@ class SimpleFINService:
             adopted_by_account=adopted_by_account,
             ledger_cleared=ledger_cleared,
             drifts=drifts,
+            refused_anchors=refused_anchors,
             fault=fault,
             change_batch_id=run_batch_id,
             counts={
@@ -923,6 +963,7 @@ class SimpleFINService:
             "cleared": cleared,
             "removed_pending": removed_pending,
             "anchored": anchored,
+            "refused_anchors": refused_anchors,
             "paired": paired,
             "pairs_for_review": pairs_for_review,
             "orphaned_links": [
@@ -1155,6 +1196,7 @@ class SimpleFINService:
         adopted_by_account: Counter[uuid.UUID],
         ledger_cleared: dict[uuid.UUID, Decimal],
         drifts: list[tuple[Account, BalanceDrift]],
+        refused_anchors: list[str],
         fault: str | None,
         change_batch_id: uuid.UUID | None,
         counts: dict[str, int],
@@ -1189,6 +1231,15 @@ class SimpleFINService:
                     "orphaned": account.id in orphaned_ids,
                     "bank_balance": feed.balances.get(account.simplefin_account_id or ""),
                     "ledger_cleared_balance": ledger_cleared.get(account.id),
+                    # Every account, tracking included, with no reconciled
+                    # gate: `drift_is_a_fault` is the alarm and is right to
+                    # stay narrow, but an inverted mortgage sat at a
+                    # seven-figure error with nothing recording that its two
+                    # balances had ever disagreed.
+                    "balance_agrees": _balances_agree(
+                        feed.balances.get(account.simplefin_account_id or ""),
+                        ledger_cleared.get(account.id),
+                    ),
                 }
             )
 
@@ -1217,6 +1268,7 @@ class SimpleFINService:
                 for o in audit.orphaned
             ],
             balance_drift=_drift_records(drifts),
+            refused_anchors=list(refused_anchors),
             change_batch_id=change_batch_id,
             skip_reasons=skip_reasons,
             accounts=per_account,
@@ -1318,7 +1370,7 @@ class SimpleFINService:
 
     async def _anchor_opening_balance(
         self, budget_id: uuid.UUID, account: Account, reported: Decimal
-    ) -> Transaction | None:
+    ) -> tuple[Transaction | None, str | None]:
         """One row that makes the ledger equal what the bank says — first
         sync only.
 
@@ -1329,16 +1381,34 @@ class SimpleFINService:
         uncategorized on purpose — the reconciliation adjustment's rule:
         on a cash account the gap belongs in Ready to Assign, on a card it
         is pre-history debt and shows as Uncovered. Through the service, so
-        it is change-logged and undoable. None when the ledger already
-        agrees.
+        it is change-logged and undoable.
+
+        Returns (row, refusal). Both None means the ledger already agreed,
+        which is the ordinary no-op. A refusal is a gap this row would have
+        written that does not have the shape of pre-window history — see
+        `domain.bank_balance.anchor_verdict`. It is reported rather than
+        written, because the drift check that would otherwise catch it is
+        disarmed by this very row.
         """
         ledger = Decimal(str(await self.account_repo.get_balance(account.id)))
-        gap = reported - ledger
-        if gap == 0:
-            return None
+        verdict = anchor_verdict(
+            reported, ledger, is_liability=account.classification == LIABILITY_CLASSIFICATION
+        )
+        if verdict.refused:
+            logger.warning(
+                "simplefin: refusing an opening balance of %s on %s (bank %s, ledger %s)",
+                verdict.gap,
+                account.name,
+                reported,
+                ledger,
+            )
+            return None, describe_refused_anchor(account.name, verdict, reported, ledger)
+        if not verdict.should_write:
+            return None, None
+        gap = verdict.gap
         oldest = await self.txn_repo.get_oldest_cleared_date_for_account(account.id)
         anchor_date = oldest - timedelta(days=1) if oldest is not None else today_utc()
-        return await self.txn_service.create(
+        created = await self.txn_service.create(
             budget_id,
             TransactionCreate(
                 account_id=account.id,
@@ -1352,6 +1422,7 @@ class SimpleFINService:
                 auto_categorize=False,
             ),
         )
+        return created, None
 
     async def _import_feed_row(
         self, budget_id: uuid.UUID, account: Account, feed: FeedRecord

@@ -21,6 +21,7 @@ from igab.domain.money import quantize_cents
 from igab.integrations.ynab.models import YNABBudget
 from igab.integrations.ynab.oracle import (
     ExportConsistency,
+    account_balances,
     anchored_expected,
     ccp_available_history,
     export_consistency,
@@ -123,6 +124,14 @@ class ParityReport:
     #: arrives after the zip is gone (scripts/card_reserve_probe.py reads it
     #: back for its YNAB overlay).
     ccp_available_history: dict[str, dict[date, Decimal]]
+    #: Every account's register total, the file's against the ledger's —
+    #: tracking accounts included. RTA, envelopes and card reserves are all
+    #: blind to an off-budget account, so a loan could import with its whole
+    #: register inverted and every other term here would still say it
+    #: matched. A loan has no envelope; its balance IS its state.
+    accounts_compared: int
+    accounts_differing: int
+    account_differences: list[ParityDifference]
     #: Whether the export's own numbers agree with each other. When they do
     #: not, `categories_differing` measures the file, not the import.
     consistency: ExportConsistency
@@ -232,6 +241,8 @@ async def check_parity(
             )
     card_history.sort(key=lambda d: d.first_month)
 
+    account_differences = await _account_differences(budget_service, budget_id, ynab_budget)
+
     igab = summary.to_be_assigned
     # Anchored budgets are held to the cash form: every term is the file's
     # own displayed position, so the handoff must match even when the file's
@@ -247,7 +258,8 @@ async def check_parity(
         uncategorized_net=quantize_cents(oracle.uncategorized_net),
         matches=quantize_cents(igab) == quantize_cents(expected)
         and not unexplained
-        and not card_differences,
+        and not card_differences
+        and not account_differences,
         categories_compared=compared,
         categories_differing=len(unexplained),
         categories_pending=len(differences) - len(unexplained),
@@ -258,5 +270,46 @@ async def check_parity(
         card_differences=card_differences[:max_differences],
         card_history=card_history[:max_differences],
         ccp_available_history=history,
+        accounts_compared=len(account_balances(ynab_budget)),
+        accounts_differing=len(account_differences),
+        account_differences=account_differences[:max_differences],
         consistency=export_consistency(ynab_budget),
     )
+
+
+async def _account_differences(
+    budget_service: BudgetService,
+    budget_id: uuid.UUID,
+    ynab_budget: YNABBudget,
+) -> list[ParityDifference]:
+    """Accounts whose ledger total does not equal the file's own rows.
+
+    Closed accounts included: an account closed after the export still owns
+    its history, and leaving it out would hide exactly the import that
+    dropped its rows.
+
+    Only accounts the file actually names are compared. An account that
+    exists here but not in the export is not a difference — it is a budget
+    the user has added to since, and reporting it would make the check cry
+    wolf on every healthy import.
+    """
+    expected = account_balances(ynab_budget)
+    if not expected:
+        return []
+    out: list[ParityDifference] = []
+    accounts = await budget_service.account_repo.get_all(budget_id, include_closed=True)
+    for account in accounts:
+        want = expected.get(account.name.strip().lower())
+        if want is None:
+            continue
+        have = await budget_service.account_repo.get_balance(account.id)
+        if quantize_cents(have) != quantize_cents(want):
+            out.append(
+                ParityDifference(
+                    name=account.name,
+                    igab=quantize_cents(have),
+                    ynab=quantize_cents(want),
+                )
+            )
+    out.sort(key=lambda d: abs(d.igab - d.ynab), reverse=True)
+    return out

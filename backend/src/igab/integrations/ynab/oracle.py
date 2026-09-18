@@ -425,3 +425,30 @@ def ccp_available_history(budget: YNABBudget) -> dict[str, dict[date, Decimal]]:
         per_card = out.setdefault(row.category.lower(), {})
         per_card[row.month] = per_card.get(row.month, ZERO) + row.available
     return out
+
+
+def account_balances(budget: YNABBudget) -> dict[str, Decimal]:
+    """{lowercased account name: the sum of its register rows in the export}.
+
+    The one figure a tracking account HAS. Parity compares Ready to Assign,
+    envelope balances and card reserves — all of which an off-budget loan or
+    a 401k contributes nothing to — so an account could be imported with its
+    whole register sign-flipped, or a month of rows short, and the import
+    self-check would go on reporting a clean match. A loan account has no
+    categories and no envelope; its balance is the whole of its state, and it
+    was the one thing never looked at.
+
+    Every row, every account, on-budget and tracking alike. Split parents
+    carry the sum of their legs and the legs are not separate rows here, so
+    summing `amount` counts each movement once.
+
+    Lowercased keys because account names are matched case-insensitively
+    across the import, the same way the card oracles key theirs.
+    """
+    totals: dict[str, Decimal] = {}
+    for txn in budget.transactions:
+        key = txn.account_name.strip().lower()
+        if not key:
+            continue
+        totals[key] = totals.get(key, ZERO) + txn.amount
+    return totals

@@ -178,6 +178,12 @@ export interface ConnectionSyncOutcome {
   orphaned_links: OrphanedLink[]
   bank_errors: BankError[]
   balance_drift: BalanceDrift[]
+  /** Opening balances the run declined to write, one sentence each. A first
+   *  sync that would have left a liability holding money — see the server's
+   *  `domain/bank_balance.anchor_verdict`. Rare and serious: it is the one
+   *  outcome the drift line cannot report, because an anchor is the row that
+   *  defines drift to be zero. */
+  refused_anchors?: string[]
 }
 
 export interface SyncAllResult {
@@ -261,6 +267,7 @@ function asSyncAll(result: SyncResult): SyncAllResult {
         orphaned_links: result.orphaned_links ?? [],
         bank_errors: result.bank_errors ?? [],
         balance_drift: result.balance_drift ?? [],
+        refused_anchors: result.refused_anchors ?? [],
       },
     ],
   }
@@ -299,10 +306,27 @@ function formatSyncAll(result: SyncAllResult): string {
     const banks = failed === 1 ? '1 connection' : `${failed} connections`
     summary = `${summary} — ${banks} could not sync`
   }
-  // After the counts, never instead of them: an import of 24 rows that still
-  // leaves the ledger off from the bank is both things at once.
-  const drift = describeDrift(result.connections.flatMap((c) => c.balance_drift ?? []))
-  return drift ? `${summary} — ${drift}` : summary
+  const fault = describeFault(result)
+  return fault ? `${summary} — ${fault}` : summary
+}
+
+/**
+ * What the run got wrong, for after its counts — never instead of them: an
+ * import of 24 rows that still left an account off from the bank is both
+ * things at once.
+ *
+ * A refused opening balance leads. The run DECLINED to write something,
+ * which outranks a gap it merely observed, and it is the one outcome drift
+ * can never report — an anchor is the row that defines drift to be zero, so
+ * that check would be reading its own output.
+ */
+function describeFault(result: SyncAllResult): string {
+  const refused = result.connections.flatMap((c) => c.refused_anchors ?? [])
+  if (refused.length > 0) {
+    const who = refused.length === 1 ? 'An account' : `${refused.length} accounts`
+    return `${who} could not be given an opening balance; see the sync log`
+  }
+  return describeDrift(result.connections.flatMap((c) => c.balance_drift ?? []))
 }
 
 /**

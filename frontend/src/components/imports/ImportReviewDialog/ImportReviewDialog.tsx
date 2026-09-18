@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
+import { Link } from 'react-router-dom'
 import { Surface } from '../../common/Surface'
 import { Dialog } from '../../common/Dialog/Dialog'
 import { TagChip, type TagColorSlot } from '../../common/TagChip'
@@ -13,7 +14,11 @@ import {
   type HygieneFinding,
 } from '../../../api/accounts'
 import { useBulkSetCategoryTags, useCreateTag, useTagSuggestions, useTags } from '../../../api/tags'
-import { useMarkImportReviewed, type YnabImportResult } from '../../../api/imports'
+import {
+  useMarkImportReviewed,
+  type LoanNeedingTerms,
+  type YnabImportResult,
+} from '../../../api/imports'
 import {
   useScheduledTransactions,
   useUpdateScheduledTransaction,
@@ -64,13 +69,18 @@ import { parseLocalDate } from '../../../utils/dates'
 export function ImportReviewDialog({
   budgetId,
   summary,
+  loansNeedingTerms = [],
   onClose,
 }: {
   budgetId: string
   summary: YnabImportResult | null
+  /** Loans and cards with no interest rate on file. Passed in rather than
+   *  fetched here: both callers already hold the import summary, and the
+   *  dialog stays renderable without a query client. */
+  loansNeedingTerms?: LoanNeedingTerms[]
   onClose: () => void
 }) {
-  const steps = stepsFor(summary)
+  const steps = stepsFor(summary, loansNeedingTerms.length)
   const [stepIndex, setStepIndex] = useState(0)
   const [draft, setDraft] = useState<Draft>({})
   const [filter, setFilter] = useState<RowFilter>(() => initialFilter(summary))
@@ -242,6 +252,7 @@ export function ImportReviewDialog({
           onNavigate={onClose}
         />
       )}
+      {step === 'loans' && <LoanTermsStep loans={loansNeedingTerms} onNavigate={onClose} />}
     </Dialog>
   )
 }
@@ -251,6 +262,57 @@ const STEP_LABELS: Record<StepId, string> = {
   upcoming: 'Upcoming',
   tags: 'Categories & tags',
   accounts: 'Accounts',
+  loans: 'Loan terms',
+}
+
+/**
+ * The loans that arrived with no terms, and a way to each one.
+ *
+ * A YNAB export is two CSVs of register rows and plan cells; between them
+ * they carry no account metadata of any kind — no interest rate, no minimum
+ * payment, no payoff date. So an importer cannot derive a loan's current
+ * interest and cannot inherit the rate to derive it later: the figure has to
+ * come from the person.
+ *
+ * Until it does, the loan's page can claim nothing — no schedule, no payoff
+ * date, and no estimate for the month's interest, which is the number that
+ * makes an imported loan read a full month below the balance its source
+ * shows. That gap is open from the moment a payment posts until the account
+ * is next reconciled, and an import taken inside that window understates the
+ * debt.
+ *
+ * Links rather than an inline form: the terms live behind the liability's
+ * own settings, which already validate them, and duplicating that here would
+ * be a second place to keep a rate rule in step.
+ */
+function LoanTermsStep({
+  loans,
+  onNavigate,
+}: {
+  loans: LoanNeedingTerms[]
+  onNavigate: () => void
+}) {
+  return (
+    <Surface variant="sunken" title="Loans with no terms yet" className="import-review__block">
+      <p className="dialog__body dialog__body--muted">
+        A YNAB export carries no account details — no interest rate, no minimum payment, no payoff
+        date — so {loans.length === 1 ? 'this account' : 'these accounts'} arrived without them. The
+        rate is what lets IGAB show a payoff date, and what closes the gap between this balance and
+        the one YNAB showed: YNAB adds the current month&apos;s interest from the terms before it is
+        ever a transaction.
+      </p>
+      <ul className="import-review__diffs">
+        {loans.map((loan) => (
+          <li key={loan.id}>
+            <span className="import-review__diff-n">{loan.name}</span>
+            <Link to={`/liabilities/${loan.id}`} className="dialog__link" onClick={onNavigate}>
+              Add the terms
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </Surface>
+  )
 }
 
 /**
@@ -642,6 +704,29 @@ function ParityBlock({
             </li>
           ))}
         </ul>
+      )}
+      {/* Account balances. Every term above is blind to an off-budget
+          account, so a loan could import with its whole register inverted
+          and this panel would still have said the import matched. */}
+      {(parity.accounts_differing ?? 0) > 0 && (
+        <>
+          <p className="import-review__verdict import-review__verdict--warn">
+            {parity.accounts_differing} of {parity.accounts_compared} account
+            {parity.accounts_differing === 1 ? ' balance does' : ' balances do'} not match the
+            register in the file.
+          </p>
+          <ul className="import-review__diffs">
+            {(parity.account_differences ?? []).map((d) => (
+              <li key={d.name}>
+                <span className="import-review__diff-n">{d.name}</span>
+                <span className="tabular">
+                  {formatMoney(parseApiDecimal(d.igab))} here vs{' '}
+                  {formatMoney(parseApiDecimal(d.ynab))} in the file
+                </span>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
       {parity.cards_differing > 0 && (
         <>
