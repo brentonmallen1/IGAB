@@ -163,6 +163,13 @@ restore FILE:
     else
         restore < "{{FILE}}"
     fi
+    # A dump older than the running code brings its own older schema and its
+    # own `alembic_version` back with it. Restarting the API re-runs
+    # `alembic upgrade head` (its CMD) against what was just restored — without
+    # this the container keeps serving new code on the dump's schema, and the
+    # first request to touch a column added since fails and rolls its work back.
+    echo "Restarting the API so migrations run against the restored database..."
+    docker compose restart api
     echo "restore complete"
 
 # Run backend linting

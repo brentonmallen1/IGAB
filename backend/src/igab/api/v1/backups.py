@@ -133,7 +133,7 @@ async def restore_backup(body: RestoreRequest, current_user: AdminUser) -> JobSt
     _require_agent()
     _require_idle()
     job_id = backup_service.write_command("restore", file=name, pre_backup=body.pre_backup)
-    await backup_service.enter_maintenance_and_watch()
+    await backup_service.enter_maintenance_and_watch(job_id)
     return JobStarted(job_id=job_id)
 
 

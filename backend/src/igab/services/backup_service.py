@@ -172,13 +172,16 @@ def write_command(action: str, file: str | None = None, pre_backup: bool = False
     return job_id
 
 
-async def enter_maintenance_and_watch() -> None:
+async def enter_maintenance_and_watch(job_id: str) -> None:
     """Quiesce the app for a restore, then restart once the agent finishes.
 
     Stops background DB users and disposes the pool so the agent can
     terminate every connection without the API racing new ones in. The
     watcher exits the process on a terminal status — docker's restart
     policy boots the app fresh against the restored database.
+
+    `job_id` is the command this restart is waiting for, and is the whole
+    point: see `_watch_restore`.
     """
     from igab.db.session import engine
     from igab.tasks.ai_worker import ai_worker
@@ -188,15 +191,34 @@ async def enter_maintenance_and_watch() -> None:
     await ai_worker.stop()
     stop_scheduler()
     await engine.dispose()
-    _state["watcher"] = asyncio.create_task(_watch_restore())
+    _state["watcher"] = asyncio.create_task(_watch_restore(job_id))
 
 
-async def _watch_restore() -> None:
+def restore_finished(status: dict | None, job_id: str) -> bool:
+    """Has the restore we are waiting for reached a terminal state?
+
+    The id check is load-bearing. `status.json` outlives the job that wrote
+    it — deliberately, so the outcome survives the restart — and the agent
+    polls for commands every 10s, so for up to ten seconds after a restore
+    is requested the file still holds the *previous* job's terminal state.
+    Matching on state alone, the watcher read that stale "done" on its first
+    poll and restarted the API roughly two seconds after the request, while
+    the agent had not yet begun. Alembic then ran against the pre-restore
+    database, the restore replaced the schema (and `alembic_version`) a
+    couple of seconds later, and the API was left serving new code on the
+    dump's older schema with nothing left to migrate it. Every sync after
+    that crashed writing its own log row and rolled itself back.
+    """
+    if status is None:
+        return False
+    return status.get("id") == job_id and status.get("state") in ("done", "error")
+
+
+async def _watch_restore(job_id: str) -> None:
     deadline = asyncio.get_event_loop().time() + RESTORE_WATCH_TIMEOUT_S
     while asyncio.get_event_loop().time() < deadline:
         await asyncio.sleep(2)
-        status = read_job_status()
-        if status is not None and status.get("state") in ("done", "error"):
+        if restore_finished(read_job_status(), job_id):
             break
     # Brief grace so the response/poll in flight can flush, then hard-exit;
     # the container restart runs migrations and boots clean either way.
