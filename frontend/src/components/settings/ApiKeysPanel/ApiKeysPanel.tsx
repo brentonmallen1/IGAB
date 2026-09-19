@@ -12,6 +12,7 @@ import {
 import { useBudgets } from '../../../api/budgets'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { Dialog } from '../../common/Dialog/Dialog'
+import { KEY_PLACEHOLDER, mcpConnectCommand, mcpEndpoint } from './mcpConnect'
 import './ApiKeysPanel.css'
 
 /**
@@ -37,8 +38,10 @@ export function ApiKeysPanel() {
 
   return (
     <div className="bkp-panel">
+      <ConnectSection />
+
       <div className="settings-subsection">
-        <div className="settings-subsection__title">Assistant access</div>
+        <div className="settings-subsection__title">Keys</div>
         <div className="settings-row">
           <div>
             <div className="settings-row__label">Read-only API keys</div>
@@ -125,6 +128,81 @@ export function ApiKeysPanel() {
       )}
       {issued && <IssuedKeyDialog issued={issued} onClose={() => setIssued(null)} />}
     </div>
+  )
+}
+
+/**
+ * How to connect, kept where the keys are.
+ *
+ * The command used to exist only in the dialog that shows a new key, which is
+ * the one moment someone does not need reminding. The question arrives later
+ * — a new laptop, a second client, a key already sitting in a config file —
+ * and by then the dialog is unreachable and the key is unprintable.
+ */
+function ConnectSection() {
+  const origin = window.location.origin
+  const endpoint = mcpEndpoint(origin)
+  const command = mcpConnectCommand(origin)
+
+  return (
+    <div className="settings-subsection">
+      <div className="settings-subsection__title">How to connect</div>
+      <div className="settings-row__desc">
+        IGAB serves a read-only MCP endpoint, so an assistant can answer questions about a budget —
+        what a category has left, what a month came to — without a screenshot. Make a key below,
+        then point a client at it.
+      </div>
+
+      <div className="mcp-connect">
+        <div className="mcp-connect__field">
+          <span className="mcp-connect__label">Endpoint</span>
+          <div className="mcp-connect__value">
+            <code className="mcp-connect__code">{endpoint}</code>
+            <CopyButton text={endpoint} label="Copy endpoint" />
+          </div>
+        </div>
+
+        <div className="mcp-connect__field">
+          <span className="mcp-connect__label">Claude Code</span>
+          <div className="mcp-connect__value">
+            <code className="mcp-connect__code">{command}</code>
+            <CopyButton text={command} label="Copy command" />
+          </div>
+        </div>
+
+        <div className="settings-row__desc">
+          Any MCP client works — it is an ordinary bearer token, sent as{' '}
+          <code>Authorization: Bearer …</code>. A key is shown once, when you make it; put it where{' '}
+          <code>{KEY_PLACEHOLDER}</code> is.
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Copying is the only thing anyone does with these strings, and the clipboard
+ * is not always there: on a LAN address over plain HTTP the page is not a
+ * secure context and the API is simply undefined. Every caller needs the same
+ * fallback, so it lives here rather than beside each button.
+ */
+function CopyButton({ text, label }: { text: string; label: string }) {
+  const [copied, setCopied] = useState(false)
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+    } catch {
+      toast.error('Could not copy — select the text instead.')
+    }
+  }
+
+  return (
+    <button className="settings-btn settings-btn--secondary" onClick={copy} aria-label={label}>
+      {copied ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}{' '}
+      {label}
+    </button>
   )
 }
 
@@ -218,19 +296,7 @@ function NewKeyDialog({
 }
 
 function IssuedKeyDialog({ issued, onClose }: { issued: ApiKeyCreated; onClose: () => void }) {
-  const [copied, setCopied] = useState<'key' | 'command' | null>(null)
-  const command = `claude mcp add --transport http igab ${window.location.origin}/api/v1/mcp --header "Authorization: Bearer ${issued.key}"`
-
-  async function copy(what: 'key' | 'command', text: string) {
-    try {
-      await navigator.clipboard.writeText(text)
-      setCopied(what)
-    } catch {
-      // Over plain HTTP on a LAN address the clipboard API is unavailable —
-      // the field is selectable, so say nothing and let them copy by hand.
-      toast.error('Could not copy — select the text instead.')
-    }
-  }
+  const command = mcpConnectCommand(window.location.origin, issued.key)
 
   return (
     <Dialog
@@ -255,28 +321,18 @@ function IssuedKeyDialog({ issued, onClose }: { issued: ApiKeyCreated; onClose: 
           <span>Key</span>
           <input readOnly value={issued.key} onFocus={(e) => e.currentTarget.select()} />
         </label>
-        <button
-          className="settings-btn settings-btn--secondary"
-          onClick={() => copy('key', issued.key)}
-        >
-          {copied === 'key' ? <Check size={13} /> : <Copy size={13} />} Copy key
-        </button>
+        <CopyButton text={issued.key} label="Copy key" />
 
         <label className="dialog-form__field">
           <span>Connect Claude Code</span>
           <textarea readOnly rows={3} value={command} onFocus={(e) => e.currentTarget.select()} />
           <span className="dialog-form__hint">
             Any MCP client works — it is an ordinary bearer token. Point yours at{' '}
-            <code>{window.location.origin}/api/v1/mcp</code> with this key in an Authorization
-            header.
+            <code>{mcpEndpoint(window.location.origin)}</code> with this key in an Authorization
+            header. The same command is in Settings afterwards; this key is not.
           </span>
         </label>
-        <button
-          className="settings-btn settings-btn--secondary"
-          onClick={() => copy('command', command)}
-        >
-          {copied === 'command' ? <Check size={13} /> : <Copy size={13} />} Copy command
-        </button>
+        <CopyButton text={command} label="Copy command" />
       </div>
     </Dialog>
   )

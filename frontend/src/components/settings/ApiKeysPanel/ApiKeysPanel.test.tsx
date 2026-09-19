@@ -50,6 +50,26 @@ beforeEach(async () => {
   hooks.revoke.mockReset()
 })
 
+describe('how to connect', () => {
+  it('shows the endpoint and the command with no key in existence', () => {
+    // The question arrives long after the one moment a key is printable: a
+    // new laptop, a second client, a key already sitting in a config file.
+    // Before this, the command lived only in the dialog that shows a new
+    // key — the one moment nobody needs reminding.
+    hooks.keys = []
+    render(<ApiKeysPanel />)
+
+    expect(screen.getByText(`${window.location.origin}/api/v1/mcp`)).toBeInTheDocument()
+    expect(screen.getByText(/claude mcp add --transport http igab/)).toBeInTheDocument()
+  })
+
+  it('stands in for the key it can never reprint', () => {
+    hooks.keys = [key()]
+    render(<ApiKeysPanel />)
+    expect(screen.getByText('igab_your_key_here')).toBeInTheDocument()
+  })
+})
+
 describe('the key list', () => {
   it('shows only the prefix, never the key', () => {
     // The server kept a hash. Nothing on this screen can reconstruct a key,

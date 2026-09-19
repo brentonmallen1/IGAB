@@ -19,7 +19,7 @@ It is deliberately narrow:
 
 ## Make a key
 
-Settings → **Assistant Access** → **New key**. Name it after where it will
+Settings → **MCP** → **New key**. Name it after where it will
 live ("Claude on the laptop"), tick the budgets it may read, and copy the key
 when it is shown.
 
@@ -32,6 +32,9 @@ a password. If you lose it, revoke that key and make another.
 claude mcp add --transport http igab https://<your-igab>/api/v1/mcp \
   --header "Authorization: Bearer igab_..."
 ```
+
+Settings → **MCP** → **How to connect** prints this with your own host filled
+in, and a copy button, so it is there long after the key was made.
 
 ## Connect anything else
 
@@ -61,7 +64,7 @@ assistant never has to ask.
 
 ## Revoking
 
-Settings → **Assistant Access** → **Revoke**. It stops working immediately.
+Settings → **MCP** → **Revoke**. It stops working immediately.
 Revoked keys stay in the list so a key you find in a config file later is
 still identifiable.
 
