@@ -9,8 +9,6 @@ import './AmountInput.css'
 interface Props extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'> {
   value: string
   onValueChange: (next: string) => void
-  /** When set, a leading operator applies against this value ("+50", "*2"). */
-  baseCents?: number | null
 }
 
 /**
@@ -21,14 +19,14 @@ interface Props extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'value
  * never be half-read as a number.
  */
 export const AmountInput = forwardRef<HTMLInputElement, Props>(function AmountInput(
-  { value, onValueChange, baseCents = null, onKeyDown, onBlur, className, ...rest },
+  { value, onValueChange, onKeyDown, onBlur, className, ...rest },
   ref
 ) {
   const [shake, setShake] = useState(false)
 
   function evaluateInPlace() {
-    if (!isAmountExpression(value, baseCents !== null)) return
-    const cents = evaluateExpressionCents(value, baseCents)
+    if (!isAmountExpression(value)) return
+    const cents = evaluateExpressionCents(value)
     if (cents === null) {
       setShake(true)
       return

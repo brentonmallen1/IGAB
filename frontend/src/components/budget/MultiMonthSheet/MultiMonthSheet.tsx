@@ -7,7 +7,6 @@ import { useAppStore } from '../../../stores/appStore'
 import { useUIStore } from '../../../stores/uiStore'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { addMonths } from '../../../utils/dates'
-import { toCents } from '../../../utils/money'
 import { parseAssignmentCommit } from '../../../utils/amountExpression'
 import { AmountInput } from '../../common/AmountInput/AmountInput'
 import { Modal } from '../../common/Modal/Modal'
@@ -49,8 +48,8 @@ const AssignCell = memo(function AssignCell({
   }
 
   function commit() {
-    // Expression-aware: "+50" / "*2" adjust the current assignment
-    const amount = parseAssignmentCommit(value, assigned)
+    // The box is the whole equation (see parseAssignmentCommit)
+    const amount = parseAssignmentCommit(value)
     if (isNaN(amount)) {
       // Unparseable input must never silently write $0 into the budget
       setEditing(false)
@@ -76,7 +75,6 @@ const AssignCell = memo(function AssignCell({
         className="mm-sheet__assign-input"
         value={value}
         onValueChange={setValue}
-        baseCents={toCents(assigned)}
         onBlur={commit}
         onKeyDown={handleKeyDown}
         placeholder="0.00"

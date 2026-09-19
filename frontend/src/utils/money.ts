@@ -86,6 +86,26 @@ export function parseMoney(value: string): number {
 }
 
 /**
+ * Resolve a typed number's comma into either grouping or a decimal point.
+ *
+ * The one implementation of the separator conventions. It was written twice —
+ * here and in the expression tokenizer's literal parser — and the copies
+ * returned different things (a float, and integer cents), so "1,250" was
+ * $1,250 through one and $1.00 through the other. A split leg and the same
+ * leg with "+0" appended disagreed by a factor of 1250.
+ *
+ * - "1,234" / "1,234.56" → grouping, commas dropped
+ * - "12,34" → decimal comma (1–2 trailing digits)
+ */
+export function normalizeSeparators(trimmed: string): string {
+  const commas = (trimmed.match(/,/g) ?? []).length
+  if (commas === 0) return trimmed
+  if (trimmed.includes('.')) return trimmed.replace(/,/g, '')
+  if (commas === 1 && /,\d{1,2}$/.test(trimmed)) return trimmed.replace(',', '.')
+  return trimmed.replace(/,/g, '')
+}
+
+/**
  * Parse a user-typed amount from a free-text/decimal-keyboard input into a
  * non-negative number. Handles both separator conventions:
  * - "12,34" (decimal comma, 1–2 digits after) → 12.34
@@ -97,21 +117,7 @@ export function parseAmountInput(value: string): number {
   const trimmed = value.trim()
   if (trimmed === '') return NaN
   if (trimmed.includes('-')) return NaN
-  let normalized: string
-  const commas = (trimmed.match(/,/g) ?? []).length
-  if (commas === 0) {
-    normalized = trimmed
-  } else if (trimmed.includes('.')) {
-    // Both present: commas are grouping ("1,234.56")
-    normalized = trimmed.replace(/,/g, '')
-  } else if (commas === 1 && /,\d{1,2}$/.test(trimmed)) {
-    // Single comma with 1–2 trailing digits: decimal comma ("12,34")
-    normalized = trimmed.replace(',', '.')
-  } else {
-    // Comma grouping without decimals ("1,234" / "1,234,567")
-    normalized = trimmed.replace(/,/g, '')
-  }
-  const cleaned = normalized.replace(/[^0-9.]/g, '')
+  const cleaned = normalizeSeparators(trimmed).replace(/[^0-9.]/g, '')
   if (cleaned === '' || cleaned === '.' || (cleaned.match(/\./g) ?? []).length > 1) return NaN
   return parseFloat(cleaned)
 }

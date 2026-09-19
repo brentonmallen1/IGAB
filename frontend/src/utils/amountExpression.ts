@@ -1,15 +1,16 @@
 /**
- * Arithmetic expression evaluation for amount inputs ("12.50+3.99", "*2").
+ * Arithmetic expression evaluation for amount inputs ("12.50+3.99", "(1+2)*3").
  *
  * All literals are parsed into integer cents before any arithmetic so binary
  * float artifacts never enter sums (0.1+0.2 is exactly 30 cents here).
  * Multiplication and division may produce fractional cents mid-expression;
  * the result is rounded to a whole cent once, at the end.
  *
- * Relative mode (assignment cells): an expression starting with an operator
- * is applied against a base value — "+50" adds, "*2" doubles, "-25" subtracts.
+ * There is no hidden operand anywhere in here: an input is an equation on
+ * its own terms, and what it evaluates to is the value. See
+ * `parseAssignmentCommit` for the incident that settled that.
  */
-import { parseAmountInput, parseMoney, toCents } from './money'
+import { normalizeSeparators, parseAmountInput, parseMoney, toCents } from './money'
 
 type Token =
   | { t: 'num'; v: number } // integer cents
@@ -20,33 +21,21 @@ const HAS_OPERATOR = /[+*/()]/
 
 /**
  * Whether the text should be treated as an expression rather than a plain
- * amount. A single leading minus is a sign, not arithmetic — except in
- * relative mode, where every leading operator acts on the base value.
+ * amount. A single leading minus is a sign, not arithmetic.
  */
-export function isAmountExpression(raw: string, relative = false): boolean {
+export function isAmountExpression(raw: string): boolean {
   const s = raw.trim()
   if (s === '') return false
   if (HAS_OPERATOR.test(s)) return true
   if (s.slice(1).includes('-')) return true
-  if (relative && /^[-+*/]/.test(s)) return true
   return false
 }
 
 /** Parse one numeric literal into integer cents, or null if malformed. */
 function literalToCents(tokenText: string): number | null {
-  let normalized: string
-  const commas = (tokenText.match(/,/g) ?? []).length
-  if (commas === 0) {
-    normalized = tokenText
-  } else if (tokenText.includes('.')) {
-    // Both present: commas are grouping ("1,234.56")
-    normalized = tokenText.replace(/,/g, '')
-  } else if (commas === 1 && /,\d{1,2}$/.test(tokenText)) {
-    // Single comma with 1–2 trailing digits: decimal comma ("12,34")
-    normalized = tokenText.replace(',', '.')
-  } else {
-    normalized = tokenText.replace(/,/g, '')
-  }
+  // Separator conventions live in money.ts; this parser is stricter about
+  // what else it will accept, but it must read a comma the same way.
+  const normalized = normalizeSeparators(tokenText)
   if (!/^(\d+(\.\d*)?|\.\d+)$/.test(normalized)) return null
   const [intPart = '0', decPart = ''] = normalized.split('.')
   // Integer dollars exactly; sub-cent digits round half-up once
@@ -147,21 +136,12 @@ function evaluate(tokens: Token[]): number {
   return result
 }
 
-/**
- * Evaluate an amount expression to integer cents, or null if invalid.
- * With baseCents set, a leading operator applies against the base.
- */
-export function evaluateExpressionCents(
-  raw: string,
-  baseCents: number | null = null
-): number | null {
+/** Evaluate an amount expression to integer cents, or null if invalid. */
+export function evaluateExpressionCents(raw: string): number | null {
   const s = raw.trim()
   if (s === '') return null
-  let tokens = tokenize(s)
+  const tokens = tokenize(s)
   if (tokens === null || tokens.length === 0) return null
-  if (baseCents !== null && tokens[0].t === 'op') {
-    tokens = [{ t: 'num', v: baseCents }, ...tokens]
-  }
   let result: number
   try {
     result = evaluate(tokens)
@@ -193,16 +173,23 @@ export function parseAmountExpressionInput(value: string): number {
 }
 
 /**
- * Expression-aware cents for validation sums (split remainders). Falls back
- * to toCents so plain-value behavior is unchanged. NaN if the expression is
- * invalid or negative.
+ * Expression-aware cents for typed amount fields — the Quick Add amount, the
+ * split legs, and the remainder check that validates them. NaN if the input
+ * is invalid or negative.
+ *
+ * The plain fallback is `parseAmountInput` because this reads text a person
+ * typed. It used to be `toCents`, which is `parseFloat` underneath: "1,250"
+ * came back as $1.00 and Quick Add saved a one-dollar transaction for it,
+ * while "1,250+0" took the expression path and came back as $1,250. A bare
+ * "-5" skipped the non-negative rule the expression path enforces, too.
  */
 export function expressionToCents(value: string): number {
   if (isAmountExpression(value)) {
     const cents = evaluateExpressionCents(value)
     return cents === null || cents < 0 ? NaN : cents
   }
-  return toCents(value)
+  const n = parseAmountInput(value)
+  return isNaN(n) ? NaN : toCents(n)
 }
 
 /** Sum form inputs exactly in cents, expression-aware (NaN entries count 0). */
@@ -214,33 +201,36 @@ export function sumExpressionsToCents(values: string[]): number {
 }
 
 /**
- * Assignment-cell parse: plain values set the amount absolutely (parseMoney
- * semantics, negatives allowed); a leading operator adjusts the current
- * value ("+50", "*2"). Returns dollars, NaN if invalid.
- */
-export function parseAssignmentInput(value: string, baseAmount: number): number {
-  if (isAmountExpression(value, true)) {
-    const cents = evaluateExpressionCents(value, toCents(baseAmount))
-    return cents === null ? NaN : cents / 100
-  }
-  return parseMoney(value)
-}
-
-/**
  * What an assignment cell commits when the user presses Enter or tabs away.
  *
+ * What you see is what you get: the box holds an equation, the equation's
+ * result is the amount. Nothing outside the box is an operand — the cell
+ * prefills with the current amount, so the current amount is already in
+ * front of you and folding it in again would charge it twice.
+ *
+ * That is not hypothetical. A leading operator used to apply against the
+ * current assignment: "+50" added 50, "*2" doubled. Because the prefill of a
+ * negative cell starts with a minus, editing a -100 envelope into
+ * "-100 + 20" — the obvious way to add the month's 20 to it — evaluated as
+ * (-100) + (-100) + 20 and committed -180. Opening the same cell and tabbing
+ * away without touching it committed -200. Retyping could not fix either,
+ * because every retype hit the same rule. So there is no relative mode now,
+ * and a fragment that is not an equation ("*2") is unparseable rather than
+ * quietly meaningful.
+ *
  * Emptying the box is how you unassign, so blank means zero — NOT "leave it
- * alone". Three cells write assignments (the grid row, the multi-month sheet,
- * the cards strip) and the rule was written inline twice and omitted in the
- * third, where clearing the box silently kept the old amount and a leading
- * "+" and any negative were rejected besides: it reached for
- * `parseAmountExpressionInput`, which is built for outflow/inflow fields
- * where the sign is structural.
+ * alone". Three cells write assignments (the grid row, the multi-month
+ * sheet, the cards strip) and the rule was written inline twice and omitted
+ * in the third, where clearing the box silently kept the old amount.
  *
  * NaN is reserved for text that cannot be parsed at all — callers must guard
  * on it rather than book a number nobody typed.
  */
-export function parseAssignmentCommit(value: string, currentAssigned: number): number {
+export function parseAssignmentCommit(value: string): number {
   if (value.trim() === '') return 0
-  return parseAssignmentInput(value, currentAssigned)
+  if (isAmountExpression(value)) {
+    const cents = evaluateExpressionCents(value)
+    return cents === null ? NaN : cents / 100
+  }
+  return parseMoney(value)
 }

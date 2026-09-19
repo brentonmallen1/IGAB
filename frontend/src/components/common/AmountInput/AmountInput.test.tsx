@@ -1,8 +1,8 @@
 /**
  * Money-critical tests for the shared calculator input: expressions evaluate
  * to exact cents on blur / Enter / "=", invalid expressions keep their text
- * and shake instead of silently committing, and relative mode applies leading
- * operators against the base value (assignment cells).
+ * and shake instead of silently committing. There is no hidden operand: the
+ * box is the whole equation.
  */
 import { fireEvent, render, screen } from '@testing-library/react'
 import { useState } from 'react'
@@ -12,18 +12,11 @@ import { AmountInput } from './AmountInput'
 
 function Harness({
   initial = '',
-  baseCents = null as number | null,
   onKeyDown = undefined as ((e: React.KeyboardEvent<HTMLInputElement>) => void) | undefined,
 }) {
   const [value, setValue] = useState(initial)
   return (
-    <AmountInput
-      aria-label="Amount"
-      value={value}
-      onValueChange={setValue}
-      baseCents={baseCents}
-      onKeyDown={onKeyDown}
-    />
+    <AmountInput aria-label="Amount" value={value} onValueChange={setValue} onKeyDown={onKeyDown} />
   )
 }
 
@@ -75,22 +68,33 @@ describe('AmountInput', () => {
     expect(getInput().value).toBe('42.10')
   })
 
-  it('applies a leading operator against baseCents in relative mode', () => {
-    render(<Harness initial="+50" baseCents={10000} />)
+  it('evaluates a leading sign as written', () => {
+    render(<Harness initial="+50" />)
     fireEvent.blur(getInput())
-    expect(getInput().value).toBe('150')
+    expect(getInput().value).toBe('50')
   })
 
-  it('doubles the base with "*2" in relative mode', () => {
-    render(<Harness initial="*2" baseCents={10000} />)
+  it('shakes on an operator fragment instead of inventing an operand', () => {
+    // "*2" once doubled the assignment cell's current amount. There is no
+    // hidden operand now, so it is simply not an equation.
+    render(<Harness initial="*2" />)
     fireEvent.blur(getInput())
-    expect(getInput().value).toBe('200')
+    expect(getInput().value).toBe('*2')
+    expect(getInput().className).toContain('amount-input--shake')
   })
 
-  it('subtracts from the base with a bare leading minus in relative mode', () => {
-    render(<Harness initial="-25" baseCents={10000} />)
+  it('leaves a bare leading minus alone — it is a sign, not arithmetic', () => {
+    render(<Harness initial="-25" />)
     fireEvent.blur(getInput())
-    expect(getInput().value).toBe('75')
+    expect(getInput().value).toBe('-25')
+  })
+
+  it('reads an edited negative value as written', () => {
+    // The assignment cell prefills the current amount, so this is what
+    // "add 20 to a -100 envelope" looks like as the user types it.
+    render(<Harness initial="-100 + 20" />)
+    fireEvent.blur(getInput())
+    expect(getInput().value).toBe('-80')
   })
 
   it('avoids float artifacts in evaluated sums (0.1+0.2)', () => {
