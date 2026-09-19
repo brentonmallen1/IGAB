@@ -49,3 +49,26 @@
 .collapsible__body {
   border-bottom: 2px solid var(--color-accent);
 }
+
+/* ── Closed, with rows behind it ───────────────────────────────────────────
+   The header carries the whole section on its own here, so it stops reading
+   as a divider: the label comes up to body weight and the count becomes a
+   solid accent chip. Accent fill with --bg-primary on it is the inversion
+   contrast.test.ts already holds to AA across all 40 themes (and the same
+   pairing the floating selection bar uses) — the label itself stays a text
+   token, so no new colour pair is introduced on --surface-chrome. */
+.collapsible__header--hiding {
+  color: var(--text-primary);
+  box-shadow: inset 2px 0 0 var(--color-accent);
+}
+
+.collapsible__header--hiding .collapsible__chevron {
+  color: var(--color-accent);
+}
+
+.collapsible__header--hiding .collapsible__count {
+  background-color: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--bg-primary);
+  font-weight: 700;
+}

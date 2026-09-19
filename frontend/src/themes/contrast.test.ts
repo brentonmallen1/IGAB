@@ -208,6 +208,10 @@ const SURFACES = [
   'card-bg',
   'input-bg',
   'header-bg',
+  // Toolbars, filter bars, sticky headers and every Collapsible header — a
+  // role token, and a surface text genuinely lands on, missing here only by
+  // omission.
+  'surface-chrome',
 ]
 /** surfaces a tinted badge or chip realistically sits on */
 const TINT_BASES = ['bg-primary', 'bg-secondary', 'bg-tertiary']
