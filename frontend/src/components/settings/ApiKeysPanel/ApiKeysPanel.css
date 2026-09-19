@@ -20,3 +20,58 @@
 .api-key__warning {
   color: var(--color-warning);
 }
+
+/* How to connect. The command is long and cannot be wrapped without being
+   wrong to paste, so it scrolls inside its own box rather than widening the
+   settings page — a sideways scroll on the page itself is the bug this repo
+   has already shipped once. */
+.mcp-connect {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-sm);
+}
+
+.mcp-connect__field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mcp-connect__label {
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+}
+
+.mcp-connect__value {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  min-width: 0;
+}
+
+.mcp-connect__code {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border: 1px solid var(--edge);
+  border-radius: var(--border-radius-sm);
+  background: var(--surface-sunken);
+  color: var(--text-primary);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--font-size-xs);
+  white-space: pre;
+}
+
+/* The button must not be squeezed to nothing by a long command beside it. */
+.mcp-connect__value .settings-btn {
+  flex: none;
+}
+
+@media (max-width: 768px) {
+  .mcp-connect__value {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

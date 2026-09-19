@@ -631,9 +631,9 @@ export function SettingsPage() {
         </div>
       </Surface>
 
-      {/* Assistant access. Under Account rather than under a budget: a key
-          belongs to the person and may span several budgets. */}
-      <Surface as="section" className="settings-section" id="api-keys" title="Assistant Access">
+      {/* MCP. Under Account rather than under a budget: a key belongs to the
+          person and may span several budgets. */}
+      <Surface as="section" className="settings-section" id="api-keys" title="MCP">
         <div className="settings-section__body">
           <ApiKeysPanel />
         </div>

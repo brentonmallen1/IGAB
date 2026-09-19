@@ -88,9 +88,9 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
   { id: 'account', label: 'Account', page: 'settings', keywords: 'password sign out' },
   {
     id: 'api-keys',
-    label: 'Assistant Access',
+    label: 'MCP',
     page: 'settings',
-    keywords: 'mcp api key token claude assistant ai read-only integration',
+    keywords: 'mcp api key token claude assistant ai read-only integration connect endpoint',
   },
   // "Backups" sat directly under "Budget Backups" in the nav, and the nav is
   // the only thing that distinguishes them. This one is the whole install.
