@@ -1,0 +1,92 @@
+{
+  "_comment": "One rule, two languages. Run by BOTH frontend/src/components/transactions/mergeEligibility.test.ts and backend/tests/unit/test_merge_offer.py. A rule changed on one side only fails on the other.",
+  "_why": "The client's copy of this rule had already drifted. It knew about accounts, reconciled pairs, splits and transfer legs, but not about bank identity — so the register offered Merge on two SimpleFIN rows carrying different bank ids, the server refused every save, and the modal swallowed the refusal. A real duplicate of a reconciled Hobby Lobby row could not be merged and the UI would not say why.",
+  "_shape": "`server_accepts` is domain/merging.may_offer_merge — would the merge go through with no survivor requested. `register_offers` is whether the register draws the Merge button. Two invariants, both tested on both sides: the register never offers what the server refuses, and where it offers LESS the divergence is named below. Which row survives stays a server decision (choose_survivor); offerability is not survivorship.",
+  "_deliberate_divergence": "The register does not offer a merge involving a split parent or a transfer leg, though the server would accept one (the structured row survives, the plain duplicate goes). The preview modal shows two plain rows becoming one; it cannot show what happens to a split's lines or a transfer's partner, and a merge the user cannot see the consequences of is not one the register should offer. Bounded here, and pinned by the containment test — if the gap widens, both suites fail.",
+  "cases": [
+    {
+      "note": "the ordinary duplicate: one hand-entered, one from the bank",
+      "a": { "cleared": "uncleared", "account_id": "a1", "sync_id": null },
+      "b": { "cleared": "cleared", "account_id": "a1", "sync_id": "TRN-1" },
+      "server_accepts": true,
+      "register_offers": true
+    },
+    {
+      "note": "a reconciled row may absorb a duplicate — it survives, and that is the point",
+      "a": { "cleared": "reconciled", "account_id": "a1", "sync_id": null },
+      "b": { "cleared": "cleared", "account_id": "a1", "sync_id": "TRN-1" },
+      "server_accepts": true,
+      "register_offers": true
+    },
+    {
+      "note": "two bank rows sharing one bank id are the same record seen twice",
+      "a": { "cleared": "cleared", "account_id": "a1", "sync_id": "TRN-1" },
+      "b": { "cleared": "reconciled", "account_id": "a1", "sync_id": "TRN-1" },
+      "server_accepts": true,
+      "register_offers": true
+    },
+    {
+      "note": "one bank row, one hand-entered row, both reconciled: neither may go",
+      "a": { "cleared": "reconciled", "account_id": "a1", "sync_id": null },
+      "b": { "cleared": "reconciled", "account_id": "a1", "sync_id": "TRN-1" },
+      "server_accepts": false,
+      "register_offers": false
+    },
+    {
+      "note": "the Hobby Lobby case: two SimpleFIN rows, two different bank ids. The server has always refused this; the register offered it anyway",
+      "a": { "cleared": "cleared", "account_id": "a1", "sync_id": "TRN-b1a0" },
+      "b": { "cleared": "reconciled", "account_id": "a1", "sync_id": "TRN-c6ba" },
+      "server_accepts": false,
+      "register_offers": false
+    },
+    {
+      "note": "different bank ids, neither reconciled — still two distinct bank records",
+      "a": { "cleared": "cleared", "account_id": "a1", "sync_id": "TRN-1" },
+      "b": { "cleared": "uncleared", "account_id": "a1", "sync_id": "TRN-2" },
+      "server_accepts": false,
+      "register_offers": false
+    },
+    {
+      "note": "both reconciled: the statement vouched for both, so neither may go",
+      "a": { "cleared": "reconciled", "account_id": "a1", "sync_id": null },
+      "b": { "cleared": "reconciled", "account_id": "a1", "sync_id": null },
+      "server_accepts": false,
+      "register_offers": false
+    },
+    {
+      "note": "different accounts: a merge would move money between them",
+      "a": { "cleared": "cleared", "account_id": "a1", "sync_id": null },
+      "b": { "cleared": "cleared", "account_id": "a2", "sync_id": null },
+      "server_accepts": false,
+      "register_offers": false
+    },
+    {
+      "note": "deliberate divergence: the server keeps the split and merges the plain row away; the register will not show that, so it does not offer it",
+      "a": { "cleared": "cleared", "account_id": "a1", "sync_id": null, "is_split": true },
+      "b": { "cleared": "cleared", "account_id": "a1", "sync_id": null },
+      "server_accepts": true,
+      "register_offers": false
+    },
+    {
+      "note": "deliberate divergence: same, for a transfer leg — the server keeps the leg, the register will not show what becomes of its partner",
+      "a": { "cleared": "cleared", "account_id": "a1", "sync_id": null, "transfer_id": "t9" },
+      "b": { "cleared": "cleared", "account_id": "a1", "sync_id": null },
+      "server_accepts": true,
+      "register_offers": false
+    },
+    {
+      "note": "a split line: act on its parent instead — refused by both",
+      "a": { "cleared": "cleared", "account_id": "a1", "sync_id": null, "parent_transaction_id": "p1" },
+      "b": { "cleared": "cleared", "account_id": "a1", "sync_id": null },
+      "server_accepts": false,
+      "register_offers": false
+    },
+    {
+      "note": "two splits: the loser would be merged away whichever survives",
+      "a": { "cleared": "cleared", "account_id": "a1", "sync_id": null, "is_split": true },
+      "b": { "cleared": "cleared", "account_id": "a1", "sync_id": null, "is_split": true },
+      "server_accepts": false,
+      "register_offers": false
+    }
+  ]
+}

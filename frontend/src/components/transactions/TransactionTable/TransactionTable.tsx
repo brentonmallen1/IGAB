@@ -33,6 +33,8 @@ import {
 import { SelectionActionBar } from '../SelectionActionBar/SelectionActionBar'
 import { MakeTransferDialog } from '../MakeTransferDialog/MakeTransferDialog'
 import { mayBecomeTransfer } from '../transferConversion'
+import { mayOfferMerge } from '../mergeEligibility'
+import { apiErrorMessage } from '../../../api/client'
 import { MergePreviewModal } from '../MergePreviewModal/MergePreviewModal'
 import { MatchReviewModal } from '../../simplefin/MatchReviewModal'
 import { SearchFilterChips } from '../SearchFilterChips/SearchFilterChips'
@@ -528,18 +530,17 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
     [selectedTransactionIds, transactionMap]
   )
 
+  // The rule itself is mergeEligibility.mayOfferMerge, pinned against the
+  // server's by shared/merge_cases.json. It lived inline here and had
+  // drifted: two bank rows with different bank ids were offered as
+  // mergeable and refused on every save.
   const mergeEligiblePair = useMemo((): [Transaction, Transaction] | null => {
     if (selectedTransactionIds.size !== 2) return null
     const [id1, id2] = [...selectedTransactionIds]
     const t1 = transactionMap.get(id1)
     const t2 = transactionMap.get(id2)
     if (!t1 || !t2) return null
-    if (t1.account_id !== t2.account_id) return null
-    if (t1.cleared === 'reconciled' && t2.cleared === 'reconciled') return null
-    if (t1.is_split || t2.is_split || t1.parent_transaction_id || t2.parent_transaction_id)
-      return null
-    if (t1.transfer_id || t2.transfer_id) return null
-    return [t1, t2]
+    return mayOfferMerge(t1, t2) ? [t1, t2] : null
   }, [selectedTransactionIds, transactionMap])
 
   const editableSelectedTxn = useMemo((): Transaction | null => {
@@ -563,9 +564,20 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   const convertibleSelectedTxn =
     editableSelectedTxn && mayBecomeTransfer(editableSelectedTxn) ? editableSelectedTxn : null
 
+  const [mergeError, setMergeError] = useState<string | null>(null)
   const handleConfirmMerge = useCallback(
     async (survivorId?: string) => {
-      await mergeTxns.mutateAsync({ transactionIds: [...selectedTransactionIds], survivorId })
+      // The server refuses merges the register cannot rule out on its own
+      // (a survivor the rules forbid, most of all). Swallowing that left
+      // the modal open with the button doing nothing — the refusal is the
+      // one thing the user needs to read.
+      setMergeError(null)
+      try {
+        await mergeTxns.mutateAsync({ transactionIds: [...selectedTransactionIds], survivorId })
+      } catch (err) {
+        setMergeError(apiErrorMessage(err, 'These transactions could not be merged'))
+        return
+      }
       setShowMergeModal(false)
       clearTransactionSelection()
       notify('Transactions merged', 'latest')
@@ -814,7 +826,11 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
           payeeMap={payeeMap}
           categoryMap={categoryMap}
           onConfirm={handleConfirmMerge}
-          onCancel={() => setShowMergeModal(false)}
+          error={mergeError}
+          onCancel={() => {
+            setMergeError(null)
+            setShowMergeModal(false)
+          }}
           isPending={mergeTxns.isPending}
         />
       )}
