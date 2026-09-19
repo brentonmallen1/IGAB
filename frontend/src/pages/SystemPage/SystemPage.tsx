@@ -2,15 +2,23 @@ import { PageHeader } from '../../components/common/PageHeader/PageHeader'
 import { useCurrentUser } from '../../api/auth'
 import { useSimpleFINConfig } from '../../api/simplefin'
 import { SyncLogsPanel } from '../../components/settings/SyncLogsPanel/SyncLogsPanel'
-import { Surface } from '../../components/common/Surface'
 import { AISettingsPanel } from '../../components/settings/AISettingsPanel'
+import { AIStatusBadge } from '../../components/settings/AIStatusBadge'
+import { AI_STATUS_LABEL, useAIStatusTone } from '../../components/settings/aiStatus'
 import { BackupsPanel } from '../../components/settings/BackupsPanel/BackupsPanel'
-import { SettingsShell } from '../../components/settings/SettingsShell/SettingsShell'
+import {
+  SettingsShell,
+  type SectionPanel,
+} from '../../components/settings/SettingsShell/SettingsShell'
 import { SimpleFINPanel } from '../../components/settings/SimpleFINPanel/SimpleFINPanel'
 import { UpdatesPanel } from '../../components/settings/UpdatesPanel/UpdatesPanel'
 import { UsersPanel } from '../../components/settings/UsersPanel/UsersPanel'
 import { useAppStore } from '../../stores/appStore'
-import { SETTINGS_PAGES, visibleSettingsSections } from '../SettingsPage/settingsSections'
+import {
+  SETTINGS_PAGES,
+  visibleSettingsSections,
+  type SettingsSectionId,
+} from '../SettingsPage/settingsSections'
 import './SystemPage.css'
 
 /**
@@ -29,10 +37,12 @@ export function SystemPage() {
   const { data: me } = useCurrentUser()
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const { data: sfConfig } = useSimpleFINConfig()
+  const isAdmin = !!me?.is_admin
+  const aiTone = useAIStatusTone()
 
   const sections = visibleSettingsSections({
     budgetId,
-    isAdmin: !!me?.is_admin,
+    isAdmin,
     page: 'system',
     sfWarn: sfConfig && !sfConfig.configured ? 'Bank sync is not configured' : undefined,
   })
@@ -42,6 +52,21 @@ export function SystemPage() {
   const back = budgetId
     ? { to: SETTINGS_PAGES.settings.path, label: 'Budget settings' }
     : { to: '/budgets', label: 'Budgets' }
+
+  // Admin-only panels are simply absent for everyone else, matching the
+  // endpoints; the registry already keeps their nav entries out.
+  const panels: Partial<Record<SettingsSectionId, SectionPanel>> = {
+    updates: { body: <UpdatesPanel /> },
+    simplefin: { body: <SimpleFINPanel /> },
+    ai: { body: <AISettingsPanel />, titleAside: <AIStatusBadge /> },
+    ...(isAdmin
+      ? {
+          data: { body: <BackupsPanel /> },
+          'sync-logs': { body: <SyncLogsPanel /> },
+          users: { body: <UsersPanel /> },
+        }
+      : {}),
+  }
 
   return (
     <div className="system-page">
@@ -54,52 +79,16 @@ export function SystemPage() {
       </header>
 
       <div className="system-page__body">
-        <SettingsShell sections={sections} navLabel="System sections">
-          {/* Whole-application backups and restore. Admin-only, matching the
-              endpoints. */}
-          {me?.is_admin && (
-            <Surface as="section" className="settings-section" id="data" title="Server Backups">
-              <div className="settings-section__body">
-                <BackupsPanel />
-              </div>
-            </Surface>
-          )}
-
-          <Surface as="section" className="settings-section" id="updates" title="Updates">
-            <div className="settings-section__body">
-              <UpdatesPanel />
-            </div>
-          </Surface>
-
-          <Surface
-            as="section"
-            className="settings-section"
-            id="simplefin"
-            title="SimpleFIN Bank Connection"
-          >
-            <div className="settings-section__body">
-              <SimpleFINPanel />
-            </div>
-          </Surface>
-
-          {me?.is_admin && (
-            <Surface as="section" className="settings-section" id="sync-logs" title="Sync Logs">
-              <div className="settings-section__body">
-                <SyncLogsPanel />
-              </div>
-            </Surface>
-          )}
-
-          <AISettingsPanel />
-
-          {me?.is_admin && (
-            <Surface as="section" className="settings-section" id="users" title="Users">
-              <div className="settings-section__body">
-                <UsersPanel />
-              </div>
-            </Surface>
-          )}
-        </SettingsShell>
+        <SettingsShell
+          page="system"
+          sections={sections}
+          panels={panels}
+          hints={{
+            simplefin: sfConfig ? (sfConfig.configured ? 'Connected' : 'Not set up') : undefined,
+            ai: AI_STATUS_LABEL[aiTone],
+          }}
+          navLabel="System sections"
+        />
       </div>
     </div>
   )

@@ -194,7 +194,7 @@ describe('Setting money aside', () => {
   it('links out to where your own figures are', () => {
     renderPanel()
     const href = (name: RegExp | string) => screen.getByRole('link', { name }).getAttribute('href')
-    expect(href('Settings → Tags')).toBe('/settings#tags')
+    expect(href('Settings → Tags')).toBe('/settings/tags')
     expect(href('Emergency Fund')).toBe('/reports?tab=emergency-fund')
     expect(href('sizer')).toBe('/guide?tab=tools&tool=emergency-fund')
     expect(href('Open the Essentials report')).toBe('/reports?tab=essentials')

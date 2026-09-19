@@ -181,7 +181,7 @@ function App() {
               {/* Beside the picker, not inside MainLayout: the shell redirects
                   to /budgets when there is no budget, and System is where you
                   restore one. See SystemPage. */}
-              <Route path="/system" element={page(<SystemPage />)} />
+              <Route path="/system/:section?" element={page(<SystemPage />)} />
               <Route element={<MainLayout />}>
                 <Route path="/budget" element={page(<BudgetPage />)} />
                 <Route path="/accounts" element={page(<AccountsOverviewPage />)} />
@@ -191,7 +191,7 @@ function App() {
                 <Route path="/assets/:assetId" element={page(<AssetPage />)} />
                 <Route path="/liabilities" element={page(<LiabilitiesOverviewPage />)} />
                 <Route path="/liabilities/:liabilityId" element={page(<LiabilityPage />)} />
-                <Route path="/settings" element={page(<SettingsPage />)} />
+                <Route path="/settings/:section?" element={page(<SettingsPage />)} />
                 <Route path="/import" element={page(<ImportPage />)} />
                 <Route path="/reports" element={page(<ReportsPage />)} />
                 <Route path="/guide" element={page(<GuidePage />)} />

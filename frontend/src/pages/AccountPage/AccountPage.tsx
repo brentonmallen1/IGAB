@@ -43,14 +43,11 @@ import { Pill } from '../../components/common/Pill/Pill'
 import { Surface } from '../../components/common/Surface'
 import { PageHeader } from '../../components/common/PageHeader/PageHeader'
 import { useIsMobile } from '../../hooks/useMediaQuery'
+import { ageLabel } from '../../utils/age'
 
 function formatReconcileAge(lastReconciledAt: string | null): string {
   if (!lastReconciledAt) return 'Never reconciled'
-  const ageMs = Date.now() - new Date(lastReconciledAt).getTime()
-  const ageDays = Math.floor(ageMs / (1000 * 60 * 60 * 24))
-  if (ageDays === 0) return 'Reconciled today'
-  if (ageDays === 1) return 'Reconciled yesterday'
-  return `Reconciled ${ageDays} days ago`
+  return `Reconciled ${ageLabel(lastReconciledAt)}`
 }
 
 export function AccountPage() {

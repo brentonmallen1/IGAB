@@ -57,7 +57,7 @@ function renderPage() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter initialEntries={['/settings']}>
+      <MemoryRouter initialEntries={['/settings/guide']}>
         <SettingsPage />
       </MemoryRouter>
     </QueryClientProvider>
