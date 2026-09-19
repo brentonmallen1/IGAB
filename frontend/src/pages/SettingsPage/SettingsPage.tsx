@@ -1,7 +1,14 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { useAppStore, THEMES, FONT_SCALES, type Theme, type FontScale } from '../../stores/appStore'
+import {
+  useAppStore,
+  THEMES,
+  FONT_SCALES,
+  getPaletteForTheme,
+  type Theme,
+  type FontScale,
+} from '../../stores/appStore'
 import { MAX_FUNDING_DAY } from '../../utils/targets'
 import {
   useAccounts,
@@ -23,8 +30,11 @@ import { ArrowRight, HelpCircle } from 'lucide-react'
 import { IntegrityPanel } from '../../components/settings/IntegrityPanel/IntegrityPanel'
 import { ApiKeysPanel } from '../../components/settings/ApiKeysPanel/ApiKeysPanel'
 import { BudgetSnapshotsPanel } from '../../components/settings/BudgetSnapshotsPanel/BudgetSnapshotsPanel'
-import { SETTINGS_PAGES, visibleSettingsSections } from './settingsSections'
-import { SettingsShell } from '../../components/settings/SettingsShell/SettingsShell'
+import { SETTINGS_PAGES, visibleSettingsSections, type SettingsSectionId } from './settingsSections'
+import {
+  SettingsShell,
+  type SectionPanel,
+} from '../../components/settings/SettingsShell/SettingsShell'
 import { TagsPanel } from '../../components/settings/TagsPanel'
 import { SystemTagsHelp } from '../../components/settings/TagsPanel/SystemTagsHelp'
 import { ViewportPanel } from '../../components/settings/ViewportPanel/ViewportPanel'
@@ -42,7 +52,10 @@ import { useAccountTypes } from '../../api/accountTypes'
 import { BUILTIN_ACCOUNT_TYPES } from '../../constants/accountTypes'
 import './SettingsPage.css'
 import { confirmAsync } from '../../stores/confirmStore'
-import { Surface } from '../../components/common/Surface'
+import { useTags } from '../../api/tags'
+import { useApiKeys } from '../../api/apiKeys'
+import { useBudgetSnapshots } from '../../api/budgetSnapshots'
+import { ageLabel } from '../../utils/age'
 
 const NUMBER_FORMATS: { value: NumberFormat; label: string; example: string }[] = [
   { value: 'comma_dot', label: 'US/UK', example: '1,234.56' },
@@ -187,20 +200,32 @@ export function SettingsPage() {
     page: 'settings',
   })
 
-  return (
-    <SettingsShell
-      sections={sections}
-      navLabel="Settings sections"
-      navFooter={
-        <Link to={SETTINGS_PAGES.system.path} className="settings-nav__link">
-          {SETTINGS_PAGES.system.label} settings
-          <ArrowRight size={12} aria-hidden="true" />
-        </Link>
-      }
-    >
-      {/* Appearance */}
-      <Surface as="section" className="settings-section" id="appearance" title="Appearance">
-        <div className="settings-section__body">
+  // A fact per section for the nav, so a section can be judged before it is
+  // opened. Only what the page already knows or can ask for cheaply.
+  const { data: tags } = useTags(budgetId)
+  const { data: apiKeys } = useApiKeys()
+  const { data: snapshots } = useBudgetSnapshots(budgetId)
+  const openAccounts = accounts?.filter((a) => !a.is_closed).length
+  const activeKeys = apiKeys?.filter((k) => !k.revoked_at).length
+  const newestSnapshot = snapshots?.reduce<string | null>(
+    (best, f) => (best && best > f.modified_at ? best : f.modified_at),
+    null
+  )
+  const hints: Partial<Record<SettingsSectionId, ReactNode>> = {
+    appearance: getPaletteForTheme(theme).label,
+    account: me?.display_name || me?.email,
+    budget: currentBudget?.name,
+    accounts: openAccounts,
+    tags: tags?.length,
+    'api-keys':
+      activeKeys == null ? undefined : `${activeKeys} ${activeKeys === 1 ? 'key' : 'keys'}`,
+    'budget-backups': newestSnapshot ? ageLabel(newestSnapshot) : undefined,
+  }
+
+  const panels: Partial<Record<SettingsSectionId, SectionPanel>> = {
+    appearance: {
+      body: (
+        <>
           <div className="settings-row">
             <div>
               <div className="settings-row__label">Theme</div>
@@ -235,12 +260,13 @@ export function SettingsPage() {
               ))}
             </select>
           </div>
-        </div>
-      </Surface>
+        </>
+      ),
+    },
 
-      {/* Budget */}
-      <Surface as="section" className="settings-section" id="budget" title="Budget">
-        <div className="settings-section__body">
+    budget: {
+      body: (
+        <>
           {currentBudget ? (
             <>
               <div className="settings-row">
@@ -379,103 +405,196 @@ export function SettingsPage() {
             </>
           ) : null}
 
-          <div className="settings-row">
-            <div>
-              <div className="settings-row__label">Auto-open last budget</div>
-              <div className="settings-row__desc">
-                Skip the budget selector when opening the app
-              </div>
-            </div>
-            <input
-              type="checkbox"
-              checked={autoOpenLastBudget}
-              onChange={(e) => setAutoOpenLastBudget(e.target.checked)}
-            />
-          </div>
-        </div>
-      </Surface>
-
-      {/* Guide */}
-      {budgetId && (
-        <Surface as="section" className="settings-section" id="guide" title="Guide">
-          <div className="settings-section__body">
+          <div className="settings-subsection">
+            <div className="settings-subsection__title">Opening</div>
             <div className="settings-row">
               <div>
-                <div className="settings-row__label">Personalise the roadmap</div>
+                <div className="settings-row__label">Auto-open last budget</div>
                 <div className="settings-row__desc">
-                  Use your budget to show where you are on the roadmap. Every figure it works out is
-                  explained, and you can correct or switch off any of them. Turn this off and the
-                  roadmap becomes plain reading — nothing is calculated at all.
+                  Skip the budget selector when opening the app
                 </div>
               </div>
               <input
                 type="checkbox"
-                checked={guidePrefs.personalization}
-                disabled={setGuidePrefs.isPending}
-                onChange={(e) => setGuidePrefs.mutate({ personalization: e.target.checked })}
-              />
-            </div>
-
-            <div className="settings-row">
-              <div>
-                <div className="settings-row__label">Financial health reviews</div>
-                <div className="settings-row__desc">
-                  {guidePrefs.personalization
-                    ? 'Show a quiet marker on any roadmap step worth a look, and offer a health report you can run when you want it. IGAB never sends you a notification about your money.'
-                    : 'Unavailable while the roadmap is not personalised — health reviews are built from the same figures.'}
-                </div>
-              </div>
-              <input
-                type="checkbox"
-                checked={guidePrefs.checkup}
-                disabled={!guidePrefs.personalization || setGuidePrefs.isPending}
-                onChange={(e) => setGuidePrefs.mutate({ checkup: e.target.checked })}
-              />
-            </div>
-
-            <div className="settings-row">
-              <div>
-                <div className="settings-row__label">Wishlist</div>
-                <div className="settings-row__desc">
-                  Keep a wishlist — a Wishlist group in your budget and its own Wishlist page.
-                  Turning it off archives those envelopes and returns anything saved in them to
-                  Ready to Assign; it asks first, and says how much.
-                </div>
-              </div>
-              <input
-                type="checkbox"
-                checked={guidePrefs.wishlist}
-                disabled={setGuidePrefs.isPending}
-                onChange={(e) => void handleWishlistToggle(e.target.checked)}
+                checked={autoOpenLastBudget}
+                onChange={(e) => setAutoOpenLastBudget(e.target.checked)}
               />
             </div>
           </div>
-        </Surface>
-      )}
+        </>
+      ),
+    },
 
-      {/* Tags */}
-      {budgetId && (
-        <Surface
-          as="section"
-          className="settings-section"
-          id="tags"
-          title={
-            <span className="settings-section__title-help">
-              Tags
-              <SystemTagsHelp />
-            </span>
-          }
-          actions={<ImportReviewButton budgetId={budgetId} />}
-        >
-          <div className="settings-section__body">
-            <TagsPanel budgetId={budgetId} />
-          </div>
-        </Surface>
-      )}
+    ...(budgetId
+      ? {
+          guide: {
+            body: (
+              <>
+                <div className="settings-row">
+                  <div>
+                    <div className="settings-row__label">Personalise the roadmap</div>
+                    <div className="settings-row__desc">
+                      Use your budget to show where you are on the roadmap. Every figure it works
+                      out is explained, and you can correct or switch off any of them. Turn this off
+                      and the roadmap becomes plain reading — nothing is calculated at all.
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={guidePrefs.personalization}
+                    disabled={setGuidePrefs.isPending}
+                    onChange={(e) => setGuidePrefs.mutate({ personalization: e.target.checked })}
+                  />
+                </div>
 
-      {/* Mobile — per-device settings (not synced to the server) */}
-      <Surface as="section" className="settings-section" id="mobile" title="Mobile">
-        <div className="settings-section__body">
+                <div className="settings-row">
+                  <div>
+                    <div className="settings-row__label">Financial health reviews</div>
+                    <div className="settings-row__desc">
+                      {guidePrefs.personalization
+                        ? 'Show a quiet marker on any roadmap step worth a look, and offer a health report you can run when you want it. IGAB never sends you a notification about your money.'
+                        : 'Unavailable while the roadmap is not personalised — health reviews are built from the same figures.'}
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={guidePrefs.checkup}
+                    disabled={!guidePrefs.personalization || setGuidePrefs.isPending}
+                    onChange={(e) => setGuidePrefs.mutate({ checkup: e.target.checked })}
+                  />
+                </div>
+
+                <div className="settings-row">
+                  <div>
+                    <div className="settings-row__label">Wishlist</div>
+                    <div className="settings-row__desc">
+                      Keep a wishlist — a Wishlist group in your budget and its own Wishlist page.
+                      Turning it off archives those envelopes and returns anything saved in them to
+                      Ready to Assign; it asks first, and says how much.
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={guidePrefs.wishlist}
+                    disabled={setGuidePrefs.isPending}
+                    onChange={(e) => void handleWishlistToggle(e.target.checked)}
+                  />
+                </div>
+              </>
+            ),
+          },
+
+          tags: {
+            body: <TagsPanel budgetId={budgetId} />,
+            titleAside: <SystemTagsHelp />,
+            actions: <ImportReviewButton budgetId={budgetId} />,
+          },
+
+          accounts: {
+            body: (
+              <>
+                <div className="settings-account-list scroll-list surface surface--sunken">
+                  {accounts?.map((acc) => (
+                    <div
+                      key={acc.id}
+                      className={`settings-account-item ${acc.is_closed ? 'settings-account-item--closed' : ''}`}
+                    >
+                      <div>
+                        <div className="settings-account-item__name">{acc.name}</div>
+                        <div className="settings-account-item__type">
+                          {acc.account_type.replace('_', ' ')}
+                          {acc.simplefin_account_name ? ` · ${acc.simplefin_account_name}` : ''}
+                          {acc.is_closed ? ' · closed' : ''}
+                        </div>
+                      </div>
+                      <div className="settings-account-item__actions">
+                        <span
+                          className={`settings-account-item__balance ${acc.balance < 0 ? 'negative' : ''}`}
+                        >
+                          {formatMoney(acc.balance)}
+                        </span>
+                        <button
+                          className="settings-btn settings-btn--secondary"
+                          onClick={() => openModal('account', acc.id)}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="settings-btn settings-btn--secondary"
+                          onClick={() => handleToggleClose(acc.id, acc.is_closed ?? false)}
+                        >
+                          {acc.is_closed ? 'Reopen' : 'Close'}
+                        </button>
+                        <button
+                          className="settings-btn settings-btn--danger"
+                          onClick={() => handleDeleteAccount(acc.id)}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <form className="settings-add-form" onSubmit={handleAddAccount}>
+                  <div className="settings-add-form__row">
+                    <input
+                      type="text"
+                      className="settings-input"
+                      value={newAccName}
+                      onChange={(e) => setNewAccName(e.target.value)}
+                      placeholder="Account name…"
+                    />
+                    <select
+                      className="settings-input"
+                      value={newAccType}
+                      onChange={(e) => setNewAccType(e.target.value)}
+                    >
+                      {typeOptions.map((t) => (
+                        <option key={t.key} value={t.key}>
+                          {t.label}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      className="settings-btn"
+                      onClick={() => setShowTypeInfo(true)}
+                      aria-label="What do account types mean?"
+                      title="What do account types mean?"
+                    >
+                      <HelpCircle size={14} />
+                    </button>
+                  </div>
+                  <button
+                    type="submit"
+                    className="settings-btn settings-btn--primary"
+                    style={{ alignSelf: 'flex-start' }}
+                  >
+                    Add Account
+                  </button>
+                </form>
+              </>
+            ),
+          },
+
+          integrity: { body: <IntegrityPanel budgetId={budgetId} /> },
+        }
+      : {}),
+
+    ...(currentBudget
+      ? {
+          'budget-backups': {
+            body: (
+              <BudgetSnapshotsPanel budgetId={currentBudget.id} budgetName={currentBudget.name} />
+            ),
+          },
+        }
+      : {}),
+
+    mobile: {
+      body: (
+        <>
           <div className="settings-row">
             <div>
               <div className="settings-row__label">Suggest payees near me</div>
@@ -491,127 +610,13 @@ export function SettingsPage() {
             />
           </div>
           <ViewportPanel />
-        </div>
-      </Surface>
+        </>
+      ),
+    },
 
-      {/* Accounts */}
-      {budgetId && (
-        <Surface as="section" className="settings-section" id="accounts" title="Accounts">
-          <div className="settings-section__body">
-            <div className="settings-account-list scroll-list surface surface--sunken">
-              {accounts?.map((acc) => (
-                <div
-                  key={acc.id}
-                  className={`settings-account-item ${acc.is_closed ? 'settings-account-item--closed' : ''}`}
-                >
-                  <div>
-                    <div className="settings-account-item__name">{acc.name}</div>
-                    <div className="settings-account-item__type">
-                      {acc.account_type.replace('_', ' ')}
-                      {acc.simplefin_account_name ? ` · ${acc.simplefin_account_name}` : ''}
-                      {acc.is_closed ? ' · closed' : ''}
-                    </div>
-                  </div>
-                  <div className="settings-account-item__actions">
-                    <span
-                      className={`settings-account-item__balance ${acc.balance < 0 ? 'negative' : ''}`}
-                    >
-                      {formatMoney(acc.balance)}
-                    </span>
-                    <button
-                      className="settings-btn settings-btn--secondary"
-                      onClick={() => openModal('account', acc.id)}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      className="settings-btn settings-btn--secondary"
-                      onClick={() => handleToggleClose(acc.id, acc.is_closed ?? false)}
-                    >
-                      {acc.is_closed ? 'Reopen' : 'Close'}
-                    </button>
-                    <button
-                      className="settings-btn settings-btn--danger"
-                      onClick={() => handleDeleteAccount(acc.id)}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <form className="settings-add-form" onSubmit={handleAddAccount}>
-              <div className="settings-add-form__row">
-                <input
-                  type="text"
-                  className="settings-input"
-                  value={newAccName}
-                  onChange={(e) => setNewAccName(e.target.value)}
-                  placeholder="Account name…"
-                />
-                <select
-                  className="settings-input"
-                  value={newAccType}
-                  onChange={(e) => setNewAccType(e.target.value)}
-                >
-                  {typeOptions.map((t) => (
-                    <option key={t.key} value={t.key}>
-                      {t.label}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  className="settings-btn"
-                  onClick={() => setShowTypeInfo(true)}
-                  aria-label="What do account types mean?"
-                  title="What do account types mean?"
-                >
-                  <HelpCircle size={14} />
-                </button>
-              </div>
-              <button
-                type="submit"
-                className="settings-btn settings-btn--primary"
-                style={{ alignSelf: 'flex-start' }}
-              >
-                Add Account
-              </button>
-            </form>
-          </div>
-        </Surface>
-      )}
-
-      {/* Data integrity — the health check belongs next to your data, not below
-          the integrations */}
-      {budgetId && (
-        <Surface as="section" className="settings-section" id="integrity" title="Data Integrity">
-          <div className="settings-section__body">
-            <IntegrityPanel budgetId={budgetId} />
-          </div>
-        </Surface>
-      )}
-
-      {/* This budget's own backups — a file holding one budget, which is what
-          makes a per-budget list possible at all. The panel below backs up the
-          whole installation and cannot be filtered down to one budget. */}
-      {currentBudget && (
-        <Surface
-          as="section"
-          className="settings-section"
-          id="budget-backups"
-          title="Budget Backups"
-        >
-          <div className="settings-section__body">
-            <BudgetSnapshotsPanel budgetId={currentBudget.id} budgetName={currentBudget.name} />
-          </div>
-        </Surface>
-      )}
-
-      {/* Account */}
-      <Surface as="section" className="settings-section" id="account" title="Account">
-        <div className="settings-section__body">
+    account: {
+      body: (
+        <>
           <div className="settings-row">
             <div>
               <div className="settings-row__label">Signed in as</div>
@@ -628,17 +633,29 @@ export function SettingsPage() {
               Sign out
             </button>
           </div>
-        </div>
-      </Surface>
+        </>
+      ),
+    },
 
-      {/* MCP. Under Account rather than under a budget: a key belongs to the
-          person and may span several budgets. */}
-      <Surface as="section" className="settings-section" id="api-keys" title="MCP">
-        <div className="settings-section__body">
-          <ApiKeysPanel />
-        </div>
-      </Surface>
+    // Under "Data & access" rather than under the budget: a key belongs to
+    // the person and may span several budgets.
+    'api-keys': { body: <ApiKeysPanel /> },
+  }
 
+  return (
+    <SettingsShell
+      page="settings"
+      sections={sections}
+      panels={panels}
+      hints={hints}
+      navLabel="Settings sections"
+      navFooter={
+        <Link to={SETTINGS_PAGES.system.path} className="settings-nav__link">
+          {SETTINGS_PAGES.system.label} settings
+          <ArrowRight size={12} aria-hidden="true" />
+        </Link>
+      }
+    >
       {activeModal?.kind === 'account' && activeModal.editingId && (
         <AccountSettingsModal accountId={activeModal.editingId} onClose={closeModal} />
       )}

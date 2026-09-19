@@ -236,7 +236,7 @@ export const STATIC_COMMANDS: AppCommand[] = [
  * Rows the palette derives rather than a person writing them.
  *
  * Every destination below was already addressable — `/reports?tab=`,
- * `/guide?tab=&tool=`, `/settings#section` all exist and are validated on
+ * `/guide?tab=&tool=`, `/settings/section` all exist and are validated on
  * arrival. The only thing missing was a way to type its name. Generating the
  * rows from the same registries the pages render from means a new report tab
  * is reachable the day it lands, and a renamed one cannot leave a palette row

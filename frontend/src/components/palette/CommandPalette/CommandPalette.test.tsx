@@ -252,7 +252,7 @@ describe('CommandPalette derived destinations', () => {
     // SimpleFIN is an installation-wide section, so its row is labelled and
     // addressed by the System page — the registry decides that, not the palette.
     await userEvent.click(await screen.findByText('System: SimpleFIN'))
-    expect(navigate).toHaveBeenCalledWith('/system#simplefin')
+    expect(navigate).toHaveBeenCalledWith('/system/simplefin')
   })
 
   it('keeps the words the hand-written rows carried', async () => {
