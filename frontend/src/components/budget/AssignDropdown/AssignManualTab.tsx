@@ -4,7 +4,8 @@ import { useUndoToast } from '../../../utils/toastUndo'
 import { useMoveMoney } from '../../../api/budgets'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
 import { useFormatters } from '../../../hooks/useFormatters'
-import { toCents } from '../../../utils/money'
+import { AmountInput } from '../../common/AmountInput/AmountInput'
+import { expressionToCents } from '../../../utils/amountExpression'
 import { GroupedCategoryOptions } from '../../common/GroupedCategoryOptions/GroupedCategoryOptions'
 
 interface Props {
@@ -29,12 +30,19 @@ export function AssignManualTab({ budgetId, month, tba, onDone }: Props) {
   const eligible = categories.filter((c) => c.is_assignable)
   const eligibleSections = groupedCategorySections(eligible, groups)
 
-  const cents = toCents(amount)
+  // The box's own evaluator, so "1,250" is $1,250 and "40 + 20" commits as
+  // 60 even if the user hits Enter without blurring. `toCents` was parseFloat
+  // underneath, which read a typed thousands separator as a single dollar.
+  const cents = expressionToCents(amount)
   const exceedsTba = !isNaN(cents) && cents / 100 > tba
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (isNaN(cents) || cents <= 0) {
+    if (isNaN(cents)) {
+      setError('That isn’t an amount — digits, or a sum like 40 + 20.')
+      return
+    }
+    if (cents <= 0) {
       setError('Enter an amount greater than zero')
       return
     }
@@ -63,13 +71,9 @@ export function AssignManualTab({ budgetId, month, tba, onDone }: Props) {
     <form className="assign-dropdown__manual" onSubmit={handleSubmit}>
       <label className="assign-dropdown__field">
         <span>Assign</span>
-        <input
-          type="number"
-          min="0.01"
-          step="0.01"
-          inputMode="decimal"
+        <AmountInput
           value={amount}
-          onChange={(e) => setAmount(e.target.value)}
+          onValueChange={setAmount}
           autoFocus
           onFocus={(e) => e.target.select()}
         />
