@@ -26,26 +26,78 @@ when it is shown.
 **It is shown once.** The server stores only a hash, the same way it does for
 a password. If you lose it, revoke that key and make another.
 
-## Connect Claude Code
+## Connect a client
+
+Settings → **MCP** → **How to connect** has a client picker that prints
+the right instructions with your own host and, once you have made a key, the
+key itself filled in.
+
+### Claude Code
 
 ```
-claude mcp add --transport http igab https://<your-igab>/api/v1/mcp \
+claude mcp add --transport http igab https://<your-igab>/api/v1/mcp/ \
   --header "Authorization: Bearer igab_..."
 ```
 
-Settings → **MCP** → **How to connect** prints this with your own host filled
-in, and a copy button, so it is there long after the key was made.
+### Claude Desktop, or anything else that keeps a config file
 
-## Connect anything else
+Most desktop clients that speak MCP over HTTP — Claude Desktop among them —
+take an entry shaped like this in their config:
 
-Point the client at:
+```json
+{
+  "mcpServers": {
+    "igab": {
+      "url": "https://<your-igab>/api/v1/mcp/",
+      "headers": { "Authorization": "Bearer igab_..." }
+    }
+  }
+}
+```
+
+Not every client's config file uses this exact shape, so check yours if the
+above doesn't work — but it's the common one.
+
+### Ollama, ChatGPT, or anything else
+
+Neither of those speaks MCP by itself — Ollama is a model runtime, and
+ChatGPT's own connectors are a different protocol. What actually connects is
+whatever MCP client sits in front of them: a local-model chat app, an
+MCP-aware IDE, a bridge. Whatever it is, its setup form wants these four
+things:
 
 ```
-URL:     https://<your-igab>/api/v1/mcp
-Header:  Authorization: Bearer igab_...
+Transport   Streamable HTTP (one POST per call)
+URL         https://<your-igab>/api/v1/mcp/
+Header      Authorization: Bearer igab_...
+Auth        Static bearer token — no OAuth, no login flow
 ```
 
-That is the whole contract. A client that can set a header can use it.
+That is the whole contract. A client that can set a header can use it,
+regardless of what wrote its UI or which model answers on the other end.
+
+**Mind the trailing slash.** `/api/v1/mcp` answers `307 Temporary Redirect`
+to `/api/v1/mcp/`, and only the slashed form answers directly. Clients that
+follow redirects never notice; one that does not will fail with nothing in
+its error pointing at the cause. Use the slashed URL everywhere.
+
+## Check it works
+
+Before blaming a client's setup screen, prove the endpoint and the key:
+
+```
+curl -X POST https://<your-igab>/api/v1/mcp/ \
+  -H "Authorization: Bearer igab_..." \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+It answers with the tool list. No `initialize` handshake is needed first —
+the server is stateless, so one POST is a complete exchange.
+
+A `401` means the key is wrong, revoked, or missing. A `307` means the
+trailing slash is missing. Anything else is the endpoint not being reachable
+at all, which is a networking answer, not an MCP one.
 
 ## What it can answer
 

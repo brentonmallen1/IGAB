@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -59,7 +59,7 @@ describe('how to connect', () => {
     hooks.keys = []
     render(<ApiKeysPanel />)
 
-    expect(screen.getByText(`${window.location.origin}/api/v1/mcp`)).toBeInTheDocument()
+    expect(screen.getByText(`${window.location.origin}/api/v1/mcp/`)).toBeInTheDocument()
     expect(screen.getByText(/claude mcp add --transport http igab/)).toBeInTheDocument()
   })
 
@@ -67,6 +67,31 @@ describe('how to connect', () => {
     hooks.keys = [key()]
     render(<ApiKeysPanel />)
     expect(screen.getByText('igab_your_key_here')).toBeInTheDocument()
+  })
+
+  it('switches the snippet when a different client is picked', async () => {
+    // Claude Code is the only client this ever named. Ollama, ChatGPT and
+    // everything else still only need an endpoint and a header — picking
+    // "Something else" is what proves that isn't hidden behind one CLI
+    // command.
+    const user = userEvent.setup()
+    render(<ApiKeysPanel />)
+
+    expect(screen.getByText(/claude mcp add --transport http igab/)).toBeInTheDocument()
+
+    await user.selectOptions(screen.getByLabelText('Client'), 'Any other client')
+    expect(screen.queryByText(/claude mcp add/)).not.toBeInTheDocument()
+    // Not just the header: the transport and the URL are the parts a
+    // client's own setup form actually asks for.
+    const details = screen.getByText(/Streamable HTTP/)
+    expect(details).toHaveTextContent('Authorization: Bearer igab_your_key_here')
+    expect(details).toHaveTextContent(`${window.location.origin}/api/v1/mcp/`)
+
+    await user.selectOptions(screen.getByLabelText('Client'), 'Claude Desktop / a config file')
+    expect(screen.getByText(/"mcpServers"/)).toBeInTheDocument()
+
+    await user.selectOptions(screen.getByLabelText('Client'), 'Check it works (curl)')
+    expect(screen.getByText(/curl -X POST/)).toHaveTextContent('"method":"tools/list"')
   })
 })
 
@@ -123,6 +148,23 @@ describe('creating a key', () => {
     await user.click(screen.getByRole('button', { name: 'Create key' }))
 
     await waitFor(() => expect(screen.getByText(/Authorization header/i)).toBeInTheDocument())
+  })
+
+  it('carries the real key into whichever client snippet is picked', async () => {
+    const user = userEvent.setup()
+    hooks.create.mockResolvedValue({ ...key(), key: 'igab_the-actual-secret' })
+    render(<ApiKeysPanel />)
+
+    await user.click(screen.getByRole('button', { name: /New key/ }))
+    await user.type(screen.getByLabelText(/Name/), 'Claude on the laptop')
+    await user.click(screen.getByLabelText('Household'))
+    await user.click(screen.getByRole('button', { name: 'Create key' }))
+
+    const dialog = await screen.findByRole('dialog', { name: 'Your new key' })
+    await user.selectOptions(within(dialog).getByLabelText('Client'), 'Check it works (curl)')
+    const shown = dialog.querySelector('textarea') as HTMLTextAreaElement
+    expect(shown.value).toContain('Authorization: Bearer igab_the-actual-secret')
+    expect(shown.value).toContain('curl -X POST')
   })
 
   it('says why rather than disabling the button', async () => {

@@ -12,7 +12,14 @@ import {
 import { useBudgets } from '../../../api/budgets'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { Dialog } from '../../common/Dialog/Dialog'
-import { KEY_PLACEHOLDER, mcpConnectCommand, mcpEndpoint } from './mcpConnect'
+import {
+  KEY_PLACEHOLDER,
+  MCP_CLIENTS,
+  mcpClient,
+  mcpConnectSnippet,
+  mcpEndpoint,
+  type McpClientKind,
+} from './mcpConnect'
 import './ApiKeysPanel.css'
 
 /**
@@ -140,9 +147,11 @@ export function ApiKeysPanel() {
  * and by then the dialog is unreachable and the key is unprintable.
  */
 function ConnectSection() {
+  const [kind, setKind] = useState<McpClientKind>('claude-code')
   const origin = window.location.origin
   const endpoint = mcpEndpoint(origin)
-  const command = mcpConnectCommand(origin)
+  const client = mcpClient(kind)
+  const snippet = mcpConnectSnippet(kind, origin)
 
   return (
     <div className="settings-subsection">
@@ -150,7 +159,8 @@ function ConnectSection() {
       <div className="settings-row__desc">
         IGAB serves a read-only MCP endpoint, so an assistant can answer questions about a budget —
         what a category has left, what a month came to — without a screenshot. Make a key below,
-        then point a client at it.
+        then point a client at it. It is an ordinary bearer token, so anything that speaks MCP
+        works, not only what is listed here.
       </div>
 
       <div className="mcp-connect">
@@ -162,11 +172,26 @@ function ConnectSection() {
           </div>
         </div>
 
+        <label className="mcp-connect__field">
+          <span className="mcp-connect__label">Client</span>
+          <select
+            className="settings-select"
+            value={kind}
+            onChange={(e) => setKind(e.target.value as McpClientKind)}
+          >
+            {MCP_CLIENTS.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
         <div className="mcp-connect__field">
-          <span className="mcp-connect__label">Claude Code</span>
+          <span className="mcp-connect__label">{client.fieldLabel}</span>
           <div className="mcp-connect__value">
-            <code className="mcp-connect__code">{command}</code>
-            <CopyButton text={command} label="Copy command" />
+            <code className="mcp-connect__code">{snippet}</code>
+            <CopyButton text={snippet} label={client.copyLabel} />
           </div>
         </div>
 
@@ -296,7 +321,10 @@ function NewKeyDialog({
 }
 
 function IssuedKeyDialog({ issued, onClose }: { issued: ApiKeyCreated; onClose: () => void }) {
-  const command = mcpConnectCommand(window.location.origin, issued.key)
+  const [kind, setKind] = useState<McpClientKind>('claude-code')
+  const origin = window.location.origin
+  const client = mcpClient(kind)
+  const snippet = mcpConnectSnippet(kind, origin, issued.key)
 
   return (
     <Dialog
@@ -324,15 +352,35 @@ function IssuedKeyDialog({ issued, onClose }: { issued: ApiKeyCreated; onClose: 
         <CopyButton text={issued.key} label="Copy key" />
 
         <label className="dialog-form__field">
-          <span>Connect Claude Code</span>
-          <textarea readOnly rows={3} value={command} onFocus={(e) => e.currentTarget.select()} />
+          <span>Client</span>
+          <select
+            className="settings-select"
+            value={kind}
+            onChange={(e) => setKind(e.target.value as McpClientKind)}
+          >
+            {MCP_CLIENTS.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="dialog-form__field">
+          <span>{client.fieldLabel}</span>
+          <textarea
+            readOnly
+            rows={snippet.split('\n').length + 1}
+            value={snippet}
+            onFocus={(e) => e.currentTarget.select()}
+          />
           <span className="dialog-form__hint">
             Any MCP client works — it is an ordinary bearer token. Point yours at{' '}
-            <code>{mcpEndpoint(window.location.origin)}</code> with this key in an Authorization
-            header. The same command is in Settings afterwards; this key is not.
+            <code>{mcpEndpoint(origin)}</code> with this key in an Authorization header. The same
+            instructions are in Settings afterwards; this key is not.
           </span>
         </label>
-        <CopyButton text={command} label="Copy command" />
+        <CopyButton text={snippet} label={client.copyLabel} />
       </div>
     </Dialog>
   )
