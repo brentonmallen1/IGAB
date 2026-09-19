@@ -50,6 +50,7 @@ export function SettingsShell({
   panels,
   hints = {},
   navLabel,
+  navHeader,
   navFooter,
   children,
 }: {
@@ -63,6 +64,12 @@ export function SettingsShell({
    *  before it is opened. */
   hints?: Partial<Record<SettingsSectionId, ReactNode>>
   navLabel: string
+  /** A cross-link above the search box — System's way back to Settings.
+   *  It lives in the nav rather than a page-level banner: a title-plus-
+   *  subtitle band above the shell repeated what the section's own header
+   *  already said, in different type, and doubled the chrome for no reason
+   *  Settings didn't also have. */
+  navHeader?: ReactNode
   /** A cross-link under the section list (Settings ↔ System). */
   navFooter?: ReactNode
   /** Modals and other things that render regardless of section. */
@@ -116,6 +123,7 @@ export function SettingsShell({
   return (
     <div className={`settings-page settings-page--${mode}`}>
       <nav className="settings-nav" aria-label={navLabel}>
+        {navHeader && <div className="settings-nav__pre">{navHeader}</div>}
         <label className="settings-nav__search">
           <Search size={13} aria-hidden="true" />
           <input

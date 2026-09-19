@@ -1,4 +1,5 @@
-import { PageHeader } from '../../components/common/PageHeader/PageHeader'
+import { ArrowLeft } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { useCurrentUser } from '../../api/auth'
 import { useSimpleFINConfig } from '../../api/simplefin'
 import { SyncLogsPanel } from '../../components/settings/SyncLogsPanel/SyncLogsPanel'
@@ -49,6 +50,11 @@ export function SystemPage() {
 
   // Back to wherever the person came from: the open budget's settings, or the
   // picker when there is no budget — which is the case this page exists for.
+  // Lives in the nav, not a page-level banner: System used to open with its
+  // own title-and-subtitle band above the shell, repeating in different type
+  // whatever the section underneath already said, and it was the one thing
+  // that made this page feel like it belonged to a different app than
+  // Settings — which has no such band at all.
   const back = budgetId
     ? { to: SETTINGS_PAGES.settings.path, label: 'Budget settings' }
     : { to: '/budgets', label: 'Budgets' }
@@ -70,26 +76,22 @@ export function SystemPage() {
 
   return (
     <div className="system-page">
-      <header className="system-page__header">
-        <PageHeader
-          title={SETTINGS_PAGES.system.label}
-          back={back}
-          subtitle="The whole installation — every budget, every user"
-        />
-      </header>
-
-      <div className="system-page__body">
-        <SettingsShell
-          page="system"
-          sections={sections}
-          panels={panels}
-          hints={{
-            simplefin: sfConfig ? (sfConfig.configured ? 'Connected' : 'Not set up') : undefined,
-            ai: AI_STATUS_LABEL[aiTone],
-          }}
-          navLabel="System sections"
-        />
-      </div>
+      <SettingsShell
+        page="system"
+        sections={sections}
+        panels={panels}
+        hints={{
+          simplefin: sfConfig ? (sfConfig.configured ? 'Connected' : 'Not set up') : undefined,
+          ai: AI_STATUS_LABEL[aiTone],
+        }}
+        navLabel="System sections"
+        navHeader={
+          <Link to={back.to} className="settings-nav__link">
+            <ArrowLeft size={13} aria-hidden="true" />
+            {back.label}
+          </Link>
+        }
+      />
     </div>
   )
 }
