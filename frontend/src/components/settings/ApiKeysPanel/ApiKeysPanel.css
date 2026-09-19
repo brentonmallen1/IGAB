@@ -43,9 +43,13 @@
   font-size: var(--font-size-xs);
 }
 
+/* flex-start rather than center: the config-file snippet is several lines
+   (JSON.stringify, indent 2) and a centered copy button next to a tall
+   block reads like it belongs to the middle line rather than the whole
+   thing. */
 .mcp-connect__value {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--spacing-sm);
   min-width: 0;
 }
