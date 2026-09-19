@@ -8,6 +8,7 @@ import {
 import { rowMayCarryCategory } from '../../../utils/rowCategoryRule'
 import { AccountField } from './AccountField'
 import { accountLockReason, categoryDropNote } from './accountMove'
+import { editorAmount } from './editorAmount'
 import { useState, useRef, useEffect, useMemo } from 'react'
 import {
   X,
@@ -63,8 +64,8 @@ import { isConfigFailure, scanFailureReason } from './scanFailure'
 import { sectionHref } from '../../../pages/SettingsPage/settingsSections'
 import { today } from '../../../utils/dates'
 import { useUndoToast } from '../../../utils/toastUndo'
-import { fromCents, parseApiDecimal, toCents } from '../../../utils/money'
-import { expressionToCents, parseAmountExpressionInput } from '../../../utils/amountExpression'
+import { fromCents, parseApiDecimal } from '../../../utils/money'
+import { expressionToCents } from '../../../utils/amountExpression'
 import { checkSplit, draftsFromLines } from '../../../utils/splits'
 import { AmountInput } from '../../common/AmountInput/AmountInput'
 import { CategoryCombobox } from '../../common/CategoryCombobox/CategoryCombobox'
@@ -182,6 +183,12 @@ export function TransactionEditor({
     if (transaction.amount < 0) return ''
     return String(transaction.amount)
   })
+  // What the two boxes say, read once and used everywhere — the save, the
+  // split remainder, the similar-rows lookup and the AI hint. Null means
+  // what is in them is not an amount; see editorAmount.ts for why that is
+  // not the same answer as zero.
+  const typed = editorAmount(outflow, inflow)
+
   // Reconciled: the money is locked — amount, date, cleared state — and
   // everything else stays editable (domain/reconciliation.py, one rule).
   // The locked fields are shown disabled and left out of the PATCH.
@@ -425,10 +432,11 @@ export function TransactionEditor({
   }
 
   async function doSubmit() {
-    if (!accountId) return
-    const outflowVal = parseAmountExpressionInput(outflow) || 0
-    const inflowVal = parseAmountExpressionInput(inflow) || 0
-    const amount = outflowVal > 0 ? -outflowVal : inflowVal
+    // Both guards are the Save button's own conditions, restated: a submit
+    // can still arrive by Enter, and an unparseable amount must never reach
+    // a save that would book it as zero (editorAmount).
+    if (!accountId || typed === null) return
+    const amount = typed.dollars
     const sign = amount < 0 ? -1 : 1
 
     // Editing frees the old amount back to its category/month; only the net
@@ -631,13 +639,9 @@ export function TransactionEditor({
     }
   }, [transaction])
 
-  const similarAmount = useMemo(() => {
-    const o = parseAmountExpressionInput(outflow)
-    const i = parseAmountExpressionInput(inflow)
-    if (o > 0) return -o
-    if (i > 0) return i
-    return null
-  }, [outflow, inflow])
+  // Nothing to look up while the boxes are blank, mid-expression, or holding
+  // something that is not an amount — all of which `typed` reports as one.
+  const similarAmount = typed && typed.dollars !== 0 ? typed.dollars : null
 
   const { data: similarTxns = [] } = useSimilarTransactions(
     accountId,
@@ -646,14 +650,12 @@ export function TransactionEditor({
     transaction?.id ?? null
   )
 
-  // Derived exactly as handleSubmit derives the amount it saves. Picking the
-  // field with `outflow || inflow` validated the string "0" against a "50"
-  // inflow, so the editor checked one number and wrote another.
-  const editorTotalCents = (() => {
-    const outflowVal = parseAmountExpressionInput(outflow) || 0
-    const inflowVal = parseAmountExpressionInput(inflow) || 0
-    return Math.abs(toCents(outflowVal > 0 ? -outflowVal : inflowVal)) || 0
-  })()
+  // The same figure the save writes, unsigned: the legs of a split are
+  // measured against the total, not against its direction. An amount that
+  // does not parse leaves the remainder at zero, which `checkSplit` already
+  // refuses as 'no-total' — so the split cannot be completed against a
+  // number nobody typed.
+  const editorTotalCents = Math.abs(typed?.cents ?? 0)
 
   const splitCheck = checkSplit(editorTotalCents, splits)
   const splitIsValid = !isSplit || splitCheck.isValid
@@ -1113,12 +1115,11 @@ export function TransactionEditor({
                         title="AI suggest category"
                         disabled={suggestCategory.isPending}
                         onClick={async () => {
-                          const outflowVal = parseAmountExpressionInput(outflow) || 0
-                          const inflowVal = parseAmountExpressionInput(inflow) || 0
-                          const amount = outflowVal > 0 ? -outflowVal : inflowVal
                           const result = await suggestCategory.mutateAsync({
                             payee_name: payeeQuery || 'Unknown',
-                            amount,
+                            // A hint, not a save: with nothing usable in the
+                            // boxes the model is asked about the payee alone.
+                            amount: typed?.dollars ?? 0,
                             memo: memo || undefined,
                           })
                           if (result.category_id) setCategoryId(result.category_id)
@@ -1185,6 +1186,15 @@ export function TransactionEditor({
                     />
                   </div>
                 </div>
+                {/* Save is disabled while this shows. Without it the button
+                    went dead with no reason given — and before that, the
+                    amount was read as zero and saved. */}
+                {typed === null && (
+                  <span className="txn-editor__field-note txn-editor__field-note--error">
+                    That isn’t an amount yet. Digits, or a sum like 12.50 + 3 — the box you type in
+                    decides the direction, so leave the minus off.
+                  </span>
+                )}
               </div>
             </div>
 
@@ -1324,7 +1334,9 @@ export function TransactionEditor({
                 <button
                   type="submit"
                   className="txn-editor__btn txn-editor__btn--primary"
-                  disabled={isPending || !splitIsValid || !accountId || needsPartnerChoice}
+                  disabled={
+                    isPending || !splitIsValid || !accountId || needsPartnerChoice || typed === null
+                  }
                 >
                   {isReview ? 'Approve' : isEdit ? 'Save' : 'Add'}
                 </button>

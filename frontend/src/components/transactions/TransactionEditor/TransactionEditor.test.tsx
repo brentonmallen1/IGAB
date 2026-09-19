@@ -295,6 +295,69 @@ describe('TransactionEditor split-mode validation', () => {
   })
 })
 
+/**
+ * An amount the editor could not read used to be saved as zero.
+ *
+ * `parseAmountExpressionInput(x) || 0` folded "nothing typed" and "not a
+ * number" into the same answer, and Save was never gated on the amount at
+ * all — so an expression that never evaluated, or a minus typed into the
+ * Outflow box, wrote $0.00. Over an existing row, that is a recorded amount
+ * destroyed without a word.
+ */
+describe('TransactionEditor unreadable amount', () => {
+  const row = {
+    id: 't20',
+    account_id: 'acc-1',
+    date: '2030-01-10',
+    amount: -41.8,
+    category_id: 'cat-1',
+    payee_id: null,
+    memo: null,
+    cleared: 'uncleared',
+    transfer_id: null,
+    is_split: false,
+    sync_id: null,
+    parent_transaction_id: null,
+  } as unknown as Transaction
+
+  beforeEach(() => {
+    createMutate.mockClear()
+    updateMutate.mockClear()
+    confirmOverspend.mockClear()
+    confirmOverspend.mockImplementation(() => Promise.resolve(true))
+  })
+
+  it('says so, and will not write it, instead of booking zero', () => {
+    renderEditor()
+    fireEvent.change(amountInputs()[0], { target: { value: '12 +' } })
+
+    expect(screen.getByText(/isn’t an amount yet/)).toBeInTheDocument()
+    expect(submitButton()).toBeDisabled()
+
+    fireEvent.click(submitButton())
+    expect(createMutate).not.toHaveBeenCalled()
+  })
+
+  it('refuses a typed minus rather than zeroing the row it was typed into', () => {
+    // The direction is which box you are in, so the parser rejects a sign.
+    // It used to reject it into `|| 0`.
+    renderEditor({ transaction: row })
+    fireEvent.change(amountInputs()[0], { target: { value: '-5' } })
+
+    expect(submitButton('Save')).toBeDisabled()
+    fireEvent.click(submitButton('Save'))
+    expect(updateMutate).not.toHaveBeenCalled()
+  })
+
+  it('leaves a $0 stub saveable, because zero is a real amount', () => {
+    // The receipt worker files one when a scan exhausts its retries; it is
+    // reviewed to fix the payee, not the amount.
+    renderEditor({ transaction: { ...row, amount: 0 } as unknown as Transaction })
+    expect(screen.queryByText(/isn’t an amount yet/)).toBeNull()
+    expect(submitButton('Save')).toBeEnabled()
+  })
+})
+
 describe('TransactionEditor classification note', () => {
   const savedTxn = {
     id: 't-1',
