@@ -61,7 +61,7 @@ export type SettingsSectionId =
 export type SettingsGroupId = 'you' | 'this-budget' | 'data' | 'installation' | 'connections'
 
 export const SETTINGS_GROUPS: Record<SettingsGroupId, { label: string; page: SettingsPageId }> = {
-  you: { label: 'You', page: 'settings' },
+  you: { label: 'Personal', page: 'settings' },
   'this-budget': { label: 'This budget', page: 'settings' },
   data: { label: 'Data & access', page: 'settings' },
   installation: { label: 'Installation', page: 'system' },
@@ -91,7 +91,7 @@ export interface SettingsSectionDef {
 /** In the order the pages lay them out — grouped, and the palette inherits
  *  that order. */
 export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
-  // ── You ──
+  // ── Personal ──
   {
     id: 'appearance',
     label: 'Appearance',

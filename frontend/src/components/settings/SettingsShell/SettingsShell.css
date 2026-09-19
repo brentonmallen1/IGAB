@@ -161,6 +161,22 @@
   background-color: var(--color-warning);
 }
 
+/* A cross-link above the search box — currently only System's way back to
+   Settings. Same voice as the footer link below: quiet, not a banner. */
+.settings-nav__pre {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: var(--spacing-md);
+  border-bottom: 1px solid var(--edge);
+}
+
+.settings-nav__pre .settings-nav__link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  color: var(--text-muted);
+}
+
 /* The other settings page, set apart from this page's sections by a rule. */
 .settings-nav__footer {
   margin-top: auto;

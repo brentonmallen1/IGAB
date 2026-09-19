@@ -79,7 +79,7 @@ describe('what a section says about itself', () => {
       'connections',
     ])
     for (const g of groups) expect(g.sections.length).toBeGreaterThan(0)
-    expect(groups[0].label).toBe('You')
+    expect(groups[0].label).toBe('Personal')
   })
 })
 

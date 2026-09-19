@@ -1,35 +1,16 @@
+/* System sits outside MainLayout (see App.tsx), so nothing above it gives
+   the shell a height to fill — this is that height, and nothing else. No
+   header band here: the shell's own nav carries the way back (navHeader),
+   and a section carries its own title. A second banner above the shell
+   used to repeat that title in different type; this is what replaced it. */
 .system-page {
-  /* The measured visible height, not 100dvh — see --app-h in base.css. */
   height: var(--app-h);
   display: flex;
   flex-direction: column;
   background-color: var(--surface-canvas);
 }
 
-.system-page__header {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-lg);
-  padding: var(--spacing-md) var(--spacing-xl);
-  border-bottom: 1px solid var(--edge);
-  flex-shrink: 0;
-}
-
-/* Mirrors .main-layout__main: on desktop the shell's grid owns the scroll; on
-   a phone the shell goes to flow and this column scrolls instead. */
-.system-page__body {
+.system-page .settings-page {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  position: relative;
-  display: flex;
-  flex-direction: column;
-}
-
-@media (max-width: 768px) {
-  .system-page__header {
-    padding: var(--spacing-sm) var(--spacing-md);
-    gap: var(--spacing-md);
-  }
 }

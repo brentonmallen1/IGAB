@@ -97,7 +97,7 @@ describe('on a desktop', () => {
 
   it('groups the nav and carries a fact per section', () => {
     renderShell('/settings/budget')
-    expect(screen.getByText('You')).toBeInTheDocument()
+    expect(screen.getByText('Personal')).toBeInTheDocument()
     expect(screen.getByText('This budget')).toBeInTheDocument()
     expect(screen.getByText('Data & access')).toBeInTheDocument()
     expect(screen.getByText('Nord')).toBeInTheDocument()
@@ -125,6 +125,35 @@ describe('on a desktop', () => {
     expect(screen.queryByRole('link', { name: /Appearance/ })).not.toBeInTheDocument()
     await userEvent.type(search, '{Enter}')
     expect(screen.getByTestId('where')).toHaveTextContent('/settings/budget-backups')
+  })
+})
+
+describe('navHeader', () => {
+  it("renders above the search box when given one — System's way back", () => {
+    render(
+      <MemoryRouter initialEntries={['/settings/budget']}>
+        <Routes>
+          <Route
+            path="/settings/:section?"
+            element={
+              <SettingsShell
+                page="settings"
+                sections={sections}
+                navLabel="Settings sections"
+                navHeader={<a href="/system">‹ Budget settings</a>}
+                panels={{ budget: { body: <div>budget body</div> } }}
+              />
+            }
+          />
+        </Routes>
+      </MemoryRouter>
+    )
+    expect(screen.getByRole('link', { name: /Budget settings/ })).toBeInTheDocument()
+  })
+
+  it('is absent when nothing is passed — Settings has no page-level banner', () => {
+    renderShell('/settings/budget')
+    expect(screen.queryByText(/Budget settings/)).not.toBeInTheDocument()
   })
 })
 
