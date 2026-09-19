@@ -31,6 +31,8 @@ import {
   useSkipScheduledTransaction,
 } from '../../../api/scheduledTransactions'
 import { SelectionActionBar } from '../SelectionActionBar/SelectionActionBar'
+import { MakeTransferDialog } from '../MakeTransferDialog/MakeTransferDialog'
+import { mayBecomeTransfer } from '../transferConversion'
 import { MergePreviewModal } from '../MergePreviewModal/MergePreviewModal'
 import { MatchReviewModal } from '../../simplefin/MatchReviewModal'
 import { SearchFilterChips } from '../SearchFilterChips/SearchFilterChips'
@@ -547,6 +549,20 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
     return txn
   }, [selectedTransactionIds, transactionMap])
 
+  /** The row being converted to a transfer, and the destination the payee
+   *  picker already named (empty when the selection bar asked, which has no
+   *  account yet). Both entry points end in one dialog — the request they
+   *  send is `transferConversion.transferLinkFields` either way. */
+  const [transferConversion, setTransferConversion] = useState<{
+    txn: Transaction
+    accountId: string
+  } | null>(null)
+  const handleMakeTransfer = useCallback((txn: Transaction, accountId: string) => {
+    setTransferConversion({ txn, accountId })
+  }, [])
+  const convertibleSelectedTxn =
+    editableSelectedTxn && mayBecomeTransfer(editableSelectedTxn) ? editableSelectedTxn : null
+
   const handleConfirmMerge = useCallback(
     async (survivorId?: string) => {
       await mergeTxns.mutateAsync({ transactionIds: [...selectedTransactionIds], survivorId })
@@ -617,6 +633,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
           onStartSplit={handleStartSplit}
           onDuplicate={duplicateTransaction}
           onMakeRepeating={setMakeRepeatingTxn}
+          onMakeTransfer={handleMakeTransfer}
           hasAttachment={attachmentMap[txn.id]}
           highlighted={txn.id === highlightId}
           accountLabel={allAccounts ? (accountMap.get(txn.account_id) ?? '—') : undefined}
@@ -811,6 +828,16 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
         />
       )}
 
+      {transferConversion && (
+        <MakeTransferDialog
+          budgetId={budgetId}
+          transaction={transferConversion.txn}
+          accounts={accounts}
+          initialAccountId={transferConversion.accountId}
+          onClose={() => setTransferConversion(null)}
+        />
+      )}
+
       {makeRepeatingTxn && (
         <ScheduledTransactionEditor
           budgetId={budgetId}
@@ -865,6 +892,11 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
             onDelete={handleBulkDelete}
             onDuplicate={handleBulkDuplicate}
             onMakeRepeating={makeRepeatingFromSelection}
+            onMakeTransfer={
+              convertibleSelectedTxn
+                ? () => handleMakeTransfer(convertibleSelectedTxn, '')
+                : undefined
+            }
             onClear={clearTransactionSelection}
             onApprove={canApprove ? handleBulkApprove : undefined}
             onMerge={() => setShowMergeModal(true)}

@@ -74,3 +74,22 @@ describe('SelectionActionBar bulk flows', () => {
     expect(handlers.onSetCleared).toHaveBeenCalledWith('uncleared')
   })
 })
+
+describe('the transfer action', () => {
+  it('appears for a single selected row and hands the click on', () => {
+    const onMakeTransfer = vi.fn()
+    renderBar({ selectedCount: 1, onMakeTransfer })
+    fireEvent.click(screen.getByText('Transfer'))
+    expect(onMakeTransfer).toHaveBeenCalled()
+  })
+
+  it('stays away with several rows selected — the far leg is a per-row question', () => {
+    renderBar({ selectedCount: 3, onMakeTransfer: vi.fn() })
+    expect(screen.queryByText('Transfer')).toBeNull()
+  })
+
+  it('stays away when the row cannot be converted at all', () => {
+    renderBar({ selectedCount: 1 })
+    expect(screen.queryByText('Transfer')).toBeNull()
+  })
+})

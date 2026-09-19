@@ -1,4 +1,10 @@
 import { groupedCategorySections } from '../../../utils/categoryPickers'
+import {
+  CREATE_NEW_PARTNER,
+  awaitingPartnerChoice,
+  transferLinkFields,
+  transferTargets,
+} from '../transferConversion'
 import { rowMayCarryCategory } from '../../../utils/rowCategoryRule'
 import { AccountField } from './AccountField'
 import { accountLockReason, categoryDropNote } from './accountMove'
@@ -100,9 +106,6 @@ interface Props {
   aiJob?: AIJob | null
   onClose: () => void
 }
-
-/** Sentinel partner choice: "none of these — write the far leg". */
-const CREATE_NEW_PARTNER = '__create__'
 
 export function TransactionEditor({
   budgetId,
@@ -294,7 +297,7 @@ export function TransactionEditor({
     categoryGroups
   )
 
-  const transferAccounts = accounts.filter((a) => a.id !== accountId)
+  const transferAccounts = transferTargets(accounts, accountId)
   const transferTarget = accounts.find((a) => a.id === transferAccountId)
   // Only for a row that isn't linked yet — an already-linked leg has its
   // partner, and retargeting moves that partner rather than adopting another.
@@ -307,7 +310,7 @@ export function TransactionEditor({
   // The question is only answerable by a person, and the server refuses a
   // submit without an answer — so Save waits for one rather than sending a
   // request that can only fail.
-  const needsPartnerChoice = needsPartner && partnerCandidates.length > 0 && !partnerChoice
+  const needsPartnerChoice = needsPartner && awaitingPartnerChoice(partnerCandidates, partnerChoice)
   // Off-budget transfers are real spending (YNAB semantics) and may carry a
   // category on the on-budget side
   const transferIsOffBudget = isTransfer && !!transferTarget && !transferTarget.on_budget
@@ -510,14 +513,10 @@ export function TransactionEditor({
       approved: true,
       ...(isTransfer
         ? {
-            transfer_account_id: transferAccountId,
-            // Which existing row is the far leg, when more than one could be.
-            // Without an answer the server refuses rather than guess.
-            ...(partnerChoice === CREATE_NEW_PARTNER
-              ? { transfer_create_partner: true }
-              : partnerChoice
-                ? { transfer_partner_transaction_id: partnerChoice }
-                : {}),
+            // The same fields the register's own conversion sends — which
+            // existing row is the far leg included, when more than one could
+            // be. Without an answer the server refuses rather than guess.
+            ...transferLinkFields(transferAccountId, partnerChoice),
             ...(transferIsOffBudget && categoryId ? { category_id: categoryId } : {}),
           }
         : {

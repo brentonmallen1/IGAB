@@ -72,6 +72,7 @@ function renderRow(t: Transaction) {
           onStartSplit={vi.fn()}
           onDuplicate={vi.fn()}
           onMakeRepeating={vi.fn()}
+          onMakeTransfer={vi.fn()}
         />
       </MemoryRouter>
     </QueryClientProvider>

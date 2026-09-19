@@ -44,6 +44,7 @@ import { Tooltip } from '../../common/Tooltip/Tooltip'
 import { RowAttachmentButton } from './RowAttachmentButton'
 import { AccountCell, accountCellLock } from './AccountCell'
 import { categoryOptions, payeeOptions } from './rowOptions'
+import { mayBecomeTransfer, transferOptionAccountId, transferOptions } from '../transferConversion'
 import type { Transaction, Category, CategoryGroup, Payee, Account } from '../../../types'
 import './TransactionRow.css'
 import { confirmAsync } from '../../../stores/confirmStore'
@@ -67,6 +68,10 @@ interface Props {
   onStartSplit: (txn: Transaction) => void
   onDuplicate: (txn: Transaction) => void
   onMakeRepeating: (txn: Transaction) => void
+  /** The payee picker's "Transfer to account" group was chosen: hand the row
+   *  and the destination to the conversion dialog. The picker names the
+   *  account; which row over there is the far leg is the dialog's question. */
+  onMakeTransfer: (txn: Transaction, accountId: string) => void
   hasAttachment?: boolean
   highlighted?: boolean
   /** All-accounts register: source account name; renders an extra column */
@@ -156,6 +161,11 @@ function txnPropsEqual(prev: Props, next: Props): boolean {
   if (prev.onStartSplit !== next.onStartSplit) return false
   if (prev.onDuplicate !== next.onDuplicate) return false
   if (prev.onMakeRepeating !== next.onMakeRepeating) return false
+  if (prev.onMakeTransfer !== next.onMakeTransfer) return false
+  // The payee picker's transfer group is built from these, so a newly opened
+  // (or closed) account changes what the cell offers with no field on the
+  // row moving.
+  if (prev.accounts !== next.accounts) return false
   if (prev.hasAttachment !== next.hasAttachment) return false
   if (prev.accountLabel !== next.accountLabel) return false
   if (prev.accountColor !== next.accountColor) return false
@@ -178,6 +188,7 @@ export const TransactionRow = memo(function TransactionRow({
   onStartSplit,
   onDuplicate,
   onMakeRepeating,
+  onMakeTransfer,
   hasAttachment,
   highlighted,
   accountLabel,
@@ -370,7 +381,18 @@ export const TransactionRow = memo(function TransactionRow({
     }
   }
 
-  const payeeOpts = useMemo(() => payeeOptions(payees), [payees])
+  // Real payees, then the accounts this row could transfer to under their
+  // own heading. Both halves are load-bearing filters: a transfer payee is
+  // never offered as a payee (rowOptions), and a destination says it is one
+  // — a payee genuinely named "Online Transfer" used to be indistinguishable
+  // from a transfer to an account.
+  const payeeOpts = useMemo(
+    () => [
+      ...payeeOptions(payees),
+      ...(mayBecomeTransfer(txn) ? transferOptions(accounts, txn.account_id) : []),
+    ],
+    [payees, accounts, txn]
+  )
   const categoryOpts = useMemo(
     () => categoryOptions(categories, categoryGroups),
     [categories, categoryGroups]
@@ -378,6 +400,19 @@ export const TransactionRow = memo(function TransactionRow({
 
   function handleCategoryChange(id: string | null) {
     commitField('category_id', id)
+  }
+
+  /** A destination opens the conversion dialog; a payee is committed. The
+   *  two cannot be confused — `transferOptions` ids carry a prefix no payee
+   *  id can hold. */
+  function handlePayeeChange(id: string | null) {
+    const accountId = transferOptionAccountId(id)
+    if (accountId) {
+      stopEditing()
+      onMakeTransfer(txn, accountId)
+      return
+    }
+    commitField('payee_id', id)
   }
 
   async function handleCreatePayee(name: string): Promise<ComboboxOption | void> {
@@ -559,7 +594,7 @@ export const TransactionRow = memo(function TransactionRow({
           <Combobox
             value={txn.payee_id}
             options={payeeOpts}
-            onChange={(id) => commitField('payee_id', id)}
+            onChange={handlePayeeChange}
             onCreateNew={handleCreatePayee}
             createLabel="New Payee…"
             placeholder="Search payees…"

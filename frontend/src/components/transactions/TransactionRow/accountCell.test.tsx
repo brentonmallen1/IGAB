@@ -93,6 +93,7 @@ function renderRow(t: Transaction, accountLabel: string | null = 'Harborstone Ch
           onStartSplit={vi.fn()}
           onDuplicate={vi.fn()}
           onMakeRepeating={vi.fn()}
+          onMakeTransfer={vi.fn()}
           accountLabel={accountLabel ?? undefined}
         />
       </MemoryRouter>
