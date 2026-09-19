@@ -201,17 +201,27 @@
      without this they resolve against <html> and stretch the document,
      creating phantom page-level scroll */
   position: relative;
-  padding: var(--spacing-xl) var(--spacing-xl) var(--spacing-xl);
+  padding: var(--spacing-lg);
   overflow-y: auto;
   overscroll-behavior: contain;
   min-height: 0; /* Allow shrinking in grid */
 }
 
+/* The section is a raised card again — see the .surface class on the
+   element itself. Direction C dropped it to stop stacking ten of these in
+   one column, but with only one ever on screen there is no stacking left
+   to avoid, and going flat cost the thing a card was actually for: without
+   it the content pane matched --surface-canvas exactly, which is also
+   --input-bg in every theme, so a <select> or <input> read as a bare
+   border with nothing behind it. Restoring the card gives every field on
+   the page something to contrast against again, the same way it always
+   has everywhere else in the app. */
 .settings-section {
   max-width: 820px;
   display: flex;
   flex-direction: column;
   gap: var(--spacing-lg);
+  padding: var(--spacing-lg) var(--spacing-xl);
 }
 
 /* Back to the list: a phone affordance, see the media query. */
@@ -507,6 +517,10 @@
   .settings-content {
     padding: var(--spacing-md);
     overflow: visible;
+  }
+
+  .settings-section {
+    padding: var(--spacing-md);
   }
 
   .settings-section__back {

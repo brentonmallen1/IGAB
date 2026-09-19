@@ -176,7 +176,7 @@ export function SettingsShell({
       <div className="settings-content" ref={contentRef}>
         {active ? (
           <section
-            className="settings-section"
+            className="settings-section surface"
             id={active.id}
             aria-labelledby={`${active.id}-title`}
           >
