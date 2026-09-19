@@ -128,6 +128,11 @@ class BalanceDriftInfo(ApiModel):
     account_name: str
     bank_balance: Decimal
     ledger_cleared_balance: Decimal
+    #: The gap with the rows the bank simply has not posted yet taken out —
+    #: what someone would actually have to go and find. Defaulted for run
+    #: records written before the split existed.
+    unexplained_amount: Decimal | None = None
+    unposted_cleared: Decimal | None = None
 
 
 class SyncResult(ApiModel):

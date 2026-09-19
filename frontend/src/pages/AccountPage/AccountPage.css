@@ -157,9 +157,10 @@
   margin-top: 2px;
 }
 
-/* On an account that gets reconciled, a gap after a sync is a fault: the
-   sync's own admission that rows did not arrive. Same tone as the sidebar's
-   sync badge. */
+/* A gap nothing accounts for, on an account the user reconciles: the sync's
+   own admission that rows did not arrive. Same tone as the sidebar's sync
+   badge, and applied from the served verdict — a gap the feed simply has not
+   caught up with reads in the muted tone above, because it is not news. */
 .account-page__bank-reports--fault {
   color: var(--color-negative);
 }

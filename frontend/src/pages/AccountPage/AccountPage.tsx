@@ -35,6 +35,7 @@ import { useUIStore } from '../../stores/uiStore'
 import { useFormatters } from '../../hooks/useFormatters'
 import { resolveHeaderCollapsed } from './headerCollapse'
 import { AccountBalances } from './AccountBalances'
+import { bankDriftNotice } from './bankDriftNotice'
 import './AccountPage.css'
 import { Pill } from '../../components/common/Pill/Pill'
 import { Surface } from '../../components/common/Surface'
@@ -48,7 +49,7 @@ function formatReconcileAge(lastReconciledAt: string | null): string {
 }
 
 export function AccountPage() {
-  const { formatMoney, formatDate } = useFormatters()
+  const { formatMoney, formatDate, formatDateTime } = useFormatters()
   const isMobile = useIsMobile()
   const { accountId } = useParams<{ accountId: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -251,31 +252,47 @@ export function AccountPage() {
           )}
           {/* The bank's own figure, written every sync. Shown only when it
               disagrees with the cleared balance — agreement is the normal
-              state and needs no line. `bank_drift` is served: the sync
-              decides on the same rule whether a run is degraded. On an
-              account that gets reconciled, a gap after a sync usually means
-              rows the sync never asked for, so the line says so and names
-              both ways back to agreement. */}
+              state and needs no line. Every figure here is served, including
+              WHY the two differ and whether the sync calls it a fault: the
+              sync decides both on the same rule, and a page that decided for
+              itself would be free to disagree with the sync badge.
+
+              The wording is the fix. One sentence used to serve all three
+              causes, and it named the one that means missing rows — so a
+              ledger running AHEAD of a lagging feed (ticking a hold cleared
+              that the bank's site already shows posted) told the user to
+              refetch 90 days and find nothing. See ./bankDriftNotice.ts. */}
           {!headerCollapsed &&
-            account.bank_drift !== null &&
             account.simplefin_balance !== null &&
-            account.bank_drift !== 0 && (
-              <div
-                className={`account-page__bank-reports${
-                  account.last_reconciled_at ? ' account-page__bank-reports--fault' : ''
-                }`}
-              >
-                <AlertTriangle size={11} aria-hidden />
-                <span>
-                  Bank reports {formatMoney(account.simplefin_balance)} —{' '}
-                  {formatMoney(Math.abs(account.bank_drift))}{' '}
-                  {account.bank_drift > 0 ? 'more' : 'less'} than the cleared balance here.
-                  {account.last_reconciled_at
-                    ? ' Something may not have been pulled in: fetch the last 90 days again from account settings, then reconcile.'
-                    : ' Reconcile to bring them together.'}
-                </span>
-              </div>
-            )}
+            account.bank_drift !== null &&
+            (() => {
+              const notice = bankDriftNotice(
+                {
+                  reported: account.simplefin_balance,
+                  drift: account.bank_drift,
+                  unexplained: account.bank_drift_unexplained ?? account.bank_drift,
+                  unposted: account.bank_unposted_cleared ?? 0,
+                  reason: account.bank_drift_reason ?? 'unexplained',
+                  isFault: account.bank_drift_is_fault,
+                  asOf: account.simplefin_balance_date
+                    ? formatDateTime(account.simplefin_balance_date)
+                    : null,
+                  reconciled: account.last_reconciled_at !== null,
+                },
+                formatMoney
+              )
+              if (notice === null) return null
+              return (
+                <div
+                  className={`account-page__bank-reports${
+                    notice.tone === 'fault' ? ' account-page__bank-reports--fault' : ''
+                  }`}
+                >
+                  <AlertTriangle size={11} aria-hidden />
+                  <span>{notice.text}</span>
+                </div>
+              )
+            })()}
         </div>
 
         {/* Right: Actions (vertically centered) */}

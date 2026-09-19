@@ -1561,6 +1561,9 @@ class TransactionRepository(BaseRepository[Transaction]):
         include_provisional: also offer PROVISIONALLY_LINKED rows (see
         txn_filters) — for a posted feed record, whose bank may have
         re-identified it since the pending record those rows were linked to.
+        A row the user cleared ahead of the bank is NOT in that set and does
+        not need to be: when its id is retired at posting, `orphaned_link`
+        below offers it. See txn_filters.CLEARED_AHEAD_OF_BANK.
         orphaned_feed_sync_ids + orphaned_since: the feed's own ids for this
         account and the start of the window it was fetched for. Rows inside
         that window holding an id the feed did not report are offered too

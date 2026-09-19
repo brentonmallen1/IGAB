@@ -38,7 +38,7 @@ from igab.dependencies import (
     get_transaction_matching_service,
     get_undo_service,
 )
-from igab.domain.bank_balance import drift_is_a_fault
+from igab.domain.bank_balance import as_of_date, drift_is_a_fault, explain_drift
 from igab.domain.exceptions import NotFoundError
 from igab.integrations.simplefin.encryption import (
     GENERATE_KEY_COMMAND,
@@ -425,15 +425,23 @@ async def get_sync_health(
         except (NotFoundError, ValueError):
             continue
         cleared = await account_repo.get_cleared_balance(account.id)
-        drift = drift_is_a_fault(
-            account.simplefin_balance, cleared, reconciled=account.last_reconciled_at is not None
+        drift = explain_drift(
+            account.simplefin_balance,
+            cleared,
+            unposted_cleared=await account_repo.get_unposted_cleared(account.id),
+            balance_as_of=as_of_date(account.simplefin_balance_date),
+            newest_cleared_on=await account_repo.get_newest_cleared_on(account.id),
         )
-        if drift is not None:
+        if drift is not None and drift_is_a_fault(
+            drift, reconciled=account.last_reconciled_at is not None
+        ):
             still_off.append(
                 {
                     **entry,
                     "bank_balance": str(drift.reported),
                     "ledger_cleared_balance": str(drift.ledger_cleared),
+                    "unexplained_amount": str(drift.unexplained),
+                    "unposted_cleared": str(drift.unposted_cleared),
                 }
             )
 

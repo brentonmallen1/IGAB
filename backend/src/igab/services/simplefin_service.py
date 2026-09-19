@@ -14,11 +14,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, SimpleFINConnection, Transaction
 from igab.domain.bank_balance import (
-    BalanceDrift,
+    DriftExplanation,
     anchor_verdict,
+    as_of_date,
     describe_drift,
     describe_refused_anchor,
     drift_is_a_fault,
+    explain_drift,
 )
 from igab.domain.bank_identity import (
     FeedAccount,
@@ -276,7 +278,7 @@ class _Tally:
 def _fault_summary(
     audit: LinkAudit,
     errors: list[SimpleFINError],
-    drifts: Sequence[tuple[Account, BalanceDrift]] = (),
+    drifts: Sequence[tuple[Account, DriftExplanation]] = (),
     refused_anchors: Sequence[str] = (),
 ) -> str | None:
     """One line for the connection's error field, or None when all is well.
@@ -313,7 +315,7 @@ def _balances_agree(reported: Decimal | None, ledger: Decimal | None) -> bool | 
     return reported == ledger
 
 
-def _drift_records(drifts: list[tuple[Account, BalanceDrift]]) -> list[dict]:
+def _drift_records(drifts: list[tuple[Account, DriftExplanation]]) -> list[dict]:
     """The drift list as the run record, the result and the health check carry it."""
     return [
         {
@@ -321,6 +323,10 @@ def _drift_records(drifts: list[tuple[Account, BalanceDrift]]) -> list[dict]:
             "account_name": account.name,
             "bank_balance": str(drift.reported),
             "ledger_cleared_balance": str(drift.ledger_cleared),
+            # What the user would have to go and find, once the rows the
+            # bank simply has not posted yet are taken out of the gap.
+            "unexplained_amount": str(drift.unexplained),
+            "unposted_cleared": str(drift.unposted_cleared),
         }
         for account, drift in drifts
     ]
@@ -838,7 +844,16 @@ class SimpleFINService:
             reported = feed_data.balances.get(account.simplefin_account_id or "")
             if reported is None:
                 continue
-            await self.account_repo.update(account.id, simplefin_balance=reported)
+            await self.account_repo.update(
+                account.id,
+                simplefin_balance=reported,
+                # Written together, always: a balance whose date came from an
+                # earlier run would date this run's figure wrongly, and the
+                # staleness rule reads the pair.
+                simplefin_balance_date=feed_data.balance_dates.get(
+                    account.simplefin_account_id or ""
+                ),
+            )
             if account.id in first_sync_ids:
                 anchor, refusal = await self._anchor_opening_balance(budget_id, account, reported)
                 if anchor is not None:
@@ -858,10 +873,11 @@ class SimpleFINService:
         # Does the ledger now agree with the bank? Asked after every row is
         # in, and only of accounts the user reconciles — see
         # domain.bank_balance for why a mortgage's drift is not a fault.
-        drifts: list[tuple[Account, BalanceDrift]] = []
+        drifts: list[tuple[Account, DriftExplanation]] = []
         ledger_cleared: dict[uuid.UUID, Decimal] = {}
         for account in targets:
-            reported = feed_data.balances.get(account.simplefin_account_id or "")
+            sf_id = account.simplefin_account_id or ""
+            reported = feed_data.balances.get(sf_id)
             if reported is None:
                 continue
             cleared_total = await self.account_repo.get_cleared_balance(account.id)
@@ -873,11 +889,17 @@ class SimpleFINService:
             # measuring before it would flag every first sync of an account
             # that had any. The gap that is NOT explained is an anchor that
             # was refused, and that is reported as its own fault above.
-            drift = drift_is_a_fault(
-                reported, cleared_total, reconciled=account.last_reconciled_at is not None
+            explanation = explain_drift(
+                reported,
+                cleared_total,
+                unposted_cleared=await self.account_repo.get_unposted_cleared(account.id),
+                balance_as_of=as_of_date(feed_data.balance_dates.get(sf_id)),
+                newest_cleared_on=await self.account_repo.get_newest_cleared_on(account.id),
             )
-            if drift is not None:
-                drifts.append((account, drift))
+            if explanation is not None and drift_is_a_fault(
+                explanation, reconciled=account.last_reconciled_at is not None
+            ):
+                drifts.append((account, explanation))
 
         # Update per-account sync state — for the accounts this feed actually
         # served. An orphaned account keeps the stamp of the last run that
@@ -1195,7 +1217,7 @@ class SimpleFINService:
         imported_by_account: Counter[uuid.UUID],
         adopted_by_account: Counter[uuid.UUID],
         ledger_cleared: dict[uuid.UUID, Decimal],
-        drifts: list[tuple[Account, BalanceDrift]],
+        drifts: list[tuple[Account, DriftExplanation]],
         refused_anchors: list[str],
         fault: str | None,
         change_batch_id: uuid.UUID | None,

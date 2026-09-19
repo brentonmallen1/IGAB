@@ -157,6 +157,7 @@ REDACT_ON_NEW_BUDGET: Mapping[tuple[str, str], Any] = MappingProxyType(
         ("accounts", "simplefin_account_id"): None,
         ("accounts", "simplefin_account_name"): None,
         ("accounts", "simplefin_balance"): None,
+        ("accounts", "simplefin_balance_date"): None,
         # The remembered sign frame is a fact about an institution reached
         # through a link the copy does not have. Kept, it would apply one
         # bank's convention to whatever the copy is later linked to — and a

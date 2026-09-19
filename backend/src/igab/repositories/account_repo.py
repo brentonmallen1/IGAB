@@ -21,6 +21,7 @@ from igab.repositories.txn_filters import (
     CARD_ACCOUNT,
     CASH_ACCOUNT,
     CLEARED,
+    CLEARED_AHEAD_OF_BANK,
     EMERGENCY_FUND_ACCOUNT_SHAPE,
     LIVE_ACCOUNT,
     NEEDS_CATEGORY,
@@ -172,6 +173,38 @@ class AccountRepository(BaseRepository[Account]):
         """
         return await self._sums_by_account(account_ids, PENDING_ROW)
 
+    async def unposted_cleared_for(
+        self, account_ids: Sequence[uuid.UUID]
+    ) -> dict[uuid.UUID, Decimal]:
+        """Cleared money the bank has not posted against, per account.
+
+        A slice of `cleared_balances_for`, not a partition beside it: these
+        rows ARE in the cleared balance, which is the point — it is the
+        amount by which the ledger runs ahead of the bank's own figure. See
+        txn_filters.CLEARED_AHEAD_OF_BANK and domain.bank_balance.
+        """
+        return await self._sums_by_account(account_ids, CLEARED_AHEAD_OF_BANK)
+
+    async def newest_cleared_on_for(
+        self, account_ids: Sequence[uuid.UUID]
+    ) -> dict[uuid.UUID, date | None]:
+        """The date of the newest cleared row, per account.
+
+        Only ever compared against the bank's `balance-date`, to ask whether
+        the reported balance is old enough that the ledger has moved past it.
+        None for an account with no cleared rows at all, which is not a date
+        to compare and must not read as one.
+        """
+        if not account_ids:
+            return {}
+        result = await self.session.execute(
+            select(Transaction.account_id, func.max(Transaction.date))
+            .where(Transaction.account_id.in_(account_ids), BALANCE_ROW, CLEARED)
+            .group_by(Transaction.account_id)
+        )
+        newest = {account_id: value for account_id, value in result.all()}
+        return {account_id: newest.get(account_id) for account_id in account_ids}
+
     async def uncategorized_counts_for(
         self, account_ids: Sequence[uuid.UUID]
     ) -> dict[uuid.UUID, int]:
@@ -231,6 +264,14 @@ class AccountRepository(BaseRepository[Account]):
         `not_future` itself — see that function for why the two differ.
         """
         return (await self.cleared_balances_for([account_id]))[account_id]
+
+    async def get_unposted_cleared(self, account_id: uuid.UUID) -> Decimal:
+        """One account's `unposted_cleared_for`."""
+        return (await self.unposted_cleared_for([account_id]))[account_id]
+
+    async def get_newest_cleared_on(self, account_id: uuid.UUID) -> date | None:
+        """One account's `newest_cleared_on_for`."""
+        return (await self.newest_cleared_on_for([account_id]))[account_id]
 
     async def get_uncategorized_count(self, account_id: uuid.UUID) -> int:
         # Leaf rows: split parents legitimately have no category, while an
