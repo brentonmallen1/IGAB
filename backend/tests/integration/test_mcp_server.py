@@ -307,3 +307,85 @@ class TestItIsReachable:
         with no config change and no second port."""
         mounted = [route for route in app.routes if getattr(route, "path", None) == "/api/v1/mcp"]
         assert mounted, [getattr(r, "path", None) for r in app.routes][:20]
+
+
+class TestTheNewToolsOverTheProtocol:
+    """The querying tools, driven the way an assistant drives them.
+
+    Unit tests prove the handlers; this proves an MCP client can actually
+    reach them — schema accepted, arguments through the transport, an answer
+    back — which is a different claim.
+    """
+
+    async def test_query_transactions_returns_a_grouped_total(self, db_session):
+        async with mcp_client(db_session) as mcp:
+            user = await create_user(db_session)
+            budget = await create_budget(db_session, user, "Household")
+            await db_session.flush()
+            headers = await _session(mcp, await _key(db_session, [budget]))
+
+            called = await mcp.post(
+                MCP_URL,
+                headers=headers,
+                json=_rpc(
+                    "tools/call",
+                    {
+                        "name": "query_transactions",
+                        "arguments": {"group_by": "month", "aggregate": "sum"},
+                    },
+                ),
+            )
+            assert called.status_code == 200, called.text
+            assert "grouped_by" in json.dumps(_result(called))
+
+    async def test_an_impossible_group_by_comes_back_as_an_answer(self, db_session):
+        """Not a 500. A model that guessed wrong has to be able to read what
+        went wrong and pick a legal dimension on its next turn."""
+        async with mcp_client(db_session) as mcp:
+            user = await create_user(db_session)
+            budget = await create_budget(db_session, user, "Household")
+            await db_session.flush()
+            headers = await _session(mcp, await _key(db_session, [budget]))
+
+            called = await mcp.post(
+                MCP_URL,
+                headers=headers,
+                json=_rpc(
+                    "tools/call",
+                    {
+                        "name": "query_transactions",
+                        "arguments": {"group_by": "; DROP TABLE transactions"},
+                    },
+                ),
+            )
+            assert called.status_code == 200, called.text
+            body = json.dumps(_result(called))
+            assert "category" in body
+
+    async def test_the_new_domain_tools_are_listed_and_callable(self, db_session):
+        async with mcp_client(db_session) as mcp:
+            user = await create_user(db_session)
+            budget = await create_budget(db_session, user, "Household")
+            await db_session.flush()
+            headers = await _session(mcp, await _key(db_session, [budget]))
+
+            listed = await mcp.post(MCP_URL, headers=headers, json=_rpc("tools/list"))
+            names = {t["name"] for t in _result(listed)["tools"]}
+            assert {
+                "query_transactions",
+                "get_debt_status",
+                "get_net_worth",
+                "list_scheduled",
+                "cash_projection",
+                "burn_rate",
+                "spending_anomalies",
+            } <= names
+
+            for tool in ("get_debt_status", "get_net_worth", "list_scheduled"):
+                called = await mcp.post(
+                    MCP_URL,
+                    headers=headers,
+                    json=_rpc("tools/call", {"name": tool, "arguments": {}}),
+                )
+                assert called.status_code == 200, f"{tool}: {called.text}"
+                assert "error" not in _result(called)

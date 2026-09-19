@@ -651,3 +651,77 @@ async def list_scheduled(ctx: ToolContext, args: dict) -> dict:
     ]
     total = sum((r.amount for r in due), Decimal(0))
     return clip(shaped, total_rows=len(shaped), total_amount=total)
+
+
+async def cash_projection(ctx: ToolContext, args: dict) -> dict:
+    """Where the balance goes next, and whether it crosses zero.
+
+    `goes_negative_date` is the whole point of the tool and is served first
+    class rather than left for a model to find by scanning the points: "will
+    I run out" is the question, and a null answer means no, not unknown.
+    """
+    try:
+        horizon = max(7, min(365, int(args.get("horizon_days", 90))))
+    except (TypeError, ValueError):
+        horizon = 90
+    report = await ctx.reports.cash_projection(ctx.budget_id, horizon)
+    goes_negative = report.get("goes_negative_date")
+    return summarize_if_large(
+        {
+            "horizon_days": horizon,
+            "start_balance": money(report.get("start_balance", 0)),
+            "goes_negative_date": _iso(goes_negative) if goes_negative else None,
+            "upcoming": [
+                {
+                    "date": _iso(event.get("date")),
+                    "payee": event.get("payee_name") or event.get("description"),
+                    "amount": money(event.get("amount", 0)),
+                }
+                for event in report.get("events", [])
+            ],
+        },
+        keep=("goes_negative_date", "start_balance", "horizon_days"),
+        max_chars=ctx.result_max_chars,
+    )
+
+
+async def burn_rate(ctx: ToolContext, args: dict) -> dict:
+    """Spending pace: the rolling 30- and 90-day averages, per month."""
+    months = _months(args, 12)
+    rows = await ctx.reports.burn_rate(ctx.budget_id, months)
+    points = [
+        {
+            "month": _iso(row["date"]),
+            "rolling_30": money(row["rolling_30"]),
+            "rolling_90": money(row["rolling_90"]),
+        }
+        for row in rows
+    ]
+    return summarize_if_large(
+        {"months": points, "latest": points[-1] if points else None},
+        keep=("latest",),
+        max_chars=ctx.result_max_chars,
+    )
+
+
+async def spending_anomalies(ctx: ToolContext, args: dict) -> dict:
+    """Category-months well off their own baseline, worst first.
+
+    The threshold and the baseline rule belong to `report_stats.anomaly_rows`
+    and are not re-decided here — a tool with its own idea of "unusual" would
+    disagree with the report the user can open beside it.
+    """
+    months = _months(args, 12)
+    report = await ctx.reports.anomalies_report(ctx.budget_id, months)
+    rows = [
+        {
+            "category": row["category_name"],
+            "month": _iso(row["month"]),
+            "spent": money(row["actual"]),
+            "usual": money(row["baseline_mean"]),
+            "direction": row["direction"],
+            "month_still_running": row["partial_month"],
+        }
+        for row in report.get("anomalies", [])
+    ]
+    return clip(rows, total_rows=len(rows))

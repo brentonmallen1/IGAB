@@ -314,6 +314,46 @@ TOOLS: tuple[ToolSpec, ...] = (
         delegates_to="ScheduledTransactionRepository.get_all",
     ),
     ToolSpec(
+        name="cash_projection",
+        description=(
+            "Where the balance is heading, and the date it would go negative "
+            "if it does. Use this for 'will I make it to payday', 'can I "
+            "afford this', and anything about running out."
+        ),
+        parameters=_obj(
+            {
+                "horizon_days": {
+                    "type": "integer",
+                    "description": "How far ahead to project, 7-365. Defaults to 90.",
+                }
+            }
+        ),
+        handler=handlers.cash_projection,
+        delegates_to="ReportService.cash_projection",
+    ),
+    ToolSpec(
+        name="burn_rate",
+        description=(
+            "How fast money is going out: rolling 30- and 90-day spending "
+            "averages per month. Use this for 'am I spending more than I used to'."
+        ),
+        parameters=_obj({"months": _MONTHS}),
+        handler=handlers.burn_rate,
+        delegates_to="ReportService.burn_rate",
+    ),
+    ToolSpec(
+        name="spending_anomalies",
+        description=(
+            "Envelopes whose spending in a month sits well off their own "
+            "baseline, worst first. Use this for 'anything unusual', not for "
+            "ordinary totals."
+        ),
+        parameters=_obj({"months": _MONTHS}),
+        handler=handlers.spending_anomalies,
+        delegates_to="ReportService.anomalies_report",
+        slow=True,
+    ),
+    ToolSpec(
         name="guide_checkup",
         description=(
             "The app's own financial health review: every metric against its target "

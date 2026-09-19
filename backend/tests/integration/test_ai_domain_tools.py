@@ -165,3 +165,46 @@ class TestScheduled:
 
         result = await handlers.list_scheduled(await _ctx(db_session, budget, today), {})
         assert [row["amount"] for row in result["rows"]] == [-20, -30, -50]
+
+
+class TestReports:
+    async def test_cash_projection_serves_the_zero_crossing_first_class(self, db_session):
+        """ "Will I run out" is the question. A null answer means no — not
+        unknown — and it must not be something a model has to find by
+        scanning a series of points."""
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user, "Household")
+        await create_account(db_session, budget, "Harborstone")
+        await db_session.flush()
+
+        result = await handlers.cash_projection(
+            await _ctx(db_session, budget), {"horizon_days": 30}
+        )
+        assert "goes_negative_date" in result
+        assert result["horizon_days"] == 30
+
+    async def test_the_horizon_is_clamped(self, db_session):
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user, "Household")
+        await db_session.flush()
+        ctx = await _ctx(db_session, budget)
+        assert (await handlers.cash_projection(ctx, {"horizon_days": 9999}))["horizon_days"] == 365
+        assert (await handlers.cash_projection(ctx, {"horizon_days": 1}))["horizon_days"] == 7
+
+    async def test_burn_rate_returns_a_point_per_month(self, db_session):
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user, "Household")
+        await db_session.flush()
+        result = await handlers.burn_rate(await _ctx(db_session, budget), {"months": 4})
+        assert len(result["months"]) == 4
+        assert {"month", "rolling_30", "rolling_90"} <= set(result["months"][0])
+
+    async def test_anomalies_are_the_report_s_own_rule(self, db_session):
+        """A quiet budget has none. What matters is that the tool does not
+        invent a threshold of its own — the report the user can open beside
+        it decides what "unusual" means."""
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user, "Household")
+        await db_session.flush()
+        result = await handlers.spending_anomalies(await _ctx(db_session, budget), {})
+        assert result["rows"] == []
