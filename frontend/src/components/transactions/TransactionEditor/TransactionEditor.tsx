@@ -73,7 +73,7 @@ import type { SplitDraft } from '../../../stores/transactionEditStore'
 import { randomUUID } from '../../../utils/uuid'
 import { Tooltip } from '../../common/Tooltip/Tooltip'
 import './TransactionEditor.css'
-import { openAccounts } from '../../../utils/accountLists'
+import { openAccounts, recentAccounts } from '../../../utils/accountLists'
 
 /** Where the AI model is configured — the System page, not the budget's Settings. */
 const AI_SETTINGS = sectionHref({ id: 'ai', page: 'system' })
@@ -143,20 +143,19 @@ export function TransactionEditor({
   const isReview = !!aiJob && isEdit
   const reprocess = useReprocessAIJob(budgetId)
 
-  // No fixed account (budget-view add): the user picks one, defaulting to the
-  // same sticky "last used" account the quick-add flow remembers.
-  const lastPickedAccountId = useAppStore((s) => s.lastQuickAddAccountId)
-  const setLastPickedAccountId = useAppStore((s) => s.setLastQuickAddAccountId)
+  // No fixed account (budget-view add): the user picks one, and nothing is
+  // picked for them. A pre-selected account is a choice nobody made — rows
+  // landed in whichever account the previous entry used, and the only way to
+  // notice was to go looking in the registers. The recently used ones are
+  // offered first instead, which shortens the pick without making it.
+  const recentAccountIds = useAppStore((s) => s.recentAccountIds)
+  const noteAccountUsed = useAppStore((s) => s.noteAccountUsed)
   const [pickedAccountId, setPickedAccountId] = useState(transaction?.account_id ?? '')
   const choosable = useMemo(() => openAccounts(accounts), [accounts])
-  useEffect(() => {
-    if (fixedAccountId || transaction || pickedAccountId || choosable.length === 0) return
-    const preferred =
-      lastPickedAccountId && choosable.some((a) => a.id === lastPickedAccountId)
-        ? lastPickedAccountId
-        : (choosable.find((a) => a.on_budget)?.id ?? choosable[0].id)
-    setPickedAccountId(preferred)
-  }, [fixedAccountId, transaction, pickedAccountId, choosable, lastPickedAccountId])
+  const recent = useMemo(
+    () => recentAccounts(choosable, recentAccountIds),
+    [choosable, recentAccountIds]
+  )
   // An existing row's account is the picker's, not the register's: opening a
   // row from an account page must still let it be moved OUT of that page.
   // A fresh row started from an account page keeps that account fixed.
@@ -469,6 +468,13 @@ export function TransactionEditor({
         // go. The parent's amount is the lines' sum and is not sent.
         await updateTxn.mutateAsync({
           id: transaction!.id,
+          // The account, like every other field the editor shows. Leaving it
+          // out here is how a split's account picker came to do nothing at
+          // all: the control moved, the save did not, and the row stayed in
+          // the account it was scanned into. The server drops an unchanged
+          // one and carries the lines along with a changed one
+          // (`_mirror_children`).
+          account_id: accountId,
           ...(isReconciled ? {} : { date, cleared }),
           memo: memo || undefined,
           approved: true,
@@ -480,6 +486,7 @@ export function TransactionEditor({
         // AI links (a create+delete replacement would orphan the receipt).
         await updateTxn.mutateAsync({
           id: transaction!.id,
+          account_id: accountId,
           ...(isReconciled ? {} : { date, amount, cleared }),
           memo: memo || undefined,
           approved: true,
@@ -499,7 +506,7 @@ export function TransactionEditor({
           ai_job_id: aiJobId,
           splits: splitList,
         })
-        if (!fixedAccountId) setLastPickedAccountId(accountId)
+        if (!fixedAccountId) noteAccountUsed(accountId)
       }
       onClose()
       return
@@ -574,7 +581,7 @@ export function TransactionEditor({
         cleared,
         ai_job_id: aiJobId,
       })
-      if (!fixedAccountId) setLastPickedAccountId(accountId)
+      if (!fixedAccountId) noteAccountUsed(accountId)
     }
     onClose()
   }
@@ -672,6 +679,9 @@ export function TransactionEditor({
     !fixedAccountId || isEdit ? (
       <AccountField
         accounts={choosable}
+        // Only when entering: the shortlist answers "which account am I
+        // adding to", not "where should this existing row go instead".
+        recent={isEdit ? [] : recent}
         value={pickedAccountId}
         onChange={setPickedAccountId}
         current={rowAccount ?? null}
@@ -829,7 +839,7 @@ export function TransactionEditor({
                 aiAvailable={aiAvailable}
                 onReviewReady={setReviewJob}
                 onRememberAccount={() => {
-                  if (!fixedAccountId && accountId) setLastPickedAccountId(accountId)
+                  if (!fixedAccountId && accountId) noteAccountUsed(accountId)
                 }}
                 onClose={onClose}
               />

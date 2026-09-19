@@ -91,8 +91,8 @@ vi.mock('../../../stores/appStore', () => ({
   useAppStore: (selector: (s: Record<string, unknown>) => unknown) =>
     selector({
       currentBudgetId: 'budget-1',
-      lastQuickAddAccountId: null,
-      setLastQuickAddAccountId: vi.fn(),
+      recentAccountIds: [],
+      noteAccountUsed: vi.fn(),
       locationEnabled: false,
     }),
 }))
@@ -116,12 +116,26 @@ vi.mock('../../../utils/toastUndo', () => ({ useUndoToast: () => vi.fn() }))
 
 import { QuickAddSheet } from './QuickAddSheet'
 
-function renderSheet() {
+function mountSheet() {
   return render(
     <QueryClientProvider client={new QueryClient()}>
       <QuickAddSheet />
     </QueryClientProvider>
   )
+}
+
+function renderSheet() {
+  const rendered = mountSheet()
+  // Nothing is pre-selected any more, and Save is gated on an account — so
+  // every test below picks one before it can say anything about split maths.
+  chooseAccount()
+  return rendered
+}
+
+/** Answer the account row, which the sheet no longer answers for the user. */
+function chooseAccount(name = 'Checking') {
+  fireEvent.click(screen.getByText('Choose account'))
+  pickInSheet(name)
 }
 
 /** Enter an amount, open the split editor. */
@@ -415,5 +429,23 @@ describe('leaving mid-split', () => {
     fireEvent.click(screen.getByTitle('Split this across categories'))
     fireEvent.click(screen.getByLabelText('Cancel'))
     expect(screen.getByText('Discard this transaction?')).toBeTruthy()
+  })
+})
+
+/**
+ * The account is the one field on a quick entry that nothing can infer, and
+ * it used to arrive pre-answered with whichever account the last entry used.
+ * Receipts scanned in a hurry landed on the wrong card, and the only way to
+ * find out was to go looking through the registers.
+ */
+describe('choosing the account', () => {
+  it('asks rather than assuming, and Save waits for the answer', () => {
+    mountSheet()
+    expect(screen.getByText('Choose account')).toBeTruthy()
+    fireEvent.change(screen.getByLabelText('Amount'), { target: { value: '12.00' } })
+    expect(save().hasAttribute('disabled')).toBe(true)
+
+    chooseAccount()
+    expect(save().hasAttribute('disabled')).toBe(false)
   })
 })

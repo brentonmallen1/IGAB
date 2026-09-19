@@ -105,8 +105,8 @@ vi.mock('../../../stores/appStore', () => ({
   useAppStore: (selector: (s: Record<string, unknown>) => unknown) =>
     selector({
       currentBudgetId: 'budget-1',
-      lastQuickAddAccountId: null,
-      setLastQuickAddAccountId: vi.fn(),
+      recentAccountIds: [],
+      noteAccountUsed: vi.fn(),
       locationEnabled: false,
       privacyMode: h.privacyMode,
     }),
@@ -164,11 +164,16 @@ beforeEach(() => {
 })
 
 function renderSheet() {
-  return render(
+  const rendered = render(
     <QueryClientProvider client={h.qc}>
       <QuickAddSheet />
     </QueryClientProvider>
   )
+  // The account is no longer pre-selected, and the available-to-spend line
+  // asks about the account's budget — so every test picks one first.
+  fireEvent.click(screen.getByText('Choose account'))
+  fireEvent.click(optionRow('Checking'))
+  return rendered
 }
 
 /** The option row inside the open selection sheet (see the split test for why

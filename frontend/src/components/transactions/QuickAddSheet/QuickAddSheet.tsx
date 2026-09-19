@@ -60,7 +60,7 @@ import { today, yesterday } from '../../../utils/dates'
 import { hapticTick } from '../../../utils/haptics'
 import './QuickAddSheet.css'
 import { apiErrorMessage } from '../../../api/client'
-import { openAccounts } from '../../../utils/accountLists'
+import { openAccounts, recentAccounts } from '../../../utils/accountLists'
 
 type Direction = 'outflow' | 'inflow'
 
@@ -88,8 +88,8 @@ export function QuickAddSheet() {
   const open = useUIStore((s) => s.quickAddOpen)
   const closeQuickAdd = useUIStore((s) => s.closeQuickAdd)
   const budgetId = useAppStore((s) => s.currentBudgetId)
-  const lastAccountId = useAppStore((s) => s.lastQuickAddAccountId)
-  const setLastAccountId = useAppStore((s) => s.setLastQuickAddAccountId)
+  const recentAccountIds = useAppStore((s) => s.recentAccountIds)
+  const noteAccountUsed = useAppStore((s) => s.noteAccountUsed)
   const locationEnabled = useAppStore((s) => s.locationEnabled)
   const isTouch = useIsTouch()
 
@@ -143,12 +143,12 @@ export function QuickAddSheet() {
   }, [previews])
 
   const choosable = useMemo(() => openAccounts(accounts), [accounts])
-  const defaultAccountId = useMemo(() => {
-    if (lastAccountId && choosable.some((a) => a.id === lastAccountId)) return lastAccountId
-    return choosable.find((a) => a.on_budget)?.id ?? choosable[0]?.id ?? null
-  }, [lastAccountId, choosable])
+  const recent = useMemo(
+    () => recentAccounts(choosable, recentAccountIds),
+    [choosable, recentAccountIds]
+  )
 
-  // Fresh entry each time the sheet opens; account and date are sticky choices
+  // Fresh entry each time the sheet opens; the account is picked every time
   useEffect(() => {
     if (!open) return
     setAmount('')
@@ -166,11 +166,11 @@ export function QuickAddSheet() {
     setFailedScans([])
     setScanTotal(0)
     setScanDone(0)
+    // No account, deliberately: a pre-selected one is a choice nobody made,
+    // and receipts went to whichever account the last entry happened to use.
+    // Save and Scan stay disabled until this is answered.
+    setAccountId(null)
   }, [open])
-
-  useEffect(() => {
-    if (open && accountId === null && defaultAccountId) setAccountId(defaultAccountId)
-  }, [open, accountId, defaultAccountId])
 
   const payeeOptions = useMemo<SelectionSheetOption[]>(
     () => payees.filter((p) => !p.transfer_account_id).map((p) => ({ id: p.id, label: p.name })),
@@ -323,7 +323,7 @@ export function QuickAddSheet() {
     setFailedScans(failed)
 
     if (queued > 0) {
-      setLastAccountId(accountId)
+      noteAccountUsed(accountId)
       hapticTick()
       toast.success(
         queued === 1
@@ -436,7 +436,7 @@ export function QuickAddSheet() {
         approved: true,
         ...(coords ? { latitude: coords.latitude, longitude: coords.longitude } : {}),
       })
-      setLastAccountId(accountId)
+      noteAccountUsed(accountId)
 
       // Transaction first, receipts second — the money record always wins.
       // Failed photos stay in the camera roll; retry from the editor.
@@ -1005,6 +1005,11 @@ export function QuickAddSheet() {
         onClose={() => setAccountSheetOpen(false)}
         title="Account"
         options={accountOptions}
+        topSection={
+          recent.length > 0
+            ? { label: 'Recent', options: recent.map((a) => ({ id: a.id, label: a.name })) }
+            : undefined
+        }
         value={accountId}
         onChange={(id) => id && setAccountId(id)}
         placeholder="Search accounts…"

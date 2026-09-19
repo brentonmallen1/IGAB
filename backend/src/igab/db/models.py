@@ -1904,6 +1904,18 @@ class AIJob(Base):
     #: forgets fails loudly instead of quietly reporting waiting work as done.
     needs_review: Mapped[bool] = query_expression()
 
+    #: Which account the transaction this job created is in RIGHT NOW.
+    #:
+    #: Not `payload["account_id"]`, which is only the account the scan was
+    #: submitted against: a row moved after the fact would leave the review
+    #: list naming the account it came from, and naming the wrong account is
+    #: the failure this field exists to prevent.
+    #:
+    #: Not a column, and not computable by the client, for the same reasons
+    #: `needs_review` is not. Populated by the same loader, so a query that
+    #: has one has both.
+    transaction_account_id: Mapped[uuid.UUID | None] = query_expression()
+
     transaction: Mapped["Transaction | None"] = relationship(foreign_keys=[transaction_id])
     attachment: Mapped["TransactionAttachment | None"] = relationship(foreign_keys=[attachment_id])
 

@@ -15,6 +15,7 @@ const updateMutate = vi.hoisted(() =>
 )
 const deleteMutate = vi.hoisted(() => vi.fn(() => Promise.resolve()))
 const convertMutate = vi.hoisted(() => vi.fn(() => Promise.resolve({})))
+const replaceSplitsMutate = vi.hoisted(() => vi.fn(() => Promise.resolve({})))
 const confirmOverspend = vi.hoisted(() => vi.fn(() => Promise.resolve(true)))
 const toastError = vi.hoisted(() => vi.fn())
 
@@ -55,14 +56,17 @@ const ACCOUNTS = vi.hoisted(() => [
 let classificationData: unknown = undefined
 /** Rows in the target account that could be a transfer's far leg. */
 let transferCandidates: unknown[] = []
+/** The lines `useTransactionSplits` serves — set by the tests that open a
+ *  row that is already a split. */
+let splitLines: unknown[] | undefined
 
 vi.mock('../../../api/transactions', () => ({
   useCreateTransaction: () => ({ mutateAsync: createMutate, isPending: false }),
   useUpdateTransaction: () => ({ mutateAsync: updateMutate, isPending: false }),
   useDeleteTransaction: () => ({ mutateAsync: deleteMutate, isPending: false }),
   useConvertToSplit: () => ({ mutateAsync: convertMutate, isPending: false }),
-  useReplaceSplits: () => ({ mutateAsync: vi.fn(), isPending: false }),
-  useTransactionSplits: () => ({ data: undefined }),
+  useReplaceSplits: () => ({ mutateAsync: replaceSplitsMutate, isPending: false }),
+  useTransactionSplits: () => ({ data: splitLines }),
   useTransaction: () => ({ data: undefined }),
   usePayees: () => ({ data: [] }),
   useSimilarTransactions: () => ({ data: [] }),
@@ -553,13 +557,21 @@ describe('TransactionEditor account picker', () => {
   beforeEach(() => {
     updateMutate.mockClear()
     createMutate.mockClear()
+    replaceSplitsMutate.mockClear()
     confirmOverspend.mockClear()
     confirmOverspend.mockImplementation(() => Promise.resolve(true))
     transferCandidates = []
+    splitLines = undefined
   })
 
   function accountSelect() {
     return screen.getByRole('combobox', { name: 'Account' })
+  }
+
+  function splitAmountInputs() {
+    return screen
+      .getAllByPlaceholderText('0.00')
+      .filter((el) => el.classList.contains('txn-editor__split-amount'))
   }
 
   it('offers the account on an existing row opened from its own register', () => {
@@ -578,6 +590,13 @@ describe('TransactionEditor account picker', () => {
     expect(updateMutate).toHaveBeenCalledWith(
       expect.objectContaining({ id: 't10', account_id: 'acc-2' })
     )
+  })
+
+  it('picks no account for a new row added from the budget view', () => {
+    // Nothing is pre-selected: a default account is a choice nobody made,
+    // and it put rows in whichever account the previous entry used.
+    renderEditor({ accountId: null })
+    expect((accountSelect() as HTMLSelectElement).value).toBe('')
   })
 
   it('leaves a new row started from a register pinned to that register', () => {
@@ -608,6 +627,45 @@ describe('TransactionEditor account picker', () => {
     await waitFor(() => expect(updateMutate).toHaveBeenCalled())
     expect(updateMutate).toHaveBeenCalledWith(
       expect.objectContaining({ account_id: 'acc-4', category_id: null })
+    )
+  })
+
+  /**
+   * A split saves through its own request, and the account went missing from
+   * both of them: the picker moved, Save reported success, and the row stayed
+   * in the account it was scanned into. Receipts are the flow that produces
+   * splits, and a receipt filed against the wrong card is exactly the row
+   * somebody is trying to move.
+   */
+  it('sends the new account when an existing split is saved', async () => {
+    splitLines = [
+      { id: 'l1', amount: -40, category_id: 'cat-1', memo: null },
+      { id: 'l2', amount: -1.8, category_id: 'cat-2', memo: null },
+    ]
+    renderEditor({ transaction: { ...row, is_split: true }, accountId: 'acc-1' })
+    fireEvent.change(accountSelect(), { target: { value: 'acc-2' } })
+    fireEvent.click(submitButton('Save'))
+
+    await waitFor(() => expect(replaceSplitsMutate).toHaveBeenCalled())
+    expect(updateMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 't10', account_id: 'acc-2' })
+    )
+  })
+
+  it('sends the new account when a row is split in place', async () => {
+    renderEditor({ transaction: row, accountId: 'acc-1' })
+    fireEvent.click(screen.getByTitle('Split this transaction'))
+    const legs = splitAmountInputs()
+    fireEvent.change(legs[0], { target: { value: '40.00' } })
+    fireEvent.change(legs[1], { target: { value: '1.80' } })
+    pickCategory('Groceries', 'Split category', 0)
+    pickCategory('Fun', 'Split category', 1)
+    fireEvent.change(accountSelect(), { target: { value: 'acc-2' } })
+    fireEvent.click(submitButton('Save'))
+
+    await waitFor(() => expect(convertMutate).toHaveBeenCalled())
+    expect(updateMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 't10', account_id: 'acc-2' })
     )
   })
 

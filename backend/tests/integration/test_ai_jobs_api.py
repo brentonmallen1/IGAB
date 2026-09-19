@@ -486,6 +486,78 @@ class TestServedNeedsReview:
         assert resp.json()["needs_review"] is True
 
 
+class TestServedTransactionAccount:
+    """`transaction_account_id` on a job row.
+
+    The review list has to name the account, because the account is the one
+    field on an AI draft that no model chose — it is whatever was selected
+    before the photo. A receipt filed against the wrong card was approved
+    looking correct and only surfaced later, as a balance that did not match.
+
+    Served rather than read from `payload["account_id"]`: the payload records
+    where the scan was SUBMITTED, and naming the account a row has since left
+    is the same failure with a different spelling.
+    """
+
+    async def test_names_the_account_the_transaction_is_in(
+        self, api_client, db_session, attachments_dir
+    ):
+        budget, account = await _setup(api_client, db_session)
+        txn = await create_transaction(
+            db_session, budget, account, "-12.50", date(2026, 8, 2), approved=False
+        )
+        job = AIJob(
+            budget_id=budget.id,
+            kind="receipt",
+            status="done",
+            payload={},
+            transaction_id=txn.id,
+        )
+        db_session.add(job)
+        await db_session.commit()
+
+        body = (await api_client.get(f"/api/v1/{budget.id}/ai/jobs")).json()
+        assert body["jobs"][0]["transaction_account_id"] == str(account.id)
+
+    async def test_follows_the_row_when_it_moves(self, api_client, db_session, attachments_dir):
+        # The payload still says Checking. The row is on the card, and the
+        # review list must say so.
+        budget, account = await _setup(api_client, db_session)
+        card = await create_account(db_session, budget, "Sapphire Visa")
+        txn = await create_transaction(
+            db_session, budget, account, "-12.50", date(2026, 8, 2), approved=False
+        )
+        job = AIJob(
+            budget_id=budget.id,
+            kind="receipt",
+            status="done",
+            payload={"account_id": str(account.id)},
+            transaction_id=txn.id,
+        )
+        db_session.add(job)
+        await db_session.commit()
+
+        moved = await api_client.patch(
+            f"/api/v1/transactions/{txn.id}",
+            params={"budget_id": str(budget.id)},
+            json={"account_id": str(card.id)},
+        )
+        assert moved.status_code == 200, moved.text
+
+        body = (await api_client.get(f"/api/v1/{budget.id}/ai/jobs")).json()
+        assert body["jobs"][0]["transaction_account_id"] == str(card.id)
+
+    async def test_is_null_with_no_transaction(self, api_client, db_session, attachments_dir):
+        # A queued job has created nothing yet; the log outlives what it
+        # creates, so the row still appears.
+        budget, _ = await _setup(api_client, db_session)
+        db_session.add(AIJob(budget_id=budget.id, kind="receipt", status="queued", payload={}))
+        await db_session.commit()
+
+        body = (await api_client.get(f"/api/v1/{budget.id}/ai/jobs")).json()
+        assert body["jobs"][0]["transaction_account_id"] is None
+
+
 class TestJobListingAndLifecycle:
     async def test_list_detail_active_count(self, api_client, db_session, attachments_dir):
         budget, account = await _setup(api_client, db_session)

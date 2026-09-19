@@ -163,6 +163,10 @@ const FONT_SCALE_RENAMES: Record<string, FontScale> = {
   large: 'xxlarge',
 }
 
+/** How many accounts the recent-account shortlist remembers. Longer than any
+ *  picker pins, so an account used two entries ago survives a detour. */
+const RECENT_ACCOUNTS_KEPT = 8
+
 interface AppState {
   theme: Theme
   fontScale: FontScale
@@ -175,7 +179,11 @@ interface AppState {
    *  header arrows, shortcuts, swipe — obeys one rule. */
   budgetAnchorMonth: string | null
   autoOpenLastBudget: boolean
-  lastQuickAddAccountId: string | null
+  /** Accounts this device filed a transaction into, most recent first.
+   *  Read only through `utils/accountLists.recentAccounts`, which every
+   *  entry picker pins above its full list. It is a shortlist, never a
+   *  default: an account nobody chose is an account nobody checked. */
+  recentAccountIds: string[]
   /** Opt-in, device-local: capture location on quick-add to suggest nearby payees */
   locationEnabled: boolean
   /** Device-local: mask all amounts (screen-share / over-the-shoulder privacy) */
@@ -191,7 +199,8 @@ interface AppState {
   setSelectedMonth: (month: string) => void
   setBudgetAnchorMonth: (month: string | null) => void
   setAutoOpenLastBudget: (val: boolean) => void
-  setLastQuickAddAccountId: (id: string) => void
+  /** Remember that a transaction was just filed into this account. */
+  noteAccountUsed: (id: string) => void
   setLocationEnabled: (val: boolean) => void
   togglePrivacyMode: () => void
   setViewportRuler: (on: boolean) => void
@@ -206,7 +215,7 @@ export const useAppStore = create<AppState>()(
       selectedMonth: currentMonthStart(),
       budgetAnchorMonth: null,
       autoOpenLastBudget: true,
-      lastQuickAddAccountId: null,
+      recentAccountIds: [],
       locationEnabled: false,
       privacyMode: false,
       viewportRulerOn: false,
@@ -248,7 +257,13 @@ export const useAppStore = create<AppState>()(
         })),
       setBudgetAnchorMonth: (month) => set({ budgetAnchorMonth: month }),
       setAutoOpenLastBudget: (val) => set({ autoOpenLastBudget: val }),
-      setLastQuickAddAccountId: (id) => set({ lastQuickAddAccountId: id }),
+      noteAccountUsed: (id) =>
+        set((s) => ({
+          recentAccountIds: [id, ...s.recentAccountIds.filter((x) => x !== id)].slice(
+            0,
+            RECENT_ACCOUNTS_KEPT
+          ),
+        })),
       setLocationEnabled: (val) => set({ locationEnabled: val }),
       togglePrivacyMode: () => set((s) => ({ privacyMode: !s.privacyMode })),
       setViewportRuler: (on) => set({ viewportRulerOn: on }),
@@ -267,7 +282,7 @@ export const useAppStore = create<AppState>()(
         currentBudgetId: s.currentBudgetId,
         selectedMonth: s.selectedMonth,
         autoOpenLastBudget: s.autoOpenLastBudget,
-        lastQuickAddAccountId: s.lastQuickAddAccountId,
+        recentAccountIds: s.recentAccountIds,
         locationEnabled: s.locationEnabled,
         privacyMode: s.privacyMode,
         viewportRulerOn: s.viewportRulerOn,
