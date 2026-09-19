@@ -95,7 +95,11 @@
 
 .settings-format-preview {
   padding: var(--spacing-sm) var(--spacing-md);
-  background: var(--bg-secondary);
+  /* A well inside the section's own card, not the card's own color — it
+     used to be var(--bg-secondary), which is what --surface-raised (the
+     section's background) resolves to in every theme, so this box was
+     always the same colour as the card it sits in. */
+  background: var(--surface-sunken);
   border-radius: var(--border-radius-sm);
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
