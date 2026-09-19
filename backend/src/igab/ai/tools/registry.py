@@ -275,6 +275,45 @@ TOOLS: tuple[ToolSpec, ...] = (
         required=("start_date", "end_date"),
     ),
     ToolSpec(
+        name="get_debt_status",
+        description=(
+            "Every debt: balance, rate, payoff date, and interest still to pay. "
+            "Use this for anything about loans, cards as debt, or being debt-free. "
+            "A debt with no terms set has no payoff date, and the reply says which."
+        ),
+        parameters=_obj({}),
+        handler=handlers.get_debt_status,
+        delegates_to="LiabilityService.liabilities_report",
+    ),
+    ToolSpec(
+        name="get_net_worth",
+        description=(
+            "Assets minus debts at each of the last months' ends. Use this for "
+            "net worth, whether it is going up, and what it is made of."
+        ),
+        parameters=_obj({"months": _MONTHS}),
+        handler=handlers.get_net_worth,
+        delegates_to="ReportService.net_worth_history",
+    ),
+    ToolSpec(
+        name="list_scheduled",
+        description=(
+            "Scheduled transactions coming up, soonest first, with what they come "
+            "to. Use this for 'what is due', 'what is coming out this week', or "
+            "anything about committed money that has not been paid yet."
+        ),
+        parameters=_obj(
+            {
+                "days_ahead": {
+                    "type": "integer",
+                    "description": "How far ahead to look, 1-365. Defaults to 30.",
+                }
+            }
+        ),
+        handler=handlers.list_scheduled,
+        delegates_to="ScheduledTransactionRepository.get_all",
+    ),
+    ToolSpec(
         name="guide_checkup",
         description=(
             "The app's own financial health review: every metric against its target "

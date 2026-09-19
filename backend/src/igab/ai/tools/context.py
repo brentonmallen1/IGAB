@@ -19,8 +19,10 @@ if TYPE_CHECKING:
     from igab.repositories.account_repo import AccountRepository
     from igab.repositories.category_repo import CategoryRepository
     from igab.repositories.payee_repo import PayeeRepository
+    from igab.repositories.scheduled_transaction_repo import ScheduledTransactionRepository
     from igab.repositories.transaction_repo import TransactionRepository
     from igab.services.budget_service import BudgetService
+    from igab.services.liability_service import LiabilityService
     from igab.services.report_service import ReportService
 
 
@@ -40,6 +42,8 @@ class ToolContext:
     accounts: "AccountRepository"
     transactions: "TransactionRepository"
     payees: "PayeeRepository"
+    liabilities: "LiabilityService"
+    scheduled: "ScheduledTransactionRepository"
     #: How large one result may be before it is summarized, sized from the
     #: context window this turn was given.
     result_max_chars: int = TOOL_RESULT_MAX_CHARS
@@ -63,10 +67,13 @@ async def build_tool_context(session, budget_id: uuid.UUID, today: date) -> Tool
         CategoryGroupRepository,
         CategoryRepository,
     )
+    from igab.repositories.liability_repo import LiabilityRepository
     from igab.repositories.payee_repo import PayeeRepository
+    from igab.repositories.scheduled_transaction_repo import ScheduledTransactionRepository
     from igab.repositories.snapshot_repo import SnapshotRepository
     from igab.repositories.transaction_repo import TransactionRepository
     from igab.services.budget_service import BudgetService
+    from igab.services.liability_service import LiabilityService
     from igab.services.report_service import ReportService
 
     category_repo = CategoryRepository(session)
@@ -90,4 +97,8 @@ async def build_tool_context(session, budget_id: uuid.UUID, today: date) -> Tool
         accounts=account_repo,
         transactions=transaction_repo,
         payees=PayeeRepository(session),
+        liabilities=LiabilityService(
+            LiabilityRepository(session), account_repo, category_repo, transaction_repo
+        ),
+        scheduled=ScheduledTransactionRepository(session),
     )

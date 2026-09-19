@@ -6,7 +6,8 @@ call a service, and shape the reply. No queries. See `registry` for why, and
 """
 
 from collections import defaultdict
-from datetime import date
+from datetime import date, timedelta
+from decimal import Decimal
 from typing import Any
 
 from igab.ai.tools.context import ToolContext
@@ -540,3 +541,113 @@ async def guide_checkup(ctx: ToolContext, args: dict) -> dict:
         keep=("enabled", "as_of", "findings"),
         max_chars=ctx.result_max_chars,
     )
+
+
+async def get_debt_status(ctx: ToolContext, args: dict) -> dict:
+    """Every debt, what it costs, and when it ends.
+
+    Wraps the Liabilities report rather than reading balances itself: payoff
+    dates come out of the amortization schedule, and a second arithmetic for
+    them would be a second answer to "when am I free of this".
+
+    `terms_complete` is carried per row because a payoff date without terms
+    is not a shorter answer, it is a different one — an imported loan arrives
+    with no rate at all, and saying nothing beats inventing a date.
+    """
+    report = await ctx.liabilities.liabilities_report(ctx.budget_id)
+    rows = [
+        {
+            "name": item["name"],
+            "type": item["liability_type"],
+            "balance": money(item["current_balance"]),
+            "interest_rate": float(item["interest_rate"]) if item["interest_rate"] else None,
+            "payoff_date": (
+                item["live_payoff_date"].isoformat() if item["live_payoff_date"] else None
+            ),
+            "interest_remaining": (
+                money(item["total_interest_remaining"])
+                if item["total_interest_remaining"] is not None
+                else None
+            ),
+            "never_pays_off": item["never_pays_off"],
+            "terms_complete": item["terms_complete"],
+        }
+        for item in report.get("items", [])
+    ]
+    result: dict[str, Any] = {
+        "debts": rows,
+        "total_balance": money(report.get("total_balance", 0)),
+    }
+    missing = [str(r["name"]) for r in rows if not r["terms_complete"]]
+    if missing:
+        # The model must not read a null payoff date as "no debt" or fill the
+        # gap itself; naming the rows is what stops both.
+        result["note"] = (
+            f"No terms set for {', '.join(missing)}, so they have no payoff date "
+            f"or interest figure. Everything else here is unaffected."
+        )
+    return result
+
+
+def _iso(value: Any) -> Any:
+    """A date as a string, and anything already a string untouched."""
+    return value.isoformat() if hasattr(value, "isoformat") else value
+
+
+async def get_net_worth(ctx: ToolContext, args: dict) -> dict:
+    """Assets minus debts, at each of the last months' ends."""
+    months = _months(args, 12)
+    history = await ctx.reports.net_worth_history(ctx.budget_id, months)
+    points = [
+        {
+            "month": _iso(point["date"]),
+            "assets": money(point.get("assets", 0)),
+            "liabilities": money(point.get("liabilities", 0)),
+            "net_worth": money(point.get("net_worth", 0)),
+        }
+        for point in history
+    ]
+    return summarize_if_large(
+        {"months": points, "latest": points[-1] if points else None},
+        keep=("latest",),
+        max_chars=ctx.result_max_chars,
+    )
+
+
+async def list_scheduled(ctx: ToolContext, args: dict) -> dict:
+    """What is due next, soonest first.
+
+    `next_occurrence_date` is stored on the row, so this is a read rather
+    than a second implementation of the recurrence rules in domain/schedule.
+    """
+    try:
+        within = max(1, min(365, int(args.get("days_ahead", 30))))
+    except (TypeError, ValueError):
+        within = 30
+    horizon = ctx.today + timedelta(days=within)
+
+    rows = await ctx.scheduled.get_all(ctx.budget_id)
+    payee_names = {p.id: p.name for p in await ctx.payees.get_all(ctx.budget_id)}
+    category_names = {
+        cat.id: cat.name for cat, _ in await ctx.categories.get_all_with_group_names(ctx.budget_id)
+    }
+    account_rows = await ctx.accounts.get_all(ctx.budget_id, include_closed=True)
+    accounts = {a.id: a.name for a in account_rows}
+
+    due = sorted(
+        (r for r in rows if r.next_occurrence_date <= horizon),
+        key=lambda r: r.next_occurrence_date,
+    )
+    shaped = [
+        {
+            "date": r.next_occurrence_date.isoformat(),
+            "payee": payee_names.get(r.payee_id),
+            "amount": money(r.amount),
+            "account": accounts.get(r.account_id),
+            "category": category_names.get(r.category_id),
+            "frequency": r.frequency,
+        }
+        for r in due
+    ]
+    total = sum((r.amount for r in due), Decimal(0))
+    return clip(shaped, total_rows=len(shaped), total_amount=total)

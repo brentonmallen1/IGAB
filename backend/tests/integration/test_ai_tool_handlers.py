@@ -11,19 +11,7 @@ from decimal import Decimal
 import pytest
 
 from igab.ai.tools import handlers
-from igab.ai.tools.context import ToolContext
-from igab.guide.service import GuideService
-from igab.repositories.account_repo import AccountRepository
-from igab.repositories.category_repo import (
-    BudgetAssignmentRepository,
-    CategoryGroupRepository,
-    CategoryRepository,
-)
-from igab.repositories.payee_repo import PayeeRepository
-from igab.repositories.snapshot_repo import SnapshotRepository
-from igab.repositories.transaction_repo import TransactionRepository
-from igab.services.budget_service import BudgetService
-from igab.services.report_service import ReportService
+from igab.ai.tools.context import ToolContext, build_tool_context
 
 from .factories import (
     create_account,
@@ -61,31 +49,11 @@ async def ctx(db_session) -> ToolContext:
     )
     await db_session.flush()
 
-    category_repo = CategoryRepository(db_session)
-    account_repo = AccountRepository(db_session)
-    transaction_repo = TransactionRepository(db_session)
-    assignment_repo = BudgetAssignmentRepository(db_session)
-    budgets = BudgetService(
-        account_repo,
-        category_repo,
-        CategoryGroupRepository(db_session),
-        assignment_repo,
-        transaction_repo,
-        snapshot_repo=SnapshotRepository(db_session),
-    )
-    reports = ReportService(db_session)
-    return ToolContext(
-        budget_id=budget.id,
-        today=TODAY,
-        session=db_session,
-        reports=reports,
-        budgets=budgets,
-        guide=GuideService(db_session),
-        categories=category_repo,
-        accounts=account_repo,
-        transactions=transaction_repo,
-        payees=PayeeRepository(db_session),
-    )
+    # The real builder, not a second copy of its wiring: this fixture used to
+    # construct every service by hand, so adding one to the context broke
+    # seventeen tests that did not care about it. `build_tool_context` is the
+    # one list, and its own docstring says why there must not be two.
+    return await build_tool_context(db_session, budget.id, TODAY)
 
 
 class TestTheFiguresMatchTheApp:
