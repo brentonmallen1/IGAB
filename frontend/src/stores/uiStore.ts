@@ -613,9 +613,7 @@ export const useUIStore = create<UIState>()(
           // real saved state (every section open), so it must not be spelled
           // the same as "nothing saved yet", which has to fall back to the
           // pending-folded default.
-          collapsedSections: new Set(
-            saved.collapsedSections ?? current.collapsedSections
-          ),
+          collapsedSections: new Set(saved.collapsedSections ?? current.collapsedSections),
         }
       },
     }

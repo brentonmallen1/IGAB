@@ -51,15 +51,31 @@
 }
 
 /* ── Closed, with rows behind it ───────────────────────────────────────────
-   The header carries the whole section on its own here, so it stops reading
-   as a divider: the label comes up to body weight and the count becomes a
-   solid accent chip. Accent fill with --bg-primary on it is the inversion
-   contrast.test.ts already holds to AA across all 40 themes (and the same
-   pairing the floating selection bar uses) — the label itself stays a text
-   token, so no new colour pair is introduced on --surface-chrome. */
+   The header carries the whole section on its own here, so it stops being
+   chrome. The uppercase 11px label is the problem as much as the colour: it
+   is exactly how a column header is spelled, so a folded section read as the
+   top of the table rather than as a drawer with rows in it. Dropping the caps
+   and the tracking is what breaks that read; the accent edges are what say
+   there is more below.
+
+   Every colour here is a token pair contrast.test.ts already holds to AA in
+   all 40 themes — --text-primary on --surface-chrome, and --bg-primary on a
+   --color-accent fill (the same inversion the floating selection bar uses).
+   The accent edges are borders, never the only cue, and carry no text. */
 .collapsible__header--hiding {
   color: var(--text-primary);
-  box-shadow: inset 2px 0 0 var(--color-accent);
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: var(--font-size-sm);
+  padding-block: var(--spacing-sm);
+  border-left: 3px solid var(--color-accent);
+  /* Thick enough to read as an opening rather than a rule between groups —
+     and the same weight the open body uses below its rows, so folding and
+     unfolding moves one edge instead of swapping two different ones. */
+  border-bottom: 3px solid var(--color-accent);
+  /* The left border insets the content; take it back so the chevron stays on
+     the same vertical as every other section header. */
+  padding-left: calc(var(--spacing-md) - 3px);
 }
 
 .collapsible__header--hiding .collapsible__chevron {
@@ -71,4 +87,9 @@
   border-color: var(--color-accent);
   color: var(--bg-primary);
   font-weight: 700;
+}
+
+/* Nudges the whole header on hover, so the fold advertises that it opens. */
+.collapsible__header--hiding:hover {
+  background-color: var(--bg-hover);
 }
