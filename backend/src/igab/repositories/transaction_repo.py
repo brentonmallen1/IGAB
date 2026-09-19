@@ -72,6 +72,7 @@ from igab.repositories.txn_filters import (
     search_matches,
     sync_created_pending,
 )
+from igab.repositories.txn_query import TransactionFilters, build_where, grouped_totals
 
 if TYPE_CHECKING:
     pass
@@ -311,106 +312,56 @@ class TransactionRepository(BaseRepository[Transaction]):
         (same priority as the per-account register) so paginated clients load
         rows needing attention first; order="date" is plain date-desc.
         """
-        where = [Transaction.budget_id == budget_id, NOT_DELETED]
-        where.append(LEAF if scope == "leaf" else PARENT_ROW)
-        if posted_only:
-            where.append(POSTED)
-        if cash_flow_only:
-            where.append(CASH_FLOW_ROW)
-        if activity_classes:
-            # So a drill-down lists exactly what the chart that opened it
-            # counted. Without this an $800 "Expenses" bar opened a panel
-            # totalling $1,800, because the bar means SPENDING and the list
-            # meant every negative row.
-            where.append(ACTIVITY_CLASS.in_(list(activity_classes)))
+        # The clause itself lives in txn_query.build_where, because the
+        # grouped rollup behind `query_transactions` has to filter rows the
+        # same way this does. Two copies of ninety lines of split-leg and
+        # tier-scope handling would not stay the same for a month.
+        necessity_where = None
         if necessity_tier is not None:
-            # A tier's membership is per ROW once debt principal joins it by
-            # class, so a bar's category ids alone list rows the tier never
-            # counted: an "Auto" bar holding a $340 loan payment opened $420
-            # with the fuel beside it. The tier's own scope — the report's
-            # rule, fallback included — is what the panel lists.
-            tier_where, _ = await self._necessity_scope(budget_id, necessity_tier, None)
-            where.extend(tier_where)
-        if direction == "outflow":
-            where.append(Transaction.amount < 0)
-        elif direction == "inflow":
-            where.append(Transaction.amount > 0)
-        if is_transfer is not None:
-            where.append(
-                Transaction.transfer_id.is_not(None)
-                if is_transfer
-                else Transaction.transfer_id.is_(None)
-            )
-        if start_date:
-            where.append(Transaction.date >= start_date)
-        if end_date:
-            where.append(Transaction.date <= end_date)
-        if category_ids is not None:
-            # Parent rows scope by their legs too. The Timeline shows a split
-            # scoped to one of its legs' categories (`in_category_scope`), and
-            # clicking its card opened this listing with a plain IN that
-            # excludes every split parent — "No transactions match" for the
-            # row just clicked.
-            where.append(
-                in_category_scope(category_ids)
-                if scope == "parent"
-                else Transaction.category_id.in_(category_ids)
-            )
-        if no_category:
-            where.append(Transaction.category_id.is_(None))
-        if payee_ids:
-            where.append(Transaction.payee_id.in_(payee_ids))
-        if account_ids:
-            where.append(Transaction.account_id.in_(account_ids))
-        if day_of_week is not None:
-            # isodow is Monday=1..Sunday=7; the API uses Monday=0..Sunday=6
-            where.append(func.extract("isodow", Transaction.date) == day_of_week + 1)
-        if cleared:
-            where.append(Transaction.cleared == cleared)
-        if exclude_cleared:
-            where.append(Transaction.cleared != exclude_cleared)
-        if unreconciled:
-            where.append(NOT_RECONCILED)
-        # The same rule the needs-attention badge counts. They disagreed: this
-        # excluded neither transfers nor off-budget rows, so pressing the badge
-        # opened a list longer than the badge promised.
-        uncategorized_pred = NEEDS_CATEGORY
-        if uncategorized and unapproved and is_or_mode:
-            where.append(or_(uncategorized_pred, Transaction.approved == False))  # noqa: E712
-        else:
-            if uncategorized:
-                where.append(uncategorized_pred)
-            if unapproved:
-                where.append(Transaction.approved == False)  # noqa: E712
-        if amount_min is not None:
-            where.append(func.abs(Transaction.amount) >= amount_min)
-        if amount_max is not None:
-            where.append(func.abs(Transaction.amount) <= amount_max)
-        if has_attachment is not None:
-            attachment_exists = (
-                select(TransactionAttachment.id)
-                .where(TransactionAttachment.transaction_id == Transaction.id)
-                .exists()
-            )
-            where.append(attachment_exists if has_attachment else ~attachment_exists)
-        if search:
-            where.append(search_matches(search))
-        # Deliberately its own filter rather than a mode of `is_transfer`:
-        # that one tests transfer_id alone, so it cannot express "has a
-        # transfer payee but no partner" at all.
-        if unpaired_transfers:
-            where.append(UNPAIRED_TRANSFER_LEG)
+            necessity_where, _ = await self._necessity_scope(budget_id, necessity_tier, None)
+        parts = build_where(
+            budget_id,
+            TransactionFilters(
+                start_date=start_date,
+                end_date=end_date,
+                search=search,
+                category_ids=category_ids,
+                payee_ids=payee_ids,
+                account_ids=account_ids,
+                posted_only=posted_only,
+                cash_flow_only=cash_flow_only,
+                activity_classes=activity_classes,
+                necessity_tier=necessity_tier,
+                direction=direction,
+                day_of_week=day_of_week,
+                cleared=cleared,
+                exclude_cleared=exclude_cleared,
+                unreconciled=unreconciled,
+                uncategorized=uncategorized,
+                no_category=no_category,
+                unapproved=unapproved,
+                is_or_mode=is_or_mode,
+                amount_min=amount_min,
+                amount_max=amount_max,
+                has_attachment=has_attachment,
+                is_transfer=is_transfer,
+                unpaired_transfers=unpaired_transfers,
+            ),
+            scope=scope,
+            necessity_where=necessity_where,
+        )
+        where = parts.where
 
         rows_q = self.with_computed(select(Transaction))
         totals_q = select(func.count(), func.coalesce(func.sum(Transaction.amount), 0)).select_from(
             Transaction
         )
-        if activity_classes or necessity_tier is not None:
+        if parts.class_joins:
             # Only when the filter is in play: these are four LEFT JOINs, and
             # the ordinary register listing has no reason to pay for them.
             rows_q = apply_class_joins(rows_q)
             totals_q = apply_class_joins(totals_q)
-        if search:
+        if parts.payee_join:
             rows_q = rows_q.outerjoin(Payee, Transaction.payee_id == Payee.id)
             totals_q = totals_q.outerjoin(Payee, Transaction.payee_id == Payee.id)
         if order == "register":
@@ -441,6 +392,37 @@ class TransactionRepository(BaseRepository[Transaction]):
         rows = list((await self.session.execute(rows_q)).scalars().all())
         total_count, total_amount = (await self.session.execute(totals_q)).one()
         return rows, int(total_count), Decimal(total_amount)
+
+    async def grouped_totals(
+        self,
+        budget_id: uuid.UUID,
+        *,
+        group_by: str,
+        aggregate: str = "sum",
+        filters: "TransactionFilters | None" = None,
+        order: str = "value",
+        limit: int = 25,
+    ) -> tuple[list[dict], int]:
+        """Roll rows up by one dimension, over the same clause the listing uses.
+
+        Here rather than in `txn_query` because resolving a necessity tier
+        needs a session and five other methods on this class already do it;
+        the query itself is built there, where the vocabulary lives.
+        """
+        f = filters or TransactionFilters()
+        necessity_where = None
+        if f.necessity_tier is not None:
+            necessity_where, _ = await self._necessity_scope(budget_id, f.necessity_tier, None)
+        return await grouped_totals(
+            self.session,
+            budget_id,
+            group_by=group_by,
+            aggregate=aggregate,
+            filters=f,
+            necessity_where=necessity_where,
+            order=order,
+            limit=limit,
+        )
 
     async def count_pending_review_for_account(self, account_id: uuid.UUID) -> dict:
         """Count transactions needing attention for a single account, with breakdown."""

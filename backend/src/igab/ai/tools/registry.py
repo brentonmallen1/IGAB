@@ -30,6 +30,12 @@ from typing import Any
 from igab.ai.tools import handlers
 from igab.ai.tools.context import ToolContext
 
+# The vocabularies, imported so the schemas a model reads ARE the keys the
+# query accepts. This is not the SQL this package is forbidden to write —
+# it is two dicts of names — and importing them is what stops the enum here
+# drifting from the dimensions txn_query can actually group by.
+from igab.repositories.txn_query import AGGREGATES, GROUPABLE
+
 
 @dataclass(frozen=True)
 class ToolSpec:
@@ -62,6 +68,49 @@ _MONTHS = {
 }
 _START = {"type": "string", "description": "Start date, YYYY-MM-DD."}
 _END = {"type": "string", "description": "End date, YYYY-MM-DD."}
+
+_ROW_ORDER = {
+    "type": "string",
+    "enum": ["date", "amount"],
+    "description": "Sort rows by date (default) or by size.",
+}
+
+#: The filter vocabulary, shared by the listing and the rollup so a model
+#: does not have to learn two of them — and so a filter added to one cannot
+#: quietly be missing from the other. Flat and scalar throughout: small
+#: models fill enums and strings reliably and arrays of objects badly.
+_FILTERS: dict[str, dict] = {
+    "search": {"type": "string", "description": "Text in payee or memo."},
+    "category_name": {"type": "string", "description": "Exact-ish envelope name."},
+    "account_name": {"type": "string", "description": "Exact-ish account name."},
+    "payee_name": {"type": "string", "description": "Exact-ish payee name."},
+    "start_date": _START,
+    "end_date": _END,
+    "amount_min": {"type": "number"},
+    "amount_max": {"type": "number"},
+    "direction": {
+        "type": "string",
+        "enum": ["inflow", "outflow"],
+        "description": "Money in or money out. Omit for both.",
+    },
+    "cleared": {
+        "type": "string",
+        "enum": list(handlers.CLEARED_STATES),
+        "description": "Only rows in this state.",
+    },
+    "unreconciled": {
+        "type": "boolean",
+        "description": "Everything a reconcile has yet to sign off.",
+    },
+    "uncategorized": {
+        "type": "boolean",
+        "description": "Only rows still needing an envelope.",
+    },
+    "is_transfer": {
+        "type": "boolean",
+        "description": "True for transfers only, false to exclude them.",
+    },
+}
 
 
 TOOLS: tuple[ToolSpec, ...] = (
@@ -165,22 +214,49 @@ TOOLS: tuple[ToolSpec, ...] = (
             "Find transactions. Every filter is optional; combine them. Returns a "
             "capped page of rows plus the true count and total across the whole match."
         ),
+        parameters=_obj({**_FILTERS, "order": _ROW_ORDER}),
+        handler=handlers.search_transactions,
+        delegates_to="TransactionRepository.list_for_budget",
+    ),
+    ToolSpec(
+        name="query_transactions",
+        description=(
+            "Totals over transactions, grouped. Use this instead of "
+            "search_transactions whenever the question is about an amount rather "
+            "than which rows: spend per month, per envelope, per payee, per "
+            "account, by day of week. Every filter search_transactions takes "
+            "applies here too, so 'average grocery spend by month, card only' is "
+            "one call. Totals are exact over the whole match, not the page."
+        ),
         parameters=_obj(
             {
-                "search": {"type": "string", "description": "Text in payee or memo."},
-                "category_name": {"type": "string", "description": "Exact-ish envelope name."},
-                "start_date": _START,
-                "end_date": _END,
-                "amount_min": {"type": "number"},
-                "amount_max": {"type": "number"},
-                "uncategorized": {
-                    "type": "boolean",
-                    "description": "Only rows still needing an envelope.",
+                **_FILTERS,
+                "group_by": {
+                    "type": "string",
+                    "enum": sorted(GROUPABLE),
+                    "description": "What to total by. Defaults to category.",
+                },
+                "aggregate": {
+                    "type": "string",
+                    "enum": sorted(AGGREGATES),
+                    "description": (
+                        "sum totals the amounts, count counts rows, avg is the "
+                        "mean row. Defaults to sum."
+                    ),
+                },
+                "order": {
+                    "type": "string",
+                    "enum": ["value", "group", "rows"],
+                    "description": "Sort groups by their total, their name, or how many rows.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "How many groups to return, 1-100. Defaults to 25.",
                 },
             }
         ),
-        handler=handlers.search_transactions,
-        delegates_to="TransactionRepository.list_for_budget",
+        handler=handlers.query_transactions,
+        delegates_to="TransactionRepository.grouped_totals",
     ),
     ToolSpec(
         name="payee_analysis",
