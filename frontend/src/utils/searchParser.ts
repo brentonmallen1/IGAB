@@ -863,7 +863,25 @@ export function tokenize(query: string): string[] {
   return tokens.filter(Boolean)
 }
 
-export const SEARCH_SUGGESTIONS = [
+/**
+ * What the search language advertises.
+ *
+ * `awaitsValue` marks the entries that are a PREFIX rather than a filter:
+ * accepting `category:` leaves the query unfinished and the user mid-word,
+ * while accepting `is: cleared ` is a search that can run as it stands. The
+ * box reads this to decide whether to hold the caret or let the field go —
+ * inferring it from a trailing space does not work, because `amount: ` and
+ * `date: ` both end in one and both still want a value.
+ *
+ * The two date examples carry placeholder values (`2025-03`, `march..june`),
+ * so they count as awaiting one too: nobody clicks "a whole month" meaning
+ * March 2025 specifically.
+ */
+export const SEARCH_SUGGESTIONS: {
+  syntax: string
+  description: string
+  awaitsValue?: true
+}[] = [
   { syntax: 'is: unapproved ', description: 'Transactions not yet approved' },
   { syntax: 'is: uncategorized ', description: 'Transactions without a category' },
   { syntax: 'is: cleared ', description: 'Cleared transactions' },
@@ -880,23 +898,41 @@ export const SEARCH_SUGGESTIONS = [
   { syntax: 'is: unpaired ', description: 'Transfers whose other side never arrived' },
   { syntax: 'has: attachment ', description: 'Transactions with an image attached' },
   { syntax: 'NOT has: attachment ', description: 'Transactions without an image' },
-  { syntax: 'category:', description: 'Filter by category name' },
-  { syntax: 'payee:', description: 'Filter by payee name' },
+  { syntax: 'category:', awaitsValue: true, description: 'Filter by category name' },
+  { syntax: 'payee:', awaitsValue: true, description: 'Filter by payee name' },
   {
     syntax: 'amount: ',
+    awaitsValue: true,
     description:
       'Exactly this amount, or a range (amount: 12.34, amount: 10-20). A bare number in the box is a partial match instead',
   },
-  { syntax: 'amount:>', description: 'Amount greater than (e.g. amount:>100)' },
-  { syntax: 'amount:<', description: 'Amount less than (e.g. amount:<50)' },
-  { syntax: 'date: ', description: 'A day, month or year (date: 3/15, date: 2025-03, date: 2025)' },
-  { syntax: 'date: 2025-03', description: 'A whole month — or a whole year with date: 2025' },
+  { syntax: 'amount:>', awaitsValue: true, description: 'Amount greater than (e.g. amount:>100)' },
+  { syntax: 'amount:<', awaitsValue: true, description: 'Amount less than (e.g. amount:<50)' },
+  {
+    syntax: 'date: ',
+    awaitsValue: true,
+    description: 'A day, month or year (date: 3/15, date: 2025-03, date: 2025)',
+  },
+  {
+    syntax: 'date: 2025-03',
+    awaitsValue: true,
+    description: 'A whole month — or a whole year with date: 2025',
+  },
   {
     syntax: 'date: march..june',
+    awaitsValue: true,
     description: 'A range between any two spans (also 3/1-3/15, 2024-2025)',
   },
-  { syntax: 'date:>', description: 'On or after a day, month or year (e.g. date:>2025-03)' },
-  { syntax: 'date:<', description: 'On or before a day, month or year (e.g. date:<3/15)' },
+  {
+    syntax: 'date:>',
+    awaitsValue: true,
+    description: 'On or after a day, month or year (e.g. date:>2025-03)',
+  },
+  {
+    syntax: 'date:<',
+    awaitsValue: true,
+    description: 'On or before a day, month or year (e.g. date:<3/15)',
+  },
   { syntax: 'today ', description: 'Dated today (also: yesterday, last week, last month)' },
   { syntax: 'last month ', description: 'Dated in the previous calendar month' },
   {
@@ -905,6 +941,7 @@ export const SEARCH_SUGGESTIONS = [
   },
   {
     syntax: 'OR',
+    awaitsValue: true,
     description: 'Combine filters with OR logic (e.g. is: unapproved OR is: uncategorized)',
   },
   {
@@ -921,6 +958,8 @@ export interface MatchedSuggestion {
    *  so accepting it replaces exactly that much and nothing the user typed
    *  before it. */
   matchedLen: number
+  /** See SEARCH_SUGGESTIONS. */
+  awaitsValue?: true
 }
 
 /**

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, startTransition } from 'react'
 import { Search, X } from 'lucide-react'
-import { matchSuggestions } from '../../../utils/searchParser'
+import { matchSuggestions, type MatchedSuggestion } from '../../../utils/searchParser'
 import './TransactionSearch.css'
 
 const DEBOUNCE_MS = 150
@@ -66,18 +66,25 @@ export function TransactionSearch({
     propagate(v)
   }
 
-  function appendSuggestion(syntax: string, matchedLen: number) {
+  function appendSuggestion(s: MatchedSuggestion) {
     // Replace the matched trailing portion of the input with the full syntax.
     // Trailing spaces are trimmed first so `matchedLen` (measured against the
     // trimmed tokens) lines up with what is being cut.
     const trimmedValue = localValue.trimEnd()
-    const prefix = trimmedValue.slice(0, trimmedValue.length - matchedLen)
-    const next = prefix + syntax
+    const prefix = trimmedValue.slice(0, trimmedValue.length - s.matchedLen)
+    const next = prefix + s.syntax
     setLocalValue(next)
     propagate(next, true)
-    inputRef.current?.focus()
     setShowSuggestions(false)
     setActiveIndex(-1)
+
+    // Whether accepting this was composing or finishing. `category:` leaves
+    // the user mid-word and needs the caret back; `is: cleared ` is a search
+    // that can run as it stands, and holding the field open after it was the
+    // whole complaint — the box kept its accent ring and its grown width, and
+    // the only way to put it down was to click somewhere else.
+    if (s.awaitsValue) inputRef.current?.focus()
+    else inputRef.current?.blur()
   }
 
   function handleClear() {
@@ -104,14 +111,12 @@ export function TransactionSearch({
       }
       if (e.key === 'Enter' && activeIndex >= 0) {
         e.preventDefault()
-        const s = activeSuggestions[activeIndex]
-        appendSuggestion(s.syntax, s.matchedLen)
+        appendSuggestion(activeSuggestions[activeIndex])
         return
       }
       if (e.key === 'Tab' && activeIndex >= 0) {
         e.preventDefault()
-        const s = activeSuggestions[activeIndex]
-        appendSuggestion(s.syntax, s.matchedLen)
+        appendSuggestion(activeSuggestions[activeIndex])
         return
       }
     }
@@ -178,7 +183,7 @@ export function TransactionSearch({
               className={`txn-search__suggestion ${i === activeIndex ? 'txn-search__suggestion--active' : ''}`}
               onMouseDown={(e) => {
                 e.preventDefault()
-                appendSuggestion(s.syntax, s.matchedLen)
+                appendSuggestion(s)
               }}
               onMouseEnter={() => setActiveIndex(i)}
             >

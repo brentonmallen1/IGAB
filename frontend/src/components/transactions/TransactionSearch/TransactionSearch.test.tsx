@@ -85,8 +85,10 @@ describe('TransactionSearch suggestions', () => {
     })
 
     it('still takes a highlighted suggestion instead of dismissing', () => {
-      // Arrow-down then Enter must complete the syntax and stay in the field,
-      // which is the branch above this one and must keep winning.
+      // Arrow-down then Enter must complete the syntax rather than submit the
+      // half-typed query — that branch sits above this one and must keep
+      // winning. (Where the caret ends up afterwards is the accept rule
+      // below, not this one.)
       const { input } = setup()
       ;(input as HTMLInputElement).focus()
       fireEvent.change(input, { target: { value: 'is:' } })
@@ -94,8 +96,40 @@ describe('TransactionSearch suggestions', () => {
 
       fireEvent.keyDown(input, { key: 'Enter' })
 
-      expect(input).toHaveFocus()
       expect((input as HTMLInputElement).value).not.toBe('is:')
+    })
+  })
+
+  describe('accepting a suggestion composes or finishes, by what it is', () => {
+    // Accepting any suggestion used to refocus the input unconditionally, so
+    // clicking `is: cleared` — a search that can run as it stands — left the
+    // box hot: accent ring, grown width, and nothing to do but click away.
+    // SEARCH_SUGGESTIONS says which entries are a prefix (`awaitsValue`), so
+    // this is one rule read from the vocabulary, not a guess about trailing
+    // spaces: `amount: ` and `date: ` both end in one and both want a value.
+    function accept(input: HTMLElement, label: string) {
+      fireEvent.focus(input)
+      fireEvent.change(input, { target: { value: label } })
+      const option = screen.getAllByRole('button').find((b) => b.textContent?.includes(label))
+      fireEvent.mouseDown(option!)
+    }
+
+    it('lets the field go for a filter that is already complete', () => {
+      const { input } = setup()
+      ;(input as HTMLInputElement).focus()
+      accept(input, 'is: cleared')
+
+      expect(input).not.toHaveFocus()
+      expect((input as HTMLInputElement).value).toContain('is: cleared')
+    })
+
+    it('holds the caret for a prefix still waiting on a value', () => {
+      const { input } = setup()
+      ;(input as HTMLInputElement).focus()
+      accept(input, 'category:')
+
+      expect(input).toHaveFocus()
+      expect((input as HTMLInputElement).value).toBe('category:')
     })
   })
 
