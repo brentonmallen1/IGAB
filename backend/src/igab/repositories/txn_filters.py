@@ -16,7 +16,7 @@ once — when the transaction posts. This mirrors AccountRepository.get_balance.
 
 import re
 import uuid
-from collections.abc import Collection, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from datetime import date, timedelta
 from decimal import Decimal
 from typing import Protocol
@@ -26,6 +26,7 @@ from sqlalchemy import (
     Select,
     String,
     and_,
+    case,
     cast,
     false,
     func,
@@ -1012,3 +1013,57 @@ def none_of(*predicates: ColumnElement[bool]) -> ColumnElement[bool]:
     if not predicates:
         return true()
     return or_(*predicates).is_not(true())
+
+
+# ─── Register order ───────────────────────────────────────────────────────────
+
+#: The register's default order, top-down: what still needs doing, then what is
+#: waiting on the bank, then what is finished. Reconciled rows land last — a
+#: settled row is a row nobody has to look at again, and interleaving hundreds
+#: of them by date buries the handful that still want attention.
+#:
+#: Each rung carries the same rule twice on purpose: once as SQL (the server
+#: PAGES in this order, so which rows arrive at all depends on it) and once in
+#: Python (so the ladder can be tested without a database, and so the client's
+#: copy has something to be checked against). The two spellings sit on one line
+#: each so a divergence is visible rather than inferred, the rank is the index
+#: rather than a number written down twice, and `shared/register_order_cases
+#: .json` runs the same table against this ladder and the client's.
+#:
+#: Order of the rungs is load-bearing where a row matches two:
+#:
+#: - Pending first, whatever else is true of it: it has its own section and is
+#:   provisional money.
+#: - `NEEDS_CATEGORY` above every cleared state, so a reconciled row that is
+#:   still unfiled does NOT sink — it is not finished work.
+#: - Unapproved above uncleared: an import can land `reconciled` and
+#:   `approved = false` on one row, and the half that matters is the unread one.
+RegisterMatch = Callable[[Mapping[str, object]], bool]
+
+REGISTER_LADDER: tuple[tuple[str, ColumnElement[bool], RegisterMatch], ...] = (
+    ("pending", Transaction.cleared == "pending", lambda r: r["cleared"] == "pending"),
+    ("needs_category", NEEDS_CATEGORY, lambda r: bool(r["needs_category"])),
+    ("unapproved", Transaction.approved == False, lambda r: not r["approved"]),  # noqa: E712
+    ("uncleared", Transaction.cleared == "uncleared", lambda r: r["cleared"] == "uncleared"),
+    ("cleared", Transaction.cleared == "cleared", lambda r: r["cleared"] == "cleared"),
+    ("reconciled", Transaction.cleared == "reconciled", lambda r: r["cleared"] == "reconciled"),
+)
+
+#: The ladder as an ORDER BY term. `else_` is one past the last rung so a row
+#: matching nothing sorts below everything rather than silently beside the
+#: reconciled ones.
+REGISTER_RANK = case(
+    *[(condition, rank) for rank, (_, condition, _) in enumerate(REGISTER_LADDER)],
+    else_=len(REGISTER_LADDER),
+)
+
+
+def register_rank(row: Mapping[str, object]) -> int:
+    """The ladder's rank for a row given as `{cleared, approved, needs_category}`.
+
+    The pure half of `REGISTER_RANK`, and the half the shared cases run.
+    """
+    for rank, (_, _, matches) in enumerate(REGISTER_LADDER):
+        if matches(row):
+            return rank
+    return len(REGISTER_LADDER)

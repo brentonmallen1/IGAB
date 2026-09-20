@@ -19,7 +19,7 @@ import { useCheckAttachments } from '../../../api/attachments'
 import { useAIJobForTransaction } from '../../../api/aiJobs'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
 import { useAccounts } from '../../../api/accounts'
-import { useUIStore } from '../../../stores/uiStore'
+import { useUIStore, type TransactionSortColumn } from '../../../stores/uiStore'
 import { useTransactionEditStore } from '../../../stores/transactionEditStore'
 import { TransactionRow } from '../TransactionRow/TransactionRow'
 import { TransactionEditor } from '../TransactionEditor/TransactionEditor'
@@ -60,6 +60,7 @@ import type {
 } from '../../../types'
 import type { ComboboxOption } from '../../common/Combobox/Combobox'
 import { countsAsPendingReview, inReviewSection, nextHeldForReview } from './reviewSection'
+import { compareByDateDesc, compareByRegisterOrder, nextTransactionSort } from './registerOrder'
 import { registerPayAction } from './payButton'
 import './TransactionTable.css'
 import { Surface } from '../../common/Surface'
@@ -103,7 +104,9 @@ type RowItem =
 interface SortableHeaderProps {
   col: SortColumn
   label: string
-  currentCol: SortColumn
+  /** May be 'state' — the default order, which no header owns, so none of
+   *  them draws a chevron for it. */
+  currentCol: TransactionSortColumn
   currentDir: 'asc' | 'desc'
   onSort: (col: SortColumn) => void
 }
@@ -120,6 +123,7 @@ const SortableHeader = memo(function SortableHeader({
     <button
       className={`txn-col txn-col--${col} txn-sort-header ${isActive ? 'txn-sort-header--active' : ''}`}
       onClick={() => onSort(col)}
+      title={isActive ? `Sort by ${label} — click again for the default order` : undefined}
     >
       {label}
       {isActive && (currentDir === 'asc' ? <ChevronUp size={11} /> : <ChevronDown size={11} />)}
@@ -277,7 +281,8 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   )
 
   // Load more pages only while important transactions aren't fully loaded yet.
-  // Backend sorts pending → needs-category → uncleared → rest, so these always arrive first.
+  // Backend pages in the ladder's order (registerOrder.ts), so the rows that
+  // still want attention arrive on the first pages.
   const { data: accountReviewCounts } = usePendingReviewCountForAccount(accountId)
   const { data: budgetReviewCounts } = usePendingReviewCount(allAccounts ? budgetId : null)
   const reviewCounts = allAccounts ? budgetReviewCounts : accountReviewCounts
@@ -289,8 +294,12 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
     if (loadedImportant < knownImportant) fetchNextPage()
   }, [isFetching, hasNextPage, fetchNextPage, transactions, reviewCounts])
 
-  // Sort (server returns date-desc; client sort applies across loaded pages)
+  // Sort. The server pages in the ladder's order; this re-sorts the pages that
+  // have loaded, by the same ladder unless a column header is active.
   const sorted = useMemo(() => {
+    if (transactionSortColumn === 'state') {
+      return [...transactions].sort(compareByRegisterOrder)
+    }
     return [...transactions].sort((a, b) => {
       let cmp = 0
       switch (transactionSortColumn) {
@@ -349,11 +358,20 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
     [heldForReviewIds]
   )
 
-  // Partition into sections
-  const pendingTxns = useMemo(() => sorted.filter((t) => t.cleared === 'pending'), [sorted])
+  // Partition into sections. Pending and Needs Review stay newest-first under
+  // the default order — see compareByDateDesc for why ranking inside them
+  // would fight the review section's hold-in-place rule.
+  const sectionOrdered = useMemo(
+    () => (transactionSortColumn === 'state' ? [...sorted].sort(compareByDateDesc) : sorted),
+    [sorted, transactionSortColumn]
+  )
+  const pendingTxns = useMemo(
+    () => sectionOrdered.filter((t) => t.cleared === 'pending'),
+    [sectionOrdered]
+  )
   const uncategorizedTxns = useMemo(
-    () => sorted.filter(isInReviewSection),
-    [sorted, isInReviewSection]
+    () => sectionOrdered.filter(isInReviewSection),
+    [sectionOrdered, isInReviewSection]
   )
   const regularTxns = useMemo(
     () => sorted.filter((t) => t.cleared !== 'pending' && !isInReviewSection(t)),
@@ -409,11 +427,8 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
 
   const handleSort = useCallback(
     (col: SortColumn) => {
-      if (transactionSortColumn === col) {
-        setTransactionSort(col, transactionSortDirection === 'asc' ? 'desc' : 'asc')
-      } else {
-        setTransactionSort(col, col === 'date' ? 'desc' : 'asc')
-      }
+      const next = nextTransactionSort(col, transactionSortColumn, transactionSortDirection)
+      setTransactionSort(next.column, next.direction)
     },
     [transactionSortColumn, transactionSortDirection, setTransactionSort]
   )

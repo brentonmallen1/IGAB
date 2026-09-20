@@ -1,0 +1,69 @@
+{
+  "_comment": "The register's default order is the state ladder: pending, then unfiled, then unapproved, then uncleared, then cleared, and reconciled last — finished work sinks. The server pages rows in this order (`REGISTER_LADDER` in backend/src/igab/repositories/txn_filters.py, run by backend/tests/unit/test_register_order.py) and the client re-sorts the pages it has loaded the same way (frontend/src/components/transactions/TransactionTable/registerOrder.ts, run by registerOrder.test.ts). The two must agree or a row changes place as you scroll. Rank is an index into the ladder, so the numbers here are the ladder itself.",
+  "ladder": ["pending", "needs_category", "unapproved", "uncleared", "cleared", "reconciled"],
+  "cases": [
+    {
+      "cleared": "pending",
+      "approved": true,
+      "needs_category": false,
+      "rank": 0,
+      "note": "a pending row is provisional and sits above everything"
+    },
+    {
+      "cleared": "pending",
+      "approved": false,
+      "needs_category": true,
+      "rank": 0,
+      "note": "pending wins over both work states — it has its own section"
+    },
+    {
+      "cleared": "uncleared",
+      "approved": true,
+      "needs_category": true,
+      "rank": 1,
+      "note": "unfiled work outranks every cleared state"
+    },
+    {
+      "cleared": "reconciled",
+      "approved": true,
+      "needs_category": true,
+      "rank": 1,
+      "note": "a reconciled row that is still unfiled does NOT sink — the sink is for finished work, and this is not finished"
+    },
+    {
+      "cleared": "cleared",
+      "approved": false,
+      "needs_category": false,
+      "rank": 2,
+      "note": "filed but unapproved: the row is categorized, so it is not in the review section, but it still wants a look"
+    },
+    {
+      "cleared": "reconciled",
+      "approved": false,
+      "needs_category": false,
+      "rank": 2,
+      "note": "unapproved beats reconciled — an import can land both on one row, and the unread half is what matters"
+    },
+    {
+      "cleared": "uncleared",
+      "approved": true,
+      "needs_category": false,
+      "rank": 3,
+      "note": "the ordinary typed row, waiting for the bank"
+    },
+    {
+      "cleared": "cleared",
+      "approved": true,
+      "needs_category": false,
+      "rank": 4,
+      "note": "the bank has it; nothing left to do until reconciling"
+    },
+    {
+      "cleared": "reconciled",
+      "approved": true,
+      "needs_category": false,
+      "rank": 5,
+      "note": "the whole point: settled rows fall below everything else"
+    }
+  ]
+}

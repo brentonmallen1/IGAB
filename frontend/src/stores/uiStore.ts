@@ -15,9 +15,15 @@ import {
 } from '../components/ai/chat/chatTabs'
 import { randomUUID } from '../utils/uuid'
 import type { AssignStrategy } from '../types'
+import { DEFAULT_TRANSACTION_SORT } from '../components/transactions/TransactionTable/registerOrder'
 
-type TransactionSortColumn = 'date' | 'account' | 'payee' | 'category' | 'memo' | 'amount'
-type SortDirection = 'asc' | 'desc'
+/** `state` is the register's default: the state ladder (pending → unfiled →
+ *  unapproved → uncleared → cleared → reconciled), not a column. No header
+ *  wears a chevron for it, and clicking a sorted header a third time comes
+ *  back to it — see DEFAULT_TRANSACTION_SORT. */
+export type TransactionSortColumn =
+  'state' | 'date' | 'account' | 'payee' | 'category' | 'memo' | 'amount'
+export type SortDirection = 'asc' | 'desc'
 type CollapsibleSection = 'pending' | 'uncategorized' | 'upcoming'
 /** How much a budget row shows. Expanded: everything. Compact: the row's
  *  height and subtitle stay, the target's progress bar and status text go
@@ -301,8 +307,8 @@ export const useUIStore = create<UIState>()(
       selectedPayeeIds: new Set(),
       lastSelectedPayeeId: null,
       collapsedSections: new Set<CollapsibleSection>(['pending']),
-      transactionSortColumn: 'date',
-      transactionSortDirection: 'desc',
+      transactionSortColumn: DEFAULT_TRANSACTION_SORT.column,
+      transactionSortDirection: DEFAULT_TRANSACTION_SORT.direction,
       transactionSearchQuery: '',
 
       toggleGroupExpanded: (groupId) => {
