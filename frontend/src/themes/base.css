@@ -257,25 +257,24 @@
      against --color-accent honours each palette's own accent.
 
      --row-pending-bg is the ground under a row the bank has authorised but
-     not posted: the ladder step below the rows (register rows sit on
-     --surface-raised), pushed 20% further along the axis AWAY from the text.
+     not posted: one step UP the surface ladder from the register itself.
 
-     The direction is the whole trick, and getting it wrong is what made every
-     earlier attempt invisible. A translucent wash composites a mid-tone colour
-     ON TOP of the row, dragging the ground TOWARD the text and spending the
-     text's contrast to buy colour — --color-negative already sits barely above
-     4.5:1 on a plain row in most themes, so the ceiling was 8%, and 8% of
-     anything is a whisper. --text-inverse is by definition the far side from
-     --text-primary in all 40 variants, so mixing toward it darkens a dark
-     theme and lightens a light one, and contrast RISES as the step grows.
+     Which step is the whole question, and it turns on a fact worth writing
+     down, because measuring against the wrong one produced a pending row that
+     was invisible in 27 of the 40 themes: the register paints no ground of its
+     own. .transaction-table sets no background, so a row shows whatever is
+     behind the page — the canvas. And --surface-sunken and --surface-canvas
+     are BOTH var(--bg-primary), so every one of them is the same colour the
+     rows already sit on. A "sunken" pending row is a no-op, and a tint mixed
+     toward --text-inverse is very nearly one too: in most dark themes
+     --text-inverse IS --bg-primary, so that mix returns the ground unchanged.
 
-     At 20% the worst text on the row across all 40 variants is 5.51:1
-     (eink-light, --color-positive) — better than the 5.29:1 those same
-     amounts get on an ORDINARY row — while sitting 26 to 40 units of colour
-     away from the ground the rows sit on. Contrast bought rather than spent,
-     which is why the row keeps the register's own text and its red and green
-     amounts instead of borrowing another set. */
-  --row-pending-bg: color-mix(in srgb, var(--text-inverse) 20%, var(--surface-sunken));
+     So: raised, not sunken. Measured over all 40 variants it sits 26 to 36
+     units of colour from the ground the rows sit on, is flat in none of them,
+     and the worst text anywhere on it is 5.29:1 — the same figure those
+     colours get on an ORDINARY row, so the row costs no readability at all
+     and keeps the register's own text and its own red and green. */
+  --row-pending-bg: var(--surface-raised);
   --row-selected-bg: color-mix(in srgb, var(--color-accent) 12%, transparent);
   --row-selected-hover-bg: color-mix(in srgb, var(--color-accent) 18%, transparent);
 

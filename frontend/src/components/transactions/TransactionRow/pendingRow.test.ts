@@ -92,37 +92,38 @@ describe('selection outranks provisionality', () => {
 
 describe('the row tokens', () => {
   it('need no per-theme authoring of their own', () => {
-    // --row-hover-bg is written out in 40 theme files. These are mixes against
-    // --color-accent and against --text-inverse over a surface role, so every
-    // palette gets them and a 41st theme needs no extra lines.
+    // --row-hover-bg is written out in 40 theme files. The selection pair are
+    // mixes against --color-accent and the pending ground is a surface role,
+    // so every palette gets them and a 41st theme needs no extra lines.
     for (const token of ['--row-selected-bg', '--row-selected-hover-bg']) {
       expect(base).toMatch(new RegExp(`${token}:\\s*color-mix`))
     }
-    expect(base).toMatch(/--row-pending-bg:\s*color-mix\(in srgb, var\(--text-inverse\) 20%/)
+    expect(base).toMatch(/--row-pending-bg:\s*var\(--surface-raised\)/)
   })
 
-  it('mixes away from the text, which is why it can be this strong', () => {
-    // The direction is the whole thing. A translucent wash composites a
-    // mid-tone colour ON TOP of the row, dragging the ground TOWARD the text
-    // and spending the text's contrast to buy colour — --color-negative sits
-    // barely above 4.5:1 on a plain row in most themes, so the ceiling was 8%,
-    // and 8% of anything is a whisper. --text-inverse is by definition the far
-    // side from --text-primary in all 40 variants, so contrast RISES as the
-    // step grows: 5.51:1 worst across every theme, against 5.29:1 for the same
-    // amounts on an ORDINARY row.
+  it('is a step the rows are not already sitting on', () => {
+    // The register paints no ground of its own — .transaction-table sets no
+    // background — so a row shows the page canvas straight through. And
+    // --surface-sunken and --surface-canvas are BOTH var(--bg-primary): the
+    // same colour the rows already sit on. So any of those as a pending ground
+    // is a no-op, and a tint mixed toward --text-inverse is very nearly one
+    // too, because in most dark themes --text-inverse IS --bg-primary.
     //
-    // Swap the second operand for `transparent` and this silently becomes a
-    // wash again, at a strength no theme can carry. That is the regression.
+    // That is not hypothetical. Measured against --surface-raised, which the
+    // rows do NOT sit on, a 20% --text-inverse mix over sunken scored 40/40
+    // and looked excellent; measured against the ground the rows actually sit
+    // on it was flat in 27 of the 40 themes. Raised is 26-36 units away and
+    // flat in none of them.
     const declaration = base.match(/^\s*--row-pending-bg:\s*(.+);$/m)?.[1] ?? ''
-    expect(declaration).toMatch(/var\(--text-inverse\) 20%/)
-    expect(declaration).toContain('var(--surface-sunken)')
-    expect(declaration).not.toContain('transparent')
+    expect(declaration).toBe('var(--surface-raised)')
+    expect(declaration).not.toMatch(/sunken|canvas|text-inverse/)
   })
 
   it("keeps the register's own text and its coloured amounts", () => {
-    // Contrast was bought here, not spent, so the row needs no substitute
-    // palette. An override appearing on any of these means the ground moved
-    // the wrong way and something is being compensated for.
+    // The ground costs no readability — the worst text on it is 5.29:1, the
+    // same figure those colours get on an ordinary row — so the row needs no
+    // substitute palette. An override appearing on any of these means the
+    // ground moved the wrong way and something is being compensated for.
     const pending = css.slice(css.indexOf('.transaction-row.pending {'))
     const block = pending.slice(0, pending.indexOf('}'))
     expect(block).not.toContain('color: var(--sidebar')
