@@ -43,8 +43,12 @@ describe('the pending row', () => {
     expect(rule(css, '.transaction-row.pending')).toContain('font-style: italic')
   })
 
-  it('claims the row marker, which is where its hue is strong enough to see', () => {
-    expect(rule(css, '.transaction-row.pending')).toContain('--row-marker: var(--color-info)')
+  it('does not claim the row marker', () => {
+    // It did, briefly, to carry a hue the old translucent ground could not.
+    // Expanded, that drew an edge beside every row in the section, under a
+    // header that already had one — a box round the section rather than a
+    // mark on a row. The ground carries pending; the marker means one thing.
+    expect(rule(css, '.transaction-row.pending')).not.toContain('--row-marker')
   })
 
   it('is distinguishable from an unapproved row, which it used to duplicate', () => {
@@ -106,13 +110,23 @@ describe('the row tokens', () => {
     expect(declaration).not.toMatch(/warning|negative|positive|accent/)
   })
 
-  it('keeps the wash at the strength the contrast suite can carry', () => {
+  it('mixes away from the text, not on top of it', () => {
+    // This is the whole reason the row is visible at all. A translucent wash
+    // composites a mid-tone colour ON TOP of the row, dragging the ground
+    // toward the text and spending the text's contrast to buy colour — and
     // --color-negative already sits barely above 4.5:1 on a plain row in most
-    // themes, so the wash eats its margin: at 10% the amount fails AA in two
-    // themes, at 12% in ten, at 14% in thirty-seven. 8% is the measured
-    // ceiling, and contrast.test.ts checks every colour a row prints in over
-    // this wash. The hue that actually makes a pending row findable lives in
-    // the marker instead, where it carries no text and costs no contrast.
-    expect(base).toMatch(/--row-pending-bg:\s*color-mix\(in srgb, var\(--color-info\) 8%/)
+    // themes, so the ceiling was 8%. Every hue capped the same way (info 8%,
+    // warning 7%, tag-teal 6%): the limit was the direction, not the hue.
+    //
+    // Mixing toward --text-inverse moves the ground AWAY from the text, so
+    // contrast RISES as the colour strengthens. 18% before any theme
+    // complains, and roughly double the visible difference.
+    //
+    // The second operand must stay --text-inverse. Swap it for `transparent`
+    // and this is a wash again, at a strength no theme can carry.
+    const declaration = base.match(/^\s*--row-pending-bg:\s*(.+);$/m)?.[1] ?? ''
+    expect(declaration).toMatch(/var\(--color-info\) 15%/)
+    expect(declaration).toContain('var(--text-inverse)')
+    expect(declaration).not.toContain('transparent')
   })
 })

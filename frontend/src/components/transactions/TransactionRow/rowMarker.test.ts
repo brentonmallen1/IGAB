@@ -42,17 +42,15 @@ describe('the row marker', () => {
     expect(body).toMatch(/--row-marker:\s*transparent/)
   })
 
-  it('lets review outrank pending when a row is both', () => {
-    // Equal specificity, so source order is the entire decision: the state
-    // that ASKS something of the user has to come last.
+  it('is claimed by exactly one state — work waiting for a person', () => {
+    // Pending claimed it too for one commit, to carry a hue its translucent
+    // ground could not. Expanded, that put an edge beside every row in the
+    // section and read as a box round the section; the ground carries pending
+    // now. A second claimant is not a second signal — it is a race between two
+    // rules over one property, and the reader cannot tell which won.
     const claimants = rowRules
       .filter(([, body]) => /--row-marker:\s*var\(/.test(body))
       .map(([sel]) => sel.trim())
-    expect(claimants).toEqual([
-      '.transaction-row.pending',
-      '.transaction-row.transaction-row--ai-review',
-    ])
-    // Both single-element-plus-two-classes, so neither wins on specificity.
-    for (const sel of claimants) expect(sel.split('.').length - 1).toBe(2)
+    expect(claimants).toEqual(['.transaction-row.transaction-row--ai-review'])
   })
 })

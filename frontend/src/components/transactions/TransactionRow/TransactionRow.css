@@ -255,27 +255,20 @@
    --color-info where the ground can only be a whisper of it. */
 /* ── The row marker ───────────────────────────────────────────────────────
    One inset edge down the left of a row, coloured by whichever state claims
-   it. ONE declaration, one property, one channel: the AI-review marker and
-   the pending marker were separately reaching for `box-shadow`, and because
-   `.transaction-row.pending` outranks `.transaction-row--ai-review`, a row
-   that was both would have lost its review marker with nothing to say so.
-   A second rule writing the same property is not a second marker, it is the
-   first one deleted.
+   it. ONE declaration, one property, one channel, declared once on
+   `.transaction-row` at the top of this file: a second rule reaching for
+   box-shadow is not a second marker, it is the first one deleted.
 
-   An inset shadow rather than a border, so the grid columns do not shift on
-   the marked rows. The channel is declared once on `.transaction-row` at the
-   top of this file, beside the rest of the row's box; nothing else sets
-   box-shadow on a row, and the two rules below only swap the colour.
-
-   Both claimants are written at the SAME specificity and kept adjacent, so
-   when a row is both pending and awaiting review, source order decides and is
-   the entire decision: review comes last and wins, because it is the state
-   that asks something of a person. Do not separate or reorder them —
-   rowMarker.test.ts reads this file and fails if either happens. */
+   Only AI review claims it. Pending was given it too, briefly, as a way to
+   carry a hue the old translucent ground could not — and a second edge down
+   the left of the register was immediately the wrong answer: with the section
+   expanded it drew a rule beside every row under a header that already had
+   one, and read as a box round the section rather than a mark on a row. The
+   ground carries pending now (see --row-pending-bg), and the marker means one
+   thing again: this row is waiting for a person. */
 
 .transaction-row.pending {
   background-color: var(--row-pending-bg);
-  --row-marker: var(--color-info);
   font-style: italic;
 }
 

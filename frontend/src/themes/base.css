@@ -258,20 +258,26 @@
 
      --row-pending-bg is the ground under a row the bank has authorised but
      not posted. It is NOT --color-warning and NOT --color-negative: pending
-     is not a problem, it is money that has not moved yet, and this repo
-     reserves those for state that asks something of the user.
+     is not a problem, it is money that has not moved yet.
 
-     It was a --text-primary wash, which is the same grey the hover and the
-     zebra are made of — so it read as "this row is slightly dimmer" rather
-     than as a state, and a pending row was findable only by its italics.
-     --color-info carries a hue without carrying alarm, which is what pending
-     actually is. 8%, not more: at 10% --color-negative on the row falls to
-     4.32:1 in phosphor-dark, and the amount is the one thing on a pending row
-     nobody may have to squint at. contrast.test.ts measures every colour the
-     row can print in over this wash, in all 40 themes. --color-accent is unavailable at any strength: it is what
-     --row-selected-bg is mixed from, and a pending row must never be
-     mistakable for a selected one. */
-  --row-pending-bg: color-mix(in srgb, var(--color-info) 8%, transparent);
+     It is also not a translucent wash, which is what it used to be, and that
+     is the whole reason it was invisible. A wash composites a mid-tone colour
+     ON TOP of the row, which drags the ground TOWARD the text and spends the
+     text's contrast to buy colour: --color-negative already sits barely above
+     4.5:1 on a plain row in most themes, so the ceiling was 8% — and 8% of
+     anything is a whisper. Every hue was tried and every hue capped the same
+     way (info 8%, warning 7%, tag-teal 6%), because the limit was never the
+     hue, it was the direction.
+
+     Mixing toward --text-inverse instead moves the ground AWAY from the text,
+     so contrast goes UP as the colour gets stronger. That buys 18% before any
+     theme complains and roughly doubles the visible difference. --text-inverse
+     is per-palette and already sits on the far side from --text-primary in
+     every one of the 40 variants, so a dark theme darkens and a light theme
+     lightens with no per-theme value to author and nothing for a 41st theme
+     to remember. 15% leaves margin under the 18% floor; contrast.test.ts
+     measures every colour a row prints in over this ground. */
+  --row-pending-bg: color-mix(in srgb, var(--color-info) 15%, var(--text-inverse));
   --row-selected-bg: color-mix(in srgb, var(--color-accent) 12%, transparent);
   --row-selected-hover-bg: color-mix(in srgb, var(--color-accent) 18%, transparent);
 
