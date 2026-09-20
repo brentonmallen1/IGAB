@@ -26,6 +26,19 @@ NEEDS_REVIEW_EXPR = exists(
 )
 
 
+#: The account the job's transaction is in now — see the model's comment for
+#: why the payload's account_id is not an answer to that question.
+#:
+#: A correlated scalar subquery for the same reason `NEEDS_REVIEW_EXPR` is an
+#: EXISTS: a job whose transaction was deleted, or which never created one,
+#: must still appear in the log, reading None.
+TRANSACTION_ACCOUNT_EXPR = (
+    select(Transaction.account_id)
+    .where(Transaction.id == AIJob.transaction_id, Transaction.is_deleted == False)  # noqa: E712
+    .scalar_subquery()
+)
+
+
 class AIJobRepository(BaseRepository[AIJob]):
     model = AIJob
 
@@ -51,11 +64,19 @@ class AIJobRepository(BaseRepository[AIJob]):
         Every path that serializes an `AIJobResponse` must go through here or
         through `get_with_review` — the schema requires the field, so one that
         forgets raises rather than reporting waiting work as done.
+
+        `transaction_account_id` rides along rather than getting a loader of
+        its own: two loaders is two things to forget, and a review list that
+        cannot say which account a row landed in is the defect this field was
+        added for.
         """
-        return stmt.options(with_expression(AIJob.needs_review, NEEDS_REVIEW_EXPR))
+        return stmt.options(
+            with_expression(AIJob.needs_review, NEEDS_REVIEW_EXPR),
+            with_expression(AIJob.transaction_account_id, TRANSACTION_ACCOUNT_EXPR),
+        )
 
     async def get_with_review(self, job_id: uuid.UUID) -> AIJob | None:
-        """Re-read a job with `needs_review` populated.
+        """Re-read a job with the loaded-on-demand fields populated.
 
         `populate_existing` is load-bearing: retry and reprocess have just
         mutated the row, so it is already in the identity map with the field

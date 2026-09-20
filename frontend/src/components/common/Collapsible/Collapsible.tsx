@@ -24,10 +24,15 @@ export function Collapsible({
   meta,
 }: Props) {
   const bodyId = `collapsible-${title.toLowerCase().replace(/\s+/g, '-')}`
+  // A closed section with rows in it is the one state where this header is the
+  // *only* evidence its contents exist — so it stops being chrome and says so.
+  // Register pending rows start collapsed, and a muted 11px uppercase label on
+  // --surface-chrome read as a divider: a card payment sat unseen behind it.
+  const hiding = !isOpen && count !== undefined && count > 0
   return (
     <div className={`collapsible ${className}`}>
       <button
-        className="collapsible__header"
+        className={`collapsible__header${hiding ? ' collapsible__header--hiding' : ''}`}
         onClick={onToggle}
         aria-expanded={isOpen}
         aria-controls={bodyId}

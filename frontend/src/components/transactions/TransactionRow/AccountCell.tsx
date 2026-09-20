@@ -1,7 +1,5 @@
 import { useMemo } from 'react'
-import toast from 'react-hot-toast'
-import { apiErrorMessage } from '../../../api/client'
-import { useUpdateTransaction } from '../../../api/transactions'
+import { useAccountMove } from '../../../hooks/useAccountMove'
 import { accountLockReason } from '../TransactionEditor/accountMove'
 import { Combobox, type ComboboxOption } from '../../common/Combobox/Combobox'
 import type { Account, Transaction } from '../../../types'
@@ -76,7 +74,7 @@ export function AccountCell({
   onStopEdit,
   onTabOut,
 }: Props) {
-  const updateTxn = useUpdateTransaction(budgetId)
+  const commitMove = useAccountMove(budgetId)
   const editable = lock.movable && !isMobile
 
   const options = useMemo<ComboboxOption[]>(
@@ -87,20 +85,9 @@ export function AccountCell({
   )
 
   function move(id: string | null) {
-    // A no-op pick writes nothing: the server drops an unchanged account_id
-    // anyway, and a change row for it would sit in ⌘Z's way.
-    if (id && id !== transaction.account_id) {
-      updateTxn.mutate(
-        { id: transaction.id, account_id: id },
-        {
-          // The one inline commit with refusals a user can reach by accident
-          // — a categorized row into a tracking account, a transfer leg into
-          // its own partner's account. Silence would read as "it didn't
-          // take"; the server's sentence says which it was.
-          onError: (err) => toast.error(apiErrorMessage(err, 'Could not move this transaction')),
-        }
-      )
-    }
+    // The no-op skip and the refusal message are useAccountMove's — the AI
+    // review list commits the same move and must do it the same way.
+    commitMove(transaction, id)
     onStopEdit()
   }
 

@@ -71,6 +71,11 @@ export interface AIJob {
    *  The client cannot compute it: it has a transaction id and nothing else
    *  about that row. */
   needs_review: boolean
+  /** The account the created transaction is in NOW — served, because the
+   *  client holds a transaction id and nothing else about the row, and
+   *  because `payload.account_id` is only where the scan was submitted.
+   *  Null when there is no transaction (still queued, or deleted since). */
+  transaction_account_id: string | null
   attachment_id: string | null
   created_at: string
   started_at: string | null

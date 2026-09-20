@@ -4,6 +4,7 @@ import {
   hasActiveFilters,
   describeSearchChips,
   removeSearchChip,
+  SEARCH_SUGGESTIONS,
 } from './searchParser'
 
 const EMPTY_MAP = new Map<string, string>()
@@ -1070,5 +1071,27 @@ describe('is: unreconciled', () => {
   it('offers a removable chip', () => {
     const chips = describeSearchChips('is: unreconciled', EMPTY_MAP, EMPTY_MAP, EMPTY_MAP, NOW)
     expect(chips.map((c) => c.label)).toContain('Not reconciled')
+  })
+})
+
+describe('the suggestion vocabulary says which entries await a value', () => {
+  // The search box hands the field back to the user for an entry that is
+  // still a prefix and lets it go for one that is a finished filter. That
+  // decision is read from this flag, so an entry added without it silently
+  // dismisses the box with the caret mid-word.
+  it('marks every syntax that ends on a key or an operator', () => {
+    const unmarked = SEARCH_SUGGESTIONS.filter(
+      (s) => /[:<>]$/.test(s.syntax.trimEnd()) && !s.awaitsValue
+    )
+    expect(unmarked.map((s) => s.syntax)).toEqual([])
+  })
+
+  it('does not mark a filter that can run as it stands', () => {
+    // `is: cleared ` and friends are whole searches; marking one would hold
+    // the box open after the user had finished with it.
+    const wrong = SEARCH_SUGGESTIONS.filter(
+      (s) => s.awaitsValue && /^(is|has|NOT (is|has)):\s\w+$/.test(s.syntax.trim())
+    )
+    expect(wrong.map((s) => s.syntax)).toEqual([])
   })
 })

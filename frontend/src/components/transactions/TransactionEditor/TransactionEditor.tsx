@@ -1,7 +1,14 @@
 import { groupedCategorySections } from '../../../utils/categoryPickers'
+import {
+  CREATE_NEW_PARTNER,
+  awaitingPartnerChoice,
+  transferLinkFields,
+  transferTargets,
+} from '../transferConversion'
 import { rowMayCarryCategory } from '../../../utils/rowCategoryRule'
 import { AccountField } from './AccountField'
 import { accountLockReason, categoryDropNote } from './accountMove'
+import { editorAmount } from './editorAmount'
 import { useState, useRef, useEffect, useMemo } from 'react'
 import {
   X,
@@ -57,8 +64,8 @@ import { isConfigFailure, scanFailureReason } from './scanFailure'
 import { sectionHref } from '../../../pages/SettingsPage/settingsSections'
 import { today } from '../../../utils/dates'
 import { useUndoToast } from '../../../utils/toastUndo'
-import { fromCents, parseApiDecimal, toCents } from '../../../utils/money'
-import { expressionToCents, parseAmountExpressionInput } from '../../../utils/amountExpression'
+import { fromCents, parseApiDecimal } from '../../../utils/money'
+import { expressionToCents } from '../../../utils/amountExpression'
 import { checkSplit, draftsFromLines } from '../../../utils/splits'
 import { AmountInput } from '../../common/AmountInput/AmountInput'
 import { CategoryCombobox } from '../../common/CategoryCombobox/CategoryCombobox'
@@ -67,7 +74,7 @@ import type { SplitDraft } from '../../../stores/transactionEditStore'
 import { randomUUID } from '../../../utils/uuid'
 import { Tooltip } from '../../common/Tooltip/Tooltip'
 import './TransactionEditor.css'
-import { openAccounts } from '../../../utils/accountLists'
+import { openAccounts, recentAccounts } from '../../../utils/accountLists'
 
 /** Where the AI model is configured — the System page, not the budget's Settings. */
 const AI_SETTINGS = sectionHref({ id: 'ai', page: 'system' })
@@ -100,9 +107,6 @@ interface Props {
   aiJob?: AIJob | null
   onClose: () => void
 }
-
-/** Sentinel partner choice: "none of these — write the far leg". */
-const CREATE_NEW_PARTNER = '__create__'
 
 export function TransactionEditor({
   budgetId,
@@ -140,20 +144,19 @@ export function TransactionEditor({
   const isReview = !!aiJob && isEdit
   const reprocess = useReprocessAIJob(budgetId)
 
-  // No fixed account (budget-view add): the user picks one, defaulting to the
-  // same sticky "last used" account the quick-add flow remembers.
-  const lastPickedAccountId = useAppStore((s) => s.lastQuickAddAccountId)
-  const setLastPickedAccountId = useAppStore((s) => s.setLastQuickAddAccountId)
+  // No fixed account (budget-view add): the user picks one, and nothing is
+  // picked for them. A pre-selected account is a choice nobody made — rows
+  // landed in whichever account the previous entry used, and the only way to
+  // notice was to go looking in the registers. The recently used ones are
+  // offered first instead, which shortens the pick without making it.
+  const recentAccountIds = useAppStore((s) => s.recentAccountIds)
+  const noteAccountUsed = useAppStore((s) => s.noteAccountUsed)
   const [pickedAccountId, setPickedAccountId] = useState(transaction?.account_id ?? '')
   const choosable = useMemo(() => openAccounts(accounts), [accounts])
-  useEffect(() => {
-    if (fixedAccountId || transaction || pickedAccountId || choosable.length === 0) return
-    const preferred =
-      lastPickedAccountId && choosable.some((a) => a.id === lastPickedAccountId)
-        ? lastPickedAccountId
-        : (choosable.find((a) => a.on_budget)?.id ?? choosable[0].id)
-    setPickedAccountId(preferred)
-  }, [fixedAccountId, transaction, pickedAccountId, choosable, lastPickedAccountId])
+  const recent = useMemo(
+    () => recentAccounts(choosable, recentAccountIds),
+    [choosable, recentAccountIds]
+  )
   // An existing row's account is the picker's, not the register's: opening a
   // row from an account page must still let it be moved OUT of that page.
   // A fresh row started from an account page keeps that account fixed.
@@ -180,6 +183,12 @@ export function TransactionEditor({
     if (transaction.amount < 0) return ''
     return String(transaction.amount)
   })
+  // What the two boxes say, read once and used everywhere — the save, the
+  // split remainder, the similar-rows lookup and the AI hint. Null means
+  // what is in them is not an amount; see editorAmount.ts for why that is
+  // not the same answer as zero.
+  const typed = editorAmount(outflow, inflow)
+
   // Reconciled: the money is locked — amount, date, cleared state — and
   // everything else stays editable (domain/reconciliation.py, one rule).
   // The locked fields are shown disabled and left out of the PATCH.
@@ -294,7 +303,7 @@ export function TransactionEditor({
     categoryGroups
   )
 
-  const transferAccounts = accounts.filter((a) => a.id !== accountId)
+  const transferAccounts = transferTargets(accounts, accountId)
   const transferTarget = accounts.find((a) => a.id === transferAccountId)
   // Only for a row that isn't linked yet — an already-linked leg has its
   // partner, and retargeting moves that partner rather than adopting another.
@@ -307,7 +316,7 @@ export function TransactionEditor({
   // The question is only answerable by a person, and the server refuses a
   // submit without an answer — so Save waits for one rather than sending a
   // request that can only fail.
-  const needsPartnerChoice = needsPartner && partnerCandidates.length > 0 && !partnerChoice
+  const needsPartnerChoice = needsPartner && awaitingPartnerChoice(partnerCandidates, partnerChoice)
   // Off-budget transfers are real spending (YNAB semantics) and may carry a
   // category on the on-budget side
   const transferIsOffBudget = isTransfer && !!transferTarget && !transferTarget.on_budget
@@ -423,10 +432,11 @@ export function TransactionEditor({
   }
 
   async function doSubmit() {
-    if (!accountId) return
-    const outflowVal = parseAmountExpressionInput(outflow) || 0
-    const inflowVal = parseAmountExpressionInput(inflow) || 0
-    const amount = outflowVal > 0 ? -outflowVal : inflowVal
+    // Both guards are the Save button's own conditions, restated: a submit
+    // can still arrive by Enter, and an unparseable amount must never reach
+    // a save that would book it as zero (editorAmount).
+    if (!accountId || typed === null) return
+    const amount = typed.dollars
     const sign = amount < 0 ? -1 : 1
 
     // Editing frees the old amount back to its category/month; only the net
@@ -466,6 +476,13 @@ export function TransactionEditor({
         // go. The parent's amount is the lines' sum and is not sent.
         await updateTxn.mutateAsync({
           id: transaction!.id,
+          // The account, like every other field the editor shows. Leaving it
+          // out here is how a split's account picker came to do nothing at
+          // all: the control moved, the save did not, and the row stayed in
+          // the account it was scanned into. The server drops an unchanged
+          // one and carries the lines along with a changed one
+          // (`_mirror_children`).
+          account_id: accountId,
           ...(isReconciled ? {} : { date, cleared }),
           memo: memo || undefined,
           approved: true,
@@ -477,6 +494,7 @@ export function TransactionEditor({
         // AI links (a create+delete replacement would orphan the receipt).
         await updateTxn.mutateAsync({
           id: transaction!.id,
+          account_id: accountId,
           ...(isReconciled ? {} : { date, amount, cleared }),
           memo: memo || undefined,
           approved: true,
@@ -496,7 +514,7 @@ export function TransactionEditor({
           ai_job_id: aiJobId,
           splits: splitList,
         })
-        if (!fixedAccountId) setLastPickedAccountId(accountId)
+        if (!fixedAccountId) noteAccountUsed(accountId)
       }
       onClose()
       return
@@ -510,14 +528,10 @@ export function TransactionEditor({
       approved: true,
       ...(isTransfer
         ? {
-            transfer_account_id: transferAccountId,
-            // Which existing row is the far leg, when more than one could be.
-            // Without an answer the server refuses rather than guess.
-            ...(partnerChoice === CREATE_NEW_PARTNER
-              ? { transfer_create_partner: true }
-              : partnerChoice
-                ? { transfer_partner_transaction_id: partnerChoice }
-                : {}),
+            // The same fields the register's own conversion sends — which
+            // existing row is the far leg included, when more than one could
+            // be. Without an answer the server refuses rather than guess.
+            ...transferLinkFields(transferAccountId, partnerChoice),
             ...(transferIsOffBudget && categoryId ? { category_id: categoryId } : {}),
           }
         : {
@@ -575,7 +589,7 @@ export function TransactionEditor({
         cleared,
         ai_job_id: aiJobId,
       })
-      if (!fixedAccountId) setLastPickedAccountId(accountId)
+      if (!fixedAccountId) noteAccountUsed(accountId)
     }
     onClose()
   }
@@ -625,13 +639,9 @@ export function TransactionEditor({
     }
   }, [transaction])
 
-  const similarAmount = useMemo(() => {
-    const o = parseAmountExpressionInput(outflow)
-    const i = parseAmountExpressionInput(inflow)
-    if (o > 0) return -o
-    if (i > 0) return i
-    return null
-  }, [outflow, inflow])
+  // Nothing to look up while the boxes are blank, mid-expression, or holding
+  // something that is not an amount — all of which `typed` reports as one.
+  const similarAmount = typed && typed.dollars !== 0 ? typed.dollars : null
 
   const { data: similarTxns = [] } = useSimilarTransactions(
     accountId,
@@ -640,14 +650,12 @@ export function TransactionEditor({
     transaction?.id ?? null
   )
 
-  // Derived exactly as handleSubmit derives the amount it saves. Picking the
-  // field with `outflow || inflow` validated the string "0" against a "50"
-  // inflow, so the editor checked one number and wrote another.
-  const editorTotalCents = (() => {
-    const outflowVal = parseAmountExpressionInput(outflow) || 0
-    const inflowVal = parseAmountExpressionInput(inflow) || 0
-    return Math.abs(toCents(outflowVal > 0 ? -outflowVal : inflowVal)) || 0
-  })()
+  // The same figure the save writes, unsigned: the legs of a split are
+  // measured against the total, not against its direction. An amount that
+  // does not parse leaves the remainder at zero, which `checkSplit` already
+  // refuses as 'no-total' — so the split cannot be completed against a
+  // number nobody typed.
+  const editorTotalCents = Math.abs(typed?.cents ?? 0)
 
   const splitCheck = checkSplit(editorTotalCents, splits)
   const splitIsValid = !isSplit || splitCheck.isValid
@@ -673,6 +681,9 @@ export function TransactionEditor({
     !fixedAccountId || isEdit ? (
       <AccountField
         accounts={choosable}
+        // Only when entering: the shortlist answers "which account am I
+        // adding to", not "where should this existing row go instead".
+        recent={isEdit ? [] : recent}
         value={pickedAccountId}
         onChange={setPickedAccountId}
         current={rowAccount ?? null}
@@ -830,7 +841,7 @@ export function TransactionEditor({
                 aiAvailable={aiAvailable}
                 onReviewReady={setReviewJob}
                 onRememberAccount={() => {
-                  if (!fixedAccountId && accountId) setLastPickedAccountId(accountId)
+                  if (!fixedAccountId && accountId) noteAccountUsed(accountId)
                 }}
                 onClose={onClose}
               />
@@ -1104,12 +1115,11 @@ export function TransactionEditor({
                         title="AI suggest category"
                         disabled={suggestCategory.isPending}
                         onClick={async () => {
-                          const outflowVal = parseAmountExpressionInput(outflow) || 0
-                          const inflowVal = parseAmountExpressionInput(inflow) || 0
-                          const amount = outflowVal > 0 ? -outflowVal : inflowVal
                           const result = await suggestCategory.mutateAsync({
                             payee_name: payeeQuery || 'Unknown',
-                            amount,
+                            // A hint, not a save: with nothing usable in the
+                            // boxes the model is asked about the payee alone.
+                            amount: typed?.dollars ?? 0,
                             memo: memo || undefined,
                           })
                           if (result.category_id) setCategoryId(result.category_id)
@@ -1176,6 +1186,15 @@ export function TransactionEditor({
                     />
                   </div>
                 </div>
+                {/* Save is disabled while this shows. Without it the button
+                    went dead with no reason given — and before that, the
+                    amount was read as zero and saved. */}
+                {typed === null && (
+                  <span className="txn-editor__field-note txn-editor__field-note--error">
+                    That isn’t an amount yet. Digits, or a sum like 12.50 + 3 — the box you type in
+                    decides the direction, so leave the minus off.
+                  </span>
+                )}
               </div>
             </div>
 
@@ -1315,7 +1334,9 @@ export function TransactionEditor({
                 <button
                   type="submit"
                   className="txn-editor__btn txn-editor__btn--primary"
-                  disabled={isPending || !splitIsValid || !accountId || needsPartnerChoice}
+                  disabled={
+                    isPending || !splitIsValid || !accountId || needsPartnerChoice || typed === null
+                  }
                 >
                   {isReview ? 'Approve' : isEdit ? 'Save' : 'Add'}
                 </button>

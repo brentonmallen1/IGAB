@@ -251,16 +251,19 @@
      all 19 themes with no per-theme value. */
   --press-scrim: color-mix(in srgb, var(--text-primary) 10%, transparent);
 
-  /* Register row states. Derived the same way as --press-scrim rather than
-     authored per theme (--row-hover-bg is, in 40 files): a mix against
-     --text-primary lightens a dark theme and darkens a light one, and a mix
-     against --color-accent honours each palette's own accent.
+  /* Register row states, stated once here rather than authored per theme
+     (--row-hover-bg is, in 40 files). The selection pair is a mix against
+     --color-accent, so every palette highlights in its own accent.
 
      --row-pending-bg is the ground under a row the bank has authorised but
-     not posted. Deliberately neutral, not --color-warning: pending is not a
-     problem, it is money that has not moved yet, and this repo reserves
-     accent and status colour for state that asks something of the user. */
-  --row-pending-bg: color-mix(in srgb, var(--text-primary) 6%, transparent);
+     not posted. It is the RAISED surface, not a wash: a wash composites a
+     mid-tone over the row and drags the ground toward the text, which cost
+     the amount its contrast in 14 light variants. --surface-raised is a real
+     step on each theme's own grey ladder, so the row lifts off the canvas and
+     every pairing on it is one contrast.test.ts already holds to AA through
+     `bg-secondary` in SURFACES.
+  */
+  --row-pending-bg: var(--surface-raised);
   --row-selected-bg: color-mix(in srgb, var(--color-accent) 12%, transparent);
   --row-selected-hover-bg: color-mix(in srgb, var(--color-accent) 18%, transparent);
 

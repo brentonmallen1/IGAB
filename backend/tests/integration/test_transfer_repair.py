@@ -482,6 +482,30 @@ class TestGuards:
                 budget.id, parent.id, SvcTxnUpdate(transfer_account_id=savings.id)
             )
 
+    async def test_the_editor_may_restate_unchanged_money_while_linking(self, db_session):
+        """The editor PATCHes every field it shows, so a conversion always
+        carries the row's own amount and date. Refusing on presence refused
+        every conversion made from the editor — the "Transfer to account"
+        toggle could not be turned on at all, with an error naming money
+        fields the user had not touched."""
+        budget, checking, savings = await _setup(db_session)
+        txn = await create_transaction(db_session, budget, checking, "-500.00", TODAY)
+        services = make_services(db_session)
+        updated = await services.transactions.update(
+            budget.id,
+            txn.id,
+            SvcTxnUpdate(
+                transfer_account_id=savings.id,
+                amount=Decimal("-500.0000"),
+                date=TODAY,
+            ),
+        )
+        assert updated.transfer_id is not None
+        assert updated.amount == Decimal("-500.00")
+        partner = await TransactionRepository(db_session).get(updated.transfer_id)
+        assert partner is not None
+        assert partner.amount == Decimal("500.00")
+
     async def test_money_and_link_edits_are_kept_apart(self, db_session):
         budget, checking, savings = await _setup(db_session)
         txn = await create_transaction(db_session, budget, checking, "-500.00", TODAY)
@@ -491,6 +515,21 @@ class TestGuards:
                 budget.id,
                 txn.id,
                 SvcTxnUpdate(transfer_account_id=savings.id, amount=Decimal("-600.00")),
+            )
+
+    async def test_a_changed_date_beside_a_link_is_still_refused(self, db_session):
+        budget, checking, savings = await _setup(db_session)
+        txn = await create_transaction(db_session, budget, checking, "-500.00", TODAY)
+        services = make_services(db_session)
+        with pytest.raises(InvariantViolation, match="separate edits"):
+            await services.transactions.update(
+                budget.id,
+                txn.id,
+                SvcTxnUpdate(
+                    transfer_account_id=savings.id,
+                    amount=Decimal("-500.00"),
+                    date=TODAY - timedelta(days=1),
+                ),
             )
 
 

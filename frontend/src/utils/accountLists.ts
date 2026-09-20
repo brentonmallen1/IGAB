@@ -49,6 +49,42 @@ export function closedAccounts<T extends ClosableAccount>(accounts: readonly T[]
   return accounts.filter((a) => a.is_closed)
 }
 
+export interface IdentifiedAccount {
+  id: string
+}
+
+/**
+ * The accounts used most recently, most recent first — the shortlist an
+ * entry picker pins above the full list.
+ *
+ * Recency is device-local and lives in `appStore.recentAccountIds`
+ * (`noteAccountUsed` writes it). This function is the only reading of that
+ * list: quick-add and the transaction editor pin the same accounts in the
+ * same order, and neither re-spells "most recent" its own way.
+ *
+ * Ids that no longer resolve — a closed or deleted account — are dropped
+ * rather than shown blank, so the caller passes whatever list it may offer
+ * (open accounts) and gets back a subset of exactly that.
+ *
+ * This replaced a single sticky "last account", which was pre-selected for
+ * the user: a receipt scanned right after a card purchase went to whichever
+ * account the previous entry used, and nothing on screen said so.
+ */
+export function recentAccounts<T extends IdentifiedAccount>(
+  accounts: readonly T[],
+  recentIds: readonly string[],
+  limit = 3
+): T[] {
+  const byId = new Map(accounts.map((a) => [a.id, a]))
+  const picked: T[] = []
+  for (const id of recentIds) {
+    const account = byId.get(id)
+    if (account) picked.push(account)
+    if (picked.length === limit) break
+  }
+  return picked
+}
+
 /**
  * id → name, for naming rows that already exist.
  *

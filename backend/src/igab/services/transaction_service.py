@@ -13,6 +13,7 @@ from igab.db.models import Account, Category, Payee, Transaction
 from igab.domain.account_move import MoveRequest, refusal_for_move
 from igab.domain.bank_posting import Apply, FeedRecord, Review, RowState, posting_updates
 from igab.domain.exceptions import InvariantViolation
+from igab.domain.field_changes import changed_fields
 from igab.domain.merging import MergeSide, choose_survivor, survivor_violation
 from igab.domain.reconciliation import (
     RECONCILED_LOCKED_FIELDS,
@@ -501,7 +502,17 @@ class TransactionService:
                 raise InvariantViolation(
                     "A split (or one of its lines) cannot be linked as a transfer"
                 )
-            if {"amount", "date"} & changes.keys():
+            # Compare, don't test membership: the editor PATCHes every field
+            # it shows, so an unchanged amount rides along with the link on
+            # every conversion. Refusing on presence refused every one of
+            # them — the toggle could not be turned on at all. Same reasoning
+            # as the account_id drop above and the reconciled check below.
+            money_moved = changed_fields(
+                {"amount": txn.amount, "date": txn.date}, changes, ("amount", "date")
+            )
+            for field in {"amount", "date"} - money_moved:
+                changes.pop(field, None)
+            if money_moved:
                 raise InvariantViolation(
                     "Change the transfer link and money fields in separate edits"
                 )

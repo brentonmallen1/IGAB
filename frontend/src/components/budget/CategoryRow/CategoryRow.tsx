@@ -18,7 +18,6 @@ import { MoveMoneyForm } from '../MoveMoneyPopover/MoveMoneyForm'
 import { BottomSheet } from '../../common/BottomSheet/BottomSheet'
 import { TransactionEditor } from '../../transactions/TransactionEditor/TransactionEditor'
 import { TransactionsPeekModal } from '../TransactionsPeekModal/TransactionsPeekModal'
-import { toCents } from '../../../utils/money'
 import { availableTone } from '../../../utils/categoryBalances'
 import { parseAssignmentCommit } from '../../../utils/amountExpression'
 import { AmountInput } from '../../common/AmountInput/AmountInput'
@@ -115,9 +114,9 @@ export const CategoryRow = memo(function CategoryRow({
   }, [assigned])
 
   const handleCommit = useCallback(() => {
-    // Expression-aware: "+50" / "*2" adjust the current assignment; empty
-    // commits zero (see parseAssignmentCommit)
-    const amount = parseAssignmentCommit(editValue, assigned)
+    // The box is the whole equation; empty commits zero. See
+    // parseAssignmentCommit.
+    const amount = parseAssignmentCommit(editValue)
     if (isNaN(amount)) {
       // Unparseable input must never silently write $0 into the budget
       setIsEditing(false)
@@ -125,7 +124,7 @@ export const CategoryRow = memo(function CategoryRow({
     }
     setAssignment.mutate({ categoryId: category.id, month, amount })
     setIsEditing(false)
-  }, [editValue, assigned, category.id, month, setAssignment])
+  }, [editValue, category.id, month, setAssignment])
 
   // Open the adjacent visible row's assignment editor. DOM order handles
   // groups, collapse, and filtering for free.
@@ -448,7 +447,6 @@ export const CategoryRow = memo(function CategoryRow({
               className="category-row__input"
               value={editValue}
               onValueChange={setEditValue}
-              baseCents={toCents(assigned)}
               onBlur={handleBlur}
               onKeyDown={handleKeyDown}
               placeholder="0.00"

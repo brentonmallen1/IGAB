@@ -36,6 +36,103 @@ describe('TransactionSearch suggestions', () => {
     expect(screen.queryByText('Search syntax')).not.toBeInTheDocument()
   })
 
+  describe('Enter finishes the search', () => {
+    // The box filters as you type, so Enter had nothing to submit and did
+    // nothing at all: the field kept focus and its accent ring, the panel
+    // stayed open, and the only way to put the search down was to click
+    // somewhere else.
+    it('gives up focus', () => {
+      const { input } = setup()
+      ;(input as HTMLInputElement).focus()
+      fireEvent.change(input, { target: { value: 'coffee' } })
+      expect(input).toHaveFocus()
+
+      fireEvent.keyDown(input, { key: 'Enter' })
+
+      expect(input).not.toHaveFocus()
+    })
+
+    it('closes the suggestions panel', () => {
+      const { input } = setup()
+      ;(input as HTMLInputElement).focus()
+      fireEvent.change(input, { target: { value: 'is:' } })
+      expect(screen.getByText('Search syntax')).toBeInTheDocument()
+
+      fireEvent.keyDown(input, { key: 'Enter' })
+
+      expect(screen.queryByText('Search syntax')).not.toBeInTheDocument()
+    })
+
+    it('commits the query immediately rather than waiting out the debounce', () => {
+      const { input, onChange } = setup()
+      ;(input as HTMLInputElement).focus()
+      fireEvent.change(input, { target: { value: 'coffee' } })
+      onChange.mockClear()
+
+      fireEvent.keyDown(input, { key: 'Enter' })
+
+      expect(onChange).toHaveBeenCalledWith('coffee')
+    })
+
+    it('keeps the query — Enter is not a clear', () => {
+      const { input } = setup()
+      ;(input as HTMLInputElement).focus()
+      fireEvent.change(input, { target: { value: 'coffee' } })
+
+      fireEvent.keyDown(input, { key: 'Enter' })
+
+      expect((input as HTMLInputElement).value).toBe('coffee')
+    })
+
+    it('still takes a highlighted suggestion instead of dismissing', () => {
+      // Arrow-down then Enter must complete the syntax rather than submit the
+      // half-typed query — that branch sits above this one and must keep
+      // winning. (Where the caret ends up afterwards is the accept rule
+      // below, not this one.)
+      const { input } = setup()
+      ;(input as HTMLInputElement).focus()
+      fireEvent.change(input, { target: { value: 'is:' } })
+      fireEvent.keyDown(input, { key: 'ArrowDown' })
+
+      fireEvent.keyDown(input, { key: 'Enter' })
+
+      expect((input as HTMLInputElement).value).not.toBe('is:')
+    })
+  })
+
+  describe('accepting a suggestion composes or finishes, by what it is', () => {
+    // Accepting any suggestion used to refocus the input unconditionally, so
+    // clicking `is: cleared` — a search that can run as it stands — left the
+    // box hot: accent ring, grown width, and nothing to do but click away.
+    // SEARCH_SUGGESTIONS says which entries are a prefix (`awaitsValue`), so
+    // this is one rule read from the vocabulary, not a guess about trailing
+    // spaces: `amount: ` and `date: ` both end in one and both want a value.
+    function accept(input: HTMLElement, label: string) {
+      fireEvent.focus(input)
+      fireEvent.change(input, { target: { value: label } })
+      const option = screen.getAllByRole('button').find((b) => b.textContent?.includes(label))
+      fireEvent.mouseDown(option!)
+    }
+
+    it('lets the field go for a filter that is already complete', () => {
+      const { input } = setup()
+      ;(input as HTMLInputElement).focus()
+      accept(input, 'is: cleared')
+
+      expect(input).not.toHaveFocus()
+      expect((input as HTMLInputElement).value).toContain('is: cleared')
+    })
+
+    it('holds the caret for a prefix still waiting on a value', () => {
+      const { input } = setup()
+      ;(input as HTMLInputElement).focus()
+      accept(input, 'category:')
+
+      expect(input).toHaveFocus()
+      expect((input as HTMLInputElement).value).toBe('category:')
+    })
+  })
+
   it('typing again after a clear brings the panel back', () => {
     const { input } = setup()
     fireEvent.focus(input)

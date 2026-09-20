@@ -22,6 +22,8 @@ change the amount.
 from collections.abc import Iterable, Mapping
 from typing import Any
 
+from igab.domain.field_changes import changed_fields
+
 #: The fields a bank statement vouches for. `account_id` is one of them: the
 #: statement is an account's statement, so moving a reconciled row out of it
 #: changes a balance the user signed off on. It is locked here, once, for
@@ -39,11 +41,7 @@ def locked_changes(current: Mapping[str, Any], proposed: Mapping[str, Any]) -> s
     types before asking. A locked field proposed with no current value to
     compare against counts as a change: silence must never unlock money.
     """
-    return {
-        field
-        for field in RECONCILED_LOCKED_FIELDS
-        if field in proposed and (field not in current or proposed[field] != current[field])
-    }
+    return changed_fields(current, proposed, RECONCILED_LOCKED_FIELDS)
 
 
 def locked_values(row: Any) -> dict[str, Any]:

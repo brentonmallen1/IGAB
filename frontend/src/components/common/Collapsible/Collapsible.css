@@ -10,6 +10,12 @@
   letter-spacing: 0.5px;
   color: var(--text-muted);
   background-color: var(--surface-chrome);
+  /* Closes the section against whatever sits above it — which on the register
+     is its own column strip, also --surface-chrome, so without this the two
+     grounds ran together and the header was swallowed by the strip. It stays
+     in BOTH states: an edge that appears only when folded reads as a thing
+     that moved rather than a thing that opened. */
+  border-top: 1px solid var(--color-accent);
   border-bottom: 1px solid var(--edge-strong);
   text-align: left;
   cursor: pointer;
@@ -29,8 +35,8 @@
 .collapsible__count {
   margin-left: var(--spacing-xs);
   padding: 1px 6px;
-  background-color: var(--surface-sunken);
-  border: 1px solid var(--edge);
+  background-color: transparent;
+  border: 1px solid var(--edge-strong);
   border-radius: 10px;
   font-size: var(--font-size-xs);
   color: var(--text-muted);
@@ -48,4 +54,50 @@
 
 .collapsible__body {
   border-bottom: 2px solid var(--color-accent);
+}
+
+/* ── Closed, with rows behind it ───────────────────────────────────────────
+   The header carries the whole section on its own here, so it stops being
+   chrome. The uppercase 11px label is the problem as much as the colour: it
+   is exactly how a column header is spelled, so a folded section read as the
+   top of the table rather than as a drawer with rows in it. Dropping the caps
+   and the tracking is what breaks that read — the accent is a highlight on
+   top of that, not the mechanism.
+
+   The bottom edge is 2px, the same .collapsible__body draws under its own
+   rows: folding and unfolding then moves a single edge instead of swapping
+   two different ones. A hairline of the same colour closes the top, because
+   the header directly above this one is the register's own column strip on
+   the same --surface-chrome — without it the two grounds ran together and the
+   fold was swallowed by the strip it sat under. An edge down the LEFT as well
+   was tried and removed: three rules meeting at corners boxed the row in and
+   read as a callout pasted over the register rather than part of it.
+
+   Every colour here is a token pair contrast.test.ts already holds to AA in
+   all 40 themes — --text-primary on --surface-chrome, and --bg-primary on a
+   --color-accent fill (the same inversion the floating selection bar uses).
+   The accent edge is a border, never the only cue, and carries no text. */
+.collapsible__header--hiding {
+  color: var(--text-primary);
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: var(--font-size-sm);
+  padding-block: var(--spacing-sm);
+  border-bottom: 2px solid var(--color-accent);
+}
+
+.collapsible__header--hiding .collapsible__chevron {
+  color: var(--color-accent);
+}
+
+.collapsible__header--hiding .collapsible__count {
+  background-color: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--bg-primary);
+  font-weight: 700;
+}
+
+/* Nudges the whole header on hover, so the fold advertises that it opens. */
+.collapsible__header--hiding:hover {
+  background-color: var(--bg-hover);
 }

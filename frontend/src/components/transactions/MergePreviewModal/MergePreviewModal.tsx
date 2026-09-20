@@ -11,6 +11,10 @@ interface Props {
   onConfirm: (survivorId?: string) => void
   onCancel: () => void
   isPending: boolean
+  /** Why the server refused. The register cannot rule out every refusal on
+   *  its own (which row may survive is the server's decision), and a Merge
+   *  button that does nothing is what swallowing this looked like. */
+  error?: string | null
 }
 
 function TxnCard({
@@ -91,6 +95,7 @@ export function MergePreviewModal({
   onConfirm,
   onCancel,
   isPending,
+  error,
 }: Props) {
   const { formatMoney, formatDate } = useFormatters()
   const [txn1, txn2] = transactions
@@ -115,6 +120,7 @@ export function MergePreviewModal({
       className="merge-modal"
       footer={
         <div className="dialog-actions">
+          {error && <span className="dialog-form__error">{error}</span>}
           <div className="dialog-actions__end">
             <button
               type="button"

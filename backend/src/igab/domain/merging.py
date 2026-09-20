@@ -122,3 +122,23 @@ def survivor_violation(
     if survivor.sync_id and deleted.sync_id and survivor.sync_id != deleted.sync_id:
         return "Both transactions are linked to different bank transactions"
     return None
+
+
+def may_offer_merge(a: MergeSide, b: MergeSide) -> bool:
+    """Would a merge of these two be accepted, with no survivor requested?
+
+    Derived from the rules above rather than restated, so it cannot answer
+    differently from the merge itself. It exists so the register's own
+    "may I offer Merge?" question has a server-side counterpart to be tested
+    against: the client keeps a copy of this rule (it has the fields, and the
+    button has to be drawn before any request is made), and that copy had
+    already drifted — it knew about accounts, reconciled pairs, splits and
+    transfer legs, but not about bank identity, so the register offered
+    Merge on two SimpleFIN rows with different bank ids and the server
+    refused every time.
+
+    `shared/merge_cases.json` is run by both sides; see
+    tests/unit/test_merge_offer.py and frontend mergeEligibility.test.ts.
+    """
+    survivor, deleted = choose_survivor(a, b, None)
+    return survivor_violation(survivor, deleted, None) is None

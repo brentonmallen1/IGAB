@@ -29,6 +29,15 @@ class AIJobResponse(ApiModel):
     #: done — silently, which is the failure worth being loud about. Populate
     #: it with `AIJobRepository.with_review` (or `get_with_review`).
     needs_review: bool
+    #: Which account the created transaction is in now — None when there is no
+    #: transaction (still queued, or deleted since).
+    #:
+    #: The review list names it, so a receipt filed against the wrong account
+    #: is visible before it is approved rather than after someone goes looking
+    #: through the registers. Populated by the same loader as `needs_review`,
+    #: whose required-ness is what makes a forgotten loader fail loudly: None
+    #: here is a real answer and cannot be told apart from an unloaded one.
+    transaction_account_id: uuid.UUID | None
     attachment_id: uuid.UUID | None
     created_at: datetime
     started_at: datetime | None
@@ -57,6 +66,7 @@ class AIJobResponse(ApiModel):
             transaction_id=job.transaction_id,
             transaction_removed=transaction_removed,
             needs_review=job.needs_review,
+            transaction_account_id=job.transaction_account_id,
             attachment_id=job.attachment_id,
             created_at=job.created_at,
             started_at=job.started_at,

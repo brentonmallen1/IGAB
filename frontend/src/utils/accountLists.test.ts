@@ -13,7 +13,7 @@
  * times, and six copies of a filter is how the seventh gets written wrong.
  */
 import { describe, expect, it } from 'vitest'
-import { accountNameMap, closedAccounts, openAccounts } from './accountLists'
+import { accountNameMap, closedAccounts, openAccounts, recentAccounts } from './accountLists'
 
 const ACCOUNTS = [
   { id: 'a1', name: 'Harborstone Checking', is_closed: false },
@@ -50,5 +50,30 @@ describe('accountNameMap', () => {
 
   it('leaves a row unnamed only when the account is genuinely absent', () => {
     expect(accountNameMap(ACCOUNTS).get('gone')).toBeUndefined()
+  })
+})
+
+describe('recentAccounts', () => {
+  it('lists them most recent first, whatever order the accounts are in', () => {
+    expect(recentAccounts(ACCOUNTS, ['a3', 'a1']).map((a) => a.id)).toEqual(['a3', 'a1'])
+  })
+
+  it('drops an id that no longer resolves, rather than pinning a blank row', () => {
+    // A deleted account, or one filtered out because it is closed: the
+    // caller passes the list it may offer and gets back a subset of it.
+    expect(recentAccounts(openAccounts(ACCOUNTS), ['a2', 'gone', 'a1']).map((a) => a.id)).toEqual([
+      'a1',
+    ])
+  })
+
+  it('stops at the limit, counting only ids that resolved', () => {
+    expect(recentAccounts(ACCOUNTS, ['gone', 'a1', 'a2', 'a3'], 2).map((a) => a.id)).toEqual([
+      'a1',
+      'a2',
+    ])
+  })
+
+  it('is empty before anything has been filed, which pins nothing', () => {
+    expect(recentAccounts(ACCOUNTS, [])).toEqual([])
   })
 })

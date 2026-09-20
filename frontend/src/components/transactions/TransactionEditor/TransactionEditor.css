@@ -791,6 +791,14 @@
   line-height: 1.4;
 }
 
+/* The same note, saying something is wrong rather than something is worth
+   knowing. Used by the amount row, which disables Save while it shows. */
+.txn-editor__field-note--error {
+  color: var(--color-negative);
+  display: block;
+  margin-top: var(--spacing-xs);
+}
+
 .txn-editor__locked {
   display: inline-flex;
   align-items: center;

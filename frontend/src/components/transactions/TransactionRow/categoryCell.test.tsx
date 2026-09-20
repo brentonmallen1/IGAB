@@ -82,6 +82,7 @@ function renderRow(t: Transaction, accountOnBudget = true) {
           onStartSplit={vi.fn()}
           onDuplicate={vi.fn()}
           onMakeRepeating={vi.fn()}
+          onMakeTransfer={vi.fn()}
           accountOnBudget={accountOnBudget}
         />
       </MemoryRouter>

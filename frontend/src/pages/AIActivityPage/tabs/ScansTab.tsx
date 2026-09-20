@@ -26,6 +26,7 @@ import {
   type AIJobStatus,
 } from '../../../api/aiJobs'
 import { useBulkApprove } from '../../../api/transactions'
+import { JobAccount } from './JobAccount'
 import { fetchAttachmentBlob, useAttachmentUrl } from '../../../api/attachments'
 import { AttachmentLightbox } from '../../../components/attachments/Lightbox'
 import { useFormatters } from '../../../hooks/useFormatters'
@@ -201,6 +202,9 @@ function JobRow({ job, budgetId }: { job: AIJob; budgetId: string }) {
         )}
         <div className="ai-activity__meta">
           <StatusChip status={job.status} />
+          {/* Before the model, the time and everything else the job did: the
+              account is the one field on an AI draft nobody's model chose. */}
+          <JobAccount job={job} budgetId={budgetId} />
           <span className="ai-activity__kind">
             {job.kind === 'receipt' ? 'Receipt scan' : 'Text entry'}
           </span>

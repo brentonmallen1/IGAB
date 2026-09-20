@@ -5,7 +5,8 @@ import { useMoveHistory, useMoveMoney } from '../../../api/budgets'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
 import { CategoryCombobox } from '../../common/CategoryCombobox/CategoryCombobox'
 import { useFormatters } from '../../../hooks/useFormatters'
-import { toCents } from '../../../utils/money'
+import { AmountInput } from '../../common/AmountInput/AmountInput'
+import { expressionToCents } from '../../../utils/amountExpression'
 import type { Category } from '../../../types'
 import './MoveMoneyPopover.css'
 
@@ -49,8 +50,15 @@ export function MoveMoneyForm({ budgetId, month, category, available, onClose }:
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    const cents = toCents(amount)
-    if (isNaN(cents) || cents <= 0) {
+    // The same parser the box evaluates with, so an expression the user
+    // never blurred out of ("40 + 20", then Enter) commits as the number it
+    // shows. `toCents` was parseFloat underneath and read "1,250" as 1.
+    const cents = expressionToCents(amount)
+    if (isNaN(cents)) {
+      setError('That isn’t an amount — digits, or a sum like 40 + 20.')
+      return
+    }
+    if (cents <= 0) {
       setError('Enter an amount greater than zero')
       return
     }
@@ -93,15 +101,11 @@ export function MoveMoneyForm({ budgetId, month, category, available, onClose }:
         </div>
         <label className="move-money-popover__field">
           <span>Amount</span>
-          <input
-            type="number"
-            min="0.01"
-            step="0.01"
+          <AmountInput
             value={amount}
-            onChange={(e) => setAmount(e.target.value)}
+            onValueChange={setAmount}
             autoFocus
             onFocus={(e) => e.target.select()}
-            inputMode="decimal"
           />
         </label>
         <button type="submit" className="move-money-popover__submit" disabled={moveMoney.isPending}>

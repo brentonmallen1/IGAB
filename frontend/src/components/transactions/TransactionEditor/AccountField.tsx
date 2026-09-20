@@ -5,6 +5,9 @@ interface Props {
   /** Open accounts, as offered. A closed one the row already sits in is added
    *  back below — see the comment on that option. */
   accounts: Account[]
+  /** The ones used most recently, pinned above the rest (utils/accountLists).
+   *  A shortlist, never a default — nothing here is pre-selected. */
+  recent: Account[]
   value: string
   onChange: (accountId: string) => void
   /** The account the row is in right now, for the locked reading and for the
@@ -29,10 +32,18 @@ interface Props {
  * lock glyph, and the reason underneath. A disabled `<select>` would say
  * "not now" without ever saying why.
  */
-export function AccountField({ accounts, value, onChange, current, lockReason, note }: Props) {
+export function AccountField({
+  accounts,
+  recent,
+  value,
+  onChange,
+  current,
+  lockReason,
+  note,
+}: Props) {
   const hasTracking = accounts.some((a) => !a.on_budget)
-  const option = (a: Account) => (
-    <option key={a.id} value={a.id}>
+  const option = (a: Account, prefix = '') => (
+    <option key={`${prefix}${a.id}`} value={a.id}>
       {a.name}
     </option>
   )
@@ -64,17 +75,22 @@ export function AccountField({ accounts, value, onChange, current, lockReason, n
               Offer it anyway, or the picker would show a blank selection and
               the next save would re-file the row somewhere it never was. */}
           {current?.is_closed && <option value={current.id}>{current.name} (closed)</option>}
+          {/* Repeated below in their own group — the shortlist is a shortcut
+              to the same accounts, not a different set. */}
+          {recent.length > 0 && (
+            <optgroup label="Recent">{recent.map((a) => option(a, 'recent'))}</optgroup>
+          )}
           {hasTracking ? (
             <>
               <optgroup label="Budget accounts">
-                {accounts.filter((a) => a.on_budget).map(option)}
+                {accounts.filter((a) => a.on_budget).map((a) => option(a))}
               </optgroup>
               <optgroup label="Tracking">
-                {accounts.filter((a) => !a.on_budget).map(option)}
+                {accounts.filter((a) => !a.on_budget).map((a) => option(a))}
               </optgroup>
             </>
           ) : (
-            accounts.map(option)
+            accounts.map((a) => option(a))
           )}
         </select>
       )}

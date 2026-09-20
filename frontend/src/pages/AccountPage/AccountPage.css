@@ -19,17 +19,21 @@
   flex-shrink: 0;
 }
 
-/* Left: Account identity + balances stacked */
+/* Identity and balance on ONE line, wrapping only when the balance opens.
+   The column this used to be is what made folding worth so little: the name,
+   the fold control and the equation each took a row of their own, so folding
+   away the equation left two rows standing. */
 .account-page__header-left {
   display: flex;
-  flex-direction: column;
-  gap: var(--spacing-xs);
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-xs) var(--spacing-lg);
+  flex: 1;
+  min-width: 0;
 }
 
 .account-page__identity {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  min-width: 0;
 }
 
 /* The account name keeps its display size on a desktop; on a phone it is in
@@ -40,19 +44,54 @@
   line-height: 1.1;
 }
 
-/* The fold control, at every width. It carries the working balance so the
-   folded header still answers the question you came to the page with, and
-   it is a real button so the fold is reachable by keyboard. */
-.account-page__header-toggle {
+/* The back link is `flex: 1 1 100%` in PageHeader, so on a desktop it takes a
+   whole ~44px row above the title — folded or not, on every visit. Scoped to
+   this page's own class so the other twelve PageHeader callers are untouched,
+   and desktop-only because on a phone the chevron is portalled into the app
+   header and owes the tap floor. */
+@media (min-width: 769px) {
+  .account-page__name-header .page-header__back {
+    flex: 0 0 auto;
+    order: -1;
+    min-height: 0;
+    padding-block: 0;
+  }
+}
+
+/* Folded, the working balance sits inline beside the name — the one figure you
+   navigate by, kept when everything else folds away. */
+.account-page__balance-headline {
   display: flex;
   align-items: baseline;
   gap: var(--spacing-sm);
-  padding: 0;
+  min-width: 0;
+}
+
+/* The fold control. It does not move: last thing on the header's top row in
+   both states — after the balance when folded, after the pills when open.
+   It used to lead the figures, which put it on row one folded and row two
+   open, and a control that changes rows when you press it reads as a glitch
+   however correct it is. Nothing pins it there: the equation below is
+   `flex: 1 1 100%`, so it takes a line of its own and leaves whatever precedes
+   it up top. An `auto` margin here did the same job on a desktop and cost the
+   phone its single row, by absorbing the free space and wrapping the actions.
+   A real button, so the fold is reachable by keyboard. */
+.account-page__header-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
   border: none;
+  border-radius: var(--border-radius-sm);
   background: none;
-  color: var(--text-muted);
-  text-align: left;
+  color: var(--color-accent);
   cursor: pointer;
+  flex-shrink: 0;
+}
+
+.account-page__header-toggle:hover {
+  color: var(--text-primary);
+  background-color: var(--bg-hover);
 }
 
 .account-page__header-toggle:focus-visible {
@@ -61,14 +100,9 @@
   border-radius: 4px;
 }
 
-.account-page__header-toggle .account-page__balance-value {
+.account-page__balance-headline .account-page__balance-value {
   font-size: var(--font-size-xl);
   font-weight: 700;
-}
-
-/* Folded is now a state at every width, not a phone special case. */
-.account-page__balances--collapsed {
-  display: none;
 }
 
 .account-page__notices {
@@ -87,11 +121,24 @@
   gap: var(--spacing-sm);
 }
 
-/* Balance equation row */
+/* Balance equation row. Open it takes a full line of its own, which is what
+   leaves the fold control up on the top row beside the pills. */
 .account-page__balances {
   display: flex;
   align-items: center;
   gap: var(--spacing-md);
+  flex: 1 1 100%;
+}
+
+/* Folded is a state at every width, not a phone special case.
+
+   This MUST come after the rule above. It used to sit twenty lines earlier,
+   and `.account-page__balances { display: flex }` then won on source order at
+   equal specificity — so folding the header never hid the equation at all.
+   That is why folding looked like it only took away the pills: the three
+   figures, and the second copy of the working balance among them, stayed. */
+.account-page__balances--collapsed {
+  display: none;
 }
 
 /* Quiet, one line: the bank disagreeing with the ledger is information,
@@ -313,14 +360,38 @@
 
 @media (max-width: 768px) {
   .account-page__header {
-    flex-direction: column;
-    align-items: stretch;
-    gap: var(--spacing-md);
-    padding: var(--spacing-md);
+    flex-wrap: wrap;
+    align-items: center;
+    /* 8px between the left cluster and the actions, not 16: at 390px the two
+       come to 343px inside a 358px line, so the wider gap is the single thing
+       that wraps them and costs the fold its one-row band. */
+    gap: var(--spacing-sm);
+    padding: var(--spacing-sm) var(--spacing-md);
+  }
+
+  /* Folded on a phone, the balance and the actions share one row — both
+     already carry the 44px tap floor, so the band costs one tap row plus its
+     padding instead of stacking two. The name is in the app header and, with
+     the pills folded away, PageHeader renders no band at all here. */
+  .account-page__header-left {
+    /* `flex: 1` on a desktop; here it must NOT grow. Growing made it absorb
+       the whole 358px line, which pushed the actions onto a second row and
+       cost the fold the saving it was supposed to buy. */
+    flex: 0 1 auto;
+    /* The desktop's 24px column gap is the last thing that will not fit: at
+       390px the balance, the control and the three action buttons come to
+       within a dozen pixels of the line. */
+    column-gap: var(--spacing-sm);
   }
 
   .account-page__actions {
-    align-self: flex-start;
+    align-self: center;
+    margin-left: auto;
+  }
+
+  /* Open, the equation still wants the full width to itself. */
+  .account-page__balance--open {
+    flex: 1 1 100%;
   }
 
   .account-page__balances {
@@ -359,6 +430,21 @@
      only the tap floor (themes/tapTargets.test.ts holds every control to it). */
   .account-page__header-toggle {
     min-height: var(--tap-min);
+  }
+
+  /* Folded on a phone the label is what tips the balance and the actions onto
+     two rows, and it is the least of what is there: a large figure in an
+     account's own header is already a balance. Dropping it is what buys the
+     single row. Open, the equation keeps every label — there the figures are
+     three and need telling apart. */
+  .account-page__balance-headline .account-page__balance-label {
+    display: none;
+  }
+
+  /* A bare icon owes the floor on both axes, not just the one tapTargets
+     checks — there is no text here to make it wide. */
+  .account-page__header-toggle {
+    min-width: var(--tap-min);
   }
 
   .account-page__balances {

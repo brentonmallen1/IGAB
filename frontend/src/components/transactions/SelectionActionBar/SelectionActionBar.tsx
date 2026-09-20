@@ -8,6 +8,7 @@ import {
   GitMerge,
   Paperclip,
   Pencil,
+  ArrowLeftRight,
 } from 'lucide-react'
 import { ContextMenu, type ContextMenuItem } from '../../common/ContextMenu/ContextMenu'
 import { Combobox, type ComboboxOption } from '../../common/Combobox/Combobox'
@@ -27,6 +28,12 @@ interface Props {
   /** One row selected: open the scheduled editor prefilled from it. The
    *  shift+T shortcut and this share one handler in TransactionTable. */
   onMakeRepeating?: () => void
+  /** One row selected: convert it to a transfer. Single-row like the editor
+   *  action above, because which row over there is the far leg is a question
+   *  only a person can answer, one row at a time
+   *  (MakeTransferDialog says the same). Undefined when the selected row
+   *  cannot be converted — a linked leg, a split, or a reconciled row. */
+  onMakeTransfer?: () => void
   onClear: () => void
   onApprove?: () => void
   onMerge?: () => void
@@ -57,6 +64,7 @@ export function SelectionActionBar({
   onDelete,
   onDuplicate,
   onMakeRepeating,
+  onMakeTransfer,
   onClear,
   onApprove,
   onMerge,
@@ -148,6 +156,16 @@ export function SelectionActionBar({
         <FloatingSelectionBar.Button onClick={onMerge} title="Merge selected transactions">
           <GitMerge size={14} />
           Merge
+        </FloatingSelectionBar.Button>
+      )}
+
+      {onMakeTransfer && selectedCount === 1 && (
+        <FloatingSelectionBar.Button
+          onClick={onMakeTransfer}
+          title="Link this to the matching transaction in another account"
+        >
+          <ArrowLeftRight size={14} />
+          Transfer
         </FloatingSelectionBar.Button>
       )}
 

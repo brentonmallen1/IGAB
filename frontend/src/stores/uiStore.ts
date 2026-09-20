@@ -587,12 +587,19 @@ export const useUIStore = create<UIState>()(
         // As is folding the account header — someone who works from the
         // register should not refold it every visit.
         accountHeaderCollapsed: s.accountHeaderCollapsed,
+        // Register section folds, for the same reason — and with a sharper
+        // edge: 'pending' is the one section that *starts* folded, so without
+        // this, opening it lasts until the next reload and then hides the
+        // rows again. Stored as an array and rebuilt in merge(), like the
+        // other two Sets above.
+        collapsedSections: [...s.collapsedSections],
       }),
       merge: (persisted, current) => {
         const saved = (persisted ?? {}) as Partial<
-          Omit<UIState, 'collapsedSidebarGroups' | 'collapsedGroups'> & {
+          Omit<UIState, 'collapsedSidebarGroups' | 'collapsedGroups' | 'collapsedSections'> & {
             collapsedSidebarGroups: string[]
             collapsedGroups: string[]
+            collapsedSections: CollapsibleSection[]
           }
         >
         return {
@@ -602,6 +609,11 @@ export const useUIStore = create<UIState>()(
           budgetRowMode: normalizeBudgetRowMode(saved.budgetRowMode),
           collapsedSidebarGroups: new Set(saved.collapsedSidebarGroups ?? []),
           collapsedGroups: new Set(saved.collapsedGroups ?? []),
+          // `?? current.collapsedSections`, not `?? []`: an empty array is a
+          // real saved state (every section open), so it must not be spelled
+          // the same as "nothing saved yet", which has to fall back to the
+          // pending-folded default.
+          collapsedSections: new Set(saved.collapsedSections ?? current.collapsedSections),
         }
       },
     }

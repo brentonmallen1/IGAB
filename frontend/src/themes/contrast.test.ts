@@ -208,6 +208,10 @@ const SURFACES = [
   'card-bg',
   'input-bg',
   'header-bg',
+  // Toolbars, filter bars, sticky headers and every Collapsible header — a
+  // role token, and a surface text genuinely lands on, missing here only by
+  // omission.
+  'surface-chrome',
 ]
 /** surfaces a tinted badge or chip realistically sits on */
 const TINT_BASES = ['bg-primary', 'bg-secondary', 'bg-tertiary']
@@ -298,6 +302,42 @@ function checksFor(theme: string): Check[] {
       const surface = token(theme, base)
       if (text && wash && surface) {
         add(`${fg} on ${bg} over ${base}`, text, over(wash, surface), AA_TEXT)
+      }
+    }
+  }
+
+  // ── Register row states ──────────────────────────────────────────────
+  // Each cleared state paints its own ground and prints the whole row on it:
+  // payee, date, and the amount in --color-negative or --color-positive. The
+  // reconciled hatch is measured at the STRIPE rather than the average —
+  // half the row's pixels sit on the darker band, and text has to clear there.
+  //
+  // `unapproved` layers on any of these, so both halves are measured: a row
+  // from a sync is unapproved until someone approves it, which makes the
+  // modified half the common case rather than the edge case.
+  //
+  // Pending's ground was a 13% --text-primary wash and owed a per-theme
+  // exception list: a wash drags the ground toward the text, and 14 light
+  // variants landed between 4.04:1 and 4.49:1 on --text-muted. It is
+  // --surface-raised now, a real step on each palette's grey ladder, and all
+  // 40 clear 4.5:1 with no exception. Do not reintroduce a wash here without
+  // bringing the list back with it.
+  {
+    const canvas = token(theme, 'bg-primary')
+    const pendingGround = token(theme, 'row-pending-bg')
+    const muted = token(theme, 'text-muted')
+    const grounds: [string, RGBA | null][] = [
+      ['uncleared', canvas],
+      ['cleared', canvas],
+      // the hatch band, not the flat ground
+      ['reconciled', muted && canvas ? tint(muted, canvas, 10) : canvas],
+      ['pending', pendingGround && canvas ? over(pendingGround, canvas) : canvas],
+    ]
+    for (const [state, ground] of grounds) {
+      // reconciled gives its amount up to the row colour; unapproved takes it
+      // back, so the coloured amount is measured on every ground either way.
+      for (const fg of ['text-primary', 'text-muted', 'color-negative', 'color-positive']) {
+        add(`${fg} on a ${state} row`, token(theme, fg), ground, AA_TEXT)
       }
     }
   }
