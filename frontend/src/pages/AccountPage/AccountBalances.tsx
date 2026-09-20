@@ -10,10 +10,22 @@ import type { ReactNode } from 'react'
  * had no test of any kind, which is how the working balance came to be
  * rendered twice, at the same size, three lines apart, for a month.
  *
- * The rule it exists to hold: the working balance is stated ONCE. Which
- * spelling you get is the fold — folded it is the headline beside the account
- * name, open it is the `=` term of the equation. They are branches of one
- * conditional rather than two rules that have to be kept in step.
+ * Two rules it exists to hold:
+ *
+ *  1. The working balance is stated ONCE. Which spelling you get is the fold —
+ *     folded it is the headline beside the account name, open it is the `=`
+ *     term of the equation. Branches of one conditional, not two rules that
+ *     have to be kept in step.
+ *
+ *  2. The control does not move. It is the last thing on the header's top row
+ *     in BOTH states: after the balance when folded, after the pills when
+ *     open. It used to lead the figures, which put it on row one folded and
+ *     row two open — a control that changes rows when you use it reads as a
+ *     glitch, however correct it is.
+ *
+ * Returns a fragment, so the three parts are direct children of the header's
+ * flex row and the equation can take a full line of its own while the control
+ * stays up top.
  */
 export interface AccountBalancesProps {
   balance: number
@@ -48,30 +60,29 @@ export function AccountBalances({
   )
 
   return (
-    <div className={`account-page__balance${collapsed ? '' : ' account-page__balance--open'}`}>
-      {/* The triangle sits in the same place in both states, immediately
-          before the figures. Folded it wraps the headline too, so the target
-          is a balance rather than a 14px glyph. */}
+    <>
+      {collapsed && (
+        <div className="account-page__balance-headline">
+          <span className={`account-page__balance-value ${tone(balance)}`}>
+            {formatMoney(balance)}
+          </span>
+          <span className="account-page__balance-label">Working balance</span>
+        </div>
+      )}
       <button
         type="button"
         className="account-page__header-toggle"
         onClick={onToggle}
         aria-expanded={!collapsed}
         aria-controls={DETAIL_ID}
+        aria-label={collapsed ? 'Show account details' : 'Hide account details'}
         title={collapsed ? 'Show account details' : 'Hide account details'}
       >
-        {collapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
-        {collapsed && (
-          <>
-            <span className={`account-page__balance-value ${tone(balance)}`}>
-              {formatMoney(balance)}
-            </span>
-            <span className="account-page__balance-label">Working balance</span>
-          </>
-        )}
+        {collapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
       </button>
       {/* Mounted in both states so `aria-controls` always resolves — hidden by
-          class, never unmounted. */}
+          class, never unmounted. Open, it takes a full line of its own, which
+          is what keeps the control above it on the top row. */}
       <div
         id={DETAIL_ID}
         className={`account-page__balances ${collapsed ? 'account-page__balances--collapsed' : ''}`}
@@ -95,6 +106,6 @@ export function AccountBalances({
         <span className="account-page__balance-op">=</span>
         {figure(balance, 'Working balance', tone(balance), true)}
       </div>
-    </div>
+    </>
   )
 }

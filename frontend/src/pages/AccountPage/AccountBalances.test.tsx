@@ -70,10 +70,30 @@ describe('the working balance is stated once', () => {
   })
 })
 
-describe('the fold control', () => {
-  it.each([true, false])('is a triangle in the same place (collapsed=%s)', (collapsed) => {
-    const region = draw(collapsed).querySelector('.account-page__balance')!
-    expect(region.firstElementChild).toHaveClass('account-page__header-toggle')
+describe('the fold control does not move', () => {
+  it.each([true, false])('is the last thing before the equation (collapsed=%s)', (collapsed) => {
+    // The control used to lead the figures, which put it on the header's top
+    // row when folded and its second row when open — it changed rows when you
+    // pressed it, which reads as a glitch however correct it is. It is now
+    // always the last element before the equation, and the equation is the
+    // thing that takes a full line, so the control stays up top in both
+    // states. Geometry is measured in Chrome; what a test can hold is order.
+    const c = draw(collapsed)
+    const kids = [...c.firstElementChild!.parentElement!.children]
+    const toggle = c.querySelector('.account-page__header-toggle')!
+    const equation = c.querySelector(`#${DETAIL_ID}`)!
+    expect(kids.indexOf(toggle)).toBeLessThan(kids.indexOf(equation))
+    expect(equation.previousElementSibling).toBe(toggle)
+  })
+
+  it('carries only the chevron, so its width does not change with the state', () => {
+    // Folded it used to wrap the balance too, which made it a different shape
+    // in each state — the other half of why it read as jumping.
+    for (const collapsed of [true, false]) {
+      const c = draw(collapsed)
+      const toggle = c.querySelector('.account-page__header-toggle')!
+      expect(toggle.textContent).toBe('')
+    }
   })
 
   it.each([true, false])(
@@ -89,9 +109,9 @@ describe('the fold control', () => {
     }
   )
 
-  it('carries the balance when folded, so the target is not a 14px glyph', () => {
+  it('is named, since it is an icon with no text of its own', () => {
     draw(true)
-    expect(screen.getByRole('button')).toHaveTextContent('$8,243.24')
+    expect(screen.getByRole('button', { name: 'Show account details' })).toBeInTheDocument()
   })
 
   it('toggles', () => {
