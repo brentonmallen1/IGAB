@@ -32,8 +32,12 @@ export function GlobalShortcuts() {
   // ⌘Z / ⌘⇧Z. The rule itself lives in useUndoRedo, so the keys and the
   // header buttons can never come to mean different things.
   const { undo, redo } = useUndoRedo()
-  useShortcut(SHORTCUTS.undo.combo, undo)
-  useShortcut(SHORTCUTS.redo.combo, redo)
+  // `allowInCellEditors`: an assignment committed with Enter opens the next
+  // row's amount box, so focus is inside an input every time the user reaches
+  // for ⌘Z on the budget page. The editable-target guard swallowed it there,
+  // which is why undoing an assignment appeared not to work at all.
+  useShortcut(SHORTCUTS.undo.combo, undo, { allowInCellEditors: true })
+  useShortcut(SHORTCUTS.redo.combo, redo, { allowInCellEditors: true })
 
   if (!helpOpen) return null
   return <ShortcutHelp onClose={() => setHelpOpen(false)} />

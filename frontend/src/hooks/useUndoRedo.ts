@@ -9,6 +9,7 @@ import {
   performUndo,
   type UndoLatestResponse,
 } from '../api/changes'
+import { cancelCellEdit } from '../keyboard/cellEditor'
 import { useAppStore } from '../stores/appStore'
 import { actionTypeLabel, entityTypeLabel } from '../pages/ActivityPage/changeLabels'
 import { skippedNote } from '../utils/undoneMessage'
@@ -42,6 +43,10 @@ export function useUndoRedo() {
 
   const undo = useCallback(async () => {
     if (!budgetId || inFlight.current) return
+    // An open amount cell closes without committing first: it would otherwise
+    // sit over a figure the undo just moved and write its stale draft back on
+    // blur. See keyboard/cellEditor.
+    cancelCellEdit()
     inFlight.current = true
     try {
       const data = (await performUndo(qc, budgetId, 'latest')) as UndoLatestResponse
@@ -61,6 +66,7 @@ export function useUndoRedo() {
   // anything newer is live, so the toast explains the refusal.
   const redo = useCallback(async () => {
     if (!budgetId || inFlight.current) return
+    cancelCellEdit()
     inFlight.current = true
     try {
       await apiClient.post(`/${budgetId}/changes/redo`)

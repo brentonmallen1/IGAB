@@ -32,6 +32,7 @@ import { Link } from 'react-router-dom'
 import { TransactionsPeekModal } from '../TransactionsPeekModal/TransactionsPeekModal'
 import type { CardStatus } from '../../../types'
 import { balancesByCategory } from '../../../utils/categoryBalances'
+import { CELL_EDITOR_PROPS } from '../../../keyboard/cellEditor'
 import './CreditCardsSection.css'
 
 /**
@@ -578,6 +579,7 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
                     <span className="credit-cards__col--num" role="cell">
                       {card.category_id && editing === card.account_id ? (
                         <input
+                          {...CELL_EDITOR_PROPS}
                           className="credit-cards__assign"
                           autoFocus
                           inputMode="decimal"

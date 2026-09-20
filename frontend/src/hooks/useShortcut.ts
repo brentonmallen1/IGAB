@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { isCellEditor } from '../keyboard/cellEditor'
 
 export function isEditableTarget(): boolean {
   const active = document.activeElement
@@ -13,6 +14,13 @@ export function isEditableTarget(): boolean {
 interface ShortcutOptions {
   /** Fire even while an input/textarea/select/contentEditable has focus */
   allowInInputs?: boolean
+  /**
+   * Fire while a *cell* editor has focus — a one-keystroke amount box marked
+   * `data-cell-editor` (see keyboard/cellEditor). Only undo/redo want this:
+   * committing an assignment opens the next row's box, so a bare guard left
+   * ⌘Z permanently swallowed on the budget page.
+   */
+  allowInCellEditors?: boolean
   enabled?: boolean
 }
 
@@ -30,7 +38,7 @@ export function useShortcut(
 ) {
   const handlerRef = useRef(handler)
   handlerRef.current = handler
-  const { allowInInputs = false, enabled = true } = opts
+  const { allowInInputs = false, allowInCellEditors = false, enabled = true } = opts
 
   useEffect(() => {
     if (!enabled) return
@@ -42,7 +50,9 @@ export function useShortcut(
     const symbolKey = key.length === 1 && !/^[a-z0-9]$/.test(key)
 
     function onKeyDown(e: KeyboardEvent) {
-      if (!allowInInputs && isEditableTarget()) return
+      if (!allowInInputs && isEditableTarget()) {
+        if (!(allowInCellEditors && isCellEditor(document.activeElement))) return
+      }
       if (needMod !== (e.metaKey || e.ctrlKey)) return
       if (!symbolKey && needShift !== e.shiftKey) return
       if (needAlt !== e.altKey) return
@@ -53,5 +63,5 @@ export function useShortcut(
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [combo, allowInInputs, enabled])
+  }, [combo, allowInInputs, allowInCellEditors, enabled])
 }
