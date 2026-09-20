@@ -85,48 +85,39 @@ describe('selection outranks provisionality', () => {
 })
 
 describe('the row tokens', () => {
-  it('are derived, not authored per theme', () => {
-    // --row-hover-bg is written out in 40 theme files. These are mixes against
-    // --text-primary / --color-accent instead, so every palette gets them and
-    // a new theme needs no extra lines.
-    for (const token of ['--row-pending-bg', '--row-selected-bg', '--row-selected-hover-bg']) {
+  it('are derived or role tokens, never authored per theme', () => {
+    // --row-hover-bg is written out in 40 theme files. The selection pair are
+    // mixes against --color-accent and the pending ground is a surface role,
+    // so every palette gets them and a 41st theme needs no extra lines.
+    for (const token of ['--row-selected-bg', '--row-selected-hover-bg']) {
       expect(base).toMatch(new RegExp(`${token}:\\s*color-mix`))
     }
+    expect(base).toMatch(/--row-pending-bg:\s*var\(--surface-sunken\)/)
   })
 
-  it('tints pending with a hue, but never an alarming or a claimed one', () => {
-    // This used to require --text-primary, i.e. a neutral grey wash. That is
-    // the same grey the hover and the zebra are made of, so a pending row read
-    // as "slightly dimmer" rather than as a state and was findable only by its
-    // italics. It is --color-info now.
+  it('is a surface step, not a tint of the row', () => {
+    // This is the whole reason the row is legible. A tint composites a colour
+    // ON TOP of the row, dragging the ground toward the text and spending the
+    // text's contrast to buy colour — --color-negative already sits barely
+    // above 4.5:1 on a plain row in most themes, so the ceiling was 8%, and
+    // 8% of anything is a whisper. Mixing toward --text-inverse cleared AA at
+    // 15%, but AA is a floor, not a target: a row falling from 13:1 to 4.6:1
+    // passes the suite and is visibly harder to read. It was.
     //
-    // What did NOT change is what stays forbidden, and the reasons are
-    // different for each: warning/negative would say a pending row is a
-    // problem, and it is not — it is money that has not moved yet. --accent is
-    // barred for a harder reason: --row-selected-bg is mixed from it, so an
-    // accent-washed pending row would be mistakable for a selected one.
+    // Rows sit on --surface-raised; this is the ladder step below them.
+    // Measured over all 40 variants: 26-36 units of colour away from the row
+    // ground, zero AA failures, worst case 5.30:1, at most 1.5 of readability
+    // given up. Adding hue on top is worse on BOTH axes in every theme.
     const declaration = base.match(/^\s*--row-pending-bg:\s*(.+);$/m)?.[1] ?? ''
-    expect(declaration).toContain('--color-info')
-    expect(declaration).not.toMatch(/warning|negative|positive|accent/)
+    expect(declaration).not.toContain('color-mix')
+    expect(declaration).not.toMatch(/warning|negative|positive|accent|info/)
   })
 
-  it('mixes away from the text, not on top of it', () => {
-    // This is the whole reason the row is visible at all. A translucent wash
-    // composites a mid-tone colour ON TOP of the row, dragging the ground
-    // toward the text and spending the text's contrast to buy colour — and
-    // --color-negative already sits barely above 4.5:1 on a plain row in most
-    // themes, so the ceiling was 8%. Every hue capped the same way (info 8%,
-    // warning 7%, tag-teal 6%): the limit was the direction, not the hue.
-    //
-    // Mixing toward --text-inverse moves the ground AWAY from the text, so
-    // contrast RISES as the colour strengthens. 18% before any theme
-    // complains, and roughly double the visible difference.
-    //
-    // The second operand must stay --text-inverse. Swap it for `transparent`
-    // and this is a wash again, at a strength no theme can carry.
+  it('is not the sidebar ground, however close it looks', () => {
+    // The sidebar carries its own --sidebar-text-* tokens, tuned for it.
+    // Register text is not: painted on --sidebar-bg it fails AA in 19 of the
+    // 40 variants, one at 1.00:1.
     const declaration = base.match(/^\s*--row-pending-bg:\s*(.+);$/m)?.[1] ?? ''
-    expect(declaration).toMatch(/var\(--color-info\) 15%/)
-    expect(declaration).toContain('var(--text-inverse)')
-    expect(declaration).not.toContain('transparent')
+    expect(declaration).not.toContain('sidebar')
   })
 })

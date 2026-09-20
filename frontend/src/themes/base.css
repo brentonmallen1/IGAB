@@ -257,27 +257,33 @@
      against --color-accent honours each palette's own accent.
 
      --row-pending-bg is the ground under a row the bank has authorised but
-     not posted. It is NOT --color-warning and NOT --color-negative: pending
-     is not a problem, it is money that has not moved yet.
+     not posted, and it is a SURFACE ROLE rather than a tint of the row.
 
-     It is also not a translucent wash, which is what it used to be, and that
-     is the whole reason it was invisible. A wash composites a mid-tone colour
-     ON TOP of the row, which drags the ground TOWARD the text and spends the
-     text's contrast to buy colour: --color-negative already sits barely above
-     4.5:1 on a plain row in most themes, so the ceiling was 8% — and 8% of
-     anything is a whisper. Every hue was tried and every hue capped the same
-     way (info 8%, warning 7%, tag-teal 6%), because the limit was never the
-     hue, it was the direction.
+     Both tints were tried and both failed the same way. A translucent wash
+     (--text-primary 6%, then --color-info) composites a colour ON TOP of the
+     row, which drags the ground toward the text and spends the text's
+     contrast to buy colour: --color-negative already sits barely above 4.5:1
+     on a plain row in most themes, so the ceiling was 8%, and 8% of anything
+     is a whisper. Mixing toward --text-inverse instead cleared AA at 15% —
+     but AA is a floor, not a target, and a row that falls from 13:1 to 4.6:1
+     passes the suite while being visibly harder to read. It was.
 
-     Mixing toward --text-inverse instead moves the ground AWAY from the text,
-     so contrast goes UP as the colour gets stronger. That buys 18% before any
-     theme complains and roughly doubles the visible difference. --text-inverse
-     is per-palette and already sits on the far side from --text-primary in
-     every one of the 40 variants, so a dark theme darkens and a light theme
-     lightens with no per-theme value to author and nothing for a 41st theme
-     to remember. 15% leaves margin under the 18% floor; contrast.test.ts
-     measures every colour a row prints in over this ground. */
-  --row-pending-bg: color-mix(in srgb, var(--color-info) 15%, var(--text-inverse));
+     Register rows sit on --surface-raised, so the answer is the step of the
+     ladder below them: the theme's own canvas, one 8-pt lightness move that
+     every palette already tunes and that contrast.test.ts already holds text
+     against. Measured over all 40 variants it is 26-36 units of colour away
+     from the row ground with ZERO AA failures, a worst case of 5.30:1, and at
+     most 1.5 of readability given up. Adding hue on top of it is worse on
+     both axes at once, in every theme, at every strength tried: +10% info
+     drops the worst case to 4.51 AND cuts the minimum colour distance from 26
+     to 2, because in some palettes the hue pulls the ground back toward the
+     row it is trying to differ from.
+
+     Not --sidebar-bg, which is the nearest thing to this by eye: the sidebar
+     carries its own --sidebar-text-* tokens tuned for it, and register text is
+     not. Painted with register text, it fails AA in 19 of the 40 variants,
+     one of them at 1.00:1. */
+  --row-pending-bg: var(--surface-sunken);
   --row-selected-bg: color-mix(in srgb, var(--color-accent) 12%, transparent);
   --row-selected-hover-bg: color-mix(in srgb, var(--color-accent) 18%, transparent);
 
