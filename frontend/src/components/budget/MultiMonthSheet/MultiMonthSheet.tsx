@@ -9,6 +9,7 @@ import { useFormatters } from '../../../hooks/useFormatters'
 import { addMonths } from '../../../utils/dates'
 import { parseAssignmentCommit } from '../../../utils/amountExpression'
 import { AmountInput } from '../../common/AmountInput/AmountInput'
+import { CELL_EDITOR_PROPS } from '../../../keyboard/cellEditor'
 import { Modal } from '../../common/Modal/Modal'
 import type { BudgetMonth, Category, CategoryBalance } from '../../../types'
 import { renderableGroups } from '../budgetGroups'
@@ -72,6 +73,7 @@ const AssignCell = memo(function AssignCell({
     return (
       <AmountInput
         ref={inputRef}
+        {...CELL_EDITOR_PROPS}
         className="mm-sheet__assign-input"
         value={value}
         onValueChange={setValue}

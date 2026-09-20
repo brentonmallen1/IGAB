@@ -21,6 +21,7 @@ import { TransactionsPeekModal } from '../TransactionsPeekModal/TransactionsPeek
 import { availableTone } from '../../../utils/categoryBalances'
 import { parseAssignmentCommit } from '../../../utils/amountExpression'
 import { AmountInput } from '../../common/AmountInput/AmountInput'
+import { CELL_EDITOR_PROPS } from '../../../keyboard/cellEditor'
 import { today } from '../../../utils/dates'
 import { useFormatters } from '../../../hooks/useFormatters'
 import type { DragReorder } from '../../../hooks/useDragReorder'
@@ -444,6 +445,7 @@ export const CategoryRow = memo(function CategoryRow({
           {isEditing ? (
             <AmountInput
               ref={inputRef}
+              {...CELL_EDITOR_PROPS}
               className="category-row__input"
               value={editValue}
               onValueChange={setEditValue}

@@ -64,6 +64,7 @@ from igab.repositories.txn_filters import (
     PLAIN_DEPOSIT_ROW,
     POSTED,
     PROVISIONALLY_LINKED,
+    REGISTER_RANK,
     UNCLAIMED_CARD_ROW,
     UNPAIRED_TRANSFER_LEG,
     USER_ENTERED,
@@ -244,17 +245,11 @@ class TransactionRepository(BaseRepository[Transaction]):
                 .exists()
             )
             q = q.where(attachment_exists if has_attachment else ~attachment_exists)
-        priority_rank = case(
-            (Transaction.cleared == "pending", 0),
-            (NEEDS_CATEGORY, 1),
-            (Transaction.cleared == "uncleared", 2),
-            else_=3,
-        )
         # id as final tiebreaker: bulk imports give thousands of rows identical
         # created_at, and offset pagination over a non-unique order silently
         # skips/duplicates rows across pages.
         q = q.order_by(
-            priority_rank,
+            REGISTER_RANK,
             Transaction.date.desc(),
             Transaction.created_at.desc(),
             Transaction.id.desc(),
@@ -365,17 +360,12 @@ class TransactionRepository(BaseRepository[Transaction]):
             rows_q = rows_q.outerjoin(Payee, Transaction.payee_id == Payee.id)
             totals_q = totals_q.outerjoin(Payee, Transaction.payee_id == Payee.id)
         if order == "register":
-            priority_rank = case(
-                (Transaction.cleared == "pending", 0),
-                # Rows genuinely missing a category — off-budget accounts don't
-                # use categories, and a transfer between two on-budget accounts
-                # never needed one, linked or not.
-                (NEEDS_CATEGORY, 1),
-                (Transaction.cleared == "uncleared", 2),
-                else_=3,
-            )
+            # The ladder lives in txn_filters (REGISTER_LADDER): pending,
+            # unfiled, unapproved, uncleared, cleared, reconciled. Paging in
+            # that order is what lets the client's loaded pages be re-sorted
+            # the same way without a row changing place as you scroll.
             ordering = (
-                priority_rank,
+                REGISTER_RANK,
                 Transaction.date.desc(),
                 Transaction.created_at.desc(),
                 Transaction.id.desc(),
