@@ -76,7 +76,10 @@ describe('unapproved replaces, it does not layer', () => {
     // reset here goes back to layering without anything saying so.
     const mod = at('.transaction-row.unapproved')
     expect(mod, 'cleared sets font-weight: 600').toContain('font-weight: 400')
-    expect(mod, 'pending sets background-color').toContain('background-color: transparent')
+    // Pending is NOT in this list: it sets --row-ground, and the ground is
+    // where the row lives rather than how loudly it is stated. An unapproved
+    // row inside the Pending section keeps the section's slab.
+    expect(mod, 'pending keeps its ground').not.toContain('background-color')
     expect(mod, 'reconciled sets background-image').toContain('background-image: none')
     expect(mod, 'reconciled sets color').toContain('color: var(--text-primary)')
   })

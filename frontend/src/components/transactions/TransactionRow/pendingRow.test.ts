@@ -29,9 +29,18 @@ function rule(source: string, selector: string): string {
 
 describe('the pending row', () => {
   it('has a ground of its own', () => {
-    expect(rule(css, '.transaction-row.pending')).toContain(
-      'background-color: var(--row-pending-bg)'
-    )
+    // Through the shared channel, never background-color directly — that is
+    // what keeps selection, hover and `unapproved` from needing rules of
+    // their own to beat it.
+    expect(rule(css, '.transaction-row.pending')).toContain('--row-ground: var(--row-pending-bg)')
+  })
+
+  it('keeps that ground when the row is also unapproved', () => {
+    // The one pending row in a real register is usually a fresh sync row,
+    // which is unapproved too. `.unapproved` replaces emphasis and used to
+    // erase the ground with it, so the section's one row was the only row in
+    // it not sitting on the slab.
+    expect(rule(css, '.transaction-row.unapproved')).not.toContain('background-color')
   })
 
   it('is no longer dimmed, so its text keeps full contrast', () => {
@@ -49,30 +58,23 @@ describe('the pending row', () => {
 })
 
 describe('selection outranks provisionality', () => {
-  // `.transaction-row.pending` is two classes and `.transaction-row--selected`
-  // is one, so without these the tint wins and a selected pending row stops
-  // looking selected.
-  it('a selected pending row still reads as selected', () => {
-    expect(rule(css, '.transaction-row--selected.pending')).toContain(
-      'background-color: var(--row-selected-bg)'
-    )
+  // This used to need three rules of its own: `.transaction-row.pending` set
+  // background-color directly, so at two classes it beat the one-class
+  // selection and hover rules, and each had to be restated as `.a.pending`.
+  // Pending sets --row-ground instead, so nothing ties and source order
+  // decides — and the restatements are gone rather than kept in step.
+  it('states the selection colours exactly once each', () => {
+    // --row-hover-bg is deliberately not here: several other controls in this
+    // file paint with it, and this is about the row-state rules only.
+    for (const token of ['--row-selected-bg', '--row-selected-hover-bg']) {
+      const uses = css.match(new RegExp(`background-color:\\s*var\\(${token}\\)`, 'g')) ?? []
+      expect(uses, `${token} is used by exactly one rule`).toHaveLength(1)
+    }
   })
 
-  it('hover still answers on a pending row, selected or not', () => {
-    expect(rule(css, '.transaction-row.pending:hover')).toContain('var(--row-hover-bg)')
-    expect(rule(css, '.transaction-row--selected.pending:hover')).toContain(
-      'var(--row-selected-hover-bg)'
-    )
-  })
-
-  it('states the selection colours once, as tokens', () => {
-    // Three rules need them — selected, selected:hover, and the pending
-    // override. Literal recipes repeated across three rules is how they
-    // drift; the highlight-fade animation is a different effect and keeps
-    // its own values.
-    expect(rule(css, '.transaction-row--selected')).toContain('var(--row-selected-bg)')
-    expect(rule(css, '.transaction-row--selected:hover')).toContain('var(--row-selected-hover-bg)')
-    expect(rule(css, '.transaction-row--selected.pending')).toContain('var(--row-selected-bg)')
+  it('has no pending-specific selection or hover rule left', () => {
+    expect(css).not.toContain('.transaction-row--selected.pending')
+    expect(css).not.toContain('.transaction-row.pending:hover')
   })
 })
 

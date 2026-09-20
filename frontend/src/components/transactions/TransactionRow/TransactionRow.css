@@ -15,6 +15,13 @@
      Transparent until a state claims it, so an ordinary row wears no edge. */
   --row-marker: transparent;
   box-shadow: inset 2px 0 0 var(--row-marker);
+  /* The row ground, on the same one-channel principle. A state says WHERE the
+     row lives by setting this, never by setting background-color itself —
+     which is what lets selection and hover (one class each, further down)
+     win on source order alone, and what lets `unapproved` replace a row's
+     emphasis without also erasing where it sits. */
+  --row-ground: transparent;
+  background-color: var(--row-ground);
 }
 
 /* All-accounts register: extra account column after the date. Desktop only,
@@ -286,7 +293,7 @@
 }
 
 .transaction-row.reconciled:hover {
-  background-color: transparent;
+  background-color: var(--row-ground);
 }
 
 /* Pending: the bank has authorised it, nothing has moved. It sits on the
@@ -296,7 +303,7 @@
    first place). Italic stays: a colour-only signal is not a signal for
    everyone. */
 .transaction-row.pending {
-  background-color: var(--row-pending-bg);
+  --row-ground: var(--row-pending-bg);
   font-style: italic;
 }
 
@@ -315,8 +322,10 @@
    classes, so specificity ties and source order is the whole decision. */
 .transaction-row.unapproved {
   --row-marker: var(--color-accent);
-  /* undoes .pending's ground */
-  background-color: transparent;
+  /* NOT the ground: --row-ground survives on purpose. A pending row that is
+     also unapproved still lives in the Pending section, and the section's
+     slab is where it lives, not how loudly it is stated. This rule replaces
+     EMPHASIS — weight, hatch, text colour — and nothing else. */
   /* undoes .reconciled's hatch */
   background-image: none;
   /* undoes .reconciled's muted text */
@@ -336,23 +345,11 @@
   color: var(--color-positive);
 }
 
-/* Selection and hover outrank provisionality — a selected row must read as
-   selected whatever its cleared state. Spelled out because `.a.b` beats `.a`,
-   so the tint above would otherwise win against both rules. Same tokens they
-   use; no second recipe for either colour. */
-.transaction-row--selected.pending {
-  background-color: var(--row-selected-bg);
-}
-
-@media (hover: hover) {
-  .transaction-row.pending:hover {
-    background-color: var(--row-hover-bg);
-  }
-
-  .transaction-row--selected.pending:hover {
-    background-color: var(--row-selected-hover-bg);
-  }
-}
+/* Selection and hover outrank provisionality, and they need no rule of their
+   own to do it. They set background-color directly at one class and pending
+   only sets --row-ground, so there is nothing left to tie on: source order
+   settles it. These used to be three copies of the selection and hover
+   recipes, existing purely because `.a.b` beat `.a`. */
 
 .txn-cleared-btn--pending {
   display: flex;
