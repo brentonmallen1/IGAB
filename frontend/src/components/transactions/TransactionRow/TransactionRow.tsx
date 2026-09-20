@@ -460,7 +460,7 @@ export const TransactionRow = memo(function TransactionRow({
   return (
     <div
       data-txn-id={txn.id}
-      className={`transaction-row ${isSelected ? 'transaction-row--selected' : ''} ${anyTxnSelected ? 'transaction-row--any-selected' : ''} ${!txn.approved ? 'unapproved' : ''} ${isAIReview ? 'transaction-row--ai-review' : ''} ${isReconciled ? 'reconciled' : ''} ${isPending ? 'pending' : ''} ${highlighted ? 'transaction-row--highlighted' : ''}`}
+      className={`transaction-row ${isSelected ? 'transaction-row--selected' : ''} ${anyTxnSelected ? 'transaction-row--any-selected' : ''} ${!txn.approved ? 'unapproved' : ''} ${isAIReview ? 'transaction-row--ai-review' : ''} ${isReconciled ? 'reconciled' : ''} ${isPending ? 'pending' : ''} ${txn.cleared === 'cleared' ? 'cleared' : ''} ${txn.cleared === 'uncleared' ? 'uncleared' : ''} ${highlighted ? 'transaction-row--highlighted' : ''}`}
       role="row"
       onDoubleClick={() => !isMobile && onEdit(txn)}
       onContextMenu={handleContextMenu}

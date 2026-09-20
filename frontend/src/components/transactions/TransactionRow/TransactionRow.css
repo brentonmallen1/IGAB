@@ -9,6 +9,12 @@
   transition: background-color var(--transition-fast);
   align-items: center;
   min-height: 36px;
+  /* The row marker: one inset edge down the left, coloured by whichever state
+     claims it. ONE declaration, one property, one channel — a second rule
+     reaching for box-shadow is not a second marker, it is the first deleted.
+     Transparent until a state claims it, so an ordinary row wears no edge. */
+  --row-marker: transparent;
+  box-shadow: inset 2px 0 0 var(--row-marker);
 }
 
 /* All-accounts register: extra account column after the date. Desktop only,
@@ -59,11 +65,11 @@
 }
 
 /* An AI row waiting for review, readable across the table rather than by
-   inspecting a 12px glyph. An inset shadow rather than a border, so the grid
-   columns do not shift by 2px on half the rows — and it clears on approve with
-   the sparkle, from the same flag: this marks work, not provenance. */
-.transaction-row--ai-review {
-  box-shadow: inset 2px 0 0 var(--color-accent);
+   inspecting a 12px glyph — it clears on approve with the sparkle, from the
+   same flag: this marks work, not provenance. Claims the shared marker rather
+   than setting box-shadow itself. */
+.transaction-row.transaction-row--ai-review {
+  --row-marker: var(--color-accent);
 }
 
 .transaction-row--highlighted {
@@ -86,10 +92,15 @@
   }
 }
 
-.transaction-row.unapproved {
-  opacity: 0.65;
-  font-style: italic;
-}
+/* Unapproved no longer fades. It used to be `opacity: 0.65`, which composites
+   the text toward the ground and put the register's muted text and its
+   coloured amounts below AA in 40 of 40 themes — a ratio measured on a token
+   is not the ratio a faded row renders at. The marker and the italic carry it
+   instead, and neither costs any contrast.
+
+   The rule itself lives further down the file, below `.reconciled` and
+   `.pending`: it is a MODIFIER that layers on whichever cleared state the row
+   is in, and at equal specificity source order is what makes it win. */
 
 .txn-text-clip {
   overflow: hidden;
@@ -235,8 +246,43 @@
   color: var(--color-positive);
 }
 
+/* ── Cleared states ────────────────────────────────────────────────────────
+   Four states, and each is told apart by something that costs no contrast
+   where it can be: weight, a marker, a hatch, italics. Only pending spends
+   any, and what it spends is recorded in contrast.test.ts.
+
+   Order matters below and is load-bearing: `.unapproved` is a modifier that
+   layers on any of these, at the same specificity, so it must come last. */
+
+/* Uncleared: nothing has confirmed this row yet. A hairline marker in the
+   neutral edge colour — present, unalarming, and free. */
+.transaction-row.uncleared {
+  --row-marker: var(--edge-strong);
+}
+
+/* Cleared: the bank agreed. Semibold, which reads as settled and, unlike every
+   colour lever, makes the text easier to read rather than harder. */
+.transaction-row.cleared {
+  font-weight: 600;
+}
+
+/* Reconciled: closed and checked, so it recedes — but by texture and by the
+   amount giving up its red and green, not by dimming. The hatch distinguishes
+   by PATTERN rather than luminance, which is the one signal left once every
+   grey is spoken for. 10% is measured at the stripe, not the average: text has
+   to clear AA on the darker band. */
 .transaction-row.reconciled {
   color: var(--text-muted);
+  background-image: repeating-linear-gradient(
+    45deg,
+    color-mix(in srgb, var(--text-muted) 10%, transparent) 0 2px,
+    transparent 2px 7px
+  );
+}
+
+.transaction-row.reconciled .txn-outflow,
+.transaction-row.reconciled .txn-inflow {
+  color: inherit;
 }
 
 .transaction-row.reconciled:hover {
@@ -248,9 +294,47 @@
    the two were pixel-identical, and fading the text is what made a run of
    pending rows hard to pick out of a long register in the first place.
    Italic stays: a colour-only signal is not a signal for everyone. */
+/* Pending: the bank has authorised it, nothing has moved. Its own ground and
+   italics. This is the one state that spends contrast — see --row-pending-bg. */
 .transaction-row.pending {
   background-color: var(--row-pending-bg);
   font-style: italic;
+}
+
+/* ── Unapproved ────────────────────────────────────────────────────────────
+   Nobody has looked at this row yet, and that outranks whatever the bank
+   thinks of it: an unapproved row wears THIS and nothing else. A row that is
+   both unapproved and cleared is not bold — "the bank agreed" is not the
+   thing being said while the row is still waiting on a person.
+
+   So this rule replaces rather than adds, and every property any state above
+   sets has to be named here to be undone. Adding a property to a state above
+   without adding its reset here is the way this silently goes back to
+   layering — rowStates.test.ts checks the pairing.
+
+   It must also stay BELOW every state it overrides: each of these is two
+   classes, so specificity ties and source order is the whole decision. */
+.transaction-row.unapproved {
+  --row-marker: var(--color-accent);
+  /* undoes .pending's ground */
+  background-color: transparent;
+  /* undoes .reconciled's hatch */
+  background-image: none;
+  /* undoes .reconciled's muted text */
+  color: var(--text-primary);
+  /* undoes .cleared's semibold */
+  font-weight: 400;
+  font-style: italic;
+}
+
+/* And takes the amount's colour back from .reconciled: the figure is the thing
+   waiting to be checked, so it is stated in full. */
+.transaction-row.unapproved .txn-outflow {
+  color: var(--color-negative);
+}
+
+.transaction-row.unapproved .txn-inflow {
+  color: var(--color-positive);
 }
 
 /* Selection and hover outrank provisionality — a selected row must read as
