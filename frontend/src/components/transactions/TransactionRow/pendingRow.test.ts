@@ -77,11 +77,22 @@ describe('selection outranks provisionality', () => {
 })
 
 describe('the row tokens', () => {
-  it('are derived, not authored per theme', () => {
+  it('lifts a pending row onto the raised surface rather than washing it', () => {
+    // A wash composites --text-primary over the row and drags the ground
+    // toward the text, which is what cost 14 light variants their AA on
+    // --text-muted and bought a per-theme exception list in contrast.test.ts.
+    // --surface-raised is a real step on each palette's grey ladder: lighter
+    // than the canvas in dark themes and in light ones alike, and every
+    // pairing on it is one contrast.test.ts already holds through
+    // `bg-secondary`.
+    expect(base).toMatch(/--row-pending-bg:\s*var\(--surface-raised\);/)
+  })
+
+  it('keeps the selection pair derived, not authored per theme', () => {
     // --row-hover-bg is written out in 40 theme files. These are mixes against
-    // --text-primary / --color-accent instead, so every palette gets them and
-    // a new theme needs no extra lines.
-    for (const token of ['--row-pending-bg', '--row-selected-bg', '--row-selected-hover-bg']) {
+    // --color-accent instead, so every palette highlights in its own accent
+    // and a new theme needs no extra lines.
+    for (const token of ['--row-selected-bg', '--row-selected-hover-bg']) {
       expect(base).toMatch(new RegExp(`${token}:\\s*color-mix`))
     }
   })
@@ -90,7 +101,6 @@ describe('the row tokens', () => {
     // Pending is not a warning: it is money that has not moved yet, and this
     // repo reserves status colour for state that asks something of the user.
     const declaration = base.match(/^\s*--row-pending-bg:\s*(.+);$/m)?.[1] ?? ''
-    expect(declaration).toContain('--text-primary')
     expect(declaration).not.toMatch(/warning|negative|positive|accent/)
   })
 })

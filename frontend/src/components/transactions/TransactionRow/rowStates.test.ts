@@ -48,13 +48,15 @@ describe('each state owns a signal', () => {
     ).toContain('color: inherit')
   })
 
-  it('pending is the one state that spends contrast, and it is recorded', () => {
+  it('pending lifts onto a surface instead of spending contrast', () => {
     expect(at('.transaction-row.pending')).toContain('var(--row-pending-bg)')
-    expect(BASE).toMatch(/--row-pending-bg:\s*color-mix\(in srgb, var\(--text-primary\) 13%/)
-    // The cost is not silent: every theme that drops below AA is named, with
-    // the floor it measures today, in contrast.test.ts.
+    // It was a 13% --text-primary wash, which dragged the ground toward the
+    // text and put --text-muted below AA in 14 light variants — bought off
+    // with a named per-theme exception list. A surface role costs nothing, so
+    // the list is gone and every theme owes the full 4.5:1 again.
+    expect(BASE).toMatch(/--row-pending-bg:\s*var\(--surface-raised\);/)
     const contrast = readFileSync(join(HERE, '../../../themes/contrast.test.ts'), 'utf8')
-    expect(contrast).toContain('ROW_STATE_AA_EXCEPTIONS')
+    expect(contrast).not.toContain('ROW_STATE_AA_EXCEPTIONS')
   })
 })
 

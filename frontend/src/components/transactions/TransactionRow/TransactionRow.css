@@ -289,13 +289,12 @@
   background-color: transparent;
 }
 
-/* Pending: the bank has authorised it, nothing has moved. It gets its own
-   ground now rather than the dimming it used to share with `unapproved` —
-   the two were pixel-identical, and fading the text is what made a run of
-   pending rows hard to pick out of a long register in the first place.
-   Italic stays: a colour-only signal is not a signal for everyone. */
-/* Pending: the bank has authorised it, nothing has moved. Its own ground and
-   italics. This is the one state that spends contrast — see --row-pending-bg. */
+/* Pending: the bank has authorised it, nothing has moved. It sits on the
+   RAISED surface — lifted off the register's canvas rather than dimmed, which
+   is what it used to be (`opacity`, pixel-identical to `unapproved`, and
+   fading the text is what made a run of pending rows blur together in the
+   first place). Italic stays: a colour-only signal is not a signal for
+   everyone. */
 .transaction-row.pending {
   background-color: var(--row-pending-bg);
   font-style: italic;

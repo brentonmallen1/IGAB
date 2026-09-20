@@ -224,50 +224,10 @@ interface Check {
   min: number
 }
 
-/**
- * Register row states that do not reach AA, by deliberate design decision.
- *
- * `--row-pending-bg` is a 13% --text-primary wash. A wash composites a
- * mid-tone over the row, dragging the ground toward the text, so it spends the
- * row's contrast to buy colour — and in the light themes, whose canvas is near
- * white, darkening it squeezes everything printed on it. At 13% the weakest
- * pairing in each variant below lands between 4.04:1 and 4.49:1.
- *
- * The weakest link is --text-muted, not the amount: it is the status glyph and
- * the attachment button, and it starts closer to the floor than the coloured
- * figures do. Worth naming because the tuning was done against the amount.
- *
- * 10% would clear 36 of 40 and 8% all 40. 13% was chosen anyway, with the cost
- * known and the register's distinctness bought with it.
- *
- * This is a RATCHET, not a waiver. The floor per theme is what it measures
- * today: a change that makes any listed theme worse fails, and so does adding
- * a theme to the list without editing this file. Every theme not listed still
- * owes the full 4.5:1.
- */
-const ROW_STATE_AA_EXCEPTIONS: Record<string, number | undefined> = {
-  'bauhaus-light': 4.04,
-  'blueprint-light': 4.15,
-  'cozy-light': 4.31,
-  'desert-light': 4.32,
-  'eighties-light': 4.19,
-  'eighties-pop-light': 4.18,
-  'eink-light': 4.1,
-  'kodachrome-light': 4.23,
-  light: 4.16,
-  'nineties-light': 4.3,
-  'paper-light': 4.24,
-  'rose-pine-moon-dawn': 4.49,
-  'synthwave-light': 4.19,
-  'vapor-light': 4.18,
-}
-
 function checksFor(theme: string): Check[] {
   const out: Check[] = []
-  const add = (label: string, fg: RGBA | null, bg: RGBA | null, min: number, floor?: number) => {
-    // `floor` lowers the bar for a listed exception — and only to exactly what
-    // that theme measures today, so the gap can never widen unnoticed.
-    if (fg && bg) out.push({ label, ratio: contrast(fg, bg), min: floor ?? min })
+  const add = (label: string, fg: RGBA | null, bg: RGBA | null, min: number) => {
+    if (fg && bg) out.push({ label, ratio: contrast(fg, bg), min })
   }
 
   // body and semantic text, on every surface it can land on.
@@ -355,6 +315,13 @@ function checksFor(theme: string): Check[] {
   // `unapproved` layers on any of these, so both halves are measured: a row
   // from a sync is unapproved until someone approves it, which makes the
   // modified half the common case rather than the edge case.
+  //
+  // Pending's ground was a 13% --text-primary wash and owed a per-theme
+  // exception list: a wash drags the ground toward the text, and 14 light
+  // variants landed between 4.04:1 and 4.49:1 on --text-muted. It is
+  // --surface-raised now, a real step on each palette's grey ladder, and all
+  // 40 clear 4.5:1 with no exception. Do not reintroduce a wash here without
+  // bringing the list back with it.
   {
     const canvas = token(theme, 'bg-primary')
     const pendingGround = token(theme, 'row-pending-bg')
@@ -370,13 +337,7 @@ function checksFor(theme: string): Check[] {
       // reconciled gives its amount up to the row colour; unapproved takes it
       // back, so the coloured amount is measured on every ground either way.
       for (const fg of ['text-primary', 'text-muted', 'color-negative', 'color-positive']) {
-        add(
-          `${fg} on a ${state} row`,
-          token(theme, fg),
-          ground,
-          AA_TEXT,
-          ROW_STATE_AA_EXCEPTIONS[theme]
-        )
+        add(`${fg} on a ${state} row`, token(theme, fg), ground, AA_TEXT)
       }
     }
   }

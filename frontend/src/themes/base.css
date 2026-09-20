@@ -251,25 +251,19 @@
      all 19 themes with no per-theme value. */
   --press-scrim: color-mix(in srgb, var(--text-primary) 10%, transparent);
 
-  /* Register row states. Derived the same way as --press-scrim rather than
-     authored per theme (--row-hover-bg is, in 40 files): a mix against
-     --text-primary lightens a dark theme and darkens a light one, and a mix
-     against --color-accent honours each palette's own accent.
+  /* Register row states, stated once here rather than authored per theme
+     (--row-hover-bg is, in 40 files). The selection pair is a mix against
+     --color-accent, so every palette highlights in its own accent.
 
      --row-pending-bg is the ground under a row the bank has authorised but
-     not posted: a wash of --text-primary over whatever the row sits on.
-
-     13% is a deliberate product decision and it does not clear AA everywhere.
-     A wash composites a mid-tone over the row, dragging the ground toward the
-     text, so it spends the amount's contrast to buy colour — and
-     --color-negative/--color-positive already sit barely above 4.5:1 on a
-     plain row in the light themes. At 13% the amount lands between 4.10:1 and
-     4.43:1 in the 13 light variants named in ROW_STATE_AA_EXCEPTIONS in
-     contrast.test.ts. 10% would clear 36 of 40; nothing clears all 40 at this
-     strength. The exception is listed, bounded and pinned: it may not grow and
-     no listed theme may get worse.
+     not posted. It is the RAISED surface, not a wash: a wash composites a
+     mid-tone over the row and drags the ground toward the text, which cost
+     the amount its contrast in 14 light variants. --surface-raised is a real
+     step on each theme's own grey ladder, so the row lifts off the canvas and
+     every pairing on it is one contrast.test.ts already holds to AA through
+     `bg-secondary` in SURFACES.
   */
-  --row-pending-bg: color-mix(in srgb, var(--text-primary) 13%, transparent);
+  --row-pending-bg: var(--surface-raised);
   --row-selected-bg: color-mix(in srgb, var(--color-accent) 12%, transparent);
   --row-selected-hover-bg: color-mix(in srgb, var(--color-accent) 18%, transparent);
 

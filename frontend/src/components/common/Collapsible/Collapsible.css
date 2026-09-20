@@ -35,8 +35,8 @@
 .collapsible__count {
   margin-left: var(--spacing-xs);
   padding: 1px 6px;
-  background-color: var(--surface-sunken);
-  border: 1px solid var(--edge);
+  background-color: transparent;
+  border: 1px solid var(--color-accent);
   border-radius: 10px;
   font-size: var(--font-size-xs);
   color: var(--text-muted);
