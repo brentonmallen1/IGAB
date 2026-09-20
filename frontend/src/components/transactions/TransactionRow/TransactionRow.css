@@ -239,20 +239,6 @@
   background-color: transparent;
 }
 
-/* Pending: the bank has authorised it, nothing has moved. It gets its own
-   ground now rather than the dimming it used to share with `unapproved` —
-   the two were pixel-identical, and fading the text is what made a run of
-   pending rows hard to pick out of a long register in the first place.
-   Italic stays: a colour-only signal is not a signal for everyone. */
-/* The wash alone cannot get louder. --color-negative already sits barely above
-   4.5:1 on the plain row in a majority of themes, so any tint over it eats the
-   margin: at 10% the amount fails AA in two themes, at 12% in ten, at 14% in
-   thirty-seven. 8% is the ceiling, measured rather than guessed, and pinned by
-   contrast.test.ts over all three grounds a row can sit on.
-
-   So the hue that makes a pending row findable goes into the marker above,
-   where it carries no text and costs no contrast at all: full-strength
-   --color-info where the ground can only be a whisper of it. */
 /* ── The row marker ───────────────────────────────────────────────────────
    One inset edge down the left of a row, coloured by whichever state claims
    it. ONE declaration, one property, one channel, declared once on
@@ -264,52 +250,42 @@
    the left of the register was immediately the wrong answer: with the section
    expanded it drew a rule beside every row under a header that already had
    one, and read as a box round the section rather than a mark on a row. The
-   ground carries pending now (see --row-pending-bg), and the marker means one
-   thing again: this row is waiting for a person. */
-
-/* A pending row sits on the sidebar's ground, so it takes the sidebar's text
-   with it. Those three tokens are authored per palette against exactly this
-   background and contrast.test.ts already holds every one of them to AA on it
-   in all 40 variants — the register's own --text-* are not, and land as low as
-   1.06:1 on it. Fully opaque: nothing here is dimmed or faded, the row is a
-   different surface rather than a quieter one.
-
-   Italic stays. A colour-only signal is not a signal for everyone, and this
-   row is now distinguished by ground rather than by weight. */
-.transaction-row.pending {
-  background-color: var(--row-pending-bg);
-  color: var(--sidebar-text-primary);
-  font-style: italic;
-}
-
-.transaction-row.pending .txn-col--date,
-.transaction-row.pending .txn-col--category,
-.transaction-row.pending .txn-memo {
-  color: var(--sidebar-text-secondary);
-}
-
-.transaction-row.pending .txn-attach-btn,
-.transaction-row.pending .txn-cleared-btn,
-.transaction-row.pending .txn-status-icon--reconciled {
-  color: var(--sidebar-text-muted);
-}
-
-/* The amount. --color-negative and --color-positive are register colours and
-   fail AA on this ground in 19 of the 40 themes, one at 1.06:1, so a pending
-   amount is printed in the sidebar's own primary text instead. The row keeps
-   its sign the way the register always states it — a leading minus and the
-   Outflow/Inflow column it sits in — rather than by a hue that half the
-   palettes cannot render legibly here. */
-.transaction-row.pending .txn-outflow,
-.transaction-row.pending .txn-inflow {
-  color: var(--sidebar-text-primary);
-}
+   ground carries pending now, and the marker means one thing again: this row
+   is waiting for a person. */
 
 /* Work waiting for a person, readable across the table rather than by
    inspecting a 12px glyph — it clears on approve with the sparkle, from the
    same flag: this marks work, not provenance. */
 .transaction-row.transaction-row--ai-review {
   --row-marker: var(--color-accent);
+}
+
+/* Pending: the bank has authorised it, nothing has moved. It gets its own
+   ground rather than the dimming it used to share with `unapproved` — the two
+   were pixel-identical, and fading the text is what made a run of pending rows
+   hard to pick out of a long register in the first place.
+
+   The ground is the only thing distinguishing it, and the only thing it has to
+   pay for. It keeps the register's own text and the register's own red and
+   green amounts, because --row-pending-bg is mixed AWAY from the text rather
+   than over it: the row's worst pairing across all 40 themes is 5.51:1, better
+   than the 5.29:1 those same amounts get on an ORDINARY row. Contrast bought,
+   not spent, so nothing here overrides a text colour.
+
+   Italic stays: a colour-only signal is not a signal for everyone. */
+.transaction-row.pending {
+  background-color: var(--row-pending-bg);
+  /* Load-bearing, and not the same as leaving opacity unset. A synced pending
+     row is ALSO unapproved, and `.transaction-row.unapproved` fades the whole
+     row to 0.65 — which is what washed this text out however the ground was
+     coloured. Fading composites text toward the ground, so a ratio measured on
+     a token is not the ratio a faded row renders at: at 0.65 the register's
+     muted text and its coloured amounts fail AA in 40 of 40 themes.
+
+     Equal specificity with the .unapproved rule, so this wins on source order
+     alone — it must stay below it in this file. */
+  opacity: 1;
+  font-style: italic;
 }
 
 /* Selection and hover outrank provisionality — a selected row must read as

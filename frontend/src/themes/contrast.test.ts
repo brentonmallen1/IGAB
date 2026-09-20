@@ -306,16 +306,21 @@ function checksFor(theme: string): Check[] {
     }
   }
 
-  // A pending register row is painted on the SIDEBAR's ground — a deliberate
-  // design call, not a derivation — so it also borrows the sidebar's text,
-  // which is the only text any palette tunes against that background. The
-  // register's own --text-* and --color-negative/positive are not: they land
-  // as low as 1.06:1 on it, in all 19 light themes, whose sidebar stays dark
-  // while their semantic colours are tuned for a light ground. That is the
-  // whole reason the row does not print an amount in --color-negative.
+  // A pending register row paints --row-pending-bg and then prints the whole
+  // row on it in the register's OWN colours — date, payee, memo, and the
+  // amount in --color-negative or --color-positive. That ground is mixed away
+  // from the text rather than over it, so these should come out ABOVE what
+  // the same text gets on an ordinary row; if a change ever drags them below
+  // 4.5:1 the direction has been flipped back.
   {
     const ground = token(theme, 'row-pending-bg')
-    for (const fg of ['sidebar-text-primary', 'sidebar-text-secondary', 'sidebar-text-muted']) {
+    for (const fg of [
+      'text-primary',
+      'text-secondary',
+      'text-muted',
+      'color-negative',
+      'color-positive',
+    ]) {
       add(`${fg} on a pending row`, token(theme, fg), ground, AA_TEXT)
     }
   }

@@ -257,15 +257,25 @@
      against --color-accent honours each palette's own accent.
 
      --row-pending-bg is the ground under a row the bank has authorised but
-     not posted. It is the sidebar's ground: a genuinely different surface
-     rather than a tint of the row, which is a design call, not a derivation.
+     not posted: the ladder step below the rows (register rows sit on
+     --surface-raised), pushed 20% further along the axis AWAY from the text.
 
-     A ground this far from the register's own brings its text with it. The
-     sidebar already ships text tuned for exactly this background, and
-     contrast.test.ts already holds all three to AA on it in every theme
-     (worst 4.58:1), so the pending row borrows those rather than inventing a
-     fourth set — see .transaction-row.pending in TransactionRow.css. */
-  --row-pending-bg: var(--sidebar-bg);
+     The direction is the whole trick, and getting it wrong is what made every
+     earlier attempt invisible. A translucent wash composites a mid-tone colour
+     ON TOP of the row, dragging the ground TOWARD the text and spending the
+     text's contrast to buy colour — --color-negative already sits barely above
+     4.5:1 on a plain row in most themes, so the ceiling was 8%, and 8% of
+     anything is a whisper. --text-inverse is by definition the far side from
+     --text-primary in all 40 variants, so mixing toward it darkens a dark
+     theme and lightens a light one, and contrast RISES as the step grows.
+
+     At 20% the worst text on the row across all 40 variants is 5.51:1
+     (eink-light, --color-positive) — better than the 5.29:1 those same
+     amounts get on an ORDINARY row — while sitting 26 to 40 units of colour
+     away from the ground the rows sit on. Contrast bought rather than spent,
+     which is why the row keeps the register's own text and its red and green
+     amounts instead of borrowing another set. */
+  --row-pending-bg: color-mix(in srgb, var(--text-inverse) 20%, var(--surface-sunken));
   --row-selected-bg: color-mix(in srgb, var(--color-accent) 12%, transparent);
   --row-selected-hover-bg: color-mix(in srgb, var(--color-accent) 18%, transparent);
 
