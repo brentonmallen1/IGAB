@@ -267,9 +267,42 @@
    ground carries pending now (see --row-pending-bg), and the marker means one
    thing again: this row is waiting for a person. */
 
+/* A pending row sits on the sidebar's ground, so it takes the sidebar's text
+   with it. Those three tokens are authored per palette against exactly this
+   background and contrast.test.ts already holds every one of them to AA on it
+   in all 40 variants — the register's own --text-* are not, and land as low as
+   1.06:1 on it. Fully opaque: nothing here is dimmed or faded, the row is a
+   different surface rather than a quieter one.
+
+   Italic stays. A colour-only signal is not a signal for everyone, and this
+   row is now distinguished by ground rather than by weight. */
 .transaction-row.pending {
   background-color: var(--row-pending-bg);
+  color: var(--sidebar-text-primary);
   font-style: italic;
+}
+
+.transaction-row.pending .txn-col--date,
+.transaction-row.pending .txn-col--category,
+.transaction-row.pending .txn-memo {
+  color: var(--sidebar-text-secondary);
+}
+
+.transaction-row.pending .txn-attach-btn,
+.transaction-row.pending .txn-cleared-btn,
+.transaction-row.pending .txn-status-icon--reconciled {
+  color: var(--sidebar-text-muted);
+}
+
+/* The amount. --color-negative and --color-positive are register colours and
+   fail AA on this ground in 19 of the 40 themes, one at 1.06:1, so a pending
+   amount is printed in the sidebar's own primary text instead. The row keeps
+   its sign the way the register always states it — a leading minus and the
+   Outflow/Inflow column it sits in — rather than by a hue that half the
+   palettes cannot render legibly here. */
+.transaction-row.pending .txn-outflow,
+.transaction-row.pending .txn-inflow {
+  color: var(--sidebar-text-primary);
 }
 
 /* Work waiting for a person, readable across the table rather than by

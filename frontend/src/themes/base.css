@@ -257,33 +257,15 @@
      against --color-accent honours each palette's own accent.
 
      --row-pending-bg is the ground under a row the bank has authorised but
-     not posted, and it is a SURFACE ROLE rather than a tint of the row.
+     not posted. It is the sidebar's ground: a genuinely different surface
+     rather than a tint of the row, which is a design call, not a derivation.
 
-     Both tints were tried and both failed the same way. A translucent wash
-     (--text-primary 6%, then --color-info) composites a colour ON TOP of the
-     row, which drags the ground toward the text and spends the text's
-     contrast to buy colour: --color-negative already sits barely above 4.5:1
-     on a plain row in most themes, so the ceiling was 8%, and 8% of anything
-     is a whisper. Mixing toward --text-inverse instead cleared AA at 15% —
-     but AA is a floor, not a target, and a row that falls from 13:1 to 4.6:1
-     passes the suite while being visibly harder to read. It was.
-
-     Register rows sit on --surface-raised, so the answer is the step of the
-     ladder below them: the theme's own canvas, one 8-pt lightness move that
-     every palette already tunes and that contrast.test.ts already holds text
-     against. Measured over all 40 variants it is 26-36 units of colour away
-     from the row ground with ZERO AA failures, a worst case of 5.30:1, and at
-     most 1.5 of readability given up. Adding hue on top of it is worse on
-     both axes at once, in every theme, at every strength tried: +10% info
-     drops the worst case to 4.51 AND cuts the minimum colour distance from 26
-     to 2, because in some palettes the hue pulls the ground back toward the
-     row it is trying to differ from.
-
-     Not --sidebar-bg, which is the nearest thing to this by eye: the sidebar
-     carries its own --sidebar-text-* tokens tuned for it, and register text is
-     not. Painted with register text, it fails AA in 19 of the 40 variants,
-     one of them at 1.00:1. */
-  --row-pending-bg: var(--surface-sunken);
+     A ground this far from the register's own brings its text with it. The
+     sidebar already ships text tuned for exactly this background, and
+     contrast.test.ts already holds all three to AA on it in every theme
+     (worst 4.58:1), so the pending row borrows those rather than inventing a
+     fourth set — see .transaction-row.pending in TransactionRow.css. */
+  --row-pending-bg: var(--sidebar-bg);
   --row-selected-bg: color-mix(in srgb, var(--color-accent) 12%, transparent);
   --row-selected-hover-bg: color-mix(in srgb, var(--color-accent) 18%, transparent);
 

@@ -306,21 +306,17 @@ function checksFor(theme: string): Check[] {
     }
   }
 
-  // A pending register row paints --row-pending-bg over the table's ground and
-  // then prints the whole row on it: date, payee, memo and the amount, which
-  // is --color-negative or --color-positive. The wash carries a hue now
-  // (--color-info, so pending reads as a state rather than a dimmer row), and
-  // a hue moves contrast in a way a neutral grey does not — so every colour
-  // the row can print in is measured over it rather than assumed to survive.
+  // A pending register row is painted on the SIDEBAR's ground — a deliberate
+  // design call, not a derivation — so it also borrows the sidebar's text,
+  // which is the only text any palette tunes against that background. The
+  // register's own --text-* and --color-negative/positive are not: they land
+  // as low as 1.06:1 on it, in all 19 light themes, whose sidebar stays dark
+  // while their semantic colours are tuned for a light ground. That is the
+  // whole reason the row does not print an amount in --color-negative.
   {
-    const wash = token(theme, 'row-pending-bg')
-    for (const base of TINT_BASES) {
-      const surface = token(theme, base)
-      if (!wash || !surface) continue
-      const ground = over(wash, surface)
-      for (const fg of ['text-primary', 'text-secondary', 'text-muted', ...SEMANTIC]) {
-        add(`${fg} on a pending row over ${base}`, token(theme, fg), ground, AA_TEXT)
-      }
+    const ground = token(theme, 'row-pending-bg')
+    for (const fg of ['sidebar-text-primary', 'sidebar-text-secondary', 'sidebar-text-muted']) {
+      add(`${fg} on a pending row`, token(theme, fg), ground, AA_TEXT)
     }
   }
 

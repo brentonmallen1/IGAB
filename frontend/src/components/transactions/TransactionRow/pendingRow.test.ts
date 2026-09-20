@@ -85,39 +85,46 @@ describe('selection outranks provisionality', () => {
 })
 
 describe('the row tokens', () => {
-  it('are derived or role tokens, never authored per theme', () => {
+  it('need no per-theme authoring of their own', () => {
     // --row-hover-bg is written out in 40 theme files. The selection pair are
-    // mixes against --color-accent and the pending ground is a surface role,
-    // so every palette gets them and a 41st theme needs no extra lines.
+    // mixes against --color-accent, and the pending ground forwards a token
+    // every palette already authors for its sidebar — so a 41st theme gets
+    // all three by writing the values it was going to write anyway.
     for (const token of ['--row-selected-bg', '--row-selected-hover-bg']) {
       expect(base).toMatch(new RegExp(`${token}:\\s*color-mix`))
     }
-    expect(base).toMatch(/--row-pending-bg:\s*var\(--surface-sunken\)/)
+    expect(base).toMatch(/--row-pending-bg:\s*var\(--sidebar-bg\)/)
   })
 
-  it('is a surface step, not a tint of the row', () => {
-    // This is the whole reason the row is legible. A tint composites a colour
-    // ON TOP of the row, dragging the ground toward the text and spending the
-    // text's contrast to buy colour — --color-negative already sits barely
-    // above 4.5:1 on a plain row in most themes, so the ceiling was 8%, and
-    // 8% of anything is a whisper. Mixing toward --text-inverse cleared AA at
-    // 15%, but AA is a floor, not a target: a row falling from 13:1 to 4.6:1
-    // passes the suite and is visibly harder to read. It was.
+  it('is the sidebar ground, and brings the sidebar text with it', () => {
+    // A design call: an entirely different surface rather than a tint of the
+    // row. Both tints failed, and failed differently. A translucent wash
+    // composites a colour ON TOP of the row, dragging the ground toward the
+    // text and spending the text's contrast to buy colour — the ceiling was
+    // 8%, and 8% of anything is a whisper. Mixing toward --text-inverse
+    // cleared AA at 15%, but AA is a floor, not a target: a row falling from
+    // 13:1 to 4.6:1 passes the suite and is visibly harder to read.
     //
-    // Rows sit on --surface-raised; this is the ladder step below them.
-    // Measured over all 40 variants: 26-36 units of colour away from the row
-    // ground, zero AA failures, worst case 5.30:1, at most 1.5 of readability
-    // given up. Adding hue on top is worse on BOTH axes in every theme.
+    // A ground this far from the register's own has to bring its text with
+    // it. The sidebar tokens are authored per palette against exactly this
+    // background and contrast.test.ts holds all three to AA on it in every
+    // theme; the register's own --text-* are not, and land as low as 1.06:1.
     const declaration = base.match(/^\s*--row-pending-bg:\s*(.+);$/m)?.[1] ?? ''
-    expect(declaration).not.toContain('color-mix')
-    expect(declaration).not.toMatch(/warning|negative|positive|accent|info/)
+    expect(declaration).toBe('var(--sidebar-bg)')
+    expect(rule(css, '.transaction-row.pending')).toContain('color: var(--sidebar-text-primary)')
   })
 
-  it('is not the sidebar ground, however close it looks', () => {
-    // The sidebar carries its own --sidebar-text-* tokens, tuned for it.
-    // Register text is not: painted on --sidebar-bg it fails AA in 19 of the
-    // 40 variants, one at 1.00:1.
-    const declaration = base.match(/^\s*--row-pending-bg:\s*(.+);$/m)?.[1] ?? ''
-    expect(declaration).not.toContain('sidebar')
+  it('prints its amount in sidebar text, not the register red and green', () => {
+    // --color-negative/--color-positive fail AA on this ground in 19 of the 40
+    // themes — every light one, whose sidebar stays dark while its semantic
+    // colours are tuned for a light ground. nord-light lands at 1.69:1. The
+    // row still states its sign the way the register always does: a leading
+    // minus, and the Outflow/Inflow column it sits in.
+    const amounts = css.slice(css.indexOf('.transaction-row.pending .txn-outflow'))
+    expect(amounts.slice(0, amounts.indexOf('}'))).toContain('var(--sidebar-text-primary)')
+  })
+
+  it('is fully opaque — a different surface, not a quieter one', () => {
+    expect(rule(css, '.transaction-row.pending')).not.toContain('opacity')
   })
 })
