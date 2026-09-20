@@ -36,6 +36,69 @@ describe('TransactionSearch suggestions', () => {
     expect(screen.queryByText('Search syntax')).not.toBeInTheDocument()
   })
 
+  describe('Enter finishes the search', () => {
+    // The box filters as you type, so Enter had nothing to submit and did
+    // nothing at all: the field kept focus and its accent ring, the panel
+    // stayed open, and the only way to put the search down was to click
+    // somewhere else.
+    it('gives up focus', () => {
+      const { input } = setup()
+      ;(input as HTMLInputElement).focus()
+      fireEvent.change(input, { target: { value: 'coffee' } })
+      expect(input).toHaveFocus()
+
+      fireEvent.keyDown(input, { key: 'Enter' })
+
+      expect(input).not.toHaveFocus()
+    })
+
+    it('closes the suggestions panel', () => {
+      const { input } = setup()
+      ;(input as HTMLInputElement).focus()
+      fireEvent.change(input, { target: { value: 'is:' } })
+      expect(screen.getByText('Search syntax')).toBeInTheDocument()
+
+      fireEvent.keyDown(input, { key: 'Enter' })
+
+      expect(screen.queryByText('Search syntax')).not.toBeInTheDocument()
+    })
+
+    it('commits the query immediately rather than waiting out the debounce', () => {
+      const { input, onChange } = setup()
+      ;(input as HTMLInputElement).focus()
+      fireEvent.change(input, { target: { value: 'coffee' } })
+      onChange.mockClear()
+
+      fireEvent.keyDown(input, { key: 'Enter' })
+
+      expect(onChange).toHaveBeenCalledWith('coffee')
+    })
+
+    it('keeps the query — Enter is not a clear', () => {
+      const { input } = setup()
+      ;(input as HTMLInputElement).focus()
+      fireEvent.change(input, { target: { value: 'coffee' } })
+
+      fireEvent.keyDown(input, { key: 'Enter' })
+
+      expect((input as HTMLInputElement).value).toBe('coffee')
+    })
+
+    it('still takes a highlighted suggestion instead of dismissing', () => {
+      // Arrow-down then Enter must complete the syntax and stay in the field,
+      // which is the branch above this one and must keep winning.
+      const { input } = setup()
+      ;(input as HTMLInputElement).focus()
+      fireEvent.change(input, { target: { value: 'is:' } })
+      fireEvent.keyDown(input, { key: 'ArrowDown' })
+
+      fireEvent.keyDown(input, { key: 'Enter' })
+
+      expect(input).toHaveFocus()
+      expect((input as HTMLInputElement).value).not.toBe('is:')
+    })
+  })
+
   it('typing again after a clear brings the panel back', () => {
     const { input } = setup()
     fireEvent.focus(input)

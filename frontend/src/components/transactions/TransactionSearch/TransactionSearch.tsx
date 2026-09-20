@@ -116,6 +116,21 @@ export function TransactionSearch({
       }
     }
 
+    // Enter with nothing highlighted means "that's my search". The box filters
+    // as you type, so there is no submit — which left Enter doing literally
+    // nothing: the field kept focus, kept the accent ring, stayed grown wide
+    // and kept its suggestions open, and the only way out was to click
+    // somewhere else. Commit the query now rather than waiting out the
+    // debounce, then let go of the field. On a phone this is the `search` key
+    // the keyboard is already showing, and it lowers the keyboard too.
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      propagate(localValue, true)
+      setShowSuggestions(false)
+      inputRef.current?.blur()
+      return
+    }
+
     if (e.key === 'Escape') {
       if (localValue) {
         setLocalValue('')
