@@ -43,6 +43,10 @@ describe('the pending row', () => {
     expect(rule(css, '.transaction-row.pending')).toContain('font-style: italic')
   })
 
+  it('claims the row marker, which is where its hue is strong enough to see', () => {
+    expect(rule(css, '.transaction-row.pending')).toContain('--row-marker: var(--color-info)')
+  })
+
   it('is distinguishable from an unapproved row, which it used to duplicate', () => {
     expect(rule(css, '.transaction-row.unapproved')).not.toContain('--row-pending-bg')
   })
@@ -86,11 +90,29 @@ describe('the row tokens', () => {
     }
   })
 
-  it('tints pending neutrally rather than with a status colour', () => {
-    // Pending is not a warning: it is money that has not moved yet, and this
-    // repo reserves status colour for state that asks something of the user.
+  it('tints pending with a hue, but never an alarming or a claimed one', () => {
+    // This used to require --text-primary, i.e. a neutral grey wash. That is
+    // the same grey the hover and the zebra are made of, so a pending row read
+    // as "slightly dimmer" rather than as a state and was findable only by its
+    // italics. It is --color-info now.
+    //
+    // What did NOT change is what stays forbidden, and the reasons are
+    // different for each: warning/negative would say a pending row is a
+    // problem, and it is not — it is money that has not moved yet. --accent is
+    // barred for a harder reason: --row-selected-bg is mixed from it, so an
+    // accent-washed pending row would be mistakable for a selected one.
     const declaration = base.match(/^\s*--row-pending-bg:\s*(.+);$/m)?.[1] ?? ''
-    expect(declaration).toContain('--text-primary')
+    expect(declaration).toContain('--color-info')
     expect(declaration).not.toMatch(/warning|negative|positive|accent/)
+  })
+
+  it('keeps the wash at the strength the contrast suite can carry', () => {
+    // --color-negative already sits barely above 4.5:1 on a plain row in most
+    // themes, so the wash eats its margin: at 10% the amount fails AA in two
+    // themes, at 12% in ten, at 14% in thirty-seven. 8% is the measured
+    // ceiling, and contrast.test.ts checks every colour a row prints in over
+    // this wash. The hue that actually makes a pending row findable lives in
+    // the marker instead, where it carries no text and costs no contrast.
+    expect(base).toMatch(/--row-pending-bg:\s*color-mix\(in srgb, var\(--color-info\) 8%/)
   })
 })

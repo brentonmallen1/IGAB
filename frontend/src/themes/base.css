@@ -257,10 +257,21 @@
      against --color-accent honours each palette's own accent.
 
      --row-pending-bg is the ground under a row the bank has authorised but
-     not posted. Deliberately neutral, not --color-warning: pending is not a
-     problem, it is money that has not moved yet, and this repo reserves
-     accent and status colour for state that asks something of the user. */
-  --row-pending-bg: color-mix(in srgb, var(--text-primary) 6%, transparent);
+     not posted. It is NOT --color-warning and NOT --color-negative: pending
+     is not a problem, it is money that has not moved yet, and this repo
+     reserves those for state that asks something of the user.
+
+     It was a --text-primary wash, which is the same grey the hover and the
+     zebra are made of — so it read as "this row is slightly dimmer" rather
+     than as a state, and a pending row was findable only by its italics.
+     --color-info carries a hue without carrying alarm, which is what pending
+     actually is. 8%, not more: at 10% --color-negative on the row falls to
+     4.32:1 in phosphor-dark, and the amount is the one thing on a pending row
+     nobody may have to squint at. contrast.test.ts measures every colour the
+     row can print in over this wash, in all 40 themes. --color-accent is unavailable at any strength: it is what
+     --row-selected-bg is mixed from, and a pending row must never be
+     mistakable for a selected one. */
+  --row-pending-bg: color-mix(in srgb, var(--color-info) 8%, transparent);
   --row-selected-bg: color-mix(in srgb, var(--color-accent) 12%, transparent);
   --row-selected-hover-bg: color-mix(in srgb, var(--color-accent) 18%, transparent);
 

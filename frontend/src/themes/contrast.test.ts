@@ -306,6 +306,24 @@ function checksFor(theme: string): Check[] {
     }
   }
 
+  // A pending register row paints --row-pending-bg over the table's ground and
+  // then prints the whole row on it: date, payee, memo and the amount, which
+  // is --color-negative or --color-positive. The wash carries a hue now
+  // (--color-info, so pending reads as a state rather than a dimmer row), and
+  // a hue moves contrast in a way a neutral grey does not — so every colour
+  // the row can print in is measured over it rather than assumed to survive.
+  {
+    const wash = token(theme, 'row-pending-bg')
+    for (const base of TINT_BASES) {
+      const surface = token(theme, base)
+      if (!wash || !surface) continue
+      const ground = over(wash, surface)
+      for (const fg of ['text-primary', 'text-secondary', 'text-muted', ...SEMANTIC]) {
+        add(`${fg} on a pending row over ${base}`, token(theme, fg), ground, AA_TEXT)
+      }
+    }
+  }
+
   // the sidebar keeps its own dark background in every theme
   for (const fg of ['sidebar-text-primary', 'sidebar-text-secondary', 'sidebar-text-muted']) {
     add(`${fg} on sidebar-bg`, token(theme, fg), token(theme, 'sidebar-bg'), AA_TEXT)

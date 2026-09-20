@@ -58,11 +58,14 @@
    and the tracking is what breaks that read — the accent is a highlight on
    top of that, not the mechanism.
 
-   One accent edge, along the bottom, at the same 2px .collapsible__body draws
-   under its own rows: folding and unfolding then moves a single edge instead
-   of swapping two different ones. An edge down the left as well was tried and
-   removed — two rules meeting at a corner boxed the row in and read as a
-   callout pasted over the register rather than as part of it.
+   The bottom edge is 2px, the same .collapsible__body draws under its own
+   rows: folding and unfolding then moves a single edge instead of swapping
+   two different ones. A hairline of the same colour closes the top, because
+   the header directly above this one is the register's own column strip on
+   the same --surface-chrome — without it the two grounds ran together and the
+   fold was swallowed by the strip it sat under. An edge down the LEFT as well
+   was tried and removed: three rules meeting at corners boxed the row in and
+   read as a callout pasted over the register rather than part of it.
 
    Every colour here is a token pair contrast.test.ts already holds to AA in
    all 40 themes — --text-primary on --surface-chrome, and --bg-primary on a
@@ -74,6 +77,7 @@
   letter-spacing: 0;
   font-size: var(--font-size-sm);
   padding-block: var(--spacing-sm);
+  border-top: 1px solid var(--color-accent);
   border-bottom: 2px solid var(--color-accent);
 }
 
