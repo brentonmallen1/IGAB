@@ -31,6 +31,8 @@ const ALLOWED: Record<string, string> = {
     'the complement of 768',
   'components/transactions/TransactionRow/TransactionRow.css @media (min-width: 769px)':
     'the complement of 768',
+  'pages/AccountPage/AccountPage.css @media (min-width: 769px)':
+    'the complement of 768 — the back link loses its own row on a desktop only, because on a phone it is portalled into the app header and owes the tap floor',
 }
 
 function cssFiles(dir: string): string[] {

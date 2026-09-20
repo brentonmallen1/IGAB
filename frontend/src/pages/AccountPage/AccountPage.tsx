@@ -3,8 +3,6 @@ import { useParams, useSearchParams } from 'react-router-dom'
 import {
   AlertTriangle,
   CalendarClock,
-  CheckCircle,
-  CircleDot,
   Hourglass,
   Link as LinkIcon,
   Lock,
@@ -12,8 +10,6 @@ import {
   Telescope,
   Upload,
   Wallet,
-  ChevronDown,
-  ChevronUp,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { CsvImportDialog } from '../../components/imports/CsvImportDialog/CsvImportDialog'
@@ -38,6 +34,7 @@ import { useAppStore } from '../../stores/appStore'
 import { useUIStore } from '../../stores/uiStore'
 import { useFormatters } from '../../hooks/useFormatters'
 import { resolveHeaderCollapsed } from './headerCollapse'
+import { AccountBalances } from './AccountBalances'
 import './AccountPage.css'
 import { Pill } from '../../components/common/Pill/Pill'
 import { Surface } from '../../components/common/Surface'
@@ -144,14 +141,15 @@ export function AccountPage() {
     )
   }
 
-  const clearedClass = account.cleared_balance < 0 ? 'negative' : 'positive'
-  const workingClass = account.balance < 0 ? 'negative' : 'positive'
   const isConnected = account.simplefin_account_id && account.simplefin_sync_enabled
 
   return (
     <div className="account-page">
       <Surface variant="chrome" className="account-page__header">
-        {/* Left: Account identity + balances stacked */}
+        {/* One row: identity, the balance, the actions. Folded, that is the
+            whole header — the balance sits inline and nothing else renders.
+            Open, the balance block takes a full line of its own so the
+            equation lands predictably rather than by wrap luck. */}
         <div className="account-page__header-left">
           <div className="account-page__identity">
             {/* The name goes to the app header on a phone, with a back chevron
@@ -223,56 +221,19 @@ export function AccountPage() {
               }
             />
           </div>
-          {/* Folded, the header keeps the one figure you navigate by. Every
-              row it gives back is a row of the statement you can see while
-              reconciling, which is when the rest of this earns its place
-              least — a 200px header on a 390pt screen left the register one
-              row tall. */}
-          <button
-            type="button"
-            className="account-page__header-toggle"
-            onClick={() => setHeaderCollapsed(!headerCollapsed)}
-            aria-expanded={!headerCollapsed}
-            aria-controls="account-header-detail"
-            title={headerCollapsed ? 'Show account details' : 'Hide account details'}
-          >
-            <span className={`account-page__balance-value ${workingClass}`}>
-              {formatMoney(account.balance)}
-            </span>
-            <span className="account-page__balance-label">Working balance</span>
-            {headerCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
-          </button>
-          <div
-            id="account-header-detail"
-            className={`account-page__balances ${headerCollapsed ? 'account-page__balances--collapsed' : ''}`}
-          >
-            <div className="account-page__balance-item">
-              <span className={`account-page__balance-value ${clearedClass}`}>
-                {formatMoney(account.cleared_balance)}
-              </span>
-              <span className="account-page__balance-label">
-                <CheckCircle size={10} />
-                Cleared Balance
-              </span>
-            </div>
-            <span className="account-page__balance-op">+</span>
-            <div className="account-page__balance-item">
-              <span className="account-page__balance-value">
-                {formatMoney(account.uncleared_balance)}
-              </span>
-              <span className="account-page__balance-label">
-                <CircleDot size={10} />
-                Uncleared Balance
-              </span>
-            </div>
-            <span className="account-page__balance-op">=</span>
-            <div className="account-page__balance-item account-page__balance-item--working">
-              <span className={`account-page__balance-value ${workingClass}`}>
-                {formatMoney(account.balance)}
-              </span>
-              <span className="account-page__balance-label">Working Balance</span>
-            </div>
-          </div>
+          {/* The working balance is stated ONCE, and which spelling you get
+              is the fold: folded it is the headline beside the name, open it
+              is the `=` term of the equation. Rendering both is what made the
+              old header repeat the same number twice, at the same size, three
+              lines apart. AccountBalances.test.tsx holds it to once. */}
+          <AccountBalances
+            balance={account.balance}
+            clearedBalance={account.cleared_balance}
+            unclearedBalance={account.uncleared_balance}
+            collapsed={headerCollapsed}
+            onToggle={() => setHeaderCollapsed(!headerCollapsed)}
+            formatMoney={formatMoney}
+          />
           {/* Outside the equation on purpose. Pending rows are visible in the
               register and counted in none of the three figures above — an
               auth hold is provisional and the money moves once, at posting

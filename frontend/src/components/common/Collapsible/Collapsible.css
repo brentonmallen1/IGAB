@@ -78,7 +78,7 @@
    --color-accent fill (the same inversion the floating selection bar uses).
    The accent edge is a border, never the only cue, and carries no text. */
 .collapsible__header--hiding {
-  color: var(--text-primary);
+  color: var(--color-accent);
   text-transform: none;
   letter-spacing: 0;
   font-size: var(--font-size-sm);

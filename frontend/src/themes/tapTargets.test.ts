@@ -17,6 +17,10 @@ const CASES: Array<[file: string, selector: string, prop: string]> = [
   ['pages/PayeesPage/PayeesPage.css', '.payees-btn', 'min-height'],
   ['pages/AccountPage/AccountPage.css', '.account-page__action-btn', 'min-height'],
   ['pages/AccountPage/AccountPage.css', '.account-page__match-btn', 'min-height'],
+  // The account header's fold control. AccountPage.css claimed this test held
+  // it to the floor and it did not — the selector was never in this list, so
+  // restructuring the control would have failed nothing.
+  ['pages/AccountPage/AccountPage.css', '.account-page__header-toggle', 'min-height'],
   ['components/accounts/PendingReviewBanner.css', '.pending-review-banner__btn', 'min-height'],
   ['pages/GuidePage/GuidePage.css', '.guide-nav__tab', 'min-height'],
   ['pages/ReportsPage/ReportsPage.css', '.reports-nav__tab', 'min-height'],
