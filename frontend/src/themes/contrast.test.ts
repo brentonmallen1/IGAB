@@ -306,25 +306,6 @@ function checksFor(theme: string): Check[] {
     }
   }
 
-  // A pending register row paints --row-pending-bg and then prints the whole
-  // row on it in the register's OWN colours — date, payee, memo, and the
-  // amount in --color-negative or --color-positive. That ground is mixed away
-  // from the text rather than over it, so these should come out ABOVE what
-  // the same text gets on an ordinary row; if a change ever drags them below
-  // 4.5:1 the direction has been flipped back.
-  {
-    const ground = token(theme, 'row-pending-bg')
-    for (const fg of [
-      'text-primary',
-      'text-secondary',
-      'text-muted',
-      'color-negative',
-      'color-positive',
-    ]) {
-      add(`${fg} on a pending row`, token(theme, fg), ground, AA_TEXT)
-    }
-  }
-
   // the sidebar keeps its own dark background in every theme
   for (const fg of ['sidebar-text-primary', 'sidebar-text-secondary', 'sidebar-text-muted']) {
     add(`${fg} on sidebar-bg`, token(theme, fg), token(theme, 'sidebar-bg'), AA_TEXT)

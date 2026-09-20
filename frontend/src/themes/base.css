@@ -257,24 +257,10 @@
      against --color-accent honours each palette's own accent.
 
      --row-pending-bg is the ground under a row the bank has authorised but
-     not posted: one step UP the surface ladder from the register itself.
-
-     Which step is the whole question, and it turns on a fact worth writing
-     down, because measuring against the wrong one produced a pending row that
-     was invisible in 27 of the 40 themes: the register paints no ground of its
-     own. .transaction-table sets no background, so a row shows whatever is
-     behind the page — the canvas. And --surface-sunken and --surface-canvas
-     are BOTH var(--bg-primary), so every one of them is the same colour the
-     rows already sit on. A "sunken" pending row is a no-op, and a tint mixed
-     toward --text-inverse is very nearly one too: in most dark themes
-     --text-inverse IS --bg-primary, so that mix returns the ground unchanged.
-
-     So: raised, not sunken. Measured over all 40 variants it sits 26 to 36
-     units of colour from the ground the rows sit on, is flat in none of them,
-     and the worst text anywhere on it is 5.29:1 — the same figure those
-     colours get on an ORDINARY row, so the row costs no readability at all
-     and keeps the register's own text and its own red and green. */
-  --row-pending-bg: var(--surface-raised);
+     not posted. Deliberately neutral, not --color-warning: pending is not a
+     problem, it is money that has not moved yet, and this repo reserves
+     accent and status colour for state that asks something of the user. */
+  --row-pending-bg: color-mix(in srgb, var(--text-primary) 6%, transparent);
   --row-selected-bg: color-mix(in srgb, var(--color-accent) 12%, transparent);
   --row-selected-hover-bg: color-mix(in srgb, var(--color-accent) 18%, transparent);
 
