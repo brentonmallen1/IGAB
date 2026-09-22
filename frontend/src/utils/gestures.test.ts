@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { resolveSwipe, shouldDismissDrag } from './gestures'
+import { resolveSwipe, scrollsHorizontally, shouldDismissDrag } from './gestures'
 
 describe('shouldDismissDrag', () => {
   it('dismisses on a slow drag past the distance threshold', () => {
@@ -72,5 +72,34 @@ describe('resolveSwipe', () => {
   it('honours a caller-supplied threshold and edge', () => {
     expect(resolveSwipe({ dx: 40, dy: 0, startX: 200, threshold: 30 })).toBe('right')
     expect(resolveSwipe({ dx: 90, dy: 0, startX: 40, edgePx: 48 })).toBe('edge-back')
+  })
+})
+
+describe('scrollsHorizontally', () => {
+  it('claims a scroller whose content overflows it', () => {
+    // The budget page's status-chip strip: one line, wider than the phone.
+    expect(scrollsHorizontally({ scrollWidth: 476, clientWidth: 390, overflowX: 'auto' })).toBe(true)
+    expect(scrollsHorizontally({ scrollWidth: 476, clientWidth: 390, overflowX: 'scroll' })).toBe(
+      true
+    )
+  })
+
+  it('leaves an overflow-x: auto box whose content fits alone', () => {
+    // Otherwise every such box on the page swallows the month swipe.
+    expect(scrollsHorizontally({ scrollWidth: 390, clientWidth: 390, overflowX: 'auto' })).toBe(
+      false
+    )
+    expect(scrollsHorizontally({ scrollWidth: 391, clientWidth: 390, overflowX: 'auto' })).toBe(
+      false
+    )
+  })
+
+  it('leaves a wide box that cannot scroll — clipped or visible', () => {
+    expect(scrollsHorizontally({ scrollWidth: 900, clientWidth: 390, overflowX: 'hidden' })).toBe(
+      false
+    )
+    expect(scrollsHorizontally({ scrollWidth: 900, clientWidth: 390, overflowX: 'visible' })).toBe(
+      false
+    )
   })
 })

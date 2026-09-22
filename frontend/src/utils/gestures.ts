@@ -53,6 +53,33 @@ export function resolveSwipe({
   return dx > 0 ? 'right' : 'left'
 }
 
+/** What a swipe handler needs to know about one ancestor of the touch. */
+export interface ScrollerMetrics {
+  scrollWidth: number
+  clientWidth: number
+  /** The computed `overflow-x` of the element. */
+  overflowX: string
+}
+
+/**
+ * Whether an element pans sideways under the finger.
+ *
+ * A horizontal drag that begins inside one of these belongs to it, not to the
+ * page behind it: the budget page's status-chip strip is a one-line scroller,
+ * and dragging it to reach the tail chips used to change the month instead.
+ * `auto`/`scroll` alone is not enough — an `overflow-x: auto` box whose
+ * content fits never scrolls, so it must not swallow the gesture either. The
+ * 1px slack is subpixel layout, not a real overflow.
+ */
+export function scrollsHorizontally({
+  scrollWidth,
+  clientWidth,
+  overflowX,
+}: ScrollerMetrics): boolean {
+  if (overflowX !== 'auto' && overflowX !== 'scroll') return false
+  return scrollWidth - clientWidth > 1
+}
+
 /** Travel past which a slow drag dismisses. */
 const DISMISS_DISTANCE_PX = 80
 /** ~500 px/s — a deliberate flick rather than a scroll that overshot. */
