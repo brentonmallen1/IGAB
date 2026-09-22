@@ -242,13 +242,17 @@ describe('what the row says about a reserve', () => {
           short_reserved: 220,
           over_reserved: 0,
           payments: 220,
+          set_aside_state: 'paid_ahead',
         }),
       ],
       category_balances: [],
     } as unknown as BudgetMonth
     render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
     expect(screen.queryByText(/overpaid/i)).not.toBeInTheDocument()
-    expect(screen.getByText('ahead of budget')).toBeInTheDocument()
+    // The column prints $0.00; the distance is beside it and the reason is
+    // under it, both in the document and neither behind a hover.
+    expect(screen.getByText('$220.00 below zero')).toBeInTheDocument()
+    expect(screen.getByText(/went straight to the balance/)).toBeInTheDocument()
   })
 
   it('keeps the word for the one state it is true of', async () => {
@@ -261,6 +265,7 @@ describe('what the row says about a reserve', () => {
           short_reserved: 50,
           card_credit: 50,
           over_reserved: 0,
+          set_aside_state: 'card_holds_it',
         }),
       ],
       category_balances: [],
@@ -280,6 +285,7 @@ describe('what the row says about a reserve', () => {
           over_reserved: 5900,
           assigned: 5900,
           reserve_discrepancy: 0,
+          set_aside_state: 'surplus',
         }),
       ],
       category_balances: [],
@@ -287,6 +293,41 @@ describe('what the row says about a reserve', () => {
     render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
     expect(screen.getByText(/spare$/)).toBeInTheDocument()
     expect(screen.queryByText(/does not add up/)).not.toBeInTheDocument()
+  })
+
+  it('shows $0.00 and explains itself without anybody hovering anything', async () => {
+    // F2, the root cause. `reserveNote().title`, `debtMovement().title` and
+    // the drift warning were `title` attributes, and on the installed iOS PWA
+    // a tooltip cannot be reached at all — the row read "-$100.00 ahead of
+    // budget" with no way to learn more. getByText, never
+    // toHaveAttribute('title'): if this passes through a tooltip again, it
+    // fails.
+    month.current = {
+      cards: [
+        card({
+          balance: -1900,
+          set_aside: -100,
+          uncovered: 1900,
+          short_reserved: 100,
+          residual: 500,
+          reserve_discrepancy: 12,
+          set_aside_state: 'refund_outran_envelope',
+        }),
+      ],
+      category_balances: [],
+    } as unknown as BudgetMonth
+    render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
+
+    expect(screen.queryByText('-$100.00')).not.toBeInTheDocument()
+    expect(screen.getByTitle(/Transactions on/)).toHaveTextContent('$0.00')
+    expect(screen.getByText('$100.00 below zero')).toBeInTheDocument()
+    // Names the $500 that came back, not the $100 left of it.
+    expect(screen.getByText(/\$500\.00 came back onto this card/)).toBeInTheDocument()
+    expect(screen.getByText(/\$12\.00 of this Set aside is not explained/)).toBeInTheDocument()
+
+    for (const el of document.querySelectorAll('.credit-cards__row [title]')) {
+      expect(el.getAttribute('title')).not.toMatch(/came back|below zero|not explained/)
+    }
   })
 
   it('shows the debt moving, framed as debt rather than as the balance', async () => {

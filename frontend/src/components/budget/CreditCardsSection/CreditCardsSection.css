@@ -121,12 +121,43 @@
   background-color: var(--row-hover-bg);
 }
 
-.credit-cards__group:last-child .credit-cards__row:not(:has(+ .credit-cards__legs)) {
+/* The last thing in the last group carries no rule, whatever it happens to
+   be. This used to name the one sibling a row could have — `:has(+ .legs)` —
+   and the moment a second one existed (the state sentence) the last row drew
+   a border into the panel's own edge. Asking "are you last" is the rule;
+   listing what may follow you is a copy of it that goes stale. */
+.credit-cards__group:last-child > :last-child {
   border-bottom: none;
 }
 
-.credit-cards__group:last-child .credit-cards__legs {
-  border-bottom: none;
+/* The row's own explanation, in the document rather than a `title`. Sunken,
+   like the breakdown below it, so the two read as one attached block and the
+   row above keeps the panel's surface. */
+.credit-cards__state {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background-color: var(--surface-sunken);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.credit-cards__state-line {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
+  color: var(--text-secondary);
+  /* Long enough to be a sentence, short enough to stay readable beside a
+     table. Runs full width on a phone, where the well is already narrow. */
+  max-width: 78ch;
+}
+
+.credit-cards__state-line + .credit-cards__state-line {
+  margin-top: var(--spacing-2xs);
+}
+
+/* What to do, where there IS something — a shade stronger than the fact it
+   follows, and deliberately the same text color as the row's figures so it
+   never reads as a warning. Several of these states are entirely normal. */
+.credit-cards__state-action {
+  color: var(--text-primary);
 }
 
 .credit-cards__col--name {
@@ -191,9 +222,10 @@
 /* One class used to carry two unrelated meanings, and two more were coming.
    Each note under a number gets its own name instead:
      __hint      what the paydown target still wants (Assigned)
-     __note      which way the reserve is unusual (Set aside)
+     __note      which way this card is unusual (Set aside)
      __movement  how far the debt moved this month (Balance)
-     __drift     a reserve that does not add up (Set aside)
+     __drift     a Set aside that does not add up
+     __state     the sentence under the row saying what happened
    All quiet by design — the numbers carry the meaning, and Uncovered's
    deliberately un-alarmed treatment sets the register for the whole row. */
 .credit-cards__hint {
@@ -696,6 +728,13 @@
   .credit-cards__movement,
   .credit-cards__drift {
     white-space: normal;
+  }
+
+  /* The sentence is the reason this section is legible on a phone at all —
+     every one of these used to be a `title`. It gets the full width of the
+     well and no column to fight with. */
+  .credit-cards__state-line {
+    max-width: none;
   }
 
   .credit-cards__assign-btn {

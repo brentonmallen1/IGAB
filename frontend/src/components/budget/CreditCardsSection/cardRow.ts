@@ -13,90 +13,148 @@ import type { CardStatus } from '../../../types'
 
 type Money = (n: number) => string
 
-export interface RowNote {
-  label: string
-  title: string
+/**
+ * What the Set aside column PRINTS, which is never a negative.
+ *
+ * The figure itself stays signed everywhere else — the breakdown, the month
+ * history and the server all keep it — because a card that went below zero in
+ * March needs to say so. What the column cannot do is print `-$100.00` under
+ * a one-word heading and leave the reader to guess which of four unrelated
+ * situations produced it. The magnitude moves to a named line beside it
+ * (`setAsideLabel`) and the explanation to a sentence under the row
+ * (`stateSentence`), both visible without hovering anything.
+ */
+export function setAsideShown(card: CardStatus): number {
+  return Math.max(0, card.set_aside)
 }
 
 /**
- * The note beside Set aside, for all three ways it can be worth explaining.
+ * The short line beside the figure: how this card is unusual, in three words.
  *
- * The cause branches matter because the remedies differ. In order of how
- * completely each explains the number:
- *
- * 1. `card_credit` — the card owes nothing and holds money. The only state
- *    "overpaid" was ever true of, and it needs no action.
- * 2. `residual` alone covers the shortfall — money arrived on the card that no
- *    envelope had riding there. Someone else paying the bill, a refund for a
- *    purchase made before the budget started, or a payment onto this card for
- *    spending done on another.
- * 3. `riding` — a month ended short and the shortfall rode onto the card. The
- *    cheap remedy is back-funding THAT month, which nothing used to name.
- * 4. Otherwise a deliberate paydown: payment ran ahead of the assignment.
+ * Keyed on the served state and nothing else. The old note branched on causes
+ * the client had guessed at — one of them comparing a LIFETIME residual
+ * against a CURRENT shortfall — and spent one label, "ahead of budget", on
+ * three situations with different remedies. Null on a card with nothing to
+ * say, which is most of them.
  */
-export function reserveNote(card: CardStatus, money: Money): RowNote | null {
-  if (card.card_credit > 0) {
-    return {
-      label: 'credit balance',
-      title:
-        `This card owes nothing and is holding ${money(card.card_credit)} of yours. ` +
-        `Later spending on it, or a refund, will absorb the balance.`,
-    }
+export function setAsideLabel(card: CardStatus, money: Money): string | null {
+  switch (card.set_aside_state) {
+    case 'funded':
+      return null
+    case 'surplus':
+      return `${money(card.over_reserved)} spare`
+    case 'card_holds_it':
+      return 'credit balance'
+    default:
+      // The four below-zero states. No noun — they want opposite responses,
+      // and one word for all four is what made this column unreadable. The
+      // distance is a fact; the sentence under the row says what it means.
+      return `${money(card.short_reserved)} below zero`
   }
+}
 
-  if (card.short_reserved > 0) {
-    const owed = money(card.short_reserved)
-    if (card.residual >= card.short_reserved && card.residual > 0) {
+export interface StateSentence {
+  /** What is true, always. */
+  sentence: string
+  /** What to do about it — ABSENT wherever no action is honestly available.
+   *  The affordance is what forced the old advice: a row that must end in a
+   *  suggestion will invent one, and on a shared shortfall the one it
+   *  invented moved a different card. */
+  action?: string
+}
+
+/**
+ * The card's situation in a sentence, and an action only where one is true.
+ *
+ * One entry per served state, no branching on a cause of its own. Every
+ * figure quoted is a served leg, and which leg matters: on a settle-up the
+ * sentence names `residual` — what actually came back — and never
+ * `short_reserved`, which is only what was left of it after the month's
+ * reservations and payments. A card whose envelope plainly shows $500 read
+ * "$100 came back" for exactly that reason.
+ */
+export function stateSentence(card: CardStatus, money: Money): StateSentence | null {
+  switch (card.set_aside_state) {
+    case 'funded':
+      return null
+
+    case 'surplus':
       return {
-        label: 'ahead of budget',
-        title:
-          `${money(card.residual)} has come back onto this card beyond anything an ` +
-          `envelope charged to it — someone else paying the bill, a refund for a ` +
-          `purchase made before this budget started, or a payment onto this card for ` +
-          `spending done on another. It lowers Set aside without releasing any ` +
-          `envelope's cash.`,
+        sentence:
+          `${money(card.over_reserved)} more is set aside than this card owes. Money assigned ` +
+          `to a card stays in its envelope until riding debt turns up to retire, so on a card ` +
+          `you pay from funded envelopes it simply accumulates.`,
+        action: 'Release it and it goes back to Ready to Assign, where it came from.',
       }
-    }
-    if (card.riding > 0) {
+
+    case 'card_holds_it':
       return {
-        label: 'ahead of budget',
-        title:
-          `${money(card.riding)} of spending rode onto this card when a month ended ` +
-          `short, so your payment ran past what was reserved. Fund that month's ` +
-          `envelope and the ride disappears — or assign ${owed} to the card to cover ` +
-          `it now.`,
+        sentence:
+          `This card owes nothing and is holding ${money(card.card_credit)} of yours. Later ` +
+          `spending on it, or a refund, will absorb the balance.`,
       }
-    }
-    return {
-      label: 'ahead of budget',
-      title:
-        `You have paid ${owed} more toward this card than any envelope set aside — it ` +
-        `went straight to the balance. Assign ${owed} to the card to settle up: Ready ` +
-        `to Assign falls by that much, because the money has already left your account.`,
-    }
-  }
 
-  if (card.over_reserved > 0) {
-    // Deliberately not keyed on `reserve_discrepancy`. That check's bounds are
-    // allowances — an over-reserve explained by assignments satisfies T1 and
-    // reports nothing — so a row keyed on it stays silent on exactly the card
-    // that has drifted furthest. Show the distance and name what covers it.
-    const spare = money(card.over_reserved)
-    const byAssignment = card.assigned > 0 && card.riding === 0
-    return {
-      label: `${spare} spare`,
-      title: byAssignment
-        ? `${spare} more than this card owes. Money assigned to a card stays in its ` +
-          `envelope until riding debt is there to retire, and this card has none — so ` +
-          `assignments accumulate. Safe to release: type a negative in Assigned. That ` +
-          `money did leave Ready to Assign when you assigned it, so releasing it hands ` +
-          `back real spendable money.`
-        : `${spare} more than this card owes — reserved cash the bill has not caught up ` +
-          `with yet. Safe to release: type a negative in Assigned.`,
-    }
-  }
+    case 'settled_by_others':
+      return {
+        sentence:
+          `${money(card.residual)} came back onto this card from spending nobody budgeted ` +
+          `for — somebody settled up. It paid the card down by the same amount it took out ` +
+          `of Set aside, and no envelope of yours lost anything.`,
+        action: 'Nothing to do.',
+      }
 
-  return null
+    case 'refund_outran_envelope':
+      return {
+        sentence:
+          `${money(card.residual)} came back onto this card beyond anything an envelope ` +
+          `charged here. An envelope is holding that money and you can spend it — but it ` +
+          `never arrived in your bank. It exists as a credit on this card.`,
+      }
+
+    case 'settled_elsewhere':
+      return {
+        sentence:
+          `${money(card.riding)} of spending rode onto this card when a month ended short, ` +
+          `and that month's shortfall rode onto another card as well. Money put into the ` +
+          `envelope is shared out across those cards, so it may not reach this one.`,
+        action: `Assigning to this card is the only move that is certain to reach it.`,
+      }
+
+    case 'ride_unfunded':
+      return {
+        sentence:
+          `${money(card.riding)} of spending rode onto this card when a month ended short, ` +
+          `so your payment ran past what had been set aside.`,
+        action:
+          `Raise that month's assignment on the envelope and the ride is retired — the ` +
+          `breakdown names the months. Or assign ${money(card.short_reserved)} to the card ` +
+          `to cover it now.`,
+      }
+
+    case 'paid_ahead':
+      return {
+        sentence:
+          `You have paid ${money(card.short_reserved)} more toward this card than any ` +
+          `envelope set aside — it went straight to the balance.`,
+        action:
+          `Assign ${money(card.short_reserved)} to the card to settle up. Ready to Assign ` +
+          `falls by that much, because the money has already left your account.`,
+      }
+  }
+}
+
+/**
+ * A reserve whose identity does not close, as a visible sentence.
+ *
+ * Was a `title` attribute, which on an installed iOS PWA is unreachable — the
+ * same half-finished migration the breakdown's legs were rescued from.
+ */
+export function driftSentence(card: CardStatus, money: Money): string | null {
+  if (card.reserve_discrepancy === 0) return null
+  return (
+    `${money(card.reserve_discrepancy)} of this Set aside is not explained by assignments, ` +
+    `payments or unclaimed rows. The integrity check has the detail.`
+  )
 }
 
 /**
@@ -119,25 +177,20 @@ export function debtMovementWord(moved: number): 'increased' | 'decreased' {
  *
  * Debt-framed on purpose. The raw balance rises as the debt falls, and showing
  * that unlabelled is the confusion this whole row is trying to end.
+ *
+ * A label and nothing else. It carried a `title` spelling out the month's
+ * charges and payments, which the breakdown's "This month" block already
+ * renders as rows — visibly, and on a phone at all.
  */
-export function debtMovement(card: CardStatus, money: Money): RowNote | null {
+export function debtMovementLabel(card: CardStatus, money: Money): string | null {
   const moved = card.debt_change_this_month
   if (moved === 0) return null
-  const charged = money(card.charged_this_month)
-  const paid = money(card.paid_this_month)
-  // "this month" lives in the tooltip, not the label: the Balance column is
-  // barely wider than the figure above it, and the longer phrasing wrapped to
-  // a second line mid-sentence. The page is already scoped to one month.
-  const detail = `${charged} charged, ${paid} paid to the card this month.`
-  const word = debtMovementWord(moved)
   // A non-breaking space inside the phrase: the column is narrower than
   // "debt increased $412.00", so the note wraps — but only ever between the
   // phrase and the figure, never mid-phrase, which is the wrap that read as
-  // a layout accident.
-  return {
-    label: `debt\u00A0${word} ${money(Math.abs(moved))}`,
-    title: `${detail} The debt ${word}.`,
-  }
+  // a layout accident. "this month" is not in it: the page is already scoped
+  // to one month and the longer phrasing wrapped mid-sentence.
+  return `debt\u00A0${debtMovementWord(moved)} ${money(Math.abs(moved))}`
 }
 
 /**

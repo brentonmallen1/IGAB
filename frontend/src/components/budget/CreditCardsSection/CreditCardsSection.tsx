@@ -17,14 +17,17 @@ import { useFormatters } from '../../../hooks/useFormatters'
 import { useUIStore } from '../../../stores/uiStore'
 import { parseAssignmentCommit } from '../../../utils/amountExpression'
 import {
-  debtMovement,
+  debtMovementLabel,
   debtMovementWord,
+  driftSentence,
   emptyLegsNote,
   pendingNote,
   reserveLegs,
-  reserveNote,
   rideMonths,
   otherCredits,
+  setAsideLabel,
+  setAsideShown,
+  stateSentence,
 } from './cardRow'
 import { Dialog } from '../../common/Dialog/Dialog'
 import { Surface } from '../../common/Surface'
@@ -531,8 +534,10 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
                 ? (balances.get(card.category_id)?.needed_this_month ?? null)
                 : null
               const legsOpen = legsFor === card.account_id
-              const note = reserveNote(card, formatMoney)
-              const movement = debtMovement(card, formatMoney)
+              const label = setAsideLabel(card, formatMoney)
+              const state = stateSentence(card, formatMoney)
+              const drift = driftSentence(card, formatMoney)
+              const movement = debtMovementLabel(card, formatMoney)
               const liabilityId = liabilityByAccount.get(card.account_id)
               return (
                 <div className="credit-cards__group" key={card.account_id}>
@@ -570,11 +575,7 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
                     </span>
                     <span className="credit-cards__col--num tabular" role="cell">
                       {formatMoney(card.balance)}
-                      {movement && (
-                        <span className="credit-cards__movement" title={movement.title}>
-                          {movement.label}
-                        </span>
-                      )}
+                      {movement && <span className="credit-cards__movement">{movement}</span>}
                     </span>
                     <span className="credit-cards__col--num" role="cell">
                       {card.category_id && editing === card.account_id ? (
@@ -630,7 +631,13 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
                           setPeek({ accountId: card.account_id, accountName: card.name })
                         }
                       >
-                        {formatMoney(card.set_aside)}
+                        {/* Never the signed figure. A negative here has four
+                          unrelated causes wanting opposite responses, and
+                          printing it under a one-word heading is what made
+                          this column unreadable. The distance is in the label
+                          below and the cause in the sentence under the row —
+                          both visible, neither hidden in a tooltip. */}
+                        {formatMoney(setAsideShown(card))}
                       </button>
                       {/* Every question this model raised was answered by
                         decomposing this number into the flows behind it, and
@@ -646,19 +653,12 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
                         {legsOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
                       </button>
                       {/* Which way this card is unusual, from the served
-                        position — never from the sign of the number above.
+                        state — never from the sign of the number above.
                         A zero `reserve_discrepancy` says the identity's
                         bounds hold, not that the figure is sensible. */}
-                      {note && (
-                        <span className="credit-cards__note" title={note.title}>
-                          {note.label}
-                        </span>
-                      )}
-                      {card.reserve_discrepancy !== 0 && (
-                        <span
-                          className="credit-cards__drift"
-                          title={`${formatMoney(card.reserve_discrepancy)} of this reserve is not explained by assignments, payments or unclaimed rows. The integrity check has the detail.`}
-                        >
+                      {label && <span className="credit-cards__note">{label}</span>}
+                      {drift && (
+                        <span className="credit-cards__drift">
                           <AlertCircle size={11} aria-hidden />
                           does not add up
                         </span>
@@ -671,6 +671,29 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
                       {card.uncovered !== 0 ? formatMoney(card.uncovered) : '—'}
                     </span>
                   </div>
+                  {/* The explanation, in the row's own width and in the
+                    document — not a `title` attribute. On the installed iOS
+                    PWA a tooltip is unreachable, so every sentence that
+                    lived in one was a sentence nobody on a phone could read.
+
+                    `action` is absent wherever no action is honestly
+                    available, which is the whole point: a row that must end
+                    in a suggestion will invent one, and the one it invented
+                    told people to fund an envelope that moves a different
+                    card. */}
+                  {(state || drift) && (
+                    <div className="credit-cards__state">
+                      {state && (
+                        <p className="credit-cards__state-line">
+                          {state.sentence}
+                          {state.action && (
+                            <span className="credit-cards__state-action"> {state.action}</span>
+                          )}
+                        </p>
+                      )}
+                      {drift && <p className="credit-cards__state-line">{drift}</p>}
+                    </div>
+                  )}
                   {legsOpen && (
                     <ReserveLegs
                       budgetId={budgetId}
@@ -736,10 +759,14 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
                 zero, and the row says which.
               </dd>
               <dd>
-                <em>Below zero</em> almost always means you paid more toward the card than any
-                envelope had set aside — it went straight to the balance. Assign that much to the
-                card to settle up. Only when the card owes nothing is it really a credit balance,
-                carried forward until new spending or a refund uses it up.
+                <em>Below zero</em> is a real position and the column shows it as $0.00, with the
+                distance named beside it and a sentence under the row saying what happened. There
+                are four different reasons and they want opposite responses: somebody settled up for
+                spending you never budgeted for (nothing to do); money came back onto the card
+                beyond anything an envelope charged here (an envelope is holding money that only
+                exists as a credit on this card); a month ended short and your payment ran past what
+                was set aside (back-fund that month); or you simply paid more than any envelope had
+                set aside (assign that much to the card). The row says which.
               </dd>
               <dd>
                 <em>Above what the card owes</em> means money is assigned to the card that no debt

@@ -39,6 +39,21 @@ describe('credit-cards strip on a phone', () => {
     }
   })
 
+  it('gives the state sentence the whole width of the well', () => {
+    // F2's fix, and the reason this section is readable on a phone at all:
+    // every one of these sentences used to be a `title`, which an installed
+    // iOS PWA never renders. A sentence clamped to a desktop measure inside
+    // a 390pt well would be the same problem wearing different clothes.
+    expect(rule('.credit-cards__state-line')).toMatch(/max-width:\s*none/)
+  })
+
+  it('never lets a caption push the strip sideways', () => {
+    // An .sr-only span escaping an unpositioned scroller once widened the
+    // whole budget page; these wrap instead.
+    const wrapping = phone.find((r) => r.selector.includes('.credit-cards__note'))
+    expect(wrapping?.body).toMatch(/white-space:\s*normal/)
+  })
+
   it('shows the two doors on the name line', () => {
     const touch = rulesWithContext(css).find(
       (r) =>
