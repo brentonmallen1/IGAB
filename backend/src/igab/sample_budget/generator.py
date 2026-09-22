@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from igab.db.models import Account, BudgetAssignment, Category, CategoryGroup, Payee
 from igab.domain.cards import card_funding, card_position, card_reserve
 from igab.domain.carryover import available_at, available_through, sum_through
+from igab.domain.payment_due import validate_payment_due
 from igab.domain.schedule import first_occurrence_after, validate_schedule
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import (
@@ -40,7 +41,11 @@ from igab.repositories.scheduled_transaction_repo import ScheduledTransactionRep
 from igab.repositories.tag_repo import TagRepository
 from igab.repositories.target_repo import TargetRepository
 from igab.repositories.transaction_repo import TransactionRepository
-from igab.sample_budget.card_scenarios import STARTING_BALANCE_PAYEE, ExpectedPosition
+from igab.sample_budget.card_scenarios import (
+    STARTING_BALANCE_PAYEE,
+    BillDue,
+    ExpectedPosition,
+)
 from igab.sample_budget.data import SAMPLE_BUDGET
 from igab.sample_budget.spec import (
     RelDate,
@@ -390,12 +395,46 @@ class SampleBudgetGenerator:
         # account-creation time would occupy the slot the spec wants. Running
         # last makes this fill gaps only — the sample's credit cards get the
         # same empty companion a real user's would, which is the point.
+        # When each demo card's bill falls due, by the card it belongs to.
+        # Declared on the scenario (card_scenarios.BillDue) because it is a
+        # fact about a card; applied here because the companion it lives on
+        # does not exist until the loop below makes it.
+        bills_due = {
+            sc.card: sc.bill_due for sc in self.spec.card_scenarios if sc.bill_due is not None
+        }
         for account in self._accounts.values():
-            if await ensure_for_account(self.session, account) is not None:
+            companion = await ensure_for_account(self.session, account)
+            if companion is not None:
                 result.liabilities += 1
+                due = bills_due.get(account.name)
+                if due is not None:
+                    await self._set_bill_due(companion.id, due, anchor)
             # Cards additionally get their card's envelope; the showcase
             # spec may have made one already, which ensure() then adopts.
             await ensure_payment_category(self.session, account)
+
+    async def _set_bill_due(self, liability_id: uuid.UUID, due: BillDue, anchor: date) -> None:
+        """Fill in one demo card's due-date rule on its companion.
+
+        Refused rather than repaired, through the same domain check the API
+        edge uses: a sample budget that generates a card whose rule the UI
+        cannot evaluate would ship the defect as reference data.
+        """
+        anchor_date = (
+            anchor - timedelta(days=due.days_since_last_due)
+            if due.days_since_last_due is not None
+            else None
+        )
+        validate_payment_due(
+            kind=due.kind, day=due.day, cycle_days=due.cycle_days, anchor=anchor_date
+        )
+        await self.liability_repo.update(
+            liability_id,
+            payment_due_kind=due.kind,
+            payment_due_day=due.day,
+            payment_due_cycle_days=due.cycle_days,
+            payment_due_anchor=anchor_date,
+        )
 
     # ─── Transactions ─────────────────────────────────────────────────────────
 

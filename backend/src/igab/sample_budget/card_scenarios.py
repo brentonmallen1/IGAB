@@ -223,6 +223,30 @@ class CardLesson:
 
 
 @dataclass(frozen=True)
+class BillDue:
+    """When a demo card's bill falls due — the statement fact, not a position.
+
+    Nothing in `expect` depends on it and no walk reads it: a due date is
+    metadata the card row and the liability header show, and the model is
+    deliberately dateless (domain/payment_due.py). It lives on the scenario
+    anyway because it is a fact about a card, and card facts live here.
+
+    `days_since_last_due` rather than a calendar date, for `cycle_days`: the
+    demo has to keep demoing. A fixed anchor drifts out of the seven-day
+    window the indicator fires in within a month of being written, and a
+    sample budget whose feature stops showing is one nobody can check.
+    """
+
+    kind: str
+    #: 'day_of_month'
+    day: int | None = None
+    #: 'cycle_days' — the cycle, and how long ago the last one fell due. The
+    #: next due date is then `cycle_days - days_since_last_due` away.
+    cycle_days: int | None = None
+    days_since_last_due: int | None = None
+
+
+@dataclass(frozen=True)
 class CardScenario:
     slug: str
     #: The lesson the row teaches, one line. Shown beside the card in docs.
@@ -259,6 +283,10 @@ class CardScenario:
     #: shipped as an assertion. The pure suite checks it through `state()`,
     #: and the integration suite checks the value the API actually serves.
     set_aside_state: SetAsideState = SetAsideState.FUNDED
+    #: When this card's bill falls due, for the demo. None on most of them:
+    #: an empty companion liability is what a real card starts as, and that
+    #: is worth showing too.
+    bill_due: BillDue | None = None
 
     @property
     def payment_category(self) -> str:
@@ -636,6 +664,11 @@ CARRYING_DEBT = CardScenario(
     ),
     card="Harborstone Card",
     short="Harborstone",
+    # Billed every 31 days, last due 28 days ago: the next one is three days
+    # out, so the strip's chip and the header's warning tone are both on in
+    # a freshly generated sample. The card owing $2,600 is the one where a
+    # due date is worth knowing about.
+    bill_due=BillDue(kind="cycle_days", cycle_days=31, days_since_last_due=28),
     opening=_d("-3000"),
     events=(
         _fund(2, "100", "Harborstone Groceries"),
@@ -690,6 +723,9 @@ MONTH_ENDED_SHORT = CardScenario(
     ),
     card="Meridian Card",
     short="Meridian",
+    # The ordinary shape beside it, so the sample shows both and the
+    # difference between them is visible in one screen.
+    bill_due=BillDue(kind="day_of_month", day=17),
     opening=_d("0"),
     events=(
         _fund(2, "40", "Meridian Dining Out"),
