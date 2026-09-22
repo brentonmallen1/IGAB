@@ -133,10 +133,11 @@ supplies SIGNED net credit outflows per (category, month, card) — a month
 that nets to an inflow arrives negative, never clamped.
 """
 
-from collections.abc import Iterable
+from collections.abc import Container, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
+from enum import StrEnum
 from typing import Final, cast
 
 from igab.domain.carryover import next_carryover, sum_through
@@ -736,6 +737,35 @@ def residual_is_pass_through(assigned_amounts: Iterable[Decimal], available: Dec
     return all(amount == ZERO for amount in assigned_amounts) and available <= ZERO
 
 
+def receivable_ledgers[C](
+    assigned_ever: Mapping[C, Iterable[Decimal]],
+    available_by_category: Mapping[C, Decimal],
+) -> set[C]:
+    """Which of a budget's categories are receivable ledgers.
+
+    `residual_is_pass_through` is the rule; this is the sweep, in one place
+    because two callers need the answer and they must not disagree. The
+    served `set_aside_state` asks so a settle-up does not read as an envelope
+    keeping card money, and `AccountHygieneService` asks so it stays quiet
+    about the same card. Written twice, those two surfaces would eventually
+    call one household's bookkeeping normal on the budget page and a defect
+    on the accounts page.
+
+    `available_by_category` must be Available **as the Budget page states
+    it** — card-corrected where a card inflow repaid uncovered debt. The
+    uncorrected sum reads high on exactly the categories this asks about,
+    which are the ones card inflows land in.
+
+    A category absent from `available_by_category` is not a ledger: nothing
+    here knows what it holds, and silence is the wrong way to be wrong.
+    """
+    return {
+        category
+        for category, available in available_by_category.items()
+        if residual_is_pass_through(assigned_ever.get(category, ()), available)
+    }
+
+
 def card_position(set_aside: Decimal, balance: Decimal) -> CardPosition:
     """The four terms, from a reserve and a balance. `balance` is signed as the
     ledger holds it — negative is owed.
@@ -756,6 +786,183 @@ def card_position(set_aside: Decimal, balance: Decimal) -> CardPosition:
         short_reserved=max(ZERO, -set_aside),
         card_credit=max(ZERO, -owed),
     )
+
+
+class SetAsideState(StrEnum):
+    """Which of the eight situations a card's Set aside is in.
+
+    The surface used to decide this for itself, out of `set_aside` and
+    `balance`, and it could not: two of the eight are told apart only by
+    `residual_by_pair` and by whether an envelope was EVER assigned to, and
+    neither crosses the wire. So the row spent one label — "ahead of budget" —
+    on three causes whose remedies differ, and on the fourth it offered advice
+    that does nothing (F8, below).
+
+    Named for the situation rather than for the sign of a number, because the
+    sign is what the user already sees and is not what they are asking about.
+    A negative Set aside deliberately gets **no** noun of its own: four of
+    these states produce one, they want opposite responses, and a single word
+    for all four is precisely the flattening that made the column unreadable.
+
+    `StrEnum` because this crosses the API to the client, like `TargetType`.
+    """
+
+    #: Set aside is doing its job: money is waiting for a bill, and nothing
+    #: about the figure needs explaining. The card may still owe more than it
+    #: holds — that is Uncovered's column to answer, not this one.
+    FUNDED = "funded"
+    #: More set aside than the card owes. Assignments stay in a card's
+    #: envelope until riding debt turns up to retire, so on a card always paid
+    #: from funded envelopes they simply accumulate. Releasable.
+    SURPLUS = "surplus"
+    #: The card owes nothing and holds money of yours — the only state the
+    #: word "overpaid" was ever true of. A negative Set aside alone is NOT it.
+    CARD_HOLDS_IT = "card_holds_it"
+    #: Somebody else's settle-up drove Set aside below zero. Their spending ran
+    #: through a running tab rather than a fund (`residual_is_pass_through`),
+    #: so no envelope of yours is holding the money: the repayment paid this
+    #: card down by exactly as much as it took out of Set aside. Nothing to do.
+    SETTLED_BY_OTHERS = "settled_by_others"
+    #: Money came back onto the card beyond anything an envelope charged here,
+    #: and an envelope IS holding it. The tension is real and worth naming:
+    #: that envelope's money is spendable, and it exists only as a credit on
+    #: this card. Name the amount that came back, never the shortfall it left.
+    REFUND_OUTRAN_ENVELOPE = "refund_outran_envelope"
+    #: A month ended short, the shortfall rode onto this card — and onto at
+    #: least one other. Funding that envelope cannot be aimed at this card:
+    #: the shortfall is allocated across cards in a fixed order, so partial
+    #: funding shrinks another card's share first and this row does not move
+    #: (F8, measured: funding the envelope left -60 at -60; assigning to the
+    #: card landed on 0 exactly). Say what happened; promise nothing.
+    SETTLED_ELSEWHERE = "settled_elsewhere"
+    #: A month ended short and the whole shortfall rode onto this card, so
+    #: back-funding that month's envelope does retire it — the walk is
+    #: recomputed from scratch on every request. The only state that may
+    #: promise it.
+    RIDE_UNFUNDED = "ride_unfunded"
+    #: Payment ran past everything reserved, with nothing else to explain it:
+    #: a deliberate paydown out of money no envelope had set aside. It went
+    #: straight to the balance.
+    PAID_AHEAD = "paid_ahead"
+
+
+def ride_is_exclusive[C, K](
+    floored_by_pair: dict[tuple[C, K], dict[date, Decimal]],
+    card: K,
+    through: date,
+) -> bool:
+    """Did every envelope that rode onto this card ride onto ONLY this card?
+
+    This is the question `RIDE_UNFUNDED`'s promise stands on. "Fund that
+    month's envelope and the ride disappears" is true when the envelope's
+    whole shortfall is here, and false the moment it is shared: `allocate_capped`
+    hands the shortfall out across that month's cards in a fixed order, so
+    money put into the envelope shrinks the FIRST card's ride, and a row being
+    read about the second one does not move at all.
+
+    Measured on the real walk before it was believed — one shared tab charging
+    $300 on card A and $60 on card B, settled the next month on A. Doing
+    nothing left card B at -60, and it does not clear itself. Funding the
+    envelope $60, which is what the row told the user to do, left card B at
+    -60: the $60 shrank card A's ride from 300 to 240. Only assigning $60 to
+    card B landed on 0.
+
+    An empty ride is exclusive — vacuously, and the caller has already checked
+    that something is riding before it asks.
+    """
+    mine = {
+        (category, month)
+        for (category, key), series in floored_by_pair.items()
+        if key == card
+        for month, amount in series.items()
+        if month <= through and amount != ZERO
+    }
+    return not any(
+        key != card and (category, month) in mine
+        for (category, key), series in floored_by_pair.items()
+        for month, amount in series.items()
+        if month <= through and amount != ZERO
+    )
+
+
+def residual_from[C, K](
+    residual_by_pair: dict[tuple[C, K], dict[date, Decimal]],
+    card: K,
+    categories: Container[C],
+    through: date,
+) -> Decimal:
+    """How much of this card's residual came from the given categories.
+
+    One spelling of a reduction two callers need: the served state, to tell a
+    settle-up from a refund an envelope kept, and the hygiene check, to stay
+    quiet about the first. They were about to compute it separately, which is
+    how one surface comes to call a household's bookkeeping a defect while the
+    other calls it normal.
+
+    Bounded by the viewed month like every other leg, so it can be compared
+    against a `short_reserved` read at the same point in time.
+    """
+    return sum(
+        (
+            amount
+            for (category, key), series in residual_by_pair.items()
+            if key == card and category in categories
+            for month, amount in series.items()
+            if month <= through
+        ),
+        ZERO,
+    )
+
+
+def set_aside_state(
+    position: CardPosition,
+    *,
+    residual: Decimal,
+    riding: Decimal,
+    residual_from_ledgers: Decimal,
+    ride_reaches_this_card: bool,
+) -> SetAsideState:
+    """Which situation a card's Set aside is in, from the served terms.
+
+    Pure, and deliberately not keyed on `reserve_discrepancy`: that check's
+    bounds are ALLOWANCES, so a card that has drifted furthest is exactly the
+    one it stays silent about. This asks where the card stands, which is a
+    different question from whether anything is wrong.
+
+    Precedence, and why it is this order:
+
+    1. `card_credit` first. It is the one state that is about the CARD rather
+       than the envelope, and it is the only one "overpaid" describes.
+    2. Then the four ways Set aside can be below zero, most specific first.
+       Each needs a different response, and one label for all four is the
+       defect this replaces.
+    3. `over_reserved`, then everything else. `RIDE_UNFUNDED` therefore never
+       fires on a positive Set aside: riding debt on a card that is holding
+       money is Uncovered's business, and the remedy sentence would be
+       answering a question nobody asked.
+
+    A **full** explanation, never a partial one: `residual_from_ledgers` and
+    `residual` must each cover the whole shortfall to claim it. Accepting part
+    of one would let a real shortfall hide behind a household's bookkeeping.
+    """
+    if position.card_credit > ZERO:
+        return SetAsideState.CARD_HOLDS_IT
+    if position.short_reserved > ZERO:
+        short = position.short_reserved
+        if residual_from_ledgers >= short:
+            return SetAsideState.SETTLED_BY_OTHERS
+        if residual >= short:
+            return SetAsideState.REFUND_OUTRAN_ENVELOPE
+        if riding > ZERO:
+            return (
+                SetAsideState.RIDE_UNFUNDED
+                if ride_reaches_this_card
+                else SetAsideState.SETTLED_ELSEWHERE
+            )
+        return SetAsideState.PAID_AHEAD
+    if position.over_reserved > ZERO:
+        return SetAsideState.SURPLUS
+    return SetAsideState.FUNDED
 
 
 def _allowance(*terms: Decimal) -> Decimal:

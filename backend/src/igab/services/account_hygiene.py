@@ -28,12 +28,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, Asset, Liability, Transaction
 from igab.domain.card_timeline import card_timeline, first_breach
-from igab.domain.cards import card_reserve, residual_is_pass_through
+from igab.domain.cards import SetAsideState, card_reserve, receivable_ledgers
 from igab.domain.import_mapping import _TRACKED_HINTS, _matches, _normalize_for_match
 from igab.domain.matching import DATE_WINDOW_DAYS
 from igab.domain.transfers import PairableLeg, pair_legs
 from igab.guide.detection import budget_service_from
-from igab.repositories.category_repo import BudgetAssignmentRepository, CategoryRepository
+from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.txn_filters import (
     CARD_ROW_FILED_AS_INCOME,
     LEAF,
@@ -116,7 +116,7 @@ class AccountHygieneService:
         # Which envelopes are receivable ledgers rather than funds — read once
         # here, because two card detectors ask and both must give the same
         # answer about the same category.
-        ledgers = await self._ledger_categories(budget_id, summary)
+        ledgers = self._ledger_categories(summary, walk)
         findings = [
             # Order is the ranking. On-budget-but-tracked leads because it is
             # the only one here that corrupts a number the user reads daily:
@@ -131,7 +131,7 @@ class AccountHygieneService:
             await self._asset_beside_asset_account(budget_id, accounts),
             await self._unpaired_transfer_legs(budget_id),
             await self._unlinked_card_payments(budget_id),
-            self._card_reserve_went_negative(summary, walk, ledgers),
+            self._card_reserve_went_negative(summary, walk),
             await self._card_debt_predates_budget(budget_id, summary, walk),
             *(await self._misfiled_card_inflows(budget_id, walk, ledgers)),
             await self._payment_envelope_shadow(budget_id, summary),
@@ -463,33 +463,46 @@ class AccountHygieneService:
         "reservations": "funded spending reserved",
     }
 
-    async def _ledger_categories(self, budget_id: uuid.UUID, summary) -> set[uuid.UUID]:
+    def _ledger_categories(self, summary, walk) -> set[uuid.UUID]:
         """The budget's receivable ledgers — categories run as a running tab
         for someone else's spending rather than as a fund.
 
-        One place, because two card detectors ask: the misfiled-inflow
-        findings, which claim such an envelope kept money, and the
-        negative-reserve finding, which asks for a remedy. Both claims are
-        false on a ledger, and they must not disagree about which categories
-        those are. The rule itself is
-        `domain.cards.residual_is_pass_through`; this only gathers its two
-        inputs.
+        The sweep is `domain.cards.receivable_ledgers` and the rule inside it
+        is `residual_is_pass_through`; this only supplies the two inputs. It
+        is the SAME call the budget summary makes to decide each card's
+        `set_aside_state`, off the same two inputs, so a settle-up cannot
+        read as normal on the budget page and as a defect here.
+
+        `walk.assigned_ever` rather than a query of this service's own: the
+        test is "never assigned, in any month", the walk already read every
+        assignment the budget has, and a second read is a second chance to
+        bound it differently.
 
         A category the summary did not carry is not a ledger — nothing here
         knows what it holds, and silence is the wrong way to be wrong.
         """
-        assigned: dict[uuid.UUID, list[Decimal]] = {}
-        for row in await BudgetAssignmentRepository(self.session).get_all_for_budget(budget_id):
-            assigned.setdefault(row.category_id, []).append(row.assigned)
-        return {
-            balance.category_id
-            for balance in summary.category_balances
-            if residual_is_pass_through(assigned.get(balance.category_id, []), balance.available)
-        }
+        return receivable_ledgers(
+            walk.assigned_ever,
+            {balance.category_id: balance.available for balance in summary.category_balances},
+        )
 
-    def _card_reserve_went_negative(
-        self, summary, walk, ledgers: set[uuid.UUID]
-    ) -> HygieneFinding | None:
+    #: The Set aside states this finding has something to say about: below
+    #: zero, on a card that is not in credit, and not explained by somebody
+    #: else's settle-up. The classification itself is served
+    #: (`domain/cards.py` `set_aside_state`) — this check used to re-derive
+    #: it from `set_aside`, `card_credit` and its own pass over
+    #: `residual_by_pair`, which is two implementations of one rule sitting
+    #: either side of an API boundary.
+    _REPORTABLE_STATES = frozenset(
+        {
+            SetAsideState.REFUND_OUTRAN_ENVELOPE,
+            SetAsideState.SETTLED_ELSEWHERE,
+            SetAsideState.RIDE_UNFUNDED,
+            SetAsideState.PAID_AHEAD,
+        }
+    )
+
+    def _card_reserve_went_negative(self, summary, walk) -> HygieneFinding | None:
         """A card's Set aside below zero while the card is not in credit.
 
         A legitimate position, not an integrity failure — the reserve is
@@ -498,27 +511,19 @@ class AccountHygieneService:
         the row itself only shows the current figure. This names WHEN it
         crossed and which leg did it, out of the same walk the row is served
         from (`domain/card_timeline.py`).
-        """
-        # What each card's reserve gave up to receivable ledgers. A ledger
-        # settles onto the card every month, so its residual drives Set aside
-        # down by construction — beside a debt that fell with it.
-        ledger_residual: dict[uuid.UUID, Decimal] = {}
-        for (cat_id, card_id), series in walk.funding.residual_by_pair.items():
-            if cat_id in ledgers:
-                ledger_residual[card_id] = ledger_residual.get(card_id, Decimal("0")) + sum(
-                    series.values(), Decimal("0")
-                )
 
+        **Which cards qualify is not decided here.** `SETTLED_BY_OTHERS` is
+        left alone because a ledger settles onto its card every month, so its
+        residual drives Set aside down by construction — beside a debt that
+        fell with it, and with nothing to re-file or assign. That used to be
+        a second pass over `residual_by_pair` written at this call site; it
+        now comes off the same served state the budget page reads, so the two
+        pages cannot describe one card differently.
+        """
         lines: list[str] = []
         account_ids: list[uuid.UUID] = []
         for card in summary.cards:
-            if card.set_aside >= 0 or card.card_credit > 0:
-                continue
-            if card.set_aside + ledger_residual.get(card.account_id, Decimal("0")) >= 0:
-                # Below zero only because a ledger settles onto this card.
-                # Fully explained — not partly, or a real shortfall would
-                # hide behind a household's bookkeeping — and there is
-                # nothing here to re-file or assign.
+            if card.set_aside_state not in self._REPORTABLE_STATES:
                 continue
             reserve = card_reserve(
                 walk.funding,

@@ -298,6 +298,19 @@ export interface CategoryBalance {
 
 /** One card in the budget's cards section — see `CardStatusOut` on the
  *  server (api/v1/schemas/category.py) and domain/cards.py for the model. */
+/** The eight situations a card's Set aside can be in (backend
+ *  `domain/cards.py` `SetAsideState`). Deliberately no single word for "below
+ *  zero": four of these produce that, and they want opposite responses. */
+export type SetAsideState =
+  | 'funded'
+  | 'surplus'
+  | 'card_holds_it'
+  | 'settled_by_others'
+  | 'refund_outran_envelope'
+  | 'settled_elsewhere'
+  | 'ride_unfunded'
+  | 'paid_ahead'
+
 export interface CardStatus {
   account_id: string
   name: string
@@ -359,6 +372,14 @@ export interface CardStatus {
    *  true of — a negative `set_aside` alone is not it, and printing the word
    *  on the sign alone is the defect these fields exist to end. */
   card_credit: number
+  /** Which of the eight situations this card's Set aside is in. Served, and
+   *  NOT derivable here: `settled_by_others` and `refund_outran_envelope`
+   *  are told apart only by `residual_by_pair` and by whether an envelope was
+   *  ever assigned to, and `settled_elsewhere` needs `floored_by_pair` —
+   *  none of which crosses the wire. Home: backend `domain/cards.py`
+   *  `SetAsideState`; `cardRow.ts` maps it to copy and must not branch on a
+   *  cause of its own. */
+  set_aside_state: SetAsideState
   /** The viewed month off the card's own ledger. Every leg above is a lifetime
    *  total, so a month cannot be derived from them here.
    *  `debt_change_this_month` is signed: positive means the debt shrank. */

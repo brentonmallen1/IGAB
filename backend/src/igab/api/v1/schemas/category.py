@@ -7,6 +7,7 @@ from pydantic import Field
 
 from igab.api.v1.schemas.base import ApiModel
 from igab.api.v1.schemas.tag import TagOutSimple
+from igab.domain.cards import SetAsideState
 from igab.domain.enums import TargetStatus, TargetType
 from igab.domain.money import Money
 from igab.domain.targets import MAX_FUNDING_DAY
@@ -526,6 +527,14 @@ class CardStatusOut(ApiModel):
     #: was ever true of. A negative `set_aside` alone is NOT it, and printing
     #: the word on the sign alone is the defect this field exists to end.
     card_credit: Decimal
+    #: Which of the eight situations this card's Set aside is in
+    #: (domain/cards.py `SetAsideState`). **Required, not optional.** The
+    #: client cannot compute it — two of the eight are told apart only by
+    #: `residual_by_pair` and by whether an envelope was ever assigned to,
+    #: and neither crosses the wire — so a path that forgot this field would
+    #: have the row fall back to the very guess this replaces rather than
+    #: raise. `account_hygiene` reads the same value.
+    set_aside_state: SetAsideState
     #: The viewed month off the card's own ledger. `charged_this_month` and
     #: `paid_this_month` are magnitudes; `debt_change_this_month` is signed,
     #: positive when the debt shrank. Required — every leg above is a lifetime
@@ -584,6 +593,7 @@ class CardStatusOut(ApiModel):
             over_reserved=card.over_reserved,
             short_reserved=card.short_reserved,
             card_credit=card.card_credit,
+            set_aside_state=card.set_aside_state,
             charged_this_month=card.charged_this_month,
             inflows_this_month=card.inflows_this_month,
             paid_this_month=card.paid_this_month,

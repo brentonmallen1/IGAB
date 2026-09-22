@@ -50,6 +50,7 @@ function card(over: Partial<CardStatus> = {}): CardStatus {
     over_reserved: 55,
     short_reserved: 0,
     card_credit: 0,
+    set_aside_state: 'funded',
     charged_this_month: 0,
     inflows_this_month: 0,
     paid_this_month: 0,
@@ -78,6 +79,7 @@ function tlMonth(m: string, over: Record<string, number> = {}) {
     over_reserved: 0,
     short_reserved: 0,
     card_credit: 0,
+    set_aside_state: 'funded',
     ...over,
   }
 }

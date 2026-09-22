@@ -82,3 +82,16 @@ def test_the_reimbursement_crosses_zero_in_the_month_the_money_came_back():
     months = {m.label: m for m in EXAMPLES["reimbursed"].months}
     assert months["Last month"].set_aside == -300
     assert months["This month"].set_aside == -100
+
+
+def test_every_event_kind_has_a_phrase():
+    """A kind added to the scenario vocabulary and not to this map takes the
+    whole Guide page down with a KeyError at import — which is how
+    `cash_spend` shipped: three adapters raised a named error for the kind
+    they could not build, and this one raised nothing until it was called."""
+    import typing
+
+    from igab.guide.card_examples import _EVENT_PHRASES
+    from igab.sample_budget.card_scenarios import EventKind
+
+    assert set(typing.get_args(EventKind)) == set(_EVENT_PHRASES)

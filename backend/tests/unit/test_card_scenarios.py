@@ -15,7 +15,14 @@ from decimal import Decimal
 
 import pytest
 
-from igab.domain.cards import card_funding, card_reserve
+from igab.domain.cards import (
+    SetAsideState,
+    card_funding,
+    card_position,
+    card_reserve,
+    ride_is_exclusive,
+    set_aside_state,
+)
 from igab.domain.carryover import sum_through
 from igab.sample_budget.card_scenarios import (
     ALL_SCENARIOS,
@@ -23,6 +30,7 @@ from igab.sample_budget.card_scenarios import (
     CardScenario,
     merge_into,
     scenarios_for,
+    state,
     to_funding_inputs,
     walk,
 )
@@ -191,3 +199,121 @@ def test_a_pre_anchor_charge_reserves_nothing():
     assert inputs.openings is not None
     assert all(m >= inputs.openings.month for m in reserved)
     assert sum(reserved.values(), Decimal("0")) == Decimal("100")
+
+
+@pytest.mark.parametrize("scenario", EVERY, ids=IDS)
+def test_the_card_is_in_the_state_the_scenario_says(scenario: CardScenario):
+    """`set_aside_state` is hand-written beside the figures, and checked here
+    against the real domain — the same relationship `expect` has to `walk`."""
+    assert state(scenario, ANCHOR) == scenario.set_aside_state, scenario.story
+
+
+def test_every_state_but_one_has_a_scenario():
+    """Eight states, and a scenario for seven of them.
+
+    `SETTLED_ELSEWHERE` is the exception, named here rather than left as a
+    silent gap: it needs ONE envelope's shortfall spread over TWO cards, and a
+    `CardScenario` owns exactly one card on purpose — envelopes are named
+    after their card precisely so one scenario's spending cannot move
+    another's position. `test_a_shared_shortfall_cannot_be_aimed_at_one_card`
+    below walks that shape through `card_funding` directly.
+
+    This test is the thing that fails when a ninth state is added with nothing
+    reaching it.
+    """
+    declared = {s.set_aside_state for s in EVERY}
+    assert declared == set(SetAsideState) - {SetAsideState.SETTLED_ELSEWHERE}
+
+
+def test_ride_unfunded_never_fires_on_a_positive_set_aside():
+    """Riding debt on a card that is HOLDING money is Uncovered's business.
+
+    `month-ended-short` has 60 riding and 100 set aside, and its row must not
+    offer to fix a figure nobody is asking about — the remedy sentence belongs
+    to a Set aside below zero that a month-end shortfall explains.
+    """
+    riding_and_funded = [
+        s
+        for s in EVERY
+        if walk(s, ANCHOR).riding > Decimal("0") and (walk(s, ANCHOR).set_aside or 0) >= 0
+    ]
+    assert riding_and_funded, "the guard needs a card with a ride and a healthy reserve"
+    for s in riding_and_funded:
+        assert s.set_aside_state is not SetAsideState.RIDE_UNFUNDED, s.slug
+
+
+def _two_card_shortfall(envelope_funding: str, assigned_to_a: str):
+    """One envelope, two cards, one month that ends short.
+
+    A shared tab charges 300 on card A and 60 on card B and is funded
+    `envelope_funding`, so the month ends short by the difference. Both cards
+    are then paid in full. `assigned_to_a` is money put on card A's own
+    envelope the following month.
+    """
+    month, later = date(2026, 6, 1), date(2026, 7, 1)
+    funding = card_funding(
+        {"Shared": {month: Decimal(envelope_funding)}, "cat-a": {later: Decimal(assigned_to_a)}},
+        {"Shared": {month: Decimal("-360")}},
+        {"Shared": {"card-a": {month: Decimal("300")}, "card-b": {month: Decimal("60")}}},
+        {"card-a": "cat-a", "card-b": "cat-b"},
+    )
+    return (
+        funding,
+        card_reserve(funding, "card-a", {month: Decimal("300")}).set_aside(later),
+        card_reserve(funding, "card-b", {month: Decimal("60")}).set_aside(later),
+    )
+
+
+def test_a_shared_shortfall_cannot_be_aimed_at_one_card():
+    """F8, as a walk: the remedy the row used to print does nothing to the
+    card being read.
+
+    `allocate_capped` hands a month's shortfall out across that month's cards
+    in a fixed order, and partial funding shrinks the LAST share first. So
+    money put into the envelope moves card B and leaves card A exactly where
+    it was — while card A is the row saying "fund that month's envelope and
+    the ride disappears".
+
+    The three numbers below are the entire finding. Measured, not reasoned:
+    the review that raised this described a figure that clears itself, and it
+    does not.
+    """
+    # 1. Do nothing. Both cards are short, and neither clears itself.
+    _, card_a, card_b = _two_card_shortfall("0", "0")
+    assert (card_a, card_b) == (Decimal("-300"), Decimal("-60"))
+
+    # 2. Fund the envelope by 60 — what the row used to advise. Card A has not
+    #    moved a cent; the 60 came off card B's ride instead.
+    _, card_a_funded, card_b_funded = _two_card_shortfall("60", "0")
+    assert card_a_funded == card_a, "funding the envelope must not be sold as a fix for card A"
+    assert card_b_funded == Decimal("0")
+
+    # 3. Assign 60 to card A. The only action that reaches it.
+    _, card_a_assigned, _ = _two_card_shortfall("0", "60")
+    assert card_a_assigned == Decimal("-240")
+
+
+def test_the_shared_shortfall_reads_as_settled_elsewhere():
+    """The state card A lands in, and why it is not `RIDE_UNFUNDED`: the ride
+    is not exclusive to the card being read, so nothing here may promise that
+    funding an envelope helps. Once the shortfall IS card A's alone, the same
+    predicate says so and the promise becomes true again."""
+    month, later = date(2026, 6, 1), date(2026, 7, 1)
+    funding, card_a, _ = _two_card_shortfall("0", "0")
+    assert not ride_is_exclusive(funding.floored_by_pair, "card-a", later)
+    assert (
+        set_aside_state(
+            card_position(card_a, Decimal("-300")),
+            residual=Decimal("0"),
+            riding=sum_through(funding.riding_by_card.get("card-a", {}), later),
+            residual_from_ledgers=Decimal("0"),
+            ride_reaches_this_card=ride_is_exclusive(funding.floored_by_pair, "card-a", later),
+        )
+        is SetAsideState.SETTLED_ELSEWHERE
+    )
+    # Funding the envelope by 60 takes card B's ride to zero, which leaves the
+    # whole remaining shortfall on card A — and only then may its row say that
+    # funding that month retires it.
+    funding_alone, _, _ = _two_card_shortfall("60", "0")
+    assert ride_is_exclusive(funding_alone.floored_by_pair, "card-a", later)
+    assert month < later

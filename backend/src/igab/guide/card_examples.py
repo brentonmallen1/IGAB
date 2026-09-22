@@ -67,12 +67,16 @@ SCENARIO_INTENTS: dict[str, tuple[str, ...]] = {
     "unlinked-payment": ("in-full", "paying-down", "carrying"),
     "paid-ahead-then-caught-up": ("paying-down", "carrying"),
     "credit-balance": ("in-full",),
+    "settled-by-others": ("in-full", "paying-down", "carrying"),
+    "ride-unfunded": ("in-full", "paying-down", "carrying"),
+    "paid-ahead": ("paying-down", "carrying"),
 }
 
 #: What each event did, for a reader. `{amount}` and `{category}` are filled.
 _EVENT_PHRASES: dict[str, str] = {
     "fund": "Budget {amount} into {category}",
     "spend": "Spend {amount} on the card, from {category}",
+    "cash_spend": "Spend {amount} out of checking, from {category}",
     "charge": "Spend {amount} on the card and file it nowhere",
     "refund": "{amount} comes back onto the card, filed to {category}",
     "pay": "Pay the card {amount} by transfer from checking",
