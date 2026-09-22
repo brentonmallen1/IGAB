@@ -135,6 +135,72 @@ export function useSpreadExample(budgetId: string | null) {
   })
 }
 
+/** The Credit cards tab's walkthrough — the app's own card situations, walked
+ *  month by month by the card domain the budget page serves from
+ *  (`backend/.../guide/card_examples.py`). Hand-typed figures here would be a
+ *  second home for card situations, which CLAUDE.md forbids for exactly the
+ *  reason it would matter: the Guide would be free to teach arithmetic the
+ *  app does not do. */
+export interface CardExampleStep {
+  kind: 'spend' | 'charge' | 'refund' | 'pay' | 'deposit' | 'fund' | 'assign'
+  amount: number
+  category: string | null
+  day: number
+  /** What this step did, in the words a reader gets. */
+  says: string
+}
+
+export interface CardExampleMonth {
+  month: string
+  /** "Two months ago" / "Last month" / "This month". */
+  label: string
+  steps: CardExampleStep[]
+  /** The card's position at the END of this month. */
+  set_aside: number
+  balance: number
+  uncovered: number
+  over_reserved: number
+  short_reserved: number
+  card_credit: number
+  riding: number
+}
+
+export interface CardExample {
+  slug: string
+  title: string
+  story: string
+  card: string
+  /** Which ways of using a card this situation can happen to. */
+  intents: string[]
+  opening: number
+  months: CardExampleMonth[]
+}
+
+export interface CardIntent {
+  id: string
+  label: string
+  detail: string
+}
+
+export interface CardExamples {
+  intents: CardIntent[]
+  examples: CardExample[]
+}
+
+export function useCardExamples(budgetId: string | null) {
+  return useQuery({
+    queryKey: [ROOT.guideCardExamples, budgetId],
+    queryFn: () =>
+      apiClient
+        .get<CardExamples>(`/${budgetId}/guide/examples/card-scenarios`)
+        .then((r) => r.data),
+    enabled: !!budgetId,
+    // Invented inputs walked against a fixed clock: it changes with a deploy,
+    // or when the month turns.
+    staleTime: Infinity,
+  })
+}
+
 export function useGuideSignals(budgetId: string | null, enabled = true) {
   return useQuery({
     queryKey: [ROOT.guideSignals, budgetId],

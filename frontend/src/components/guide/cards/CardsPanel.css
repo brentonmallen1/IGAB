@@ -1,0 +1,106 @@
+/* The Credit cards tab. Reading first: a numbered idea, a choice of how the
+   reader uses their card, then the situations that choice admits. */
+
+.cards-idea {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  margin: 0 0 var(--spacing-md);
+  padding-left: var(--spacing-lg);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+}
+
+.cards-idea li {
+  line-height: 1.55;
+}
+
+.cards-intents {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+  margin-bottom: var(--spacing-sm);
+}
+
+.cards-intent {
+  font-size: var(--font-size-sm);
+  padding: 6px 14px;
+  min-height: var(--tap-min, 38px);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  cursor: pointer;
+  text-align: left;
+}
+
+.cards-intent.is-on {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.cards-intent__detail {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  margin: 0;
+  max-width: 62ch;
+  line-height: 1.55;
+}
+
+.cards-situations {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cards-situation {
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.cards-situation__head {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+  padding: var(--spacing-sm) var(--spacing-md);
+  min-height: var(--tap-min, 44px);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.cards-situation__title {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.cards-situation__card {
+  font-size: var(--font-size-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--text-muted);
+}
+
+.cards-situation__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  padding: 0 var(--spacing-md) var(--spacing-md);
+  border-top: 1px solid var(--edge);
+  padding-top: var(--spacing-md);
+}
+
+.cards-situation__story {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  margin: 0;
+  max-width: 62ch;
+  line-height: 1.55;
+}

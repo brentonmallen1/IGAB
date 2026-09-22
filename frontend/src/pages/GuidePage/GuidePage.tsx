@@ -11,6 +11,7 @@ import { CheckupPanel } from '../../components/guide/CheckupPanel'
 import { ToolsPanel } from '../../components/guide/tools/ToolsPanel'
 import { MoneyPanel } from '../../components/guide/money/MoneyPanel'
 import { AsidePanel } from '../../components/guide/aside/AsidePanel'
+import { CardsPanel } from '../../components/guide/cards/CardsPanel'
 import { useAnchorScroll } from '../../hooks/useAnchorScroll'
 import './GuidePage.css'
 
@@ -93,6 +94,8 @@ export function GuidePage() {
         return <MoneyPanel />
       case 'aside':
         return <AsidePanel />
+      case 'cards':
+        return <CardsPanel />
     }
   }
 

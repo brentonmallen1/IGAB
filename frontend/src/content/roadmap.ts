@@ -405,7 +405,7 @@ export const ROADMAP: RoadmapStage[] = [
         body: 'Categorize everything the card syncs, then assign what you can to the card itself each month. Old debt sits calmly as Uncovered until you cover it.',
         detail:
           "Categorizing a card transaction never takes money you do not have. Money moves from the category into the card's Ready to pay only up to what the category could actually cover; any shortfall rides on the card as Uncovered, and To Be Assigned never hears about it. So categorize everything — the spending reports come free, and the debt cannot charge you twice.\n\nThe monthly loop: assign what you can afford to the card in the Credit cards section (To Be Assigned goes down, Uncovered goes down, one for one), then pay the card with a transfer from checking — the transfer drains Ready to pay and the balance together. A paydown target on the card row keeps the number honest month to month.\n\nEnter the card's APR and minimum payment on its liability page. That is what places the card in the payoff planner's avalanche and snowball schedules, and what lets the checkup call it high-interest debt instead of guessing.",
-        glossary: ['carried-balance', 'uncovered', 'ready-to-pay', 'card-payment'],
+        glossary: ['carried-balance', 'uncovered', 'set-aside', 'card-payment'],
         appLinks: [
           { label: 'Open your budget', to: '/budget' },
           { label: 'Your liabilities', to: '/liabilities' },

@@ -81,6 +81,7 @@ export const ROOT = {
   guideScenario: 'guide-scenario',
   guideSignals: 'guide-signals',
   guideSpreadExample: 'guide-spread-example',
+  guideCardExamples: 'guide-card-examples',
   importSummary: 'importSummary',
   liabilities: 'liabilities',
   liabilityAmortization: 'liabilityAmortization',
