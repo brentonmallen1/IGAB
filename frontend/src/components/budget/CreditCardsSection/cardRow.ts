@@ -143,6 +143,51 @@ export function stateSentence(card: CardStatus, money: Money): StateSentence | n
   }
 }
 
+export interface ReleaseAnchors {
+  /** What the form starts at: the surplus, where there is one. */
+  prefill: number
+  /** Everything this card is holding — the most that can come out before the
+   *  figure itself goes below zero. */
+  ceiling: number
+  /** The two lines under the amount box, in order. */
+  lines: string[]
+}
+
+/**
+ * What releasing money from a card costs, at each of the two anchors.
+ *
+ * Offered on ANY card holding money, not only one with a surplus. Set aside is
+ * money committed to a bill, but committing it is a decision and so is
+ * un-committing it: needing that cash for something else this month is a real
+ * situation, and the app's job is to say what it does, not to refuse it. The
+ * consequence is stated rather than enforced — past the spare, Uncovered
+ * rises dollar for dollar, which is a deliberate choice to carry more of this
+ * card's balance.
+ *
+ * Two served anchors and no third figure. "Uncovered after this" would need
+ * either a preview endpoint or a second copy of `card_position` on the client,
+ * and a client-side second opinion about a card's position is the defect this
+ * whole section exists to end.
+ */
+export function releaseAnchors(card: CardStatus, money: Money): ReleaseAnchors {
+  const spare = card.over_reserved
+  const held = Math.max(0, card.set_aside)
+  const lines =
+    spare > 0
+      ? [
+          `${money(spare)} is spare — more than this card owes. Releasing up to that leaves ` +
+            `the card exactly as covered as it is now.`,
+          `Past ${money(spare)}, Uncovered rises by every dollar you take out. That is allowed: ` +
+            `it means choosing to carry more of this balance.`,
+        ]
+      : [
+          `${money(held)} is set aside for this card's bill, and none of it is spare.`,
+          `Uncovered rises by every dollar you take out. That is allowed: it means choosing ` +
+            `to carry more of this balance.`,
+        ]
+  return { prefill: spare > 0 ? spare : held, ceiling: held, lines }
+}
+
 /**
  * A reserve whose identity does not close, as a visible sentence.
  *

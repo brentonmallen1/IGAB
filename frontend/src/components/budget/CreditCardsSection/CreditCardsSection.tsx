@@ -1,6 +1,7 @@
-import { Fragment, useId, useState } from 'react'
+import { Fragment, useId, useRef, useState } from 'react'
 import {
   AlertCircle,
+  ArrowRightLeft,
   ChevronDown,
   ChevronRight,
   CreditCard,
@@ -23,6 +24,7 @@ import {
   emptyLegsNote,
   pendingNote,
   reserveLegs,
+  releaseAnchors,
   rideMonths,
   otherCredits,
   setAsideLabel,
@@ -30,10 +32,15 @@ import {
   stateSentence,
 } from './cardRow'
 import { Dialog } from '../../common/Dialog/Dialog'
+import { BottomSheet } from '../../common/BottomSheet/BottomSheet'
+import { MoveMoneyForm } from '../MoveMoneyPopover/MoveMoneyForm'
+import { MoveMoneyPopover } from '../MoveMoneyPopover/MoveMoneyPopover'
+import { useCategories } from '../../../api/categories'
+import { useIsMobile } from '../../../hooks/useMediaQuery'
 import { Surface } from '../../common/Surface'
 import { Link } from 'react-router-dom'
 import { TransactionsPeekModal } from '../TransactionsPeekModal/TransactionsPeekModal'
-import type { CardStatus } from '../../../types'
+import type { CardStatus, Category } from '../../../types'
 import { balancesByCategory } from '../../../utils/categoryBalances'
 import { CELL_EDITOR_PROPS } from '../../../keyboard/cellEditor'
 import './CreditCardsSection.css'
@@ -427,6 +434,101 @@ function breachSentence(
   )} → ${formatMoney(breach.set_aside_after)}${cause}.`
 }
 
+/**
+ * Release: money out of a card's envelope, back to Ready to Assign or into
+ * another envelope.
+ *
+ * Reuses the grid's Move money whole — same form, same endpoint, same audit
+ * trail and undo. A card's envelope is an ordinary envelope to the server
+ * (`_require_fundable` says so), so a second "take money off a card" path
+ * would be a second implementation of a move, and the only thing genuinely
+ * different here is what the user should be told before they do it.
+ *
+ * Offered on ANY card holding money, not only one with a surplus. The money
+ * is committed to a bill, but committing it was a decision and so is taking
+ * it back — needing that cash elsewhere this month is a real situation. Past
+ * the spare it raises this card's Uncovered dollar for dollar, so the form
+ * says that instead of refusing.
+ */
+function ReleaseButton({
+  budgetId,
+  month,
+  card,
+  envelope,
+  formatMoney,
+}: {
+  budgetId: string
+  month: string
+  card: CardStatus
+  /** The card's own envelope, looked up once for the whole strip rather than
+   *  once per row — the popover's form fetches the list anyway, and React
+   *  Query would only be deduplicating a query this component need not make
+   *  N times. */
+  envelope: Category
+  formatMoney: (n: number) => string
+}) {
+  const isMobile = useIsMobile()
+  const [open, setOpen] = useState(false)
+  const anchorRef = useRef<HTMLButtonElement>(null)
+
+  const { prefill, lines } = releaseAnchors(card, formatMoney)
+  const footnote = (
+    <>
+      {lines.map((line) => (
+        <p key={line}>{line}</p>
+      ))}
+    </>
+  )
+  const label = `Release money from ${card.name}`
+
+  return (
+    <>
+      <button
+        type="button"
+        ref={anchorRef}
+        className="credit-cards__release-btn"
+        title={label}
+        aria-label={label}
+        onClick={() => setOpen(true)}
+      >
+        <ArrowRightLeft size={12} aria-hidden />
+      </button>
+      {open && !isMobile && (
+        <MoveMoneyPopover
+          budgetId={budgetId}
+          month={month}
+          category={envelope}
+          available={card.set_aside}
+          prefill={prefill}
+          footnote={footnote}
+          label={label}
+          anchorRef={anchorRef}
+          onClose={() => setOpen(false)}
+        />
+      )}
+      {isMobile && (
+        <BottomSheet
+          open={open}
+          onClose={() => setOpen(false)}
+          historyKey={`release-${card.account_id}`}
+        >
+          <div className="credit-cards__release-sheet">
+            <MoveMoneyForm
+              budgetId={budgetId}
+              month={month}
+              category={envelope}
+              available={card.set_aside}
+              prefill={prefill}
+              footnote={footnote}
+              onClose={() => setOpen(false)}
+            />
+          </div>
+        </BottomSheet>
+      )}
+    </>
+  )
+}
+
 export function CreditCardsSection({ budgetId, month }: { budgetId: string; month: string }) {
   const { data: budgetMonth } = useBudgetMonth(budgetId, month)
   const setAssignment = useSetAssignment(budgetId)
@@ -440,6 +542,9 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
   const [targetFor, setTargetFor] = useState<{ categoryId: string; name: string } | null>(null)
   const [legsFor, setLegsFor] = useState<string | null>(null)
   const { data: liabilities = [] } = useLiabilities(budgetId)
+  // For Release: the card's envelope is an ordinary category to the server,
+  // and the move endpoint wants the category, not the account.
+  const { data: categories = [] } = useCategories(budgetId)
 
   const cards = budgetMonth?.cards ?? []
   if (cards.length === 0) return null
@@ -539,6 +644,7 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
               const drift = driftSentence(card, formatMoney)
               const movement = debtMovementLabel(card, formatMoney)
               const liabilityId = liabilityByAccount.get(card.account_id)
+              const envelope = categories.find((c) => c.id === card.category_id)
               return (
                 <div className="credit-cards__group" key={card.account_id}>
                   <div className="credit-cards__row" role="row">
@@ -571,6 +677,18 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
                         >
                           <Crosshair size={12} aria-hidden />
                         </button>
+                      )}
+                      {/* The third door, and only where there is money to
+                        take: releasing from an empty envelope is a form with
+                        nothing to offer. */}
+                      {envelope && card.set_aside > 0 && (
+                        <ReleaseButton
+                          budgetId={budgetId}
+                          month={month}
+                          card={card}
+                          envelope={envelope}
+                          formatMoney={formatMoney}
+                        />
                       )}
                     </span>
                     <span className="credit-cards__col--num tabular" role="cell">
@@ -769,11 +887,13 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
                 set aside (assign that much to the card). The row says which.
               </dd>
               <dd>
-                <em>Above what the card owes</em> means money is assigned to the card that no debt
-                needed. Assignments stay in a card's envelope until riding debt turns up to retire,
-                so on a card you always pay from funded envelopes they simply accumulate. Releasing
-                the surplus is safe — type a negative in Assigned — and it comes back to Ready to
-                Assign, because that is where it left from.
+                <em>Above what the card owes</em> means money is set aside that no debt needed.
+                Assignments stay in a card's envelope until riding debt turns up to retire, so on a
+                card you always pay from funded envelopes they simply accumulate. Release it with
+                the arrows on the card's name and it goes back to Ready to Assign, or into another
+                envelope. You can release more than the spare — the money is committed to a bill,
+                not locked to one — and the box says what that does: Uncovered rises by every dollar
+                past the spare, which is a choice to carry more of the balance.
               </dd>
               <dt>Uncovered</dt>
               <dd>

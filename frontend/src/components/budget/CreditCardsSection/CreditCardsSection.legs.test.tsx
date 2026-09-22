@@ -25,6 +25,7 @@ vi.mock('../../../api/targets', () => ({ useTarget: () => ({ data: null }) }))
 // No liability rows: the payoff link stays out, so this file keeps testing the
 // breakdown rather than needing a router around it.
 vi.mock('../../../api/liabilities', () => ({ useLiabilities: () => ({ data: [] }) }))
+vi.mock('../../../api/categories', () => ({ useCategories: () => ({ data: [] }) }))
 vi.mock('../TargetEditor', () => ({ TargetEditor: () => null }))
 vi.mock('../TransactionsPeekModal/TransactionsPeekModal', () => ({
   TransactionsPeekModal: () => null,

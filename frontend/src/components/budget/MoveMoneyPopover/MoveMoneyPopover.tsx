@@ -1,4 +1,4 @@
-import { useEffect, useRef, type RefObject } from 'react'
+import { useEffect, useRef, type ReactNode, type RefObject } from 'react'
 import { MoveMoneyForm } from './MoveMoneyForm'
 import { useAnchoredPosition } from '../../../hooks/useAnchoredPosition'
 import type { Category } from '../../../types'
@@ -13,6 +13,11 @@ interface Props {
   category: Category
   /** Current available for this category (negative = overspent) */
   available: number
+  /** Passed straight through to the form — see `MoveMoneyForm`. */
+  prefill?: number
+  footnote?: ReactNode
+  /** Names the dialog. Defaults to what the form's own heading says. */
+  label?: string
   /** The button that opened it; the popover hangs off its right edge and
    *  flips above it near the bottom of the viewport. */
   anchorRef: RefObject<HTMLElement | null>
@@ -25,6 +30,9 @@ export function MoveMoneyPopover({
   month,
   category,
   available,
+  prefill,
+  footnote,
+  label,
   anchorRef,
   onClose,
 }: Props) {
@@ -78,13 +86,15 @@ export function MoveMoneyPopover({
         maxHeight: placement.maxHeight,
       }}
       role="dialog"
-      aria-label={isCover ? 'Cover overspending' : 'Move money'}
+      aria-label={label ?? (isCover ? 'Cover overspending' : 'Move money')}
     >
       <MoveMoneyForm
         budgetId={budgetId}
         month={month}
         category={category}
         available={available}
+        prefill={prefill}
+        footnote={footnote}
         onClose={onClose}
       />
     </div>

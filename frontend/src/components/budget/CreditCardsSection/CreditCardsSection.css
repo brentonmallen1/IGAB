@@ -179,9 +179,11 @@
   text-align: right;
 }
 
-/* The paydown-target door: quiet until hovered, like the grid's row
-   affordances — a target is a choice, not a nag. */
-.credit-cards__target-btn {
+/* The paydown-target and release doors: quiet until hovered, like the grid's
+   row affordances — a target is a choice, and so is taking money back off a
+   card. Neither is a nag. */
+.credit-cards__target-btn,
+.credit-cards__release-btn {
   display: inline-flex;
   align-items: center;
   padding: 2px;
@@ -194,7 +196,9 @@
 }
 
 .credit-cards__row:hover .credit-cards__target-btn,
-.credit-cards__target-btn:focus-visible {
+.credit-cards__row:hover .credit-cards__release-btn,
+.credit-cards__target-btn:focus-visible,
+.credit-cards__release-btn:focus-visible {
   opacity: 1;
 }
 
@@ -746,12 +750,13 @@
     text-align: left;
   }
 
-  /* The two doors on the name line (paydown target, payoff projection) —
-     the hover reveal cannot fire, and a 12px icon is not a target. Real
-     size rather than .tap-expand: they sit side by side, and two expanded
-     hit areas would eat each other. */
+  /* The doors on the name line (paydown target, payoff projection, release)
+     — the hover reveal cannot fire, and a 12px icon is not a target. Real
+     size rather than .tap-expand: they sit side by side, and expanded hit
+     areas would eat each other. */
   .credit-cards__target-btn,
-  .credit-cards__payoff-btn {
+  .credit-cards__payoff-btn,
+  .credit-cards__release-btn {
     opacity: 1;
     justify-content: center;
     min-width: var(--tap-min);
@@ -761,7 +766,14 @@
 
 @media (hover: none) {
   .credit-cards__target-btn,
-  .credit-cards__payoff-btn {
+  .credit-cards__payoff-btn,
+  .credit-cards__release-btn {
     opacity: 1;
   }
+}
+
+/* Release, as a bottom sheet on a phone — the same form the popover holds,
+   given the sheet's own padding. */
+.credit-cards__release-sheet {
+  padding: var(--spacing-md);
 }

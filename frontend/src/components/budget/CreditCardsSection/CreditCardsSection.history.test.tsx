@@ -22,6 +22,7 @@ vi.mock('../../../api/budgets', () => ({
 }))
 vi.mock('../../../api/targets', () => ({ useTarget: () => ({ data: null }) }))
 vi.mock('../../../api/liabilities', () => ({ useLiabilities: () => ({ data: [] }) }))
+vi.mock('../../../api/categories', () => ({ useCategories: () => ({ data: [] }) }))
 vi.mock('../TargetEditor', () => ({ TargetEditor: () => null }))
 vi.mock('../TransactionsPeekModal/TransactionsPeekModal', () => ({
   TransactionsPeekModal: () => null,
