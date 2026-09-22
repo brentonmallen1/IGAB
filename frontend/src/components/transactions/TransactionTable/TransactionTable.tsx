@@ -62,6 +62,7 @@ import type { ComboboxOption } from '../../common/Combobox/Combobox'
 import { countsAsPendingReview, inReviewSection, nextHeldForReview } from './reviewSection'
 import { compareByDateDesc, compareByRegisterOrder, nextTransactionSort } from './registerOrder'
 import { registerPayAction } from './payButton'
+import { sectionOpen, shouldDropSearch, shouldPageForHighlight } from './highlightReveal'
 import './TransactionTable.css'
 import { Surface } from '../../common/Surface'
 import { accountNameMap, openAccounts } from '../../../utils/accountLists'
@@ -804,6 +805,33 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   })
   const virtualItems = virtualizer.getVirtualItems()
 
+  // Keep paging until the row somebody was sent to is actually in hand. The
+  // register pages newest-first, so a transaction from a few months back is
+  // simply not in the first page — the scroll effect below then looks for an
+  // index that does not exist and does nothing at all, which reads as the
+  // link being broken. Bounded, so a stale id does not walk the account.
+  useEffect(() => {
+    if (
+      shouldPageForHighlight({
+        highlightId,
+        isLoaded: highlightId != null && transactionMap.has(highlightId),
+        pagesLoaded: txnPages?.pages.length ?? 0,
+        hasNextPage: !!hasNextPage,
+        isFetching,
+      })
+    ) {
+      fetchNextPage()
+    }
+  }, [highlightId, transactionMap, txnPages, hasNextPage, isFetching, fetchNextPage])
+
+  // A row asked for by id outranks a search left over from last time. The
+  // query feeds the SERVER request, so this is not "hidden behind a filter" —
+  // the row is never fetched, and the register draws "No transactions match
+  // your search" over the thing that was just clicked.
+  useEffect(() => {
+    if (shouldDropSearch(transactionSearchQuery, highlightId)) setTransactionSearch('')
+  }, [transactionSearchQuery, highlightId, setTransactionSearch])
+
   // Scroll to the highlighted transaction when it loads. Rows in the
   // virtualized main list may not be in the DOM yet, so those scroll by
   // index; rows in the small sections scroll via the DOM node.
@@ -1011,7 +1039,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
             <Collapsible
               title="Upcoming"
               count={upcomingScheduled.length}
-              isOpen={!collapsedSections.has('upcoming')}
+              isOpen={sectionOpen(collapsedSections, 'upcoming', [], highlightId)}
               onToggle={() => toggleSection('upcoming')}
             >
               {upcomingScheduled.map(renderUpcomingRow)}
@@ -1022,7 +1050,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
             <Collapsible
               title="Pending"
               count={pendingTxns.length}
-              isOpen={!collapsedSections.has('pending')}
+              isOpen={sectionOpen(collapsedSections, 'pending', pendingTxns, highlightId)}
               onToggle={() => toggleSection('pending')}
             >
               {renderRows(pendingTxns)}
@@ -1033,7 +1061,12 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
             <Collapsible
               title="Needs Review"
               count={uncategorizedTxns.length}
-              isOpen={!collapsedSections.has('uncategorized')}
+              isOpen={sectionOpen(
+                collapsedSections,
+                'uncategorized',
+                uncategorizedTxns,
+                highlightId
+              )}
               onToggle={() => toggleSection('uncategorized')}
             >
               {renderRows(uncategorizedTxns)}
