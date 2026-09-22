@@ -1,4 +1,5 @@
 import type { QueryClient } from '@tanstack/react-query'
+import { invalidateAfterAttachmentChange } from './invalidateAfterAttachmentChange'
 import { ROOT } from './queryKeys'
 
 /**
@@ -70,7 +71,13 @@ export function invalidateAfterTransactionChange(
     ]),
   ]
 
-  return Promise.all(roots.map((queryKey) => qc.invalidateQueries({ queryKey }))).then(
-    () => undefined
-  )
+  return Promise.all([
+    ...roots.map((queryKey) => qc.invalidateQueries({ queryKey })),
+    // Receipts. A merge moves the loser's attachments onto the survivor and a
+    // delete takes a row's with it, so the register's indicator map is wrong
+    // until this runs — the merge's own symptom was an image the editor showed
+    // and the row denied. Undo carried this list and the write that caused it
+    // did not.
+    invalidateAfterAttachmentChange(qc, transactionIds),
+  ]).then(() => undefined)
 }

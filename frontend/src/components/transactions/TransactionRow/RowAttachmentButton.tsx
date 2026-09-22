@@ -12,7 +12,7 @@ import {
   type Attachment,
 } from '../../../api/attachments'
 import { AttachmentLightbox } from '../../attachments/Lightbox'
-import { ROOT } from '../../../api/queryKeys'
+import { invalidateAfterAttachmentChange } from '../../../api/invalidateAfterAttachmentChange'
 
 interface Props {
   transactionId: string
@@ -62,10 +62,7 @@ export function RowAttachmentButton({ transactionId, hasAttachment }: Props) {
     setBusy(true)
     try {
       const { ok, failed } = await uploadFilesToTransaction(transactionId, files)
-      if (ok > 0) {
-        qc.invalidateQueries({ queryKey: [ROOT.attachmentCheck] })
-        qc.invalidateQueries({ queryKey: [ROOT.attachments, transactionId] })
-      }
+      if (ok > 0) await invalidateAfterAttachmentChange(qc, [transactionId])
       if (failed.length > 0) {
         toast.error(`${failed.length} file${failed.length !== 1 ? 's' : ''} failed to upload`)
       }

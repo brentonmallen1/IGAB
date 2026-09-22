@@ -94,6 +94,30 @@ async def test_merge_moves_attachments_and_cancels_matches(db_session):
     await assert_financial_invariants(db_session, budget.id)
 
 
+async def test_merged_receipt_is_visible_to_the_row_indicator(db_session):
+    """The register's image icon reads a different query from the editor's panel.
+
+    `has_attachments` is the bulk map behind the icon; `get_for_transaction`
+    is what the editor's attachment panel lists. A merge moves receipts onto
+    the survivor, and both have to see them — the reported symptom was an
+    image the panel showed and the row denied, which was a stale client
+    cache, but nothing pinned the server side of that pair.
+    """
+    services, budget, checking = await _setup(db_session)
+    plain = await create_transaction(db_session, budget, checking, "-50.00", TODAY)
+    with_receipt = await create_transaction(db_session, budget, checking, "-50.00", TODAY)
+    _attach(db_session, with_receipt)
+    await db_session.flush()
+
+    survivor = await services.transactions.merge(
+        budget.id, [plain.id, with_receipt.id], survivor_id=plain.id
+    )
+
+    assert len(await services.attachment_repo.get_for_transaction(survivor.id)) == 1
+    flagged = await services.attachment_repo.has_attachments([survivor.id], budget.user_id)
+    assert survivor.id in flagged, "the register's image icon must see the merged-in receipt"
+
+
 async def test_merge_keeps_survivor_date_and_inherits_bank_posted_date(db_session):
     services, budget, checking = await _setup(db_session)
     user_day = TODAY - timedelta(days=2)
