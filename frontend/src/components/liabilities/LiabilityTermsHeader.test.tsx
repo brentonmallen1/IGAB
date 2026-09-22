@@ -8,7 +8,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { Liability } from '../../api/liabilities'
 import { LiabilityTermsHeader } from './LiabilityTermsHeader'
@@ -54,7 +54,10 @@ function liability(overrides: Partial<Liability> = {}): Liability {
     promo_end_date: null,
     promo_deferred_interest: false,
     term_months: null,
+    payment_due_kind: 'day_of_month',
     payment_due_day: null,
+    payment_due_cycle_days: null,
+    payment_due_anchor: null,
     payment_components: [],
     payment_components_total: 0,
     full_monthly_payment: null,
@@ -166,18 +169,72 @@ describe('LiabilityTermsHeader', () => {
     expect(screen.queryByRole('button', { name: /payment/i })).not.toBeInTheDocument()
   })
 
-  it('shows the bill due day for a card once it is set — and no slot before', () => {
-    renderHeader([liability()])
-    expect(screen.queryByText('Bill due')).not.toBeInTheDocument()
+  describe('when the bill is due', () => {
+    // The header reads today's date, so the clock is pinned: a test whose
+    // expectations move with the calendar passes for a week and then starts
+    // failing on a Tuesday.
+    beforeEach(() => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date(2026, 8, 13, 12, 0, 0)) // Sunday 13 Sep 2026
+    })
+    afterEach(() => {
+      vi.useRealTimers()
+    })
 
-    renderHeader([liability({ payment_due_day: 17 })])
-    expect(screen.getByText('the 17th')).toBeInTheDocument()
-    expect(screen.getByText('Bill due')).toBeInTheDocument()
-  })
+    it('has no slot at all before a due date is set', () => {
+      renderHeader([liability()])
 
-  it('never shows a bill due day on a loan, even a stale stored one', () => {
-    renderHeader([liability({ payment_due_day: 17 })], true)
+      expect(screen.queryByText('Bill due')).not.toBeInTheDocument()
+    })
 
-    expect(screen.queryByText('Bill due')).not.toBeInTheDocument()
+    it('shows the next date, with the monthly rule under it', () => {
+      renderHeader([liability({ payment_due_day: 17 })])
+
+      expect(screen.getByText('Sep 17')).toBeInTheDocument()
+      expect(screen.getByText('the 17th of each month')).toBeInTheDocument()
+    })
+
+    it('shows the next date a cycle actually lands on, not the anchor', () => {
+      // 3 Sep + 31 days. The point of the whole feature: this card's bill is
+      // due on the 4th next time and the 5th after that, and no day-of-month
+      // spelling could have said so.
+      renderHeader([
+        liability({
+          payment_due_kind: 'cycle_days',
+          payment_due_cycle_days: 31,
+          payment_due_anchor: '2026-09-03',
+        }),
+      ])
+
+      expect(screen.getByText('Oct 4')).toBeInTheDocument()
+      expect(screen.getByText('every 31 days')).toBeInTheDocument()
+    })
+
+    it('says how far off it is once it is close and the card still owes', () => {
+      renderHeader([liability({ payment_due_day: 17, current_balance: 420 })])
+
+      expect(screen.getByText('Bill due in 4 days')).toBeInTheDocument()
+    })
+
+    it('stays a plain label on a card that owes nothing', () => {
+      // A due date on a settled card is a calendar fact, not news.
+      renderHeader([liability({ payment_due_day: 17, current_balance: 0 })])
+
+      expect(screen.getByText('Bill due')).toBeInTheDocument()
+      expect(screen.queryByText(/in 4 days/)).not.toBeInTheDocument()
+    })
+
+    it('stays a plain label while the bill is still weeks off', () => {
+      renderHeader([liability({ payment_due_day: 3, current_balance: 420 })])
+
+      expect(screen.getByText('Oct 3')).toBeInTheDocument()
+      expect(screen.getByText('Bill due')).toBeInTheDocument()
+    })
+
+    it('never shows a bill due date on a loan, even a stale stored one', () => {
+      renderHeader([liability({ payment_due_day: 17 })], true)
+
+      expect(screen.queryByText(/Bill due/)).not.toBeInTheDocument()
+    })
   })
 })

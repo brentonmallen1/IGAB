@@ -13,6 +13,7 @@ import {
   type Liability,
   type LiabilityType,
   type PaymentComponentInput,
+  type PaymentDueKind,
 } from '../../api/liabilities'
 import { PaymentComposition } from './PaymentComposition'
 import { invalidComponentIndexes, usableComponents } from './compositionRows'
@@ -116,9 +117,19 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
   const [promoEnabled, setPromoEnabled] = useState(liability?.promo_end_date != null)
   const [promoEndDate, setPromoEndDate] = useState(liability?.promo_end_date ?? '')
   const [promoDeferred, setPromoDeferred] = useState(liability?.promo_deferred_interest ?? false)
+  // The bill's due date is a RULE, not the date one statement happened to
+  // show: an issuer billing every 31 days walks its due date through the
+  // calendar, so "the 17th" is right for one cycle and wrong from the next.
+  const [dueKind, setDueKind] = useState<PaymentDueKind>(
+    liability?.payment_due_kind ?? 'day_of_month'
+  )
   const [dueDay, setDueDay] = useState(
     liability?.payment_due_day != null ? String(liability.payment_due_day) : ''
   )
+  const [dueCycleDays, setDueCycleDays] = useState(
+    liability?.payment_due_cycle_days != null ? String(liability.payment_due_cycle_days) : ''
+  )
+  const [dueAnchor, setDueAnchor] = useState(liability?.payment_due_anchor ?? '')
   const [creditLimit, setCreditLimit] = useState(
     liability?.credit_limit != null ? String(liability.credit_limit) : ''
   )
@@ -196,9 +207,20 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
       // understate the bill this feature exists to state correctly.
       return setError('One of the payment parts is not a valid amount')
     }
+    // The bounds themselves are the server's (domain/payment_due.py) and it
+    // refuses in words this dialog renders — restating them here is the third
+    // copy of one rule. What is checked is that a cycle has both its halves
+    // before a round-trip: the two fields appear together and a half-filled
+    // one is a typo, not a decision.
     const dueDayNum = dueDay ? parseInt(dueDay, 10) : null
-    if (isCard && dueDayNum !== null && (isNaN(dueDayNum) || dueDayNum < 1 || dueDayNum > 31)) {
-      return setError('The bill due day is a day of the month — 1 to 31')
+    const dueCycleNum = dueCycleDays ? parseInt(dueCycleDays, 10) : null
+    if (isCard && dueKind === 'cycle_days') {
+      if (dueCycleNum === null || isNaN(dueCycleNum)) {
+        return setError('Enter how many days are in this card\u2019s billing cycle')
+      }
+      if (!dueAnchor) {
+        return setError('Enter the last due date you saw — the cycle is counted from it')
+      }
     }
 
     const shared = {
@@ -217,9 +239,14 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
       term_months: termMonths ? parseInt(termMonths, 10) : null,
       promo_end_date: promoEnabled ? promoEndDate : null,
       promo_deferred_interest: promoEnabled ? promoDeferred : false,
-      // Null for a loan on purpose: retyping a card to a loan clears the day
-      // rather than leaving a stale one behind.
-      payment_due_day: isCard ? dueDayNum : null,
+      // Null for a loan on purpose: retyping a card to a loan clears the rule
+      // rather than leaving a stale one behind. Each kind sends only its own
+      // fields, so switching between them cannot leave the other half of a
+      // rule the dialog is no longer showing.
+      payment_due_kind: isCard ? dueKind : 'day_of_month',
+      payment_due_day: isCard && dueKind === 'day_of_month' ? dueDayNum : null,
+      payment_due_cycle_days: isCard && dueKind === 'cycle_days' ? dueCycleNum : null,
+      payment_due_anchor: isCard && dueKind === 'cycle_days' ? dueAnchor : null,
       // The limit is a card fact; a loan has none, and retyping clears it.
       credit_limit: isCard && creditLimit ? parseAmountInput(creditLimit) : null,
       // Always sent, so clearing the last row clears the composition. A
@@ -405,24 +432,6 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
               placeholder="6.25"
             />
           </label>
-          {/* In this row because it is the same shape as its neighbours — one
-              short input. The minimum-payment rule below is not, which is why
-              it gets the full width instead of a third of it. */}
-          {isCard && (
-            <label className="dialog-form__field">
-              <span>Bill due day</span>
-              <input
-                type="number"
-                inputMode="numeric"
-                min="1"
-                max="31"
-                value={dueDay}
-                onChange={(e) => setDueDay(e.target.value)}
-                placeholder="17"
-                title="Shown on the card page — a reminder, not a projection input"
-              />
-            </label>
-          )}
           {isCard && (
             <label className="dialog-form__field">
               <span>Credit limit</span>
@@ -439,6 +448,81 @@ export function LiabilitySettingsModal({ budgetId, liability, onClose, onDeleted
             </label>
           )}
         </div>
+
+        {/* A due date is a rule, not the date one statement showed — the same
+            shape as the minimum payment below, and it gets the same segmented
+            treatment rather than a third of a row. A card on a fixed-length
+            cycle walks its due date through the calendar, and recording that
+            as a day of the month is right once and wrong from then on. */}
+        {isCard && (
+          <div className="dialog-form__field">
+            <span>Bill due</span>
+            <p className="dialog-form__hint">
+              Shown on the card page, and in the budget&rsquo;s credit-card strip when the bill is
+              close and the card still owes something. A reminder — no projection reads it.
+            </p>
+            <div className="liability-modal__segmented" role="radiogroup" aria-label="Bill due">
+              <button
+                type="button"
+                role="radio"
+                aria-checked={dueKind === 'day_of_month'}
+                className={dueKind === 'day_of_month' ? 'is-selected' : ''}
+                onClick={() => setDueKind('day_of_month')}
+              >
+                A day of the month
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={dueKind === 'cycle_days'}
+                className={dueKind === 'cycle_days' ? 'is-selected' : ''}
+                onClick={() => setDueKind('cycle_days')}
+              >
+                A number of days
+              </button>
+            </div>
+            {dueKind === 'day_of_month' ? (
+              <input
+                type="number"
+                inputMode="numeric"
+                min="1"
+                max="31"
+                value={dueDay}
+                onChange={(e) => setDueDay(e.target.value)}
+                placeholder="17"
+                aria-label="Bill due day of the month"
+              />
+            ) : (
+              <div className="liability-modal__rule">
+                <label className="dialog-form__field">
+                  <span>Days in the cycle</span>
+                  {/* A placeholder, not a value: a guessed cycle that looks
+                      entered is worse than a blank one. */}
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min="7"
+                    max="120"
+                    value={dueCycleDays}
+                    onChange={(e) => setDueCycleDays(e.target.value)}
+                    placeholder="31"
+                  />
+                </label>
+                <label className="dialog-form__field">
+                  <span>Last due date</span>
+                  {/* The one on the statement in front of you. Every later due
+                      date is counted from it, so it is the half of the rule
+                      that cannot be guessed. */}
+                  <input
+                    type="date"
+                    value={dueAnchor}
+                    onChange={(e) => setDueAnchor(e.target.value)}
+                  />
+                </label>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="dialog-form__field">
           <span>Minimum payment</span>

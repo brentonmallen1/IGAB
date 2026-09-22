@@ -2,6 +2,7 @@ import { Fragment, useId, useRef, useState } from 'react'
 import {
   AlertCircle,
   ArrowRightLeft,
+  CalendarClock,
   ChevronDown,
   ChevronRight,
   CreditCard,
@@ -12,6 +13,8 @@ import {
 import { useBudgetMonth, useCardTimeline, useSetAssignment } from '../../../api/budgets'
 import type { CardTimelineBreach } from '../../../api/budgets'
 import { useLiabilities } from '../../../api/liabilities'
+import { currentMonthStart, today } from '../../../utils/dates'
+import { dueSoonNotice } from '../../../utils/paymentDue'
 import { useTarget } from '../../../api/targets'
 import { TargetEditor } from '../TargetEditor'
 import { useFormatters } from '../../../hooks/useFormatters'
@@ -559,8 +562,13 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
   // strip never linked to it, so the one place that says "you are ahead" was
   // two navigations away from the place that says how much you owe.
   const liabilityByAccount = new Map(
-    liabilities.filter((l) => l.linked_account_id).map((l) => [l.linked_account_id as string, l.id])
+    liabilities.filter((l) => l.linked_account_id).map((l) => [l.linked_account_id as string, l])
   )
+  // A due date is a fact about NOW, and `card.balance` is the ledger through
+  // the month being VIEWED. Pairing the two on a month in the past would put
+  // a live "due in 4 days" beside a balance from 2024, so the indicator is
+  // only offered from the current month on.
+  const dueNoticesApply = month >= currentMonthStart()
 
   function commit(categoryId: string) {
     // The same rule the grid's cell uses: the box is the whole equation,
@@ -643,18 +651,44 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
               const state = stateSentence(card, formatMoney)
               const drift = driftSentence(card, formatMoney)
               const movement = debtMovementLabel(card, formatMoney)
-              const liabilityId = liabilityByAccount.get(card.account_id)
+              const liability = liabilityByAccount.get(card.account_id)
+              // `card.balance` is owed-NEGATIVE; dueSoonNotice takes owed as
+              // a positive. The two surfaces that show this indicator hold
+              // the number in opposite signs, which is why each converts at
+              // its own call site against one documented convention.
+              const due =
+                dueNoticesApply && liability
+                  ? dueSoonNotice(liability, { today: today(), owed: -card.balance })
+                  : null
               const envelope = categories.find((c) => c.id === card.category_id)
               return (
                 <div className="credit-cards__group" key={card.account_id}>
                   <div className="credit-cards__row" role="row">
                     <span className="credit-cards__col--name" role="cell">
                       <CreditCard size={13} aria-hidden />
-                      {card.name}
+                      {/* The name is the one thing on this line allowed to
+                        truncate. Everything beside it — the tag, the chip,
+                        the doors — is fixed-width, so without a shrinkable
+                        box of its own a long card name pushes them past the
+                        cell's `overflow: hidden` and clips the indicators
+                        instead of itself. */}
+                      <span className="credit-cards__card-name">{card.name}</span>
                       {card.is_closed && <span className="credit-cards__closed-tag">Closed</span>}
-                      {liabilityId && (
+                      {/* The bill is close and this card still owes something
+                        — the one moment a due date is news rather than a
+                        calendar fact. Never "overdue": the app cannot see
+                        whether a statement was paid, and saying so when it
+                        was is exactly the kind of confident wrong claim this
+                        strip has been taught not to make. */}
+                      {due && (
+                        <span className="credit-cards__due">
+                          <CalendarClock size={11} aria-hidden />
+                          Due {due.phrase}
+                        </span>
+                      )}
+                      {liability && (
                         <Link
-                          to={`/liabilities/${liabilityId}`}
+                          to={`/liabilities/${liability.id}`}
                           className="credit-cards__payoff-btn"
                           title={`Payoff projection for ${card.name}`}
                           aria-label={`Payoff projection for ${card.name}`}

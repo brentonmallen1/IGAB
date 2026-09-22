@@ -2163,11 +2163,29 @@ class Liability(Base):
     promo_deferred_interest: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     # Explicit contractual term, when known (overrides the implied estimate)
     term_months: Mapped[int | None] = mapped_column(Integer)
-    # The card bill's due day of the month (1-31). Statement metadata, shown
-    # on the card page; no projection reads it — amortization stays monthly
-    # and dateless by design. Meaningful for cards; the UI offers it nowhere
-    # else.
+    # WHEN the card's bill is due, stated one of two ways — the rule, not the
+    # figure a statement happened to show. `payment_due_kind` picks:
+    #
+    #   'day_of_month' — `payment_due_day` (1-31), clamped in a short month.
+    #   'cycle_days'   — `payment_due_cycle_days` days after
+    #                    `payment_due_anchor`, the last due date actually seen.
+    #
+    # A fixed-length cycle walks its due date through the calendar, so storing
+    # one as a day of the month is right for one cycle and wrong from the next
+    # — the same "stored figure vs stored rule" trap `minimum_payment` carries.
+    # domain/payment_due.py owns which combinations are storable.
+    #
+    # Statement metadata throughout: no projection reads any of it, and
+    # amortization stays monthly and dateless by design. The next due DATE is
+    # computed on the client (frontend/src/utils/paymentDue.ts), which is the
+    # side that knows what day it is. Meaningful for cards; the UI offers it
+    # nowhere else.
+    payment_due_kind: Mapped[str] = mapped_column(
+        String(20), default="day_of_month", server_default="day_of_month", nullable=False
+    )
     payment_due_day: Mapped[int | None] = mapped_column(Integer)
+    payment_due_cycle_days: Mapped[int | None] = mapped_column(Integer)
+    payment_due_anchor: Mapped[_PyDate | None] = mapped_column(Date)
     #: Cards: the issuer's limit. Utilization (balance ÷ limit) is computed
     #: from it — domain/credit.py — for the liability page and the Guide
     #: checkup. Null when unknown; SimpleFIN does not carry it.

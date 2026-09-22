@@ -777,3 +777,41 @@
 .credit-cards__release-sheet {
   padding: var(--spacing-md);
 }
+
+/* The bill is close and the card still owes something. The second place on
+   this row where colour is earned (the first is __drift): every other state
+   here is normal and deliberately un-alarmed, and a due date that is weeks
+   away never draws this at all — it is not rendered.
+
+   A chip rather than a caption under a figure, because it belongs to the
+   CARD, not to any one column's number. */
+.credit-cards__due {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: var(--font-size-2xs);
+  font-weight: 600;
+  background: var(--surface-raised);
+  color: var(--color-warning);
+  border: 1px solid var(--edge);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* The chip's own icon keeps the chip's colour: __col--name paints every svg
+   inside it muted, which would leave the clock grey on warning-coloured text. */
+.credit-cards__due svg {
+  color: inherit;
+}
+
+/* See the comment at its call site: the only shrinkable thing on the name
+   line, so a long card name ellipses instead of clipping the chip and the
+   doors that follow it. */
+.credit-cards__card-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

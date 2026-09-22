@@ -8,6 +8,7 @@ from pydantic import Field
 from igab.api.v1.schemas.base import ApiModel, ClientDated
 from igab.domain.money import Money
 from igab.domain.payment_composition import MAX_LABEL
+from igab.domain.payment_due import PaymentDueKind
 from igab.services.liability_service import BalanceSource
 
 LiabilityType = Literal[
@@ -66,9 +67,21 @@ class LiabilityCreate(ClientDated):
     promo_end_date: datetime.date | None = None
     promo_deferred_interest: bool = False
     term_months: int | None = None
-    #: The card bill's due day of the month. Metadata for the card header;
-    #: no projection reads it.
-    payment_due_day: int | None = Field(default=None, ge=1, le=31)
+    #: WHEN the bill is due, as a rule rather than an observed date. See
+    #: domain/payment_due.py; the cross-field rules are checked there, on the
+    #: merged state, so create and update cannot disagree about what is
+    #: storable. Metadata for the card header — no projection reads any of it.
+    #:
+    #: The bounds are NOT restated as Field constraints: `validate_payment_due`
+    #: already holds them, and a Pydantic bound fires first with a field-error
+    #: LIST the dialog cannot render — it reads a `detail` string and falls
+    #: back to "Save failed" for anything else. One home, and its words are
+    #: the ones the user reads.
+    payment_due_kind: PaymentDueKind = "day_of_month"
+    payment_due_day: int | None = None
+    payment_due_cycle_days: int | None = None
+    #: The last due date actually seen — where the cycle is counted from.
+    payment_due_anchor: datetime.date | None = None
     #: Cards: the issuer's limit, for utilization. Null when unknown.
     credit_limit: Money | None = None
     #: What the bill carries BESIDE principal and interest. `minimum_payment`
@@ -94,8 +107,13 @@ class LiabilityUpdate(ApiModel):
     promo_end_date: datetime.date | None = None
     promo_deferred_interest: bool | None = None
     term_months: int | None = None
-    #: Explicit null clears it, like planned_extra_payment above.
-    payment_due_day: int | None = Field(default=None, ge=1, le=31)
+    #: Explicit null clears it, like planned_extra_payment above. The kind is
+    #: the one that cannot be null: a row always states its due date one way
+    #: or the other, and `exclude_unset` leaves it alone when unsent.
+    payment_due_kind: PaymentDueKind | None = None
+    payment_due_day: int | None = None
+    payment_due_cycle_days: int | None = None
+    payment_due_anchor: datetime.date | None = None
     #: Cards: the issuer's limit, for utilization. Null when unknown.
     credit_limit: Money | None = None
     #: An empty list clears the composition; null leaves it as it was.
@@ -179,8 +197,14 @@ class LiabilityOut(ApiModel):
     promo_end_date: datetime.date | None
     promo_deferred_interest: bool
     term_months: int | None
-    #: The card bill's due day of the month — metadata, no projection reads it.
+    #: The due-date rule, served whole so the client can compute the next due
+    #: date itself — it is the side that knows what day it is, and a GET
+    #: carries no `client_today` for the server to use instead. Metadata: no
+    #: projection here reads any of it. Home: domain/payment_due.py.
+    payment_due_kind: str
     payment_due_day: int | None
+    payment_due_cycle_days: int | None
+    payment_due_anchor: datetime.date | None
     credit_limit: Decimal | None
     #: balance ÷ credit_limit as a percent (domain/credit.py), to one decimal;
     #: None without a usable limit. Computed here because the server owns

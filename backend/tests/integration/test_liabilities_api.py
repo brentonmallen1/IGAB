@@ -645,3 +645,127 @@ class TestOwnership:
             f"/api/v1/{mine.id}/liabilities/{missing}", json={"name": "X"}
         )
         assert resp.status_code == 404
+
+
+class TestTheBillDueRule:
+    """When the bill is due, stated as a rule rather than one observed date.
+
+    A card on a fixed-length cycle walks its due date through the calendar, so
+    "the 17th" is right for one cycle and wrong from the next. The three
+    columns travel together; what the API owes is refusing a pair nothing
+    could evaluate — and refusing it on the MERGED state, since the dialog can
+    send the kind and the figures in separate PATCHes.
+    """
+
+    async def _card(self, api_client, db_session, **over):
+        budget = await create_budget(db_session, api_client.test_user)
+        body = {
+            "name": "Sapphire Visa",
+            "liability_type": "credit_card",
+            "manual_balance": "1240.00",
+            **over,
+        }
+        resp = await api_client.post(f"/api/v1/{budget.id}/liabilities", json=body)
+        return budget, resp
+
+    async def test_a_card_with_no_due_date_stores_the_default_kind(self, api_client, db_session):
+        """Every card starts here, and it is not an error: the day is simply
+        not on file yet."""
+        _, resp = await self._card(api_client, db_session)
+        assert resp.status_code == 201, resp.text
+        assert resp.json()["payment_due_kind"] == "day_of_month"
+        assert resp.json()["payment_due_day"] is None
+        assert resp.json()["payment_due_cycle_days"] is None
+        assert resp.json()["payment_due_anchor"] is None
+
+    async def test_a_cycle_round_trips(self, api_client, db_session):
+        _, resp = await self._card(
+            api_client,
+            db_session,
+            payment_due_kind="cycle_days",
+            payment_due_cycle_days=31,
+            payment_due_anchor="2026-09-03",
+        )
+        assert resp.status_code == 201, resp.text
+        body = resp.json()
+        assert body["payment_due_kind"] == "cycle_days"
+        assert body["payment_due_cycle_days"] == 31
+        assert body["payment_due_anchor"] == "2026-09-03"
+
+    async def test_a_cycle_with_no_anchor_is_refused(self, api_client, db_session):
+        _, resp = await self._card(
+            api_client, db_session, payment_due_kind="cycle_days", payment_due_cycle_days=31
+        )
+        assert resp.status_code == 422, resp.text
+        assert "last due date" in resp.json()["detail"]
+
+    async def test_switching_kind_without_the_figures_is_refused(self, api_client, db_session):
+        """The PATCH that matters: the kind alone is storable as far as
+        Pydantic is concerned, and would leave a row whose dialog says
+        "every N days" over two blank fields."""
+        budget, resp = await self._card(api_client, db_session, payment_due_day=17)
+        liability_id = resp.json()["id"]
+
+        resp = await api_client.patch(
+            f"/api/v1/{budget.id}/liabilities/{liability_id}",
+            json={"payment_due_kind": "cycle_days"},
+        )
+        assert resp.status_code == 422, resp.text
+
+    async def test_clearing_an_anchor_out_from_under_a_cycle_is_refused(
+        self, api_client, db_session
+    ):
+        """The other direction of the same rule — the stored kind is the one
+        being merged against, and it says the anchor is load-bearing."""
+        budget, resp = await self._card(
+            api_client,
+            db_session,
+            payment_due_kind="cycle_days",
+            payment_due_cycle_days=31,
+            payment_due_anchor="2026-09-03",
+        )
+        liability_id = resp.json()["id"]
+
+        resp = await api_client.patch(
+            f"/api/v1/{budget.id}/liabilities/{liability_id}",
+            json={"payment_due_anchor": None},
+        )
+        assert resp.status_code == 422, resp.text
+
+    async def test_switching_back_to_a_day_of_the_month_keeps_working(self, api_client, db_session):
+        """The cycle figures stay in the row and mean nothing under the new
+        kind. The kind decides, which is why it is stored rather than inferred
+        from which columns are filled in."""
+        budget, resp = await self._card(
+            api_client,
+            db_session,
+            payment_due_kind="cycle_days",
+            payment_due_cycle_days=31,
+            payment_due_anchor="2026-09-03",
+        )
+        liability_id = resp.json()["id"]
+
+        resp = await api_client.patch(
+            f"/api/v1/{budget.id}/liabilities/{liability_id}",
+            json={"payment_due_kind": "day_of_month", "payment_due_day": 17},
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["payment_due_kind"] == "day_of_month"
+        assert resp.json()["payment_due_day"] == 17
+
+    async def test_an_impossible_cycle_length_is_refused_in_the_servers_own_words(
+        self, api_client, db_session
+    ):
+        """A `detail` string, not a Pydantic field-error list: the dialog
+        renders a string and falls back to "Save failed" for anything else,
+        so the bounds live in the domain alone and their wording is what the
+        user reads."""
+        _, resp = await self._card(
+            api_client,
+            db_session,
+            payment_due_kind="cycle_days",
+            payment_due_cycle_days=0,
+            payment_due_anchor="2026-09-03",
+        )
+        assert resp.status_code == 422, resp.text
+        assert "days" in resp.json()["detail"]
