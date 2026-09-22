@@ -130,33 +130,46 @@
   border-bottom: none;
 }
 
-/* The row's own explanation, in the document rather than a `title`. Sunken,
-   like the breakdown below it, so the two read as one attached block and the
-   row above keeps the panel's surface. */
-.credit-cards__state {
-  padding: var(--spacing-xs) var(--spacing-sm);
-  background-color: var(--surface-sunken);
-  border-bottom: 1px solid var(--border-subtle);
+/* The door to a card's explanation, on the name line beside the card it is
+   about. Always visible, unlike the paydown/release doors beside it: those
+   are actions and stay quiet until wanted, this is a piece of information
+   announcing that there IS one. Its presence is the signal — a funded card
+   draws no icon at all — so hiding it until hover would hide the signal. */
+.credit-cards__why-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border: none;
+  border-radius: var(--border-radius-sm);
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
 }
 
-.credit-cards__state-line {
+.credit-cards__why-btn:hover {
+  color: var(--text-primary);
+  background-color: color-mix(in srgb, var(--text-primary) 10%, transparent);
+}
+
+/* The explanation itself, in a dialog headed by the card's name. It rendered
+   as a paragraph row under the row once: it ballooned the table, and a block
+   of prose between two rows belongs at a glance to neither. */
+.credit-cards__why-line {
   margin: 0;
-  font-size: var(--font-size-xs);
-  line-height: 1.5;
+  font-size: var(--font-size-sm);
+  line-height: 1.6;
   color: var(--text-secondary);
-  /* Long enough to be a sentence, short enough to stay readable beside a
-     table. Runs full width on a phone, where the well is already narrow. */
-  max-width: 78ch;
 }
 
-.credit-cards__state-line + .credit-cards__state-line {
-  margin-top: var(--spacing-2xs);
+.credit-cards__why-line + .credit-cards__why-line {
+  margin-top: var(--spacing-sm);
 }
 
 /* What to do, where there IS something — a shade stronger than the fact it
    follows, and deliberately the same text color as the row's figures so it
    never reads as a warning. Several of these states are entirely normal. */
-.credit-cards__state-action {
+.credit-cards__why-action {
   color: var(--text-primary);
 }
 
@@ -734,13 +747,6 @@
     white-space: normal;
   }
 
-  /* The sentence is the reason this section is legible on a phone at all —
-     every one of these used to be a `title`. It gets the full width of the
-     well and no column to fight with. */
-  .credit-cards__state-line {
-    max-width: none;
-  }
-
   .credit-cards__assign-btn {
     text-align: left;
     padding-left: 0;
@@ -756,7 +762,8 @@
      areas would eat each other. */
   .credit-cards__target-btn,
   .credit-cards__payoff-btn,
-  .credit-cards__release-btn {
+  .credit-cards__release-btn,
+  .credit-cards__why-btn {
     opacity: 1;
     justify-content: center;
     min-width: var(--tap-min);

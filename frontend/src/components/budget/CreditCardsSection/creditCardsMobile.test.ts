@@ -39,12 +39,14 @@ describe('credit-cards strip on a phone', () => {
     }
   })
 
-  it('gives the state sentence the whole width of the well', () => {
+  it('gives the explanation door a real touch target', () => {
     // F2's fix, and the reason this section is readable on a phone at all:
     // every one of these sentences used to be a `title`, which an installed
-    // iOS PWA never renders. A sentence clamped to a desktop measure inside
-    // a 390pt well would be the same problem wearing different clothes.
-    expect(rule('.credit-cards__state-line')).toMatch(/max-width:\s*none/)
+    // iOS PWA never renders. The sentence now lives in a dialog, so the
+    // thing that has to work on a phone is the button that opens it — a
+    // 12px icon is not a target.
+    const door = phone.find((r) => r.selector.includes('.credit-cards__why-btn'))
+    expect(door?.body).toMatch(/min-height:\s*var\(--tap-min\)/)
   })
 
   it('never lets a caption push the strip sideways', () => {

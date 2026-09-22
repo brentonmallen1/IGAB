@@ -544,6 +544,10 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
   const [peek, setPeek] = useState<{ accountId: string; accountName: string } | null>(null)
   const [targetFor, setTargetFor] = useState<{ categoryId: string; name: string } | null>(null)
   const [legsFor, setLegsFor] = useState<string | null>(null)
+  // Which card's explanation is open, by account. The card itself is looked
+  // up on render rather than held here, so a refetch behind an open dialog
+  // updates the sentence instead of freezing the figures it quotes.
+  const [whyFor, setWhyFor] = useState<string | null>(null)
   const { data: liabilities = [] } = useLiabilities(budgetId)
   // For Release: the card's envelope is an ordinary category to the server,
   // and the move endpoint wants the category, not the account.
@@ -569,6 +573,10 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
   // a live "due in 4 days" beside a balance from 2024, so the indicator is
   // only offered from the current month on.
   const dueNoticesApply = month >= currentMonthStart()
+
+  const whyCard = cards.find((c) => c.account_id === whyFor) ?? null
+  const whyState = whyCard ? stateSentence(whyCard, formatMoney) : null
+  const whyDrift = whyCard ? driftSentence(whyCard, formatMoney) : null
 
   function commit(categoryId: string) {
     // The same rule the grid's cell uses: the box is the whole equation,
@@ -674,6 +682,29 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
                         instead of itself. */}
                       <span className="credit-cards__card-name">{card.name}</span>
                       {card.is_closed && <span className="credit-cards__closed-tag">Closed</span>}
+                      {/* The explanation, one tap from the card it is about.
+                        It used to render as a paragraph row under the row,
+                        which ballooned the table and left the reader working
+                        out which card a block of prose belonged to. It is
+                        NOT a `title` tooltip: on the installed iOS PWA a
+                        tooltip is unreachable, which is the defect the row
+                        was rescued from in the first place. A real button
+                        and a dialog headed by the card's name answer both.
+
+                        Only where there is something to say — a funded card
+                        has no icon at all, so the icon's presence is itself
+                        the signal. */}
+                      {(state || drift) && (
+                        <button
+                          type="button"
+                          className="credit-cards__why-btn"
+                          title={`What is happening with ${card.name}`}
+                          aria-label={`What is happening with ${card.name}`}
+                          onClick={() => setWhyFor(card.account_id)}
+                        >
+                          <Info size={12} aria-hidden />
+                        </button>
+                      )}
                       {/* The bill is close and this card still owes something
                         — the one moment a due date is news rather than a
                         calendar fact. Never "overdue": the app cannot see
@@ -823,29 +854,6 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
                       {card.uncovered !== 0 ? formatMoney(card.uncovered) : '—'}
                     </span>
                   </div>
-                  {/* The explanation, in the row's own width and in the
-                    document — not a `title` attribute. On the installed iOS
-                    PWA a tooltip is unreachable, so every sentence that
-                    lived in one was a sentence nobody on a phone could read.
-
-                    `action` is absent wherever no action is honestly
-                    available, which is the whole point: a row that must end
-                    in a suggestion will invent one, and the one it invented
-                    told people to fund an envelope that moves a different
-                    card. */}
-                  {(state || drift) && (
-                    <div className="credit-cards__state">
-                      {state && (
-                        <p className="credit-cards__state-line">
-                          {state.sentence}
-                          {state.action && (
-                            <span className="credit-cards__state-action"> {state.action}</span>
-                          )}
-                        </p>
-                      )}
-                      {drift && <p className="credit-cards__state-line">{drift}</p>}
-                    </div>
-                  )}
                   {legsOpen && (
                     <ReserveLegs
                       budgetId={budgetId}
@@ -874,6 +882,29 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
           scope={{ kind: 'account', accountId: peek.accountId, accountName: peek.accountName }}
           onClose={() => setPeek(null)}
         />
+      )}
+      {whyCard && (
+        <Dialog
+          title={`What is happening with ${whyCard.name}`}
+          onClose={() => setWhyFor(null)}
+          historyKey="credit-card-state"
+        >
+          <div className="credit-cards__why">
+            {whyState && (
+              <p className="credit-cards__why-line">
+                {whyState.sentence}
+                {/* Absent wherever no action is honestly available, which is
+                  the whole point: a row that must end in a suggestion will
+                  invent one, and the one it invented told people to fund an
+                  envelope that moves a different card. */}
+                {whyState.action && (
+                  <span className="credit-cards__why-action"> {whyState.action}</span>
+                )}
+              </p>
+            )}
+            {whyDrift && <p className="credit-cards__why-line">{whyDrift}</p>}
+          </div>
+        </Dialog>
       )}
       {infoOpen && (
         <Dialog

@@ -250,10 +250,9 @@ describe('what the row says about a reserve', () => {
     } as unknown as BudgetMonth
     render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
     expect(screen.queryByText(/overpaid/i)).not.toBeInTheDocument()
-    // The column prints $0.00; the distance is beside it and the reason is
-    // under it, both in the document and neither behind a hover.
+    // The column prints $0.00 and the distance is beside it, on the row. The
+    // reason is one tap away — see CreditCardsSection.why.test.tsx.
     expect(screen.getByText('$220.00 below zero')).toBeInTheDocument()
-    expect(screen.getByText(/went straight to the balance/)).toBeInTheDocument()
   })
 
   it('keeps the word for the one state it is true of', async () => {
@@ -302,7 +301,8 @@ describe('what the row says about a reserve', () => {
     // a tooltip cannot be reached at all — the row read "-$100.00 ahead of
     // budget" with no way to learn more. getByText, never
     // toHaveAttribute('title'): if this passes through a tooltip again, it
-    // fails.
+    // fails. The explanation moved behind a button since — a button an iOS
+    // PWA can tap, which a tooltip still is not.
     month.current = {
       cards: [
         card({
@@ -322,11 +322,15 @@ describe('what the row says about a reserve', () => {
     expect(screen.queryByText('-$100.00')).not.toBeInTheDocument()
     expect(screen.getByTitle(/Transactions on/)).toHaveTextContent('$0.00')
     expect(screen.getByText('$100.00 below zero')).toBeInTheDocument()
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'What is happening with Sapphire Visa' })
+    )
     // Names the $500 that came back, not the $100 left of it.
     expect(screen.getByText(/\$500\.00 came back onto this card/)).toBeInTheDocument()
     expect(screen.getByText(/\$12\.00 of this Set aside is not explained/)).toBeInTheDocument()
 
-    for (const el of document.querySelectorAll('.credit-cards__row [title]')) {
+    for (const el of document.querySelectorAll('[title]')) {
       expect(el.getAttribute('title')).not.toMatch(/came back|below zero|not explained/)
     }
   })
