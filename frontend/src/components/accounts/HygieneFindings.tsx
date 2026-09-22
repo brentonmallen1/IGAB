@@ -94,7 +94,7 @@ export function HygieneFindings({
       return `/assets/${f.asset_ids[0]}`
     }
     // The card diagnostics all resolve on the budget page's cards section —
-    // the Ready to pay breakdown is where the months and legs they cite live.
+    // the Set aside breakdown is where the months and legs they cite live.
     if (
       f.kind === 'card_reserve_went_negative' ||
       f.kind === 'card_debt_predates_budget' ||

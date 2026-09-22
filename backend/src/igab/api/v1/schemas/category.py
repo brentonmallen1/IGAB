@@ -227,7 +227,7 @@ class CategoryGroupResponse(ApiModel):
     sort_order: int
     is_archived: bool
     is_system: bool
-    #: Every live category in this group is a card's set-aside envelope, so the
+    #: Every live category in this group is a card's envelope, so the
     #: budget grid draws no header for it (`GROUP_IS_CARD_ONLY`).
     #:
     #: Served rather than derived because the client cannot compute it — its
@@ -330,11 +330,11 @@ class CategoryBalance(ApiModel):
     #: What still has to be assigned this month for the target to be met, and
     #: exactly what Fill Underfunded would move. None when there is no target.
     needed_this_month: Decimal | None = None
-    #: A card's set-aside envelope (linked to the card account). Not drawn in
+    #: A card's envelope (linked to the card account). Not drawn in
     #: the category grid — the cards section owns it — and never counted as
     #: overspending; its state reads as the card's Set aside / Uncovered.
     #: Required, not optional: a path that forgets it must raise, not draw
-    #: every card envelope as an ordinary row.
+    #: every card's envelope as an ordinary row.
     is_card_payment: bool
     #: How much of THIS MONTH's card inflows filed here repaid uncovered debt
     #: instead of returning money to this envelope (domain/cards.py
@@ -395,7 +395,7 @@ class CategoryResponse(ApiModel):
     #: as ineligible, which would empty the move-money picker silently.
     is_assignable: bool
     #: May money ENTER this envelope? `IS_FUNDABLE`, not the same question as
-    #: what a picker may offer: a card's payment envelope is fundable (that is
+    #: what a picker may offer: a card's envelope is fundable (that is
     #: how a card is paid down) and offered by nothing. The two were one field
     #: read two ways, and each side got the other's answer — a paydown target
     #: never filled, and money could be assigned into an archived envelope.

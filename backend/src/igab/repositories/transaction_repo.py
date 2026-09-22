@@ -853,7 +853,7 @@ class TransactionRepository(BaseRepository[Transaction]):
     ) -> dict[uuid.UUID, dict[date, Decimal]]:
         """Money that arrived on each card from the budget's cash:
         {card: {month: amount ≥ 0}} — the outflow side of the card's
-        set-aside envelope.
+        card's envelope.
 
         A payment is an inflow transfer leg on the card whose counterpart is
         a cash account. A direct deposit typed onto the card (a partner

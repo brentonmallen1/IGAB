@@ -1,7 +1,7 @@
 """Money that left an envelope, as a list a person can read.
 
 A budget move is a fact: an amount, a month, where from, where to. This turns
-a row into a line — names on both sides, "To Be Assigned" when the money went
+a row into a line — names on both sides, "Ready to Assign" when the money went
 back to the pool — and nothing more. It does not say why the money moved and
 never uses the word impulse: the wishlist and the Savings report both read
 these lines, and both state the move and let the reader draw the conclusion.
@@ -16,7 +16,7 @@ from uuid import UUID
 
 from igab.domain.money import quantize_cents
 
-TBA_LABEL = "To Be Assigned"
+TBA_LABEL = "Ready to Assign"
 GONE_LABEL = "a deleted category"
 
 

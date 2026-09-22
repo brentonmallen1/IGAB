@@ -34,7 +34,7 @@ async def _budget_with(session, *, partner_type, partner_on_budget):
     partner = await create_account(
         session, budget, name="Partner", account_type=partner_type, on_budget=partner_on_budget
     )
-    # Every path that makes a card account makes its set-aside envelope too
+    # Every path that makes a card account makes its envelope too
     # (accounts.py, the YNAB importer, the sample generator). Without it the
     # card's set-aside is computed for display but never reaches the envelope
     # term, so the identity this test asserts would not hold — see

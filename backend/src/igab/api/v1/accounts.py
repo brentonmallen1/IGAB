@@ -57,7 +57,7 @@ async def _record_companion_effects(
     created_category: Category | None,
 ) -> None:
     """The rows an account create/retype conjures on the side — the companion
-    liability and the card's set-aside envelope — recorded into the caller's
+    liability and the card's envelope — recorded into the caller's
     open batch so they undo with the action that caused them."""
     if created_liability is not None:
         await recorder.record(
@@ -236,7 +236,7 @@ async def create_account(
         # A liability-classified account gets its companion here, not on first
         # visit to the page: every consumer downstream may assume the row exists.
         companion = await ensure_for_account(account_repo.session, acc)
-        # And a card gets its set-aside envelope the same way (domain/cards.py).
+        # And a card gets its envelope the same way (domain/cards.py).
         envelope = await ensure_payment_category(account_repo.session, acc)
         await _record_companion_effects(recorder, budget_id, companion, envelope)
         await recorder.record(

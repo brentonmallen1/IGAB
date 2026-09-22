@@ -1086,7 +1086,7 @@ async def test_a_tracking_rows_category_is_stripped_and_counted(db_session):
 
 async def test_card_payment_reserves_import_onto_the_cards_envelope(db_session):
     """YNAB's Credit Card Payments assignments are the money set aside for
-    each card — they land on the card's set-aside envelope (the linked
+    each card — they land on the card's envelope (the linked
     category created with the account), and only an entry whose card was
     never imported is counted as skipped."""
     from igab.integrations.ynab.models import YNABBudgetEntry

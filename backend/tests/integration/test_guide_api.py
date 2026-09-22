@@ -380,7 +380,7 @@ class TestCandidates:
         """ "How we got this" opened on what looked like every category ever.
 
         It spelled its own offering rule — deleted and archived only — so an
-        archived GROUP, the system groups and a card's set-aside envelope all
+        archived GROUP, the system groups and a card's envelope all
         came through. `IS_ASSIGNABLE` is the app's one answer to what a picker
         may offer, and this reads it now.
         """

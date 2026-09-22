@@ -490,7 +490,7 @@ class AccountHygieneService:
     def _card_reserve_went_negative(
         self, summary, walk, ledgers: set[uuid.UUID]
     ) -> HygieneFinding | None:
-        """A card's Ready to pay below zero while the card is not in credit.
+        """A card's Set aside below zero while the card is not in credit.
 
         A legitimate position, not an integrity failure — the reserve is
         deliberately unfloored (domain/cards.py `CardReserve`) — but on a
@@ -500,8 +500,8 @@ class AccountHygieneService:
         from (`domain/card_timeline.py`).
         """
         # What each card's reserve gave up to receivable ledgers. A ledger
-        # settles onto the card every month, so its residual drives Ready to
-        # pay down by construction — beside a debt that fell with it.
+        # settles onto the card every month, so its residual drives Set aside
+        # down by construction — beside a debt that fell with it.
         ledger_residual: dict[uuid.UUID, Decimal] = {}
         for (cat_id, card_id), series in walk.funding.residual_by_pair.items():
             if cat_id in ledgers:
@@ -549,10 +549,10 @@ class AccountHygieneService:
         count = len(lines)
         return HygieneFinding(
             kind="card_reserve_went_negative",
-            title=(f"{count} card{'s' if count != 1 else ''} with Ready to pay below zero"),
+            title=(f"{count} card{'s' if count != 1 else ''} with Set aside below zero"),
             detail=" ".join(lines),
             action=(
-                "Read the card's Ready to pay breakdown on the budget page for the "
+                "Read the card's Set aside breakdown on the budget page for the "
                 "month it names. A reimbursement or misfiled refund is fixed by "
                 "re-filing the inflow; a payment that ran ahead of the budget is "
                 "settled by assigning that much to the card."
@@ -634,7 +634,7 @@ class AccountHygieneService:
             detail=(
                 " ".join(lines)
                 + " Spending from before the budget reserves nothing, so it reads as "
-                "Uncovered — and a payment covering it spends reserve the budget "
+                "Uncovered — and a payment covering it spends money the budget "
                 "never set aside."
             ),
             action=(
@@ -741,12 +741,12 @@ class AccountHygieneService:
                     detail=(
                         " ".join(other_card)
                         + " Exposure is per card, so these released nothing — each one "
-                        "reduced its card's Ready to pay outright."
+                        "reduced its card's Set aside outright."
                     ),
                     action=(
                         "If the inflow was a payment or refund for the other card, move "
                         "the transaction to that card's register. If it genuinely landed "
-                        "here, assign the same amount to this card to square the reserve."
+                        "here, assign the same amount to this card to square Set aside."
                     ),
                     account_ids=sorted(set(other_ids), key=str),
                 )
@@ -759,13 +759,13 @@ class AccountHygieneService:
                     detail=(
                         " ".join(uncharged)
                         + " Nothing was riding there to release, so each inflow reduced "
-                        "the card's Ready to pay without freeing any envelope's cash — "
+                        "the card's Set aside without freeing any envelope's cash — "
                         "the shape a reimbursement or a misfiled deposit makes."
                     ),
                     action=(
                         "Re-file each inflow to the envelope that actually charged the "
                         "card, or leave it and assign the amount to the card. The card's "
-                        "Ready to pay breakdown names the months."
+                        "Set aside breakdown names the months."
                     ),
                     account_ids=sorted(set(uncharged_ids), key=str),
                 )
@@ -774,19 +774,19 @@ class AccountHygieneService:
             findings.append(
                 HygieneFinding(
                     kind="recurring_card_residual",
-                    title="A recurring inflow stream is draining a card's reserve",
+                    title="A recurring inflow stream is draining a card's Set aside",
                     detail=(
                         " ".join(recurring)
                         + " Each envelope does charge this card, but its inflows have "
                         "cumulatively outrun its charges, so every further inflow "
-                        "reduces the card's Ready to pay outright while the envelope "
+                        "reduces the card's Set aside outright while the envelope "
                         "keeps the money."
                     ),
                     action=(
                         "Read the envelope's recurring inflows on this card. A payment "
                         "arriving from an account outside the budget, or someone else "
                         "paying their share, belongs on the card as a transfer — or "
-                        "assign the same amount to the card to square the reserve. A "
+                        "assign the same amount to the card to square Set aside. A "
                         "refund for spending done on another card belongs on that card."
                     ),
                     account_ids=sorted(set(recurring_ids), key=str),
@@ -831,7 +831,7 @@ class AccountHygieneService:
                 card_tokens = {w.lower() for w in card.name.split() if len(w) > 2}
                 similar = any(w.lower() in card_tokens for w in name.split())
                 lines.append(
-                    f"{name} holds {b.available} while {card.name}'s Ready to pay is "
+                    f"{name} holds {b.available} while {card.name}'s Set aside is "
                     f"{card.set_aside}" + (" — and the names match." if similar else ".")
                 )
                 account_ids.append(card.account_id)
@@ -839,12 +839,12 @@ class AccountHygieneService:
             return None
         return HygieneFinding(
             kind="payment_envelope_shadow",
-            title="An envelope holds almost exactly a card's missing reserve",
+            title="An envelope holds almost exactly a card's missing Set aside",
             detail=(
                 " ".join(lines)
                 + " This is the shape left behind by funding card payments through an "
                 "ordinary envelope: converting the payments to transfers drained the "
-                "card's reserve while the envelope kept the money. Ready to Assign is "
+                "card's Set aside while the envelope kept the money. Ready to Assign is "
                 "right either way — the two cancel."
             ),
             action=(

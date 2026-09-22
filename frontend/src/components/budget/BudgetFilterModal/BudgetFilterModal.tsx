@@ -34,7 +34,7 @@ export function BudgetFilterModal({ budgetId, filterId, onClose }: Props) {
   // rows, so offering its category here was a checkbox that changed nothing.
   const groups = useMemo(() => renderableGroups(allGroups), [allGroups])
   // Hidden categories are offered here on purpose — a filter may name one.
-  // A card's set-aside envelope is different: it is never a grid row, so
+  // A card's envelope is different: it is never a grid row, so
   // there is nothing to filter it into or out of. The same rule the grid
   // draws by, from the same place, or "Credit Card Payments" appears here
   // as a group of checkboxes that change nothing.

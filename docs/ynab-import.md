@@ -19,7 +19,7 @@ reserve open at YNAB's own figures at the export's last complete month (the
   under different rules produces figures that argue with the ones you trust.
   The anchor sidesteps the argument: YNAB's displayed position is adopted as
   the opening statement, and IGAB's rules apply from there forward.
-- **Card reserves carry over.** A card's Ready to pay opens at the CCP
+- **Card reserves carry over.** A card's Set aside opens at the CCP
   Available YNAB shipped, and debt with nothing set aside behind it shows as
   Uncovered. The card's month-by-month view labels the seam.
 - **A register-only export imports unanchored** (there is no plan to read a

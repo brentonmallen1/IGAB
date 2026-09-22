@@ -2,7 +2,7 @@
 
 `IS_ASSIGNABLE` answered "what may a picker offer" and was also read as "where
 may money go". Those are different envelope sets, and the difference is exactly
-a credit card's payment envelope: funded by the cards section, listed by
+a credit card's envelope: funded by the cards section, listed by
 nothing. Conflated, each side got the other's answer:
 
 - `assign_service` filtered on `is_assignable`, so a paydown target set on a
@@ -93,7 +93,7 @@ class TestACardPaydownTargetFinallyFills:
         )
 
     async def test_the_envelope_is_still_offered_by_nothing(self, db_session):
-        """The other half. Fixing the funding must not put a card envelope
+        """The other half. Fixing the funding must not put a card's envelope
         into the move-money picker, which reads `is_assignable`."""
         services, budget, _checking, _group, _cat = await _world(db_session)
         visa = await create_account(db_session, budget, "Visa", account_type="credit_card")

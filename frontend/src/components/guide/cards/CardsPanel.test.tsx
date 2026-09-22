@@ -43,7 +43,15 @@ const EXAMPLES: CardExamples = {
         {
           month: '2026-08-01',
           label: 'Last month',
-          steps: [{ kind: 'fund', amount: 200, category: 'Groceries', day: 1, says: 'Budget $200.00 into Groceries' }],
+          steps: [
+            {
+              kind: 'fund',
+              amount: 200,
+              category: 'Groceries',
+              day: 1,
+              says: 'Budget $200.00 into Groceries',
+            },
+          ],
           set_aside: 200,
           balance: -200,
           uncovered: 0,
@@ -77,7 +85,15 @@ const EXAMPLES: CardExamples = {
         {
           month: '2026-09-01',
           label: 'This month',
-          steps: [{ kind: 'assign', amount: 250, category: null, day: 1, says: 'Assign $250.00 to the card' }],
+          steps: [
+            {
+              kind: 'assign',
+              amount: 250,
+              category: null,
+              day: 1,
+              says: 'Assign $250.00 to the card',
+            },
+          ],
           set_aside: 350,
           balance: -2600,
           uncovered: 2250,

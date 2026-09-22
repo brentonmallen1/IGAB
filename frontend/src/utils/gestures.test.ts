@@ -78,7 +78,9 @@ describe('resolveSwipe', () => {
 describe('scrollsHorizontally', () => {
   it('claims a scroller whose content overflows it', () => {
     // The budget page's status-chip strip: one line, wider than the phone.
-    expect(scrollsHorizontally({ scrollWidth: 476, clientWidth: 390, overflowX: 'auto' })).toBe(true)
+    expect(scrollsHorizontally({ scrollWidth: 476, clientWidth: 390, overflowX: 'auto' })).toBe(
+      true
+    )
     expect(scrollsHorizontally({ scrollWidth: 476, clientWidth: 390, overflowX: 'scroll' })).toBe(
       true
     )

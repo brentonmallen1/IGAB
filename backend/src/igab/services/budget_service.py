@@ -90,7 +90,7 @@ class CategoryBalance:
     #: first year's value on a real budget, all of it rendered as overspending
     #: ("The Refused Repayment").
     repaid_uncovered_debt: Decimal = Decimal("0")
-    #: A card's set-aside envelope (Category.linked_account_id set). Its
+    #: A card's envelope (Category.linked_account_id set). Its
     #: available is cash reserved for the card — in the envelope total, but
     #: not spending: excluded from total_activity (its synthetic inflows
     #: mirror spending already counted in the spending categories) and from
@@ -270,7 +270,7 @@ class EnvelopeSeries:
     available: list[Decimal | None]
     assigned: list[Decimal]
     #: The month's activity as the page states it: less what a card inflow
-    #: repaid of uncovered debt, and a card envelope's reserve legs.
+    #: repaid of uncovered debt, and a card's envelope reserve legs.
     activity: list[Decimal]
     #: The latest month before an import whose balance could not be walked
     #: back from YNAB's figure — None when every month asked for could be.
@@ -326,7 +326,7 @@ class BudgetSummary:
     assigned_in_future: Decimal
     category_balances: list[CategoryBalance]
     #: The budget's cards, each with balance / set aside / uncovered —
-    #: computed here because their set-aside envelopes are part of the same
+    #: computed here because their card envelopes are part of the same
     #: identity Ready to Assign is. Empty when the budget has no cards.
     cards: list[CardStatus] = field(default_factory=list)
     #: B, the first month this budget's envelope math re-derives — set only
@@ -465,7 +465,7 @@ def _opening_leg(anchor: BudgetAnchor | None, account_id: uuid.UUID) -> dict[dat
 def _card_envelope_balance(
     category_id: uuid.UUID, reserve: CardReserve, month_start: date
 ) -> CategoryBalance:
-    """A card's set-aside envelope as the Budget page states it: its figures
+    """A card's envelope as the Budget page states it: its figures
     are the card's reserve, not the transaction sums — nothing can be filed
     there, and its snapshot rows (assignments only) are ignored. The summary
     and `envelope_series` both read this."""
@@ -598,7 +598,7 @@ class BudgetService:
         archived envelope by anything that was not a picker — and land
         somewhere the budget page does not draw.
 
-        A card's payment envelope is fundable and always was; that is how a
+        A card's envelope is fundable and always was; that is how a
         card is paid down, and it is why this reads `IS_FUNDABLE` rather than
         `IS_ASSIGNABLE`, which now excludes it.
         """
@@ -942,7 +942,7 @@ class BudgetService:
 
         TBA = sum(cash account balances through the month's end)
               - sum(envelope category balances through the month,
-                    cards' set-aside envelopes included)
+                    cards' envelopes included)
               - sum(assignments in months after the viewed month)
               - the credit-funded part of the viewed month's overspending
                 (already riding on cards, not yet written off — see
@@ -1581,7 +1581,7 @@ class BudgetService:
         this is card debt you are about to retire" is worth saying — it is a
         label on the money, not a reason to withhold it.
 
-        Card payment envelopes stay out: a negative there is the card's own
+        Card envelopes stay out: a negative there is the card's own
         Uncovered, not an overspent envelope, and it is retired by assigning to
         the card in the cards strip."""
         summary = await self.get_budget_summary(budget_id, month)

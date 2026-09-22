@@ -28,8 +28,8 @@ class BudgetMoveRepository(BaseRepository[BudgetMove]):
     ) -> list[BudgetMove]:
         """Money moved OUT of these envelopes, by budget month, newest first.
 
-        The audit trail as a fact: to another envelope or back to To Be
-        Assigned (`to_category_id` NULL). Read by the wishlist ("what pulled
+        The audit trail as a fact: to another envelope or back to Ready to
+        Assign (`to_category_id` NULL). Read by the wishlist ("what pulled
         from your wants") and the Savings report — one query, two readers.
         """
         if not category_ids:

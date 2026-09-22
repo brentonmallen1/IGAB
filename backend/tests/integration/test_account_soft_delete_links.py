@@ -1,4 +1,4 @@
-"""Soft-deleting an account must unlink its CC-payment category — the FK's
+"""Soft-deleting an account must unlink its envelope — the FK's
 ON DELETE SET NULL only fires on hard deletes, so without the repository doing
 it the category keeps pointing at a deleted account."""
 

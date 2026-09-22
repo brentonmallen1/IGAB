@@ -19,7 +19,7 @@ export interface RowNote {
 }
 
 /**
- * The note beside Ready to pay, for all three ways it can be worth explaining.
+ * The note beside Set aside, for all three ways it can be worth explaining.
  *
  * The cause branches matter because the remedies differ. In order of how
  * completely each explains the number:
@@ -53,7 +53,7 @@ export function reserveNote(card: CardStatus, money: Money): RowNote | null {
           `${money(card.residual)} has come back onto this card beyond anything an ` +
           `envelope charged to it — someone else paying the bill, a refund for a ` +
           `purchase made before this budget started, or a payment onto this card for ` +
-          `spending done on another. It lowers the reserve without releasing any ` +
+          `spending done on another. It lowers Set aside without releasing any ` +
           `envelope's cash.`,
       }
     }

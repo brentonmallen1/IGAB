@@ -100,8 +100,8 @@ def quantize_cents(amount: Decimal) -> Decimal:
     half-up drags a long column of figures upward, and these are summed.
 
     The exceptions are deliberate and named where they occur —
-    `distribute_cover` rounds DOWN so a proposal can never exceed To Be
-    Assigned, and `ai_draft_service` rounds a model's own arithmetic half-up
+    `distribute_cover` rounds DOWN so a proposal can never exceed Ready to
+    Assign, and `ai_draft_service` rounds a model's own arithmetic half-up
     before repairing it to sum exactly.
     """
     return amount.quantize(CENT, rounding=ROUND_HALF_EVEN)

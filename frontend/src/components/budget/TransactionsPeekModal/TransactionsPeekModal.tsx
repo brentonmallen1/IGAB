@@ -15,7 +15,7 @@ const RECENT_LIMIT = 10
 const ALL_LIMIT = 1000
 
 /** What the peek is about: one category across accounts (the grid's
- *  Activity click), or one account whole (the cards strip's Ready to pay). */
+ *  Activity click), or one account whole (the cards strip's Set aside). */
 export type PeekScope =
   | { kind: 'category'; categoryId: string; categoryName: string }
   | { kind: 'account'; accountId: string; accountName: string }
@@ -147,8 +147,8 @@ export function TransactionsPeekModal({ budgetId, scope, onClose, onAddTransacti
             <>
               {showRunning && (
                 <p className="category-txns__running-note">
-                  Balance runs down to what this account holds. On a card, Ready to pay is the
-                  envelope beside it — not a total of these rows.
+                  Balance runs down to what this account holds. On a card, Set aside is the envelope
+                  beside it — not a total of these rows.
                 </p>
               )}
               <table className="category-txns__table">

@@ -114,7 +114,7 @@ describe('useSwipeNavigation', () => {
     }
   })
 
-  it('still runs an overlay\'s own swipes while that overlay is open', () => {
+  it("still runs an overlay's own swipes while that overlay is open", () => {
     // The lightbox is the overlay; prev/next and swipe-down-to-close only ever
     // happen with one open, so it does not opt into pageLevel.
     const onLeft = vi.fn()

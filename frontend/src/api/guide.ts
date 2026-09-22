@@ -191,9 +191,7 @@ export function useCardExamples(budgetId: string | null) {
   return useQuery({
     queryKey: [ROOT.guideCardExamples, budgetId],
     queryFn: () =>
-      apiClient
-        .get<CardExamples>(`/${budgetId}/guide/examples/card-scenarios`)
-        .then((r) => r.data),
+      apiClient.get<CardExamples>(`/${budgetId}/guide/examples/card-scenarios`).then((r) => r.data),
     enabled: !!budgetId,
     // Invented inputs walked against a fixed clock: it changes with a deploy,
     // or when the month turns.

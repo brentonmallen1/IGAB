@@ -476,7 +476,7 @@ class CategoryGroup(Base):
     is_system: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     #: A group the app seeds and protects by key, the way system tags are —
     #: `wishlist` is the only one. NOT `is_system`: that flag means the Income
-    #: arrangement (not assignable, outside To Be Assigned). A keyed group is
+    #: arrangement (not assignable, outside Ready to Assign). A keyed group is
     #: an ordinary envelope group the user cannot rename or delete, only hide.
     system_key: Mapped[str | None] = mapped_column(String(30), nullable=True)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -487,7 +487,7 @@ class CategoryGroup(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
 
-    #: Does this group hold nothing but card set-aside envelopes? The grid
+    #: Does this group hold nothing but card envelopes? The grid
     #: never draws such a group, and `CategoryGroupRepository.reorder` lets a
     #: client omit it for that reason.
     #:
@@ -602,7 +602,7 @@ class Category(Base):
     #: `CategoryRepository.with_eligibility`; left alone it reads None.
     is_assignable: Mapped[bool] = query_expression()
     #: Where money may ENTER, as opposed to what a picker may offer.
-    #: Differs from is_assignable on exactly the card envelope, which is
+    #: Differs from is_assignable on exactly the card's envelope, which is
     #: funded by the cards section and listed by nothing.
     is_fundable: Mapped[bool] = query_expression()
     #: May a transaction leg be filed here? Differs from is_assignable on

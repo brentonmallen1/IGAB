@@ -128,7 +128,7 @@ async def test_seeded_inconsistencies_are_each_detected(db_session):
 
 
 async def test_a_row_filed_to_a_card_envelope_is_detected(db_session):
-    """Money filed into a card's set-aside envelope shows nowhere: the
+    """Money filed into a card's envelope shows nowhere: the
     summary overwrites that envelope's balance from card arithmetic. The
     service refuses new ones, so this is seeded behind its back — which is
     exactly how the register's old dropdown produced them."""
@@ -243,7 +243,7 @@ class TestTheCardReserveIdentity:
 
     async def test_a_reserve_moved_back_out_passes(self, db_session):
         """The Watchman's Arithmetic, finding one. Moving money back out of a
-        card's payment envelope drives its lifetime assignment total negative;
+        card's envelope drives its lifetime assignment total negative;
         unfloored, T1's `L - R` reported that shortfall as unexplained drift on
         a card with nothing over-reserved. The loudest number on this page was
         the one that was not real."""

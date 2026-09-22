@@ -1,5 +1,5 @@
 /**
- * "Ready to pay" opens into the five flows it is a running total of.
+ * "Set aside" opens into the five flows it is a running total of.
  *
  * A card's reserve is `assigned + reserved − released − residual − payments`,
  * and the surface used to show only the total — so every question this model
@@ -71,13 +71,13 @@ beforeEach(() => {
   month.current = { cards: [card()], category_balances: [] } as unknown as BudgetMonth
 })
 
-/** The breakdown's own total row. "Ready to pay" is also a column header, so
+/** The breakdown's own total row. "Set aside" is also a column header, so
  *  the label alone is ambiguous. */
 function totalRow() {
   return document.querySelector('.credit-cards__leg--total')
 }
 
-describe('the Ready to pay breakdown', () => {
+describe('the Set aside breakdown', () => {
   it('stays closed until asked', () => {
     render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
     expect(screen.queryByText('Assigned to this card')).toBeNull()
@@ -85,7 +85,7 @@ describe('the Ready to pay breakdown', () => {
 
   it('names each leg that moved and the total they reach', async () => {
     render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
-    await userEvent.click(screen.getByLabelText('What makes up Ready to pay for Sapphire Visa'))
+    await userEvent.click(screen.getByLabelText('What makes up Set aside for Sapphire Visa'))
 
     expect(screen.getByText('Assigned to this card')).toBeInTheDocument()
     expect(screen.getByText('Set aside by funded spending')).toBeInTheDocument()
@@ -97,7 +97,7 @@ describe('the Ready to pay breakdown', () => {
 
   it('leaves a leg out when it never moved', async () => {
     render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
-    await userEvent.click(screen.getByLabelText('What makes up Ready to pay for Sapphire Visa'))
+    await userEvent.click(screen.getByLabelText('What makes up Set aside for Sapphire Visa'))
     expect(screen.queryByText('Refunds beyond what was reserved')).toBeNull()
   })
 
@@ -107,7 +107,7 @@ describe('the Ready to pay breakdown', () => {
       category_balances: [],
     } as unknown as BudgetMonth
     render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
-    await userEvent.click(screen.getByLabelText('What makes up Ready to pay for Sapphire Visa'))
+    await userEvent.click(screen.getByLabelText('What makes up Set aside for Sapphire Visa'))
     expect(screen.getByText(/rode onto this card when a month ended short/)).toBeInTheDocument()
     expect(screen.getByText(/sits outside the total above/)).toBeInTheDocument()
   })
@@ -131,7 +131,7 @@ describe('the Ready to pay breakdown', () => {
       category_balances: [],
     } as unknown as BudgetMonth
     render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
-    await userEvent.click(screen.getByLabelText('What makes up Ready to pay for Sapphire Visa'))
+    await userEvent.click(screen.getByLabelText('What makes up Set aside for Sapphire Visa'))
     expect(screen.getByText(/Fund an envelope in the month it ended short/)).toBeInTheDocument()
     expect(screen.getByText(/assign to the card instead/)).toBeInTheDocument()
     // Largest first: that is the month worth back-funding before the others.
@@ -145,7 +145,7 @@ describe('the Ready to pay breakdown', () => {
       category_balances: [],
     } as unknown as BudgetMonth
     render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
-    await userEvent.click(screen.getByLabelText('What makes up Ready to pay for Sapphire Visa'))
+    await userEvent.click(screen.getByLabelText('What makes up Set aside for Sapphire Visa'))
     expect(screen.getByText('This month')).toBeInTheDocument()
     expect(screen.getByText('Debt decreased')).toBeInTheDocument()
   })
@@ -167,7 +167,7 @@ describe('the Ready to pay breakdown', () => {
       category_balances: [],
     } as unknown as BudgetMonth
     render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
-    await userEvent.click(screen.getByLabelText('What makes up Ready to pay for Sapphire Visa'))
+    await userEvent.click(screen.getByLabelText('What makes up Set aside for Sapphire Visa'))
 
     const rows = [...document.querySelectorAll('.credit-cards__legs-month .credit-cards__leg')]
     const labelled = (label: string) =>
@@ -206,7 +206,7 @@ describe('the Ready to pay breakdown', () => {
       category_balances: [],
     } as unknown as BudgetMonth
     render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
-    await userEvent.click(screen.getByLabelText('What makes up Ready to pay for Sapphire Visa'))
+    await userEvent.click(screen.getByLabelText('What makes up Set aside for Sapphire Visa'))
     expect(screen.getByText('This month')).toBeInTheDocument()
     expect(screen.getByText(/Other credits/)).toBeInTheDocument()
   })
@@ -219,7 +219,7 @@ describe('the Ready to pay breakdown', () => {
       category_balances: [],
     } as unknown as BudgetMonth
     render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
-    await userEvent.click(screen.getByLabelText('What makes up Ready to pay for Sapphire Visa'))
+    await userEvent.click(screen.getByLabelText('What makes up Set aside for Sapphire Visa'))
     expect(totalRow()?.textContent).toContain('999')
     expect(totalRow()?.textContent).not.toContain('115')
   })

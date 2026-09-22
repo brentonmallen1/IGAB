@@ -15,7 +15,7 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
  *
  * Every figure here is the server's. Nothing adds the transaction to a
  * balance: the "after" of a save is read back from the refetched month, so a
- * card envelope, a rollover or a future-dated row says whatever the server
+ * card's envelope, a rollover or a future-dated row says whatever the server
  * decided it says.
  *
  * `budgetId` null keeps the month unfetched (the sheet is closed, or the

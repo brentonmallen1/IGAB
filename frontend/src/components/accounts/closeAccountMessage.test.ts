@@ -69,7 +69,7 @@ describe('a card', () => {
 
   it('still speaks at zero, because the envelope outlives the balance', () => {
     // The one case where nothing on the account says there is money in play:
-    // a settled card whose payment envelope still holds a reserve.
+    // a settled card whose card's envelope still holds a reserve.
     const message = closeAccountMessage(card(0), money)
     expect(message).toContain('reserved to pay this card')
   })

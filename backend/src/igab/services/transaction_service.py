@@ -253,7 +253,7 @@ class TransactionService:
                 # The same rule the caller's own category was held to, asked
                 # rather than enforced. This resolution happens *after*
                 # `require_categorizable`, so a default pointing at a card's
-                # set-aside envelope, a tracked debt or an archived envelope
+                # card's envelope, a tracked debt or an archived envelope
                 # would file a brand-new row somewhere the guard refuses — and
                 # it is a stored pointer, so it outlives what it points at.
                 if await may_be_filed_to(self.session, payee.default_category_id):

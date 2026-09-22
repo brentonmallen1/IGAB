@@ -477,7 +477,10 @@ describe('glossary topics', () => {
   it('names only real terms in each topic', () => {
     const known = new Set<string>(GLOSSARY_IDS)
     for (const [topic, ids] of Object.entries(TOPIC_MEMBERS)) {
-      expect(ids.filter((id) => !known.has(id)), topic).toEqual([])
+      expect(
+        ids.filter((id) => !known.has(id)),
+        topic
+      ).toEqual([])
     }
   })
 
@@ -493,5 +496,24 @@ describe('glossary topics', () => {
     // "Ready to pay" was this column's label for a year. Anyone who learned
     // that word must still land on the term.
     expect(searchGlossary('ready to pay').map((e) => e.id)).toContain('set-aside')
+  })
+
+  it('still finds Ready to Assign by the name it used to have', () => {
+    // The app said "To Be Assigned" on the budget hero and "Ready to Assign"
+    // in Move money — one figure, two names, for the app's most important
+    // number. Settled on the second; the first has to keep resolving.
+    expect(searchGlossary('to be assigned').map((e) => e.id)).toContain('to-be-assigned')
+  })
+
+  it("still finds the card's envelope by all three names it used to have", () => {
+    // F7 counted five spellings of this one object across 113 places. A
+    // reader who learned any of them types it into the palette expecting an
+    // answer, so each retired name stays an alias rather than a dead end.
+    for (const retired of ['payment category', 'set-aside envelope', 'card payment envelope']) {
+      expect(
+        searchGlossary(retired).map((e) => e.id),
+        retired
+      ).toContain('card-envelope')
+    }
   })
 })

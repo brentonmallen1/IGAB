@@ -99,7 +99,7 @@ export interface CategoryGroup {
   sort_order: number
   is_archived: boolean
   is_system: boolean
-  /** Every live category here is a card's set-aside envelope, so the grid draws
+  /** Every live category here is a card's envelope, so the grid draws
    *  no header for this group. Served, not derived — home is
    *  `GROUP_IS_CARD_ONLY` in repositories/category_filters.py, and the server's
    *  reorder rule reads the same expression.
@@ -161,7 +161,7 @@ export interface Category {
    */
   /** May money ENTER this envelope? Served, not derived — home is
    *  `repositories/category_filters.py IS_FUNDABLE`. Differs from
-   *  `is_assignable` on exactly the card payment envelope, which is funded
+   *  `is_assignable` on exactly the card's envelope, which is funded
    *  by the cards section and offered by no picker. */
   is_fundable: boolean
   is_categorizable: boolean
@@ -255,7 +255,7 @@ export interface CategoryBalance {
    * exactly what Fill Underfunded would move. `null` when there is no target.
    */
   needed_this_month: number | null
-  /** A card's set-aside envelope — the cards section owns it; the grid never
+  /** A card's envelope — the cards section owns it; the grid never
    *  draws it and its negative is not overspending. Served, not derived:
    *  see `CategoryBalance` in api/v1/schemas/category.py. */
   is_card_payment: boolean
@@ -301,7 +301,7 @@ export interface CategoryBalance {
 export interface CardStatus {
   account_id: string
   name: string
-  /** Null only before the set-aside envelope exists (fresh migration edge). */
+  /** Null only before the card's envelope exists (fresh migration edge). */
   category_id: string | null
   /** Ledger through the viewed month; negative = owed. */
   balance: number

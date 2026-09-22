@@ -191,9 +191,9 @@
 /* One class used to carry two unrelated meanings, and two more were coming.
    Each note under a number gets its own name instead:
      __hint      what the paydown target still wants (Assigned)
-     __note      which way the reserve is unusual (Ready to pay)
+     __note      which way the reserve is unusual (Set aside)
      __movement  how far the debt moved this month (Balance)
-     __drift     a reserve that does not add up (Ready to pay)
+     __drift     a reserve that does not add up (Set aside)
    All quiet by design — the numbers carry the meaning, and Uncovered's
    deliberately un-alarmed treatment sets the register for the whole row. */
 .credit-cards__hint {
@@ -290,7 +290,7 @@
   line-height: 1.6;
 }
 
-/* Ready to pay is a door, not a field: underline on hover, exactly the
+/* Set aside is a door, not a field: underline on hover, exactly the
    grid's Activity cell. The border-on-hover treatment next door is this
    app's "editable" signal and belongs to the Assigned cell alone. */
 .credit-cards__peek-btn {
@@ -368,7 +368,7 @@
   margin: 0;
 }
 
-/* ── What Ready to pay is made of ────────────────────────────────────────────
+/* ── What Set aside is made of ────────────────────────────────────────────
    A card's reserve is a running total of five flows and the surface showed
    only the total, so every question the model raised needed a developer to
    answer. Disclosure, not a permanent column: the total is the affordance and
@@ -682,7 +682,7 @@
     content: "Assigned";
   }
   .credit-cards__row > :nth-child(4)::before {
-    content: "Ready to pay";
+    content: "Set aside";
   }
   .credit-cards__row > :nth-child(5)::before {
     content: "Uncovered";

@@ -533,7 +533,7 @@ class GuideService:
             # `IS_ASSIGNABLE` is the app's one answer to "what may a picker
             # offer", and this had spelled its own: deleted and archived only.
             # That let through every category in an ARCHIVED GROUP, every
-            # income and internal category, and every card set-aside envelope —
+            # income and internal category, and every card's envelope —
             # so "How we got this" opened on a list of what looked like every
             # category the budget had ever had.
             rows = (

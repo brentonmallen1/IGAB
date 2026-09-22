@@ -2,7 +2,7 @@
 
 The rule is a month-by-month simulation, not a running total, and the
 difference is the zero floor between months: when a category ends a month
-negative, that overspending is covered from To Be Assigned and the next month
+negative, that overspending is covered from Ready to Assign and the next month
 starts at zero rather than inheriting the debt. Only the month being viewed
 may show a negative available.
 
@@ -27,8 +27,8 @@ ZERO = Decimal("0")
 def next_carryover(end_of_month: Decimal) -> Decimal:
     """What a month hands to the next one: its end balance, floored at zero.
 
-    The floor *is* the write-off — a negative month was absorbed by To Be
-    Assigned, so the next month starts fresh rather than inheriting the debt.
+    The floor *is* the write-off — a negative month was absorbed by Ready to
+    Assign, so the next month starts fresh rather than inheriting the debt.
 
     One line, and it has a name because two walks apply it: this module's
     `monthly_end_balances` and `domain.cards.card_funding`, which runs the same

@@ -83,8 +83,8 @@ export function GlossaryPanel() {
 
       {results.length === 0 ? (
         <p className="guide-empty">
-          No term matches “{query}”
-          {topic ? ' in that topic' : ''}. {GLOSSARY.length} terms are defined — try a shorter word
+          No term matches “{query}”{topic ? ' in that topic' : ''}. {GLOSSARY.length} terms are
+          defined — try a shorter word
           {topic ? ', or clear the topic' : ''}.
         </p>
       ) : (

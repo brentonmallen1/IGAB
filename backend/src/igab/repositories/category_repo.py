@@ -285,7 +285,7 @@ class CategoryRepository(BaseRepository[Category]):
         )
         final = merge_reorder(
             # The same rule one level down, and the same trap: the grid never
-            # draws a card's set-aside envelope (the cards section owns it), so
+            # draws a card's envelope (the cards section owns it), so
             # a client dragging within a group cannot list it. Omittability has
             # to match what is drawn, not what is hidden — card envelopes are
             # usually hidden too, which is the only reason this had not yet

@@ -62,7 +62,7 @@ export function groupByView(
     name,
     sort_order,
     // A view's synthetic bucket holds whatever the view put in it, never a
-    // card envelope — those are excluded upstream of every view.
+    // card's envelope — those are excluded upstream of every view.
     is_card_only: false,
     is_archived: false,
     is_system: false,

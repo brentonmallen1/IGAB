@@ -342,7 +342,7 @@ describe('CommandPalette glossary', () => {
   it('answers an alias without anyone pressing Enter', async () => {
     renderPalette()
     await type('tba')
-    expect(await screen.findByText('To Be Assigned')).toBeInTheDocument()
+    expect(await screen.findByText('Ready to Assign')).toBeInTheDocument()
     // The definition is the answer, so it is on the row.
     expect(
       await screen.findByText('Money you have received but have not yet given a job.')
@@ -351,19 +351,19 @@ describe('CommandPalette glossary', () => {
 
   it('finds the same term by a phrase alias', async () => {
     renderPalette()
-    await type('ready to assign')
-    expect(await screen.findByText('To Be Assigned')).toBeInTheDocument()
+    await type('to be assigned')
+    expect(await screen.findByText('Ready to Assign')).toBeInTheDocument()
   })
 
   it('deep-links one definition', async () => {
     renderPalette()
     await type('tba')
-    await userEvent.click(await screen.findByText('To Be Assigned'))
+    await userEvent.click(await screen.findByText('Ready to Assign'))
     expect(navigate).toHaveBeenCalledWith('/guide?tab=glossary&term=to-be-assigned')
   })
 
   it('does not open onto 35 definitions', async () => {
     renderPalette()
-    expect(screen.queryByText('To Be Assigned')).not.toBeInTheDocument()
+    expect(screen.queryByText('Ready to Assign')).not.toBeInTheDocument()
   })
 })

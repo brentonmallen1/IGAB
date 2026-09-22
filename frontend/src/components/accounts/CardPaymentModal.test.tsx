@@ -30,7 +30,13 @@ import { CardPaymentModal } from './CardPaymentModal'
 function setup(balance: number, setAside: number) {
   accounts.current = [
     { id: 'card', name: 'Summit Rewards', on_budget: true, classification: 'liability', balance },
-    { id: 'cash', name: 'Harborstone Checking', on_budget: true, classification: 'cash', balance: 4000 },
+    {
+      id: 'cash',
+      name: 'Harborstone Checking',
+      on_budget: true,
+      classification: 'cash',
+      balance: 4000,
+    },
   ]
   cards.current = [{ account_id: 'card', set_aside: setAside, balance }]
 }

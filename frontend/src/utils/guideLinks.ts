@@ -22,7 +22,12 @@ export const ASIDE_ANCHORS = [
 export type AsideAnchor = (typeof ASIDE_ANCHORS)[number]
 
 /** The sections of "Credit cards", in page order. */
-export const CARDS_ANCHORS = ['how-cards-work', 'how-you-use-it', 'situations', 'card-catch-outs'] as const
+export const CARDS_ANCHORS = [
+  'how-cards-work',
+  'how-you-use-it',
+  'situations',
+  'card-catch-outs',
+] as const
 
 export type CardsAnchor = (typeof CARDS_ANCHORS)[number]
 

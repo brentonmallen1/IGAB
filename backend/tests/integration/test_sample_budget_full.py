@@ -226,7 +226,7 @@ async def test_full_tier_keeps_starter_invariants(db_session):
 
     categories = await CategoryRepository(db_session).get_all(budget.id, include_archived=True)
     names = {c.id: c.name for c in categories}
-    # Card payment envelopes excluded, as in the starter suite: a card whose
+    # Card envelopes excluded, as in the starter suite: a card whose
     # reserve is negative is a card-section state, not an overspent envelope,
     # and one of the demo cards exists precisely to show that.
     overspent = [

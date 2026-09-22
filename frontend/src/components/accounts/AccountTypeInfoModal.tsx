@@ -95,7 +95,7 @@ export function AccountTypeInfoModal({ onClose, types, context, budgetId }: Prop
           <div className="type-info__concept">
             <div className="type-info__concept-title">On budget = envelopes</div>
             <p>
-              An on-budget account's balance funds To Be Assigned, and spending from it needs a
+              An on-budget account's balance funds Ready to Assign, and spending from it needs a
               category. Your day-to-day money belongs here.
             </p>
           </div>

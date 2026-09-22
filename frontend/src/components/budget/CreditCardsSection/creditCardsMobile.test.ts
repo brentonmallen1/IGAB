@@ -32,7 +32,7 @@ describe('credit-cards strip on a phone', () => {
     for (const [n, label] of [
       [2, 'Balance'],
       [3, 'Assigned'],
-      [4, 'Ready to pay'],
+      [4, 'Set aside'],
       [5, 'Uncovered'],
     ] as const) {
       expect(rule(`.credit-cards__row > :nth-child(${n})::before`)).toContain(`content: "${label}"`)

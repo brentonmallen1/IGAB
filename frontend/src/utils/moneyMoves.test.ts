@@ -41,7 +41,7 @@ describe('budget effect copy', () => {
       'Ready to Assign goes down by $1000'
     )
     expect(budgetTermSentence('card_set_aside', 250, money)).toBe(
-      "The card's Ready to pay goes up by $250"
+      "The card's Set aside goes up by $250"
     )
   })
 

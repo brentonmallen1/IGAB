@@ -16,7 +16,7 @@ the user trust:
   dead envelope, so the population grew on its own.
 
 ``AccountRepository.soft_delete`` already does this properly for accounts — it
-soft-deletes their transactions and hand-clears the CC-payment category's link
+soft-deletes their transactions and hand-clears the card's envelope link
 precisely because "the FK's ON DELETE SET NULL only fires on hard deletes".
 This is the same job for the other side of that relationship.
 
@@ -263,7 +263,7 @@ class CategoryArchivePreview:
     #: Names carrying a non-zero balance, so the dialog can point at them
     #: rather than at a total.
     blocked_by_balance: list[str] = field(default_factory=list)
-    #: A card's payment envelope or a debt category: the machinery owns it, and
+    #: A card's envelope or a debt category: the machinery owns it, and
     #: archiving it would leave the card with no envelope to reserve into.
     blocked_by_link: list[str] = field(default_factory=list)
     #: Names a live schedule still files into. Archiving is write-time-visible
@@ -1379,7 +1379,7 @@ class CategoryService:
         """A category the credit-card or debt machinery depends on.
 
         Not symmetric with account deletion, deliberately. Deleting an account
-        unlinks its payment category because the account is the thing leaving
+        unlinks its envelope because the account is the thing leaving
         and the category survives as an ordinary envelope. Deleting a *linked
         category* would leave a live account or liability without the envelope
         its machinery reads — `get_by_linked_account` and
@@ -1393,7 +1393,7 @@ class CategoryService:
             account = await self.session.get(Account, cat.linked_account_id)
             if account is not None and not account.is_deleted:
                 return (
-                    f"'{cat.name}' is the payment category for {account.name}. "
+                    f"'{cat.name}' is the card's envelope for {account.name}. "
                     "Delete or unlink that account first."
                 )
         if cat.linked_liability_id is not None:

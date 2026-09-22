@@ -1,7 +1,7 @@
 """Accounts and account types are visible to ⌘Z.
 
 Deleting an account was the single largest gap in the change log: one
-DELETE soft-deleted the whole ledger, unlinked the payment category, and
+DELETE soft-deleted the whole ledger, unlinked the card's envelope, and
 converted the companion liability — all invisibly, so ⌘Z reverted something
 older while the register sat empty. It records as one batch now:
 `_transaction_ids` names every row the delete took, the category unlinks

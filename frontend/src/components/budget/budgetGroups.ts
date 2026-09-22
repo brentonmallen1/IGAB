@@ -19,7 +19,7 @@ export function renderableGroups<T extends { is_system: boolean }>(groups: reado
 }
 
 /**
- * A card's set-aside envelope is not a grid row either: the cards section
+ * A card's envelope is not a grid row either: the cards section
  * owns it, with liability-truthful columns (Balance / Set aside / Uncovered)
  * instead of assigned/activity/available. `linked_account_id` is the served
  * fact; drawing the row anyway would show the reserve as an ordinary
@@ -34,7 +34,7 @@ interface CategoryLink {
 }
 
 /**
- * Is this category a card's set-aside envelope?
+ * Is this category a card's envelope?
  *
  * One predicate rather than an inline comparison at each use, because the
  * two uses need opposite senses and a strict `=== null` gets *both* wrong
@@ -49,7 +49,7 @@ export function isCardEnvelope(category: CategoryLink): boolean {
 
 /**
  * Groups the grid draws — everything but the ones holding nothing except card
- * set-aside envelopes, so "Credit Card Payments" never appears as a bare
+ * card envelopes, so "Credit Card Payments" never appears as a bare
  * header, even on the surfaces that deliberately show hidden groups.
  *
  * Reads the served `is_card_only`; it does NOT re-derive it. The client cannot:

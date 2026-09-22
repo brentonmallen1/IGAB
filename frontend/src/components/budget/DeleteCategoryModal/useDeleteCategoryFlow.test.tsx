@@ -108,7 +108,7 @@ describe('useDeleteCategoryFlow', () => {
     // The dialog is where the blocking reason is explained; a one-click 400
     // toast is not an explanation.
     previewResult = () =>
-      Promise.resolve(preview({ blocked_by: ["'Visa Payment' is the payment category for Visa."] }))
+      Promise.resolve(preview({ blocked_by: ["'Visa Payment' is the card's envelope for Visa."] }))
     renderFlow()
     await userEvent.click(screen.getByText('go'))
 

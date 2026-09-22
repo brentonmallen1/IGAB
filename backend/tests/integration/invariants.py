@@ -267,7 +267,7 @@ async def assert_overspending_splits_into_cash_and_credit(
     from igab.utils.clock import today_utc
 
     summary = await budget_service_from(session).get_budget_summary(budget_id, today_utc())
-    # The same set the totals and Cover Overspent use: a card payment
+    # The same set the totals and Cover Overspent use: a card
     # envelope's negative is the card's Uncovered, not an overspent envelope,
     # and an income row has no envelope money at all.
     red = [

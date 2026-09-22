@@ -559,7 +559,7 @@ class TestRetiringAGroupReturnsItsMoney:
         assert group.is_archived is True
 
     async def test_a_link_still_refuses(self, db_session):
-        """Returning money does not fix a card envelope, so this is not swept
+        """Returning money does not fix a card's envelope, so this is not swept
         past — it would strand the card instead of the money."""
         services, budget, _checking, _group, _cat = await _world(db_session)
         visa = await create_account(db_session, budget, "Sapphire Visa", account_type="credit_card")

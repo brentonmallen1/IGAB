@@ -139,7 +139,7 @@ class TestWhatACellCannotHonestlySay:
     async def test_the_readme_says_why(self, api_client, sample):
         with zipfile.ZipFile(io.BytesIO(await _export(api_client, sample.id))) as archive:
             readme = archive.read("README.txt").decode()
-        assert "payment envelope" in readme
+        assert "card's envelope" in readme
 
 
 class TestItAgreesWithTheBudgetItCameFrom:

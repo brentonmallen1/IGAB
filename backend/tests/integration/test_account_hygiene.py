@@ -650,12 +650,12 @@ class TestUnlinkedCardPayments:
 
 
 class TestCardReserveDiagnostics:
-    """The findings that explain a card whose Ready to pay went wrong.
+    """The findings that explain a card whose Set aside went wrong.
 
     Each one is a shape a ten-year import actually produced: a reserve driven
     below zero, an inflow filed to an envelope that never charged the card, a
     payment landing on the wrong card, debt older than the budget, and the
-    hand-made payment envelope the migration left behind. Amounts are
+    hand-made card's envelope the migration left behind. Amounts are
     invented and rescaled, as everywhere."""
 
     async def _card_world(self, db_session):

@@ -103,7 +103,7 @@ beforeEach(() => {
 
 async function openHistory() {
   render(<CreditCardsSection budgetId="b1" month="2026-02-01" />)
-  await userEvent.click(screen.getByLabelText('What makes up Ready to pay for Sapphire Visa'))
+  await userEvent.click(screen.getByLabelText('What makes up Set aside for Sapphire Visa'))
   await userEvent.click(screen.getByRole('button', { name: /month by month/i }))
 }
 
@@ -185,7 +185,7 @@ describe('the month-by-month history', () => {
     }
     await openHistory()
     await userEvent.click(screen.getByRole('button', { name: /february 2026/i }))
-    expect(screen.getByText(/Nothing moved through the reserve/)).toBeInTheDocument()
+    expect(screen.getByText(/Nothing moved through Set aside/)).toBeInTheDocument()
   })
 
   it('carries no title tooltip — it is unreachable on a touch screen', async () => {

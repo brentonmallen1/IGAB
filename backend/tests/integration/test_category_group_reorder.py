@@ -161,7 +161,7 @@ class TestHiddenGroups:
 
 
 class TestCardOnlyGroups:
-    """A group holding nothing but card set-aside envelopes is never drawn, so
+    """A group holding nothing but card envelopes is never drawn, so
     the client cannot list it — and until now the server still demanded it.
 
     The grid dropped card-only groups while `reorder` allowed omitting only

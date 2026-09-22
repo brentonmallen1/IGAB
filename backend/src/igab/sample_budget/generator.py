@@ -12,7 +12,7 @@ financial shape is guaranteed, not hoped for:
   `overspend_this_month` below its spending to date.
 - After base assignments, the income surplus is swept into the
   `sweep_remainder` category spread across all months, computed so the
-  month view's To Be Assigned lands exactly on `spec.tba_target`.
+  month view's Ready to Assign lands exactly on `spec.tba_target`.
 """
 
 import calendar
@@ -393,7 +393,7 @@ class SampleBudgetGenerator:
         for account in self._accounts.values():
             if await ensure_for_account(self.session, account) is not None:
                 result.liabilities += 1
-            # Cards additionally get their set-aside envelope; the showcase
+            # Cards additionally get their card's envelope; the showcase
             # spec may have made one already, which ensure() then adopts.
             await ensure_payment_category(self.session, account)
 
@@ -711,7 +711,7 @@ class SampleBudgetGenerator:
                     carry = max(_ZERO, carry + amount + full_activity.get(m, _ZERO))
 
         # Assignments the spec states outright, added on top of the derived
-        # ones. This is the only way money reaches a card's payment envelope:
+        # ones. This is the only way money reaches a card's envelope:
         # nothing can be filed to one, so its activity is always empty and the
         # inference above always yields zero. Added here, before the identity
         # below reads them, so a paydown assignment counts in the envelope
@@ -724,7 +724,7 @@ class SampleBudgetGenerator:
 
         # Sweep the surplus so TBA lands exactly on target, mirroring
         # BudgetService's identity with the domain's own functions:
-        #   TBA = cash balances − Σ envelope available (cards' set-aside
+        #   TBA = cash balances − Σ envelope available (cards'
         #   envelopes included) − uncovered_current
         # computed on INSERTED rows only. Cash excludes cards — a card's debt
         # lives beside its set-aside, not in cash (domain/cards.py). Closed
@@ -751,7 +751,7 @@ class SampleBudgetGenerator:
         assigned_by_cat: dict[uuid.UUID, dict[date, Decimal]] = {}
         activity_by_cat: dict[uuid.UUID, dict[date, Decimal]] = {}
         credit_outflows: dict[uuid.UUID, dict[uuid.UUID, dict[date, Decimal]]] = {}
-        # card -> its payment category, and that category's assignments. They
+        # card -> its envelope, and that category's assignments. They
         # go into `card_funding` (which needs them to retire riding debt) but
         # NOT into `assigned_by_cat`, whose loop below is the envelope term and
         # would count a card's reserve a second time.
@@ -766,7 +766,7 @@ class SampleBudgetGenerator:
                     m: assigned[(category.id, m)] for m in months if (category.id, m) in assigned
                 }
                 if cat_spec.linked_account:
-                    # A card's set-aside envelope — simulated below from
+                    # A card's envelope — simulated below from
                     # funded credit and payments, not from the spec loop.
                     card_categories[self._accounts[cat_spec.linked_account].id] = category.id
                     card_category_assigned[category.id] = asg

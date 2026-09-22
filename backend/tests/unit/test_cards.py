@@ -483,7 +483,7 @@ class TestReserveDiscrepancy:
 
     def test_a_reserve_moved_back_out_is_not_a_violation(self):
         """The Watchman's Arithmetic, finding one. `assigned` is a signed
-        lifetime total: moving more money back out of a card's payment envelope
+        lifetime total: moving more money back out of a card's envelope
         than was ever put in makes it negative, and an unfloored `L - R` then
         reported that shortfall as drift on a card with nothing over-reserved.
         A four-figure false alarm on a real budget, louder than the one genuine
@@ -758,7 +758,7 @@ class TestTheRiddenAmountKeepsBothAttributionsAtOnce:
 
 
 class TestAnAssignmentRetiresRidingDebt:
-    """ "Two Ledgers, One Debt": an assignment to a card's payment category is
+    """ "Two Ledgers, One Debt": an assignment to a card's envelope is
     the other way money meets uncovered debt, and until 2026-08-30 it did not
     go through the door that handles the first way.
 
@@ -769,8 +769,8 @@ class TestAnAssignmentRetiresRidingDebt:
     """
 
     def visa(self, spending, card_assignments, activity=None, outflows=None):
-        """A walk with one spending category and one card whose payment
-        category is `card-visa`."""
+        """A walk with one spending category and one card whose
+        envelope is `card-visa`."""
         return card_funding(
             {"groceries": spending, "card-visa": card_assignments},
             {"groceries": activity or {}},

@@ -232,7 +232,7 @@ describe('otherCredits', () => {
 
   it('names a payment recorded as a deposit rather than a transfer', () => {
     // 300 arrived with nothing paired against it. Only a transfer spends the
-    // reserve, so Ready to pay stood still while the card's debt dropped —
+    // reserve, so Set aside stood still while the card's debt dropped —
     // one way a card ends up reserving far more than it owes.
     expect(otherCredits(card({ inflows_this_month: 300, paid_this_month: 0 }))).toBe(300)
   })

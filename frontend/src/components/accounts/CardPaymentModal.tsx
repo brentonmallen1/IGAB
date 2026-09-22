@@ -65,7 +65,8 @@ export function CardPaymentModal({ budgetId, accountId, onClose }: Props) {
   // overpayment one Enter away, under a label promising the money was ready
   // to pay. Paying more than is owed is still possible; it is just no longer
   // the prefill, and no longer something the app proposed.
-  const setAsideRaw = !isLoan && cardStatus && cardStatus.set_aside > 0 ? cardStatus.set_aside : null
+  const setAsideRaw =
+    !isLoan && cardStatus && cardStatus.set_aside > 0 ? cardStatus.set_aside : null
   const setAside =
     setAsideRaw !== null && fullBalance !== null ? Math.min(setAsideRaw, fullBalance) : setAsideRaw
   const minimum = liability?.minimum_payment_due_now ?? null
@@ -208,7 +209,7 @@ export function CardPaymentModal({ budgetId, accountId, onClose }: Props) {
           </p>
         ) : (
           <p className="dialog-form__hint">
-            Recorded as a transfer, so it spends this card&apos;s reserve — a plain deposit would
+            Recorded as a transfer, so it spends this card&apos;s Set aside — a plain deposit would
             lower the balance while Set aside stood still.
           </p>
         )}

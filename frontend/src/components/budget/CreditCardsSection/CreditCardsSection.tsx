@@ -54,7 +54,7 @@ import './CreditCardsSection.css'
  * undo included.
  */
 /**
- * The five legs a card's Ready to pay is the running total of, plus what is
+ * The five legs a card's Set aside is the running total of, plus what is
  * still riding on the card uncovered.
  *
  * Served, never summed here: `set_aside` already comes from the server, and a
@@ -104,7 +104,7 @@ function ReserveLegs({
           </div>
         ))}
         <div className="credit-cards__leg credit-cards__leg--total">
-          <dt>Ready to pay</dt>
+          <dt>Set aside</dt>
           <dd className="tabular">{formatMoney(card.set_aside)}</dd>
         </div>
       </dl>
@@ -163,14 +163,14 @@ function ReserveLegs({
       {pending && <p className="credit-cards__legs-note">{pending}</p>}
       {/* The footnote explains the row above it; it no longer carries the
         amount. Only a transfer spends the card's reserve, so a payment
-        recorded as a plain deposit lowers the balance while Ready to pay
+        recorded as a plain deposit lowers the balance while Set aside
         stands still — which is one way a card ends up reserving far more
         than it owes, and why this term is named rather than absorbed. */}
       {otherInflow !== 0 && (
         <p className="credit-cards__legs-note">
           <span className="credit-cards__footnote-mark">*</span> A refund, a credit, or a payment
-          whose two halves were never linked. Only a transfer spends the reserve, so this lowers the
-          balance while Ready to pay stands still. Account suggestions, on the Accounts page, lists
+          whose two halves were never linked. Only a transfer spends Set aside, so this lowers the
+          balance while Set aside stands still. Account suggestions, on the Accounts page, lists
           payments that still need linking.
         </p>
       )}
@@ -250,7 +250,7 @@ function ReserveLegs({
 /**
  * A card's reserve, month by month, drawn from the served timeline.
  *
- * Rendering only: the months, each month's delta, the running Ready to pay,
+ * Rendering only: the months, each month's delta, the running Set aside,
  * and the breach line all arrive computed (`/cards/{id}/timeline/{month}`,
  * domain/card_timeline.py). Summing a leg here would be the client's second
  * opinion about what a reserve is made of — the defect this whole section
@@ -295,15 +295,15 @@ function ReserveHistory({
       <div
         className="credit-cards__history-scroll scroll-list"
         role="table"
-        aria-label={`Ready to pay by month for ${card.name}`}
+        aria-label={`Set aside by month for ${card.name}`}
       >
         <div className="credit-cards__history-row credit-cards__history-head" role="row">
           <span role="columnheader">Month</span>
           <span role="columnheader" className="credit-cards__col--num">
-            Reserve change
+            Change
           </span>
           <span role="columnheader" className="credit-cards__col--num">
-            Ready to pay
+            Set aside
           </span>
           <span role="columnheader" className="credit-cards__col--num">
             Balance
@@ -367,7 +367,7 @@ function ReserveHistory({
                   <span role="cell">
                     {legs.length === 0 ? (
                       <p className="credit-cards__history-detail-empty">
-                        Nothing moved through the reserve this month.
+                        Nothing moved through Set aside this month.
                       </p>
                     ) : (
                       <dl className="credit-cards__legs-list">
@@ -393,7 +393,7 @@ function ReserveHistory({
              separators, and like them never counted by the striping. */
           <div className="credit-cards__history-year section-label" role="row">
             <span role="cell">
-              Imported from YNAB — Ready to pay started at{' '}
+              Imported from YNAB — Set aside started at{' '}
               {formatMoney(months[months.length - 1].set_aside)}; earlier months live in the
               register and reports
             </span>
@@ -419,7 +419,7 @@ function breachSentence(
   }
   const [leg] = breach.legs
   const cause = leg ? ` — ${legPhrases[leg.leg] ?? leg.leg} (${formatMoney(leg.amount)})` : ''
-  return `Ready to pay first went below zero in ${formatMonth(breach.month)}, ${formatMoney(
+  return `Set aside first went below zero in ${formatMonth(breach.month)}, ${formatMoney(
     breach.set_aside_before
   )} → ${formatMoney(breach.set_aside_after)}${cause}.`
 }
@@ -442,7 +442,7 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
   if (cards.length === 0) return null
 
   const balances = balancesByCategory(budgetMonth)
-  // The server computes a card envelope's target verdict like any other
+  // The server computes a card's envelope target verdict like any other
   // category's — the grid never draws the envelope, so this strip is where
   // the number surfaces.
   const totalUncovered = cards.reduce((sum, c) => sum + c.uncovered, 0)
@@ -517,7 +517,7 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
                 Assigned
               </span>
               <span role="columnheader" className="credit-cards__col--num">
-                Ready to pay
+                Set aside
               </span>
               <span role="columnheader" className="credit-cards__col--num">
                 Uncovered
@@ -600,7 +600,7 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
                           title={
                             card.category_id
                               ? 'Assign to this card for the viewed month'
-                              : 'This card has no set-aside envelope yet'
+                              : 'This card has no envelope yet'
                           }
                           onClick={() => {
                             setDraft(assigned ? String(assigned) : '')
@@ -640,7 +640,7 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
                         className="credit-cards__legs-btn"
                         aria-expanded={legsOpen}
                         title={legsOpen ? 'Hide what makes this up' : 'What makes this up'}
-                        aria-label={`What makes up Ready to pay for ${card.name}`}
+                        aria-label={`What makes up Set aside for ${card.name}`}
                         onClick={() => setLegsFor(legsOpen ? null : card.account_id)}
                       >
                         {legsOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
@@ -713,22 +713,22 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
               purchase; pay by card and the envelope is still charged, but the cash it gave up is
               still sitting in your account — the card fronted the purchase. That cash cannot go
               back to Ready to Assign (the bill is coming), so it moves to the card's{' '}
-              <strong>Ready to pay</strong> and waits.
+              <strong>Set aside</strong> and waits.
             </p>
             <div className="credit-cards__example">
-              Swipe $60 of groceries on the card → Groceries −$60 · Ready to pay +$60 · your cash
-              and Ready to Assign unchanged. Pay the bill → cash −$60 · Ready to pay −$60.
+              Swipe $60 of groceries on the card → Groceries −$60 · Set aside +$60 · your cash and
+              Ready to Assign unchanged. Pay the bill → cash −$60 · Set aside −$60.
             </div>
             <dl>
               <dt>Balance</dt>
               <dd>What the card's ledger says through the viewed month — negative is owed.</dd>
               <dt>Assigned</dt>
               <dd>
-                The hand-fed side of Ready to pay: money you moved to the card this month, for what
-                no envelope gave up — covering an overspend, or paying down old debt. An ordinary
+                The hand-fed side of Set aside: money you moved to the card this month, for what no
+                envelope gave up — covering an overspend, or paying down old debt. An ordinary
                 assignment: it comes out of Ready to Assign, and undo works.
               </dd>
-              <dt>Ready to pay</dt>
+              <dt>Set aside</dt>
               <dd>
                 Cash waiting to pay this card, from both sources: what funded envelopes gave up when
                 you swiped, plus what you assigned. Payments drain it. It is this card's envelope,
@@ -750,7 +750,7 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
               </dd>
               <dt>Uncovered</dt>
               <dd>
-                Owed beyond Ready to pay — overspending that rode onto the card, old debt, or a
+                Owed beyond Set aside — overspending that rode onto the card, old debt, or a
                 partner's share not yet paid back. Information, not an alarm: a bill that is simply
                 not due yet is a normal state. Cover it by assigning to the card whenever suits.
               </dd>
@@ -773,12 +773,12 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
               One thing does change at a month end: an envelope that finishes the month short sends
               that shortfall onto the card as Uncovered, and funding it the following month does not
               reach back. Funding it <em>in that month</em> does — a backdated assignment is
-              re-walked and the ride disappears. The Ready to pay breakdown names the months.
+              re-walked and the ride disappears. The Set aside breakdown names the months.
             </p>
             <p>
               <strong>An expense you cannot cover</strong> still belongs in its real category. Let
               that category go red: at month end the part it could not fund rides onto the card as
-              Uncovered, To Be Assigned is never charged, and your reports still know where the
+              Uncovered, Ready to Assign is never charged, and your reports still know where the
               money went. Leaving it uncategorized works too, but the row keeps asking for a
               category and the spending shows up nowhere.
             </p>
@@ -811,7 +811,7 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
 }
 
 /**
- * The grid's target editor, pointed at a card's set-aside envelope. A tiny
+ * The grid's target editor, pointed at a card's envelope. A tiny
  * wrapper because `useTarget` is a hook and the strip renders cards in a
  * loop — the fetch has to live in a component that exists only while the
  * editor is open.

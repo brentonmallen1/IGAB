@@ -12,7 +12,7 @@ and the difference is load-bearing:
   place money comes from. Card envelopes are excluded too — the cards section
   is their only face.
 - `IS_FUNDABLE` — money may ENTER this envelope. A different question, which is
-  the whole reason it is a separate constant: a card envelope is funded but
+  the whole reason it is a separate constant: a card's envelope is funded but
   never offered. Read by `assign_service` and by the money-moving endpoints.
 - `IS_CATEGORIZABLE` — a transaction leg may be filed here. System groups stay
   IN, because the seeded system group is named `Income` (see
@@ -25,7 +25,7 @@ linked to an account or a liability: those are credit-card payment and debt
 categories, whose activity is maintained by the transfer and the loan, not by
 filing a row into them. `IS_FUNDABLE` keeps both — money really is budgeted
 into a card's set-aside and into a debt envelope — while `IS_ASSIGNABLE` names
-the card envelope outright instead of leaning on its group being archived, which
+the card's envelope outright instead of leaning on its group being archived, which
 was a coincidence rather than a rule.
 
 **Why these are served rather than computed on the client.** `is_archived` is on
@@ -87,15 +87,15 @@ IN_ARCHIVED_GROUP = (
     .exists()
 )
 
-#: A card's set-aside envelope, owned by the account rather than by the user.
+#: A card's envelope, owned by the account rather than by the user.
 #: The cards section is its only home: it is drawn there with liability
-#: columns (Balance / Ready to pay / Uncovered), assigned there, and nothing
+#: columns (Balance / Set aside / Uncovered), assigned there, and nothing
 #: may be filed to it — `get_budget_summary` overwrites its balance from card
 #: arithmetic, so a row filed here is money that leaves the budget silently.
 LINKED_TO_CARD = Category.linked_account_id.isnot(None)
 
 #: Maintained by something other than the user filing a row: a credit-card
-#: payment category, or a debt category owned by a liability.
+#: card's envelope, or a debt category owned by a liability.
 LINKED = or_(LINKED_TO_CARD, Category.linked_liability_id.isnot(None))
 
 #: Archived in either sense. Written inline three times below, and the trap is
@@ -109,24 +109,24 @@ NOT_ARCHIVED_ANYWHERE = and_(NOT_ARCHIVED, not_(IN_ARCHIVED_GROUP))
 #: These were one rule, and the comment that lived here argued the conflation
 #: was deliberate: that `LINKED_TO_CARD` stays in because "excluding it would
 #: stop the auto-assign strategies from ever funding a card's paydown target,
-#: which is the one thing that target is for". Measured against a card envelope
+#: which is the one thing that target is for". Measured against a card's envelope
 #: built the way `ensure_payment_category` builds one, that was already false:
 #: the envelope lived in an archived group, so `IN_ARCHIVED_GROUP` excluded it
 #: anyway, `is_assignable` came back False, and `assign_service` — which
 #: filters on exactly this flag — had never once funded a card target. The
 #: rule was protecting an outcome it had already lost.
 #:
-#: So a card envelope is excluded here outright. The cards section is its only
+#: So a card's envelope is excluded here outright. The cards section is its only
 #: face, which is what `card_payment.py` says it is.
 IS_ASSIGNABLE = and_(NOT_ARCHIVED_ANYWHERE, not_(IN_SYSTEM_GROUP), not_(LINKED_TO_CARD))
 
 #: **Where money may ENTER.** A strictly different question from what a picker
-#: offers, and keeping them apart is what lets a card envelope be funded
+#: offers, and keeping them apart is what lets a card's envelope be funded
 #: without being listed.
 #:
 #: Income is out, always: money assigned to a system-group category would
 #: neither reduce Ready to Assign nor ever come back out. Everything else the
-#: user can still see is in, and so is a card envelope, archived or not — a card
+#: user can still see is in, and so is a card's envelope, archived or not — a card
 #: is paid down by assigning to it, and `assign_service` reads this so a
 #: paydown target finally fills.
 #:
@@ -206,7 +206,7 @@ SPENDABLE = and_(LIVE_CATEGORY, not_(LINKED_TO_CARD), not_(IN_SYSTEM_GROUP))
 BUDGETED_ENVELOPE = and_(LIVE_CATEGORY, not_(IN_SYSTEM_GROUP))
 SPENT_ENVELOPE = not_(IN_SYSTEM_GROUP)
 
-#: A group holding nothing but card set-aside envelopes. The budget grid never
+#: A group holding nothing but card envelopes. The budget grid never
 #: draws it — every one of its rows belongs to the cards section — so
 #: "Credit Card Payments" appears as no header at all, even where archived groups
 #: are deliberately shown.

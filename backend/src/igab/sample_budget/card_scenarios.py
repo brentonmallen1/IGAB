@@ -64,7 +64,7 @@ ZERO = Decimal("0")
 #: deposit a plain inflow on the card, filed nowhere — somebody else paid it,
 #:         or a payment the importer never paired to its cash leg
 #: fund    an assignment to a spending category
-#: assign  an assignment to this card's own payment envelope
+#: assign  an assignment to this card's own envelope
 EventKind = Literal["spend", "charge", "refund", "pay", "deposit", "fund", "assign"]
 
 _CARD_ROWS: frozenset[str] = frozenset({"spend", "charge", "refund", "pay", "deposit"})
@@ -683,7 +683,7 @@ UNFILED_SPENDING = CardScenario(
         "cent of it therefore reads as uncovered, which is the honest answer "
         "— no envelope is standing behind this debt. The card that raised "
         "this had a whole month of them and read its entire balance as "
-        "uncovered while Ready to pay sat at zero."
+        "uncovered while Set aside sat at zero."
     ),
     card="Ironwood Card",
     short="Ironwood",
@@ -1182,7 +1182,7 @@ def merge_into(
 ) -> SampleBudgetSpec:
     """Splice scenario cards into a household budget.
 
-    Each scenario brings its own account, its own payment envelope and its own
+    Each scenario brings its own account, its own card's envelope and its own
     spending envelopes — named after the card, because category names are
     unique budget-wide and because a SHARED envelope is not a cosmetic problem:
     a month-end shortfall rides from whichever card carried it, so one

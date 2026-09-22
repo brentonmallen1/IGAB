@@ -18,7 +18,7 @@ export function payeeOptions(payees: Payee[]): ComboboxOption[] {
 
 /**
  * `is_categorizable`, like every other category picker — the server decides
- * what a leg may be filed to. Offering the raw list put each card's set-aside
+ * what a leg may be filed to. Offering the raw list put each card's
  * envelope in the register's most-used control, under a blank group heading
  * (its group is hidden, so no name resolved), and filing a row there hid the
  * money from the budget entirely.

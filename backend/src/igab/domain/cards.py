@@ -54,8 +54,8 @@ was exact and unbounded:
 
 Read the first term. On a card that is always paid in full the reserve does
 not converge on what the card owes; it converges on what the card owes plus
-every dollar ever assigned to its payment category, for the life of the
-budget. Move money back out of an overfunded payment envelope and the same
+every dollar ever assigned to its envelope, for the life of the
+budget. Move money back out of an overfunded card's envelope and the same
 term drives the reserve permanently negative, at which point
 `max(0, owed - max(0, set_aside))` reports the card's entire balance as
 uncovered. One defect, two directions ("Two Ledgers, One Debt").
@@ -315,8 +315,8 @@ class CardFunding[C, K]:
     #: done on card B — every one of them lands here, and without the pair the
     #: diagnosis stops at "residual".
     residual_by_pair: dict[tuple[C, K], dict[date, Decimal]] = field(default_factory=dict)
-    #: Assignments to each card's own payment category, per month. Signed:
-    #: money moved back out of a card envelope is an ordinary thing to do.
+    #: Assignments to each card's own envelope, per month. Signed:
+    #: money moved back out of a card's envelope is an ordinary thing to do.
     #: Authoritative — the reserve reads the series from here rather than
     #: re-reading the assignment repo, so the walk and the total cannot
     #: disagree about what was assigned.
@@ -402,11 +402,11 @@ def card_funding[C, K](
     Takes each category's raw assignment and activity series,
     `credit_outflows[category][card][month]` (SIGNED net: a month whose card
     activity nets to an inflow is negative), and `card_categories[card]` — the
-    payment category linked to each card, whose assignments are the fifth leg
+    card's envelope linked to each card, whose assignments are the fifth leg
     of that card's reserve.
 
     **The pass is month-major, and it has to be.** An assignment is made to a
-    card's payment category, which has no spending category of its own: it
+    card's envelope, which has no spending category of its own: it
     retires debt riding on that card across every category that charged it. A
     per-category outer loop cannot reach that. Nor can a second pass, because
     covering a ride changes whether a later inflow discharges or releases,
@@ -447,7 +447,7 @@ def card_funding[C, K](
             categories_in_month.setdefault(month, []).append(category)
 
     # A card's own assignment series, read once. Absent from `credit_outflows`
-    # by construction: a card payment category is not spendable.
+    # by construction: a card's envelope is not spendable.
     card_assignments: dict[K, dict[date, Decimal]] = {
         card: assignments_by_category.get(category, {})
         for card, category in card_categories.items()
@@ -571,7 +571,7 @@ def card_funding[C, K](
                 continue
             _add(out.assignments_by_card, card, month, amount)
             if amount <= ZERO:
-                # Money moved back out of a card envelope re-rides nothing:
+                # Money moved back out of a card's envelope re-rides nothing:
                 # there is no non-arbitrary category to charge, and the
                 # spending it funded was funded. The reserve simply falls,
                 # and `uncovered` rises to meet it.
@@ -605,7 +605,7 @@ class CardReserve:
     #: entry, and only on anchored budgets. Signed: a card can be imported
     #: with its envelope in the red. The sixth leg, first in time.
     opening: dict[date, Decimal] = field(default_factory=dict)
-    #: + money the user put into the card's payment envelope. Signed.
+    #: + money the user put into the card's envelope. Signed.
     assignments: dict[date, Decimal] = field(default_factory=dict)
     #: + funded credit spending that moved into this card.
     reservations: dict[date, Decimal] = field(default_factory=dict)
@@ -764,7 +764,7 @@ def _allowance(*terms: Decimal) -> Decimal:
 
     Each term floors **on its own**, not after summing. `assigned` is a signed
     lifetime total and goes negative the moment someone moves more money back
-    out of a card's payment envelope than they ever put in — ordinary
+    out of a card's envelope than they ever put in — ordinary
     reallocation. Unfloored, `L - R` with `R < 0` reported the shortfall as
     drift on a card with nothing wrong ("The Watchman's Arithmetic"). Flooring
     the *sum* instead would fix that case and break another: a negative
