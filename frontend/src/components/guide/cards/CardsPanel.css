@@ -97,10 +97,52 @@
   padding-top: var(--spacing-md);
 }
 
-.cards-situation__story {
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
+/* The situation in three beats. A label column and a line each, so the whole
+   thing is scanned rather than read — the paragraph this replaced was up to
+   186 words of the scenario's own developer note, which is a wall of text at
+   exactly the moment somebody is trying to find themselves in it.
+
+   The label is the fixed part, so it gets the fixed column: a reader looking
+   only for "what to do" can drop to it without reading the other two. */
+.cards-lesson {
   margin: 0;
-  max-width: 62ch;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.cards-lesson__beat {
+  display: grid;
+  grid-template-columns: 8.5rem 1fr;
+  gap: var(--spacing-sm);
+  align-items: baseline;
+}
+
+.cards-lesson__beat dt {
+  font-size: var(--font-size-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-muted);
+}
+
+.cards-lesson__beat dd {
+  margin: 0;
+  font-size: var(--font-size-sm);
   line-height: 1.55;
+  color: var(--text-secondary);
+  max-width: 62ch;
+}
+
+/* "What to do" is the one somebody came for. */
+.cards-lesson__beat:last-child dd {
+  color: var(--text-primary);
+}
+
+@media (max-width: 768px) {
+  /* No room for a label column beside a sentence at phone width — the label
+     becomes a caption over its line, which is the same reading order. */
+  .cards-lesson__beat {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
 }

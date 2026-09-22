@@ -168,7 +168,14 @@ export interface CardExampleMonth {
 export interface CardExample {
   slug: string
   title: string
-  story: string
+  /** The situation in three beats: what happened, what the card then reads,
+   *  what to do. Served as three fields rather than one paragraph — the
+   *  scenario's own `story` is a note for whoever is debugging the model and
+   *  is deliberately not sent here. Home: backend `card_scenarios.py`
+   *  `CardLesson`. */
+  happens: string
+  reads: string
+  todo: string
   card: string
   /** Which ways of using a card this situation can happen to. */
   intents: string[]

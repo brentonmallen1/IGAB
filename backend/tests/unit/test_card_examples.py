@@ -7,6 +7,7 @@ binding test is that its last month reproduces each scenario's own hand-written
 generator are all held to.
 """
 
+import re
 from datetime import date
 
 import pytest
@@ -95,3 +96,58 @@ def test_every_event_kind_has_a_phrase():
     from igab.sample_budget.card_scenarios import EventKind
 
     assert set(typing.get_args(EventKind)) == set(_EVENT_PHRASES)
+
+
+@pytest.mark.parametrize("scenario", ALL_SCENARIOS, ids=lambda s: s.slug)
+def test_the_lesson_is_three_short_beats_and_not_a_paragraph(scenario):
+    """The wall of text this replaced.
+
+    Every scenario's `story` was shown to the reader verbatim — 59 to 186
+    words of prose about integrity bounds, residual legs and which shape the
+    check accepts by design. It is the right note for whoever is debugging the
+    model and the wrong thing entirely to hand somebody trying to understand
+    their own card.
+
+    So the budget is enforced rather than intended. Each beat is one sentence
+    or two short ones: the moment one grows a clause about why the walk does
+    what it does, the page is a paragraph again and nobody reads it.
+    """
+    lesson = scenario.lesson
+    for name in ("happens", "reads", "todo"):
+        text = getattr(lesson, name)
+        assert text, f"{scenario.slug}: {name} is empty"
+        assert "\n" not in text, f"{scenario.slug}: {name} is more than one line"
+        assert len(text) <= 190, f"{scenario.slug}: {name} is {len(text)} chars, budget is 190"
+        assert text[-1] in ".?", f"{scenario.slug}: {name} does not end a sentence"
+        # Sentence ENDS, not periods: "$0.00" and "$1,900" carry dots that
+        # are not full stops, and counting those measured the wrong thing.
+        sentences = len(re.findall(r"[.?](?:\s|$)", text))
+        assert sentences <= 2, f"{scenario.slug}: {name} runs to {sentences} sentences, budget is 2"
+
+
+@pytest.mark.parametrize("scenario", ALL_SCENARIOS, ids=lambda s: s.slug)
+def test_a_situation_with_nothing_to_do_says_so_in_as_many_words(scenario):
+    """ "Nothing" is an answer, and the one people most need to be given.
+
+    Four of these situations are entirely normal — a settle-up, a credit
+    balance, a dip that already recovered, a card running the loop correctly.
+    A page that ends every situation with a suggestion teaches that all of
+    them are problems, which is the reading this whole tab exists to undo.
+    """
+    quiet = {"paid-in-full", "credit-balance", "settled-by-others", "paid-ahead-then-caught-up"}
+    says_nothing = scenario.lesson.todo.startswith("Nothing")
+    assert says_nothing == (scenario.slug in quiet), (
+        f"{scenario.slug}: todo starts with 'Nothing' = {says_nothing}, "
+        f"but it is {'' if scenario.slug in quiet else 'not '}a do-nothing situation"
+    )
+
+
+def test_the_developer_story_never_reaches_the_reader():
+    """`story` and `lesson` are two descriptions of one scenario, on purpose —
+    different audiences, different content. The guard is that only one of them
+    is served: a served `story` is how the wall of text comes back."""
+    from dataclasses import fields
+
+    from igab.guide.card_examples import CardExample
+
+    assert "story" not in {f.name for f in fields(CardExample)}

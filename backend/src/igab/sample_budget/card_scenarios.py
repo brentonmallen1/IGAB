@@ -194,13 +194,45 @@ class CardAnchor:
 
 
 @dataclass(frozen=True)
+class CardLesson:
+    """The situation as a READER meets it: three short beats, one line each.
+
+    Not a second `story`. `story` says why this shape exists and what it used
+    to get wrong — it becomes the docstring of every test generated from the
+    scenario, and it is written for whoever is debugging the model. Pointed at
+    a person trying to understand their own card it is the wrong register
+    entirely: 59 to 186 words of prose about integrity bounds and residual
+    legs, which is a paragraph nobody reads.
+
+    These three answer the questions a budgeter actually asks, in the order
+    they ask them. One sentence each, enforced by a test — the moment one of
+    these grows a second clause about why the walk does what it does, the page
+    is back to being a wall of text.
+
+    Neither can misstate a figure: every number the Guide draws is walked by
+    the card domain (`guide/card_examples.py`), not written here.
+    """
+
+    #: What the person did, or what happened to them.
+    happens: str
+    #: What the card row then reads — especially the part that surprises.
+    reads: str
+    #: What to do about it, or the words for "nothing". Several of these
+    #: situations are entirely normal and saying so plainly is the answer.
+    todo: str
+
+
+@dataclass(frozen=True)
 class CardScenario:
     slug: str
     #: The lesson the row teaches, one line. Shown beside the card in docs.
     title: str
     #: Why this shape exists and what it used to get wrong. Becomes the
-    #: docstring of every test generated from it.
+    #: docstring of every test generated from it — written for whoever is
+    #: debugging the model, and deliberately NOT what the Guide shows.
     story: str
+    #: The same situation for a reader, in three beats. See `CardLesson`.
+    lesson: CardLesson
     card: str
     #: The card's name in its category names — "Harborstone Groceries". Card
     #: names are unique budget-wide, and so are category names, so scenario
@@ -582,6 +614,14 @@ PAID_IN_FULL = CardScenario(
         debt_change_this_month=_d("0"),
     ),
     set_aside_state=SetAsideState.FUNDED,
+    lesson=CardLesson(
+        happens="You budget for what you buy, swipe the card, and pay the bill from checking.",
+        reads=(
+            "Set aside always matches what the card owes, and paying the bill empties both "
+            "together."
+        ),
+        todo="Nothing. This is the loop working.",
+    ),
 )
 
 CARRYING_DEBT = CardScenario(
@@ -621,6 +661,20 @@ CARRYING_DEBT = CardScenario(
         debt_change_this_month=_d("-100"),
     ),
     set_aside_state=SetAsideState.FUNDED,
+    lesson=CardLesson(
+        happens=(
+            "The card arrived carrying old debt, so each month you fund your spending and "
+            "assign something extra to the card on top."
+        ),
+        reads=(
+            "Uncovered falls by exactly what you assign. Set aside only holds this month's "
+            "spending plus that assignment until you pay."
+        ),
+        todo=(
+            "Keep assigning what you can afford, then pay by transfer. Uncovered is the debt, "
+            "and it shrinks as you go."
+        ),
+    ),
 )
 
 MONTH_ENDED_SHORT = CardScenario(
@@ -657,6 +711,20 @@ MONTH_ENDED_SHORT = CardScenario(
         debt_change_this_month=_d("-80"),
     ),
     set_aside_state=SetAsideState.FUNDED,
+    lesson=CardLesson(
+        happens=(
+            "You spent $100 on the card out of an envelope holding $40, and the month ended "
+            "before you could fund the rest."
+        ),
+        reads=(
+            "The $60 the envelope could not cover moves to Uncovered. Ready to Assign is never "
+            "charged for it."
+        ),
+        todo=(
+            "Go back to that month and raise the envelope's assignment — the ride disappears. "
+            "Funding it this month does not reach back."
+        ),
+    ),
 )
 
 OVER_RESERVED = CardScenario(
@@ -699,6 +767,14 @@ OVER_RESERVED = CardScenario(
     ),
     tiers=("full",),
     set_aside_state=SetAsideState.SURPLUS,
+    lesson=CardLesson(
+        happens=(
+            "You assign money to the card every month, but there is never any riding debt for "
+            "it to retire."
+        ),
+        reads="Set aside climbs past what the card owes, and the extra is labelled Spare.",
+        todo="Release the spare and it goes back to Ready to Assign, or into another envelope.",
+    ),
 )
 
 SETTLED_BY_OTHERS = CardScenario(
@@ -763,6 +839,20 @@ SETTLED_BY_OTHERS = CardScenario(
     ),
     set_aside_state=SetAsideState.SETTLED_BY_OTHERS,
     tiers=("full",),
+    lesson=CardLesson(
+        happens=(
+            "Somebody else's spending goes on a tab you never budget into — some on this card, "
+            "some out of checking — and they settle up in one payment onto the card."
+        ),
+        reads=(
+            "Set aside shows $0.00 with a note that it is below zero, because they paid the "
+            "card down by more than the tab had ever charged it."
+        ),
+        todo=(
+            "Nothing. The repayment took money out of Set aside and paid the card down by "
+            "exactly the same amount."
+        ),
+    ),
 )
 
 RIDE_UNFUNDED = CardScenario(
@@ -806,6 +896,20 @@ RIDE_UNFUNDED = CardScenario(
     ),
     set_aside_state=SetAsideState.RIDE_UNFUNDED,
     tiers=("full",),
+    lesson=CardLesson(
+        happens=(
+            "An envelope funded $100 spent $300 on the card, so $200 rode onto the card — and "
+            "then you paid the bill."
+        ),
+        reads=(
+            "The payment ran past what was actually set aside, so Set aside shows $0.00 with "
+            "$300.00 below zero beside it."
+        ),
+        todo=(
+            "Raise that month's assignment on the envelope and the ride is retired, or assign "
+            "$300 to the card to cover it now."
+        ),
+    ),
 )
 
 PAID_AHEAD = CardScenario(
@@ -848,6 +952,17 @@ PAID_AHEAD = CardScenario(
     ),
     set_aside_state=SetAsideState.PAID_AHEAD,
     tiers=("full",),
+    lesson=CardLesson(
+        happens="You paid $700 toward a card carrying old debt when only $400 had been set aside.",
+        reads=(
+            "The extra $300 went straight to the balance, so Set aside shows $0.00 with $300.00 "
+            "below zero beside it."
+        ),
+        todo=(
+            "Assign $300 to the card to square it. Ready to Assign falls by that much, because "
+            "the money has already left your account."
+        ),
+    ),
 )
 
 REIMBURSED = CardScenario(
@@ -887,6 +1002,20 @@ REIMBURSED = CardScenario(
     ),
     tiers=("full",),
     set_aside_state=SetAsideState.REFUND_OUTRAN_ENVELOPE,
+    lesson=CardLesson(
+        happens=(
+            "Somebody paid $500 back onto the card, filed to an envelope that had never charged "
+            "this card."
+        ),
+        reads=(
+            "Set aside shows $0.00 with a note that it is below zero, while the card still owes "
+            "$1,900."
+        ),
+        todo=(
+            "That envelope now holds $500 you can spend, but it exists only as a credit on "
+            "this card and never as cash in your bank."
+        ),
+    ),
 )
 
 CREDIT_BALANCE = CardScenario(
@@ -925,6 +1054,14 @@ CREDIT_BALANCE = CardScenario(
     ),
     tiers=("full",),
     set_aside_state=SetAsideState.CARD_HOLDS_IT,
+    lesson=CardLesson(
+        happens="You paid the card more than it owed, month after month.",
+        reads=(
+            "The balance is positive: the card is holding your money. This is the one case "
+            "where \u201coverpaid\u201d is really true."
+        ),
+        todo="Nothing. Later spending on the card, or a refund, will use it up.",
+    ),
 )
 
 UNFILED_SPENDING = CardScenario(
@@ -962,6 +1099,17 @@ UNFILED_SPENDING = CardScenario(
     ),
     tiers=("full",),
     set_aside_state=SetAsideState.FUNDED,
+    lesson=CardLesson(
+        happens="Charges land on the card and nobody files them to an envelope.",
+        reads=(
+            "Set aside stays at $0.00 and the whole balance sits in Uncovered, because no "
+            "envelope was ever charged."
+        ),
+        todo=(
+            "File them. It takes no money you do not have — it just tells your reports where "
+            "the money went."
+        ),
+    ),
 )
 
 UNLINKED_PAYMENT = CardScenario(
@@ -1001,6 +1149,17 @@ UNLINKED_PAYMENT = CardScenario(
     ),
     tiers=("full",),
     set_aside_state=SetAsideState.FUNDED,
+    lesson=CardLesson(
+        happens=(
+            "A payment reached the card as a plain credit, never linked to the money that left "
+            "checking."
+        ),
+        reads=(
+            "The balance falls but Set aside does not move, because only a linked transfer "
+            "spends Set aside."
+        ),
+        todo="Link the two halves under Account suggestions on the Accounts page.",
+    ),
 )
 
 PAID_AHEAD_THEN_CAUGHT_UP = CardScenario(
@@ -1045,6 +1204,20 @@ PAID_AHEAD_THEN_CAUGHT_UP = CardScenario(
     ),
     tiers=("full",),
     set_aside_state=SetAsideState.FUNDED,
+    lesson=CardLesson(
+        happens=(
+            "The statement included debt from before the budget, so paying it in full ran past "
+            "what had been set aside."
+        ),
+        reads=(
+            "Set aside reads $0.00 today and looks unremarkable. Only the month-by-month "
+            "history shows the dip."
+        ),
+        todo=(
+            "Nothing now. The lesson is that a card's figure today is not the whole story — "
+            "open the breakdown."
+        ),
+    ),
 )
 
 #: Order is the order the demo shows them: the healthy card first, so the
@@ -1123,6 +1296,14 @@ ANCHORED_IMPORT = CardScenario(
         reserve_discrepancy=_d("0"),
     ),
     set_aside_state=SetAsideState.FUNDED,
+    lesson=CardLesson(
+        happens="The budget was imported from YNAB partway through the card's life.",
+        reads=(
+            "Set aside opens at the position YNAB had, and the months before the import stay in "
+            "the register and reports rather than being re-walked."
+        ),
+        todo="Nothing. The import seam is labelled in the month-by-month history.",
+    ),
 )
 
 ANCHORED_IN_CREDIT = CardScenario(
@@ -1158,6 +1339,14 @@ ANCHORED_IN_CREDIT = CardScenario(
         reserve_discrepancy=_d("0"),
     ),
     set_aside_state=SetAsideState.CARD_HOLDS_IT,
+    lesson=CardLesson(
+        happens="The card was already holding a credit on the day the budget was imported.",
+        reads=(
+            "The card reads as holding your money from the first day, with nothing before the "
+            "import to explain it."
+        ),
+        todo="Nothing. Later spending on the card will absorb it.",
+    ),
 )
 
 ANCHORED_CREDIT_SPENT_DOWN = CardScenario(
@@ -1210,6 +1399,11 @@ ANCHORED_CREDIT_SPENT_DOWN = CardScenario(
         reserve_discrepancy=_d("0"),
     ),
     set_aside_state=SetAsideState.SURPLUS,
+    lesson=CardLesson(
+        happens="A card imported in credit was then spent down until it owed money again.",
+        reads="Set aside sits above what the card owes, and the difference shows as Spare.",
+        todo="Release the spare if you want it back, or leave it against the next bill.",
+    ),
 )
 
 #: Anchored shapes, beside — never inside — ALL_SCENARIOS: one budget has one

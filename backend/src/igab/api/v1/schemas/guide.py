@@ -394,7 +394,12 @@ class CardExampleOut(ApiModel):
 
     slug: str
     title: str
-    story: str
+    #: The situation in three beats — what happened, what the card then reads,
+    #: what to do. Three short fields rather than one paragraph, because a
+    #: paragraph is what a reader skips.
+    happens: str
+    reads: str
+    todo: str
     card: str
     intents: list[str]
     opening: Decimal

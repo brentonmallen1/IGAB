@@ -151,7 +151,25 @@ export function CardsPanel() {
                 </button>
                 {open && (
                   <div className="cards-situation__body">
-                    <p className="cards-situation__story">{e.story}</p>
+                    {/* Three labelled beats, not a paragraph. Each answers a
+                      question a reader actually has, in the order they have
+                      them — and each is one line, so the whole situation can
+                      be taken in before deciding whether to walk the months
+                      below it. */}
+                    <dl className="cards-lesson">
+                      <div className="cards-lesson__beat">
+                        <dt>What happens</dt>
+                        <dd>{e.happens}</dd>
+                      </div>
+                      <div className="cards-lesson__beat">
+                        <dt>What you see</dt>
+                        <dd>{e.reads}</dd>
+                      </div>
+                      <div className="cards-lesson__beat">
+                        <dt>What to do</dt>
+                        <dd>{e.todo}</dd>
+                      </div>
+                    </dl>
                     <CardWalkthrough example={e} />
                   </div>
                 )}

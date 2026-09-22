@@ -35,7 +35,9 @@ const EXAMPLES: CardExamples = {
     {
       slug: 'paid-in-full',
       title: 'Funded spending, paid every month',
-      story: 'The shape everything else departs from.',
+      happens: 'You budget for what you buy, swipe the card, and pay the bill from checking.',
+      reads: 'Set aside always matches what the card owes.',
+      todo: 'Nothing. This is the loop working.',
       card: 'Cedar Point Visa',
       intents: ['in-full'],
       opening: 0,
@@ -77,7 +79,9 @@ const EXAMPLES: CardExamples = {
     {
       slug: 'carrying-debt',
       title: 'Old debt, paid down by assigning to the card',
-      story: 'The card arrived with a balance the budget never funded.',
+      happens: 'The card arrived carrying old debt.',
+      reads: 'Uncovered falls by exactly what you assign.',
+      todo: 'Keep assigning what you can afford, then pay by transfer.',
       card: 'Harborstone Card',
       intents: ['paying-down'],
       opening: -3000,
@@ -143,6 +147,20 @@ describe('the Credit cards tab', () => {
     expect(screen.queryByText('Old debt, paid down by assigning to the card')).toBeNull()
     await userEvent.click(pick)
     expect(screen.getByText('Old debt, paid down by assigning to the card')).toBeInTheDocument()
+  })
+
+  it('opens a situation as three labelled beats, not a paragraph', async () => {
+    // What this replaced: the scenario's own `story`, shown verbatim — up to
+    // 186 words of developer note about integrity bounds and residual legs,
+    // handed to somebody trying to recognise their own card in it. Three
+    // labels, one line each, so the whole situation is scanned.
+    renderPanel()
+    await userEvent.click(screen.getByRole('button', { name: /Funded spending/ }))
+    for (const label of ['What happens', 'What you see', 'What to do']) {
+      expect(screen.getByText(label)).toBeInTheDocument()
+    }
+    expect(screen.getByText(/swipe the card, and pay the bill/)).toBeInTheDocument()
+    expect(screen.getByText('Nothing. This is the loop working.')).toBeInTheDocument()
   })
 
   it('walks the months, showing only the served figures', async () => {

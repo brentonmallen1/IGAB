@@ -8,7 +8,7 @@ reader, and adds no card rule of its own.
 
 The one thing written here is the reader's-eye framing: which month a step
 belongs to, what the step did in plain words, and which way of using a card
-each scenario speaks to. Amounts, positions and the story text all come from
+each scenario speaks to. Amounts, positions and the wording all come from
 the scenario.
 """
 
@@ -138,7 +138,14 @@ class CardExampleMonth:
 class CardExample:
     slug: str
     title: str
-    story: str
+    #: The situation in three beats (`CardScenario.lesson`). `story` is NOT
+    #: served: it is the scenario's own note about why the shape exists and
+    #: what it used to get wrong, written for whoever is debugging the model,
+    #: and it ran to 186 words of prose about integrity bounds and residual
+    #: legs. A paragraph of that is not something to ask a reader for.
+    happens: str
+    reads: str
+    todo: str
     card: str
     intents: list[str]
     opening: Decimal
@@ -201,7 +208,9 @@ def _example(scenario: CardScenario, today: date) -> CardExample:
     return CardExample(
         slug=scenario.slug,
         title=scenario.title,
-        story=scenario.story,
+        happens=scenario.lesson.happens,
+        reads=scenario.lesson.reads,
+        todo=scenario.lesson.todo,
         card=scenario.card,
         intents=list(SCENARIO_INTENTS[scenario.slug]),
         opening=scenario.opening,
