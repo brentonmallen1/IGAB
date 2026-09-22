@@ -40,7 +40,7 @@ function card(over: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   peeked.scope = null
-  month.current = { cards: [card()] } as unknown as BudgetMonth
+  month.current = { cards: [card()], total_overspent_credit: 55 } as unknown as BudgetMonth
 })
 
 function open() {
@@ -87,6 +87,7 @@ describe('OnCardsModal', () => {
   it('shows each card total while the group is collapsed', () => {
     month.current = {
       cards: [card(), card({ account_id: 'card-2', name: 'Second' })],
+      total_overspent_credit: 110,
     } as unknown as BudgetMonth
     open()
     expect(screen.getAllByText('-$55.00').length).toBeGreaterThan(0)
@@ -95,6 +96,7 @@ describe('OnCardsModal', () => {
   it('leaves out cards that carried no ride this month', () => {
     month.current = {
       cards: [card(), card({ account_id: 'card-2', name: 'Clean Card', overspent_this_month: 0 })],
+      total_overspent_credit: 55,
     } as unknown as BudgetMonth
     open()
     expect(screen.queryByText(/Clean Card/)).not.toBeInTheDocument()
@@ -117,5 +119,17 @@ describe('OnCardsModal', () => {
     open()
     expect(screen.getByText(/\$55\.00 of this month/)).toBeInTheDocument()
     expect(screen.getByText(/assigning to Sapphire Visa/)).toBeInTheDocument()
+  })
+
+  it('shows the served headline, not a sum of the rows it lists', () => {
+    // The chip that opens this dialog reads `total_overspent_credit`; this
+    // used to re-add the card rows and the two agreed for reasons written
+    // and tested nowhere. A card the summary skips — settled and closed —
+    // is one way they would stop agreeing, with nothing on screen accounting
+    // for the difference. The numbers here disagree on purpose: the headline
+    // must follow the server.
+    month.current = { cards: [card()], total_overspent_credit: 90 } as unknown as BudgetMonth
+    open()
+    expect(screen.getByText(/\$90\.00 of this month/)).toBeInTheDocument()
   })
 })

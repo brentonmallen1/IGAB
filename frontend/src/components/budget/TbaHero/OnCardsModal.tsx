@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { CreditCard } from 'lucide-react'
 import { useBudgetMonth } from '../../../api/budgets'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { overspending } from '../budgetTotals'
 import { Dialog } from '../../common/Dialog/Dialog'
 import { Collapsible } from '../../common/Collapsible/Collapsible'
 import { TransactionsPeekModal } from '../TransactionsPeekModal/TransactionsPeekModal'
@@ -35,7 +36,13 @@ export function OnCardsModal({ budgetId, month, onClose }: Props) {
   const { formatMoney } = useFormatters()
   const { data: budgetMonth } = useBudgetMonth(budgetId, month)
   const cards = (budgetMonth?.cards ?? []).filter((c) => c.overspent_this_month > 0)
-  const total = cards.reduce((sum, c) => sum + c.overspent_this_month, 0)
+  // The SAME figure the chip that opens this dialog shows, read the same way.
+  // It was summed from the card rows here instead, and the two agreed only
+  // for reasons written and tested nowhere: a card whose row the summary
+  // skips — settled and closed — would have taken this total below the chip's
+  // with nothing on screen accounting for the difference. The per-card rows
+  // below stay served; only the headline stops being re-derived.
+  const total = overspending(budgetMonth).onCards
 
   // One card is the common case and its group carries no information when
   // collapsed, so it opens; with several, the list is the thing to read first.
