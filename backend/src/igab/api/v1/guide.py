@@ -13,6 +13,7 @@ from igab.api.route import CommitRoute
 from igab.api.v1.schemas.guide import (
     BindingUpdate,
     CandidatesResponse,
+    CardExamplesResponse,
     CheckupResponse,
     EmergencyFundRequest,
     EmergencyFundResponse,
@@ -66,6 +67,7 @@ from igab.domain.money_moves import (
     MoveExplanation,
     figures,
 )
+from igab.guide.card_examples import INTENTS, card_examples
 from igab.guide.concepts import CONCEPT_KEYS
 from igab.guide.examples import spread_example
 from igab.guide.scenarios import LoanCandidate
@@ -427,3 +429,26 @@ async def guide_spread_example(
 ) -> SpreadExampleResponse:
     """A yearly bill as paid and spread, and the goal each figure sizes."""
     return SpreadExampleResponse.model_validate(asdict(spread_example()))
+
+
+@router.get("/{budget_id}/guide/examples/card-scenarios", response_model=CardExamplesResponse)
+async def guide_card_examples(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+) -> CardExamplesResponse:
+    """Every canonical card situation, walked month by month for the Guide.
+
+    Served rather than written into the frontend on purpose: CLAUDE.md keeps
+    card situations in one home, and a walkthrough with its own hand-typed
+    figures would be a second one — free to drift, and the drift would be the
+    app teaching arithmetic it does not do.
+    """
+    return CardExamplesResponse.model_validate(
+        {
+            "intents": [
+                {"id": key, "label": label, "detail": detail}
+                for key, (label, detail) in INTENTS.items()
+            ],
+            "examples": [asdict(e) for e in card_examples(today_utc())],
+        }
+    )

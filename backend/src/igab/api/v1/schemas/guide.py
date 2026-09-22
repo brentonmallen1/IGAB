@@ -358,3 +358,63 @@ class SpreadExampleResponse(ApiModel):
     goal_as_paid_after_bill: Decimal
     goal_as_paid_otherwise: Decimal
     goal_spread: Decimal
+
+
+class CardExampleStepOut(ApiModel):
+    """One event in a card walkthrough, in the words a reader gets."""
+
+    kind: str
+    amount: Decimal
+    category: str | None
+    day: int
+    says: str
+
+
+class CardExampleMonthOut(ApiModel):
+    """A month of a card walkthrough, and the card's position at its end.
+
+    Every figure is `card_scenarios.walk` through this month — the same domain
+    `get_budget_summary` serves the real row from.
+    """
+
+    month: date
+    label: str
+    steps: list[CardExampleStepOut]
+    set_aside: Decimal
+    balance: Decimal
+    uncovered: Decimal
+    over_reserved: Decimal
+    short_reserved: Decimal
+    card_credit: Decimal
+    riding: Decimal
+
+
+class CardExampleOut(ApiModel):
+    """One of the app's canonical card situations, walked for the Guide."""
+
+    slug: str
+    title: str
+    story: str
+    card: str
+    intents: list[str]
+    opening: Decimal
+    months: list[CardExampleMonthOut]
+
+
+class CardIntentOut(ApiModel):
+    """A way of using a card, and what "working" looks like for it."""
+
+    id: str
+    label: str
+    detail: str
+
+
+class CardExamplesResponse(ApiModel):
+    """The Guide's credit-card walkthrough (`guide/card_examples.py`).
+
+    Invented figures, computed by the card domain the budget page runs, so the
+    Guide cannot demonstrate arithmetic the app does not do.
+    """
+
+    intents: list[CardIntentOut]
+    examples: list[CardExampleOut]

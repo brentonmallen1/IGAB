@@ -335,6 +335,14 @@ def walk(scenario: CardScenario, today: date, through: date | None = None) -> Ex
 
     inputs = to_funding_inputs(scenario, today)
     month = through or date(today.year, today.month, 1)
+    # The ledger through THIS month, not the scenario's lifetime. Every event
+    # sits at or before the anchor, so this is `inputs.balance` when `through`
+    # is the anchor — which is every call the suite makes. It differs the
+    # moment someone asks an earlier month, which the Guide's walkthrough
+    # does: a card that ends at -200 was not at -200 in its first month.
+    balance = scenario.opening + sum(
+        (e.signed() for e in scenario.events if e.month(today) <= month), ZERO
+    )
     funding = card_funding(
         inputs.assignments,
         inputs.activity,
@@ -349,7 +357,7 @@ def walk(scenario: CardScenario, today: date, through: date | None = None) -> Ex
     )
     reserve = card_reserve(funding, scenario.card, inputs.payments, opening=opening_leg)
     set_aside = reserve.set_aside(month)
-    position = card_position(set_aside, inputs.balance)
+    position = card_position(set_aside, balance)
     # The month ledger, summed straight off the events — deliberately a
     # different path from the SQL (`card_month_flows`) the served figure
     # takes, so the two check each other through the shared expectations.
@@ -358,7 +366,7 @@ def walk(scenario: CardScenario, today: date, through: date | None = None) -> Ex
     inflows = sum((e.amount for e in month_events if e.kind in ("refund", "pay", "deposit")), ZERO)
     paid = sum((e.amount for e in month_events if e.kind == "pay"), ZERO)
     return ExpectedPosition(
-        balance=inputs.balance,
+        balance=balance,
         set_aside=set_aside,
         uncovered=position.uncovered,
         charged_this_month=charged,
@@ -374,7 +382,7 @@ def walk(scenario: CardScenario, today: date, through: date | None = None) -> Ex
         # the T3 allowance — this checker must not drift from what is served.
         reserve_discrepancy=reserve_discrepancy(
             set_aside,
-            inputs.balance,
+            balance,
             sum_through(reserve.opening, month) + sum_through(reserve.assignments, month),
             sum_through(funding.covered_by_card.get(scenario.card, {}), month),
             sum_through(reserve.payments, month),
