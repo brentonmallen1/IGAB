@@ -58,13 +58,26 @@ export function sectionOpen(
 /**
  * Should the register drop the search it is carrying?
  *
- * Only when there is one AND a row has been asked for by id. Returning false
- * on an empty query matters: the effect that calls this must not write to the
- * store on every render, and "clear a search that is already clear" is a
- * write that re-renders every consumer of the store.
+ * **An arrival, not a state.** Written as a standing condition — "there is a
+ * highlight and there is a search" — it is true again every time the person
+ * types, because the highlight stays in the URL until they select a row. The
+ * search box then empties itself keystroke by keystroke, which is a far worse
+ * bug than the one this was added to fix.
+ *
+ * So the caller remembers which highlight it has already acted on and passes
+ * it back. One drop per arrival: the row somebody clicked outranks the search
+ * left over from last time, and nothing after that.
+ *
+ * Returning false on an empty query matters too: the effect calling this
+ * writes to a global store, and "clear a search that is already clear" is a
+ * write that re-renders every consumer of it.
  */
-export function shouldDropSearch(query: string, highlightId: string | null | undefined): boolean {
-  return highlightId != null && query.trim() !== ''
+export function shouldDropSearch(
+  query: string,
+  highlightId: string | null | undefined,
+  alreadyDroppedFor: string | null
+): boolean {
+  return highlightId != null && highlightId !== alreadyDroppedFor && query.trim() !== ''
 }
 
 /**

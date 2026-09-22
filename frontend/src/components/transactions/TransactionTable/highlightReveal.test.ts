@@ -56,19 +56,33 @@ describe('sectionOpen', () => {
 
 describe('shouldDropSearch', () => {
   it('drops a search when a row is asked for by id', () => {
-    expect(shouldDropSearch('coffee', 't1')).toBe(true)
+    expect(shouldDropSearch('coffee', 't1', null)).toBe(true)
   })
 
   it('leaves the search alone when nobody asked for a row', () => {
-    expect(shouldDropSearch('coffee', null)).toBe(false)
+    expect(shouldDropSearch('coffee', null, null)).toBe(false)
+  })
+
+  it('drops once per arrival and never again', () => {
+    // The bug this argument exists for. The highlight stays in the URL until
+    // the reader selects a row, so "there is a highlight and there is a
+    // search" is true again on every keystroke — and someone typing into the
+    // search box after following a link watched it empty itself as they
+    // typed. Worse than the stale filter it was added to fix.
+    expect(shouldDropSearch('coffee', 't1', 't1')).toBe(false)
+  })
+
+  it('drops again when a different row is asked for', () => {
+    // A second jump is a second arrival, even without leaving the register.
+    expect(shouldDropSearch('coffee', 't2', 't1')).toBe(true)
   })
 
   it('does not "clear" a search that is already clear', () => {
     // The effect calling this writes to a global store, and a write that
     // changes nothing still re-renders every consumer of it — on every
     // render, forever.
-    expect(shouldDropSearch('', 't1')).toBe(false)
-    expect(shouldDropSearch('   ', 't1')).toBe(false)
+    expect(shouldDropSearch('', 't1', null)).toBe(false)
+    expect(shouldDropSearch('   ', 't1', null)).toBe(false)
   })
 })
 

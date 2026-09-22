@@ -426,6 +426,32 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
     [toggleTransactionSelection, allOrderedIds, onInteraction]
   )
 
+  // Arriving at a row is a one-shot: the register holds the highlight open —
+  // overriding a section's fold to show what is inside it — until the reader
+  // takes the register back. Selecting a row was the only thing that counted,
+  // and it is not the only way somebody says "I am done with that row".
+  //
+  // Folding the section is the sharp case. While the highlight holds,
+  // `sectionOpen` renders that section open whatever the stored fold says —
+  // so clicking its header did nothing at all, twice, and the control read as
+  // broken. Changing the search is the same signal: you are looking for
+  // something else now.
+  const handleSectionToggle = useCallback(
+    (section: 'pending' | 'uncategorized' | 'upcoming') => {
+      toggleSection(section)
+      onInteraction?.()
+    },
+    [toggleSection, onInteraction]
+  )
+
+  const handleSearchChange = useCallback(
+    (query: string) => {
+      setTransactionSearch(query)
+      onInteraction?.()
+    },
+    [setTransactionSearch, onInteraction]
+  )
+
   const handleSort = useCallback(
     (col: SortColumn) => {
       const next = nextTransactionSort(col, transactionSortColumn, transactionSortDirection)
@@ -828,8 +854,17 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   // query feeds the SERVER request, so this is not "hidden behind a filter" —
   // the row is never fetched, and the register draws "No transactions match
   // your search" over the thing that was just clicked.
+  //
+  // Once per arrival, which is what the ref is for. The highlight stays in
+  // the URL until the reader selects a row, so a condition of the form "there
+  // is a highlight and there is a search" is true again on every keystroke —
+  // and the search box empties itself as they type.
+  const droppedSearchFor = useRef<string | null>(null)
   useEffect(() => {
-    if (shouldDropSearch(transactionSearchQuery, highlightId)) setTransactionSearch('')
+    if (shouldDropSearch(transactionSearchQuery, highlightId, droppedSearchFor.current)) {
+      setTransactionSearch('')
+    }
+    droppedSearchFor.current = highlightId ?? null
   }, [transactionSearchQuery, highlightId, setTransactionSearch])
 
   // Scroll to the highlighted transaction when it loads. Rows in the
@@ -923,7 +958,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
       <Surface variant="chrome" sticky className="transaction-table__chrome">
         <RegisterToolbar
           searchQuery={transactionSearchQuery}
-          onSearchChange={setTransactionSearch}
+          onSearchChange={handleSearchChange}
           onAdd={() => openModal('transaction')}
           pay={
             payAction && accountId !== null
@@ -937,7 +972,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
           categoryMap={categoryMap}
           payeeMap={payeeMap}
           accountMap={allAccounts ? accountMap : EMPTY_ACCOUNT_MAP}
-          onChange={setTransactionSearch}
+          onChange={handleSearchChange}
         />
 
         {/* Selection bar */}
@@ -1040,7 +1075,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
               title="Upcoming"
               count={upcomingScheduled.length}
               isOpen={sectionOpen(collapsedSections, 'upcoming', [], highlightId)}
-              onToggle={() => toggleSection('upcoming')}
+              onToggle={() => handleSectionToggle('upcoming')}
             >
               {upcomingScheduled.map(renderUpcomingRow)}
             </Collapsible>
@@ -1051,7 +1086,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
               title="Pending"
               count={pendingTxns.length}
               isOpen={sectionOpen(collapsedSections, 'pending', pendingTxns, highlightId)}
-              onToggle={() => toggleSection('pending')}
+              onToggle={() => handleSectionToggle('pending')}
             >
               {renderRows(pendingTxns)}
             </Collapsible>
@@ -1067,7 +1102,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
                 uncategorizedTxns,
                 highlightId
               )}
-              onToggle={() => toggleSection('uncategorized')}
+              onToggle={() => handleSectionToggle('uncategorized')}
             >
               {renderRows(uncategorizedTxns)}
             </Collapsible>
