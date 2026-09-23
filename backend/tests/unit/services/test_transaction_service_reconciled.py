@@ -50,6 +50,7 @@ class MockTransaction:
     # The account/category pair is judged as an edit LEAVES it, so `update`
     # reads the row's current category even when the edit does not mention one.
     category_id: uuid.UUID | None = None
+    payee_id: uuid.UUID | None = None
     sync_id: str | None = None
     transfer_id: uuid.UUID | None = None
     parent_transaction_id: uuid.UUID | None = None

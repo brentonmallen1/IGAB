@@ -46,6 +46,8 @@ class MockAccount:
 class MockPayee:
     id: uuid.UUID = PAYEE_ID
     default_category_id: uuid.UUID | None = None
+    # A plain payee, not a transfer's: the category rule asks.
+    transfer_account_id: uuid.UUID | None = None
 
 
 @dataclass
