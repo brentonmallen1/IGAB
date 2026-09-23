@@ -737,6 +737,13 @@
     content: "Uncovered";
   }
 
+  /* Title, count and the bill note do not fit one phone line together, and
+     the summary is nowrap by design — so the band wraps instead of the
+     strip scrolling sideways. */
+  .credit-cards__header-row {
+    flex-wrap: wrap;
+  }
+
   /* Captions were nowrap so a desktop column never broke mid-phrase; in a
      third of a phone's width they overflowed the well by 10px and dragged the
      whole strip sideways. */
@@ -821,4 +828,15 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The same chip in the section's header, where it is the whole of what a
+   collapsed strip can say about a bill. No box around it: the band is
+   already a surface, and a bordered chip inside a bordered header reads as
+   a control rather than a note. */
+.credit-cards__due--header {
+  margin-left: var(--spacing-sm);
+  padding: 0;
+  background: none;
+  border: none;
 }

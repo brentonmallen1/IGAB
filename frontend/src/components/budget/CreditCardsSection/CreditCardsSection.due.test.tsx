@@ -15,6 +15,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BudgetMonth, CardStatus } from '../../../types'
 import type { Liability } from '../../../api/liabilities'
+import { useUIStore } from '../../../stores/uiStore'
 
 const month = vi.hoisted(() => ({ current: {} as Partial<BudgetMonth> }))
 const rows = vi.hoisted(() => ({ liabilities: [] as Partial<Liability>[] }))
@@ -89,6 +90,7 @@ function show(viewedMonth = '2026-09-01') {
 }
 
 beforeEach(() => {
+  useUIStore.setState({ creditCardsCollapsed: false })
   vi.useFakeTimers()
   vi.setSystemTime(new Date(2026, 8, 13, 12, 0, 0)) // Sunday 13 Sep 2026
   month.current = { cards: [card()], category_balances: [] } as unknown as BudgetMonth
@@ -185,5 +187,51 @@ describe('the bill-due chip', () => {
     show('2025-11-01')
 
     expect(screen.queryByText(/^Due /)).not.toBeInTheDocument()
+  })
+})
+
+describe('the header, which is all a collapsed strip has', () => {
+  it('names the card when one bill is close', () => {
+    show()
+
+    expect(screen.getByText('Sapphire Visa due in 4 days')).toBeInTheDocument()
+  })
+
+  it('still says so with the strip collapsed', () => {
+    // The whole point: the rows are gone, and the header is what is left.
+    useUIStore.setState({ creditCardsCollapsed: true })
+    show()
+
+    expect(screen.queryByRole('table', { name: 'Credit cards' })).not.toBeInTheDocument()
+    expect(screen.getByText('Sapphire Visa due in 4 days')).toBeInTheDocument()
+  })
+
+  it('counts them and leads with the soonest when several are close', () => {
+    month.current = {
+      cards: [card(), card({ account_id: 'a2', name: 'Thistledown Card', category_id: 'c2' })],
+      category_balances: [],
+    } as unknown as BudgetMonth
+    rows.liabilities = [due(), due({ id: 'l2', linked_account_id: 'a2', payment_due_day: 15 })]
+    show()
+
+    // The 15th is two days out, the 17th four.
+    expect(screen.getByText('2 bills due, soonest in 2 days')).toBeInTheDocument()
+  })
+
+  it('says nothing when no bill is close', () => {
+    vi.setSystemTime(new Date(2026, 8, 1, 12, 0, 0))
+    show()
+
+    expect(screen.queryByText(/bills? due|due in|due today/)).not.toBeInTheDocument()
+  })
+
+  it('says nothing about a card that owes nothing', () => {
+    month.current = {
+      cards: [card({ balance: 0, set_aside: 0, reserved: 0 })],
+      category_balances: [],
+    } as unknown as BudgetMonth
+    show()
+
+    expect(screen.queryByText(/due in/)).not.toBeInTheDocument()
   })
 })

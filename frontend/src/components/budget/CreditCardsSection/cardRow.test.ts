@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'vitest'
+import { dueInPhrase } from '../../../utils/paymentDue'
 import {
   reserveLegs,
   debtMovementLabel,
   debtMovementWord,
   driftSentence,
+  dueHeaderNote,
   rideMonths,
   otherCredits,
   emptyLegsNote,
@@ -469,5 +471,42 @@ describe('the opening leg', () => {
       payments: 0,
     })
     expect(legs.map((l) => l.label)).toEqual(['Assigned to this card'])
+  })
+})
+
+describe('dueHeaderNote', () => {
+  // The real phrasing, not a stand-in: `dueInPhrase` says "tomorrow" at one
+  // day, and a helper that invented "in 1 days" would pin the wrong words.
+  const at = (days: number) => ({ date: '2026-09-17', days, phrase: dueInPhrase(days) })
+
+  it('says nothing when no bill is close', () => {
+    expect(dueHeaderNote([])).toBeNull()
+  })
+
+  it('names the card when exactly one is', () => {
+    // "Which card" is the question a strip with several raises, and a header
+    // with no answer sends the reader to open the section to find out.
+    expect(dueHeaderNote([{ name: 'Sapphire Visa', notice: at(4) }])).toBe(
+      'Sapphire Visa due in 4 days'
+    )
+  })
+
+  it('counts them and leads with the soonest when several are', () => {
+    expect(
+      dueHeaderNote([
+        { name: 'Sapphire Visa', notice: at(4) },
+        { name: 'Thistledown Card', notice: at(2) },
+        { name: 'Harborstone Card', notice: at(6) },
+      ])
+    ).toBe('3 bills due, soonest in 2 days')
+  })
+
+  it('takes the soonest whatever order they arrive in', () => {
+    expect(
+      dueHeaderNote([
+        { name: 'A', notice: at(1) },
+        { name: 'B', notice: at(5) },
+      ])
+    ).toBe('2 bills due, soonest tomorrow')
   })
 })

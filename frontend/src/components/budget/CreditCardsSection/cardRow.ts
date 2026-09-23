@@ -1,4 +1,5 @@
 import type { CardStatus } from '../../../types'
+import type { DueNotice } from '../../../utils/paymentDue'
 
 /**
  * What a card's row says about itself, decided once and away from the DOM.
@@ -378,4 +379,30 @@ export function pendingNote(card: CardStatus, money: Money): string | null {
     `Posted rows only. ${money(Math.abs(pending))} ${kind} on this card ` +
     `is still pending, so the register shows more than this.`
   )
+}
+
+export interface CardDue {
+  name: string
+  notice: DueNotice
+}
+
+/**
+ * What the section's header says about bills falling due, or null when none
+ * are close.
+ *
+ * The header is the only thing on screen when the strip is collapsed, and a
+ * bill you cannot see coming is the one that catches you. It already carries
+ * the section's other aggregate — what is uncovered across every card — and
+ * this is the same shape: one line about all of them.
+ *
+ * Names the card when there is exactly one, because "which card" is the
+ * question a strip with several of them raises, and a header with no answer
+ * to it sends the reader to open the section to find out. With more than one
+ * the count leads and the soonest sets the urgency; the rows carry the rest.
+ */
+export function dueHeaderNote(due: CardDue[]): string | null {
+  if (due.length === 0) return null
+  const soonest = due.reduce((a, b) => (b.notice.days < a.notice.days ? b : a))
+  if (due.length === 1) return `${soonest.name} due ${soonest.notice.phrase}`
+  return `${due.length} bills due, soonest ${soonest.notice.phrase}`
 }

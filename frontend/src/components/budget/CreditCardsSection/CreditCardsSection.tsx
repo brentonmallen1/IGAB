@@ -14,7 +14,7 @@ import { useBudgetMonth, useCardTimeline, useSetAssignment } from '../../../api/
 import type { CardTimelineBreach } from '../../../api/budgets'
 import { useLiabilities } from '../../../api/liabilities'
 import { currentMonthStart, today } from '../../../utils/dates'
-import { dueSoonNotice } from '../../../utils/paymentDue'
+import { dueSoonNotice, type DueNotice } from '../../../utils/paymentDue'
 import { useTarget } from '../../../api/targets'
 import { TargetEditor } from '../TargetEditor'
 import { useFormatters } from '../../../hooks/useFormatters'
@@ -24,6 +24,7 @@ import {
   debtMovementLabel,
   debtMovementWord,
   driftSentence,
+  dueHeaderNote,
   emptyLegsNote,
   pendingNote,
   reserveLegs,
@@ -573,6 +574,24 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
   // a live "due in 4 days" beside a balance from 2024, so the indicator is
   // only offered from the current month on.
   const dueNoticesApply = month >= currentMonthStart()
+  // Once, for every card: the header's line is an aggregate over the same
+  // notices the rows draw, so the two cannot disagree about which bills are
+  // close or how close the nearest one is.
+  const asOf = today()
+  const dueByAccount = new Map<string, DueNotice>()
+  if (dueNoticesApply) {
+    for (const c of cards) {
+      const liability = liabilityByAccount.get(c.account_id)
+      // `balance` is owed-NEGATIVE; dueSoonNotice takes owed as a positive.
+      const notice = liability ? dueSoonNotice(liability, { today: asOf, owed: -c.balance }) : null
+      if (notice) dueByAccount.set(c.account_id, notice)
+    }
+  }
+  const headerDue = dueHeaderNote(
+    cards
+      .filter((c) => dueByAccount.has(c.account_id))
+      .map((c) => ({ name: c.name, notice: dueByAccount.get(c.account_id) as DueNotice }))
+  )
 
   const whyCard = cards.find((c) => c.account_id === whyFor) ?? null
   const whyState = whyCard ? stateSentence(whyCard, formatMoney) : null
@@ -624,6 +643,15 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
             {cards.length === 1 ? '1 card' : `${cards.length} cards`}
             {totalUncovered !== 0 && <> · {formatMoney(totalUncovered)} uncovered</>}
           </span>
+          {/* Last, so it is the rightmost thing in the band: when the strip
+            is collapsed this header is all there is, and a bill you cannot
+            see coming is the one that catches you. */}
+          {headerDue && (
+            <span className="credit-cards__due credit-cards__due--header">
+              <CalendarClock size={11} aria-hidden />
+              {headerDue}
+            </span>
+          )}
         </>
       }
     >
@@ -660,14 +688,7 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
               const drift = driftSentence(card, formatMoney)
               const movement = debtMovementLabel(card, formatMoney)
               const liability = liabilityByAccount.get(card.account_id)
-              // `card.balance` is owed-NEGATIVE; dueSoonNotice takes owed as
-              // a positive. The two surfaces that show this indicator hold
-              // the number in opposite signs, which is why each converts at
-              // its own call site against one documented convention.
-              const due =
-                dueNoticesApply && liability
-                  ? dueSoonNotice(liability, { today: today(), owed: -card.balance })
-                  : null
+              const due = dueByAccount.get(card.account_id) ?? null
               const envelope = categories.find((c) => c.id === card.category_id)
               return (
                 <div className="credit-cards__group" key={card.account_id}>
