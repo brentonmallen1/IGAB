@@ -125,14 +125,18 @@ def test_every_scenario_is_distinct_and_named():
 
 
 def test_the_starter_tier_is_a_subset_that_still_teaches():
-    """Two demo shapes beside the household's own everyday card is enough to
-    explain the model; six is the full tour.
+    """Three demo shapes beside the household's own everyday card is enough to
+    explain the model; the rest is the full tour.
 
     `paid-in-full` is full-tier only because the starter already shows a
     healthy card — the Visa, with real texture — and a second one pinned to
-    the cent would be the same lesson twice."""
+    the cent would be the same lesson twice. `over-reserved` is in because
+    the quick demo showed two funded cards and nothing with a button on it:
+    a surplus is common, harmless, and the one state the strip offers an
+    action for. Every below-zero state stays in the full tour — the first
+    row a new user sees must not be an oddity."""
     starter = scenarios_for("starter")
-    assert [s.slug for s in starter] == ["carrying-debt", "month-ended-short"]
+    assert [s.slug for s in starter] == ["carrying-debt", "month-ended-short", "over-reserved"]
     assert set(starter) <= set(scenarios_for("full")) == set(ALL_SCENARIOS)
 
 

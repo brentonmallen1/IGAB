@@ -828,7 +828,13 @@ OVER_RESERVED = CardScenario(
         paid_this_month=_d("0"),
         debt_change_this_month=_d("-50"),
     ),
-    tiers=("full",),
+    # In the quick demo too. It showed two funded cards and nothing else, so
+    # the one affordance on the strip — Release — was never seen. This is
+    # the card state that is common, harmless, and has a button: a surplus
+    # on a card paid from funded envelopes. The below-zero states stay in
+    # the full tour on purpose — the first row a new user sees must not be
+    # an oddity (test_sample_budget.py says why).
+    tiers=BOTH_TIERS,
     set_aside_state=SetAsideState.SURPLUS,
     lesson=CardLesson(
         happens=(

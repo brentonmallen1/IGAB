@@ -74,7 +74,7 @@ async def test_generation_covers_every_entity_kind(db_session):
     # Checking, Savings, the everyday Visa, a car loan, a brokerage, the two
     # off-budget savings accounts (Harborstone Reserve, Cascade Point HYSA) —
     # plus the starter's two card-shape demos (carrying-debt, month-ended-short).
-    assert counts.accounts == 9
+    assert counts.accounts == 10
     assert {"checking", "savings", "credit_card", "auto_loan", "investment"} <= types
 
     txns = await _transactions(db_session, budget.id)
@@ -146,9 +146,9 @@ async def test_generation_covers_every_entity_kind(db_session):
     liabilities = await liability_repo.get_all(budget.id)
     # The three household debts plus a companion for each demo card: every
     # liability-classified account gets one, which the loop below asserts.
-    assert counts.liabilities == 5
+    assert counts.liabilities == 6
     # Three household debts plus a companion for each demo card.
-    assert len(liabilities) == 5
+    assert len(liabilities) == 6
     for account in accounts:
         if account.classification == "liability":
             assert await liability_repo.get_by_linked_account(account.id) is not None, account.name
@@ -302,7 +302,7 @@ async def test_endpoint_creates_and_auto_suffixes(api_client):
     assert body["budget"]["name"] == "Sample Budget"
     assert body["counts"]["transactions"] > 0
     assert body["counts"]["scheduled"] == 5
-    assert body["counts"]["liabilities"] == 5
+    assert body["counts"]["liabilities"] == 6
 
     second = await api_client.post("/api/v1/budgets/create-sample", json={})
     assert second.status_code == 201
