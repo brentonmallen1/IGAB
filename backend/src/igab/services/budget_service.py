@@ -8,10 +8,15 @@ from igab.db.models import BudgetMove, Category
 from igab.domain.cards import (
     CardFunding,
     CardReserve,
+    SetAsideState,
     card_funding,
     card_position,
     card_reserve,
+    receivable_ledgers,
     reserve_discrepancy,
+    residual_from,
+    ride_is_exclusive,
+    set_aside_state,
 )
 from igab.domain.carryover import (
     available_at,
@@ -90,7 +95,7 @@ class CategoryBalance:
     #: first year's value on a real budget, all of it rendered as overspending
     #: ("The Refused Repayment").
     repaid_uncovered_debt: Decimal = Decimal("0")
-    #: A card's set-aside envelope (Category.linked_account_id set). Its
+    #: A card's envelope (Category.linked_account_id set). Its
     #: available is cash reserved for the card — in the envelope total, but
     #: not spending: excluded from total_activity (its synthetic inflows
     #: mirror spending already counted in the spending categories) and from
@@ -193,6 +198,14 @@ class CardStatus:
     #: The card owes nothing and holds your money — the only state the word
     #: "overpaid" was ever true of. `short_reserved` alone is not it.
     card_credit: Decimal = Decimal("0")
+    #: Which of the eight situations this card's Set aside is in
+    #: (domain/cards.py `SetAsideState`). Served because the client CANNOT
+    #: decide it: two of the eight are told apart only by `residual_by_pair`
+    #: and by whether an envelope was ever assigned to, and neither crosses
+    #: the wire — so the row spent one label on three causes with different
+    #: remedies, and on a fourth it offered advice that does nothing.
+    #: `account_hygiene` reads this rather than classifying again.
+    set_aside_state: SetAsideState = SetAsideState.FUNDED
     #: This month, from the card's own ledger rather than the reserve's legs.
     #: `paid_this_month` is paired transfers from cash (the `payments` leg's
     #: own month); `debt_change_this_month` is the net move of the BALANCE,
@@ -270,7 +283,7 @@ class EnvelopeSeries:
     available: list[Decimal | None]
     assigned: list[Decimal]
     #: The month's activity as the page states it: less what a card inflow
-    #: repaid of uncovered debt, and a card envelope's reserve legs.
+    #: repaid of uncovered debt, and a card's envelope reserve legs.
     activity: list[Decimal]
     #: The latest month before an import whose balance could not be walked
     #: back from YNAB's figure — None when every month asked for could be.
@@ -326,7 +339,7 @@ class BudgetSummary:
     assigned_in_future: Decimal
     category_balances: list[CategoryBalance]
     #: The budget's cards, each with balance / set aside / uncovered —
-    #: computed here because their set-aside envelopes are part of the same
+    #: computed here because their card envelopes are part of the same
     #: identity Ready to Assign is. Empty when the budget has no cards.
     cards: list[CardStatus] = field(default_factory=list)
     #: B, the first month this budget's envelope math re-derives — set only
@@ -431,6 +444,16 @@ class CardWalk:
     #: and the parity check read the same seeds the walk consumed. None on
     #: every unanchored budget — the byte-identical path.
     anchor: BudgetAnchor | None = None
+    #: Every assignment the budget has EVER made, per category — unbounded by
+    #: the viewed month, unlike the series the walk itself consumes.
+    #:
+    #: Carried because `residual_is_pass_through` asks "was this envelope ever
+    #: assigned to, in any month", and a set bounded at the viewed month
+    #: answers a different question: an envelope funded in March and emptied
+    #: in April would read as a running tab from January's summary. Two
+    #: callers need it — the served `set_aside_state` and the hygiene
+    #: checks — and they must not disagree about which categories are ledgers.
+    assigned_ever: dict[uuid.UUID, list[Decimal]] = field(default_factory=dict)
 
 
 def _from_month(
@@ -465,7 +488,7 @@ def _opening_leg(anchor: BudgetAnchor | None, account_id: uuid.UUID) -> dict[dat
 def _card_envelope_balance(
     category_id: uuid.UUID, reserve: CardReserve, month_start: date
 ) -> CategoryBalance:
-    """A card's set-aside envelope as the Budget page states it: its figures
+    """A card's envelope as the Budget page states it: its figures
     are the card's reserve, not the transaction sums — nothing can be filed
     there, and its snapshot rows (assignments only) are ignored. The summary
     and `envelope_series` both read this."""
@@ -497,6 +520,27 @@ def _card_corrected(
         and category.category_group_id not in system_group_ids
         and category.linked_account_id is None
     )
+
+
+def _corrected_available(
+    category: Category,
+    system_group_ids: set[uuid.UUID],
+    funding: CardFunding,
+    uncorrected: Decimal,
+    month_start: date,
+) -> Decimal:
+    """One envelope's Available as the Budget page states it.
+
+    The correction above is not cosmetic and it is not rare: on any envelope
+    a card inflow landed in, the uncorrected sum reads high by whatever that
+    inflow repaid of uncovered debt. Two readers need the corrected figure —
+    the balances loop, which puts it on the row, and the ledger sweep, which
+    asks whether an envelope is holding card money — and the second runs
+    BEFORE the first. Spelled once so "high by a repayment" cannot be the
+    difference between the two."""
+    if not _card_corrected(category, system_group_ids, funding):
+        return uncorrected
+    return available_at(funding.end_balances[category.id], month_start)
 
 
 class BudgetService:
@@ -598,7 +642,7 @@ class BudgetService:
         archived envelope by anything that was not a picker — and land
         somewhere the budget page does not draw.
 
-        A card's payment envelope is fundable and always was; that is how a
+        A card's envelope is fundable and always was; that is how a
         card is paid down, and it is why this reads `IS_FUNDABLE` rather than
         `IS_ASSIGNABLE`, which now excludes it.
         """
@@ -822,7 +866,13 @@ class BudgetService:
             spending_ids, end_date=month_end_date
         )
         assignments_by_cat: dict[uuid.UUID, dict[date, Decimal]] = {}
+        # Both shapes off one read. The walk sees months through the viewed
+        # one; `assigned_ever` keeps the whole history, because the ledger
+        # test is "never assigned, ever" and a bounded view of it is a
+        # different, wrong, question (see `CardWalk.assigned_ever`).
+        assigned_ever: dict[uuid.UUID, list[Decimal]] = {}
         for a in await self.assignment_repo.get_all_for_budget(budget_id):
+            assigned_ever.setdefault(a.category_id, []).append(a.assigned)
             if a.month <= month_start:
                 assignments_by_cat.setdefault(a.category_id, {})[a.month] = a.assigned
         credit_outflows = await self.transaction_repo.sum_credit_outflows_by_category(
@@ -868,6 +918,7 @@ class BudgetService:
             unclaimed=unclaimed,
             credit_outflows=credit_outflows,
             anchor=anchor,
+            assigned_ever=assigned_ever,
         )
 
     async def card_reserves(
@@ -942,7 +993,7 @@ class BudgetService:
 
         TBA = sum(cash account balances through the month's end)
               - sum(envelope category balances through the month,
-                    cards' set-aside envelopes included)
+                    cards' envelopes included)
               - sum(assignments in months after the viewed month)
               - the credit-funded part of the viewed month's overspending
                 (already riding on cards, not yet written off — see
@@ -1016,6 +1067,31 @@ class BudgetService:
             # hidden included — because a ride from a hidden envelope is
             # exactly the one a dialog cannot leave unnamed.
             category_names = {c.id: c.name for c in categories}
+            # The budget's receivable ledgers — categories run as a running
+            # tab for someone else's spending rather than as a fund. Computed
+            # once, before the loop, out of `balance_map` as it stands now:
+            # the loop overwrites entries for card envelopes only, and a card
+            # envelope is never a ledger.
+            #
+            # `assigned_ever` rather than the walk's own bounded series, for
+            # the reason its docstring gives. The rule itself is
+            # `residual_is_pass_through`; this only gathers its two inputs,
+            # exactly as `AccountHygieneService` does — one rule, one answer,
+            # or a card reads "somebody settled up" on one page and "an
+            # envelope kept your money" on another.
+            ledgers = receivable_ledgers(
+                walk.assigned_ever,
+                {
+                    cat.id: _corrected_available(
+                        cat,
+                        system_group_ids,
+                        funding,
+                        balance_map[cat.id].available,
+                        month_start,
+                    )
+                    for cat in categories
+                },
+            )
             month_end_date = last_of_month(month_start)
             owed_by_card = await self.account_repo.card_balances(budget_id, month_end_date)
             # An anchored budget's identity needs each card's balance at the
@@ -1092,6 +1168,26 @@ class BudgetService:
                         over_reserved=position.over_reserved,
                         short_reserved=position.short_reserved,
                         card_credit=position.card_credit,
+                        # Which of the eight, decided in the domain from the
+                        # terms above plus the two the client cannot see: how
+                        # much of this card's residual came from a ledger, and
+                        # whether the envelopes that rode here rode ONLY here.
+                        # The second is F8 — the row used to tell the user to
+                        # fund a month's envelope on a card where doing so
+                        # moves a different card.
+                        set_aside_state=set_aside_state(
+                            position,
+                            residual=sum_through(reserve.residual, month_start),
+                            riding=sum_through(
+                                funding.riding_by_card.get(account.id, {}), month_start
+                            ),
+                            residual_from_ledgers=residual_from(
+                                funding.residual_by_pair, account.id, ledgers, month_start
+                            ),
+                            ride_reaches_this_card=ride_is_exclusive(
+                                funding.floored_by_pair, account.id, month_start
+                            ),
+                        ),
                         is_closed=account.is_closed,
                         overspent_this_month=funding.floored_by_card.get(account.id, {}).get(
                             month_start, zero
@@ -1194,7 +1290,9 @@ class BudgetService:
                 repaid = funding.repaid_by_category[cat.id]
                 bal.repaid_uncovered_debt = repaid.get(month_start, zero)
                 bal.activity -= bal.repaid_uncovered_debt
-                bal.available = available_at(funding.end_balances[cat.id], month_start)
+            bal.available = _corrected_available(
+                cat, system_group_ids, funding, bal.available, month_start
+            )
             balances.append(bal)
             # Exclude system (Income) categories: income adds to TBA, not
             # reduces it — and it is not envelope money, so the month's
@@ -1581,7 +1679,7 @@ class BudgetService:
         this is card debt you are about to retire" is worth saying — it is a
         label on the money, not a reason to withhold it.
 
-        Card payment envelopes stay out: a negative there is the card's own
+        Card envelopes stay out: a negative there is the card's own
         Uncovered, not an overspent envelope, and it is retired by assigning to
         the card in the cards strip."""
         summary = await self.get_budget_summary(budget_id, month)

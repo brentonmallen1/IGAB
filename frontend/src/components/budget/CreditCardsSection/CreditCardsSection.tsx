@@ -1,6 +1,8 @@
-import { Fragment, useId, useState } from 'react'
+import { Fragment, useId, useRef, useState } from 'react'
 import {
   AlertCircle,
+  ArrowRightLeft,
+  CalendarClock,
   ChevronDown,
   ChevronRight,
   CreditCard,
@@ -11,26 +13,38 @@ import {
 import { useBudgetMonth, useCardTimeline, useSetAssignment } from '../../../api/budgets'
 import type { CardTimelineBreach } from '../../../api/budgets'
 import { useLiabilities } from '../../../api/liabilities'
+import { currentMonthStart, today } from '../../../utils/dates'
+import { dueSoonNotice, type DueNotice } from '../../../utils/paymentDue'
 import { useTarget } from '../../../api/targets'
 import { TargetEditor } from '../TargetEditor'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { useUIStore } from '../../../stores/uiStore'
 import { parseAssignmentCommit } from '../../../utils/amountExpression'
 import {
-  debtMovement,
+  debtMovementLabel,
   debtMovementWord,
+  driftSentence,
+  dueHeaderNote,
   emptyLegsNote,
   pendingNote,
   reserveLegs,
-  reserveNote,
+  releaseAnchors,
   rideMonths,
   otherCredits,
+  setAsideLabel,
+  setAsideShown,
+  stateSentence,
 } from './cardRow'
 import { Dialog } from '../../common/Dialog/Dialog'
+import { BottomSheet } from '../../common/BottomSheet/BottomSheet'
+import { MoveMoneyForm } from '../MoveMoneyPopover/MoveMoneyForm'
+import { MoveMoneyPopover } from '../MoveMoneyPopover/MoveMoneyPopover'
+import { useCategories } from '../../../api/categories'
+import { useIsMobile } from '../../../hooks/useMediaQuery'
 import { Surface } from '../../common/Surface'
 import { Link } from 'react-router-dom'
 import { TransactionsPeekModal } from '../TransactionsPeekModal/TransactionsPeekModal'
-import type { CardStatus } from '../../../types'
+import type { CardStatus, Category } from '../../../types'
 import { balancesByCategory } from '../../../utils/categoryBalances'
 import { CELL_EDITOR_PROPS } from '../../../keyboard/cellEditor'
 import './CreditCardsSection.css'
@@ -54,7 +68,7 @@ import './CreditCardsSection.css'
  * undo included.
  */
 /**
- * The five legs a card's Ready to pay is the running total of, plus what is
+ * The five legs a card's Set aside is the running total of, plus what is
  * still riding on the card uncovered.
  *
  * Served, never summed here: `set_aside` already comes from the server, and a
@@ -104,7 +118,7 @@ function ReserveLegs({
           </div>
         ))}
         <div className="credit-cards__leg credit-cards__leg--total">
-          <dt>Ready to pay</dt>
+          <dt>Set aside</dt>
           <dd className="tabular">{formatMoney(card.set_aside)}</dd>
         </div>
       </dl>
@@ -163,14 +177,14 @@ function ReserveLegs({
       {pending && <p className="credit-cards__legs-note">{pending}</p>}
       {/* The footnote explains the row above it; it no longer carries the
         amount. Only a transfer spends the card's reserve, so a payment
-        recorded as a plain deposit lowers the balance while Ready to pay
+        recorded as a plain deposit lowers the balance while Set aside
         stands still — which is one way a card ends up reserving far more
         than it owes, and why this term is named rather than absorbed. */}
       {otherInflow !== 0 && (
         <p className="credit-cards__legs-note">
           <span className="credit-cards__footnote-mark">*</span> A refund, a credit, or a payment
-          whose two halves were never linked. Only a transfer spends the reserve, so this lowers the
-          balance while Ready to pay stands still. Account suggestions, on the Accounts page, lists
+          whose two halves were never linked. Only a transfer spends Set aside, so this lowers the
+          balance while Set aside stands still. Account suggestions, on the Accounts page, lists
           payments that still need linking.
         </p>
       )}
@@ -250,7 +264,7 @@ function ReserveLegs({
 /**
  * A card's reserve, month by month, drawn from the served timeline.
  *
- * Rendering only: the months, each month's delta, the running Ready to pay,
+ * Rendering only: the months, each month's delta, the running Set aside,
  * and the breach line all arrive computed (`/cards/{id}/timeline/{month}`,
  * domain/card_timeline.py). Summing a leg here would be the client's second
  * opinion about what a reserve is made of — the defect this whole section
@@ -295,15 +309,15 @@ function ReserveHistory({
       <div
         className="credit-cards__history-scroll scroll-list"
         role="table"
-        aria-label={`Ready to pay by month for ${card.name}`}
+        aria-label={`Set aside by month for ${card.name}`}
       >
         <div className="credit-cards__history-row credit-cards__history-head" role="row">
           <span role="columnheader">Month</span>
           <span role="columnheader" className="credit-cards__col--num">
-            Reserve change
+            Change
           </span>
           <span role="columnheader" className="credit-cards__col--num">
-            Ready to pay
+            Set aside
           </span>
           <span role="columnheader" className="credit-cards__col--num">
             Balance
@@ -367,7 +381,7 @@ function ReserveHistory({
                   <span role="cell">
                     {legs.length === 0 ? (
                       <p className="credit-cards__history-detail-empty">
-                        Nothing moved through the reserve this month.
+                        Nothing moved through Set aside this month.
                       </p>
                     ) : (
                       <dl className="credit-cards__legs-list">
@@ -393,7 +407,7 @@ function ReserveHistory({
              separators, and like them never counted by the striping. */
           <div className="credit-cards__history-year section-label" role="row">
             <span role="cell">
-              Imported from YNAB — Ready to pay started at{' '}
+              Imported from YNAB — Set aside started at{' '}
               {formatMoney(months[months.length - 1].set_aside)}; earlier months live in the
               register and reports
             </span>
@@ -419,9 +433,104 @@ function breachSentence(
   }
   const [leg] = breach.legs
   const cause = leg ? ` — ${legPhrases[leg.leg] ?? leg.leg} (${formatMoney(leg.amount)})` : ''
-  return `Ready to pay first went below zero in ${formatMonth(breach.month)}, ${formatMoney(
+  return `Set aside first went below zero in ${formatMonth(breach.month)}, ${formatMoney(
     breach.set_aside_before
   )} → ${formatMoney(breach.set_aside_after)}${cause}.`
+}
+
+/**
+ * Release: money out of a card's envelope, back to Ready to Assign or into
+ * another envelope.
+ *
+ * Reuses the grid's Move money whole — same form, same endpoint, same audit
+ * trail and undo. A card's envelope is an ordinary envelope to the server
+ * (`_require_fundable` says so), so a second "take money off a card" path
+ * would be a second implementation of a move, and the only thing genuinely
+ * different here is what the user should be told before they do it.
+ *
+ * Offered on ANY card holding money, not only one with a surplus. The money
+ * is committed to a bill, but committing it was a decision and so is taking
+ * it back — needing that cash elsewhere this month is a real situation. Past
+ * the spare it raises this card's Uncovered dollar for dollar, so the form
+ * says that instead of refusing.
+ */
+function ReleaseButton({
+  budgetId,
+  month,
+  card,
+  envelope,
+  formatMoney,
+}: {
+  budgetId: string
+  month: string
+  card: CardStatus
+  /** The card's own envelope, looked up once for the whole strip rather than
+   *  once per row — the popover's form fetches the list anyway, and React
+   *  Query would only be deduplicating a query this component need not make
+   *  N times. */
+  envelope: Category
+  formatMoney: (n: number) => string
+}) {
+  const isMobile = useIsMobile()
+  const [open, setOpen] = useState(false)
+  const anchorRef = useRef<HTMLButtonElement>(null)
+
+  const { prefill, lines } = releaseAnchors(card, formatMoney)
+  const footnote = (
+    <>
+      {lines.map((line) => (
+        <p key={line}>{line}</p>
+      ))}
+    </>
+  )
+  const label = `Release money from ${card.name}`
+
+  return (
+    <>
+      <button
+        type="button"
+        ref={anchorRef}
+        className="credit-cards__release-btn"
+        title={label}
+        aria-label={label}
+        onClick={() => setOpen(true)}
+      >
+        <ArrowRightLeft size={12} aria-hidden />
+      </button>
+      {open && !isMobile && (
+        <MoveMoneyPopover
+          budgetId={budgetId}
+          month={month}
+          category={envelope}
+          available={card.set_aside}
+          prefill={prefill}
+          footnote={footnote}
+          label={label}
+          anchorRef={anchorRef}
+          onClose={() => setOpen(false)}
+        />
+      )}
+      {isMobile && (
+        <BottomSheet
+          open={open}
+          onClose={() => setOpen(false)}
+          historyKey={`release-${card.account_id}`}
+        >
+          <div className="credit-cards__release-sheet">
+            <MoveMoneyForm
+              budgetId={budgetId}
+              month={month}
+              category={envelope}
+              available={card.set_aside}
+              prefill={prefill}
+              footnote={footnote}
+              onClose={() => setOpen(false)}
+            />
+          </div>
+        </BottomSheet>
+      )}
+    </>
+  )
 }
 
 export function CreditCardsSection({ budgetId, month }: { budgetId: string; month: string }) {
@@ -436,13 +545,20 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
   const [peek, setPeek] = useState<{ accountId: string; accountName: string } | null>(null)
   const [targetFor, setTargetFor] = useState<{ categoryId: string; name: string } | null>(null)
   const [legsFor, setLegsFor] = useState<string | null>(null)
+  // Which card's explanation is open, by account. The card itself is looked
+  // up on render rather than held here, so a refetch behind an open dialog
+  // updates the sentence instead of freezing the figures it quotes.
+  const [whyFor, setWhyFor] = useState<string | null>(null)
   const { data: liabilities = [] } = useLiabilities(budgetId)
+  // For Release: the card's envelope is an ordinary category to the server,
+  // and the move endpoint wants the category, not the account.
+  const { data: categories = [] } = useCategories(budgetId)
 
   const cards = budgetMonth?.cards ?? []
   if (cards.length === 0) return null
 
   const balances = balancesByCategory(budgetMonth)
-  // The server computes a card envelope's target verdict like any other
+  // The server computes a card's envelope target verdict like any other
   // category's — the grid never draws the envelope, so this strip is where
   // the number surfaces.
   const totalUncovered = cards.reduce((sum, c) => sum + c.uncovered, 0)
@@ -451,8 +567,35 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
   // strip never linked to it, so the one place that says "you are ahead" was
   // two navigations away from the place that says how much you owe.
   const liabilityByAccount = new Map(
-    liabilities.filter((l) => l.linked_account_id).map((l) => [l.linked_account_id as string, l.id])
+    liabilities.filter((l) => l.linked_account_id).map((l) => [l.linked_account_id as string, l])
   )
+  // A due date is a fact about NOW, and `card.balance` is the ledger through
+  // the month being VIEWED. Pairing the two on a month in the past would put
+  // a live "due in 4 days" beside a balance from 2024, so the indicator is
+  // only offered from the current month on.
+  const dueNoticesApply = month >= currentMonthStart()
+  // Once, for every card: the header's line is an aggregate over the same
+  // notices the rows draw, so the two cannot disagree about which bills are
+  // close or how close the nearest one is.
+  const asOf = today()
+  const dueByAccount = new Map<string, DueNotice>()
+  if (dueNoticesApply) {
+    for (const c of cards) {
+      const liability = liabilityByAccount.get(c.account_id)
+      // `balance` is owed-NEGATIVE; dueSoonNotice takes owed as a positive.
+      const notice = liability ? dueSoonNotice(liability, { today: asOf, owed: -c.balance }) : null
+      if (notice) dueByAccount.set(c.account_id, notice)
+    }
+  }
+  const headerDue = dueHeaderNote(
+    cards
+      .filter((c) => dueByAccount.has(c.account_id))
+      .map((c) => ({ name: c.name, notice: dueByAccount.get(c.account_id) as DueNotice }))
+  )
+
+  const whyCard = cards.find((c) => c.account_id === whyFor) ?? null
+  const whyState = whyCard ? stateSentence(whyCard, formatMoney) : null
+  const whyDrift = whyCard ? driftSentence(whyCard, formatMoney) : null
 
   function commit(categoryId: string) {
     // The same rule the grid's cell uses: the box is the whole equation,
@@ -471,11 +614,21 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
       className={`credit-cards ${collapsed ? 'credit-cards--collapsed' : ''}`}
       headerClassName="credit-cards__header-row"
       header={
-        <>
+        /* The whole band is the fold control, not just the caret: a header
+           that reads as one thing should behave as one thing, and aiming at
+           a 13px chevron is a needless ask. The button inside stays — it is
+           what a keyboard focuses and what carries `aria-expanded` — but it
+           no longer handles the click itself: activating it dispatches a
+           click that bubbles here, so there is one handler rather than two
+           that could disagree. */
+        <div
+          className="credit-cards__band"
+          onClick={toggleCollapsed}
+          data-testid="credit-cards-band"
+        >
           <button
             type="button"
             className="credit-cards__header"
-            onClick={toggleCollapsed}
             aria-expanded={!collapsed}
             aria-controls="credit-cards-body"
           >
@@ -486,13 +639,18 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
             )}
             <span className="section-label surface__title">Credit cards</span>
           </button>
-          {/* A sibling, not a child: a button cannot nest in the fold control. */}
+          {/* A sibling, not a child: a button cannot nest in the fold control.
+            It stops the click here — the band folds the section, and opening
+            the explainer is not that. */}
           <button
             type="button"
             className="credit-cards__info-btn"
             aria-label="How credit cards work here"
             title="How credit cards work here"
-            onClick={() => setInfoOpen(true)}
+            onClick={(e) => {
+              e.stopPropagation()
+              setInfoOpen(true)
+            }}
           >
             <Info size={13} aria-hidden />
           </button>
@@ -500,7 +658,16 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
             {cards.length === 1 ? '1 card' : `${cards.length} cards`}
             {totalUncovered !== 0 && <> · {formatMoney(totalUncovered)} uncovered</>}
           </span>
-        </>
+          {/* Last, so it is the rightmost thing in the band: when the strip
+            is collapsed this header is all there is, and a bill you cannot
+            see coming is the one that catches you. */}
+          {headerDue && (
+            <span className="credit-cards__due credit-cards__due--header">
+              <CalendarClock size={11} aria-hidden />
+              {headerDue}
+            </span>
+          )}
+        </div>
       }
     >
       {!collapsed && (
@@ -517,7 +684,7 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
                 Assigned
               </span>
               <span role="columnheader" className="credit-cards__col--num">
-                Ready to pay
+                Set aside
               </span>
               <span role="columnheader" className="credit-cards__col--num">
                 Uncovered
@@ -531,19 +698,64 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
                 ? (balances.get(card.category_id)?.needed_this_month ?? null)
                 : null
               const legsOpen = legsFor === card.account_id
-              const note = reserveNote(card, formatMoney)
-              const movement = debtMovement(card, formatMoney)
-              const liabilityId = liabilityByAccount.get(card.account_id)
+              const label = setAsideLabel(card, formatMoney)
+              const state = stateSentence(card, formatMoney)
+              const drift = driftSentence(card, formatMoney)
+              const movement = debtMovementLabel(card, formatMoney)
+              const liability = liabilityByAccount.get(card.account_id)
+              const due = dueByAccount.get(card.account_id) ?? null
+              const envelope = categories.find((c) => c.id === card.category_id)
               return (
                 <div className="credit-cards__group" key={card.account_id}>
                   <div className="credit-cards__row" role="row">
                     <span className="credit-cards__col--name" role="cell">
                       <CreditCard size={13} aria-hidden />
-                      {card.name}
+                      {/* The name is the one thing on this line allowed to
+                        truncate. Everything beside it — the tag, the chip,
+                        the doors — is fixed-width, so without a shrinkable
+                        box of its own a long card name pushes them past the
+                        cell's `overflow: hidden` and clips the indicators
+                        instead of itself. */}
+                      <span className="credit-cards__card-name">{card.name}</span>
                       {card.is_closed && <span className="credit-cards__closed-tag">Closed</span>}
-                      {liabilityId && (
+                      {/* The explanation, one tap from the card it is about.
+                        It used to render as a paragraph row under the row,
+                        which ballooned the table and left the reader working
+                        out which card a block of prose belonged to. It is
+                        NOT a `title` tooltip: on the installed iOS PWA a
+                        tooltip is unreachable, which is the defect the row
+                        was rescued from in the first place. A real button
+                        and a dialog headed by the card's name answer both.
+
+                        Only where there is something to say — a funded card
+                        has no icon at all, so the icon's presence is itself
+                        the signal. */}
+                      {(state || drift) && (
+                        <button
+                          type="button"
+                          className="credit-cards__why-btn"
+                          title={`What is happening with ${card.name}`}
+                          aria-label={`What is happening with ${card.name}`}
+                          onClick={() => setWhyFor(card.account_id)}
+                        >
+                          <Info size={12} aria-hidden />
+                        </button>
+                      )}
+                      {/* The bill is close and this card still owes something
+                        — the one moment a due date is news rather than a
+                        calendar fact. Never "overdue": the app cannot see
+                        whether a statement was paid, and saying so when it
+                        was is exactly the kind of confident wrong claim this
+                        strip has been taught not to make. */}
+                      {due && (
+                        <span className="credit-cards__due">
+                          <CalendarClock size={11} aria-hidden />
+                          Due {due.phrase}
+                        </span>
+                      )}
+                      {liability && (
                         <Link
-                          to={`/liabilities/${liabilityId}`}
+                          to={`/liabilities/${liability.id}`}
                           className="credit-cards__payoff-btn"
                           title={`Payoff projection for ${card.name}`}
                           aria-label={`Payoff projection for ${card.name}`}
@@ -567,14 +779,22 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
                           <Crosshair size={12} aria-hidden />
                         </button>
                       )}
+                      {/* The third door, and only where there is money to
+                        take: releasing from an empty envelope is a form with
+                        nothing to offer. */}
+                      {envelope && card.set_aside > 0 && (
+                        <ReleaseButton
+                          budgetId={budgetId}
+                          month={month}
+                          card={card}
+                          envelope={envelope}
+                          formatMoney={formatMoney}
+                        />
+                      )}
                     </span>
                     <span className="credit-cards__col--num tabular" role="cell">
                       {formatMoney(card.balance)}
-                      {movement && (
-                        <span className="credit-cards__movement" title={movement.title}>
-                          {movement.label}
-                        </span>
-                      )}
+                      {movement && <span className="credit-cards__movement">{movement}</span>}
                     </span>
                     <span className="credit-cards__col--num" role="cell">
                       {card.category_id && editing === card.account_id ? (
@@ -600,7 +820,7 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
                           title={
                             card.category_id
                               ? 'Assign to this card for the viewed month'
-                              : 'This card has no set-aside envelope yet'
+                              : 'This card has no envelope yet'
                           }
                           onClick={() => {
                             setDraft(assigned ? String(assigned) : '')
@@ -630,7 +850,13 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
                           setPeek({ accountId: card.account_id, accountName: card.name })
                         }
                       >
-                        {formatMoney(card.set_aside)}
+                        {/* Never the signed figure. A negative here has four
+                          unrelated causes wanting opposite responses, and
+                          printing it under a one-word heading is what made
+                          this column unreadable. The distance is in the label
+                          below and the cause in the sentence under the row —
+                          both visible, neither hidden in a tooltip. */}
+                        {formatMoney(setAsideShown(card))}
                       </button>
                       {/* Every question this model raised was answered by
                         decomposing this number into the flows behind it, and
@@ -640,25 +866,18 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
                         className="credit-cards__legs-btn"
                         aria-expanded={legsOpen}
                         title={legsOpen ? 'Hide what makes this up' : 'What makes this up'}
-                        aria-label={`What makes up Ready to pay for ${card.name}`}
+                        aria-label={`What makes up Set aside for ${card.name}`}
                         onClick={() => setLegsFor(legsOpen ? null : card.account_id)}
                       >
                         {legsOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
                       </button>
                       {/* Which way this card is unusual, from the served
-                        position — never from the sign of the number above.
+                        state — never from the sign of the number above.
                         A zero `reserve_discrepancy` says the identity's
                         bounds hold, not that the figure is sensible. */}
-                      {note && (
-                        <span className="credit-cards__note" title={note.title}>
-                          {note.label}
-                        </span>
-                      )}
-                      {card.reserve_discrepancy !== 0 && (
-                        <span
-                          className="credit-cards__drift"
-                          title={`${formatMoney(card.reserve_discrepancy)} of this reserve is not explained by assignments, payments or unclaimed rows. The integrity check has the detail.`}
-                        >
+                      {label && <span className="credit-cards__note">{label}</span>}
+                      {drift && (
+                        <span className="credit-cards__drift">
                           <AlertCircle size={11} aria-hidden />
                           does not add up
                         </span>
@@ -700,6 +919,29 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
           onClose={() => setPeek(null)}
         />
       )}
+      {whyCard && (
+        <Dialog
+          title={`What is happening with ${whyCard.name}`}
+          onClose={() => setWhyFor(null)}
+          historyKey="credit-card-state"
+        >
+          <div className="credit-cards__why">
+            {whyState && (
+              <p className="credit-cards__why-line">
+                {whyState.sentence}
+                {/* Absent wherever no action is honestly available, which is
+                  the whole point: a row that must end in a suggestion will
+                  invent one, and the one it invented told people to fund an
+                  envelope that moves a different card. */}
+                {whyState.action && (
+                  <span className="credit-cards__why-action"> {whyState.action}</span>
+                )}
+              </p>
+            )}
+            {whyDrift && <p className="credit-cards__why-line">{whyDrift}</p>}
+          </div>
+        </Dialog>
+      )}
       {infoOpen && (
         <Dialog
           title="How credit cards work here"
@@ -713,22 +955,22 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
               purchase; pay by card and the envelope is still charged, but the cash it gave up is
               still sitting in your account — the card fronted the purchase. That cash cannot go
               back to Ready to Assign (the bill is coming), so it moves to the card's{' '}
-              <strong>Ready to pay</strong> and waits.
+              <strong>Set aside</strong> and waits.
             </p>
             <div className="credit-cards__example">
-              Swipe $60 of groceries on the card → Groceries −$60 · Ready to pay +$60 · your cash
-              and Ready to Assign unchanged. Pay the bill → cash −$60 · Ready to pay −$60.
+              Swipe $60 of groceries on the card → Groceries −$60 · Set aside +$60 · your cash and
+              Ready to Assign unchanged. Pay the bill → cash −$60 · Set aside −$60.
             </div>
             <dl>
               <dt>Balance</dt>
               <dd>What the card's ledger says through the viewed month — negative is owed.</dd>
               <dt>Assigned</dt>
               <dd>
-                The hand-fed side of Ready to pay: money you moved to the card this month, for what
-                no envelope gave up — covering an overspend, or paying down old debt. An ordinary
+                The hand-fed side of Set aside: money you moved to the card this month, for what no
+                envelope gave up — covering an overspend, or paying down old debt. An ordinary
                 assignment: it comes out of Ready to Assign, and undo works.
               </dd>
-              <dt>Ready to pay</dt>
+              <dt>Set aside</dt>
               <dd>
                 Cash waiting to pay this card, from both sources: what funded envelopes gave up when
                 you swiped, plus what you assigned. Payments drain it. It is this card's envelope,
@@ -736,21 +978,27 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
                 zero, and the row says which.
               </dd>
               <dd>
-                <em>Below zero</em> almost always means you paid more toward the card than any
-                envelope had set aside — it went straight to the balance. Assign that much to the
-                card to settle up. Only when the card owes nothing is it really a credit balance,
-                carried forward until new spending or a refund uses it up.
+                <em>Below zero</em> is a real position and the column shows it as $0.00, with the
+                distance named beside it and a sentence under the row saying what happened. There
+                are four different reasons and they want opposite responses: somebody settled up for
+                spending you never budgeted for (nothing to do); money came back onto the card
+                beyond anything an envelope charged here (an envelope is holding money that only
+                exists as a credit on this card); a month ended short and your payment ran past what
+                was set aside (back-fund that month); or you simply paid more than any envelope had
+                set aside (assign that much to the card). The row says which.
               </dd>
               <dd>
-                <em>Above what the card owes</em> means money is assigned to the card that no debt
-                needed. Assignments stay in a card's envelope until riding debt turns up to retire,
-                so on a card you always pay from funded envelopes they simply accumulate. Releasing
-                the surplus is safe — type a negative in Assigned — and it comes back to Ready to
-                Assign, because that is where it left from.
+                <em>Above what the card owes</em> means money is set aside that no debt needed.
+                Assignments stay in a card's envelope until riding debt turns up to retire, so on a
+                card you always pay from funded envelopes they simply accumulate. Release it with
+                the arrows on the card's name and it goes back to Ready to Assign, or into another
+                envelope. You can release more than the spare — the money is committed to a bill,
+                not locked to one — and the box says what that does: Uncovered rises by every dollar
+                past the spare, which is a choice to carry more of the balance.
               </dd>
               <dt>Uncovered</dt>
               <dd>
-                Owed beyond Ready to pay — overspending that rode onto the card, old debt, or a
+                Owed beyond Set aside — overspending that rode onto the card, old debt, or a
                 partner's share not yet paid back. Information, not an alarm: a bill that is simply
                 not due yet is a normal state. Cover it by assigning to the card whenever suits.
               </dd>
@@ -773,12 +1021,12 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
               One thing does change at a month end: an envelope that finishes the month short sends
               that shortfall onto the card as Uncovered, and funding it the following month does not
               reach back. Funding it <em>in that month</em> does — a backdated assignment is
-              re-walked and the ride disappears. The Ready to pay breakdown names the months.
+              re-walked and the ride disappears. The Set aside breakdown names the months.
             </p>
             <p>
               <strong>An expense you cannot cover</strong> still belongs in its real category. Let
               that category go red: at month end the part it could not fund rides onto the card as
-              Uncovered, To Be Assigned is never charged, and your reports still know where the
+              Uncovered, Ready to Assign is never charged, and your reports still know where the
               money went. Leaving it uncategorized works too, but the row keeps asking for a
               category and the spending shows up nowhere.
             </p>
@@ -811,7 +1059,7 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
 }
 
 /**
- * The grid's target editor, pointed at a card's set-aside envelope. A tiny
+ * The grid's target editor, pointed at a card's envelope. A tiny
  * wrapper because `useTarget` is a hook and the strip renders cards in a
  * loop — the fetch has to live in a component that exists only while the
  * editor is open.

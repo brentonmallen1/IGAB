@@ -14,7 +14,7 @@ interface Props {
 /**
  * After a wish that owned its envelope is deleted: keep the envelope, or
  * delete it too through the ordinary category-delete flow — the one that
- * returns the money to To Be Assigned and can be undone. The wishlist never
+ * returns the money to Ready to Assign and can be undone. The wishlist never
  * deletes a category itself.
  */
 export function DeleteWishDialog({ budgetId, wishName, envelope, onClose }: Props) {
@@ -66,7 +66,7 @@ export function DeleteWishDialog({ budgetId, wishName, envelope, onClose }: Prop
           <strong>{wishName}</strong> is off the list. Its envelope <strong>{envelope.name}</strong>{' '}
           is still in your budget
           {available > 0 ? ` holding ${formatMoney(available)}` : ''}. Delete it too? Any money in
-          it goes back to To Be Assigned.
+          it goes back to Ready to Assign.
         </p>
       </div>
     </GuideDialog>

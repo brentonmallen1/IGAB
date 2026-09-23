@@ -68,7 +68,7 @@ def is_credit_card_payments_group(group: str) -> bool:
 
     Its categories exist only in the plan (never in the register) and hold
     the cash YNAB sets aside to pay each card. IGAB keeps the same reserve —
-    each card's set-aside envelope, the linked category
+    each card's envelope, the linked category
     `ensure_payment_category` creates (the model is domain/cards.py) — so
     `_import_assignments` routes these entries onto the matching card's
     envelope by name rather than creating ordinary categories for them.
@@ -160,7 +160,7 @@ class ImportResult:
     tagged_categories: list["TaggedCategory"] = field(default_factory=list)
     #: Plan rows in YNAB's Credit Card Payments group whose card was never
     #: imported (skipped, or not on budget) — the matched ones land on the
-    #: card's set-aside envelope and count as ordinary assignments. Reported
+    #: card's envelope and count as ordinary assignments. Reported
     #: with the money involved, so a mysteriously unreserved card can be
     #: traced to the import.
     credit_card_payment_assignments_skipped: int = 0
@@ -949,7 +949,7 @@ class YNABImporter:
 
     async def _import_assignments(self, budget: YNABBudget, result: ImportResult) -> None:
         # YNAB's Credit Card Payments assignments are money set aside for
-        # each card — they land on the card's set-aside envelope (the linked
+        # each card — they land on the card's envelope (the linked
         # category `ensure_payment_category` created with the account), named
         # after the card the way YNAB names them. Only an entry whose card
         # was skipped, never imported, or is not on budget has nowhere to go;

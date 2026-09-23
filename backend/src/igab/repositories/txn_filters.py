@@ -383,7 +383,7 @@ def account_scope(q: Select, account_ids: Sequence[uuid.UUID] | None) -> tuple[S
 #: liability type (a HELOC, a line of credit) behaves identically, and the
 #: type string would silently exempt it. Cards are excluded from the budget's
 #: cash and never charge Ready to Assign; money reaches them only through
-#: their set-aside envelope (domain/cards.py).
+#: their card's envelope (domain/cards.py).
 CARD_ACCOUNT = and_(
     LIVE_ACCOUNT,
     Account.on_budget == True,  # noqa: E712
@@ -606,7 +606,7 @@ COUNTERPART_IS_CASH = (
 )
 
 #: Money reaching a card from the budget's own cash: the outflow side of the
-#: card's set-aside envelope (`sum_card_payments_by_month`).
+#: card's envelope (`sum_card_payments_by_month`).
 #:
 #: Shape-free on purpose — the caller adds its own row shape — because
 #: `UNCLAIMED_CARD_ROW` below is defined as the negation of this. Written

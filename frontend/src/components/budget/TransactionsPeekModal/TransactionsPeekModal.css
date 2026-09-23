@@ -250,7 +250,7 @@
 }
 
 /* Without this the column makes the confusion worse, not better: a balance
-   that reconciles perfectly invites the assumption that Ready to pay is the
+   that reconciles perfectly invites the assumption that Set aside is the
    same kind of number, and it is not. */
 .category-txns__running-note {
   margin: 0 0 var(--spacing-sm);

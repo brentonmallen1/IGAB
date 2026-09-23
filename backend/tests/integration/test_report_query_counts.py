@@ -179,7 +179,7 @@ class TestCategoryHistoryIsTheBudgetPagesFigure:
         ]
 
     async def test_a_cards_own_envelope_reads_its_reserve(self, db_session, api_client):
-        """A card's set-aside envelope holds no transactions of its own, so the
+        """A card's envelope holds no transactions of its own, so the
         history read 0/0 where the page reads the reserve: 100 set aside when
         a funded $100 charge went on the card, 40 once $60 was paid."""
         budget = await create_budget(db_session, api_client.test_user)

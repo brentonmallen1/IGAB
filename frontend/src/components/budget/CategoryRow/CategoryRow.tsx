@@ -506,11 +506,11 @@ export const CategoryRow = memo(function CategoryRow({
                 'card rather than becoming money to spend. Already reflected above.'
               : overspentOnCardOnly
                 ? `${formatMoney(-available)} of this was spent on a card, so it rides there as ` +
-                  'debt. It never charges To Be Assigned — pay it down by assigning to the card.'
+                  'debt. It never charges Ready to Assign — pay it down by assigning to the card.'
                 : available < 0
                   ? creditOverspent > 0
                     ? `${formatMoney(creditOverspent)} of this was spent on a card and rides ` +
-                      'there as debt; the rest comes out of To Be Assigned when the month turns. ' +
+                      'there as debt; the rest comes out of Ready to Assign when the month turns. ' +
                       'Funding this envelope for this month retires the card part too. ' +
                       'Click to cover it from another envelope.'
                     : 'Overspent — click to cover from another envelope'

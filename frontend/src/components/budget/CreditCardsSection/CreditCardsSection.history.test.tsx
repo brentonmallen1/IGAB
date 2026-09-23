@@ -22,6 +22,7 @@ vi.mock('../../../api/budgets', () => ({
 }))
 vi.mock('../../../api/targets', () => ({ useTarget: () => ({ data: null }) }))
 vi.mock('../../../api/liabilities', () => ({ useLiabilities: () => ({ data: [] }) }))
+vi.mock('../../../api/categories', () => ({ useCategories: () => ({ data: [] }) }))
 vi.mock('../TargetEditor', () => ({ TargetEditor: () => null }))
 vi.mock('../TransactionsPeekModal/TransactionsPeekModal', () => ({
   TransactionsPeekModal: () => null,
@@ -50,6 +51,7 @@ function card(over: Partial<CardStatus> = {}): CardStatus {
     over_reserved: 55,
     short_reserved: 0,
     card_credit: 0,
+    set_aside_state: 'funded',
     charged_this_month: 0,
     inflows_this_month: 0,
     paid_this_month: 0,
@@ -78,6 +80,7 @@ function tlMonth(m: string, over: Record<string, number> = {}) {
     over_reserved: 0,
     short_reserved: 0,
     card_credit: 0,
+    set_aside_state: 'funded',
     ...over,
   }
 }
@@ -103,7 +106,7 @@ beforeEach(() => {
 
 async function openHistory() {
   render(<CreditCardsSection budgetId="b1" month="2026-02-01" />)
-  await userEvent.click(screen.getByLabelText('What makes up Ready to pay for Sapphire Visa'))
+  await userEvent.click(screen.getByLabelText('What makes up Set aside for Sapphire Visa'))
   await userEvent.click(screen.getByRole('button', { name: /month by month/i }))
 }
 
@@ -185,7 +188,7 @@ describe('the month-by-month history', () => {
     }
     await openHistory()
     await userEvent.click(screen.getByRole('button', { name: /february 2026/i }))
-    expect(screen.getByText(/Nothing moved through the reserve/)).toBeInTheDocument()
+    expect(screen.getByText(/Nothing moved through Set aside/)).toBeInTheDocument()
   })
 
   it('carries no title tooltip — it is unreachable on a touch screen', async () => {

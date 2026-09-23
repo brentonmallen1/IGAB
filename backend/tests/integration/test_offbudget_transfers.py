@@ -185,8 +185,8 @@ async def test_uncategorized_offbudget_leg_counts_as_uncategorized(db_session):
 
 async def test_an_uncategorized_car_sale_is_money_to_assign_and_still_unfiled(db_session):
     """Selling a car tracked as a non-savings Other Asset. The budget side was
-    never in question — any uncategorized inflow to checking raises To Be
-    Assigned — but the leg is a transfer, and a transfer out of the budget is
+    never in question — any uncategorized inflow to checking raises Ready to
+    Assign — but the leg is a transfer, and a transfer out of the budget is
     still unfiled work until it has a category. Both are pinned, because the
     class change (INCOME, not SAVINGS) touches neither filter."""
     services = make_services(db_session)

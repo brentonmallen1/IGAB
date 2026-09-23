@@ -1,0 +1,129 @@
+/* The card walkthrough: a month picker, what happened, and where the card
+   stood once the month was over. Deliberately calm — the whole point of the
+   credit model is that none of these states is an alarm — so the one colour
+   here marks a negative figure, and only because a reader needs to see which
+   way a number points. */
+
+.card-walk {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.card-walk__months {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+}
+
+.card-walk__month-tab {
+  font-size: var(--font-size-xs);
+  padding: 4px 10px;
+  min-height: var(--tap-min, 32px);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.card-walk__month-tab.is-on {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.card-walk__steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card-walk__step {
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  padding-left: var(--spacing-md);
+  position: relative;
+}
+
+.card-walk__step::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.65em;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--edge-strong);
+}
+
+.card-walk__step--quiet {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.card-walk__figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-md) var(--spacing-lg);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--surface-sunken);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-sm);
+}
+
+.card-walk__figure {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.card-walk__figure-label {
+  font-size: var(--font-size-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--text-muted);
+}
+
+.card-walk__figure-value {
+  font-size: var(--font-size-md);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.card-walk__figure-value.is-negative {
+  color: var(--color-negative);
+}
+
+.card-walk__at {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.card-walk__nav {
+  display: flex;
+  gap: var(--spacing-sm);
+}
+
+.card-walk__nav button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-size-xs);
+  min-height: var(--tap-min, 36px);
+  padding: 4px 12px;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.card-walk__nav button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}

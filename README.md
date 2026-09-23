@@ -303,7 +303,9 @@ and a fresh reset.
 
 ## Roadmap
 
-- Deeper mobile polish (chart touch interactions, per-page refinements)
+- Sharper receipt parsing — per-item category suggestions when the lines on
+  the receipt are legible, so an itemized scan drafts its splits already
+  filed rather than lumped under one category
 - Bill reminders
 
 ---

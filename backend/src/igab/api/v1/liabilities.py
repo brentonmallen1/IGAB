@@ -1,4 +1,5 @@
 import uuid
+from datetime import date
 from decimal import Decimal
 from typing import Annotated, Literal
 
@@ -32,6 +33,7 @@ from igab.dependencies import (
     get_liability_service,
 )
 from igab.domain.credit import utilization_percent
+from igab.domain.exceptions import InvariantViolation
 from igab.domain.interest import monthly_interest
 from igab.domain.payment_composition import (
     CompositionError,
@@ -40,6 +42,7 @@ from igab.domain.payment_composition import (
     full_monthly_payment,
     parse_components,
 )
+from igab.domain.payment_due import validate_payment_due
 from igab.repositories.account_repo import AccountRepository
 from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.liability_repo import LiabilityRepository
@@ -73,6 +76,27 @@ def _components_for_storage(
     try:
         return [c.as_dict() for c in parse_components([c.model_dump() for c in sent])]
     except CompositionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+
+
+def _check_payment_due(
+    *,
+    kind: str,
+    day: int | None,
+    cycle_days: int | None,
+    anchor: date | None,
+) -> None:
+    """The due-date rule, checked on the MERGED state and refused as a 422.
+
+    Create and update both come through here so a PATCH cannot set a kind
+    without the fields it needs, or clear a field out from under its kind.
+    The rule itself lives in domain/payment_due.py; this is only the edge.
+    """
+    try:
+        validate_payment_due(kind=kind, day=day, cycle_days=cycle_days, anchor=anchor)
+    except InvariantViolation as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc
@@ -222,7 +246,10 @@ async def _liability_out(
         promo_end_date=liability.promo_end_date,
         promo_deferred_interest=liability.promo_deferred_interest,
         term_months=liability.term_months,
+        payment_due_kind=liability.payment_due_kind,
         payment_due_day=liability.payment_due_day,
+        payment_due_cycle_days=liability.payment_due_cycle_days,
+        payment_due_anchor=liability.payment_due_anchor,
         credit_limit=liability.credit_limit,
         utilization=utilization_percent(status_.current_balance, liability.credit_limit),
         promo_projection=(
@@ -290,6 +317,12 @@ async def create_liability(
         await _validate_linked_account(
             account_repo, liability_repo, budget_id, body.linked_account_id
         )
+    _check_payment_due(
+        kind=body.payment_due_kind,
+        day=body.payment_due_day,
+        cycle_days=body.payment_due_cycle_days,
+        anchor=body.payment_due_anchor,
+    )
 
     with recorder.batch():
         liability = await liability_repo.create(
@@ -307,7 +340,10 @@ async def create_liability(
             promo_end_date=body.promo_end_date,
             promo_deferred_interest=body.promo_deferred_interest,
             term_months=body.term_months,
+            payment_due_kind=body.payment_due_kind,
             payment_due_day=body.payment_due_day,
+            payment_due_cycle_days=body.payment_due_cycle_days,
+            payment_due_anchor=body.payment_due_anchor,
             credit_limit=body.credit_limit,
             payment_components=_components_for_storage(body.payment_components),
         )
@@ -359,6 +395,16 @@ async def update_liability(
         # Validated through the same helper as create, so a list that is
         # storable one way is storable the other.
         changes["payment_components"] = _components_for_storage(body.payment_components)
+
+    # Merged, not sent: a PATCH that switches the kind and a PATCH that fills
+    # in the cycle can arrive separately, and the row has to be storable after
+    # each one.
+    _check_payment_due(
+        kind=changes.get("payment_due_kind") or liability.payment_due_kind,
+        day=changes.get("payment_due_day", liability.payment_due_day),
+        cycle_days=changes.get("payment_due_cycle_days", liability.payment_due_cycle_days),
+        anchor=changes.get("payment_due_anchor", liability.payment_due_anchor),
+    )
 
     new_account_id = changes.get("linked_account_id", liability.linked_account_id)
     if (

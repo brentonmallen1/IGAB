@@ -4,7 +4,7 @@
  * Three places show it — the category picker, the chosen category's row, and
  * the toast after Save — and every figure has to be the server's. The toast's
  * "after" is the refetched month, never the old balance plus the amount: a
- * card envelope, a future-dated row or a rollover would make that sum wrong
+ * card's envelope, a future-dated row or a rollover would make that sum wrong
  * with nothing on screen to say so.
  */
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'

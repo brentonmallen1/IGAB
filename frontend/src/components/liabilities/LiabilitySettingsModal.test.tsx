@@ -4,15 +4,38 @@
  * and offered Checking and Savings, because nothing filtered the picker.
  */
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { Liability } from '../../api/liabilities'
 import { LiabilitySettingsModal } from './LiabilitySettingsModal'
 
+// `on_budget` is load-bearing, not padding: isCardAccount reads the
+// classification AND the budget flag, never the type string, so an off-budget
+// car loan is a loan and an on-budget liability is a card whatever it is
+// called (utils/accountKinds.ts).
 const accounts = [
-  { id: 'chk', name: 'Checking', classification: 'asset', account_type: 'checking' },
-  { id: 'loan', name: 'Car Loan', classification: 'liability', account_type: 'auto_loan' },
-  { id: 'visa', name: 'Visa', classification: 'liability', account_type: 'credit_card' },
+  {
+    id: 'chk',
+    name: 'Checking',
+    classification: 'asset',
+    account_type: 'checking',
+    on_budget: true,
+  },
+  {
+    id: 'loan',
+    name: 'Car Loan',
+    classification: 'liability',
+    account_type: 'auto_loan',
+    on_budget: false,
+  },
+  {
+    id: 'visa',
+    name: 'Visa',
+    classification: 'liability',
+    account_type: 'credit_card',
+    on_budget: true,
+  },
 ]
 const liabilities: Liability[] = []
 vi.mock('../../api/accounts', () => ({ useAccounts: () => ({ data: accounts }) }))
@@ -60,7 +83,10 @@ function companion(overrides: Partial<Liability> = {}): Liability {
     promo_end_date: null,
     promo_deferred_interest: false,
     term_months: null,
+    payment_due_kind: 'day_of_month',
     payment_due_day: null,
+    payment_due_cycle_days: null,
+    payment_due_anchor: null,
     payment_components: [],
     payment_components_total: 0,
     full_monthly_payment: null,
@@ -109,6 +135,83 @@ describe('LiabilitySettingsModal', () => {
     expect(screen.getByLabelText('Current balance owed')).toBeInTheDocument()
     expect(screen.queryByRole('combobox', { name: 'Account' })).not.toBeInTheDocument()
     expect(screen.queryByRole('radio', { name: /An account in this budget/ })).toBeNull()
+  })
+
+  describe('the bill due rule', () => {
+    /** A card, so the due-date block renders at all: it is a card fact and
+     *  the dialog offers it nowhere else. */
+    function card(overrides: Partial<Liability> = {}): Liability {
+      return companion({
+        id: 'l2',
+        name: 'Sapphire Visa',
+        liability_type: 'credit_card',
+        linked_account_id: 'visa',
+        ...overrides,
+      })
+    }
+
+    it('is not offered on a loan', () => {
+      liabilities.splice(0, liabilities.length, companion())
+      render(<LiabilitySettingsModal budgetId="b1" liability={companion()} onClose={() => {}} />)
+
+      expect(screen.queryByRole('radiogroup', { name: 'Bill due' })).not.toBeInTheDocument()
+    })
+
+    it('starts a card on a day of the month, asking for a day', () => {
+      liabilities.splice(0, liabilities.length, card())
+      render(<LiabilitySettingsModal budgetId="b1" liability={card()} onClose={() => {}} />)
+
+      expect(screen.getByRole('radio', { name: 'A day of the month' })).toHaveAttribute(
+        'aria-checked',
+        'true'
+      )
+      expect(screen.getByLabelText('Bill due day of the month')).toBeInTheDocument()
+      expect(screen.queryByLabelText('Days in the cycle')).not.toBeInTheDocument()
+    })
+
+    it('swaps to the cycle fields when asked, and the day field goes away', async () => {
+      // Both halves appear together because neither is usable alone: a length
+      // says how often, never from when.
+      liabilities.splice(0, liabilities.length, card())
+      render(<LiabilitySettingsModal budgetId="b1" liability={card()} onClose={() => {}} />)
+
+      await userEvent.click(screen.getByRole('radio', { name: 'A number of days' }))
+
+      expect(screen.getByLabelText('Days in the cycle')).toBeInTheDocument()
+      expect(screen.getByLabelText('Last due date')).toBeInTheDocument()
+      expect(screen.queryByLabelText('Bill due day of the month')).not.toBeInTheDocument()
+    })
+
+    it('opens a card already on a cycle with its own figures', () => {
+      const cycled = card({
+        payment_due_kind: 'cycle_days',
+        payment_due_day: null,
+        payment_due_cycle_days: 31,
+        payment_due_anchor: '2026-09-03',
+      })
+      liabilities.splice(0, liabilities.length, cycled)
+      render(<LiabilitySettingsModal budgetId="b1" liability={cycled} onClose={() => {}} />)
+
+      expect(screen.getByRole('radio', { name: 'A number of days' })).toHaveAttribute(
+        'aria-checked',
+        'true'
+      )
+      expect((screen.getByLabelText('Days in the cycle') as HTMLInputElement).value).toBe('31')
+      expect((screen.getByLabelText('Last due date') as HTMLInputElement).value).toBe('2026-09-03')
+    })
+
+    it('refuses to save a cycle with no date to count from', async () => {
+      // The half of the rule that cannot be guessed. Saving without it would
+      // store a card whose dialog says "every 31 days" over a blank field.
+      liabilities.splice(0, liabilities.length, card())
+      render(<LiabilitySettingsModal budgetId="b1" liability={card()} onClose={() => {}} />)
+
+      await userEvent.click(screen.getByRole('radio', { name: 'A number of days' }))
+      await userEvent.type(screen.getByLabelText('Days in the cycle'), '31')
+      await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+      expect(screen.getByText(/last due date you saw/)).toBeInTheDocument()
+    })
   })
 
   it('lets a companion be cut loose from its account', () => {

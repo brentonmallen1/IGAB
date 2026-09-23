@@ -291,7 +291,7 @@ async def _plan_rows(
                     "Assigned": ""
                     if balance.in_system_group
                     else format_csv_amount(balance.assigned),
-                    # A card-payment envelope's activity is a computed
+                    # A card-card's envelope activity is a computed
                     # set-aside, not rows filed to it — the register shows a
                     # card payment as a transfer. This column means "the
                     # register rows filed to this category this month", so
@@ -367,7 +367,7 @@ def _readme(budget_name: str, months: list[date]) -> str:
         f"(Settings -> Budget Backups). A snapshot is exact and lossless; this\n"
         f"export is readable and portable. They answer different questions.\n"
         f"\n"
-        f"A credit card's payment envelope shows no Activity figure. What IGAB\n"
+        f"A credit card's envelope shows no Activity figure. What IGAB\n"
         f"holds there is money set aside to pay the card, not spending filed to\n"
         f"that category — the register shows a card payment as a transfer. Its\n"
         f"assigned and available figures are real and are included.\n"

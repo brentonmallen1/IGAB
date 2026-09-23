@@ -1,8 +1,8 @@
 """The zero floor between months, which is the whole rule.
 
 A running total gets every one of these cases wrong in the same direction:
-it carries overspending forward that the budget already covered from To Be
-Assigned, so the category reads permanently low.
+it carries overspending forward that the budget already covered from Ready to
+Assign, so the category reads permanently low.
 """
 
 from datetime import date

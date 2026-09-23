@@ -95,7 +95,7 @@ class TestWhatEachRuleExcludes:
         assert loaded.is_categorizable is False
 
     async def test_a_linked_payment_category_is_funded_but_never_offered(self, db_session):
-        """A credit-card payment envelope holds budgeted money — that is how a
+        """A credit-card's envelope holds budgeted money — that is how a
         card is paid down — but no picker lists it and nothing may be filed to
         it. Three questions, three answers.
 

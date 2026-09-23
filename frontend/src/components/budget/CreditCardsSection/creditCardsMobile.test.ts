@@ -32,11 +32,28 @@ describe('credit-cards strip on a phone', () => {
     for (const [n, label] of [
       [2, 'Balance'],
       [3, 'Assigned'],
-      [4, 'Ready to pay'],
+      [4, 'Set aside'],
       [5, 'Uncovered'],
     ] as const) {
       expect(rule(`.credit-cards__row > :nth-child(${n})::before`)).toContain(`content: "${label}"`)
     }
+  })
+
+  it('gives the explanation door a real touch target', () => {
+    // F2's fix, and the reason this section is readable on a phone at all:
+    // every one of these sentences used to be a `title`, which an installed
+    // iOS PWA never renders. The sentence now lives in a dialog, so the
+    // thing that has to work on a phone is the button that opens it — a
+    // 12px icon is not a target.
+    const door = phone.find((r) => r.selector.includes('.credit-cards__why-btn'))
+    expect(door?.body).toMatch(/min-height:\s*var\(--tap-min\)/)
+  })
+
+  it('never lets a caption push the strip sideways', () => {
+    // An .sr-only span escaping an unpositioned scroller once widened the
+    // whole budget page; these wrap instead.
+    const wrapping = phone.find((r) => r.selector.includes('.credit-cards__note'))
+    expect(wrapping?.body).toMatch(/white-space:\s*normal/)
   })
 
   it('shows the two doors on the name line', () => {

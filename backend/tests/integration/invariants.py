@@ -267,7 +267,7 @@ async def assert_overspending_splits_into_cash_and_credit(
     from igab.utils.clock import today_utc
 
     summary = await budget_service_from(session).get_budget_summary(budget_id, today_utc())
-    # The same set the totals and Cover Overspent use: a card payment
+    # The same set the totals and Cover Overspent use: a card
     # envelope's negative is the card's Uncovered, not an overspent envelope,
     # and an income row has no envelope money at all.
     red = [
@@ -298,6 +298,21 @@ async def assert_overspending_splits_into_cash_and_credit(
         assert sum((r.amount for r in card.overspent_by_category), Decimal("0")) == (
             card.overspent_this_month
         ), f"{card.name}: breakdown does not sum to overspent_this_month"
+
+    # And the card ROWS sum to the same headline the chip renders. The hero's
+    # "of it on cards" chip reads `total_overspent_credit`; the dialog it
+    # opens used to re-add `overspent_this_month` off the card rows, and the
+    # two agreed for reasons stated nowhere. `get_budget_summary` skips the
+    # row of a card that is closed and settled, which is one way they would
+    # stop agreeing — silently, in the dialog, with a figure smaller than the
+    # chip that opened it. The dialog now reads the served total; this is
+    # what keeps that honest, and a legitimate gap must be bounded and named
+    # here rather than discovered on the screen.
+    on_cards = sum((c.overspent_this_month for c in summary.cards), Decimal("0"))
+    assert summary.total_overspent_credit == on_cards, (
+        f"total_overspent_credit={summary.total_overspent_credit} but the card rows sum to "
+        f"{on_cards}: " + "; ".join(f"{c.name}: {c.overspent_this_month}" for c in summary.cards)
+    )
 
 
 async def assert_financial_invariants(session: AsyncSession, budget_id: uuid.UUID) -> None:

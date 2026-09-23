@@ -62,6 +62,7 @@ import type { ComboboxOption } from '../../common/Combobox/Combobox'
 import { countsAsPendingReview, inReviewSection, nextHeldForReview } from './reviewSection'
 import { compareByDateDesc, compareByRegisterOrder, nextTransactionSort } from './registerOrder'
 import { registerPayAction } from './payButton'
+import { sectionOpen, shouldDropSearch, shouldPageForHighlight } from './highlightReveal'
 import './TransactionTable.css'
 import { Surface } from '../../common/Surface'
 import { accountNameMap, openAccounts } from '../../../utils/accountLists'
@@ -423,6 +424,32 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
       onInteraction?.()
     },
     [toggleTransactionSelection, allOrderedIds, onInteraction]
+  )
+
+  // Arriving at a row is a one-shot: the register holds the highlight open —
+  // overriding a section's fold to show what is inside it — until the reader
+  // takes the register back. Selecting a row was the only thing that counted,
+  // and it is not the only way somebody says "I am done with that row".
+  //
+  // Folding the section is the sharp case. While the highlight holds,
+  // `sectionOpen` renders that section open whatever the stored fold says —
+  // so clicking its header did nothing at all, twice, and the control read as
+  // broken. Changing the search is the same signal: you are looking for
+  // something else now.
+  const handleSectionToggle = useCallback(
+    (section: 'pending' | 'uncategorized' | 'upcoming') => {
+      toggleSection(section)
+      onInteraction?.()
+    },
+    [toggleSection, onInteraction]
+  )
+
+  const handleSearchChange = useCallback(
+    (query: string) => {
+      setTransactionSearch(query)
+      onInteraction?.()
+    },
+    [setTransactionSearch, onInteraction]
   )
 
   const handleSort = useCallback(
@@ -804,6 +831,42 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
   })
   const virtualItems = virtualizer.getVirtualItems()
 
+  // Keep paging until the row somebody was sent to is actually in hand. The
+  // register pages newest-first, so a transaction from a few months back is
+  // simply not in the first page — the scroll effect below then looks for an
+  // index that does not exist and does nothing at all, which reads as the
+  // link being broken. Bounded, so a stale id does not walk the account.
+  useEffect(() => {
+    if (
+      shouldPageForHighlight({
+        highlightId,
+        isLoaded: highlightId != null && transactionMap.has(highlightId),
+        pagesLoaded: txnPages?.pages.length ?? 0,
+        hasNextPage: !!hasNextPage,
+        isFetching,
+      })
+    ) {
+      fetchNextPage()
+    }
+  }, [highlightId, transactionMap, txnPages, hasNextPage, isFetching, fetchNextPage])
+
+  // A row asked for by id outranks a search left over from last time. The
+  // query feeds the SERVER request, so this is not "hidden behind a filter" —
+  // the row is never fetched, and the register draws "No transactions match
+  // your search" over the thing that was just clicked.
+  //
+  // Once per arrival, which is what the ref is for. The highlight stays in
+  // the URL until the reader selects a row, so a condition of the form "there
+  // is a highlight and there is a search" is true again on every keystroke —
+  // and the search box empties itself as they type.
+  const droppedSearchFor = useRef<string | null>(null)
+  useEffect(() => {
+    if (shouldDropSearch(transactionSearchQuery, highlightId, droppedSearchFor.current)) {
+      setTransactionSearch('')
+    }
+    droppedSearchFor.current = highlightId ?? null
+  }, [transactionSearchQuery, highlightId, setTransactionSearch])
+
   // Scroll to the highlighted transaction when it loads. Rows in the
   // virtualized main list may not be in the DOM yet, so those scroll by
   // index; rows in the small sections scroll via the DOM node.
@@ -895,7 +958,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
       <Surface variant="chrome" sticky className="transaction-table__chrome">
         <RegisterToolbar
           searchQuery={transactionSearchQuery}
-          onSearchChange={setTransactionSearch}
+          onSearchChange={handleSearchChange}
           onAdd={() => openModal('transaction')}
           pay={
             payAction && accountId !== null
@@ -909,7 +972,7 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
           categoryMap={categoryMap}
           payeeMap={payeeMap}
           accountMap={allAccounts ? accountMap : EMPTY_ACCOUNT_MAP}
-          onChange={setTransactionSearch}
+          onChange={handleSearchChange}
         />
 
         {/* Selection bar */}
@@ -1011,8 +1074,8 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
             <Collapsible
               title="Upcoming"
               count={upcomingScheduled.length}
-              isOpen={!collapsedSections.has('upcoming')}
-              onToggle={() => toggleSection('upcoming')}
+              isOpen={sectionOpen(collapsedSections, 'upcoming', [], highlightId)}
+              onToggle={() => handleSectionToggle('upcoming')}
             >
               {upcomingScheduled.map(renderUpcomingRow)}
             </Collapsible>
@@ -1022,8 +1085,8 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
             <Collapsible
               title="Pending"
               count={pendingTxns.length}
-              isOpen={!collapsedSections.has('pending')}
-              onToggle={() => toggleSection('pending')}
+              isOpen={sectionOpen(collapsedSections, 'pending', pendingTxns, highlightId)}
+              onToggle={() => handleSectionToggle('pending')}
             >
               {renderRows(pendingTxns)}
             </Collapsible>
@@ -1033,8 +1096,13 @@ export function TransactionTable({ accountId, budgetId, highlightId, onInteracti
             <Collapsible
               title="Needs Review"
               count={uncategorizedTxns.length}
-              isOpen={!collapsedSections.has('uncategorized')}
-              onToggle={() => toggleSection('uncategorized')}
+              isOpen={sectionOpen(
+                collapsedSections,
+                'uncategorized',
+                uncategorizedTxns,
+                highlightId
+              )}
+              onToggle={() => handleSectionToggle('uncategorized')}
             >
               {renderRows(uncategorizedTxns)}
             </Collapsible>

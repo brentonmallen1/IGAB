@@ -7,6 +7,7 @@ from pydantic import Field
 
 from igab.api.v1.schemas.base import ApiModel
 from igab.api.v1.schemas.tag import TagOutSimple
+from igab.domain.cards import SetAsideState
 from igab.domain.enums import TargetStatus, TargetType
 from igab.domain.money import Money
 from igab.domain.targets import MAX_FUNDING_DAY
@@ -227,7 +228,7 @@ class CategoryGroupResponse(ApiModel):
     sort_order: int
     is_archived: bool
     is_system: bool
-    #: Every live category in this group is a card's set-aside envelope, so the
+    #: Every live category in this group is a card's envelope, so the
     #: budget grid draws no header for it (`GROUP_IS_CARD_ONLY`).
     #:
     #: Served rather than derived because the client cannot compute it — its
@@ -330,11 +331,11 @@ class CategoryBalance(ApiModel):
     #: What still has to be assigned this month for the target to be met, and
     #: exactly what Fill Underfunded would move. None when there is no target.
     needed_this_month: Decimal | None = None
-    #: A card's set-aside envelope (linked to the card account). Not drawn in
+    #: A card's envelope (linked to the card account). Not drawn in
     #: the category grid — the cards section owns it — and never counted as
     #: overspending; its state reads as the card's Set aside / Uncovered.
     #: Required, not optional: a path that forgets it must raise, not draw
-    #: every card envelope as an ordinary row.
+    #: every card's envelope as an ordinary row.
     is_card_payment: bool
     #: How much of THIS MONTH's card inflows filed here repaid uncovered debt
     #: instead of returning money to this envelope (domain/cards.py
@@ -395,7 +396,7 @@ class CategoryResponse(ApiModel):
     #: as ineligible, which would empty the move-money picker silently.
     is_assignable: bool
     #: May money ENTER this envelope? `IS_FUNDABLE`, not the same question as
-    #: what a picker may offer: a card's payment envelope is fundable (that is
+    #: what a picker may offer: a card's envelope is fundable (that is
     #: how a card is paid down) and offered by nothing. The two were one field
     #: read two ways, and each side got the other's answer — a paydown target
     #: never filled, and money could be assigned into an archived envelope.
@@ -526,6 +527,14 @@ class CardStatusOut(ApiModel):
     #: was ever true of. A negative `set_aside` alone is NOT it, and printing
     #: the word on the sign alone is the defect this field exists to end.
     card_credit: Decimal
+    #: Which of the eight situations this card's Set aside is in
+    #: (domain/cards.py `SetAsideState`). **Required, not optional.** The
+    #: client cannot compute it — two of the eight are told apart only by
+    #: `residual_by_pair` and by whether an envelope was ever assigned to,
+    #: and neither crosses the wire — so a path that forgot this field would
+    #: have the row fall back to the very guess this replaces rather than
+    #: raise. `account_hygiene` reads the same value.
+    set_aside_state: SetAsideState
     #: The viewed month off the card's own ledger. `charged_this_month` and
     #: `paid_this_month` are magnitudes; `debt_change_this_month` is signed,
     #: positive when the debt shrank. Required — every leg above is a lifetime
@@ -584,6 +593,7 @@ class CardStatusOut(ApiModel):
             over_reserved=card.over_reserved,
             short_reserved=card.short_reserved,
             card_credit=card.card_credit,
+            set_aside_state=card.set_aside_state,
             charged_this_month=card.charged_this_month,
             inflows_this_month=card.inflows_this_month,
             paid_this_month=card.paid_this_month,

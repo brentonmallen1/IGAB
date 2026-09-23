@@ -437,7 +437,7 @@ async def test_auto_categorize_never_returns_a_deleted_category(db_session):
 async def test_delete_refused_for_a_live_cards_payment_category(db_session):
     """Not symmetric with account deletion, deliberately: deleting the account
     unlinks the category because the account is what is leaving. Deleting the
-    category would leave a live card with no payment envelope."""
+    category would leave a live card with no card's envelope."""
     services = make_services(db_session)
     user = await create_user(db_session)
     budget = await create_budget(db_session, user)
@@ -447,7 +447,7 @@ async def test_delete_refused_for_a_live_cards_payment_category(db_session):
     payment.linked_account_id = card.id
     await db_session.flush()
 
-    with pytest.raises(InvariantViolation, match="payment category for Visa"):
+    with pytest.raises(InvariantViolation, match="card's envelope for Visa"):
         await _service(db_session, services).delete_categories(budget.id, [payment.id], month=AUG)
 
     await db_session.refresh(payment)

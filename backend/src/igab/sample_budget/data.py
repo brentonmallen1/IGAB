@@ -366,7 +366,7 @@ _HOUSEHOLD = SampleBudgetSpec(
                 # which is the demo of that half of the tier, and the reason
                 # most budgets get a non-zero gap on day one.
                 CategorySpec("Car Payment"),
-                # Showcase-only CC payment category: linked, $0 assigned, no rows
+                # Showcase-only card's envelope: linked, $0 assigned, no rows
                 CategorySpec("Visa Payment", linked_account=VISA),
             ),
         ),
@@ -983,7 +983,7 @@ _HOUSEHOLD = SampleBudgetSpec(
 
 
 # The card shapes, spliced in beside the household. Each brings its own
-# account, payment envelope and spending envelopes — named after the card,
+# account, card's envelope and spending envelopes — named after the card,
 # because a shared envelope would let one card's month-end shortfall ride
 # from another, and because the budget page should say which envelope belongs
 # to which card without anyone having to look it up.

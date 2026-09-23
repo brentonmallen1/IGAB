@@ -31,7 +31,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Literal
 
-from igab.domain.cards import AnchorOpenings
+from igab.domain.cards import AnchorOpenings, SetAsideState
 from igab.domain.payee_names import STARTING_BALANCE_PAYEE
 from igab.sample_budget.spec import (
     BOTH_TIERS,
@@ -64,11 +64,23 @@ ZERO = Decimal("0")
 #: deposit a plain inflow on the card, filed nowhere — somebody else paid it,
 #:         or a payment the importer never paired to its cash leg
 #: fund    an assignment to a spending category
-#: assign  an assignment to this card's own payment envelope
-EventKind = Literal["spend", "charge", "refund", "pay", "deposit", "fund", "assign"]
+#: assign  an assignment to this card's own envelope
+#: cash_spend
+#:         an outflow from the budget's CASH account, filed to `category`.
+#:         Touches this card's balance not at all, and reserves nothing —
+#:         it is here because one situation cannot be told from another
+#:         without it. A receivable ledger is a category whose charges land
+#:         on whatever account was handy while the single repayment lands on
+#:         one card; the spending that never reached the card is exactly what
+#:         keeps the envelope at or below zero when the repayment arrives,
+#:         which is the `available <= 0` half of `residual_is_pass_through`.
+#:         Without a cash leg, every settle-up leaves the envelope holding
+#:         the residual, and a running tab is indistinguishable from a refund
+#:         an envelope kept.
+EventKind = Literal["spend", "charge", "refund", "pay", "deposit", "fund", "assign", "cash_spend"]
 
 _CARD_ROWS: frozenset[str] = frozenset({"spend", "charge", "refund", "pay", "deposit"})
-_NEEDS_CATEGORY: frozenset[str] = frozenset({"spend", "refund", "fund"})
+_NEEDS_CATEGORY: frozenset[str] = frozenset({"spend", "refund", "fund", "cash_spend"})
 
 
 @dataclass(frozen=True)
@@ -92,12 +104,18 @@ class CardEvent:
         return date(year, month, 1)
 
     def signed(self) -> Decimal:
-        """What this event does to the card's balance. 0 for assignments."""
+        """What this event does to the CARD's balance. 0 for assignments, and
+        0 for `cash_spend`, which never touches the card."""
         if self.kind in ("spend", "charge"):
             return -self.amount
         if self.kind in ("refund", "pay", "deposit"):
             return self.amount
         return ZERO
+
+    def signed_cash(self) -> Decimal:
+        """What this event does to the budget's cash account, as a register
+        row. Only `cash_spend` writes one; `pay` is a transfer, built as one."""
+        return -self.amount if self.kind == "cash_spend" else ZERO
 
 
 @dataclass(frozen=True)
@@ -176,13 +194,69 @@ class CardAnchor:
 
 
 @dataclass(frozen=True)
+class CardLesson:
+    """The situation as a READER meets it: three short beats, one line each.
+
+    Not a second `story`. `story` says why this shape exists and what it used
+    to get wrong — it becomes the docstring of every test generated from the
+    scenario, and it is written for whoever is debugging the model. Pointed at
+    a person trying to understand their own card it is the wrong register
+    entirely: 59 to 186 words of prose about integrity bounds and residual
+    legs, which is a paragraph nobody reads.
+
+    These three answer the questions a budgeter actually asks, in the order
+    they ask them. One sentence each, enforced by a test — the moment one of
+    these grows a second clause about why the walk does what it does, the page
+    is back to being a wall of text.
+
+    Neither can misstate a figure: every number the Guide draws is walked by
+    the card domain (`guide/card_examples.py`), not written here.
+    """
+
+    #: What the person did, or what happened to them.
+    happens: str
+    #: What the card row then reads — especially the part that surprises.
+    reads: str
+    #: What to do about it, or the words for "nothing". Several of these
+    #: situations are entirely normal and saying so plainly is the answer.
+    todo: str
+
+
+@dataclass(frozen=True)
+class BillDue:
+    """When a demo card's bill falls due — the statement fact, not a position.
+
+    Nothing in `expect` depends on it and no walk reads it: a due date is
+    metadata the card row and the liability header show, and the model is
+    deliberately dateless (domain/payment_due.py). It lives on the scenario
+    anyway because it is a fact about a card, and card facts live here.
+
+    `days_since_last_due` rather than a calendar date, for `cycle_days`: the
+    demo has to keep demoing. A fixed anchor drifts out of the seven-day
+    window the indicator fires in within a month of being written, and a
+    sample budget whose feature stops showing is one nobody can check.
+    """
+
+    kind: str
+    #: 'day_of_month'
+    day: int | None = None
+    #: 'cycle_days' — the cycle, and how long ago the last one fell due. The
+    #: next due date is then `cycle_days - days_since_last_due` away.
+    cycle_days: int | None = None
+    days_since_last_due: int | None = None
+
+
+@dataclass(frozen=True)
 class CardScenario:
     slug: str
     #: The lesson the row teaches, one line. Shown beside the card in docs.
     title: str
     #: Why this shape exists and what it used to get wrong. Becomes the
-    #: docstring of every test generated from it.
+    #: docstring of every test generated from it — written for whoever is
+    #: debugging the model, and deliberately NOT what the Guide shows.
     story: str
+    #: The same situation for a reader, in three beats. See `CardLesson`.
+    lesson: CardLesson
     card: str
     #: The card's name in its category names — "Harborstone Groceries". Card
     #: names are unique budget-wide, and so are category names, so scenario
@@ -199,6 +273,20 @@ class CardScenario:
     #: refuses them: one budget has one anchor, and splicing one in would
     #: truncate every other scenario's history).
     import_anchor: CardAnchor | None = None
+    #: Which of the eight situations this card's Set aside is in, once every
+    #: event has happened (domain/cards.py `SetAsideState`).
+    #:
+    #: Hand-written like `expect`, and required rather than defaulted: the
+    #: eight are told apart by exactly the facts a reader of this file can
+    #: see — was the envelope ever funded, did the money come back beyond what
+    #: it charged, did a month end short — so a default would be a guess
+    #: shipped as an assertion. The pure suite checks it through `state()`,
+    #: and the integration suite checks the value the API actually serves.
+    set_aside_state: SetAsideState = SetAsideState.FUNDED
+    #: When this card's bill falls due, for the demo. None on most of them:
+    #: an empty companion liability is what a real card starts as, and that
+    #: is worth showing too.
+    bill_due: BillDue | None = None
 
     @property
     def payment_category(self) -> str:
@@ -209,7 +297,7 @@ class CardScenario:
         """Spending categories this scenario files to, in first-seen order."""
         seen: dict[str, None] = {}
         for e in self.events:
-            if e.kind in ("spend", "refund", "fund") and e.category:
+            if e.kind in ("spend", "refund", "fund", "cash_spend") and e.category:
                 seen.setdefault(e.category, None)
         return tuple(seen)
 
@@ -274,6 +362,12 @@ def to_funding_inputs(scenario: CardScenario, today: date) -> FundingInputs:
                 month,
                 direction * event.amount,
             )
+        elif event.kind == "cash_spend":
+            # The envelope's activity and NOTHING else: no card outflow, so
+            # it never reserves, never rides and can never be released. It is
+            # what makes the envelope's Available honest about a tab whose
+            # charges did not all land on one card.
+            _bump(activity.setdefault(category, {}), month, -event.amount)
         elif event.kind == "charge":
             # Deliberately contributes to NOTHING here. Exposure is per
             # (category, card), so a row filed nowhere never reserves, never
@@ -335,6 +429,14 @@ def walk(scenario: CardScenario, today: date, through: date | None = None) -> Ex
 
     inputs = to_funding_inputs(scenario, today)
     month = through or date(today.year, today.month, 1)
+    # The ledger through THIS month, not the scenario's lifetime. Every event
+    # sits at or before the anchor, so this is `inputs.balance` when `through`
+    # is the anchor — which is every call the suite makes. It differs the
+    # moment someone asks an earlier month, which the Guide's walkthrough
+    # does: a card that ends at -200 was not at -200 in its first month.
+    balance = scenario.opening + sum(
+        (e.signed() for e in scenario.events if e.month(today) <= month), ZERO
+    )
     funding = card_funding(
         inputs.assignments,
         inputs.activity,
@@ -349,7 +451,7 @@ def walk(scenario: CardScenario, today: date, through: date | None = None) -> Ex
     )
     reserve = card_reserve(funding, scenario.card, inputs.payments, opening=opening_leg)
     set_aside = reserve.set_aside(month)
-    position = card_position(set_aside, inputs.balance)
+    position = card_position(set_aside, balance)
     # The month ledger, summed straight off the events — deliberately a
     # different path from the SQL (`card_month_flows`) the served figure
     # takes, so the two check each other through the shared expectations.
@@ -358,7 +460,7 @@ def walk(scenario: CardScenario, today: date, through: date | None = None) -> Ex
     inflows = sum((e.amount for e in month_events if e.kind in ("refund", "pay", "deposit")), ZERO)
     paid = sum((e.amount for e in month_events if e.kind == "pay"), ZERO)
     return ExpectedPosition(
-        balance=inputs.balance,
+        balance=balance,
         set_aside=set_aside,
         uncovered=position.uncovered,
         charged_this_month=charged,
@@ -374,7 +476,7 @@ def walk(scenario: CardScenario, today: date, through: date | None = None) -> Ex
         # the T3 allowance — this checker must not drift from what is served.
         reserve_discrepancy=reserve_discrepancy(
             set_aside,
-            inputs.balance,
+            balance,
             sum_through(reserve.opening, month) + sum_through(reserve.assignments, month),
             sum_through(funding.covered_by_card.get(scenario.card, {}), month),
             sum_through(reserve.payments, month),
@@ -382,6 +484,67 @@ def walk(scenario: CardScenario, today: date, through: date | None = None) -> Ex
             sum_through(inputs.unclaimed, month),
             opening_credit=inputs.opening_credit,
         ),
+    )
+
+
+def state(scenario: CardScenario, today: date, through: date | None = None) -> SetAsideState:
+    """Run a scenario through the real domain and report which of the eight
+    situations its card is in.
+
+    The sibling of `walk` and used the same way: to CHECK
+    `CardScenario.set_aside_state`, never to produce it.
+
+    The ledger sweep here reads `end_balances` — every category the walk
+    touched, with the card correction already folded in — which is the same
+    figure `BudgetService` hands `receivable_ledgers`, reached by a different
+    route. A scenario category absent from it never met a card and cannot be
+    a ledger.
+    """
+    from igab.domain.cards import (
+        card_funding,
+        card_position,
+        card_reserve,
+        receivable_ledgers,
+        residual_from,
+        ride_is_exclusive,
+        set_aside_state,
+    )
+    from igab.domain.carryover import available_at, sum_through
+
+    inputs = to_funding_inputs(scenario, today)
+    month = through or date(today.year, today.month, 1)
+    balance = scenario.opening + sum(
+        (e.signed() for e in scenario.events if e.month(today) <= month), ZERO
+    )
+    funding = card_funding(
+        inputs.assignments,
+        inputs.activity,
+        inputs.outflows,
+        inputs.card_categories,
+        openings=inputs.openings,
+    )
+    opening_leg = (
+        {inputs.openings.opening_month: inputs.openings.reserve_by_card[scenario.card]}
+        if inputs.openings is not None
+        else None
+    )
+    reserve = card_reserve(funding, scenario.card, inputs.payments, opening=opening_leg)
+    position = card_position(reserve.set_aside(month), balance)
+    ledgers = receivable_ledgers(
+        {category: list(series.values()) for category, series in inputs.assignments.items()},
+        {
+            category: available_at(series, month)
+            for category, series in funding.end_balances.items()
+        },
+    )
+    return set_aside_state(
+        position,
+        residual=sum_through(reserve.residual, month),
+        riding=sum_through(funding.riding_by_card.get(scenario.card, {}), month),
+        residual_from_ledgers=residual_from(
+            funding.residual_by_pair, scenario.card, ledgers, month
+        ),
+        ride_reaches_this_card=ride_is_exclusive(funding.floored_by_pair, scenario.card, month),
     )
 
 
@@ -422,6 +585,12 @@ def _deposit(months_ago: int, amount: str, day: int = 16) -> CardEvent:
 
 def _refund(months_ago: int, amount: str, category: str, day: int = 18) -> CardEvent:
     return CardEvent(RelDate(months_ago, day), "refund", Decimal(amount), category)
+
+
+def _cash_spend(months_ago: int, amount: str, category: str, day: int = 14) -> CardEvent:
+    """An outflow from the budget's cash account, filed to `category`. Reaches
+    this card not at all — see the `cash_spend` note on `EventKind`."""
+    return CardEvent(RelDate(months_ago, day), "cash_spend", Decimal(amount), category)
 
 
 def _d(value: str) -> Decimal:
@@ -472,6 +641,15 @@ PAID_IN_FULL = CardScenario(
         paid_this_month=_d("200"),
         debt_change_this_month=_d("0"),
     ),
+    set_aside_state=SetAsideState.FUNDED,
+    lesson=CardLesson(
+        happens="You budget for what you buy, swipe the card, and pay the bill from checking.",
+        reads=(
+            "Set aside always matches what the card owes, and paying the bill empties both "
+            "together."
+        ),
+        todo="Nothing. This is the loop working.",
+    ),
 )
 
 CARRYING_DEBT = CardScenario(
@@ -486,6 +664,11 @@ CARRYING_DEBT = CardScenario(
     ),
     card="Harborstone Card",
     short="Harborstone",
+    # Billed every 31 days, last due 28 days ago: the next one is three days
+    # out, so the strip's chip and the header's warning tone are both on in
+    # a freshly generated sample. The card owing $2,600 is the one where a
+    # due date is worth knowing about.
+    bill_due=BillDue(kind="cycle_days", cycle_days=31, days_since_last_due=28),
     opening=_d("-3000"),
     events=(
         _fund(2, "100", "Harborstone Groceries"),
@@ -510,6 +693,21 @@ CARRYING_DEBT = CardScenario(
         paid_this_month=_d("0"),
         debt_change_this_month=_d("-100"),
     ),
+    set_aside_state=SetAsideState.FUNDED,
+    lesson=CardLesson(
+        happens=(
+            "The card arrived carrying old debt, so each month you fund your spending and "
+            "assign something extra to the card on top."
+        ),
+        reads=(
+            "Uncovered falls by exactly what you assign. Set aside only holds this month's "
+            "spending plus that assignment until you pay."
+        ),
+        todo=(
+            "Keep assigning what you can afford, then pay by transfer. Uncovered is the debt, "
+            "and it shrinks as you go."
+        ),
+    ),
 )
 
 MONTH_ENDED_SHORT = CardScenario(
@@ -525,6 +723,9 @@ MONTH_ENDED_SHORT = CardScenario(
     ),
     card="Meridian Card",
     short="Meridian",
+    # The ordinary shape beside it, so the sample shows both and the
+    # difference between them is visible in one screen.
+    bill_due=BillDue(kind="day_of_month", day=17),
     opening=_d("0"),
     events=(
         _fund(2, "40", "Meridian Dining Out"),
@@ -544,6 +745,21 @@ MONTH_ENDED_SHORT = CardScenario(
         inflows_this_month=_d("0"),
         paid_this_month=_d("0"),
         debt_change_this_month=_d("-80"),
+    ),
+    set_aside_state=SetAsideState.FUNDED,
+    lesson=CardLesson(
+        happens=(
+            "You spent $100 on the card out of an envelope holding $40, and the month ended "
+            "before you could fund the rest."
+        ),
+        reads=(
+            "The $60 the envelope could not cover moves to Uncovered. Ready to Assign is never "
+            "charged for it."
+        ),
+        todo=(
+            "Go back to that month and raise the envelope's assignment — the ride disappears. "
+            "Funding it this month does not reach back."
+        ),
     ),
 )
 
@@ -586,6 +802,203 @@ OVER_RESERVED = CardScenario(
         debt_change_this_month=_d("-50"),
     ),
     tiers=("full",),
+    set_aside_state=SetAsideState.SURPLUS,
+    lesson=CardLesson(
+        happens=(
+            "You assign money to the card every month, but there is never any riding debt for "
+            "it to retire."
+        ),
+        reads="Set aside climbs past what the card owes, and the extra is labelled Spare.",
+        todo="Release the spare and it goes back to Ready to Assign, or into another envelope.",
+    ),
+)
+
+SETTLED_BY_OTHERS = CardScenario(
+    slug="settled-by-others",
+    title="A running tab, settled in one go",
+    story=(
+        "Somebody else's spending is tracked as a running tab rather than "
+        "funded as an envelope: never assigned to, allowed to go red as their "
+        "charges land, squared up when they pay. Their charges land on "
+        "whatever was handy — some on this card, some straight out of "
+        "checking — while the one repayment lands on this card. It pays the "
+        "card down by more than the tab ever charged HERE, so the excess "
+        "reduces Set aside without releasing any envelope's cash and drives "
+        "it below zero.\n\n"
+        "Nothing is wrong and there is nothing to do: the household paid this "
+        "card down by exactly as much as Set aside gave up, and the tab is "
+        "holding none of the money. Told apart from a refund an envelope kept "
+        "by two facts and no threshold — the tab was NEVER assigned to, and "
+        "it is holding nothing now (`residual_is_pass_through`). The cash "
+        "leg is what makes the second true: without spending that never "
+        "reached the card, a settle-up always leaves the envelope holding the "
+        "residual, and this situation is indistinguishable from the one it "
+        "must not be confused with."
+    ),
+    card="Thistledown Card",
+    short="Thistledown",
+    opening=_d("-800"),
+    events=(
+        # The funded side of the budget, so this card is not a card where
+        # nothing was ever assigned anywhere — the ledger test is about ONE
+        # envelope, and a scenario that cannot tell the two apart proves
+        # nothing.
+        _fund(2, "100", "Thistledown Groceries"),
+        _spend(2, "100", "Thistledown Groceries"),
+        _spend(2, "200", "Thistledown Shared Tab"),
+        _fund(1, "100", "Thistledown Groceries"),
+        _spend(1, "100", "Thistledown Groceries"),
+        _spend(1, "200", "Thistledown Shared Tab"),
+        # The settle-up month: another 200 of their charges on the card, 400
+        # more fronted in cash, and 1,000 back when they square up.
+        _spend(0, "200", "Thistledown Shared Tab", day=1),
+        _cash_spend(0, "400", "Thistledown Shared Tab", day=1),
+        _refund(0, "1000", "Thistledown Shared Tab", day=1),
+    ),
+    # Hand-computed. The tab rode 200 in each of the first two months (its
+    # whole shortfall, capped at what it charged the card), so 400 was riding
+    # when the repayment arrived. The repayment is 1,000 against 200 charged
+    # here that month — an 800 inflow — which discharges the 400 riding and
+    # leaves 400 with nowhere to go but Set aside: 200 reserved by groceries,
+    # less 400, is -200. The tab itself ends at exactly zero, which is what a
+    # squared-up tab looks like and what makes it a ledger rather than an
+    # envelope holding card money.
+    expect=ExpectedPosition(
+        balance=_d("-600"),
+        set_aside=_d("-200"),
+        uncovered=_d("600"),
+        short_reserved=_d("200"),
+        charged_this_month=_d("200"),
+        inflows_this_month=_d("1000"),
+        paid_this_month=_d("0"),
+        debt_change_this_month=_d("800"),
+    ),
+    set_aside_state=SetAsideState.SETTLED_BY_OTHERS,
+    tiers=("full",),
+    lesson=CardLesson(
+        happens=(
+            "Somebody else's spending goes on a tab you never budget into — some on this card, "
+            "some out of checking — and they settle up in one payment onto the card."
+        ),
+        reads=(
+            "Set aside shows $0.00 with a note that it is below zero, because they paid the "
+            "card down by more than the tab had ever charged it."
+        ),
+        todo=(
+            "Nothing. The repayment took money out of Set aside and paid the card down by "
+            "exactly the same amount."
+        ),
+    ),
+)
+
+RIDE_UNFUNDED = CardScenario(
+    slug="ride-unfunded",
+    title="A month ended short, then a payment ran past the rest",
+    story=(
+        "An envelope was funded 100 and spent 300 on this card, so 200 rode "
+        "onto the card when the month ended. A later payment then ran past "
+        "everything that WAS reserved, and Set aside went below zero.\n\n"
+        "The remedy is the one this row may promise, and only here: the whole "
+        "of that envelope's shortfall rode onto THIS card, so raising that "
+        "month's assignment retires the ride — the walk is recomputed from "
+        "scratch on every request. The moment a shortfall is shared with "
+        "another card the promise is false (`ride_is_exclusive`), which is "
+        "why the state is decided from the pair table and not from the fact "
+        "that something is riding."
+    ),
+    card="Bramblewick Card",
+    short="Bramblewick",
+    opening=_d("-200"),
+    events=(
+        _fund(2, "100", "Bramblewick Hardware"),
+        _spend(2, "300", "Bramblewick Hardware"),
+        _fund(1, "100", "Bramblewick Hardware"),
+        _spend(1, "100", "Bramblewick Hardware"),
+        _pay(0, "500", day=1),
+    ),
+    # Hand-computed. Reserved 100 + 100 = 200 against a 500 payment, so Set
+    # aside is -300. The first month's envelope was 200 short and its whole
+    # shortfall rode here. The card owes 200 + 300 + 100 - 500 = 100.
+    expect=ExpectedPosition(
+        balance=_d("-100"),
+        set_aside=_d("-300"),
+        uncovered=_d("100"),
+        short_reserved=_d("300"),
+        riding=_d("200"),
+        charged_this_month=_d("0"),
+        inflows_this_month=_d("500"),
+        paid_this_month=_d("500"),
+        debt_change_this_month=_d("500"),
+    ),
+    set_aside_state=SetAsideState.RIDE_UNFUNDED,
+    tiers=("full",),
+    lesson=CardLesson(
+        happens=(
+            "An envelope funded $100 spent $300 on the card, so $200 rode onto the card — and "
+            "then you paid the bill."
+        ),
+        reads=(
+            "The payment ran past what was actually set aside, so Set aside shows $0.00 with "
+            "$300.00 below zero beside it."
+        ),
+        todo=(
+            "Raise that month's assignment on the envelope and the ride is retired, or assign "
+            "$300 to the card to cover it now."
+        ),
+    ),
+)
+
+PAID_AHEAD = CardScenario(
+    slug="paid-ahead",
+    title="Paid more than was ever set aside",
+    story=(
+        "A card carrying debt from before the budget, paid deliberately "
+        "faster than the envelopes reserve. Two funded months set 400 aside "
+        "and a 700 payment went out, so 300 of it came from money no envelope "
+        "was holding and went straight to the balance.\n\n"
+        "Nothing came back onto the card and no month ended short, so there "
+        "is nothing to re-file and no envelope to back-fund: this is the plain "
+        "case the other three negatives are mistaken for. Assigning 300 to "
+        "the card squares it, and that is a true statement here and false on "
+        "the settle-up card two rows up — which is the whole reason the state "
+        "is served rather than guessed from the sign."
+    ),
+    card="Quillon Card",
+    short="Quillon",
+    opening=_d("-1000"),
+    events=(
+        _fund(2, "200", "Quillon Fuel"),
+        _spend(2, "200", "Quillon Fuel"),
+        _fund(1, "200", "Quillon Fuel"),
+        _spend(1, "200", "Quillon Fuel"),
+        _pay(0, "700", day=1),
+    ),
+    # Hand-computed. Reserved 200 + 200 = 400, paid 700, so Set aside is -300
+    # with nothing riding and nothing returned. The card owes
+    # 1000 + 200 + 200 - 700 = 700, all of it uncovered.
+    expect=ExpectedPosition(
+        balance=_d("-700"),
+        set_aside=_d("-300"),
+        uncovered=_d("700"),
+        short_reserved=_d("300"),
+        charged_this_month=_d("0"),
+        inflows_this_month=_d("700"),
+        paid_this_month=_d("700"),
+        debt_change_this_month=_d("700"),
+    ),
+    set_aside_state=SetAsideState.PAID_AHEAD,
+    tiers=("full",),
+    lesson=CardLesson(
+        happens="You paid $700 toward a card carrying old debt when only $400 had been set aside.",
+        reads=(
+            "The extra $300 went straight to the balance, so Set aside shows $0.00 with $300.00 "
+            "below zero beside it."
+        ),
+        todo=(
+            "Assign $300 to the card to square it. Ready to Assign falls by that much, because "
+            "the money has already left your account."
+        ),
+    ),
 )
 
 REIMBURSED = CardScenario(
@@ -624,6 +1037,21 @@ REIMBURSED = CardScenario(
         debt_change_this_month=_d("-200"),
     ),
     tiers=("full",),
+    set_aside_state=SetAsideState.REFUND_OUTRAN_ENVELOPE,
+    lesson=CardLesson(
+        happens=(
+            "Somebody paid $500 back onto the card, filed to an envelope that had never charged "
+            "this card."
+        ),
+        reads=(
+            "Set aside shows $0.00 with a note that it is below zero, while the card still owes "
+            "$1,900."
+        ),
+        todo=(
+            "That envelope now holds $500 you can spend, but it exists only as a credit on "
+            "this card and never as cash in your bank."
+        ),
+    ),
 )
 
 CREDIT_BALANCE = CardScenario(
@@ -661,6 +1089,15 @@ CREDIT_BALANCE = CardScenario(
         debt_change_this_month=_d("-60"),
     ),
     tiers=("full",),
+    set_aside_state=SetAsideState.CARD_HOLDS_IT,
+    lesson=CardLesson(
+        happens="You paid the card more than it owed, month after month.",
+        reads=(
+            "The balance is positive: the card is holding your money. This is the one case "
+            "where \u201coverpaid\u201d is really true."
+        ),
+        todo="Nothing. Later spending on the card, or a refund, will use it up.",
+    ),
 )
 
 UNFILED_SPENDING = CardScenario(
@@ -675,7 +1112,7 @@ UNFILED_SPENDING = CardScenario(
         "cent of it therefore reads as uncovered, which is the honest answer "
         "— no envelope is standing behind this debt. The card that raised "
         "this had a whole month of them and read its entire balance as "
-        "uncovered while Ready to pay sat at zero."
+        "uncovered while Set aside sat at zero."
     ),
     card="Ironwood Card",
     short="Ironwood",
@@ -697,6 +1134,18 @@ UNFILED_SPENDING = CardScenario(
         debt_change_this_month=_d("-100"),
     ),
     tiers=("full",),
+    set_aside_state=SetAsideState.FUNDED,
+    lesson=CardLesson(
+        happens="Charges land on the card and nobody files them to an envelope.",
+        reads=(
+            "Set aside stays at $0.00 and the whole balance sits in Uncovered, because no "
+            "envelope was ever charged."
+        ),
+        todo=(
+            "File them. It takes no money you do not have — it just tells your reports where "
+            "the money went."
+        ),
+    ),
 )
 
 UNLINKED_PAYMENT = CardScenario(
@@ -735,6 +1184,18 @@ UNLINKED_PAYMENT = CardScenario(
         debt_change_this_month=_d("-100"),
     ),
     tiers=("full",),
+    set_aside_state=SetAsideState.FUNDED,
+    lesson=CardLesson(
+        happens=(
+            "A payment reached the card as a plain credit, never linked to the money that left "
+            "checking."
+        ),
+        reads=(
+            "The balance falls but Set aside does not move, because only a linked transfer "
+            "spends Set aside."
+        ),
+        todo="Link the two halves under Account suggestions on the Accounts page.",
+    ),
 )
 
 PAID_AHEAD_THEN_CAUGHT_UP = CardScenario(
@@ -778,6 +1239,21 @@ PAID_AHEAD_THEN_CAUGHT_UP = CardScenario(
         debt_change_this_month=_d("50"),
     ),
     tiers=("full",),
+    set_aside_state=SetAsideState.FUNDED,
+    lesson=CardLesson(
+        happens=(
+            "The statement included debt from before the budget, so paying it in full ran past "
+            "what had been set aside."
+        ),
+        reads=(
+            "Set aside reads $0.00 today and looks unremarkable. Only the month-by-month "
+            "history shows the dip."
+        ),
+        todo=(
+            "Nothing now. The lesson is that a card's figure today is not the whole story — "
+            "open the breakdown."
+        ),
+    ),
 )
 
 #: Order is the order the demo shows them: the healthy card first, so the
@@ -792,6 +1268,9 @@ ALL_SCENARIOS: tuple[CardScenario, ...] = (
     UNLINKED_PAYMENT,
     PAID_AHEAD_THEN_CAUGHT_UP,
     CREDIT_BALANCE,
+    SETTLED_BY_OTHERS,
+    RIDE_UNFUNDED,
+    PAID_AHEAD,
 )
 
 
@@ -852,6 +1331,15 @@ ANCHORED_IMPORT = CardScenario(
         debt_change_this_month=_d("-100"),
         reserve_discrepancy=_d("0"),
     ),
+    set_aside_state=SetAsideState.FUNDED,
+    lesson=CardLesson(
+        happens="The budget was imported from YNAB partway through the card's life.",
+        reads=(
+            "Set aside opens at the position YNAB had, and the months before the import stay in "
+            "the register and reports rather than being re-walked."
+        ),
+        todo="Nothing. The import seam is labelled in the month-by-month history.",
+    ),
 )
 
 ANCHORED_IN_CREDIT = CardScenario(
@@ -885,6 +1373,15 @@ ANCHORED_IN_CREDIT = CardScenario(
         paid_this_month=_d("0"),
         debt_change_this_month=_d("0"),
         reserve_discrepancy=_d("0"),
+    ),
+    set_aside_state=SetAsideState.CARD_HOLDS_IT,
+    lesson=CardLesson(
+        happens="The card was already holding a credit on the day the budget was imported.",
+        reads=(
+            "The card reads as holding your money from the first day, with nothing before the "
+            "import to explain it."
+        ),
+        todo="Nothing. Later spending on the card will absorb it.",
     ),
 )
 
@@ -936,6 +1433,12 @@ ANCHORED_CREDIT_SPENT_DOWN = CardScenario(
         paid_this_month=_d("0"),
         debt_change_this_month=_d("0"),
         reserve_discrepancy=_d("0"),
+    ),
+    set_aside_state=SetAsideState.SURPLUS,
+    lesson=CardLesson(
+        happens="A card imported in credit was then spent down until it owed money again.",
+        reads="Set aside sits above what the card owes, and the difference shows as Spare.",
+        todo="Release the spare if you want it back, or leave it against the next bill.",
     ),
 )
 
@@ -994,7 +1497,18 @@ def to_spec_elements(
         )
 
     for event in scenario.events:
-        if event.kind in ("spend", "charge", "refund", "deposit"):
+        if event.kind == "cash_spend":
+            one_offs.append(
+                OneOffTxn(
+                    when=event.when,
+                    account=cash_account,
+                    payee=_payee_for(event, scenario),
+                    amount=event.signed_cash(),
+                    category=event.category,
+                    tiers=scenario.tiers,
+                )
+            )
+        elif event.kind in ("spend", "charge", "refund", "deposit"):
             one_offs.append(
                 OneOffTxn(
                     when=event.when,
@@ -1059,6 +1573,7 @@ def to_spec_elements(
 #: table of amounts. Deliberately generic chains — a merchant name identifies
 #: nobody, unlike an employer or a servicer.
 _PAYEES = {
+    "cash_spend": "Corner Market",
     "spend": "Corner Market",
     "charge": "Urgent Care Clinic",
     "refund": "Shared Expenses Settle-Up",
@@ -1174,7 +1689,7 @@ def merge_into(
 ) -> SampleBudgetSpec:
     """Splice scenario cards into a household budget.
 
-    Each scenario brings its own account, its own payment envelope and its own
+    Each scenario brings its own account, its own card's envelope and its own
     spending envelopes — named after the card, because category names are
     unique budget-wide and because a SHARED envelope is not a cosmetic problem:
     a month-end shortfall rides from whichever card carried it, so one

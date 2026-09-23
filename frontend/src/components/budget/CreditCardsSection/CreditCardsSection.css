@@ -28,8 +28,24 @@
   justify-content: flex-start;
 }
 
-/* The whole header is the fold control: one obvious click target, and the
-   collapsed strip still answers "is anything uncovered?" */
+/* The whole band IS the fold control — title, count, bill note and the space
+   between them. It was only ever the caret and the words beside it, which
+   meant a header that reads as one object behaved as two. `user-select` off
+   because a drag across the summary would otherwise select text and fold the
+   section on release. */
+.credit-cards__band {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+  user-select: none;
+}
+
+/* The keyboard's way in, and where `aria-expanded` lives. It carries no
+   click handler of its own: activating it dispatches a click that bubbles to
+   the band, so one handler folds the section however it was reached. */
 .credit-cards__header {
   display: flex;
   align-items: center;
@@ -121,12 +137,56 @@
   background-color: var(--row-hover-bg);
 }
 
-.credit-cards__group:last-child .credit-cards__row:not(:has(+ .credit-cards__legs)) {
+/* The last thing in the last group carries no rule, whatever it happens to
+   be. This used to name the one sibling a row could have — `:has(+ .legs)` —
+   and the moment a second one existed (the state sentence) the last row drew
+   a border into the panel's own edge. Asking "are you last" is the rule;
+   listing what may follow you is a copy of it that goes stale. */
+.credit-cards__group:last-child > :last-child {
   border-bottom: none;
 }
 
-.credit-cards__group:last-child .credit-cards__legs {
-  border-bottom: none;
+/* The door to a card's explanation, on the name line beside the card it is
+   about. Always visible, unlike the paydown/release doors beside it: those
+   are actions and stay quiet until wanted, this is a piece of information
+   announcing that there IS one. Its presence is the signal — a funded card
+   draws no icon at all — so hiding it until hover would hide the signal. */
+.credit-cards__why-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border: none;
+  border-radius: var(--border-radius-sm);
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.credit-cards__why-btn:hover {
+  color: var(--text-primary);
+  background-color: color-mix(in srgb, var(--text-primary) 10%, transparent);
+}
+
+/* The explanation itself, in a dialog headed by the card's name. It rendered
+   as a paragraph row under the row once: it ballooned the table, and a block
+   of prose between two rows belongs at a glance to neither. */
+.credit-cards__why-line {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.credit-cards__why-line + .credit-cards__why-line {
+  margin-top: var(--spacing-sm);
+}
+
+/* What to do, where there IS something — a shade stronger than the fact it
+   follows, and deliberately the same text color as the row's figures so it
+   never reads as a warning. Several of these states are entirely normal. */
+.credit-cards__why-action {
+  color: var(--text-primary);
 }
 
 .credit-cards__col--name {
@@ -148,9 +208,11 @@
   text-align: right;
 }
 
-/* The paydown-target door: quiet until hovered, like the grid's row
-   affordances — a target is a choice, not a nag. */
-.credit-cards__target-btn {
+/* The paydown-target and release doors: quiet until hovered, like the grid's
+   row affordances — a target is a choice, and so is taking money back off a
+   card. Neither is a nag. */
+.credit-cards__target-btn,
+.credit-cards__release-btn {
   display: inline-flex;
   align-items: center;
   padding: 2px;
@@ -163,7 +225,9 @@
 }
 
 .credit-cards__row:hover .credit-cards__target-btn,
-.credit-cards__target-btn:focus-visible {
+.credit-cards__row:hover .credit-cards__release-btn,
+.credit-cards__target-btn:focus-visible,
+.credit-cards__release-btn:focus-visible {
   opacity: 1;
 }
 
@@ -191,9 +255,10 @@
 /* One class used to carry two unrelated meanings, and two more were coming.
    Each note under a number gets its own name instead:
      __hint      what the paydown target still wants (Assigned)
-     __note      which way the reserve is unusual (Ready to pay)
+     __note      which way this card is unusual (Set aside)
      __movement  how far the debt moved this month (Balance)
-     __drift     a reserve that does not add up (Ready to pay)
+     __drift     a Set aside that does not add up
+     __state     the sentence under the row saying what happened
    All quiet by design — the numbers carry the meaning, and Uncovered's
    deliberately un-alarmed treatment sets the register for the whole row. */
 .credit-cards__hint {
@@ -290,7 +355,7 @@
   line-height: 1.6;
 }
 
-/* Ready to pay is a door, not a field: underline on hover, exactly the
+/* Set aside is a door, not a field: underline on hover, exactly the
    grid's Activity cell. The border-on-hover treatment next door is this
    app's "editable" signal and belongs to the Assigned cell alone. */
 .credit-cards__peek-btn {
@@ -368,7 +433,7 @@
   margin: 0;
 }
 
-/* ── What Ready to pay is made of ────────────────────────────────────────────
+/* ── What Set aside is made of ────────────────────────────────────────────
    A card's reserve is a running total of five flows and the surface showed
    only the total, so every question the model raised needed a developer to
    answer. Disclosure, not a permanent column: the total is the affordance and
@@ -682,10 +747,17 @@
     content: "Assigned";
   }
   .credit-cards__row > :nth-child(4)::before {
-    content: "Ready to pay";
+    content: "Set aside";
   }
   .credit-cards__row > :nth-child(5)::before {
     content: "Uncovered";
+  }
+
+  /* Title, count and the bill note do not fit one phone line together, and
+     the summary is nowrap by design — so the band wraps instead of the
+     strip scrolling sideways. */
+  .credit-cards__band {
+    flex-wrap: wrap;
   }
 
   /* Captions were nowrap so a desktop column never broke mid-phrase; in a
@@ -707,12 +779,14 @@
     text-align: left;
   }
 
-  /* The two doors on the name line (paydown target, payoff projection) —
-     the hover reveal cannot fire, and a 12px icon is not a target. Real
-     size rather than .tap-expand: they sit side by side, and two expanded
-     hit areas would eat each other. */
+  /* The doors on the name line (paydown target, payoff projection, release)
+     — the hover reveal cannot fire, and a 12px icon is not a target. Real
+     size rather than .tap-expand: they sit side by side, and expanded hit
+     areas would eat each other. */
   .credit-cards__target-btn,
-  .credit-cards__payoff-btn {
+  .credit-cards__payoff-btn,
+  .credit-cards__release-btn,
+  .credit-cards__why-btn {
     opacity: 1;
     justify-content: center;
     min-width: var(--tap-min);
@@ -722,7 +796,63 @@
 
 @media (hover: none) {
   .credit-cards__target-btn,
-  .credit-cards__payoff-btn {
+  .credit-cards__payoff-btn,
+  .credit-cards__release-btn {
     opacity: 1;
   }
+}
+
+/* Release, as a bottom sheet on a phone — the same form the popover holds,
+   given the sheet's own padding. */
+.credit-cards__release-sheet {
+  padding: var(--spacing-md);
+}
+
+/* The bill is close and the card still owes something. The second place on
+   this row where colour is earned (the first is __drift): every other state
+   here is normal and deliberately un-alarmed, and a due date that is weeks
+   away never draws this at all — it is not rendered.
+
+   A chip rather than a caption under a figure, because it belongs to the
+   CARD, not to any one column's number. */
+.credit-cards__due {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: var(--font-size-2xs);
+  font-weight: 600;
+  background: var(--surface-raised);
+  color: var(--color-warning);
+  border: 1px solid var(--edge);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* The chip's own icon keeps the chip's colour: __col--name paints every svg
+   inside it muted, which would leave the clock grey on warning-coloured text. */
+.credit-cards__due svg {
+  color: inherit;
+}
+
+/* See the comment at its call site: the only shrinkable thing on the name
+   line, so a long card name ellipses instead of clipping the chip and the
+   doors that follow it. */
+.credit-cards__card-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The same chip in the section's header, where it is the whole of what a
+   collapsed strip can say about a bill. No box around it: the band is
+   already a surface, and a bordered chip inside a bordered header reads as
+   a control rather than a note. */
+.credit-cards__due--header {
+  margin-left: var(--spacing-sm);
+  padding: 0;
+  background: none;
+  border: none;
 }

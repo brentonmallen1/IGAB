@@ -9,7 +9,7 @@ tier's curated invariants — TBA on target, exactly one overspend — must hold
 here too, because the starter is a strict subset of this data.
 """
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -28,6 +28,7 @@ from igab.repositories.scheduled_transaction_repo import ScheduledTransactionRep
 from igab.repositories.tag_repo import TagRepository, seed_system_tags
 from igab.repositories.target_repo import TargetRepository
 from igab.repositories.transaction_repo import TransactionRepository
+from igab.sample_budget.card_scenarios import CARRYING_DEBT
 from igab.sample_budget.data import SAMPLE_BUDGET
 from igab.sample_budget.generator import SampleBudgetGenerator
 from igab.services.budget_service import BudgetService
@@ -120,7 +121,7 @@ async def test_full_tier_shape_and_texture(db_session):
     accounts = await AccountRepository(db_session).get_all(budget.id, include_closed=True)
     # The household accounts (a sold second car and the two off-budget savings
     # accounts among them) plus the eight card-shape demos.
-    assert counts.accounts == 28
+    assert counts.accounts == 31
     types = {a.account_type for a in accounts}
     assert {
         "checking",
@@ -189,7 +190,7 @@ async def test_full_tier_liabilities(db_session):
     # Four from the spec plus the Visa's companion: a liability-classified
     # account without one is the dead-end state this model exists to remove.
     # Five household debts plus a companion for each of the nine demo cards.
-    assert len(liabilities) == 14
+    assert len(liabilities) == 17
     for account in await AccountRepository(db_session).get_all(budget.id, include_closed=True):
         if account.classification == "liability":
             assert await liability_repo.get_by_linked_account(account.id) is not None, account.name
@@ -204,6 +205,47 @@ async def test_full_tier_liabilities(db_session):
     assert promo.promo_end_date is not None
     assert promo.promo_end_date > ANCHOR
     assert promo.promo_deferred_interest is True
+
+
+async def test_the_demo_cards_show_both_ways_a_bill_can_fall_due(db_session):
+    """A card bill is due on a day of the month, or every N days.
+
+    Both shapes have to be IN the sample or neither is demoable, and the
+    cycle one has to keep landing inside the indicator's seven-day window as
+    the sample ages — a demo that stops demoing a month after it was written
+    is the reason the anchor is declared as "days since the last due date"
+    rather than as a date.
+    """
+    user = await create_user(db_session)
+    budget = await create_budget(db_session, user)
+    await generate_full(db_session, budget)
+
+    repo = LiabilityRepository(db_session)
+    liabilities = {item.name: item for item in await repo.get_all(budget.id)}
+
+    # The ordinary shape.
+    meridian = liabilities["Meridian Card"]
+    assert meridian.payment_due_kind == "day_of_month"
+    assert meridian.payment_due_day == 17
+    assert meridian.payment_due_cycle_days is None
+
+    # The shape no day of the month can express: billed every 31 days, last
+    # due 28 days before the anchor, so the next one is three days out.
+    harborstone = liabilities["Harborstone Card"]
+    assert harborstone.payment_due_kind == "cycle_days"
+    assert harborstone.payment_due_cycle_days == 31
+    assert harborstone.payment_due_anchor == ANCHOR - timedelta(days=28)
+    assert harborstone.payment_due_day is None
+
+    # And it sits on a card that still owes something, without which the
+    # indicator is correctly silent and this card demos nothing at all.
+    assert CARRYING_DEBT.card == "Harborstone Card"
+    assert CARRYING_DEBT.expect.balance < 0
+
+    # Most cards carry no rule at all: an empty companion is what a real
+    # card starts as, and the sample shows that too.
+    assert liabilities["Cedar Point Visa"].payment_due_day is None
+    assert liabilities["Cedar Point Visa"].payment_due_kind == "day_of_month"
 
 
 async def test_full_tier_keeps_starter_invariants(db_session):
@@ -226,7 +268,7 @@ async def test_full_tier_keeps_starter_invariants(db_session):
 
     categories = await CategoryRepository(db_session).get_all(budget.id, include_archived=True)
     names = {c.id: c.name for c in categories}
-    # Card payment envelopes excluded, as in the starter suite: a card whose
+    # Card envelopes excluded, as in the starter suite: a card whose
     # reserve is negative is a card-section state, not an overspent envelope,
     # and one of the demo cards exists precisely to show that.
     overspent = [
@@ -264,9 +306,9 @@ async def test_endpoint_accepts_the_tier(api_client):
     )
     assert response.status_code == 201, response.text
     counts = response.json()["counts"]
-    assert counts["accounts"] == 28
+    assert counts["accounts"] == 31
     assert counts["transactions"] > 1500
-    assert counts["liabilities"] == 14
+    assert counts["liabilities"] == 17
 
 
 async def test_the_sold_car_demonstrates_a_non_savings_asset(db_session):

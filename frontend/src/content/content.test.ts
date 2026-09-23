@@ -3,7 +3,15 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, it, expect } from 'vitest'
 import { ROADMAP, ROADMAP_STEPS, findNode, findStage, type RoadmapNode, TOOL_IDS } from './roadmap'
-import { GLOSSARY, GLOSSARY_IDS, glossaryEntry, searchGlossary } from './glossary'
+import {
+  GLOSSARY,
+  GLOSSARY_IDS,
+  GLOSSARY_TOPICS,
+  TOPIC_MEMBERS,
+  glossaryEntry,
+  searchGlossary,
+  topicsOf,
+} from './glossary'
 import { REPORT_TABS } from '../stores/reportStore'
 import { TOOLS } from '../components/guide/tools/toolRegistry'
 import { derivedCommands } from '../components/palette/commands'
@@ -449,5 +457,63 @@ describe('every destination has a palette row', () => {
 
   it('gives every row a distinct id', () => {
     expect(ids.size).toBe(ALL.length)
+  })
+})
+
+describe('glossary topics', () => {
+  it('files every term under at least one topic', () => {
+    // A term with no topic is reachable by search and by nothing else. The
+    // filter would quietly not list it, which is the kind of gap prose never
+    // catches.
+    const orphans = GLOSSARY_IDS.filter((id) => topicsOf(id).length === 0)
+    expect(orphans).toEqual([])
+  })
+
+  it('files nothing under a topic that does not exist', () => {
+    const known = new Set(GLOSSARY_TOPICS.map((t) => t.id))
+    expect(Object.keys(TOPIC_MEMBERS).filter((t) => !known.has(t as never))).toEqual([])
+  })
+
+  it('names only real terms in each topic', () => {
+    const known = new Set<string>(GLOSSARY_IDS)
+    for (const [topic, ids] of Object.entries(TOPIC_MEMBERS)) {
+      expect(
+        ids.filter((id) => !known.has(id)),
+        topic
+      ).toEqual([])
+    }
+  })
+
+  it('narrows the search to the chosen topic', () => {
+    const cards = searchGlossary('', 'credit-card')
+    expect(cards.length).toBeGreaterThan(0)
+    expect(cards.length).toBeLessThan(GLOSSARY.length)
+    expect(cards.map((e) => e.id)).toContain('set-aside')
+    expect(cards.map((e) => e.id)).not.toContain('401k')
+  })
+
+  it('still finds Set aside by the name it used to have', () => {
+    // "Ready to pay" was this column's label for a year. Anyone who learned
+    // that word must still land on the term.
+    expect(searchGlossary('ready to pay').map((e) => e.id)).toContain('set-aside')
+  })
+
+  it('still finds Ready to Assign by the name it used to have', () => {
+    // The app said "To Be Assigned" on the budget hero and "Ready to Assign"
+    // in Move money — one figure, two names, for the app's most important
+    // number. Settled on the second; the first has to keep resolving.
+    expect(searchGlossary('to be assigned').map((e) => e.id)).toContain('to-be-assigned')
+  })
+
+  it("still finds the card's envelope by all three names it used to have", () => {
+    // F7 counted five spellings of this one object across 113 places. A
+    // reader who learned any of them types it into the palette expecting an
+    // answer, so each retired name stays an alias rather than a dead end.
+    for (const retired of ['payment category', 'set-aside envelope', 'card payment envelope']) {
+      expect(
+        searchGlossary(retired).map((e) => e.id),
+        retired
+      ).toContain('card-envelope')
+    }
   })
 })

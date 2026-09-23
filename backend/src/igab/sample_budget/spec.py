@@ -215,7 +215,7 @@ class ExplicitAssignment:
 
     Every other assignment in the sample is inferred — fund the bill, top up
     the shortfall, sweep the remainder. That inference cannot reach a card's
-    payment envelope at all: nothing can be *filed* to one, so its activity is
+    card's envelope at all: nothing can be *filed* to one, so its activity is
     always empty and the derived amount is always zero, which is why the
     sample had never assigned a cent to a card. Paying a card down is an
     intention, and intentions have to be said.

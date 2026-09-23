@@ -1,5 +1,4 @@
 import { useLocation, useNavigate } from 'react-router-dom'
-import { overlayStackDepth } from '../utils/overlayStack'
 import { parentRoute } from '../utils/routes'
 import { useSwipeNavigation, type SwipeHandlers } from './useSwipeNavigation'
 
@@ -11,14 +10,15 @@ import { useSwipeNavigation, type SwipeHandlers } from './useSwipeNavigation'
  * an account register, a liability — could only be left through the bottom
  * nav. This supplies the gesture on the shell's content column. Overlays
  * own their own dismissal (history entry, drag, X), so while one is open the
- * gesture does nothing rather than navigating underneath it.
+ * gesture does nothing rather than navigating underneath it — that is
+ * `pageLevel`, which the budget page's month swipe reads too.
  */
 export function useEdgeSwipeBack(): SwipeHandlers {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   return useSwipeNavigation({
+    pageLevel: true,
     onEdgeBack: () => {
-      if (overlayStackDepth() > 0) return
       const to = parentRoute(pathname)
       if (to !== pathname) navigate(to)
     },

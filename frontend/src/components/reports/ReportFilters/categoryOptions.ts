@@ -25,7 +25,7 @@ export function categoryOptions(
   // isolate. The label is what stops a segment for an envelope the budget grid
   // no longer draws from reading as a bug.
   //
-  // Card set-aside envelopes stay out, for a stronger reason: nothing can ever
+  // Card envelopes stay out, for a stronger reason: nothing can ever
   // be filed to one, so offering it is a filter that can only return an empty
   // chart.
   const visible = renderableCategories(categories)

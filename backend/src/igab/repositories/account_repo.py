@@ -265,7 +265,7 @@ class AccountRepository(BaseRepository[Account]):
         (`get_balance`; see `not_future`): a register shows what it holds.
 
         Cards are OUT (`CASH_ACCOUNT`): an on-budget liability's debt does
-        not net against cash. It lives beside the card's set-aside envelope,
+        not net against cash. It lives beside the card's envelope,
         and the only way a card moves Ready to Assign is money assigned to
         it — see domain/cards.py for the model.
         """
@@ -431,7 +431,7 @@ class AccountRepository(BaseRepository[Account]):
             .values(is_deleted=True)
         )
         # The FK's ON DELETE SET NULL only fires on hard deletes; a soft-deleted
-        # account must not leave its CC-payment category pointing at it.
+        # account must not leave its envelope pointing at it.
         await self.session.execute(
             update(Category).where(Category.linked_account_id == id).values(linked_account_id=None)
         )

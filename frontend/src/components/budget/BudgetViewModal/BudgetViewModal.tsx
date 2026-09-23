@@ -57,7 +57,7 @@ function ViewEditor({
 }: Props & { views: ReturnType<typeof useBudgetViews>['data'] }) {
   const { data: allGroups = [] } = useCategoryGroups(budgetId, true)
   const { data: allCategories = [] } = useCategories(budgetId, true)
-  // A view rearranges the grid's rows, and a card's set-aside envelope is
+  // A view rearranges the grid's rows, and a card's envelope is
   // not one — placing it in a group would promise a row the grid will never
   // draw. Hidden categories stay: a view may legitimately place one. A
   // system (Income) group's category is not a grid row either — after a

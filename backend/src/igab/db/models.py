@@ -476,7 +476,7 @@ class CategoryGroup(Base):
     is_system: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     #: A group the app seeds and protects by key, the way system tags are —
     #: `wishlist` is the only one. NOT `is_system`: that flag means the Income
-    #: arrangement (not assignable, outside To Be Assigned). A keyed group is
+    #: arrangement (not assignable, outside Ready to Assign). A keyed group is
     #: an ordinary envelope group the user cannot rename or delete, only hide.
     system_key: Mapped[str | None] = mapped_column(String(30), nullable=True)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -487,7 +487,7 @@ class CategoryGroup(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
 
-    #: Does this group hold nothing but card set-aside envelopes? The grid
+    #: Does this group hold nothing but card envelopes? The grid
     #: never draws such a group, and `CategoryGroupRepository.reorder` lets a
     #: client omit it for that reason.
     #:
@@ -602,7 +602,7 @@ class Category(Base):
     #: `CategoryRepository.with_eligibility`; left alone it reads None.
     is_assignable: Mapped[bool] = query_expression()
     #: Where money may ENTER, as opposed to what a picker may offer.
-    #: Differs from is_assignable on exactly the card envelope, which is
+    #: Differs from is_assignable on exactly the card's envelope, which is
     #: funded by the cards section and listed by nothing.
     is_fundable: Mapped[bool] = query_expression()
     #: May a transaction leg be filed here? Differs from is_assignable on
@@ -2163,11 +2163,29 @@ class Liability(Base):
     promo_deferred_interest: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     # Explicit contractual term, when known (overrides the implied estimate)
     term_months: Mapped[int | None] = mapped_column(Integer)
-    # The card bill's due day of the month (1-31). Statement metadata, shown
-    # on the card page; no projection reads it — amortization stays monthly
-    # and dateless by design. Meaningful for cards; the UI offers it nowhere
-    # else.
+    # WHEN the card's bill is due, stated one of two ways — the rule, not the
+    # figure a statement happened to show. `payment_due_kind` picks:
+    #
+    #   'day_of_month' — `payment_due_day` (1-31), clamped in a short month.
+    #   'cycle_days'   — `payment_due_cycle_days` days after
+    #                    `payment_due_anchor`, the last due date actually seen.
+    #
+    # A fixed-length cycle walks its due date through the calendar, so storing
+    # one as a day of the month is right for one cycle and wrong from the next
+    # — the same "stored figure vs stored rule" trap `minimum_payment` carries.
+    # domain/payment_due.py owns which combinations are storable.
+    #
+    # Statement metadata throughout: no projection reads any of it, and
+    # amortization stays monthly and dateless by design. The next due DATE is
+    # computed on the client (frontend/src/utils/paymentDue.ts), which is the
+    # side that knows what day it is. Meaningful for cards; the UI offers it
+    # nowhere else.
+    payment_due_kind: Mapped[str] = mapped_column(
+        String(20), default="day_of_month", server_default="day_of_month", nullable=False
+    )
     payment_due_day: Mapped[int | None] = mapped_column(Integer)
+    payment_due_cycle_days: Mapped[int | None] = mapped_column(Integer)
+    payment_due_anchor: Mapped[_PyDate | None] = mapped_column(Date)
     #: Cards: the issuer's limit. Utilization (balance ÷ limit) is computed
     #: from it — domain/credit.py — for the liability page and the Guide
     #: checkup. Null when unknown; SimpleFIN does not carry it.

@@ -21,7 +21,7 @@ interface Props {
 }
 
 /**
- * The centerpiece of the budget page: To Be Assigned, up and center, with the
+ * The centerpiece of the budget page: Ready to Assign, up and center, with the
  * money-movement actions attached — the Assign dropdown (auto strategies,
  * cover overspending, manual assign), the overspent chip that opens the cover
  * flow directly, and a history button that opens the month's move log in a
@@ -82,10 +82,10 @@ export function TbaHero({ budgetId, month }: Props) {
     <div className="tba-hero">
       <div className="tba-hero__pill">
         <div className="tba-hero__info">
-          <span className="tba-hero__label">To Be Assigned</span>
+          <span className="tba-hero__label">Ready to Assign</span>
           <span className={`tba-hero__amount ${tbaClass}`}>{formatMoney(tba)}</span>
           {assignedInFuture !== 0 && (
-            <span className="tba-hero__future" title="Already deducted from To Be Assigned">
+            <span className="tba-hero__future" title="Already deducted from Ready to Assign">
               {formatMoney(assignedInFuture)} assigned in future months
             </span>
           )}

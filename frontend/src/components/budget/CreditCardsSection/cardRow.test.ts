@@ -1,13 +1,18 @@
 import { describe, it, expect } from 'vitest'
+import { dueInPhrase } from '../../../utils/paymentDue'
 import {
   reserveLegs,
-  reserveNote,
-  debtMovement,
+  debtMovementLabel,
   debtMovementWord,
+  driftSentence,
+  dueHeaderNote,
   rideMonths,
   otherCredits,
   emptyLegsNote,
   pendingNote,
+  setAsideLabel,
+  setAsideShown,
+  stateSentence,
 } from './cardRow'
 import type { CardStatus } from '../../../types'
 
@@ -36,6 +41,7 @@ function card(over: Partial<CardStatus> = {}): CardStatus {
     over_reserved: 0,
     short_reserved: 0,
     card_credit: 0,
+    set_aside_state: 'funded',
     charged_this_month: 0,
     inflows_this_month: 0,
     paid_this_month: 0,
@@ -47,133 +53,215 @@ function card(over: Partial<CardStatus> = {}): CardStatus {
   }
 }
 
-describe('reserveNote', () => {
-  it('says nothing about a card whose reserve matches what it owes', () => {
-    expect(reserveNote(card(), money)).toBeNull()
+describe('what the Set aside column prints', () => {
+  it('prints the figure on a card that is holding money', () => {
+    expect(setAsideShown(card({ set_aside: 240 }))).toBe(240)
   })
 
-  it('calls it a credit balance only when the card owes nothing', () => {
-    const note = reserveNote(card({ set_aside: -50, balance: 50, card_credit: 50 }), money)
-    expect(note?.label).toBe('credit balance')
+  it('never prints a negative, whichever of the four causes produced it', () => {
+    for (const state of [
+      'settled_by_others',
+      'refund_outran_envelope',
+      'settled_elsewhere',
+      'ride_unfunded',
+      'paid_ahead',
+    ] as const) {
+      expect(setAsideShown(card({ set_aside: -300, set_aside_state: state })), state).toBe(0)
+    }
   })
 
-  it('never says overpaid on a card that still owes', () => {
-    // The defect, in one assertion. The row printed "overpaid" beside a
-    // negative reserve while the column to its right showed the whole balance
-    // as uncovered.
-    const note = reserveNote(
-      card({
-        balance: -5400,
-        set_aside: -220,
-        short_reserved: 220,
-        uncovered: 5400,
-        payments: 220,
-      }),
+  it('moves the magnitude to a named line instead of dropping it', () => {
+    // Showing $0.00 and saying nothing else would hide a real figure. The
+    // distance is a fact and stays on screen; what it MEANS is the sentence.
+    const label = setAsideLabel(
+      card({ set_aside: -300, short_reserved: 300, set_aside_state: 'paid_ahead' }),
       money
     )
-    expect(note?.label).toBe('ahead of budget')
-    expect(note?.title).not.toMatch(/overpaid/i)
+    expect(label).toBe('$300.00 below zero')
   })
 
-  it('names the assignment as the remedy for a plain paydown', () => {
-    const note = reserveNote(
-      card({ balance: -5400, set_aside: -220, short_reserved: 220, payments: 220 }),
-      money
+  it('gives the four negatives no noun of their own', () => {
+    // They want opposite responses — nothing to do, re-file an inflow,
+    // back-fund a month, assign to the card — and one word for all four is
+    // what made this column unreadable.
+    const labels = (
+      ['settled_by_others', 'refund_outran_envelope', 'settled_elsewhere', 'paid_ahead'] as const
+    ).map((s) =>
+      setAsideLabel(card({ set_aside: -300, short_reserved: 300, set_aside_state: s }), money)
     )
-    expect(note?.title).toContain('Assign $220.00')
-    expect(note?.title).toContain('already left your account')
+    expect(new Set(labels).size).toBe(1)
   })
 
-  it('names back-funding when a month boundary caused it', () => {
-    const note = reserveNote(
-      card({ balance: -500, set_aside: -300, short_reserved: 300, riding: 300, payments: 500 }),
-      money
-    )
-    expect(note?.title).toContain("Fund that month's envelope")
-  })
-
-  it('names the inflow when residual alone accounts for the shortfall', () => {
-    // The below-zero card: a third party pays part of the bill, filed to a
-    // category that never charged this card. Takes priority over `riding`
-    // because it explains the whole number on its own.
-    const note = reserveNote(
-      card({
-        balance: -5400,
-        set_aside: -220,
-        short_reserved: 220,
-        residual: 4120,
-        riding: 40,
-      }),
-      money
-    )
-    expect(note?.title).toContain('beyond anything an envelope charged to it')
-  })
-
-  it('reports an over-reserve the discrepancy check is silent about', () => {
-    // reserve_discrepancy is 0 here on purpose: T1 excuses an over-reserve
-    // explained by assignments, so a row keyed on it says nothing about the
-    // card that has drifted furthest.
-    const note = reserveNote(
-      card({
-        balance: -1500,
-        set_aside: 7400,
-        over_reserved: 5900,
-        assigned: 5900,
-        reserve_discrepancy: 0,
-      }),
-      money
-    )
-    expect(note?.label).toBe('$5900.00 spare')
-    expect(note?.title).toContain('Safe to release')
-    expect(note?.title).toContain('did leave Ready to Assign')
-  })
-
-  it('does not claim assignments caused an over-reserve on a card carrying a ride', () => {
-    const note = reserveNote(
-      card({ balance: -100, set_aside: 400, over_reserved: 300, assigned: 300, riding: 50 }),
-      money
-    )
-    expect(note?.title).not.toContain('assignments accumulate')
+  it('says nothing beside a card with nothing to say', () => {
+    expect(setAsideLabel(card(), money)).toBeNull()
+    expect(stateSentence(card(), money)).toBeNull()
   })
 })
 
-describe('debtMovement', () => {
+describe('the sentence under the row', () => {
+  it('calls it a credit balance only when the card owes nothing', () => {
+    const card_ = card({
+      set_aside: -50,
+      balance: 50,
+      card_credit: 50,
+      set_aside_state: 'card_holds_it',
+    })
+    expect(setAsideLabel(card_, money)).toBe('credit balance')
+    expect(stateSentence(card_, money)?.sentence).toContain('owes nothing')
+  })
+
+  it('names what came back, not what was left of it', () => {
+    // The bug this test exists for: the row read "$100 came back" beside an
+    // envelope plainly showing $500. $100 was the residue after the month's
+    // reservations and payments; $500 is what actually arrived.
+    const said = stateSentence(
+      card({
+        set_aside: -100,
+        short_reserved: 100,
+        residual: 500,
+        set_aside_state: 'refund_outran_envelope',
+      }),
+      money
+    )
+    expect(said?.sentence).toContain('$500.00')
+    expect(said?.sentence).not.toContain('$100.00')
+  })
+
+  it('says a refund the envelope kept is spendable money that never arrived', () => {
+    const said = stateSentence(
+      card({
+        set_aside: -100,
+        short_reserved: 100,
+        residual: 500,
+        set_aside_state: 'refund_outran_envelope',
+      }),
+      money
+    )
+    expect(said?.sentence).toMatch(/credit on this card/)
+    // Describe, don't prescribe: nobody knows which envelope should give it
+    // back, or whether it should.
+    expect(said?.action).toBeUndefined()
+  })
+
+  it('tells a settle-up that nothing is wrong, in as many words', () => {
+    const said = stateSentence(
+      card({
+        set_aside: -200,
+        short_reserved: 200,
+        residual: 400,
+        set_aside_state: 'settled_by_others',
+      }),
+      money
+    )
+    expect(said?.sentence).toContain('$400.00')
+    expect(said?.action).toBe('Nothing to do.')
+  })
+
+  it('promises that funding a month works only where the ride is this card alone', () => {
+    // F8. The old copy offered this on every riding card, and on a shared
+    // shortfall funding the envelope moves a DIFFERENT card.
+    const alone = stateSentence(
+      card({ set_aside: -300, short_reserved: 300, riding: 200, set_aside_state: 'ride_unfunded' }),
+      money
+    )
+    expect(alone?.action).toMatch(/Raise that month's assignment/)
+
+    const shared = stateSentence(
+      card({
+        set_aside: -60,
+        short_reserved: 60,
+        riding: 300,
+        set_aside_state: 'settled_elsewhere',
+      }),
+      money
+    )
+    expect(shared?.action).not.toMatch(/envelope/)
+    expect(shared?.sentence).toMatch(/another card/)
+  })
+
+  it('offers the assignment on a plain overpayment, and quotes the amount', () => {
+    const said = stateSentence(
+      card({ set_aside: -300, short_reserved: 300, set_aside_state: 'paid_ahead' }),
+      money
+    )
+    expect(said?.sentence).toContain('$300.00')
+    expect(said?.action).toContain('Ready to Assign')
+  })
+
+  it('calls a surplus spare and says where releasing it goes', () => {
+    const card_ = card({
+      set_aside: 1250,
+      balance: -50,
+      over_reserved: 1200,
+      set_aside_state: 'surplus',
+    })
+    expect(setAsideLabel(card_, money)).toBe('$1200.00 spare')
+    expect(stateSentence(card_, money)?.action).toContain('Ready to Assign')
+  })
+
+  it('does not branch on a cause the server did not decide', () => {
+    // Every figure in the copy is a served leg. The old note compared a
+    // LIFETIME residual against a CURRENT shortfall to pick its wording,
+    // which is a guess dressed as arithmetic.
+    for (const state of [
+      'surplus',
+      'card_holds_it',
+      'settled_by_others',
+      'refund_outran_envelope',
+      'settled_elsewhere',
+      'ride_unfunded',
+      'paid_ahead',
+    ] as const) {
+      expect(stateSentence(card({ set_aside_state: state }), money), state).not.toBeNull()
+    }
+  })
+})
+
+describe('driftSentence', () => {
+  it('is silent when the identity closes', () => {
+    expect(driftSentence(card(), money)).toBeNull()
+  })
+
+  it('is a sentence, not a tooltip, when it does not', () => {
+    // It was a `title`, which an installed iOS PWA never renders.
+    expect(driftSentence(card({ reserve_discrepancy: 42 }), money)).toContain('$42.00')
+  })
+})
+
+describe('debtMovementLabel', () => {
   it('says nothing in a month the balance did not move', () => {
-    expect(debtMovement(card(), money)).toBeNull()
+    expect(debtMovementLabel(card(), money)).toBeNull()
   })
 
   it('reads a rising balance as the debt decreasing', () => {
     // The whole point of the phrasing: a balance moving from -900 to -672 is
     // going UP while the debt goes DOWN, and only one of those is what a
     // person means by "the card got better".
-    const note = debtMovement(
-      card({ debt_change_this_month: 228, charged_this_month: 412, paid_this_month: 640 }),
-      money
+    expect(debtMovementLabel(card({ debt_change_this_month: 228 }), money)).toBe(
+      'debt\u00A0decreased $228.00'
     )
-    expect(note?.label).toBe('debt\u00A0decreased $228.00')
-    expect(note?.title).toContain('$412.00 charged, $640.00 paid')
-    expect(note?.title).toContain('The debt decreased.')
   })
 
   it('reads a falling balance as the debt increasing', () => {
-    const note = debtMovement(card({ debt_change_this_month: -412 }), money)
-    expect(note?.label).toBe('debt\u00A0increased $412.00')
+    expect(debtMovementLabel(card({ debt_change_this_month: -412 }), money)).toBe(
+      'debt\u00A0increased $412.00'
+    )
   })
 
   // "down $412" beside a balance that grew is the report this wording came
   // from: never a bare direction word, on either side of zero.
   it('never says up or down', () => {
     for (const moved of [228, -412]) {
-      const note = debtMovement(card({ debt_change_this_month: moved }), money)
-      expect(note?.label).not.toMatch(/\b(up|down)\b/)
-      expect(note?.title).not.toMatch(/\b(up|down|fell|grew)\b/)
+      expect(debtMovementLabel(card({ debt_change_this_month: moved }), money)).not.toMatch(
+        /\b(up|down)\b/
+      )
     }
   })
 
   it('breaks only between the phrase and the figure', () => {
-    const note = debtMovement(card({ debt_change_this_month: -412 }), money)
+    const label = debtMovementLabel(card({ debt_change_this_month: -412 }), money)
     // One breakable space, and it sits before the amount.
-    expect(note?.label.split(' ')).toHaveLength(2)
+    expect(label?.split(' ')).toHaveLength(2)
   })
 })
 
@@ -232,7 +320,7 @@ describe('otherCredits', () => {
 
   it('names a payment recorded as a deposit rather than a transfer', () => {
     // 300 arrived with nothing paired against it. Only a transfer spends the
-    // reserve, so Ready to pay stood still while the card's debt dropped —
+    // reserve, so Set aside stood still while the card's debt dropped —
     // one way a card ends up reserving far more than it owes.
     expect(otherCredits(card({ inflows_this_month: 300, paid_this_month: 0 }))).toBe(300)
   })
@@ -383,5 +471,42 @@ describe('the opening leg', () => {
       payments: 0,
     })
     expect(legs.map((l) => l.label)).toEqual(['Assigned to this card'])
+  })
+})
+
+describe('dueHeaderNote', () => {
+  // The real phrasing, not a stand-in: `dueInPhrase` says "tomorrow" at one
+  // day, and a helper that invented "in 1 days" would pin the wrong words.
+  const at = (days: number) => ({ date: '2026-09-17', days, phrase: dueInPhrase(days) })
+
+  it('says nothing when no bill is close', () => {
+    expect(dueHeaderNote([])).toBeNull()
+  })
+
+  it('names the card when exactly one is', () => {
+    // "Which card" is the question a strip with several raises, and a header
+    // with no answer sends the reader to open the section to find out.
+    expect(dueHeaderNote([{ name: 'Sapphire Visa', notice: at(4) }])).toBe(
+      'Sapphire Visa due in 4 days'
+    )
+  })
+
+  it('counts them and leads with the soonest when several are', () => {
+    expect(
+      dueHeaderNote([
+        { name: 'Sapphire Visa', notice: at(4) },
+        { name: 'Thistledown Card', notice: at(2) },
+        { name: 'Harborstone Card', notice: at(6) },
+      ])
+    ).toBe('3 bills due, soonest in 2 days')
+  })
+
+  it('takes the soonest whatever order they arrive in', () => {
+    expect(
+      dueHeaderNote([
+        { name: 'A', notice: at(1) },
+        { name: 'B', notice: at(5) },
+      ])
+    ).toBe('2 bills due, soonest tomorrow')
   })
 })

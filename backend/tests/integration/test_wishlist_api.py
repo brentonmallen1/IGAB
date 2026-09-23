@@ -826,7 +826,7 @@ class TestDrains:
         budget, _wish, bike, _dining = await self._setup(db_session, api_client)
         await _move(api_client, budget, bike, None, "25.00")
         [row] = (await api_client.get(_url(budget))).json()["drains"]["moves"]
-        assert row["to_name"] == "To Be Assigned"
+        assert row["to_name"] == "Ready to Assign"
 
     async def test_moves_into_the_envelope_or_between_others_are_not_drains(
         self, db_session, api_client

@@ -92,7 +92,7 @@ class TestTheWriteSideRefuses:
         linked = await ensure_payment_category(db_session, visa)
         assert linked is not None
 
-        with pytest.raises(InvariantViolation, match="payment envelope"):
+        with pytest.raises(InvariantViolation, match="card.s envelope"):
             await services.transactions.create(
                 budget.id,
                 TransactionCreate(
@@ -155,8 +155,8 @@ class TestTheGuardReachesWhatTheServerResolves:
     payee's history or from its stored default — and neither path was held to
     the rule the typed path had just been held to.
 
-    Both were already excluding a card's set-aside envelope, for exactly this
-    reason: commit 8ac9d15, "Nothing is filed to a card's set-aside envelope".
+    Both were already excluding a card's envelope, for exactly this
+    reason: commit 8ac9d15, "Nothing is filed to a card's envelope".
     Archiving is the same shape of mistake and a quieter one, because an
     archived envelope is off the grid entirely — there is no toggle to find
     the money behind any more.

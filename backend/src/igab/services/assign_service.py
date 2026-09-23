@@ -214,14 +214,14 @@ class AssignService:
         # `is_fundable` (IS_FUNDABLE, category_filters.py) — where money may
         # ENTER, which is this endpoint's question. It used to read
         # `is_assignable`, which answers what a *picker* may offer, and the two
-        # are not the same envelope set: a card's payment envelope lives in a
+        # are not the same envelope set: a card's envelope lives in a
         # hidden group, so it failed `is_assignable` and a paydown target set
         # on a card silently never filled. The comment defending the old
         # conflation claimed excluding card envelopes "would" break exactly
         # that; measuring showed it already had.
         #
         # `include_archived=False` still: it filters the category's own flag,
-        # and a card envelope's own flag is false — only its group is hidden.
+        # and a card's envelope own flag is false — only its group is hidden.
         # An archived envelope is not a target this should fill.
         categories = await self.category_repo.get_all(budget_id, include_archived=False)
         eligible = [c for c in categories if c.is_fundable]

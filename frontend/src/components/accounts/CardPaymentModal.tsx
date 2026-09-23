@@ -24,8 +24,9 @@ interface Props {
  *
  * For a card, only a paired transfer from cash spends the set-aside
  * (`CARD_PAYMENT_FROM_CASH`) — a payment typed as a plain deposit lowers the
- * balance while "Ready to pay" stands still. The prefill is the served
- * `set_aside`, with the served minimum and the full balance as alternatives.
+ * balance while Set aside stands still. The prefill is the served
+ * `set_aside` capped at the balance, with the served minimum and the full
+ * balance as alternatives.
  *
  * For a loan (an off-budget liability account), the same transfer is the
  * whole story, plus one field: "extra to principal". The extra needs no
@@ -56,20 +57,30 @@ export function CardPaymentModal({ budgetId, accountId, onClose }: Props) {
   // useAccounts already excludes closed accounts.
   const supplyAccounts = accounts.filter((a) => isCashAccount(a))
 
-  const readyToPay = !isLoan && cardStatus && cardStatus.set_aside > 0 ? cardStatus.set_aside : null
   const fullBalance = card && card.balance < 0 ? -card.balance : null
+  // Capped at what the card owes. Set aside is this card's envelope, not a
+  // measure of the card, so on a card paid from funded envelopes it keeps
+  // accumulating past the balance — the `over-reserved` scenario settles at
+  // 1250 against a bill of 50. Offering that as "pay this" put a $1,200
+  // overpayment one Enter away, under a label promising the money was ready
+  // to pay. Paying more than is owed is still possible; it is just no longer
+  // the prefill, and no longer something the app proposed.
+  const setAsideRaw =
+    !isLoan && cardStatus && cardStatus.set_aside > 0 ? cardStatus.set_aside : null
+  const setAside =
+    setAsideRaw !== null && fullBalance !== null ? Math.min(setAsideRaw, fullBalance) : setAsideRaw
   const minimum = liability?.minimum_payment_due_now ?? null
 
   const [supplyId, setSupplyId] = useState(() => supplyAccounts[0]?.id ?? '')
   const [amount, setAmount] = useState(() => {
     if (isLoan) return minimum !== null && minimum > 0 ? minimum.toFixed(2) : ''
-    return readyToPay !== null ? readyToPay.toFixed(2) : (fullBalance?.toFixed(2) ?? '')
+    return setAside !== null ? setAside.toFixed(2) : (fullBalance?.toFixed(2) ?? '')
   })
   const [extra, setExtra] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   const presets = [
-    readyToPay !== null && { label: 'Ready to pay', value: readyToPay },
+    setAside !== null && { label: 'Set aside', value: setAside },
     minimum !== null && minimum > 0 && { label: 'Minimum', value: minimum },
     fullBalance !== null && { label: 'Full balance', value: fullBalance },
   ].filter((p): p is { label: string; value: number } => !!p)
@@ -198,8 +209,8 @@ export function CardPaymentModal({ budgetId, accountId, onClose }: Props) {
           </p>
         ) : (
           <p className="dialog-form__hint">
-            Recorded as a transfer, so it spends this card&apos;s reserve — a plain deposit would
-            lower the balance while Ready to pay stood still.
+            Recorded as a transfer, so it spends this card&apos;s Set aside — a plain deposit would
+            lower the balance while Set aside stood still.
           </p>
         )}
       </form>

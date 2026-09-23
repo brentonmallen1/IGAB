@@ -583,13 +583,16 @@ export function useMergeTransactions(budgetId: string) {
           survivor_id: survivorId ?? null,
         })
         .then((r) => r.data),
-    onSuccess: (txn) => {
+    onSuccess: (txn, { transactionIds }) => {
       // Merge-specific: the rows it absorbed were this row's own duplicates.
       qc.invalidateQueries({ queryKey: [ROOT.similarTransactions] })
+      // Both ids, not just the survivor's: the row that lost gave up its
+      // receipts and was soft-deleted, so its own per-row caches are stale
+      // too — and the survivor's are only half the story.
       return invalidateAfterTransactionChange(qc, {
         budgetId,
         accountId: txn.account_id,
-        transactionIds: [txn.id],
+        transactionIds: [...new Set([txn.id, ...transactionIds])],
       })
     },
   })

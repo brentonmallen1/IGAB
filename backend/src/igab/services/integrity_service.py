@@ -373,7 +373,7 @@ class IntegrityService:
         )
 
     async def _check_card_envelope_rows(self, budget_id: uuid.UUID) -> IntegrityCheck:
-        """Rows filed to a card's set-aside envelope — money that vanished.
+        """Rows filed to a card's envelope — money that vanished.
 
         The budget summary computes that envelope's balance from card
         arithmetic and overwrites its transaction sums, so such a row shows
@@ -392,19 +392,19 @@ class IntegrityService:
             )
         )
         problems = [
-            f"transaction {tid} is filed to card payment envelope '{name}' — "
+            f"transaction {tid} is filed to card's envelope '{name}' — "
             "recategorize it; the budget cannot show it"
             for tid, name in result
         ]
         return self._result(
             "card_envelope_rows",
-            "No transactions are filed to a credit card's payment envelope",
+            "No transactions are filed to a credit card's envelope",
             problems,
         )
 
     async def _check_card_payment_envelope_pairing(self, budget_id: uuid.UUID) -> IntegrityCheck:
-        """Every on-budget card has exactly one set-aside envelope, and every
-        set-aside envelope has its card.
+        """Every on-budget card has exactly one card's envelope, and every
+        card's envelope has its card.
 
         Both halves are silent when broken, in opposite ways.
 
@@ -442,21 +442,21 @@ class IntegrityService:
 
         linked = {e.linked_account_id for e in envelopes if e.linked_account_id is not None}
         problems = [
-            f"credit card '{name}' ({cid}) has no set-aside envelope — its reserve "
+            f"credit card '{name}' ({cid}) has no card's envelope — its reserve "
             "is missing from Ready to Assign; re-save the account to rebuild it"
             for cid, name in cards
             if cid not in linked
         ]
         live_cards = {cid for cid, _ in cards}
         problems += [
-            f"card payment envelope '{e.name}' ({e.id}) points at no live card — "
+            f"card's envelope '{e.name}' ({e.id}) points at no live card — "
             "money assigned to it is counted but unreachable; delete it or relink it"
             for e in envelopes
             if e.linked_account_id is None or e.linked_account_id not in live_cards
         ]
         return self._result(
             "card_payment_envelope_pairing",
-            "Every credit card has its set-aside envelope, and vice versa",
+            "Every credit card has its envelope, and vice versa",
             problems,
         )
 

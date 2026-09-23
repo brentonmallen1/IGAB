@@ -273,7 +273,7 @@ async def create_card_payment(
     transfer spends a card's reserve, and the pairing is what the service
     does. Eleven card tests each re-imported `TransactionCreate` inside the
     function body to spell this by hand; a payment typed any other way lowers
-    the balance while Ready to pay stands still, which is a different scenario
+    the balance while Set aside stands still, which is a different scenario
     wearing this one's clothes.
     """
     from igab.services.transaction_service import TransactionCreate

@@ -370,7 +370,7 @@ class TestHistoricalCategoryInference:
         # The fallback is liveness-checked now: a default pointing at a deleted
         # category must not be handed to a new row. Here it is live. It is also
         # checked for `linked_account_id` — a default pointing at a card's
-        # set-aside envelope would file a row past the create-path guard — so
+        # card's envelope would file a row past the create-path guard — so
         # the mock has to say it is an ordinary envelope.
         live_default = MagicMock()
         live_default.id = default_cat_id

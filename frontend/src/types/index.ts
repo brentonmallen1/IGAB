@@ -99,7 +99,7 @@ export interface CategoryGroup {
   sort_order: number
   is_archived: boolean
   is_system: boolean
-  /** Every live category here is a card's set-aside envelope, so the grid draws
+  /** Every live category here is a card's envelope, so the grid draws
    *  no header for this group. Served, not derived — home is
    *  `GROUP_IS_CARD_ONLY` in repositories/category_filters.py, and the server's
    *  reorder rule reads the same expression.
@@ -161,7 +161,7 @@ export interface Category {
    */
   /** May money ENTER this envelope? Served, not derived — home is
    *  `repositories/category_filters.py IS_FUNDABLE`. Differs from
-   *  `is_assignable` on exactly the card payment envelope, which is funded
+   *  `is_assignable` on exactly the card's envelope, which is funded
    *  by the cards section and offered by no picker. */
   is_fundable: boolean
   is_categorizable: boolean
@@ -255,7 +255,7 @@ export interface CategoryBalance {
    * exactly what Fill Underfunded would move. `null` when there is no target.
    */
   needed_this_month: number | null
-  /** A card's set-aside envelope — the cards section owns it; the grid never
+  /** A card's envelope — the cards section owns it; the grid never
    *  draws it and its negative is not overspending. Served, not derived:
    *  see `CategoryBalance` in api/v1/schemas/category.py. */
   is_card_payment: boolean
@@ -298,10 +298,23 @@ export interface CategoryBalance {
 
 /** One card in the budget's cards section — see `CardStatusOut` on the
  *  server (api/v1/schemas/category.py) and domain/cards.py for the model. */
+/** The eight situations a card's Set aside can be in (backend
+ *  `domain/cards.py` `SetAsideState`). Deliberately no single word for "below
+ *  zero": four of these produce that, and they want opposite responses. */
+export type SetAsideState =
+  | 'funded'
+  | 'surplus'
+  | 'card_holds_it'
+  | 'settled_by_others'
+  | 'refund_outran_envelope'
+  | 'settled_elsewhere'
+  | 'ride_unfunded'
+  | 'paid_ahead'
+
 export interface CardStatus {
   account_id: string
   name: string
-  /** Null only before the set-aside envelope exists (fresh migration edge). */
+  /** Null only before the card's envelope exists (fresh migration edge). */
   category_id: string | null
   /** Ledger through the viewed month; negative = owed. */
   balance: number
@@ -359,6 +372,14 @@ export interface CardStatus {
    *  true of — a negative `set_aside` alone is not it, and printing the word
    *  on the sign alone is the defect these fields exist to end. */
   card_credit: number
+  /** Which of the eight situations this card's Set aside is in. Served, and
+   *  NOT derivable here: `settled_by_others` and `refund_outran_envelope`
+   *  are told apart only by `residual_by_pair` and by whether an envelope was
+   *  ever assigned to, and `settled_elsewhere` needs `floored_by_pair` —
+   *  none of which crosses the wire. Home: backend `domain/cards.py`
+   *  `SetAsideState`; `cardRow.ts` maps it to copy and must not branch on a
+   *  cause of its own. */
+  set_aside_state: SetAsideState
   /** The viewed month off the card's own ledger. Every leg above is a lifetime
    *  total, so a month cannot be derived from them here.
    *  `debt_change_this_month` is signed: positive means the debt shrank. */

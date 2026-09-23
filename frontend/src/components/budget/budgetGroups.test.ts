@@ -37,7 +37,7 @@ describe('renderableGroups', () => {
     expect([...renderableCategoryIds(groups, cats)]).toEqual(['rent'])
   })
 
-  it('a card set-aside envelope is not a grid row', () => {
+  it("a card's envelope is not a grid row", () => {
     // The cards section owns it: Balance / Set aside / Uncovered, not
     // assigned/activity/available — and its negative is not overspending.
     const groups = [group('cards'), group('bills')]
@@ -102,7 +102,7 @@ describe('drawnGroups', () => {
   })
 })
 
-describe('no surface offers a card set-aside envelope', () => {
+describe("no surface offers a card's envelope", () => {
   // `categoryPickers.ts` records a six-way consolidation onto the served
   // `is_assignable` / `is_categorizable` verdicts. These call sites were
   // missed by it or written after it, and each one offered every card's

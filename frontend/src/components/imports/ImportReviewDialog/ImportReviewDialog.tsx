@@ -119,7 +119,7 @@ export function ImportReviewDialog({
     // classifying its spending is meaningless.
     const names = new Map(renderableGroups(groups).map((g) => [g.id, g.name]))
     // `renderableGroups` drops system groups, not archived ones, so the card
-    // envelopes' group survives it — and a set-aside envelope cannot carry a
+    // envelopes' group survives it — and a card's envelope cannot carry a
     // classification tag, since nothing is ever filed to it.
     return renderableCategories(categories)
       .filter((c) => names.has(c.category_group_id))
@@ -733,7 +733,7 @@ function ParityBlock({
           <p className="import-review__verdict import-review__verdict--warn">
             {parity.cards_differing} of {parity.cards_compared} card reserve
             {parity.cards_differing === 1 ? ' differs' : 's differ'} from the amount YNAB had set
-            aside — the card's Ready to pay may not match what it owes.
+            aside — the card's Set aside may not match what it owes.
           </p>
           <ul className="import-review__diffs">
             {parity.card_differences.map((d) => (

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
 import { downscaleForUpload } from '../utils/imageUpload'
 import { confirmAsync } from '../stores/confirmStore'
+import { invalidateAfterAttachmentChange } from './invalidateAfterAttachmentChange'
 import { ROOT } from './queryKeys'
 
 export interface Attachment {
@@ -158,10 +159,7 @@ export function useUploadAttachment(transactionId: string) {
       )
       return data
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: [ROOT.attachments, transactionId] })
-      qc.invalidateQueries({ queryKey: [ROOT.attachmentCheck] })
-    },
+    onSuccess: () => invalidateAfterAttachmentChange(qc, [transactionId]),
   })
 }
 
@@ -169,10 +167,7 @@ export function useDeleteAttachment(transactionId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (attachmentId: string) => apiClient.delete(`/attachments/${attachmentId}`),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: [ROOT.attachments, transactionId] })
-      qc.invalidateQueries({ queryKey: [ROOT.attachmentCheck] })
-    },
+    onSuccess: () => invalidateAfterAttachmentChange(qc, [transactionId]),
   })
 }
 

@@ -2194,3 +2194,28 @@
   gap: 3px;
   text-decoration: none;
 }
+
+/* Glossary topic filter: the same chip shape as the rest of the Guide, so a
+   term found by topic and a term found by search arrive the same way. */
+.guide-glossary__topics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+  margin-bottom: var(--spacing-md);
+}
+
+.guide-glossary__topic {
+  font-size: var(--font-size-xs);
+  padding: 4px 12px;
+  min-height: var(--tap-min, 34px);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.guide-glossary__topic.is-on {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}

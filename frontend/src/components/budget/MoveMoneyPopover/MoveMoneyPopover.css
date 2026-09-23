@@ -108,3 +108,21 @@
     min-height: var(--tap-min);
   }
 }
+
+/* What this move will do, stated under the amount box. Used where the
+   consequence is not readable off the row behind the popover — releasing a
+   card's Set aside past its spare raises that card's Uncovered dollar for
+   dollar, which is a legitimate choice and not one to make unknowingly. */
+.move-money-popover__footnote {
+  font-size: var(--font-size-xs);
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.move-money-popover__footnote p {
+  margin: 0;
+}
+
+.move-money-popover__footnote p + p {
+  margin-top: var(--spacing-2xs);
+}

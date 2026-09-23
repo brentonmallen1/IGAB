@@ -1,4 +1,4 @@
-"""The card's set-aside envelope — guaranteed by construction, like a
+"""The card's envelope — guaranteed by construction, like a
 liability companion.
 
 The credit model (domain/cards.py) needs somewhere for a card's assignments

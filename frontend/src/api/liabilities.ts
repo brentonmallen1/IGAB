@@ -8,6 +8,10 @@ export type LiabilityType =
 
 export type MinimumPaymentKind = 'fixed' | 'percent_of_balance'
 
+// The due-date rule's vocabulary lives with the arithmetic that reads it.
+export type { PaymentDueKind } from '../utils/paymentDue'
+import type { PaymentDueKind } from '../utils/paymentDue'
+
 export interface Liability {
   id: string
   budget_id: string
@@ -85,9 +89,17 @@ export interface Liability {
   promo_deferred_interest: boolean
   /** Explicitly known contractual term (overrides the implied estimate) */
   term_months: number | null
-  /** The card bill's due day of the month (1-31). Statement metadata for the
-   * card header; no projection reads it. */
+  /** WHEN the bill is due, as a rule rather than one observed date: a day of
+   *  the month, or a fixed-length cycle counted from the last due date seen.
+   *  A card billed every 31 days walks its due date through the calendar, so
+   *  the day-of-month spelling is right for one cycle and wrong from the next.
+   *  The next DATE is computed here — utils/paymentDue.ts, which is the side
+   *  that knows what day it is. Server home: domain/payment_due.py. */
+  payment_due_kind: PaymentDueKind
   payment_due_day: number | null
+  payment_due_cycle_days: number | null
+  /** The last due date actually seen — where a cycle is counted from. */
+  payment_due_anchor: string | null
   /** Cards: the issuer's limit, for utilization. Optional for older fixtures. */
   credit_limit?: number | null
   /** balance ÷ credit_limit as a percent (server: domain/credit.py). */
@@ -144,8 +156,12 @@ export interface LiabilityCreate {
   promo_end_date?: string | null
   promo_deferred_interest?: boolean
   term_months?: number | null
-  /** The card bill's due day of the month; explicit null clears it. */
+  /** The bill's due-date rule; explicit null clears a figure. The three
+   *  travel together — the server refuses a cycle missing either half. */
+  payment_due_kind?: PaymentDueKind
   payment_due_day?: number | null
+  payment_due_cycle_days?: number | null
+  payment_due_anchor?: string | null
   credit_limit?: number | null
   /** An empty list clears the composition; omitting it leaves it alone. */
   payment_components?: PaymentComponentInput[]

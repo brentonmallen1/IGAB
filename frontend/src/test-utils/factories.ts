@@ -8,7 +8,7 @@
 // and the tests disagreeing about what the server said.
 //
 // The defaults describe an ordinary, live spending envelope. A test that wants
-// an archived one, or a card envelope, overrides the fields it cares about and
+// an archived one, or a card's envelope, overrides the fields it cares about and
 // says so by name.
 //
 // Three fixtures deliberately do NOT use this: the ones inside `vi.mock` and

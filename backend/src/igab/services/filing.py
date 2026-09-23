@@ -77,7 +77,7 @@ async def require_categorizable(session: AsyncSession, category_id: uuid.UUID | 
     two errors for one cause reads as two problems.
 
     The message names the actual reason. "That category cannot be used" sends
-    someone hunting; a card envelope, a debt envelope and an archived envelope
+    someone hunting; a card's envelope, a debt envelope and an archived envelope
     are three different situations with three different next actions.
     """
     if category_id is None:
@@ -87,7 +87,7 @@ async def require_categorizable(session: AsyncSession, category_id: uuid.UUID | 
         return
     if row.linked_account_id is not None:
         raise InvariantViolation(
-            "That category is a credit card's payment envelope. Nothing can be filed to it — "
+            "That category is a credit card's envelope. Nothing can be filed to it — "
             "assign money to the card in the budget's Credit cards section instead"
         )
     if row.linked_liability_id is not None:

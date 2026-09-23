@@ -155,7 +155,7 @@ export function OverviewReport({ budgetId }: Props) {
           <MeansTrendCard months={data.means_months} />
           {budgetMonth && (
             <MetricCard
-              label="To Be Assigned"
+              label="Ready to Assign"
               value={formatMoney(budgetMonth.to_be_assigned)}
               accent={budgetMonth.to_be_assigned !== 0}
             />

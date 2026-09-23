@@ -23,8 +23,8 @@ export function TbaDrawer({ budgetId, month, open, assignedInFuture }: Props) {
           <div className="tba-drawer__future">
             <CalendarClock size={14} className="tba-drawer__future-icon" />
             <span className="tba-drawer__future-text">
-              {formatMoney(assignedInFuture)} assigned in future months — already deducted from To
-              Be Assigned
+              {formatMoney(assignedInFuture)} assigned in future months — already deducted from
+              Ready to Assign
             </span>
           </div>
         </div>

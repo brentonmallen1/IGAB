@@ -66,7 +66,9 @@ export const GLOSSARY_IDS = [
   'essential-expenses',
   'cost-of-living',
   'cooling-off',
-  'ready-to-pay',
+  'set-aside',
+  'card-envelope',
+  'spare',
   'uncovered',
   'credit-overspending',
   'carried-balance',
@@ -78,6 +80,91 @@ export const GLOSSARY_IDS = [
 ] as const
 
 export type GlossaryId = (typeof GLOSSARY_IDS)[number]
+
+/** What a term is about, for readers who arrive at the glossary with a
+ *  situation rather than a word. A term can sit under more than one. */
+export const GLOSSARY_TOPICS = [
+  { id: 'credit-card', label: 'Credit cards' },
+  { id: 'budgeting', label: 'Budgeting' },
+  { id: 'debt', label: 'Debt' },
+  { id: 'saving', label: 'Saving' },
+  { id: 'investing', label: 'Investing' },
+  { id: 'transactions', label: 'Transactions' },
+] as const
+
+export type GlossaryTopic = (typeof GLOSSARY_TOPICS)[number]['id']
+
+/** Topic membership, declared once rather than scattered across the entries.
+ *
+ * `content.test.ts` holds every id to at least one topic, so a term added
+ * without one fails rather than quietly becoming unreachable from the filter.
+ */
+export const TOPIC_MEMBERS: Record<GlossaryTopic, GlossaryId[]> = {
+  'credit-card': [
+    'set-aside',
+    'card-envelope',
+    'spare',
+    'uncovered',
+    'credit-overspending',
+    'carried-balance',
+    'card-payment',
+    'refused-card-inflow',
+    'credit-utilization',
+    'balance-transfer',
+    'closing-a-card',
+    'minimum-payment',
+    'apr',
+  ],
+  budgeting: [
+    'zero-based-budgeting',
+    'to-be-assigned',
+    'target',
+    'archived-envelope',
+    'sinking-fund',
+    'essential-expenses',
+    'cost-of-living',
+    'living-within-means',
+    'cooling-off',
+    'credit-overspending',
+    'set-aside',
+  ],
+  debt: [
+    'apr',
+    'principal',
+    'minimum-payment',
+    'amortization',
+    'high-interest-debt',
+    'avalanche',
+    'snowball',
+    'carried-balance',
+    'balance-transfer',
+    'uncovered',
+  ],
+  saving: ['emergency-fund', 'sinking-fund', 'savings-rate', 'apy', 'compounding', 'hsa', '529'],
+  investing: [
+    'employer-match',
+    'vesting',
+    '401k',
+    'ira',
+    'roth',
+    'traditional',
+    'taxable-account',
+    'compounding',
+    'hsa',
+    '529',
+  ],
+  transactions: ['pending', 'uncleared', 'cleared', 'reconciled', 'card-payment'],
+}
+
+const TOPICS_BY_ID = new Map<GlossaryId, GlossaryTopic[]>()
+for (const [topic, ids] of Object.entries(TOPIC_MEMBERS) as [GlossaryTopic, GlossaryId[]][]) {
+  for (const id of ids) TOPICS_BY_ID.set(id, [...(TOPICS_BY_ID.get(id) ?? []), topic])
+}
+
+/** The topics a term belongs to, in `GLOSSARY_TOPICS` order. */
+export function topicsOf(id: GlossaryId): GlossaryTopic[] {
+  return TOPICS_BY_ID.get(id) ?? []
+}
 
 export interface GlossaryEntry {
   id: GlossaryId
@@ -146,13 +233,15 @@ export const GLOSSARY: GlossaryEntry[] = [
     short: 'Give every incoming pound or dollar a job until none is unassigned.',
     body: 'Rather than tracking spending against a forecast, you assign all the money you actually have to specific categories. When nothing is left unassigned, the budget balances — not because you spent nothing, but because every amount has a purpose.',
     inIgab:
-      'The Budget page is this. Money arrives in To Be Assigned, and you distribute it into categories until To Be Assigned reaches zero.',
+      'The Budget page is this. Money arrives in Ready to Assign, and you distribute it into categories until Ready to Assign reaches zero.',
     related: ['to-be-assigned', 'target', 'sinking-fund'],
   },
   {
     id: 'to-be-assigned',
-    term: 'To Be Assigned',
-    aliases: ['tba', 'ready to assign', 'unassigned'],
+    term: 'Ready to Assign',
+    // "To Be Assigned" was this figure's name in half the app until it was
+    // settled on one; anyone who learned that word should still find it.
+    aliases: ['tba', 'to be assigned', 'unassigned'],
     short: 'Money you have received but have not yet given a job.',
     body: 'Income lands here first. From there you move it into categories. A positive balance means there is money still waiting on a decision; a negative one means you have assigned more than you actually have.',
     inIgab:
@@ -440,14 +529,42 @@ export const GLOSSARY: GlossaryEntry[] = [
     related: ['cleared', 'uncleared', 'pending'],
   },
   {
-    id: 'ready-to-pay',
-    term: 'Ready to pay',
-    aliases: ['set aside', 'set-aside', 'card payment reserve'],
-    short: "Cash reserved to pay a credit card — the card's own envelope.",
-    body: "When you spend on a card from a funded category, the budgeted cash does not vanish — it moves into a reserve for that card, so the payment is already covered before the bill exists. Assigning money to the card adds to the reserve; payments drain it. Spending a category could not cover adds nothing here — it becomes the card's uncovered debt instead. It is the card's envelope, not a measurement of the card, so it can sit above what the card owes or below zero.",
+    id: 'set-aside',
+    term: 'Set aside',
+    // "Ready to pay" was this column's label until it was renamed; anyone who
+    // learned that word should still find the term.
+    aliases: ['ready to pay', 'card payment reserve', 'card reserve'],
+    short: "Money committed to a credit card's bill — the card's own envelope.",
+    body: "Spend on a card from a funded envelope and the cash does not leave your bank: the card fronted it. That money is spoken for, so it moves out of the envelope and into the card's envelope, where it waits for the bill. Assigning to the card adds to it; paying the card is the only move that spends it. Spending an envelope could not cover adds nothing — that becomes the card's Uncovered instead.",
     inIgab:
-      'The "Ready to pay" column of the Credit cards section on the budget page. Below zero usually means you paid more than an envelope set aside — assign that much to the card to settle up; it is only a credit balance when the card owes nothing. Above the balance means assignments no debt needed, and releasing them is safe.',
-    related: ['uncovered', 'credit-overspending', 'card-payment', 'to-be-assigned'],
+      'The Set aside column of the Credit cards section on the budget page. It is a running total, not a target and not a measure of the card, so on a card you carry it sits far below the balance every month and that is the normal reading. You can take money back out — the card is then that much less covered.',
+    related: ['card-envelope', 'uncovered', 'spare', 'card-payment', 'to-be-assigned'],
+    guideLinks: [{ tab: 'cards' }],
+  },
+  {
+    id: 'card-envelope',
+    term: "The card's envelope",
+    // The three names this envelope used to go by, so anyone who learned one
+    // of them still finds it.
+    aliases: ['payment category', 'set-aside envelope', 'card payment envelope'],
+    short:
+      'An ordinary envelope with a credit card\u2019s name on it, holding that card\u2019s Set aside.',
+    body: 'Each credit card gets one envelope of its own. It is where Set aside lives, and it behaves like any other envelope: you can assign money to it, and you can move money back out of it. What makes it different is where the money goes — paying the card spends it, and nothing else does. You never file a transaction to it; card spending reaches it through the envelope that paid for the spending.',
+    inIgab:
+      'You do not see it in the category grid — it shows as a row in the Credit cards section instead, because a card has a balance and an envelope does not. Its Assigned cell is that envelope\u2019s assignment, and Release moves money back out of it.',
+    related: ['set-aside', 'uncovered', 'card-payment'],
+    guideLinks: [{ tab: 'cards' }],
+  },
+  {
+    id: 'spare',
+    term: 'Spare',
+    aliases: ['over-reserved', 'surplus on a card'],
+    short: 'Set aside above what the card owes.',
+    body: 'A card always paid from funded envelopes never has unfunded debt for an assignment to retire, so money assigned to it accumulates rather than going anywhere. The amount beyond what the card owes is spare: no debt is relying on it, and releasing it costs the card nothing. Releasing more than the spare part is a different decision — that money was covering real debt, so Uncovered rises by whatever you take past it.',
+    inIgab:
+      'Shown beside Set aside in the Credit cards section when there is any. Release hands it back to Ready to Assign, which is where it came from when you assigned it.',
+    related: ['set-aside', 'uncovered', 'to-be-assigned'],
+    guideLinks: [{ tab: 'cards' }],
   },
   {
     id: 'uncovered',
@@ -457,16 +574,16 @@ export const GLOSSARY: GlossaryEntry[] = [
     body: 'Uncovered debt is card balance with no reserve behind it: overspending that rode onto the card, an old carried balance, or a purchase someone still owes you for. It is information, not an alarm — nothing leaves your budget until you choose to assign money to the card, and assigning lowers Uncovered dollar for dollar.',
     inIgab:
       "The last column of the Credit cards section; the collapsed header still shows the total. The number is a door — it opens the card's transactions.",
-    related: ['ready-to-pay', 'carried-balance', 'credit-overspending', 'refused-card-inflow'],
+    related: ['set-aside', 'carried-balance', 'credit-overspending', 'refused-card-inflow'],
   },
   {
     id: 'credit-overspending',
     term: 'Credit overspending',
     short: 'Overspending a category on a credit card — it becomes card debt, not a budget charge.',
-    body: 'When a category ends a month negative and the spending was on a card, the shortfall rides onto the card as uncovered debt instead of coming out of To Be Assigned. The category resets to zero at the month boundary; the debt stays visible on the card until money is assigned to it. Cash overspending is different — real money left, so it settles from To Be Assigned.',
+    body: 'When a category ends a month negative and the spending was on a card, the shortfall rides onto the card as uncovered debt instead of coming out of Ready to Assign. The category resets to zero at the month boundary; the debt stays visible on the card until money is assigned to it. Cash overspending is different — real money left, so it settles from Ready to Assign.',
     inIgab:
       "A red category funded by card swipes turns into the card's Uncovered at month end. Cover Overspending funds it like any other red — the money lands in the card's set-aside and retires that debt rather than staying in the envelope to spend. The hero's \u201cof it on cards\u201d chip opens the breakdown of which envelope rode onto which card.",
-    related: ['uncovered', 'ready-to-pay', 'to-be-assigned'],
+    related: ['uncovered', 'set-aside', 'to-be-assigned'],
   },
   {
     id: 'carried-balance',
@@ -483,20 +600,20 @@ export const GLOSSARY: GlossaryEntry[] = [
     term: 'Card payment',
     short:
       "A transfer from a cash account to a card — the only move that spends the card's reserve.",
-    body: 'Record a payment as a transfer from checking or savings to the card. That drains Ready to pay and lowers the balance together, and To Be Assigned never moves. A plain deposit typed onto the card lowers the balance without touching the reserve — right when someone else paid the card company, wrong for your own payment.',
+    body: 'Record a payment as a transfer from checking or savings to the card. That drains Set aside and lowers the balance together, and Ready to Assign never moves. A plain deposit typed onto the card lowers the balance without touching the reserve — right when someone else paid the card company, wrong for your own payment.',
     inIgab:
       "Enter it as a transfer between the two accounts. A synced payment is paired for you when both accounts are connected and the two sides are unmistakable — same amount, a few days apart, nothing else it could be. When they are not, the Accounts page lists the pair so you can confirm it; until then the payment is not counted against the card's reserve.",
-    related: ['ready-to-pay', 'uncovered', 'cleared', 'refused-card-inflow'],
+    related: ['set-aside', 'uncovered', 'cleared', 'refused-card-inflow'],
   },
   {
     id: 'refused-card-inflow',
     term: 'Refused card inflow',
     aliases: ['card inflow that paid down debt'],
     short: 'Money that arrived on a card and paid down debt instead of returning to an envelope.',
-    body: 'An envelope only gets a card refund back if it put that money on the card in the first place. A refund of something bought before you started budgeting — or of spending that overspent and rode onto the card — reduces what you owe without releasing any reserved cash, so it pays down Uncovered rather than landing in an envelope you could spend from. Without this the same dollars would count twice: once as debt paid down, once as spendable money, with To Be Assigned quietly making up the difference.',
+    body: 'An envelope only gets a card refund back if it put that money on the card in the first place. A refund of something bought before you started budgeting — or of spending that overspent and rode onto the card — reduces what you owe without releasing any reserved cash, so it pays down Uncovered rather than landing in an envelope you could spend from. Without this the same dollars would count twice: once as debt paid down, once as spendable money, with Ready to Assign quietly making up the difference.',
     inIgab:
       'Almost always zero. When it is not, the envelope shows the amount under its Available, so the figure is never lower than you can account for. A large one usually means a card payment was filed to a category instead of being recorded as a transfer.',
-    related: ['uncovered', 'ready-to-pay', 'card-payment'],
+    related: ['uncovered', 'set-aside', 'card-payment'],
   },
 ]
 
@@ -507,10 +624,11 @@ export function glossaryEntry(id: string): GlossaryEntry | undefined {
 }
 
 /** Substring match over term, aliases and the one-liner. */
-export function searchGlossary(query: string): GlossaryEntry[] {
+export function searchGlossary(query: string, topic?: GlossaryTopic): GlossaryEntry[] {
   const q = query.trim().toLowerCase()
-  if (!q) return GLOSSARY
-  return GLOSSARY.filter((e) =>
+  const inTopic = topic ? GLOSSARY.filter((e) => topicsOf(e.id).includes(topic)) : GLOSSARY
+  if (!q) return inTopic
+  return inTopic.filter((e) =>
     [e.term, e.short, ...(e.aliases ?? [])].some((s) => s.toLowerCase().includes(q))
   )
 }

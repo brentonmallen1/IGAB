@@ -28,7 +28,7 @@ export function shapeFor(shapes: readonly MoneyShape[], facts: ShapeFacts): Mone
 export const BUDGET_TERM_LABEL: Record<BudgetTerm, string> = {
   ready_to_assign: 'Ready to Assign',
   envelope: 'The category',
-  card_set_aside: "The card's Ready to pay",
+  card_set_aside: "The card's Set aside",
   card_uncovered: "The card's Uncovered",
 }
 

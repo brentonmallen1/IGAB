@@ -73,8 +73,11 @@ export function BudgetPage() {
     !activeViewId && !activeFilterId && !activeQuickFilter && !categorySearch.trim()
   const isMobile = useIsMobile()
   // Swipe right = earlier month, left = later; a swipe that starts at the
-  // screen edge is the shell's back gesture and never reaches these.
+  // screen edge is the shell's back gesture and never reaches these, and
+  // pageLevel keeps the month still while a sheet or modal is over the page —
+  // an overlay's own drag used to change the month behind it.
   const swipeHandlers = useSwipeNavigation({
+    pageLevel: true,
     onRight: () => setSelectedMonth(addMonths(month, -1)),
     onLeft: () => setSelectedMonth(addMonths(month, 1)),
   })

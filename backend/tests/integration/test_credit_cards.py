@@ -510,12 +510,12 @@ class TestTheIdentity:
 
 
 class TestNothingIsFiledToACardEnvelope:
-    """A card's set-aside envelope takes assignments, never transactions.
+    """A card's envelope takes assignments, never transactions.
 
     `get_budget_summary` overwrites that envelope's balance from card
     arithmetic, so a filed row shows in no envelope, no total, and no red —
     the money simply leaves the budget. The register's category dropdown
-    offered it (a card envelope is not hidden; only its group is), so this
+    offered it (a card's envelope is not hidden; only its group is), so this
     was reachable in the most-used control in the app.
     """
 
@@ -524,7 +524,7 @@ class TestNothingIsFiledToACardEnvelope:
         from igab.services.transaction_service import TransactionCreate
 
         services, budget, checking, _, linked, _ = await _setup(db_session)
-        with pytest.raises(InvariantViolation, match="payment envelope"):
+        with pytest.raises(InvariantViolation, match="card.s envelope"):
             await services.transactions.create(
                 budget.id,
                 TransactionCreate(
@@ -544,7 +544,7 @@ class TestNothingIsFiledToACardEnvelope:
             db_session, budget, checking, "-40.00", date(2026, 7, 9), category=groceries
         )
         await db_session.flush()
-        with pytest.raises(InvariantViolation, match="payment envelope"):
+        with pytest.raises(InvariantViolation, match="card.s envelope"):
             await services.transactions.update(
                 budget.id, txn.id, TransactionUpdate(category_id=linked.id)
             )
@@ -556,7 +556,7 @@ class TestNothingIsFiledToACardEnvelope:
         services, budget, checking, _, linked, groceries = await _setup(db_session)
         txn = await create_transaction(db_session, budget, checking, "-100.00", date(2026, 7, 9))
         await db_session.flush()
-        with pytest.raises(InvariantViolation, match="payment envelope"):
+        with pytest.raises(InvariantViolation, match="card.s envelope"):
             await services.transactions.convert_to_split(
                 budget.id,
                 txn.id,
@@ -610,7 +610,7 @@ class TestNothingIsFiledToACardEnvelope:
                 payee_id=payee.id,
             ),
         )
-        assert txn.category_id is None, "inherited a card envelope past the guard"
+        assert txn.category_id is None, "inherited a card's envelope past the guard"
 
 
 class TestTheRefusedRepayment:
@@ -980,7 +980,7 @@ class TestTheThreeTermsPartitionCardInflows:
         await assert_card_reserve_identity(db_session, budget.id)
 
     async def test_a_credit_filed_to_the_cards_own_envelope_is_an_outside_credit(self, db_session):
-        """The other half of the same gap. A card's set-aside envelope is
+        """The other half of the same gap. A card's envelope is
         maintained by the arithmetic, never by a row filed into it — so a row
         that nonetheless points there (an import, a register that used to offer
         it) releases nothing, and must reach the unbudgeted term rather than no
@@ -1459,7 +1459,7 @@ async def test_the_payment_endpoint_shape_spends_the_reserve(api_client, db_sess
     writes −|amount| on account_id and +|amount| on the partner, so the supply
     account must be the source. The card leg must satisfy
     CARD_PAYMENT_FROM_CASH, the only shape that spends the set-aside; a
-    payment typed any other way lowers the balance while Ready to pay stands
+    payment typed any other way lowers the balance while Set aside stands
     still."""
     from igab.db.models import Transaction
     from igab.repositories.txn_filters import CARD_PAYMENT_FROM_CASH

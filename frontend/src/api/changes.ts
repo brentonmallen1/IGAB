@@ -8,6 +8,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { apiClient } from './client'
+import { invalidateAfterAttachmentChange } from './invalidateAfterAttachmentChange'
 import { invalidateAfterCategoryChange } from './invalidateAfterCategoryChange'
 import { invalidateAfterMoneyMove } from './invalidateAfterMoneyMove'
 import { invalidateAfterReportSettings } from './reports'
@@ -359,7 +360,7 @@ export function invalidateAfterUndo(
   qc.invalidateQueries({ queryKey: [ROOT.budgetMembers] })
   qc.invalidateQueries({ queryKey: [ROOT.importSummary] })
 
-  // Receipts.
-  qc.invalidateQueries({ queryKey: [ROOT.attachments] })
-  qc.invalidateQueries({ queryKey: [ROOT.attachmentCheck] })
+  // Receipts. Undoing a merge moves them back off the survivor, so the same
+  // pair the merge itself refreshes has to run here — one list, not two.
+  void invalidateAfterAttachmentChange(qc)
 }

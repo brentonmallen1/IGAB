@@ -90,7 +90,7 @@ class TestFrozenExportsStillImport:
         # openings equal what the old walk derived, so nothing moves. Three
         # row kinds leave the comparison: pre-B months; system (Income) rows,
         # whose service-level figure was a lifetime accumulation the display
-        # always blanked; and card set-aside envelopes, whose reserve now
+        # always blanked; and card envelopes, whose reserve now
         # opens at the file's own CCP figure rather than a re-derivation —
         # the anchored parity suite asserts those instead.
         anchored_at = resp.json()["import_result"].get("anchored_at")

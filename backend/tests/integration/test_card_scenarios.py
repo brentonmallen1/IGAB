@@ -97,6 +97,21 @@ async def test_the_served_row_reads_what_the_scenario_says(db_session, scenario:
 
 
 @pytest.mark.parametrize("scenario", EVERY, ids=IDS)
+async def test_the_served_row_is_in_the_state_the_scenario_says(db_session, scenario: CardScenario):
+    """The state the API actually serves, not the one the pure walk reaches.
+
+    Both are checked, because they are reached by different routes and the
+    route is where this has gone wrong before: the served one builds the
+    ledger set out of the summary's card-corrected Available, and a figure
+    read one repayment too high would call a squared-up tab an envelope
+    holding card money.
+    """
+    services, budget, applied = await _budget_with(db_session, scenario)
+    card = await _card_row(services, budget, applied[0].card_id)
+    assert card.set_aside_state is scenario.set_aside_state, scenario.story
+
+
+@pytest.mark.parametrize("scenario", EVERY, ids=IDS)
 async def test_the_scenario_leaves_the_budget_sound(db_session, scenario: CardScenario):
     """Every invariant the suite has, over each shape — including the reserve
     identity, which had never seen a refund or a residual in generated data."""

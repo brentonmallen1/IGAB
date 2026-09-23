@@ -225,10 +225,10 @@ describe('DeleteCategoryModal', () => {
   it('refuses outright when the category is load-bearing, and says why', () => {
     renderModal({
       blocked_by: [
-        "'Visa Payment' is the payment category for Visa. Delete or unlink that account first.",
+        "'Visa Payment' is the card's envelope for Visa. Delete or unlink that account first.",
       ],
     })
-    expect(screen.getByRole('alert')).toHaveTextContent(/payment category for Visa/)
+    expect(screen.getByRole('alert')).toHaveTextContent(/card's envelope for Visa/)
     expect(screen.getByRole('button', { name: 'Delete' })).toBeDisabled()
   })
 

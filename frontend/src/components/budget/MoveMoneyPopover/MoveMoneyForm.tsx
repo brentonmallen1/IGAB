@@ -8,6 +8,7 @@ import { useFormatters } from '../../../hooks/useFormatters'
 import { AmountInput } from '../../common/AmountInput/AmountInput'
 import { expressionToCents } from '../../../utils/amountExpression'
 import type { Category } from '../../../types'
+import type { ReactNode } from 'react'
 import './MoveMoneyPopover.css'
 
 const TBA = '__tba__'
@@ -18,6 +19,16 @@ interface Props {
   category: Category
   /** Current available for this category (negative = overspent) */
   available: number
+  /** What the amount box opens at, where the whole balance is the wrong
+   *  offer. A card's envelope is the case: it is holding money for a bill, so
+   *  the useful default is the part of it no debt needs, not all of it.
+   *  Presentation only — the move itself is unchanged, which is why this is a
+   *  prop here rather than a second form somewhere else. */
+  prefill?: number
+  /** Stated under the amount box: what taking this money out will do. Shown
+   *  where the consequence is not obvious from the row the user is looking
+   *  at. */
+  footnote?: ReactNode
   /** Called after a successful move (and only then) */
   onClose: () => void
 }
@@ -27,7 +38,15 @@ interface Props {
  * (or Ready to Assign), or move surplus out of this one. Rendered inside the
  * desktop popover and the mobile bottom sheet.
  */
-export function MoveMoneyForm({ budgetId, month, category, available, onClose }: Props) {
+export function MoveMoneyForm({
+  budgetId,
+  month,
+  category,
+  available,
+  prefill,
+  footnote,
+  onClose,
+}: Props) {
   const { formatMoney } = useFormatters()
   const isCover = available < 0
   const { data: categories = [] } = useCategories(budgetId)
@@ -36,7 +55,7 @@ export function MoveMoneyForm({ budgetId, month, category, available, onClose }:
   const { data: history = [] } = useMoveHistory(budgetId, month, true)
 
   const [otherId, setOtherId] = useState<string>(TBA)
-  const [amount, setAmount] = useState(() => Math.abs(available).toFixed(2))
+  const [amount, setAmount] = useState(() => (prefill ?? Math.abs(available)).toFixed(2))
   const [error, setError] = useState<string | null>(null)
 
   const otherCategories = categories.filter((c) => c.is_assignable && c.id !== category.id)
@@ -108,6 +127,7 @@ export function MoveMoneyForm({ budgetId, month, category, available, onClose }:
             onFocus={(e) => e.target.select()}
           />
         </label>
+        {footnote && <div className="move-money-popover__footnote">{footnote}</div>}
         <button type="submit" className="move-money-popover__submit" disabled={moveMoney.isPending}>
           {moveMoney.isPending ? 'Moving…' : isCover ? 'Cover Overspending' : 'Move Money'}
         </button>

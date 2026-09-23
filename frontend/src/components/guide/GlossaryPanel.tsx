@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Search } from 'lucide-react'
-import { GLOSSARY, glossaryEntry, searchGlossary } from '../../content/glossary'
+import {
+  GLOSSARY,
+  GLOSSARY_TOPICS,
+  glossaryEntry,
+  searchGlossary,
+  type GlossaryTopic,
+} from '../../content/glossary'
 import { useGuideStore } from '../../stores/guideStore'
 import { GuideTabLink } from './GuideTabLink'
 
@@ -13,6 +19,7 @@ import { GuideTabLink } from './GuideTabLink'
  */
 export function GlossaryPanel() {
   const [query, setQuery] = useState('')
+  const [topic, setTopic] = useState<GlossaryTopic | null>(null)
   const [open, setOpen] = useState<string | null>(null)
 
   // Arriving at one definition — from the command palette, or a chip
@@ -36,7 +43,7 @@ export function GlossaryPanel() {
     if (arrivedAt) setOpenGlossaryTerm(null)
   }, [arrivedAt, setOpenGlossaryTerm])
 
-  const results = useMemo(() => searchGlossary(query), [query])
+  const results = useMemo(() => searchGlossary(query, topic ?? undefined), [query, topic])
 
   return (
     <div className="guide-glossary">
@@ -60,9 +67,25 @@ export function GlossaryPanel() {
         />
       </div>
 
+      <div className="guide-glossary__topics" role="group" aria-label="Filter by topic">
+        {GLOSSARY_TOPICS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            className={`guide-glossary__topic ${topic === t.id ? 'is-on' : ''}`}
+            aria-pressed={topic === t.id}
+            onClick={() => setTopic(topic === t.id ? null : t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
       {results.length === 0 ? (
         <p className="guide-empty">
-          No term matches “{query}”. {GLOSSARY.length} terms are defined — try a shorter word.
+          No term matches “{query}”{topic ? ' in that topic' : ''}. {GLOSSARY.length} terms are
+          defined — try a shorter word
+          {topic ? ', or clear the topic' : ''}.
         </p>
       ) : (
         <ul className="guide-glossary__list surface">
