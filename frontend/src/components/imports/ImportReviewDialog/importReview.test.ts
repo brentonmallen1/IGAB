@@ -25,7 +25,6 @@ function category(over: Partial<ReviewCategory> = {}): ReviewCategory {
     id: 'c1',
     name: 'Amazon Prime',
     groupName: 'Long Term Expenses',
-    archived: false,
     tagIds: [],
     ...over,
   }

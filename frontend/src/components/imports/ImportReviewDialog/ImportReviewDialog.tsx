@@ -26,7 +26,6 @@ import {
 import { FREQUENCIES } from '../../../utils/schedule'
 import { useNavigate } from 'react-router-dom'
 import { apiErrorMessage } from '../../../api/client'
-import { renderableCategories, renderableGroups } from '../../budget/budgetGroups'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { parseApiDecimal } from '../../../utils/money'
 import {
@@ -85,8 +84,8 @@ export function ImportReviewDialog({
   const [draft, setDraft] = useState<Draft>({})
   const [filter, setFilter] = useState<RowFilter>(() => initialFilter(summary))
 
-  const { data: categories } = useCategories(budgetId, true)
-  const { data: groups } = useCategoryGroups(budgetId, true)
+  const { data: categories } = useCategories(budgetId)
+  const { data: groups } = useCategoryGroups(budgetId)
   const { data: tags } = useTags(budgetId)
   const { data: suggestions } = useTagSuggestions(budgetId)
   const { data: hygiene } = useAccountHygiene(budgetId)
@@ -114,20 +113,19 @@ export function ImportReviewDialog({
 
   const reviewable: ReviewCategory[] = useMemo(() => {
     if (!categories || !groups) return []
-    // The same rule the grid uses for which groups exist, and the same one the
-    // server scopes suggestions by: income holds no envelope money, so
-    // classifying its spending is meaningless.
-    const names = new Map(renderableGroups(groups).map((g) => [g.id, g.name]))
-    // `renderableGroups` drops system groups, not archived ones, so the card
-    // envelopes' group survives it — and a card's envelope cannot carry a
-    // classification tag, since nothing is ever filed to it.
-    return renderableCategories(categories)
-      .filter((c) => names.has(c.category_group_id))
+    const names = new Map(groups.map((g) => [g.id, g.name]))
+    // The live envelopes: `is_assignable` is the server's answer, the same
+    // one it scopes tag suggestions by. It leaves out income (holds no
+    // envelope money), card envelopes (nothing is ever filed to them), and
+    // anything archived or in an archived group — YNAB's Hidden Categories
+    // arrive as an archived group, and a review that offered them was asking
+    // about categories the user had already put away.
+    return categories
+      .filter((c) => c.is_assignable && names.has(c.category_group_id))
       .map((c) => ({
         id: c.id,
         name: c.name,
         groupName: names.get(c.category_group_id) as string,
-        archived: c.is_archived,
         tagIds: (c.tags ?? []).map((t) => t.id),
       }))
   }, [categories, groups])
@@ -864,14 +862,6 @@ function TagsStep({
             <div className="import-review__cat">
               <span className="import-review__cat-n">
                 {row.category.name}
-                {row.category.archived && (
-                  <span
-                    className="import-review__hidden"
-                    title="Archived — off the budget page, but its spending still counts in reports"
-                  >
-                    archived
-                  </span>
-                )}
               </span>
               <span className="import-review__cat-g">{row.category.groupName}</span>
               {row.importTagged && row.importMatchedOn && (

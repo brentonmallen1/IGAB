@@ -23,22 +23,57 @@ const categories = [
     category_group_id: 'g1',
     name: 'Amazon Prime',
     is_archived: false,
+    is_assignable: true,
     tags: [{ id: 't-lte', name: 'Long-term expense', color_slot: 'teal' }],
   },
-  { id: 'rent', category_group_id: 'g1', name: 'Rent', is_archived: false, tags: [] },
+  {
+    id: 'rent',
+    category_group_id: 'g1',
+    name: 'Rent',
+    is_archived: false,
+    is_assignable: true,
+    tags: [],
+  },
   {
     id: 'groc',
     category_group_id: 'g1',
     name: 'Groceries',
     is_archived: false,
+    is_assignable: true,
     tags: [{ id: 't-travel', name: 'Travel', color_slot: 'blue' }],
   },
-  { id: 'odds', category_group_id: 'g1', name: 'Odds and Ends', is_archived: false, tags: [] },
-  { id: 'income', category_group_id: 'sys', name: 'Inflow', is_archived: false, tags: [] },
+  {
+    id: 'odds',
+    category_group_id: 'g1',
+    name: 'Odds and Ends',
+    is_archived: false,
+    is_assignable: true,
+    tags: [],
+  },
+  // In YNAB's Hidden Categories: imported into an archived group, so the
+  // server serves it unassignable though its own flag says live.
+  {
+    id: 'hidden',
+    category_group_id: 'hid',
+    name: 'Old Gym Membership',
+    is_archived: false,
+    is_assignable: false,
+    tags: [],
+  },
+  {
+    id: 'income',
+    category_group_id: 'sys',
+    name: 'Inflow',
+    is_archived: false,
+    is_assignable: false,
+    tags: [],
+  },
 ]
 const groups = [
   { id: 'g1', name: 'Everyday', is_system: false },
   { id: 'sys', name: 'Income', is_system: true },
+  // Listed so the hidden-category test pins the served flag, not the query.
+  { id: 'hid', name: 'Hidden Categories', is_system: false },
 ]
 const tags = [
   { id: 't-lte', name: 'Long-term expense', system_key: 'long_term_expense', color_slot: 'teal' },
@@ -214,6 +249,17 @@ describe('the tag step', () => {
     await user.click(screen.getByRole('button', { name: /^All/ }))
     // Income holds no envelope money; classifying its spending is meaningless.
     expect(screen.queryByText('Inflow')).not.toBeInTheDocument()
+  })
+
+  it('never offers a hidden category, even under All', async () => {
+    const user = userEvent.setup()
+    open()
+    await goToTags(user)
+    await user.click(screen.getByRole('button', { name: /^All/ }))
+    // The user put it away in YNAB; asking how to classify it is noise.
+    expect(screen.queryByText('Old Gym Membership')).not.toBeInTheDocument()
+    expect(screen.queryByText('Hidden Categories')).not.toBeInTheDocument()
+    expect(screen.getByText('Odds and Ends')).toBeInTheDocument()
   })
 
   it('shows a suggestion unchecked and writes nothing on its own', async () => {

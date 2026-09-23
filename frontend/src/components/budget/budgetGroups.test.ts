@@ -116,6 +116,9 @@ describe("no surface offers a card's envelope", () => {
     ['../transactions/SplitTransactionEditor/SplitTransactionEditor.tsx', /c\.is_categorizable/],
     ['../guide/wishlist/ProjectForm.tsx', /c\.is_assignable/],
     ['../guide/wishlist/WishForm.tsx', /c\.is_assignable/],
+    // Its rows are the live envelopes, hidden ones out — `is_assignable`
+    // says that and leaves the cards' envelopes out with it.
+    ['../imports/ImportReviewDialog/ImportReviewDialog.tsx', /c\.is_assignable/],
   ]
   for (const [file, verdict] of readsServedVerdict) {
     it(`${file} filters on the server's verdict`, () => {
@@ -127,7 +130,6 @@ describe("no surface offers a card's envelope", () => {
     'BudgetFilterModal/BudgetFilterModal.tsx',
     'BudgetViewModal/BudgetViewModal.tsx',
     '../reports/ReportFilters/categoryOptions.ts',
-    '../imports/ImportReviewDialog/ImportReviewDialog.tsx',
   ]
   for (const file of readsTheHelper) {
     it(`${file} filters through renderableCategories`, () => {
