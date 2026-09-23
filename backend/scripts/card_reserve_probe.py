@@ -103,7 +103,8 @@ def allocate_capped(amount: Decimal, capacity: dict[str, Decimal]) -> dict[str, 
     """cards.allocate_capped — greedy in sorted-key order, each bucket capped."""
     out: dict[str, Decimal] = {}
     remaining = amount
-    for bucket in sorted(capacity, key=str):
+    # Largest capacity first, ties on the key — mirrors domain/cards.py.
+    for bucket in sorted(capacity, key=lambda k: (-capacity[k], str(k))):
         take = min(remaining, capacity[bucket])
         if take > ZERO:
             out[bucket] = take

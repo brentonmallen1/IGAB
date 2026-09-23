@@ -250,13 +250,21 @@ def allocate_capped[T](
     card's assignment across the **categories** riding on that card. Writing
     the second one out separately is how a third copy starts.
 
-    Greedy in sorted-key order: deterministic, exact (no proportional
-    rounding), and irrelevant in the overwhelmingly common one-bucket case.
-    Keys sort as strings so UUIDs and test stubs both work.
+    Greedy, largest capacity first — the card that was charged most carries
+    the shortfall first; the biggest ride on a card is retired first. Exact
+    (no proportional rounding), deterministic, and a rule a person can be
+    told. It was sorted-key order, which for real data meant UUID order: which
+    card wore Uncovered for a shared shortfall — and therefore which remedy
+    its row offered — depended on whose id happened to sort first, and two
+    households with identical spending saw different cards flagged.
+    `SETTLED_ELSEWHERE` exists to explain the consequence of that split;
+    with this order the explanation at least names a reason. Ties break on
+    the key as a string so UUIDs and test stubs both stay deterministic.
+    Irrelevant in the overwhelmingly common one-bucket case.
     """
     out: dict[T, Decimal] = {}
     remaining = amount
-    for bucket in sorted(capacity, key=str):
+    for bucket in sorted(capacity, key=lambda k: (-capacity[k], str(k))):
         take = min(remaining, capacity[bucket])
         if take > ZERO:
             out[bucket] = take
@@ -859,8 +867,8 @@ class SetAsideState(StrEnum):
     REFUND_OUTRAN_ENVELOPE = "refund_outran_envelope"
     #: A month ended short, the shortfall rode onto this card — and onto at
     #: least one other. Funding that envelope cannot be aimed at this card:
-    #: the shortfall is allocated across cards in a fixed order, so partial
-    #: funding shrinks another card's share first and this row does not move
+    #: the shortfall is allocated across cards largest charge first, so partial
+    #: funding shrinks the most-charged card's share and this row does not move
     #: (F8, measured: funding the envelope left -60 at -60; assigning to the
     #: card landed on 0 exactly). Say what happened; promise nothing.
     SETTLED_ELSEWHERE = "settled_elsewhere"
@@ -920,9 +928,9 @@ def ride_is_exclusive[C, K](
     This is the question `RIDE_UNFUNDED`'s promise stands on. "Fund that
     month's envelope and the ride disappears" is true when the envelope's
     whole shortfall is here, and false the moment it is shared: `allocate_capped`
-    hands the shortfall out across that month's cards in a fixed order, so
-    money put into the envelope shrinks the FIRST card's ride, and a row being
-    read about the second one does not move at all.
+    hands the shortfall out across that month's cards largest charge first, so
+    money put into the envelope shrinks the most-charged card's ride, and a row
+    being read about the other one does not move at all.
 
     Measured on the real walk before it was believed — one shared tab charging
     $300 on card A and $60 on card B, settled the next month on A. Doing

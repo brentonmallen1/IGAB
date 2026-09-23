@@ -85,12 +85,20 @@ class TestAllocateCapped:
     def test_one_card_takes_it_all(self):
         assert allocate_capped(D("50"), {VISA: D("150")}) == {VISA: D("50")}
 
-    def test_greedy_in_sorted_order_capped_at_each_outflow(self):
-        # 60 to place; amex sorts first and can hold 40, visa takes the rest.
-        assert allocate_capped(D("60"), {VISA: D("100"), AMEX: D("40")}) == {
-            AMEX: D("40"),
-            VISA: D("20"),
+    def test_greedy_largest_first_capped_at_each_outflow(self):
+        # 60 to place; visa was charged most (100) and takes it all. It used to
+        # go to amex first because "amex" sorts before "visa" — for real data,
+        # UUID order — so which card wore the shortfall was arbitrary.
+        assert allocate_capped(D("60"), {VISA: D("100"), AMEX: D("40")}) == {VISA: D("60")}
+
+    def test_spills_to_the_next_largest_when_the_largest_is_full(self):
+        assert allocate_capped(D("120"), {VISA: D("100"), AMEX: D("40")}) == {
+            VISA: D("100"),
+            AMEX: D("20"),
         }
+
+    def test_ties_break_on_the_key_so_the_order_is_still_deterministic(self):
+        assert allocate_capped(D("30"), {VISA: D("50"), AMEX: D("50")}) == {AMEX: D("30")}
 
     def test_zero_allocates_nothing(self):
         assert allocate_capped(D("0"), {VISA: D("100")}) == {}
@@ -161,13 +169,15 @@ class TestCardFunding:
 
     def test_one_category_overspent_across_two_cards(self):
         # Overspent 60, spent 40 on amex and 100 on visa: the ride is placed
-        # greedily (amex holds 40, visa the remaining 20) and each card's
-        # envelope receives only what was actually covered on it.
+        # on the card charged most (visa holds all 60), and each card's
+        # envelope receives only what was actually covered on it — amex's
+        # 40 was funded in full, visa's remaining 40 was.
         cf = funding(
             {JAN: D("80")}, {JAN: D("-140")}, {VISA: {JAN: D("100")}, AMEX: {JAN: D("40")}}
         )
         assert cf.floored_by_category == {"groceries": {JAN: D("60")}}
-        assert cf.funded_by_card == {VISA: {JAN: D("80")}}
+        assert cf.floored_by_card == {VISA: {JAN: D("60")}}
+        assert cf.funded_by_card == {VISA: {JAN: D("40")}, AMEX: {JAN: D("40")}}
 
     def test_a_category_with_no_card_spending_contributes_nothing(self):
         cf = card_funding({"rent": {JAN: D("1200")}}, {"rent": {JAN: D("-1200")}}, {}, {})
@@ -905,16 +915,18 @@ class TestAnAssignmentRetiresRidingDebt:
         assert cf.floored_by_category == {}
         assert card_reserve(cf, VISA, {}).set_aside(FEB) == D("60")
 
-    def test_a_partial_cover_is_split_across_categories_in_sorted_order(self):
+    def test_a_partial_cover_retires_the_largest_ride_first(self):
         """`allocate_capped`, the same allocator that places a ride across
-        cards — greedy in sorted-key order, exact, no proportional rounding."""
+        cards — largest first, exact, no proportional rounding. The biggest
+        ride is the one worth retiring first, and it is a rule the row can
+        state; sorted-key order retired "apples" first because of a letter."""
         cf = card_funding(
             {"card-visa": {FEB: D("70")}},
             {"apples": {JAN: D("-50")}, "bananas": {JAN: D("-60")}},
             {"apples": {VISA: {JAN: D("50")}}, "bananas": {VISA: {JAN: D("60")}}},
             {VISA: "card-visa"},
         )
-        assert cf.covered_by_category == {"apples": {FEB: D("50")}, "bananas": {FEB: D("20")}}
+        assert cf.covered_by_category == {"bananas": {FEB: D("60")}, "apples": {FEB: D("10")}}
 
     def test_an_assignment_cannot_reach_a_ride_from_a_later_month(self):
         """Month-major and forward-only: at month m, `ridden` holds only rides
