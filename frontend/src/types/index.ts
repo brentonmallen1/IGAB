@@ -378,6 +378,9 @@ export interface CardStatus {
    *  somebody settling up. Quote this for a settle-up, never lifetime
    *  `residual`, which is every envelope's refunds for the card's whole life. */
   residual_from_ledgers: number
+  /** This card's share of `paid_ahead_on_cards`: paid past its reserve with
+   *  nothing to mirror it. Ready to Assign already reflects it. */
+  paid_ahead_unmirrored: number
   /** The rest of `card_position` (domain/cards.py), beside `uncovered`.
    *
    *  **A zero `reserve_discrepancy` does not mean this card looks sensible.**
@@ -471,6 +474,10 @@ export interface BudgetMonth {
    *  needs no action at all. See `domain/cards.py`. */
   total_overspent_cash: number
   total_overspent_credit: number
+  /** Ready to Assign was reduced by this: money paid toward cards past what
+   *  their envelopes held, with nothing on the page to mirror it. Served
+   *  beside `to_be_assigned` so the hero can say where the money went. */
+  paid_ahead_on_cards: number
   /** How many categories carry a cash shortfall — what Cover Overspent lists.
    *  At most `overspent_count`. */
   overspent_count_cash: number

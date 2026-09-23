@@ -18,6 +18,7 @@ from igab.domain.cards import (
     ride_is_exclusive,
     riding_series,
     set_aside_state,
+    unmirrored_shortfall,
 )
 from igab.domain.carryover import (
     available_at,
@@ -203,6 +204,13 @@ class CardStatus:
     #: years of ordinary refunds read "$4,000 came back — somebody settled
     #: up" about a $150 settle-up.
     residual_from_ledgers: Decimal = Decimal("0")
+    #: The part of a negative Set aside that a PAYMENT produced — cash that
+    #: left the household with nothing on the page to mirror it. Ready to
+    #: Assign is reduced by the sum of these (`paid_ahead_on_cards`), because
+    #: a card envelope's signed Set aside would otherwise raise it: the
+    #: household paid $100 down and the page read as if it still had the $100.
+    #: `domain/cards.py` `unmirrored_shortfall` — a lower bound, never more.
+    paid_ahead_unmirrored: Decimal = Decimal("0")
     #: The rest of `card_position`, beside `uncovered` above. A zero
     #: `reserve_discrepancy` means the identity's BOUNDS hold, not that the
     #: reserve is anywhere near the balance — the bounds are allowances, and
@@ -356,6 +364,10 @@ class BudgetSummary:
     # from to_be_assigned so the same dollars can't be assigned twice.
     assigned_in_future: Decimal
     category_balances: list[CategoryBalance]
+    #: Ready to Assign was reduced by this: the sum over cards of what was
+    #: paid past the reserve with nothing to mirror it. Served so the hero can
+    #: say where the money went in one line. See `CardStatus.paid_ahead_unmirrored`.
+    paid_ahead_on_cards: Decimal = Decimal("0")
     #: The budget's cards, each with balance / set aside / uncovered —
     #: computed here because their card envelopes are part of the same
     #: identity Ready to Assign is. Empty when the budget has no cards.
@@ -1079,6 +1091,7 @@ class BudgetService:
         zero = Decimal("0")
         cards: list[CardStatus] = []
         uncovered_current = zero
+        paid_ahead_on_cards = zero
         walk = await self.card_walk(budget_id, month_start, categories=categories)
         card_accounts, linked_by_account = walk.card_accounts, walk.linked_by_account
         funding, payments, unclaimed = walk.funding, walk.payments, walk.unclaimed
@@ -1169,6 +1182,12 @@ class BudgetService:
                 # net lifetime assignment where it has gone negative.
                 assigned_lifetime = opening_total + sum_through(card_assignments, month_start)
                 released_out = max(zero, -assigned_lifetime)
+                paid_ahead = unmirrored_shortfall(
+                    position,
+                    residual=sum_through(reserve.residual, month_start),
+                    released_out=released_out,
+                )
+                paid_ahead_on_cards += paid_ahead
                 charged, received, pending = month_flows.get(account.id, (zero, zero, zero))
                 if account.is_closed and balance == zero and set_aside == zero:
                     # Settled and closed: nothing owed, nothing reserved,
@@ -1236,6 +1255,7 @@ class BudgetService:
                             funding.covered_by_card.get(account.id, {}), month_start
                         ),
                         residual_from_ledgers=from_ledgers,
+                        paid_ahead_unmirrored=paid_ahead,
                         charged_this_month=-charged,
                         inflows_this_month=received,
                         paid_this_month=reserve.payments.get(month_start, zero),
@@ -1370,12 +1390,23 @@ class BudgetService:
             total_activity += bal.activity
 
         assigned_in_future = await self.assignment_repo.sum_after_month(budget_id, month_start)
+        # `paid_ahead_on_cards`: a card envelope's Set aside enters the
+        # envelope total SIGNED, so paying a card past its reserve LOWERED the
+        # total and RAISED this figure by the payment — the household had $100
+        # less and the page said it had the same. Subtracting the unmirrored
+        # part corrects that and only that: a refund's negative is mirrored by
+        # the envelope it landed in and is left alone (`unmirrored_shortfall`).
         to_be_assigned = (
-            total_account_balance - total_category_balance - assigned_in_future - uncovered_current
+            total_account_balance
+            - total_category_balance
+            - assigned_in_future
+            - uncovered_current
+            - paid_ahead_on_cards
         )
 
         return BudgetSummary(
             to_be_assigned=to_be_assigned,
+            paid_ahead_on_cards=paid_ahead_on_cards,
             total_assigned=total_assigned,
             total_activity=total_activity,
             total_overspent=total_overspent,

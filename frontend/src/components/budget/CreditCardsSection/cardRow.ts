@@ -142,8 +142,13 @@ export function stateSentence(card: CardStatus, money: Money): StateSentence | n
           `You have paid ${money(card.short_reserved)} more toward this card than any ` +
           `envelope set aside — it went straight to the balance.`,
         action:
-          `Assign ${money(card.short_reserved)} to the card to settle up. Ready to Assign ` +
-          `falls by that much, because the money has already left your account.`,
+          // Ready to Assign is corrected server-side by the unmirrored part
+          // (`paid_ahead_on_cards`), so assigning here squares the envelope and
+          // changes Ready to Assign by nothing. It used to say the opposite —
+          // that assigning would make Ready to Assign fall — because until then
+          // the page had been overstating it by exactly this figure.
+          `Assign ${money(card.short_reserved)} to the card to square its envelope. Ready to ` +
+          `Assign already reflects this — the money left your account when you paid.`,
       }
 
     case 'moved_out':
@@ -174,7 +179,8 @@ export function stateSentence(card: CardStatus, money: Money): StateSentence | n
           `More than one thing is going on: ${joinList(parts)}. None of them accounts for the ` +
           `whole ${money(card.short_reserved)}, and this row will not guess the split.`,
         action:
-          'The breakdown has each figure. Assigning to the card covers whatever remains yours.',
+          'The breakdown has each figure. Assigning to the card squares whatever is yours; ' +
+          'Ready to Assign already reflects what you paid.',
       }
     }
   }

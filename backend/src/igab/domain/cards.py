@@ -1061,6 +1061,47 @@ def set_aside_state(
     return SetAsideState.FUNDED
 
 
+def unmirrored_shortfall(
+    position: CardPosition, *, residual: Decimal, released_out: Decimal
+) -> Decimal:
+    """The part of a negative Set aside that cash actually left for.
+
+    A card's envelope goes into the budget's envelope total SIGNED, so a Set
+    aside below zero lowers that total and RAISES Ready to Assign. That is
+    right exactly when the negative is the mirror of something else on the
+    page, and there are three such mirrors: the CARD ITSELF holding a credit
+    (you overpaid it; the money is on the card and is yours — Ready to Assign
+    is right to count it); a refund landing as residual, which puts the same
+    amount into a spending envelope so the two cancel; and money released out
+    of the envelope, which is already sitting in Ready to Assign. It is wrong
+    for a PAYMENT past the reserve on a card that still owes — cash left the
+    household and nothing anywhere mirrors it, so Ready to Assign read as if
+    the payment had never happened, until the person assigned to the card.
+
+    This is that payment part, and only that part. The reserve identity gives
+    bounds (T2 is `<=`), not a decomposition, so this cannot be exact: it
+    subtracts the whole of every mirrored cause and takes what remains. In the
+    pure paid-ahead case that is the whole shortfall; where a mirror is also
+    present it is a LOWER bound on the payment part — it may under-correct
+    Ready to Assign, and can never take away money that is actually there,
+    on the card or in an envelope. That asymmetry is chosen: the failure this
+    exists to end is Ready to Assign reading high, and the one it must never
+    introduce is Ready to Assign reading low about money that exists.
+
+    The credit term was missing in the first draft and a test caught it:
+    linking a $1,000 payment onto a card with no charges put the card $1,000
+    in credit and Ready to Assign $1,000 too low — the card was holding the
+    money, and this said it had left.
+    """
+    return max(
+        ZERO,
+        position.short_reserved
+        - position.card_credit
+        - max(ZERO, residual)
+        - max(ZERO, released_out),
+    )
+
+
 def _allowance(*terms: Decimal) -> Decimal:
     """Capacity to explain a gap, from terms that are each allowed to be zero
     but never negative.

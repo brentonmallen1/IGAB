@@ -753,6 +753,7 @@ async def get_budget_month(
         total_overspent=summary.total_overspent,
         total_overspent_cash=summary.total_overspent_cash,
         total_overspent_credit=summary.total_overspent_credit,
+        paid_ahead_on_cards=summary.paid_ahead_on_cards,
         overspent_count_cash=summary.overspent_count_cash,
         overspent_count=summary.overspent_count,
         assigned_in_future=summary.assigned_in_future,

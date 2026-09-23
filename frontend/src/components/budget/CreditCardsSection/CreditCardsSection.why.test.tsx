@@ -52,6 +52,7 @@ function card(over: Partial<CardStatus> = {}): CardStatus {
     imported_riding: 0,
     covered: 0,
     residual_from_ledgers: 0,
+    paid_ahead_unmirrored: 0,
     opening: 0,
     over_reserved: 0,
     short_reserved: 0,
@@ -134,7 +135,12 @@ describe('the explanation door', () => {
     show()
     await userEvent.click(door() as HTMLElement)
 
-    expect(screen.getByText(/Assign \$300\.00 to the card to settle up/)).toBeInTheDocument()
+    // "Square its envelope", not "settle up": Ready to Assign is corrected
+    // server-side, so the action no longer promises to move it.
+    expect(
+      screen.getByText(/Assign \$300\.00 to the card to square its envelope/)
+    ).toBeInTheDocument()
+    expect(screen.getByText(/Ready to Assign already reflects this/)).toBeInTheDocument()
   })
 
   it('never hides the sentence in a title attribute', async () => {
