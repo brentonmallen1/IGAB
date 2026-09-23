@@ -23,7 +23,7 @@ from igab.domain.drains import drains_total, shape_drains
 from igab.domain.exceptions import InvariantViolation, NotFoundError
 from igab.domain.money import quantize_cents
 from igab.domain.ordering import renumber
-from igab.guide.detection import budget_service_from
+from igab.guide.detection import budget_service_from, category_service_from
 from igab.guide.repo import GuideRepository, set_state_recorded
 from igab.guide.service import DEFAULT_PREFS, PREFS_KEY
 from igab.guide.wishlist import (
@@ -38,6 +38,7 @@ from igab.guide.wishlist import (
     WishInput,
     added_on,
     cooling_until_for,
+    could_be_unsettled,
     drain_impact,
     effective_category,
     project_summary,
@@ -45,6 +46,7 @@ from igab.guide.wishlist import (
     review_due,
     still_wanted,
     trailing_average,
+    unsettled,
 )
 from igab.repositories.budget_move_repo import BudgetMoveRepository
 from igab.repositories.category_repo import (
@@ -138,9 +140,11 @@ class WishlistService:
         settings = await self.settings(budget_id)
         projects = await self._projects(budget_id)
         items = await self._items(budget_id)
-        names = {
-            c.id: c.name for c in await self.categories.get_all(budget_id, include_archived=True)
-        }
+        all_categories = await self.categories.get_all(budget_id, include_archived=True)
+        names = {c.id: c.name for c in all_categories}
+        # An archived envelope is settled by definition (archiving refuses
+        # while a balance remains), so it never raises the question below.
+        live = {c.id for c in all_categories if not c.is_archived}
         project_inputs = {p.id: ProjectInput(id=p.id, category_id=p.category_id) for p in projects}
         wish_inputs = [self._input(i) for i in items]
 
@@ -160,8 +164,11 @@ class WishlistService:
             )
         }
 
+        settlements = await self._settlements(items, targets, names, live, today)
+
         out_items = [
-            self._item_out(i, project_inputs, names, reach, targets, settings, today) for i in items
+            self._item_out(i, project_inputs, names, reach, targets, settings, settlements, today)
+            for i in items
         ]
         open_items = [o for o in out_items if o["status"] == "open"]
         history = [o for o in out_items if o["status"] != "open"]
@@ -192,6 +199,49 @@ class WishlistService:
             "max_cooling_days": MAX_COOLING_DAYS,
             "drains": drains,
         }
+
+    async def _settlements(
+        self,
+        items: list[WishlistItem],
+        targets: dict,
+        names: dict[uuid.UUID, str],
+        live: set[uuid.UUID],
+        today: date,
+    ) -> dict[uuid.UUID, dict[str, Any]]:
+        """What each ended wish left standing, keyed by wish id.
+
+        Only ended wishes that own a live envelope are measured, so the
+        balance queries are one per piece of unfinished business rather than
+        one per wish — and settling removes the row from this set, which is
+        what makes the prompt clear itself.
+        """
+        month = month_start(today)
+        out: dict[uuid.UUID, dict[str, Any]] = {}
+        for item in items:
+            envelope = item.category_id
+            if envelope is None or not could_be_unsettled(
+                status=item.status,
+                owns_envelope=item.owns_envelope,
+                envelope_live=envelope in live,
+            ):
+                continue
+            balance = await self.budget.get_category_balance(envelope, month)
+            has_goal = envelope in targets
+            if not unsettled(
+                status=item.status,
+                owns_envelope=True,
+                envelope_live=True,
+                available=balance.available,
+                has_goal=has_goal,
+            ):
+                continue
+            out[item.id] = {
+                "category_id": envelope,
+                "name": names.get(envelope, ""),
+                "available": balance.available,
+                "has_goal": has_goal,
+            }
+        return out
 
     async def _drains(
         self,
@@ -254,6 +304,7 @@ class WishlistService:
         reach: dict[uuid.UUID, Reach],
         targets: dict,
         settings: dict[str, int],
+        settlements: dict[uuid.UUID, dict[str, Any]],
         today: date,
     ) -> dict[str, Any]:
         wish = self._input(item)
@@ -294,8 +345,12 @@ class WishlistService:
                 today,
             ),
             "done_at": item.done_at,
+            "dropped_at": item.dropped_at,
             "created_at": item.created_at,
             "reach": r.__dict__ if r else None,
+            #: Unfinished business: the envelope this ended wish still owns.
+            #: None for an open wish and for one that left nothing behind.
+            "settlement": settlements.get(item.id),
         }
 
     async def _funding(self, category_id: uuid.UUID, today: date) -> Funding:
@@ -651,6 +706,93 @@ class WishlistService:
         )
         await self._sync_tags(budget_id, [envelope])
         return {"envelope": envelope_out}
+
+    async def settle(
+        self,
+        budget_id: uuid.UUID,
+        item_id: uuid.UUID,
+        *,
+        destination_category_id: uuid.UUID | None,
+        keep_envelope: bool,
+        today: date | None = None,
+    ) -> dict[str, Any]:
+        """Close the books on an ended wish's own envelope.
+
+        Dropping a wish used to be a status flip: the envelope stayed on the
+        budget page holding money, still carrying a savings goal for something
+        nobody was going to buy. This is the step that was missing — the money
+        goes somewhere the person chose, the goal goes (it was the wish's
+        cost, and the wish is over), and the envelope is archived unless they
+        want to keep it for something else.
+
+        The whole thing is one change batch across four recorders, so ⌘Z puts
+        the money back in the envelope *and* the envelope back on the page.
+        Undoing half of that would be worse than not offering it.
+
+        `destination_category_id` is None for Ready to Assign, which is where
+        the delete flow and the wishlist off-switch both send envelope money.
+        An overspent envelope runs the move the other way — the destination
+        covers the hole — because leaving a negative envelope archived is the
+        one outcome that loses track of real money.
+        """
+        await self._require_enabled(budget_id)
+        day = today or date.today()
+        month = month_start(day)
+        item = await self._get_item(budget_id, item_id)
+        if item.status == "open":
+            raise InvariantViolation(
+                "Only a wish that is done or dropped has an envelope to settle"
+            )
+        if not item.owns_envelope or item.category_id is None:
+            raise InvariantViolation("This wish has no envelope of its own")
+        category = await self.categories.get(item.category_id)
+        if category is None or category.is_deleted or category.budget_id != budget_id:
+            raise NotFoundError("Category", str(item.category_id))
+        if category.is_archived:
+            raise InvariantViolation(f"'{category.name}' is already archived")
+        if destination_category_id == category.id:
+            raise InvariantViolation("Choose somewhere other than the envelope being settled")
+
+        balance = await self.budget.get_category_balance(category.id, month)
+        available = quantize_cents(balance.available)
+        categories = category_service_from(self.session, self.budget)
+
+        before = snapshot("wishlist_item", item)
+        with (
+            self.changes.batch() as batch_id,
+            self.budget.changes.batch(batch_id),
+            categories.changes.batch(batch_id),
+        ):
+            if available != Decimal("0"):
+                # `move_money` takes a positive amount and decides direction
+                # from the two sides, so the sign lives here and nowhere else:
+                # a surplus leaves the envelope, a hole is covered into it.
+                await self.budget.move_money(
+                    budget_id,
+                    category.id if available > 0 else destination_category_id,
+                    destination_category_id if available > 0 else category.id,
+                    abs(available),
+                    month,
+                )
+            if await self.targets.get(category.id) is not None:
+                await self.targets.delete(category.id, batch_id=batch_id)
+            if not keep_envelope:
+                # The shared rule, not a flag flip: it still refuses over a
+                # card link or a live schedule, and those refusals are right.
+                await categories.archive_categories(budget_id, [category.id], month=month)
+            await self.session.flush()
+            after = snapshot("wishlist_item", item)
+            if snapshots_match(after, before):  # non-empty diff — something changed
+                await self.changes.record(
+                    budget_id=budget_id,
+                    entity_type="wishlist_item",
+                    entity_id=item.id,
+                    action="update",
+                    before=before,
+                    after=after,
+                )
+        await self._sync_tags(budget_id, [category.id])
+        return await self.item_out(budget_id, item.id)
 
     async def affirm(self, budget_id: uuid.UUID, item_id: uuid.UUID) -> None:
         await self._require_enabled(budget_id)

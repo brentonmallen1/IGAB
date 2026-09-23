@@ -37,6 +37,17 @@ export interface WishReach {
   progress: number
 }
 
+/** An ended wish whose own envelope is still standing: what it holds, and
+ *  whether the wish's savings goal is still attached. Served, never derived —
+ *  `available` is the budget page's figure. Null once settled, so the prompt
+ *  clears itself rather than needing a flag that could disagree. */
+export interface WishSettlement {
+  category_id: string
+  name: string
+  available: number
+  has_goal: boolean
+}
+
 export interface Wish {
   id: string
   project_id: string | null
@@ -59,8 +70,12 @@ export interface Wish {
   last_affirmed_at: string | null
   review_due: boolean
   done_at: string | null
+  dropped_at: string | null
   created_at: string
   reach: WishReach | null
+  /** Unfinished business: the envelope this ended wish still owns. Null for
+   *  an open wish and for one that left nothing behind. */
+  settlement: WishSettlement | null
 }
 
 export type ProjectState =
@@ -241,6 +256,27 @@ export function useDeleteWish(budgetId: string) {
     budgetId,
     (id) => apiClient.delete<DeleteWishResult>(`/${budgetId}/wishlist/${id}`).then((r) => r.data),
     'Could not delete the wish'
+  )
+}
+
+export interface SettleWish {
+  id: string
+  /** Null means Ready to Assign — where the category-delete flow and the
+   *  wishlist off-switch both send envelope money. */
+  destination_category_id?: string | null
+  /** Keep the (now empty, goal-less) envelope instead of archiving it. */
+  keep_envelope?: boolean
+}
+
+export function useSettleWish(budgetId: string) {
+  // Quiet: the dialog shows the server's reason inline, beside the choice
+  // that caused it (a card-linked envelope refusing to archive, say).
+  return useWishlistMutation<SettleWish, Wish>(
+    budgetId,
+    ({ id, ...body }) =>
+      apiClient.post<Wish>(`/${budgetId}/wishlist/${id}/settle`, body).then((r) => r.data),
+    'Could not settle the envelope',
+    true
   )
 }
 

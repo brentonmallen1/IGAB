@@ -93,6 +93,21 @@ class ReachOut(ApiModel):
     progress: Decimal
 
 
+class SettlementOut(ApiModel):
+    """An ended wish whose own envelope is still standing.
+
+    Served, not derived on the client: `available` is the budget page's
+    figure, and whether a goal is still attached is the server's to know.
+    Null on `WishOut` once the envelope has been settled or archived, so the
+    prompt clears itself rather than needing a flag that could disagree.
+    """
+
+    category_id: uuid.UUID
+    name: str
+    available: Decimal
+    has_goal: bool
+
+
 class WishOut(ApiModel):
     id: uuid.UUID
     project_id: uuid.UUID | None
@@ -115,8 +130,13 @@ class WishOut(ApiModel):
     last_affirmed_at: datetime | None
     review_due: bool
     done_at: date | None
+    dropped_at: date | None
     created_at: datetime
     reach: ReachOut | None
+    #: Required, not optional: a path that forgets it would report an
+    #: envelope left holding money as settled, which is the bug this field
+    #: exists to end.
+    settlement: SettlementOut | None
 
 
 class ProjectSummaryOut(ApiModel):
@@ -167,6 +187,17 @@ class WishlistSettingsOut(ApiModel):
 class WishlistSettingsUpdate(ApiModel):
     cooling_days: int | None = Field(default=None, ge=0, le=MAX_COOLING_DAYS)
     review_after_days: int | None = Field(default=None, ge=7, le=365)
+
+
+class SettleRequest(ApiModel):
+    """Where an ended wish's envelope money goes, and what becomes of the
+    envelope. `destination_category_id` null means Ready to Assign — where
+    the category-delete flow and the wishlist off-switch both send it."""
+
+    destination_category_id: uuid.UUID | None = None
+    #: Keep the (now empty, goal-less) envelope on the budget page instead of
+    #: archiving it — for someone who wants to re-purpose it.
+    keep_envelope: bool = False
 
 
 class EnvelopeOut(ApiModel):

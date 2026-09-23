@@ -28,6 +28,8 @@ function wish(over: Partial<Wish>): Wish {
     last_affirmed_at: null,
     review_due: false,
     done_at: null,
+    dropped_at: null,
+    settlement: null,
     added_on: '2026-08-01',
     created_at: '2026-08-01',
     reach: null,

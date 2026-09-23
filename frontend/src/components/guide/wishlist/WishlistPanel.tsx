@@ -33,6 +33,7 @@ import { ProjectForm } from './ProjectForm'
 import { WishlistProjectSection } from './WishlistProjectSection'
 import { ReviewDialog } from './ReviewDialog'
 import { DeleteWishDialog } from './DeleteWishDialog'
+import { SettleWishDialog } from './SettleWishDialog'
 import { GuideDialog } from '../GuideDialog'
 import { FUN_NOTE, impactLabel, stillWantedLine } from './wishlistCopy'
 import { filterWishes, groupByProject, sortWishes, splitHero, splitProjects } from './wishlistView'
@@ -81,6 +82,13 @@ export function WishlistPanel() {
     wishName: string
     envelope: WishEnvelope
   } | null>(null)
+  /** The wish whose leftover envelope we are asking about. Held by id, not by
+   *  value: settling refetches the list, and the dialog must read the row the
+   *  server just returned rather than the one that opened it. */
+  const [settling, setSettling] = useState<string | null>(null)
+  /** Wishes ended inside the review queue, waiting their turn to be asked
+   *  about once that dialog is out of the way. */
+  const [, setDeferredSettle] = useState<string[]>([])
   const fmt = useFormatters()
   const update = useUpdateWish(budgetId ?? '')
   const remove = useDeleteWish(budgetId ?? '')
@@ -145,7 +153,39 @@ export function WishlistPanel() {
     if (result.envelope) setPendingEnvelope({ wishName: wish.name, envelope: result.envelope })
   }
 
+  /** Ending a wish is only half of it: an envelope of its own is left
+   *  standing, holding money and still carrying the wish's savings goal. The
+   *  server says so in `settlement`; this puts the question in front of the
+   *  person while they are still looking at the wish. Dismissing it strands
+   *  nothing — the history row goes on asking. */
+  async function endWish(wish: Wish, status: 'done' | 'dropped') {
+    const ended = await update.mutateAsync({ id: wish.id, status })
+    if (ended.settlement) setSettling(ended.id)
+  }
+
+  /** The same ending, from inside the review queue. The prompt waits for the
+   *  queue to close rather than opening a dialog on top of one; whichever
+   *  wish it was, the history row goes on asking either way. */
+  async function endFromReview(wish: Wish, status: 'done' | 'dropped') {
+    const ended = await update.mutateAsync({ id: wish.id, status })
+    if (ended.settlement) setDeferredSettle((q) => (q.includes(ended.id) ? q : [...q, ended.id]))
+  }
+
+  function closeReview() {
+    setReviewOpen(false)
+    setDeferredSettle((q) => {
+      if (q.length > 0) setSettling(q[0])
+      return q.slice(1)
+    })
+  }
+
   const pinnedCount = data.items.filter((w) => w.is_priority).length
+  // Read back from the freshly served list rather than held in state: a
+  // settle refetches, and the dialog closing on `settlement: null` is what
+  // proves the books are closed. A snapshot taken when it opened could not.
+  const settlingWish = settling
+    ? ([...data.items, ...data.history].find((w) => w.id === settling) ?? null)
+    : null
 
   const card = (wish: Wish, hero = false) => {
     const ordered = [...data.items].sort((a, b) => a.priority - b.priority)
@@ -163,8 +203,8 @@ export function WishlistPanel() {
         priorityFull={pinnedCount >= data.priority_limit}
         onTogglePriority={() => update.mutate({ id: wish.id, is_priority: !wish.is_priority })}
         onEdit={() => setEditing(wish)}
-        onDone={() => update.mutate({ id: wish.id, status: 'done' })}
-        onDrop={() => update.mutate({ id: wish.id, status: 'dropped' })}
+        onDone={() => void endWish(wish, 'done')}
+        onDrop={() => void endWish(wish, 'dropped')}
         onDelete={() => void deleteWish(wish)}
         onMoveUp={canMove && i > 0 ? () => move(wish, -1) : undefined}
         onMoveDown={canMove && i < ordered.length - 1 ? () => move(wish, 1) : undefined}
@@ -405,10 +445,27 @@ export function WishlistPanel() {
                   <strong>{w.name}</strong> · {fmt.formatMoney(w.cost)} ·{' '}
                   {w.status === 'done'
                     ? `done ${w.done_at ? fmt.formatDate(w.done_at) : ''}`
-                    : 'dropped'}
+                    : `dropped ${w.dropped_at ? fmt.formatDate(w.dropped_at) : ''}`}
+                  {/* The prompt that outlives the dialog. Someone who closed
+                      the settle question — or ended the wish before this
+                      existed — would otherwise have money parked under a name
+                      they had already decided against, with nothing anywhere
+                      saying so. */}
+                  {w.settlement && (
+                    <button
+                      type="button"
+                      className="guide-link-button guide-wishlist__unsettled"
+                      onClick={() => setSettling(w.id)}
+                    >
+                      {w.settlement.available === 0
+                        ? `${w.settlement.name} still on your budget`
+                        : `${fmt.formatMoney(w.settlement.available)} still in ${w.settlement.name}`}
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="guide-link-button"
+                    aria-label={`Reopen ${w.name}`}
                     onClick={() => update.mutate({ id: w.id, status: 'open' })}
                   >
                     Reopen
@@ -513,7 +570,8 @@ export function WishlistPanel() {
           budgetId={budgetId}
           due={due}
           reviewDays={data.settings.review_after_days}
-          onClose={() => setReviewOpen(false)}
+          onEnd={endFromReview}
+          onClose={closeReview}
         />
       )}
       {noteOpen && (
@@ -532,6 +590,14 @@ export function WishlistPanel() {
           ))}
         </GuideDialog>
       )}
+      {settlingWish && (
+        <SettleWishDialog
+          budgetId={budgetId}
+          wish={settlingWish}
+          onClose={() => setSettling(null)}
+        />
+      )}
+
       {pendingEnvelope && (
         <DeleteWishDialog
           budgetId={budgetId}

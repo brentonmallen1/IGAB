@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useAffirmWish, useUpdateWish, type Wish } from '../../../api/wishlist'
+import { useAffirmWish, type Wish } from '../../../api/wishlist'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { GuideDialog } from '../GuideDialog'
 import { fundingLabel, reachLabel } from './wishlistCopy'
@@ -8,6 +8,11 @@ interface Props {
   budgetId: string
   due: Wish[]
   reviewDays: number
+  /** End a wish. The panel's, not this dialog's: ending one may leave an
+   *  envelope standing, and that question is asked in one place. Answering
+   *  it while this queue is still open would stack dialogs, so the panel
+   *  holds the prompt until the review closes. */
+  onEnd: (wish: Wish, status: 'done' | 'dropped') => Promise<void>
   onClose: () => void
 }
 
@@ -18,15 +23,25 @@ interface Props {
  * notification. The list is snapshotted on open so answering one does not
  * reshuffle the rest under the reader.
  */
-export function ReviewDialog({ budgetId, due, reviewDays, onClose }: Props) {
+export function ReviewDialog({ budgetId, due, reviewDays, onEnd, onClose }: Props) {
   const [queue] = useState(() => due)
   const [index, setIndex] = useState(0)
+  const [ending, setEnding] = useState(false)
   const affirm = useAffirmWish(budgetId)
-  const update = useUpdateWish(budgetId)
   const fmt = useFormatters()
   const current = queue[index]
-  const pending = affirm.isPending || update.isPending
+  const pending = affirm.isPending || ending
   const next = () => setIndex((i) => i + 1)
+
+  async function end(wish: Wish, status: 'done' | 'dropped') {
+    setEnding(true)
+    try {
+      await onEnd(wish, status)
+      next()
+    } finally {
+      setEnding(false)
+    }
+  }
 
   return (
     <GuideDialog
@@ -41,9 +56,7 @@ export function ReviewDialog({ budgetId, due, reviewDays, onClose }: Props) {
                 type="button"
                 className="dialog-btn dialog-btn--secondary"
                 disabled={pending}
-                onClick={() =>
-                  update.mutate({ id: current.id, status: 'dropped' }, { onSuccess: next })
-                }
+                onClick={() => void end(current, 'dropped')}
               >
                 Drop it
               </button>
@@ -52,9 +65,7 @@ export function ReviewDialog({ budgetId, due, reviewDays, onClose }: Props) {
                   type="button"
                   className="dialog-btn dialog-btn--secondary"
                   disabled={pending}
-                  onClick={() =>
-                    update.mutate({ id: current.id, status: 'done' }, { onSuccess: next })
-                  }
+                  onClick={() => void end(current, 'done')}
                 >
                   Done — got it
                 </button>

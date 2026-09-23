@@ -12,6 +12,7 @@ from igab.api.v1.schemas.wishlist import (
     ProjectOut,
     ProjectReorder,
     ProjectUpdate,
+    SettleRequest,
     WishCreate,
     WishlistResponse,
     WishlistSettingsOut,
@@ -156,6 +157,28 @@ async def delete_wish(
 ) -> DeleteWishResponse:
     try:
         return DeleteWishResponse.model_validate(await service.delete(budget_id, item_id))
+    except (InvariantViolation, NotFoundError) as e:
+        raise _http(e) from e
+
+
+@router.post("/{budget_id}/wishlist/{item_id}/settle", response_model=WishOut)
+async def settle_wish(
+    budget_id: BudgetAccess,
+    item_id: uuid.UUID,
+    current_user: CurrentUser,
+    service: WishlistDep,
+    payload: SettleRequest,
+) -> WishOut:
+    """Move what an ended wish's envelope holds, drop its goal, archive it."""
+    try:
+        return WishOut.model_validate(
+            await service.settle(
+                budget_id,
+                item_id,
+                destination_category_id=payload.destination_category_id,
+                keep_envelope=payload.keep_envelope,
+            )
+        )
     except (InvariantViolation, NotFoundError) as e:
         raise _http(e) from e
 

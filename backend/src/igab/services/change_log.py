@@ -492,10 +492,19 @@ class ChangeRecorder:
         self.actor_user_id: uuid.UUID | None = None
 
     @contextmanager
-    def batch(self):
+    def batch(self, batch_id: uuid.UUID | None = None):
+        """Group everything recorded inside into one undo unit.
+
+        `batch_id` joins an batch another recorder already opened. A compound
+        operation that crosses services (settling a wish moves money, drops a
+        goal and archives an envelope — three recorders) would otherwise undo
+        one keystroke at a time, which is how the money and the envelope it
+        came from could part company. Passing the id where the collaborator
+        takes one is the same trick; this is for the ones that do not.
+        """
         owner = self._batch_id is None
         if owner:
-            self._batch_id = new_uuid()
+            self._batch_id = batch_id or new_uuid()
         try:
             yield self._batch_id
         finally:

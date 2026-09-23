@@ -243,6 +243,50 @@ def still_wanted(wishes: Iterable[WishInput], today: date) -> tuple[int, int]:
     return sum(1 for w in old if w.status == "open"), len(old)
 
 
+def could_be_unsettled(*, status: str, owns_envelope: bool, envelope_live: bool) -> bool:
+    """The half of `unsettled` that needs no money.
+
+    Split out so the caller can skip the balance query for a wish that cannot
+    be unfinished whatever its envelope holds — one query per piece of
+    unfinished business rather than one per wish — without restating the
+    predicate at the call site. `unsettled` is still the rule; this is its
+    first clause, named.
+    """
+    return status != "open" and owns_envelope and envelope_live
+
+
+def unsettled(
+    *,
+    status: str,
+    owns_envelope: bool,
+    envelope_live: bool,
+    available: Decimal,
+    has_goal: bool,
+) -> bool:
+    """Is this wish's own envelope still standing after the wish ended?
+
+    The question the wishlist got wrong: dropping a wish flipped a status and
+    left the envelope, its savings goal and its money behind, with nothing on
+    any screen saying so. An ended wish whose envelope still holds money — or
+    still carries the goal that was the wish's cost — is unfinished business,
+    and stays unfinished until someone says where the money goes.
+
+    Derived, never stored: settling clears what this reads, so the prompt
+    disappears by itself and no `settled_at` flag can disagree with the
+    budget. An archived envelope is settled by definition — `archive` refuses
+    while a balance remains, so there is nothing left to decide.
+
+    `available` is the budget page's figure, handed in. A negative one counts:
+    an overspent envelope left behind is a hole someone has to cover, which is
+    exactly as unfinished as money left sitting.
+    """
+    if not could_be_unsettled(
+        status=status, owns_envelope=owns_envelope, envelope_live=envelope_live
+    ):
+        return False
+    return available != ZERO or has_goal
+
+
 def drain_impact(amount: Decimal, pace: Decimal | None) -> Decimal | None:
     """How much further away a wish is, in months, after `amount` left its
     envelope at `pace` a month. None when there is no pace to measure by."""

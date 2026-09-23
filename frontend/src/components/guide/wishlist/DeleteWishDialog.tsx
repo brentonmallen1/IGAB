@@ -65,8 +65,15 @@ export function DeleteWishDialog({ budgetId, wishName, envelope, onClose }: Prop
         <p className="wish-review__done">
           <strong>{wishName}</strong> is off the list. Its envelope <strong>{envelope.name}</strong>{' '}
           is still in your budget
-          {available > 0 ? ` holding ${formatMoney(available)}` : ''}. Delete it too? Any money in
-          it goes back to Ready to Assign.
+          {available > 0 ? ` holding ${formatMoney(available)}` : ''}
+          {/* An overspent envelope used to read as holding nothing, under a
+              sentence promising its money would come back — the one shape
+              where "money goes back to Ready to Assign" is the wrong sign. */}
+          {available < 0 ? `, overspent by ${formatMoney(Math.abs(available))}` : ''}. Delete it
+          too?{' '}
+          {available < 0
+            ? 'Covering that overspending comes out of Ready to Assign.'
+            : 'Any money in it goes back to Ready to Assign.'}
         </p>
       </div>
     </GuideDialog>

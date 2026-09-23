@@ -51,6 +51,8 @@ function wish(over: Partial<Wish>): Wish {
     last_affirmed_at: null,
     review_due: false,
     done_at: null,
+    dropped_at: null,
+    settlement: null,
     added_on: '2026-08-01',
     created_at: '2026-08-01T00:00:00Z',
     reach: { state: 'months', months: 8, date: '2027-04-26', ahead_cost: 0, progress: 0.3 },
@@ -319,6 +321,63 @@ describe('WishlistPanel', () => {
     renderPanel()
     expect(screen.queryByText(/dropped|done/)).not.toBeInTheDocument()
     expect(screen.getByText('History')).toBeInTheDocument()
+  })
+
+  describe('an ended wish leaves its envelope standing', () => {
+    const held = {
+      category_id: 'c',
+      name: 'Bike',
+      available: 400,
+      has_goal: true,
+    }
+
+    it('dropping a funded wish asks where the money should go', async () => {
+      const dropped = wish({ status: 'dropped', settlement: held })
+      const mutateAsync = vi.fn().mockResolvedValue(dropped)
+      vi.mocked(wishlistApi.useUpdateWish).mockReturnValue({
+        mutate: vi.fn(),
+        mutateAsync,
+        isPending: false,
+      } as never)
+      vi.mocked(wishlistApi.useWishlist).mockReturnValue({
+        data: payload({ items: [], history: [dropped] }),
+        isLoading: false,
+      } as never)
+      // The card is gone from `items` by the time the dialog opens, which is
+      // why the panel looks the wish back up by id rather than holding it.
+      renderPanel()
+      fireEvent.click(screen.getByText('History'))
+      fireEvent.click(screen.getByRole('button', { name: /still in Bike/ }))
+      expect(await screen.findByText(/Where should this money go/)).toBeInTheDocument()
+    })
+
+    it('the history row goes on asking after the dialog is dismissed', () => {
+      vi.mocked(wishlistApi.useWishlist).mockReturnValue({
+        data: payload({
+          items: [],
+          history: [wish({ name: 'Old', status: 'dropped', settlement: held, reach: null })],
+        }),
+        isLoading: false,
+      } as never)
+      renderPanel()
+      fireEvent.click(screen.getByText('History'))
+      // Money parked under a name already decided against must not be
+      // reachable only through a dialog someone can close.
+      expect(screen.getByRole('button', { name: /still in Bike/ })).toBeInTheDocument()
+    })
+
+    it('a settled wish says nothing', () => {
+      vi.mocked(wishlistApi.useWishlist).mockReturnValue({
+        data: payload({
+          items: [],
+          history: [wish({ name: 'Old', status: 'dropped', settlement: null, reach: null })],
+        }),
+        isLoading: false,
+      } as never)
+      renderPanel()
+      fireEvent.click(screen.getByText('History'))
+      expect(screen.queryByRole('button', { name: /still in/ })).not.toBeInTheDocument()
+    })
   })
 
   it('renders the drains it is served, with the distance', () => {

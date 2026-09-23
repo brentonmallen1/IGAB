@@ -464,7 +464,13 @@ class CategoryService:
             "wishlist items fund it",
             await count(
                 select(WishlistItem.id).where(
-                    WishlistItem.category_id.in_(ids), ~WishlistItem.is_deleted
+                    WishlistItem.category_id.in_(ids),
+                    ~WishlistItem.is_deleted,
+                    # Only a wish still being saved for. A done or dropped
+                    # wish keeps its link as history, and counting those made
+                    # an envelope nobody was using unclearable forever —
+                    # which is the state settling a wish is meant to end.
+                    WishlistItem.status == "open",
                 )
             ),
             clearable=False,
