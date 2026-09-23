@@ -134,7 +134,6 @@ class AccountHygieneService:
             self._card_reserve_went_negative(summary, walk),
             await self._card_debt_predates_budget(budget_id, summary, walk),
             *(await self._misfiled_card_inflows(budget_id, walk, ledgers)),
-            await self._payment_envelope_shadow(budget_id, summary),
             await self._categorized_tracking_rows(budget_id),
             await self._card_rows_filed_as_income(budget_id),
             await self._dormant_open_accounts(accounts, budget_id),
@@ -806,66 +805,6 @@ class AccountHygieneService:
                 )
             )
         return findings
-
-    async def _payment_envelope_shadow(
-        self, budget_id: uuid.UUID, summary
-    ) -> HygieneFinding | None:
-        """A spending envelope holding almost exactly a card's missing reserve.
-
-        The migration trap `scripts/repair_card_payment_transfers.py`
-        documents: a budget that funded card payments through a hand-made
-        envelope ("Sapphire Visa Fund") ends, once payments become transfers, with a
-        negative set-aside and a matching surplus in that envelope. Ready to
-        Assign is right either way — the two cancel — but it takes one budget
-        move to square, and nothing else on any page connects the two numbers.
-        """
-        categories = {
-            c.id: c.name
-            for c in await CategoryRepository(self.session).get_all(
-                budget_id, include_archived=True
-            )
-        }
-        envelopes = [
-            b
-            for b in summary.category_balances
-            if not b.in_system_group and not b.is_card_payment and b.available > 0
-        ]
-        lines: list[str] = []
-        account_ids: list[uuid.UUID] = []
-        for card in summary.cards:
-            if card.set_aside >= 0 or card.card_credit > 0:
-                continue
-            hole = -card.set_aside
-            tolerance = max(Decimal("5"), hole * Decimal("0.02"))
-            for b in envelopes:
-                if abs(b.available - hole) > tolerance:
-                    continue
-                name = categories.get(b.category_id, "an envelope")
-                card_tokens = {w.lower() for w in card.name.split() if len(w) > 2}
-                similar = any(w.lower() in card_tokens for w in name.split())
-                lines.append(
-                    f"{name} holds {b.available} while {card.name}'s Set aside is "
-                    f"{card.set_aside}" + (" — and the names match." if similar else ".")
-                )
-                account_ids.append(card.account_id)
-        if not lines:
-            return None
-        return HygieneFinding(
-            kind="payment_envelope_shadow",
-            title="An envelope holds almost exactly a card's missing Set aside",
-            detail=(
-                " ".join(lines)
-                + " This is the shape left behind by funding card payments through an "
-                "ordinary envelope: converting the payments to transfers drained the "
-                "card's Set aside while the envelope kept the money. Ready to Assign is "
-                "right either way — the two cancel."
-            ),
-            action=(
-                "Move the envelope's balance to the card: a negative assignment on the "
-                "envelope and the same amount assigned to the card, in the same month."
-            ),
-            account_ids=account_ids,
-        )
 
     async def _money_in_an_archived_envelope_from(
         self, budget_id: uuid.UUID, summary

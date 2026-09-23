@@ -767,26 +767,27 @@ class TestCardReserveDiagnostics:
         assert LONG_AGO.strftime("%B %Y") in finding.detail
         assert finding.account_ids == [card.id]
 
-    async def test_an_envelope_holding_the_missing_reserve_is_connected(self, db_session):
-        """The migration trap: a hand-made 'Visa Payment Fund' kept the money
-        while converting payments to transfers drove the card's reserve to
-        exactly minus that. Nothing else on any page connects the two."""
+    async def test_an_envelope_that_happens_to_match_a_negative_reserve_is_not_blamed(
+        self, db_session
+    ):
+        """A report from a real budget: Medical held 316 while a card's Set
+        aside read -310, and hygiene said Medical was a payment fund that had
+        kept the card's money. Medical had never touched the card. Nothing
+        but the two amounts connected them, so no finding may name it."""
         services, budget, checking, card, group, cat = await self._card_world(db_session)
-        fund = await create_category(db_session, budget, group, "Visa Payment Fund")
+        medical = await create_category(db_session, budget, group, "Medical")
         await services.budgets.set_assignment(
-            budget.id, fund.id, RECENT.replace(day=1), Decimal("300.00")
+            budget.id, medical.id, RECENT.replace(day=1), Decimal("316.00")
         )
         await create_transaction(db_session, budget, card, "-2000.00", LONG_AGO)
         await services.budgets.set_assignment(
             budget.id, cat.id, RECENT.replace(day=1), Decimal("200.00")
         )
         await create_transaction(db_session, budget, card, "-200.00", RECENT, category=cat)
-        await create_card_payment(services, budget, checking, card, "500.00", RECENT)
+        await create_card_payment(services, budget, checking, card, "510.00", RECENT)
 
-        finding = (await _run(db_session, budget))["payment_envelope_shadow"]
-        assert "Visa Payment Fund" in finding.detail
-        assert "names match" in finding.detail
-        assert finding.account_ids == [card.id]
+        findings = await _run(db_session, budget)
+        assert not any("Medical" in f.detail + f.action for f in findings.values())
 
     async def test_a_recurring_inflow_stream_on_a_charging_envelope_is_reported(self, db_session):
         """The 42-month shape the probe found on a real import: the envelope
