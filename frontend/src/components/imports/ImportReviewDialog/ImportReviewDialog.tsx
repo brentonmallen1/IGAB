@@ -44,6 +44,7 @@ import {
   type RowFilter,
   type StepId,
   type UpcomingRow,
+  wasProposed,
 } from './importReview'
 import './ImportReviewDialog.css'
 import { closedAccounts } from '../../../utils/accountLists'
@@ -804,8 +805,10 @@ function TagsStep({
   onAcceptAll: () => void
 }) {
   const decidedCount = rows.filter((r) => r.importTagged).length
-  const suggestedCount = rows.filter((r) => r.suggestions.length > 0).length
+  const suggestedCount = rows.filter(wasProposed).length
   const openSuggestions = shown.reduce((n, r) => n + r.suggestions.length, 0)
+  const acceptedIds = (row: ReviewRow) =>
+    new Set(row.accepted.map((s) => tagByKey[s.systemKey]?.id).filter(Boolean))
 
   return (
     <>
@@ -860,9 +863,7 @@ function TagsStep({
         {shown.map((row) => (
           <div key={row.category.id} className="import-review__row">
             <div className="import-review__cat">
-              <span className="import-review__cat-n">
-                {row.category.name}
-              </span>
+              <span className="import-review__cat-n">{row.category.name}</span>
               <span className="import-review__cat-g">{row.category.groupName}</span>
               {row.importTagged && row.importMatchedOn && (
                 <span className="import-review__why">tagged from “{row.importMatchedOn}”</span>
@@ -870,9 +871,11 @@ function TagsStep({
             </div>
             <div className="import-review__tags">
               {/* Every tag it carries, not only the system ones — this row can
-                  replace the whole set, so it has to show the whole set. */}
+                  replace the whole set, so it has to show the whole set. An
+                  accepted proposal is drawn as its ticked box below instead,
+                  so unticking it is how it comes off. */}
               {row.tagIds.map((id) =>
-                tagById[id] ? (
+                tagById[id] && !acceptedIds(row).has(id) ? (
                   <TagChip
                     key={id}
                     name={tagById[id].name}
@@ -882,15 +885,21 @@ function TagsStep({
                   />
                 ) : null
               )}
-              {row.suggestions.map((s) =>
+              {[
+                ...row.accepted.map((s) => ({ ...s, checked: true })),
+                ...row.suggestions.map((s) => ({ ...s, checked: false })),
+              ].map((s) =>
                 tagByKey[s.systemKey] ? (
                   <label key={s.systemKey} className="import-review__offer">
                     <input
                       type="checkbox"
-                      checked={false}
+                      checked={s.checked}
                       onChange={() => onToggle(row.category, tagByKey[s.systemKey].id)}
                     />
-                    <span>{tagByKey[s.systemKey].name}?</span>
+                    <span>
+                      {tagByKey[s.systemKey].name}
+                      {s.checked ? '' : '?'}
+                    </span>
                     <span className="import-review__why">from “{s.matchedOn}”</span>
                   </label>
                 ) : null

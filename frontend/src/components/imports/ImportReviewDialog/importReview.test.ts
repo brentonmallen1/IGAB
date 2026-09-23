@@ -18,7 +18,12 @@ import type { ScheduledTransaction } from '../../../types'
 const SAVINGS = 'tag-savings'
 const SUBSCRIPTION = 'tag-subscription'
 const TRAVEL = 'tag-travel' // the user's own, no system key
-const KEY_BY_ID = { [SAVINGS]: 'savings', [SUBSCRIPTION]: 'subscription' }
+const ESSENTIAL = 'tag-essential'
+const KEY_BY_ID = {
+  [SAVINGS]: 'savings',
+  [SUBSCRIPTION]: 'subscription',
+  [ESSENTIAL]: 'essential',
+}
 
 function category(over: Partial<ReviewCategory> = {}): ReviewCategory {
   return {
@@ -135,9 +140,10 @@ describe('buildRows', () => {
     expect(row.importMatchedOn).toBe('Emergency Fund')
   })
 
-  it('drops a suggestion once the draft has accepted it', () => {
-    // Otherwise an accepted proposal stays in the list and reads as though it
-    // had not applied.
+  it('moves a suggestion to accepted once the draft takes it up', () => {
+    // Not dropped: ticking the box used to remove the offer, and with it the
+    // row, before a second tag could be added. Not left open either, which
+    // would read as though it had not applied.
     const cat = category()
     const suggestions = [
       {
@@ -153,7 +159,13 @@ describe('buildRows', () => {
     const draft: Draft = { c1: [SUBSCRIPTION] }
     const after = buildRows([cat], suggestions, [], KEY_BY_ID, draft)
     expect(after[0].suggestions).toEqual([])
+    expect(after[0].accepted).toEqual([{ systemKey: 'subscription', matchedOn: 'Amazon Prime' }])
     expect(after[0].heldKeys).toEqual(['subscription'])
+
+    // Unticked again, it is an open offer once more.
+    const undone = buildRows([cat], suggestions, [], KEY_BY_ID, { c1: [] })
+    expect(undone[0].suggestions).toHaveLength(1)
+    expect(undone[0].accepted).toEqual([])
   })
 })
 
@@ -183,6 +195,32 @@ describe('filterRows', () => {
   it('keeps a row the user is working on, even once it no longer qualifies', () => {
     const ids = filterRows(rows, 'decided', { untouched: [SAVINGS] }).map((r) => r.category.id)
     expect(ids).toEqual(['decided', 'untouched'])
+  })
+
+  it('keeps a proposed row under Suggested after its last offer is accepted', () => {
+    // A real review: a suggestion was ticked with a second tag meant to
+    // follow, and the row was gone before it could be added.
+    const draft: Draft = { proposed: [ESSENTIAL] }
+    const accepted = buildRows(
+      [proposed, untouched],
+      [
+        {
+          category_id: 'proposed',
+          system_key: 'essential',
+          matched_on: 'Rent',
+          applied_on_import: false,
+        },
+      ],
+      [],
+      KEY_BY_ID,
+      draft
+    )
+    expect(filterRows(accepted, 'suggested', draft).map((r) => r.category.id)).toEqual(['proposed'])
+    // A row the user tagged by hand, never proposed, does not join the list.
+    const handTagged = { untouched: [SAVINGS] }
+    expect(
+      filterRows(accepted, 'suggested', { ...draft, ...handTagged }).map((r) => r.category.id)
+    ).toEqual(['proposed'])
   })
 
   it('reaches the ones only proposed, and all of them', () => {

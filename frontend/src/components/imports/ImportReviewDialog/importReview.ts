@@ -86,6 +86,10 @@ export interface ReviewRow {
   heldKeys: string[]
   /** Keys its names point at that it does not carry. */
   suggestions: RowSuggestion[]
+  /** Proposals the draft has taken up in this sitting. Kept, and drawn
+   *  checked, so the row does not vanish the moment its box is ticked — the
+   *  user may still want to add a tag of their own, or untick it. */
+  accepted: RowSuggestion[]
   /** This import put a tag on it — the rows the review opens on. */
   importTagged: boolean
   /** The name that made the import's guess, so it can be checked. */
@@ -102,10 +106,10 @@ function heldKeys(tagIds: string[], keyById: SystemKeyById): string[] {
 /**
  * One row per category, merging what it carries with what is proposed.
  *
- * Suggestions the category already carries are dropped rather than shown as
- * unchecked — the server filters them too, but the draft moves under the user
- * as they work, and an accepted proposal that stayed in the list would read as
- * though it had not applied.
+ * The server proposes only keys the category does not carry, so a proposal
+ * whose key the draft now holds is one the user accepted here: it moves to
+ * `accepted` (drawn checked) rather than staying an open, unchecked offer
+ * that would read as though it had not applied.
  */
 export function buildRows(
   categories: ReviewCategory[],
@@ -126,11 +130,13 @@ export function buildRows(
     const tagIds = draft[category.id] ?? category.tagIds
     const keys = heldKeys(tagIds, keyById)
     const fromImport = importedBy.get(category.id)
+    const offered = byCategory.get(category.id) ?? []
     return {
       category,
       tagIds,
       heldKeys: keys,
-      suggestions: (byCategory.get(category.id) ?? []).filter((s) => !keys.includes(s.systemKey)),
+      suggestions: offered.filter((s) => !keys.includes(s.systemKey)),
+      accepted: offered.filter((s) => keys.includes(s.systemKey)),
       importTagged: fromImport !== undefined,
       importMatchedOn: fromImport?.matched_on ?? null,
     }
@@ -138,6 +144,12 @@ export function buildRows(
 }
 
 export type RowFilter = 'decided' | 'suggested' | 'all'
+
+/** The server proposed something for it — still open or accepted here. What
+ *  the Suggested filter shows and counts, so the two cannot disagree. */
+export function wasProposed(row: ReviewRow): boolean {
+  return row.suggestions.length > 0 || row.accepted.length > 0
+}
 
 /**
  * Which filter the tag step opens on.
@@ -157,11 +169,13 @@ export function initialFilter(summary: YnabImportResult | null | undefined): Row
  *
  * 'decided' is the review's opening view: the categories the import tagged,
  * plus any the user has changed in this sitting so a row never vanishes as it
- * is being worked on.
+ * is being worked on. 'suggested' holds the same promise by keeping a row
+ * whose proposals were all accepted: ticking the last box used to remove the
+ * row before a second tag could be added to it.
  */
 export function filterRows(rows: ReviewRow[], filter: RowFilter, draft: Draft): ReviewRow[] {
   if (filter === 'all') return rows
-  if (filter === 'suggested') return rows.filter((r) => r.suggestions.length > 0)
+  if (filter === 'suggested') return rows.filter(wasProposed)
   return rows.filter((r) => r.importTagged || r.category.id in draft)
 }
 

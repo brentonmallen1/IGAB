@@ -386,6 +386,32 @@ describe('adding a tag the hints never thought of', () => {
     )
   })
 
+  it('keeps a row whose suggestion was ticked, so a second tag can follow', async () => {
+    // A real review: the box was ticked with another tag meant to follow, and
+    // the row left the Suggested list before it could be added.
+    const user = userEvent.setup()
+    open({ categories_tagged: 0, tagged_categories: [] })
+    await user.click(screen.getByRole('button', { name: /Categories/ }))
+
+    const offer = within(row('Rent')).getByRole('checkbox', { name: /Essential/ })
+    await user.click(offer)
+    expect(within(row('Rent')).getByRole('checkbox', { name: /Essential/ })).toBeChecked()
+    // Drawn once, as the ticked box — not also as a chip beside it.
+    expect(
+      within(row('Rent')).queryByRole('button', { name: 'Remove Essential' })
+    ).not.toBeInTheDocument()
+
+    await user.click(within(row('Rent')).getByRole('button', { name: '+ Tag' }))
+    await user.click(screen.getByText('Subscription'))
+    await user.click(within(row('Rent')).getByRole('checkbox', { name: /Essential/ }))
+
+    await user.click(screen.getByRole('button', { name: /Accounts/ }))
+    await user.click(screen.getByRole('button', { name: /Save and close/ }))
+    await waitFor(() =>
+      expect(bulkSet).toHaveBeenCalledWith([{ category_id: 'rent', tag_ids: ['t-sub'] }])
+    )
+  })
+
   it('shows a tag the user added themselves, which is not a system one', async () => {
     // Only system tags were rendered, so a Travel tag was invisible on a row
     // whose whole set the review can replace.
