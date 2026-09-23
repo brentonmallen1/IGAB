@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Link } from 'react-router-dom'
 import { Surface } from '../../common/Surface'
 import { Dialog } from '../../common/Dialog/Dialog'
 import { TagChip, type TagColorSlot } from '../../common/TagChip'
 import { TagPicker, type TagOption } from '../../common/TagPicker'
 import { HygieneFindings } from '../../accounts/HygieneFindings'
+import { LiabilitySettingsModal } from '../../liabilities/LiabilitySettingsModal'
+import { useLiabilities } from '../../../api/liabilities'
+import { isCardAccount } from '../../../utils/accountKinds'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
 import {
   useAccountHygiene,
@@ -80,7 +82,10 @@ export function ImportReviewDialog({
   loansNeedingTerms?: LoanNeedingTerms[]
   onClose: () => void
 }) {
-  const steps = stepsFor(summary, loansNeedingTerms.length)
+  // Terms saved from the last step take their rows off the list, and the
+  // step would vanish from under the user with it — keep it for the sitting.
+  const [loansAtOpen] = useState(loansNeedingTerms.length)
+  const steps = stepsFor(summary, Math.max(loansAtOpen, loansNeedingTerms.length))
   const [stepIndex, setStepIndex] = useState(0)
   const [draft, setDraft] = useState<Draft>({})
   const [filter, setFilter] = useState<RowFilter>(() => initialFilter(summary))
@@ -251,7 +256,7 @@ export function ImportReviewDialog({
           onNavigate={onClose}
         />
       )}
-      {step === 'loans' && <LoanTermsStep loans={loansNeedingTerms} onNavigate={onClose} />}
+      {step === 'loans' && <LoanTermsStep budgetId={budgetId} loans={loansNeedingTerms} />}
     </Dialog>
   )
 }
@@ -261,11 +266,11 @@ const STEP_LABELS: Record<StepId, string> = {
   upcoming: 'Upcoming',
   tags: 'Categories & tags',
   accounts: 'Accounts',
-  loans: 'Loan terms',
+  loans: 'Terms',
 }
 
 /**
- * The loans that arrived with no terms, and a way to each one.
+ * The cards and loans that arrived with no terms, and a way to each one.
  *
  * A YNAB export is two CSVs of register rows and plan cells; between them
  * they carry no account metadata of any kind — no interest rate, no minimum
@@ -278,38 +283,76 @@ const STEP_LABELS: Record<StepId, string> = {
  * makes an imported loan read a full month below the balance its source
  * shows. That gap is open from the moment a payment posts until the account
  * is next reconciled, and an import taken inside that window understates the
- * debt.
+ * debt. A card's terms are what say what it costs to carry.
  *
- * Links rather than an inline form: the terms live behind the liability's
- * own settings, which already validate them, and duplicating that here would
- * be a second place to keep a rate rule in step.
+ * "Add the terms" opens the liability's own settings over the review rather
+ * than a form of its own — those settings already validate the terms, and a
+ * second form would be a second place to keep a rate rule in step. It used to
+ * be a link to the liability's page, which closed the review, opened no
+ * editor, and left Back on the liabilities page instead of the review.
  */
-function LoanTermsStep({
-  loans,
-  onNavigate,
-}: {
-  loans: LoanNeedingTerms[]
-  onNavigate: () => void
-}) {
+function LoanTermsStep({ budgetId, loans }: { budgetId: string; loans: LoanNeedingTerms[] }) {
+  const { data: liabilities } = useLiabilities(budgetId)
+  const { data: accounts } = useAccounts(budgetId, { includeClosed: true })
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const editing = liabilities?.find((l) => l.id === editingId) ?? null
+
+  const accountById = new Map((accounts ?? []).map((a) => [a.id, a]))
+  const isCard = (loan: LoanNeedingTerms) => {
+    const account = loan.account_id ? accountById.get(loan.account_id) : undefined
+    return account !== undefined && isCardAccount(account)
+  }
+  const cards = loans.filter(isCard).length
+  if (loans.length === 0) {
+    return (
+      <Surface variant="sunken" title="Terms" className="import-review__block">
+        <p className="dialog__body dialog__body--muted">
+          Every account that arrived without terms has them now.
+        </p>
+      </Surface>
+    )
+  }
+  const title =
+    cards === 0
+      ? 'Loans with no terms yet'
+      : cards === loans.length
+        ? 'Cards with no terms yet'
+        : 'Cards and loans with no terms yet'
+
   return (
-    <Surface variant="sunken" title="Loans with no terms yet" className="import-review__block">
+    <Surface variant="sunken" title={title} className="import-review__block">
       <p className="dialog__body dialog__body--muted">
         A YNAB export carries no account details — no interest rate, no minimum payment, no payoff
-        date — so {loans.length === 1 ? 'this account' : 'these accounts'} arrived without them. The
-        rate is what lets IGAB show a payoff date, and what closes the gap between this balance and
-        the one YNAB showed: YNAB adds the current month&apos;s interest from the terms before it is
-        ever a transaction.
+        date — so {loans.length === 1 ? 'this account' : 'these accounts'} arrived without them.
+        {cards > 0 && ' A card’s APR and minimum payment are what show what it costs to carry.'}
+        {cards < loans.length &&
+          ' A loan’s rate is what lets IGAB show a payoff date, and what closes the gap between' +
+            ' its balance and the one YNAB showed: YNAB adds the current month’s interest from' +
+            ' the terms before it is ever a transaction.'}
       </p>
       <ul className="import-review__diffs">
         {loans.map((loan) => (
           <li key={loan.id}>
             <span className="import-review__diff-n">{loan.name}</span>
-            <Link to={`/liabilities/${loan.id}`} className="dialog__link" onClick={onNavigate}>
+            <button
+              type="button"
+              className="dialog__link"
+              disabled={!liabilities}
+              aria-label={`Add the terms for ${loan.name}`}
+              onClick={() => setEditingId(loan.id)}
+            >
               Add the terms
-            </Link>
+            </button>
           </li>
         ))}
       </ul>
+      {editing && (
+        <LiabilitySettingsModal
+          budgetId={budgetId}
+          liability={editing}
+          onClose={() => setEditingId(null)}
+        />
+      )}
     </Surface>
   )
 }

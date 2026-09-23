@@ -98,8 +98,46 @@ vi.mock('../../../api/categories', () => ({
 const updateAccount = vi.fn()
 const accounts = [
   { id: 'a1', name: 'Old Savings', is_closed: true },
-  { id: 'a2', name: 'Checking', is_closed: false },
+  { id: 'a2', name: 'Checking', is_closed: false, on_budget: true, classification: 'asset' },
+  {
+    id: 'a3',
+    name: 'Sapphire Visa',
+    is_closed: false,
+    on_budget: true,
+    classification: 'liability',
+  },
+  {
+    id: 'a4',
+    name: 'Harborstone Auto',
+    is_closed: false,
+    on_budget: false,
+    classification: 'liability',
+  },
 ]
+const liabilities = [
+  { id: 'l-card', name: 'Sapphire Visa', linked_account_id: 'a3' },
+  { id: 'l-auto', name: 'Harborstone Auto', linked_account_id: 'a4' },
+]
+vi.mock('../../../api/liabilities', () => ({
+  useLiabilities: () => ({ data: liabilities }),
+}))
+// The real settings dialog is the liability page's; what matters here is that
+// the review opens it over itself and gets it back.
+vi.mock('../../liabilities/LiabilitySettingsModal', () => ({
+  LiabilitySettingsModal: ({
+    liability,
+    onClose,
+  }: {
+    liability: { name: string }
+    onClose: () => void
+  }) => (
+    <div role="dialog" aria-label={`Settings for ${liability.name}`}>
+      <button type="button" onClick={onClose}>
+        Close settings
+      </button>
+    </div>
+  ),
+}))
 vi.mock('../../../api/accounts', () => ({
   useAccountHygiene: () => ({ data: { findings: [], clean: true } }),
   useAccounts: () => ({ data: accounts }),
@@ -537,5 +575,82 @@ describe('the upcoming step', () => {
         second_day_of_month: 15,
       })
     )
+  })
+})
+
+describe('the terms step', () => {
+  function openWithLoans(loans: { id: string; account_id: string | null; name: string }[]) {
+    return render(
+      <MemoryRouter>
+        <ImportReviewDialog
+          budgetId="b1"
+          summary={summary()}
+          loansNeedingTerms={loans}
+          onClose={() => {}}
+        />
+      </MemoryRouter>
+    )
+  }
+  const card = { id: 'l-card', account_id: 'a3', name: 'Sapphire Visa' }
+  const auto = { id: 'l-auto', account_id: 'a4', name: 'Harborstone Auto' }
+
+  it('opens the terms editor over the review, and closing it returns to the step', async () => {
+    // It used to be a link to the liability page: the review closed, no editor
+    // opened, and Back landed on the liabilities list instead of the review.
+    const user = userEvent.setup()
+    openWithLoans([card, auto])
+    await user.click(screen.getByRole('button', { name: /Terms$/ }))
+
+    await user.click(screen.getByRole('button', { name: 'Add the terms for Harborstone Auto' }))
+    expect(
+      screen.getByRole('dialog', { name: 'Settings for Harborstone Auto' })
+    ).toBeInTheDocument()
+    expect(screen.getByText('Cards and loans with no terms yet')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Close settings' }))
+    expect(
+      screen.queryByRole('dialog', { name: 'Settings for Harborstone Auto' })
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Add the terms for Sapphire Visa' })
+    ).toBeInTheDocument()
+  })
+
+  it('calls a card a card, and keeps the loan-interest explanation for loans', async () => {
+    const user = userEvent.setup()
+    openWithLoans([card])
+    await user.click(screen.getByRole('button', { name: /Terms$/ }))
+
+    expect(screen.getByText('Cards with no terms yet')).toBeInTheDocument()
+    expect(screen.getByText(/what it costs to carry/)).toBeInTheDocument()
+    expect(screen.queryByText(/payoff date, and what closes the gap/)).not.toBeInTheDocument()
+  })
+
+  it('a loan alone keeps the loan wording', async () => {
+    const user = userEvent.setup()
+    openWithLoans([auto])
+    await user.click(screen.getByRole('button', { name: /Terms$/ }))
+
+    expect(screen.getByText('Loans with no terms yet')).toBeInTheDocument()
+    expect(screen.getByText(/payoff date, and what closes the gap/)).toBeInTheDocument()
+  })
+
+  it('keeps the step once its last account has terms, rather than vanishing', async () => {
+    const user = userEvent.setup()
+    const { rerender } = openWithLoans([card])
+    await user.click(screen.getByRole('button', { name: /Terms$/ }))
+
+    // What saving does: the summary refetches without the row.
+    rerender(
+      <MemoryRouter>
+        <ImportReviewDialog
+          budgetId="b1"
+          summary={summary()}
+          loansNeedingTerms={[]}
+          onClose={() => {}}
+        />
+      </MemoryRouter>
+    )
+    expect(screen.getByText(/has them now/)).toBeInTheDocument()
   })
 })
