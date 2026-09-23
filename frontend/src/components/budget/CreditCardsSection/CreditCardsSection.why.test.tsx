@@ -31,43 +31,46 @@ vi.mock('../TransactionsPeekModal/TransactionsPeekModal', () => ({
 }))
 
 import { CreditCardsSection } from './CreditCardsSection'
+import { assertServerProducible, withPosition } from '../../../test-utils/cardFixture'
 
 function card(over: Partial<CardStatus> = {}): CardStatus {
-  return {
-    account_id: 'a1',
-    name: 'Sapphire Visa',
-    category_id: 'c1',
-    balance: -600,
-    set_aside: 0,
-    uncovered: 600,
-    is_closed: false,
-    overspent_this_month: 0,
-    reserve_discrepancy: 0,
-    assigned: 0,
-    reserved: 0,
-    released: 0,
-    residual: 0,
-    payments: 0,
-    riding: 0,
-    imported_riding: 0,
-    covered: 0,
-    residual_from_ledgers: 0,
-    paid_ahead_unmirrored: 0,
-    ride_reaches_this_card: true,
-    opening: 0,
-    over_reserved: 0,
-    short_reserved: 0,
-    card_credit: 0,
-    set_aside_state: 'funded',
-    charged_this_month: 0,
-    inflows_this_month: 0,
-    paid_this_month: 0,
-    debt_change_this_month: 0,
-    pending_this_month: 0,
-    rode_by_month: [],
-    overspent_by_category: [],
-    ...over,
-  }
+  return assertServerProducible(
+    withPosition({
+      account_id: 'a1',
+      name: 'Sapphire Visa',
+      category_id: 'c1',
+      balance: -600,
+      set_aside: 0,
+      uncovered: 600,
+      is_closed: false,
+      overspent_this_month: 0,
+      reserve_discrepancy: 0,
+      assigned: 0,
+      reserved: 0,
+      released: 0,
+      residual: 0,
+      payments: 0,
+      riding: 0,
+      imported_riding: 0,
+      covered: 0,
+      residual_from_ledgers: 0,
+      paid_ahead_unmirrored: 0,
+      ride_reaches_this_card: true,
+      opening: 0,
+      over_reserved: 0,
+      short_reserved: 0,
+      card_credit: 0,
+      set_aside_state: 'funded',
+      charged_this_month: 0,
+      inflows_this_month: 0,
+      paid_this_month: 0,
+      debt_change_this_month: 0,
+      pending_this_month: 0,
+      rode_by_month: [],
+      overspent_by_category: [],
+      ...over,
+    })
+  )
 }
 
 /** A card paid further than any envelope set aside for it — a state with

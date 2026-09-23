@@ -32,46 +32,52 @@ vi.mock('../TransactionsPeekModal/TransactionsPeekModal', () => ({
 }))
 
 import { CreditCardsSection } from './CreditCardsSection'
+import { assertServerProducible, withPosition } from '../../../test-utils/cardFixture'
 
 function card(over: Partial<CardStatus> = {}): CardStatus {
-  return {
-    account_id: 'a1',
-    name: 'Sapphire Visa',
-    category_id: 'c1',
-    balance: -60,
-    set_aside: 115,
-    uncovered: 0,
-    is_closed: false,
-    overspent_this_month: 0,
-    reserve_discrepancy: 0,
-    assigned: 40,
-    reserved: 100,
-    released: 20,
-    residual: 0,
-    payments: 5,
-    riding: 0,
-    imported_riding: 0,
-    covered: 0,
-    residual_from_ledgers: 0,
-    paid_ahead_unmirrored: 0,
-    ride_reaches_this_card: true,
-    opening: 0,
-    // Kept coherent with balance/set_aside above rather than zeroed: 115
-    // reserved against 60 owed IS over-reserved by 55, and a fixture that
-    // said otherwise would let the row contradict itself unnoticed.
-    over_reserved: 55,
-    short_reserved: 0,
-    card_credit: 0,
-    set_aside_state: 'funded',
-    charged_this_month: 0,
-    inflows_this_month: 0,
-    paid_this_month: 0,
-    debt_change_this_month: 0,
-    pending_this_month: 0,
-    rode_by_month: [],
-    overspent_by_category: [],
-    ...over,
-  }
+  return assertServerProducible(
+    withPosition({
+      account_id: 'a1',
+      name: 'Sapphire Visa',
+      category_id: 'c1',
+      balance: -60,
+      set_aside: 115,
+      uncovered: 0,
+      is_closed: false,
+      overspent_this_month: 0,
+      reserve_discrepancy: 0,
+      assigned: 40,
+      reserved: 100,
+      released: 20,
+      residual: 0,
+      payments: 5,
+      riding: 0,
+      imported_riding: 0,
+      covered: 0,
+      residual_from_ledgers: 0,
+      paid_ahead_unmirrored: 0,
+      ride_reaches_this_card: true,
+      opening: 0,
+      // Kept coherent with balance/set_aside above rather than zeroed: 115
+      // reserved against 60 owed IS over-reserved by 55, and a fixture that
+      // said otherwise would let the row contradict itself unnoticed.
+      over_reserved: 55,
+      short_reserved: 0,
+      card_credit: 0,
+      // 115 set aside against 60 owed: the position IS a 55 surplus, and the
+      // server would label it so. It said `funded` here for months and every
+      // test passed, because nothing compared the label to the figures.
+      set_aside_state: 'surplus',
+      charged_this_month: 0,
+      inflows_this_month: 0,
+      paid_this_month: 0,
+      debt_change_this_month: 0,
+      pending_this_month: 0,
+      rode_by_month: [],
+      overspent_by_category: [],
+      ...over,
+    })
+  )
 }
 
 beforeEach(() => {
@@ -152,7 +158,15 @@ describe('the Set aside breakdown', () => {
     // said "$2,000.00 of spending rode onto this card when a month ended
     // short" and offered to fix it by funding a month that never existed.
     month.current = {
-      cards: [card({ riding: 0, imported_riding: 2000, uncovered: 2000, set_aside: 0 })],
+      cards: [
+        card({
+          riding: 0,
+          imported_riding: 2000,
+          set_aside: 0,
+          balance: -2000,
+          set_aside_state: 'funded',
+        }),
+      ],
       category_balances: [],
     } as unknown as BudgetMonth
     render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
@@ -168,7 +182,15 @@ describe('the Set aside breakdown', () => {
 
   it('tells the two kinds of ride apart when a card carries both', async () => {
     month.current = {
-      cards: [card({ riding: 60, imported_riding: 400, uncovered: 460, set_aside: 0 })],
+      cards: [
+        card({
+          riding: 60,
+          imported_riding: 400,
+          set_aside: 0,
+          balance: -460,
+          set_aside_state: 'funded',
+        }),
+      ],
       category_balances: [],
     } as unknown as BudgetMonth
     render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)

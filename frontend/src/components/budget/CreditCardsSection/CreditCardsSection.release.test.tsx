@@ -12,6 +12,7 @@ import userEvent from '@testing-library/user-event'
 import { CreditCardsSection } from './CreditCardsSection'
 import { releaseAnchors } from './cardRow'
 import type { BudgetMonth, CardStatus, Category } from '../../../types'
+import { assertServerProducible, withPosition } from '../../../test-utils/cardFixture'
 
 const month: { current: BudgetMonth | undefined } = { current: undefined }
 const moveMoney = vi.fn(() => Promise.resolve())
@@ -42,41 +43,43 @@ vi.mock('../../../stores/uiStore', () => ({
 }))
 
 function card(over: Partial<CardStatus> = {}): CardStatus {
-  return {
-    account_id: 'a1',
-    name: 'Sapphire Visa',
-    category_id: 'c1',
-    balance: -1500,
-    set_aside: 7400,
-    uncovered: 0,
-    is_closed: false,
-    overspent_this_month: 0,
-    reserve_discrepancy: 0,
-    assigned: 5900,
-    reserved: 1500,
-    released: 0,
-    residual: 0,
-    payments: 0,
-    riding: 0,
-    imported_riding: 0,
-    covered: 0,
-    residual_from_ledgers: 0,
-    paid_ahead_unmirrored: 0,
-    ride_reaches_this_card: true,
-    opening: 0,
-    over_reserved: 5900,
-    short_reserved: 0,
-    card_credit: 0,
-    set_aside_state: 'surplus',
-    charged_this_month: 0,
-    inflows_this_month: 0,
-    paid_this_month: 0,
-    debt_change_this_month: 0,
-    pending_this_month: 0,
-    rode_by_month: [],
-    overspent_by_category: [],
-    ...over,
-  }
+  return assertServerProducible(
+    withPosition({
+      account_id: 'a1',
+      name: 'Sapphire Visa',
+      category_id: 'c1',
+      balance: -1500,
+      set_aside: 7400,
+      uncovered: 0,
+      is_closed: false,
+      overspent_this_month: 0,
+      reserve_discrepancy: 0,
+      assigned: 5900,
+      reserved: 1500,
+      released: 0,
+      residual: 0,
+      payments: 0,
+      riding: 0,
+      imported_riding: 0,
+      covered: 0,
+      residual_from_ledgers: 0,
+      paid_ahead_unmirrored: 0,
+      ride_reaches_this_card: true,
+      opening: 0,
+      over_reserved: 5900,
+      short_reserved: 0,
+      card_credit: 0,
+      set_aside_state: 'surplus',
+      charged_this_month: 0,
+      inflows_this_month: 0,
+      paid_this_month: 0,
+      debt_change_this_month: 0,
+      pending_this_month: 0,
+      rode_by_month: [],
+      overspent_by_category: [],
+      ...over,
+    })
+  )
 }
 
 const money = (n: number) => `$${n.toFixed(2)}`
@@ -120,8 +123,12 @@ describe('releaseAnchors', () => {
     // as `moved_out`. Releasing $500 from an envelope holding $100 used to go
     // through and read "you have paid $400 more … the money has already left
     // your account" about money sitting in Ready to Assign.
-    expect(releaseAnchors(card({ set_aside: 100, over_reserved: 0 }), money).ceiling).toBe(100)
-    expect(releaseAnchors(card({ set_aside: -50, over_reserved: 0 }), money).ceiling).toBe(0)
+    expect(releaseAnchors(card({ set_aside: 100, set_aside_state: 'funded' }), money).ceiling).toBe(
+      100
+    )
+    expect(
+      releaseAnchors(card({ set_aside: -50, set_aside_state: 'paid_ahead' }), money).ceiling
+    ).toBe(0)
   })
 
   it('states the consequence past the spare, and caps at what is held', () => {
