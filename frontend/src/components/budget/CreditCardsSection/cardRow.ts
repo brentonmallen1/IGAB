@@ -25,7 +25,7 @@ type Money = (n: number) => string
  * (`setAsideLabel`) and the explanation to a sentence under the row
  * (`stateSentence`), both visible without hovering anything.
  */
-export function setAsideShown(card: CardStatus): number {
+export function setAsideShown(card: Pick<CardStatus, 'set_aside'>): number {
   return Math.max(0, card.set_aside)
 }
 

@@ -914,12 +914,12 @@ SETTLED_BY_OTHERS = CardScenario(
             "some out of checking — and they settle up in one payment onto the card."
         ),
         reads=(
-            "Set aside shows $0.00 with a note that it is below zero, because they paid the "
+            "Set aside shows $0.00 with $200.00 below zero beside it, because they paid the "
             "card down by more than the tab had ever charged it."
         ),
         todo=(
-            "Nothing. The repayment took money out of Set aside and paid the card down by "
-            "exactly the same amount."
+            "Nothing. The repayment paid the card down by exactly what it took out of Set aside, "
+            "and Ready to Assign is untouched — no cash of yours moved."
         ),
     ),
 )
@@ -1051,8 +1051,9 @@ MIXED = CardScenario(
             "does not split the $500 between them."
         ),
         todo=(
-            "Open the breakdown — the settle-up needs nothing, and to square the paydown you "
-            "assign to the card. The row will not pick that figure for you."
+            "Open the breakdown — the settle-up needs nothing, and Ready to Assign already "
+            "reflects the paydown. Assign to the card to square its envelope; the row will not "
+            "pick that figure for you."
         ),
     ),
 )
@@ -1122,10 +1123,12 @@ PAID_AHEAD = CardScenario(
         "was holding and went straight to the balance.\n\n"
         "Nothing came back onto the card and no month ended short, so there "
         "is nothing to re-file and no envelope to back-fund: this is the plain "
-        "case the other three negatives are mistaken for. Assigning 300 to "
-        "the card squares it, and that is a true statement here and false on "
-        "the settle-up card two rows up — which is the whole reason the state "
-        "is served rather than guessed from the sign."
+        "case the other negatives are mistaken for. Ready to Assign already "
+        "reflects the 300 — the money left the account when the card was "
+        "paid — so assigning 300 to the card squares its envelope and moves "
+        "Ready to Assign by nothing. That is a true statement here and false "
+        "on the settle-up card two rows up, which is the whole reason the "
+        "state is served rather than guessed from the sign."
     ),
     card="Quillon Card",
     short="Quillon",
@@ -1159,8 +1162,8 @@ PAID_AHEAD = CardScenario(
             "below zero beside it."
         ),
         todo=(
-            "Assign $300 to the card to square it. Ready to Assign falls by that much, because "
-            "the money has already left your account."
+            "Assign $300 to the card to square its envelope. Ready to Assign already reflects "
+            "it — the money left your account when you paid."
         ),
     ),
 )
@@ -1208,7 +1211,7 @@ REIMBURSED = CardScenario(
             "this card."
         ),
         reads=(
-            "Set aside shows $0.00 with a note that it is below zero, while the card still owes "
+            "Set aside shows $0.00 with $500.00 below zero beside it, while the card still owes "
             "$1,900."
         ),
         todo=(
