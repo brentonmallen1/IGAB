@@ -314,6 +314,10 @@ export type SetAsideState =
    *  names what is present and attributes nothing — the reserve identity is
    *  bounds, not parts, so any split would be a guess. */
   | 'mixed'
+  /** Money was moved out of the envelope past what it held — a release or a
+   *  negative assignment. No payment happened; the money is in Ready to
+   *  Assign. Assign to put it back. */
+  | 'moved_out'
 
 export interface CardStatus {
   account_id: string

@@ -146,6 +146,15 @@ export function stateSentence(card: CardStatus, money: Money): StateSentence | n
           `falls by that much, because the money has already left your account.`,
       }
 
+    case 'moved_out':
+      return {
+        sentence:
+          `${money(card.short_reserved)} more was moved out of this card's envelope than it ` +
+          `held. No payment happened and nothing came back onto the card — the money is in ` +
+          `Ready to Assign, or wherever it was moved, and the envelope is overdrawn.`,
+        action: `Assign ${money(card.short_reserved)} to the card to put back what was taken.`,
+      }
+
     case 'mixed': {
       // Name what is present; quote each served leg; split nothing. The
       // reserve identity is bounds, not parts, so "how much of the shortfall
@@ -219,7 +228,11 @@ export function releaseAnchors(card: CardStatus, money: Money): ReleaseAnchors {
           `Uncovered rises by every dollar you take out. That is allowed: it means choosing ` +
             `to carry more of this balance.`,
         ]
-  return { prefill: spare > 0 ? spare : held, ceiling: held, lines }
+  // Prefill the spare, or nothing: prefilling `held` proposed emptying an
+  // envelope that was exactly covering its bill. `ceiling` is what the form
+  // refuses to exceed — below zero there is no money, only a deficit that
+  // used to read as "you have paid ahead".
+  return { prefill: spare > 0 ? spare : 0, ceiling: held, lines }
 }
 
 /**

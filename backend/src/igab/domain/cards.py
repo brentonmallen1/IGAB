@@ -884,6 +884,14 @@ class SetAsideState(StrEnum):
     #: labelled a two-thirds settle-up as overpayment. The legs panel is the
     #: whole picture; this points at it.
     MIXED = "mixed"
+    #: Money was moved OUT of the card's envelope past what it held — a
+    #: release, or a negative typed into Assigned, larger than the reserve.
+    #: No payment happened and nothing came back onto the card: the money is
+    #: in Ready to Assign (or wherever it was moved) and the envelope is
+    #: simply overdrawn. T2's third term. It read `PAID_AHEAD` — "you have
+    #: paid $200 more … the money has already left your account" — about
+    #: money that had left nothing but this envelope.
+    MOVED_OUT = "moved_out"
 
 
 def riding_series[C, K](funding: CardFunding[C, K], card: K) -> dict[date, Decimal]:
@@ -983,6 +991,7 @@ def set_aside_state(
     riding: Decimal,
     residual_from_ledgers: Decimal,
     ride_reaches_this_card: bool,
+    released_out: Decimal = ZERO,
 ) -> SetAsideState:
     """Which situation a card's Set aside is in, from the served terms.
 
@@ -1007,6 +1016,11 @@ def set_aside_state(
     never the import's opening debt (`imported_riding_by_card`). The two ride
     states promise that funding a month's envelope retires the ride; imported
     debt has no such month, and is retired only by assigning to the card.
+
+    `released_out` is the negative half of the card's lifetime assignments —
+    money moved out of its envelope (T2's third term). It is the one cause
+    where no cash left the household and nothing came back onto the card, so
+    the row must not say "you have paid".
 
     A **full** explanation, never a partial one: `residual_from_ledgers`,
     `residual` and `riding` must each cover the whole shortfall to claim it.
@@ -1036,7 +1050,9 @@ def set_aside_state(
                 if ride_reaches_this_card
                 else SetAsideState.SETTLED_ELSEWHERE
             )
-        if residual == ZERO and riding == ZERO:
+        if released_out >= short:
+            return SetAsideState.MOVED_OUT
+        if residual == ZERO and riding == ZERO and released_out == ZERO:
             return SetAsideState.PAID_AHEAD
         # Something is present and nothing covers it all. Say so; do not pick.
         return SetAsideState.MIXED

@@ -1164,6 +1164,11 @@ class BudgetService:
                 from_ledgers = residual_from(
                     funding.residual_by_pair, account.id, ledgers, month_start
                 )
+                # The same `assigned` T2 reads (opening folded in), so the
+                # state and the bound agree on what "moved out" means: the
+                # net lifetime assignment where it has gone negative.
+                assigned_lifetime = opening_total + sum_through(card_assignments, month_start)
+                released_out = max(zero, -assigned_lifetime)
                 charged, received, pending = month_flows.get(account.id, (zero, zero, zero))
                 if account.is_closed and balance == zero and set_aside == zero:
                     # Settled and closed: nothing owed, nothing reserved,
@@ -1211,6 +1216,7 @@ class BudgetService:
                             ride_reaches_this_card=ride_is_exclusive(
                                 funding.floored_by_pair, account.id, month_start
                             ),
+                            released_out=released_out,
                         ),
                         is_closed=account.is_closed,
                         overspent_this_month=funding.floored_by_card.get(account.id, {}).get(
@@ -1270,7 +1276,7 @@ class BudgetService:
                         reserve_discrepancy=reserve_discrepancy(
                             set_aside,
                             balance,
-                            opening_total + sum_through(card_assignments, month_start),
+                            assigned_lifetime,
                             sum_through(funding.covered_by_card.get(account.id, {}), month_start),
                             sum_through(reserve.payments, month_start),
                             sum_through(reserve.residual, month_start),

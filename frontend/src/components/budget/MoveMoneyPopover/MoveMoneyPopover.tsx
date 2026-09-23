@@ -16,6 +16,8 @@ interface Props {
   /** Passed straight through to the form — see `MoveMoneyForm`. */
   prefill?: number
   footnote?: ReactNode
+  /** Forwarded to the form — see MoveMoneyForm. */
+  ceiling?: number
   /** Names the dialog. Defaults to what the form's own heading says. */
   label?: string
   /** The button that opened it; the popover hangs off its right edge and
@@ -32,6 +34,7 @@ export function MoveMoneyPopover({
   available,
   prefill,
   footnote,
+  ceiling,
   label,
   anchorRef,
   onClose,
@@ -95,6 +98,7 @@ export function MoveMoneyPopover({
         available={available}
         prefill={prefill}
         footnote={footnote}
+        ceiling={ceiling}
         onClose={onClose}
       />
     </div>

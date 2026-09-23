@@ -77,7 +77,9 @@ ZERO = Decimal("0")
 #:         Without a cash leg, every settle-up leaves the envelope holding
 #:         the residual, and a running tab is indistinguishable from a refund
 #:         an envelope kept.
-EventKind = Literal["spend", "charge", "refund", "pay", "deposit", "fund", "assign", "cash_spend"]
+EventKind = Literal[
+    "spend", "charge", "refund", "pay", "deposit", "fund", "assign", "release", "cash_spend"
+]
 
 _CARD_ROWS: frozenset[str] = frozenset({"spend", "charge", "refund", "pay", "deposit"})
 _NEEDS_CATEGORY: frozenset[str] = frozenset({"spend", "refund", "fund", "cash_spend"})
@@ -104,8 +106,9 @@ class CardEvent:
         return date(year, month, 1)
 
     def signed(self) -> Decimal:
-        """What this event does to the CARD's balance. 0 for assignments, and
-        0 for `cash_spend`, which never touches the card."""
+        """What this event does to the CARD's balance. 0 for assignments and
+        releases (envelope moves), and 0 for `cash_spend`, which never
+        touches the card."""
         if self.kind in ("spend", "charge"):
             return -self.amount
         if self.kind in ("refund", "pay", "deposit"):
@@ -358,6 +361,9 @@ def to_funding_inputs(scenario: CardScenario, today: date) -> FundingInputs:
             _bump(assignments.setdefault(category, {}), month, event.amount)
         elif event.kind == "assign":
             _bump(assignments.setdefault(scenario.payment_category, {}), month, event.amount)
+        elif event.kind == "release":
+            # Money moved OUT of the card's envelope: a negative assignment.
+            _bump(assignments.setdefault(scenario.payment_category, {}), month, -event.amount)
         elif event.kind in ("spend", "refund"):
             # A refund is the same row with the sign flipped, in both places:
             # the envelope's activity and the card's signed net outflow.
@@ -553,6 +559,12 @@ def state(scenario: CardScenario, today: date, through: date | None = None) -> S
             funding.residual_by_pair, scenario.card, ledgers, month
         ),
         ride_reaches_this_card=ride_is_exclusive(funding.floored_by_pair, scenario.card, month),
+        # The same `assigned` T2 reads, opening folded in — as budget_service
+        # computes it, so the scenario oracle and the served state agree.
+        released_out=max(
+            ZERO,
+            -(sum_through(reserve.opening, month) + sum_through(reserve.assignments, month)),
+        ),
     )
 
 
@@ -573,6 +585,13 @@ def _fund(months_ago: int, amount: str, category: str) -> CardEvent:
 
 def _assign(months_ago: int, amount: str) -> CardEvent:
     return CardEvent(RelDate(months_ago, 1), "assign", Decimal(amount))
+
+
+def _release(months_ago: int, amount: str) -> CardEvent:
+    """Move `amount` OUT of the card's envelope — the Release button, or a
+    negative typed into Assigned. Stated positive; applied as a negative
+    assignment everywhere it is walked."""
+    return CardEvent(RelDate(months_ago, 1), "release", Decimal(amount))
 
 
 def _pay(months_ago: int, amount: str, day: int = 25) -> CardEvent:
@@ -1032,6 +1051,61 @@ MIXED = CardScenario(
     ),
 )
 
+MOVED_OUT = CardScenario(
+    slug="moved-out",
+    title="More was moved out of the card's envelope than it held",
+    story=(
+        "A card paid in full every month, so its envelope holds exactly the "
+        "bill: 300 reserved by 300 of funded spending. The household needs "
+        "cash elsewhere this month and releases 500 from the envelope — 200 "
+        "more than was there.\n\n"
+        "No payment happened and nothing came back onto the card, so the "
+        "money is in Ready to Assign and the envelope is simply overdrawn by "
+        "200. This used to read 'paid ahead' — 'you have paid $200 more "
+        "toward this card than any envelope set aside; the money has already "
+        "left your account' — about money that had left nothing but this "
+        "envelope. The remedy is the same word, assign, for the opposite "
+        "reason: not to record a payment, but to put back what was taken."
+    ),
+    card="Wrenfield Card",
+    short="Wrenfield",
+    opening=_d("0"),
+    events=(
+        _fund(1, "300", "Wrenfield Groceries"),
+        _spend(1, "300", "Wrenfield Groceries"),
+        _release(0, "500"),
+    ),
+    # Hand-computed. 300 reserved by the funded spend; 500 moved out; Set
+    # aside -200. The card still owes the 300 it was charged and nothing has
+    # been paid, so it is 300 uncovered — 500 of it the release, less 200 that
+    # was never there to begin with.
+    expect=ExpectedPosition(
+        balance=_d("-300"),
+        set_aside=_d("-200"),
+        uncovered=_d("300"),
+        short_reserved=_d("200"),
+        charged_this_month=_d("0"),
+        inflows_this_month=_d("0"),
+        paid_this_month=_d("0"),
+        debt_change_this_month=_d("0"),
+    ),
+    set_aside_state=SetAsideState.MOVED_OUT,
+    tiers=("full",),
+    lesson=CardLesson(
+        happens=(
+            "An envelope held $300 for the bill, and you moved $500 out of it to use elsewhere."
+        ),
+        reads=(
+            "Set aside shows $0.00 with $200.00 below zero beside it, and the row says the "
+            "money was moved out — not paid."
+        ),
+        todo=(
+            "Assign $200 back to the card to restore what was taken. Nothing left your bank "
+            "account; Ready to Assign has it."
+        ),
+    ),
+)
+
 PAID_AHEAD = CardScenario(
     slug="paid-ahead",
     title="Paid more than was ever set aside",
@@ -1356,6 +1430,7 @@ ALL_SCENARIOS: tuple[CardScenario, ...] = (
     RIDE_UNFUNDED,
     PAID_AHEAD,
     MIXED,
+    MOVED_OUT,
 )
 
 
@@ -1620,16 +1695,18 @@ def to_spec_elements(
                     tiers=scenario.tiers,
                 )
             )
-        elif event.kind in ("fund", "assign"):
+        elif event.kind in ("fund", "assign", "release"):
             assignments.append(
                 ExplicitAssignment(
                     category=(
                         scenario.payment_category
-                        if event.kind == "assign"
+                        if event.kind in ("assign", "release")
                         else event.category or ""
                     ),
                     when=RelDate(event.when.months_ago, 1),
-                    amount=event.amount,
+                    # A release is the same row with the sign flipped: the
+                    # generator adds assignments, so a negative one subtracts.
+                    amount=-event.amount if event.kind == "release" else event.amount,
                     tiers=scenario.tiers,
                 )
             )

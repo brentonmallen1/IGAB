@@ -122,6 +122,8 @@ async def apply_card_scenario(
             await _assign(session, budget, category, when.replace(day=1), event.amount)
         elif event.kind == "assign":
             await _assign(session, budget, payment_category, when.replace(day=1), event.amount)
+        elif event.kind == "release":
+            await _assign(session, budget, payment_category, when.replace(day=1), -event.amount)
         elif event.kind in ("spend", "refund"):
             category = await _category(session, budget, group, event.category or "", cache)
             amount = -event.amount if event.kind == "spend" else event.amount

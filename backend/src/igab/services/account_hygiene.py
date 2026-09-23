@@ -504,6 +504,9 @@ class AccountHygieneService:
             # ledger merely touched must not hide behind the bookkeeping —
             # `test_a_shortfall_only_partly_explained_by_a_ledger_still_reports`.
             SetAsideState.MIXED,
+            # Overdrawn by a move, not a payment. Real, and the remedy is
+            # to put the money back — worth a line.
+            SetAsideState.MOVED_OUT,
         }
     )
 

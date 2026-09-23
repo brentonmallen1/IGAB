@@ -493,7 +493,7 @@ function ReleaseButton({
   const [open, setOpen] = useState(false)
   const anchorRef = useRef<HTMLButtonElement>(null)
 
-  const { prefill, lines } = releaseAnchors(card, formatMoney)
+  const { prefill, ceiling, lines } = releaseAnchors(card, formatMoney)
   const footnote = (
     <>
       {lines.map((line) => (
@@ -523,6 +523,7 @@ function ReleaseButton({
           available={card.set_aside}
           prefill={prefill}
           footnote={footnote}
+          ceiling={ceiling}
           label={label}
           anchorRef={anchorRef}
           onClose={() => setOpen(false)}
@@ -542,6 +543,7 @@ function ReleaseButton({
               available={card.set_aside}
               prefill={prefill}
               footnote={footnote}
+              ceiling={ceiling}
               onClose={() => setOpen(false)}
             />
           </div>
