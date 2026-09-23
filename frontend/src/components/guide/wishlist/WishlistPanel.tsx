@@ -310,9 +310,14 @@ export function WishlistPanel() {
         </div>
         <div className="guide-wishlist__status">
           {stillWanted && <p className="guide-wishlist__line">{stillWanted}</p>}
-          {due.length > 0 && (
+          {/* The served count, not `due.length`. Both read the same served
+              `review_due` flags, so a second spelling of the number buys
+              nothing and can only ever disagree; `due` stays as the queue
+              the review dialog walks. */}
+          {data.review_due_count > 0 && (
             <p className="guide-wishlist__line">
-              {due.length} {due.length === 1 ? 'wish is' : 'wishes are'} due for a review ·{' '}
+              {data.review_due_count} {data.review_due_count === 1 ? 'wish is' : 'wishes are'} due
+              for a review ·{' '}
               <button
                 type="button"
                 className="guide-link-button"

@@ -360,18 +360,6 @@ export function useDeleteProject(budgetId: string) {
   )
 }
 
-export function useReorderProjects(budgetId: string) {
-  return useWishlistMutation<string[], void>(
-    budgetId,
-    (project_ids) =>
-      apiClient
-        .post(`/${budgetId}/wishlist/projects/reorder`, { project_ids })
-        .then(() => undefined),
-    'Could not reorder',
-    { touchesCategory: false }
-  )
-}
-
 export function useSetWishlistSettings(budgetId: string) {
   return useWishlistMutation<Partial<WishlistSettings>, WishlistSettings>(
     budgetId,

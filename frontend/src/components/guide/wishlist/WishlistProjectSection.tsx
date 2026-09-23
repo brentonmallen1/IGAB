@@ -39,7 +39,9 @@ export function WishlistProjectSection({
           aria-expanded={open}
           aria-controls={bodyId}
         >
-          {open ? <ChevronDown size={14} aria-hidden /> : <ChevronRight size={14} aria-hidden />}
+          {/* Sized by `--wish-caret` in Wishlist.css, which the two indents
+              below also read — one number, not one here and one there. */}
+          {open ? <ChevronDown aria-hidden /> : <ChevronRight aria-hidden />}
           <h3 className="wish-project__name">{title}</h3>
           <span className="wish-project__count">{count}</span>
         </button>
