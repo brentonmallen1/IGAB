@@ -586,6 +586,16 @@ async def test_a_budget_with_only_sent_out_categories_reads_as_money_moved(db_se
 
     served, tab = await _served_figures(db_session, budget)
 
+    import os
+
+    if os.environ.get("REGEN_SAVINGS_GOLDEN"):
+        # Regenerate after a deliberate change to the full sample (a new card
+        # scenario adds spending). What the golden pins is the sent-out ==
+        # money-moved identity below, which holds on any sample; the figures
+        # themselves are the sample's, and follow it.
+        (Path(__file__).parent / "savings_golden_sample.json").write_text(
+            json.dumps(served, indent=1) + "\n"
+        )
     assert served == GOLDEN
     assert tab["summary"]["savings_held"] == 0
     assert tab["summary"]["savings"] == tab["summary"]["savings_moved"]

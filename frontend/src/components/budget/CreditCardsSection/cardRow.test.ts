@@ -39,6 +39,7 @@ function card(over: Partial<CardStatus> = {}): CardStatus {
     riding: 0,
     imported_riding: 0,
     covered: 0,
+    residual_from_ledgers: 0,
     opening: 0,
     over_reserved: 0,
     short_reserved: 0,
@@ -151,12 +152,71 @@ describe('the sentence under the row', () => {
         set_aside: -200,
         short_reserved: 200,
         residual: 400,
+        residual_from_ledgers: 400,
         set_aside_state: 'settled_by_others',
       }),
       money
     )
     expect(said?.sentence).toContain('$400.00')
     expect(said?.action).toBe('Nothing to do.')
+  })
+
+  it('quotes the settle-up figure, not every refund the card ever saw', () => {
+    // The state was decided on `residual_from_ledgers`; the sentence used to
+    // print lifetime `residual` — years of ordinary refunds across every
+    // envelope — as "came back … somebody settled up".
+    const said = stateSentence(
+      card({
+        set_aside: -100,
+        short_reserved: 100,
+        residual: 4000,
+        residual_from_ledgers: 150,
+        set_aside_state: 'settled_by_others',
+      }),
+      money
+    )
+    expect(said?.sentence).toContain('$150.00')
+    expect(said?.sentence).not.toContain('$4,000.00')
+  })
+
+  it('names every cause of a mixed shortfall and splits nothing', () => {
+    // The reported card: a settle-up that explains part, a paydown that explains
+    // the rest. It read "you have paid $300 more … than any envelope set
+    // aside" — $200 of which was somebody else's money.
+    const said = stateSentence(
+      card({
+        set_aside: -300,
+        short_reserved: 300,
+        residual: 200,
+        residual_from_ledgers: 200,
+        riding: 0,
+        set_aside_state: 'mixed',
+      }),
+      money
+    )
+    expect(said?.sentence).toContain('$200.00 came back from somebody settling up')
+    expect(said?.sentence).toContain('payments ran past what was set aside')
+    expect(said?.sentence).toContain('will not guess the split')
+    // The one number it may quote as a total is the served shortfall …
+    expect(said?.sentence).toContain('$300.00')
+    // … and it never presents it as what was paid ahead.
+    expect(said?.sentence).not.toMatch(/You have paid/)
+  })
+
+  it('a mixed card with a partial ride names the ride and its month remedy stays honest', () => {
+    const said = stateSentence(
+      card({
+        set_aside: -805,
+        short_reserved: 805,
+        residual: 0,
+        residual_from_ledgers: 0,
+        riding: 5,
+        set_aside_state: 'mixed',
+      }),
+      money
+    )
+    expect(said?.sentence).toContain('$5.00 rode here when a month ended short')
+    expect(said?.sentence).toContain('$805.00')
   })
 
   it('promises that funding a month works only where the ride is this card alone', () => {

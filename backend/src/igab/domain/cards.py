@@ -869,10 +869,21 @@ class SetAsideState(StrEnum):
     #: recomputed from scratch on every request. The only state that may
     #: promise it.
     RIDE_UNFUNDED = "ride_unfunded"
-    #: Payment ran past everything reserved, with nothing else to explain it:
-    #: a deliberate paydown out of money no envelope had set aside. It went
-    #: straight to the balance.
+    #: Payment ran past everything reserved, with NOTHING else present: no
+    #: residual of any kind and no ride. A deliberate paydown out of money no
+    #: envelope had set aside; it went straight to the balance. The only
+    #: state that may quote `short_reserved` as "what you paid ahead" — with
+    #: a second cause present, that figure includes the other cause's money.
     PAID_AHEAD = "paid_ahead"
+    #: More than one thing put Set aside below zero, and none of them explains
+    #: all of it. The row names what is present and quotes each served leg,
+    #: and says nothing about how much of the shortfall is which: the reserve
+    #: identity is bounds, not parts (`reserve_discrepancy`'s T2 is `<=`), so
+    #: any split into "this much settle-up, this much paid ahead" would be an
+    #: attribution rule — the same shape of confident wrong answer that
+    #: labelled a two-thirds settle-up as overpayment. The legs panel is the
+    #: whole picture; this points at it.
+    MIXED = "mixed"
 
 
 def riding_series[C, K](funding: CardFunding[C, K], card: K) -> dict[date, Decimal]:
@@ -997,9 +1008,15 @@ def set_aside_state(
     states promise that funding a month's envelope retires the ride; imported
     debt has no such month, and is retired only by assigning to the card.
 
-    A **full** explanation, never a partial one: `residual_from_ledgers` and
-    `residual` must each cover the whole shortfall to claim it. Accepting part
-    of one would let a real shortfall hide behind a household's bookkeeping.
+    A **full** explanation, never a partial one: `residual_from_ledgers`,
+    `residual` and `riding` must each cover the whole shortfall to claim it.
+    Accepting part of one would let a real shortfall hide behind a
+    household's bookkeeping — and, the other way, claiming the whole
+    shortfall for the one cause that was checked last labelled a settle-up
+    plus a small paydown as "you have paid $300 ahead" when $200 of it was
+    somebody squaring up. `PAID_AHEAD` therefore requires that nothing else
+    is present at all; anything partial is `MIXED`, which names the causes
+    and attributes nothing.
     """
     if position.card_credit > ZERO:
         return SetAsideState.CARD_HOLDS_IT
@@ -1009,13 +1026,20 @@ def set_aside_state(
             return SetAsideState.SETTLED_BY_OTHERS
         if residual >= short:
             return SetAsideState.REFUND_OUTRAN_ENVELOPE
-        if riding > ZERO:
+        # Symmetric with the two above: the ride must explain the WHOLE
+        # shortfall to claim it. It used to fire on `riding > ZERO`, so a
+        # $5 ride claimed a $805 shortfall and the row promised that funding
+        # one month would retire it — leaving $800 short.
+        if riding >= short:
             return (
                 SetAsideState.RIDE_UNFUNDED
                 if ride_reaches_this_card
                 else SetAsideState.SETTLED_ELSEWHERE
             )
-        return SetAsideState.PAID_AHEAD
+        if residual == ZERO and riding == ZERO:
+            return SetAsideState.PAID_AHEAD
+        # Something is present and nothing covers it all. Say so; do not pick.
+        return SetAsideState.MIXED
     if position.over_reserved > ZERO:
         return SetAsideState.SURPLUS
     return SetAsideState.FUNDED

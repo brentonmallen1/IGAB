@@ -901,11 +901,12 @@ SETTLED_BY_OTHERS = CardScenario(
 
 RIDE_UNFUNDED = CardScenario(
     slug="ride-unfunded",
-    title="A month ended short, then a payment ran past the rest",
+    title="A month ended short, and the payment covered what was reserved and the ride",
     story=(
         "An envelope was funded 100 and spent 300 on this card, so 200 rode "
-        "onto the card when the month ended. A later payment then ran past "
-        "everything that WAS reserved, and Set aside went below zero.\n\n"
+        "onto the card when the month ended. A later payment covered "
+        "everything that WAS reserved and the ride as well, and Set aside "
+        "went below zero by exactly the ride.\n\n"
         "The remedy is the one this row may promise, and only here: the whole "
         "of that envelope's shortfall rode onto THIS card, so raising that "
         "month's assignment retires the ride — the walk is recomputed from "
@@ -922,21 +923,27 @@ RIDE_UNFUNDED = CardScenario(
         _spend(2, "300", "Bramblewick Hardware"),
         _fund(1, "100", "Bramblewick Hardware"),
         _spend(1, "100", "Bramblewick Hardware"),
-        _pay(0, "500", day=1),
+        _pay(0, "400", day=1),
     ),
-    # Hand-computed. Reserved 100 + 100 = 200 against a 500 payment, so Set
-    # aside is -300. The first month's envelope was 200 short and its whole
-    # shortfall rode here. The card owes 200 + 300 + 100 - 500 = 100.
+    # Hand-computed. Reserved 100 + 100 = 200 against a 400 payment, so Set
+    # aside is -200 — the ride, exactly. The first month's envelope was 200
+    # short and its whole shortfall rode here. The card owes
+    # 200 + 300 + 100 - 400 = 200.
+    #
+    # It used to pay 500 and sit at -300 with 200 riding: a ride that
+    # explained two thirds of the shortfall, labelled as if it explained all
+    # of it, with a remedy that would have left the card 100 short. That
+    # shape is `mixed` now, and has its own scenario below.
     expect=ExpectedPosition(
-        balance=_d("-100"),
-        set_aside=_d("-300"),
-        uncovered=_d("100"),
-        short_reserved=_d("300"),
+        balance=_d("-200"),
+        set_aside=_d("-200"),
+        uncovered=_d("200"),
+        short_reserved=_d("200"),
         riding=_d("200"),
         charged_this_month=_d("0"),
-        inflows_this_month=_d("500"),
-        paid_this_month=_d("500"),
-        debt_change_this_month=_d("500"),
+        inflows_this_month=_d("400"),
+        paid_this_month=_d("400"),
+        debt_change_this_month=_d("400"),
     ),
     set_aside_state=SetAsideState.RIDE_UNFUNDED,
     tiers=("full",),
@@ -947,11 +954,80 @@ RIDE_UNFUNDED = CardScenario(
         ),
         reads=(
             "The payment ran past what was actually set aside, so Set aside shows $0.00 with "
-            "$300.00 below zero beside it."
+            "$200.00 below zero beside it."
         ),
         todo=(
             "Raise that month's assignment on the envelope and the ride is retired, or assign "
-            "$300 to the card to cover it now."
+            "$200 to the card to cover it now."
+        ),
+    ),
+)
+
+MIXED = CardScenario(
+    slug="mixed",
+    title="Two things put Set aside below zero, and neither explains all of it",
+    story=(
+        "The settle-up card, plus one ordinary decision. Somebody else's "
+        "spending ran through a tab you never budget into, and when they "
+        "squared up, 400 of it landed as residual — that is the whole of the "
+        "card two rows up. Here the household ALSO paid 300 off the card from "
+        "cash nothing had set aside. Set aside is 500 below zero: 400 of it "
+        "somebody else's settle-up, 300 a paydown, 200 of it reserved by "
+        "groceries and consumed.\n\n"
+        "This is the shape a real budget is usually in, and the one the "
+        "eight-state model had no word for. It fell through every branch to "
+        "'paid ahead' and quoted the full 500 as money you had paid — 400 of "
+        "which was somebody else's. The row does not decompose it now, because "
+        "it cannot: the reserve identity is bounds, not parts. It names what "
+        "is present, quotes each served leg, and points at the breakdown."
+    ),
+    card="Marrowbone Card",
+    short="Marrowbone",
+    opening=_d("-800"),
+    events=(
+        _fund(2, "100", "Marrowbone Groceries"),
+        _spend(2, "100", "Marrowbone Groceries"),
+        _spend(2, "200", "Marrowbone Shared Tab"),
+        _fund(1, "100", "Marrowbone Groceries"),
+        _spend(1, "100", "Marrowbone Groceries"),
+        _spend(1, "200", "Marrowbone Shared Tab"),
+        _spend(0, "200", "Marrowbone Shared Tab", day=1),
+        _cash_spend(0, "400", "Marrowbone Shared Tab", day=1),
+        _refund(0, "1000", "Marrowbone Shared Tab", day=1),
+        # The second cause: 300 paid off the card out of ordinary cash.
+        _pay(0, "300", day=1),
+    ),
+    # Hand-computed. As `settled-by-others`: 200 reserved, 400 residual after
+    # the 400 riding is discharged, so -200. Then a 300 payment nothing
+    # reserved for: -500. The card owes 800 opening + 800 charged (300 + 300
+    # + 200) - 1000 refunded - 300 paid = 300. The ledger's residual (400) is
+    # less than the shortfall (500), so no single branch claims it — and 300
+    # of the 500 is not the settle-up.
+    expect=ExpectedPosition(
+        balance=_d("-300"),
+        set_aside=_d("-500"),
+        uncovered=_d("300"),
+        short_reserved=_d("500"),
+        charged_this_month=_d("200"),
+        inflows_this_month=_d("1300"),
+        paid_this_month=_d("300"),
+        debt_change_this_month=_d("1100"),
+    ),
+    set_aside_state=SetAsideState.MIXED,
+    tiers=("full",),
+    lesson=CardLesson(
+        happens=(
+            "Somebody settled up $1,000 of tab charges on this card — and separately you paid "
+            "$300 off it from cash."
+        ),
+        reads=(
+            "Set aside shows $0.00 with $500.00 below zero. The row names both causes — "
+            "$400.00 came back from a settle-up, and payments ran past the reserve — and "
+            "does not split the $500 between them."
+        ),
+        todo=(
+            "Open the breakdown — the settle-up needs nothing, and to square the paydown you "
+            "assign to the card. The row will not pick that figure for you."
         ),
     ),
 )
@@ -1279,6 +1355,7 @@ ALL_SCENARIOS: tuple[CardScenario, ...] = (
     SETTLED_BY_OTHERS,
     RIDE_UNFUNDED,
     PAID_AHEAD,
+    MIXED,
 )
 
 

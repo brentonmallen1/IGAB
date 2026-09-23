@@ -310,6 +310,10 @@ export type SetAsideState =
   | 'settled_elsewhere'
   | 'ride_unfunded'
   | 'paid_ahead'
+  /** More than one cause below zero and none explains all of it. The row
+   *  names what is present and attributes nothing — the reserve identity is
+   *  bounds, not parts, so any split would be a guess. */
+  | 'mixed'
 
 export interface CardStatus {
   account_id: string
@@ -366,6 +370,10 @@ export interface CardStatus {
   /** What assignments to this card have retired of its ride, lifetime.
    *  Served; never reconstruct it as `gross rides − riding`. */
   covered: number
+  /** The part of `residual` that came back through a receivable ledger —
+   *  somebody settling up. Quote this for a settle-up, never lifetime
+   *  `residual`, which is every envelope's refunds for the card's whole life. */
+  residual_from_ledgers: number
   /** The rest of `card_position` (domain/cards.py), beside `uncovered`.
    *
    *  **A zero `reserve_discrepancy` does not mean this card looks sensible.**

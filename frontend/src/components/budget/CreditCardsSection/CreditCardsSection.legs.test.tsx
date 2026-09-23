@@ -52,6 +52,7 @@ function card(over: Partial<CardStatus> = {}): CardStatus {
     riding: 0,
     imported_riding: 0,
     covered: 0,
+    residual_from_ledgers: 0,
     opening: 0,
     // Kept coherent with balance/set_aside above rather than zeroed: 115
     // reserved against 60 owed IS over-reserved by 55, and a fixture that

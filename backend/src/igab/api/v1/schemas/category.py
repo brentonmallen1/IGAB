@@ -526,6 +526,11 @@ class CardStatusOut(ApiModel):
     #: Served so the breakdown reads it rather than reconstructing it from
     #: `gross rides − riding`, which was wrong on every imported budget.
     covered: Decimal
+    #: The part of `residual` that came back through a receivable ledger —
+    #: somebody settling up. The settle-up sentence quotes THIS, never the
+    #: lifetime `residual` across every envelope. Required: a row that
+    #: forgot it would quote the wrong figure, not a blank.
+    residual_from_ledgers: Decimal
     #: The rest of `card_position` beside `uncovered`. A zero
     #: `reserve_discrepancy` means the identity's BOUNDS hold, not that the
     #: reserve is anywhere near the balance — they are allowances, and they
@@ -604,6 +609,7 @@ class CardStatusOut(ApiModel):
             riding=card.riding,
             imported_riding=card.imported_riding,
             covered=card.covered,
+            residual_from_ledgers=card.residual_from_ledgers,
             over_reserved=card.over_reserved,
             short_reserved=card.short_reserved,
             card_credit=card.card_credit,

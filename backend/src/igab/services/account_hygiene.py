@@ -499,6 +499,11 @@ class AccountHygieneService:
             SetAsideState.SETTLED_ELSEWHERE,
             SetAsideState.RIDE_UNFUNDED,
             SetAsideState.PAID_AHEAD,
+            # More than one cause and none covers it: at least part of the
+            # shortfall is not a settle-up, so it is worth reading. A card a
+            # ledger merely touched must not hide behind the bookkeeping —
+            # `test_a_shortfall_only_partly_explained_by_a_ledger_still_reports`.
+            SetAsideState.MIXED,
         }
     )
 

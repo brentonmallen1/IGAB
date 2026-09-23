@@ -70,6 +70,9 @@ SCENARIO_INTENTS: dict[str, tuple[str, ...]] = {
     "settled-by-others": ("in-full", "paying-down", "carrying"),
     "ride-unfunded": ("in-full", "paying-down", "carrying"),
     "paid-ahead": ("paying-down", "carrying"),
+    # A settle-up beside a paydown: it takes carrying a balance for the
+    # paydown half to exist, and a shared tab for the other.
+    "mixed": ("paying-down", "carrying"),
 }
 
 #: What each event did, for a reader. `{amount}` and `{category}` are filled.

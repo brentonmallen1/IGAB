@@ -47,8 +47,8 @@ export function setAsideLabel(card: CardStatus, money: Money): string | null {
     case 'card_holds_it':
       return 'credit balance'
     default:
-      // The four below-zero states. No noun — they want opposite responses,
-      // and one word for all four is what made this column unreadable. The
+      // The below-zero states. No noun — they want opposite responses, and
+      // one word for all of them is what made this column unreadable. The
       // distance is a fact; the sentence under the row says what it means.
       return `${money(card.short_reserved)} below zero`
   }
@@ -97,8 +97,11 @@ export function stateSentence(card: CardStatus, money: Money): StateSentence | n
 
     case 'settled_by_others':
       return {
+        // `residual_from_ledgers`, the figure the state was decided on — not
+        // lifetime `residual` across every envelope, which read "$4,000 came
+        // back … somebody settled up" about a $150 settle-up.
         sentence:
-          `${money(card.residual)} came back onto this card from spending nobody budgeted ` +
+          `${money(card.residual_from_ledgers)} came back onto this card from spending nobody budgeted ` +
           `for — somebody settled up. It paid the card down by the same amount it took out ` +
           `of Set aside, and no envelope of yours lost anything.`,
         action: 'Nothing to do.',
@@ -106,8 +109,9 @@ export function stateSentence(card: CardStatus, money: Money): StateSentence | n
 
     case 'refund_outran_envelope':
       return {
+        // The residual that is NOT a settle-up: what an envelope kept.
         sentence:
-          `${money(card.residual)} came back onto this card beyond anything an envelope ` +
+          `${money(card.residual - card.residual_from_ledgers)} came back onto this card beyond anything an envelope ` +
           `charged here. An envelope is holding that money and you can spend it — but it ` +
           `never arrived in your bank. It exists as a credit on this card.`,
       }
@@ -141,7 +145,36 @@ export function stateSentence(card: CardStatus, money: Money): StateSentence | n
           `Assign ${money(card.short_reserved)} to the card to settle up. Ready to Assign ` +
           `falls by that much, because the money has already left your account.`,
       }
+
+    case 'mixed': {
+      // Name what is present; quote each served leg; split nothing. The
+      // reserve identity is bounds, not parts, so "how much of the shortfall
+      // is which" is a question this row cannot answer honestly — and the
+      // one-label model answered it anyway, calling a two-thirds settle-up
+      // "you have paid $300 ahead". The legs panel is the whole picture.
+      const parts: string[] = []
+      if (card.residual_from_ledgers > 0) {
+        parts.push(`${money(card.residual_from_ledgers)} came back from somebody settling up`)
+      }
+      const kept = card.residual - card.residual_from_ledgers
+      if (kept > 0) parts.push(`${money(kept)} came back as a refund an envelope is holding`)
+      if (card.riding > 0) parts.push(`${money(card.riding)} rode here when a month ended short`)
+      parts.push('payments ran past what was set aside')
+      return {
+        sentence:
+          `More than one thing is going on: ${joinList(parts)}. None of them accounts for the ` +
+          `whole ${money(card.short_reserved)}, and this row will not guess the split.`,
+        action:
+          'The breakdown has each figure. Assigning to the card covers whatever remains yours.',
+      }
+    }
   }
+}
+
+/** "a, b and c" — the list shape a sentence reads naturally. */
+function joinList(parts: string[]): string {
+  if (parts.length <= 1) return parts.join('')
+  return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`
 }
 
 export interface ReleaseAnchors {

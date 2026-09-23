@@ -997,13 +997,15 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
               </dd>
               <dd>
                 <em>Below zero</em> is a real position and the column shows it as $0.00, with the
-                distance named beside it and a sentence under the row saying what happened. There
-                are four different reasons and they want opposite responses: somebody settled up for
-                spending you never budgeted for (nothing to do); money came back onto the card
-                beyond anything an envelope charged here (an envelope is holding money that only
-                exists as a credit on this card); a month ended short and your payment ran past what
-                was set aside (back-fund that month); or you simply paid more than any envelope had
-                set aside (assign that much to the card). The row says which.
+                distance named beside it and a sentence under the row saying what happened. The
+                reasons want opposite responses: somebody settled up for spending you never budgeted
+                for (nothing to do); money came back onto the card beyond anything an envelope
+                charged here (an envelope is holding money that only exists as a credit on this
+                card); a month ended short and the whole shortfall rode onto this card (back-fund
+                that month) or onto several (assign to this card); or you simply paid more than any
+                envelope had set aside (assign that much to the card). When more than one of these
+                is true at once the row names each and does not guess how much of the figure is
+                which — the breakdown has the legs.
               </dd>
               <dd>
                 <em>Above what the card owes</em> means money is set aside that no debt needed.

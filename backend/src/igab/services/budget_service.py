@@ -196,6 +196,13 @@ class CardStatus:
     #: served leg the breakdown used to reconstruct as `gross rides − riding`,
     #: which went negative and clamped to zero on any imported budget.
     covered: Decimal = Decimal("0")
+    #: The part of `residual` that came back through a receivable ledger —
+    #: somebody settling up. The figure `set_aside_state` decides
+    #: SETTLED_BY_OTHERS on, served so the sentence quotes the same one:
+    #: it quoted lifetime `residual` across every envelope, so a card with
+    #: years of ordinary refunds read "$4,000 came back — somebody settled
+    #: up" about a $150 settle-up.
+    residual_from_ledgers: Decimal = Decimal("0")
     #: The rest of `card_position`, beside `uncovered` above. A zero
     #: `reserve_discrepancy` means the identity's BOUNDS hold, not that the
     #: reserve is anywhere near the balance — the bounds are allowances, and
@@ -1151,6 +1158,12 @@ class BudgetService:
                 # One implementation of "where does this card stand", shared
                 # with `reserve_discrepancy`. It used to be spelled again here.
                 position = card_position(set_aside, balance)
+                # Computed once: the state is decided on it and the row
+                # quotes it. Two spellings is how the sentence came to quote a
+                # different figure from the one the label was decided on.
+                from_ledgers = residual_from(
+                    funding.residual_by_pair, account.id, ledgers, month_start
+                )
                 charged, received, pending = month_flows.get(account.id, (zero, zero, zero))
                 if account.is_closed and balance == zero and set_aside == zero:
                     # Settled and closed: nothing owed, nothing reserved,
@@ -1194,9 +1207,7 @@ class BudgetService:
                             riding=sum_through(
                                 funding.riding_by_card.get(account.id, {}), month_start
                             ),
-                            residual_from_ledgers=residual_from(
-                                funding.residual_by_pair, account.id, ledgers, month_start
-                            ),
+                            residual_from_ledgers=from_ledgers,
                             ride_reaches_this_card=ride_is_exclusive(
                                 funding.floored_by_pair, account.id, month_start
                             ),
@@ -1218,6 +1229,7 @@ class BudgetService:
                         covered=sum_through(
                             funding.covered_by_card.get(account.id, {}), month_start
                         ),
+                        residual_from_ledgers=from_ledgers,
                         charged_this_month=-charged,
                         inflows_this_month=received,
                         paid_this_month=reserve.payments.get(month_start, zero),
