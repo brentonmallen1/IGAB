@@ -28,8 +28,24 @@
   justify-content: flex-start;
 }
 
-/* The whole header is the fold control: one obvious click target, and the
-   collapsed strip still answers "is anything uncovered?" */
+/* The whole band IS the fold control — title, count, bill note and the space
+   between them. It was only ever the caret and the words beside it, which
+   meant a header that reads as one object behaved as two. `user-select` off
+   because a drag across the summary would otherwise select text and fold the
+   section on release. */
+.credit-cards__band {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+  user-select: none;
+}
+
+/* The keyboard's way in, and where `aria-expanded` lives. It carries no
+   click handler of its own: activating it dispatches a click that bubbles to
+   the band, so one handler folds the section however it was reached. */
 .credit-cards__header {
   display: flex;
   align-items: center;
@@ -740,7 +756,7 @@
   /* Title, count and the bill note do not fit one phone line together, and
      the summary is nowrap by design — so the band wraps instead of the
      strip scrolling sideways. */
-  .credit-cards__header-row {
+  .credit-cards__band {
     flex-wrap: wrap;
   }
 

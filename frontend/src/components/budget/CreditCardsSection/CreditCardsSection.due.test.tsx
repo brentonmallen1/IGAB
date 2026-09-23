@@ -10,7 +10,7 @@
  * a statement was paid, so the date it shows is always today or later and the
  * copy never says "late" or "overdue".
  */
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BudgetMonth, CardStatus } from '../../../types'
@@ -233,5 +233,48 @@ describe('the header, which is all a collapsed strip has', () => {
     show()
 
     expect(screen.queryByText(/due in/)).not.toBeInTheDocument()
+  })
+})
+
+describe('folding the section', () => {
+  // fireEvent, not userEvent: this file pins the clock, and userEvent's own
+  // waits run on timers that never advance — every one of these sat until the
+  // test timed out. What is under test is a plain onClick, which fireEvent
+  // dispatches synchronously.
+
+  it('folds from anywhere in the band, not just the caret', () => {
+    // A header that reads as one object should behave as one: aiming at a
+    // 13px chevron is a needless ask.
+    show()
+    expect(screen.getByRole('table', { name: 'Credit cards' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('Sapphire Visa due in 4 days'))
+
+    expect(screen.queryByRole('table', { name: 'Credit cards' })).not.toBeInTheDocument()
+  })
+
+  it('folds from the count too', () => {
+    show()
+    fireEvent.click(screen.getByText(/^1 card/))
+
+    expect(screen.queryByRole('table', { name: 'Credit cards' })).not.toBeInTheDocument()
+  })
+
+  it('still folds from the button, exactly once', () => {
+    // The button carries no handler of its own — its click bubbles to the
+    // band. Two handlers would toggle twice and leave the section open.
+    show()
+    fireEvent.click(screen.getByRole('button', { name: /Credit cards/ }))
+
+    expect(screen.queryByRole('table', { name: 'Credit cards' })).not.toBeInTheDocument()
+  })
+
+  it('opens the explainer without folding the section', () => {
+    // The one thing in the band that is not the fold control.
+    show()
+    fireEvent.click(screen.getByRole('button', { name: 'How credit cards work here' }))
+
+    expect(screen.getByText('How credit cards work here')).toBeInTheDocument()
+    expect(screen.getByRole('table', { name: 'Credit cards' })).toBeInTheDocument()
   })
 })

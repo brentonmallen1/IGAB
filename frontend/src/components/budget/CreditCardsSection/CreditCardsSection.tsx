@@ -614,11 +614,21 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
       className={`credit-cards ${collapsed ? 'credit-cards--collapsed' : ''}`}
       headerClassName="credit-cards__header-row"
       header={
-        <>
+        /* The whole band is the fold control, not just the caret: a header
+           that reads as one thing should behave as one thing, and aiming at
+           a 13px chevron is a needless ask. The button inside stays — it is
+           what a keyboard focuses and what carries `aria-expanded` — but it
+           no longer handles the click itself: activating it dispatches a
+           click that bubbles here, so there is one handler rather than two
+           that could disagree. */
+        <div
+          className="credit-cards__band"
+          onClick={toggleCollapsed}
+          data-testid="credit-cards-band"
+        >
           <button
             type="button"
             className="credit-cards__header"
-            onClick={toggleCollapsed}
             aria-expanded={!collapsed}
             aria-controls="credit-cards-body"
           >
@@ -629,13 +639,18 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
             )}
             <span className="section-label surface__title">Credit cards</span>
           </button>
-          {/* A sibling, not a child: a button cannot nest in the fold control. */}
+          {/* A sibling, not a child: a button cannot nest in the fold control.
+            It stops the click here — the band folds the section, and opening
+            the explainer is not that. */}
           <button
             type="button"
             className="credit-cards__info-btn"
             aria-label="How credit cards work here"
             title="How credit cards work here"
-            onClick={() => setInfoOpen(true)}
+            onClick={(e) => {
+              e.stopPropagation()
+              setInfoOpen(true)
+            }}
           >
             <Info size={13} aria-hidden />
           </button>
@@ -652,7 +667,7 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
               {headerDue}
             </span>
           )}
-        </>
+        </div>
       }
     >
       {!collapsed && (
