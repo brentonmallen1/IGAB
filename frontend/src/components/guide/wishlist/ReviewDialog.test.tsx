@@ -35,6 +35,7 @@ function wish(name: string): Wish {
     cooling_until: null,
     cooling: false,
     last_affirmed_at: null,
+    affirmed_on: null,
     review_due: true,
     done_at: null,
     dropped_at: null,

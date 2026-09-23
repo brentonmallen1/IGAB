@@ -398,21 +398,32 @@ function checksFor(theme: string): Check[] {
     AA_TEXT
   )
 
-  // The wishlist prints --color-positive at 10–13px in two places the suite
-  // could not see: the Done button, whose fill is a 14% wash of that same
-  // colour over the card, and the "reachable now" line on the sunken well.
-  // A colour on a tint of itself is the thinnest pairing in the app, and
-  // nothing held it — the sidebar case (--color-negative failing AA on
-  // --sidebar-bg in 19 of 40 themes) is the same shape of miss.
-  const wishSurface = token(theme, 'surface-sunken') ?? token(theme, 'bg-secondary')
+  // The wishlist prints semantic colours at 10–13px in places the suite could
+  // not see. The Done button is --color-positive on a wash OF that colour —
+  // the thinnest pairing in the app — and it sits on two grounds: the sunken
+  // well for an ordinary card, the raised surface for a hero card (a step
+  // LIGHTER in light themes, so the tighter one). The percentage is read out
+  // of Wishlist.css rather than repeated here. The history row's "still in
+  // Bike" prompt is --color-warning on the sunken well. Same shape of miss as
+  // --color-negative failing on --sidebar-bg in 19 of 40 themes.
   const positive = token(theme, 'color-positive')
+  for (const ground of ['surface-sunken', 'surface-raised'] as const) {
+    const surface = token(theme, ground) ?? token(theme, 'bg-secondary')
+    add(
+      `wishlist Done label on its positive wash over ${ground}`,
+      positive,
+      surface && positive ? tint(positive, surface, WISH_DONE_TINT) : null,
+      AA_TEXT
+    )
+  }
+  const wishWell = token(theme, 'surface-sunken') ?? token(theme, 'bg-secondary')
+  add('wishlist "reachable now" on the well', positive, wishWell, AA_TEXT)
   add(
-    'wishlist Done label on its own positive wash',
-    positive,
-    wishSurface && positive ? tint(positive, wishSurface, WISH_DONE_TINT) : null,
+    'wishlist "still in Bike" prompt on the well',
+    token(theme, 'color-warning'),
+    wishWell,
     AA_TEXT
   )
-  add('wishlist "reachable now" on the well', positive, wishSurface, AA_TEXT)
 
   add(
     'input-border on input-bg',

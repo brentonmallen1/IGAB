@@ -12,13 +12,14 @@ unless they want to keep it. One change batch, so ⌘Z puts all three back.
 """
 
 import uuid
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
 
 from igab.db.models import Category
 from igab.guide import wishlist_service
+from igab.services.card_payment import ensure_payment_category
 
 from .factories import (
     create_account,
@@ -347,6 +348,109 @@ class TestSettlingRefuses:
         r = await _settle(api_client, budget, wish["id"])
         assert r.status_code == 409
         assert "already archived" in r.json()["detail"]
+
+
+class TestWhereTheMoneyMayGo:
+    """The destination is held to the same rule as funding a wish. The dialog
+    filters on `is_assignable`; before this, nothing else did, and `move_money`
+    would have accepted a card's payment envelope (it is fundable) or, in the
+    cover direction, an archived one (leaving is always allowed)."""
+
+    async def test_a_cards_payment_envelope_cannot_receive_it(self, db_session, api_client):
+        budget = await _budget(db_session, api_client)
+        wish = await _funded_wish(db_session, api_client, budget)
+        visa = await create_account(db_session, budget, "Visa", account_type="credit_card")
+        card_envelope = await ensure_payment_category(db_session, visa)
+        assert card_envelope is not None
+        await _end(api_client, budget, wish["id"])
+
+        r = await _settle(
+            api_client, budget, wish["id"], destination_category_id=str(card_envelope.id)
+        )
+        assert r.status_code == 409, r.text
+        assert "cannot fund a wish" in r.json()["detail"]
+
+    async def test_an_archived_envelope_cannot_cover_an_overspent_one(self, db_session, api_client):
+        """The cover direction: the destination is the SOURCE of the move,
+        and `move_money` lets money leave anything but income. One rule for
+        both signs, or the picker and the server disagree on exactly one."""
+        budget = await _budget(db_session, api_client)
+        old = await _plain_category(db_session, budget, "Old Fund")
+        r = await api_client.post(
+            f"/api/v1/{budget.id}/categories/archive",
+            json={"category_ids": [str(old.id)], "month": THIS_MONTH.isoformat()},
+        )
+        assert r.status_code in (200, 204), r.text
+        account = await _income(db_session, budget)
+        wish = await _add(api_client, budget, funding={"mode": "own"})
+        cat_id = wish["funding"]["category_id"]
+        envelope = await db_session.get(Category, uuid.UUID(cat_id))
+        await create_transaction(db_session, budget, account, "-60.00", TODAY, category=envelope)
+        await _end(api_client, budget, wish["id"])
+
+        r = await _settle(api_client, budget, wish["id"], destination_category_id=str(old.id))
+        assert r.status_code == 409, r.text
+
+    async def test_money_assigned_to_a_later_month_is_named_not_archived_away(
+        self, db_session, api_client
+    ):
+        """Archiving is silent about later months. Settling exists to end
+        money parked out of sight; it must not create the thing it is for."""
+        budget = await _budget(db_session, api_client)
+        await _income(db_session, budget)
+        wish = await _add(api_client, budget, funding={"mode": "own"})
+        cat_id = wish["funding"]["category_id"]
+        next_month = (THIS_MONTH.replace(day=28) + timedelta(days=4)).replace(day=1)
+        r = await api_client.patch(
+            f"/api/v1/categories/{cat_id}/assignment",
+            params={"budget_id": str(budget.id), "month": next_month.isoformat()},
+            json={"amount": "400.00"},
+        )
+        assert r.status_code in (200, 204), r.text
+        await _end(api_client, budget, wish["id"])
+
+        r = await _settle(api_client, budget, wish["id"])
+        assert r.status_code == 409, r.text
+        assert "400" in r.json()["detail"] and "later month" in r.json()["detail"]
+
+        # Keeping the envelope is still allowed: nothing is archived, so
+        # nothing goes out of sight.
+        r = await _settle(api_client, budget, wish["id"], keep_envelope=True)
+        assert r.status_code == 200, r.text
+
+    async def test_an_envelope_in_a_hidden_group_is_already_settled(self, db_session, api_client):
+        """`archive_group` leaves the categories' own flags alone on purpose.
+        Reading only the category's flag offered to settle envelopes in a
+        Wishlist group the person had already hidden from the budget page."""
+        budget = await _budget(db_session, api_client)
+        wish = await _funded_wish(db_session, api_client, budget)
+        await _end(api_client, budget, wish["id"])
+        assert (await _wish(api_client, budget, wish["id"]))["settlement"] is not None
+
+        # Hide the whole Wishlist group, releasing its money, as the
+        # settings switch does.
+        r = await api_client.put(
+            f"/api/v1/{budget.id}/guide/preferences",
+            json={"wishlist": False, "release_wishlist_money": True},
+        )
+        assert r.status_code == 200, r.text
+        r = await api_client.put(f"/api/v1/{budget.id}/guide/preferences", json={"wishlist": True})
+        assert r.status_code == 200, r.text
+        # Turning it back on unarchives the group; archive it directly to
+        # get the group-only state.
+        groups = (
+            await api_client.get(
+                f"/api/v1/{budget.id}/category-groups", params={"include_archived": "true"}
+            )
+        ).json()
+        group = next(g for g in groups if g.get("system_key") == "wishlist")
+        r = await api_client.post(
+            f"/api/v1/{budget.id}/category-groups/{group['id']}/archive",
+            json={"month": THIS_MONTH.isoformat()},
+        )
+        assert r.status_code in (200, 204), r.text
+
+        assert (await _wish(api_client, budget, wish["id"]))["settlement"] is None
 
 
 class TestSettleUndo:

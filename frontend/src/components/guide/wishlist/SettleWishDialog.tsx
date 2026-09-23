@@ -137,7 +137,8 @@ export function SettleWishDialog({ budgetId, wish, onClose }: Props) {
         <p className="wish-settle__note">
           {settlement.has_goal && <>The savings goal goes with the wish. </>}
           Archiving keeps the envelope&rsquo;s history in your reports and takes it off the budget
-          page. Keep it instead to re-purpose it for something else — either way it ends up empty.
+          page. Keep it instead to re-purpose it for something else. Money assigned to a later month
+          stays where it is — the server will say so rather than archive it out of sight.
         </p>
       </div>
     </GuideDialog>

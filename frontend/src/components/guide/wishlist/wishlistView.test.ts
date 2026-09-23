@@ -28,6 +28,7 @@ function wish(over: Partial<Wish>): Wish {
     cooling_until: null,
     cooling: false,
     last_affirmed_at: null,
+    affirmed_on: null,
     review_due: false,
     done_at: null,
     dropped_at: null,

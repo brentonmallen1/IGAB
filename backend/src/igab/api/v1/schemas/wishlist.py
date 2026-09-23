@@ -136,6 +136,10 @@ class WishOut(ApiModel):
     #: `created_at`, an instant.
     added_on: date
     last_affirmed_at: datetime | None
+    #: The day they said "still want it", in their own date — what the review
+    #: cadence counts from. Served so the dialog prints the same day the
+    #: cadence uses, not the UTC day sliced off the instant above.
+    affirmed_on: date | None
     review_due: bool
     done_at: date | None
     dropped_at: date | None

@@ -41,6 +41,7 @@ function wish(settlement: WishSettlement | null, status: 'done' | 'dropped' = 'd
     cooling: false,
     added_on: '2026-08-01',
     last_affirmed_at: null,
+    affirmed_on: null,
     review_due: false,
     done_at: null,
     dropped_at: '2026-09-20',

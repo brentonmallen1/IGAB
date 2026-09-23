@@ -69,6 +69,10 @@ export interface Wish {
    *  day it falls on depends on a timezone the server recorded at creation. */
   added_on: string
   last_affirmed_at: string | null
+  /** The day they said "still want it", in their own date — the day the
+   *  review cadence counts from. Print this, never `last_affirmed_at`'s UTC
+   *  day. */
+  affirmed_on: string | null
   review_due: boolean
   done_at: string | null
   dropped_at: string | null

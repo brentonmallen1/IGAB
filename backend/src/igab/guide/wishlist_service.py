@@ -52,7 +52,7 @@ from igab.guide.wishlist import (
     unsettled,
 )
 from igab.repositories.budget_move_repo import BudgetMoveRepository
-from igab.repositories.category_filters import IS_ASSIGNABLE
+from igab.repositories.category_filters import IS_ASSIGNABLE, NOT_ARCHIVED_ANYWHERE
 from igab.repositories.category_repo import (
     BudgetAssignmentRepository,
     CategoryGroupRepository,
@@ -154,7 +154,11 @@ class WishlistService:
         names = {c.id: c.name for c in all_categories}
         # An archived envelope is settled by definition (archiving refuses
         # while a balance remains), so it never raises the question below.
-        live = {c.id for c in all_categories if not c.is_archived}
+        # "Archived" means the category's own flag OR its group's:
+        # `archive_group` deliberately leaves the categories' flags alone, so
+        # reading `c.is_archived` here offered to settle envelopes in a
+        # Wishlist group the user had already hidden from the budget page.
+        live = await self._live_category_ids(budget_id)
         project_inputs = {p.id: ProjectInput(id=p.id, category_id=p.category_id) for p in projects}
         wish_inputs = [self._input(i) for i in items]
 
@@ -348,6 +352,7 @@ class WishlistService:
             "cooling": item.cooling_until is not None and item.cooling_until > today,
             "added_on": wish.created_at,
             "last_affirmed_at": item.last_affirmed_at,
+            "affirmed_on": affirmed_on(item.affirmed_on, item.last_affirmed_at),
             "review_due": item.status == "open"
             and review_due(
                 wish.created_at,
@@ -456,6 +461,18 @@ class WishlistService:
                 f"'{category.name}' cannot fund a wish — pick an envelope you budget into"
             )
         return category.id
+
+    async def _live_category_ids(self, budget_id: uuid.UUID) -> set[uuid.UUID]:
+        """Categories archived nowhere — the shared predicate, not the row's
+        own flag. CLAUDE.md names this exact trap."""
+        rows = await self.session.execute(
+            select(Category.id).where(
+                Category.budget_id == budget_id,
+                Category.is_deleted == False,  # noqa: E712
+                NOT_ARCHIVED_ANYWHERE,
+            )
+        )
+        return set(rows.scalars().all())
 
     async def _live_envelope(self, item: WishlistItem, budget_id: uuid.UUID) -> Category | None:
         """The category a wish owns, if it is still standing.
@@ -817,16 +834,35 @@ class WishlistService:
         category = await self._live_envelope(item, budget_id)
         if category is None:
             raise InvariantViolation("This wish has no envelope of its own")
-        if category.is_archived:
+        if category.id not in await self._live_category_ids(budget_id):
             raise InvariantViolation(f"'{category.name}' is already archived")
         if destination_category_id == category.id:
             raise InvariantViolation("Choose somewhere other than the envelope being settled")
+        if destination_category_id is not None:
+            # The same rule as funding a wish, for the same reason: the dialog
+            # filters on `is_assignable`, and nothing else did. `move_money`
+            # would have accepted a card's payment envelope as the destination
+            # (it is fundable), and an archived one as the source to cover an
+            # overspent envelope from — the "card envelopes are never offered"
+            # bug arriving on a new surface.
+            await self._checked_category(budget_id, destination_category_id)
 
         balance = await self.budget.get_category_balance(category.id, month)
         available = quantize_cents(balance.available)
         categories = category_service_from(self.session, self.budget)
+        if not keep_envelope:
+            # Archiving is silent about money assigned to LATER months —
+            # `preview_archive` measures it precisely so someone can be told.
+            # Settling exists to end money parked out of sight; archiving an
+            # envelope with next month's $400 in it would create the thing it
+            # is for. Refuse and name it; moving it is the person's call.
+            preview = await categories.preview_archive(budget_id, [category.id], month)
+            if preview.future_assigned != Decimal("0"):
+                raise InvariantViolation(
+                    f"'{category.name}' has {preview.future_assigned} assigned to a later "
+                    "month. Move that first, or keep the envelope"
+                )
 
-        before = snapshot("wishlist_item", item)
         with (
             self.changes.batch() as batch_id,
             self.budget.changes.batch(batch_id),
@@ -843,23 +879,16 @@ class WishlistService:
                     abs(available),
                     month,
                 )
-            if await self.targets.get(category.id) is not None:
-                await self.targets.delete(category.id, batch_id=batch_id)
+            # `TargetService.delete` returns quietly when there is no goal.
+            await self.targets.delete(category.id, batch_id=batch_id)
             if not keep_envelope:
                 # The shared rule, not a flag flip: it still refuses over a
                 # card link or a live schedule, and those refusals are right.
                 await categories.archive_categories(budget_id, [category.id], month=month)
             await self.session.flush()
-            after = snapshot("wishlist_item", item)
-            if snapshots_match(after, before):  # non-empty diff — something changed
-                await self.changes.record(
-                    budget_id=budget_id,
-                    entity_type="wishlist_item",
-                    entity_id=item.id,
-                    action="update",
-                    before=before,
-                    after=after,
-                )
+        # The wish row itself does not change — its link stays as history —
+        # so nothing is recorded for it; the batch is the move, the goal and
+        # the archive, and undoing it restores all three.
         await self._sync_tags(budget_id, [category.id])
         return await self.item_out(budget_id, item.id, today)
 

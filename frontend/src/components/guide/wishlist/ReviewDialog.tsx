@@ -106,10 +106,7 @@ export function ReviewDialog({ budgetId, due, reviewDays, onEnd, onClose }: Prop
                     is served precisely because slicing `created_at` gives the
                     UTC day, which is tomorrow's every evening west of UTC. */}
                 Added {fmt.formatDate(current.added_on)}
-                {current.last_affirmed_at &&
-                  `, last affirmed ${fmt.formatDate(current.last_affirmed_at.slice(0, 10))}`}
-                {/* No served local date for this one — see `affirmed_on`,
-                    which the review clock uses; this line is the instant. */}
+                {current.affirmed_on && `, last affirmed ${fmt.formatDate(current.affirmed_on)}`}
               </p>
             </div>
           </>
