@@ -613,6 +613,12 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
       variant="chrome"
       className={`credit-cards ${collapsed ? 'credit-cards--collapsed' : ''}`}
       headerClassName="credit-cards__header-row"
+      /* The band stays put while its own cards scroll under it, and lets go
+         at the section's end rather than following you into the categories.
+         The fold control is the thing worth keeping reachable: with several
+         cards expanded, collapsing meant scrolling back to the top to find
+         the header you were trying to get rid of. */
+      stickyHeader
       header={
         /* The whole band is the fold control, not just the caret: a header
            that reads as one thing should behave as one thing, and aiming at

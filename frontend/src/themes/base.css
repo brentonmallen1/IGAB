@@ -478,6 +478,27 @@ a {
   border-bottom: 1px solid var(--edge);
 }
 
+/* A header that pins while its own section scrolls under it, and lets go at
+   the section's end — `position: sticky` confines itself to its parent, which
+   is exactly the wanted behaviour and why no scroll maths is needed.
+
+   `background-color: inherit` takes whatever the variant painted on the
+   surface, so a pinned header is opaque in every variant without naming a
+   colour here (a transparent one shows the rows sliding beneath it). Offset
+   with --surface-sticky-top where another bar is already pinned above. */
+.surface__header--sticky {
+  position: sticky;
+  top: var(--surface-sticky-top, 0px);
+  z-index: var(--z-sticky);
+  background-color: inherit;
+}
+
+/* Set by useStuck once pinned — the same shadow a stuck surface gets, for
+   the same reason, and only while content is actually passing underneath. */
+.surface__header--sticky.surface__header--stuck {
+  box-shadow: var(--elevation-stuck);
+}
+
 /* Typography comes from .section-label (base.css); a section title is the
    same label in the primary text colour. */
 .surface__title {

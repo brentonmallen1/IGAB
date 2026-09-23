@@ -102,6 +102,32 @@ describe('Surface', () => {
     expect(el).not.toHaveClass('surface--stuck')
   })
 
+  it('pins the header rather than the whole surface when asked', () => {
+    const observers = installObserver()
+    render(
+      <Surface variant="chrome" stickyHeader title="Credit cards" data-testid="s">
+        body
+      </Surface>
+    )
+    const surface = screen.getByTestId('s')
+    // The surface itself keeps scrolling — only its header holds position, so
+    // the section's own rows pass underneath it.
+    expect(surface).not.toHaveClass('surface--sticky')
+    const header = surface.querySelector('.surface__header')
+    expect(header).toHaveClass('surface__header--sticky')
+    expect(header).not.toHaveClass('surface__header--stuck')
+
+    act(() => observers[0].cb([{ isIntersecting: false }]))
+    expect(surface.querySelector('.surface__header')).toHaveClass('surface__header--stuck')
+  })
+
+  it('leaves the header alone without the flag', () => {
+    render(<Surface variant="chrome" title="Credit cards" data-testid="s" />)
+    expect(screen.getByTestId('s').querySelector('.surface__header')).not.toHaveClass(
+      'surface__header--sticky'
+    )
+  })
+
   it('is never stuck where IntersectionObserver is unavailable', () => {
     vi.stubGlobal('IntersectionObserver', undefined)
     render(<Surface variant="chrome" sticky data-testid="s" />)
