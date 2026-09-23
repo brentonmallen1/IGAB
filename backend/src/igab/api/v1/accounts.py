@@ -1,4 +1,7 @@
 import uuid
+from dataclasses import asdict
+from datetime import date
+from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -108,11 +111,28 @@ async def list_accounts(
     return result
 
 
+class FindingItemResponse(BaseModel):
+    """One thing a finding is about. Figures travel raw; the client formats
+    them — see `services.account_hygiene.FindingItem`."""
+
+    label: str
+    amount: Decimal | None = None
+    month: date | None = None
+    day: date | None = None
+    note: str | None = None
+    fix: str | None = None
+    account_id: uuid.UUID | None = None
+    transaction_id: uuid.UUID | None = None
+    transaction_ids: list[uuid.UUID] = []
+
+
 class HygieneFindingResponse(BaseModel):
     kind: str
     title: str
-    detail: str
+    summary: str
     action: str
+    items: list[FindingItemResponse] = []
+    why: str | None = None
     account_ids: list[uuid.UUID] = []
     #: Valued Assets are not accounts; the panel routes these to /assets/{id}.
     asset_ids: list[uuid.UUID] = []
@@ -141,7 +161,7 @@ async def account_hygiene(
     """
     report = await AccountHygieneService(session).run(budget_id)
     return HygieneReportResponse(
-        findings=[HygieneFindingResponse(**vars(f)) for f in report.findings],
+        findings=[HygieneFindingResponse.model_validate(asdict(f)) for f in report.findings],
         clean=report.clean,
     )
 
@@ -173,6 +193,48 @@ async def repair_transfers(
     return RepairTransfersResponse(
         **await txn_service.repair_transfers(budget_id, date_tolerance_days=date_tolerance_days)
     )
+
+
+class LinkCardPaymentsRequest(BaseModel):
+    #: The pairs the person confirmed, each `[outflow_id, inflow_id]` as the
+    #: finding's items carry them (`FindingItem.transaction_ids`).
+    pairs: list[tuple[uuid.UUID, uuid.UUID]]
+
+
+class LinkCardPaymentsResponse(BaseModel):
+    linked: int
+    #: Confirmed pairs that are no longer an unlinked card payment — linked
+    #: elsewhere, edited, or deleted since the panel loaded. Left alone.
+    skipped: int
+
+
+@router.post("/{budget_id}/accounts/hygiene/link-card-payments")
+async def link_card_payments(
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    session: SessionDep,
+    txn_service: Annotated[TransactionService, Depends(get_transaction_service)],
+    body: LinkCardPaymentsRequest,
+) -> LinkCardPaymentsResponse:
+    """Link the unlinked card payments a person confirmed, as one undo.
+
+    Only pairs the hygiene finding still reports are linked — the list is
+    recomputed here by the same method the finding reads, never taken on the
+    client's word. Linking clears the category on the cash leg where there
+    is one (an internal transfer is not spending): the person confirmed that,
+    which is why this is attended and a sync never does it.
+    """
+    current = {
+        (p.outflow.id, p.inflow.id): p
+        for p in await AccountHygieneService(session).unlinked_card_payment_pairs(budget_id)
+    }
+    chosen = [current[key] for key in dict.fromkeys(body.pairs) if key in current]
+    with txn_service.changes.batch():
+        for p in chosen:
+            await txn_service.link_legs(
+                budget_id, p.outflow, p.inflow, clear_categories=p.pair.clears_categories
+            )
+    return LinkCardPaymentsResponse(linked=len(chosen), skipped=len(body.pairs) - len(chosen))
 
 
 class RepairTrackingCategoriesResponse(BaseModel):

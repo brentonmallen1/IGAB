@@ -13,8 +13,12 @@ cries wolf gets dismissed once and never read again.
 from datetime import date, timedelta
 from decimal import Decimal
 
-from igab.db.models import Liability
-from igab.services.account_hygiene import AccountHygieneService
+from sqlalchemy import select
+
+from igab.db.models import ChangeLog, Liability
+from igab.repositories.transaction_repo import TransactionRepository
+from igab.services.account_hygiene import AccountHygieneService, FindingItem, HygieneFinding
+from igab.services.undo_service import UndoService
 
 from .factories import (
     create_account,
@@ -49,9 +53,22 @@ async def _world(db_session):
     return services, budget
 
 
-async def _run(db_session, budget) -> dict[str, object]:
+async def _run(db_session, budget) -> dict[str, HygieneFinding]:
     report = await AccountHygieneService(db_session).run(budget.id)
     return {f.kind: f for f in report.findings}
+
+
+def _words(finding: HygieneFinding) -> str:
+    """Every sentence a finding shows, for "is this named anywhere" checks."""
+    parts = [finding.title, finding.summary, finding.action, finding.why or ""]
+    for item in finding.items:
+        parts += [item.label, item.note or "", item.fix or ""]
+    return " ".join(parts)
+
+
+def _item(finding: HygieneFinding, label: str) -> FindingItem:
+    [item] = [i for i in finding.items if i.label == label]
+    return item
 
 
 class TestATrackedThingInsideTheBudget:
@@ -105,7 +122,9 @@ class TestAClosedAccountStillHoldingMoney:
 
         findings = await _run(db_session, budget)
         assert "closed_account_holds_money" in findings
-        assert "400.00" in findings["closed_account_holds_money"].detail
+        item = _item(findings["closed_account_holds_money"], "First National Checking")
+        # Raw, for the client to format — never written into a sentence.
+        assert item.amount == Decimal("400.00")
 
     async def test_an_emptied_one_is_not(self, db_session):
         """The normal close: transfer the money out, then close. A finding here
@@ -510,8 +529,12 @@ class TestMoneyInAnArchivedEnvelope:
     async def test_a_balance_left_behind_is_reported(self, db_session):
         budget, _cat = await self._archived_holding(db_session, "75.00")
         finding = (await _run(db_session, budget))["money_in_an_archived_envelope"]
-        assert "Gym" in finding.detail
+        assert [i.label for i in finding.items] == ["Gym"]
+        assert _item(finding, "Gym").amount == Decimal("75.00")
         assert "1 archived envelope" in finding.title
+        # It once said "these predate that rule" about an envelope assigned to
+        # the same month. It does not guess how the money got there.
+        assert "predate" not in _words(finding)
 
     async def test_an_empty_archived_envelope_is_not(self, db_session):
         budget, _cat = await self._archived_holding(db_session, None)
@@ -597,6 +620,24 @@ class TestUnlinkedCardPayments:
 
         finding = (await _run(db_session, budget))["unlinked_card_payments"]
         assert finding.transaction_count == 1
+        [item] = finding.items
+        assert item.label == "Card"
+        assert item.amount == Decimal("460.00")
+        assert item.note == "from Checking, filed to Card Payment"
+        assert item.account_id == card.id
+
+    async def test_a_charge_beside_a_deposit_is_not_a_payment(self, db_session):
+        """The reverse direction — money OUT of the card, IN to checking — is
+        a cash advance or a coincidence. Calling it a payment would ask the
+        user to link a charge as if it had paid the card down."""
+        services, budget = await _world(db_session)
+        checking = await create_account(db_session, budget, "Checking")
+        card = await create_account(db_session, budget, "Card", account_type="credit_card")
+        await create_transaction(db_session, budget, card, "-460.00", RECENT)
+        await create_transaction(db_session, budget, checking, "460.00", RECENT)
+        await db_session.flush()
+
+        assert "unlinked_card_payments" not in await _run(db_session, budget)
 
     async def test_an_already_linked_payment_is_not(self, db_session):
         services, budget = await _world(db_session)
@@ -649,6 +690,97 @@ class TestUnlinkedCardPayments:
         assert "unlinked_card_payments" not in await _run(db_session, budget)
 
 
+class TestLinkingCardPaymentsInBulk:
+    """The finding's "Link them" button: the confirmed pairs, as one undo.
+
+    Nine payments on a real budget were each "open one and pick its partner"
+    — nine trips through the register for one decision.
+    """
+
+    async def _pair(self, db_session, budget, amount="460.00", name="Card"):
+        checking = await create_account(db_session, budget, f"{name} Checking")
+        card = await create_account(db_session, budget, name, account_type="credit_card")
+        group = await create_category_group(db_session, budget, f"{name} Bills")
+        envelope = await create_category(db_session, budget, group, f"{name} Payment")
+        out = await create_transaction(
+            db_session, budget, checking, f"-{amount}", RECENT, category=envelope
+        )
+        back = await create_transaction(db_session, budget, card, amount, RECENT)
+        await db_session.flush()
+        return out, back
+
+    async def _link(self, api_client, budget, pairs):
+        r = await api_client.post(
+            f"/api/v1/{budget.id}/accounts/hygiene/link-card-payments",
+            json={"pairs": [[str(o), str(i)] for o, i in pairs]},
+        )
+        assert r.status_code == 200, r.text
+        return r.json()
+
+    async def test_the_confirmed_pair_is_linked_and_the_envelope_cleared(
+        self, db_session, api_client
+    ):
+        budget = await create_budget(db_session, api_client.test_user)
+        out, back = await self._pair(db_session, budget)
+        [item] = (await _run(db_session, budget))["unlinked_card_payments"].items
+        assert item.transaction_ids == [out.id, back.id]
+
+        assert await self._link(api_client, budget, [(out.id, back.id)]) == {
+            "linked": 1,
+            "skipped": 0,
+        }
+        db_session.expunge_all()
+        repo = TransactionRepository(db_session)
+        linked_out = await repo.get_or_raise(out.id)
+        assert linked_out.transfer_id == back.id
+        # A transfer is not spending: the envelope gets the money back.
+        assert linked_out.category_id is None
+        assert "unlinked_card_payments" not in await _run(db_session, budget)
+
+    async def test_every_pair_undoes_as_one_step(self, db_session, api_client):
+        budget = await create_budget(db_session, api_client.test_user)
+        first = await self._pair(db_session, budget, "460.00")
+        second = await self._pair(db_session, budget, "125.00", name="Other Card")
+        await self._link(
+            api_client, budget, [(first[0].id, first[1].id), (second[0].id, second[1].id)]
+        )
+
+        changes = list(
+            (
+                await db_session.execute(
+                    select(ChangeLog).where(
+                        ChangeLog.budget_id == budget.id, ChangeLog.entity_type == "transaction"
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(changes) == 4
+        assert len({c.batch_id for c in changes}) == 1, "one undo, not one per pair"
+        await UndoService(db_session).undo_batch(budget.id, changes[0].batch_id)
+        db_session.expunge_all()
+        restored = await TransactionRepository(db_session).get_or_raise(first[0].id)
+        assert restored.transfer_id is None
+        assert restored.category_id is not None
+
+    async def test_a_pair_the_finding_does_not_report_is_refused(self, db_session, api_client):
+        """Recomputed on the server, never taken on the client's word: two
+        rows the finding would not pair are left alone, not linked."""
+        budget = await create_budget(db_session, api_client.test_user)
+        out, _back = await self._pair(db_session, budget)
+        checking = await create_account(db_session, budget, "Savings", account_type="savings")
+        stranger = await create_transaction(db_session, budget, checking, "999.00", RECENT)
+        await db_session.flush()
+
+        assert await self._link(api_client, budget, [(out.id, stranger.id)]) == {
+            "linked": 0,
+            "skipped": 1,
+        }
+        db_session.expunge_all()
+        assert (await TransactionRepository(db_session).get_or_raise(out.id)).transfer_id is None
+
+
 class TestCardReserveDiagnostics:
     """The findings that explain a card whose Set aside went wrong.
 
@@ -681,8 +813,11 @@ class TestCardReserveDiagnostics:
         await create_card_payment(services, budget, checking, card, "500.00", RECENT)
 
         finding = (await _run(db_session, budget))["card_reserve_went_negative"]
-        assert "payment ran past everything reserved" in finding.detail
-        assert RECENT.strftime("%B %Y") in finding.detail
+        item = _item(finding, "Sapphire Visa")
+        assert item.amount == Decimal("-300.00")
+        assert item.month == RECENT.replace(day=1)
+        assert "payment paid more than was set aside" in (item.note or "")
+        assert item.fix is not None and "Assign this much to the card" in item.fix
         assert finding.account_ids == [card.id]
 
     async def test_a_card_in_credit_is_not_a_negative_reserve_finding(self, db_session):
@@ -708,19 +843,43 @@ class TestCardReserveDiagnostics:
         await create_transaction(db_session, budget, card, "-800.00", LONG_AGO)
         await create_transaction(db_session, budget, card, "300.00", RECENT, category=shared)
 
-        finding = (await _run(db_session, budget))["residual_on_uncharged_category"]
-        assert "Shared Expenses" in finding.detail
+        findings = await _run(db_session, budget)
+        # Below zero because of it, so the card's own line says where the
+        # money went — and the per-envelope finding does not say it again.
+        item = _item(findings["card_reserve_went_negative"], "Sapphire Visa")
+        assert "Shared Expenses" in (item.note or "")
+        assert item.fix == "Move the refund from Shared Expenses to the card."
+        assert "residual_on_uncharged_category" not in findings
+
+    async def test_an_uncharged_inflow_on_a_card_still_above_zero_is_its_own_finding(
+        self, db_session
+    ):
+        """Funded charges keep the card above zero, so no negative line names
+        it — the envelope that kept the refund needs its own finding."""
+        services, budget, _checking, card, group, cat = await self._card_world(db_session)
+        shared = await create_category(db_session, budget, group, "Shared Expenses")
+        await services.budgets.set_assignment(
+            budget.id, cat.id, RECENT.replace(day=1), Decimal("500.00")
+        )
+        await create_transaction(db_session, budget, card, "-500.00", RECENT, category=cat)
+        await create_transaction(db_session, budget, card, "300.00", RECENT, category=shared)
+
+        findings = await _run(db_session, budget)
+        assert "card_reserve_went_negative" not in findings
+        finding = findings["residual_on_uncharged_category"]
+        item = _item(finding, "Shared Expenses")
+        assert item.amount == Decimal("300.00")
+        assert item.note == "on Sapphire Visa"
         assert finding.account_ids == [card.id]
 
-    async def test_an_inflow_whose_envelope_charged_a_different_card(self, db_session):
-        """A payment or refund filed onto the wrong card: the envelope's card
-        spending lives on the OTHER card, so the finding points there rather
-        than at a reimbursement.
-
-        Funded, and that is the point — 300 of the household's money was
-        reserved on Nordvik for a charge that has since been refunded onto
-        the Sapphire. The envelope's cash is stranded on the wrong card,
-        which is what makes the remedy worth offering."""
+    async def test_an_inflow_is_not_sent_to_another_card_because_its_envelope_charged_one(
+        self, db_session
+    ):
+        """A real budget: a refund of a doubled charge, on the card that was
+        charged, filed to an envelope whose other spending was on a second
+        card — and a finding told the user to move it to that second card's
+        register. Where an envelope's spending sits says nothing about where
+        a refund belongs, so nothing may name the other card."""
         services, budget, _checking, card, group, _cat = await self._card_world(db_session)
         other = await create_account(
             db_session, budget, "Nordvik Store Card", account_type="credit_card", on_budget=True
@@ -732,9 +891,21 @@ class TestCardReserveDiagnostics:
         await create_transaction(db_session, budget, other, "-300.00", RECENT, category=shopping)
         await create_transaction(db_session, budget, card, "300.00", RECENT, category=shopping)
 
-        finding = (await _run(db_session, budget))["card_inflow_belongs_to_other_card"]
-        assert "Nordvik Store Card" in finding.detail
-        assert finding.account_ids == [card.id]
+        findings = await _run(db_session, budget)
+        assert "card_inflow_belongs_to_other_card" not in findings
+        # The unlinked-payment finding may still ask whether the two rows are
+        # one movement (same amount, same day — a balance transfer looks like
+        # this); what must be gone is the guess that the refund belongs there.
+        assert [
+            k
+            for k, f in findings.items()
+            if "Nordvik" in _words(f) and k != "unlinked_card_payments"
+        ] == []
+        # The Sapphire is in credit, so it has no negative line; the refund's
+        # envelope is named where the money is — on this card, not another.
+        assert _item(findings["residual_on_uncharged_category"], "Shopping").note == (
+            "on Sapphire Visa"
+        )
 
     async def test_the_same_inflow_on_a_ledger_envelope_is_silent(self, db_session):
         """The identical rows minus the funding. Nothing of the household's
@@ -764,8 +935,14 @@ class TestCardReserveDiagnostics:
         await create_transaction(db_session, budget, card, "-100.00", RECENT, category=cat)
 
         finding = (await _run(db_session, budget))["card_debt_predates_budget"]
-        assert LONG_AGO.strftime("%B %Y") in finding.detail
+        item = _item(finding, "Sapphire Visa")
+        assert item.note is not None
+        assert item.note.startswith(f"charged since {LONG_AGO:%B %Y}, nothing set aside until")
+        assert item.amount == Decimal("500.00")
         assert finding.account_ids == [card.id]
+        # It used to say "set the account's budget start date" — which only
+        # quiets Needs a category; the card's figures never read it.
+        assert "start date" not in finding.action
 
     async def test_an_envelope_that_happens_to_match_a_negative_reserve_is_not_blamed(
         self, db_session
@@ -787,7 +964,7 @@ class TestCardReserveDiagnostics:
         await create_card_payment(services, budget, checking, card, "510.00", RECENT)
 
         findings = await _run(db_session, budget)
-        assert not any("Medical" in f.detail + f.action for f in findings.values())
+        assert not any("Medical" in _words(f) for f in findings.values())
 
     async def test_a_recurring_inflow_stream_on_a_charging_envelope_is_reported(self, db_session):
         """The 42-month shape the probe found on a real import: the envelope
@@ -808,8 +985,7 @@ class TestCardReserveDiagnostics:
 
         findings = await _run(db_session, budget)
         finding = findings["recurring_card_residual"]
-        assert "Groceries" in finding.detail
-        assert "2 months" in finding.detail
+        assert _item(finding, "Groceries").note == "on Sapphire Visa, over 2 months"
         assert finding.account_ids == [card.id]
         # The charged() guard used to make these two the only vocabulary, and
         # this shape fit neither — that silence is the bug this finding fixes.
@@ -874,7 +1050,7 @@ class TestCardReserveDiagnostics:
         await self._ledger_stream(db_session, budget, card, checking, envelope, _months(6))
 
         findings = await _run(db_session, budget)
-        assert "Shared Expenses" in findings["recurring_card_residual"].detail
+        assert _item(findings["recurring_card_residual"], "Shared Expenses").amount is not None
         assert "card_reserve_went_negative" in findings
 
     async def test_a_ledger_that_never_charged_the_card_is_silent(self, db_session):
@@ -906,8 +1082,9 @@ class TestCardReserveDiagnostics:
             await create_transaction(db_session, budget, card, "-100.00", month, category=ledger)
             await create_transaction(db_session, budget, card, "130.00", month, category=ledger)
 
-        finding = (await _run(db_session, budget))["residual_on_uncharged_category"]
-        assert "Shared Expenses" in finding.detail
+        findings = await _run(db_session, budget)
+        item = _item(findings["card_reserve_went_negative"], "Sapphire Visa")
+        assert item.fix == "Move the refund from Shared Expenses to the card."
 
     async def test_a_shortfall_only_partly_explained_by_a_ledger_still_reports(self, db_session):
         """Fully explained, not partly. The same ledger stream, plus a 300

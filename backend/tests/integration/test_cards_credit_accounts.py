@@ -110,7 +110,11 @@ class TestCardNoActivity:
         report = await AccountHygieneService(db_session).run(budget.id)
         finding = next(f for f in report.findings if f.kind == "card_no_activity")
         assert finding.account_ids == [quiet.id]
-        assert "Sapphire Visa" in finding.title
+        # Named as a line of its own, with the day it was last used, rather
+        # than strung into the title.
+        [item] = finding.items
+        assert item.label == "Sapphire Visa"
+        assert item.day == today_utc() - timedelta(days=CARD_QUIET_DAYS + 5)
         assert fresh.id not in finding.account_ids
 
 

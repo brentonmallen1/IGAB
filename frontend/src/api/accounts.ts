@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from './client'
+import { invalidateAfterTransactionChange } from './invalidateAfterTransactionChange'
 import type { Account, AccountType } from '../types'
 import { ROOT } from './queryKeys'
 
@@ -91,12 +92,38 @@ export function useScanDuplicates() {
 }
 
 /** One thing about this budget's accounts that is probably wrong. */
+/** One thing a finding is about. Figures arrive raw (a decimal string, an
+ *  ISO date) and are formatted here — see `services/account_hygiene.py
+ *  FindingItem`; a sentence the server wrote could not follow the user's
+ *  currency format, which is how "58.6800" reached the screen. */
+export interface FindingItem {
+  label: string
+  amount: string | null
+  /** First of the month the item is about. */
+  month: string | null
+  /** A row's date. */
+  day: string | null
+  note: string | null
+  /** What to do about this item, when it differs from the finding's action. */
+  fix: string | null
+  account_id: string | null
+  transaction_id: string | null
+  /** The rows a bulk action would touch — for unlinked card payments,
+   *  `[outflow, inflow]`. */
+  transaction_ids: string[]
+}
+
 export interface HygieneFinding {
   /** Stable key, so the UI routes the fix without parsing prose. */
   kind: string
   title: string
-  detail: string
+  /** One sentence: what is wrong. */
+  summary: string
+  /** What to do, in a sentence or two. */
   action: string
+  items: FindingItem[]
+  /** The reasoning, drawn collapsed. */
+  why: string | null
   account_ids: string[]
   /** Valued Assets are not accounts; findings about one route to /assets/{id}. */
   asset_ids: string[]
@@ -171,6 +198,29 @@ export function useRepairTransfers(budgetId: string) {
       qc.invalidateQueries({ queryKey: [ROOT.allTransactions] })
       qc.invalidateQueries({ queryKey: [ROOT.accountHygiene, budgetId] })
     },
+  })
+}
+
+export interface LinkCardPaymentsResult {
+  linked: number
+  /** Confirmed pairs the server no longer reports — left alone. */
+  skipped: number
+}
+
+/** Link the unlinked card payments a person confirmed, as one undo. The
+ *  server re-derives the pairs and refuses any it does not report. */
+export function useLinkCardPayments(budgetId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (pairs: string[][]) =>
+      apiClient
+        .post<LinkCardPaymentsResult>(`/${budgetId}/accounts/hygiene/link-card-payments`, {
+          pairs,
+        })
+        .then((r) => r.data),
+    // Linking clears the cash leg's envelope and spends the card's Set aside,
+    // so envelopes, cards and Ready to Assign all move — not just the rows.
+    onSuccess: () => invalidateAfterTransactionChange(qc, { budgetId }),
   })
 }
 
