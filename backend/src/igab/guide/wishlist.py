@@ -28,6 +28,11 @@ DEFAULT_COOLING_DAYS = 30
 #: never spells its own 365.
 MAX_COOLING_DAYS = 365
 DEFAULT_REVIEW_DAYS = 90
+#: The review cadence's bounds. Served like `MAX_COOLING_DAYS`, so the
+#: settings form validates against the range the server actually enforces
+#: rather than spelling its own 7 and 365 beside it.
+MIN_REVIEW_DAYS = 7
+MAX_REVIEW_DAYS = 365
 #: "Added a while ago and still wanted" — the line the feature exists for.
 STILL_WANTED_MONTHS = 3
 #: How many wishes may be pinned as top priorities at once. A hard cap, and

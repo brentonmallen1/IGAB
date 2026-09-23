@@ -102,9 +102,14 @@ export function ReviewDialog({ budgetId, due, reviewDays, onEnd, onClose }: Prop
                 {reachLabel(current, fmt)}
               </p>
               <p className="wish-review__added">
-                Added {fmt.formatDate(current.created_at.slice(0, 10))}
+                {/* `added_on`, not the instant: the day the person added it
+                    is served precisely because slicing `created_at` gives the
+                    UTC day, which is tomorrow's every evening west of UTC. */}
+                Added {fmt.formatDate(current.added_on)}
                 {current.last_affirmed_at &&
                   `, last affirmed ${fmt.formatDate(current.last_affirmed_at.slice(0, 10))}`}
+                {/* No served local date for this one — see `affirmed_on`,
+                    which the review clock uses; this line is the instant. */}
               </p>
             </div>
           </>

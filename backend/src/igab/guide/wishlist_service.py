@@ -30,6 +30,8 @@ from igab.guide.wishlist import (
     DEFAULT_COOLING_DAYS,
     DEFAULT_REVIEW_DAYS,
     MAX_COOLING_DAYS,
+    MAX_REVIEW_DAYS,
+    MIN_REVIEW_DAYS,
     PRIORITY_LIMIT,
     STILL_WANTED_MONTHS,
     Funding,
@@ -137,6 +139,8 @@ class WishlistService:
                 "settings": await self.settings(budget_id),
                 "priority_limit": PRIORITY_LIMIT,
                 "max_cooling_days": MAX_COOLING_DAYS,
+                "min_review_days": MIN_REVIEW_DAYS,
+                "max_review_days": MAX_REVIEW_DAYS,
                 "drains": None,
             }
         await self.ensure_group(budget_id)
@@ -203,6 +207,8 @@ class WishlistService:
             "settings": settings,
             "priority_limit": PRIORITY_LIMIT,
             "max_cooling_days": MAX_COOLING_DAYS,
+            "min_review_days": MIN_REVIEW_DAYS,
+            "max_review_days": MAX_REVIEW_DAYS,
             "drains": drains,
         }
 

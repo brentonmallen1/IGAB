@@ -24,6 +24,10 @@ import {
   type WishlistProject,
 } from '../../../api/wishlist'
 import { useFormatters } from '../../../hooks/useFormatters'
+import { useUndoToast } from '../../../utils/toastUndo'
+import { confirmAsync } from '../../../stores/confirmStore'
+import { apiErrorMessage } from '../../../api/client'
+import { parseDays } from './wishlistCooling'
 import { moveItem } from '../../../utils/listOrder'
 import { Collapsible } from '../../common/Collapsible/Collapsible'
 import { Surface } from '../../common/Surface'
@@ -60,7 +64,7 @@ export function WishlistPanel() {
   const budgetId = useAppStore((s) => s.currentBudgetId)
   const { data: overview } = useGuideOverview(budgetId)
   const enabled = overview ? overview.preferences.wishlist : true
-  const { data, isLoading } = useWishlist(budgetId, enabled)
+  const { data, isLoading, isError, refetch } = useWishlist(budgetId, enabled)
   const view = useGuideStore((s) => s.wishlistView)
   const sort = useGuideStore((s) => s.wishlistSort)
   const setView = useGuideStore((s) => s.setWishlistView)
@@ -90,6 +94,11 @@ export function WishlistPanel() {
    *  about once that dialog is out of the way. */
   const [, setDeferredSettle] = useState<string[]>([])
   const fmt = useFormatters()
+  // Every other feature offers the change back before the toast fades; the
+  // wishlist quietly did not, so a mis-click on Drop or Delete had no visible
+  // way back at all.
+  const notify = useUndoToast()
+  const [settingsError, setSettingsError] = useState<string | null>(null)
   const update = useUpdateWish(budgetId ?? '')
   const remove = useDeleteWish(budgetId ?? '')
   const reorder = useReorderWishes(budgetId ?? '')
@@ -127,10 +136,31 @@ export function WishlistPanel() {
     return (
       <section className="guide-wishlist">
         <h2 className="guide-wishlist__title">Wishlist</h2>
+        {/* What actually happened, not a reassurance: switching the wishlist
+            off returns what its envelopes held to Ready to Assign, and says
+            so first (guide/service.py refuses without an explicit release).
+            This claimed the money "never moved", which was false whenever
+            there was any — two statements about the same money, and the
+            comforting one was the wrong one. */}
         <p className="guide-wishlist__lede">
           The wishlist is switched off for this budget. Turn it on in{' '}
-          <Link to="/settings">Settings</Link> and the Wishlist group in your budget comes back with
-          it — any money in those envelopes never moved.
+          <Link to="/settings">Settings</Link> and its envelopes come back — empty, if you released
+          their money to Ready to Assign when you switched it off.
+        </p>
+      </section>
+    )
+  }
+  if (isError) {
+    // `isError` was never read, so a failed fetch rendered an empty
+    // paragraph — indistinguishable from an empty wishlist, forever.
+    return (
+      <section className="guide-wishlist">
+        <h2 className="guide-wishlist__title">Wishlist</h2>
+        <p className="guide-wishlist__lede">
+          The wishlist could not be loaded.{' '}
+          <button type="button" className="guide-link-button" onClick={() => void refetch()}>
+            Try again
+          </button>
         </p>
       </section>
     )
@@ -149,8 +179,52 @@ export function WishlistPanel() {
   }
 
   async function deleteWish(wish: Wish) {
+    // Delete fired on click with nothing in between. A wish funded from a
+    // shared envelope then vanished in silence — no dialog, no toast, no way
+    // back that anyone could see. (The envelope dialog below only ever
+    // appeared for a wish that owned one, and only after the delete.)
+    const ok = await confirmAsync({
+      title: `Delete "${wish.name}"?`,
+      message:
+        'It leaves the list and its history — including whether you talked yourself out of it. ' +
+        'Drop it instead to keep that record.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    })
+    if (!ok) return
     const result = await remove.mutateAsync(wish.id)
+    notify(`${wish.name} deleted`, 'latest')
     if (result.envelope) setPendingEnvelope({ wishName: wish.name, envelope: result.envelope })
+  }
+
+  async function deleteProject(project: WishlistProject) {
+    // The section simply disappeared and its wishes reappeared under "Other
+    // wants" with nothing saying why.
+    const count = project.summary.item_count
+    const ok = await confirmAsync({
+      title: `Delete "${project.name}"?`,
+      message: count
+        ? `Its ${count === 1 ? 'wish stays' : `${count} wishes stay`} on the list, ungrouped.`
+        : 'It has no wishes on it.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    })
+    if (!ok) return
+    await removeProject.mutateAsync(project.id)
+    notify(`${project.name} deleted`, 'latest')
+  }
+
+  async function reopen(wish: Wish) {
+    await update.mutateAsync({ id: wish.id, status: 'open' })
+    // Ending a wish clears its pin (`_apply_status`), and reopening does not
+    // put it back — worth saying, since the spotlight is a capped, chosen
+    // thing rather than something that follows the wish around.
+    notify(
+      wish.is_priority
+        ? `${wish.name} is back on the list, no longer a top priority`
+        : `${wish.name} is back on the list`,
+      'latest'
+    )
   }
 
   /** Ending a wish is only half of it: an envelope of its own is left
@@ -160,6 +234,7 @@ export function WishlistPanel() {
    *  nothing — the history row goes on asking. */
   async function endWish(wish: Wish, status: 'done' | 'dropped') {
     const ended = await update.mutateAsync({ id: wish.id, status })
+    notify(`${wish.name} ${status === 'done' ? 'marked done' : 'dropped'}`, 'latest')
     if (ended.settlement) setSettling(ended.id)
   }
 
@@ -374,7 +449,7 @@ export function WishlistPanel() {
                     onToggle={() => toggleProject(key)}
                     onEdit={section.project ? () => setEditingProject(section.project) : undefined}
                     onDelete={
-                      section.project ? () => removeProject.mutate(section.project!.id) : undefined
+                      section.project ? () => void deleteProject(section.project!) : undefined
                     }
                   >
                     {section.items.length ? (
@@ -466,7 +541,7 @@ export function WishlistPanel() {
                     type="button"
                     className="guide-link-button"
                     aria-label={`Reopen ${w.name}`}
-                    onClick={() => update.mutate({ id: w.id, status: 'open' })}
+                    onClick={() => void reopen(w)}
                   >
                     Reopen
                   </button>
@@ -499,10 +574,18 @@ export function WishlistPanel() {
       {settingsOpen && (
         <GuideDialog
           title="Wishlist settings"
-          onClose={() => setSettingsOpen(false)}
+          onClose={() => {
+            setSettingsError(null)
+            setSettingsOpen(false)
+          }}
           historyKey="wishlist-settings"
           footer={
             <div className="dialog-actions">
+              {settingsError && (
+                <span className="dialog-form__error" role="alert">
+                  {settingsError}
+                </span>
+              )}
               <div className="dialog-actions__end">
                 <button
                   type="button"
@@ -525,14 +608,39 @@ export function WishlistPanel() {
           <form
             id="wishlist-settings-form"
             className="guide-wishlist__settings"
-            onSubmit={(e) => {
+            onSubmit={async (e) => {
               e.preventDefault()
               const form = new FormData(e.currentTarget)
-              setSettings.mutate({
-                cooling_days: Number(form.get('cooling_days')),
-                review_after_days: Number(form.get('review_after_days')),
+              // `Number()` read a cleared box as 0 and anything else as NaN:
+              // blanking the cooling-off silently set a zero-day one on every
+              // future wish, and a typo sent JSON null. One parser, the served
+              // bounds, and a stated reason when it will not do.
+              const cooling = parseDays(String(form.get('cooling_days') ?? ''), {
+                max: data.max_cooling_days,
+                label: 'Cooling-off days',
+                blank: 'refuse',
               })
-              setSettingsOpen(false)
+              const review = parseDays(String(form.get('review_after_days') ?? ''), {
+                min: data.min_review_days,
+                max: data.max_review_days,
+                label: '“Still want it?” days',
+                blank: 'refuse',
+              })
+              if (!cooling.ok) return setSettingsError(cooling.error)
+              if (!review.ok) return setSettingsError(review.error)
+              setSettingsError(null)
+              try {
+                // Awaited: the dialog used to close first, so a refusal
+                // arrived as a toast over a form that was already gone, with
+                // the typed values unrecoverable.
+                await setSettings.mutateAsync({
+                  cooling_days: cooling.days ?? undefined,
+                  review_after_days: review.days ?? undefined,
+                })
+                setSettingsOpen(false)
+              } catch (err) {
+                setSettingsError(apiErrorMessage(err, 'Could not save settings'))
+              }
             }}
           >
             <label className="tool__field">
@@ -551,8 +659,14 @@ export function WishlistPanel() {
                 defaultValue={data.settings.review_after_days}
               />
             </label>
+            {/* They do not behave alike, and saying they do was wrong in a
+                way people would only notice as the list changing under them:
+                the review cadence is read at serve time for every open wish,
+                so shortening it can make wishes due immediately. */}
             <p className="wish-form__hint">
-              Both apply to wishes you add from now on — nothing already on the list moves.
+              The cooling-off applies to wishes you add from now on — nothing already on the list
+              moves. The “still want it?” gap applies to the whole list, so changing it can bring a
+              review forward.
             </p>
           </form>
         </GuideDialog>

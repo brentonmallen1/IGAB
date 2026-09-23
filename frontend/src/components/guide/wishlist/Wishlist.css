@@ -355,6 +355,31 @@
   margin-left: auto;
 }
 
+/* The reorder arrows' own rule. They borrowed `.tool__icon-button` from
+   Tools.css, which ToolsPanel is the only importer of — so on a cold load of
+   /wishlist (its own page, which imports GuidePage.css and not that file)
+   they rendered as unstyled native buttons. The borrowed rule also turned
+   them red on hover: it was written for delete buttons, and "move up" is not
+   a destructive act. */
+.wish__move-button {
+  background: none;
+  border: none;
+  padding: var(--spacing-xs);
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+
+.wish__move-button:hover:not(:disabled) {
+  color: var(--text-primary);
+}
+
+.wish__move-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 /* ── projects ───────────────────────────────────────────────────────────── */
 
 .wish-project {
@@ -578,6 +603,24 @@
   font-size: var(--font-size-sm);
   color: var(--text-primary);
   line-height: 1.5;
+}
+
+/* Five 11px link buttons in a wrapping row is a thumb problem, and they sit
+   too close to grow with `.tap-expand` (the hit areas would overlap). Giving
+   the row itself height and air is what a finger can use.
+
+   `(hover: none)` is this repo's one touch test — breakpoints.test.ts holds
+   every stylesheet to it, and caught this rule written with
+   `(pointer: coarse)`. */
+@media (hover: none) {
+  .wish__actions {
+    gap: var(--spacing-lg);
+    row-gap: var(--spacing-sm);
+  }
+
+  .wish__actions > button {
+    min-height: var(--tap-min);
+  }
 }
 
 @media (max-width: 768px) {

@@ -143,6 +143,10 @@ export interface Wishlist {
   priority_limit: number
   /** The longest cooling-off in days, served for the same reason. */
   max_cooling_days: number
+  /** The review cadence's bounds, served so the settings form refuses what
+   *  the server would refuse rather than spelling its own 7 and 365. */
+  min_review_days: number
+  max_review_days: number
   drains: Drains | null
 }
 
@@ -228,16 +232,19 @@ function useWishlistMutation<TVars, TResult>(
   budgetId: string,
   fn: (vars: TVars) => Promise<TResult>,
   failure: string,
-  quiet = false
+  { quiet = false, touchesCategory = true }: { quiet?: boolean; touchesCategory?: boolean } = {}
 ) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: fn,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: [ROOT.wishlist, budgetId] })
-      // An own envelope is a real category with a goal: the budget page and
-      // every picker need to hear about it.
-      invalidateAfterCategoryChange(qc, budgetId)
+      // An own envelope is a real category with a goal, so those mutations
+      // must tell the budget page and every picker. The rest — a pin, an
+      // affirmation, a reorder, a settings change — touch no category, and
+      // sweeping ~20 query roots on a pin click refetched the month, the
+      // register and every report to redraw one word.
+      if (touchesCategory) invalidateAfterCategoryChange(qc, budgetId)
     },
     onError: quiet ? undefined : (e) => toast.error(apiErrorMessage(e, failure)),
   })
@@ -249,7 +256,7 @@ export function useCreateWish(budgetId: string) {
     budgetId,
     (body) => apiClient.post<Wish>(`/${budgetId}/wishlist`, body).then((r) => r.data),
     'Could not add the wish',
-    true
+    { quiet: true }
   )
 }
 
@@ -298,7 +305,7 @@ export function useSettleWish(budgetId: string) {
         .post<Wish>(`/${budgetId}/wishlist/${id}/settle`, { client_today: today(), ...body })
         .then((r) => r.data),
     'Could not settle the envelope',
-    true
+    { quiet: true }
   )
 }
 
@@ -309,7 +316,8 @@ export function useAffirmWish(budgetId: string) {
       apiClient
         .post(`/${budgetId}/wishlist/${id}/affirm`, null, { params: { today: today() } })
         .then(() => undefined),
-    'Could not save'
+    'Could not save',
+    { touchesCategory: false }
   )
 }
 
@@ -318,7 +326,8 @@ export function useReorderWishes(budgetId: string) {
     budgetId,
     (item_ids) =>
       apiClient.post(`/${budgetId}/wishlist/reorder`, { item_ids }).then(() => undefined),
-    'Could not reorder'
+    'Could not reorder',
+    { touchesCategory: false }
   )
 }
 
@@ -328,7 +337,7 @@ export function useCreateProject(budgetId: string) {
     (body) =>
       apiClient.post<WishlistProject>(`/${budgetId}/wishlist/projects`, body).then((r) => r.data),
     'Could not add the project',
-    true
+    { quiet: true }
   )
 }
 
@@ -358,7 +367,8 @@ export function useReorderProjects(budgetId: string) {
       apiClient
         .post(`/${budgetId}/wishlist/projects/reorder`, { project_ids })
         .then(() => undefined),
-    'Could not reorder'
+    'Could not reorder',
+    { touchesCategory: false }
   )
 }
 
@@ -367,6 +377,7 @@ export function useSetWishlistSettings(budgetId: string) {
     budgetId,
     (body) =>
       apiClient.put<WishlistSettings>(`/${budgetId}/wishlist/settings`, body).then((r) => r.data),
-    'Could not save settings'
+    'Could not save settings',
+    { touchesCategory: false }
   )
 }

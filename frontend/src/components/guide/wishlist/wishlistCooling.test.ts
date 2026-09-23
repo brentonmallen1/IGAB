@@ -5,7 +5,12 @@
  */
 import { describe, expect, it } from 'vitest'
 import cooling from '../../../../../shared/cooling_cases.json'
-import { coolingUntilFromDays, daysAfterAdded, parseCoolingDays } from './wishlistCooling'
+import {
+  coolingUntilFromDays,
+  daysAfterAdded,
+  parseCoolingDays,
+  parseDays,
+} from './wishlistCooling'
 
 describe('shared cooling cases', () => {
   it.each(cooling.cases)('$note: days → date', ({ added_on, days, cooling_until }) => {
@@ -54,6 +59,49 @@ describe('parseCoolingDays', () => {
     expect(parsed).toEqual({
       ok: false,
       error: 'Cooling-off days must be a whole number from 0 to 90',
+    })
+  })
+})
+
+describe('parseDays', () => {
+  const settings = { min: 7, max: 365, label: 'Review days', blank: 'refuse' } as const
+
+  it('refuses a blank where a number is required, rather than reading it as 0', () => {
+    // `Number('')` is 0. The settings dialog did exactly that, so clearing
+    // the cooling-off box silently set a zero-day one on every future wish.
+    const r = parseDays('', settings)
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toContain('7 to 365')
+  })
+
+  it('refuses below the served minimum', () => {
+    expect(parseDays('3', settings).ok).toBe(false)
+  })
+
+  it('refuses above the served maximum', () => {
+    expect(parseDays('400', settings).ok).toBe(false)
+  })
+
+  it('refuses what is not a whole number', () => {
+    expect(parseDays('9.5', settings).ok).toBe(false)
+    expect(parseDays('soon', settings).ok).toBe(false)
+  })
+
+  it('takes a whole number inside the range', () => {
+    expect(parseDays('30', settings)).toEqual({ ok: true, days: 30 })
+  })
+
+  it('names the field it is refusing, since two of them share this', () => {
+    const r = parseDays('x', settings)
+    if (!r.ok) expect(r.error).toContain('Review days')
+  })
+
+  it('still lets a wish have no cooling-off at all', () => {
+    // The one genuine difference between the two callers, expressed as a
+    // parameter rather than a second copy.
+    expect(parseDays('', { max: 365, label: 'Cooling-off days', blank: 'null' })).toEqual({
+      ok: true,
+      days: null,
     })
   })
 })

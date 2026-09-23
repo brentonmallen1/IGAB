@@ -6,7 +6,7 @@ from typing import Literal
 from pydantic import Field, model_validator
 
 from igab.api.v1.schemas.base import ApiModel, ClientDated
-from igab.guide.wishlist import MAX_COOLING_DAYS
+from igab.guide.wishlist import MAX_COOLING_DAYS, MAX_REVIEW_DAYS, MIN_REVIEW_DAYS
 
 Money = Decimal
 
@@ -194,7 +194,7 @@ class WishlistSettingsOut(ApiModel):
 
 class WishlistSettingsUpdate(ApiModel):
     cooling_days: int | None = Field(default=None, ge=0, le=MAX_COOLING_DAYS)
-    review_after_days: int | None = Field(default=None, ge=7, le=365)
+    review_after_days: int | None = Field(default=None, ge=MIN_REVIEW_DAYS, le=MAX_REVIEW_DAYS)
 
 
 class SettleRequest(ClientDated):
@@ -265,4 +265,8 @@ class WishlistResponse(ApiModel):
     priority_limit: int
     #: The longest cooling-off, in days — served for the same reason.
     max_cooling_days: int
+    #: The review cadence's bounds, served for the same reason again: the
+    #: settings form refuses what the server would refuse, in its own words.
+    min_review_days: int
+    max_review_days: int
     drains: DrainsOut | None
