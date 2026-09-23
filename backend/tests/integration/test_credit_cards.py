@@ -31,7 +31,7 @@ from .factories import (
 )
 from .invariants import assert_card_reserve_identity, assert_financial_invariants
 
-JUL, AUG, SEP, OCT = (date(2026, m, 1) for m in (7, 8, 9, 10))
+JUN, JUL, AUG, SEP, OCT = (date(2026, m, 1) for m in (6, 7, 8, 9, 10))
 D = Decimal
 
 
@@ -67,6 +67,120 @@ async def _income_category(db_session, budget):
         .where(Category.budget_id == budget.id, CategoryGroup.is_system == True)  # noqa: E712
     )
     return result.scalars().one()
+
+
+class TestAnImportedBudgetWithTwoCards:
+    """The shape of every real YNAB import, which no scenario can reach: a
+    `CardScenario` owns one card, and `merge_into` refuses anchors. Two cards
+    arrive at B−1 — one carrying uncovered debt, one holding a reserve — and
+    one envelope then ends a month short across both. Walked through the
+    served summary, where every anchored figure meets every multi-card one."""
+
+    async def _two_anchored_cards(self, db_session):
+        services = make_services(db_session)
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        checking = await create_account(db_session, budget, "Checking")
+        visa = await create_account(db_session, budget, "Visa", account_type="credit_card")
+        amex = await create_account(db_session, budget, "Amex", account_type="credit_card")
+        for card in (visa, amex):
+            assert await ensure_payment_category(db_session, card) is not None
+        everyday = await create_category_group(db_session, budget, "Everyday")
+        groceries = await create_category(db_session, budget, everyday, "Groceries")
+        await create_transaction(db_session, budget, checking, "5000.00", date(2026, 6, 15))
+
+        # B−1 = June (`ImportAnchor.month` is the month the openings are
+        # stated at; the walk starts the month after). The Visa arrives owing
+        # 400 nobody reserved for; the Amex arrives owing 200 with 200 set
+        # aside. Pre-anchor rows give the balances; anchor rows, the openings.
+        await create_transaction(db_session, budget, visa, "-400.00", date(2026, 6, 20))
+        await create_transaction(db_session, budget, amex, "-200.00", date(2026, 6, 20))
+        from igab.db.models import ImportAnchor
+
+        db_session.add_all(
+            [
+                ImportAnchor(
+                    budget_id=budget.id,
+                    month=JUN,
+                    kind="available",
+                    category_id=groceries.id,
+                    amount=D("0"),
+                ),
+                ImportAnchor(
+                    budget_id=budget.id,
+                    month=JUN,
+                    kind="uncovered",
+                    account_id=visa.id,
+                    amount=D("400"),
+                ),
+                ImportAnchor(
+                    budget_id=budget.id,
+                    month=JUN,
+                    kind="reserve",
+                    account_id=amex.id,
+                    amount=D("200"),
+                ),
+            ]
+        )
+        await db_session.flush()
+        return services, budget, checking, visa, amex, groceries
+
+    async def test_openings_land_on_the_right_cards(self, db_session):
+        services, budget, _c, visa, amex, _g = await self._two_anchored_cards(db_session)
+        s = await _summary(services, budget, JUL)
+        by = {c.name: c for c in s.cards}
+        # The Visa's 400 is IMPORTED riding — no month here put it there.
+        assert (by["Visa"].imported_riding, by["Visa"].riding) == (D("400"), D("0"))
+        assert by["Visa"].uncovered == D("400")
+        assert by["Visa"].set_aside_state.value == "funded"
+        # The Amex's opening reserve is its set aside; nothing rides.
+        assert (by["Amex"].set_aside, by["Amex"].uncovered) == (D("200"), D("0"))
+        assert by["Amex"].imported_riding == D("0")
+
+    async def test_a_shared_shortfall_goes_to_the_card_charged_most(self, db_session):
+        """One envelope, funded 100, spends 300 on the Visa and 60 on the Amex
+        in July: 260 short. Largest charge first — the Visa carries all of it,
+        beside its imported 400, and the two rides stay apart. Funding the
+        envelope reaches the Visa, so its row may promise the remedy; the Amex
+        has no ride of its own and promises nothing."""
+        services, budget, _c, visa, amex, groceries = await self._two_anchored_cards(db_session)
+        await create_budget_assignment(db_session, budget, groceries, JUL, "100.00")
+        await create_transaction(
+            db_session, budget, visa, "-300.00", date(2026, 7, 9), category=groceries
+        )
+        await create_transaction(
+            db_session, budget, amex, "-60.00", date(2026, 7, 9), category=groceries
+        )
+        await db_session.flush()
+
+        s = await _summary(services, budget, JUL)
+        by = {c.name: c for c in s.cards}
+        assert by["Visa"].riding == D("260")
+        assert by["Visa"].imported_riding == D("400")
+        assert by["Visa"].ride_reaches_this_card is True
+        assert by["Amex"].riding == D("0")
+        # Amex's 60 was funded from the envelope's 100: reserved, not riding.
+        assert by["Amex"].set_aside == D("260")  # 200 opening + 60 reserved
+        # The identity holds on both, opening included.
+        for card in s.cards:
+            assert card.reserve_discrepancy == D("0"), card.name
+
+    async def test_assigning_to_the_imported_card_retires_the_imported_ride(self, db_session):
+        """The only thing that reaches imported debt. Its remainder is served
+        under its own name, and the budget's own ride is untouched by it."""
+        services, budget, _c, visa, _a, _g = await self._two_anchored_cards(db_session)
+        visa_env = next(
+            c for c in (await _summary(services, budget, JUL)).cards if c.name == "Visa"
+        )
+        assert visa_env.category_id is not None
+        await services.budgets.set_assignment(budget.id, visa_env.category_id, JUL, D("150.00"))
+
+        s = await _summary(services, budget, JUL)
+        visa_row = next(c for c in s.cards if c.name == "Visa")
+        assert visa_row.imported_riding == D("250")
+        assert visa_row.covered == D("150")
+        assert visa_row.uncovered == D("250")
+        assert visa_row.set_aside == D("150")
 
 
 class TestReadyToAssignAndANegativeSetAside:
