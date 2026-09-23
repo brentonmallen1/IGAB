@@ -88,4 +88,24 @@ describe('the amount the card payment dialog opens at', () => {
     render(<CardPaymentModal budgetId="b1" accountId="card" onClose={() => {}} />)
     expect(amountBox().value).toBe('120.00')
   })
+
+  it('proposes nothing on a card that owes nothing', () => {
+    // The boundary the cap was written for, and the one it skipped: "owed"
+    // was null rather than zero here, and null meant "no cap". A paid-off
+    // card holding 1,250 in its envelope opened prefilled at $1,250 — the
+    // exact overpayment the change set out to stop, one Enter away.
+    setup(0, 1250)
+    render(<CardPaymentModal budgetId="b1" accountId="card" onClose={() => {}} />)
+    expect(amountBox().value).toBe('')
+    expect(screen.queryByText(/1,250/)).toBeNull()
+    expect(screen.queryByRole('group', { name: 'Suggested amounts' })).toBeNull()
+  })
+
+  it('proposes nothing on a card already in credit', () => {
+    // Paying a card the issuer already owes YOU makes the credit bigger.
+    setup(100, 1250)
+    render(<CardPaymentModal budgetId="b1" accountId="card" onClose={() => {}} />)
+    expect(amountBox().value).toBe('')
+    expect(screen.queryByText(/1,250/)).toBeNull()
+  })
 })
