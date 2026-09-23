@@ -316,7 +316,8 @@ function LoanTermsStep({
 }
 
 /**
- * The rows YNAB dated after the import, now one-off scheduled transactions.
+ * The rows YNAB dated after the import, now scheduled transactions set to
+ * monthly — YNAB exports no cadence, and monthly is what nearly all of them are.
  *
  * A cadence saved here writes immediately — a stated divergence from the
  * other steps' write-on-Done. Setting how often the rent repeats is an
@@ -380,7 +381,7 @@ function UpcomingStep({
       <p className="dialog__body dialog__body--muted">
         YNAB dated these after the import, so they are upcoming transactions rather than posted ones
         — nothing has left an account yet. YNAB exports a scheduled transaction as its next date
-        only; set how often each one repeats, or leave it as a one-off.
+        only, so each is set to repeat monthly; change the ones that don't.
       </p>
 
       <Surface

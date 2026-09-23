@@ -65,7 +65,7 @@ class YNABBudget:
     #: Register rows dated after the import's today, set aside by
     #: `hold_out_future`. YNAB exports a scheduled transaction as its next
     #: dated instance with no cadence, so these are upcoming bills, not
-    #: history: the importer turns each into a one-off schedule instead of a
+    #: history: the importer turns each into a monthly schedule instead of a
     #: posted row. Everything else — preview counts, the oracle, parity, the
     #: anchor — reads `transactions` and never sees them.
     held_out: list[YNABTransaction] = field(default_factory=list)

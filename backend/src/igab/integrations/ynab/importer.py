@@ -189,7 +189,7 @@ class ImportResult:
     anchor_skipped_reason: str | None = None
     #: Register rows dated after the import's today. YNAB exports a
     #: scheduled transaction as its next dated instance with no cadence, so
-    #: each becomes a one-off scheduled transaction rather than a posted row
+    #: each becomes a monthly scheduled transaction rather than a posted row
     #: — a posted row would move Ready to Assign for money that has not left.
     #: Listed, not just counted: the review is where the cadence gets set.
     held_out_future: list["HeldOutRow"] = field(default_factory=list)
@@ -797,12 +797,14 @@ class YNABImporter:
     async def _import_held_out(
         self, budget: YNABBudget, payee_map: dict[str, uuid.UUID], result: ImportResult
     ) -> None:
-        """Turn every held-out (future-dated) row into a one-off schedule.
+        """Turn every held-out (future-dated) row into a monthly schedule.
 
-        YNAB exports no cadence, only the next dated instance, so `once` is
-        the honest frequency and the review is where a person sets the real
-        one. `auto_create` stays off: an imported guess must not post rows by
-        itself. Accounts, payees and categories resolve through the same
+        YNAB exports no cadence, only the next dated instance, so any
+        frequency is a guess and the review is where a person sets the real
+        one. Monthly is the guess because it is what nearly all of them are:
+        defaulting to `once` meant changing the same dropdown on every row of
+        every import. `auto_create` stays off: an imported guess must not
+        post rows by itself. Accounts, payees and categories resolve through the same
         functions as register rows; the category-stripping rules (card
         reserve, tracking account) apply unchanged.
 
@@ -865,7 +867,7 @@ class YNABImporter:
                 ScheduledTransactionCreate(
                     account_id=c["account_id"],
                     amount=c["amount"],
-                    frequency="once",
+                    frequency="monthly",
                     start_date=c["date"],
                     payee_id=c["payee_id"],
                     category_id=c["category_id"],

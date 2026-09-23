@@ -86,7 +86,8 @@ const updateSchedule = vi.fn().mockResolvedValue(undefined)
 const schedules = [
   {
     id: 's-rent',
-    frequency: 'once',
+    // What the importer stores: YNAB exports no cadence, monthly is the guess.
+    frequency: 'monthly',
     second_day_of_month: null,
     next_occurrence_date: '2026-10-01',
     days_before_reminder: 3,
@@ -425,11 +426,12 @@ describe('the upcoming step', () => {
     const select = screen.getByRole('combobox', {
       name: /how often oakwood property mgmt repeats/i,
     })
-    await user.selectOptions(select, 'monthly')
+    expect(select).toHaveValue('monthly')
+    await user.selectOptions(select, 'weekly')
     await waitFor(() =>
       expect(updateSchedule).toHaveBeenCalledWith({
         id: 's-rent',
-        frequency: 'monthly',
+        frequency: 'weekly',
         second_day_of_month: null,
       })
     )
