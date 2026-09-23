@@ -242,11 +242,22 @@ function ReserveLegs({
             unmentioned: the walk is recomputed from scratch every request, so
             raising a past month's assignment retires that month's ride
             retroactively. Funding the FOLLOWING month does not reach back. */}
-          {card.riding !== 0 && (
+          {/* The remedy, keyed on whether it works HERE. A shortfall shared
+              across cards is handed out in a fixed order, so funding the
+              envelope shrinks the first card's ride and this one may not move
+              (F8, measured). The server says which; this only reads it. */}
+          {card.riding !== 0 && card.ride_reaches_this_card && (
             <p>
               Fund an envelope in the month it ended short and that ride disappears — a backdated
               assignment is re-walked and retires it. If that month has no room to spare, assign to
               the card instead to cover it now.
+            </p>
+          )}
+          {card.riding !== 0 && !card.ride_reaches_this_card && (
+            <p>
+              That month&rsquo;s shortfall also rode onto another card, and money put into the
+              envelope reaches that card first. Assigning to this card is the move that is certain
+              to cover it.
             </p>
           )}
         </div>
@@ -1042,8 +1053,10 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
             <p>
               One thing does change at a month end: an envelope that finishes the month short sends
               that shortfall onto the card as Uncovered, and funding it the following month does not
-              reach back. Funding it <em>in that month</em> does — a backdated assignment is
-              re-walked and the ride disappears. The Set aside breakdown names the months.
+              reach back. Funding it <em>in that month</em> does, where the whole shortfall rode
+              onto one card — a backdated assignment is re-walked and the ride disappears. Where a
+              month ended short across two cards, the envelope funds one of them first; the
+              breakdown says which remedy reaches the card you are reading.
             </p>
             <p>
               <strong>An expense you cannot cover</strong> still belongs in its real category. Let

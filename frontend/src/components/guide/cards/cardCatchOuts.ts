@@ -27,7 +27,7 @@ export const CARD_CATCH_OUTS: CatchOutItem[] = [
     id: 'funding-does-not-reach-back',
     title: 'Funding an envelope next month does not reach back',
     detail:
-      'When a month ends short, the part the envelope could not cover rides onto the card for good. Raising that month’s budget retires it, because the whole calculation is re-run every time you look. Funding the following month does not.',
+      'When a month ends short, the part the envelope could not cover rides onto the card for good. Raising that month’s budget retires it — the whole calculation is re-run every time you look — as long as the shortfall rode onto one card; shared across two, the envelope funds one of them first, and the card row says which remedy reaches it. Funding the following month does not reach back at all.',
   },
   {
     id: 'a-refund-goes-where-the-money-came-from',

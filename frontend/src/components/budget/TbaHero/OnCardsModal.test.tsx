@@ -30,6 +30,7 @@ function card(over: Record<string, unknown> = {}) {
     account_id: 'card-1',
     name: 'Sapphire Visa',
     overspent_this_month: 55,
+    ride_reaches_this_card: true,
     overspent_by_category: [
       { category_id: 'c-dining', category_name: 'Dining', amount: 35 },
       { category_id: 'c-groceries', category_name: 'Groceries', amount: 20 },
@@ -131,5 +132,19 @@ describe('OnCardsModal', () => {
     month.current = { cards: [card()], total_overspent_credit: 90 } as unknown as BudgetMonth
     open()
     expect(screen.getByText(/\$90\.00 of this month/)).toBeInTheDocument()
+  })
+
+  it('does not promise the envelope remedy on a card another card funds first', () => {
+    // The F8 case: one envelope's shortfall rode onto two cards, and money
+    // put into the envelope shrinks the FIRST card's ride. This note used to
+    // promise "funding these envelopes retires this debt" on both.
+    month.current = {
+      to_be_assigned: 0,
+      total_overspent_credit: 55,
+      cards: [card({ ride_reaches_this_card: false })],
+    } as unknown as BudgetMonth
+    render(<OnCardsModal budgetId="b1" month="2026-08-01" onClose={() => {}} />)
+    expect(screen.getByText(/reaches that card first/)).toBeInTheDocument()
+    expect(screen.queryByText(/Funding these envelopes for this month retires/)).toBeNull()
   })
 })

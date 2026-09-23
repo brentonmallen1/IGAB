@@ -211,6 +211,13 @@ class CardStatus:
     #: household paid $100 down and the page read as if it still had the $100.
     #: `domain/cards.py` `unmirrored_shortfall` — a lower bound, never more.
     paid_ahead_unmirrored: Decimal = Decimal("0")
+    #: Whether funding the month an envelope ended short retires THIS card's
+    #: ride. True when every envelope that rode here rode ONLY here. False
+    #: when a shortfall is shared across cards: `allocate_capped` hands it
+    #: out in a fixed order, so funding the envelope shrinks the first card's
+    #: ride and this row may not move. Four surfaces promised the remedy
+    #: unconditionally; they read this now. Always True when nothing rides.
+    ride_reaches_this_card: bool = True
     #: The rest of `card_position`, beside `uncovered` above. A zero
     #: `reserve_discrepancy` means the identity's BOUNDS hold, not that the
     #: reserve is anywhere near the balance — the bounds are allowances, and
@@ -1188,6 +1195,12 @@ class BudgetService:
                     released_out=released_out,
                 )
                 paid_ahead_on_cards += paid_ahead
+                own_ride = sum_through(funding.riding_by_card.get(account.id, {}), month_start)
+                # Nothing riding: the promise is vacuous, and the row will not
+                # make it. `ride_is_exclusive` says False for an empty ride.
+                reaches = own_ride == zero or ride_is_exclusive(
+                    funding.floored_by_pair, account.id, month_start
+                )
                 charged, received, pending = month_flows.get(account.id, (zero, zero, zero))
                 if account.is_closed and balance == zero and set_aside == zero:
                     # Settled and closed: nothing owed, nothing reserved,
@@ -1232,11 +1245,10 @@ class BudgetService:
                                 funding.riding_by_card.get(account.id, {}), month_start
                             ),
                             residual_from_ledgers=from_ledgers,
-                            ride_reaches_this_card=ride_is_exclusive(
-                                funding.floored_by_pair, account.id, month_start
-                            ),
+                            ride_reaches_this_card=reaches,
                             released_out=released_out,
                         ),
+                        ride_reaches_this_card=reaches,
                         is_closed=account.is_closed,
                         overspent_this_month=funding.floored_by_card.get(account.id, {}).get(
                             month_start, zero

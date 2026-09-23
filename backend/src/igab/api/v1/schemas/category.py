@@ -535,6 +535,10 @@ class CardStatusOut(ApiModel):
     #: reserve with nothing to mirror it. The row's action says Ready to
     #: Assign already reflects it, and quotes this.
     paid_ahead_unmirrored: Decimal
+    #: Does funding the month an envelope ended short retire THIS card's ride?
+    #: False when the shortfall is shared with another card, which funds first.
+    #: Served so no surface promises the remedy where it does nothing.
+    ride_reaches_this_card: bool
     #: The rest of `card_position` beside `uncovered`. A zero
     #: `reserve_discrepancy` means the identity's BOUNDS hold, not that the
     #: reserve is anywhere near the balance — they are allowances, and they
@@ -615,6 +619,7 @@ class CardStatusOut(ApiModel):
             covered=card.covered,
             residual_from_ledgers=card.residual_from_ledgers,
             paid_ahead_unmirrored=card.paid_ahead_unmirrored,
+            ride_reaches_this_card=card.ride_reaches_this_card,
             over_reserved=card.over_reserved,
             short_reserved=card.short_reserved,
             card_credit=card.card_credit,

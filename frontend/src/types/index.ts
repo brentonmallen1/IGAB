@@ -381,6 +381,10 @@ export interface CardStatus {
   /** This card's share of `paid_ahead_on_cards`: paid past its reserve with
    *  nothing to mirror it. Ready to Assign already reflects it. */
   paid_ahead_unmirrored: number
+  /** Does funding the month an envelope ended short retire THIS card's ride?
+   *  False when the shortfall is shared with another card, which funds
+   *  first. Key every "fund the month and it disappears" sentence on this. */
+  ride_reaches_this_card: boolean
   /** The rest of `card_position` (domain/cards.py), beside `uncovered`.
    *
    *  **A zero `reserve_discrepancy` does not mean this card looks sensible.**
