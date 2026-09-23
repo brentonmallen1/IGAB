@@ -22,7 +22,7 @@ from igab.domain.dates import month_start
 from igab.domain.drains import drains_total, shape_drains
 from igab.domain.exceptions import InvariantViolation, NotFoundError
 from igab.domain.money import quantize_cents
-from igab.domain.ordering import renumber
+from igab.domain.ordering import merge_reorder, renumber
 from igab.guide.detection import budget_service_from, category_service_from
 from igab.guide.repo import GuideRepository, set_state_recorded
 from igab.guide.service import DEFAULT_PREFS, PREFS_KEY
@@ -37,6 +37,7 @@ from igab.guide.wishlist import (
     Reach,
     WishInput,
     added_on,
+    affirmed_on,
     cooling_until_for,
     could_be_unsettled,
     drain_impact,
@@ -49,6 +50,7 @@ from igab.guide.wishlist import (
     unsettled,
 )
 from igab.repositories.budget_move_repo import BudgetMoveRepository
+from igab.repositories.category_filters import IS_ASSIGNABLE
 from igab.repositories.category_repo import (
     BudgetAssignmentRepository,
     CategoryGroupRepository,
@@ -119,7 +121,11 @@ class WishlistService:
     # ── reading ──────────────────────────────────────────────────────────────
 
     async def overview(self, budget_id: uuid.UUID, today: date | None = None) -> dict[str, Any]:
-        today = today or date.today()
+        # Everything served off this — cooling, review-due, reach dates, the
+        # drains month — is keyed to a day. The caller's, when the browser
+        # sent one; never the server's local clock, which is already tomorrow
+        # every evening west of UTC.
+        today = recorded_on(None, today)
         if not await self.enabled(budget_id):
             return {
                 "enabled": False,
@@ -339,7 +345,7 @@ class WishlistService:
             "review_due": item.status == "open"
             and review_due(
                 wish.created_at,
-                item.last_affirmed_at.date() if item.last_affirmed_at else None,
+                affirmed_on(item.affirmed_on, item.last_affirmed_at),
                 item.cooling_until,
                 settings["review_after_days"],
                 today,
@@ -386,15 +392,19 @@ class WishlistService:
         )
         return list(rows.scalars().all())
 
-    async def item_out(self, budget_id: uuid.UUID, item_id: uuid.UUID) -> dict[str, Any]:
-        built = await self._build(budget_id, date.today())
+    async def item_out(
+        self, budget_id: uuid.UUID, item_id: uuid.UUID, today: date | None = None
+    ) -> dict[str, Any]:
+        built = await self._build(budget_id, recorded_on(None, today))
         for row in built["items"] + built["history"]:
             if row["id"] == item_id:
                 return row
         raise NotFoundError("Wish", str(item_id))
 
-    async def project_out(self, budget_id: uuid.UUID, project_id: uuid.UUID) -> dict[str, Any]:
-        built = await self._build(budget_id, date.today())
+    async def project_out(
+        self, budget_id: uuid.UUID, project_id: uuid.UUID, today: date | None = None
+    ) -> dict[str, Any]:
+        built = await self._build(budget_id, recorded_on(None, today))
         for row in built["projects"]:
             if row["id"] == project_id:
                 return row
@@ -417,12 +427,46 @@ class WishlistService:
     async def _checked_category(
         self, budget_id: uuid.UUID, category_id: uuid.UUID | None
     ) -> uuid.UUID:
+        """The envelope a wish or a project may be funded from.
+
+        `IS_ASSIGNABLE` is the shared rule — the same one the pickers filter
+        on — applied here because the client filtering it was the only thing
+        enforcing it. An API or MCP caller could fund a wish from an income
+        category, a card's set-aside or an archived envelope, and reach then
+        read a card's money as savings towards a bicycle.
+        """
         if category_id is None:
             raise InvariantViolation("Pick a category to fund this from")
         category = await self.categories.get(category_id)
         if category is None or category.budget_id != budget_id or category.is_deleted:
             raise NotFoundError("Category", str(category_id))
+        offerable = await self.session.scalar(
+            select(Category.id)
+            .join(CategoryGroup, Category.category_group_id == CategoryGroup.id)
+            .where(Category.id == category_id, IS_ASSIGNABLE)
+        )
+        if offerable is None:
+            raise InvariantViolation(
+                f"'{category.name}' cannot fund a wish — pick an envelope you budget into"
+            )
         return category.id
+
+    async def _live_envelope(self, item: WishlistItem, budget_id: uuid.UUID) -> Category | None:
+        """The category a wish owns, if it is still standing.
+
+        A wish can outlive its envelope: deleting the category leaves
+        `category_id` pointing at a soft-deleted row, and the served row
+        already reads that as unlinked. Every write that touches "the wish's
+        envelope" has to ask the same question, or it acts on a dead row —
+        which is how `own` funding became a no-op that could never be undone
+        and a cost edit wrote a savings goal onto a deleted category.
+        """
+        if not item.owns_envelope or item.category_id is None:
+            return None
+        category = await self.categories.get(item.category_id)
+        if category is None or category.is_deleted or category.budget_id != budget_id:
+            return None
+        return category
 
     async def _create_envelope(
         self, budget_id: uuid.UUID, name: str, cost: Decimal, want_by: date | None
@@ -534,13 +578,16 @@ class WishlistService:
                 after=snapshot("wishlist_item", item),
             )
         await self._sync_tags(budget_id, [await self._envelope_of(budget_id, item)])
-        return await self.item_out(budget_id, item.id)
+        return await self.item_out(budget_id, item.id, added)
 
     async def update(
         self, budget_id: uuid.UUID, item_id: uuid.UUID, data: dict[str, Any]
     ) -> dict[str, Any]:
         await self._require_enabled(budget_id)
         item = await self._get_item(budget_id, item_id)
+        # The person's today, not the server's: an ending is stamped with the
+        # day they were living in, which is what the discipline report reads.
+        day = recorded_on(None, data.get("client_today"))
         before = snapshot("wishlist_item", item)
         before_envelope = await self._envelope_of(budget_id, item)
 
@@ -562,12 +609,13 @@ class WishlistService:
                 item.priority = int(data["priority"])
             if "cost" in data and data["cost"] is not None:
                 item.cost = quantize_cents(Decimal(data["cost"]))
-                if item.owns_envelope and item.category_id:
+                envelope = await self._live_envelope(item, budget_id)
+                if envelope is not None:
                     # One-way: the wish's cost sets the goal. The budget page may
                     # move the goal afterwards; the two are allowed to differ.
-                    target = await self.targets.get(item.category_id)
+                    target = await self.targets.get(envelope.id)
                     await self.targets.upsert(
-                        item.category_id,
+                        envelope.id,
                         target.target_type if target else "savings_balance",
                         item.cost,
                         target.target_date if target else None,
@@ -582,7 +630,7 @@ class WishlistService:
             if "funding" in data and data["funding"] is not None:
                 await self._apply_funding(budget_id, item, data["funding"])
             if "status" in data and data["status"] is not None:
-                self._apply_status(item, data["status"])
+                self._apply_status(item, data["status"], day)
             if "is_priority" in data and data["is_priority"] is not None:
                 await self._apply_priority(budget_id, item, bool(data["is_priority"]))
 
@@ -599,7 +647,7 @@ class WishlistService:
                 )
         after_envelope = await self._envelope_of(budget_id, item)
         await self._sync_tags(budget_id, [before_envelope, after_envelope])
-        return await self.item_out(budget_id, item.id)
+        return await self.item_out(budget_id, item.id, day)
 
     async def _apply_funding(
         self, budget_id: uuid.UUID, item: WishlistItem, funding: dict[str, Any]
@@ -616,11 +664,22 @@ class WishlistService:
         holding money, so `own` on a wish that already has one means "leave it
         alone", and switching away detaches the wish and leaves the category
         standing rather than deleting it.
+
+        "Already has one" means a *live* one. A wish whose envelope was
+        deleted underneath it already serves as unlinked, and treating its
+        stale link as an envelope made `own` a no-op the person could not
+        get past: the form offered to make an envelope and nothing happened.
         """
         mode = funding.get("mode", "none")
         if mode == "own":
-            if item.owns_envelope and item.category_id is not None:
+            if await self._live_envelope(item, budget_id) is not None:
                 return
+            # Owned an envelope that has since been deleted: the served row
+            # already reads "none", so the link is stale. Clearing it is what
+            # lets `own` make a new one — without this the wish read as
+            # unlinked and could never be given an envelope again.
+            item.category_id = None
+            item.owns_envelope = False
             envelope = await self._create_envelope(
                 budget_id, item.name, item.cost, funding.get("want_by")
             )
@@ -634,14 +693,19 @@ class WishlistService:
         item.owns_envelope = False
 
     @staticmethod
-    def _apply_status(item: WishlistItem, status: str) -> None:
+    def _apply_status(item: WishlistItem, status: str, day: date) -> None:
         if status not in STATUSES:
             raise InvariantViolation(f"Unknown status '{status}'")
+        if status == item.status:
+            # A request that restates the status changes nothing. Without
+            # this, re-sending `done` moved `done_at` to today — rewriting
+            # when a wish ended every time anything else about it was saved.
+            return
         item.status = status
         # Both stamps are set on every transition, so reopening a wish clears
         # the old ending rather than leaving a date that contradicts the status.
-        item.done_at = date.today() if status == "done" else None
-        item.dropped_at = date.today() if status == "dropped" else None
+        item.done_at = day if status == "done" else None
+        item.dropped_at = day if status == "dropped" else None
         if status != "open":
             # Only an open wish holds a spotlight slot; clearing here is what
             # keeps a reopened wish from silently busting the cap.
@@ -676,7 +740,9 @@ class WishlistService:
                 )
         item.is_priority = pinned
 
-    async def delete(self, budget_id: uuid.UUID, item_id: uuid.UUID) -> dict[str, Any]:
+    async def delete(
+        self, budget_id: uuid.UUID, item_id: uuid.UUID, today: date | None = None
+    ) -> dict[str, Any]:
         await self._require_enabled(budget_id)
         item = await self._get_item(budget_id, item_id)
         envelope_out = None
@@ -684,7 +750,7 @@ class WishlistService:
             category = await self.categories.get(item.category_id)
             if category is not None and not category.is_deleted:
                 balance = await self.budget.get_category_balance(
-                    category.id, month_start(date.today())
+                    category.id, month_start(recorded_on(None, today))
                 )
                 envelope_out = {
                     "category_id": category.id,
@@ -736,18 +802,15 @@ class WishlistService:
         one outcome that loses track of real money.
         """
         await self._require_enabled(budget_id)
-        day = today or date.today()
-        month = month_start(day)
+        month = month_start(recorded_on(None, today))
         item = await self._get_item(budget_id, item_id)
         if item.status == "open":
             raise InvariantViolation(
                 "Only a wish that is done or dropped has an envelope to settle"
             )
-        if not item.owns_envelope or item.category_id is None:
+        category = await self._live_envelope(item, budget_id)
+        if category is None:
             raise InvariantViolation("This wish has no envelope of its own")
-        category = await self.categories.get(item.category_id)
-        if category is None or category.is_deleted or category.budget_id != budget_id:
-            raise NotFoundError("Category", str(item.category_id))
         if category.is_archived:
             raise InvariantViolation(f"'{category.name}' is already archived")
         if destination_category_id == category.id:
@@ -792,13 +855,19 @@ class WishlistService:
                     after=after,
                 )
         await self._sync_tags(budget_id, [category.id])
-        return await self.item_out(budget_id, item.id)
+        return await self.item_out(budget_id, item.id, today)
 
-    async def affirm(self, budget_id: uuid.UUID, item_id: uuid.UUID) -> None:
+    async def affirm(
+        self, budget_id: uuid.UUID, item_id: uuid.UUID, today: date | None = None
+    ) -> None:
         await self._require_enabled(budget_id)
         item = await self._get_item(budget_id, item_id)
         before = snapshot("wishlist_item", item)
+        # Both: the instant for the activity feed, and the person's own date
+        # for the review cadence, which measures from it to another local
+        # date. `added_on` exists for exactly this reason.
         item.last_affirmed_at = datetime.now(UTC)
+        item.affirmed_on = recorded_on(None, today)
         await self.session.flush()
         await self.changes.record(
             budget_id=budget_id,
@@ -809,28 +878,59 @@ class WishlistService:
             after=snapshot("wishlist_item", item),
         )
 
-    async def reorder_items(self, budget_id: uuid.UUID, item_ids: list[uuid.UUID]) -> None:
-        await self._require_enabled(budget_id)
-        ordered = await self._items(budget_id)
-        items = {i.id: i for i in ordered}
-        if len(set(item_ids)) != len(item_ids) or set(item_ids) - items.keys():
-            raise InvariantViolation("Reorder must name this budget's wishes, each once")
-        for wish_id, position in renumber(item_ids).items():
-            items[wish_id].priority = position
+    async def _reorder(
+        self,
+        budget_id: uuid.UUID,
+        ordered: list[Any],
+        live: list[tuple[uuid.UUID, bool]],
+        given: list[uuid.UUID],
+        *,
+        noun: str,
+        collection: str,
+        field: str,
+    ) -> None:
+        """Renumber one of the budget's hand-arranged lists.
+
+        Both wishlist lists go through `merge_reorder` — the one home for
+        "what the new order is", shared with category groups and categories.
+        They used to share a containment check instead, which accepted a
+        strict subset: the rows the client left out kept their old numbers
+        and collided with the renumbered ones, so two wishes claimed one slot
+        and the queue order became whatever the sort fell back on.
+        """
+        rows = {r.id: r for r in ordered}
+        full = merge_reorder(live, given, noun=noun, scope="wishlist")
+        for row_id, position in renumber(full).items():
+            setattr(rows[row_id], field, position)
         await self.session.flush()
         # Subject = the budget (the container), like a group reorder;
         # `_collection` tells the undo which of the budget's lists to renumber.
-        before_ids = [str(i.id) for i in ordered]
-        after_ids = [str(i) for i in item_ids]
+        before_ids = [str(r.id) for r in ordered]
+        after_ids = [str(i) for i in full]
         if before_ids != after_ids:
             await self.changes.record(
                 budget_id=budget_id,
                 entity_type="wishlist",
                 entity_id=budget_id,
                 action="reorder",
-                before={"_order": before_ids, "_collection": "wishlist_items"},
-                after={"_order": after_ids, "_collection": "wishlist_items"},
+                before={"_order": before_ids, "_collection": collection},
+                after={"_order": after_ids, "_collection": collection},
             )
+
+    async def reorder_items(self, budget_id: uuid.UUID, item_ids: list[uuid.UUID]) -> None:
+        await self._require_enabled(budget_id)
+        ordered = await self._items(budget_id)
+        await self._reorder(
+            budget_id,
+            ordered,
+            # An ended wish is omittable: the list the user drags shows open
+            # wishes only, so history keeps its slot rather than being named.
+            [(i.id, i.status != "open") for i in ordered],
+            item_ids,
+            noun="wish",
+            collection="wishlist_items",
+            field="priority",
+        )
 
     # ── projects ─────────────────────────────────────────────────────────────
 
@@ -924,23 +1024,16 @@ class WishlistService:
     async def reorder_projects(self, budget_id: uuid.UUID, project_ids: list[uuid.UUID]) -> None:
         await self._require_enabled(budget_id)
         ordered = await self._projects(budget_id)
-        projects = {p.id: p for p in ordered}
-        if len(set(project_ids)) != len(project_ids) or set(project_ids) - projects.keys():
-            raise InvariantViolation("Reorder must name this budget's projects, each once")
-        for project_id, position in renumber(project_ids).items():
-            projects[project_id].sort_order = position
-        await self.session.flush()
-        before_ids = [str(p.id) for p in ordered]
-        after_ids = [str(p) for p in project_ids]
-        if before_ids != after_ids:
-            await self.changes.record(
-                budget_id=budget_id,
-                entity_type="wishlist",
-                entity_id=budget_id,
-                action="reorder",
-                before={"_order": before_ids, "_collection": "wishlist_projects"},
-                after={"_order": after_ids, "_collection": "wishlist_projects"},
-            )
+        await self._reorder(
+            budget_id,
+            ordered,
+            # Every project is drawn, so every one must be named.
+            [(p.id, False) for p in ordered],
+            project_ids,
+            noun="project",
+            collection="wishlist_projects",
+            field="sort_order",
+        )
 
     # ── the derived tag ──────────────────────────────────────────────────────
 
@@ -952,36 +1045,74 @@ class WishlistService:
         return effective_category(self._input(item), projects)
 
     async def _sync_tags(self, budget_id: uuid.UUID, category_ids: list[uuid.UUID | None]) -> None:
-        """The `wishlist` tag is on an envelope iff an open wish draws on it.
+        await sync_wishlist_tags(self.session, budget_id, category_ids)
 
-        Derived from the link rather than kept alongside it, so a report that
-        filters by the tag cannot disagree with the list.
-        """
-        wanted = {c for c in category_ids if c is not None}
-        if not wanted:
-            return
-        tag = await self.tags.get_system_tag(budget_id, "wishlist")
+
+async def sync_wishlist_tags(
+    session: AsyncSession, budget_id: uuid.UUID, category_ids: list[uuid.UUID | None]
+) -> None:
+    """The `wishlist` tag is on an envelope iff an open wish draws on it.
+
+    Derived from the link rather than kept alongside it, so a report that
+    filters by the tag cannot disagree with the list.
+
+    A module function, not a method, because undo is the other caller. ⌘Z
+    restores a wish's row straight from its snapshot — the service never
+    runs — so a service-private derivation left the tag frozen at whatever
+    the mutation had made it: undoing a drop brought the wish back open with
+    its envelope untagged, and undoing a project delete left its envelope
+    tagged for wishes that no longer drew on it. The docstring above claimed
+    one home for this rule; this is what makes that true.
+    """
+    wanted = {c for c in category_ids if c is not None}
+    if not wanted:
+        return
+    tags = TagRepository(session)
+    tag = await tags.get_system_tag(budget_id, "wishlist")
+    if tag is None:
+        await seed_system_tags(session, budget_id)
+        tag = await tags.get_system_tag(budget_id, "wishlist")
         if tag is None:
-            await seed_system_tags(self.session, budget_id)
-            tag = await self.tags.get_system_tag(budget_id, "wishlist")
-            if tag is None:
-                return
-        projects = {
-            p.id: ProjectInput(id=p.id, category_id=p.category_id)
-            for p in await self._projects(budget_id)
-        }
-        funded = {
-            effective_category(self._input(i), projects)
-            for i in await self._items(budget_id)
-            if i.status == "open"
-        }
-        for category_id in wanted:
-            if category_id in funded:
-                await self.tags.add_category_tag(category_id, tag.id)
-            else:
-                await self.tags.remove_category_tag(category_id, tag.id)
-            # The association changed underneath any loaded Category: expire
-            # its collection so a read in this same session sees the change.
-            category = await self.session.get(Category, category_id)
-            if category is not None:
-                self.session.expire(category, ["tags"])
+            return
+    project_rows = (
+        await session.execute(
+            select(WishlistProject).where(
+                WishlistProject.budget_id == budget_id, ~WishlistProject.is_deleted
+            )
+        )
+    ).scalars()
+    projects = {p.id: ProjectInput(id=p.id, category_id=p.category_id) for p in project_rows}
+    item_rows = (
+        await session.execute(
+            select(WishlistItem).where(
+                WishlistItem.budget_id == budget_id,
+                ~WishlistItem.is_deleted,
+                WishlistItem.status == "open",
+            )
+        )
+    ).scalars()
+    funded = {
+        effective_category(
+            WishInput(
+                id=i.id,
+                project_id=i.project_id,
+                category_id=i.category_id,
+                cost=i.cost,
+                priority=i.priority,
+                created_at=added_on(i.added_on, i.created_at),
+                status=i.status,
+            ),
+            projects,
+        )
+        for i in item_rows
+    }
+    for category_id in wanted:
+        if category_id in funded:
+            await tags.add_category_tag(category_id, tag.id)
+        else:
+            await tags.remove_category_tag(category_id, tag.id)
+        # The association changed underneath any loaded Category: expire its
+        # collection so a read in this same session sees the change.
+        category = await session.get(Category, category_id)
+        if category is not None:
+            session.expire(category, ["tags"])

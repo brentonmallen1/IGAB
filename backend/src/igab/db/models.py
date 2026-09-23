@@ -1493,6 +1493,12 @@ class WishlistItem(Base):
     #: snapshot); read it through `guide.wishlist.added_on`, never directly.
     added_on: Mapped[date | None] = mapped_column(Date)
     last_affirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    #: The person's own date of that affirmation, for the same reason
+    #: `added_on` exists: the review cadence counts days from here to today,
+    #: and `last_affirmed_at.date()` is a UTC day being compared with local
+    #: ones. Nullable for rows affirmed before it; read it through
+    #: `guide.wishlist.affirmed_on`, never directly.
+    affirmed_on: Mapped[date | None] = mapped_column(Date)
     done_at: Mapped[date | None] = mapped_column(Date)
     #: Mirror of done_at for the other ending. Without it, "talked yourself
     #: out of it during the cooling-off period" — the one statistic that

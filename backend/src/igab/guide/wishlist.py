@@ -111,6 +111,20 @@ def added_on(recorded: date | None, created_at: datetime) -> date:
     return recorded if recorded is not None else created_at.date()
 
 
+def affirmed_on(recorded: date | None, affirmed_at: datetime | None) -> date | None:
+    """The day a wish was last affirmed, in the person's own date.
+
+    The twin of `added_on`, and for the same reason: `review_due` measures
+    the gap between this and today, while every other date it handles is a
+    local one. Comparing a UTC day with local days made the cadence a day
+    out every evening west of UTC. None when the wish has never been
+    affirmed — the review clock then runs from the day it was added.
+    """
+    if recorded is not None:
+        return recorded
+    return affirmed_at.date() if affirmed_at is not None else None
+
+
 def cooling_until_for(added: date, days: int) -> date:
     """The end of a cooling-off `days` long, counted from the day the wish was
     added. One rule for both ways of setting it: at creation, where added is
@@ -170,7 +184,11 @@ def reach_for(
                 progress = ONE
             else:
                 progress = min(ONE, max(ZERO, covered / cost)).quantize(Decimal("0.01"))
-            if fund.available >= cumulative:
+            # A wish that costs nothing is reachable now, whatever the
+            # envelope holds. Leaning on `available >= cumulative` alone said
+            # "fully funded" and "eight months away" about the same free
+            # wish, because an overspent envelope fails that test at any cost.
+            if cost <= ZERO or fund.available >= cumulative:
                 out[wish.id] = Reach("now", 0, today, ahead, ONE)
                 continue
             rate = fund.monthly_rate

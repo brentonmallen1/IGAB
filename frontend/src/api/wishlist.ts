@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient, apiErrorMessage } from './client'
 import { invalidateAfterCategoryChange } from './invalidateAfterCategoryChange'
 import { ROOT } from './queryKeys'
+import { today } from '../utils/dates'
 
 // The wishlist lives inside the budget: a wish's money is an envelope's
 // money. Everything below is served — reach, rollups, cooling, review-due —
@@ -166,6 +167,11 @@ export interface WishCreate {
 }
 
 export interface WishUpdate {
+  /** The browser's today. A status change stamps it as the day the wish
+   *  ended; the server's own clock is already tomorrow every evening west of
+   *  UTC, and the discipline report buckets endings by that date. Sent on
+   *  every update by `useUpdateWish`, so no call site has to remember. */
+  client_today?: string
   name?: string
   cost?: number
   url?: string | null
@@ -207,7 +213,12 @@ export interface DeleteWishResult {
 export function useWishlist(budgetId: string | null, enabled = true) {
   return useQuery({
     queryKey: [ROOT.wishlist, budgetId],
-    queryFn: () => apiClient.get<Wishlist>(`/${budgetId}/wishlist`).then((r) => r.data),
+    // `today` because cooling-off, review-due and every reach date are
+    // answers about a particular day, and only the browser knows which.
+    queryFn: () =>
+      apiClient
+        .get<Wishlist>(`/${budgetId}/wishlist`, { params: { today: today() } })
+        .then((r) => r.data),
     enabled: !!budgetId && enabled,
     staleTime: 30_000,
   })
@@ -246,7 +257,9 @@ export function useUpdateWish(budgetId: string) {
   return useWishlistMutation<{ id: string } & WishUpdate, Wish>(
     budgetId,
     ({ id, ...body }) =>
-      apiClient.patch<Wish>(`/${budgetId}/wishlist/${id}`, body).then((r) => r.data),
+      apiClient
+        .patch<Wish>(`/${budgetId}/wishlist/${id}`, { client_today: today(), ...body })
+        .then((r) => r.data),
     'Could not save the wish'
   )
 }
@@ -254,13 +267,20 @@ export function useUpdateWish(budgetId: string) {
 export function useDeleteWish(budgetId: string) {
   return useWishlistMutation<string, DeleteWishResult>(
     budgetId,
-    (id) => apiClient.delete<DeleteWishResult>(`/${budgetId}/wishlist/${id}`).then((r) => r.data),
+    (id) =>
+      apiClient
+        .delete<DeleteWishResult>(`/${budgetId}/wishlist/${id}`, {
+          params: { today: today() },
+        })
+        .then((r) => r.data),
     'Could not delete the wish'
   )
 }
 
 export interface SettleWish {
   id: string
+  /** Sent by the hook; which month's balance the move is measured in. */
+  client_today?: string
   /** Null means Ready to Assign — where the category-delete flow and the
    *  wishlist off-switch both send envelope money. */
   destination_category_id?: string | null
@@ -274,7 +294,9 @@ export function useSettleWish(budgetId: string) {
   return useWishlistMutation<SettleWish, Wish>(
     budgetId,
     ({ id, ...body }) =>
-      apiClient.post<Wish>(`/${budgetId}/wishlist/${id}/settle`, body).then((r) => r.data),
+      apiClient
+        .post<Wish>(`/${budgetId}/wishlist/${id}/settle`, { client_today: today(), ...body })
+        .then((r) => r.data),
     'Could not settle the envelope',
     true
   )
@@ -283,7 +305,10 @@ export function useSettleWish(budgetId: string) {
 export function useAffirmWish(budgetId: string) {
   return useWishlistMutation<string, void>(
     budgetId,
-    (id) => apiClient.post(`/${budgetId}/wishlist/${id}/affirm`).then(() => undefined),
+    (id) =>
+      apiClient
+        .post(`/${budgetId}/wishlist/${id}/affirm`, null, { params: { today: today() } })
+        .then(() => undefined),
     'Could not save'
   )
 }

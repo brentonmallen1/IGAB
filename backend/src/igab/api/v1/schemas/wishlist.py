@@ -44,7 +44,15 @@ class WishCreate(ClientDated):
     funding: FundingIn = Field(default_factory=FundingIn)
 
 
-class WishUpdate(ApiModel):
+class WishUpdate(ClientDated):
+    """`client_today` is the person's own date, and a status change stamps it.
+
+    Without it `done_at`/`dropped_at` came from the server's clock, and the
+    discipline report buckets "cooled off, then dropped" by comparing that
+    date with `cooling_until` — so a drop on the last cooling evening west of
+    UTC was filed as a wish that never cooled at all.
+    """
+
     name: str | None = Field(default=None, min_length=1, max_length=200)
     cost: Money | None = Field(default=None, ge=0)
     url: str | None = Field(default=None, max_length=2000)
@@ -189,7 +197,7 @@ class WishlistSettingsUpdate(ApiModel):
     review_after_days: int | None = Field(default=None, ge=7, le=365)
 
 
-class SettleRequest(ApiModel):
+class SettleRequest(ClientDated):
     """Where an ended wish's envelope money goes, and what becomes of the
     envelope. `destination_category_id` null means Ready to Assign — where
     the category-delete flow and the wishlist off-switch both send it."""

@@ -185,6 +185,7 @@ SNAPSHOT_FIELDS: dict[str, tuple[str, ...]] = {
         "cooling_until",
         "added_on",
         "last_affirmed_at",
+        "affirmed_on",
         "done_at",
         "dropped_at",
     ),

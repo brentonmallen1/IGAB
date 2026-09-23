@@ -50,6 +50,7 @@ from igab.domain.enums import ClearedStatus
 from igab.domain.exceptions import NotFoundError, UndoConflict
 from igab.domain.ordering import renumber
 from igab.domain.reconciliation import RECONCILED_LOCKED_FIELDS, locked_changes
+from igab.guide.wishlist_service import sync_wishlist_tags
 from igab.repositories.category_repo import CategoryGroupRepository, CategoryRepository
 from igab.repositories.change_log_repo import ChangeLogRepository
 from igab.services.change_log import (
@@ -383,7 +384,7 @@ class UndoService(UndoRestores):
         await self.session.flush()
         return redone
 
-    async def _reapply(self, change: ChangeLog, force: bool) -> None:
+    async def _reapply_change(self, change: ChangeLog, force: bool) -> None:
         model = ENTITY_MODELS.get(change.entity_type)
         if model is None:
             raise UndoConflict(f"Unknown entity type '{change.entity_type}'")
@@ -534,6 +535,39 @@ class UndoService(UndoRestores):
     # ─── Inverse operations ───────────────────────────────────────────────────
 
     async def _apply(self, change: ChangeLog, force: bool) -> None:
+        await self._apply_change(change, force)
+        await self._rederive(change)
+
+    async def _reapply(self, change: ChangeLog, force: bool) -> None:
+        await self._reapply_change(change, force)
+        await self._rederive(change)
+
+    async def _rederive(self, change: ChangeLog) -> None:
+        """Re-run the rules that are derived from a row rather than stored on it.
+
+        Undo writes a snapshot straight back onto the row, so anything the
+        owning service derives *from* that row is left frozen at whatever the
+        original mutation made it. The `wishlist` tag is the case: undoing a
+        drop brought the wish back open with its envelope untagged, and
+        undoing a project delete left an envelope tagged for wishes that no
+        longer drew on it. Wrapping both directions here is what keeps the
+        six call sites from each having to remember.
+        """
+        if change.entity_type not in ("wishlist_item", "wishlist_project"):
+            return
+        # The session runs with autoflush off, so the restore this is
+        # re-deriving from is still sitting in the identity map. Without the
+        # flush the rule reads the pre-undo rows and faithfully re-derives
+        # the state undo just took away.
+        await self.session.flush()
+        touched: list[uuid.UUID | None] = []
+        for side in (change.before, change.after):
+            raw = (side or {}).get("category_id")
+            if raw:
+                touched.append(uuid.UUID(str(raw)))
+        await sync_wishlist_tags(self.session, change.budget_id, touched)
+
+    async def _apply_change(self, change: ChangeLog, force: bool) -> None:
         model = ENTITY_MODELS.get(change.entity_type)
         if model is None:
             raise UndoConflict(f"Unknown entity type '{change.entity_type}'")
