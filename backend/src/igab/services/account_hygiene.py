@@ -35,6 +35,7 @@ from igab.domain.transfers import LegPair, PairableLeg, pair_legs
 from igab.guide.detection import budget_service_from
 from igab.repositories.category_repo import CategoryRepository
 from igab.repositories.txn_filters import (
+    AFTER_BUDGET_START,
     CARD_ROW_FILED_AS_INCOME,
     LEAF,
     NOT_DELETED,
@@ -442,6 +443,13 @@ class AccountHygieneService:
                     .where(
                         Account.budget_id == budget_id,
                         PAIRABLE_LEG,
+                        # History from before an account joined the budget is
+                        # opening position, and pairing it does harm: on a
+                        # real budget all nine "unlinked payments" predated
+                        # their cards' start dates, and linking them drove five
+                        # cards' Set aside down by thousands while the money
+                        # went back into envelopes that had been archived.
+                        AFTER_BUDGET_START,
                         Transaction.date >= cutoff,
                     )
                 )

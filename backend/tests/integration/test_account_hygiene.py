@@ -639,6 +639,21 @@ class TestUnlinkedCardPayments:
 
         assert "unlinked_card_payments" not in await _run(db_session, budget)
 
+    async def test_a_payment_from_before_the_card_joined_the_budget_is_not(self, db_session):
+        """Opening position, not unfiled work. A real budget reported nine
+        payments that all predated their cards' start dates; linking them
+        spent each card's Set aside on debt the budget never carried, and
+        returned the money to envelopes that had been archived."""
+        services, budget = await _world(db_session)
+        checking = await create_account(db_session, budget, "Checking")
+        card = await create_account(db_session, budget, "Card", account_type="credit_card")
+        card.budget_start_date = RECENT + timedelta(days=1)
+        await create_transaction(db_session, budget, checking, "-460.00", RECENT)
+        await create_transaction(db_session, budget, card, "460.00", RECENT)
+        await db_session.flush()
+
+        assert "unlinked_card_payments" not in await _run(db_session, budget)
+
     async def test_an_already_linked_payment_is_not(self, db_session):
         services, budget = await _world(db_session)
         checking = await create_account(db_session, budget, "Checking")
