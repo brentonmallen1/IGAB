@@ -266,6 +266,34 @@ class TestCardFunding:
         assert cf.floored_by_card == {VISA: {JAN: D("30")}}
         assert cf.residual_by_card == {AMEX: {JAN: D("20")}}
 
+    def test_a_discharging_refund_on_one_card_does_not_reserve_a_charge_on_another(self):
+        """The cap is what was CHARGED, not the month's net.
+
+        A running tab, never funded: 150 charged on amex in January rides
+        there. In February 100 goes on visa and amex refunds the 150,
+        discharging January's ride. The walk has already netted that refund
+        out of February's balance as `repaid`; netting it out of the floor's
+        cap as well made the cap zero, so nothing rode on visa — the 100 read
+        as fully reserved on a card nobody had funded, and the -100 that
+        should have ridden was written off as CASH overspending instead.
+        """
+        cf = funding(
+            {},
+            {JAN: D("-150"), FEB: D("50")},
+            {AMEX: {JAN: D("150"), FEB: D("-150")}, VISA: {FEB: D("100")}},
+        )
+        # January: the tab rides on amex.
+        assert cf.floored_by_card[AMEX][JAN] == D("150")
+        # February: the refund discharges that ride ...
+        assert cf.repaid_by_category["groceries"][FEB] == D("150")
+        assert sum(cf.riding_by_card[AMEX].values(), D("0")) == D("0")
+        # ... and the charge on visa rides in its own right: nothing reserved,
+        # everything uncovered, nothing written off from Ready to Assign.
+        assert cf.floored_by_card[VISA][FEB] == D("100")
+        assert cf.reservations_by_card.get(VISA, {}) == {}
+        assert reserve_of(cf, VISA).set_aside(FEB) == D("0")
+        assert cf.end_balances["groceries"][FEB] == D("-100")
+
     def test_the_repaid_adjustment_never_exceeds_the_inflow_that_caused_it(self):
         # The bound that makes a correction incapable of creating red: at worst
         # it returns the month to what it would have been with no refund at all.

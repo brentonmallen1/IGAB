@@ -193,18 +193,28 @@ class AnchorOpenings[C, K]:
         return (self.opening_month, self.available_by_category.get(category, ZERO))
 
 
-def credit_floored(end_of_month: Decimal, net_card_outflow: Decimal) -> Decimal:
+def credit_floored(end_of_month: Decimal, card_charges: Decimal) -> Decimal:
     """The credit-funded part of one month's shortfall, for one category.
 
     A month that ended at -50 with 70 spent on cards has 50 riding as card
     debt and 0 written off from Ready to Assign; the same month with 20 on
     cards has 20 riding and 30 written off. A month that ended non-negative
-    contributes nothing, and a month whose card activity nets to an inflow
-    carries no shortfall onto a card.
+    contributes nothing.
+
+    `card_charges` is what was CHARGED to cards that month — the positive
+    nets only — not the month's net card activity. The cap used to be the net,
+    and that counted a discharging inflow twice: `card_funding` has already
+    subtracted it from `end_of_month` as `repaid` (step 1 → step 2), so
+    netting it out of the cap as well under-stated what may ride. A tab
+    charged 100 on one card while a refund on another discharged an older
+    ride read as fully reserved on the first card, and the 100 nobody had
+    funded was written off as cash overspending. Released and residual
+    inflows are real money already inside `end_of_month` through activity, so
+    they never belonged in the cap either.
     """
     if end_of_month >= ZERO:
         return ZERO
-    return min(-end_of_month, max(ZERO, net_card_outflow))
+    return min(-end_of_month, max(ZERO, card_charges))
 
 
 def credit_floored_by_month(
@@ -220,6 +230,9 @@ def credit_floored_by_month(
     """
     out: dict[date, Decimal] = {}
     for month, end in end_balances.items():
+        # Only the oracle and tests call this, with a single card's signed
+        # series; a net inflow month charges nothing, which the floor already
+        # treats as zero.
         floored = credit_floored(end, credit_outflows.get(month, ZERO))
         if floored > ZERO:
             out[month] = floored
@@ -528,7 +541,10 @@ def card_funding[C, K](
             carryover[category] = next_carryover(end)
 
             # 3. What the shortfall put on a card, from the ADJUSTED balance.
-            floored = credit_floored(end, sum(nets.values(), ZERO))
+            #    Capped by what was CHARGED, not the month's net: a discharging
+            #    inflow is already out of `end` as `repaid`, and netting it out
+            #    of the cap too is how a never-funded charge read as reserved.
+            floored = credit_floored(end, sum((n for n in nets.values() if n > ZERO), ZERO))
             if floored > ZERO:
                 out.floored_by_category.setdefault(category, {})[month] = floored
 
