@@ -322,16 +322,20 @@ export interface RideMonths {
  * **`rode_by_month` is gross and `riding` is net**, so they disagree once an
  * assignment has retired part of the ride. There is no month attribution for
  * what remains: the walk records retirement against the month of the
- * assignment, not the month that rode. `retired` is that difference, and the
- * panel says it — otherwise the list points at months already settled.
+ * assignment, not the month that rode. `retired` is the served `covered` leg,
+ * and the panel says it — otherwise the list points at months already
+ * settled. It used to be reconstructed here as `gross − riding`, which was
+ * wrong two ways at once: inflows that discharge a ride also lower `riding`
+ * without any assignment, and on an imported budget `riding` carried the
+ * opening debt that `rode_by_month` never had — so the difference went
+ * negative, clamped to zero, and a real retirement was hidden.
  */
 export function rideMonths(card: CardStatus, limit = 3): RideMonths {
   const all = [...card.rode_by_month].sort((a, b) => b.amount - a.amount)
-  const gross = all.reduce((sum, m) => sum + m.amount, 0)
   return {
     shown: all.slice(0, limit),
     elided: Math.max(0, all.length - limit),
-    retired: Math.max(0, Math.round((gross - card.riding) * 100) / 100),
+    retired: card.covered,
   }
 }
 

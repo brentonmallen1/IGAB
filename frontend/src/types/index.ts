@@ -358,6 +358,14 @@ export interface CardStatus {
   /** What is riding uncovered on this card, lifetime — distinct from
    *  `uncovered`, which is what the card OWES beyond its reserve. */
   riding: number
+  /** Uncovered debt the budget arrived with (an import's opening position),
+   *  less what assignments to the card have retired of it. Not `riding`: no
+   *  month of this budget ended short to put it there, so "fund that month's
+   *  envelope" cannot reach it — only assigning to the card does. */
+  imported_riding: number
+  /** What assignments to this card have retired of its ride, lifetime.
+   *  Served; never reconstruct it as `gross rides − riding`. */
+  covered: number
   /** The rest of `card_position` (domain/cards.py), beside `uncovered`.
    *
    *  **A zero `reserve_discrepancy` does not mean this card looks sensible.**

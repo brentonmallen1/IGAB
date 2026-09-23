@@ -188,13 +188,29 @@ function ReserveLegs({
           payments that still need linking.
         </p>
       )}
-      {card.riding !== 0 && (
+      {/* Two kinds of riding debt, told apart because their remedies differ.
+          `riding` is the budget's own — a month ended short and this rode —
+          and funding that month retires it. `imported_riding` arrived with
+          the budget; no month of ours put it there, so only assigning to the
+          card reaches it. They used to share one figure and one sentence, so
+          an imported budget read "$2,000 of spending rode onto this card when
+          a month ended short" about debt that predates the budget. */}
+      {(card.riding !== 0 || card.imported_riding !== 0) && (
         <div className="credit-cards__legs-note credit-cards__riding">
           <p className="section-label credit-cards__riding-title">Riding debt</p>
-          <p>
-            {formatMoney(card.riding)} of spending rode onto this card when a month ended short. It
-            sits outside the total above.
-          </p>
+          {card.riding !== 0 && (
+            <p>
+              {formatMoney(card.riding)} of spending rode onto this card when a month ended short.
+              It sits outside the total above.
+            </p>
+          )}
+          {card.imported_riding !== 0 && (
+            <p>
+              {formatMoney(card.imported_riding)} came in with the budget as debt nothing was set
+              aside for. No month here put it there, so funding an envelope cannot reach it —
+              assigning to the card is what retires it.
+            </p>
+          )}
           {rides.shown.length > 0 && (
             <ul className="credit-cards__ride-months">
               {rides.shown.map((m) => (
@@ -226,11 +242,13 @@ function ReserveLegs({
             unmentioned: the walk is recomputed from scratch every request, so
             raising a past month's assignment retires that month's ride
             retroactively. Funding the FOLLOWING month does not reach back. */}
-          <p>
-            Fund an envelope in the month it ended short and that ride disappears — a backdated
-            assignment is re-walked and retires it. If that month has no room to spare, assign to
-            the card instead to cover it now.
-          </p>
+          {card.riding !== 0 && (
+            <p>
+              Fund an envelope in the month it ended short and that ride disappears — a backdated
+              assignment is re-walked and retires it. If that month has no room to spare, assign to
+              the card instead to cover it now.
+            </p>
+          )}
         </div>
       )}
       {/* The legs above are lifetime totals; every question a negative one

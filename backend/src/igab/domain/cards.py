@@ -368,6 +368,16 @@ class CardFunding[C, K]:
     #: covered. `sum_through` it for the level — which is the `riding` term of
     #: the closed form.
     riding_by_card: dict[K, dict[date, Decimal]] = field(default_factory=dict)
+    #: What an import brought in as uncovered debt and is still riding, per
+    #: card per month: the `ANCHOR_OPENING` seed, less what card assignments
+    #: have since retired of it. Kept APART from `riding_by_card` because the
+    #: two mean different things to a reader — "a month ended short and this
+    #: rode" is a story about the budget; "you arrived owing this" is not —
+    #: and pooling them let a card on an imported budget read "$2,000 of
+    #: spending rode onto this card when a month ended short" about debt that
+    #: predates the budget, with a remedy (fund that month's envelope) that
+    #: nothing could act on. Retired only by assigning to the card.
+    imported_riding_by_card: dict[K, dict[date, Decimal]] = field(default_factory=dict)
     #: `discharged` per category per month: the part of that month's card
     #: inflows that repaid uncovered debt rather than returning money to the
     #: envelope. **Already folded into `end_balances`.** Never summed across
@@ -491,7 +501,7 @@ def card_funding[C, K](
         for card, uncovered in openings.uncovered_by_card.items():
             if uncovered > ZERO:
                 ridden[(cast(C, ANCHOR_OPENING), card)] = uncovered
-                _add(out.riding_by_card, card, openings.opening_month, uncovered)
+                _add(out.imported_riding_by_card, card, openings.opening_month, uncovered)
 
     all_months = sorted(
         set(categories_in_month) | {m for series in card_assignments.values() for m in series}
@@ -602,7 +612,10 @@ def card_funding[C, K](
                 ridden[(cat, card)] -= take
                 _add(out.covered_by_card, card, month, take)
                 _add(out.covered_by_category, cat, month, take)
-                _add(out.riding_by_card, card, month, -take)
+                if cat == ANCHOR_OPENING:
+                    _add(out.imported_riding_by_card, card, month, -take)
+                else:
+                    _add(out.riding_by_card, card, month, -take)
 
     return out
 
@@ -862,6 +875,22 @@ class SetAsideState(StrEnum):
     PAID_AHEAD = "paid_ahead"
 
 
+def riding_series[C, K](funding: CardFunding[C, K], card: K) -> dict[date, Decimal]:
+    """Everything riding uncovered on a card, month by month — what a month
+    ending short put there AND what an import brought — for the one reader
+    that wants the total: the timeline, which draws the card's debt as it
+    stood after each month. Every sentence elsewhere means the first part
+    only and reads `riding_by_card` directly."""
+    out: dict[date, Decimal] = {}
+    for series in (
+        funding.riding_by_card.get(card, {}),
+        funding.imported_riding_by_card.get(card, {}),
+    ):
+        for month, amount in series.items():
+            out[month] = out.get(month, ZERO) + amount
+    return out
+
+
 def ride_is_exclusive[C, K](
     floored_by_pair: dict[tuple[C, K], dict[date, Decimal]],
     card: K,
@@ -883,8 +912,12 @@ def ride_is_exclusive[C, K](
     -60: the $60 shrank card A's ride from 300 to 240. Only assigning $60 to
     card B landed on 0.
 
-    An empty ride is exclusive — vacuously, and the caller has already checked
-    that something is riding before it asks.
+    An empty ride is NOT exclusive: there is nothing to promise about. This
+    used to return True vacuously on the assumption that the caller had
+    checked something was riding — but the caller checked `riding`, which
+    then included an import's opening debt that never appears in these
+    pairs, so an anchored card with a negative Set aside read `RIDE_UNFUNDED`
+    and was told to fund a month that had never ended short.
     """
     mine = {
         (category, month)
@@ -893,6 +926,8 @@ def ride_is_exclusive[C, K](
         for month, amount in series.items()
         if month <= through and amount != ZERO
     }
+    if not mine:
+        return False
     return not any(
         key != card and (category, month) in mine
         for (category, key), series in floored_by_pair.items()
@@ -956,6 +991,11 @@ def set_aside_state(
        fires on a positive Set aside: riding debt on a card that is holding
        money is Uncovered's business, and the remedy sentence would be
        answering a question nobody asked.
+
+    `riding` is what months ending short put on this card — `riding_by_card`,
+    never the import's opening debt (`imported_riding_by_card`). The two ride
+    states promise that funding a month's envelope retires the ride; imported
+    debt has no such month, and is retired only by assigning to the card.
 
     A **full** explanation, never a partial one: `residual_from_ledgers` and
     `residual` must each cover the whole shortfall to claim it. Accepting part

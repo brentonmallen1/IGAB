@@ -1157,10 +1157,36 @@ class TestTheAnchoredWalk:
             openings=self._openings(uncovered={VISA: D("400")}),
         )
         assert sum_through(cf.covered_by_card[VISA], FEB) == D("250")
-        # 400 rode in at B−1, 250 retired at B.
-        assert sum_through(cf.riding_by_card[VISA], FEB) == D("150")
+        # 400 arrived at B−1 as IMPORTED debt, 250 retired at B. It never
+        # enters `riding_by_card`: no month of this budget ended short to put
+        # it there, and the sentences that read that series say so.
+        assert sum_through(cf.imported_riding_by_card[VISA], FEB) == D("150")
+        assert VISA not in cf.riding_by_card
         # The sentinel never leaks into residual attribution.
         assert not cf.residual_by_pair
+
+    def test_an_assignment_retires_the_budgets_own_ride_before_the_imported_one(self):
+        """Both riding, one assignment: the pool is `allocate_capped` over
+        `ridden`, and `ANCHOR_OPENING` sorts among the real keys by its
+        string. Whatever the order, each series is reduced by exactly what
+        was taken from ITS ride — the two never bleed into each other."""
+        cf = card_funding(
+            {"groceries": {}, "visa payment": {FEB: D("100")}},
+            {"groceries": {JAN: D("-60")}},
+            {"groceries": {VISA: {JAN: D("60")}}},
+            {VISA: "visa payment"},
+            openings=self._openings(uncovered={VISA: D("400")}, month=JAN),
+        )
+        # January's shortfall rode in the budget's own right.
+        assert sum_through(cf.riding_by_card[VISA], JAN) == D("60")
+        covered = sum_through(cf.covered_by_card[VISA], FEB)
+        own = sum_through(cf.riding_by_card[VISA], FEB)
+        imported = sum_through(cf.imported_riding_by_card[VISA], FEB)
+        assert covered == D("100")
+        # 60 + 400 rode; 100 was retired; 360 remains across the two, and
+        # neither series went below zero.
+        assert own + imported == D("360")
+        assert own >= D("0") and imported >= D("0")
 
     def test_a_refund_of_pre_anchor_spending_lands_as_residual(self):
         """The accepted coarsening, pinned: per-pair `reserved` is not

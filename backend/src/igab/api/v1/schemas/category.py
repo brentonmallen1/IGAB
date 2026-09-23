@@ -510,10 +510,22 @@ class CardStatusOut(ApiModel):
     #: budgets; with it the legs still sum to `set_aside`, and the other five
     #: stay post-anchor sums.
     opening: Decimal
-    #: What is riding uncovered on this card, lifetime. Distinct from
-    #: `uncovered`, which is what the card OWES beyond its reserve: a card can
-    #: carry a ride while owing less than it has reserved.
+    #: What months ending short put on this card and is still uncovered,
+    #: lifetime. Distinct from `uncovered`, which is what the card OWES beyond
+    #: its reserve: a card can carry a ride while owing less than it has
+    #: reserved. Every sentence that says "rode onto this card when a month
+    #: ended short" quotes THIS figure and nothing else.
     riding: Decimal
+    #: Uncovered debt the budget arrived with — an import's opening position,
+    #: less what assignments to the card have retired of it. Not `riding`: no
+    #: month of this budget put it there, so funding a month's envelope
+    #: cannot reach it. Required, not optional: the row that quoted the total
+    #: as "spending that rode when a month ended short" is the bug this ends.
+    imported_riding: Decimal
+    #: What assignments to this card have retired of its ride, lifetime.
+    #: Served so the breakdown reads it rather than reconstructing it from
+    #: `gross rides − riding`, which was wrong on every imported budget.
+    covered: Decimal
     #: The rest of `card_position` beside `uncovered`. A zero
     #: `reserve_discrepancy` means the identity's BOUNDS hold, not that the
     #: reserve is anywhere near the balance — they are allowances, and they
@@ -590,6 +602,8 @@ class CardStatusOut(ApiModel):
             payments=card.payments,
             opening=card.opening,
             riding=card.riding,
+            imported_riding=card.imported_riding,
+            covered=card.covered,
             over_reserved=card.over_reserved,
             short_reserved=card.short_reserved,
             card_credit=card.card_credit,

@@ -140,7 +140,13 @@ class ExpectedPosition:
     over_reserved: Decimal = ZERO
     short_reserved: Decimal = ZERO
     card_credit: Decimal = ZERO
+    #: What months ending short put on the card — the budget's own ride.
     riding: Decimal = ZERO
+    #: What the budget ARRIVED with and has not yet retired. Zero on every
+    #: unanchored scenario by construction; an anchored one states it here,
+    #: by this name, rather than folding it into `riding` where a sentence
+    #: about "a month that ended short" would quote it.
+    imported_riding: Decimal = ZERO
     #: 0 for every scenario here on purpose. Two of these cards are far from
     #: their balance for reasons the identity's bounds accept, and that is the
     #: point: a row keyed on this number says nothing about them.
@@ -471,6 +477,7 @@ def walk(scenario: CardScenario, today: date, through: date | None = None) -> Ex
         short_reserved=position.short_reserved,
         card_credit=position.card_credit,
         riding=sum_through(funding.riding_by_card.get(scenario.card, {}), month),
+        imported_riding=sum_through(funding.imported_riding_by_card.get(scenario.card, {}), month),
         # The serving arithmetic exactly (budget_service.get_budget_summary):
         # the opening reserve folds into `assigned`, and `opening_credit` is
         # the T3 allowance — this checker must not drift from what is served.
@@ -540,6 +547,7 @@ def state(scenario: CardScenario, today: date, through: date | None = None) -> S
     return set_aside_state(
         position,
         residual=sum_through(reserve.residual, month),
+        # The budget's own ride only — imported debt has no month to fund.
         riding=sum_through(funding.riding_by_card.get(scenario.card, {}), month),
         residual_from_ledgers=residual_from(
             funding.residual_by_pair, scenario.card, ledgers, month
@@ -1324,7 +1332,12 @@ ANCHORED_IMPORT = CardScenario(
         # 500 owed − 350 reserved; equally, the 400 opening ride less the
         # 250 the assignment covered.
         uncovered=_d("150"),
-        riding=_d("150"),
+        # Nothing of this budget's own rides: today's spend was funded. What
+        # is still riding is what the import brought, less the 250 retired —
+        # named as such, so no row calls it spending from a month that ended
+        # short.
+        riding=_d("0"),
+        imported_riding=_d("150"),
         charged_this_month=_d("100"),
         inflows_this_month=_d("0"),
         paid_this_month=_d("0"),

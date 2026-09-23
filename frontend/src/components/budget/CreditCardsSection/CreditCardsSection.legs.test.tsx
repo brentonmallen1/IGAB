@@ -50,6 +50,8 @@ function card(over: Partial<CardStatus> = {}): CardStatus {
     residual: 0,
     payments: 5,
     riding: 0,
+    imported_riding: 0,
+    covered: 0,
     opening: 0,
     // Kept coherent with balance/set_aside above rather than zeroed: 115
     // reserved against 60 owed IS over-reserved by 55, and a fixture that
@@ -139,6 +141,39 @@ describe('the Set aside breakdown', () => {
     // Largest first: that is the month worth back-funding before the others.
     const listed = document.querySelectorAll('.credit-cards__ride-months li span:first-child')
     expect([...listed].map((n) => n.textContent)).toEqual(['July 2026', 'June 2026'])
+  })
+
+  it('does not call imported debt spending from a month that ended short', async () => {
+    // A YNAB import: the card arrives owing 2,000 nobody had set aside for.
+    // That used to share `riding` with the budget's own rides, so the block
+    // said "$2,000.00 of spending rode onto this card when a month ended
+    // short" and offered to fix it by funding a month that never existed.
+    month.current = {
+      cards: [card({ riding: 0, imported_riding: 2000, uncovered: 2000, set_aside: 0 })],
+      category_balances: [],
+    } as unknown as BudgetMonth
+    render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
+    await userEvent.click(screen.getByLabelText('What makes up Set aside for Sapphire Visa'))
+    expect(
+      screen.getByText(/came in with the budget as debt nothing was set aside for/)
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/rode onto this card when a month ended short/)).toBeNull()
+    // The envelope remedy is not offered: nothing it could reach.
+    expect(screen.queryByText(/Fund an envelope in the month it ended short/)).toBeNull()
+    expect(screen.getByText(/assigning to the card is what retires it/)).toBeInTheDocument()
+  })
+
+  it('tells the two kinds of ride apart when a card carries both', async () => {
+    month.current = {
+      cards: [card({ riding: 60, imported_riding: 400, uncovered: 460, set_aside: 0 })],
+      category_balances: [],
+    } as unknown as BudgetMonth
+    render(<CreditCardsSection budgetId="b1" month="2026-08-01" />)
+    await userEvent.click(screen.getByLabelText('What makes up Set aside for Sapphire Visa'))
+    expect(screen.getByText(/\$60\.00 of spending rode onto this card/)).toBeInTheDocument()
+    expect(screen.getByText(/\$400\.00 came in with the budget/)).toBeInTheDocument()
+    // Both remedies, each beside the debt it can actually reach.
+    expect(screen.getByText(/Fund an envelope in the month it ended short/)).toBeInTheDocument()
   })
 
   it('shows the month the debt moved, separately from the lifetime legs', async () => {

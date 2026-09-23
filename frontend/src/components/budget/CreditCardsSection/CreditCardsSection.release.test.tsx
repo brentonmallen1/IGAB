@@ -58,6 +58,8 @@ function card(over: Partial<CardStatus> = {}): CardStatus {
     residual: 0,
     payments: 0,
     riding: 0,
+    imported_riding: 0,
+    covered: 0,
     opening: 0,
     over_reserved: 5900,
     short_reserved: 0,

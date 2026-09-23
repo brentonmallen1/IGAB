@@ -964,6 +964,9 @@ class SampleBudgetGenerator:
                     short_reserved=position.short_reserved,
                     card_credit=position.card_credit,
                     riding=sum_through(funding.riding_by_card.get(card_id, {}), current_month),
+                    imported_riding=sum_through(
+                        funding.imported_riding_by_card.get(card_id, {}), current_month
+                    ),
                     charged_this_month=charged,
                     inflows_this_month=inflows,
                     paid_this_month=payments.get(card_id, {}).get(current_month, _ZERO),

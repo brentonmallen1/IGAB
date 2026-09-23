@@ -16,6 +16,7 @@ from decimal import Decimal
 import pytest
 
 from igab.domain.cards import (
+    AnchorOpenings,
     SetAsideState,
     card_funding,
     card_position,
@@ -223,6 +224,54 @@ def test_every_state_but_one_has_a_scenario():
     """
     declared = {s.set_aside_state for s in EVERY}
     assert declared == set(SetAsideState) - {SetAsideState.SETTLED_ELSEWHERE}
+
+
+def test_imported_debt_is_not_a_month_that_ended_short():
+    """The case a YNAB-imported budget hit: a card arrives owing 2,000 nobody
+    reserved for, and the household pays 300 of it from cash. Set aside is
+    -300 — money paid ahead of any reserve — and that is all it is.
+
+    It read `RIDE_UNFUNDED`: the anchor's opening debt sat in the same
+    `riding` series as the budget's own rides, and `ride_is_exclusive` said
+    True about a card with no rides at all. The row quoted the whole 2,000
+    as "spending that rode onto this card when a month ended short" beside a
+    panel showing -300, and offered to fix it by funding a month that had
+    never ended short — the breakdown naming no month, because there was
+    none. The truthful state is `PAID_AHEAD`; the truthful remedy is to
+    assign to the card, which is the only thing that retires imported debt.
+    """
+    anchor, later = date(2026, 6, 1), date(2026, 7, 1)
+    funding = card_funding(
+        assignments_by_category={},
+        activity_by_category={"groceries": {later: Decimal("0")}},
+        credit_outflows={"groceries": {"card-a": {later: Decimal("0")}}},
+        card_categories={"card-a": "card-a payment"},
+        openings=AnchorOpenings(
+            month=anchor,
+            available_by_category={"groceries": Decimal("0")},
+            reserve_by_card={"card-a": Decimal("0")},
+            uncovered_by_card={"card-a": Decimal("2000")},
+        ),
+    )
+    reserve = card_reserve(funding, "card-a", payments={later: Decimal("300")})
+    set_aside = reserve.set_aside(later)
+    assert set_aside == Decimal("-300")
+
+    own_ride = sum_through(funding.riding_by_card.get("card-a", {}), later)
+    imported = sum_through(funding.imported_riding_by_card.get("card-a", {}), later)
+    assert own_ride == Decimal("0")
+    assert imported == Decimal("2000")
+    # No pairs → nothing to be exclusive about, and it says so.
+    assert ride_is_exclusive(funding.floored_by_pair, "card-a", later) is False
+
+    state = set_aside_state(
+        card_position(set_aside, Decimal("-1700")),
+        residual=Decimal("0"),
+        riding=own_ride,
+        residual_from_ledgers=Decimal("0"),
+        ride_reaches_this_card=ride_is_exclusive(funding.floored_by_pair, "card-a", later),
+    )
+    assert state is SetAsideState.PAID_AHEAD
 
 
 def test_ride_unfunded_never_fires_on_a_positive_set_aside():

@@ -37,6 +37,8 @@ function card(over: Partial<CardStatus> = {}): CardStatus {
     residual: 0,
     payments: 0,
     riding: 0,
+    imported_riding: 0,
+    covered: 0,
     opening: 0,
     over_reserved: 0,
     short_reserved: 0,
@@ -300,15 +302,20 @@ describe('rideMonths', () => {
     expect(rideMonths(card({ rode_by_month: months(3), riding: 60 })).retired).toBe(0)
   })
 
-  it('names what an assignment has already retired', () => {
+  it('names what an assignment has already retired, from the served leg', () => {
     // The list is GROSS — the months debt went on — while `riding` is net.
     // Retirement is recorded against the assignment's month, not the month
-    // that rode, so without this the panel points at settled months.
-    expect(rideMonths(card({ rode_by_month: months(3), riding: 20 })).retired).toBe(40)
+    // that rode, so without this the panel points at settled months. The
+    // figure is the served `covered`, never `gross − riding`: a discharging
+    // refund lowers `riding` with no assignment at all, and an imported
+    // budget's `riding` used to carry opening debt the list never had.
+    expect(rideMonths(card({ rode_by_month: months(3), covered: 40 })).retired).toBe(40)
   })
 
-  it('never reports a negative retirement', () => {
-    expect(rideMonths(card({ rode_by_month: months(1), riding: 999 })).retired).toBe(0)
+  it('does not infer a retirement the server did not report', () => {
+    // 60 rode, 20 still riding, nothing covered: the other 40 was discharged
+    // by inflows. The old subtraction called that "covered by assignments".
+    expect(rideMonths(card({ rode_by_month: months(3), riding: 20, covered: 0 })).retired).toBe(0)
   })
 })
 

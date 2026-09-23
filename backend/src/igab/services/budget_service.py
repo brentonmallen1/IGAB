@@ -16,6 +16,7 @@ from igab.domain.cards import (
     reserve_discrepancy,
     residual_from,
     ride_is_exclusive,
+    riding_series,
     set_aside_state,
 )
 from igab.domain.carryover import (
@@ -185,6 +186,16 @@ class CardStatus:
     #: what an inflow discharged, less what an assignment covered. Distinct
     #: from `uncovered`, which is what the card OWES beyond its reserve.
     riding: Decimal = Decimal("0")
+    #: Uncovered debt the budget ARRIVED with — an import's opening position,
+    #: less what assignments to the card have since retired. Kept apart from
+    #: `riding` because no month of this budget ended short to put it there,
+    #: so nothing that "fund that month's envelope" promises can reach it;
+    #: only assigning to the card does.
+    imported_riding: Decimal = Decimal("0")
+    #: What assignments to this card have retired of its ride, lifetime. The
+    #: served leg the breakdown used to reconstruct as `gross rides − riding`,
+    #: which went negative and clamped to zero on any imported budget.
+    covered: Decimal = Decimal("0")
     #: The rest of `card_position`, beside `uncovered` above. A zero
     #: `reserve_discrepancy` means the identity's BOUNDS hold, not that the
     #: reserve is anywhere near the balance — the bounds are allowances, and
@@ -980,7 +991,9 @@ class BudgetService:
         timeline = build_timeline(
             reserve,
             balances.get(account_id, {}),
-            walk.funding.riding_by_card.get(account_id, {}),
+            # The total: the timeline draws the card's debt as it stood after
+            # each month, imported and budgeted alike.
+            riding_series(walk.funding, account_id),
             start=walk.anchor.openings.opening_month if walk.anchor is not None else None,
         )
         timeline = [cm for cm in timeline if cm.month <= month_start]
@@ -1199,6 +1212,12 @@ class BudgetService:
                         payments=sum_through(reserve.payments, month_start),
                         opening=opening_total,
                         riding=sum_through(funding.riding_by_card.get(account.id, {}), month_start),
+                        imported_riding=sum_through(
+                            funding.imported_riding_by_card.get(account.id, {}), month_start
+                        ),
+                        covered=sum_through(
+                            funding.covered_by_card.get(account.id, {}), month_start
+                        ),
                         charged_this_month=-charged,
                         inflows_this_month=received,
                         paid_this_month=reserve.payments.get(month_start, zero),

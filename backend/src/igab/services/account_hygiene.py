@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from igab.db.models import Account, Asset, Liability, Transaction
 from igab.domain.card_timeline import card_timeline, first_breach
-from igab.domain.cards import SetAsideState, card_reserve, receivable_ledgers
+from igab.domain.cards import SetAsideState, card_reserve, receivable_ledgers, riding_series
 from igab.domain.import_mapping import _TRACKED_HINTS, _matches, _normalize_for_match
 from igab.domain.matching import DATE_WINDOW_DAYS
 from igab.domain.transfers import PairableLeg, pair_legs
@@ -535,7 +535,7 @@ class AccountHygieneService:
                 card_timeline(
                     reserve,
                     {},
-                    walk.funding.riding_by_card.get(card.account_id, {}),
+                    riding_series(walk.funding, card.account_id),
                     start=(walk.anchor.openings.opening_month if walk.anchor is not None else None),
                 )
             )
