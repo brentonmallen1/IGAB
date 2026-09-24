@@ -258,6 +258,9 @@ export function useUpdateLiability(budgetId: string | null) {
     onSuccess: (_, { liabilityId }) => {
       qc.invalidateQueries({ queryKey: [ROOT.liabilities, budgetId] })
       qc.invalidateQueries({ queryKey: [ROOT.liabilityAmortization, budgetId, liabilityId] })
+      // The import review lists liabilities with no rate; saving one from
+      // there has to take it off that list.
+      qc.invalidateQueries({ queryKey: [ROOT.importSummary, budgetId] })
     },
   })
 }
@@ -270,6 +273,7 @@ export function useDeleteLiability(budgetId: string | null) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: [ROOT.liabilities, budgetId] })
       qc.invalidateQueries({ queryKey: [ROOT.categories, budgetId] })
+      qc.invalidateQueries({ queryKey: [ROOT.importSummary, budgetId] })
     },
   })
 }

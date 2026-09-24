@@ -1216,7 +1216,7 @@ async def _schedules(db_session, budget_id) -> list[ScheduledTransaction]:
     return list(rows.scalars().all())
 
 
-async def test_a_future_row_becomes_a_once_schedule_not_a_register_row(db_session):
+async def test_a_future_row_becomes_a_monthly_schedule_not_a_register_row(db_session):
     services = make_services(db_session)
     user = await create_user(db_session)
     budget = await create_budget(db_session, user)
@@ -1231,7 +1231,8 @@ async def test_a_future_row_becomes_a_once_schedule_not_a_register_row(db_sessio
     accounts = {a.name: a for a in await services.account_repo.get_all(budget.id)}
     assert len(await _all_rows(db_session, accounts["Checking"].id)) == 1
     [sched] = await _schedules(db_session, budget.id)
-    assert sched.frequency == "once"
+    # A guess — YNAB exports no cadence — and the one nearly every bill needs.
+    assert sched.frequency == "monthly"
     assert sched.auto_create is False
     assert sched.start_date == sched.next_occurrence_date == FEB1
     assert sched.amount == Decimal("-1400.00")

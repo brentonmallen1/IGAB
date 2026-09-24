@@ -265,7 +265,7 @@ async def test_an_export_with_a_row_after_today_still_reaches_parity(db_session,
         select(ScheduledTransaction).where(ScheduledTransaction.budget_id == budget_id)
     )
     [sched] = list(scheduled.scalars().all())
-    assert sched.frequency == "once" and sched.next_occurrence_date == SEP
+    assert sched.frequency == "monthly" and sched.next_occurrence_date == SEP
     assert sched.amount == Decimal("-1200.00")
     report = await parity(
         services,

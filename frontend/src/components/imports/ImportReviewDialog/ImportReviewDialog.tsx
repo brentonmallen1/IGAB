@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Link } from 'react-router-dom'
 import { Surface } from '../../common/Surface'
 import { Dialog } from '../../common/Dialog/Dialog'
 import { TagChip, type TagColorSlot } from '../../common/TagChip'
 import { TagPicker, type TagOption } from '../../common/TagPicker'
 import { HygieneFindings } from '../../accounts/HygieneFindings'
+import { LiabilitySettingsModal } from '../../liabilities/LiabilitySettingsModal'
+import { useLiabilities } from '../../../api/liabilities'
+import { isCardAccount } from '../../../utils/accountKinds'
 import { useCategories, useCategoryGroups } from '../../../api/categories'
 import {
   useAccountHygiene,
@@ -26,7 +28,6 @@ import {
 import { FREQUENCIES } from '../../../utils/schedule'
 import { useNavigate } from 'react-router-dom'
 import { apiErrorMessage } from '../../../api/client'
-import { renderableCategories, renderableGroups } from '../../budget/budgetGroups'
 import { useFormatters } from '../../../hooks/useFormatters'
 import { parseApiDecimal } from '../../../utils/money'
 import {
@@ -45,6 +46,7 @@ import {
   type RowFilter,
   type StepId,
   type UpcomingRow,
+  wasProposed,
 } from './importReview'
 import './ImportReviewDialog.css'
 import { closedAccounts } from '../../../utils/accountLists'
@@ -80,13 +82,16 @@ export function ImportReviewDialog({
   loansNeedingTerms?: LoanNeedingTerms[]
   onClose: () => void
 }) {
-  const steps = stepsFor(summary, loansNeedingTerms.length)
+  // Terms saved from the last step take their rows off the list, and the
+  // step would vanish from under the user with it — keep it for the sitting.
+  const [loansAtOpen] = useState(loansNeedingTerms.length)
+  const steps = stepsFor(summary, Math.max(loansAtOpen, loansNeedingTerms.length))
   const [stepIndex, setStepIndex] = useState(0)
   const [draft, setDraft] = useState<Draft>({})
   const [filter, setFilter] = useState<RowFilter>(() => initialFilter(summary))
 
-  const { data: categories } = useCategories(budgetId, true)
-  const { data: groups } = useCategoryGroups(budgetId, true)
+  const { data: categories } = useCategories(budgetId)
+  const { data: groups } = useCategoryGroups(budgetId)
   const { data: tags } = useTags(budgetId)
   const { data: suggestions } = useTagSuggestions(budgetId)
   const { data: hygiene } = useAccountHygiene(budgetId)
@@ -114,20 +119,19 @@ export function ImportReviewDialog({
 
   const reviewable: ReviewCategory[] = useMemo(() => {
     if (!categories || !groups) return []
-    // The same rule the grid uses for which groups exist, and the same one the
-    // server scopes suggestions by: income holds no envelope money, so
-    // classifying its spending is meaningless.
-    const names = new Map(renderableGroups(groups).map((g) => [g.id, g.name]))
-    // `renderableGroups` drops system groups, not archived ones, so the card
-    // envelopes' group survives it — and a card's envelope cannot carry a
-    // classification tag, since nothing is ever filed to it.
-    return renderableCategories(categories)
-      .filter((c) => names.has(c.category_group_id))
+    const names = new Map(groups.map((g) => [g.id, g.name]))
+    // The live envelopes: `is_assignable` is the server's answer, the same
+    // one it scopes tag suggestions by. It leaves out income (holds no
+    // envelope money), card envelopes (nothing is ever filed to them), and
+    // anything archived or in an archived group — YNAB's Hidden Categories
+    // arrive as an archived group, and a review that offered them was asking
+    // about categories the user had already put away.
+    return categories
+      .filter((c) => c.is_assignable && names.has(c.category_group_id))
       .map((c) => ({
         id: c.id,
         name: c.name,
         groupName: names.get(c.category_group_id) as string,
-        archived: c.is_archived,
         tagIds: (c.tags ?? []).map((t) => t.id),
       }))
   }, [categories, groups])
@@ -252,7 +256,7 @@ export function ImportReviewDialog({
           onNavigate={onClose}
         />
       )}
-      {step === 'loans' && <LoanTermsStep loans={loansNeedingTerms} onNavigate={onClose} />}
+      {step === 'loans' && <LoanTermsStep budgetId={budgetId} loans={loansNeedingTerms} />}
     </Dialog>
   )
 }
@@ -262,11 +266,11 @@ const STEP_LABELS: Record<StepId, string> = {
   upcoming: 'Upcoming',
   tags: 'Categories & tags',
   accounts: 'Accounts',
-  loans: 'Loan terms',
+  loans: 'Terms',
 }
 
 /**
- * The loans that arrived with no terms, and a way to each one.
+ * The cards and loans that arrived with no terms, and a way to each one.
  *
  * A YNAB export is two CSVs of register rows and plan cells; between them
  * they carry no account metadata of any kind — no interest rate, no minimum
@@ -279,44 +283,83 @@ const STEP_LABELS: Record<StepId, string> = {
  * makes an imported loan read a full month below the balance its source
  * shows. That gap is open from the moment a payment posts until the account
  * is next reconciled, and an import taken inside that window understates the
- * debt.
+ * debt. A card's terms are what say what it costs to carry.
  *
- * Links rather than an inline form: the terms live behind the liability's
- * own settings, which already validate them, and duplicating that here would
- * be a second place to keep a rate rule in step.
+ * "Add the terms" opens the liability's own settings over the review rather
+ * than a form of its own — those settings already validate the terms, and a
+ * second form would be a second place to keep a rate rule in step. It used to
+ * be a link to the liability's page, which closed the review, opened no
+ * editor, and left Back on the liabilities page instead of the review.
  */
-function LoanTermsStep({
-  loans,
-  onNavigate,
-}: {
-  loans: LoanNeedingTerms[]
-  onNavigate: () => void
-}) {
+function LoanTermsStep({ budgetId, loans }: { budgetId: string; loans: LoanNeedingTerms[] }) {
+  const { data: liabilities } = useLiabilities(budgetId)
+  const { data: accounts } = useAccounts(budgetId, { includeClosed: true })
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const editing = liabilities?.find((l) => l.id === editingId) ?? null
+
+  const accountById = new Map((accounts ?? []).map((a) => [a.id, a]))
+  const isCard = (loan: LoanNeedingTerms) => {
+    const account = loan.account_id ? accountById.get(loan.account_id) : undefined
+    return account !== undefined && isCardAccount(account)
+  }
+  const cards = loans.filter(isCard).length
+  if (loans.length === 0) {
+    return (
+      <Surface variant="sunken" title="Terms" className="import-review__block">
+        <p className="dialog__body dialog__body--muted">
+          Every account that arrived without terms has them now.
+        </p>
+      </Surface>
+    )
+  }
+  const title =
+    cards === 0
+      ? 'Loans with no terms yet'
+      : cards === loans.length
+        ? 'Cards with no terms yet'
+        : 'Cards and loans with no terms yet'
+
   return (
-    <Surface variant="sunken" title="Loans with no terms yet" className="import-review__block">
+    <Surface variant="sunken" title={title} className="import-review__block">
       <p className="dialog__body dialog__body--muted">
         A YNAB export carries no account details — no interest rate, no minimum payment, no payoff
-        date — so {loans.length === 1 ? 'this account' : 'these accounts'} arrived without them. The
-        rate is what lets IGAB show a payoff date, and what closes the gap between this balance and
-        the one YNAB showed: YNAB adds the current month&apos;s interest from the terms before it is
-        ever a transaction.
+        date — so {loans.length === 1 ? 'this account' : 'these accounts'} arrived without them.
+        {cards > 0 && ' A card’s APR and minimum payment are what show what it costs to carry.'}
+        {cards < loans.length &&
+          ' A loan’s rate is what lets IGAB show a payoff date, and what closes the gap between' +
+            ' its balance and the one YNAB showed: YNAB adds the current month’s interest from' +
+            ' the terms before it is ever a transaction.'}
       </p>
       <ul className="import-review__diffs">
         {loans.map((loan) => (
           <li key={loan.id}>
             <span className="import-review__diff-n">{loan.name}</span>
-            <Link to={`/liabilities/${loan.id}`} className="dialog__link" onClick={onNavigate}>
+            <button
+              type="button"
+              className="dialog__link"
+              disabled={!liabilities}
+              aria-label={`Add the terms for ${loan.name}`}
+              onClick={() => setEditingId(loan.id)}
+            >
               Add the terms
-            </Link>
+            </button>
           </li>
         ))}
       </ul>
+      {editing && (
+        <LiabilitySettingsModal
+          budgetId={budgetId}
+          liability={editing}
+          onClose={() => setEditingId(null)}
+        />
+      )}
     </Surface>
   )
 }
 
 /**
- * The rows YNAB dated after the import, now one-off scheduled transactions.
+ * The rows YNAB dated after the import, now scheduled transactions set to
+ * monthly — YNAB exports no cadence, and monthly is what nearly all of them are.
  *
  * A cadence saved here writes immediately — a stated divergence from the
  * other steps' write-on-Done. Setting how often the rent repeats is an
@@ -380,7 +423,7 @@ function UpcomingStep({
       <p className="dialog__body dialog__body--muted">
         YNAB dated these after the import, so they are upcoming transactions rather than posted ones
         — nothing has left an account yet. YNAB exports a scheduled transaction as its next date
-        only; set how often each one repeats, or leave it as a one-off.
+        only, so each is set to repeat monthly; change the ones that don't.
       </p>
 
       <Surface
@@ -805,8 +848,10 @@ function TagsStep({
   onAcceptAll: () => void
 }) {
   const decidedCount = rows.filter((r) => r.importTagged).length
-  const suggestedCount = rows.filter((r) => r.suggestions.length > 0).length
+  const suggestedCount = rows.filter(wasProposed).length
   const openSuggestions = shown.reduce((n, r) => n + r.suggestions.length, 0)
+  const acceptedIds = (row: ReviewRow) =>
+    new Set(row.accepted.map((s) => tagByKey[s.systemKey]?.id).filter(Boolean))
 
   return (
     <>
@@ -861,17 +906,7 @@ function TagsStep({
         {shown.map((row) => (
           <div key={row.category.id} className="import-review__row">
             <div className="import-review__cat">
-              <span className="import-review__cat-n">
-                {row.category.name}
-                {row.category.archived && (
-                  <span
-                    className="import-review__hidden"
-                    title="Archived — off the budget page, but its spending still counts in reports"
-                  >
-                    archived
-                  </span>
-                )}
-              </span>
+              <span className="import-review__cat-n">{row.category.name}</span>
               <span className="import-review__cat-g">{row.category.groupName}</span>
               {row.importTagged && row.importMatchedOn && (
                 <span className="import-review__why">tagged from “{row.importMatchedOn}”</span>
@@ -879,9 +914,11 @@ function TagsStep({
             </div>
             <div className="import-review__tags">
               {/* Every tag it carries, not only the system ones — this row can
-                  replace the whole set, so it has to show the whole set. */}
+                  replace the whole set, so it has to show the whole set. An
+                  accepted proposal is drawn as its ticked box below instead,
+                  so unticking it is how it comes off. */}
               {row.tagIds.map((id) =>
-                tagById[id] ? (
+                tagById[id] && !acceptedIds(row).has(id) ? (
                   <TagChip
                     key={id}
                     name={tagById[id].name}
@@ -891,15 +928,21 @@ function TagsStep({
                   />
                 ) : null
               )}
-              {row.suggestions.map((s) =>
+              {[
+                ...row.accepted.map((s) => ({ ...s, checked: true })),
+                ...row.suggestions.map((s) => ({ ...s, checked: false })),
+              ].map((s) =>
                 tagByKey[s.systemKey] ? (
                   <label key={s.systemKey} className="import-review__offer">
                     <input
                       type="checkbox"
-                      checked={false}
+                      checked={s.checked}
                       onChange={() => onToggle(row.category, tagByKey[s.systemKey].id)}
                     />
-                    <span>{tagByKey[s.systemKey].name}?</span>
+                    <span>
+                      {tagByKey[s.systemKey].name}
+                      {s.checked ? '' : '?'}
+                    </span>
                     <span className="import-review__why">from “{s.matchedOn}”</span>
                   </label>
                 ) : null

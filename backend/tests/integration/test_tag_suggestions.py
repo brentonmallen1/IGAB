@@ -84,18 +84,24 @@ async def test_emergency_fund_category_is_not_offered_savings(db_session, api_cl
 
 
 @pytest.mark.asyncio
-async def test_hidden_categories_are_still_offered(db_session, api_client):
-    """A tag overrides classification, so hiding a wrong one keeps it wrong.
+async def test_hidden_categories_are_not_offered(db_session, api_client):
+    """The user put them away; asking how to classify them is noise.
 
-    A real import put "Harborstone Savings" in YNAB's Hidden Categories group and
-    tagged it Savings; the savings report has counted it ever since.
+    An import review offered the whole of YNAB's Hidden Categories group, which
+    the importer brings in as an archived group of unarchived categories — so
+    the group's flag has to count, not only the category's own.
     """
-    budget, _, made = await _budget_with(db_session, api_client, ["Harborstone Savings"])
+    budget, group, made = await _budget_with(
+        db_session, api_client, ["Harborstone Savings", "Old Gym Savings"]
+    )
     made["Harborstone Savings"].is_archived = True
     await db_session.flush()
+    offered = {s["category_id"] for s in await _suggestions(api_client, budget.id)}
+    assert offered == {str(made["Old Gym Savings"].id)}
 
-    keys = {s["system_key"] for s in await _suggestions(api_client, budget.id)}
-    assert "savings" in keys
+    group.is_archived = True
+    await db_session.flush()
+    assert await _suggestions(api_client, budget.id) == []
 
 
 @pytest.mark.asyncio

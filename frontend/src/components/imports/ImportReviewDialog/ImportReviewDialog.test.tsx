@@ -23,22 +23,57 @@ const categories = [
     category_group_id: 'g1',
     name: 'Amazon Prime',
     is_archived: false,
+    is_assignable: true,
     tags: [{ id: 't-lte', name: 'Long-term expense', color_slot: 'teal' }],
   },
-  { id: 'rent', category_group_id: 'g1', name: 'Rent', is_archived: false, tags: [] },
+  {
+    id: 'rent',
+    category_group_id: 'g1',
+    name: 'Rent',
+    is_archived: false,
+    is_assignable: true,
+    tags: [],
+  },
   {
     id: 'groc',
     category_group_id: 'g1',
     name: 'Groceries',
     is_archived: false,
+    is_assignable: true,
     tags: [{ id: 't-travel', name: 'Travel', color_slot: 'blue' }],
   },
-  { id: 'odds', category_group_id: 'g1', name: 'Odds and Ends', is_archived: false, tags: [] },
-  { id: 'income', category_group_id: 'sys', name: 'Inflow', is_archived: false, tags: [] },
+  {
+    id: 'odds',
+    category_group_id: 'g1',
+    name: 'Odds and Ends',
+    is_archived: false,
+    is_assignable: true,
+    tags: [],
+  },
+  // In YNAB's Hidden Categories: imported into an archived group, so the
+  // server serves it unassignable though its own flag says live.
+  {
+    id: 'hidden',
+    category_group_id: 'hid',
+    name: 'Old Gym Membership',
+    is_archived: false,
+    is_assignable: false,
+    tags: [],
+  },
+  {
+    id: 'income',
+    category_group_id: 'sys',
+    name: 'Inflow',
+    is_archived: false,
+    is_assignable: false,
+    tags: [],
+  },
 ]
 const groups = [
   { id: 'g1', name: 'Everyday', is_system: false },
   { id: 'sys', name: 'Income', is_system: true },
+  // Listed so the hidden-category test pins the served flag, not the query.
+  { id: 'hid', name: 'Hidden Categories', is_system: false },
 ]
 const tags = [
   { id: 't-lte', name: 'Long-term expense', system_key: 'long_term_expense', color_slot: 'teal' },
@@ -63,8 +98,46 @@ vi.mock('../../../api/categories', () => ({
 const updateAccount = vi.fn()
 const accounts = [
   { id: 'a1', name: 'Old Savings', is_closed: true },
-  { id: 'a2', name: 'Checking', is_closed: false },
+  { id: 'a2', name: 'Checking', is_closed: false, on_budget: true, classification: 'asset' },
+  {
+    id: 'a3',
+    name: 'Sapphire Visa',
+    is_closed: false,
+    on_budget: true,
+    classification: 'liability',
+  },
+  {
+    id: 'a4',
+    name: 'Harborstone Auto',
+    is_closed: false,
+    on_budget: false,
+    classification: 'liability',
+  },
 ]
+const liabilities = [
+  { id: 'l-card', name: 'Sapphire Visa', linked_account_id: 'a3' },
+  { id: 'l-auto', name: 'Harborstone Auto', linked_account_id: 'a4' },
+]
+vi.mock('../../../api/liabilities', () => ({
+  useLiabilities: () => ({ data: liabilities }),
+}))
+// The real settings dialog is the liability page's; what matters here is that
+// the review opens it over itself and gets it back.
+vi.mock('../../liabilities/LiabilitySettingsModal', () => ({
+  LiabilitySettingsModal: ({
+    liability,
+    onClose,
+  }: {
+    liability: { name: string }
+    onClose: () => void
+  }) => (
+    <div role="dialog" aria-label={`Settings for ${liability.name}`}>
+      <button type="button" onClick={onClose}>
+        Close settings
+      </button>
+    </div>
+  ),
+}))
 vi.mock('../../../api/accounts', () => ({
   useAccountHygiene: () => ({ data: { findings: [], clean: true } }),
   useAccounts: () => ({ data: accounts }),
@@ -86,7 +159,8 @@ const updateSchedule = vi.fn().mockResolvedValue(undefined)
 const schedules = [
   {
     id: 's-rent',
-    frequency: 'once',
+    // What the importer stores: YNAB exports no cadence, monthly is the guess.
+    frequency: 'monthly',
     second_day_of_month: null,
     next_occurrence_date: '2026-10-01',
     days_before_reminder: 3,
@@ -215,6 +289,17 @@ describe('the tag step', () => {
     expect(screen.queryByText('Inflow')).not.toBeInTheDocument()
   })
 
+  it('never offers a hidden category, even under All', async () => {
+    const user = userEvent.setup()
+    open()
+    await goToTags(user)
+    await user.click(screen.getByRole('button', { name: /^All/ }))
+    // The user put it away in YNAB; asking how to classify it is noise.
+    expect(screen.queryByText('Old Gym Membership')).not.toBeInTheDocument()
+    expect(screen.queryByText('Hidden Categories')).not.toBeInTheDocument()
+    expect(screen.getByText('Odds and Ends')).toBeInTheDocument()
+  })
+
   it('shows a suggestion unchecked and writes nothing on its own', async () => {
     const user = userEvent.setup()
     open()
@@ -339,6 +424,32 @@ describe('adding a tag the hints never thought of', () => {
     )
   })
 
+  it('keeps a row whose suggestion was ticked, so a second tag can follow', async () => {
+    // A real review: the box was ticked with another tag meant to follow, and
+    // the row left the Suggested list before it could be added.
+    const user = userEvent.setup()
+    open({ categories_tagged: 0, tagged_categories: [] })
+    await user.click(screen.getByRole('button', { name: /Categories/ }))
+
+    const offer = within(row('Rent')).getByRole('checkbox', { name: /Essential/ })
+    await user.click(offer)
+    expect(within(row('Rent')).getByRole('checkbox', { name: /Essential/ })).toBeChecked()
+    // Drawn once, as the ticked box — not also as a chip beside it.
+    expect(
+      within(row('Rent')).queryByRole('button', { name: 'Remove Essential' })
+    ).not.toBeInTheDocument()
+
+    await user.click(within(row('Rent')).getByRole('button', { name: '+ Tag' }))
+    await user.click(screen.getByText('Subscription'))
+    await user.click(within(row('Rent')).getByRole('checkbox', { name: /Essential/ }))
+
+    await user.click(screen.getByRole('button', { name: /Accounts/ }))
+    await user.click(screen.getByRole('button', { name: /Save and close/ }))
+    await waitFor(() =>
+      expect(bulkSet).toHaveBeenCalledWith([{ category_id: 'rent', tag_ids: ['t-sub'] }])
+    )
+  })
+
   it('shows a tag the user added themselves, which is not a system one', async () => {
     // Only system tags were rendered, so a Travel tag was invisible on a row
     // whose whole set the review can replace.
@@ -425,11 +536,12 @@ describe('the upcoming step', () => {
     const select = screen.getByRole('combobox', {
       name: /how often oakwood property mgmt repeats/i,
     })
-    await user.selectOptions(select, 'monthly')
+    expect(select).toHaveValue('monthly')
+    await user.selectOptions(select, 'weekly')
     await waitFor(() =>
       expect(updateSchedule).toHaveBeenCalledWith({
         id: 's-rent',
-        frequency: 'monthly',
+        frequency: 'weekly',
         second_day_of_month: null,
       })
     )
@@ -463,5 +575,82 @@ describe('the upcoming step', () => {
         second_day_of_month: 15,
       })
     )
+  })
+})
+
+describe('the terms step', () => {
+  function openWithLoans(loans: { id: string; account_id: string | null; name: string }[]) {
+    return render(
+      <MemoryRouter>
+        <ImportReviewDialog
+          budgetId="b1"
+          summary={summary()}
+          loansNeedingTerms={loans}
+          onClose={() => {}}
+        />
+      </MemoryRouter>
+    )
+  }
+  const card = { id: 'l-card', account_id: 'a3', name: 'Sapphire Visa' }
+  const auto = { id: 'l-auto', account_id: 'a4', name: 'Harborstone Auto' }
+
+  it('opens the terms editor over the review, and closing it returns to the step', async () => {
+    // It used to be a link to the liability page: the review closed, no editor
+    // opened, and Back landed on the liabilities list instead of the review.
+    const user = userEvent.setup()
+    openWithLoans([card, auto])
+    await user.click(screen.getByRole('button', { name: /Terms$/ }))
+
+    await user.click(screen.getByRole('button', { name: 'Add the terms for Harborstone Auto' }))
+    expect(
+      screen.getByRole('dialog', { name: 'Settings for Harborstone Auto' })
+    ).toBeInTheDocument()
+    expect(screen.getByText('Cards and loans with no terms yet')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Close settings' }))
+    expect(
+      screen.queryByRole('dialog', { name: 'Settings for Harborstone Auto' })
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Add the terms for Sapphire Visa' })
+    ).toBeInTheDocument()
+  })
+
+  it('calls a card a card, and keeps the loan-interest explanation for loans', async () => {
+    const user = userEvent.setup()
+    openWithLoans([card])
+    await user.click(screen.getByRole('button', { name: /Terms$/ }))
+
+    expect(screen.getByText('Cards with no terms yet')).toBeInTheDocument()
+    expect(screen.getByText(/what it costs to carry/)).toBeInTheDocument()
+    expect(screen.queryByText(/payoff date, and what closes the gap/)).not.toBeInTheDocument()
+  })
+
+  it('a loan alone keeps the loan wording', async () => {
+    const user = userEvent.setup()
+    openWithLoans([auto])
+    await user.click(screen.getByRole('button', { name: /Terms$/ }))
+
+    expect(screen.getByText('Loans with no terms yet')).toBeInTheDocument()
+    expect(screen.getByText(/payoff date, and what closes the gap/)).toBeInTheDocument()
+  })
+
+  it('keeps the step once its last account has terms, rather than vanishing', async () => {
+    const user = userEvent.setup()
+    const { rerender } = openWithLoans([card])
+    await user.click(screen.getByRole('button', { name: /Terms$/ }))
+
+    // What saving does: the summary refetches without the row.
+    rerender(
+      <MemoryRouter>
+        <ImportReviewDialog
+          budgetId="b1"
+          summary={summary()}
+          loansNeedingTerms={[]}
+          onClose={() => {}}
+        />
+      </MemoryRouter>
+    )
+    expect(screen.getByText(/has them now/)).toBeInTheDocument()
   })
 })

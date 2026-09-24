@@ -214,14 +214,6 @@
   color: var(--text-muted);
 }
 
-.import-review__hidden {
-  padding: 0 4px;
-  border: 1px solid var(--edge-strong);
-  border-radius: var(--border-radius);
-  font-size: 10px;
-  color: var(--text-muted);
-}
-
 .import-review__tags {
   display: flex;
   flex-wrap: wrap;

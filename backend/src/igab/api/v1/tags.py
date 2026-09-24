@@ -226,7 +226,7 @@ async def list_tag_suggestions(
     tag_repo: Annotated[TagRepository, Depends(get_tag_repo)],
     category_repo: Annotated[CategoryRepository, Depends(get_category_repo)],
 ) -> list[TagSuggestionOut]:
-    """System tags each category's names point at but does not carry.
+    """System tags each live category's names point at but does not carry.
 
     Proposals only. Nothing here is written until the caller sends them back
     through the bulk update, which is the whole difference between this and
@@ -247,6 +247,14 @@ async def list_tag_suggestions(
 
     out: list[TagSuggestionOut] = []
     for category, group_name in rows:
+        # Live envelopes only. The rows include hidden categories on purpose
+        # (a wrong tag there still moves reports, and the category's own
+        # settings is where it gets removed), but proposing NEW tags for a
+        # category the user put away is noise: an import review offered the
+        # whole of YNAB's Hidden Categories group. `is_assignable` is the
+        # server's rule the review dialog also draws its rows by.
+        if not category.is_assignable:
+            continue
         held = [t.system_key for t in existing.get(category.id, []) if t.system_key]
         # Minus what the category carries, and what that implies: an Emergency
         # fund category is never offered Savings (`tag_hints.IMPLIED_TAGS`).
