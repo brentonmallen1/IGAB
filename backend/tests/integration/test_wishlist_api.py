@@ -483,7 +483,14 @@ class TestCoolingReviewAndStillWanted:
     async def test_done_moves_to_history_and_leaves_the_queue(self, db_session, api_client):
         budget = await _budget(db_session, api_client)
         wish = await _add(api_client, budget)
-        r = await api_client.patch(f"{_url(budget)}/{wish['id']}", json={"status": "done"})
+        # `client_today`, as the browser sends it: the ending is stamped with
+        # the day the person was living in. Without it this asserted the
+        # server's UTC day, which is already tomorrow every evening west of
+        # UTC — and the discipline report buckets endings by that date.
+        r = await api_client.patch(
+            f"{_url(budget)}/{wish['id']}",
+            json={"status": "done", "client_today": TODAY.isoformat()},
+        )
         assert r.status_code == 200
         assert r.json()["done_at"] == TODAY.isoformat()
         assert r.json()["reach"] is None
@@ -562,7 +569,9 @@ class TestEveryFieldUpdates:
         # until it joins `changes` (or the clears) above.
         from igab.api.v1.schemas.wishlist import WishUpdate
 
-        assert set(changes) | {"status", "cooling_days"} == set(WishUpdate.model_fields)
+        assert set(changes) | {"status", "cooling_days", "client_today"} == set(
+            WishUpdate.model_fields
+        )
 
     async def test_cooling_days_round_trip_too(self, db_session, api_client):
         # Its own request: it cannot ride beside `cooling_until` above.

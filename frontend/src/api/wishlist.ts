@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient, apiErrorMessage } from './client'
 import { invalidateAfterCategoryChange } from './invalidateAfterCategoryChange'
 import { ROOT } from './queryKeys'
+import { today } from '../utils/dates'
 
 // The wishlist lives inside the budget: a wish's money is an envelope's
 // money. Everything below is served — reach, rollups, cooling, review-due —
@@ -37,6 +38,17 @@ export interface WishReach {
   progress: number
 }
 
+/** An ended wish whose own envelope is still standing: what it holds, and
+ *  whether the wish's savings goal is still attached. Served, never derived —
+ *  `available` is the budget page's figure. Null once settled, so the prompt
+ *  clears itself rather than needing a flag that could disagree. */
+export interface WishSettlement {
+  category_id: string
+  name: string
+  available: number
+  has_goal: boolean
+}
+
 export interface Wish {
   id: string
   project_id: string | null
@@ -57,10 +69,18 @@ export interface Wish {
    *  day it falls on depends on a timezone the server recorded at creation. */
   added_on: string
   last_affirmed_at: string | null
+  /** The day they said "still want it", in their own date — the day the
+   *  review cadence counts from. Print this, never `last_affirmed_at`'s UTC
+   *  day. */
+  affirmed_on: string | null
   review_due: boolean
   done_at: string | null
+  dropped_at: string | null
   created_at: string
   reach: WishReach | null
+  /** Unfinished business: the envelope this ended wish still owns. Null for
+   *  an open wish and for one that left nothing behind. */
+  settlement: WishSettlement | null
 }
 
 export type ProjectState =
@@ -127,6 +147,10 @@ export interface Wishlist {
   priority_limit: number
   /** The longest cooling-off in days, served for the same reason. */
   max_cooling_days: number
+  /** The review cadence's bounds, served so the settings form refuses what
+   *  the server would refuse rather than spelling its own 7 and 365. */
+  min_review_days: number
+  max_review_days: number
   drains: Drains | null
 }
 
@@ -151,6 +175,11 @@ export interface WishCreate {
 }
 
 export interface WishUpdate {
+  /** The browser's today. A status change stamps it as the day the wish
+   *  ended; the server's own clock is already tomorrow every evening west of
+   *  UTC, and the discipline report buckets endings by that date. Sent on
+   *  every update by `useUpdateWish`, so no call site has to remember. */
+  client_today?: string
   name?: string
   cost?: number
   url?: string | null
@@ -192,7 +221,12 @@ export interface DeleteWishResult {
 export function useWishlist(budgetId: string | null, enabled = true) {
   return useQuery({
     queryKey: [ROOT.wishlist, budgetId],
-    queryFn: () => apiClient.get<Wishlist>(`/${budgetId}/wishlist`).then((r) => r.data),
+    // `today` because cooling-off, review-due and every reach date are
+    // answers about a particular day, and only the browser knows which.
+    queryFn: () =>
+      apiClient
+        .get<Wishlist>(`/${budgetId}/wishlist`, { params: { today: today() } })
+        .then((r) => r.data),
     enabled: !!budgetId && enabled,
     staleTime: 30_000,
   })
@@ -202,16 +236,19 @@ function useWishlistMutation<TVars, TResult>(
   budgetId: string,
   fn: (vars: TVars) => Promise<TResult>,
   failure: string,
-  quiet = false
+  { quiet = false, touchesCategory = true }: { quiet?: boolean; touchesCategory?: boolean } = {}
 ) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: fn,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: [ROOT.wishlist, budgetId] })
-      // An own envelope is a real category with a goal: the budget page and
-      // every picker need to hear about it.
-      invalidateAfterCategoryChange(qc, budgetId)
+      // An own envelope is a real category with a goal, so those mutations
+      // must tell the budget page and every picker. The rest — a pin, an
+      // affirmation, a reorder, a settings change — touch no category, and
+      // sweeping ~20 query roots on a pin click refetched the month, the
+      // register and every report to redraw one word.
+      if (touchesCategory) invalidateAfterCategoryChange(qc, budgetId)
     },
     onError: quiet ? undefined : (e) => toast.error(apiErrorMessage(e, failure)),
   })
@@ -223,7 +260,7 @@ export function useCreateWish(budgetId: string) {
     budgetId,
     (body) => apiClient.post<Wish>(`/${budgetId}/wishlist`, body).then((r) => r.data),
     'Could not add the wish',
-    true
+    { quiet: true }
   )
 }
 
@@ -231,7 +268,9 @@ export function useUpdateWish(budgetId: string) {
   return useWishlistMutation<{ id: string } & WishUpdate, Wish>(
     budgetId,
     ({ id, ...body }) =>
-      apiClient.patch<Wish>(`/${budgetId}/wishlist/${id}`, body).then((r) => r.data),
+      apiClient
+        .patch<Wish>(`/${budgetId}/wishlist/${id}`, { client_today: today(), ...body })
+        .then((r) => r.data),
     'Could not save the wish'
   )
 }
@@ -239,16 +278,50 @@ export function useUpdateWish(budgetId: string) {
 export function useDeleteWish(budgetId: string) {
   return useWishlistMutation<string, DeleteWishResult>(
     budgetId,
-    (id) => apiClient.delete<DeleteWishResult>(`/${budgetId}/wishlist/${id}`).then((r) => r.data),
+    (id) =>
+      apiClient
+        .delete<DeleteWishResult>(`/${budgetId}/wishlist/${id}`, {
+          params: { today: today() },
+        })
+        .then((r) => r.data),
     'Could not delete the wish'
+  )
+}
+
+export interface SettleWish {
+  id: string
+  /** Sent by the hook; which month's balance the move is measured in. */
+  client_today?: string
+  /** Null means Ready to Assign — where the category-delete flow and the
+   *  wishlist off-switch both send envelope money. */
+  destination_category_id?: string | null
+  /** Keep the (now empty, goal-less) envelope instead of archiving it. */
+  keep_envelope?: boolean
+}
+
+export function useSettleWish(budgetId: string) {
+  // Quiet: the dialog shows the server's reason inline, beside the choice
+  // that caused it (a card-linked envelope refusing to archive, say).
+  return useWishlistMutation<SettleWish, Wish>(
+    budgetId,
+    ({ id, ...body }) =>
+      apiClient
+        .post<Wish>(`/${budgetId}/wishlist/${id}/settle`, { client_today: today(), ...body })
+        .then((r) => r.data),
+    'Could not settle the envelope',
+    { quiet: true }
   )
 }
 
 export function useAffirmWish(budgetId: string) {
   return useWishlistMutation<string, void>(
     budgetId,
-    (id) => apiClient.post(`/${budgetId}/wishlist/${id}/affirm`).then(() => undefined),
-    'Could not save'
+    (id) =>
+      apiClient
+        .post(`/${budgetId}/wishlist/${id}/affirm`, null, { params: { today: today() } })
+        .then(() => undefined),
+    'Could not save',
+    { touchesCategory: false }
   )
 }
 
@@ -257,7 +330,8 @@ export function useReorderWishes(budgetId: string) {
     budgetId,
     (item_ids) =>
       apiClient.post(`/${budgetId}/wishlist/reorder`, { item_ids }).then(() => undefined),
-    'Could not reorder'
+    'Could not reorder',
+    { touchesCategory: false }
   )
 }
 
@@ -267,7 +341,7 @@ export function useCreateProject(budgetId: string) {
     (body) =>
       apiClient.post<WishlistProject>(`/${budgetId}/wishlist/projects`, body).then((r) => r.data),
     'Could not add the project',
-    true
+    { quiet: true }
   )
 }
 
@@ -290,22 +364,12 @@ export function useDeleteProject(budgetId: string) {
   )
 }
 
-export function useReorderProjects(budgetId: string) {
-  return useWishlistMutation<string[], void>(
-    budgetId,
-    (project_ids) =>
-      apiClient
-        .post(`/${budgetId}/wishlist/projects/reorder`, { project_ids })
-        .then(() => undefined),
-    'Could not reorder'
-  )
-}
-
 export function useSetWishlistSettings(budgetId: string) {
   return useWishlistMutation<Partial<WishlistSettings>, WishlistSettings>(
     budgetId,
     (body) =>
       apiClient.put<WishlistSettings>(`/${budgetId}/wishlist/settings`, body).then((r) => r.data),
-    'Could not save settings'
+    'Could not save settings',
+    { touchesCategory: false }
   )
 }

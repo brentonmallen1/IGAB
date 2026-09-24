@@ -92,11 +92,15 @@ export function WishCard({
       )}
       {wish.notes && <p className="wish__notes">{wish.notes}</p>}
 
+      {/* Every button names its wish. Read aloud, a page of cards was
+          "Done, Prioritize, Edit, Drop, Delete, Done, Prioritize, …" — the
+          move arrows already did this; the rest did not. */}
       <div className="wish__actions">
         <button
           type="button"
           className={`wish__done ${wish.cooling ? 'wish__done--quiet' : ''}`}
           onClick={onDone}
+          aria-label={`Mark ${wish.name} done`}
           title={wish.cooling ? 'Still cooling off — but it is your call' : 'Bought it, or did it'}
         >
           Done
@@ -106,6 +110,7 @@ export function WishCard({
           className="guide-link-button"
           onClick={onTogglePriority}
           disabled={!wish.is_priority && priorityFull}
+          aria-label={`${wish.is_priority ? 'Unpin' : 'Prioritize'} ${wish.name}`}
           title={
             !wish.is_priority && priorityFull
               ? 'Top priorities are full — unpin one first'
@@ -114,20 +119,39 @@ export function WishCard({
         >
           {wish.is_priority ? 'Unpin' : 'Prioritize'}
         </button>
-        <button type="button" className="guide-link-button" onClick={onEdit}>
+        <button
+          type="button"
+          className="guide-link-button"
+          onClick={onEdit}
+          aria-label={`Edit ${wish.name}`}
+        >
           Edit
         </button>
-        <button type="button" className="guide-link-button" onClick={onDrop}>
+        {/* The difference between these two decides whether the discipline
+            report can count you, and nothing on screen said so. */}
+        <button
+          type="button"
+          className="guide-link-button"
+          onClick={onDrop}
+          aria-label={`Drop ${wish.name}`}
+          title="Decided against it — kept in your history as resisted"
+        >
           Drop
         </button>
-        <button type="button" className="guide-link-button wish__delete" onClick={onDelete}>
+        <button
+          type="button"
+          className="guide-link-button wish__delete"
+          onClick={onDelete}
+          aria-label={`Delete ${wish.name}`}
+          title="Remove it entirely, including from your history"
+        >
           Delete
         </button>
         {(onMoveUp || onMoveDown) && (
           <span className="wish__move">
             <button
               type="button"
-              className="tool__icon-button"
+              className="wish__move-button"
               onClick={onMoveUp}
               disabled={!onMoveUp}
               aria-label={`Move ${wish.name} up`}
@@ -136,7 +160,7 @@ export function WishCard({
             </button>
             <button
               type="button"
-              className="tool__icon-button"
+              className="wish__move-button"
               onClick={onMoveDown}
               disabled={!onMoveDown}
               aria-label={`Move ${wish.name} down`}

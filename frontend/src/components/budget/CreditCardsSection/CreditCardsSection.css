@@ -26,6 +26,12 @@
   padding: var(--spacing-xs) var(--spacing-md);
   border-bottom: none; /* the surface's own bottom edge is the divider */
   justify-content: flex-start;
+  /* Pinned under the filter bar, never beneath it. Same measured height the
+     column header below uses (--budget-filter-bar-h, published by
+     BudgetTable); the bar wraps, so no constant is right. The two hand over
+     cleanly: this band is pushed up by its own section's bottom edge at the
+     moment the column header reaches the same line. */
+  --surface-sticky-top: var(--budget-filter-bar-h, 0px);
 }
 
 /* The whole band IS the fold control — title, count, bill note and the space

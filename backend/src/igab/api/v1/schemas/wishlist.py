@@ -6,7 +6,7 @@ from typing import Literal
 from pydantic import Field, model_validator
 
 from igab.api.v1.schemas.base import ApiModel, ClientDated
-from igab.guide.wishlist import MAX_COOLING_DAYS
+from igab.guide.wishlist import MAX_COOLING_DAYS, MAX_REVIEW_DAYS, MIN_REVIEW_DAYS
 
 Money = Decimal
 
@@ -44,7 +44,15 @@ class WishCreate(ClientDated):
     funding: FundingIn = Field(default_factory=FundingIn)
 
 
-class WishUpdate(ApiModel):
+class WishUpdate(ClientDated):
+    """`client_today` is the person's own date, and a status change stamps it.
+
+    Without it `done_at`/`dropped_at` came from the server's clock, and the
+    discipline report buckets "cooled off, then dropped" by comparing that
+    date with `cooling_until` — so a drop on the last cooling evening west of
+    UTC was filed as a wish that never cooled at all.
+    """
+
     name: str | None = Field(default=None, min_length=1, max_length=200)
     cost: Money | None = Field(default=None, ge=0)
     url: str | None = Field(default=None, max_length=2000)
@@ -93,6 +101,21 @@ class ReachOut(ApiModel):
     progress: Decimal
 
 
+class SettlementOut(ApiModel):
+    """An ended wish whose own envelope is still standing.
+
+    Served, not derived on the client: `available` is the budget page's
+    figure, and whether a goal is still attached is the server's to know.
+    Null on `WishOut` once the envelope has been settled or archived, so the
+    prompt clears itself rather than needing a flag that could disagree.
+    """
+
+    category_id: uuid.UUID
+    name: str
+    available: Decimal
+    has_goal: bool
+
+
 class WishOut(ApiModel):
     id: uuid.UUID
     project_id: uuid.UUID | None
@@ -113,10 +136,19 @@ class WishOut(ApiModel):
     #: `created_at`, an instant.
     added_on: date
     last_affirmed_at: datetime | None
+    #: The day they said "still want it", in their own date — what the review
+    #: cadence counts from. Served so the dialog prints the same day the
+    #: cadence uses, not the UTC day sliced off the instant above.
+    affirmed_on: date | None
     review_due: bool
     done_at: date | None
+    dropped_at: date | None
     created_at: datetime
     reach: ReachOut | None
+    #: Required, not optional: a path that forgets it would report an
+    #: envelope left holding money as settled, which is the bug this field
+    #: exists to end.
+    settlement: SettlementOut | None
 
 
 class ProjectSummaryOut(ApiModel):
@@ -166,7 +198,18 @@ class WishlistSettingsOut(ApiModel):
 
 class WishlistSettingsUpdate(ApiModel):
     cooling_days: int | None = Field(default=None, ge=0, le=MAX_COOLING_DAYS)
-    review_after_days: int | None = Field(default=None, ge=7, le=365)
+    review_after_days: int | None = Field(default=None, ge=MIN_REVIEW_DAYS, le=MAX_REVIEW_DAYS)
+
+
+class SettleRequest(ClientDated):
+    """Where an ended wish's envelope money goes, and what becomes of the
+    envelope. `destination_category_id` null means Ready to Assign — where
+    the category-delete flow and the wishlist off-switch both send it."""
+
+    destination_category_id: uuid.UUID | None = None
+    #: Keep the (now empty, goal-less) envelope on the budget page instead of
+    #: archiving it — for someone who wants to re-purpose it.
+    keep_envelope: bool = False
 
 
 class EnvelopeOut(ApiModel):
@@ -226,4 +269,8 @@ class WishlistResponse(ApiModel):
     priority_limit: int
     #: The longest cooling-off, in days — served for the same reason.
     max_cooling_days: int
+    #: The review cadence's bounds, served for the same reason again: the
+    #: settings form refuses what the server would refuse, in its own words.
+    min_review_days: int
+    max_review_days: int
     drains: DrainsOut | None

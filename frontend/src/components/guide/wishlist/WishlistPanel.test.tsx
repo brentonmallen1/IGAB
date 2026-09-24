@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { WishlistPanel } from './WishlistPanel'
@@ -9,6 +9,16 @@ import { useGuideOverview } from '../../../api/guide'
 import * as wishlistApi from '../../../api/wishlist'
 import type { Wish, Wishlist, WishlistProject } from '../../../api/wishlist'
 
+const confirmAsync = vi.fn()
+const notify = vi.fn()
+vi.mock('../../../stores/confirmStore', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../stores/confirmStore')>()),
+  confirmAsync: (...args: unknown[]) => confirmAsync(...args),
+}))
+vi.mock('../../../utils/toastUndo', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../utils/toastUndo')>()),
+  useUndoToast: () => notify,
+}))
 vi.mock('../../../api/guide', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../api/guide')>()),
   useGuideOverview: vi.fn(),
@@ -49,8 +59,11 @@ function wish(over: Partial<Wish>): Wish {
     cooling_until: null,
     cooling: false,
     last_affirmed_at: null,
+    affirmed_on: null,
     review_due: false,
     done_at: null,
+    dropped_at: null,
+    settlement: null,
     added_on: '2026-08-01',
     created_at: '2026-08-01T00:00:00Z',
     reach: { state: 'months', months: 8, date: '2027-04-26', ahead_cost: 0, progress: 0.3 },
@@ -69,6 +82,8 @@ function payload(over: Partial<Wishlist>): Wishlist {
     settings: { cooling_days: 30, review_after_days: 90 },
     priority_limit: 3,
     max_cooling_days: 365,
+    min_review_days: 7,
+    max_review_days: 365,
     drains: { month: '2026-08-01', total: 0, moves: [] },
     ...over,
   }
@@ -86,6 +101,9 @@ function renderPanel() {
 }
 
 beforeEach(() => {
+  confirmAsync.mockReset()
+  confirmAsync.mockResolvedValue(true)
+  notify.mockReset()
   useAppStore.setState({ currentBudgetId: 'b1' })
   // The store is module-shared across this file: a test that collapses the
   // hero or switches the view would otherwise leak into the next.
@@ -122,7 +140,7 @@ describe('WishlistPanel', () => {
     } as never)
     renderPanel()
     expect(screen.getByText(/cooling off until/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Done' })).toHaveClass('wish__done--quiet')
+    expect(screen.getByRole('button', { name: 'Mark Bike done' })).toHaveClass('wish__done--quiet')
   })
 
   it('the hero holds what is pinned — nothing more', () => {
@@ -158,13 +176,15 @@ describe('WishlistPanel', () => {
       isLoading: false,
     } as never)
     renderPanel()
-    // Three pinned cards say Unpin; the fourth's Prioritize is disabled at the cap.
-    expect(screen.getAllByRole('button', { name: 'Unpin' })).toHaveLength(3)
-    const prioritize = screen.getByRole('button', { name: 'Prioritize' })
+    // Three pinned cards say Unpin; the fourth's Prioritize is disabled at the
+    // cap. Each button names its own wish, so a screen reader reading the page
+    // gets "Unpin W0", not four identical "Unpin"s.
+    expect(screen.getAllByRole('button', { name: /^Unpin / })).toHaveLength(3)
+    const prioritize = screen.getByRole('button', { name: /^Prioritize / })
     expect(prioritize).toBeDisabled()
     expect(prioritize).toHaveAttribute('title', expect.stringContaining('unpin one first'))
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Unpin' })[0])
+    fireEvent.click(screen.getByRole('button', { name: 'Unpin W0' }))
     const update = vi.mocked(wishlistApi.useUpdateWish).mock.results.at(-1)!.value
     expect(update.mutate).toHaveBeenCalledWith({ id: 'W0', is_priority: false })
   })
@@ -319,6 +339,136 @@ describe('WishlistPanel', () => {
     renderPanel()
     expect(screen.queryByText(/dropped|done/)).not.toBeInTheDocument()
     expect(screen.getByText('History')).toBeInTheDocument()
+  })
+
+  describe('destructive actions ask first and offer the change back', () => {
+    it('a delete is confirmed, not fired on click', async () => {
+      const mutateAsync = vi.fn().mockResolvedValue({ envelope: null })
+      vi.mocked(wishlistApi.useDeleteWish).mockReturnValue({
+        mutate: vi.fn(),
+        mutateAsync,
+        isPending: false,
+      } as never)
+      vi.mocked(wishlistApi.useWishlist).mockReturnValue({
+        data: payload({ items: [wish({})] }),
+        isLoading: false,
+      } as never)
+      confirmAsync.mockResolvedValue(false)
+      renderPanel()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Delete Bike' }))
+      await waitFor(() => expect(confirmAsync).toHaveBeenCalled())
+      // Declined: nothing was deleted. A wish with no envelope of its own
+      // used to vanish here with no dialog and no toast at all.
+      expect(mutateAsync).not.toHaveBeenCalled()
+    })
+
+    it('a confirmed delete offers the undo every other feature offers', async () => {
+      const mutateAsync = vi.fn().mockResolvedValue({ envelope: null })
+      vi.mocked(wishlistApi.useDeleteWish).mockReturnValue({
+        mutate: vi.fn(),
+        mutateAsync,
+        isPending: false,
+      } as never)
+      vi.mocked(wishlistApi.useWishlist).mockReturnValue({
+        data: payload({ items: [wish({})] }),
+        isLoading: false,
+      } as never)
+      confirmAsync.mockResolvedValue(true)
+      renderPanel()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Delete Bike' }))
+      await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith('w'))
+      await waitFor(() => expect(notify).toHaveBeenCalledWith('Bike deleted', 'latest'))
+    })
+
+    it('dropping says so and offers it back', async () => {
+      const mutateAsync = vi.fn().mockResolvedValue(wish({ status: 'dropped' }))
+      vi.mocked(wishlistApi.useUpdateWish).mockReturnValue({
+        mutate: vi.fn(),
+        mutateAsync,
+        isPending: false,
+      } as never)
+      vi.mocked(wishlistApi.useWishlist).mockReturnValue({
+        data: payload({ items: [wish({})] }),
+        isLoading: false,
+      } as never)
+      renderPanel()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Drop Bike' }))
+      await waitFor(() => expect(notify).toHaveBeenCalledWith('Bike dropped', 'latest'))
+    })
+  })
+
+  it('says so when the list cannot be loaded, rather than looking empty', () => {
+    const refetch = vi.fn()
+    vi.mocked(wishlistApi.useWishlist).mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      refetch,
+    } as never)
+    renderPanel()
+    expect(screen.getByText(/could not be loaded/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(refetch).toHaveBeenCalled()
+  })
+
+  describe('an ended wish leaves its envelope standing', () => {
+    const held = {
+      category_id: 'c',
+      name: 'Bike',
+      available: 400,
+      has_goal: true,
+    }
+
+    it('dropping a funded wish asks where the money should go', async () => {
+      const dropped = wish({ status: 'dropped', settlement: held })
+      const mutateAsync = vi.fn().mockResolvedValue(dropped)
+      vi.mocked(wishlistApi.useUpdateWish).mockReturnValue({
+        mutate: vi.fn(),
+        mutateAsync,
+        isPending: false,
+      } as never)
+      vi.mocked(wishlistApi.useWishlist).mockReturnValue({
+        data: payload({ items: [], history: [dropped] }),
+        isLoading: false,
+      } as never)
+      // The card is gone from `items` by the time the dialog opens, which is
+      // why the panel looks the wish back up by id rather than holding it.
+      renderPanel()
+      fireEvent.click(screen.getByText('History'))
+      fireEvent.click(screen.getByRole('button', { name: /still in Bike/ }))
+      expect(await screen.findByText(/Where should this money go/)).toBeInTheDocument()
+    })
+
+    it('the history row goes on asking after the dialog is dismissed', () => {
+      vi.mocked(wishlistApi.useWishlist).mockReturnValue({
+        data: payload({
+          items: [],
+          history: [wish({ name: 'Old', status: 'dropped', settlement: held, reach: null })],
+        }),
+        isLoading: false,
+      } as never)
+      renderPanel()
+      fireEvent.click(screen.getByText('History'))
+      // Money parked under a name already decided against must not be
+      // reachable only through a dialog someone can close.
+      expect(screen.getByRole('button', { name: /still in Bike/ })).toBeInTheDocument()
+    })
+
+    it('a settled wish says nothing', () => {
+      vi.mocked(wishlistApi.useWishlist).mockReturnValue({
+        data: payload({
+          items: [],
+          history: [wish({ name: 'Old', status: 'dropped', settlement: null, reach: null })],
+        }),
+        isLoading: false,
+      } as never)
+      renderPanel()
+      fireEvent.click(screen.getByText('History'))
+      expect(screen.queryByRole('button', { name: /still in/ })).not.toBeInTheDocument()
+    })
   })
 
   it('renders the drains it is served, with the distance', () => {

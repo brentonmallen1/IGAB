@@ -28,6 +28,11 @@ DEFAULT_COOLING_DAYS = 30
 #: never spells its own 365.
 MAX_COOLING_DAYS = 365
 DEFAULT_REVIEW_DAYS = 90
+#: The review cadence's bounds. Served like `MAX_COOLING_DAYS`, so the
+#: settings form validates against the range the server actually enforces
+#: rather than spelling its own 7 and 365 beside it.
+MIN_REVIEW_DAYS = 7
+MAX_REVIEW_DAYS = 365
 #: "Added a while ago and still wanted" — the line the feature exists for.
 STILL_WANTED_MONTHS = 3
 #: How many wishes may be pinned as top priorities at once. A hard cap, and
@@ -111,6 +116,20 @@ def added_on(recorded: date | None, created_at: datetime) -> date:
     return recorded if recorded is not None else created_at.date()
 
 
+def affirmed_on(recorded: date | None, affirmed_at: datetime | None) -> date | None:
+    """The day a wish was last affirmed, in the person's own date.
+
+    The twin of `added_on`, and for the same reason: `review_due` measures
+    the gap between this and today, while every other date it handles is a
+    local one. Comparing a UTC day with local days made the cadence a day
+    out every evening west of UTC. None when the wish has never been
+    affirmed — the review clock then runs from the day it was added.
+    """
+    if recorded is not None:
+        return recorded
+    return affirmed_at.date() if affirmed_at is not None else None
+
+
 def cooling_until_for(added: date, days: int) -> date:
     """The end of a cooling-off `days` long, counted from the day the wish was
     added. One rule for both ways of setting it: at creation, where added is
@@ -170,7 +189,11 @@ def reach_for(
                 progress = ONE
             else:
                 progress = min(ONE, max(ZERO, covered / cost)).quantize(Decimal("0.01"))
-            if fund.available >= cumulative:
+            # A wish that costs nothing is reachable now, whatever the
+            # envelope holds. Leaning on `available >= cumulative` alone said
+            # "fully funded" and "eight months away" about the same free
+            # wish, because an overspent envelope fails that test at any cost.
+            if cost <= ZERO or fund.available >= cumulative:
                 out[wish.id] = Reach("now", 0, today, ahead, ONE)
                 continue
             rate = fund.monthly_rate
@@ -241,6 +264,50 @@ def still_wanted(wishes: Iterable[WishInput], today: date) -> tuple[int, int]:
     cutoff = add_months(today, -STILL_WANTED_MONTHS)
     old = [w for w in wishes if w.created_at <= cutoff]
     return sum(1 for w in old if w.status == "open"), len(old)
+
+
+def could_be_unsettled(*, status: str, owns_envelope: bool, envelope_live: bool) -> bool:
+    """The half of `unsettled` that needs no money.
+
+    Split out so the caller can skip the balance query for a wish that cannot
+    be unfinished whatever its envelope holds — one query per piece of
+    unfinished business rather than one per wish — without restating the
+    predicate at the call site. `unsettled` is still the rule; this is its
+    first clause, named.
+    """
+    return status != "open" and owns_envelope and envelope_live
+
+
+def unsettled(
+    *,
+    status: str,
+    owns_envelope: bool,
+    envelope_live: bool,
+    available: Decimal,
+    has_goal: bool,
+) -> bool:
+    """Is this wish's own envelope still standing after the wish ended?
+
+    The question the wishlist got wrong: dropping a wish flipped a status and
+    left the envelope, its savings goal and its money behind, with nothing on
+    any screen saying so. An ended wish whose envelope still holds money — or
+    still carries the goal that was the wish's cost — is unfinished business,
+    and stays unfinished until someone says where the money goes.
+
+    Derived, never stored: settling clears what this reads, so the prompt
+    disappears by itself and no `settled_at` flag can disagree with the
+    budget. An archived envelope is settled by definition — `archive` refuses
+    while a balance remains, so there is nothing left to decide.
+
+    `available` is the budget page's figure, handed in. A negative one counts:
+    an overspent envelope left behind is a hole someone has to cover, which is
+    exactly as unfinished as money left sitting.
+    """
+    if not could_be_unsettled(
+        status=status, owns_envelope=owns_envelope, envelope_live=envelope_live
+    ):
+        return False
+    return available != ZERO or has_goal
 
 
 def drain_impact(amount: Decimal, pace: Decimal | None) -> Decimal | None:

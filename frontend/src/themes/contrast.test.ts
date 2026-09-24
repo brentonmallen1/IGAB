@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 // prefers-contrast layer is an at-rule, which topLevelRules skips: those
 // overrides are conditional, so folding them into the base token maps would
 // test a state the default render never reaches.
-import { topLevelRules } from '../test-utils/cssRules'
+import { stripComments, topLevelRules } from '../test-utils/cssRules'
 
 /**
  * Every theme ships its own palette, and a palette that looks right can still
@@ -20,6 +20,8 @@ import { topLevelRules } from '../test-utils/cssRules'
  */
 
 const THEMES_DIR = dirname(fileURLToPath(import.meta.url))
+/** `src/`, for reading a rule out of a component stylesheet. */
+const SRC_DIR = join(THEMES_DIR, '..')
 
 const AA_TEXT = 4.5
 const AA_NON_TEXT = 3.0 // WCAG 1.4.11, for a border that is the only cue a control exists
@@ -31,6 +33,27 @@ const CHIP_TINT = 18
 const BALANCE_CHIP_TINT = 8
 const BALANCE_CHIP_HOVER_TINT = 14
 const NEGATIVE_CHIP_TINT = 24
+
+/**
+ * The Done button's fill, read out of Wishlist.css rather than retyped here.
+ *
+ * It is a `color-mix` written in a component stylesheet, not a theme token,
+ * so the loader above never sees it — and a number copied into this file
+ * would be the second implementation of a constant, free to drift from the
+ * rule it claims to measure. Reading it means changing the wash changes what
+ * is checked.
+ */
+function washPercent(file: string, selector: string): number {
+  const src = stripComments(readFileSync(join(SRC_DIR, file), 'utf8'))
+  const rule = topLevelRules(src).find(([sel]) => sel.split(',').some((s) => s.trim() === selector))
+  // `[\s\S]`, not `[^)]`: the inner `var(--color-positive)` closes a paren
+  // before the percentage ever appears.
+  const pct = rule?.[1].match(/color-mix\([\s\S]*?(\d+(?:\.\d+)?)%/)
+  if (!pct) throw new Error(`${file} ${selector}: no color-mix percentage to read`)
+  return Number(pct[1])
+}
+
+const WISH_DONE_TINT = washPercent('components/guide/wishlist/Wishlist.css', '.wish__done')
 
 type RGBA = [number, number, number, number]
 
@@ -372,6 +395,33 @@ function checksFor(theme: string): Check[] {
     sidebarBg && token(theme, 'color-negative')
       ? tint(token(theme, 'color-negative')!, sidebarBg, NEGATIVE_CHIP_TINT)
       : null,
+    AA_TEXT
+  )
+
+  // The wishlist prints semantic colours at 10–13px in places the suite could
+  // not see. The Done button is --color-positive on a wash OF that colour —
+  // the thinnest pairing in the app — and it sits on two grounds: the sunken
+  // well for an ordinary card, the raised surface for a hero card (a step
+  // LIGHTER in light themes, so the tighter one). The percentage is read out
+  // of Wishlist.css rather than repeated here. The history row's "still in
+  // Bike" prompt is --color-warning on the sunken well. Same shape of miss as
+  // --color-negative failing on --sidebar-bg in 19 of 40 themes.
+  const positive = token(theme, 'color-positive')
+  for (const ground of ['surface-sunken', 'surface-raised'] as const) {
+    const surface = token(theme, ground) ?? token(theme, 'bg-secondary')
+    add(
+      `wishlist Done label on its positive wash over ${ground}`,
+      positive,
+      surface && positive ? tint(positive, surface, WISH_DONE_TINT) : null,
+      AA_TEXT
+    )
+  }
+  const wishWell = token(theme, 'surface-sunken') ?? token(theme, 'bg-secondary')
+  add('wishlist "reachable now" on the well', positive, wishWell, AA_TEXT)
+  add(
+    'wishlist "still in Bike" prompt on the well',
+    token(theme, 'color-warning'),
+    wishWell,
     AA_TEXT
   )
 

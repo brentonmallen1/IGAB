@@ -325,9 +325,14 @@
   flex-wrap: wrap;
 }
 
+/* 10%, not 14%: the label is --color-positive printed on a wash of itself,
+   which is the thinnest pairing in the app, and at 14% it missed AA in seven
+   light themes (4.41–4.50 against a 4.5 floor). contrast.test.ts reads this
+   percentage out of this rule, so lowering or raising it moves what is
+   checked — do not raise it without running that suite. */
 .wish__done {
   padding: 2px var(--spacing-sm);
-  background: color-mix(in srgb, var(--color-positive) 14%, transparent);
+  background: color-mix(in srgb, var(--color-positive) 10%, transparent);
   color: var(--color-positive);
   border: none;
   border-radius: var(--border-radius);
@@ -355,6 +360,31 @@
   margin-left: auto;
 }
 
+/* The reorder arrows' own rule. They borrowed `.tool__icon-button` from
+   Tools.css, which ToolsPanel is the only importer of — so on a cold load of
+   /wishlist (its own page, which imports GuidePage.css and not that file)
+   they rendered as unstyled native buttons. The borrowed rule also turned
+   them red on hover: it was written for delete buttons, and "move up" is not
+   a destructive act. */
+.wish__move-button {
+  background: none;
+  border: none;
+  padding: var(--spacing-xs);
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+
+.wish__move-button:hover:not(:disabled) {
+  color: var(--text-primary);
+}
+
+.wish__move-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 /* ── projects ───────────────────────────────────────────────────────────── */
 
 .wish-project {
@@ -380,6 +410,22 @@
   cursor: pointer;
 }
 
+/* The caret's width, once. Two indents line up under it and the icon itself
+   is sized from it — it used to be a bare `14px` in two `calc()`s here and a
+   `size={14}` prop in WishlistProjectSection, which is the TagPicker case
+   CLAUDE.md names: a constant in TS and again in CSS, where the inline copy
+   silently wins and the stylesheet is free to say anything at all. Sizing
+   the icon in CSS is what makes this the only place it is written. */
+.wish-project {
+  --wish-caret: 14px;
+}
+
+.wish-project__toggle svg {
+  width: var(--wish-caret);
+  height: var(--wish-caret);
+  flex: none;
+}
+
 .wish-project__name {
   margin: 0;
   font-size: var(--font-size-sm);
@@ -394,7 +440,7 @@
   display: flex;
   gap: var(--spacing-md);
   flex-wrap: wrap;
-  margin-left: calc(14px + var(--spacing-xs));
+  margin-left: calc(var(--wish-caret) + var(--spacing-xs));
   font-size: var(--font-size-xs);
   color: var(--text-muted);
 }
@@ -403,7 +449,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--spacing-sm);
-  margin-left: calc(14px + var(--spacing-xs));
+  margin-left: calc(var(--wish-caret) + var(--spacing-xs));
 }
 
 /* ── drains ─────────────────────────────────────────────────────────────── */
@@ -474,6 +520,33 @@
   gap: var(--spacing-sm);
   align-items: center;
   padding: 2px 0;
+}
+
+/* Unfinished business, on the history row that outlives the dialog. Warning
+   tone, not negative: money left in a dropped wish's envelope is not an
+   error, it is a decision nobody has made yet. */
+.guide-wishlist__unsettled {
+  color: var(--color-warning);
+  font-weight: 600;
+  margin-right: auto;
+}
+
+.wish-settle {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+.wish-settle__lede {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+.wish-settle__note {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  line-height: 1.5;
 }
 
 .wish-form {
@@ -551,6 +624,24 @@
   font-size: var(--font-size-sm);
   color: var(--text-primary);
   line-height: 1.5;
+}
+
+/* Five 11px link buttons in a wrapping row is a thumb problem, and they sit
+   too close to grow with `.tap-expand` (the hit areas would overlap). Giving
+   the row itself height and air is what a finger can use.
+
+   `(hover: none)` is this repo's one touch test — breakpoints.test.ts holds
+   every stylesheet to it, and caught this rule written with
+   `(pointer: coarse)`. */
+@media (hover: none) {
+  .wish__actions {
+    gap: var(--spacing-lg);
+    row-gap: var(--spacing-sm);
+  }
+
+  .wish__actions > button {
+    min-height: var(--tap-min);
+  }
 }
 
 @media (max-width: 768px) {

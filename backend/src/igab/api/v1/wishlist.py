@@ -1,9 +1,10 @@
 """Wishlist endpoints — thin: parse, authorise, delegate, return."""
 
 import uuid
+from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from igab.api.route import CommitRoute
 from igab.api.v1.schemas.wishlist import (
@@ -12,6 +13,7 @@ from igab.api.v1.schemas.wishlist import (
     ProjectOut,
     ProjectReorder,
     ProjectUpdate,
+    SettleRequest,
     WishCreate,
     WishlistResponse,
     WishlistSettingsOut,
@@ -37,9 +39,15 @@ def _http(e: Exception) -> HTTPException:
 
 @router.get("/{budget_id}/wishlist", response_model=WishlistResponse)
 async def get_wishlist(
-    budget_id: BudgetAccess, current_user: CurrentUser, service: WishlistDep
+    budget_id: BudgetAccess,
+    current_user: CurrentUser,
+    service: WishlistDep,
+    #: The browser's own date. Cooling-off, review-due and every reach date
+    #: are answers about a particular day; without this they were the
+    #: server's day, which is already tomorrow every evening west of UTC.
+    today: date | None = Query(None),
 ) -> WishlistResponse:
-    return WishlistResponse.model_validate(await service.overview(budget_id))
+    return WishlistResponse.model_validate(await service.overview(budget_id, today))
 
 
 @router.put("/{budget_id}/wishlist/settings", response_model=WishlistSettingsOut)
@@ -152,19 +160,53 @@ async def update_wish(
 
 @router.delete("/{budget_id}/wishlist/{item_id}", response_model=DeleteWishResponse)
 async def delete_wish(
-    budget_id: BudgetAccess, item_id: uuid.UUID, current_user: CurrentUser, service: WishlistDep
+    budget_id: BudgetAccess,
+    item_id: uuid.UUID,
+    current_user: CurrentUser,
+    service: WishlistDep,
+    #: Which month's balance the envelope figure quotes.
+    today: date | None = Query(None),
 ) -> DeleteWishResponse:
     try:
-        return DeleteWishResponse.model_validate(await service.delete(budget_id, item_id))
+        return DeleteWishResponse.model_validate(await service.delete(budget_id, item_id, today))
+    except (InvariantViolation, NotFoundError) as e:
+        raise _http(e) from e
+
+
+@router.post("/{budget_id}/wishlist/{item_id}/settle", response_model=WishOut)
+async def settle_wish(
+    budget_id: BudgetAccess,
+    item_id: uuid.UUID,
+    current_user: CurrentUser,
+    service: WishlistDep,
+    payload: SettleRequest,
+) -> WishOut:
+    """Move what an ended wish's envelope holds, drop its goal, archive it."""
+    try:
+        return WishOut.model_validate(
+            await service.settle(
+                budget_id,
+                item_id,
+                destination_category_id=payload.destination_category_id,
+                keep_envelope=payload.keep_envelope,
+                today=payload.client_today,
+            )
+        )
     except (InvariantViolation, NotFoundError) as e:
         raise _http(e) from e
 
 
 @router.post("/{budget_id}/wishlist/{item_id}/affirm", status_code=status.HTTP_204_NO_CONTENT)
 async def affirm_wish(
-    budget_id: BudgetAccess, item_id: uuid.UUID, current_user: CurrentUser, service: WishlistDep
+    budget_id: BudgetAccess,
+    item_id: uuid.UUID,
+    current_user: CurrentUser,
+    service: WishlistDep,
+    #: The day they said "still want it", theirs not the server's — the
+    #: review cadence counts from it to another local date.
+    today: date | None = Query(None),
 ) -> None:
     try:
-        await service.affirm(budget_id, item_id)
+        await service.affirm(budget_id, item_id, today)
     except (InvariantViolation, NotFoundError) as e:
         raise _http(e) from e

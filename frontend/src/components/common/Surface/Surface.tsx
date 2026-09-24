@@ -16,6 +16,16 @@ export interface SurfaceProps extends Omit<HTMLAttributes<HTMLElement>, 'title'>
   variant?: SurfaceVariant
   /** Chrome that pins inside its scroll container; gains a shadow once pinned. */
   sticky?: boolean
+  /**
+   * Pin the HEADER ROW instead of the whole surface, so the section's own
+   * body scrolls under its title and the title releases when the section
+   * ends. A folded section's control stays reachable while you are inside
+   * it, without following you into the next one.
+   *
+   * Offset with `--surface-sticky-top` where something else is already
+   * pinned above (the budget grid's filter bar); it defaults to 0.
+   */
+  stickyHeader?: boolean
   /** Dashed outline for a secondary affordance ("Try a sample budget"). */
   dashed?: boolean
   /** Renders a header row; `title` uses the shared section-label typography. */
@@ -38,6 +48,7 @@ export function Surface({
   as = 'div',
   variant = 'raised',
   sticky = false,
+  stickyHeader = false,
   dashed = false,
   title,
   actions,
@@ -48,6 +59,10 @@ export function Surface({
   ...rest
 }: SurfaceProps) {
   const { ref, stuck } = useStuck<HTMLDivElement>(sticky)
+  // The same sentinel trick, on the header rather than the surface — so a
+  // pinned header says "content is passing underneath" the one way this app
+  // says it.
+  const { ref: headerRef, stuck: headerStuck } = useStuck<HTMLDivElement>(stickyHeader)
   // Every element in SurfaceElement takes the same HTMLAttributes; typing the
   // tag as 'div' keeps the ref and spread props on one element type.
   const Tag = as as 'div'
@@ -66,7 +81,17 @@ export function Surface({
   return (
     <Tag ref={ref} className={classes} {...rest}>
       {hasHeader && (
-        <div className={['surface__header', headerClassName ?? ''].filter(Boolean).join(' ')}>
+        <div
+          ref={headerRef}
+          className={[
+            'surface__header',
+            stickyHeader ? 'surface__header--sticky' : '',
+            stickyHeader && headerStuck ? 'surface__header--stuck' : '',
+            headerClassName ?? '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+        >
           {header ?? <span className="section-label surface__title">{title}</span>}
           {actions != null && <div className="surface__actions">{actions}</div>}
         </div>
