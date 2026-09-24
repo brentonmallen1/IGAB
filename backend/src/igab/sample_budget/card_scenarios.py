@@ -412,11 +412,11 @@ def to_funding_inputs(scenario: CardScenario, today: date) -> FundingInputs:
             (e.signed() for e in scenario.events if e.month(today) < boundary), ZERO
         )
         opening_credit = max(ZERO, pre_anchor)
-        # The two reserve legs the domain walk never sees are truncated at B,
-        # exactly as `BudgetService.card_walk` truncates its repository sums —
-        # the seed at B−1 already accounts for everything earlier. The
-        # BALANCE keeps every event: register full, walk truncated.
-        payments = {m: v for m, v in payments.items() if m >= boundary}
+        # Unclaimed rows are not a reserve leg, so the walk never sees them:
+        # truncated at B here, exactly as `BudgetService.card_walk` truncates
+        # its repository sum. Payments go into the walk untruncated — it
+        # drops months before B itself. The BALANCE keeps every event:
+        # register full, walk truncated.
         unclaimed = {m: v for m, v in unclaimed.items() if m >= boundary}
     return FundingInputs(
         assignments=assignments,
@@ -455,13 +455,9 @@ def walk(scenario: CardScenario, today: date, through: date | None = None) -> Ex
         inputs.outflows,
         inputs.card_categories,
         openings=inputs.openings,
+        payments_by_card={scenario.card: inputs.payments},
     )
-    opening_leg = (
-        {inputs.openings.opening_month: inputs.openings.reserve_by_card[scenario.card]}
-        if inputs.openings is not None
-        else None
-    )
-    reserve = card_reserve(funding, scenario.card, inputs.payments, opening=opening_leg)
+    reserve = card_reserve(funding, scenario.card)
     set_aside = reserve.set_aside(month)
     position = card_position(set_aside, balance)
     # The month ledger, summed straight off the events — deliberately a
@@ -535,13 +531,9 @@ def state(scenario: CardScenario, today: date, through: date | None = None) -> S
         inputs.outflows,
         inputs.card_categories,
         openings=inputs.openings,
+        payments_by_card={scenario.card: inputs.payments},
     )
-    opening_leg = (
-        {inputs.openings.opening_month: inputs.openings.reserve_by_card[scenario.card]}
-        if inputs.openings is not None
-        else None
-    )
-    reserve = card_reserve(funding, scenario.card, inputs.payments, opening=opening_leg)
+    reserve = card_reserve(funding, scenario.card)
     position = card_position(reserve.set_aside(month), balance)
     ledgers = receivable_ledgers(
         {category: list(series.values()) for category, series in inputs.assignments.items()},

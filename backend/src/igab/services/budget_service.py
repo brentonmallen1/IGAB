@@ -25,6 +25,7 @@ from igab.domain.carryover import (
     available_through,
     back_derived_balances,
     monthly_end_balances,
+    next_carryover,
     sum_through,
 )
 
@@ -471,7 +472,6 @@ class CardWalk:
     card_accounts: list = field(default_factory=list)
     linked_by_account: dict[uuid.UUID, Category] = field(default_factory=dict)
     funding: CardFunding[uuid.UUID, uuid.UUID] = field(default_factory=CardFunding)
-    payments: dict[uuid.UUID, dict[date, Decimal]] = field(default_factory=dict)
     unclaimed: dict[uuid.UUID, dict[date, Decimal]] = field(default_factory=dict)
     #: {category: {card: {month: SIGNED net}}} — the walk's own input, kept.
     credit_outflows: dict[uuid.UUID, dict[uuid.UUID, dict[date, Decimal]]] = field(
@@ -509,17 +509,6 @@ class _Unset:
 
 
 _UNSET = _Unset()
-
-
-def _opening_leg(anchor: BudgetAnchor | None, account_id: uuid.UUID) -> dict[date, Decimal] | None:
-    """One card's `CardReserve.opening` leg — `{B−1: CCP Available}` on an
-    anchored budget, None (an empty leg) everywhere else. The one spelling;
-    the summary, `card_reserves` and the timeline all read it."""
-    if anchor is None:
-        return None
-    return {
-        anchor.openings.opening_month: anchor.openings.reserve_by_card.get(account_id, Decimal("0"))
-    }
 
 
 def _card_envelope_balance(
@@ -795,12 +784,7 @@ class BudgetService:
         by_id = {c.id: c for c in categories}
         walk = await self.card_walk(budget_id, through, categories=categories)
         reserves = {
-            linked.id: card_reserve(
-                walk.funding,
-                account.id,
-                walk.payments.get(account.id, {}),
-                opening=_opening_leg(walk.anchor, account.id),
-            )
+            linked.id: card_reserve(walk.funding, account.id)
             for account in walk.card_accounts
             if (linked := walk.linked_by_account.get(account.id)) is not None
             and linked.id in wanted
@@ -930,28 +914,28 @@ class BudgetService:
             for account in card_accounts
             if (linked := linked_by_account.get(account.id)) is not None
         }
+        # Payments go INTO the walk: it owns every leg of a reserve, and
+        # truncates them at an import anchor itself.
+        payments = await self.transaction_repo.sum_card_payments_by_month(budget_id, month_end_date)
         funding = card_funding(
             assignments_by_cat,
             spending_activity,
             credit_outflows,
             card_categories,
             openings=anchor.openings if anchor is not None else None,
+            payments_by_card=payments,
         )
-        payments = await self.transaction_repo.sum_card_payments_by_month(budget_id, month_end_date)
         unclaimed = await self.transaction_repo.sum_unclaimed_card_rows(budget_id, month_end_date)
         if anchor is not None:
-            # The two reserve legs the domain walk never sees are repository
-            # sums, so the anchor's truncation is applied here — the seed at
-            # B−1 already accounts for everything earlier. Correctness lives
-            # at this seam; bounding the queries themselves would be an
-            # optimization, not a second rule.
-            payments = _from_month(payments, anchor.month)
+            # Unclaimed card rows are not a reserve leg — they feed the
+            # identity's allowance only — so the walk never sees them, and
+            # the anchor's truncation is applied to them here. The seed at
+            # B−1 already accounts for everything earlier.
             unclaimed = _from_month(unclaimed, anchor.month)
         return CardWalk(
             card_accounts=card_accounts,
             linked_by_account=linked_by_account,
             funding=funding,
-            payments=payments,
             unclaimed=unclaimed,
             credit_outflows=credit_outflows,
             anchor=anchor,
@@ -974,12 +958,7 @@ class BudgetService:
         return {
             a.id: (
                 a.name,
-                card_reserve(
-                    walk.funding,
-                    a.id,
-                    walk.payments.get(a.id, {}),
-                    opening=_opening_leg(walk.anchor, a.id),
-                ),
+                card_reserve(walk.funding, a.id),
             )
             for a in walk.card_accounts
         }
@@ -1008,12 +987,7 @@ class BudgetService:
         balances = await self.account_repo.card_balances_by_month(
             budget_id, last_of_month(month_start)
         )
-        reserve = card_reserve(
-            walk.funding,
-            account_id,
-            walk.payments.get(account_id, {}),
-            opening=_opening_leg(walk.anchor, account_id),
-        )
+        reserve = card_reserve(walk.funding, account_id)
         timeline = build_timeline(
             reserve,
             balances.get(account_id, {}),
@@ -1101,7 +1075,7 @@ class BudgetService:
         paid_ahead_on_cards = zero
         walk = await self.card_walk(budget_id, month_start, categories=categories)
         card_accounts, linked_by_account = walk.card_accounts, walk.linked_by_account
-        funding, payments, unclaimed = walk.funding, walk.payments, walk.unclaimed
+        funding, unclaimed = walk.funding, walk.unclaimed
         if card_accounts:
             # Named from `categories` above — the full list, archived and
             # hidden included — because a ride from a hidden envelope is
@@ -1163,12 +1137,7 @@ class BudgetService:
                 linked = linked_by_account.get(account.id)
                 # One assembler for all six legs. Composing a reserve at the
                 # call site is what let the assignment leg skip the walk.
-                reserve = card_reserve(
-                    funding,
-                    account.id,
-                    payments.get(account.id, {}),
-                    opening=_opening_leg(walk.anchor, account.id),
-                )
+                reserve = card_reserve(funding, account.id)
                 set_aside = reserve.set_aside(month_start)
                 card_assignments = reserve.assignments
                 opening_total = sum_through(reserve.opening, month_start)
@@ -1457,7 +1426,7 @@ class BudgetService:
             else:
                 # No data in the viewed month: available is the floored
                 # carryover — overspending was already absorbed by TBA.
-                assigned, activity, available = zero, zero, max(zero, row.available)
+                assigned, activity, available = zero, zero, next_carryover(row.available)
             out[cat.id] = CategoryBalance(
                 category_id=cat.id,
                 month=month_start,

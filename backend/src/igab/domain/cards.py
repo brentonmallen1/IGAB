@@ -310,10 +310,10 @@ class CardFunding[C, K]:
     tests — which is exactly how the old `truncated` shipped with no coverage
     at all.
 
-    The five reserve legs (`assignments`, `reservations`, `released`,
-    `residual`, and the payments the repository supplies) are kept apart
-    rather than pre-summed. A set-aside used to be assembled at the call site
-    from a net figure plus payments plus assignments, and the assignment leg
+    The reserve legs (`opening`, `assignments`, `reservations`, `released`,
+    `residual`, `payments`) are kept apart rather than pre-summed. A set-aside
+    used to be assembled at the call site from a net figure plus payments plus
+    assignments, and the assignment leg
     was the one that never entered the walk. `CardReserve` is now the only way
     to put them back together.
     """
@@ -392,6 +392,16 @@ class CardFunding[C, K]:
     #: months by anyone — carried per month so a row can say why its activity
     #: differs from the register's.
     repaid_by_category: dict[C, dict[date, Decimal]] = field(default_factory=dict)
+    #: Transfers from the budget's cash that paid each card, per month — the
+    #: repository sum, handed to the walk so the walk owns every leg of a
+    #: reserve and the anchor's truncation is applied once, here. On an
+    #: anchored budget months before B are dropped: the B−1 seed already
+    #: accounts for them.
+    payments_by_card: dict[K, dict[date, Decimal]] = field(default_factory=dict)
+    #: An import anchor's `{B−1: CCP Available}` per card — signed, since a
+    #: card can be imported with its envelope in the red. Empty everywhere
+    #: but anchored budgets.
+    opening_by_card: dict[K, dict[date, Decimal]] = field(default_factory=dict)
     #: The month-end series each card-touching category's `available` must be
     #: read out of (`carryover.available_at`) — the ordinary simulation with
     #: `repaid_by_category` folded into each month's activity. Categories with
@@ -428,14 +438,22 @@ def card_funding[C, K](
     credit_outflows: dict[C, dict[K, dict[date, Decimal]]],
     card_categories: dict[K, C],
     openings: AnchorOpenings[C, K] | None = None,
+    payments_by_card: dict[K, dict[date, Decimal]] | None = None,
 ) -> CardFunding[C, K]:
     """The whole budget's card funding, in one forward pass over the months.
 
     Takes each category's raw assignment and activity series,
     `credit_outflows[category][card][month]` (SIGNED net: a month whose card
     activity nets to an inflow is negative), and `card_categories[card]` — the
-    card's envelope linked to each card, whose assignments are the fifth leg
-    of that card's reserve.
+    card's envelope linked to each card, whose assignments are a leg of that
+    card's reserve. `payments_by_card` is the transfers from the budget's cash
+    that paid each card; the walk records them as the payments leg so that
+    every leg of a reserve comes out of this one pass, truncated at an import
+    anchor in one place.
+
+    **Every calendar month is walked**, from the first month with any data (B
+    on an anchored budget) to the last, gaps included — a month with only a
+    payment in it is still a month the card's reserve moves in.
 
     **The pass is month-major, and it has to be.** An assignment is made to a
     card's envelope, which has no spending category of its own: it
@@ -510,13 +528,37 @@ def card_funding[C, K](
             if uncovered > ZERO:
                 ridden[(cast(C, ANCHOR_OPENING), card)] = uncovered
                 _add(out.imported_riding_by_card, card, openings.opening_month, uncovered)
+    payments = payments_by_card or {}
 
-    all_months = sorted(
-        set(categories_in_month) | {m for series in card_assignments.values() for m in series}
+    if openings is not None:
+        # Every card the walk knows of gets its B−1 entry, a zero included:
+        # the entry is also the timeline's seam row, which an anchored card
+        # opens on whatever YNAB showed.
+        known_cards = (
+            set(card_categories)
+            | set(openings.reserve_by_card)
+            | set(payments)
+            | {card for by_card in credit_outflows.values() for card in by_card}
+        )
+        for card in known_cards:
+            out.opening_by_card[card] = {
+                openings.opening_month: openings.reserve_by_card.get(card, ZERO)
+            }
+
+    data_months = (
+        set(categories_in_month)
+        | {m for series in card_assignments.values() for m in series}
+        | {m for series in payments.values() for m in series}
     )
+    if openings is not None:
+        data_months = {m for m in data_months if m >= openings.month}
+    all_months: list[date] = []
+    if data_months:
+        month, last = min(data_months), max(data_months)
+        while month <= last:
+            all_months.append(month)
+            month = add_months(month, 1)
     for month in all_months:
-        if openings is not None and month < openings.month:
-            continue
         for category in sorted(categories_in_month.get(month, []), key=str):
             nets = {
                 card: series[month]
@@ -625,6 +667,12 @@ def card_funding[C, K](
                 else:
                     _add(out.riding_by_card, card, month, -take)
 
+        # 6. The payments. A payment does NOT retire riding debt: paying a
+        #    bill the budget never funded drives the reserve negative, and
+        #    what repairs that is covering the difference.
+        for card, series in payments.items():
+            _add(out.payments_by_card, card, month, series.get(month, ZERO))
+
     return out
 
 
@@ -675,28 +723,22 @@ class CardReserve:
         )
 
 
-def card_reserve[C, K](
-    funding: CardFunding[C, K],
-    card: K,
-    payments: dict[date, Decimal],
-    opening: dict[date, Decimal] | None = None,
-) -> CardReserve:
-    """One card's six legs, out of the walk plus the two it did not see.
+def card_reserve[C, K](funding: CardFunding[C, K], card: K) -> CardReserve:
+    """One card's legs, out of the walk.
 
-    `payments` stays outside `card_funding` because it is a repository query,
-    and because a payment legitimately does NOT retire riding debt: paying a
-    bill the budget never funded drives the reserve negative, and the
-    assignment that repairs it is what retires the ride. `opening` is an
-    import anchor's `{B−1: CCP Available}` — repository data too, and empty
-    everywhere but anchored budgets.
+    Every leg comes from `card_funding` — the payments and an import anchor's
+    opening included. They used to be passed in beside the walk, which meant
+    three callers each truncated the payments at an anchor and built the
+    opening leg by hand, and a reserve assembled from a walk and a separate
+    payments series could disagree about which months it covered.
     """
     return CardReserve(
-        opening=opening or {},
+        opening=funding.opening_by_card.get(card, {}),
         assignments=funding.assignments_by_card.get(card, {}),
         reservations=funding.reservations_by_card.get(card, {}),
         released=funding.released_by_card.get(card, {}),
         residual=funding.residual_by_card.get(card, {}),
-        payments=payments,
+        payments=funding.payments_by_card.get(card, {}),
     )
 
 

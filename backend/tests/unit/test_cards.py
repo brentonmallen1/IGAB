@@ -36,18 +36,24 @@ D = Decimal
 AMEX, VISA = "amex-partner", "visa"  # sorted: amex first — allocation order
 
 
-def funding(assignments, activity, outflows, category="groceries", card_categories=None):
+def funding(
+    assignments, activity, outflows, category="groceries", card_categories=None, payments=None
+):
     """`card_funding` for one category, spelled the way the scenarios read."""
     return card_funding(
-        {category: assignments}, {category: activity}, {category: outflows}, card_categories or {}
+        {category: assignments},
+        {category: activity},
+        {category: outflows},
+        card_categories or {},
+        payments_by_card=payments,
     )
 
 
-def reserve_of(cf, card, payments=None, assignments=None):
+def reserve_of(cf, card, assignments=None):
     """One card's reserve out of a walk, for tests that only care about the
     total. `assignments` is for the pre-`card_categories` scenarios, where the
     walk never saw them."""
-    reserve = card_reserve(cf, card, payments or {})
+    reserve = card_reserve(cf, card)
     if assignments:
         reserve = replace(reserve, assignments=assignments)
     return reserve
@@ -395,8 +401,13 @@ class TestTheReserveIsFiveLegs:
         assert reserve.set_aside(FEB) == D("0")
 
     def test_the_legs_come_out_of_the_walk_without_being_re_summed(self):
-        cf = funding({JAN: D("100")}, {JAN: D("-150")}, {VISA: {JAN: D("150")}})
-        reserve = card_reserve(cf, VISA, {FEB: D("40")})
+        cf = funding(
+            {JAN: D("100")},
+            {JAN: D("-150")},
+            {VISA: {JAN: D("150")}},
+            payments={VISA: {FEB: D("40")}},
+        )
+        reserve = card_reserve(cf, VISA)
         assert reserve.reservations == {JAN: D("100")}
         assert reserve.payments == {FEB: D("40")}
         assert reserve.set_aside(FEB) == D("60")
@@ -608,9 +619,10 @@ class TestReservationInvariant:
                 activity,
                 outflows,
                 card_categories,
+                payments_by_card=payments,
             )
             for card, balance in balances.items():
-                reserve = card_reserve(cf, card, payments.get(card, {}))
+                reserve = card_reserve(cf, card)
                 set_aside = reserve.set_aside(upto)
                 discrepancy = reserve_discrepancy(
                     set_aside,
@@ -827,7 +839,7 @@ class TestAnAssignmentRetiresRidingDebt:
         # A conversion, not a diversion: the whole assignment still reserves.
         # Reserving only the remainder would make the assignment a visible
         # no-op and stop Ready to Assign falling by money just committed.
-        assert card_reserve(cf, VISA, {}).set_aside(FEB) == D("100")
+        assert card_reserve(cf, VISA).set_aside(FEB) == D("100")
 
     def test_a_refund_after_a_covering_assignment_releases_instead_of_discharging(self):
         """The headline. With the ride retired, March's refund hands the money
@@ -841,7 +853,7 @@ class TestAnAssignmentRetiresRidingDebt:
         assert cf.repaid_by_category == {}, "the debt was already covered by cash"
         assert cf.residual_by_card == {VISA: {MAR: D("100")}}
         # Reserve back to zero, and the envelope is 100 up.
-        assert card_reserve(cf, VISA, {}).set_aside(MAR) == D("0")
+        assert card_reserve(cf, VISA).set_aside(MAR) == D("0")
         assert cf.end_balances["groceries"][MAR] == D("100")
 
     def test_a_refund_with_no_covering_assignment_still_discharges(self):
@@ -882,14 +894,14 @@ class TestAnAssignmentRetiresRidingDebt:
         )
         assert cf.repaid_by_category == {"groceries": {FEB: D("100")}}
         assert cf.covered_by_card == {}
-        assert card_reserve(cf, VISA, {}).set_aside(FEB) == D("100")
+        assert card_reserve(cf, VISA).set_aside(FEB) == D("100")
 
     def test_an_assignment_beyond_the_ride_covers_only_the_ride(self):
         cf = self.visa(
             {}, {FEB: D("200")}, activity={JAN: D("-50")}, outflows={VISA: {JAN: D("50")}}
         )
         assert cf.covered_by_card == {VISA: {FEB: D("50")}}
-        assert card_reserve(cf, VISA, {}).set_aside(FEB) == D("200")
+        assert card_reserve(cf, VISA).set_aside(FEB) == D("200")
 
     def test_an_assignment_only_retires_debt_on_its_own_card(self):
         """The per-card scoping the module docstring refuses to pool."""
@@ -913,7 +925,7 @@ class TestAnAssignmentRetiresRidingDebt:
         )
         assert cf.covered_by_card == {}
         assert cf.floored_by_category == {}
-        assert card_reserve(cf, VISA, {}).set_aside(FEB) == D("60")
+        assert card_reserve(cf, VISA).set_aside(FEB) == D("60")
 
     def test_a_partial_cover_retires_the_largest_ride_first(self):
         """`allocate_capped`, the same allocator that places a ride across
@@ -970,11 +982,11 @@ class TestTheClosedForm:
     converge on what the card owed.
     """
 
-    def check(self, cf, card, payments, spends, unclaimed=D("0")):
-        reserve = card_reserve(cf, card, payments)
+    def check(self, cf, card, spends, unclaimed=D("0")):
+        reserve = card_reserve(cf, card)
         upto = APR
         set_aside = reserve.set_aside(upto)
-        owed = spends - sum(payments.values(), D("0")) - unclaimed
+        owed = spends - sum(reserve.payments.values(), D("0")) - unclaimed
         assignments = sum_through(reserve.assignments, upto)
         covered = sum_through(cf.covered_by_card.get(card, {}), upto)
         riding = sum_through(cf.riding_by_card.get(card, {}), upto)
@@ -990,8 +1002,9 @@ class TestTheClosedForm:
             {"groceries": {JAN: D("-100"), MAR: D("-100")}},
             {"groceries": {VISA: {JAN: D("100"), MAR: D("100")}}},
             {VISA: "card-visa"},
+            payments_by_card={VISA: {FEB: D("100"), APR: D("100")}},
         )
-        self.check(cf, VISA, {FEB: D("100"), APR: D("100")}, spends=D("200"))
+        self.check(cf, VISA, spends=D("200"))
 
     def test_holds_when_an_assignment_covers_a_ride(self):
         cf = card_funding(
@@ -1000,7 +1013,7 @@ class TestTheClosedForm:
             {"groceries": {VISA: {JAN: D("100")}}},
             {VISA: "card-visa"},
         )
-        self.check(cf, VISA, {}, spends=D("100"))
+        self.check(cf, VISA, spends=D("100"))
 
     def test_holds_when_money_is_moved_back_out_of_the_envelope(self):
         cf = card_funding(
@@ -1009,7 +1022,7 @@ class TestTheClosedForm:
             {"groceries": {VISA: {JAN: D("100")}}},
             {VISA: "card-visa"},
         )
-        self.check(cf, VISA, {}, spends=D("100"))
+        self.check(cf, VISA, spends=D("100"))
 
 
 class TestT1NoLongerExcusesTheDriftItCaused:
@@ -1062,8 +1075,9 @@ class TestTheStatementCycleTrap:
             {"groceries": {m: -v for m, v in outflows.items()}},
             {"groceries": {VISA: outflows}},
             {},
+            payments_by_card={VISA: payments or {}},
         )
-        return cf, card_reserve(cf, VISA, payments or {})
+        return cf, card_reserve(cf, VISA)
 
     def test_a_late_month_charge_the_envelope_could_not_cover_rides(self):
         # 500 charged in January against 200 funded: 300 rides, 200 reserves.
@@ -1124,7 +1138,10 @@ class TestTheAnchoredWalk:
         cards = {VISA: "visa payment"}
         plain = card_funding(asg, act, out, cards)
         anchored = card_funding(asg, act, out, cards, openings=self._openings(month=JAN))
-        assert plain == anchored
+        # The one difference is the seam: an anchored card always carries its
+        # B−1 opening entry, zero included, because the timeline opens on it.
+        assert anchored.opening_by_card == {VISA: {date(2025, 12, 1): D("0")}}
+        assert plain == replace(anchored, opening_by_card={})
 
     def test_months_before_the_boundary_never_reserve(self):
         cf = card_funding(

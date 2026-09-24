@@ -65,13 +65,9 @@ def test_the_five_legs_reconstruct_the_reserve(scenario: CardScenario):
         inputs.outflows,
         inputs.card_categories,
         openings=inputs.openings,
+        payments_by_card={scenario.card: inputs.payments},
     )
-    opening = (
-        {inputs.openings.opening_month: inputs.openings.reserve_by_card[scenario.card]}
-        if inputs.openings is not None
-        else None
-    )
-    reserve = card_reserve(funding, scenario.card, inputs.payments, opening=opening)
+    reserve = card_reserve(funding, scenario.card)
     month = date(ANCHOR.year, ANCHOR.month, 1)
     legs = (
         sum_through(reserve.opening, month)
@@ -256,8 +252,9 @@ def test_imported_debt_is_not_a_month_that_ended_short():
             reserve_by_card={"card-a": Decimal("0")},
             uncovered_by_card={"card-a": Decimal("2000")},
         ),
+        payments_by_card={"card-a": {later: Decimal("300")}},
     )
-    reserve = card_reserve(funding, "card-a", payments={later: Decimal("300")})
+    reserve = card_reserve(funding, "card-a")
     set_aside = reserve.set_aside(later)
     assert set_aside == Decimal("-300")
 
@@ -309,11 +306,12 @@ def _two_card_shortfall(envelope_funding: str, assigned_to_a: str):
         {"Shared": {month: Decimal("-360")}},
         {"Shared": {"card-a": {month: Decimal("300")}, "card-b": {month: Decimal("60")}}},
         {"card-a": "cat-a", "card-b": "cat-b"},
+        payments_by_card={"card-a": {month: Decimal("300")}, "card-b": {month: Decimal("60")}},
     )
     return (
         funding,
-        card_reserve(funding, "card-a", {month: Decimal("300")}).set_aside(later),
-        card_reserve(funding, "card-b", {month: Decimal("60")}).set_aside(later),
+        card_reserve(funding, "card-a").set_aside(later),
+        card_reserve(funding, "card-b").set_aside(later),
     )
 
 

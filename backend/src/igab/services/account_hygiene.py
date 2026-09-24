@@ -44,7 +44,6 @@ from igab.repositories.txn_filters import (
     POSTED,
     UNPAIRED_TRANSFER_LEG,
 )
-from igab.services.budget_service import _opening_leg
 from igab.utils.clock import today_utc
 
 #: Months without a posted transaction before an open account reads as dormant.
@@ -619,12 +618,7 @@ class AccountHygieneService:
         for card in summary.cards:
             if card.set_aside_state not in self._REPORTABLE_STATES:
                 continue
-            reserve = card_reserve(
-                walk.funding,
-                card.account_id,
-                walk.payments.get(card.account_id, {}),
-                opening=_opening_leg(walk.anchor, card.account_id),
-            )
+            reserve = card_reserve(walk.funding, card.account_id)
             breach = first_breach(
                 card_timeline(
                     reserve,

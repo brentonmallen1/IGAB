@@ -146,13 +146,9 @@ def test_the_timeline_restates_set_aside_at_every_month(scenario):
         inputs.outflows,
         inputs.card_categories,
         openings=inputs.openings,
+        payments_by_card={scenario.card: inputs.payments},
     )
-    opening = (
-        {inputs.openings.opening_month: inputs.openings.reserve_by_card[scenario.card]}
-        if inputs.openings is not None
-        else None
-    )
-    reserve = card_reserve(funding, scenario.card, inputs.payments, opening=opening)
+    reserve = card_reserve(funding, scenario.card)
     timeline = card_timeline(
         reserve,
         {},
@@ -176,9 +172,13 @@ def test_paid_ahead_then_caught_up_dips_exactly_where_the_scenario_says():
     scenario = next(s for s in ALL_SCENARIOS if s.slug == "paid-ahead-then-caught-up")
     inputs = to_funding_inputs(scenario, anchor)
     funding = card_funding(
-        inputs.assignments, inputs.activity, inputs.outflows, inputs.card_categories
+        inputs.assignments,
+        inputs.activity,
+        inputs.outflows,
+        inputs.card_categories,
+        payments_by_card={scenario.card: inputs.payments},
     )
-    reserve = card_reserve(funding, scenario.card, inputs.payments)
+    reserve = card_reserve(funding, scenario.card)
     timeline = card_timeline(reserve, {}, funding.riding_by_card.get(scenario.card, {}))
     assert [cm.set_aside for cm in timeline] == [D("-150"), D("50"), D("0")]
     breach = first_breach(timeline)

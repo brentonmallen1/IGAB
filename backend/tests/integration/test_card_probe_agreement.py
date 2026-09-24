@@ -69,14 +69,15 @@ def _both(scenario: CardScenario):
         inputs.outflows,
         inputs.card_categories,
         openings=inputs.openings,
+        payments_by_card={scenario.card: inputs.payments},
     )
     return inputs, ours, theirs
 
 
-def _opening_leg(inputs, card):
-    if inputs.openings is None:
-        return None
-    return {inputs.openings.opening_month: inputs.openings.reserve_by_card[card]}
+def _walked_payments(theirs, card):
+    """The payments the domain walk kept — truncated at an import anchor
+    there, once — handed to the probe so both sides read the same leg."""
+    return theirs.payments_by_card.get(card, {})
 
 
 @pytest.mark.parametrize("scenario", EVERY, ids=IDS)
@@ -86,7 +87,7 @@ def test_every_leg_series_agrees(scenario: CardScenario):
     check and put the first breach in the wrong month."""
     inputs, ours, theirs = _both(scenario)
     card = scenario.card
-    reserve = card_reserve(theirs, card, inputs.payments, opening=_opening_leg(inputs, card))
+    reserve = card_reserve(theirs, card)
     assert ours.assignments_by_card.get(card, {}) == reserve.assignments
     assert ours.reservations_by_card.get(card, {}) == reserve.reservations
     assert ours.released_by_card.get(card, {}) == reserve.released
@@ -103,17 +104,15 @@ def test_the_timeline_lands_on_the_domain_set_aside(scenario: CardScenario):
     inputs, ours, theirs = _both(scenario)
     card = scenario.card
     legs = {
-        "opening": _opening_leg(inputs, card) or {},
+        "opening": theirs.opening_by_card.get(card, {}),
         "assigned": ours.assignments_by_card.get(card, {}),
         "reserved": ours.reservations_by_card.get(card, {}),
         "released": ours.released_by_card.get(card, {}),
         "residual": ours.residual_by_card.get(card, {}),
-        "payments": inputs.payments,
+        "payments": _walked_payments(theirs, card),
     }
     timeline = probe.card_timeline(legs, {}, ours.riding_by_card.get(card, {}))
-    want = card_reserve(
-        theirs, card, inputs.payments, opening=_opening_leg(inputs, card)
-    ).set_aside(MONTH)
+    want = card_reserve(theirs, card).set_aside(MONTH)
     got = timeline[-1].set_aside if timeline else Decimal("0")
     assert got == want, scenario.story
     if timeline:
@@ -123,9 +122,7 @@ def test_the_timeline_lands_on_the_domain_set_aside(scenario: CardScenario):
 @pytest.mark.parametrize("scenario", EVERY, ids=IDS)
 def test_the_position_agrees(scenario: CardScenario):
     inputs, _, theirs = _both(scenario)
-    set_aside = card_reserve(
-        theirs, scenario.card, inputs.payments, opening=_opening_leg(inputs, scenario.card)
-    ).set_aside(MONTH)
+    set_aside = card_reserve(theirs, scenario.card).set_aside(MONTH)
     ours = probe.card_position(set_aside, inputs.balance)
     want = domain_position(set_aside, inputs.balance)
     assert (ours.uncovered, ours.over_reserved, ours.short_reserved, ours.card_credit) == (
@@ -154,14 +151,14 @@ def test_a_negative_reserve_scenario_reports_a_breach():
     breach month, and the breach's dominant leg must be the residual that
     caused it — the whole point of the probe."""
     scenario = next(s for s in ALL_SCENARIOS if s.slug == "reimbursed")
-    inputs, ours, _ = _both(scenario)
+    inputs, ours, theirs = _both(scenario)
     card = scenario.card
     legs = {
         "assigned": ours.assignments_by_card.get(card, {}),
         "reserved": ours.reservations_by_card.get(card, {}),
         "released": ours.released_by_card.get(card, {}),
         "residual": ours.residual_by_card.get(card, {}),
-        "payments": inputs.payments,
+        "payments": _walked_payments(theirs, card),
     }
     timeline = probe.card_timeline(legs, {}, ours.riding_by_card.get(card, {}))
     breach = probe.first_breach(timeline)
@@ -189,12 +186,12 @@ def test_breach_and_worst_months_agree_with_domain_card_timeline(scenario: CardS
             "reserved": ours.reservations_by_card.get(card, {}),
             "released": ours.released_by_card.get(card, {}),
             "residual": ours.residual_by_card.get(card, {}),
-            "payments": inputs.payments,
+            "payments": _walked_payments(theirs, card),
         },
         {},
         ours.riding_by_card.get(card, {}),
     )
-    reserve = card_reserve(theirs, card, inputs.payments)
+    reserve = card_reserve(theirs, card)
     dom_timeline = domain_timeline(reserve, {}, theirs.riding_by_card.get(card, {}))
 
     ours_breach = probe.first_breach(probe_timeline)
