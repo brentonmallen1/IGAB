@@ -535,9 +535,9 @@ export const GLOSSARY: GlossaryEntry[] = [
     // learned that word should still find the term.
     aliases: ['ready to pay', 'card payment reserve', 'card reserve'],
     short: "Money committed to a credit card's bill — the card's own envelope.",
-    body: "Spend on a card from a funded envelope and the cash does not leave your bank: the card fronted it. That money is spoken for, so it moves out of the envelope and into the card's envelope, where it waits for the bill. Assigning to the card adds to it; paying the card is the only move that spends it. Spending an envelope could not cover adds nothing — that becomes the card's Uncovered instead.",
+    body: "Spend on a card from a funded envelope and the cash does not leave your bank: the card fronted it. That money is spoken for, so it moves out of the envelope and into the card's envelope, where it waits for the bill. Assigning to the card adds to it. Paying the card spends it; so does a refund the envelope had nothing reserved for, or moving money back out, either of which can take it below zero. Spending an envelope could not cover adds nothing — that becomes the card's Uncovered instead.",
     inIgab:
-      'The Set aside column of the Credit cards section on the budget page. It is a running total, not a target and not a measure of the card, so on a card you carry it sits far below the balance every month and that is the normal reading. You can take money back out — the card is then that much less covered.',
+      'The Set aside column of the Credit cards section on the budget page. It is a running total, not a target and not a measure of the card, so on a card you carry it sits far below the balance every month and that is the normal reading. You can take money back out, down to what it holds — the card is then that much less covered. Below zero there is no money, only a deficit, and the row says which of several things put it there.',
     related: ['card-envelope', 'uncovered', 'spare', 'card-payment', 'to-be-assigned'],
     guideLinks: [{ tab: 'cards' }],
   },
@@ -571,7 +571,7 @@ export const GLOSSARY: GlossaryEntry[] = [
     term: 'Uncovered',
     aliases: ['uncovered debt'],
     short: 'What a card is owed beyond the cash reserved to pay it.',
-    body: 'Uncovered debt is card balance with no reserve behind it: overspending that rode onto the card, an old carried balance, or a purchase someone still owes you for. It is information, not an alarm — nothing leaves your budget until you choose to assign money to the card, and assigning lowers Uncovered dollar for dollar.',
+    body: 'Uncovered debt is card balance with no reserve behind it: overspending that rode onto the card, an old carried balance, or a purchase someone still owes you for. It is information, not an alarm — while it sits there nothing leaves your budget. Paying it down from checking does, and Ready to Assign says so; assigning to the card lowers Uncovered dollar for dollar.',
     inIgab:
       "The last column of the Credit cards section; the collapsed header still shows the total. The number is a door — it opens the card's transactions.",
     related: ['set-aside', 'carried-balance', 'credit-overspending', 'refused-card-inflow'],

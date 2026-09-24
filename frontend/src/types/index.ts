@@ -310,6 +310,14 @@ export type SetAsideState =
   | 'settled_elsewhere'
   | 'ride_unfunded'
   | 'paid_ahead'
+  /** More than one cause below zero and none explains all of it. The row
+   *  names what is present and attributes nothing — the reserve identity is
+   *  bounds, not parts, so any split would be a guess. */
+  | 'mixed'
+  /** Money was moved out of the envelope past what it held — a release or a
+   *  negative assignment. No payment happened; the money is in Ready to
+   *  Assign. Assign to put it back. */
+  | 'moved_out'
 
 export interface CardStatus {
   account_id: string
@@ -358,6 +366,25 @@ export interface CardStatus {
   /** What is riding uncovered on this card, lifetime — distinct from
    *  `uncovered`, which is what the card OWES beyond its reserve. */
   riding: number
+  /** Uncovered debt the budget arrived with (an import's opening position),
+   *  less what assignments to the card have retired of it. Not `riding`: no
+   *  month of this budget ended short to put it there, so "fund that month's
+   *  envelope" cannot reach it — only assigning to the card does. */
+  imported_riding: number
+  /** What assignments to this card have retired of its ride, lifetime.
+   *  Served; never reconstruct it as `gross rides − riding`. */
+  covered: number
+  /** The part of `residual` that came back through a receivable ledger —
+   *  somebody settling up. Quote this for a settle-up, never lifetime
+   *  `residual`, which is every envelope's refunds for the card's whole life. */
+  residual_from_ledgers: number
+  /** This card's share of `paid_ahead_on_cards`: paid past its reserve with
+   *  nothing to mirror it. Ready to Assign already reflects it. */
+  paid_ahead_unmirrored: number
+  /** Does funding the month an envelope ended short retire THIS card's ride?
+   *  False when the shortfall is shared with another card, which funds
+   *  first. Key every "fund the month and it disappears" sentence on this. */
+  ride_reaches_this_card: boolean
   /** The rest of `card_position` (domain/cards.py), beside `uncovered`.
    *
    *  **A zero `reserve_discrepancy` does not mean this card looks sensible.**
@@ -451,6 +478,10 @@ export interface BudgetMonth {
    *  needs no action at all. See `domain/cards.py`. */
   total_overspent_cash: number
   total_overspent_credit: number
+  /** Ready to Assign was reduced by this: money paid toward cards past what
+   *  their envelopes held, with nothing on the page to mirror it. Served
+   *  beside `to_be_assigned` so the hero can say where the money went. */
+  paid_ahead_on_cards: number
   /** How many categories carry a cash shortfall — what Cover Overspent lists.
    *  At most `overspent_count`. */
   overspent_count_cash: number

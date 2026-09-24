@@ -510,10 +510,35 @@ class CardStatusOut(ApiModel):
     #: budgets; with it the legs still sum to `set_aside`, and the other five
     #: stay post-anchor sums.
     opening: Decimal
-    #: What is riding uncovered on this card, lifetime. Distinct from
-    #: `uncovered`, which is what the card OWES beyond its reserve: a card can
-    #: carry a ride while owing less than it has reserved.
+    #: What months ending short put on this card and is still uncovered,
+    #: lifetime. Distinct from `uncovered`, which is what the card OWES beyond
+    #: its reserve: a card can carry a ride while owing less than it has
+    #: reserved. Every sentence that says "rode onto this card when a month
+    #: ended short" quotes THIS figure and nothing else.
     riding: Decimal
+    #: Uncovered debt the budget arrived with — an import's opening position,
+    #: less what assignments to the card have retired of it. Not `riding`: no
+    #: month of this budget put it there, so funding a month's envelope
+    #: cannot reach it. Required, not optional: the row that quoted the total
+    #: as "spending that rode when a month ended short" is the bug this ends.
+    imported_riding: Decimal
+    #: What assignments to this card have retired of its ride, lifetime.
+    #: Served so the breakdown reads it rather than reconstructing it from
+    #: `gross rides − riding`, which was wrong on every imported budget.
+    covered: Decimal
+    #: The part of `residual` that came back through a receivable ledger —
+    #: somebody settling up. The settle-up sentence quotes THIS, never the
+    #: lifetime `residual` across every envelope. Required: a row that
+    #: forgot it would quote the wrong figure, not a blank.
+    residual_from_ledgers: Decimal
+    #: This card's share of `paid_ahead_on_cards`: what was paid past its
+    #: reserve with nothing to mirror it. The row's action says Ready to
+    #: Assign already reflects it, and quotes this.
+    paid_ahead_unmirrored: Decimal
+    #: Does funding the month an envelope ended short retire THIS card's ride?
+    #: False when the shortfall is shared with another card, which funds first.
+    #: Served so no surface promises the remedy where it does nothing.
+    ride_reaches_this_card: bool
     #: The rest of `card_position` beside `uncovered`. A zero
     #: `reserve_discrepancy` means the identity's BOUNDS hold, not that the
     #: reserve is anywhere near the balance — they are allowances, and they
@@ -590,6 +615,11 @@ class CardStatusOut(ApiModel):
             payments=card.payments,
             opening=card.opening,
             riding=card.riding,
+            imported_riding=card.imported_riding,
+            covered=card.covered,
+            residual_from_ledgers=card.residual_from_ledgers,
+            paid_ahead_unmirrored=card.paid_ahead_unmirrored,
+            ride_reaches_this_card=card.ride_reaches_this_card,
             over_reserved=card.over_reserved,
             short_reserved=card.short_reserved,
             card_credit=card.card_credit,
@@ -696,6 +726,14 @@ class BudgetMonthResponse(ApiModel):
     #: path that forgets report half the story as the whole one.
     total_overspent_cash: Decimal
     total_overspent_credit: Decimal
+    #: Ready to Assign was reduced by this: money paid toward cards past what
+    #: their envelopes held, with nothing on the page to mirror it. A card's
+    #: Set aside enters the envelope total signed, so without this the figure
+    #: read as if the payments had never happened. Served beside
+    #: `to_be_assigned` so the hero can say where the money went in one line.
+    #: Required: a path that forgets would show a number that moved with no
+    #: explanation, which is the failure this exists to end.
+    paid_ahead_on_cards: Decimal
     #: How many of `overspent_count` carry a cash shortfall. A breakdown, not
     #: a workload: Cover Overspending lists every red envelope.
     overspent_count_cash: int

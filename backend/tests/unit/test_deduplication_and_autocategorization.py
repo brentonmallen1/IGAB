@@ -316,6 +316,9 @@ class TestHistoricalCategoryInference:
         mock_payee = MagicMock()
         mock_payee.id = payee_id
         mock_payee.default_category_id = default_cat_id
+        # A plain payee: a MagicMock attribute reads as truthy, which would
+        # make the category rule take this for a transfer leg.
+        mock_payee.transfer_account_id = None
 
         mock_txn = MagicMock()
 
@@ -358,6 +361,9 @@ class TestHistoricalCategoryInference:
         mock_payee = MagicMock()
         mock_payee.id = payee_id
         mock_payee.default_category_id = default_cat_id
+        # A plain payee: a MagicMock attribute reads as truthy, which would
+        # make the category rule take this for a transfer leg.
+        mock_payee.transfer_account_id = None
 
         mock_txn = MagicMock()
 
@@ -403,6 +409,7 @@ class TestHistoricalCategoryInference:
         mock_payee = MagicMock()
         mock_payee.id = payee_id
         mock_payee.default_category_id = None
+        mock_payee.transfer_account_id = None
 
         mock_txn = MagicMock()
 
@@ -440,6 +447,9 @@ class TestHistoricalCategoryInference:
         mock_payee = MagicMock()
         mock_payee.id = payee_id
         mock_payee.default_category_id = default_cat_id
+        # A plain payee: a MagicMock attribute reads as truthy, which would
+        # make the category rule take this for a transfer leg.
+        mock_payee.transfer_account_id = None
 
         mock_txn = MagicMock()
 

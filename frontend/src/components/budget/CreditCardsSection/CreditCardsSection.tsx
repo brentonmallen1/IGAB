@@ -188,13 +188,29 @@ function ReserveLegs({
           payments that still need linking.
         </p>
       )}
-      {card.riding !== 0 && (
+      {/* Two kinds of riding debt, told apart because their remedies differ.
+          `riding` is the budget's own — a month ended short and this rode —
+          and funding that month retires it. `imported_riding` arrived with
+          the budget; no month of ours put it there, so only assigning to the
+          card reaches it. They used to share one figure and one sentence, so
+          an imported budget read "$2,000 of spending rode onto this card when
+          a month ended short" about debt that predates the budget. */}
+      {(card.riding !== 0 || card.imported_riding !== 0) && (
         <div className="credit-cards__legs-note credit-cards__riding">
           <p className="section-label credit-cards__riding-title">Riding debt</p>
-          <p>
-            {formatMoney(card.riding)} of spending rode onto this card when a month ended short. It
-            sits outside the total above.
-          </p>
+          {card.riding !== 0 && (
+            <p>
+              {formatMoney(card.riding)} of spending rode onto this card when a month ended short.
+              It sits outside the total above.
+            </p>
+          )}
+          {card.imported_riding !== 0 && (
+            <p>
+              {formatMoney(card.imported_riding)} came in with the budget as debt nothing was set
+              aside for. No month here put it there, so funding an envelope cannot reach it —
+              assigning to the card is what retires it.
+            </p>
+          )}
           {rides.shown.length > 0 && (
             <ul className="credit-cards__ride-months">
               {rides.shown.map((m) => (
@@ -226,11 +242,24 @@ function ReserveLegs({
             unmentioned: the walk is recomputed from scratch every request, so
             raising a past month's assignment retires that month's ride
             retroactively. Funding the FOLLOWING month does not reach back. */}
-          <p>
-            Fund an envelope in the month it ended short and that ride disappears — a backdated
-            assignment is re-walked and retires it. If that month has no room to spare, assign to
-            the card instead to cover it now.
-          </p>
+          {/* The remedy, keyed on whether it works HERE. A shortfall shared
+              across cards is handed out in a fixed order, so funding the
+              envelope shrinks the first card's ride and this one may not move
+              (F8, measured). The server says which; this only reads it. */}
+          {card.riding !== 0 && card.ride_reaches_this_card && (
+            <p>
+              Fund an envelope in the month it ended short and that ride disappears — a backdated
+              assignment is re-walked and retires it. If that month has no room to spare, assign to
+              the card instead to cover it now.
+            </p>
+          )}
+          {card.riding !== 0 && !card.ride_reaches_this_card && (
+            <p>
+              That month&rsquo;s shortfall also rode onto another card, and money put into the
+              envelope reaches that card first. Assigning to this card is the move that is certain
+              to cover it.
+            </p>
+          )}
         </div>
       )}
       {/* The legs above are lifetime totals; every question a negative one
@@ -475,7 +504,7 @@ function ReleaseButton({
   const [open, setOpen] = useState(false)
   const anchorRef = useRef<HTMLButtonElement>(null)
 
-  const { prefill, lines } = releaseAnchors(card, formatMoney)
+  const { prefill, ceiling, lines } = releaseAnchors(card, formatMoney)
   const footnote = (
     <>
       {lines.map((line) => (
@@ -505,6 +534,7 @@ function ReleaseButton({
           available={card.set_aside}
           prefill={prefill}
           footnote={footnote}
+          ceiling={ceiling}
           label={label}
           anchorRef={anchorRef}
           onClose={() => setOpen(false)}
@@ -524,6 +554,7 @@ function ReleaseButton({
               available={card.set_aside}
               prefill={prefill}
               footnote={footnote}
+              ceiling={ceiling}
               onClose={() => setOpen(false)}
             />
           </div>
@@ -985,13 +1016,15 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
               </dd>
               <dd>
                 <em>Below zero</em> is a real position and the column shows it as $0.00, with the
-                distance named beside it and a sentence under the row saying what happened. There
-                are four different reasons and they want opposite responses: somebody settled up for
-                spending you never budgeted for (nothing to do); money came back onto the card
-                beyond anything an envelope charged here (an envelope is holding money that only
-                exists as a credit on this card); a month ended short and your payment ran past what
-                was set aside (back-fund that month); or you simply paid more than any envelope had
-                set aside (assign that much to the card). The row says which.
+                distance named beside it and a sentence under the row saying what happened. The
+                reasons want opposite responses: somebody settled up for spending you never budgeted
+                for (nothing to do); money came back onto the card beyond anything an envelope
+                charged here (an envelope is holding money that only exists as a credit on this
+                card); a month ended short and the whole shortfall rode onto this card (back-fund
+                that month) or onto several (assign to this card); or you simply paid more than any
+                envelope had set aside (assign that much to the card). When more than one of these
+                is true at once the row names each and does not guess how much of the figure is
+                which — the breakdown has the legs.
               </dd>
               <dd>
                 <em>Above what the card owes</em> means money is set aside that no debt needed.
@@ -1026,8 +1059,10 @@ export function CreditCardsSection({ budgetId, month }: { budgetId: string; mont
             <p>
               One thing does change at a month end: an envelope that finishes the month short sends
               that shortfall onto the card as Uncovered, and funding it the following month does not
-              reach back. Funding it <em>in that month</em> does — a backdated assignment is
-              re-walked and the ride disappears. The Set aside breakdown names the months.
+              reach back. Funding it <em>in that month</em> does, where the whole shortfall rode
+              onto one card — a backdated assignment is re-walked and the ride disappears. Where a
+              month ended short across two cards, the envelope funds one of them first; the
+              breakdown says which remedy reaches the card you are reading.
             </p>
             <p>
               <strong>An expense you cannot cover</strong> still belongs in its real category. Let

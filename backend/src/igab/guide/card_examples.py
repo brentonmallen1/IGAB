@@ -70,6 +70,12 @@ SCENARIO_INTENTS: dict[str, tuple[str, ...]] = {
     "settled-by-others": ("in-full", "paying-down", "carrying"),
     "ride-unfunded": ("in-full", "paying-down", "carrying"),
     "paid-ahead": ("paying-down", "carrying"),
+    # A settle-up beside a paydown: it takes carrying a balance for the
+    # paydown half to exist, and a shared tab for the other.
+    "mixed": ("paying-down", "carrying"),
+    # Anyone can move money out of an envelope; the trap is moving out more
+    # than it holds, and that is possible whatever way the card is run.
+    "moved-out": ("in-full", "paying-down", "carrying"),
 }
 
 #: What each event did, for a reader. `{amount}` and `{category}` are filled.
@@ -82,6 +88,7 @@ _EVENT_PHRASES: dict[str, str] = {
     "pay": "Pay the card {amount} by transfer from checking",
     "deposit": "{amount} lands on the card from somewhere else",
     "assign": "Assign {amount} to the card",
+    "release": "Move {amount} back out of the card's envelope",
 }
 
 

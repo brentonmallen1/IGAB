@@ -827,8 +827,9 @@ export function BudgetSelectorPage() {
                   <span>
                     <strong>Full household</strong>
                     <small>
-                      16 accounts, 2½ years, thousands of transactions — mortgage, investments,
-                      hidden categories, a 0%-promo loan
+                      2½ years, thousands of transactions — mortgage, investments, hidden
+                      categories, a 0%-promo loan, and a card for every credit-card situation the
+                      app can name
                     </small>
                   </span>
                 </label>

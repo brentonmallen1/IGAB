@@ -73,10 +73,15 @@ def _net_on_card(
 ) -> Decimal:
     """A category-month's net card spending, floored at zero.
 
-    Mirrors `domain.cards.credit_floored`'s `max(ZERO, net_card_outflow)`
-    exactly: a month whose card activity nets to a refund carries no shortfall
-    onto a card. Stated once here because both use sites below need it and one
-    of them spelling it differently is how the oracle and the engine drift.
+    YNAB's own rule, which this oracle exists to reproduce: the credit part of
+    a category's overspending is bounded by its NET card activity that month,
+    so a month that nets to a refund puts nothing on a card. IGAB's walk no
+    longer mirrors this — `credit_floored` caps on charges only, because the
+    walk has already netted a discharging inflow out of the month's balance
+    as `repaid`, and netting it again under-stated the ride (`cards.py`).
+    The two agree wherever YNAB does not track a discharge, which is every
+    fixture the parity suite holds; a divergence there is a finding, not a
+    drift to paper over. Stated once because both use sites below need it.
     """
     return max(ZERO, card_outflows.get((row.category_group, row.category, row.month), ZERO))
 

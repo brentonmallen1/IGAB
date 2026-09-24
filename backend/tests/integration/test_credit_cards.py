@@ -31,7 +31,7 @@ from .factories import (
 )
 from .invariants import assert_card_reserve_identity, assert_financial_invariants
 
-JUL, AUG, SEP, OCT = (date(2026, m, 1) for m in (7, 8, 9, 10))
+JUN, JUL, AUG, SEP, OCT = (date(2026, m, 1) for m in (6, 7, 8, 9, 10))
 D = Decimal
 
 
@@ -67,6 +67,235 @@ async def _income_category(db_session, budget):
         .where(Category.budget_id == budget.id, CategoryGroup.is_system == True)  # noqa: E712
     )
     return result.scalars().one()
+
+
+class TestAnImportedBudgetWithTwoCards:
+    """The shape of every real YNAB import, which no scenario can reach: a
+    `CardScenario` owns one card, and `merge_into` refuses anchors. Two cards
+    arrive at B−1 — one carrying uncovered debt, one holding a reserve — and
+    one envelope then ends a month short across both. Walked through the
+    served summary, where every anchored figure meets every multi-card one."""
+
+    async def _two_anchored_cards(self, db_session):
+        services = make_services(db_session)
+        user = await create_user(db_session)
+        budget = await create_budget(db_session, user)
+        checking = await create_account(db_session, budget, "Checking")
+        visa = await create_account(db_session, budget, "Visa", account_type="credit_card")
+        amex = await create_account(db_session, budget, "Amex", account_type="credit_card")
+        for card in (visa, amex):
+            assert await ensure_payment_category(db_session, card) is not None
+        everyday = await create_category_group(db_session, budget, "Everyday")
+        groceries = await create_category(db_session, budget, everyday, "Groceries")
+        await create_transaction(db_session, budget, checking, "5000.00", date(2026, 6, 15))
+
+        # B−1 = June (`ImportAnchor.month` is the month the openings are
+        # stated at; the walk starts the month after). The Visa arrives owing
+        # 400 nobody reserved for; the Amex arrives owing 200 with 200 set
+        # aside. Pre-anchor rows give the balances; anchor rows, the openings.
+        await create_transaction(db_session, budget, visa, "-400.00", date(2026, 6, 20))
+        await create_transaction(db_session, budget, amex, "-200.00", date(2026, 6, 20))
+        from igab.db.models import ImportAnchor
+
+        db_session.add_all(
+            [
+                ImportAnchor(
+                    budget_id=budget.id,
+                    month=JUN,
+                    kind="available",
+                    category_id=groceries.id,
+                    amount=D("0"),
+                ),
+                ImportAnchor(
+                    budget_id=budget.id,
+                    month=JUN,
+                    kind="uncovered",
+                    account_id=visa.id,
+                    amount=D("400"),
+                ),
+                ImportAnchor(
+                    budget_id=budget.id,
+                    month=JUN,
+                    kind="reserve",
+                    account_id=amex.id,
+                    amount=D("200"),
+                ),
+            ]
+        )
+        await db_session.flush()
+        return services, budget, checking, visa, amex, groceries
+
+    async def test_openings_land_on_the_right_cards(self, db_session):
+        services, budget, _c, visa, amex, _g = await self._two_anchored_cards(db_session)
+        s = await _summary(services, budget, JUL)
+        by = {c.name: c for c in s.cards}
+        # The Visa's 400 is IMPORTED riding — no month here put it there.
+        assert (by["Visa"].imported_riding, by["Visa"].riding) == (D("400"), D("0"))
+        assert by["Visa"].uncovered == D("400")
+        assert by["Visa"].set_aside_state.value == "funded"
+        # The Amex's opening reserve is its set aside; nothing rides.
+        assert (by["Amex"].set_aside, by["Amex"].uncovered) == (D("200"), D("0"))
+        assert by["Amex"].imported_riding == D("0")
+
+    async def test_a_shared_shortfall_goes_to_the_card_charged_most(self, db_session):
+        """One envelope, funded 100, spends 300 on the Visa and 60 on the Amex
+        in July: 260 short. Largest charge first — the Visa carries all of it,
+        beside its imported 400, and the two rides stay apart. Funding the
+        envelope reaches the Visa, so its row may promise the remedy; the Amex
+        has no ride of its own and promises nothing."""
+        services, budget, _c, visa, amex, groceries = await self._two_anchored_cards(db_session)
+        await create_budget_assignment(db_session, budget, groceries, JUL, "100.00")
+        await create_transaction(
+            db_session, budget, visa, "-300.00", date(2026, 7, 9), category=groceries
+        )
+        await create_transaction(
+            db_session, budget, amex, "-60.00", date(2026, 7, 9), category=groceries
+        )
+        await db_session.flush()
+
+        s = await _summary(services, budget, JUL)
+        by = {c.name: c for c in s.cards}
+        assert by["Visa"].riding == D("260")
+        assert by["Visa"].imported_riding == D("400")
+        assert by["Visa"].ride_reaches_this_card is True
+        assert by["Amex"].riding == D("0")
+        # Amex's 60 was funded from the envelope's 100: reserved, not riding.
+        assert by["Amex"].set_aside == D("260")  # 200 opening + 60 reserved
+        # The identity holds on both, opening included.
+        for card in s.cards:
+            assert card.reserve_discrepancy == D("0"), card.name
+
+    async def test_assigning_to_the_imported_card_retires_the_imported_ride(self, db_session):
+        """The only thing that reaches imported debt. Its remainder is served
+        under its own name, and the budget's own ride is untouched by it."""
+        services, budget, _c, visa, _a, _g = await self._two_anchored_cards(db_session)
+        visa_env = next(
+            c for c in (await _summary(services, budget, JUL)).cards if c.name == "Visa"
+        )
+        assert visa_env.category_id is not None
+        await services.budgets.set_assignment(budget.id, visa_env.category_id, JUL, D("150.00"))
+
+        s = await _summary(services, budget, JUL)
+        visa_row = next(c for c in s.cards if c.name == "Visa")
+        assert visa_row.imported_riding == D("250")
+        assert visa_row.covered == D("150")
+        assert visa_row.uncovered == D("250")
+        assert visa_row.set_aside == D("150")
+
+
+class TestReadyToAssignAndANegativeSetAside:
+    """A card envelope's Set aside enters the envelope total SIGNED, so a Set
+    aside below zero RAISES Ready to Assign. Right when something mirrors it;
+    wrong when cash left and nothing does. Both walked, with the figure that
+    is correct in each, because the first draft of the correction broke the
+    mirrored case and only a test noticed."""
+
+    async def test_paying_unreserved_card_debt_lowers_ready_to_assign(self, db_session):
+        """The unmirrored case. An envelope never funded spends 100 on the
+        card; 100 rides. The household pays the 100 from checking. Cash is
+        100 lower, the card owes nothing, and no envelope anywhere holds the
+        100 — Ready to Assign must be 100 lower too. It used to be unchanged:
+        the -100 Set aside gave the 100 straight back."""
+        services, budget, checking, visa, _linked, groceries = await _setup(db_session)
+        await create_transaction(
+            db_session, budget, visa, "-100.00", date(2026, 7, 9), category=groceries
+        )
+        await db_session.flush()
+        before = await _summary(services, budget, JUL)
+        # 1000 in. The 100 rides on the card as debt and charges Ready to
+        # Assign nothing — filing a card charge never does (`credit_overspent`).
+        assert before.to_be_assigned == D("1000.00")
+
+        from igab.services.transaction_service import TransactionCreate
+
+        await services.transactions.create(
+            budget.id,
+            TransactionCreate(
+                account_id=checking.id,
+                date=date(2026, 7, 25),
+                amount=D("-100.00"),
+                transfer_account_id=visa.id,
+            ),
+        )
+        await db_session.flush()
+
+        after = await _summary(services, budget, JUL)
+        card = after.cards[0]
+        assert (card.balance, card.set_aside, card.card_credit) == (D("0"), D("-100.00"), D("0"))
+        # The ride is still on the card — payments retire debt, not rides —
+        # so the row says a month ended short and funding it retires the ride,
+        # which the last step shows. The correction does not care which: the
+        # payment left with nothing to mirror it either way.
+        assert card.set_aside_state.value == "ride_unfunded"
+        assert card.paid_ahead_unmirrored == D("100.00")
+        assert after.paid_ahead_on_cards == D("100.00")
+        # Cash fell 100 and nothing on the page holds it: so does this. It
+        # used to stay at 1000 — the household had 900 in the bank and a page
+        # saying it could assign 1000.
+        assert after.to_be_assigned == D("900.00")
+
+        # Funding July's groceries retires the ride and squares the envelope,
+        # and moves Ready to Assign by nothing: the money was already spent.
+        await services.budgets.set_assignment(budget.id, groceries.id, JUL, D("100.00"))
+        squared = await _summary(services, budget, JUL)
+        assert squared.cards[0].set_aside == D("0.00")
+        assert squared.paid_ahead_on_cards == D("0.00")
+        assert squared.to_be_assigned == D("900.00")
+
+    async def test_a_refund_while_carrying_a_balance_leaves_ready_to_assign_alone(self, db_session):
+        """The mirrored case. Groceries is funded 100 and spends 100 on the
+        card, so the card owes 100 with 100 reserved. An 80 refund for those
+        groceries lands on the card: the envelope has spent nothing it held,
+        so the 80 releases the reservation — the envelope gets its money back,
+        Set aside falls by 80, and the two cancel. Ready to Assign does not
+        move, and must not: no cash moved."""
+        services, budget, _checking, visa, _linked, groceries = await _setup(db_session)
+        await create_budget_assignment(db_session, budget, groceries, JUL, "100.00")
+        await create_transaction(
+            db_session, budget, visa, "-100.00", date(2026, 7, 9), category=groceries
+        )
+        await db_session.flush()
+        before = await _summary(services, budget, JUL)
+        assert before.to_be_assigned == D("900.00")
+
+        await create_transaction(
+            db_session, budget, visa, "80.00", date(2026, 7, 15), category=groceries
+        )
+        await db_session.flush()
+
+        after = await _summary(services, budget, JUL)
+        card = after.cards[0]
+        assert card.balance == D("-20.00")
+        assert card.set_aside == D("20.00")
+        assert after.paid_ahead_on_cards == D("0.00")
+        assert after.to_be_assigned == D("900.00")
+
+    async def test_a_refund_beyond_the_reserve_still_leaves_ready_to_assign_alone(self, db_session):
+        """The case actually asked about: the envelope had NOTHING reserved on
+        this card, so the refund cannot release — it lands as residual and
+        Set aside goes below zero. The envelope is holding the 80 (spendable,
+        backed by 80 less card debt), the card's -80 is its mirror, and Ready
+        to Assign is unchanged. The first draft of the correction would have
+        taken 80 off here for no reason."""
+        services, budget, _checking, visa, _linked, groceries = await _setup(db_session)
+        # Owing 300 from before, on a different envelope, with nothing reserved.
+        await create_transaction(db_session, budget, visa, "-300.00", date(2026, 6, 9))
+        await db_session.flush()
+        before = await _summary(services, budget, JUL)
+
+        await create_transaction(
+            db_session, budget, visa, "80.00", date(2026, 7, 15), category=groceries
+        )
+        await db_session.flush()
+
+        after = await _summary(services, budget, JUL)
+        card = after.cards[0]
+        assert card.balance == D("-220.00")
+        assert card.set_aside == D("-80.00")
+        assert card.residual == D("80.00")
+        assert card.set_aside_state.value == "refund_outran_envelope"
+        assert card.paid_ahead_unmirrored == D("0.00")
+        assert after.to_be_assigned == before.to_be_assigned
 
 
 class TestTheIdentity:
@@ -243,9 +472,25 @@ class TestTheIdentity:
         august = await _summary(services, budget, AUG)
         assert july.cards[0].set_aside == D("-50.00")
         assert august.cards[0].set_aside == D("-50.00")
-        # And the figure agrees with itself across the boundary: 1000 income
-        # − 100 assigned, the credit overspending riding on the card.
-        assert july.to_be_assigned == august.to_be_assigned == D("900.00")
+        # And the figure agrees with itself across the boundary. It is 850,
+        # not 900: 1000 came in, 100 was assigned, and 150 left for the card
+        # — 50 of it from cash no envelope held. That 50 is gone. This used
+        # to read 900 ("income − assigned") because the envelope's -50 entered
+        # the total signed and gave the 50 back; the page said the household
+        # had money it had already spent, until someone assigned 50 to the
+        # card and made it true. `paid_ahead_on_cards` is the correction and
+        # is served beside it, so the hero can say where the 50 went.
+        assert july.to_be_assigned == august.to_be_assigned == D("850.00")
+        assert july.paid_ahead_on_cards == august.paid_ahead_on_cards == D("50.00")
+        # Funding July's groceries by the 50 retires the ride and squares the
+        # envelope — and moves Ready to Assign by exactly nothing, because
+        # the money was already gone. Under the old rule this was the act
+        # that took the figure from 900 to 850.
+        await services.budgets.set_assignment(budget.id, groceries.id, JUL, D("150.00"))
+        squared = await _summary(services, budget, AUG)
+        assert squared.cards[0].set_aside == D("0.00")
+        assert squared.to_be_assigned == D("850.00")
+        assert squared.paid_ahead_on_cards == D("0.00")
 
     async def test_a_settled_closed_card_sends_no_row(self, db_session):
         """One list used to serve two purposes: include closed cards in the

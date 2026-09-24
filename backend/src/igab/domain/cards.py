@@ -193,18 +193,28 @@ class AnchorOpenings[C, K]:
         return (self.opening_month, self.available_by_category.get(category, ZERO))
 
 
-def credit_floored(end_of_month: Decimal, net_card_outflow: Decimal) -> Decimal:
+def credit_floored(end_of_month: Decimal, card_charges: Decimal) -> Decimal:
     """The credit-funded part of one month's shortfall, for one category.
 
     A month that ended at -50 with 70 spent on cards has 50 riding as card
     debt and 0 written off from Ready to Assign; the same month with 20 on
     cards has 20 riding and 30 written off. A month that ended non-negative
-    contributes nothing, and a month whose card activity nets to an inflow
-    carries no shortfall onto a card.
+    contributes nothing.
+
+    `card_charges` is what was CHARGED to cards that month — the positive
+    nets only — not the month's net card activity. The cap used to be the net,
+    and that counted a discharging inflow twice: `card_funding` has already
+    subtracted it from `end_of_month` as `repaid` (step 1 → step 2), so
+    netting it out of the cap as well under-stated what may ride. A tab
+    charged 100 on one card while a refund on another discharged an older
+    ride read as fully reserved on the first card, and the 100 nobody had
+    funded was written off as cash overspending. Released and residual
+    inflows are real money already inside `end_of_month` through activity, so
+    they never belonged in the cap either.
     """
     if end_of_month >= ZERO:
         return ZERO
-    return min(-end_of_month, max(ZERO, net_card_outflow))
+    return min(-end_of_month, max(ZERO, card_charges))
 
 
 def credit_floored_by_month(
@@ -220,6 +230,9 @@ def credit_floored_by_month(
     """
     out: dict[date, Decimal] = {}
     for month, end in end_balances.items():
+        # Only the oracle and tests call this, with a single card's signed
+        # series; a net inflow month charges nothing, which the floor already
+        # treats as zero.
         floored = credit_floored(end, credit_outflows.get(month, ZERO))
         if floored > ZERO:
             out[month] = floored
@@ -237,13 +250,21 @@ def allocate_capped[T](
     card's assignment across the **categories** riding on that card. Writing
     the second one out separately is how a third copy starts.
 
-    Greedy in sorted-key order: deterministic, exact (no proportional
-    rounding), and irrelevant in the overwhelmingly common one-bucket case.
-    Keys sort as strings so UUIDs and test stubs both work.
+    Greedy, largest capacity first — the card that was charged most carries
+    the shortfall first; the biggest ride on a card is retired first. Exact
+    (no proportional rounding), deterministic, and a rule a person can be
+    told. It was sorted-key order, which for real data meant UUID order: which
+    card wore Uncovered for a shared shortfall — and therefore which remedy
+    its row offered — depended on whose id happened to sort first, and two
+    households with identical spending saw different cards flagged.
+    `SETTLED_ELSEWHERE` exists to explain the consequence of that split;
+    with this order the explanation at least names a reason. Ties break on
+    the key as a string so UUIDs and test stubs both stay deterministic.
+    Irrelevant in the overwhelmingly common one-bucket case.
     """
     out: dict[T, Decimal] = {}
     remaining = amount
-    for bucket in sorted(capacity, key=str):
+    for bucket in sorted(capacity, key=lambda k: (-capacity[k], str(k))):
         take = min(remaining, capacity[bucket])
         if take > ZERO:
             out[bucket] = take
@@ -355,6 +376,16 @@ class CardFunding[C, K]:
     #: covered. `sum_through` it for the level — which is the `riding` term of
     #: the closed form.
     riding_by_card: dict[K, dict[date, Decimal]] = field(default_factory=dict)
+    #: What an import brought in as uncovered debt and is still riding, per
+    #: card per month: the `ANCHOR_OPENING` seed, less what card assignments
+    #: have since retired of it. Kept APART from `riding_by_card` because the
+    #: two mean different things to a reader — "a month ended short and this
+    #: rode" is a story about the budget; "you arrived owing this" is not —
+    #: and pooling them let a card on an imported budget read "$2,000 of
+    #: spending rode onto this card when a month ended short" about debt that
+    #: predates the budget, with a remedy (fund that month's envelope) that
+    #: nothing could act on. Retired only by assigning to the card.
+    imported_riding_by_card: dict[K, dict[date, Decimal]] = field(default_factory=dict)
     #: `discharged` per category per month: the part of that month's card
     #: inflows that repaid uncovered debt rather than returning money to the
     #: envelope. **Already folded into `end_balances`.** Never summed across
@@ -478,7 +509,7 @@ def card_funding[C, K](
         for card, uncovered in openings.uncovered_by_card.items():
             if uncovered > ZERO:
                 ridden[(cast(C, ANCHOR_OPENING), card)] = uncovered
-                _add(out.riding_by_card, card, openings.opening_month, uncovered)
+                _add(out.imported_riding_by_card, card, openings.opening_month, uncovered)
 
     all_months = sorted(
         set(categories_in_month) | {m for series in card_assignments.values() for m in series}
@@ -528,7 +559,10 @@ def card_funding[C, K](
             carryover[category] = next_carryover(end)
 
             # 3. What the shortfall put on a card, from the ADJUSTED balance.
-            floored = credit_floored(end, sum(nets.values(), ZERO))
+            #    Capped by what was CHARGED, not the month's net: a discharging
+            #    inflow is already out of `end` as `repaid`, and netting it out
+            #    of the cap too is how a never-funded charge read as reserved.
+            floored = credit_floored(end, sum((n for n in nets.values() if n > ZERO), ZERO))
             if floored > ZERO:
                 out.floored_by_category.setdefault(category, {})[month] = floored
 
@@ -586,7 +620,10 @@ def card_funding[C, K](
                 ridden[(cat, card)] -= take
                 _add(out.covered_by_card, card, month, take)
                 _add(out.covered_by_category, cat, month, take)
-                _add(out.riding_by_card, card, month, -take)
+                if cat == ANCHOR_OPENING:
+                    _add(out.imported_riding_by_card, card, month, -take)
+                else:
+                    _add(out.riding_by_card, card, month, -take)
 
     return out
 
@@ -830,8 +867,8 @@ class SetAsideState(StrEnum):
     REFUND_OUTRAN_ENVELOPE = "refund_outran_envelope"
     #: A month ended short, the shortfall rode onto this card — and onto at
     #: least one other. Funding that envelope cannot be aimed at this card:
-    #: the shortfall is allocated across cards in a fixed order, so partial
-    #: funding shrinks another card's share first and this row does not move
+    #: the shortfall is allocated across cards largest charge first, so partial
+    #: funding shrinks the most-charged card's share and this row does not move
     #: (F8, measured: funding the envelope left -60 at -60; assigning to the
     #: card landed on 0 exactly). Say what happened; promise nothing.
     SETTLED_ELSEWHERE = "settled_elsewhere"
@@ -840,10 +877,45 @@ class SetAsideState(StrEnum):
     #: recomputed from scratch on every request. The only state that may
     #: promise it.
     RIDE_UNFUNDED = "ride_unfunded"
-    #: Payment ran past everything reserved, with nothing else to explain it:
-    #: a deliberate paydown out of money no envelope had set aside. It went
-    #: straight to the balance.
+    #: Payment ran past everything reserved, with NOTHING else present: no
+    #: residual of any kind and no ride. A deliberate paydown out of money no
+    #: envelope had set aside; it went straight to the balance. The only
+    #: state that may quote `short_reserved` as "what you paid ahead" — with
+    #: a second cause present, that figure includes the other cause's money.
     PAID_AHEAD = "paid_ahead"
+    #: More than one thing put Set aside below zero, and none of them explains
+    #: all of it. The row names what is present and quotes each served leg,
+    #: and says nothing about how much of the shortfall is which: the reserve
+    #: identity is bounds, not parts (`reserve_discrepancy`'s T2 is `<=`), so
+    #: any split into "this much settle-up, this much paid ahead" would be an
+    #: attribution rule — the same shape of confident wrong answer that
+    #: labelled a two-thirds settle-up as overpayment. The legs panel is the
+    #: whole picture; this points at it.
+    MIXED = "mixed"
+    #: Money was moved OUT of the card's envelope past what it held — a
+    #: release, or a negative typed into Assigned, larger than the reserve.
+    #: No payment happened and nothing came back onto the card: the money is
+    #: in Ready to Assign (or wherever it was moved) and the envelope is
+    #: simply overdrawn. T2's third term. It read `PAID_AHEAD` — "you have
+    #: paid $200 more … the money has already left your account" — about
+    #: money that had left nothing but this envelope.
+    MOVED_OUT = "moved_out"
+
+
+def riding_series[C, K](funding: CardFunding[C, K], card: K) -> dict[date, Decimal]:
+    """Everything riding uncovered on a card, month by month — what a month
+    ending short put there AND what an import brought — for the one reader
+    that wants the total: the timeline, which draws the card's debt as it
+    stood after each month. Every sentence elsewhere means the first part
+    only and reads `riding_by_card` directly."""
+    out: dict[date, Decimal] = {}
+    for series in (
+        funding.riding_by_card.get(card, {}),
+        funding.imported_riding_by_card.get(card, {}),
+    ):
+        for month, amount in series.items():
+            out[month] = out.get(month, ZERO) + amount
+    return out
 
 
 def ride_is_exclusive[C, K](
@@ -856,9 +928,9 @@ def ride_is_exclusive[C, K](
     This is the question `RIDE_UNFUNDED`'s promise stands on. "Fund that
     month's envelope and the ride disappears" is true when the envelope's
     whole shortfall is here, and false the moment it is shared: `allocate_capped`
-    hands the shortfall out across that month's cards in a fixed order, so
-    money put into the envelope shrinks the FIRST card's ride, and a row being
-    read about the second one does not move at all.
+    hands the shortfall out across that month's cards largest charge first, so
+    money put into the envelope shrinks the most-charged card's ride, and a row
+    being read about the other one does not move at all.
 
     Measured on the real walk before it was believed — one shared tab charging
     $300 on card A and $60 on card B, settled the next month on A. Doing
@@ -867,8 +939,12 @@ def ride_is_exclusive[C, K](
     -60: the $60 shrank card A's ride from 300 to 240. Only assigning $60 to
     card B landed on 0.
 
-    An empty ride is exclusive — vacuously, and the caller has already checked
-    that something is riding before it asks.
+    An empty ride is NOT exclusive: there is nothing to promise about. This
+    used to return True vacuously on the assumption that the caller had
+    checked something was riding — but the caller checked `riding`, which
+    then included an import's opening debt that never appears in these
+    pairs, so an anchored card with a negative Set aside read `RIDE_UNFUNDED`
+    and was told to fund a month that had never ended short.
     """
     mine = {
         (category, month)
@@ -877,6 +953,8 @@ def ride_is_exclusive[C, K](
         for month, amount in series.items()
         if month <= through and amount != ZERO
     }
+    if not mine:
+        return False
     return not any(
         key != card and (category, month) in mine
         for (category, key), series in floored_by_pair.items()
@@ -921,6 +999,7 @@ def set_aside_state(
     riding: Decimal,
     residual_from_ledgers: Decimal,
     ride_reaches_this_card: bool,
+    released_out: Decimal = ZERO,
 ) -> SetAsideState:
     """Which situation a card's Set aside is in, from the served terms.
 
@@ -941,9 +1020,25 @@ def set_aside_state(
        money is Uncovered's business, and the remedy sentence would be
        answering a question nobody asked.
 
-    A **full** explanation, never a partial one: `residual_from_ledgers` and
-    `residual` must each cover the whole shortfall to claim it. Accepting part
-    of one would let a real shortfall hide behind a household's bookkeeping.
+    `riding` is what months ending short put on this card — `riding_by_card`,
+    never the import's opening debt (`imported_riding_by_card`). The two ride
+    states promise that funding a month's envelope retires the ride; imported
+    debt has no such month, and is retired only by assigning to the card.
+
+    `released_out` is the negative half of the card's lifetime assignments —
+    money moved out of its envelope (T2's third term). It is the one cause
+    where no cash left the household and nothing came back onto the card, so
+    the row must not say "you have paid".
+
+    A **full** explanation, never a partial one: `residual_from_ledgers`,
+    `residual` and `riding` must each cover the whole shortfall to claim it.
+    Accepting part of one would let a real shortfall hide behind a
+    household's bookkeeping — and, the other way, claiming the whole
+    shortfall for the one cause that was checked last labelled a settle-up
+    plus a small paydown as "you have paid $300 ahead" when $200 of it was
+    somebody squaring up. `PAID_AHEAD` therefore requires that nothing else
+    is present at all; anything partial is `MIXED`, which names the causes
+    and attributes nothing.
     """
     if position.card_credit > ZERO:
         return SetAsideState.CARD_HOLDS_IT
@@ -953,16 +1048,66 @@ def set_aside_state(
             return SetAsideState.SETTLED_BY_OTHERS
         if residual >= short:
             return SetAsideState.REFUND_OUTRAN_ENVELOPE
-        if riding > ZERO:
+        # Symmetric with the two above: the ride must explain the WHOLE
+        # shortfall to claim it. It used to fire on `riding > ZERO`, so a
+        # $5 ride claimed a $805 shortfall and the row promised that funding
+        # one month would retire it — leaving $800 short.
+        if riding >= short:
             return (
                 SetAsideState.RIDE_UNFUNDED
                 if ride_reaches_this_card
                 else SetAsideState.SETTLED_ELSEWHERE
             )
-        return SetAsideState.PAID_AHEAD
+        if released_out >= short:
+            return SetAsideState.MOVED_OUT
+        if residual == ZERO and riding == ZERO and released_out == ZERO:
+            return SetAsideState.PAID_AHEAD
+        # Something is present and nothing covers it all. Say so; do not pick.
+        return SetAsideState.MIXED
     if position.over_reserved > ZERO:
         return SetAsideState.SURPLUS
     return SetAsideState.FUNDED
+
+
+def unmirrored_shortfall(
+    position: CardPosition, *, residual: Decimal, released_out: Decimal
+) -> Decimal:
+    """The part of a negative Set aside that cash actually left for.
+
+    A card's envelope goes into the budget's envelope total SIGNED, so a Set
+    aside below zero lowers that total and RAISES Ready to Assign. That is
+    right exactly when the negative is the mirror of something else on the
+    page, and there are three such mirrors: the CARD ITSELF holding a credit
+    (you overpaid it; the money is on the card and is yours — Ready to Assign
+    is right to count it); a refund landing as residual, which puts the same
+    amount into a spending envelope so the two cancel; and money released out
+    of the envelope, which is already sitting in Ready to Assign. It is wrong
+    for a PAYMENT past the reserve on a card that still owes — cash left the
+    household and nothing anywhere mirrors it, so Ready to Assign read as if
+    the payment had never happened, until the person assigned to the card.
+
+    This is that payment part, and only that part. The reserve identity gives
+    bounds (T2 is `<=`), not a decomposition, so this cannot be exact: it
+    subtracts the whole of every mirrored cause and takes what remains. In the
+    pure paid-ahead case that is the whole shortfall; where a mirror is also
+    present it is a LOWER bound on the payment part — it may under-correct
+    Ready to Assign, and can never take away money that is actually there,
+    on the card or in an envelope. That asymmetry is chosen: the failure this
+    exists to end is Ready to Assign reading high, and the one it must never
+    introduce is Ready to Assign reading low about money that exists.
+
+    The credit term was missing in the first draft and a test caught it:
+    linking a $1,000 payment onto a card with no charges put the card $1,000
+    in credit and Ready to Assign $1,000 too low — the card was holding the
+    money, and this said it had left.
+    """
+    return max(
+        ZERO,
+        position.short_reserved
+        - position.card_credit
+        - max(ZERO, residual)
+        - max(ZERO, released_out),
+    )
 
 
 def _allowance(*terms: Decimal) -> Decimal:

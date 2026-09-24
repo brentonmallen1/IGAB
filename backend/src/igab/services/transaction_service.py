@@ -259,6 +259,24 @@ class TransactionService:
                 if await may_be_filed_to(self.session, payee.default_category_id):
                     category_id = payee.default_category_id
 
+        # The pair rule for a leg that has a partner by NAME but not by link.
+        # Asked after auto-categorization on purpose: a payment leg whose
+        # payee last carried "Groceries" would otherwise inherit it here.
+        partner_on_budget = await self._partner_on_budget_via_payee(payee)
+        if (
+            category_id is not None
+            and partner_on_budget is not None
+            and not leg_may_carry_category(account.on_budget, partner_on_budget)
+        ):
+            if data.category_id is None:
+                # Inherited, not chosen: drop it rather than refuse the row.
+                category_id = None
+            else:
+                raise InvariantViolation(
+                    "This row is one side of a transfer between two budget accounts — "
+                    "a category cannot be filed to either side. Link it, or change its payee."
+                )
+
         created_via = data.created_via or origin_of(data)
         txn = await self.transaction_repo.create(
             budget_id=budget_id,
@@ -562,10 +580,28 @@ class TransactionService:
         # illegal end state reached from two directions.
         if (
             resulting_category_id is not None
-            and ("category_id" in changes or moving_account)
+            and ("category_id" in changes or moving_account or "payee_id" in changes)
             and not txn.transfer_id
         ):
             own_account = await self.account_repo.get_or_raise(resulting_account_id)
+            # An unpaired transfer leg is not a plain row: its payee names the
+            # other account, and the pair rule applies to it just as it would
+            # were the link in place. Asked when the payee changes too — giving
+            # a categorized row a transfer payee is the same end state.
+            resulting_payee_id = changes.get("payee_id", txn.payee_id)
+            payee_of_row = (
+                await self.session.get(Payee, resulting_payee_id)
+                if resulting_payee_id is not None
+                else None
+            )
+            partner_on_budget = await self._partner_on_budget_via_payee(payee_of_row)
+            if partner_on_budget is not None and not leg_may_carry_category(
+                own_account.on_budget, partner_on_budget
+            ):
+                raise InvariantViolation(
+                    "This row is one side of a transfer between two budget accounts — "
+                    "a category cannot be filed to either side. Link it, or change its payee."
+                )
             if not leg_may_carry_category(own_account.on_budget):
                 raise InvariantViolation(
                     "Transactions on a tracking account cannot carry a category — "
@@ -1418,6 +1454,29 @@ class TransactionService:
             await self._record_txn(deleted, "delete", before=deleted_before, refresh=False)
             await self._record_txn(survivor, "update", before=survivor_before, refresh=False)
         return survivor
+
+    async def _partner_on_budget_via_payee(self, payee: Payee | None) -> bool | None:
+        """The on-budget flag of the account an UNPAIRED transfer leg names.
+
+        A leg with `transfer_id` set has a partner row to ask. One without —
+        a transfer payee and no link, which YNAB imports produce by the
+        thousand and `break` leaves behind — used to be treated as a plain
+        row, so `leg_may_carry_category(own_on_budget)` let it take a
+        category on any on-budget account. On a card that row then satisfied
+        BOTH `CARD_PAYMENT_FROM_CASH` (a payment, through the payee) and the
+        category's card-outflow sum (spending, through the category), and the
+        walk counted it twice: Set aside fell by 500 while the envelope rose
+        by 500, with the checking account untouched. Ready to Assign invented
+        the money and every integrity check stayed green.
+
+        None when the payee names no account: the row really is plain.
+        """
+        if payee is None or payee.transfer_account_id is None:
+            return None
+        partner = await self.account_repo.get(payee.transfer_account_id)
+        # An account that no longer exists reads as on-budget: refuse to
+        # categorize half of a link whose other side cannot be checked.
+        return partner.on_budget if partner is not None else True
 
     async def _resolve_payee(
         self, budget_id: uuid.UUID, payee_id: uuid.UUID | None, payee_name: str | None

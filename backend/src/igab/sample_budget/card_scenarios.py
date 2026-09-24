@@ -77,7 +77,9 @@ ZERO = Decimal("0")
 #:         Without a cash leg, every settle-up leaves the envelope holding
 #:         the residual, and a running tab is indistinguishable from a refund
 #:         an envelope kept.
-EventKind = Literal["spend", "charge", "refund", "pay", "deposit", "fund", "assign", "cash_spend"]
+EventKind = Literal[
+    "spend", "charge", "refund", "pay", "deposit", "fund", "assign", "release", "cash_spend"
+]
 
 _CARD_ROWS: frozenset[str] = frozenset({"spend", "charge", "refund", "pay", "deposit"})
 _NEEDS_CATEGORY: frozenset[str] = frozenset({"spend", "refund", "fund", "cash_spend"})
@@ -104,8 +106,9 @@ class CardEvent:
         return date(year, month, 1)
 
     def signed(self) -> Decimal:
-        """What this event does to the CARD's balance. 0 for assignments, and
-        0 for `cash_spend`, which never touches the card."""
+        """What this event does to the CARD's balance. 0 for assignments and
+        releases (envelope moves), and 0 for `cash_spend`, which never
+        touches the card."""
         if self.kind in ("spend", "charge"):
             return -self.amount
         if self.kind in ("refund", "pay", "deposit"):
@@ -140,7 +143,13 @@ class ExpectedPosition:
     over_reserved: Decimal = ZERO
     short_reserved: Decimal = ZERO
     card_credit: Decimal = ZERO
+    #: What months ending short put on the card — the budget's own ride.
     riding: Decimal = ZERO
+    #: What the budget ARRIVED with and has not yet retired. Zero on every
+    #: unanchored scenario by construction; an anchored one states it here,
+    #: by this name, rather than folding it into `riding` where a sentence
+    #: about "a month that ended short" would quote it.
+    imported_riding: Decimal = ZERO
     #: 0 for every scenario here on purpose. Two of these cards are far from
     #: their balance for reasons the identity's bounds accept, and that is the
     #: point: a row keyed on this number says nothing about them.
@@ -352,6 +361,9 @@ def to_funding_inputs(scenario: CardScenario, today: date) -> FundingInputs:
             _bump(assignments.setdefault(category, {}), month, event.amount)
         elif event.kind == "assign":
             _bump(assignments.setdefault(scenario.payment_category, {}), month, event.amount)
+        elif event.kind == "release":
+            # Money moved OUT of the card's envelope: a negative assignment.
+            _bump(assignments.setdefault(scenario.payment_category, {}), month, -event.amount)
         elif event.kind in ("spend", "refund"):
             # A refund is the same row with the sign flipped, in both places:
             # the envelope's activity and the card's signed net outflow.
@@ -471,6 +483,7 @@ def walk(scenario: CardScenario, today: date, through: date | None = None) -> Ex
         short_reserved=position.short_reserved,
         card_credit=position.card_credit,
         riding=sum_through(funding.riding_by_card.get(scenario.card, {}), month),
+        imported_riding=sum_through(funding.imported_riding_by_card.get(scenario.card, {}), month),
         # The serving arithmetic exactly (budget_service.get_budget_summary):
         # the opening reserve folds into `assigned`, and `opening_credit` is
         # the T3 allowance — this checker must not drift from what is served.
@@ -540,11 +553,18 @@ def state(scenario: CardScenario, today: date, through: date | None = None) -> S
     return set_aside_state(
         position,
         residual=sum_through(reserve.residual, month),
+        # The budget's own ride only — imported debt has no month to fund.
         riding=sum_through(funding.riding_by_card.get(scenario.card, {}), month),
         residual_from_ledgers=residual_from(
             funding.residual_by_pair, scenario.card, ledgers, month
         ),
         ride_reaches_this_card=ride_is_exclusive(funding.floored_by_pair, scenario.card, month),
+        # The same `assigned` T2 reads, opening folded in — as budget_service
+        # computes it, so the scenario oracle and the served state agree.
+        released_out=max(
+            ZERO,
+            -(sum_through(reserve.opening, month) + sum_through(reserve.assignments, month)),
+        ),
     )
 
 
@@ -565,6 +585,13 @@ def _fund(months_ago: int, amount: str, category: str) -> CardEvent:
 
 def _assign(months_ago: int, amount: str) -> CardEvent:
     return CardEvent(RelDate(months_ago, 1), "assign", Decimal(amount))
+
+
+def _release(months_ago: int, amount: str) -> CardEvent:
+    """Move `amount` OUT of the card's envelope — the Release button, or a
+    negative typed into Assigned. Stated positive; applied as a negative
+    assignment everywhere it is walked."""
+    return CardEvent(RelDate(months_ago, 1), "release", Decimal(amount))
 
 
 def _pay(months_ago: int, amount: str, day: int = 25) -> CardEvent:
@@ -801,7 +828,13 @@ OVER_RESERVED = CardScenario(
         paid_this_month=_d("0"),
         debt_change_this_month=_d("-50"),
     ),
-    tiers=("full",),
+    # In the quick demo too. It showed two funded cards and nothing else, so
+    # the one affordance on the strip — Release — was never seen. This is
+    # the card state that is common, harmless, and has a button: a surplus
+    # on a card paid from funded envelopes. The below-zero states stay in
+    # the full tour on purpose — the first row a new user sees must not be
+    # an oddity (test_sample_budget.py says why).
+    tiers=BOTH_TIERS,
     set_aside_state=SetAsideState.SURPLUS,
     lesson=CardLesson(
         happens=(
@@ -881,23 +914,24 @@ SETTLED_BY_OTHERS = CardScenario(
             "some out of checking — and they settle up in one payment onto the card."
         ),
         reads=(
-            "Set aside shows $0.00 with a note that it is below zero, because they paid the "
+            "Set aside shows $0.00 with $200.00 below zero beside it, because they paid the "
             "card down by more than the tab had ever charged it."
         ),
         todo=(
-            "Nothing. The repayment took money out of Set aside and paid the card down by "
-            "exactly the same amount."
+            "Nothing. The repayment paid the card down by exactly what it took out of Set aside, "
+            "and Ready to Assign is untouched — no cash of yours moved."
         ),
     ),
 )
 
 RIDE_UNFUNDED = CardScenario(
     slug="ride-unfunded",
-    title="A month ended short, then a payment ran past the rest",
+    title="A month ended short, and the payment covered what was reserved and the ride",
     story=(
         "An envelope was funded 100 and spent 300 on this card, so 200 rode "
-        "onto the card when the month ended. A later payment then ran past "
-        "everything that WAS reserved, and Set aside went below zero.\n\n"
+        "onto the card when the month ended. A later payment covered "
+        "everything that WAS reserved and the ride as well, and Set aside "
+        "went below zero by exactly the ride.\n\n"
         "The remedy is the one this row may promise, and only here: the whole "
         "of that envelope's shortfall rode onto THIS card, so raising that "
         "month's assignment retires the ride — the walk is recomputed from "
@@ -914,21 +948,27 @@ RIDE_UNFUNDED = CardScenario(
         _spend(2, "300", "Bramblewick Hardware"),
         _fund(1, "100", "Bramblewick Hardware"),
         _spend(1, "100", "Bramblewick Hardware"),
-        _pay(0, "500", day=1),
+        _pay(0, "400", day=1),
     ),
-    # Hand-computed. Reserved 100 + 100 = 200 against a 500 payment, so Set
-    # aside is -300. The first month's envelope was 200 short and its whole
-    # shortfall rode here. The card owes 200 + 300 + 100 - 500 = 100.
+    # Hand-computed. Reserved 100 + 100 = 200 against a 400 payment, so Set
+    # aside is -200 — the ride, exactly. The first month's envelope was 200
+    # short and its whole shortfall rode here. The card owes
+    # 200 + 300 + 100 - 400 = 200.
+    #
+    # It used to pay 500 and sit at -300 with 200 riding: a ride that
+    # explained two thirds of the shortfall, labelled as if it explained all
+    # of it, with a remedy that would have left the card 100 short. That
+    # shape is `mixed` now, and has its own scenario below.
     expect=ExpectedPosition(
-        balance=_d("-100"),
-        set_aside=_d("-300"),
-        uncovered=_d("100"),
-        short_reserved=_d("300"),
+        balance=_d("-200"),
+        set_aside=_d("-200"),
+        uncovered=_d("200"),
+        short_reserved=_d("200"),
         riding=_d("200"),
         charged_this_month=_d("0"),
-        inflows_this_month=_d("500"),
-        paid_this_month=_d("500"),
-        debt_change_this_month=_d("500"),
+        inflows_this_month=_d("400"),
+        paid_this_month=_d("400"),
+        debt_change_this_month=_d("400"),
     ),
     set_aside_state=SetAsideState.RIDE_UNFUNDED,
     tiers=("full",),
@@ -939,11 +979,136 @@ RIDE_UNFUNDED = CardScenario(
         ),
         reads=(
             "The payment ran past what was actually set aside, so Set aside shows $0.00 with "
-            "$300.00 below zero beside it."
+            "$200.00 below zero beside it."
         ),
         todo=(
             "Raise that month's assignment on the envelope and the ride is retired, or assign "
-            "$300 to the card to cover it now."
+            "$200 to the card to cover it now."
+        ),
+    ),
+)
+
+MIXED = CardScenario(
+    slug="mixed",
+    title="Two things put Set aside below zero, and neither explains all of it",
+    story=(
+        "The settle-up card, plus one ordinary decision. Somebody else's "
+        "spending ran through a tab you never budget into, and when they "
+        "squared up, 400 of it landed as residual — that is the whole of the "
+        "card two rows up. Here the household ALSO paid 300 off the card from "
+        "cash nothing had set aside. Set aside is 500 below zero: 400 of it "
+        "somebody else's settle-up, 300 a paydown, 200 of it reserved by "
+        "groceries and consumed.\n\n"
+        "This is the shape a real budget is usually in, and the one the "
+        "eight-state model had no word for. It fell through every branch to "
+        "'paid ahead' and quoted the full 500 as money you had paid — 400 of "
+        "which was somebody else's. The row does not decompose it now, because "
+        "it cannot: the reserve identity is bounds, not parts. It names what "
+        "is present, quotes each served leg, and points at the breakdown."
+    ),
+    card="Marrowbone Card",
+    short="Marrowbone",
+    opening=_d("-800"),
+    events=(
+        _fund(2, "100", "Marrowbone Groceries"),
+        _spend(2, "100", "Marrowbone Groceries"),
+        _spend(2, "200", "Marrowbone Shared Tab"),
+        _fund(1, "100", "Marrowbone Groceries"),
+        _spend(1, "100", "Marrowbone Groceries"),
+        _spend(1, "200", "Marrowbone Shared Tab"),
+        _spend(0, "200", "Marrowbone Shared Tab", day=1),
+        _cash_spend(0, "400", "Marrowbone Shared Tab", day=1),
+        _refund(0, "1000", "Marrowbone Shared Tab", day=1),
+        # The second cause: 300 paid off the card out of ordinary cash.
+        _pay(0, "300", day=1),
+    ),
+    # Hand-computed. As `settled-by-others`: 200 reserved, 400 residual after
+    # the 400 riding is discharged, so -200. Then a 300 payment nothing
+    # reserved for: -500. The card owes 800 opening + 800 charged (300 + 300
+    # + 200) - 1000 refunded - 300 paid = 300. The ledger's residual (400) is
+    # less than the shortfall (500), so no single branch claims it — and 300
+    # of the 500 is not the settle-up.
+    expect=ExpectedPosition(
+        balance=_d("-300"),
+        set_aside=_d("-500"),
+        uncovered=_d("300"),
+        short_reserved=_d("500"),
+        charged_this_month=_d("200"),
+        inflows_this_month=_d("1300"),
+        paid_this_month=_d("300"),
+        debt_change_this_month=_d("1100"),
+    ),
+    set_aside_state=SetAsideState.MIXED,
+    tiers=("full",),
+    lesson=CardLesson(
+        happens=(
+            "Somebody settled up $1,000 of tab charges on this card — and separately you paid "
+            "$300 off it from cash."
+        ),
+        reads=(
+            "Set aside shows $0.00 with $500.00 below zero. The row names both causes — "
+            "$400.00 came back from a settle-up, and payments ran past the reserve — and "
+            "does not split the $500 between them."
+        ),
+        todo=(
+            "Open the breakdown — the settle-up needs nothing, and Ready to Assign already "
+            "reflects the paydown. Assign to the card to square its envelope; the row will not "
+            "pick that figure for you."
+        ),
+    ),
+)
+
+MOVED_OUT = CardScenario(
+    slug="moved-out",
+    title="More was moved out of the card's envelope than it held",
+    story=(
+        "A card paid in full every month, so its envelope holds exactly the "
+        "bill: 300 reserved by 300 of funded spending. The household needs "
+        "cash elsewhere this month and releases 500 from the envelope — 200 "
+        "more than was there.\n\n"
+        "No payment happened and nothing came back onto the card, so the "
+        "money is in Ready to Assign and the envelope is simply overdrawn by "
+        "200. This used to read 'paid ahead' — 'you have paid $200 more "
+        "toward this card than any envelope set aside; the money has already "
+        "left your account' — about money that had left nothing but this "
+        "envelope. The remedy is the same word, assign, for the opposite "
+        "reason: not to record a payment, but to put back what was taken."
+    ),
+    card="Wrenfield Card",
+    short="Wrenfield",
+    opening=_d("0"),
+    events=(
+        _fund(1, "300", "Wrenfield Groceries"),
+        _spend(1, "300", "Wrenfield Groceries"),
+        _release(0, "500"),
+    ),
+    # Hand-computed. 300 reserved by the funded spend; 500 moved out; Set
+    # aside -200. The card still owes the 300 it was charged and nothing has
+    # been paid, so it is 300 uncovered — 500 of it the release, less 200 that
+    # was never there to begin with.
+    expect=ExpectedPosition(
+        balance=_d("-300"),
+        set_aside=_d("-200"),
+        uncovered=_d("300"),
+        short_reserved=_d("200"),
+        charged_this_month=_d("0"),
+        inflows_this_month=_d("0"),
+        paid_this_month=_d("0"),
+        debt_change_this_month=_d("0"),
+    ),
+    set_aside_state=SetAsideState.MOVED_OUT,
+    tiers=("full",),
+    lesson=CardLesson(
+        happens=(
+            "An envelope held $300 for the bill, and you moved $500 out of it to use elsewhere."
+        ),
+        reads=(
+            "Set aside shows $0.00 with $200.00 below zero beside it, and the row says the "
+            "money was moved out — not paid."
+        ),
+        todo=(
+            "Assign $200 back to the card to restore what was taken. Nothing left your bank "
+            "account; Ready to Assign has it."
         ),
     ),
 )
@@ -958,10 +1123,12 @@ PAID_AHEAD = CardScenario(
         "was holding and went straight to the balance.\n\n"
         "Nothing came back onto the card and no month ended short, so there "
         "is nothing to re-file and no envelope to back-fund: this is the plain "
-        "case the other three negatives are mistaken for. Assigning 300 to "
-        "the card squares it, and that is a true statement here and false on "
-        "the settle-up card two rows up — which is the whole reason the state "
-        "is served rather than guessed from the sign."
+        "case the other negatives are mistaken for. Ready to Assign already "
+        "reflects the 300 — the money left the account when the card was "
+        "paid — so assigning 300 to the card squares its envelope and moves "
+        "Ready to Assign by nothing. That is a true statement here and false "
+        "on the settle-up card two rows up, which is the whole reason the "
+        "state is served rather than guessed from the sign."
     ),
     card="Quillon Card",
     short="Quillon",
@@ -995,8 +1162,8 @@ PAID_AHEAD = CardScenario(
             "below zero beside it."
         ),
         todo=(
-            "Assign $300 to the card to square it. Ready to Assign falls by that much, because "
-            "the money has already left your account."
+            "Assign $300 to the card to square its envelope. Ready to Assign already reflects "
+            "it — the money left your account when you paid."
         ),
     ),
 )
@@ -1044,7 +1211,7 @@ REIMBURSED = CardScenario(
             "this card."
         ),
         reads=(
-            "Set aside shows $0.00 with a note that it is below zero, while the card still owes "
+            "Set aside shows $0.00 with $500.00 below zero beside it, while the card still owes "
             "$1,900."
         ),
         todo=(
@@ -1271,6 +1438,8 @@ ALL_SCENARIOS: tuple[CardScenario, ...] = (
     SETTLED_BY_OTHERS,
     RIDE_UNFUNDED,
     PAID_AHEAD,
+    MIXED,
+    MOVED_OUT,
 )
 
 
@@ -1324,7 +1493,12 @@ ANCHORED_IMPORT = CardScenario(
         # 500 owed − 350 reserved; equally, the 400 opening ride less the
         # 250 the assignment covered.
         uncovered=_d("150"),
-        riding=_d("150"),
+        # Nothing of this budget's own rides: today's spend was funded. What
+        # is still riding is what the import brought, less the 250 retired —
+        # named as such, so no row calls it spending from a month that ended
+        # short.
+        riding=_d("0"),
+        imported_riding=_d("150"),
         charged_this_month=_d("100"),
         inflows_this_month=_d("0"),
         paid_this_month=_d("0"),
@@ -1530,16 +1704,18 @@ def to_spec_elements(
                     tiers=scenario.tiers,
                 )
             )
-        elif event.kind in ("fund", "assign"):
+        elif event.kind in ("fund", "assign", "release"):
             assignments.append(
                 ExplicitAssignment(
                     category=(
                         scenario.payment_category
-                        if event.kind == "assign"
+                        if event.kind in ("assign", "release")
                         else event.category or ""
                     ),
                     when=RelDate(event.when.months_ago, 1),
-                    amount=event.amount,
+                    # A release is the same row with the sign flipped: the
+                    # generator adds assignments, so a negative one subtracts.
+                    amount=-event.amount if event.kind == "release" else event.amount,
                     tiers=scenario.tiers,
                 )
             )

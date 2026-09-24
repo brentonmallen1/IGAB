@@ -20,9 +20,9 @@ from pathlib import Path
 
 import pytest
 
+from igab.domain.cards import AnchorOpenings, card_reserve
 from igab.domain.cards import card_funding as domain_funding
 from igab.domain.cards import card_position as domain_position
-from igab.domain.cards import card_reserve
 from igab.domain.carryover import sum_through
 from igab.sample_budget.card_scenarios import (
     ALL_SCENARIOS,
@@ -255,3 +255,84 @@ def test_the_persisted_ccp_history_round_trips_into_the_probe():
     )
     summary = {"parity": parity.model_dump(mode="json")}
     assert probe._ccp_history_from_summary(summary) == history
+
+
+def test_the_probe_agrees_on_the_shapes_no_scenario_reaches():
+    """A `CardScenario` owns one card, so the scenario walks above never put
+    two cards under one envelope — and the probe's copy of the cap drifted
+    from the domain's for one commit (net vs charges-only) with every test
+    above green. These are the two-card shapes, walked directly through both
+    copies: a refund on one card discharging a ride while the other is
+    charged, and an assignment covering rides on two categories with an
+    imported ride beside them.
+    """
+    JAN, FEB = date(2026, 1, 1), date(2026, 2, 1)
+    D = Decimal
+    cases = {
+        "discharge on one card, charge on the other": dict(
+            assignments={},
+            activity={"tab": {JAN: D("-150"), FEB: D("50")}},
+            outflows={"tab": {"amex": {JAN: D("150"), FEB: D("-150")}, "visa": {FEB: D("100")}}},
+            card_categories={"amex": "amex-env", "visa": "visa-env"},
+            openings=None,
+        ),
+        "one envelope short across two cards": dict(
+            assignments={"shared": {FEB: D("60")}},
+            activity={"shared": {JAN: D("-360"), FEB: D("0")}},
+            outflows={"shared": {"card-a": {JAN: D("300")}, "card-b": {JAN: D("60")}}},
+            card_categories={"card-a": "cat-a", "card-b": "cat-b"},
+            openings=None,
+        ),
+        "an assignment covering two rides beside an imported one": dict(
+            assignments={"visa payment": {FEB: D("100")}},
+            activity={"apples": {JAN: D("-50")}, "bananas": {JAN: D("-60")}},
+            outflows={"apples": {"visa": {JAN: D("50")}}, "bananas": {"visa": {JAN: D("60")}}},
+            card_categories={"visa": "visa payment"},
+            openings=("anchored", JAN, {"visa": D("400")}),
+        ),
+    }
+    for name, c in cases.items():
+        if c["openings"] is None:
+            ours = probe.card_funding(
+                c["assignments"], c["activity"], c["outflows"], c["card_categories"]
+            )
+            theirs = domain_funding(
+                c["assignments"], c["activity"], c["outflows"], c["card_categories"]
+            )
+        else:
+            _, month, uncovered = c["openings"]
+            ours = probe.card_funding(
+                c["assignments"],
+                c["activity"],
+                c["outflows"],
+                c["card_categories"],
+                openings=probe.Openings(
+                    month=month,
+                    available_by_category={},
+                    reserve_by_card={},
+                    uncovered_by_card=dict(uncovered),
+                ),
+            )
+            theirs = domain_funding(
+                c["assignments"],
+                c["activity"],
+                c["outflows"],
+                c["card_categories"],
+                openings=AnchorOpenings(
+                    month=month,
+                    available_by_category={},
+                    reserve_by_card={},
+                    uncovered_by_card=dict(uncovered),
+                ),
+            )
+        for series in (
+            "floored_by_card",
+            "riding_by_card",
+            "imported_riding_by_card",
+            "covered_by_card",
+            "reservations_by_card",
+            "residual_by_card",
+            "end_balances",
+            "residual_by_pair",
+        ):
+            assert getattr(ours, series) == getattr(theirs, series), f"{name}: {series}"

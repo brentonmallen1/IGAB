@@ -29,6 +29,11 @@ interface Props {
    *  where the consequence is not obvious from the row the user is looking
    *  at. */
   footnote?: ReactNode
+  /** The most that may leave. A card's envelope has one — what it holds —
+   *  because below zero there is no money, only a deficit the row then has
+   *  to explain (`moved_out`). Ordinary envelopes pass none: overdrawing one
+   *  is a real, visible choice the budget page already shows in red. */
+  ceiling?: number
   /** Called after a successful move (and only then) */
   onClose: () => void
 }
@@ -45,6 +50,7 @@ export function MoveMoneyForm({
   available,
   prefill,
   footnote,
+  ceiling,
   onClose,
 }: Props) {
   const { formatMoney } = useFormatters()
@@ -79,6 +85,13 @@ export function MoveMoneyForm({
     }
     if (cents <= 0) {
       setError('Enter an amount greater than zero')
+      return
+    }
+    if (ceiling !== undefined && !isCover && cents / 100 > ceiling) {
+      setError(
+        `${category.name} holds ${formatMoney(ceiling)}. Moving more would leave it below zero — ` +
+          `there is no money there, only a deficit.`
+      )
       return
     }
     setError(null)

@@ -40,6 +40,8 @@ class MockAccount:
 class MockPayee:
     id: uuid.UUID = field(default_factory=uuid.uuid4)
     name: str = "Reconciliation Balance Adjustment"
+    # A plain payee, not a transfer's: the category rule asks.
+    transfer_account_id: uuid.UUID | None = None
 
 
 @dataclass

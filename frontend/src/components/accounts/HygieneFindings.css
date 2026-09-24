@@ -41,7 +41,7 @@
   color: var(--text-primary);
 }
 
-.hygiene__detail,
+.hygiene__summary,
 .hygiene__action {
   margin: 2px 0 0;
   font-size: var(--font-size-xs);
@@ -49,8 +49,102 @@
   line-height: 1.5;
 }
 
-.hygiene__action {
+/* The things a finding is about, one per line: what it is on the left, the
+   figure on the right where figures line up. */
+.hygiene__items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: var(--spacing-xs) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--font-size-xs);
+}
+
+.hygiene__row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--spacing-sm);
+  align-items: baseline;
+  padding: 2px 0;
+  border-top: 1px solid var(--edge);
+}
+
+.hygiene__row:first-child {
+  border-top: none;
+}
+
+.hygiene__row-main {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: var(--spacing-sm);
+  row-gap: 0;
+  min-width: 0;
+}
+
+.hygiene__row-label {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-weight: var(--font-weight-medium);
+  color: var(--text-primary);
+  text-align: left;
+}
+
+button.hygiene__row-label {
+  cursor: pointer;
+}
+
+button.hygiene__row-label:hover {
+  color: var(--color-accent);
+  text-decoration: underline;
+}
+
+.hygiene__row-note {
   color: var(--text-muted);
+}
+
+/* An item's own fix: a full line under it, so "what to do" is never inside
+   a sentence about something else. */
+.hygiene__row-fix {
+  flex-basis: 100%;
+  color: var(--text-secondary);
+}
+
+.hygiene__row-amount {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.hygiene__action {
+  margin-top: var(--spacing-xs);
+}
+
+.hygiene__action-label {
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+
+.hygiene__why {
+  margin-top: 2px;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.hygiene__why summary {
+  width: fit-content;
+  cursor: pointer;
+}
+
+.hygiene__why summary:hover {
+  color: var(--text-secondary);
+}
+
+.hygiene__why p {
+  margin: 2px 0 0;
+  line-height: 1.5;
 }
 
 .hygiene__link {

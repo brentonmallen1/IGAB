@@ -1,13 +1,23 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AlertTriangle, ChevronRight, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import {
+  useLinkCardPayments,
   useRepairTrackingCategories,
   useRepairTransfers,
+  type FindingItem,
   type HygieneFinding,
 } from '../../api/accounts'
 import { apiErrorMessage } from '../../api/client'
+import { useFormatters } from '../../hooks/useFormatters'
+import { confirmAsync } from '../../stores/confirmStore'
+import { parseApiDecimal } from '../../utils/money'
 import './HygieneFindings.css'
+
+/** Past this many, a finding's list folds behind "Show N more" — the panel
+ *  is read top to bottom, and nine rows of one finding push the next out. */
+const ITEMS_SHOWN = 5
 
 /**
  * Findings about a budget's accounts, and what to do about each.
@@ -21,6 +31,10 @@ import './HygieneFindings.css'
  * `onDismiss` is the accounts page's alone: dismissal is a standing decision
  * to live with something, which is not a thing to offer inside a one-off
  * review. Given no handler, no dismiss control is drawn.
+ *
+ * Each finding reads in a fixed order — what is wrong, which things, what to
+ * do, and (folded) why. They used to be two paragraphs of server prose with
+ * the figures typed into them, and the action was a sentence to be found.
  */
 export function HygieneFindings({
   findings,
@@ -37,6 +51,29 @@ export function HygieneFindings({
   const navigate = useNavigate()
   const repair = useRepairTransfers(budgetId)
   const stripCategories = useRepairTrackingCategories(budgetId)
+  const linkPayments = useLinkCardPayments(budgetId)
+
+  async function linkCardPayments(f: HygieneFinding) {
+    const n = f.items.length
+    const ok = await confirmAsync({
+      title: `Link ${n} card payment${n === 1 ? '' : 's'}?`,
+      message:
+        'Each becomes a transfer to its card. Where the payment was filed to an ' +
+        'envelope, that envelope gets the money back and the card’s Set aside falls by ' +
+        'the same amount — move it to the card afterwards. Undo reverses all of them.',
+      confirmLabel: 'Link them',
+    })
+    if (!ok) return
+    try {
+      const r = await linkPayments.mutateAsync(f.items.map((i) => i.transaction_ids))
+      const skipped = r.skipped ? ` ${r.skipped} had changed and were left alone.` : ''
+      toast.success(`Linked ${r.linked} payment${r.linked === 1 ? '' : 's'}.${skipped}`, {
+        duration: 8000,
+      })
+    } catch (err) {
+      toast.error(apiErrorMessage(err, 'Could not link the payments'))
+    }
+  }
 
   async function repairTrackingCategories() {
     try {
@@ -72,18 +109,13 @@ export function HygieneFindings({
     }
   }
 
-  // The two that lead somewhere other than the accounts list itself. A
-  // finding with no next step is criticism, per the service that raises them.
-  function target(f: HygieneFinding): string | null {
-    if (f.kind === 'unpaired_transfer_legs') return '/transactions?q=is:unpaired'
-    // The card's own register, where the credits sit and can be linked to
-    // their partner. `account_ids` leads with the card for exactly this.
-    if (f.kind === 'unlinked_card_payments' && f.account_ids.length > 0) {
-      return `/accounts/${f.account_ids[0]}`
-    }
-    // The quiet card's register, where a small charge would go.
-    if (f.kind === 'card_no_activity' && f.account_ids.length > 0) {
-      return `/accounts/${f.account_ids[0]}`
+  // Where a finding leads as a whole. Most lead through their items now —
+  // each card, envelope or row links to its own register — so this is only
+  // for findings whose items cannot: a count with no rows listed, an asset,
+  // or the card diagnostics whose months live on the budget page.
+  function target(f: HygieneFinding): { to: string; label: string } | null {
+    if (f.kind === 'unpaired_transfer_legs') {
+      return { to: '/transactions?q=is:unpaired', label: 'Show them' }
     }
     // Asset findings lead to the asset — where the value can be restated,
     // or the double-counted thing deleted.
@@ -91,19 +123,17 @@ export function HygieneFindings({
       (f.kind === 'stale_asset_value' || f.kind === 'asset_beside_asset_account') &&
       f.asset_ids.length > 0
     ) {
-      return `/assets/${f.asset_ids[0]}`
+      return { to: `/assets/${f.asset_ids[0]}`, label: 'Show them' }
     }
-    // The card diagnostics all resolve on the budget page's cards section —
-    // the Set aside breakdown is where the months and legs they cite live.
+    // The card diagnostics resolve on the budget page's cards section — the
+    // Set aside breakdown is where the months and legs they cite live.
     if (
       f.kind === 'card_reserve_went_negative' ||
       f.kind === 'card_debt_predates_budget' ||
       f.kind === 'residual_on_uncharged_category' ||
-      f.kind === 'card_inflow_belongs_to_other_card' ||
-      f.kind === 'recurring_card_residual' ||
-      f.kind === 'payment_envelope_shadow'
+      f.kind === 'recurring_card_residual'
     ) {
-      return '/budget'
+      return { to: '/budget', label: 'Open the budget' }
     }
     return null
   }
@@ -115,60 +145,132 @@ export function HygieneFindings({
 
   return (
     <div className="hygiene__list">
-      {findings.map((f) => (
-        <div key={f.kind} className="hygiene__item">
-          <AlertTriangle className="hygiene__icon" size={15} aria-hidden />
-          <div className="hygiene__body">
-            <div className="hygiene__title">{f.title}</div>
-            <p className="hygiene__detail">{f.detail}</p>
-            <p className="hygiene__action">
-              {f.action}
-              {f.kind === 'categorized_tracking_rows' && (
-                <button
-                  type="button"
-                  className="hygiene__link"
-                  onClick={repairTrackingCategories}
-                  disabled={stripCategories.isPending}
-                >
-                  {stripCategories.isPending ? 'Removing…' : 'Remove the categories'}
-                  <ChevronRight size={12} />
-                </button>
+      {findings.map((f) => {
+        const t = target(f)
+        return (
+          <div key={f.kind} className="hygiene__item">
+            <AlertTriangle className="hygiene__icon" size={15} aria-hidden />
+            <div className="hygiene__body">
+              <div className="hygiene__title">{f.title}</div>
+              <p className="hygiene__summary">{f.summary}</p>
+              {f.items.length > 0 && <FindingItems items={f.items} onGo={go} />}
+              <p className="hygiene__action">
+                <span className="hygiene__action-label">What to do</span> {f.action}
+                {f.kind === 'unlinked_card_payments' && f.items.length > 0 && (
+                  <button
+                    type="button"
+                    className="hygiene__link"
+                    onClick={() => linkCardPayments(f)}
+                    disabled={linkPayments.isPending}
+                  >
+                    {linkPayments.isPending ? 'Linking…' : `Link all ${f.items.length}`}
+                    <ChevronRight size={12} />
+                  </button>
+                )}
+                {f.kind === 'categorized_tracking_rows' && (
+                  <button
+                    type="button"
+                    className="hygiene__link"
+                    onClick={repairTrackingCategories}
+                    disabled={stripCategories.isPending}
+                  >
+                    {stripCategories.isPending ? 'Removing…' : 'Remove the categories'}
+                    <ChevronRight size={12} />
+                  </button>
+                )}
+                {f.kind === 'unpaired_transfer_legs' && (
+                  <button
+                    type="button"
+                    className="hygiene__link"
+                    onClick={repairTransfers}
+                    disabled={repair.isPending}
+                  >
+                    {repair.isPending ? 'Matching…' : 'Match them up'}
+                    <ChevronRight size={12} />
+                  </button>
+                )}
+                {t && (
+                  <button type="button" className="hygiene__link" onClick={() => go(t.to)}>
+                    {t.label} <ChevronRight size={12} />
+                  </button>
+                )}
+              </p>
+              {f.why && (
+                <details className="hygiene__why">
+                  <summary>Why</summary>
+                  <p>{f.why}</p>
+                </details>
               )}
-              {f.kind === 'unpaired_transfer_legs' && (
-                <button
-                  type="button"
-                  className="hygiene__link"
-                  onClick={repairTransfers}
-                  disabled={repair.isPending}
-                >
-                  {repair.isPending ? 'Matching…' : 'Match them up'}
-                  <ChevronRight size={12} />
-                </button>
-              )}
-              {target(f) && (
-                <button
-                  type="button"
-                  className="hygiene__link"
-                  onClick={() => go(target(f) as string)}
-                >
-                  Show them <ChevronRight size={12} />
-                </button>
-              )}
-            </p>
+            </div>
+            {onDismiss && (
+              <button
+                type="button"
+                className="hygiene__dismiss"
+                onClick={() => onDismiss(f.kind)}
+                aria-label={`Dismiss: ${f.title}`}
+                title="Dismiss — this kind of suggestion won't come back"
+              >
+                <X size={14} />
+              </button>
+            )}
           </div>
-          {onDismiss && (
-            <button
-              type="button"
-              className="hygiene__dismiss"
-              onClick={() => onDismiss(f.kind)}
-              aria-label={`Dismiss: ${f.title}`}
-              title="Dismiss — this kind of suggestion won't come back"
-            >
-              <X size={14} />
-            </button>
-          )}
-        </div>
-      ))}
+        )
+      })}
     </div>
+  )
+}
+
+/** Where an item leads: the row itself when it names one, else its account. */
+export function itemTarget(item: FindingItem): string | null {
+  if (!item.account_id) return null
+  const base = `/accounts/${item.account_id}`
+  return item.transaction_id ? `${base}?highlight=${item.transaction_id}` : base
+}
+
+function FindingItems({ items, onGo }: { items: FindingItem[]; onGo: (to: string) => void }) {
+  const { formatMoney, formatDate, formatMonth } = useFormatters()
+  const [expanded, setExpanded] = useState(false)
+  const shown = expanded ? items : items.slice(0, ITEMS_SHOWN)
+  const hidden = items.length - shown.length
+
+  return (
+    <ul className="hygiene__items">
+      {shown.map((item, i) => {
+        const to = itemTarget(item)
+        const when = item.day
+          ? formatDate(item.day)
+          : item.month
+            ? `since ${formatMonth(item.month)}`
+            : null
+        return (
+          <li key={`${item.label}-${i}`} className="hygiene__row">
+            <span className="hygiene__row-main">
+              {to ? (
+                <button type="button" className="hygiene__row-label" onClick={() => onGo(to)}>
+                  {item.label}
+                </button>
+              ) : (
+                <span className="hygiene__row-label">{item.label}</span>
+              )}
+              {item.note && <span className="hygiene__row-note">{item.note}</span>}
+              {when && <span className="hygiene__row-note">{when}</span>}
+              {item.fix && <span className="hygiene__row-fix">{item.fix}</span>}
+            </span>
+            {item.amount !== null && (
+              <span className="hygiene__row-amount">
+                {formatMoney(parseApiDecimal(item.amount))}
+              </span>
+            )}
+          </li>
+        )
+      })}
+      {hidden > 0 && (
+        <li>
+          <button type="button" className="hygiene__link" onClick={() => setExpanded(true)}>
+            Show {hidden} more
+          </button>
+        </li>
+      )}
+    </ul>
   )
 }

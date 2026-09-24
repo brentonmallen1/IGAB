@@ -111,8 +111,18 @@ export function OnCardsModal({ budgetId, month, onClose }: Props) {
                   and a reader who opened one group is asking about that one. */}
               <p className="on-cards__group-note">
                 <CreditCard size={12} aria-hidden />
-                Funding these envelopes for this month retires this debt; so does assigning to{' '}
-                {card.name} in the Credit cards section.
+                {card.ride_reaches_this_card ? (
+                  <>
+                    Funding these envelopes for this month retires this debt; so does assigning to{' '}
+                    {card.name} in the Credit cards section.
+                  </>
+                ) : (
+                  <>
+                    Some of this rode onto another card too, and funding these envelopes reaches
+                    that card first. Assigning to {card.name} in the Credit cards section is the
+                    move that is certain to retire it.
+                  </>
+                )}
               </p>
             </Collapsible>
           ))}

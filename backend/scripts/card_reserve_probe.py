@@ -103,7 +103,8 @@ def allocate_capped(amount: Decimal, capacity: dict[str, Decimal]) -> dict[str, 
     """cards.allocate_capped — greedy in sorted-key order, each bucket capped."""
     out: dict[str, Decimal] = {}
     remaining = amount
-    for bucket in sorted(capacity, key=str):
+    # Largest capacity first, ties on the key — mirrors domain/cards.py.
+    for bucket in sorted(capacity, key=lambda k: (-capacity[k], str(k))):
         take = min(remaining, capacity[bucket])
         if take > ZERO:
             out[bucket] = take
@@ -137,6 +138,10 @@ class Funding:
     assignments_by_card: dict[str, dict[date, Decimal]] = field(default_factory=dict)
     covered_by_card: dict[str, dict[date, Decimal]] = field(default_factory=dict)
     riding_by_card: dict[str, dict[date, Decimal]] = field(default_factory=dict)
+    #: The import's opening debt still riding, apart from `riding_by_card` —
+    #: mirrors domain/cards.py, which keeps the two apart so a sentence about
+    #: "a month that ended short" never quotes debt that predates the budget.
+    imported_riding_by_card: dict[str, dict[date, Decimal]] = field(default_factory=dict)
     floored_by_card: dict[str, dict[date, Decimal]] = field(default_factory=dict)
     end_balances: dict[str, dict[date, Decimal]] = field(default_factory=dict)
     #: residual attributed to the category that carried the inflow — the probe
@@ -212,7 +217,7 @@ def card_funding(
         for card, uncovered in openings.uncovered_by_card.items():
             if uncovered > ZERO:
                 ridden[(ANCHOR_OPENING, card)] = uncovered
-                _add(out.riding_by_card, card, openings.opening_month, uncovered)
+                _add(out.imported_riding_by_card, card, openings.opening_month, uncovered)
 
     all_months = sorted(
         set(categories_in_month) | {m for series in card_assignments.values() for m in series}
@@ -257,7 +262,9 @@ def card_funding(
             carryover[category] = next_carryover(end)
 
             # 3. What the shortfall put on a card.
-            floored = credit_floored(end, sum(nets.values(), ZERO))
+            # Charges only, not the net — mirrors domain/cards.py: a discharging
+            # inflow is already out of `end` as `repaid`.
+            floored = credit_floored(end, sum((n for n in nets.values() if n > ZERO), ZERO))
 
             # 4. The charges: floored first, funded is the remainder.
             floored_share = allocate_capped(floored, {c: n for c, n in nets.items() if n > ZERO})
@@ -288,7 +295,10 @@ def card_funding(
             for cat, take in allocate_capped(amount, pool).items():
                 ridden[(cat, card)] -= take
                 _add(out.covered_by_card, card, month, take)
-                _add(out.riding_by_card, card, month, -take)
+                if cat == ANCHOR_OPENING:
+                    _add(out.imported_riding_by_card, card, month, -take)
+                else:
+                    _add(out.riding_by_card, card, month, -take)
 
     return out
 

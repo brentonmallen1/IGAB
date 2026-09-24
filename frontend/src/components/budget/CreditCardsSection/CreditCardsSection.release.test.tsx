@@ -12,6 +12,7 @@ import userEvent from '@testing-library/user-event'
 import { CreditCardsSection } from './CreditCardsSection'
 import { releaseAnchors } from './cardRow'
 import type { BudgetMonth, CardStatus, Category } from '../../../types'
+import { assertServerProducible, withPosition } from '../../../test-utils/cardFixture'
 
 const month: { current: BudgetMonth | undefined } = { current: undefined }
 const moveMoney = vi.fn(() => Promise.resolve())
@@ -42,36 +43,43 @@ vi.mock('../../../stores/uiStore', () => ({
 }))
 
 function card(over: Partial<CardStatus> = {}): CardStatus {
-  return {
-    account_id: 'a1',
-    name: 'Sapphire Visa',
-    category_id: 'c1',
-    balance: -1500,
-    set_aside: 7400,
-    uncovered: 0,
-    is_closed: false,
-    overspent_this_month: 0,
-    reserve_discrepancy: 0,
-    assigned: 5900,
-    reserved: 1500,
-    released: 0,
-    residual: 0,
-    payments: 0,
-    riding: 0,
-    opening: 0,
-    over_reserved: 5900,
-    short_reserved: 0,
-    card_credit: 0,
-    set_aside_state: 'surplus',
-    charged_this_month: 0,
-    inflows_this_month: 0,
-    paid_this_month: 0,
-    debt_change_this_month: 0,
-    pending_this_month: 0,
-    rode_by_month: [],
-    overspent_by_category: [],
-    ...over,
-  }
+  return assertServerProducible(
+    withPosition({
+      account_id: 'a1',
+      name: 'Sapphire Visa',
+      category_id: 'c1',
+      balance: -1500,
+      set_aside: 7400,
+      uncovered: 0,
+      is_closed: false,
+      overspent_this_month: 0,
+      reserve_discrepancy: 0,
+      assigned: 5900,
+      reserved: 1500,
+      released: 0,
+      residual: 0,
+      payments: 0,
+      riding: 0,
+      imported_riding: 0,
+      covered: 0,
+      residual_from_ledgers: 0,
+      paid_ahead_unmirrored: 0,
+      ride_reaches_this_card: true,
+      opening: 0,
+      over_reserved: 5900,
+      short_reserved: 0,
+      card_credit: 0,
+      set_aside_state: 'surplus',
+      charged_this_month: 0,
+      inflows_this_month: 0,
+      paid_this_month: 0,
+      debt_change_this_month: 0,
+      pending_this_month: 0,
+      rode_by_month: [],
+      overspent_by_category: [],
+      ...over,
+    })
+  )
 }
 
 const money = (n: number) => `$${n.toFixed(2)}`
@@ -93,20 +101,37 @@ describe('releaseAnchors', () => {
     expect(releaseAnchors(card(), money).ceiling).toBe(7400)
   })
 
-  it('offers the whole reserve on a card with no spare at all', () => {
-    // The scoping correction: this is not a surplus tool. A card paying its
-    // bill in full has no spare, and needing that cash elsewhere this month
-    // is exactly when someone reaches for it.
+  it('proposes nothing on a card with no spare, but still lets it out', () => {
+    // Not a surplus-only tool: a card paying its bill in full has no spare,
+    // and needing that cash elsewhere this month is exactly when someone
+    // reaches for it. But the form used to open PREFILLED with the whole
+    // reserve — proposing to empty an envelope that exactly covered its bill.
+    // The person types what they need; the ceiling is what is there.
     const tight = card({
       set_aside: 300,
       balance: -300,
       over_reserved: 0,
       set_aside_state: 'funded',
     })
-    expect(releaseAnchors(tight, money).prefill).toBe(300)
+    const anchors = releaseAnchors(tight, money)
+    expect(anchors.prefill).toBe(0)
+    expect(anchors.ceiling).toBe(300)
   })
 
-  it('states the consequence rather than capping the amount', () => {
+  it('the ceiling is what the envelope holds — never below zero', () => {
+    // Below zero there is no money, only a deficit the row must then explain
+    // as `moved_out`. Releasing $500 from an envelope holding $100 used to go
+    // through and read "you have paid $400 more … the money has already left
+    // your account" about money sitting in Ready to Assign.
+    expect(releaseAnchors(card({ set_aside: 100, set_aside_state: 'funded' }), money).ceiling).toBe(
+      100
+    )
+    expect(
+      releaseAnchors(card({ set_aside: -50, set_aside_state: 'paid_ahead' }), money).ceiling
+    ).toBe(0)
+  })
+
+  it('states the consequence past the spare, and caps at what is held', () => {
     const lines = releaseAnchors(card(), money).lines.join(' ')
     expect(lines).toContain('$5900.00 is spare')
     expect(lines).toMatch(/Uncovered rises/)
@@ -161,5 +186,20 @@ describe('the Release door', () => {
       amount: 5900,
       month: '2026-08-01',
     })
+  })
+
+  it('refuses to take more than the envelope holds, and says why', async () => {
+    // set_aside 7400, balance -1500: 5900 is spare, and the ceiling is the
+    // whole 7400. One dollar more and the envelope would be below zero — a
+    // deficit the row would then have to explain as `moved_out`.
+    show(card())
+    await userEvent.click(screen.getByLabelText('Release money from Sapphire Visa'))
+    const box = screen.getByRole('textbox')
+    await userEvent.clear(box)
+    await userEvent.type(box, '7401')
+    await userEvent.click(screen.getByRole('button', { name: 'Move Money' }))
+    expect(moveMoney).not.toHaveBeenCalled()
+    expect(screen.getByText(/holds \$7,400\.00/)).toBeInTheDocument()
+    expect(screen.getByText(/below zero/)).toBeInTheDocument()
   })
 })

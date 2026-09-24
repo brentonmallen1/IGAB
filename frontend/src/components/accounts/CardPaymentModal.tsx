@@ -57,18 +57,26 @@ export function CardPaymentModal({ budgetId, accountId, onClose }: Props) {
   // useAccounts already excludes closed accounts.
   const supplyAccounts = accounts.filter((a) => isCashAccount(a))
 
-  const fullBalance = card && card.balance < 0 ? -card.balance : null
+  // What the card owes: zero for a card paid off or in credit. `null` only
+  // when there is no card at all. It used to be null whenever the balance
+  // was not negative, and the cap below read null as "no cap" — so the one
+  // boundary the cap was written for, a card that owes nothing, was the one
+  // it skipped: `balance 0, set_aside 1250` prefilled $1,250 under a label
+  // promising the money was ready to pay.
+  const owed = card ? Math.max(0, -card.balance) : null
+  const fullBalance = owed !== null && owed > 0 ? owed : null
   // Capped at what the card owes. Set aside is this card's envelope, not a
   // measure of the card, so on a card paid from funded envelopes it keeps
   // accumulating past the balance — the `over-reserved` scenario settles at
   // 1250 against a bill of 50. Offering that as "pay this" put a $1,200
-  // overpayment one Enter away, under a label promising the money was ready
-  // to pay. Paying more than is owed is still possible; it is just no longer
-  // the prefill, and no longer something the app proposed.
+  // overpayment one Enter away. Paying more than is owed is still possible;
+  // it is just no longer the prefill, and no longer something the app
+  // proposed. On a card owing nothing the cap is zero and nothing is offered.
   const setAsideRaw =
     !isLoan && cardStatus && cardStatus.set_aside > 0 ? cardStatus.set_aside : null
-  const setAside =
-    setAsideRaw !== null && fullBalance !== null ? Math.min(setAsideRaw, fullBalance) : setAsideRaw
+  const setAsideCapped =
+    setAsideRaw !== null && owed !== null ? Math.min(setAsideRaw, owed) : setAsideRaw
+  const setAside = setAsideCapped !== null && setAsideCapped > 0 ? setAsideCapped : null
   const minimum = liability?.minimum_payment_due_now ?? null
 
   const [supplyId, setSupplyId] = useState(() => supplyAccounts[0]?.id ?? '')

@@ -11,7 +11,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AccountHygienePanel } from './AccountHygienePanel'
-import type { HygieneFinding, HygieneReport } from '../../api/accounts'
+import type { FindingItem, HygieneFinding, HygieneReport } from '../../api/accounts'
 
 const navigate = vi.fn()
 vi.mock('react-router-dom', async () => {
@@ -24,11 +24,15 @@ const repairMutate = vi.hoisted(() =>
   vi.fn(() => Promise.resolve({ linked: 0, ambiguous: 0, remaining: 0 }))
 )
 const stripMutate = vi.hoisted(() => vi.fn(() => Promise.resolve({ stripped: 0 })))
+const linkMutate = vi.hoisted(() => vi.fn(() => Promise.resolve({ linked: 2, skipped: 0 })))
 vi.mock('../../api/accounts', () => ({
   useAccountHygiene: () => ({ data: report }),
   useRepairTransfers: () => ({ mutateAsync: repairMutate, isPending: false }),
   useRepairTrackingCategories: () => ({ mutateAsync: stripMutate, isPending: false }),
+  useLinkCardPayments: () => ({ mutateAsync: linkMutate, isPending: false }),
 }))
+const confirmAsync = vi.hoisted(() => vi.fn(() => Promise.resolve(true)))
+vi.mock('../../stores/confirmStore', () => ({ confirmAsync }))
 
 const toastSuccess = vi.hoisted(() => vi.fn())
 const toastError = vi.hoisted(() => vi.fn())
@@ -40,8 +44,10 @@ function finding(over: Partial<HygieneFinding> = {}): HygieneFinding {
   return {
     kind: 'liability_positive_balance',
     title: '3 debt accounts hold a positive balance',
-    detail: 'A debt-typed account is subtracted from net worth.',
+    summary: 'A debt account holding money is usually something you own.',
     action: 'Check the balance.',
+    items: [],
+    why: 'Debt accounts are subtracted from net worth.',
     account_ids: [],
     asset_ids: [],
     transaction_count: 0,
@@ -81,7 +87,7 @@ describe('AccountHygienePanel', () => {
     report = { findings: [finding()], clean: false }
     renderPanel()
     expect(screen.getByText('3 debt accounts hold a positive balance')).toBeInTheDocument()
-    expect(screen.getByText('Check the balance.')).toBeInTheDocument()
+    expect(screen.getByText(/Check the balance\./)).toBeInTheDocument()
   })
 
   it('sends unpaired transfers to the rows they are about', () => {
@@ -161,4 +167,113 @@ describe('AccountHygienePanel', () => {
     renderPanel()
     expect(screen.queryByRole('button', { name: /Match them up/ })).not.toBeInTheDocument()
   })
+
+  it("lists what a finding is about, with amounts in the budget's own format", () => {
+    // The server used to type figures into its sentences — "58.6800" and
+    // "-100.0000" reached the screen, and a list of seven arrived as prose.
+    report = {
+      findings: [
+        finding({
+          kind: 'card_reserve_went_negative',
+          title: '1 card with Set aside below zero',
+          items: [
+            item({
+              label: 'Sapphire Visa',
+              amount: '-58.6800',
+              month: '2026-09-01',
+              note: 'a refund went to Clothing instead of the card',
+              fix: 'Move the refund from Clothing to the card.',
+              account_id: 'card-1',
+            }),
+          ],
+        }),
+      ],
+      clean: false,
+    }
+    renderPanel()
+    expect(screen.queryByText(/58\.6800/)).not.toBeInTheDocument()
+    expect(screen.getByText(/58\.68/)).toBeInTheDocument()
+    expect(screen.getByText('Move the refund from Clothing to the card.')).toBeInTheDocument()
+
+    screen.getByRole('button', { name: 'Sapphire Visa' }).click()
+    expect(navigate).toHaveBeenCalledWith('/accounts/card-1')
+  })
+
+  it('folds the reasoning away, and a long list behind "show more"', async () => {
+    report = {
+      findings: [
+        finding({
+          items: Array.from({ length: 7 }, (_, i) => item({ label: `Account ${i + 1}` })),
+        }),
+      ],
+      clean: false,
+    }
+    renderPanel()
+    // In a closed <details>: present for whoever opens it, not in the way.
+    expect(
+      screen.getByText('Debt accounts are subtracted from net worth.').closest('details')
+    ).not.toHaveAttribute('open')
+    expect(screen.queryByText('Account 6')).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Show 2 more' }))
+    expect(screen.getByText('Account 7')).toBeInTheDocument()
+  })
+
+  it('links every unlinked card payment at once, after saying what it does', async () => {
+    report = {
+      findings: [
+        finding({
+          kind: 'unlinked_card_payments',
+          title: '2 card payments not linked',
+          items: [
+            item({ label: 'Sapphire Visa', amount: '460.00', transaction_ids: ['o1', 'i1'] }),
+            item({ label: 'Sapphire Visa', amount: '125.00', transaction_ids: ['o2', 'i2'] }),
+          ],
+        }),
+      ],
+      clean: false,
+    }
+    renderPanel()
+    await userEvent.click(screen.getByRole('button', { name: /Link all 2/ }))
+
+    expect(confirmAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining('Set aside falls') })
+    )
+    expect(linkMutate).toHaveBeenCalledWith([
+      ['o1', 'i1'],
+      ['o2', 'i2'],
+    ])
+    expect(toastSuccess).toHaveBeenCalledWith('Linked 2 payments.', expect.anything())
+  })
+
+  it('links nothing when the confirm is declined', async () => {
+    confirmAsync.mockResolvedValueOnce(false)
+    linkMutate.mockClear()
+    report = {
+      findings: [
+        finding({
+          kind: 'unlinked_card_payments',
+          items: [item({ label: 'Sapphire Visa', transaction_ids: ['o1', 'i1'] })],
+        }),
+      ],
+      clean: false,
+    }
+    renderPanel()
+    await userEvent.click(screen.getByRole('button', { name: /Link all 1/ }))
+    expect(linkMutate).not.toHaveBeenCalled()
+  })
 })
+
+function item(over: Partial<FindingItem> = {}): FindingItem {
+  return {
+    label: 'Item',
+    amount: null,
+    month: null,
+    day: null,
+    note: null,
+    fix: null,
+    account_id: null,
+    transaction_id: null,
+    transaction_ids: [],
+    ...over,
+  }
+}

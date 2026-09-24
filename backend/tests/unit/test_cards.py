@@ -85,12 +85,20 @@ class TestAllocateCapped:
     def test_one_card_takes_it_all(self):
         assert allocate_capped(D("50"), {VISA: D("150")}) == {VISA: D("50")}
 
-    def test_greedy_in_sorted_order_capped_at_each_outflow(self):
-        # 60 to place; amex sorts first and can hold 40, visa takes the rest.
-        assert allocate_capped(D("60"), {VISA: D("100"), AMEX: D("40")}) == {
-            AMEX: D("40"),
-            VISA: D("20"),
+    def test_greedy_largest_first_capped_at_each_outflow(self):
+        # 60 to place; visa was charged most (100) and takes it all. It used to
+        # go to amex first because "amex" sorts before "visa" — for real data,
+        # UUID order — so which card wore the shortfall was arbitrary.
+        assert allocate_capped(D("60"), {VISA: D("100"), AMEX: D("40")}) == {VISA: D("60")}
+
+    def test_spills_to_the_next_largest_when_the_largest_is_full(self):
+        assert allocate_capped(D("120"), {VISA: D("100"), AMEX: D("40")}) == {
+            VISA: D("100"),
+            AMEX: D("20"),
         }
+
+    def test_ties_break_on_the_key_so_the_order_is_still_deterministic(self):
+        assert allocate_capped(D("30"), {VISA: D("50"), AMEX: D("50")}) == {AMEX: D("30")}
 
     def test_zero_allocates_nothing(self):
         assert allocate_capped(D("0"), {VISA: D("100")}) == {}
@@ -161,13 +169,15 @@ class TestCardFunding:
 
     def test_one_category_overspent_across_two_cards(self):
         # Overspent 60, spent 40 on amex and 100 on visa: the ride is placed
-        # greedily (amex holds 40, visa the remaining 20) and each card's
-        # envelope receives only what was actually covered on it.
+        # on the card charged most (visa holds all 60), and each card's
+        # envelope receives only what was actually covered on it — amex's
+        # 40 was funded in full, visa's remaining 40 was.
         cf = funding(
             {JAN: D("80")}, {JAN: D("-140")}, {VISA: {JAN: D("100")}, AMEX: {JAN: D("40")}}
         )
         assert cf.floored_by_category == {"groceries": {JAN: D("60")}}
-        assert cf.funded_by_card == {VISA: {JAN: D("80")}}
+        assert cf.floored_by_card == {VISA: {JAN: D("60")}}
+        assert cf.funded_by_card == {VISA: {JAN: D("40")}, AMEX: {JAN: D("40")}}
 
     def test_a_category_with_no_card_spending_contributes_nothing(self):
         cf = card_funding({"rent": {JAN: D("1200")}}, {"rent": {JAN: D("-1200")}}, {}, {})
@@ -265,6 +275,34 @@ class TestCardFunding:
         assert cf.floored_by_category == {"groceries": {JAN: D("30")}}
         assert cf.floored_by_card == {VISA: {JAN: D("30")}}
         assert cf.residual_by_card == {AMEX: {JAN: D("20")}}
+
+    def test_a_discharging_refund_on_one_card_does_not_reserve_a_charge_on_another(self):
+        """The cap is what was CHARGED, not the month's net.
+
+        A running tab, never funded: 150 charged on amex in January rides
+        there. In February 100 goes on visa and amex refunds the 150,
+        discharging January's ride. The walk has already netted that refund
+        out of February's balance as `repaid`; netting it out of the floor's
+        cap as well made the cap zero, so nothing rode on visa — the 100 read
+        as fully reserved on a card nobody had funded, and the -100 that
+        should have ridden was written off as CASH overspending instead.
+        """
+        cf = funding(
+            {},
+            {JAN: D("-150"), FEB: D("50")},
+            {AMEX: {JAN: D("150"), FEB: D("-150")}, VISA: {FEB: D("100")}},
+        )
+        # January: the tab rides on amex.
+        assert cf.floored_by_card[AMEX][JAN] == D("150")
+        # February: the refund discharges that ride ...
+        assert cf.repaid_by_category["groceries"][FEB] == D("150")
+        assert sum(cf.riding_by_card[AMEX].values(), D("0")) == D("0")
+        # ... and the charge on visa rides in its own right: nothing reserved,
+        # everything uncovered, nothing written off from Ready to Assign.
+        assert cf.floored_by_card[VISA][FEB] == D("100")
+        assert cf.reservations_by_card.get(VISA, {}) == {}
+        assert reserve_of(cf, VISA).set_aside(FEB) == D("0")
+        assert cf.end_balances["groceries"][FEB] == D("-100")
 
     def test_the_repaid_adjustment_never_exceeds_the_inflow_that_caused_it(self):
         # The bound that makes a correction incapable of creating red: at worst
@@ -877,16 +915,18 @@ class TestAnAssignmentRetiresRidingDebt:
         assert cf.floored_by_category == {}
         assert card_reserve(cf, VISA, {}).set_aside(FEB) == D("60")
 
-    def test_a_partial_cover_is_split_across_categories_in_sorted_order(self):
+    def test_a_partial_cover_retires_the_largest_ride_first(self):
         """`allocate_capped`, the same allocator that places a ride across
-        cards — greedy in sorted-key order, exact, no proportional rounding."""
+        cards — largest first, exact, no proportional rounding. The biggest
+        ride is the one worth retiring first, and it is a rule the row can
+        state; sorted-key order retired "apples" first because of a letter."""
         cf = card_funding(
             {"card-visa": {FEB: D("70")}},
             {"apples": {JAN: D("-50")}, "bananas": {JAN: D("-60")}},
             {"apples": {VISA: {JAN: D("50")}}, "bananas": {VISA: {JAN: D("60")}}},
             {VISA: "card-visa"},
         )
-        assert cf.covered_by_category == {"apples": {FEB: D("50")}, "bananas": {FEB: D("20")}}
+        assert cf.covered_by_category == {"bananas": {FEB: D("60")}, "apples": {FEB: D("10")}}
 
     def test_an_assignment_cannot_reach_a_ride_from_a_later_month(self):
         """Month-major and forward-only: at month m, `ridden` holds only rides
@@ -1129,10 +1169,36 @@ class TestTheAnchoredWalk:
             openings=self._openings(uncovered={VISA: D("400")}),
         )
         assert sum_through(cf.covered_by_card[VISA], FEB) == D("250")
-        # 400 rode in at B−1, 250 retired at B.
-        assert sum_through(cf.riding_by_card[VISA], FEB) == D("150")
+        # 400 arrived at B−1 as IMPORTED debt, 250 retired at B. It never
+        # enters `riding_by_card`: no month of this budget ended short to put
+        # it there, and the sentences that read that series say so.
+        assert sum_through(cf.imported_riding_by_card[VISA], FEB) == D("150")
+        assert VISA not in cf.riding_by_card
         # The sentinel never leaks into residual attribution.
         assert not cf.residual_by_pair
+
+    def test_an_assignment_retires_the_budgets_own_ride_before_the_imported_one(self):
+        """Both riding, one assignment: the pool is `allocate_capped` over
+        `ridden`, and `ANCHOR_OPENING` sorts among the real keys by its
+        string. Whatever the order, each series is reduced by exactly what
+        was taken from ITS ride — the two never bleed into each other."""
+        cf = card_funding(
+            {"groceries": {}, "visa payment": {FEB: D("100")}},
+            {"groceries": {JAN: D("-60")}},
+            {"groceries": {VISA: {JAN: D("60")}}},
+            {VISA: "visa payment"},
+            openings=self._openings(uncovered={VISA: D("400")}, month=JAN),
+        )
+        # January's shortfall rode in the budget's own right.
+        assert sum_through(cf.riding_by_card[VISA], JAN) == D("60")
+        covered = sum_through(cf.covered_by_card[VISA], FEB)
+        own = sum_through(cf.riding_by_card[VISA], FEB)
+        imported = sum_through(cf.imported_riding_by_card[VISA], FEB)
+        assert covered == D("100")
+        # 60 + 400 rode; 100 was retired; 360 remains across the two, and
+        # neither series went below zero.
+        assert own + imported == D("360")
+        assert own >= D("0") and imported >= D("0")
 
     def test_a_refund_of_pre_anchor_spending_lands_as_residual(self):
         """The accepted coarsening, pinned: per-pair `reserved` is not
